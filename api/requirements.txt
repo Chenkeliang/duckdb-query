@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pandas
+duckdb
+python-multipart
+aiofiles
+openpyxl
+sqlalchemy
+pymysql
+psycopg2-binary

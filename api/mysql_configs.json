@@ -1,0 +1,15 @@
+[
+  {
+    "id": "sorder",
+    "type": "mysql",
+    "params": {
+      "host": "rr-2ze4ks6ww80gpae5z723.mysql.rds.aliyuncs.com",
+      "port": 3306,
+      "user": "dataread",
+      "password": "********",
+      "database": "store_order",
+      "query": "SELECT * FROM dy_order"
+    },
+    "name": "sorder"
+  }
+]
