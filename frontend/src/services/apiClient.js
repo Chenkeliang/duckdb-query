@@ -40,7 +40,7 @@ export const connectDatabase = async (connectionParams) => {
 export const performQuery = async (queryRequest) => {
   try {
     // 使用代理端点来自动转换请求格式
-    const response = await apiClient.post('/api/query_proxy', queryRequest);
+    const response = await apiClient.post('/api/query', queryRequest);
     return response.data;
   } catch (error) {
     console.error('Error performing query:', error);

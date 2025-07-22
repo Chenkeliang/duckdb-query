@@ -1,0 +1,28 @@
+[
+  {
+    "id": "production_db",
+    "type": "mysql",
+    "params": {
+      "host": "your-production-host.com",
+      "port": 3306,
+      "user": "your_username",
+      "password": "your_password",
+      "database": "your_database",
+      "query": "SELECT * FROM your_table LIMIT 100"
+    },
+    "name": "生产数据库"
+  },
+  {
+    "id": "backup_db",
+    "type": "mysql",
+    "params": {
+      "host": "your-backup-host.com",
+      "port": 3306,
+      "user": "your_username",
+      "password": "your_password",
+      "database": "your_database",
+      "query": "SELECT * FROM your_table LIMIT 100"
+    },
+    "name": "备份数据库"
+  }
+]

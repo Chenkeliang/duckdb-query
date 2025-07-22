@@ -1,37 +1,31 @@
+"""
+查询代理路由
+自动转换前后端请求格式，解决422错误
+"""
+
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
-from typing import Dict, List, Any, Optional
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
 import httpx
 import logging
-from pydantic import BaseModel, Field
-import os
 import io
 from datetime import datetime
 
-router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# 定义数据模型
-class JoinCondition(BaseModel):
-    left_column: str
-    right_column: str
-    operator: str = "="
-
-class Join(BaseModel):
-    left_source_id: str
-    right_source_id: str
-    join_type: str = "inner"
-    conditions: List[JoinCondition]
-
-class DataSourceParams(BaseModel):
-    path: Optional[str] = None
-    connectionId: Optional[str] = None
-    query: Optional[str] = None
+router = APIRouter()
 
 class DataSource(BaseModel):
     id: str
     type: str
-    params: DataSourceParams
+    params: Optional[Dict[str, Any]] = None
+
+class Join(BaseModel):
+    left_source_id: str
+    right_source_id: str
+    join_type: str
+    conditions: List[Dict[str, Any]]
 
 class QueryRequest(BaseModel):
     sources: List[DataSource]
@@ -54,7 +48,7 @@ async def query_proxy(request: Request):
             if "params" in source:
                 converted_sources.append(source)
                 continue
-                
+            
             # 转换文件数据源
             if source.get("sourceType") == "file" or source.get("type") == "file":
                 converted_sources.append({
@@ -64,52 +58,55 @@ async def query_proxy(request: Request):
                         "path": f"temp_files/{source.get('path') or source.get('name')}"
                     }
                 })
-            # 转换数据库数据源
-            elif source.get("sourceType") == "database" or "sql" in source.get("type", "").lower():
+            elif source.get("sourceType") == "database" or source.get("type") in ["mysql", "postgresql", "sqlite"]:
+                # 数据库数据源
                 converted_sources.append({
                     "id": source.get("id"),
                     "type": source.get("type"),
-                    "params": {
+                    "params": source.get("params") or {
                         "connectionId": source.get("connectionId")
                     }
                 })
-            # 其他类型，尝试构建通用格式
             else:
-                converted_sources.append({
-                    "id": source.get("id"),
-                    "type": source.get("type", "file"),
-                    "params": {
-                        "path": f"temp_files/{source.get('path') or source.get('name')}"
-                    }
-                })
+                # 其他情况，尝试保持原格式
+                converted_sources.append(source)
         
-        # 转换 JOIN 格式
+        # 转换JOIN格式
         converted_joins = []
         for join in raw_data.get("joins", []):
-            # 检查是否已经有正确格式
+            # 检查是否已经是新格式
             if "conditions" in join:
                 converted_joins.append(join)
                 continue
-                
-            # 转换 JOIN 条件
-            converted_joins.append({
+            
+            # 转换旧格式到新格式
+            converted_join = {
                 "left_source_id": join.get("left_source_id"),
                 "right_source_id": join.get("right_source_id"),
-                "join_type": join.get("how") or join.get("join_type") or "inner",
-                "conditions": [
-                    {
-                        "left_column": join.get("left_on"),
-                        "right_column": join.get("right_on"),
-                        "operator": "="
-                    }
-                ]
-            })
+                "join_type": join.get("how", "inner"),  # how -> join_type
+                "conditions": []
+            }
+            
+            # 转换条件格式
+            if "left_on" in join and "right_on" in join:
+                converted_join["conditions"].append({
+                    "left_column": join["left_on"],
+                    "right_column": join["right_on"],
+                    "operator": "="
+                })
+            
+            converted_joins.append(converted_join)
         
         # 构建转换后的请求
         converted_request = {
             "sources": converted_sources,
             "joins": converted_joins
         }
+        
+        # 添加其他可能的字段
+        for key in ["limit", "where_conditions", "order_by"]:
+            if key in raw_data:
+                converted_request[key] = raw_data[key]
         
         logger.info(f"转换后的查询请求: {converted_request}")
         
@@ -178,37 +175,42 @@ async def download_proxy(request: Request):
                 # 其他情况，尝试保持原格式
                 converted_sources.append(source)
 
-        # 转换 JOIN 格式
+        # 转换JOIN格式
         converted_joins = []
         for join in raw_data.get("joins", []):
-            # 检查是否已经有正确格式
+            # 检查是否已经是新格式
             if "conditions" in join:
                 converted_joins.append(join)
                 continue
 
-            # 转换 JOIN 条件
-            converted_joins.append({
+            # 转换旧格式到新格式
+            converted_join = {
                 "left_source_id": join.get("left_source_id"),
                 "right_source_id": join.get("right_source_id"),
-                "join_type": join.get("how") or join.get("join_type") or "inner",
-                "conditions": [
-                    {
-                        "left_column": join.get("left_on"),
-                        "right_column": join.get("right_on"),
-                        "operator": "="
-                    }
-                ]
-            })
+                "join_type": join.get("how", "inner"),  # how -> join_type
+                "conditions": []
+            }
+
+            # 转换条件格式
+            if "left_on" in join and "right_on" in join:
+                converted_join["conditions"].append({
+                    "left_column": join["left_on"],
+                    "right_column": join["right_on"],
+                    "operator": "="
+                })
+
+            converted_joins.append(converted_join)
 
         # 构建转换后的请求
         converted_request = {
             "sources": converted_sources,
-            "joins": converted_joins,
-            "select_columns": raw_data.get("select_columns"),
-            "where_conditions": raw_data.get("where_conditions"),
-            "order_by": raw_data.get("order_by"),
-            "limit": raw_data.get("limit")
+            "joins": converted_joins
         }
+
+        # 添加其他可能的字段
+        for key in ["limit", "where_conditions", "order_by"]:
+            if key in raw_data:
+                converted_request[key] = raw_data[key]
 
         logger.info(f"转换后的下载请求: {converted_request}")
 

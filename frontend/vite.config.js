@@ -10,7 +10,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://backend:8000',  // Docker 内部网络服务名
+        target: 'http://localhost:8000',  // 本地开发环境
         changeOrigin: true,
         secure: false,
         configure: (proxy, options) => {

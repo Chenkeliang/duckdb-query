@@ -48,6 +48,151 @@ def safe_alias(table, col):
     return f'"{alias}"'
 
 
+def build_multi_table_join_query(query_request, con):
+    """
+    构建多表JOIN查询
+    支持多个数据源的复杂JOIN操作
+    """
+    sources = query_request.sources
+    joins = query_request.joins
+
+    if not sources:
+        raise ValueError("至少需要一个数据源")
+
+    if len(sources) == 1:
+        # 单表查询
+        source_id = sources[0].id.strip('"')
+        return f'SELECT * FROM "{source_id}"'
+
+    # 验证所有表都已注册
+    available_tables = con.execute("SHOW TABLES").fetchdf()
+    available_table_names = available_tables["name"].tolist()
+
+    for source in sources:
+        table_id = source.id.strip('"')
+        if table_id not in available_table_names:
+            raise ValueError(f"表 '{table_id}' 未注册到DuckDB中。可用表: {', '.join(available_table_names)}")
+
+    # 获取所有表的列信息
+    table_columns = {}
+    for source in sources:
+        table_id = source.id.strip('"')
+        try:
+            cols = con.execute(f"PRAGMA table_info('{table_id}')").fetchdf()["name"].tolist()
+            table_columns[table_id] = cols
+        except Exception as e:
+            logger.error(f"获取表 {table_id} 的列信息失败: {e}")
+            table_columns[table_id] = []
+
+    # 确定JOIN中涉及的表
+    involved_tables = set()
+    for join in joins:
+        involved_tables.add(join.left_source_id.strip('"'))
+        involved_tables.add(join.right_source_id.strip('"'))
+
+    # 如果没有JOIN，包含所有表
+    if not joins:
+        involved_tables = {source.id.strip('"') for source in sources}
+
+    # 构建SELECT子句 - 只为JOIN中涉及的表生成列
+    select_fields = []
+    table_prefixes = {}
+
+    # 为涉及的表分配字母前缀 (A, B, C, D...)
+    prefix_index = 0
+    for source in sources:
+        table_id = source.id.strip('"')
+        if table_id in involved_tables:
+            prefix = chr(65 + prefix_index)  # A=65, B=66, C=67...
+            table_prefixes[table_id] = prefix
+            prefix_index += 1
+
+            cols = table_columns.get(table_id, [])
+            for j, col in enumerate(cols):
+                alias = f"{prefix}_{j+1}"
+                select_fields.append(f'"{table_id}"."{col}" AS "{alias}"')
+
+    select_clause = ", ".join(select_fields) if select_fields else "*"
+
+    # 构建FROM和JOIN子句
+    if not joins:
+        # 没有JOIN条件，使用CROSS JOIN
+        from_clause = f'"{sources[0].id.strip('"')}"'
+        for source in sources[1:]:
+            from_clause += f' CROSS JOIN "{source.id.strip('"')}"'
+    else:
+        # 构建JOIN链
+        from_clause = build_join_chain(sources, joins, table_columns)
+
+    query = f"SELECT {select_clause} FROM {from_clause}"
+
+    # 添加LIMIT
+    if query_request.limit:
+        query += f" LIMIT {query_request.limit}"
+
+    return query
+
+
+def build_join_chain(sources, joins, table_columns):
+    """
+    构建JOIN链，支持多表连接
+    """
+    if not joins:
+        return f'"{sources[0].id.strip('"')}"'
+
+    # 创建表的映射
+    source_map = {source.id.strip('"'): source for source in sources}
+
+    # 跟踪已经加入查询的表
+    joined_tables = set()
+
+    # 从第一个JOIN开始构建
+    first_join = joins[0]
+    left_table = first_join.left_source_id.strip('"')
+    right_table = first_join.right_source_id.strip('"')
+
+    # 开始构建查询
+    from_clause = f'"{left_table}"'
+    joined_tables.add(left_table)
+
+    # 处理所有JOIN
+    for join in joins:
+        left_id = join.left_source_id.strip('"')
+        right_id = join.right_source_id.strip('"')
+
+        # 确定哪个表需要被JOIN进来
+        if left_id in joined_tables and right_id not in joined_tables:
+            # 右表需要被JOIN进来
+            table_to_join = right_id
+        elif right_id in joined_tables and left_id not in joined_tables:
+            # 左表需要被JOIN进来
+            table_to_join = left_id
+        elif left_id not in joined_tables and right_id not in joined_tables:
+            # 两个表都不在查询中，JOIN右表
+            table_to_join = right_id
+        else:
+            # 两个表都已经在查询中，跳过这个JOIN
+            continue
+
+        join_type_sql = get_join_type_sql(join.join_type)
+        from_clause += f' {join_type_sql} "{table_to_join}"'
+
+        # 添加JOIN条件
+        if join.join_type.lower() != "cross" and join.conditions:
+            conditions = []
+            for condition in join.conditions:
+                left_col = f'"{join.left_source_id.strip('"')}"."{condition.left_column}"'
+                right_col = f'"{join.right_source_id.strip('"')}"."{condition.right_column}"'
+                conditions.append(f"{left_col} {condition.operator} {right_col}")
+
+            if conditions:
+                from_clause += f" ON {' AND '.join(conditions)}"
+
+        joined_tables.add(table_to_join)
+
+    return from_clause
+
+
 @router.post("/api/query", tags=["Query"])
 async def perform_query(query_request: QueryRequest):
     """Performs a join query on the specified data sources."""
@@ -57,9 +202,48 @@ async def perform_query(query_request: QueryRequest):
         # 确保文件存在并可访问
         for source in query_request.sources:
             if source.type == "file":
-                file_path = source.params["path"]
-                if not os.path.exists(file_path):
-                    raise ValueError(f"文件不存在: {file_path}")
+                original_path = source.params["path"]
+
+                # 标准化文件路径，支持多种路径格式
+                possible_paths = [
+                    original_path,  # 原始路径
+                    os.path.join(
+                        "api", "temp_files", os.path.basename(original_path)
+                    ),  # api/temp_files/filename
+                    os.path.join(
+                        os.path.dirname(os.path.dirname(__file__)),
+                        "temp_files",
+                        os.path.basename(original_path),
+                    ),  # 绝对路径
+                ]
+
+                # 如果是相对路径，尝试不同的基础路径
+                if original_path.startswith("temp_files/"):
+                    filename = original_path.replace("temp_files/", "")
+                    possible_paths.extend(
+                        [
+                            os.path.join("api", "temp_files", filename),
+                            os.path.join(
+                                os.path.dirname(os.path.dirname(__file__)),
+                                "temp_files",
+                                filename,
+                            ),
+                        ]
+                    )
+
+                # 找到实际存在的文件路径
+                file_path = None
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        file_path = path
+                        break
+
+                if not file_path:
+                    logger.error(f"文件不存在，尝试的路径: {possible_paths}")
+                    raise ValueError(f"文件不存在: {original_path}")
+
+                # 更新source中的路径为实际找到的路径
+                source.params["path"] = file_path
 
                 logger.info(f"注册数据源: {source.id}, 路径: {file_path}")
 
@@ -124,8 +308,9 @@ async def perform_query(query_request: QueryRequest):
                         )
 
             elif source.type in ["mysql", "postgresql", "sqlite"]:
-                # 处理数据库数据源 - 支持两种模式：connectionId 和 直接连接参数
+                # 处理数据库数据源 - 支持三种模式：connectionId、数据源名称、直接连接参数
                 connection_id = source.params.get("connectionId")
+                datasource_name = source.params.get("datasource_name")
 
                 if connection_id:
                     # 模式1：使用预先保存的数据库连接
@@ -136,18 +321,16 @@ async def perform_query(query_request: QueryRequest):
                     from core.database_manager import db_manager
 
                     try:
-                        # 获取数据库连接配置
                         db_connection = db_manager.get_connection(connection_id)
                         if not db_connection:
                             raise ValueError(f"未找到数据库连接: {connection_id}")
 
-                        # 执行查询获取数据
                         if hasattr(db_connection.params, "query"):
                             query = db_connection.params.get(
                                 "query", "SELECT * FROM dy_order LIMIT 1000"
                             )
                         else:
-                            query = "SELECT * FROM dy_order LIMIT 1000"  # 默认查询
+                            query = "SELECT * FROM dy_order LIMIT 1000"
 
                         df = db_manager.execute_query(connection_id, query)
                         con.register(source.id, df)
@@ -158,9 +341,67 @@ async def perform_query(query_request: QueryRequest):
                         raise ValueError(
                             f"数据库连接处理失败: {source.id}, 错误: {str(db_error)}"
                         )
+
+                elif datasource_name:
+                    # 模式2：使用数据源名称（安全模式）- 从配置文件读取连接信息
+                    logger.info(
+                        f"处理安全数据源: {source.id}, 数据源名称: {datasource_name}"
+                    )
+
+                    try:
+                        import json
+                        from sqlalchemy import create_engine
+
+                        # 读取MySQL配置文件
+                        mysql_config_file = os.path.join(
+                            os.path.dirname(os.path.dirname(__file__)),
+                            "mysql_configs.json",
+                        )
+                        if not os.path.exists(mysql_config_file):
+                            raise ValueError("MySQL配置文件不存在")
+
+                        with open(mysql_config_file, "r", encoding="utf-8") as f:
+                            configs = json.load(f)
+
+                        # 查找对应的配置
+                        mysql_config = None
+                        for config in configs:
+                            if config["id"] == datasource_name:
+                                mysql_config = config["params"]
+                                break
+
+                        if not mysql_config:
+                            raise ValueError(f"未找到数据源配置: {datasource_name}")
+
+                        # 获取查询语句
+                        query = source.params.get(
+                            "query",
+                            mysql_config.get(
+                                "query", "SELECT * FROM dy_order LIMIT 1000"
+                            ),
+                        )
+
+                        # 创建连接字符串
+                        connection_str = f"mysql+pymysql://{mysql_config['user']}:{mysql_config['password']}@{mysql_config['host']}:{mysql_config['port']}/{mysql_config['database']}?charset=utf8mb4"
+
+                        # 执行查询
+                        engine = create_engine(connection_str)
+                        df = pd.read_sql(query, engine)
+
+                        # 注册到DuckDB
+                        con.register(source.id, df)
+                        logger.info(
+                            f"已注册安全数据源表: {source.id}, shape: {df.shape}"
+                        )
+
+                    except Exception as secure_db_error:
+                        logger.error(f"安全数据源处理失败: {secure_db_error}")
+                        raise ValueError(
+                            f"安全数据源处理失败: {source.id}, 错误: {str(secure_db_error)}"
+                        )
                 else:
-                    # 模式2：直接使用连接参数
-                    logger.info(f"处理直接连接数据库数据源: {source.id}")
+                    # 模式3：直接使用连接参数（兼容旧版本，但不推荐）
+                    logger.warning(f"使用直接连接参数模式（不推荐）: {source.id}")
 
                     try:
                         from sqlalchemy import create_engine
@@ -213,43 +454,10 @@ async def perform_query(query_request: QueryRequest):
 
         # 构建查询 - 确保表名使用双引号括起来
         if len(query_request.joins) > 0:
-            join = query_request.joins[0]
-            left_table_id = join.left_source_id.strip('"')
-            right_table_id = join.right_source_id.strip('"')
-            # 直接用注册的表名
-            left_alias = left_table_id
-            right_alias = right_table_id
-            left_cols = (
-                con.execute(f"PRAGMA table_info('{left_table_id}')")
-                .fetchdf()["name"]
-                .tolist()
-            )
-            right_cols = (
-                con.execute(f"PRAGMA table_info('{right_table_id}')")
-                .fetchdf()["name"]
-                .tolist()
-            )
-            # 拼接select字段，字段名和别名都用英文双引号包裹
-            left_select = [
-                f'"{left_alias}"."{col}" AS "A_{i+1}"'
-                for i, col in enumerate(left_cols)
-            ]
-            right_select = [
-                f'"{right_alias}"."{col}" AS "B_{i+1}"'
-                for i, col in enumerate(right_cols)
-            ]
-            select_fields = left_select + right_select
-            select_clause = ", ".join(select_fields)
-            join_type_sql = get_join_type_sql(join.join_type)
-            # ON条件部分也用双引号包裹表名和字段名
-            if join.conditions and len(join.conditions) > 0:
-                condition = join.conditions[0]  # 使用第一个条件
-                on_clause = f'"{left_alias}"."{condition.left_column}" {condition.operator} "{right_alias}"."{condition.right_column}"'
-            else:
-                # 如果没有条件，使用默认的 CROSS JOIN
-                on_clause = "1=1"
-            query = f'SELECT {select_clause} FROM "{left_alias}" {join_type_sql} "{right_alias}" ON {on_clause}'
+            # 多表JOIN查询 - 使用改进的多表JOIN支持
+            query = build_multi_table_join_query(query_request, con)
         else:
+            # 单表查询
             source_id = query_request.sources[0].id.strip('"')
             if source_id not in available_table_names:
                 error_msg = f"无法执行查询，表 '{source_id}' 不存在。可用的表: {', '.join(available_table_names)}"
@@ -293,9 +501,10 @@ async def download_results(query_request: QueryRequest):
     con = get_db_connection()
 
     try:
-        # Register all data sources with DuckDB
+        # Register all data sources with DuckDB - 使用与查询端点相同的逻辑
         for source in query_request.sources:
             if source.type == "file":
+                logger.info(f"注册数据源: {source.id}, 路径: {source.params['path']}")
                 file_path = source.params["path"]
                 if not os.path.exists(file_path):
                     raise ValueError(f"文件不存在: {file_path}")
@@ -325,29 +534,44 @@ async def download_results(query_request: QueryRequest):
                     logger.info(
                         f"已用pandas.read_excel注册表: {source.id}, shape: {df.shape}"
                     )
+            elif source.type == "mysql":
+                # MySQL数据源处理
+                if "params" in source.params and isinstance(source.params["params"], dict):
+                    # 使用嵌套的params
+                    mysql_params = source.params["params"]
+                else:
+                    # 直接使用params
+                    mysql_params = source.params
 
-        # Build the query based on joins - 确保表名使用双引号括起来
+                logger.warning(f"使用直接连接参数模式（不推荐）: {source.id}")
+
+                # 构建MySQL连接字符串
+                connection_string = f"mysql://{mysql_params['user']}:{mysql_params['password']}@{mysql_params['host']}:{mysql_params['port']}/{mysql_params['database']}"
+
+                # 执行查询并注册到DuckDB
+                import pymysql
+                connection = pymysql.connect(
+                    host=mysql_params['host'],
+                    port=mysql_params['port'],
+                    user=mysql_params['user'],
+                    password=mysql_params['password'],
+                    database=mysql_params['database']
+                )
+
+                query = mysql_params.get('query', f'SELECT * FROM {source.id}')
+                df = pd.read_sql(query, connection)
+                connection.close()
+
+                # 注册到DuckDB
+                con.register(source.id, df)
+                logger.info(f"已注册直接连接数据库表: {source.id}, shape: {df.shape}")
+
+        # Build query - 使用与查询端点相同的多表JOIN逻辑
         if len(query_request.joins) > 0:
-            join = query_request.joins[
-                0
-            ]  # For simplicity, we're using the first join only
-            # 使用双引号括起表名，避免数字表名的语法错误
-            left_table_id = join.left_source_id.strip('"')
-            right_table_id = join.right_source_id.strip('"')
-            join_type_sql = get_join_type_sql(join.join_type)
-
-            # 构建 JOIN 条件
-            if join.conditions and len(join.conditions) > 0:
-                condition = join.conditions[0]  # 使用第一个条件
-                left_column = condition.left_column
-                right_column = condition.right_column
-                operator = condition.operator
-                query = f'SELECT * FROM "{left_table_id}" {join_type_sql} "{right_table_id}" ON "{left_table_id}".{left_column} {operator} "{right_table_id}".{right_column}'
-            else:
-                # 如果没有条件，使用 CROSS JOIN
-                query = f'SELECT * FROM "{left_table_id}" CROSS JOIN "{right_table_id}"'
+            # 多表JOIN查询 - 使用改进的多表JOIN支持
+            query = build_multi_table_join_query(query_request, con)
         else:
-            # 使用双引号括起表名，同时确保去除可能存在的引号
+            # 单表查询
             source_id = query_request.sources[0].id.strip('"')
             query = f'SELECT * FROM "{source_id}"'
 

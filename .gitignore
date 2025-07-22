@@ -90,3 +90,6 @@ dist/
 # Temp files
 *.tmp
 *.swp
+
+# MySQL配置文件（包含敏感信息）
+api/mysql_configs.json

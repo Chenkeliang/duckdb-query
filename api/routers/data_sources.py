@@ -1003,15 +1003,37 @@ async def debug_file_paths():
         "current_file": __file__,
         "api_calculated_temp_dir": os.path.abspath(api_temp_dir),
         "directories_checked": [],
+        "target_file_debug": {},
     }
+
+    # 特别调试0711.xlsx
+    target_file = "0711.xlsx"
+    for dir_path in possible_dirs:
+        abs_path = os.path.abspath(dir_path)
+        target_path = os.path.join(abs_path, target_file)
+        debug_info["target_file_debug"][dir_path] = {
+            "dir_exists": os.path.exists(abs_path),
+            "file_exists": os.path.exists(target_path),
+            "file_path": target_path,
+        }
 
     for dir_path in possible_dirs:
         abs_path = os.path.abspath(dir_path)
         exists = os.path.exists(abs_path)
         files = []
+        file_details = {}
         if exists:
             try:
                 files = os.listdir(abs_path)
+                for f in files:
+                    fp = os.path.join(abs_path, f)
+                    file_details[f] = {
+                        "is_file": os.path.isfile(fp),
+                        "size": os.path.getsize(fp) if os.path.exists(fp) else 0,
+                        "readable": (
+                            os.access(fp, os.R_OK) if os.path.exists(fp) else False
+                        ),
+                    }
             except:
                 files = ["ERROR_READING_DIR"]
 
@@ -1021,6 +1043,7 @@ async def debug_file_paths():
                 "absolute_path": abs_path,
                 "exists": exists,
                 "files": files,
+                "file_details": file_details,
             }
         )
 
@@ -1029,14 +1052,39 @@ async def debug_file_paths():
 
 @router.get("/api/list_files", tags=["Data Sources"])
 async def list_files():
-    """列出 temp_files 目录下所有文件名（不含路径）"""
+    """列出 temp_files 目录下所有文件名（不含路径），并验证文件存在性"""
     temp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "temp_files")
     if not os.path.exists(temp_dir):
-        return []
-    files = [
-        f for f in os.listdir(temp_dir) if os.path.isfile(os.path.join(temp_dir, f))
-    ]
-    return JSONResponse(files)
+        return JSONResponse([])
+
+    verified_files = []
+    for filename in os.listdir(temp_dir):
+        file_path = os.path.join(temp_dir, filename)
+        # 严格验证：文件存在且可读取
+        if os.path.isfile(file_path) and os.access(file_path, os.R_OK):
+            try:
+                # 进一步验证文件完整性
+                file_size = os.path.getsize(file_path)
+                if file_size > 0:  # 确保文件不为空
+                    verified_files.append(filename)
+                else:
+                    logger.warning(f"跳过空文件: {filename}")
+            except Exception as e:
+                logger.warning(f"跳过无法访问的文件: {filename}, 错误: {e}")
+
+    logger.info(
+        f"验证文件列表: 目录中有 {len(os.listdir(temp_dir))} 个项目，有效文件 {len(verified_files)} 个"
+    )
+
+    # 返回带有禁用缓存头的响应，确保前端获取最新数据
+    return JSONResponse(
+        verified_files,
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @router.get("/api/file_columns", tags=["Data Sources"])
