@@ -1,7 +1,11 @@
 import axios from 'axios';
 
 // 根据环境变量设置基础URL
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// 在Docker环境中，如果VITE_API_URL为空或包含占位符，则使用相对路径
+const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const baseURL = (apiUrl === '' || apiUrl.includes('your-api-url-in-production'))
+  ? '' // 使用相对路径，通过nginx代理
+  : apiUrl;
 
 const apiClient = axios.create({
   baseURL,

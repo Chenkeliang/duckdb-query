@@ -11,6 +11,9 @@ RUN npm ci
 # 复制源代码
 COPY . .
 
+# 设置构建时环境变量（Docker内部使用相对路径）
+ENV VITE_API_URL=""
+
 # 构建应用
 RUN npm run build
 
@@ -30,7 +33,7 @@ RUN echo 'server {' > /etc/nginx/conf.d/default.conf && \
     echo '        try_files $uri $uri/ /index.html;' >> /etc/nginx/conf.d/default.conf && \
     echo '    }' >> /etc/nginx/conf.d/default.conf && \
     echo '    location /api/ {' >> /etc/nginx/conf.d/default.conf && \
-    echo '        proxy_pass http://backend:8000/api/;' >> /etc/nginx/conf.d/default.conf && \
+    echo '        proxy_pass http://dataquery-backend:8000;' >> /etc/nginx/conf.d/default.conf && \
     echo '        proxy_set_header Host $host;' >> /etc/nginx/conf.d/default.conf && \
     echo '        proxy_set_header X-Real-IP $remote_addr;' >> /etc/nginx/conf.d/default.conf && \
     echo '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> /etc/nginx/conf.d/default.conf && \
