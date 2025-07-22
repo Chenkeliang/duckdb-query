@@ -117,9 +117,11 @@ def build_multi_table_join_query(query_request, con):
     # 构建FROM和JOIN子句
     if not joins:
         # 没有JOIN条件，使用CROSS JOIN
-        from_clause = f'"{sources[0].id.strip('"')}"'
+        first_source_id = sources[0].id.strip('"')
+        from_clause = f'"{first_source_id}"'
         for source in sources[1:]:
-            from_clause += f' CROSS JOIN "{source.id.strip('"')}"'
+            source_id = source.id.strip('"')
+            from_clause += f' CROSS JOIN "{source_id}"'
     else:
         # 构建JOIN链
         from_clause = build_join_chain(sources, joins, table_columns)
@@ -138,7 +140,8 @@ def build_join_chain(sources, joins, table_columns):
     构建JOIN链，支持多表连接
     """
     if not joins:
-        return f'"{sources[0].id.strip('"')}"'
+        first_source_id = sources[0].id.strip('"')
+        return f'"{first_source_id}"'
 
     # 创建表的映射
     source_map = {source.id.strip('"'): source for source in sources}
@@ -181,8 +184,10 @@ def build_join_chain(sources, joins, table_columns):
         if join.join_type.lower() != "cross" and join.conditions:
             conditions = []
             for condition in join.conditions:
-                left_col = f'"{join.left_source_id.strip('"')}"."{condition.left_column}"'
-                right_col = f'"{join.right_source_id.strip('"')}"."{condition.right_column}"'
+                left_table_id = join.left_source_id.strip('"')
+                right_table_id = join.right_source_id.strip('"')
+                left_col = f'"{left_table_id}"."{condition.left_column}"'
+                right_col = f'"{right_table_id}"."{condition.right_column}"'
                 conditions.append(f"{left_col} {condition.operator} {right_col}")
 
             if conditions:

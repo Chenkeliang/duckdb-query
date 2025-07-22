@@ -1,0 +1,27 @@
+# Docker Compose 简化配置
+# 用于快速启动和测试
+version: '3.8'
+
+services:
+  # 后端API服务
+  backend:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: dataquery-backend-simple
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./api/temp_files:/app/temp_files
+      - ./api/exports:/app/exports
+      - ./api/mysql_configs.json:/app/mysql_configs.json
+    networks:
+      - dataquery-network
+    restart: unless-stopped
+
+networks:
+  dataquery-network:
+    driver: bridge
