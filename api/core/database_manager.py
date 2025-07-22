@@ -127,8 +127,7 @@ class DatabaseManager:
             if not username:
                 raise ValueError("缺少用户名参数 (user 或 username)")
 
-            logger.info(f"MySQL连接参数调试: params={params}")
-            logger.info(f"MySQL连接用户名: {username}")
+
 
             connection = pymysql.connect(
                 host=params.get('host'),

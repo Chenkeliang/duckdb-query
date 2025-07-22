@@ -9,7 +9,8 @@ services:
       context: ./api
       dockerfile: Dockerfile
     container_name: dataquery-backend
-    network_mode: "host"
+    ports:
+      - "8000:8000"
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
@@ -17,6 +18,8 @@ services:
       - ./api/temp_files:/app/temp_files
       - ./api/exports:/app/exports
       - ./api/mysql_configs.json:/app/mysql_configs.json
+    networks:
+      - dataquery-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
@@ -24,6 +27,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # 前端服务 (生产模式)
   frontend:
@@ -31,11 +36,17 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: dataquery-frontend
-    network_mode: "host"
+    ports:
+      - "3000:80"
     environment:
       - REACT_APP_API_URL=http://localhost:8000
+    networks:
+      - dataquery-network
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
-# 使用主机网络模式，不需要自定义网络
+networks:
+  dataquery-network:
+    driver: bridge
