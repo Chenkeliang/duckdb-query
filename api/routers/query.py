@@ -633,6 +633,12 @@ async def execute_sql(request: dict = Body(...)):
         logger.info(
             f"datasource params: {getattr(datasource, 'params', None) if not isinstance(datasource, dict) else datasource.get('params')}"
         )
+
+        # 检查数据源类型判断
+        datasource_type = datasource.get('type') if isinstance(datasource, dict) else None
+        logger.info(f"检查数据源类型: {datasource_type}")
+        logger.info(f"是否为字典: {isinstance(datasource, dict)}")
+        logger.info(f"类型检查结果: {datasource_type in ['mysql', 'postgresql', 'sqlite', 'duckdb']}")
         # 支持 file 类型数据源
         if isinstance(datasource, dict) and datasource.get("type") == "file":
             # 支持多种参数格式
@@ -666,15 +672,59 @@ async def execute_sql(request: dict = Body(...)):
                 raise ValueError("不支持的文件类型")
             con.register(table_id, df)
 
-        # 如果是数据库类型的数据源
+        # 如果是数据库类型的数据源，需要先执行SQL获取数据，然后可选择保存到DuckDB
         elif isinstance(datasource, dict) and datasource.get("type") in [
             "mysql",
             "postgresql",
             "sqlite",
             "duckdb",
         ]:
-            # 注册数据库连接或使用已有连接
-            pass
+            # 数据库类型的数据源需要用户提供自定义SQL查询
+            if not sql_query.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="数据库类型的数据源需要提供自定义SQL查询语句"
+                )
+
+            # 使用数据库管理器执行查询
+            from core.database_manager import db_manager
+
+            datasource_id = datasource.get("id")
+            if not datasource_id:
+                raise HTTPException(status_code=400, detail="缺少数据源ID")
+
+            # 在原始数据库上执行SQL查询
+            try:
+                logger.info(f"开始执行数据库查询: datasource_id={datasource_id}, sql={sql_query}")
+                result_df = db_manager.execute_query(datasource_id, sql_query)
+                logger.info(f"数据库查询执行完成，结果形状: {result_df.shape}")
+
+                # 处理数据类型
+                result_df.replace([np.inf, -np.inf], np.nan, inplace=True)
+                result_df = result_df.astype(object).where(pd.notnull(result_df), None)
+
+                for col in result_df.columns:
+                    if result_df[col].dtype == "object":
+                        result_df[col] = result_df[col].astype(str)
+
+                data_records = result_df.to_dict(orient="records")
+                columns_list = [str(col) for col in result_df.columns.tolist()]
+
+                logger.info(f"准备返回数据库查询结果，行数: {len(result_df)}")
+                return {
+                    "success": True,
+                    "data": data_records,
+                    "columns": columns_list,
+                    "rowCount": len(result_df),
+                    "source_type": "database",
+                    "source_id": datasource_id,
+                    "sql_query": sql_query,
+                    "can_save_to_duckdb": True  # 标识可以保存到DuckDB
+                }
+
+            except Exception as db_error:
+                logger.error(f"数据库查询失败: {str(db_error)}")
+                raise HTTPException(status_code=500, detail=f"数据库查询失败: {str(db_error)}")
         else:
             raise HTTPException(
                 status_code=400, detail=f"不支持的数据库类型: {datasource.get('type')}"
@@ -715,6 +765,99 @@ async def execute_sql(request: dict = Body(...)):
         logger.error(f"SQL执行失败: {str(e)}")
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"SQL执行失败: {str(e)}")
+
+
+@router.post("/api/save_query_to_duckdb", tags=["Query"])
+async def save_query_to_duckdb(request: dict = Body(...)):
+    """将数据库查询结果保存到DuckDB作为新的数据源"""
+    try:
+        # 获取请求参数
+        datasource = request.get("datasource", {})
+        sql_query = request.get("sql", "")
+        table_alias = request.get("table_alias", "")
+
+        if not table_alias.strip():
+            raise HTTPException(status_code=400, detail="请提供DuckDB表别名")
+
+        if not sql_query.strip():
+            raise HTTPException(status_code=400, detail="请提供SQL查询语句")
+
+        # 验证数据源
+        datasource_id = datasource.get("id")
+        if not datasource_id:
+            raise HTTPException(status_code=400, detail="缺少数据源ID")
+
+        # 使用数据库管理器执行查询
+        from core.database_manager import db_manager
+
+        result_df = db_manager.execute_query(datasource_id, sql_query)
+        logger.info(f"查询执行完成，准备保存到DuckDB: {result_df.shape}")
+
+        # 获取DuckDB连接并注册表
+        con = get_db_connection()
+        con.register(table_alias, result_df)
+
+        logger.info(f"数据已保存到DuckDB表: {table_alias}")
+
+        return {
+            "success": True,
+            "message": f"查询结果已保存为DuckDB表: {table_alias}",
+            "table_alias": table_alias,
+            "row_count": len(result_df),
+            "columns": result_df.columns.tolist(),
+            "source_sql": sql_query,
+            "source_datasource": datasource_id
+        }
+
+    except Exception as e:
+        logger.error(f"保存到DuckDB失败: {str(e)}")
+        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"保存到DuckDB失败: {str(e)}")
+
+
+@router.get("/api/duckdb_tables", tags=["Query"])
+async def list_duckdb_tables():
+    """列出DuckDB中的所有可用表"""
+    try:
+        con = get_db_connection()
+        tables_df = con.execute("SHOW TABLES").fetchdf()
+
+        tables_info = []
+        for _, row in tables_df.iterrows():
+            table_name = row['name']
+            # 获取表的基本信息
+            try:
+                count_result = con.execute(f"SELECT COUNT(*) as count FROM {table_name}").fetchdf()
+                row_count = count_result.iloc[0]['count']
+
+                columns_result = con.execute(f"DESCRIBE {table_name}").fetchdf()
+                columns = columns_result['column_name'].tolist()
+
+                tables_info.append({
+                    "table_name": table_name,
+                    "row_count": int(row_count),
+                    "columns": columns,
+                    "column_count": len(columns)
+                })
+            except Exception as e:
+                logger.warning(f"获取表 {table_name} 信息失败: {str(e)}")
+                tables_info.append({
+                    "table_name": table_name,
+                    "row_count": 0,
+                    "columns": [],
+                    "column_count": 0,
+                    "error": str(e)
+                })
+
+        return {
+            "success": True,
+            "tables": tables_info,
+            "total_tables": len(tables_info)
+        }
+
+    except Exception as e:
+        logger.error(f"获取DuckDB表列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取表列表失败: {str(e)}")
 
 
 @router.post("/api/execute_simple_sql", tags=["Query"])
