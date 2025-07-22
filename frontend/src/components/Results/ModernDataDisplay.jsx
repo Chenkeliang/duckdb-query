@@ -26,6 +26,10 @@ import {
   DialogContent,
   DialogActions,
   Snackbar,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
@@ -42,7 +46,7 @@ import {
 import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
-import { saveQueryResultAsDatasource } from '../../services/apiClient';
+import { saveQueryResultAsDatasource, saveQueryToDuckDB } from '../../services/apiClient';
 
 const ModernDataDisplay = ({
   data = [],
@@ -68,6 +72,8 @@ const ModernDataDisplay = ({
   // 保存为数据源相关状态
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [datasourceName, setDatasourceName] = useState('');
+  const [tableAlias, setTableAlias] = useState('');
+  const [saveMode, setSaveMode] = useState('duckdb'); // 'duckdb' 或 'legacy'
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -155,60 +161,115 @@ const ModernDataDisplay = ({
   // 保存为数据源相关函数
   const handleSaveAsDataSource = () => {
     setSaveDialogOpen(true);
-    setDatasourceName(`查询结果_${new Date().toLocaleString('zh-CN', {
+    const timestamp = new Date().toLocaleString('zh-CN', {
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit'
-    }).replace(/[\/\s:]/g, '')}`);
+    }).replace(/[\/\s:]/g, '');
+    setDatasourceName(`查询结果_${timestamp}`);
+    setTableAlias(`query_result_${timestamp}`);
   };
 
   const handleSaveDialogClose = () => {
     setSaveDialogOpen(false);
     setDatasourceName('');
+    setTableAlias('');
     setSaveError('');
   };
 
   const handleSaveConfirm = async () => {
-    if (!datasourceName.trim()) {
-      setSaveError('请输入数据源名称');
-      return;
-    }
-
-    if (!sqlQuery.trim()) {
-      setSaveError('没有可保存的查询结果');
-      return;
-    }
-
-    setSaving(true);
-    setSaveError('');
-
-    try {
-      const result = await saveQueryResultAsDatasource(
-        sqlQuery,
-        datasourceName.trim(),
-        originalDatasource
-      );
-
-      if (result.success) {
-        setSaveSuccess(true);
-        setSaveDialogOpen(false);
-        setDatasourceName('');
-
-        // 通知父组件数据源已保存
-        if (onDataSourceSaved) {
-          onDataSourceSaved(result.datasource);
-        }
-
-        // 3秒后隐藏成功提示
-        setTimeout(() => setSaveSuccess(false), 3000);
-      } else {
-        setSaveError(result.message || '保存失败');
+    if (saveMode === 'duckdb') {
+      // 新架构：保存到DuckDB
+      if (!tableAlias.trim()) {
+        setSaveError('请输入DuckDB表别名');
+        return;
       }
-    } catch (error) {
-      setSaveError(error.message || '保存失败，请重试');
-    } finally {
-      setSaving(false);
+
+      if (!sqlQuery.trim()) {
+        setSaveError('没有可保存的查询结果');
+        return;
+      }
+
+      setSaving(true);
+      setSaveError('');
+
+      try {
+        const result = await saveQueryToDuckDB(
+          sqlQuery,
+          originalDatasource,
+          tableAlias.trim()
+        );
+
+        if (result.success) {
+          setSaveSuccess(true);
+          setSaveDialogOpen(false);
+          setTableAlias('');
+          setDatasourceName('');
+
+          // 通知父组件数据源已保存
+          if (onDataSourceSaved) {
+            onDataSourceSaved({
+              id: result.table_alias,
+              type: 'duckdb',
+              name: `DuckDB表: ${result.table_alias}`,
+              row_count: result.row_count,
+              columns: result.columns
+            });
+          }
+
+          // 3秒后隐藏成功提示
+          setTimeout(() => setSaveSuccess(false), 3000);
+        } else {
+          setSaveError(result.message || '保存失败');
+        }
+      } catch (error) {
+        setSaveError(error.message || '保存失败，请重试');
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      // 旧架构：保存为数据源
+      if (!datasourceName.trim()) {
+        setSaveError('请输入数据源名称');
+        return;
+      }
+
+      if (!sqlQuery.trim()) {
+        setSaveError('没有可保存的查询结果');
+        return;
+      }
+
+      setSaving(true);
+      setSaveError('');
+
+      try {
+        const result = await saveQueryResultAsDatasource(
+          sqlQuery,
+          datasourceName.trim(),
+          originalDatasource
+        );
+
+        if (result.success) {
+          setSaveSuccess(true);
+          setSaveDialogOpen(false);
+          setDatasourceName('');
+
+          // 通知父组件数据源已保存
+          if (onDataSourceSaved) {
+            onDataSourceSaved(result.datasource);
+          }
+
+          // 3秒后隐藏成功提示
+          setTimeout(() => setSaveSuccess(false), 3000);
+        } else {
+          setSaveError(result.message || '保存失败');
+        }
+      } catch (error) {
+        setSaveError(error.message || '保存失败，请重试');
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
@@ -482,26 +543,64 @@ const ModernDataDisplay = ({
 
       {/* 保存为数据源对话框 */}
       <Dialog open={saveDialogOpen} onClose={handleSaveDialogClose} maxWidth="sm" fullWidth>
-        <DialogTitle>保存查询结果为数据源</DialogTitle>
+        <DialogTitle>保存查询结果</DialogTitle>
         <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="数据源名称"
-            fullWidth
-            variant="outlined"
-            value={datasourceName}
-            onChange={(e) => setDatasourceName(e.target.value)}
-            placeholder="请输入数据源名称"
-            sx={{ mt: 2 }}
-          />
+          <FormControl component="fieldset" sx={{ mt: 2, mb: 2 }}>
+            <FormLabel component="legend">保存方式</FormLabel>
+            <RadioGroup
+              value={saveMode}
+              onChange={(e) => setSaveMode(e.target.value)}
+              row
+            >
+              <FormControlLabel
+                value="duckdb"
+                control={<Radio />}
+                label="保存到DuckDB (推荐)"
+              />
+              <FormControlLabel
+                value="legacy"
+                control={<Radio />}
+                label="传统方式"
+              />
+            </RadioGroup>
+          </FormControl>
+
+          {saveMode === 'duckdb' ? (
+            <TextField
+              autoFocus
+              margin="dense"
+              label="DuckDB表别名"
+              fullWidth
+              variant="outlined"
+              value={tableAlias}
+              onChange={(e) => setTableAlias(e.target.value)}
+              placeholder="请输入表别名，如: finished_orders"
+              helperText="表别名将作为DuckDB中的表名，可用于后续关联查询"
+            />
+          ) : (
+            <TextField
+              autoFocus
+              margin="dense"
+              label="数据源名称"
+              fullWidth
+              variant="outlined"
+              value={datasourceName}
+              onChange={(e) => setDatasourceName(e.target.value)}
+              placeholder="请输入数据源名称"
+            />
+          )}
+
           {saveError && (
             <Alert severity="error" sx={{ mt: 2 }}>
               {saveError}
             </Alert>
           )}
+
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            将当前查询结果保存为新的数据源，可在后续查询中使用。
+            {saveMode === 'duckdb'
+              ? '将查询结果保存为DuckDB表，支持高效的关联查询和数据分析。'
+              : '使用传统方式保存为数据源，兼容旧版本功能。'
+            }
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -511,7 +610,7 @@ const ModernDataDisplay = ({
           <Button
             onClick={handleSaveConfirm}
             variant="contained"
-            disabled={saving || !datasourceName.trim()}
+            disabled={saving || (saveMode === 'duckdb' ? !tableAlias.trim() : !datasourceName.trim())}
           >
             {saving ? '保存中...' : '保存'}
           </Button>

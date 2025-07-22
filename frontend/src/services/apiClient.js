@@ -322,4 +322,30 @@ export const getAvailableTables = async () => {
   }
 };
 
+// 新架构API: 保存查询结果到DuckDB
+export const saveQueryToDuckDB = async (sql, datasource, tableAlias) => {
+  try {
+    const response = await apiClient.post('/api/save_query_to_duckdb', {
+      sql,
+      datasource,
+      table_alias: tableAlias
+    });
+    return response.data;
+  } catch (error) {
+    console.error('保存查询结果到DuckDB失败:', error);
+    throw error;
+  }
+};
+
+// 新架构API: 获取DuckDB表列表
+export const getDuckDBTables = async () => {
+  try {
+    const response = await apiClient.get('/api/duckdb_tables');
+    return response.data;
+  } catch (error) {
+    console.error('获取DuckDB表列表失败:', error);
+    throw error;
+  }
+};
+
 export default apiClient;
