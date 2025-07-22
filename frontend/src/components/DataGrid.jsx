@@ -11,13 +11,16 @@ const DataGrid = ({ rowData, columnDefs }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // 根据数据自动调整列宽
+  // 根据数据自动调整列宽和loading状态
   useEffect(() => {
+    // 当有数据时，立即停止loading状态
+    if (rowData !== undefined) {
+      setLoading(false);
+    }
+
+    // 如果grid API可用且有数据，调整列宽
     if (gridRef.current && gridRef.current.api && rowData && rowData.length > 0) {
       gridRef.current.api.sizeColumnsToFit();
-      setLoading(false);
-    } else if (rowData && rowData.length === 0) {
-      setLoading(false);
     }
   }, [rowData, columnDefs]);
 

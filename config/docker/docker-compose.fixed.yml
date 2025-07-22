@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # 后端API服务
+  backend:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: dataquery-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - ENV=development
+    volumes:
+      - ./api:/app
+      - ./data:/app/data
+    networks:
+      - dataquery-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 前端服务 (修复版)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.fixed
+    container_name: dataquery-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_UI_MODE=modern
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - dataquery-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  dataquery-network:
+    driver: bridge

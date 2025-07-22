@@ -7,10 +7,21 @@ from fastapi import (
     Body,
     Query,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from core.resource_manager import save_upload_file, schedule_cleanup
-from models.query_models import DatabaseConnection, MySQLConfig
-from core.duckdb_engine import get_db_connection
+from models.query_models import (
+    DatabaseConnection,
+    MySQLConfig,
+    PostgreSQLConfig,
+    SQLiteConfig,
+    DataSourceType,
+    ConnectionTestRequest,
+    FileUploadResponse,
+    ExportRequest,
+    ExportFormat,
+)
+from core.duckdb_engine import get_db_connection, register_dataframe, get_table_info
+from core.database_manager import db_manager
 import pandas as pd
 import logging
 import os
@@ -20,6 +31,11 @@ import duckdb
 from sqlalchemy import create_engine
 import numpy as np
 import base64
+import pyarrow as pa
+import pyarrow.parquet as pq
+import io
+import datetime
+from typing import List, Dict, Any, Optional
 
 # 设置日志
 logging.basicConfig(
@@ -124,10 +140,187 @@ async def get_mysql_configs():
         raise HTTPException(status_code=500, detail=f"获取MySQL配置失败: {str(e)}")
 
 
-# 保存MySQL配置
+# 数据库连接管理API
+
+
+@router.post("/api/database_connections/test", tags=["Database Management"])
+async def test_database_connection(request: ConnectionTestRequest):
+    """测试数据库连接"""
+    try:
+        result = db_manager.test_connection(request)
+        return result
+    except Exception as e:
+        logger.error(f"连接测试失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"连接测试失败: {str(e)}")
+
+
+@router.post("/api/test_connection_simple", tags=["Database Management"])
+async def test_connection_simple(request: dict = Body(...)):
+    """简化的数据库连接测试"""
+    try:
+        db_type = request.get("type")
+
+        if db_type == "sqlite":
+            # SQLite连接测试
+            database = request.get("database", ":memory:")
+            try:
+                import sqlite3
+
+                conn = sqlite3.connect(database)
+                conn.execute("SELECT 1")
+                conn.close()
+                return {"success": True, "message": "SQLite连接测试成功"}
+            except Exception as e:
+                return {"success": False, "message": f"SQLite连接失败: {str(e)}"}
+
+        elif db_type == "mysql":
+            # MySQL连接测试
+            try:
+                import pymysql
+
+                conn = pymysql.connect(
+                    host=request.get("host", "localhost"),
+                    port=request.get("port", 3306),
+                    user=request.get("username", ""),
+                    password=request.get("password", ""),
+                    database=request.get("database", ""),
+                    connect_timeout=5,
+                )
+                conn.ping()
+                conn.close()
+                return {"success": True, "message": "MySQL连接测试成功"}
+            except Exception as e:
+                return {"success": False, "message": f"MySQL连接失败: {str(e)}"}
+
+        elif db_type == "postgresql":
+            # PostgreSQL连接测试
+            try:
+                import psycopg2
+
+                conn = psycopg2.connect(
+                    host=request.get("host", "localhost"),
+                    port=request.get("port", 5432),
+                    user=request.get("username", ""),
+                    password=request.get("password", ""),
+                    database=request.get("database", ""),
+                    connect_timeout=5,
+                )
+                conn.close()
+                return {"success": True, "message": "PostgreSQL连接测试成功"}
+            except Exception as e:
+                return {"success": False, "message": f"PostgreSQL连接失败: {str(e)}"}
+
+        else:
+            return {"success": False, "message": f"不支持的数据库类型: {db_type}"}
+
+    except Exception as e:
+        logger.error(f"连接测试失败: {str(e)}")
+        return {"success": False, "message": f"连接测试失败: {str(e)}"}
+
+
+@router.post("/api/database_connections", tags=["Database Management"])
+async def create_database_connection(connection: DatabaseConnection):
+    """创建数据库连接"""
+    try:
+        # 设置创建时间
+        connection.created_at = datetime.datetime.now()
+        connection.updated_at = datetime.datetime.now()
+
+        success = db_manager.add_connection(connection)
+        if success:
+            return {
+                "success": True,
+                "message": "数据库连接创建成功",
+                "connection": connection,
+            }
+        else:
+            raise HTTPException(status_code=400, detail="数据库连接创建失败")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建数据库连接失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"创建数据库连接失败: {str(e)}")
+
+
+@router.get("/api/database_connections", tags=["Database Management"])
+async def list_database_connections():
+    """列出所有数据库连接"""
+    try:
+        connections = db_manager.list_connections()
+        return {"success": True, "connections": connections}
+    except Exception as e:
+        logger.error(f"获取数据库连接列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取数据库连接列表失败: {str(e)}")
+
+
+@router.get("/api/database_connections/{connection_id}", tags=["Database Management"])
+async def get_database_connection(connection_id: str):
+    """获取指定数据库连接"""
+    try:
+        connection = db_manager.get_connection(connection_id)
+        if connection:
+            return {"success": True, "connection": connection}
+        else:
+            raise HTTPException(status_code=404, detail="数据库连接不存在")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取数据库连接失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取数据库连接失败: {str(e)}")
+
+
+@router.put("/api/database_connections/{connection_id}", tags=["Database Management"])
+async def update_database_connection(
+    connection_id: str, connection: DatabaseConnection
+):
+    """更新数据库连接"""
+    try:
+        # 确保ID匹配
+        connection.id = connection_id
+        connection.updated_at = datetime.datetime.now()
+
+        # 先移除旧连接
+        db_manager.remove_connection(connection_id)
+
+        # 添加新连接
+        success = db_manager.add_connection(connection)
+        if success:
+            return {
+                "success": True,
+                "message": "数据库连接更新成功",
+                "connection": connection,
+            }
+        else:
+            raise HTTPException(status_code=400, detail="数据库连接更新失败")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新数据库连接失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"更新数据库连接失败: {str(e)}")
+
+
+@router.delete(
+    "/api/database_connections/{connection_id}", tags=["Database Management"]
+)
+async def delete_database_connection(connection_id: str):
+    """删除数据库连接"""
+    try:
+        success = db_manager.remove_connection(connection_id)
+        if success:
+            return {"success": True, "message": "数据库连接删除成功"}
+        else:
+            raise HTTPException(status_code=404, detail="数据库连接不存在")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除数据库连接失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除数据库连接失败: {str(e)}")
+
+
+# 保存MySQL配置（保持向后兼容）
 @router.post("/api/mysql_configs", tags=["Data Sources"])
 async def save_mysql_config(config: MySQLConfig = Body(...)):
-    """保存MySQL配置"""
+    """保存MySQL配置（向后兼容）"""
     try:
         if config.type != "mysql":
             raise HTTPException(status_code=400, detail="仅支持MySQL配置")
@@ -188,11 +381,110 @@ def read_file_with_encoding(file_path, file_type):
             elif file_type in ["xls", "xlsx"]:
                 # Excel files handle encoding internally
                 return pd.read_excel(file_path, nrows=5)
-        except UnicodeDecodeError:
+            elif file_type == "json":
+                return pd.read_json(file_path, lines=True, nrows=5, encoding=encoding)
+            elif file_type == "parquet":
+                # Parquet files handle encoding internally
+                return pd.read_parquet(file_path).head(5)
+        except (UnicodeDecodeError, ValueError):
             continue
 
     # 如果所有编码都失败
     raise ValueError(f"无法解码文件 {file_path}，请检查文件编码")
+
+
+def detect_file_type(filename: str) -> str:
+    """检测文件类型"""
+    extension = filename.lower().split(".")[-1]
+
+    type_mapping = {
+        "csv": "csv",
+        "xls": "excel",
+        "xlsx": "excel",
+        "json": "json",
+        "jsonl": "json",
+        "parquet": "parquet",
+        "pq": "parquet",
+    }
+
+    return type_mapping.get(extension, "unknown")
+
+
+def read_file_by_type(
+    file_path: str, file_type: str = None, nrows: int = None
+) -> pd.DataFrame:
+    """根据文件类型读取文件"""
+    if file_type is None:
+        file_type = detect_file_type(file_path)
+
+    try:
+        if file_type == "csv":
+            return pd.read_csv(file_path, nrows=nrows)
+        elif file_type == "excel":
+            return pd.read_excel(file_path, nrows=nrows)
+        elif file_type == "json":
+            # 尝试读取JSON Lines格式
+            try:
+                return pd.read_json(file_path, lines=True, nrows=nrows)
+            except ValueError:
+                # 如果不是JSON Lines，尝试普通JSON
+                return pd.read_json(file_path, nrows=nrows)
+        elif file_type == "parquet":
+            df = pd.read_parquet(file_path)
+            if nrows:
+                return df.head(nrows)
+            return df
+        else:
+            raise ValueError(f"不支持的文件类型: {file_type}")
+    except Exception as e:
+        logger.error(f"读取文件失败 {file_path}: {str(e)}")
+        raise
+
+
+def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
+    """获取文件预览信息"""
+    try:
+        file_type = detect_file_type(file_path)
+        df = read_file_by_type(file_path, file_type, nrows=rows)
+
+        # 获取文件大小
+        file_size = os.path.getsize(file_path)
+
+        # 获取完整数据的行数（对于大文件，这可能比较慢）
+        try:
+            if file_type == "csv":
+                # 对于CSV，使用更快的行数统计方法
+                with open(file_path, "r", encoding="utf-8") as f:
+                    total_rows = sum(1 for line in f) - 1  # 减去标题行
+            elif file_type == "parquet":
+                # Parquet文件可以快速获取行数
+                pf = pq.ParquetFile(file_path)
+                total_rows = pf.metadata.num_rows
+            else:
+                # 对于其他格式，读取完整数据
+                full_df = read_file_by_type(file_path, file_type)
+                total_rows = len(full_df)
+        except Exception:
+            total_rows = len(df)  # 如果获取失败，使用预览数据的行数
+
+        # 处理不可序列化的数据（包括NaN值）
+        processed_df = handle_non_serializable_data(df)
+
+        return {
+            "file_type": file_type,
+            "file_size": file_size,
+            "total_rows": total_rows,
+            "columns": processed_df.columns.tolist(),
+            "column_types": processed_df.dtypes.astype(str).to_dict(),
+            "preview_data": processed_df.head(rows).to_dict(orient="records"),
+            "sample_values": {
+                col: processed_df[col].dropna().head(3).tolist()
+                for col in processed_df.columns
+            },
+        }
+    except Exception as e:
+        logger.error(f"获取文件预览失败 {file_path}: {str(e)}")
+        raise
 
 
 def handle_non_serializable_data(df):
@@ -236,41 +528,97 @@ def handle_non_serializable_data(df):
 
 
 @router.post("/api/upload", tags=["Data Sources"])
-async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    """上传文件并返回路径和列（只保留原始文件名，不再追加UUID）"""
+async def upload_file(
+    background_tasks: BackgroundTasks, file: UploadFile = File(...)
+) -> FileUploadResponse:
+    """上传文件并返回详细信息，支持CSV、Excel、JSON、Parquet格式"""
     try:
+        # 检查文件类型
+        file_type = detect_file_type(file.filename)
+        if file_type == "unknown":
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的文件类型。支持的格式：CSV, Excel, JSON, Parquet",
+            )
+
+        # 创建临时目录
         temp_dir = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "temp_files"
         )
         os.makedirs(temp_dir, exist_ok=True)
+
+        # 保存文件
         save_path = os.path.join(temp_dir, file.filename)
-        # 如果已存在同名文件，直接覆盖（或可选：直接返回已存在文件信息）
         with open(save_path, "wb") as f:
             content = await file.read()
             f.write(content)
-        # 读取列信息
-        if file.filename.endswith(".csv"):
-            df = pd.read_csv(save_path, nrows=5)
-        elif file.filename.endswith((".xls", ".xlsx")):
-            df = pd.read_excel(save_path, nrows=5)
-        else:
-            raise ValueError("不支持的文件类型")
-        # 注册到DuckDB
+
+        # 获取文件预览信息
+        preview_info = get_file_preview(save_path, rows=10)
+
+        # 读取完整数据并注册到DuckDB
         source_id = file.filename.split(".")[0]
-        if file.filename.endswith(".csv"):
-            df_full = pd.read_csv(save_path)
-        elif file.filename.endswith((".xls", ".xlsx")):
-            df_full = pd.read_excel(save_path)
-        else:
-            df_full = None
-        if df_full is not None:
-            duckdb_con.register(source_id, df_full)
-            logger.info(f"已将文件 {file.filename} 注册到DuckDB，表名: {source_id}")
-        return {"file_id": save_path, "columns": df.columns.tolist()}
+        df_full = read_file_by_type(save_path, file_type)
+
+        # 注册到DuckDB
+        success = register_dataframe(source_id, df_full, duckdb_con)
+        if not success:
+            raise HTTPException(status_code=500, detail="注册到DuckDB失败")
+
+        logger.info(
+            f"已将文件 {file.filename} 注册到DuckDB，表名: {source_id}, 行数: {len(df_full)}"
+        )
+
+        # 安排文件清理（1小时后）
+        schedule_cleanup(save_path, background_tasks)
+
+        return FileUploadResponse(
+            success=True,
+            file_id=source_id,
+            filename=file.filename,
+            file_size=preview_info["file_size"],
+            columns=preview_info["columns"],
+            row_count=preview_info["total_rows"],
+            preview_data=preview_info["preview_data"],
+        )
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"文件上传处理失败: {str(e)}")
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"文件上传处理失败: {str(e)}")
+
+
+@router.get("/api/file_preview/{filename}", tags=["Data Sources"])
+async def get_file_preview_api(filename: str, rows: int = 10):
+    """获取文件预览信息"""
+    try:
+        temp_dir = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "temp_files"
+        )
+        file_path = os.path.join(temp_dir, filename)
+
+        logger.info(f"尝试预览文件: {filename}, 路径: {file_path}")
+
+        if not os.path.exists(file_path):
+            logger.error(f"文件不存在: {file_path}")
+            raise HTTPException(status_code=404, detail="文件不存在")
+
+        # 检测文件类型
+        file_type = detect_file_type(file_path)
+        logger.info(f"检测到文件类型: {file_type}")
+
+        preview_info = get_file_preview(file_path, rows)
+        logger.info(f"文件预览成功: {filename}")
+        return preview_info
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"文件预览失败 {filename}: {str(e)}")
+        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"文件预览失败: {str(e)}")
 
 
 @router.post("/api/connect_database", tags=["Data Sources"])
@@ -380,10 +728,10 @@ async def connect_database(connection: DatabaseConnection = Body(...)):
                             status_code=400, detail="缺少数据库名称参数"
                         )
 
-                        # 创建PostgreSQL连接字符串
-                        connection_str = (
-                            f"postgresql://{user}:{password}@{host}:{port}/{database}"
-                        )
+                    # 创建PostgreSQL连接字符串
+                    connection_str = (
+                        f"postgresql://{user}:{password}@{host}:{port}/{database}"
+                    )
 
                 elif connection.type == "sqlite":
                     database_path = connection.params.get("database", "")
@@ -495,10 +843,11 @@ async def connect_database(connection: DatabaseConnection = Body(...)):
 
 @router.post("/api/delete_file", tags=["Data Sources"])
 async def delete_file(request: dict = Body(...)):
-    """删除指定的本地文件（仅限于temp_files目录下）"""
+    """删除指定的本地文件（仅限于temp_files目录下）并清理DuckDB中的对应表"""
     file_path = request.get("path")
     if not file_path:
         raise HTTPException(status_code=400, detail="缺少文件路径参数")
+
     # 只允许删除 temp_files 目录下的文件，防止越权
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../temp_files"))
     abs_path = os.path.abspath(file_path)
@@ -506,11 +855,113 @@ async def delete_file(request: dict = Body(...)):
         raise HTTPException(status_code=403, detail="禁止删除非数据目录文件")
     if not os.path.exists(abs_path):
         raise HTTPException(status_code=404, detail="文件不存在")
+
     try:
+        # 获取文件名（不含扩展名）作为表名
+        filename = os.path.basename(abs_path)
+        table_name = filename.split(".")[0]
+
+        # 1. 删除物理文件
         os.remove(abs_path)
-        return {"success": True, "message": "文件已删除"}
+        logger.info(f"已删除物理文件: {abs_path}")
+
+        # 2. 清理DuckDB中的对应表
+        try:
+            duckdb_con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+            logger.info(f"已从DuckDB中删除表: {table_name}")
+        except Exception as e:
+            logger.warning(f"删除DuckDB表失败 {table_name}: {str(e)}")
+            # 不抛出异常，因为文件已经删除成功
+
+        return {
+            "success": True,
+            "message": f"文件已删除，并清理了DuckDB表: {table_name}",
+        }
+
     except Exception as e:
+        logger.error(f"删除文件失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"文件删除失败: {str(e)}")
+
+
+@router.post("/api/clear_duckdb_tables", tags=["Data Sources"])
+async def clear_duckdb_tables():
+    """清除DuckDB中的所有表数据"""
+    try:
+        from core.duckdb_engine import get_db_connection
+
+        con = get_db_connection()
+
+        # 获取当前所有表
+        tables_df = con.execute("SHOW TABLES").fetchdf()
+        table_names = tables_df["name"].tolist() if not tables_df.empty else []
+
+        dropped_tables = []
+        for table_name in table_names:
+            try:
+                con.execute(f"DROP TABLE IF EXISTS {table_name}")
+                dropped_tables.append(table_name)
+                logger.info(f"已删除DuckDB表: {table_name}")
+            except Exception as e:
+                logger.error(f"删除表 {table_name} 失败: {str(e)}")
+
+        return {
+            "success": True,
+            "message": f"已清除 {len(dropped_tables)} 个DuckDB表",
+            "dropped_tables": dropped_tables,
+        }
+
+    except Exception as e:
+        logger.error(f"清除DuckDB表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"清除DuckDB表失败: {str(e)}")
+
+
+@router.delete("/api/clear_all_data", tags=["Data Sources"])
+async def clear_all_data():
+    """清除所有数据：删除temp_files中的文件和DuckDB中的表"""
+    try:
+        from core.duckdb_engine import get_db_connection
+
+        # 1. 清除DuckDB表
+        con = get_db_connection()
+        tables_df = con.execute("SHOW TABLES").fetchdf()
+        table_names = tables_df["name"].tolist() if not tables_df.empty else []
+
+        dropped_tables = []
+        for table_name in table_names:
+            try:
+                con.execute(f"DROP TABLE IF EXISTS {table_name}")
+                dropped_tables.append(table_name)
+                logger.info(f"已删除DuckDB表: {table_name}")
+            except Exception as e:
+                logger.error(f"删除表 {table_name} 失败: {str(e)}")
+
+        # 2. 清除temp_files目录中的文件
+        temp_dir = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "temp_files"
+        )
+        deleted_files = []
+
+        if os.path.exists(temp_dir):
+            for filename in os.listdir(temp_dir):
+                file_path = os.path.join(temp_dir, filename)
+                if os.path.isfile(file_path):
+                    try:
+                        os.remove(file_path)
+                        deleted_files.append(filename)
+                        logger.info(f"已删除文件: {filename}")
+                    except Exception as e:
+                        logger.error(f"删除文件 {filename} 失败: {str(e)}")
+
+        return {
+            "success": True,
+            "message": f"已清除 {len(dropped_tables)} 个DuckDB表和 {len(deleted_files)} 个文件",
+            "dropped_tables": dropped_tables,
+            "deleted_files": deleted_files,
+        }
+
+    except Exception as e:
+        logger.error(f"清除所有数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"清除所有数据失败: {str(e)}")
 
 
 @router.head("/api/file_exists", tags=["Data Sources"])
@@ -527,6 +978,55 @@ async def file_exists(path: str = Query(...)):
     return
 
 
+@router.get("/api/debug_file_paths", tags=["Data Sources"])
+async def debug_file_paths():
+    """调试文件路径信息"""
+    import os
+
+    # 计算API使用的路径
+    api_temp_dir = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "temp_files"
+    )
+
+    # 检查所有可能的temp_files目录
+    possible_dirs = [
+        api_temp_dir,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "temp_files"
+        ),
+        "temp_files",
+        "../temp_files",
+        "./temp_files",
+    ]
+
+    debug_info = {
+        "current_file": __file__,
+        "api_calculated_temp_dir": os.path.abspath(api_temp_dir),
+        "directories_checked": [],
+    }
+
+    for dir_path in possible_dirs:
+        abs_path = os.path.abspath(dir_path)
+        exists = os.path.exists(abs_path)
+        files = []
+        if exists:
+            try:
+                files = os.listdir(abs_path)
+            except:
+                files = ["ERROR_READING_DIR"]
+
+        debug_info["directories_checked"].append(
+            {
+                "path": dir_path,
+                "absolute_path": abs_path,
+                "exists": exists,
+                "files": files,
+            }
+        )
+
+    return debug_info
+
+
 @router.get("/api/list_files", tags=["Data Sources"])
 async def list_files():
     """列出 temp_files 目录下所有文件名（不含路径）"""
@@ -541,18 +1041,28 @@ async def list_files():
 
 @router.get("/api/file_columns", tags=["Data Sources"])
 async def file_columns(filename: str):
-    """获取指定文件的列名"""
+    """获取指定文件的列名，确保文件存在性检查"""
     temp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "temp_files")
     file_path = os.path.join(temp_dir, filename)
+
+    # 严格检查文件是否存在
     if not os.path.exists(file_path):
+        logger.warning(f"请求的文件不存在: {filename}, 路径: {file_path}")
         return []
+
     try:
         if filename.endswith(".csv"):
             df = pd.read_csv(file_path, nrows=5)
         elif filename.endswith((".xls", ".xlsx")):
             df = pd.read_excel(file_path, nrows=5)
         else:
+            logger.warning(f"不支持的文件类型: {filename}")
             return []
-        return JSONResponse(df.columns.tolist())
-    except Exception:
+
+        columns = df.columns.tolist()
+        logger.info(f"成功获取文件列名: {filename}, 列数: {len(columns)}")
+        return JSONResponse(columns)
+
+    except Exception as e:
+        logger.error(f"读取文件列名失败 {filename}: {str(e)}")
         return []

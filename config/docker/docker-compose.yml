@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # 后端API服务
+  backend:
+    build:
+      context: ../../api
+      dockerfile: Dockerfile
+    container_name: dataquery-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - ENV=development
+    volumes:
+      - ../../api:/app
+      - ../../data:/app/data  # 数据文件挂载
+      - backend_temp:/app/temp_files  # 临时文件
+      - backend_exports:/app/exports  # 导出文件
+    networks:
+      - dataquery-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 前端服务 (开发模式)
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile.dev
+      args:
+        - UI_MODE=modern
+    container_name: dataquery-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_UI_MODE=modern
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ../../frontend:/app
+      - /app/node_modules  # 避免本地node_modules覆盖
+    networks:
+      - dataquery-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+  # 前端服务 (生产模式)
+  frontend-prod:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile.prod
+      args:
+        - UI_MODE=modern
+    container_name: dataquery-frontend-prod
+    ports:
+      - "80:80"
+    environment:
+      - REACT_APP_API_URL=http://backend:8000
+      - REACT_APP_UI_MODE=modern
+    networks:
+      - dataquery-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  backend_temp:
+    driver: local
+  backend_exports:
+    driver: local
+
+networks:
+  dataquery-network:
+    driver: bridge

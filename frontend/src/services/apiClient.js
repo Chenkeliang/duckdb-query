@@ -39,7 +39,8 @@ export const connectDatabase = async (connectionParams) => {
 
 export const performQuery = async (queryRequest) => {
   try {
-    const response = await apiClient.post('/api/query', queryRequest);
+    // 使用代理端点来自动转换请求格式
+    const response = await apiClient.post('/api/query_proxy', queryRequest);
     return response.data;
   } catch (error) {
     console.error('Error performing query:', error);
@@ -49,7 +50,8 @@ export const performQuery = async (queryRequest) => {
 
 export const downloadResults = async (queryRequest) => {
   try {
-    const response = await apiClient.post('/api/download', queryRequest, {
+    // 使用下载代理端点来自动转换请求格式
+    const response = await apiClient.post('/api/download_proxy', queryRequest, {
       responseType: 'blob',
     });
 
@@ -118,6 +120,200 @@ export const deleteFile = async (filePath) => {
     return response.data;
   } catch (error) {
     console.error('删除文件失败:', error);
+    throw error;
+  }
+};
+
+// 文件管理增强API
+export const getFilePreview = async (filename, rows = 10) => {
+  try {
+    const response = await apiClient.get(`/api/file_preview/${filename}?rows=${rows}`);
+    return response.data;
+  } catch (error) {
+    console.error('获取文件预览失败:', error);
+    throw error;
+  }
+};
+
+export const listFiles = async () => {
+  try {
+    const response = await apiClient.get('/api/list_files');
+    return response.data;
+  } catch (error) {
+    console.error('获取文件列表失败:', error);
+    throw error;
+  }
+};
+
+export const getFileColumns = async (filename) => {
+  try {
+    const response = await apiClient.get(`/api/file_columns?filename=${filename}`);
+    return response.data;
+  } catch (error) {
+    console.error('获取文件列信息失败:', error);
+    throw error;
+  }
+};
+
+// 数据库连接管理API
+export const testDatabaseConnection = async (connectionData) => {
+  try {
+    const response = await apiClient.post('/api/database_connections/test', connectionData);
+    return response.data;
+  } catch (error) {
+    console.error('测试数据库连接失败:', error);
+    throw error;
+  }
+};
+
+export const createDatabaseConnection = async (connectionData) => {
+  try {
+    const response = await apiClient.post('/api/database_connections', connectionData);
+    return response.data;
+  } catch (error) {
+    console.error('创建数据库连接失败:', error);
+    throw error;
+  }
+};
+
+export const listDatabaseConnections = async () => {
+  try {
+    const response = await apiClient.get('/api/database_connections');
+    return response.data;
+  } catch (error) {
+    console.error('获取数据库连接列表失败:', error);
+    throw error;
+  }
+};
+
+export const getDatabaseConnection = async (connectionId) => {
+  try {
+    const response = await apiClient.get(`/api/database_connections/${connectionId}`);
+    return response.data;
+  } catch (error) {
+    console.error('获取数据库连接失败:', error);
+    throw error;
+  }
+};
+
+export const updateDatabaseConnection = async (connectionId, connectionData) => {
+  try {
+    const response = await apiClient.put(`/api/database_connections/${connectionId}`, connectionData);
+    return response.data;
+  } catch (error) {
+    console.error('更新数据库连接失败:', error);
+    throw error;
+  }
+};
+
+export const deleteDatabaseConnection = async (connectionId) => {
+  try {
+    const response = await apiClient.delete(`/api/database_connections/${connectionId}`);
+    return response.data;
+  } catch (error) {
+    console.error('删除数据库连接失败:', error);
+    throw error;
+  }
+};
+
+// 导出功能API
+export const exportData = async (exportRequest) => {
+  try {
+    const response = await apiClient.post('/api/export', exportRequest);
+    return response.data;
+  } catch (error) {
+    console.error('创建导出任务失败:', error);
+    throw error;
+  }
+};
+
+export const quickExport = async (exportRequest) => {
+  try {
+    const response = await apiClient.post('/api/export/quick', exportRequest, {
+      responseType: 'blob'
+    });
+    return response;
+  } catch (error) {
+    console.error('快速导出失败:', error);
+    throw error;
+  }
+};
+
+export const getExportTaskStatus = async (taskId) => {
+  try {
+    const response = await apiClient.get(`/api/export/tasks/${taskId}`);
+    return response.data;
+  } catch (error) {
+    console.error('获取导出任务状态失败:', error);
+    throw error;
+  }
+};
+
+export const downloadExportFile = async (taskId) => {
+  try {
+    const response = await apiClient.get(`/api/export/download/${taskId}`, {
+      responseType: 'blob'
+    });
+    return response;
+  } catch (error) {
+    console.error('下载导出文件失败:', error);
+    throw error;
+  }
+};
+
+export const listExportTasks = async () => {
+  try {
+    const response = await apiClient.get('/api/export/tasks');
+    return response.data;
+  } catch (error) {
+    console.error('获取导出任务列表失败:', error);
+    throw error;
+  }
+};
+
+export const deleteExportTask = async (taskId) => {
+  try {
+    const response = await apiClient.delete(`/api/export/tasks/${taskId}`);
+    return response.data;
+  } catch (error) {
+    console.error('删除导出任务失败:', error);
+    throw error;
+  }
+};
+
+// SQL查询API
+export const executeSqlQuery = async (sqlQuery) => {
+  try {
+    const response = await apiClient.post('/api/sql_query', { query: sqlQuery });
+    return response.data;
+  } catch (error) {
+    console.error('执行SQL查询失败:', error);
+    throw error;
+  }
+};
+
+// 保存查询结果为数据源
+export const saveQueryResultAsDatasource = async (sql, datasourceName, originalDatasource) => {
+  try {
+    const response = await apiClient.post('/api/save_query_result_as_datasource', {
+      sql,
+      datasource_name: datasourceName,
+      datasource: originalDatasource
+    });
+    return response.data;
+  } catch (error) {
+    console.error('保存查询结果为数据源失败:', error);
+    throw error;
+  }
+};
+
+// 获取可用表列表
+export const getAvailableTables = async () => {
+  try {
+    const response = await apiClient.get('/api/available_tables');
+    return response.data;
+  } catch (error) {
+    console.error('获取可用表列表失败:', error);
     throw error;
   }
 };

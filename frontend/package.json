@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "vite",
     "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
@@ -12,9 +13,11 @@
   "dependencies": {
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
+    "@fontsource/inter": "^5.2.6",
     "@mui/icons-material": "^5.14.18",
     "@mui/material": "^5.14.18",
-    "ag-grid-react": "^31.0.0",
+    "ag-grid-community": "^34.0.2",
+    "ag-grid-react": "^31.3.4",
     "axios": "^1.6.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

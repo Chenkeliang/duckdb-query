@@ -105,9 +105,57 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     setIsLoading(true);
 
     try {
+      // 转换数据源格式以匹配后端期望的DataSource模型
+      const convertedSources = selectedSources.map(source => {
+        if (source.sourceType === 'file') {
+          // 文件数据源
+          return {
+            id: source.id,
+            type: 'file', // 使用DataSourceType枚举值
+            params: {
+              path: `temp_files/${source.path || source.name}` // 使用 path 或 name 字段
+            }
+          };
+        } else if (source.sourceType === 'database') {
+          // 数据库数据源，使用实际的数据库类型
+          return {
+            id: source.id,
+            type: source.type, // 使用实际的数据库类型（mysql, postgresql等）
+            params: source.params || {
+              connectionId: source.connectionId
+            }
+          };
+        }
+
+        // 如果数据源已经有 params 字段，直接返回
+        if (source.params) {
+          return source;
+        }
+
+        // 否则尝试构建 params 字段
+        return {
+          ...source,
+          params: source.sourceType === 'file'
+            ? { path: `temp_files/${source.path || source.name}` }
+            : { connectionId: source.connectionId }
+        };
+      });
+
+      // 转换 JOIN 数据结构以匹配后端期望的格式
+      const convertedJoins = joins.map(join => ({
+        left_source_id: join.left_source_id,
+        right_source_id: join.right_source_id,
+        join_type: join.how || 'inner',
+        conditions: [{
+          left_column: join.left_on,
+          right_column: join.right_on,
+          operator: '='
+        }]
+      }));
+
       const queryRequest = {
-        sources: selectedSources,
-        joins: joins
+        sources: convertedSources,
+        joins: convertedJoins
       };
 
       // 获取后端实际执行的SQL
