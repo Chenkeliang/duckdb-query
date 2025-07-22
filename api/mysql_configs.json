@@ -6,7 +6,7 @@
       "host": "rr-2ze4ks6ww80gpae5z723.mysql.rds.aliyuncs.com",
       "port": 3306,
       "user": "dataread",
-      "password": "nod",
+      "password": "GQgx7jbP",
       "database": "store_order",
       "query": "SELECT * FROM dy_order limit 10"
     },

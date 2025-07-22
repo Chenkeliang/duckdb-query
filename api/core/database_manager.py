@@ -122,10 +122,18 @@ class DatabaseManager:
     def _test_mysql_connection(self, params: Dict[str, Any], start_time: float) -> ConnectionTestResponse:
         """测试MySQL连接"""
         try:
+            # 支持 user 和 username 两种参数名称
+            username = params.get('user') or params.get('username')
+            if not username:
+                raise ValueError("缺少用户名参数 (user 或 username)")
+
+            logger.info(f"MySQL连接参数调试: params={params}")
+            logger.info(f"MySQL连接用户名: {username}")
+
             connection = pymysql.connect(
                 host=params.get('host'),
                 port=params.get('port', 3306),
-                user=params.get('user'),
+                user=username,
                 password=params.get('password'),
                 database=params.get('database'),
                 connect_timeout=10
@@ -156,10 +164,15 @@ class DatabaseManager:
     def _test_postgresql_connection(self, params: Dict[str, Any], start_time: float) -> ConnectionTestResponse:
         """测试PostgreSQL连接"""
         try:
+            # 支持 user 和 username 两种参数名称
+            username = params.get('user') or params.get('username')
+            if not username:
+                raise ValueError("缺少用户名参数 (user 或 username)")
+
             connection = psycopg2.connect(
                 host=params.get('host'),
                 port=params.get('port', 5432),
-                user=params.get('user'),
+                user=username,
                 password=params.get('password'),
                 database=params.get('database'),
                 connect_timeout=10
@@ -218,13 +231,23 @@ class DatabaseManager:
     def _create_engine(self, db_type: DataSourceType, params: Dict[str, Any]):
         """创建SQLAlchemy引擎"""
         if db_type == DataSourceType.MYSQL:
+            # 支持 user 和 username 两种参数名称
+            username = params.get('user') or params.get('username')
+            if not username:
+                raise ValueError("缺少用户名参数 (user 或 username)")
+
             connection_string = (
-                f"mysql+pymysql://{params['user']}:{params['password']}"
+                f"mysql+pymysql://{username}:{params['password']}"
                 f"@{params['host']}:{params.get('port', 3306)}/{params['database']}"
             )
         elif db_type == DataSourceType.POSTGRESQL:
+            # 支持 user 和 username 两种参数名称
+            username = params.get('user') or params.get('username')
+            if not username:
+                raise ValueError("缺少用户名参数 (user 或 username)")
+
             connection_string = (
-                f"postgresql+psycopg2://{params['user']}:{params['password']}"
+                f"postgresql+psycopg2://{username}:{params['password']}"
                 f"@{params['host']}:{params.get('port', 5432)}/{params['database']}"
             )
         elif db_type == DataSourceType.SQLITE:
