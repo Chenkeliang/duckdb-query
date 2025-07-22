@@ -144,33 +144,39 @@ The fastest and most reliable way to get started:
 git clone <repository-url>
 cd interactive-data-query
 
-# Start with Docker Compose (specify config file path)
-docker-compose -f config/docker/docker-compose.yml up --build -d
+# 🚀 一键启动 (推荐)
+./docker-start.sh
+
+# 或手动启动
+docker-compose -f docker-compose.full.yml up --build -d
 ```
 
-> **📝 Note**: Docker configuration files are located in the `config/docker/` directory for better project organization.
+> **📝 Note**: 使用 `docker-compose.full.yml` 配置文件实现前后端统一Docker部署。
 
 **Access the application:**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
-- Health Check: http://localhost:8000/health
-- Query Proxy: http://localhost:8000/api/query_proxy (automatic format conversion)
-- Download Proxy: http://localhost:8000/api/download_proxy (automatic export format conversion)
+- 🌐 前端界面: http://localhost:3000
+- 📡 后端API: http://localhost:8000
+- 📚 API文档: http://localhost:8000/docs
+- 🔍 健康检查: http://localhost:8000/health
+- 🔄 查询代理: http://localhost:8000/api/query_proxy (自动格式转换)
+- 📤 下载代理: http://localhost:8000/api/download_proxy (自动导出格式转换)
 
 **Common Docker commands:**
 ```bash
-# Check service status
-docker-compose -f config/docker/docker-compose.yml ps
+# 查看服务状态
+docker-compose -f docker-compose.full.yml ps
 
-# View live logs
-docker-compose -f config/docker/docker-compose.yml logs -f
+# 查看实时日志
+docker-compose -f docker-compose.full.yml logs -f
 
-# Stop services
-docker-compose -f config/docker/docker-compose.yml down
+# 停止服务
+docker-compose -f docker-compose.full.yml down
 
-# Rebuild and restart
-docker-compose -f config/docker/docker-compose.yml up --build -d
+# 重新构建并启动
+docker-compose -f docker-compose.full.yml up --build -d
+
+# 重启服务
+docker-compose -f docker-compose.full.yml restart
 ```
 
 ### Method 2: Local Development Setup
