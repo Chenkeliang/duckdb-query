@@ -1,0 +1,50 @@
+# Docker Compose 完整配置
+# 前后端统一Docker启动
+version: '3.8'
+
+services:
+  # 后端API服务
+  backend:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: dataquery-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./api/temp_files:/app/temp_files
+      - ./api/exports:/app/exports
+      - ./api/mysql_configs.json:/app/mysql_configs.json
+    networks:
+      - dataquery-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 前端服务 (生产模式)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dataquery-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    networks:
+      - dataquery-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  dataquery-network:
+    driver: bridge
