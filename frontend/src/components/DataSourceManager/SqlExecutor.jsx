@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { 
-  Box, 
-  Button, 
-  TextField, 
-  Typography, 
-  Paper, 
-  Alert, 
+import {
+  Box,
+  Button,
+  TextField,
+  Typography,
+  Paper,
+  Alert,
   Fade,
   CircularProgress,
   IconButton,
@@ -19,14 +19,25 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TablePagination
+  TablePagination,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  Snackbar
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CodeIcon from '@mui/icons-material/Code';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import { executeSQL } from '../../services/apiClient';
+import SaveIcon from '@mui/icons-material/Save';
+import { executeSQL, saveQueryToDuckDB } from '../../services/apiClient';
 
-const SqlExecutor = ({ dataSource }) => {
+const SqlExecutor = ({ dataSource, onDataSourceSaved }) => {
   const [sqlQuery, setSqlQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -35,6 +46,13 @@ const SqlExecutor = ({ dataSource }) => {
   const [results, setResults] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  // 保存相关状态
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [tableAlias, setTableAlias] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // 根据数据源类型预填充示例查询
   React.useEffect(() => {
@@ -60,19 +78,21 @@ const SqlExecutor = ({ dataSource }) => {
       setError('请输入SQL查询语句');
       return;
     }
-    
+
     setLoading(true);
     setError('');
     setSuccess(false);
-    
+
     try {
       // 调用API执行SQL查询
       const result = await executeSQL(sqlQuery, dataSource);
-      
+
       if (result) {
         setResults({
           columns: result.columns || [],
-          data: result.data || []
+          data: result.data || [],
+          canSaveToDuckDB: result.can_save_to_duckdb || false,
+          sourceType: result.source_type || 'unknown'
         });
         setSuccess(true);
         setTimeout(() => setSuccess(false), 3000);
@@ -84,6 +104,73 @@ const SqlExecutor = ({ dataSource }) => {
       console.error("SQL执行错误:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 保存为DuckDB数据源
+  const handleSaveAsDataSource = () => {
+    setSaveDialogOpen(true);
+    const timestamp = new Date().toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).replace(/[\/\s:]/g, '');
+    setTableAlias(`query_result_${timestamp}`);
+  };
+
+  const handleSaveDialogClose = () => {
+    setSaveDialogOpen(false);
+    setTableAlias('');
+    setSaveError('');
+  };
+
+  const handleSaveConfirm = async () => {
+    if (!tableAlias.trim()) {
+      setSaveError('请输入DuckDB表别名');
+      return;
+    }
+
+    if (!sqlQuery.trim()) {
+      setSaveError('没有可保存的查询结果');
+      return;
+    }
+
+    setSaving(true);
+    setSaveError('');
+
+    try {
+      const result = await saveQueryToDuckDB(
+        sqlQuery,
+        dataSource,
+        tableAlias.trim()
+      );
+
+      if (result.success) {
+        setSaveSuccess(true);
+        setSaveDialogOpen(false);
+        setTableAlias('');
+
+        // 通知父组件数据源已保存
+        if (onDataSourceSaved) {
+          onDataSourceSaved({
+            id: result.table_alias,
+            type: 'duckdb',
+            name: `DuckDB表: ${result.table_alias}`,
+            row_count: result.row_count,
+            columns: result.columns
+          });
+        }
+
+        // 3秒后隐藏成功提示
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        setSaveError(result.message || '保存失败');
+      }
+    } catch (error) {
+      setSaveError(error.message || '保存失败，请重试');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -182,7 +269,7 @@ const SqlExecutor = ({ dataSource }) => {
             placeholder="输入SQL查询语句..."
           />
           
-          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
             <Button
               variant="contained"
               startIcon={<PlayArrowIcon />}
@@ -199,6 +286,25 @@ const SqlExecutor = ({ dataSource }) => {
             >
               {loading ? <CircularProgress size={24} /> : '执行SQL'}
             </Button>
+
+            {results && results.canSaveToDuckDB && (
+              <Button
+                variant="outlined"
+                startIcon={<SaveIcon />}
+                onClick={handleSaveAsDataSource}
+                disabled={loading || saving}
+                sx={{
+                  borderRadius: '20px',
+                  minWidth: '160px',
+                  py: 0.75,
+                  textTransform: 'none',
+                  fontWeight: 500,
+                  fontSize: '0.875rem'
+                }}
+              >
+                保存到DuckDB
+              </Button>
+            )}
           </Box>
           
           {results && results.data && results.data.length > 0 && (
@@ -272,6 +378,57 @@ const SqlExecutor = ({ dataSource }) => {
           )}
         </AccordionDetails>
       </Accordion>
+
+      {/* 保存为DuckDB数据源对话框 */}
+      <Dialog open={saveDialogOpen} onClose={handleSaveDialogClose} maxWidth="sm" fullWidth>
+        <DialogTitle>保存查询结果到DuckDB</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="DuckDB表别名"
+            fullWidth
+            variant="outlined"
+            value={tableAlias}
+            onChange={(e) => setTableAlias(e.target.value)}
+            placeholder="请输入表别名，如: query_result_0723"
+            helperText="表别名将作为DuckDB中的表名，可用于后续关联查询"
+            sx={{ mt: 2 }}
+          />
+          {saveError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {saveError}
+            </Alert>
+          )}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            将查询结果保存为DuckDB表，支持高效的关联查询和数据分析。
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleSaveDialogClose} disabled={saving}>
+            取消
+          </Button>
+          <Button
+            onClick={handleSaveConfirm}
+            variant="contained"
+            disabled={saving || !tableAlias.trim()}
+          >
+            {saving ? '保存中...' : '保存'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 成功提示 */}
+      <Snackbar
+        open={saveSuccess}
+        autoHideDuration={3000}
+        onClose={() => setSaveSuccess(false)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity="success" onClose={() => setSaveSuccess(false)}>
+          查询结果已成功保存到DuckDB！
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

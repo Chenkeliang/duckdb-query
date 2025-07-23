@@ -923,6 +923,37 @@ async def list_duckdb_tables():
         raise HTTPException(status_code=500, detail=f"获取表列表失败: {str(e)}")
 
 
+@router.delete("/api/duckdb_tables/{table_name}", tags=["Query"])
+async def delete_duckdb_table(table_name: str):
+    """删除DuckDB中的指定表"""
+    try:
+        con = get_db_connection()
+
+        # 检查表是否存在
+        tables_df = con.execute("SHOW TABLES").fetchdf()
+        existing_tables = tables_df['name'].tolist() if not tables_df.empty else []
+
+        if table_name not in existing_tables:
+            raise HTTPException(status_code=404, detail=f"表 '{table_name}' 不存在")
+
+        # 删除表
+        drop_query = f'DROP TABLE IF EXISTS "{table_name}"'
+        con.execute(drop_query)
+
+        logger.info(f"成功删除DuckDB表: {table_name}")
+
+        return {
+            "success": True,
+            "message": f"表 '{table_name}' 已成功删除"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除DuckDB表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除表失败: {str(e)}")
+
+
 @router.post("/api/execute_simple_sql", tags=["Query"])
 async def execute_simple_sql(request: dict = Body(...)):
     """简化的SQL执行，支持对已上传文件的查询"""

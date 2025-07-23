@@ -26,7 +26,7 @@ import {
   Info as InfoIcon,
   Storage as StorageIcon
 } from '@mui/material';
-import { getDuckDBTables } from '../../services/apiClient';
+import { getDuckDBTables, deleteDuckDBTable } from '../../services/apiClient';
 
 const DuckDBTableManager = ({ onTableSelect }) => {
   const [tables, setTables] = useState([]);
@@ -34,6 +34,9 @@ const DuckDBTableManager = ({ onTableSelect }) => {
   const [error, setError] = useState('');
   const [selectedTable, setSelectedTable] = useState(null);
   const [infoDialogOpen, setInfoDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [tableToDelete, setTableToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   // 加载DuckDB表列表
   const loadTables = async () => {
@@ -79,6 +82,40 @@ const DuckDBTableManager = ({ onTableSelect }) => {
         columns: table.columns
       });
     }
+  };
+
+  // 删除表
+  const handleDeleteTable = (table) => {
+    setTableToDelete(table);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!tableToDelete) return;
+
+    setDeleting(true);
+    setError('');
+
+    try {
+      const result = await deleteDuckDBTable(tableToDelete.table_name);
+      if (result.success) {
+        // 重新加载表列表
+        await loadTables();
+        setDeleteDialogOpen(false);
+        setTableToDelete(null);
+      } else {
+        setError(result.message || '删除失败');
+      }
+    } catch (err) {
+      setError(`删除失败: ${err.message || '未知错误'}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setTableToDelete(null);
   };
 
   // 格式化数字
@@ -161,11 +198,20 @@ const DuckDBTableManager = ({ onTableSelect }) => {
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 1 }}>
                         <Tooltip title="查看详细信息">
-                          <IconButton 
-                            size="small" 
+                          <IconButton
+                            size="small"
                             onClick={() => handleShowInfo(table)}
                           >
                             <InfoIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="删除表">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteTable(table)}
+                            color="error"
+                          >
+                            <DeleteIcon />
                           </IconButton>
                         </Tooltip>
                         <Button
@@ -243,6 +289,32 @@ const DuckDBTableManager = ({ onTableSelect }) => {
                 选择此表
               </Button>
             )}
+          </DialogActions>
+        </Dialog>
+
+        {/* 删除确认对话框 */}
+        <Dialog open={deleteDialogOpen} onClose={handleDeleteCancel}>
+          <DialogTitle>确认删除</DialogTitle>
+          <DialogContent>
+            <Typography>
+              确定要删除表 <strong>{tableToDelete?.table_name}</strong> 吗？
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              此操作不可撤销，表中的所有数据将被永久删除。
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleDeleteCancel} disabled={deleting}>
+              取消
+            </Button>
+            <Button
+              onClick={handleDeleteConfirm}
+              color="error"
+              variant="contained"
+              disabled={deleting}
+            >
+              {deleting ? '删除中...' : '确认删除'}
+            </Button>
           </DialogActions>
         </Dialog>
       </CardContent>

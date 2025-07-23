@@ -28,6 +28,8 @@ import FileUploader from './components/DataSourceManager/FileUploader';
 import DatabaseConnector from './components/DataSourceManager/DatabaseConnector';
 import DataSourceList from './components/DataSourceManager/DataSourceList';
 import DatabaseConnectionManager from './components/DataSourceManager/DatabaseConnectionManager';
+import SqlExecutor from './components/DataSourceManager/SqlExecutor';
+import DuckDBManagementPage from './components/DuckDBManager/DuckDBManagementPage';
 
 const ModernApp = () => {
   const [currentTab, setCurrentTab] = useState(0);
@@ -260,6 +262,8 @@ const ModernApp = () => {
             >
               <Tab label="📁 数据源管理" />
               <Tab label="🔍 数据查询与结果" />
+              <Tab label="💾 SQL执行器" />
+              <Tab label="🗄️ DuckDB管理" />
             </Tabs>
 
             {/* 数据源管理页面 */}
@@ -413,6 +417,40 @@ const ModernApp = () => {
                   </CardContent>
                 </Card>
               </Box>
+            )}
+
+            {/* SQL执行器页面 */}
+            {currentTab === 2 && (
+              <Box sx={{ p: 4 }}>
+                <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+                  💾 SQL执行器
+                </Typography>
+                <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+                  连接MySQL数据库，执行自定义SQL查询，并可将结果保存为DuckDB数据源
+                </Typography>
+
+                <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
+                  <CardContent>
+                    <SqlExecutor
+                      dataSource={{
+                        type: 'mysql',
+                        id: 'sorder'
+                      }}
+                      onDataSourceSaved={(newDataSource) => {
+                        // 当保存新数据源时，刷新数据源列表
+                        triggerRefresh();
+                        // 可以添加成功提示
+                        console.log('新数据源已保存:', newDataSource);
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              </Box>
+            )}
+
+            {/* DuckDB管理页面 */}
+            {currentTab === 3 && (
+              <DuckDBManagementPage />
             )}
           </Paper>
 

@@ -348,4 +348,30 @@ export const getDuckDBTables = async () => {
   }
 };
 
+// 保存查询结果到DuckDB
+export const saveQueryToDuckDB = async (sql, datasource, tableAlias) => {
+  try {
+    const response = await apiClient.post('/api/save_query_to_duckdb', {
+      sql,
+      datasource,
+      table_alias: tableAlias
+    });
+    return response.data;
+  } catch (error) {
+    console.error('保存查询结果到DuckDB失败:', error);
+    throw error;
+  }
+};
+
+// 删除DuckDB表
+export const deleteDuckDBTable = async (tableName) => {
+  try {
+    const response = await apiClient.delete(`/api/duckdb_tables/${tableName}`);
+    return response.data;
+  } catch (error) {
+    console.error('删除DuckDB表失败:', error);
+    throw error;
+  }
+};
+
 export default apiClient;
