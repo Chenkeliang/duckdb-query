@@ -615,6 +615,7 @@ async def execute_sql(request: dict = Body(...)):
     datasource = request.get("datasource", {})
 
     try:
+        logger.info(f"=== EXECUTE_SQL 函数开始执行 ===")
         logger.info(f"request type: {type(request)}, content: {request}")
         # 兼容 dict、Pydantic/BaseModel、FormData
         if isinstance(request, dict):
@@ -639,6 +640,7 @@ async def execute_sql(request: dict = Body(...)):
         logger.info(f"检查数据源类型: {datasource_type}")
         logger.info(f"是否为字典: {isinstance(datasource, dict)}")
         logger.info(f"类型检查结果: {datasource_type in ['mysql', 'postgresql', 'sqlite', 'duckdb']}")
+        logger.info(f"完整条件判断: {isinstance(datasource, dict) and datasource.get('type') in ['mysql', 'postgresql', 'sqlite', 'duckdb']}")
         # 支持 file 类型数据源
         if isinstance(datasource, dict) and datasource.get("type") == "file":
             # 支持多种参数格式
@@ -693,6 +695,49 @@ async def execute_sql(request: dict = Body(...)):
             if not datasource_id:
                 raise HTTPException(status_code=400, detail="缺少数据源ID")
 
+            # 确保数据库连接存在，如果不存在则创建
+            try:
+                existing_conn = db_manager.get_connection(datasource_id)
+                if not existing_conn:
+                    logger.info(f"连接 {datasource_id} 不存在，尝试创建...")
+                    # 读取配置文件并创建连接
+                    import json
+                    from datetime import datetime
+                    from models.query_models import DatabaseConnection, DataSourceType
+
+                    with open('mysql_configs.json', 'r', encoding='utf-8') as f:
+                        configs = json.load(f)
+
+                    config = None
+                    for cfg in configs:
+                        if cfg['id'] == datasource_id:
+                            config = cfg
+                            break
+
+                    if not config:
+                        raise HTTPException(status_code=404, detail=f"未找到数据源配置: {datasource_id}")
+
+                    # 创建连接
+                    db_connection = DatabaseConnection(
+                        id=config["id"],
+                        name=config.get("name", config["id"]),
+                        type=DataSourceType.MYSQL,
+                        params=config["params"],
+                        created_at=datetime.now(),
+                    )
+
+                    success = db_manager.add_connection(db_connection)
+                    if not success:
+                        raise HTTPException(status_code=500, detail=f"创建数据库连接失败: {datasource_id}")
+
+                    logger.info(f"成功创建数据库连接: {datasource_id}")
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"创建数据库连接失败: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"数据库连接失败: {str(e)}")
+
             # 在原始数据库上执行SQL查询
             try:
                 logger.info(f"开始执行数据库查询: datasource_id={datasource_id}, sql={sql_query}")
@@ -725,42 +770,40 @@ async def execute_sql(request: dict = Body(...)):
             except Exception as db_error:
                 logger.error(f"数据库查询失败: {str(db_error)}")
                 raise HTTPException(status_code=500, detail=f"数据库查询失败: {str(db_error)}")
+
+        # 如果不是数据库类型，则在DuckDB中执行查询
         else:
-            raise HTTPException(
-                status_code=400, detail=f"不支持的数据库类型: {datasource.get('type')}"
-            )
+            # 执行SQL查询
+            result_df = execute_query(sql_query, con)
+            logger.info(f"SQL查询执行完成，结果形状: {result_df.shape}")
 
-        # 执行SQL查询
-        result_df = execute_query(sql_query, con)
-        logger.info(f"SQL查询执行完成，结果形状: {result_df.shape}")
+            # Replace NaN/inf with None, which is JSON serializable to null
+            result_df.replace([np.inf, -np.inf], np.nan, inplace=True)
+            # 更彻底地将所有NaN转为None，防止JSON序列化报错
+            result_df = result_df.astype(object).where(pd.notnull(result_df), None)
 
-        # Replace NaN/inf with None, which is JSON serializable to null
-        result_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-        # 更彻底地将所有NaN转为None，防止JSON序列化报错
-        result_df = result_df.astype(object).where(pd.notnull(result_df), None)
+            # 将所有不可序列化的数据类型转换为字符串
+            for col in result_df.columns:
+                # 检查是否有不可序列化的对象类型列
+                if result_df[col].dtype == "object":
+                    # 将可能不可序列化的对象转换为字符串
+                    result_df[col] = result_df[col].astype(str)
 
-        # 将所有不可序列化的数据类型转换为字符串
-        for col in result_df.columns:
-            # 检查是否有不可序列化的对象类型列
-            if result_df[col].dtype == "object":
-                # 将可能不可序列化的对象转换为字符串
-                result_df[col] = result_df[col].astype(str)
+            # 使用to_dict方法，确保所有数据都是可JSON序列化的
+            data_records = result_df.to_dict(orient="records")
 
-        # 使用to_dict方法，确保所有数据都是可JSON序列化的
-        data_records = result_df.to_dict(orient="records")
+            # 确保所有列名是字符串类型
+            columns_list = [str(col) for col in result_df.columns.tolist()]
 
-        # 确保所有列名是字符串类型
-        columns_list = [str(col) for col in result_df.columns.tolist()]
+            # 返回结果 - 只使用简单的数据结构
+            result = {
+                "success": True,
+                "data": data_records,
+                "columns": columns_list,
+                "rowCount": len(result_df),
+            }
 
-        # 返回结果 - 只使用简单的数据结构
-        result = {
-            "success": True,
-            "data": data_records,
-            "columns": columns_list,
-            "rowCount": len(result_df),
-        }
-
-        return result
+            return result
     except Exception as e:
         logger.error(f"SQL执行失败: {str(e)}")
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
