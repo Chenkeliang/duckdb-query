@@ -744,13 +744,33 @@ async def execute_sql(request: dict = Body(...)):
                 result_df = db_manager.execute_query(datasource_id, sql_query)
                 logger.info(f"数据库查询执行完成，结果形状: {result_df.shape}")
 
-                # 处理数据类型
+                # 处理数据类型和编码问题
                 result_df.replace([np.inf, -np.inf], np.nan, inplace=True)
                 result_df = result_df.astype(object).where(pd.notnull(result_df), None)
 
+                # 处理编码问题：安全地转换为字符串
                 for col in result_df.columns:
                     if result_df[col].dtype == "object":
-                        result_df[col] = result_df[col].astype(str)
+                        # 安全地处理可能的编码问题
+                        def safe_str_convert(x):
+                            if x is None or pd.isna(x):
+                                return None
+                            try:
+                                if isinstance(x, bytes):
+                                    # 尝试多种编码方式
+                                    for encoding in ['utf-8', 'gbk', 'gb2312', 'latin1']:
+                                        try:
+                                            return x.decode(encoding)
+                                        except UnicodeDecodeError:
+                                            continue
+                                    # 如果所有编码都失败，使用错误处理
+                                    return x.decode('utf-8', errors='replace')
+                                else:
+                                    return str(x)
+                            except Exception:
+                                return str(x) if x is not None else None
+
+                        result_df[col] = result_df[col].apply(safe_str_convert)
 
                 data_records = result_df.to_dict(orient="records")
                 columns_list = [str(col) for col in result_df.columns.tolist()]
