@@ -186,8 +186,22 @@ def build_join_chain(sources, joins, table_columns):
             for condition in join.conditions:
                 left_table_id = join.left_source_id.strip('"')
                 right_table_id = join.right_source_id.strip('"')
+
+                # 智能数据类型转换和清洗
                 left_col = f'"{left_table_id}"."{condition.left_column}"'
                 right_col = f'"{right_table_id}"."{condition.right_column}"'
+
+                # 检查是否需要数据清洗（针对包含JSON或复杂字符串的情况）
+                # 如果左列包含复杂数据，尝试提取数字部分
+                if condition.left_column == "uid" and left_table_id in ["0711", "0702"]:
+                    # 使用正则表达式提取数字部分
+                    left_col = f"CAST(REGEXP_EXTRACT({left_col}, '^([0-9]+)', 1) AS VARCHAR)"
+
+                # 如果右列是数字类型，确保类型匹配
+                if condition.right_column in ["iget_uid", "buyer_id"] and right_table_id.startswith("query_result"):
+                    # 确保右列也是字符串类型进行比较
+                    right_col = f"CAST({right_col} AS VARCHAR)"
+
                 conditions.append(f"{left_col} {condition.operator} {right_col}")
 
             if conditions:
