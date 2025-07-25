@@ -28,7 +28,16 @@ def get_db_connection():
     global _global_duckdb_connection
     if _global_duckdb_connection is None:
         logger.info("创建新的DuckDB连接...")
-        _global_duckdb_connection = duckdb.connect(database=":memory:")
+        # 使用持久化文件而不是内存模式
+        db_path = "/app/data/duckdb/main.db"
+
+        # 确保目录存在
+        import os
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+        _global_duckdb_connection = duckdb.connect(database=db_path)
+        logger.info(f"DuckDB连接到持久化文件: {db_path}")
+
         # 设置DuckDB优化参数
         _global_duckdb_connection.execute("SET threads=4")
         _global_duckdb_connection.execute("SET memory_limit='2GB'")
