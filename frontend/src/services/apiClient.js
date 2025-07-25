@@ -348,20 +348,7 @@ export const getDuckDBTables = async () => {
   }
 };
 
-// 保存查询结果到DuckDB
-export const saveQueryToDuckDB = async (sql, datasource, tableAlias) => {
-  try {
-    const response = await apiClient.post('/api/save_query_to_duckdb', {
-      sql,
-      datasource,
-      table_alias: tableAlias
-    });
-    return response.data;
-  } catch (error) {
-    console.error('保存查询结果到DuckDB失败:', error);
-    throw error;
-  }
-};
+
 
 // 删除DuckDB表
 export const deleteDuckDBTable = async (tableName) => {
@@ -370,6 +357,17 @@ export const deleteDuckDBTable = async (tableName) => {
     return response.data;
   } catch (error) {
     console.error('删除DuckDB表失败:', error);
+    throw error;
+  }
+};
+
+// 获取MySQL数据源列表
+export const getMySQLDataSources = async () => {
+  try {
+    const response = await apiClient.get('/api/mysql_datasources');
+    return response.data;
+  } catch (error) {
+    console.error('获取MySQL数据源列表失败:', error);
     throw error;
   }
 };

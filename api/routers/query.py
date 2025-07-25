@@ -890,10 +890,12 @@ async def list_duckdb_tables():
             table_name = row['name']
             # 获取表的基本信息
             try:
-                count_result = con.execute(f"SELECT COUNT(*) as count FROM {table_name}").fetchdf()
+                # 对表名进行引号包围以处理特殊字符
+                quoted_table_name = f'"{table_name}"'
+                count_result = con.execute(f"SELECT COUNT(*) as count FROM {quoted_table_name}").fetchdf()
                 row_count = count_result.iloc[0]['count']
 
-                columns_result = con.execute(f"DESCRIBE {table_name}").fetchdf()
+                columns_result = con.execute(f"DESCRIBE {quoted_table_name}").fetchdf()
                 columns = columns_result['column_name'].tolist()
 
                 tables_info.append({
@@ -936,9 +938,17 @@ async def delete_duckdb_table(table_name: str):
         if table_name not in existing_tables:
             raise HTTPException(status_code=404, detail=f"表 '{table_name}' 不存在")
 
-        # 删除表
-        drop_query = f'DROP TABLE IF EXISTS "{table_name}"'
-        con.execute(drop_query)
+        # 先尝试删除表，如果失败则尝试删除视图
+        try:
+            drop_query = f'DROP TABLE IF EXISTS "{table_name}"'
+            con.execute(drop_query)
+        except Exception as e:
+            if "is of type View" in str(e):
+                # 如果是视图，则删除视图
+                drop_query = f'DROP VIEW IF EXISTS "{table_name}"'
+                con.execute(drop_query)
+            else:
+                raise e
 
         logger.info(f"成功删除DuckDB表: {table_name}")
 

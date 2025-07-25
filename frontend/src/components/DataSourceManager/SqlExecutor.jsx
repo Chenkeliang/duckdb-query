@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -29,15 +29,18 @@ import {
   RadioGroup,
   FormControlLabel,
   Radio,
-  Snackbar
+  Snackbar,
+  Select,
+  MenuItem,
+  InputLabel
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CodeIcon from '@mui/icons-material/Code';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SaveIcon from '@mui/icons-material/Save';
-import { executeSQL, saveQueryToDuckDB } from '../../services/apiClient';
+import { executeSQL, saveQueryToDuckDB, getMySQLDataSources } from '../../services/apiClient';
 
-const SqlExecutor = ({ dataSource, onDataSourceSaved }) => {
+const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
   const [sqlQuery, setSqlQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -47,6 +50,9 @@ const SqlExecutor = ({ dataSource, onDataSourceSaved }) => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
+  // 数据源相关状态
+  const [selectedDataSource, setSelectedDataSource] = useState('');
+
   // 保存相关状态
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [tableAlias, setTableAlias] = useState('');
@@ -54,28 +60,34 @@ const SqlExecutor = ({ dataSource, onDataSourceSaved }) => {
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // 根据数据源类型预填充示例查询
+  // 使用传入的数据库连接列表
+  useEffect(() => {
+    if (databaseConnections && databaseConnections.length > 0) {
+      // 默认选择第一个数据库连接
+      setSelectedDataSource(databaseConnections[0].id);
+    }
+  }, [databaseConnections]);
+
+  // 根据选择的数据源预填充示例查询
   React.useEffect(() => {
-    if (dataSource) {
-      if (dataSource.type !== 'file') {
-        // 数据库类型数据源
-        if (dataSource.params && dataSource.params.database) {
-          if (dataSource.type === 'mysql' || dataSource.type === 'postgresql') {
-            setSqlQuery(`SHOW TABLES FROM ${dataSource.params.database}`);
-          } else if (dataSource.type === 'sqlite' || dataSource.type === 'duckdb') {
-            setSqlQuery("SELECT name FROM sqlite_master WHERE type='table'");
-          }
-        }
-      } else {
-        // 文件类型数据源
-        setSqlQuery(`SELECT * FROM "${dataSource.id}" LIMIT 10`);
+    if (selectedDataSource) {
+      const selectedDS = databaseConnections.find(ds => ds.id === selectedDataSource);
+      if (selectedDS) {
+        // 根据数据库名称生成示例查询
+        const dbName = selectedDS.params?.database || 'your_table';
+        setSqlQuery(`SELECT * FROM ${dbName === 'store_order' ? 'yz_order' : 'your_table'} LIMIT 10`);
       }
     }
-  }, [dataSource]);
+  }, [selectedDataSource, databaseConnections]);
 
   const handleExecuteSql = async () => {
     if (!sqlQuery.trim()) {
       setError('请输入SQL查询语句');
+      return;
+    }
+
+    if (!selectedDataSource) {
+      setError('请选择数据源');
       return;
     }
 
@@ -84,6 +96,12 @@ const SqlExecutor = ({ dataSource, onDataSourceSaved }) => {
     setSuccess(false);
 
     try {
+      // 构建数据源对象
+      const dataSource = {
+        type: 'mysql',
+        id: selectedDataSource
+      };
+
       // 调用API执行SQL查询
       const result = await executeSQL(sqlQuery, dataSource);
 
@@ -140,6 +158,12 @@ const SqlExecutor = ({ dataSource, onDataSourceSaved }) => {
     setSaveError('');
 
     try {
+      // 构建数据源对象
+      const dataSource = {
+        type: 'mysql',
+        id: selectedDataSource
+      };
+
       const result = await saveQueryToDuckDB(
         sqlQuery,
         dataSource,
@@ -183,9 +207,13 @@ const SqlExecutor = ({ dataSource, onDataSourceSaved }) => {
     setPage(0);
   };
 
-  // 如果没有数据源，不显示此组件
-  if (!dataSource) {
-    return null;
+  // 如果没有可用的数据库连接，显示提示
+  if (databaseConnections.length === 0) {
+    return (
+      <Alert severity="warning" sx={{ mb: 2 }}>
+        没有可用的数据库连接，请先在数据源管理页面添加数据库连接。
+      </Alert>
+    );
   }
 
   return (
@@ -246,12 +274,37 @@ const SqlExecutor = ({ dataSource, onDataSourceSaved }) => {
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <CodeIcon sx={{ mr: 1, fontSize: '1.2rem', color: '#1976d2' }} />
             <Typography sx={{ fontWeight: 500, fontSize: '0.9rem' }}>
-              SQL查询执行器 - {dataSource.id || dataSource.params?.database || '数据源'}
+              SQL查询执行器 - {selectedDataSource ? databaseConnections.find(ds => ds.id === selectedDataSource)?.name || selectedDataSource : '请选择数据库连接'}
             </Typography>
           </Box>
         </AccordionSummary>
         
         <AccordionDetails sx={{ p: 2, pt: 2.5 }}>
+          {/* 数据库连接选择器 */}
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel id="datasource-select-label">选择数据库连接</InputLabel>
+            <Select
+              labelId="datasource-select-label"
+              value={selectedDataSource}
+              label="选择数据库连接"
+              onChange={(e) => setSelectedDataSource(e.target.value)}
+              size="small"
+            >
+              {databaseConnections.map((ds) => (
+                <MenuItem key={ds.id} value={ds.id}>
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      {ds.name}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {ds.type.toUpperCase()} - {ds.params?.database || '数据库'}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
           <TextField
             label="SQL查询"
             variant="outlined"

@@ -67,6 +67,15 @@ async def query_proxy(request: Request):
                         "connectionId": source.get("connectionId")
                     }
                 })
+            elif source.get("sourceType") == "duckdb" or source.get("type") == "duckdb":
+                # DuckDB数据源
+                converted_sources.append({
+                    "id": source.get("id"),
+                    "type": "duckdb",
+                    "params": {
+                        "table_name": source.get("table_name") or source.get("id")
+                    }
+                })
             else:
                 # 其他情况，尝试保持原格式
                 converted_sources.append(source)
@@ -169,6 +178,15 @@ async def download_proxy(request: Request):
                     "type": source.get("type"),
                     "params": source.get("params") or {
                         "connectionId": source.get("connectionId")
+                    }
+                })
+            elif source.get("sourceType") == "duckdb" or source.get("type") == "duckdb":
+                # DuckDB数据源
+                converted_sources.append({
+                    "id": source.get("id"),
+                    "type": "duckdb",
+                    "params": {
+                        "table_name": source.get("table_name") or source.get("id")
                     }
                 })
             else:

@@ -10,7 +10,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',  // 本地开发环境
+        target: process.env.DOCKER_ENV ? 'http://dataquery-backend:8000' : 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
         configure: (proxy, options) => {

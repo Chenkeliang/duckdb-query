@@ -30,12 +30,14 @@ import DataSourceList from './components/DataSourceManager/DataSourceList';
 import DatabaseConnectionManager from './components/DataSourceManager/DatabaseConnectionManager';
 import SqlExecutor from './components/DataSourceManager/SqlExecutor';
 import DuckDBManagementPage from './components/DuckDBManager/DuckDBManagementPage';
+import DatabaseTableManager from './components/DatabaseManager/DatabaseTableManager';
 
 const ModernApp = () => {
   const [currentTab, setCurrentTab] = useState(0);
   const [queryResults, setQueryResults] = useState({ columns: [], data: [] });
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [dataSources, setDataSources] = useState([]);
+  const [databaseConnections, setDatabaseConnections] = useState([]);
   const [lastFetchTime, setLastFetchTime] = useState(0);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
   const [selectedSources, setSelectedSources] = useState([]);
@@ -64,42 +66,54 @@ const ModernApp = () => {
       console.log('获取数据源列表...');
       setLastFetchTime(now);
 
-      const [filesResponse, dbResponse] = await Promise.all([
-        fetch('/api/list_files'),
-        fetch('/api/database_connections')
+      // 创建带超时的fetch函数
+      const fetchWithTimeout = (url, options = {}, timeout = 15000) => {
+        return Promise.race([
+          fetch(url, options),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('请求超时')), timeout)
+          )
+        ]);
+      };
+
+      const [dbResponse, duckdbResponse] = await Promise.all([
+        fetchWithTimeout('/api/database_connections').catch(err => {
+          console.warn('获取数据库连接失败:', err);
+          return { ok: false, json: () => Promise.resolve({ connections: [] }) };
+        }),
+        fetchWithTimeout('/api/duckdb_tables').catch(err => {
+          console.warn('获取DuckDB表失败:', err);
+          return { ok: false, json: () => Promise.resolve({ tables: [] }) };
+        })
       ]);
 
-      const files = filesResponse.ok ? await filesResponse.json() : [];
       const dbResult = dbResponse.ok ? await dbResponse.json() : { connections: [] };
+      const duckdbResult = duckdbResponse.ok ? await duckdbResponse.json() : { tables: [] };
 
-      // 构建文件数据源格式（获取列信息）
-      const fileSources = await Promise.all(files.map(async (filename) => {
-        let columns = [];
-        try {
-          const columnsResponse = await fetch(`/api/file_columns?filename=${encodeURIComponent(filename)}`);
-          if (columnsResponse.ok) {
-            columns = await columnsResponse.json();
-          }
-        } catch (error) {
-          console.warn(`获取文件 ${filename} 列信息失败:`, error);
+      // 获取文件数据源
+      let fileSources = [];
+      try {
+        const fileResponse = await fetchWithTimeout('/api/list_files');
+        if (fileResponse.ok) {
+          const fileList = await fileResponse.json();
+          fileSources = (fileList || []).map(filename => ({
+            id: filename,
+            name: filename,
+            type: 'file',
+            sourceType: 'file'
+          }));
         }
-
-        return {
-          id: filename.split('.')[0],
-          name: filename,
-          type: 'file',
-          path: filename,
-          columns: columns || [],
-          sourceType: 'file' // 添加源类型标识
-        };
-      }));
+      } catch (error) {
+        console.warn('获取文件列表失败:', error);
+        fileSources = [];
+      }
 
       // 构建数据库数据源格式（获取列信息）
       const dbSources = await Promise.all((dbResult.connections || []).map(async (db) => {
         let columns = [];
         try {
-          // 通过连接数据库来获取列信息
-          const connectResponse = await fetch('/api/connect_database', {
+          // 通过连接数据库来获取列信息（带超时）
+          const connectResponse = await fetchWithTimeout('/api/connect_database', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -109,7 +123,7 @@ const ModernApp = () => {
               type: db.type,
               params: db.params
             })
-          });
+          }, 10000); // 10秒超时
 
           if (connectResponse.ok) {
             const connectResult = await connectResponse.json();
@@ -132,8 +146,25 @@ const ModernApp = () => {
         };
       }));
 
-      setDataSources([...fileSources, ...dbSources]);
-      console.log('数据源列表更新完成');
+      // 构建DuckDB数据源格式
+      const duckdbSources = (duckdbResult.tables || []).map(table => ({
+        id: table.table_name,
+        name: `DuckDB表: ${table.table_name}`,
+        type: 'duckdb',
+        table_name: table.table_name,
+        columns: table.columns || [],
+        row_count: table.row_count || 0,
+        column_count: table.column_count || 0,
+        sourceType: 'duckdb' // 添加源类型标识
+      }));
+
+      // 约束：数据库连接只作为连接配置，不作为查询数据源
+      // 数据查询与结果页面只显示FILE和DUCKDB数据源
+      const queryDataSources = [...fileSources, ...duckdbSources];
+
+      setDataSources(queryDataSources);
+      setDatabaseConnections(dbSources); // 单独保存数据库连接供SQL执行器使用
+      console.log('数据源列表更新完成 - 查询数据源:', queryDataSources.length, '(文件:', fileSources.length, ', DuckDB表:', duckdbSources.length, '), 数据库连接:', dbSources.length);
     } catch (error) {
       console.error('获取数据源失败:', error);
     }
@@ -260,10 +291,11 @@ const ModernApp = () => {
                 }
               }}
             >
-              <Tab label="📁 数据源管理" />
-              <Tab label="🔍 数据查询与结果" />
-              <Tab label="💾 SQL执行器" />
-              <Tab label="🗄️ DuckDB管理" />
+              <Tab label="📁 数据源管理" value={0} />
+              <Tab label="🔍 数据查询与结果" value={1} />
+              <Tab label="💾 SQL执行器" value={2} />
+              <Tab label="🗄️ DuckDB管理" value={3} />
+              <Tab label="🗃️ 数据库表管理" value={4} />
             </Tabs>
 
             {/* 数据源管理页面 */}
@@ -293,6 +325,7 @@ const ModernApp = () => {
                 {/* 数据源列表区域 */}
                 <DataSourceList
                   dataSources={dataSources}
+                  databaseConnections={databaseConnections}
                   onRefresh={triggerRefresh}
                   refreshTrigger={refreshTrigger}
                 />
@@ -327,7 +360,7 @@ const ModernApp = () => {
                       🔍 查询构建器
                     </Typography>
                     <QueryBuilder
-                      dataSources={dataSources}
+                      dataSources={dataSources.filter(ds => ds.sourceType === 'duckdb')}
                       selectedSources={selectedSources}
                       setSelectedSources={setSelectedSources}
                       onResultsReceived={setQueryResults}
@@ -432,10 +465,7 @@ const ModernApp = () => {
                 <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
                   <CardContent>
                     <SqlExecutor
-                      dataSource={{
-                        type: 'mysql',
-                        id: 'sorder'
-                      }}
+                      databaseConnections={databaseConnections}
                       onDataSourceSaved={(newDataSource) => {
                         // 当保存新数据源时，刷新数据源列表
                         triggerRefresh();
@@ -451,6 +481,11 @@ const ModernApp = () => {
             {/* DuckDB管理页面 */}
             {currentTab === 3 && (
               <DuckDBManagementPage />
+            )}
+
+            {/* 数据库表管理页面 */}
+            {currentTab === 4 && (
+              <DatabaseTableManager databaseConnections={databaseConnections} />
             )}
           </Paper>
 

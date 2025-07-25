@@ -41,10 +41,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_API_URL=http://dataquery-backend:8000
       - REACT_APP_UI_MODE=modern
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
+      - DOCKER_ENV=true
     volumes:
       - ./frontend:/app
       - /app/node_modules

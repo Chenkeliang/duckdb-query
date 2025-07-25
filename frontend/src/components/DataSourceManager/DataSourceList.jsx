@@ -28,14 +28,14 @@ import {
   Storage as DatabaseIcon
 } from '@mui/icons-material';
 
-const DataSourceList = ({ dataSources = [], onRefresh, refreshTrigger }) => {
+const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh, refreshTrigger }) => {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // 从传递的dataSources中分离文件和数据库
+  // 从传递的dataSources中分离文件，数据库连接单独传递
   const files = dataSources.filter(ds => ds.sourceType === 'file').map(ds => ds.name);
-  const databases = dataSources.filter(ds => ds.sourceType === 'database');
+  const databases = databaseConnections; // 使用单独传递的数据库连接
   const [deleteDialog, setDeleteDialog] = useState({ open: false, item: null, type: null });
   const [previewDialog, setPreviewDialog] = useState({ open: false, data: null });
 
@@ -66,9 +66,20 @@ const DataSourceList = ({ dataSources = [], onRefresh, refreshTrigger }) => {
     }
   };
 
-  // 组件挂载时设置初始加载完成
+  // 当数据源或数据库连接有数据时，设置初始加载完成
   useEffect(() => {
-    setInitialLoading(false);
+    if (dataSources.length > 0 || databaseConnections.length > 0) {
+      setInitialLoading(false);
+    }
+  }, [dataSources, databaseConnections]);
+
+  // 超时机制：5秒后强制完成初始加载
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setInitialLoading(false);
+    }, 5000);
+
+    return () => clearTimeout(timeout);
   }, []);
 
   // 不再需要响应外部刷新触发，数据由父组件管理
