@@ -128,7 +128,7 @@ class QueryRequest(BaseModel):
     select_columns: Optional[List[str]] = None
     where_conditions: Optional[str] = None
     order_by: Optional[str] = None
-    limit: Optional[int] = 1000
+    limit: Optional[int] = None  # 移除默认限制，让用户自己决定
 
 
 class ExportFormat(str, Enum):
