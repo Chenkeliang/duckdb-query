@@ -12,6 +12,7 @@ from routers import (
     mysql_datasource_manager,
     mysql_query_fallback,
     mysql_robust_manager,
+    paste_data,
 )
 
 # 尝试导入可能存在的其他路由模块
@@ -184,6 +185,7 @@ app.include_router(mysql_query.router)  # 新增：MySQL自定义查询路由
 app.include_router(mysql_datasource_manager.router)  # 新增：MySQL数据源管理路由
 app.include_router(mysql_query_fallback.router)  # 新增：MySQL安全查询路由
 app.include_router(mysql_robust_manager.router)  # 新增：MySQL强化管理路由
+app.include_router(paste_data.router)  # 新增：数据粘贴板路由
 
 # 条件性注册可能存在的其他路由
 if enhanced_data_sources_available:

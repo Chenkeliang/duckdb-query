@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import FileUploader from './components/DataSourceManager/FileUploader';
 import DatabaseConnector from './components/DataSourceManager/DatabaseConnector';
+import DataPasteBoard from './components/DataSourceManager/DataPasteBoard';
 import DataGrid from './components/DataGrid';
 import QueryBuilder from './components/QueryBuilder/QueryBuilder';
 import { uploadFile, connectDatabase, deleteFile } from './services/apiClient';
@@ -199,6 +200,23 @@ function App() {
       console.error("Error connecting to database:", error);
       throw error;
     }
+  };
+
+  const handlePasteDataSaved = (dataSourceInfo) => {
+    // 添加粘贴数据源到数据源列表
+    const newSource = {
+      id: dataSourceInfo.id,
+      name: dataSourceInfo.name,
+      type: 'DUCKDB',
+      status: 'connected',
+      columns: dataSourceInfo.columns,
+      rows: dataSourceInfo.rows,
+      source: 'paste'
+    };
+
+    const updatedSources = [...dataSources, newSource];
+    setDataSources(updatedSources);
+    localStorage.setItem('dataSources', JSON.stringify(updatedSources));
   };
 
   const handleQueryResults = (data) => {
@@ -394,11 +412,13 @@ function App() {
                 >
                   <Tab label="文件上传" />
                   <Tab label="数据库连接" />
+                  <Tab label="数据粘贴板" />
                 </Tabs>
 
                 <Box sx={{ p: 2 }}>
                   {dataSourceTab === 0 && <FileUploader onUpload={handleFileUpload} />}
                   {dataSourceTab === 1 && <DatabaseConnector onConnect={handleDatabaseConnect} />}
+                  {dataSourceTab === 2 && <DataPasteBoard onDataSaved={handlePasteDataSaved} />}
                 </Box>
               </Paper>
 

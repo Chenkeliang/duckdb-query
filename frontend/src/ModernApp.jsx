@@ -26,6 +26,7 @@ import QueryBuilder from './components/QueryBuilder/QueryBuilder';
 import DataGrid from './components/DataGrid';
 import FileUploader from './components/DataSourceManager/FileUploader';
 import DatabaseConnector from './components/DataSourceManager/DatabaseConnector';
+import DataPasteBoard from './components/DataSourceManager/DataPasteBoard';
 import DataSourceList from './components/DataSourceManager/DataSourceList';
 import DatabaseConnectionManager from './components/DataSourceManager/DatabaseConnectionManager';
 import ModernDataDisplay from './components/Results/ModernDataDisplay';
@@ -222,6 +223,13 @@ const ModernApp = () => {
     }
   };
 
+  // 处理粘贴数据保存
+  const handlePasteDataSaved = (dataSourceInfo) => {
+    console.log('粘贴数据已保存:', dataSourceInfo);
+    // 触发数据源列表刷新
+    triggerRefresh();
+  };
+
   return (
     <ThemeProvider theme={modernTheme}>
       <CssBaseline />
@@ -308,7 +316,7 @@ const ModernApp = () => {
 
                 {/* 上传和连接区域 */}
                 <Grid container spacing={3} sx={{ mb: 4 }}>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={4}>
                     <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
                       <CardContent>
                         <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
@@ -318,8 +326,18 @@ const ModernApp = () => {
                       </CardContent>
                     </Card>
                   </Grid>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={4}>
                     <DatabaseConnectionManager onConnectionAdded={triggerRefresh} />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                          📋 数据粘贴板
+                        </Typography>
+                        <DataPasteBoard onDataSaved={handlePasteDataSaved} />
+                      </CardContent>
+                    </Card>
                   </Grid>
                 </Grid>
 
