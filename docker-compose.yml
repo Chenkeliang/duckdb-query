@@ -39,13 +39,11 @@ services:
       retries: 3
       start_period: 40s
 
-  # 前端服务 (开发模式)
+  # 前端服务
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
-      args:
-        - UI_MODE=modern
+      dockerfile: Dockerfile
     container_name: dataquery-frontend
     ports:
       - "3000:3000"

@@ -54,7 +54,7 @@ duckdb_con = get_db_connection()
 
 # MySQL配置文件路径
 MYSQL_CONFIG_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "mysql_configs.json"
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config", "mysql-configs.json"
 )
 # 用于保存原始密码的字典，这样在显示配置时不会暴露密码
 MYSQL_PASSWORDS = {}

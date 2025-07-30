@@ -42,91 +42,79 @@ A powerful, modern web-based platform for interactive data analysis and multi-so
 interactive-data-query/
 ├── 📄 README.md                    # Project documentation (English)
 ├── 📄 README_zh.md                 # Project documentation (Chinese)
-├── 📄 PROJECT_STRUCTURE.md         # Detailed project structure guide
 ├── 📄 LICENSE                      # MIT License
-├── 🔧 run-tests.sh                 # Quick test runner
 ├── 🐳 docker-compose.yml           # Docker deployment configuration
-├── 📄 vercel.json                  # Vercel deployment configuration
+├── 🔧 .gitignore                   # Git ignore rules
 │
-├── 🔧 api/                         # Backend API (FastAPI)
-│   ├── 📄 main.py                  # Application entry point
-│   ├── 📄 requirements.txt         # Python dependencies
+├── 🖥️ api/                         # Backend API (FastAPI)
 │   ├── 🐳 Dockerfile               # Backend Docker configuration
+│   ├── 📄 requirements.txt         # Python dependencies
+│   ├── 🚀 main.py                  # FastAPI application entry point
 │   ├── 📁 core/                    # Core business logic
-│   │   ├── duckdb_engine.py        # DuckDB integration
-│   │   ├── resource_manager.py     # Resource management
-│   │   └── database_manager.py     # Database connections
-│   ├── 📁 models/                  # Data models
-│   │   ├── query_models.py         # Query-related models
-│   │   └── database_models.py      # Database models
-│   ├── 📁 routers/                 # API endpoints
-│   │   ├── data_sources.py         # Data source management
-│   │   ├── query.py                # Query execution
-│   │   ├── query_proxy.py          # Smart query proxy with format conversion
-│   │   ├── export.py               # Data export
-│   │   └── enhanced_data_sources.py # Enhanced data source features
-│   └── 📁 data/                    # Uploaded data files
+│   │   ├── database_manager.py     # Database connection management
+│   │   ├── duckdb_engine.py        # DuckDB query engine
+│   │   ├── file_datasource_manager.py # File data source handling
+│   │   └── resource_manager.py     # Resource management utilities
+│   ├── 📁 models/                  # Pydantic data models
+│   │   └── query_models.py         # Query request/response models
+│   ├── 📁 routers/                 # API route handlers
+│   │   ├── data_sources.py         # Data source management endpoints
+│   │   ├── mysql_datasource_manager.py # MySQL connection management
+│   │   ├── mysql_query.py          # MySQL query execution
+│   │   ├── paste_data.py           # Data paste board functionality
+│   │   ├── query.py                # General query endpoints
+│   │   └── query_proxy.py          # Query proxy for format conversion
+│   ├── 📁 utils/                   # Utility functions
+│   └── 📁 exports/                 # Export file storage
 │
-├── 🎨 frontend/                    # Frontend application (React)
-│   ├── 📄 package.json             # Node.js dependencies
-│   ├── 📄 vite.config.js           # Vite configuration
-│   ├── 📄 index.html               # HTML template
+├── 🎨 frontend/                    # Frontend React Application
 │   ├── 🐳 Dockerfile               # Frontend Docker configuration
-│   ├── 📄 .env.example             # Environment variables template
-│   └── 📁 src/                     # Source code
-│       ├── 📄 App.jsx              # Main application component
-│       ├── 📄 main.jsx             # Application entry point
-│       ├── 📁 components/          # React components
-│       │   ├── DataGrid.jsx        # Data display grid
+│   ├── 📄 package.json             # Node.js dependencies
+│   ├── ⚙️ vite.config.js           # Vite build configuration
+│   └── 📁 src/                     # React source code
+│       ├── 🚀 main.jsx             # Application entry point
+│       ├── 📱 ModernApp.jsx        # Main application component
+│       ├── 📁 components/          # Reusable React components
 │       │   ├── DataSourceManager/  # Data source management UI
-│       │   ├── QueryBuilder/       # Visual query builder
-│       │   └── ExportManager/      # Export functionality UI
-│       ├── 📁 services/            # API client services
-│       │   └── apiClient.js        # HTTP client configuration
-│       └── 📁 assets/              # Static assets
+│       │   ├── QueryInterface/     # Query building interface
+│       │   ├── ResultsDisplay/     # Results visualization
+│       │   └── common/             # Common UI components
+│       ├── 📁 services/            # API service layer
+│       ├── 📁 styles/              # CSS and styling
+│       └── 📁 theme/               # Material-UI theme configuration
 │
-├── 🧪 tests/                       # Comprehensive test suite
-│   ├── 📄 README.md                # Testing documentation
-│   ├── 🔧 run-all-tests.sh         # Aggregated test runner
-│   ├── 📁 unit/                    # Unit tests (future expansion)
-│   ├── 📁 integration/             # Integration tests (future expansion)
-│   ├── 📁 e2e/                     # End-to-end tests (future expansion)
-│   └── 📁 scripts/                 # Test scripts
-│       ├── test-all-functions.sh   # Core functionality tests
-│       ├── test-api-functions.sh   # API endpoint tests
-│       ├── test-datasource-fixes.sh # Data source tests
-│       ├── test-query-fix.sh       # Query functionality tests
-│       ├── test-ui-fixes.sh        # UI functionality tests
-│       └── [8 more test scripts]   # Additional specialized tests
+├── ⚙️ config/                      # Configuration files
+│   ├── 📄 mysql-configs.json.example # MySQL configuration template
+│   ├── 📄 datasources.json.example # Data source configuration template
+│   └── 📁 deployment/              # Deployment configurations
+│
+├── 💾 data/                        # Data storage
+│   ├── 📁 duckdb/                  # DuckDB database files
+│   ├── 📄 duckdb_data.db           # Main DuckDB database
+│   ├── 📄 file_datasources.json    # File data source registry
+│   └── 📁 uploads/                 # Uploaded file storage
+│
+├── 🔧 scripts/                     # Utility scripts
+│   ├── 🐳 docker-dev.sh            # Development Docker setup
+│   ├── 🐳 docker-start.sh          # Production Docker startup
+│   └── 🔧 debug-backend.sh         # Backend debugging utilities
 │
 ├── 📚 docs/                        # Documentation
 │   ├── 📄 README.md                # Documentation index
-│   ├── 📁 fix-summaries/           # Development and fix documentation
-│   │   ├── CHANGELOG.md            # Version history
-│   │   ├── CONTRIBUTING.md         # Contribution guidelines
-│   │   ├── DEPLOYMENT_REPORT.md    # Deployment verification
-│   │   ├── FINAL_IMPLEMENTATION_SUMMARY.md # Implementation summary
-│   │   └── [7 more documentation files]
-│   └── 📁 test-reports/            # Test reports (future expansion)
+│   ├── 📄 api-documentation.md     # API documentation
+│   ├── 📄 deployment-guide.md      # Deployment instructions
+│   └── 📁 fix-summaries/           # Development fix summaries
 │
-├── 🔧 scripts/                     # Utility scripts
-│   ├── 📁 deployment/              # Deployment scripts
-│   ├── 📁 development/             # Development utilities
-│   ├── 📁 docker/                  # Docker-related scripts
-│   └── 📁 testing/                 # Testing utilities
-│
-├── 🗃️ config/                      # Configuration files
-│   ├── 📁 deployment/              # Deployment configurations
-│   └── 📁 docker/                  # Docker configurations
-│
-├── 📦 archive/                     # Archived files
-│   ├── 📁 deprecated/              # Deprecated code
-│   └── 📁 old-tests/               # Legacy test files
-│
-└── 📁 temp_files/                  # Temporary files (auto-generated)
+└── 🧪 tests/                       # Test suites
+    ├── 📁 backend/                 # Backend API tests
+    ├── 📁 frontend/                # Frontend component tests
+    ├── 📁 e2e/                     # End-to-end tests
+    └── 📄 run-all-tests.sh         # Test runner script
 ```
 
-> **Note**: This structure reflects the recent project reorganization for better maintainability and testing coverage.
+```
+
+> **Note**: This structure reflects the clean, organized architecture for better maintainability and development experience.
 
 ## 🚀 Quick Start
 
@@ -145,39 +133,37 @@ The fastest and most reliable way to get started:
 git clone <repository-url>
 cd interactive-data-query
 
-# 🚀 一键启动 (推荐)
-./docker-start.sh
+# 🚀 One-click startup (Recommended)
+docker-compose up --build -d
 
-# 或手动启动
-docker-compose -f docker-compose.full.yml up --build -d
+# Or use the startup script
+./scripts/docker-start.sh
 ```
 
-> **📝 Note**: 使用 `docker-compose.full.yml` 配置文件实现前后端统一Docker部署。
-
 **Access the application:**
-- 🌐 前端界面: http://localhost:3000
-- 📡 后端API: http://localhost:8000
-- 📚 API文档: http://localhost:8000/docs
-- 🔍 健康检查: http://localhost:8000/health
-- 🔄 查询代理: http://localhost:8000/api/query_proxy (自动格式转换)
-- 📤 下载代理: http://localhost:8000/api/download_proxy (自动导出格式转换)
+- 🌐 Frontend Interface: http://localhost:3000
+- 📡 Backend API: http://localhost:8000
+- 📚 API Documentation: http://localhost:8000/docs
+- 🔍 Health Check: http://localhost:8000/health
+- 🔄 Query Proxy: http://localhost:8000/api/query_proxy
+- 📤 Download Proxy: http://localhost:8000/api/download_proxy
 
 **Common Docker commands:**
 ```bash
-# 查看服务状态
-docker-compose -f docker-compose.full.yml ps
+# View service status
+docker-compose ps
 
-# 查看实时日志
-docker-compose -f docker-compose.full.yml logs -f
+# View real-time logs
+docker-compose logs -f
 
-# 停止服务
-docker-compose -f docker-compose.full.yml down
+# Stop services
+docker-compose down
 
-# 重新构建并启动
-docker-compose -f docker-compose.full.yml up --build -d
+# Rebuild and start
+docker-compose up --build -d
 
-# 重启服务
-docker-compose -f docker-compose.full.yml restart
+# Restart services
+docker-compose restart
 ```
 
 ### Method 2: Local Development Setup
@@ -206,16 +192,52 @@ npm run dev
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:8000
 
-### Method 3: One-Click Scripts
+## ⚙️ Configuration
 
-Use the provided convenience scripts:
+### Database Configuration
+
+1. **Copy configuration templates:**
+```bash
+cp config/mysql-configs.json.example config/mysql-configs.json
+cp config/datasources.json.example config/datasources.json
+```
+
+2. **Edit MySQL configuration** (`config/mysql-configs.json`):
+```json
+{
+  "connections": [
+    {
+      "name": "production",
+      "host": "localhost",
+      "port": 3306,
+      "user": "your_username",
+      "password": "your_password",
+      "database": "your_database"
+    }
+  ]
+}
+```
+
+3. **Configure data sources** (`config/datasources.json`):
+```json
+{
+  "file_sources": [],
+  "database_sources": []
+}
+```
+
+### Environment Variables
+
+Create `.env` files for environment-specific settings:
 
 ```bash
-# For local development (installs dependencies automatically)
-./start-local.sh
+# Backend (.env in api/ directory)
+DATABASE_URL=sqlite:///./data/duckdb_data.db
+MYSQL_CONFIG_PATH=../config/mysql-configs.json
+UPLOAD_DIR=../data/uploads
 
-# For Docker deployment with optimized settings
-./start-fixed.sh
+# Frontend (.env in frontend/ directory)
+VITE_API_BASE_URL=http://localhost:8000
 ```
 
 ## 🧪 Testing

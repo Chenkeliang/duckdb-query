@@ -21,10 +21,10 @@ router = APIRouter()
 
 # 配置文件路径
 MYSQL_CONFIG_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "mysql_configs.json"
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config", "mysql-configs.json"
 )
 MYSQL_DATASOURCE_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "mysql_datasources.json"
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config", "datasources.json"
 )
 
 

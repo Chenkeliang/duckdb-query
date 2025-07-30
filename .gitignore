@@ -91,5 +91,49 @@ dist/
 *.tmp
 *.swp
 
-# MySQL配置文件（包含敏感信息）
+# Project specific files
 api/mysql_configs.json
+api/mysql_datasources.json
+api/temp_files/*
+!api/temp_files/.gitkeep
+api/exports/*
+!api/exports/.gitkeep
+config/mysql-configs.json
+config/mysql-production.json
+data/duckdb_data.db
+data/uploads/*
+!data/uploads/.gitkeep
+
+# Frontend build outputs
+frontend/dist/
+frontend/build/
+
+# Additional Node.js ignores
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.npm
+.eslintcache
+
+# OS specific
+Thumbs.db
+ehthumbs.db
+.Spotlight-V100
+.Trashes
+
+# Docker
+.dockerignore
+
+# Logs
+logs/
+*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup

@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 def load_mysql_configs_on_startup():
     """应用启动时加载MySQL配置到数据库管理器"""
     try:
-        mysql_config_file = "mysql_configs.json"
+        mysql_config_file = "../config/mysql-configs.json"
         if os.path.exists(mysql_config_file):
             with open(mysql_config_file, "r") as f:
                 configs = json.load(f)
@@ -62,7 +62,7 @@ def load_mysql_configs_on_startup():
                 else:
                     logger.error(f"加载MySQL配置失败: {config['id']}")
         else:
-            logger.info("未找到mysql_configs.json文件")
+            logger.info("未找到mysql-configs.json文件")
 
     except Exception as e:
         logger.error(f"加载MySQL配置时出错: {str(e)}")
@@ -74,9 +74,9 @@ def load_mysql_datasources_on_startup():
         logger.info("开始重新加载MySQL数据源...")
 
         # 加载MySQL数据源配置
-        mysql_datasource_file = "mysql_datasources.json"
+        mysql_datasource_file = "../config/datasources.json"
         if not os.path.exists(mysql_datasource_file):
-            logger.info("未找到mysql_datasources.json文件")
+            logger.info("未找到datasources.json文件")
             return
 
         with open(mysql_datasource_file, "r", encoding="utf-8") as f:
@@ -87,7 +87,7 @@ def load_mysql_datasources_on_startup():
             return
 
         # 加载MySQL连接配置
-        mysql_config_file = "mysql_configs.json"
+        mysql_config_file = "../config/mysql-configs.json"
         mysql_configs = {}
         if os.path.exists(mysql_config_file):
             with open(mysql_config_file, "r", encoding="utf-8") as f:

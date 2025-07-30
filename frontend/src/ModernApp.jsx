@@ -14,10 +14,9 @@ import {
   Button,
   Tabs,
   Tab,
-  IconButton,
-  Tooltip
+
 } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
+
 import { modernTheme } from './theme/modernTheme';
 import './styles/modern.css';
 
@@ -256,25 +255,7 @@ const ModernApp = () => {
             >
               🚀 DataQuery Pro
             </Typography>
-            <Tooltip title="手动刷新数据源">
-              <IconButton
-                color="inherit"
-                onClick={() => fetchDataSources(true)}
-                sx={{ mr: 1 }}
-              >
-                <RefreshIcon />
-              </IconButton>
-            </Tooltip>
-            <Button
-              color="inherit"
-              sx={{
-                borderRadius: 2,
-                textTransform: 'none',
-                fontWeight: 500
-              }}
-            >
-              用户中心
-            </Button>
+
           </Toolbar>
         </AppBar>
 
