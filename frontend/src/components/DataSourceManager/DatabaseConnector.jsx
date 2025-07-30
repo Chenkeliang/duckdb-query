@@ -260,19 +260,24 @@ const DatabaseConnector = ({ onConnect }) => {
       setError('请选择数据库类型');
       return false;
     }
-    
+
     if (dbType !== 'csv') {
       if (!host) {
         setError('请输入主机地址');
         return false;
       }
-      
+
       if (!database) {
         setError('请输入数据库名称');
         return false;
       }
+
+      if (!sqlQuery || sqlQuery.trim() === '') {
+        setError('请输入SQL查询语句');
+        return false;
+      }
     }
-    
+
     return true;
   };
   

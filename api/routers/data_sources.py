@@ -736,7 +736,8 @@ async def connect_database(connection: DatabaseConnection = Body(...)):
                     try:
                         host = connection.params.get("host", "localhost")
                         port = connection.params.get("port", 3306)
-                        user = connection.params.get("user", "")
+                        # 支持 user 和 username 两种参数名称
+                        user = connection.params.get("user") or connection.params.get("username", "")
                         password = connection.params.get("password", "")
                         database = connection.params.get("database", "")
 
@@ -1039,10 +1040,15 @@ async def get_database_tables(connection_id: str):
         import pymysql
         db_config = connection.params
 
+        # 支持 user 和 username 两种参数名称
+        username = db_config.get('user') or db_config.get('username')
+        if not username:
+            raise HTTPException(status_code=400, detail="缺少用户名参数 (user 或 username)")
+
         conn = pymysql.connect(
             host=db_config.get('host', 'localhost'),
             port=int(db_config.get('port', 3306)),
-            user=db_config['user'],
+            user=username,
             password=db_config['password'],
             database=db_config['database'],
             charset='utf8mb4',
@@ -1126,10 +1132,15 @@ async def get_table_details(connection_id: str, table_name: str):
         import pymysql
         db_config = connection.params
 
+        # 支持 user 和 username 两种参数名称
+        username = db_config.get('user') or db_config.get('username')
+        if not username:
+            raise HTTPException(status_code=400, detail="缺少用户名参数 (user 或 username)")
+
         conn = pymysql.connect(
             host=db_config.get('host', 'localhost'),
             port=int(db_config.get('port', 3306)),
-            user=db_config['user'],
+            user=username,
             password=db_config['password'],
             database=db_config['database'],
             charset='utf8mb4',
