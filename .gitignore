@@ -91,7 +91,8 @@ dist/
 *.tmp
 *.swp
 
-# Project specific files
+# Project specific files - 敏感信息和数据文件
+# Sensitive information and data files
 api/mysql_configs.json
 api/mysql_datasources.json
 api/temp_files/*
@@ -100,9 +101,21 @@ api/exports/*
 !api/exports/.gitkeep
 config/mysql-configs.json
 config/mysql-production.json
+config/datasources.json
 data/duckdb_data.db
+data/duckdb/main.db*
+data/duckdb/temp/
 data/uploads/*
 !data/uploads/.gitkeep
+
+# 清理报告文件
+cleanup-report.txt
+
+# 真实配置文件（只保留.example文件）
+# Real configuration files (keep only .example files)
+**/mysql-configs.json
+**/datasources.json
+!**/*.example
 
 # Frontend build outputs
 frontend/dist/
