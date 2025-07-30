@@ -1,6 +1,6 @@
 # Interactive Data Query Platform
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/your-repo/interactive-data-query)
+[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/your-repo/interactive-data-query)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![React](https://img.shields.io/badge/react-18.2+-blue.svg)](https://reactjs.org/)
@@ -449,6 +449,25 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 - **Documentation**: [./docs/](./docs/)
 - **Issues**: [GitHub Issues](https://github.com/your-repo/interactive-data-query/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/your-repo/interactive-data-query/discussions)
+
+## 📋 版本历史
+
+### v2.2.0 (2025-07-30) - 最新版本 🎉
+- **🔧 数据库连接系统重构**：修复MySQL连接参数不一致问题，新增连接测试功能
+- **📁 文件上传系统升级**：解决413错误，支持100MB大文件上传
+- **🛡️ 安全增强**：修复容器内敏感数据残留，完善清理系统
+- **🎨 用户体验提升**：新增测试连接按钮，改进错误处理和表单验证
+- **详细说明**：[查看完整发布说明](./RELEASE_NOTES_v2.2.0.md)
+
+### v2.1.0 (2025-07-29)
+- 多数据源支持和查询构建器
+- 数据粘贴板功能
+- Docker容器化部署
+
+### v2.0.0 (2025-07-28)
+- 项目架构重构
+- 现代化UI设计
+- 企业级功能特性
 
 ---
 
