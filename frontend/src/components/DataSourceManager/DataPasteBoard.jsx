@@ -102,6 +102,28 @@ const DataPasteBoard = ({ onDataSaved }) => {
     return 'VARCHAR';
   };
 
+  // 清理单元格数据（去除引号和空格）
+  const cleanCellData = (cell) => {
+    if (!cell) return '';
+
+    let cleaned = cell.toString().trim();
+
+    // 处理引号包裹的情况
+    if (cleaned.length >= 2) {
+      // 处理双引号包裹: "content"
+      if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+        cleaned = cleaned.slice(1, -1);
+      }
+      // 处理单引号包裹: 'content'
+      else if (cleaned.startsWith("'") && cleaned.endsWith("'")) {
+        cleaned = cleaned.slice(1, -1);
+      }
+    }
+
+    // 再次去除内部可能的首尾空格
+    return cleaned.trim();
+  };
+
   // 解析粘贴的数据
   const parseData = () => {
     if (!pastedData.trim()) {
@@ -111,14 +133,14 @@ const DataPasteBoard = ({ onDataSaved }) => {
 
     try {
       setError('');
-      
+
       // 自动检测分隔符
       const detectedDelimiter = detectDelimiter(pastedData);
       setDelimiter(detectedDelimiter);
-      
+
       const lines = pastedData.trim().split('\n');
-      const rows = lines.map(line => 
-        line.split(detectedDelimiter).map(cell => cell.trim())
+      const rows = lines.map(line =>
+        line.split(detectedDelimiter).map(cell => cleanCellData(cell))
       );
       
       if (rows.length === 0) {
@@ -269,52 +291,106 @@ const DataPasteBoard = ({ onDataSaved }) => {
   };
 
   return (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <PasteIcon />
-        数据粘贴板
-      </Typography>
-      
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        从DataGrip、Excel或其他工具复制数据，粘贴到下方文本框中，系统将自动识别格式并保存为DuckDB表
-      </Typography>
+    <Box>
+      {/* 移除重复的标题，因为外层已经有了 */}
 
-      {/* 数据输入区域 */}
-      <Paper sx={{ p: 2, mb: 2 }}>
+      {/* 数据输入区域 - 现代化设计 */}
+      <Box sx={{ mb: 3 }}>
         <TextField
           fullWidth
           multiline
-          rows={8}
-          placeholder="在此粘贴您的数据...&#10;&#10;示例：&#10;23,ali70744,健康学习圈连续包月,39.00&#10;22,ali70743,健康学习圈连续包年,399.00&#10;21,ali70742,职场学习圈连续包月,39.00"
+          rows={6}
+          placeholder="✨ 在此粘贴您的数据...&#10;&#10;💡 支持格式：&#10;• CSV: 23,ali70744,健康学习圈连续包月,39.00&#10;• TSV: 23	ali70744	健康学习圈连续包月	39.00&#10;• 带引号: &quot;23&quot;,&quot;ali70744&quot;,&quot;健康学习圈连续包月&quot;,&quot;39.00&quot;&#10;&#10;🚀 系统将自动识别分隔符和数据类型"
           value={pastedData}
           onChange={(e) => setPastedData(e.target.value)}
-          sx={{ mb: 2 }}
+          sx={{
+            mb: 2,
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 2,
+              backgroundColor: '#f8fafc',
+              border: '2px dashed #cbd5e0',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                borderColor: '#667eea',
+                backgroundColor: '#f1f5f9'
+              },
+              '&.Mui-focused': {
+                borderColor: '#667eea',
+                backgroundColor: 'white',
+                borderStyle: 'solid',
+                boxShadow: '0 0 0 3px rgba(102, 126, 234, 0.1)'
+              }
+            },
+            '& .MuiInputBase-input': {
+              fontSize: '0.9rem',
+              lineHeight: 1.6,
+              fontFamily: 'Monaco, Consolas, "Courier New", monospace'
+            }
+          }}
         />
-        
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <Button
             variant="contained"
             startIcon={<AutoDetectIcon />}
             onClick={parseData}
             disabled={!pastedData.trim()}
+            sx={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              borderRadius: 2,
+              px: 3,
+              py: 1,
+              fontWeight: 600,
+              textTransform: 'none',
+              boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%)',
+                boxShadow: '0 6px 20px rgba(102, 126, 234, 0.4)',
+                transform: 'translateY(-1px)'
+              },
+              '&:disabled': {
+                background: '#e2e8f0',
+                color: '#a0aec0',
+                boxShadow: 'none'
+              }
+            }}
           >
-            自动解析
+            🔍 智能解析
           </Button>
-          
+
           <Button
             variant="outlined"
             startIcon={<ClearIcon />}
             onClick={clearForm}
+            sx={{
+              borderRadius: 2,
+              borderColor: '#e2e8f0',
+              color: '#718096',
+              textTransform: 'none',
+              '&:hover': {
+                borderColor: '#cbd5e0',
+                backgroundColor: '#f7fafc'
+              }
+            }}
           >
             清空
           </Button>
-          
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel>分隔符</InputLabel>
+
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel sx={{ color: '#718096' }}>分隔符</InputLabel>
             <Select
               value={delimiter}
               onChange={(e) => setDelimiter(e.target.value)}
               label="分隔符"
+              sx={{
+                borderRadius: 2,
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#e2e8f0'
+                },
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#cbd5e0'
+                }
+              }}
             >
               <MenuItem value=",">逗号 (,)</MenuItem>
               <MenuItem value="\t">制表符 (Tab)</MenuItem>
@@ -324,7 +400,7 @@ const DataPasteBoard = ({ onDataSaved }) => {
             </Select>
           </FormControl>
         </Box>
-      </Paper>
+      </Box>
 
       {/* 错误和成功提示 */}
       {error && (
@@ -339,15 +415,35 @@ const DataPasteBoard = ({ onDataSaved }) => {
         </Alert>
       )}
 
-      {/* 数据预览和配置 */}
+      {/* 数据预览和配置 - 美化设计 */}
       {parsedData && (
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <PreviewIcon />
-            数据预览和配置
-          </Typography>
-          
-          <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Box
+          sx={{
+            background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+            borderRadius: 3,
+            p: 3,
+            mb: 3,
+            border: '1px solid #e2e8f0'
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+            <Box
+              sx={{
+                background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                borderRadius: '50%',
+                p: 1,
+                mr: 2,
+                color: 'white'
+              }}
+            >
+              <PreviewIcon />
+            </Box>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#2d3748' }}>
+              数据预览和配置
+            </Typography>
+          </Box>
+
+          <Grid container spacing={3} sx={{ mb: 3 }}>
             <Grid item xs={12} md={8}>
               <TextField
                 fullWidth
@@ -357,19 +453,39 @@ const DataPasteBoard = ({ onDataSaved }) => {
                 placeholder="例如：产品价格表、用户数据、订单信息等"
                 required
                 helperText="建议使用有意义的中文名称，便于后续查询和管理"
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 2,
+                    backgroundColor: 'white',
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: '#667eea'
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: '#667eea'
+                    }
+                  }
+                }}
               />
             </Grid>
             <Grid item xs={12} md={4}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, height: '100%' }}>
                 <Chip
                   label={`${parsedData.rowCount} 行`}
-                  color="primary"
-                  variant="outlined"
+                  sx={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: 'white',
+                    fontWeight: 600,
+                    '& .MuiChip-label': { px: 2 }
+                  }}
                 />
                 <Chip
                   label={`${parsedData.columnCount} 列`}
-                  color="secondary"
-                  variant="outlined"
+                  sx={{
+                    background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                    color: 'white',
+                    fontWeight: 600,
+                    '& .MuiChip-label': { px: 2 }
+                  }}
                 />
               </Box>
             </Grid>
@@ -466,17 +582,39 @@ const DataPasteBoard = ({ onDataSaved }) => {
             </Table>
           </TableContainer>
 
-          {/* 保存按钮 */}
-          <Button
-            variant="contained"
-            startIcon={<SaveIcon />}
-            onClick={saveToDatabase}
-            disabled={loading || !tableName.trim()}
-            size="large"
-          >
-            {loading ? '保存中...' : '保存到数据库'}
-          </Button>
-        </Paper>
+          {/* 保存按钮 - 美化设计 */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+            <Button
+              variant="contained"
+              startIcon={<SaveIcon />}
+              onClick={saveToDatabase}
+              disabled={loading || !tableName.trim()}
+              size="large"
+              sx={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                borderRadius: 3,
+                px: 4,
+                py: 1.5,
+                fontSize: '1.1rem',
+                fontWeight: 600,
+                textTransform: 'none',
+                boxShadow: '0 8px 25px rgba(102, 126, 234, 0.3)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%)',
+                  boxShadow: '0 12px 35px rgba(102, 126, 234, 0.4)',
+                  transform: 'translateY(-2px)'
+                },
+                '&:disabled': {
+                  background: '#e2e8f0',
+                  color: '#a0aec0',
+                  boxShadow: 'none'
+                }
+              }}
+            >
+              {loading ? '🔄 保存中...' : '💾 保存到数据库'}
+            </Button>
+          </Box>
+        </Box>
       )}
     </Box>
   );

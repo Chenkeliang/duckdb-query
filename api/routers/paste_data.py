@@ -48,28 +48,58 @@ async def save_paste_data(request: PasteDataRequest):
         
         # 创建DataFrame
         df = pd.DataFrame(request.data_rows, columns=request.column_names)
-        
+
+        # 高级数据清理函数
+        def clean_cell_data(series):
+            """清理单元格数据，去除引号和多余空格"""
+            # 转换为字符串并去除首尾空格
+            cleaned = series.astype(str).str.strip()
+
+            # 去除引号包裹（双引号和单引号）
+            cleaned = cleaned.str.replace(r'^"(.*)"$', r'\1', regex=True)  # 去除双引号
+            cleaned = cleaned.str.replace(r"^'(.*)'$", r'\1', regex=True)  # 去除单引号
+
+            # 再次去除可能的首尾空格
+            cleaned = cleaned.str.strip()
+
+            # 处理空字符串和None值
+            cleaned = cleaned.replace('', None)
+            cleaned = cleaned.replace('null', None)
+            cleaned = cleaned.replace('NULL', None)
+
+            return cleaned
+
         # 数据类型转换
         for i, (col_name, col_type) in enumerate(zip(request.column_names, request.column_types)):
             try:
                 if col_type == 'INTEGER':
-                    # 先清理数据，移除空白字符
-                    df[col_name] = df[col_name].astype(str).str.strip()
-                    # 处理空值
+                    # 先清理数据
+                    df[col_name] = clean_cell_data(df[col_name])
+                    # 处理空值并转换为整数
                     df[col_name] = pd.to_numeric(df[col_name], errors='coerce').fillna(0).astype(int)
                 elif col_type == 'DOUBLE':
-                    df[col_name] = df[col_name].astype(str).str.strip()
+                    # 先清理数据
+                    df[col_name] = clean_cell_data(df[col_name])
+                    # 转换为浮点数
                     df[col_name] = pd.to_numeric(df[col_name], errors='coerce').fillna(0.0)
                 elif col_type == 'DATE':
+                    # 先清理数据
+                    df[col_name] = clean_cell_data(df[col_name])
+                    # 转换为日期
                     df[col_name] = pd.to_datetime(df[col_name], errors='coerce')
                 elif col_type == 'BOOLEAN':
-                    df[col_name] = df[col_name].astype(str).str.lower().str.strip()
+                    # 先清理数据并转换为小写
+                    df[col_name] = clean_cell_data(df[col_name]).str.lower()
+                    # 布尔值映射
                     df[col_name] = df[col_name].map({
                         'true': True, 'false': False, '1': True, '0': False,
                         'yes': True, 'no': False, 't': True, 'f': False
                     }).fillna(False)
                 else:  # VARCHAR
-                    df[col_name] = df[col_name].astype(str).str.strip()
+                    # 清理数据但保持为字符串
+                    df[col_name] = clean_cell_data(df[col_name])
+                    # 将None值转换为空字符串
+                    df[col_name] = df[col_name].fillna('')
                     
             except Exception as e:
                 logger.warning(f"列 {col_name} 类型转换失败，使用字符串类型: {str(e)}")

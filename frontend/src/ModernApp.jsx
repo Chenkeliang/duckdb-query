@@ -314,30 +314,106 @@ const ModernApp = () => {
                   数据源管理
                 </Typography>
 
-                {/* 上传和连接区域 */}
+                {/* 数据输入区域 - 重新设计布局 */}
                 <Grid container spacing={3} sx={{ mb: 4 }}>
-                  <Grid item xs={12} md={4}>
-                    <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
-                      <CardContent>
-                        <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                          📁 文件上传
+                  {/* 主要功能：数据粘贴板 */}
+                  <Grid item xs={12} lg={8}>
+                    <Card
+                      sx={{
+                        borderRadius: 3,
+                        border: 'none',
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        color: 'white',
+                        boxShadow: '0 10px 30px rgba(102, 126, 234, 0.3)',
+                        overflow: 'visible'
+                      }}
+                    >
+                      <CardContent sx={{ p: 4 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                          <Box
+                            sx={{
+                              background: 'rgba(255,255,255,0.2)',
+                              borderRadius: '50%',
+                              p: 1.5,
+                              mr: 2,
+                              backdropFilter: 'blur(10px)'
+                            }}
+                          >
+                            📋
+                          </Box>
+                          <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '1.5rem' }}>
+                            智能数据粘贴板
+                          </Typography>
+                        </Box>
+                        <Typography variant="body1" sx={{ mb: 3, opacity: 0.9, lineHeight: 1.6 }}>
+                          从 DataGrip、Excel 或任何工具复制数据，一键智能解析并保存到 DuckDB
                         </Typography>
-                        <FileUploader onUpload={handleFileUpload} />
+                        <Box
+                          sx={{
+                            background: 'rgba(255,255,255,0.95)',
+                            borderRadius: 2,
+                            p: 3,
+                            backdropFilter: 'blur(10px)',
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+                          }}
+                        >
+                          <DataPasteBoard onDataSaved={handlePasteDataSaved} />
+                        </Box>
                       </CardContent>
                     </Card>
                   </Grid>
-                  <Grid item xs={12} md={4}>
-                    <DatabaseConnectionManager onConnectionAdded={triggerRefresh} />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
-                      <CardContent>
-                        <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                          📋 数据粘贴板
-                        </Typography>
-                        <DataPasteBoard onDataSaved={handlePasteDataSaved} />
-                      </CardContent>
-                    </Card>
+
+                  {/* 辅助功能：文件上传和数据库连接 */}
+                  <Grid item xs={12} lg={4}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {/* 文件上传 */}
+                      <Card
+                        sx={{
+                          borderRadius: 2,
+                          border: '1px solid #e2e8f0',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                          transition: 'all 0.3s ease',
+                          '&:hover': {
+                            boxShadow: '0 8px 25px rgba(0,0,0,0.1)',
+                            transform: 'translateY(-2px)'
+                          }
+                        }}
+                      >
+                        <CardContent sx={{ p: 3 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                            <Box
+                              sx={{
+                                background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                                borderRadius: '50%',
+                                p: 1,
+                                mr: 1.5,
+                                color: 'white'
+                              }}
+                            >
+                              📁
+                            </Box>
+                            <Typography variant="h6" sx={{ fontWeight: 600, color: '#2d3748' }}>
+                              文件上传
+                            </Typography>
+                          </Box>
+                          <FileUploader onUpload={handleFileUpload} />
+                        </CardContent>
+                      </Card>
+
+                      {/* 数据库连接 */}
+                      <Box sx={{
+                        '& .MuiCard-root': {
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                          transition: 'all 0.3s ease',
+                          '&:hover': {
+                            boxShadow: '0 8px 25px rgba(0,0,0,0.1)',
+                            transform: 'translateY(-2px)'
+                          }
+                        }
+                      }}>
+                        <DatabaseConnectionManager onConnectionAdded={triggerRefresh} />
+                      </Box>
+                    </Box>
                   </Grid>
                 </Grid>
 
