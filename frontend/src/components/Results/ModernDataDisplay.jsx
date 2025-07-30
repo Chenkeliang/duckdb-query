@@ -70,7 +70,7 @@ const ModernDataDisplay = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [exportMenuAnchor, setExportMenuAnchor] = useState(null);
   const [columnMenuAnchor, setColumnMenuAnchor] = useState(null);
-  const [visibleColumns, setVisibleColumns] = useState(new Set(columns.map(col => col.field)));
+  const [visibleColumns, setVisibleColumns] = useState(new Set());
   const [sortModel, setSortModel] = useState([]);
   const [filterModel, setFilterModel] = useState({});
   const [renderMode, setRenderMode] = useState('agGrid'); // 'agGrid' 或 'virtual'
@@ -84,6 +84,13 @@ const ModernDataDisplay = ({
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  // 当columns变化时，更新visibleColumns
+  React.useEffect(() => {
+    if (columns.length > 0) {
+      setVisibleColumns(new Set(columns.map(col => col.field)));
+    }
+  }, [columns]);
 
   // 过滤和搜索数据
   const filteredData = useMemo(() => {
