@@ -42,11 +42,15 @@ import {
   BarChart as ChartIcon,
   Clear as ClearIcon,
   Save as SaveIcon,
+  Speed as VirtualIcon,
+  Grid3x3 as GridIcon,
 } from '@mui/icons-material';
 import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { saveQueryResultAsDatasource, saveQueryToDuckDB } from '../../services/apiClient';
+import VirtualTable from '../VirtualTable/VirtualTable';
+import SmartPagination from '../SmartPagination/SmartPagination';
 
 const ModernDataDisplay = ({
   data = [],
@@ -68,6 +72,7 @@ const ModernDataDisplay = ({
   const [visibleColumns, setVisibleColumns] = useState(new Set(columns.map(col => col.field)));
   const [sortModel, setSortModel] = useState([]);
   const [filterModel, setFilterModel] = useState({});
+  const [renderMode, setRenderMode] = useState('agGrid'); // 'agGrid' 或 'virtual'
 
   // 保存为数据源相关状态
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -294,6 +299,15 @@ const ModernDataDisplay = ({
             </Box>
 
             <Stack direction="row" spacing={1}>
+              <Tooltip title={renderMode === 'agGrid' ? '切换到虚拟滚动' : '切换到标准表格'}>
+                <IconButton
+                  onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
+                  color={renderMode === 'virtual' ? 'primary' : 'default'}
+                >
+                  {renderMode === 'virtual' ? <VirtualIcon /> : <GridIcon />}
+                </IconButton>
+              </Tooltip>
+
               <Tooltip title="刷新数据">
                 <IconButton onClick={onRefresh} disabled={loading}>
                   <RefreshIcon />
@@ -407,6 +421,13 @@ const ModernDataDisplay = ({
                 执行查询以查看结果
               </Typography>
             </Box>
+          ) : renderMode === 'virtual' ? (
+            <VirtualTable
+              data={filteredData}
+              columns={columns}
+              height={400}
+              loading={loading}
+            />
           ) : (
             <Box
               className="ag-theme-alpine"
@@ -451,8 +472,8 @@ const ModernDataDisplay = ({
           )}
         </Box>
 
-        {/* 底部分页 */}
-        {data.length > 0 && (
+        {/* 底部分页 - 仅在AG-Grid模式下显示 */}
+        {data.length > 0 && renderMode === 'agGrid' && (
           <>
             <Divider />
             <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

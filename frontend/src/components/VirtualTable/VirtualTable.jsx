@@ -10,26 +10,31 @@ import {
   Paper,
   Box,
   Typography,
-  Chip
+  Chip,
+  useTheme
 } from '@mui/material';
 
-const VirtualTable = ({ 
-  data = [], 
-  columns = [], 
+const VirtualTable = ({
+  data = [],
+  columns = [],
   height = 400,
   rowHeight = 52,
   onRowClick,
-  loading = false 
+  loading = false
 }) => {
+  const theme = useTheme();
+
   // 计算列宽
   const columnWidths = useMemo(() => {
+    if (!columns.length) return [];
+
     return columns.map(col => {
-      const headerWidth = col.label?.length * 8 + 40;
-      const maxContentWidth = Math.max(
-        ...data.slice(0, 100).map(row => 
+      const headerWidth = (col.headerName || col.field)?.length * 8 + 40;
+      const maxContentWidth = data.length > 0 ? Math.max(
+        ...data.slice(0, 100).map(row =>
           String(row[col.field] || '').length * 7 + 20
         )
-      );
+      ) : 120;
       return Math.min(Math.max(headerWidth, maxContentWidth, 120), 300);
     });
   }, [columns, data]);
@@ -66,7 +71,7 @@ const VirtualTable = ({
                 borderBottom: '1px solid rgba(224, 224, 224, 1)'
               }}
             >
-              {formatCellValue(row[column.field], column.type)}
+              {formatCellValue(row[column.field], column.type || 'string')}
             </TableCell>
           ))}
         </TableRow>
@@ -136,13 +141,13 @@ const VirtualTable = ({
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {column.label}
+                  {column.headerName || column.field}
                   {column.type && (
-                    <Chip 
-                      label={column.type} 
-                      size="small" 
-                      variant="outlined" 
-                      color="primary" 
+                    <Chip
+                      label={column.type}
+                      size="small"
+                      variant="outlined"
+                      color="primary"
                     />
                   )}
                 </Box>
