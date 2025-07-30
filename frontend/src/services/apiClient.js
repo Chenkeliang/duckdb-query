@@ -23,11 +23,24 @@ export const uploadFile = async (file) => {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 300000, // 5分钟超时
+      maxContentLength: 100 * 1024 * 1024, // 100MB
+      maxBodyLength: 100 * 1024 * 1024, // 100MB
     });
     return response.data;
   } catch (error) {
     console.error('Error uploading file:', error);
-    throw error;
+
+    // 提供更友好的错误信息
+    if (error.response?.status === 413) {
+      throw new Error('文件太大，请选择小于100MB的文件');
+    } else if (error.code === 'ECONNABORTED') {
+      throw new Error('上传超时，请检查网络连接或选择较小的文件');
+    } else if (error.response?.data?.detail) {
+      throw new Error(error.response.data.detail);
+    } else {
+      throw new Error(error.message || '文件上传失败');
+    }
   }
 };
 

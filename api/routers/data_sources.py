@@ -541,6 +541,18 @@ async def upload_file(
 ) -> FileUploadResponse:
     """上传文件并返回详细信息，支持CSV、Excel、JSON、Parquet格式"""
     try:
+        # 检查文件大小 (100MB限制)
+        MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+        file_content = await file.read()
+        if len(file_content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"文件太大，最大支持100MB。当前文件大小：{len(file_content) / 1024 / 1024:.1f}MB",
+            )
+
+        # 重置文件指针
+        await file.seek(0)
+
         # 检查文件类型
         file_type = detect_file_type(file.filename)
         if file_type == "unknown":
@@ -558,8 +570,7 @@ async def upload_file(
         # 保存文件
         save_path = os.path.join(temp_dir, file.filename)
         with open(save_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
+            f.write(file_content)
 
         # 获取文件预览信息
         preview_info = get_file_preview(save_path, rows=10)
