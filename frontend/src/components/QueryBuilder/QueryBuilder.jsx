@@ -25,7 +25,9 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
-  TextField
+  TextField,
+  CircularProgress,
+  Backdrop
 } from '@mui/material';
 import JoinCondition from './JoinCondition';
 import SourceSelector from './SourceSelector';
@@ -222,6 +224,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     try {
       // 只传第一个数据源给后端，后端会自动注册
       const datasource = selectedSources[0];
+
       const result = await executeSQL(sqlInput, datasource);
       if (result && (result.data || result.columns)) {
         onResultsReceived(result);
@@ -426,9 +429,9 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
           color="primary"
           onClick={handleExecuteQuery}
           disabled={selectedSources.length === 0 || isLoading}
-          sx={{ 
+          sx={{
             mr: 2,
-            borderRadius: 20, 
+            borderRadius: 20,
             px: 3,
             py: 1,
             textTransform: 'none',
@@ -444,16 +447,16 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
               color: 'rgba(0, 0, 0, 0.38)'
             }
           }}
-          startIcon={<PlayArrowIcon />}
+          startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
         >
-          执行查询
+          {isLoading ? '查询执行中...' : '执行查询'}
         </Button>
         <Button
           variant="outlined"
           onClick={handleDownload}
           disabled={selectedSources.length === 0 || isLoading}
-          sx={{ 
-            borderRadius: 20, 
+          sx={{
+            borderRadius: 20,
             px: 3,
             py: 1,
             textTransform: 'none',
@@ -469,9 +472,9 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
               color: 'rgba(0, 0, 0, 0.38)'
             }
           }}
-          startIcon={<DownloadIcon />}
+          startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <DownloadIcon />}
         >
-          下载结果
+          {isLoading ? '处理中...' : '下载结果'}
         </Button>
       </Box>
 
@@ -500,6 +503,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
             onClick={handleSqlExecute}
             disabled={selectedSources.length === 0 || sqlLoading || !sqlInput.trim()}
             sx={{ borderRadius: 20, px: 3, fontWeight: 500 }}
+            startIcon={sqlLoading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
           >
             {sqlLoading ? '执行中...' : '执行SQL'}
           </Button>
@@ -563,6 +567,68 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
           <Button onClick={() => setHistoryOpen(false)} color="primary">关闭</Button>
         </DialogActions>
       </Dialog>
+
+      {/* 全屏加载遮罩 */}
+      <Backdrop
+        sx={{
+          color: '#fff',
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2
+        }}
+        open={isLoading || sqlLoading}
+      >
+        <CircularProgress
+          color="inherit"
+          size={60}
+          thickness={4}
+          sx={{
+            animation: 'pulse 2s infinite',
+            '@keyframes pulse': {
+              '0%': {
+                opacity: 1,
+                transform: 'scale(1)',
+              },
+              '50%': {
+                opacity: 0.8,
+                transform: 'scale(1.05)',
+              },
+              '100%': {
+                opacity: 1,
+                transform: 'scale(1)',
+              },
+            },
+          }}
+        />
+        <Typography
+          variant="h6"
+          sx={{
+            fontWeight: 500,
+            textAlign: 'center',
+            animation: 'fadeInOut 2s infinite',
+            '@keyframes fadeInOut': {
+              '0%': { opacity: 0.7 },
+              '50%': { opacity: 1 },
+              '100%': { opacity: 0.7 },
+            },
+          }}
+        >
+          {isLoading ? '正在执行查询...' : '正在执行SQL...'}
+        </Typography>
+        <Typography
+          variant="body2"
+          sx={{
+            opacity: 0.8,
+            textAlign: 'center',
+            maxWidth: 300
+          }}
+        >
+          {isLoading ? '正在处理数据源连接和查询优化，请稍候' : '正在执行自定义SQL语句，请稍候'}
+        </Typography>
+      </Backdrop>
     </Paper>
   );
 };

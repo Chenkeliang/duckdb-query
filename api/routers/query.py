@@ -2,11 +2,12 @@ from fastapi import APIRouter, Body, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from models.query_models import QueryRequest
-from core.duckdb_engine import get_db_connection, execute_query
+from core.duckdb_engine import get_db_connection, execute_query, create_persistent_table, create_varchar_table_from_dataframe
 import pandas as pd
 import numpy as np
 import io
 import os
+import time
 import traceback
 import logging
 import re
@@ -278,9 +279,28 @@ async def perform_query(query_request: QueryRequest):
                             f"SELECT * FROM EXCEL_SCAN('{file_path}') LIMIT 1"
                         )
                         con.execute(duckdb_query).fetchdf()
+                        # 先创建临时表
+                        temp_table = f"temp_{source.id}_{int(time.time())}"
                         con.execute(
-                            f"CREATE OR REPLACE TABLE \"{source.id}\" AS SELECT * FROM EXCEL_SCAN('{file_path}')"
+                            f"CREATE TABLE \"{temp_table}\" AS SELECT * FROM EXCEL_SCAN('{file_path}')"
                         )
+
+                        # 获取列信息并转换为VARCHAR
+                        columns_info = con.execute(f'DESCRIBE "{temp_table}"').fetchall()
+                        cast_columns = []
+                        for col_name, col_type, *_ in columns_info:
+                            cast_columns.append(f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"')
+
+                        cast_sql = ", ".join(cast_columns)
+
+                        # 创建最终的VARCHAR表
+                        con.execute(f'DROP TABLE IF EXISTS "{source.id}"')
+                        con.execute(
+                            f'CREATE TABLE "{source.id}" AS SELECT {cast_sql} FROM "{temp_table}"'
+                        )
+
+                        # 删除临时表
+                        con.execute(f'DROP TABLE "{temp_table}"')
                         logger.info(f"使用duckdb EXCEL_SCAN 注册Excel表: {source.id}")
                     except Exception as duckdb_exc:
                         logger.warning(
@@ -293,21 +313,42 @@ async def perform_query(query_request: QueryRequest):
                         )
 
                 elif file_extension == "csv":
-                    # CSV文件处理
+                    # CSV文件处理，优先使用DuckDB原生功能
                     try:
-                        # 使用DuckDB的CSV读取功能
+                        # 使用DuckDB读取CSV，然后转换所有列为VARCHAR
+                        temp_table = f"temp_{source.id}_{int(time.time())}"
+
+                        # 先用DuckDB读取到临时表
                         con.execute(
-                            f"CREATE OR REPLACE TABLE \"{source.id}\" AS SELECT * FROM read_csv_auto('{file_path}')"
+                            f"CREATE TABLE \"{temp_table}\" AS SELECT * FROM read_csv_auto('{file_path}')"
                         )
-                        logger.info(f"使用duckdb read_csv_auto 注册CSV表: {source.id}")
+
+                        # 获取列信息并转换为VARCHAR
+                        columns_info = con.execute(f'DESCRIBE "{temp_table}"').fetchall()
+                        cast_columns = []
+                        for col_name, col_type, *_ in columns_info:
+                            cast_columns.append(f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"')
+
+                        cast_sql = ", ".join(cast_columns)
+
+                        # 创建最终表，所有列都是VARCHAR
+                        con.execute(f'DROP TABLE IF EXISTS "{source.id}"')
+                        con.execute(
+                            f'CREATE TABLE "{source.id}" AS SELECT {cast_sql} FROM "{temp_table}"'
+                        )
+
+                        # 删除临时表
+                        con.execute(f'DROP TABLE "{temp_table}"')
+
+                        logger.info(f"使用DuckDB read_csv_auto创建VARCHAR表: {source.id}")
+
                     except Exception as duckdb_exc:
-                        logger.warning(
-                            f"duckdb read_csv_auto 读取失败，降级为pandas: {duckdb_exc}"
-                        )
+                        logger.warning(f"DuckDB读取CSV失败，降级为pandas: {duckdb_exc}")
+                        # 降级为pandas方案
                         df = pd.read_csv(file_path, dtype=str)
-                        con.register(source.id, df)
+                        create_varchar_table_from_dataframe(source.id, df, con)
                         logger.info(
-                            f"已用pandas.read_csv注册表: {source.id}, shape: {df.shape}"
+                            f"已用pandas.read_csv创建持久化表: {source.id}, shape: {df.shape}"
                         )
 
                 else:
@@ -315,13 +356,13 @@ async def perform_query(query_request: QueryRequest):
                     logger.warning(f"未知文件类型: {file_extension}，尝试pandas读取")
                     try:
                         df = pd.read_csv(file_path, dtype=str)  # 默认尝试CSV
-                        con.register(source.id, df)
+                        create_varchar_table_from_dataframe(source.id, df, con)
                         logger.info(
-                            f"已用pandas.read_csv注册表: {source.id}, shape: {df.shape}"
+                            f"已用pandas.read_csv创建持久化表: {source.id}, shape: {df.shape}"
                         )
                     except Exception:
                         df = pd.read_excel(file_path, dtype=str)  # 再尝试Excel
-                        con.register(source.id, df)
+                        create_varchar_table_from_dataframe(source.id, df, con)
                         logger.info(
                             f"已用pandas.read_excel注册表: {source.id}, shape: {df.shape}"
                         )
@@ -352,8 +393,8 @@ async def perform_query(query_request: QueryRequest):
                             query = "SELECT * FROM dy_order LIMIT 1000"
 
                         df = db_manager.execute_query(connection_id, query)
-                        con.register(source.id, df)
-                        logger.info(f"已注册数据库表: {source.id}, shape: {df.shape}")
+                        create_varchar_table_from_dataframe(source.id, df, con)
+                        logger.info(f"已创建持久化数据库表: {source.id}, shape: {df.shape}")
 
                     except Exception as db_error:
                         logger.error(f"数据库连接处理失败: {db_error}")
@@ -452,10 +493,10 @@ async def perform_query(query_request: QueryRequest):
                         engine = create_engine(connection_str)
                         df = pd.read_sql(query, engine)
 
-                        # 注册到DuckDB
-                        con.register(source.id, df)
+                        # 创建持久化表到DuckDB
+                        create_varchar_table_from_dataframe(source.id, df, con)
                         logger.info(
-                            f"已注册直接连接数据库表: {source.id}, shape: {df.shape}"
+                            f"已创建持久化直接连接数据库表: {source.id}, shape: {df.shape}"
                         )
 
                     except Exception as direct_db_error:
@@ -470,6 +511,10 @@ async def perform_query(query_request: QueryRequest):
             available_tables["name"].tolist() if not available_tables.empty else []
         )
         logger.info(f"当前DuckDB中的表: {available_tables.to_string()}")
+
+        # 验证是否有数据源
+        if not query_request.sources:
+            raise HTTPException(status_code=422, detail="查询请求必须包含至少一个数据源")
 
         # 构建查询 - 确保表名使用双引号括起来
         if len(query_request.joins) > 0:
@@ -508,6 +553,9 @@ async def perform_query(query_request: QueryRequest):
         }
 
         return jsonable_encoder(result)
+    except HTTPException:
+        # 重新抛出HTTPException，保持原始状态码
+        raise
     except Exception as e:
         logger.error(f"查询失败: {str(e)}")
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
@@ -585,6 +633,10 @@ async def download_results(query_request: QueryRequest):
                 con.register(source.id, df)
                 logger.info(f"已注册直接连接数据库表: {source.id}, shape: {df.shape}")
 
+        # 验证是否有数据源
+        if not query_request.sources:
+            raise HTTPException(status_code=422, detail="查询请求必须包含至少一个数据源")
+
         # Build query - 使用与查询端点相同的多表JOIN逻辑
         if len(query_request.joins) > 0:
             # 多表JOIN查询 - 使用改进的多表JOIN支持
@@ -615,6 +667,9 @@ async def download_results(query_request: QueryRequest):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers=headers,
         )
+    except HTTPException:
+        # 重新抛出HTTPException，保持原始状态码
+        raise
     except Exception as e:
         logger.error(f"下载失败: {str(e)}")
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
@@ -870,11 +925,14 @@ async def save_query_to_duckdb(request: dict = Body(...)):
         result_df = db_manager.execute_query(datasource_id, sql_query)
         logger.info(f"查询执行完成，准备保存到DuckDB: {result_df.shape}")
 
-        # 获取DuckDB连接并注册表
+        # 获取DuckDB连接并创建持久化表
         con = get_db_connection()
-        con.register(table_alias, result_df)
+        success = create_varchar_table_from_dataframe(table_alias, result_df, con)
 
-        logger.info(f"数据已保存到DuckDB表: {table_alias}")
+        if not success:
+            raise Exception("查询结果持久化到DuckDB失败")
+
+        logger.info(f"数据已持久化保存到DuckDB表: {table_alias}")
 
         return {
             "success": True,
@@ -1302,8 +1360,8 @@ async def register_datasource_for_query(con, datasource):
             if connection_id:
                 query = datasource.get("query", "SELECT * FROM table LIMIT 1000")
                 df = db_manager.execute_query(connection_id, query)
-                con.register(datasource["id"], df)
-                logger.info(f"已注册数据库数据源: {datasource['id']}")
+                create_varchar_table_from_dataframe(datasource["id"], df, con)
+                logger.info(f"已创建持久化数据库数据源: {datasource['id']}")
 
     except Exception as e:
         logger.error(f"注册数据源失败: {str(e)}")

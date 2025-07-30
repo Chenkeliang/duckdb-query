@@ -6,7 +6,7 @@ import traceback
 import json
 import os
 from sqlalchemy import create_engine
-from core.duckdb_engine import get_db_connection
+from core.duckdb_engine import get_db_connection, create_persistent_table
 from typing import Dict, Any
 
 # 设置日志
@@ -100,11 +100,14 @@ async def execute_mysql_custom_query(request: dict = Body(...)):
             elif df[col].dtype == "datetime64[ns]":
                 df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
 
-        # 注册到DuckDB
+        # 创建持久化表到DuckDB
         duckdb_con = get_db_connection()
-        duckdb_con.register(table_name, df)
+        success = create_persistent_table(table_name, df, duckdb_con)
 
-        logger.info(f"数据已注册到DuckDB，表名: {table_name}")
+        if not success:
+            raise Exception("数据持久化到DuckDB失败")
+
+        logger.info(f"数据已持久化到DuckDB，表名: {table_name}")
 
         # 验证注册成功
         tables_df = duckdb_con.execute("SHOW TABLES").fetchdf()

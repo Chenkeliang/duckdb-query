@@ -15,6 +15,7 @@ A powerful, modern web-based platform for interactive data analysis and multi-so
 - **📊 Multiple Data Formats**: Support for CSV, Excel (.xlsx/.xls), JSON, Parquet, and PDF files
 - **🗄️ Database Integration**: Native support for MySQL, PostgreSQL, and SQLite with connection pooling
 - **⚡ High-Performance Engine**: Powered by DuckDB for lightning-fast analytical queries
+- **💾 Data Persistence**: Full data persistence with automatic recovery after restarts
 - **🎨 Modern UI/UX**: Responsive interface built with React, Material-UI, and AG-Grid
 - **📈 Visual Query Builder**: Intuitive drag-and-drop interface for building complex queries
 - **🔄 Smart Query Proxy**: Automatic request format conversion for seamless frontend-backend communication
@@ -353,6 +354,28 @@ The platform includes an intelligent query proxy (`/api/query_proxy`) that autom
 - **Error Prevention**: Eliminates 422 validation errors from format mismatches
 
 **Usage**: Frontend automatically uses the proxy endpoints for all query and export operations, ensuring seamless communication regardless of data format differences.
+
+### Data Persistence
+
+The platform now features complete data persistence with automatic recovery capabilities:
+
+- **Persistent Storage**: All data sources (files, MySQL queries, database connections) are stored persistently using DuckDB's file-based storage
+- **Automatic Recovery**: After service restarts, all data sources are automatically reloaded and available immediately
+- **No Data Loss**: File uploads, MySQL query results, and database connections persist across restarts
+- **Smart Reloading**: MySQL data sources are re-executed from their original SQL queries to ensure data freshness
+
+**Key Benefits**:
+- ✅ No need to re-upload files after restarts
+- ✅ MySQL data sources automatically restored
+- ✅ Database connections maintained
+- ✅ Query history and results preserved
+- ✅ Zero downtime data recovery
+
+**Technical Implementation**:
+- Uses `CREATE TABLE` instead of temporary `register()` for true persistence
+- Startup process automatically reloads all configured data sources
+- Configuration files (`mysql_datasources.json`, `file_datasources.json`) track data source metadata
+- DuckDB file storage ensures data survives container restarts
 
 ### Export System
 

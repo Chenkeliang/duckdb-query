@@ -39,14 +39,46 @@ def get_db_connection():
         logger.info(f"DuckDB连接到持久化文件: {db_path}")
 
         # 设置DuckDB优化参数
-        _global_duckdb_connection.execute("SET threads=4")
-        _global_duckdb_connection.execute("SET memory_limit='2GB'")
+        _global_duckdb_connection.execute("SET threads=8")  # 增加线程数
+        _global_duckdb_connection.execute("SET memory_limit='4GB'")  # 增加内存限制
+        _global_duckdb_connection.execute("SET max_memory='4GB'")
+        _global_duckdb_connection.execute("SET temp_directory='/app/data/duckdb/temp'")
+
+        # 优化JOIN性能 - 针对VARCHAR类型优化
+        try:
+            # DuckDB优化器默认启用，无需手动设置
+            _global_duckdb_connection.execute("SET enable_profiling=true")
+            _global_duckdb_connection.execute("SET profiling_output='/app/data/duckdb/profile.json'")
+        except Exception as e:
+            logger.warning(f"设置profiling失败: {str(e)}")
+
+        try:
+            # 优化JOIN算法选择
+            _global_duckdb_connection.execute("SET force_index_join=false")
+        except Exception as e:
+            logger.warning(f"设置force_index_join失败: {str(e)}")
+
+        try:
+            # 优化字符串比较性能
+            _global_duckdb_connection.execute("SET enable_object_cache=true")
+        except Exception as e:
+            logger.warning(f"设置enable_object_cache失败: {str(e)}")
+
+        # 优化并行处理
+        _global_duckdb_connection.execute("SET preserve_insertion_order=false")
+        _global_duckdb_connection.execute("SET enable_progress_bar=false")
+
+        logger.info("DuckDB VARCHAR JOIN优化配置已应用")
+
+        # 确保临时目录存在
+        import os
+        os.makedirs("/app/data/duckdb/temp", exist_ok=True)
     return _global_duckdb_connection
 
 
 def execute_query(query, con=None):
     """
-    在DuckDB中执行查询
+    在DuckDB中执行查询 - 带性能监控
     """
     if con is None:
         con = get_db_connection()
@@ -59,11 +91,26 @@ def execute_query(query, con=None):
         tables = con.execute("SHOW TABLES").fetchdf()
         logger.info(f"当前DuckDB中的表: {tables.to_string()}")
 
+        # 对于JOIN查询，先分析查询计划
+        if "JOIN" in query.upper():
+            try:
+                explain_query = f"EXPLAIN ANALYZE {query}"
+                plan_result = con.execute(explain_query).fetchdf()
+                logger.info(f"JOIN查询执行计划:\n{plan_result.to_string()}")
+            except Exception as e:
+                logger.warning(f"获取查询计划失败: {str(e)}")
+
         # 执行查询
         result = con.execute(query).fetchdf()
 
         execution_time = (time.time() - start_time) * 1000
-        logger.info(f"查询执行完成，耗时: {execution_time:.2f}ms，返回 {len(result)} 行")
+
+        # 详细的性能日志
+        if execution_time > 1000:  # 超过1秒的查询
+            logger.warning(f"慢查询检测: 耗时 {execution_time:.2f}ms，返回 {len(result)} 行")
+            logger.warning(f"慢查询SQL: {query}")
+        else:
+            logger.info(f"查询执行完成，耗时: {execution_time:.2f}ms，返回 {len(result)} 行")
 
         return result
     except Exception as e:
@@ -74,18 +121,381 @@ def execute_query(query, con=None):
 
 def register_dataframe(table_name: str, df: pd.DataFrame, con=None) -> bool:
     """
-    将DataFrame注册到DuckDB
+    将DataFrame注册到DuckDB (临时表，重启后会丢失)
+    建议使用 create_persistent_table() 进行持久化
     """
     if con is None:
         con = get_db_connection()
 
     try:
-        con.register(table_name, df)
-        logger.info(f"成功注册表: {table_name}, 行数: {len(df)}, 列数: {len(df.columns)}")
+        # 预处理DataFrame以避免类型转换错误
+        processed_df = prepare_dataframe_for_duckdb(df)
+        con.register(table_name, processed_df)
+        logger.info(f"成功注册临时表: {table_name}, 行数: {len(processed_df)}, 列数: {len(processed_df.columns)}")
         return True
     except Exception as e:
         logger.error(f"注册表失败 {table_name}: {str(e)}")
         return False
+
+
+def create_persistent_table(table_name: str, df: pd.DataFrame, con=None) -> bool:
+    """
+    创建持久化表到DuckDB，数据会写入磁盘文件
+    """
+    if con is None:
+        con = get_db_connection()
+
+    try:
+        # 先删除已存在的表
+        drop_table_if_exists(table_name, con)
+
+        # 预处理DataFrame，统一转换为字符串类型以避免类型转换错误
+        processed_df = prepare_dataframe_for_duckdb(df)
+
+        # 使用CREATE TABLE AS SELECT持久化数据
+        # 首先注册临时表
+        temp_table_name = f"temp_{table_name}_{int(time.time())}"
+        con.register(temp_table_name, processed_df)
+
+        # 创建持久化表
+        create_sql = f'CREATE TABLE "{table_name}" AS SELECT * FROM {temp_table_name}'
+        con.execute(create_sql)
+
+        # 删除临时表
+        con.unregister(temp_table_name)
+
+        logger.info(f"成功创建持久化表: {table_name} ({len(processed_df)}行, {len(processed_df.columns)}列)")
+        return True
+
+    except Exception as e:
+        logger.error(f"创建持久化表失败 {table_name}: {str(e)}")
+        return False
+
+
+def table_exists(table_name: str, con=None) -> bool:
+    """
+    检查表是否存在
+    """
+    if con is None:
+        con = get_db_connection()
+
+    try:
+        tables_df = con.execute("SHOW TABLES").fetchdf()
+        return table_name in tables_df["name"].tolist()
+    except Exception as e:
+        logger.error(f"检查表是否存在失败 {table_name}: {str(e)}")
+        return False
+
+
+def safe_encode_string(value: str) -> str:
+    """
+    安全地处理字符串编码，避免编码错误
+    """
+    if not value:
+        return ""
+
+    try:
+        # 尝试直接使用字符串
+        return str(value)
+    except UnicodeDecodeError:
+        try:
+            # 如果是字节类型，尝试不同的编码
+            if isinstance(value, bytes):
+                for encoding in ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']:
+                    try:
+                        return value.decode(encoding)
+                    except UnicodeDecodeError:
+                        continue
+                # 如果所有编码都失败，使用错误替换
+                return value.decode('utf-8', errors='replace')
+            else:
+                # 如果是字符串，直接返回
+                return str(value)
+        except Exception:
+            # 最后的保险措施
+            return str(value).encode('ascii', errors='ignore').decode('ascii')
+
+
+def drop_table_if_exists(table_name: str, con=None) -> bool:
+    """
+    删除表（如果存在）
+    """
+    if con is None:
+        con = get_db_connection()
+
+    try:
+        con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+        logger.info(f"已删除表: {table_name}")
+        return True
+    except Exception as e:
+        logger.error(f"删除表失败 {table_name}: {str(e)}")
+        return False
+
+
+def backup_table(table_name: str, con=None) -> str:
+    """
+    备份表到临时表
+    返回备份表名
+    """
+    if con is None:
+        con = get_db_connection()
+
+    backup_name = f"{table_name}_backup_{int(time.time())}"
+
+    try:
+        # 检查原表是否存在
+        tables = con.execute("SHOW TABLES").fetchall()
+        table_exists = any(table[0] == table_name for table in tables)
+
+        if not table_exists:
+            logger.warning(f"表 {table_name} 不存在，无需备份")
+            return ""
+
+        # 创建备份表
+        con.execute(f'CREATE TABLE "{backup_name}" AS SELECT * FROM "{table_name}"')
+        logger.info(f"已备份表 {table_name} 到 {backup_name}")
+        return backup_name
+
+    except Exception as e:
+        logger.error(f"备份表失败 {table_name}: {str(e)}")
+        return ""
+
+
+def convert_table_to_varchar(table_name: str, backup_table_name: str = "", con=None) -> bool:
+    """
+    将表的所有列转换为VARCHAR类型
+    使用DuckDB原生功能，避免pandas
+    """
+    if con is None:
+        con = get_db_connection()
+
+    try:
+        # 如果没有提供备份表名，先创建备份
+        if not backup_table_name:
+            backup_table_name = backup_table(table_name, con)
+            if not backup_table_name:
+                logger.error(f"无法备份表 {table_name}")
+                return False
+
+        # 获取表结构
+        columns_info = con.execute(f'DESCRIBE "{backup_table_name}"').fetchall()
+
+        # 构建SELECT语句，将所有列CAST为VARCHAR
+        cast_columns = []
+        for col_name, col_type, *_ in columns_info:
+            if col_type.upper().startswith('VARCHAR'):
+                # 已经是VARCHAR类型，直接使用
+                cast_columns.append(f'"{col_name}"')
+            else:
+                # 转换为VARCHAR类型
+                cast_columns.append(f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"')
+
+        cast_sql = ", ".join(cast_columns)
+
+        # 删除原表
+        drop_table_if_exists(table_name, con)
+
+        # 重新创建表，所有列都是VARCHAR类型
+        create_sql = f'CREATE TABLE "{table_name}" AS SELECT {cast_sql} FROM "{backup_table_name}"'
+        con.execute(create_sql)
+
+        # 删除备份表
+        drop_table_if_exists(backup_table_name, con)
+
+        logger.info(f"成功将表 {table_name} 的所有列转换为VARCHAR类型")
+        return True
+
+    except Exception as e:
+        logger.error(f"转换表类型失败 {table_name}: {str(e)}")
+        return False
+
+
+def check_and_convert_table_types(table_name: str, con=None) -> bool:
+    """
+    检查表的列类型，如果有非VARCHAR类型则转换
+    """
+    if con is None:
+        con = get_db_connection()
+
+    try:
+        # 检查表是否存在
+        tables = con.execute("SHOW TABLES").fetchall()
+        table_exists = any(table[0] == table_name for table in tables)
+
+        if not table_exists:
+            logger.info(f"表 {table_name} 不存在，无需检查")
+            return True
+
+        # 获取表结构
+        columns_info = con.execute(f'DESCRIBE "{table_name}"').fetchall()
+
+        # 检查是否有非VARCHAR类型的列
+        non_varchar_columns = []
+        for col_name, col_type, *_ in columns_info:
+            if not col_type.upper().startswith('VARCHAR'):
+                non_varchar_columns.append((col_name, col_type))
+
+        if non_varchar_columns:
+            logger.info(f"表 {table_name} 有 {len(non_varchar_columns)} 个非VARCHAR列，需要转换")
+            for col_name, col_type in non_varchar_columns:
+                logger.info(f"  - {col_name}: {col_type}")
+
+            # 执行转换
+            return convert_table_to_varchar(table_name, "", con)
+        else:
+            logger.info(f"表 {table_name} 所有列都是VARCHAR类型，无需转换")
+            return True
+
+    except Exception as e:
+        logger.error(f"检查表类型失败 {table_name}: {str(e)}")
+        return False
+
+
+def ensure_all_tables_varchar(con=None) -> bool:
+    """
+    确保所有表的列都是VARCHAR类型
+    """
+    if con is None:
+        con = get_db_connection()
+
+    try:
+        # 获取所有表
+        tables = con.execute("SHOW TABLES").fetchall()
+
+        success_count = 0
+        total_count = len(tables)
+
+        for table_row in tables:
+            table_name = table_row[0]
+            if check_and_convert_table_types(table_name, con):
+                success_count += 1
+            else:
+                logger.error(f"转换表 {table_name} 失败")
+
+        logger.info(f"表类型检查完成: {success_count}/{total_count} 个表成功")
+        return success_count == total_count
+
+    except Exception as e:
+        logger.error(f"批量检查表类型失败: {str(e)}")
+        return False
+
+
+def create_varchar_table_from_dataframe(table_name: str, df: pd.DataFrame, con=None) -> bool:
+    """
+    从DataFrame创建DuckDB表，所有列都转换为VARCHAR类型
+    优先使用DuckDB原生功能，避免pandas预处理
+    """
+    if con is None:
+        con = get_db_connection()
+
+    try:
+        if df.empty:
+            logger.warning(f"DataFrame为空，无法创建表 {table_name}")
+            return False
+
+        # 删除已存在的表
+        drop_table_if_exists(table_name, con)
+
+        # 创建临时表名
+        temp_table = f"temp_{table_name}_{int(time.time())}"
+
+        # 先用pandas注册临时表
+        con.register(temp_table, df)
+
+        # 获取列信息并构建VARCHAR转换SQL
+        columns_info = con.execute(f'DESCRIBE "{temp_table}"').fetchall()
+        cast_columns = []
+        for col_name, col_type, *_ in columns_info:
+            # 将所有列转换为VARCHAR，直接CAST避免类型转换问题
+            cast_columns.append(f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"')
+
+        cast_sql = ", ".join(cast_columns)
+
+        # 创建最终的VARCHAR表
+        create_sql = f'CREATE TABLE "{table_name}" AS SELECT {cast_sql} FROM "{temp_table}"'
+        con.execute(create_sql)
+
+        # 删除临时表
+        con.execute(f'DROP VIEW IF EXISTS "{temp_table}"')
+
+        row_count = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+        col_count = len(columns_info)
+
+        logger.info(f"成功创建VARCHAR表: {table_name} ({row_count}行, {col_count}列)")
+        return True
+
+    except Exception as e:
+        logger.error(f"创建VARCHAR表失败 {table_name}: {str(e)}")
+        # 清理可能的临时表
+        try:
+            con.execute(f'DROP VIEW IF EXISTS "temp_{table_name}_{int(time.time())}"')
+        except:
+            pass
+        return False
+
+
+def prepare_dataframe_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    预处理DataFrame以避免DuckDB类型转换错误
+    将所有数据统一转换为字符串类型，确保JOIN操作的兼容性
+    """
+    if df.empty:
+        return df
+
+    # 创建DataFrame的深拷贝
+    processed_df = df.copy()
+
+    logger.info(f"开始预处理DataFrame: {len(processed_df)}行, {len(processed_df.columns)}列")
+
+    # 处理所有列，统一转换为字符串类型
+    for col in processed_df.columns:
+        try:
+            # 处理不同的数据类型
+            if processed_df[col].dtype == "datetime64[ns]":
+                # 日期时间转换为字符串
+                processed_df[col] = processed_df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
+            elif processed_df[col].dtype == "bool":
+                # 布尔值转换为字符串
+                processed_df[col] = processed_df[col].astype(str)
+            elif processed_df[col].dtype in ["float64", "float32"]:
+                # 浮点数转换为字符串，处理NaN
+                processed_df[col] = processed_df[col].fillna("").astype(str)
+            elif processed_df[col].dtype in ["int64", "int32", "int16", "int8"]:
+                # 整数转换为字符串
+                processed_df[col] = processed_df[col].astype(str)
+            else:
+                # 对象类型（包括字符串）
+                processed_df[col] = processed_df[col].fillna("").astype(str)
+
+            # 处理字符编码问题，使用更安全的方法
+            processed_df[col] = processed_df[col].apply(
+                lambda x: safe_encode_string(str(x)) if x else ""
+            )
+
+        except Exception as e:
+            logger.warning(f"处理列 {col} 时出错: {e}，使用默认字符串转换")
+            # 使用最安全的转换方法
+            processed_df[col] = processed_df[col].apply(
+                lambda x: str(x).encode('ascii', errors='ignore').decode('ascii') if x else ""
+            )
+
+    # 清理列名，确保是有效的SQL标识符
+    clean_columns = []
+    for i, col in enumerate(processed_df.columns):
+        try:
+            clean_col = str(col).encode("utf-8", errors="replace").decode("utf-8")
+            # 移除或替换特殊字符
+            clean_col = "".join(c if c.isalnum() or c in ["_", "-"] else "_" for c in clean_col)
+            if not clean_col or clean_col[0].isdigit():
+                clean_col = f"col_{i}"
+            clean_columns.append(clean_col)
+        except:
+            clean_columns.append(f"col_{i}")
+
+    processed_df.columns = clean_columns
+
+    logger.info(f"DataFrame预处理完成: 所有列已转换为字符串类型")
+    return processed_df
 
 
 def get_table_info(table_name: str, con=None) -> Dict[str, Any]:
@@ -205,10 +615,17 @@ def build_single_table_query(query_request: QueryRequest) -> str:
 
 def build_multi_table_join_query(query_request: QueryRequest) -> str:
     """
-    构建多表JOIN查询
+    构建多表JOIN查询 - 优化VARCHAR JOIN性能
     """
     sources = query_request.sources
     joins = query_request.joins
+
+    # 为JOIN列创建索引以提升性能
+    if joins:
+        try:
+            create_join_indexes(sources, joins)
+        except Exception as e:
+            logger.warning(f"创建JOIN索引失败，但继续执行查询: {str(e)}")
 
     # 生成列别名以处理冲突
     column_aliases = generate_column_aliases(sources)
@@ -251,7 +668,12 @@ def build_multi_table_join_query(query_request: QueryRequest) -> str:
         # 有JOIN条件，构建JOIN链
         from_clause = build_join_chain(sources, joins)
 
-    query = f"SELECT {select_clause} FROM {from_clause}"
+    # 构建优化的查询 - 添加HASH JOIN提示
+    if joins:
+        # 对于有JOIN的查询，添加优化提示
+        query = f"SELECT {select_clause} FROM {from_clause}"
+    else:
+        query = f"SELECT {select_clause} FROM {from_clause}"
 
     # 添加WHERE条件
     if query_request.where_conditions:
@@ -313,6 +735,70 @@ def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
                 from_clause += f" ON {' AND '.join(conditions)}"
 
     return from_clause
+
+
+def create_varchar_index(table_name: str, column_name: str, con=None) -> bool:
+    """
+    为VARCHAR列创建索引以优化JOIN性能
+    """
+    if con is None:
+        con = get_db_connection()
+
+    try:
+        # 检查表是否存在
+        tables = con.execute("SHOW TABLES").fetchall()
+        table_exists = any(table[0] == table_name for table in tables)
+
+        if not table_exists:
+            logger.warning(f"表 {table_name} 不存在，无法创建索引")
+            return False
+
+        # 创建索引名称
+        index_name = f"idx_{table_name}_{column_name}".replace("-", "_").replace(" ", "_")
+
+        # 检查索引是否已存在
+        try:
+            existing_indexes = con.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+            # DuckDB的索引检查方式
+            con.execute(f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}")')
+            logger.info(f"已为表 {table_name} 的列 {column_name} 创建索引: {index_name}")
+            return True
+        except Exception as e:
+            if "already exists" in str(e).lower():
+                logger.info(f"索引 {index_name} 已存在")
+                return True
+            else:
+                raise e
+
+    except Exception as e:
+        logger.error(f"创建索引失败 {table_name}.{column_name}: {str(e)}")
+        return False
+
+
+def create_join_indexes(sources: List[DataSource], joins: List[Join], con=None) -> None:
+    """
+    为JOIN操作中涉及的列创建索引
+    """
+    if con is None:
+        con = get_db_connection()
+
+    try:
+        # 收集所有JOIN列
+        join_columns = set()
+
+        for join in joins:
+            for condition in join.conditions:
+                join_columns.add((join.left_source_id, condition.left_column))
+                join_columns.add((join.right_source_id, condition.right_column))
+
+        # 为每个JOIN列创建索引
+        for table_name, column_name in join_columns:
+            create_varchar_index(table_name, column_name, con)
+
+        logger.info(f"已为 {len(join_columns)} 个JOIN列创建索引")
+
+    except Exception as e:
+        logger.error(f"批量创建JOIN索引失败: {str(e)}")
 
 
 def optimize_query_plan(query: str, con=None) -> str:

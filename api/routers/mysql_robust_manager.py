@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 import pymysql
 import numpy as np
-from core.duckdb_engine import get_db_connection
+from core.duckdb_engine import get_db_connection, create_persistent_table
 
 # 设置日志
 logging.basicConfig(
@@ -238,62 +238,7 @@ def robust_mysql_query(mysql_config: Dict[str, Any], sql: str) -> pd.DataFrame:
             connection.close()
 
 
-def prepare_dataframe_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
-    """准备DataFrame以便DuckDB注册"""
-    logger.info("准备DataFrame用于DuckDB注册")
-
-    # 处理空DataFrame
-    if df.empty:
-        return df
-
-    # 清理列名
-    clean_columns = []
-    for i, col in enumerate(df.columns):
-        try:
-            clean_col = str(col).encode("utf-8", errors="replace").decode("utf-8")
-            # 确保列名是有效的SQL标识符
-            clean_col = "".join(
-                c if c.isalnum() or c == "_" else "_" for c in clean_col
-            )
-            if not clean_col or clean_col[0].isdigit():
-                clean_col = f"col_{i}"
-            clean_columns.append(clean_col)
-        except:
-            clean_columns.append(f"col_{i}")
-
-    df.columns = clean_columns
-
-    # 处理数据类型
-    for col in df.columns:
-        try:
-            if df[col].dtype == "object":
-                # 字符串类型处理
-                df[col] = df[col].fillna("").astype(str)
-                df[col] = df[col].apply(
-                    lambda x: (
-                        str(x).encode("utf-8", errors="replace").decode("utf-8")
-                        if x
-                        else ""
-                    )
-                )
-            elif df[col].dtype == "datetime64[ns]":
-                # 日期时间处理
-                df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
-            elif df[col].dtype == "bool":
-                # 布尔值处理
-                df[col] = df[col].astype(int)
-            elif df[col].dtype in ["float64", "float32"]:
-                # 浮点数处理，替换NaN
-                df[col] = df[col].fillna(0.0)
-            elif df[col].dtype in ["int64", "int32"]:
-                # 整数处理
-                df[col] = df[col].fillna(0)
-        except Exception as e:
-            logger.warning(f"处理列 {col} 时出错: {e}")
-            df[col] = df[col].fillna("").astype(str)
-
-    logger.info(f"DataFrame准备完成: {len(df)} 行, {len(df.columns)} 列")
-    return df
+# prepare_dataframe_for_duckdb函数已移至core.duckdb_engine模块
 
 
 @router.post("/api/mysql_robust/create", tags=["MySQL Robust"])
@@ -321,15 +266,15 @@ async def create_robust_mysql_datasource(request: dict = Body(...)):
         if df.empty:
             return {"success": False, "message": "查询结果为空"}
 
-        # 准备DataFrame用于DuckDB
-        df = prepare_dataframe_for_duckdb(df)
-
         # 生成唯一ID
         datasource_id = f"mysql_robust_{datasource_alias}_{uuid.uuid4().hex[:8]}"
 
-        # 注册到DuckDB
+        # 创建持久化表到DuckDB，使用DuckDB原生功能确保VARCHAR类型
         duckdb_con = get_db_connection()
-        duckdb_con.register(datasource_id, df)
+        success = create_varchar_table_from_dataframe(datasource_id, df, duckdb_con)
+
+        if not success:
+            raise Exception("数据持久化到DuckDB失败")
 
         # 验证注册成功
         try:

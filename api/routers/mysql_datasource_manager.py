@@ -6,7 +6,7 @@ import traceback
 import json
 import os
 from sqlalchemy import create_engine
-from core.duckdb_engine import get_db_connection
+from core.duckdb_engine import get_db_connection, create_persistent_table, create_varchar_table_from_dataframe
 from typing import Dict, Any, List
 import uuid
 from datetime import datetime
@@ -167,44 +167,22 @@ async def create_mysql_datasource(request: dict = Body(...)):
 
         logger.info(f"查询完成，获得 {len(df)} 行数据，{len(df.columns)} 列")
 
-        # 处理数据类型，确保可JSON序列化和DuckDB兼容，强化字符编码处理
-        df = df.fillna("")  # 处理NaN值
-
-        # 强化字符编码处理
-        for col in df.columns:
-            if df[col].dtype == "object":
-                # 处理字符编码问题
-                df[col] = df[col].apply(
-                    lambda x: (
-                        str(x).encode("utf-8", errors="ignore").decode("utf-8")
-                        if x is not None
-                        else ""
-                    )
-                )
-            elif df[col].dtype == "datetime64[ns]":
-                df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
-            elif df[col].dtype == "bool":
-                df[col] = df[col].astype(int)
-
-        # 确保列名也是UTF-8编码
-        df.columns = [
-            str(col).encode("utf-8", errors="ignore").decode("utf-8")
-            for col in df.columns
-        ]
-
         # 生成唯一的数据源ID
         datasource_id = f"mysql_{datasource_alias}_{uuid.uuid4().hex[:8]}"
 
-        # 注册到DuckDB
+        # 创建持久化表到DuckDB，使用DuckDB原生功能确保VARCHAR类型
         duckdb_con = get_db_connection()
-        duckdb_con.register(datasource_id, df)
+        success = create_varchar_table_from_dataframe(datasource_id, df, duckdb_con)
 
-        logger.info(f"数据已注册到DuckDB，表ID: {datasource_id}")
+        if not success:
+            raise Exception("数据持久化到DuckDB失败")
 
-        # 验证注册成功
+        logger.info(f"数据已持久化到DuckDB，表ID: {datasource_id}")
+
+        # 验证表创建成功
         tables_df = duckdb_con.execute("SHOW TABLES").fetchdf()
         if datasource_id not in tables_df["name"].tolist():
-            raise Exception("数据注册到DuckDB失败")
+            raise Exception("数据持久化到DuckDB验证失败")
 
         # 保存数据源信息到管理文件
         datasources = load_mysql_datasources()

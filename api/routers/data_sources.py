@@ -20,8 +20,14 @@ from models.query_models import (
     ExportRequest,
     ExportFormat,
 )
-from core.duckdb_engine import get_db_connection, register_dataframe, get_table_info
+from core.duckdb_engine import get_db_connection, register_dataframe, get_table_info, create_persistent_table
 from core.database_manager import db_manager
+from core.file_datasource_manager import (
+    file_datasource_manager,
+    detect_file_type,
+    read_file_by_type,
+    create_table_from_dataframe
+)
 import pandas as pd
 import logging
 import os
@@ -419,21 +425,23 @@ def read_file_by_type(
 
     try:
         if file_type == "csv":
-            return pd.read_csv(file_path, nrows=nrows)
+            return pd.read_csv(file_path, nrows=nrows, dtype=str)
         elif file_type == "excel":
-            return pd.read_excel(file_path, nrows=nrows)
+            return pd.read_excel(file_path, nrows=nrows, dtype=str)
         elif file_type == "json":
             # 尝试读取JSON Lines格式
             try:
-                return pd.read_json(file_path, lines=True, nrows=nrows)
+                df = pd.read_json(file_path, lines=True, nrows=nrows)
+                return df.astype(str)
             except ValueError:
                 # 如果不是JSON Lines，尝试普通JSON
-                return pd.read_json(file_path, nrows=nrows)
+                df = pd.read_json(file_path, nrows=nrows)
+                return df.astype(str)
         elif file_type == "parquet":
             df = pd.read_parquet(file_path)
             if nrows:
-                return df.head(nrows)
-            return df
+                df = df.head(nrows)
+            return df.astype(str)
         else:
             raise ValueError(f"不支持的文件类型: {file_type}")
     except Exception as e:
@@ -556,17 +564,34 @@ async def upload_file(
         # 获取文件预览信息
         preview_info = get_file_preview(save_path, rows=10)
 
-        # 读取完整数据并注册到DuckDB
+        # 读取完整数据并持久化到DuckDB
         source_id = file.filename.split(".")[0]
         df_full = read_file_by_type(save_path, file_type)
 
-        # 注册到DuckDB
-        success = register_dataframe(source_id, df_full, duckdb_con)
-        if not success:
-            raise HTTPException(status_code=500, detail="注册到DuckDB失败")
+        # 使用CREATE TABLE持久化到DuckDB而不是临时注册
+        try:
+            create_table_from_dataframe(duckdb_con, source_id, df_full)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"持久化到DuckDB失败: {str(e)}")
+
+        # 保存文件数据源配置到持久化存储
+        file_info = {
+            "source_id": source_id,
+            "filename": file.filename,
+            "file_path": save_path,
+            "file_type": file_type,
+            "row_count": len(df_full),
+            "column_count": len(df_full.columns),
+            "columns": list(df_full.columns),
+            "upload_time": datetime.datetime.now()
+        }
+
+        config_saved = file_datasource_manager.save_file_datasource(file_info)
+        if not config_saved:
+            logger.warning(f"文件数据源配置保存失败: {source_id}")
 
         logger.info(
-            f"已将文件 {file.filename} 注册到DuckDB，表名: {source_id}, 行数: {len(df_full)}"
+            f"已将文件 {file.filename} 持久化到DuckDB，表名: {source_id}, 行数: {len(df_full)}"
         )
 
         # 安排文件清理（1小时后）
@@ -756,13 +781,13 @@ async def connect_database(connection: DatabaseConnection = Body(...)):
                     # 将数据注册到DuckDB用于后续JOIN
                     # 使用无引号的表名作为DuckDB表ID
                     table_id = connection.id.strip('"')
-                    duckdb_con.register(table_id, df)
+                    create_persistent_table(table_id, df, duckdb_con)
 
-                    # 确认表已正确注册
+                    # 确认表已正确创建
                     tables = duckdb_con.execute("SHOW TABLES").fetchdf()
                     logger.info(f"当前DuckDB中的表: {tables.to_string()}")
 
-                    logger.info(f"{connection.type}查询结果已注册为表: {table_id}")
+                    logger.info(f"{connection.type}查询结果已创建为持久化表: {table_id}")
 
                     # 处理不可序列化的数据
                     df = handle_non_serializable_data(df)
@@ -873,9 +898,19 @@ async def delete_file(request: dict = Body(...)):
             logger.warning(f"删除DuckDB表失败 {table_name}: {str(e)}")
             # 不抛出异常，因为文件已经删除成功
 
+        # 3. 删除文件数据源配置
+        try:
+            config_removed = file_datasource_manager.remove_file_datasource(table_name)
+            if config_removed:
+                logger.info(f"已删除文件数据源配置: {table_name}")
+            else:
+                logger.warning(f"文件数据源配置不存在: {table_name}")
+        except Exception as e:
+            logger.warning(f"删除文件数据源配置失败 {table_name}: {str(e)}")
+
         return {
             "success": True,
-            "message": f"文件已删除，并清理了DuckDB表: {table_name}",
+            "message": f"文件已删除，并清理了DuckDB表和配置: {table_name}",
         }
 
     except Exception as e:
@@ -1267,3 +1302,51 @@ async def file_columns(filename: str):
     except Exception as e:
         logger.error(f"读取文件列名失败 {filename}: {str(e)}")
         return []
+
+
+@router.get("/api/duckdb/tables", tags=["DuckDB"])
+async def get_duckdb_tables():
+    """获取DuckDB中的所有表信息"""
+    con = get_db_connection()
+
+    try:
+        tables_df = con.execute("SHOW TABLES").fetchdf()
+
+        if tables_df.empty:
+            return {"success": True, "tables": [], "count": 0}
+
+        table_info = []
+        for _, row in tables_df.iterrows():
+            table_name = row["name"]
+            try:
+                # 获取表结构
+                schema_df = con.execute(f'DESCRIBE "{table_name}"').fetchdf()
+                # 获取行数
+                count_result = con.execute(f'SELECT COUNT(*) as count FROM "{table_name}"').fetchone()
+                row_count = count_result[0] if count_result else 0
+
+                table_info.append({
+                    "table_name": table_name,
+                    "columns": schema_df.to_dict('records'),
+                    "column_count": len(schema_df),
+                    "row_count": row_count
+                })
+            except Exception as table_error:
+                logger.warning(f"获取表 {table_name} 信息失败: {str(table_error)}")
+                table_info.append({
+                    "table_name": table_name,
+                    "columns": [],
+                    "column_count": 0,
+                    "row_count": 0,
+                    "error": str(table_error)
+                })
+
+        return {
+            "success": True,
+            "tables": table_info,
+            "count": len(table_info)
+        }
+
+    except Exception as e:
+        logger.error(f"获取DuckDB表信息失败: {str(e)}")
+        return {"success": False, "error": str(e), "tables": [], "count": 0}

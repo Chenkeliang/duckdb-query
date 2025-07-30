@@ -30,6 +30,8 @@ except ImportError:
     query_proxy_available = False
 from core.database_manager import db_manager
 from models.query_models import DatabaseConnection, DataSourceType
+from core.file_datasource_manager import reload_all_file_datasources_to_duckdb
+from core.duckdb_engine import get_db_connection, create_persistent_table, create_varchar_table_from_dataframe, ensure_all_tables_varchar
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,101 @@ def load_mysql_configs_on_startup():
 
     except Exception as e:
         logger.error(f"加载MySQL配置时出错: {str(e)}")
+
+
+def load_mysql_datasources_on_startup():
+    """应用启动时重新加载所有MySQL数据源到DuckDB"""
+    try:
+        logger.info("开始重新加载MySQL数据源...")
+
+        # 加载MySQL数据源配置
+        mysql_datasource_file = "mysql_datasources.json"
+        if not os.path.exists(mysql_datasource_file):
+            logger.info("未找到mysql_datasources.json文件")
+            return
+
+        with open(mysql_datasource_file, "r", encoding="utf-8") as f:
+            datasources = json.load(f)
+
+        if not datasources:
+            logger.info("MySQL数据源配置为空")
+            return
+
+        # 加载MySQL连接配置
+        mysql_config_file = "mysql_configs.json"
+        mysql_configs = {}
+        if os.path.exists(mysql_config_file):
+            with open(mysql_config_file, "r", encoding="utf-8") as f:
+                configs = json.load(f)
+                for config in configs:
+                    mysql_configs[config["id"]] = config
+
+        duckdb_con = get_db_connection()
+        success_count = 0
+
+        for datasource in datasources:
+            try:
+                connection_name = datasource.get("connection_name")
+                sql_query = datasource.get("sql_query")
+                # 兼容不同的ID字段名
+                datasource_id = datasource.get("datasource_id") or datasource.get("id")
+
+                if not all([connection_name, sql_query, datasource_id]):
+                    logger.warning(f"MySQL数据源配置不完整，跳过: {datasource}")
+                    continue
+
+                # 获取连接配置
+                if connection_name not in mysql_configs:
+                    logger.warning(f"未找到MySQL连接配置: {connection_name}")
+                    continue
+
+                mysql_config = mysql_configs[connection_name]["params"]
+
+                # 重新执行SQL查询
+                from sqlalchemy import create_engine
+                import pandas as pd
+
+                # 支持 user 和 username 两种参数名称
+                username = mysql_config.get('user') or mysql_config.get('username')
+                if not username:
+                    logger.error(f"MySQL配置缺少用户名: {connection_name}")
+                    continue
+
+                connection_str = (
+                    f"mysql+pymysql://{username}:{mysql_config['password']}"
+                    f"@{mysql_config['host']}:{mysql_config.get('port', 3306)}/{mysql_config['database']}"
+                    "?charset=utf8mb4"
+                )
+
+                engine = create_engine(connection_str)
+                df = pd.read_sql(sql_query, engine)
+
+                # 创建持久化表，使用VARCHAR类型
+                success = create_varchar_table_from_dataframe(datasource_id, df, duckdb_con)
+                if success:
+                    logger.info(f"成功重新加载MySQL数据源: {datasource_id} ({len(df)}行)")
+                    success_count += 1
+                else:
+                    logger.error(f"重新加载MySQL数据源失败: {datasource_id}")
+
+            except Exception as e:
+                logger.error(f"重新加载MySQL数据源失败 {datasource.get('datasource_id', 'unknown')}: {str(e)}")
+
+        logger.info(f"MySQL数据源重新加载完成，成功: {success_count}/{len(datasources)}")
+
+    except Exception as e:
+        logger.error(f"重新加载MySQL数据源时出错: {str(e)}")
+
+
+def load_file_datasources_on_startup():
+    """应用启动时重新加载所有文件数据源到DuckDB"""
+    try:
+        logger.info("开始重新加载文件数据源...")
+        duckdb_con = get_db_connection()
+        success_count = reload_all_file_datasources_to_duckdb(duckdb_con)
+        logger.info(f"文件数据源重新加载完成，成功加载 {success_count} 个文件")
+    except Exception as e:
+        logger.error(f"重新加载文件数据源时出错: {str(e)}")
 
 
 app = FastAPI(
@@ -101,7 +198,21 @@ if query_proxy_available:
 async def startup_event():
     """应用启动时执行的初始化操作"""
     logger.info("应用启动中...")
+
+    # 加载MySQL配置
     load_mysql_configs_on_startup()
+
+    # 重新加载MySQL数据源
+    load_mysql_datasources_on_startup()
+
+    # 重新加载文件数据源
+    load_file_datasources_on_startup()
+
+    # 确保所有表都是VARCHAR类型（解决JOIN类型转换问题）
+    logger.info("开始检查和转换表类型...")
+    ensure_all_tables_varchar()
+    logger.info("表类型检查和转换完成")
+
     logger.info("应用启动完成")
 
 

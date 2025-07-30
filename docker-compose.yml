@@ -23,6 +23,15 @@ services:
     networks:
       - dataquery-network
     restart: unless-stopped
+    # 增加资源限制以支持大数据JOIN操作
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '4.0'
+        reservations:
+          memory: 4G
+          cpus: '2.0'
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 30s
