@@ -58,13 +58,17 @@ const DatabaseConnector = ({ onConnect }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [expanded, setExpanded] = useState(true);
-  
+
   // 新增MySQL配置管理状态
   const [mySQLConfigs, setMySQLConfigs] = useState([]);
   const [openConfigDialog, setOpenConfigDialog] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [configName, setConfigName] = useState('');
   const [showSaveConfig, setShowSaveConfig] = useState(false);
+
+  // 连接测试状态
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState(null);
 
   // 加载MySQL配置
   useEffect(() => {
@@ -140,6 +144,80 @@ const DatabaseConnector = ({ onConnect }) => {
       setAlias(config.id || '');
       setOpenConfigDialog(false);
     }
+  };
+
+  // 测试数据库连接
+  const handleTestConnection = async () => {
+    if (!validateConnectionForm()) return;
+
+    setTestingConnection(true);
+    setConnectionTestResult(null);
+    setError('');
+
+    try {
+      const testParams = {
+        type: dbType,
+        params: {
+          host,
+          port: port ? parseInt(port) : undefined,
+          user: username,
+          password,
+          database
+        }
+      };
+
+      // 调用测试连接API
+      const response = await fetch('/api/database_connections/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(testParams)
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setConnectionTestResult({
+          success: true,
+          message: `连接测试成功！延迟: ${result.latency_ms?.toFixed(2)}ms`
+        });
+      } else {
+        setConnectionTestResult({
+          success: false,
+          message: result.message || '连接测试失败'
+        });
+      }
+    } catch (err) {
+      setConnectionTestResult({
+        success: false,
+        message: `连接测试失败: ${err.message || '未知错误'}`
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  // 验证连接表单（不包括SQL查询）
+  const validateConnectionForm = () => {
+    if (!dbType) {
+      setError('请选择数据库类型');
+      return false;
+    }
+
+    if (dbType !== 'csv') {
+      if (!host) {
+        setError('请输入主机地址');
+        return false;
+      }
+
+      if (!database) {
+        setError('请输入数据库名称');
+        return false;
+      }
+    }
+
+    return true;
   };
 
   const handleConnect = async () => {
@@ -226,15 +304,31 @@ const DatabaseConnector = ({ onConnect }) => {
 
       {success && (
         <Fade in={success}>
-          <Alert 
-            severity="success" 
-            sx={{ 
-              mb: 2, 
+          <Alert
+            severity="success"
+            sx={{
+              mb: 2,
               borderRadius: 2,
               fontSize: '0.875rem'
             }}
           >
             {showSaveConfig ? '配置已保存' : '数据源连接成功'}
+          </Alert>
+        </Fade>
+      )}
+
+      {connectionTestResult && (
+        <Fade in={!!connectionTestResult}>
+          <Alert
+            severity={connectionTestResult.success ? "success" : "error"}
+            sx={{
+              mb: 2,
+              borderRadius: 2,
+              fontSize: '0.875rem'
+            }}
+            onClose={() => setConnectionTestResult(null)}
+          >
+            {connectionTestResult.message}
           </Alert>
         </Fade>
       )}
@@ -446,7 +540,26 @@ const DatabaseConnector = ({ onConnect }) => {
             )}
           </Box>
           
-          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2 }}>
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
+            {/* 测试连接按钮 */}
+            {dbType && dbType !== 'csv' && (
+              <Button
+                variant="outlined"
+                onClick={handleTestConnection}
+                disabled={testingConnection || loading}
+                sx={{
+                  borderRadius: '20px',
+                  minWidth: '120px',
+                  py: 0.75,
+                  textTransform: 'none',
+                  fontWeight: 500,
+                  fontSize: '0.875rem'
+                }}
+              >
+                {testingConnection ? <CircularProgress size={24} /> : '测试连接'}
+              </Button>
+            )}
+
             {/* 连接按钮 */}
             <Button
               variant="contained"

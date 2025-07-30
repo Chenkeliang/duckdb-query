@@ -50,7 +50,26 @@ export const connectDatabase = async (connectionParams) => {
     return response.data;
   } catch (error) {
     console.error('Error connecting to database:', error);
-    throw error;
+
+    // 提供更友好的错误信息
+    if (error.response?.status === 400) {
+      const detail = error.response.data?.detail || error.message;
+      if (detail.includes('缺少SQL查询参数')) {
+        throw new Error('请输入SQL查询语句');
+      } else if (detail.includes('Connection refused')) {
+        throw new Error('无法连接到数据库服务器，请检查主机地址和端口');
+      } else if (detail.includes('Access denied')) {
+        throw new Error('数据库认证失败，请检查用户名和密码');
+      } else {
+        throw new Error(detail);
+      }
+    } else if (error.response?.status === 500) {
+      throw new Error('服务器内部错误，请稍后重试');
+    } else if (error.code === 'ECONNABORTED') {
+      throw new Error('连接超时，请检查网络连接');
+    } else {
+      throw new Error(error.response?.data?.detail || error.message || '连接失败');
+    }
   }
 };
 
