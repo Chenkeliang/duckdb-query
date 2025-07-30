@@ -24,7 +24,10 @@ RUN npm ci --only=development
 RUN npm install \
     @fontsource/inter \
     ag-grid-react \
-    ag-grid-community
+    ag-grid-community \
+    react-window \
+    react-window-infinite-loader \
+    recharts
 
 # 复制源代码
 COPY . .

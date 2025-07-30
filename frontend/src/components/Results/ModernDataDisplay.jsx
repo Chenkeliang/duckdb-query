@@ -49,9 +49,9 @@ import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { saveQueryResultAsDatasource, saveQueryToDuckDB } from '../../services/apiClient';
-// import VirtualTable from '../VirtualTable/VirtualTable';
-// import SmartPagination from '../SmartPagination/SmartPagination';
-// import QuickCharts from '../DataVisualization/QuickCharts';
+import VirtualTable from '../VirtualTable/VirtualTable';
+import SmartPagination from '../SmartPagination/SmartPagination';
+import QuickCharts from '../DataVisualization/QuickCharts';
 
 const ModernDataDisplay = ({
   data = [],
@@ -435,19 +435,17 @@ const ModernDataDisplay = ({
               </Typography>
             </Box>
           ) : viewMode === 'chart' ? (
-            <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="h6">图表功能开发中...</Typography>
-              <Typography variant="body2" color="text.secondary">
-                数据可视化功能即将推出
-              </Typography>
-            </Box>
+            <QuickCharts
+              data={filteredData}
+              columns={columns}
+            />
           ) : renderMode === 'virtual' ? (
-            <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="h6">虚拟滚动功能开发中...</Typography>
-              <Typography variant="body2" color="text.secondary">
-                大数据量优化功能即将推出
-              </Typography>
-            </Box>
+            <VirtualTable
+              data={filteredData}
+              columns={columns}
+              height={400}
+              loading={loading}
+            />
           ) : (
             <Box
               className="ag-theme-alpine"
