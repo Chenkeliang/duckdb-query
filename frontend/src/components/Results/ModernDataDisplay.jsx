@@ -49,8 +49,9 @@ import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { saveQueryResultAsDatasource, saveQueryToDuckDB } from '../../services/apiClient';
-import VirtualTable from '../VirtualTable/VirtualTable';
-import SmartPagination from '../SmartPagination/SmartPagination';
+// import VirtualTable from '../VirtualTable/VirtualTable';
+// import SmartPagination from '../SmartPagination/SmartPagination';
+// import QuickCharts from '../DataVisualization/QuickCharts';
 
 const ModernDataDisplay = ({
   data = [],
@@ -73,6 +74,7 @@ const ModernDataDisplay = ({
   const [sortModel, setSortModel] = useState([]);
   const [filterModel, setFilterModel] = useState({});
   const [renderMode, setRenderMode] = useState('agGrid'); // 'agGrid' 或 'virtual'
+  const [viewMode, setViewMode] = useState('table'); // 'table' 或 'chart'
 
   // 保存为数据源相关状态
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -299,14 +301,25 @@ const ModernDataDisplay = ({
             </Box>
 
             <Stack direction="row" spacing={1}>
-              <Tooltip title={renderMode === 'agGrid' ? '切换到虚拟滚动' : '切换到标准表格'}>
+              <Tooltip title={viewMode === 'table' ? '切换到图表视图' : '切换到表格视图'}>
                 <IconButton
-                  onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
-                  color={renderMode === 'virtual' ? 'primary' : 'default'}
+                  onClick={() => setViewMode(viewMode === 'table' ? 'chart' : 'table')}
+                  color={viewMode === 'chart' ? 'primary' : 'default'}
                 >
-                  {renderMode === 'virtual' ? <VirtualIcon /> : <GridIcon />}
+                  {viewMode === 'chart' ? <ChartIcon /> : <TableIcon />}
                 </IconButton>
               </Tooltip>
+
+              {viewMode === 'table' && (
+                <Tooltip title={renderMode === 'agGrid' ? '切换到虚拟滚动' : '切换到标准表格'}>
+                  <IconButton
+                    onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
+                    color={renderMode === 'virtual' ? 'primary' : 'default'}
+                  >
+                    {renderMode === 'virtual' ? <VirtualIcon /> : <GridIcon />}
+                  </IconButton>
+                </Tooltip>
+              )}
 
               <Tooltip title="刷新数据">
                 <IconButton onClick={onRefresh} disabled={loading}>
@@ -421,13 +434,20 @@ const ModernDataDisplay = ({
                 执行查询以查看结果
               </Typography>
             </Box>
+          ) : viewMode === 'chart' ? (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="h6">图表功能开发中...</Typography>
+              <Typography variant="body2" color="text.secondary">
+                数据可视化功能即将推出
+              </Typography>
+            </Box>
           ) : renderMode === 'virtual' ? (
-            <VirtualTable
-              data={filteredData}
-              columns={columns}
-              height={400}
-              loading={loading}
-            />
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="h6">虚拟滚动功能开发中...</Typography>
+              <Typography variant="body2" color="text.secondary">
+                大数据量优化功能即将推出
+              </Typography>
+            </Box>
           ) : (
             <Box
               className="ag-theme-alpine"

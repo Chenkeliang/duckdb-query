@@ -28,6 +28,7 @@ import FileUploader from './components/DataSourceManager/FileUploader';
 import DatabaseConnector from './components/DataSourceManager/DatabaseConnector';
 import DataSourceList from './components/DataSourceManager/DataSourceList';
 import DatabaseConnectionManager from './components/DataSourceManager/DatabaseConnectionManager';
+import ModernDataDisplay from './components/Results/ModernDataDisplay';
 import SqlExecutor from './components/DataSourceManager/SqlExecutor';
 import DuckDBManagementPage from './components/DuckDBManager/DuckDBManagementPage';
 import DatabaseTableManager from './components/DatabaseManager/DatabaseTableManager';
@@ -408,45 +409,20 @@ const ModernApp = () => {
                     </Typography>
 
                     {/* 结果展示区域 */}
-                    <Box
-                      sx={{
-                        height: 400,
-                        border: '1px solid #e2e8f0',
-                        borderRadius: 2,
-                        backgroundColor: '#fafafa'
+                    <ModernDataDisplay
+                      data={queryResults.data || []}
+                      columns={queryResults.columns ? queryResults.columns.map(col => ({
+                        field: col,
+                        headerName: col,
+                        sortable: true,
+                        filter: true,
+                        resizable: true
+                      })) : []}
+                      loading={false}
+                      onRefresh={() => {
+                        // 可以添加刷新逻辑
                       }}
-                    >
-                      {queryResults.data && queryResults.data.length > 0 ? (
-                        <DataGrid
-                          rowData={queryResults.data}
-                          columnDefs={queryResults.columns ? queryResults.columns.map(col => ({
-                            field: col,
-                            headerName: col,
-                            sortable: true,
-                            filter: true,
-                            resizable: true
-                          })) : []}
-                        />
-                      ) : (
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            height: 400,
-                            color: 'text.secondary'
-                          }}
-                        >
-                          <Typography variant="h6" sx={{ mb: 1, fontWeight: 500 }}>
-                            暂无查询结果
-                          </Typography>
-                          <Typography variant="body2">
-                            请在上方构建查询条件并执行查询
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
+                    />
                   </CardContent>
                 </Card>
               </Box>
