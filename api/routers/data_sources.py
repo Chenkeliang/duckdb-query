@@ -662,6 +662,8 @@ async def connect_database(connection: DatabaseConnection = Body(...)):
     """连接到数据库，提取数据并加载到DuckDB中"""
     try:
         logger.info(f"尝试连接到数据库: {connection.type} - {connection.id}")
+        logger.info(f"连接参数: {connection.params}")
+        logger.info(f"参数中是否包含query: {'query' in connection.params if connection.params else 'params为空'}")
 
         # 处理不同类型的数据库连接
         if connection.type == "csv":
