@@ -457,7 +457,7 @@ const ModernDataDisplay = ({
             <Box
               className="ag-theme-alpine"
               sx={{
-                height: '100%',
+                height: 600,
                 width: '100%',
                 '& .modern-header': {
                   backgroundColor: theme.palette.grey[50],
