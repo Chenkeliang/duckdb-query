@@ -29,8 +29,9 @@ mkdir -p "$PROJECT_ROOT/data/duckdb"
 # 2. 清理上传的文件
 echo "📁 清理上传文件..."
 echo "📁 Cleaning uploaded files..."
-rm -f "$PROJECT_ROOT/api/temp_files"/*
-rm -f "$PROJECT_ROOT/data/uploads"/*
+find "$PROJECT_ROOT/api/temp_files" -type f -delete 2>/dev/null || true
+find "$PROJECT_ROOT/data/uploads" -type f -delete 2>/dev/null || true
+rm -f "$PROJECT_ROOT/temp_files"/* 2>/dev/null || true
 
 # 3. 重置数据源文件
 echo "📋 重置数据源文件..."

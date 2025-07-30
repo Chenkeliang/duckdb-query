@@ -19,6 +19,15 @@ else
     echo "⚠️ 清理脚本未找到"
 fi
 
+# 1.1 清理容器数据
+echo "🐳 清理容器内数据..."
+if [ -f "$PROJECT_ROOT/scripts/clean-container-data.sh" ]; then
+    chmod +x "$PROJECT_ROOT/scripts/clean-container-data.sh"
+    echo "n" | "$PROJECT_ROOT/scripts/clean-container-data.sh"
+else
+    echo "⚠️ 容器清理脚本未找到"
+fi
+
 # 2. 验证敏感文件已被清理
 echo "🔍 验证敏感文件清理状态..."
 
