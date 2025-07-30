@@ -118,9 +118,13 @@ const ModernDataDisplay = ({
         sortable: true,
         filter: true,
         resizable: true,
+        width: 150, // 固定宽度，避免重叠
         cellStyle: {
           fontSize: '0.875rem',
           padding: '8px 12px',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
         },
         headerClass: 'modern-header',
       }));
@@ -459,6 +463,7 @@ const ModernDataDisplay = ({
               sx={{
                 height: 600,
                 width: '100%',
+                overflow: 'auto', // 启用滚动
                 '& .modern-header': {
                   backgroundColor: theme.palette.grey[50],
                   fontWeight: 600,
@@ -466,14 +471,21 @@ const ModernDataDisplay = ({
                 },
                 '& .ag-header-cell': {
                   borderRight: `1px solid ${theme.palette.divider}`,
+                  whiteSpace: 'nowrap',
                 },
                 '& .ag-cell': {
                   borderRight: `1px solid ${theme.palette.divider}`,
                   display: 'flex',
                   alignItems: 'center',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                 },
                 '& .ag-row:hover': {
                   backgroundColor: theme.palette.action.hover,
+                },
+                '& .ag-body-horizontal-scroll': {
+                  display: 'block !important', // 确保水平滚动条显示
                 },
               }}
             >
@@ -481,8 +493,9 @@ const ModernDataDisplay = ({
                 rowData={paginatedData}
                 columnDefs={columnDefs}
                 defaultColDef={{
-                  flex: 1,
-                  minWidth: 100,
+                  width: 150,
+                  minWidth: 120,
+                  maxWidth: 300,
                   sortable: true,
                   filter: true,
                   resizable: true,
