@@ -23,6 +23,7 @@ import QueryBuilder from './components/QueryBuilder/QueryBuilder';
 import { uploadFile, connectDatabase, deleteFile } from './services/apiClient';
 import StorageIcon from '@mui/icons-material/Storage';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { ToastProvider } from './contexts/ToastContext';
 
 // 创建主题 - 简洁风格
 const theme = createTheme({
@@ -388,9 +389,10 @@ function App() {
   }, []);
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <ToastProvider>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
         <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: '1px solid rgba(0, 0, 0, 0.08)' }}>
           <Toolbar>
             <StorageIcon sx={{ mr: 1, color: 'primary.main' }} />
@@ -512,7 +514,8 @@ function App() {
           </Grid>
         </Container>
       </Box>
-    </ThemeProvider>
+      </ThemeProvider>
+    </ToastProvider>
   );
 }
 

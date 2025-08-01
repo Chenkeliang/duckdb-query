@@ -19,6 +19,7 @@ import {
 
 import { modernTheme } from './theme/modernTheme';
 import './styles/modern.css';
+import { ToastProvider } from './contexts/ToastContext';
 
 // 导入原有组件 - 确保包含所有必要的组件
 import QueryBuilder from './components/QueryBuilder/QueryBuilder';
@@ -232,9 +233,10 @@ const ModernApp = () => {
   };
 
   return (
-    <ThemeProvider theme={modernTheme}>
-      <CssBaseline />
-      <Box sx={{ minHeight: '100vh', backgroundColor: '#f8fafc' }}>
+    <ToastProvider>
+      <ThemeProvider theme={modernTheme}>
+        <CssBaseline />
+        <Box sx={{ minHeight: '100vh', backgroundColor: '#f8fafc' }}>
         {/* 简洁顶部导航栏 */}
         <AppBar
           position="static"
@@ -559,7 +561,8 @@ const ModernApp = () => {
           </Box>
         </Container>
       </Box>
-    </ThemeProvider>
+      </ThemeProvider>
+    </ToastProvider>
   );
 };
 

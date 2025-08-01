@@ -56,11 +56,13 @@ const FileUploader = ({ onUpload }) => {
     try {
       await onUpload(file);
       setSuccess(true);
+      console.log('调用showSuccess:', `文件 "${file.name}" 上传成功`);
       showSuccess(`文件 "${file.name}" 上传成功`);
       setTimeout(() => setSuccess(false), 3000); // 3秒后隐藏成功提示
     } catch (err) {
       const errorMsg = `文件上传失败: ${err.message}`;
       setError(errorMsg);
+      console.log('调用showError:', errorMsg);
       showError(errorMsg);
       console.error("Error uploading file:", err);
     } finally {
