@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { Snackbar, Alert, Slide } from '@mui/material';
+import { Alert } from '@mui/material';
 
 // Toast类型定义
 export const TOAST_TYPES = {
@@ -12,10 +12,38 @@ export const TOAST_TYPES = {
 // 创建Toast Context
 const ToastContext = createContext();
 
-// Slide过渡组件
-function SlideTransition(props) {
-  return <Slide {...props} direction="down" />;
-}
+// 自定义Toast组件
+const CustomToast = ({ toast, onClose, index }) => {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: `${80 + index * 70}px`,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 9999 + index,
+        minWidth: '300px',
+        maxWidth: '600px',
+      }}
+    >
+      <Alert
+        onClose={onClose}
+        severity={toast.type}
+        variant="filled"
+        sx={{
+          fontSize: '0.95rem',
+          fontWeight: 500,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          '& .MuiAlert-message': {
+            wordBreak: 'break-word'
+          }
+        }}
+      >
+        {toast.message}
+      </Alert>
+    </div>
+  );
+};
 
 // Toast Provider组件
 export const ToastProvider = ({ children }) => {
@@ -90,42 +118,15 @@ export const ToastProvider = ({ children }) => {
   return (
     <ToastContext.Provider value={contextValue}>
       {children}
-      
+
       {/* 渲染所有Toast */}
       {toasts.map((toast, index) => (
-        <Snackbar
+        <CustomToast
           key={toast.id}
-          open={toast.open}
+          toast={toast}
+          index={index}
           onClose={() => hideToast(toast.id)}
-          TransitionComponent={SlideTransition}
-          anchorOrigin={{ 
-            vertical: 'top', 
-            horizontal: 'center' 
-          }}
-          sx={{
-            // 多个Toast时的垂直偏移
-            top: `${80 + index * 70}px !important`,
-            zIndex: 9999 + index
-          }}
-        >
-          <Alert
-            onClose={() => hideToast(toast.id)}
-            severity={toast.type}
-            variant="filled"
-            sx={{
-              minWidth: '300px',
-              maxWidth: '600px',
-              fontSize: '0.95rem',
-              fontWeight: 500,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              '& .MuiAlert-message': {
-                wordBreak: 'break-word'
-              }
-            }}
-          >
-            {toast.message}
-          </Alert>
-        </Snackbar>
+        />
       ))}
     </ToastContext.Provider>
   );

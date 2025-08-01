@@ -1,35 +1,19 @@
 {
-  "Result_1": {
-    "source_id": "Result_1",
-    "filename": "Result_1.csv",
-    "file_path": "/app/temp_files/Result_1.csv",
+  "result_dy": {
+    "source_id": "result_dy",
+    "filename": "result_dy.csv",
+    "file_path": "/app/temp_files/result_dy.csv",
     "file_type": "csv",
-    "row_count": 2029,
-    "column_count": 22,
+    "row_count": 499,
+    "column_count": 6,
     "columns": [
-      "385805",
-      "262752435",
-      "7",
-      "202006135934628128",
+      "1",
       "0",
-      "2020-06-13 03:18:08",
-      "1970-01-01 00:00:00",
-      "WX",
-      "IGET",
-      "2020-06-13 03:17:49",
-      "2020-06-13 03:18:09",
-      "7.1",
-      "134351",
-      "得到锦囊VIP会员连续包月",
-      "18.00",
-      "30",
-      "Unnamed: 16",
-      "WX.1",
-      "qa",
-      "IGET.1",
-      "2020-04-09 11:28:33",
-      "2020-04-09 11:28:33.1"
+      "1_x",
+      "1_y",
+      "2",
+      "_merge"
     ],
-    "upload_time": "2025-08-01 08:42:45.756207"
+    "upload_time": "2025-08-01 09:09:33.027450"
   }
 }

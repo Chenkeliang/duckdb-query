@@ -4,10 +4,10 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import { useToast } from '../../contexts/ToastContext';
+import { useSimpleToast } from '../../contexts/SimpleToastContext';
 
 const FileUploader = ({ onUpload }) => {
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError } = useSimpleToast();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);

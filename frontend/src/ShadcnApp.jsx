@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // 导入Toast上下文
-import { ToastProvider } from './contexts/ToastContext';
+import { SimpleToastProvider } from './contexts/SimpleToastContext';
 
 // 导入原有组件 - 确保包含所有必要的组件
 import QueryBuilder from './components/QueryBuilder/QueryBuilder';
@@ -155,7 +155,7 @@ const ShadcnApp = () => {
   };
 
   return (
-    <ToastProvider>
+    <SimpleToastProvider>
       <div className="min-h-screen bg-gray-50">
       {/* 顶部导航 */}
       <header className="border-b bg-white">
@@ -395,7 +395,7 @@ const ShadcnApp = () => {
         </div>
       </main>
       </div>
-    </ToastProvider>
+    </SimpleToastProvider>
   );
 };
 
