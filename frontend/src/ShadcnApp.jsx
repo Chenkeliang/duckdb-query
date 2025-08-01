@@ -17,7 +17,7 @@ import ModernDataDisplay from './components/Results/ModernDataDisplay';
 import DuckDBManagementPage from './components/DuckDBManager/DuckDBManagementPage';
 import DatabaseTableManager from './components/DatabaseManager/DatabaseTableManager';
 import ToastTest from './components/ToastTest';
-import ToastDiagnostic from './components/ToastDiagnostic';
+// import ToastDiagnostic from './components/ToastDiagnostic';
 
 // 导入服务
 import {
@@ -182,8 +182,7 @@ const ShadcnApp = () => {
               { id: "query", label: "查询" },
               { id: "sql", label: "SQL执行器" },
               { id: "tablemanagement", label: "数据表管理" },
-              { id: "toasttest", label: "Toast测试" },
-              { id: "toastdiagnostic", label: "Toast诊断" }
+              { id: "toasttest", label: "Toast测试" }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -392,13 +391,6 @@ const ShadcnApp = () => {
               <h2 className="text-xl font-semibold mb-4">Toast通知测试</h2>
               <p className="text-gray-600 mb-4">点击下面的按钮测试Toast通知是否正常工作：</p>
               <ToastTest />
-            </div>
-          )}
-
-          {/* Toast诊断页面 */}
-          {currentTab === "toastdiagnostic" && (
-            <div className="bg-white rounded-lg border shadow-sm p-6">
-              <ToastDiagnostic />
             </div>
           )}
         </div>

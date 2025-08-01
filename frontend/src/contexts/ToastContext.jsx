@@ -22,7 +22,7 @@ export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
 
   // 显示Toast的函数
-  const showToast = useCallback((message, type = TOAST_TYPES.INFO, duration = 4000) => {
+  const showToast = useCallback((message, type = 'info', duration = 4000) => {
     console.log('🔔 showToast调用:', { message, type, duration });
 
     // 检查DOM状态
@@ -78,19 +78,19 @@ export const ToastProvider = ({ children }) => {
 
   // 便捷方法
   const showSuccess = useCallback((message, duration) => {
-    return showToast(message, TOAST_TYPES.SUCCESS, duration);
+    return showToast(message, 'success', duration);
   }, [showToast]);
 
   const showError = useCallback((message, duration) => {
-    return showToast(message, TOAST_TYPES.ERROR, duration);
+    return showToast(message, 'error', duration);
   }, [showToast]);
 
   const showWarning = useCallback((message, duration) => {
-    return showToast(message, TOAST_TYPES.WARNING, duration);
+    return showToast(message, 'warning', duration);
   }, [showToast]);
 
   const showInfo = useCallback((message, duration) => {
-    return showToast(message, TOAST_TYPES.INFO, duration);
+    return showToast(message, 'info', duration);
   }, [showToast]);
 
   const contextValue = {

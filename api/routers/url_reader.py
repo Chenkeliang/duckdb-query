@@ -112,21 +112,36 @@ async def read_from_url(request: URLReadRequest):
                         print(f"DEBUG: 列 {col} 转换为可读字符串格式")
                     elif isinstance(sample_value, dict):
                         # 如果是字典（JSON对象），转换为JSON字符串
-                        df[col] = df[col].apply(lambda x: json.dumps(x, ensure_ascii=False) if isinstance(x, dict) else str(x) if x is not None else None)
+                        def safe_json_dumps(x):
+                            if isinstance(x, dict):
+                                try:
+                                    # 处理包含numpy数组的字典
+                                    def convert_numpy(obj):
+                                        if hasattr(obj, 'tolist'):  # numpy数组
+                                            return obj.tolist()
+                                        elif isinstance(obj, dict):
+                                            return {k: convert_numpy(v) for k, v in obj.items()}
+                                        elif isinstance(obj, list):
+                                            return [convert_numpy(item) for item in obj]
+                                        else:
+                                            return obj
+
+                                    converted_dict = convert_numpy(x)
+                                    return json.dumps(converted_dict, ensure_ascii=False)
+                                except Exception as e:
+                                    print(f"DEBUG: JSON序列化失败: {e}")
+                                    return str(x)
+                            elif x is not None:
+                                return str(x)
+                            else:
+                                return None
+
+                        df[col] = df[col].apply(safe_json_dumps)
                         print(f"DEBUG: 列 {col} 转换为JSON字符串")
                     elif hasattr(sample_value, '__iter__') and not isinstance(sample_value, str):
-                        # 对于其他可迭代对象，检查是否是字节数组形式的JSON
-                        try:
-                            # 尝试将可迭代对象转换为JSON格式
-                            if hasattr(sample_value, '__getitem__') and all(isinstance(k, (int, str)) for k in sample_value):
-                                # 如果看起来像是索引到值的映射，保留为JSON字符串
-                                df[col] = df[col].apply(lambda x: json.dumps(dict(x) if hasattr(x, 'items') else {str(i): v for i, v in enumerate(x)}) if hasattr(x, '__iter__') and not isinstance(x, str) else str(x) if x is not None else None)
-                                print(f"DEBUG: 列 {col} 转换为JSON格式的字符串")
-                            else:
-                                df[col] = df[col].apply(lambda x: str(x) if x is not None else None)
-                        except:
-                            # 如果转换失败，保留原始格式转为字符串
-                            df[col] = df[col].apply(lambda x: str(x) if x is not None else None)
+                        # 对于其他可迭代对象，直接转换为字符串
+                        df[col] = df[col].apply(lambda x: str(x) if x is not None else None)
+                        print(f"DEBUG: 列 {col} 转换为字符串")
             
             # 获取DuckDB连接
             conn = get_db_connection()

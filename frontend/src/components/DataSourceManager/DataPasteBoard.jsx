@@ -45,6 +45,7 @@ const DataPasteBoard = ({ onDataSaved }) => {
   const [unifyAsString, setUnifyAsString] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   // 数据类型选项
   const dataTypes = [

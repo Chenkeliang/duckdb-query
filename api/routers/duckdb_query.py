@@ -5,13 +5,16 @@ DuckDB自定义SQL查询路由
 
 import logging
 import traceback
+import pandas as pd
+import os
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from core.duckdb_engine import get_db_connection, handle_non_serializable_data
+from core.duckdb_engine import get_db_connection, handle_non_serializable_data, create_persistent_table
 from core.utils import jsonable_encoder
+from core.resource_manager import save_upload_file
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -282,3 +285,69 @@ async def get_table_schema(table_name: str):
     except Exception as e:
         logger.error(f"获取表结构失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取表结构失败: {str(e)}")
+
+
+@router.post("/api/duckdb/upload-file", tags=["DuckDB Query"])
+async def upload_file_to_duckdb(
+    file: UploadFile = File(...),
+    table_alias: str = Form(...)
+):
+    """上传文件并直接创建DuckDB表"""
+    try:
+        logger.info(f"开始上传文件到DuckDB: {file.filename} -> {table_alias}")
+
+        # 保存上传的文件
+        file_path = await save_upload_file(file)
+        logger.info(f"文件已保存到: {file_path}")
+
+        # 读取文件数据
+        file_extension = os.path.splitext(file.filename)[1].lower()
+
+        if file_extension == '.csv':
+            df = pd.read_csv(file_path)
+        elif file_extension in ['.xlsx', '.xls']:
+            df = pd.read_excel(file_path)
+        elif file_extension == '.json':
+            df = pd.read_json(file_path)
+        elif file_extension in ['.parquet', '.pq']:
+            df = pd.read_parquet(file_path)
+        else:
+            raise HTTPException(status_code=400, detail=f"不支持的文件格式: {file_extension}")
+
+        logger.info(f"成功读取文件数据: {len(df)} 行, {len(df.columns)} 列")
+
+        # 获取DuckDB连接
+        con = get_db_connection()
+
+        # 创建表
+        success = create_persistent_table(table_alias, df, con)
+
+        if success:
+            # 获取表信息
+            row_count = len(df)
+            columns = df.columns.tolist()
+
+            logger.info(f"成功创建DuckDB表: {table_alias}")
+
+            # 清理临时文件
+            try:
+                os.remove(file_path)
+            except:
+                pass
+
+            return {
+                "success": True,
+                "message": f"文件上传成功，已创建表: {table_alias}",
+                "table_alias": table_alias,
+                "row_count": row_count,
+                "columns": columns
+            }
+        else:
+            raise HTTPException(status_code=500, detail="创建DuckDB表失败")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"上传文件到DuckDB失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")

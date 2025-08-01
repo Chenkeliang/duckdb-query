@@ -29,7 +29,8 @@ const DataGrid = ({ rowData, columnDefs }) => {
     sortable: true,
     filter: true,
     resizable: true,
-    minWidth: 100,
+    minWidth: 80,
+    // 移除maxWidth限制，允许无限拖宽
     flex: 1
   };
 
@@ -100,12 +101,19 @@ const DataGrid = ({ rowData, columnDefs }) => {
         </Box>
       )}
       
-      <div 
+      <Box
         className="ag-theme-alpine"
-        style={{ 
-          height: '100%', 
+        sx={{
+          height: '100%',
           width: '100%',
-          ...gridStyle 
+          ...gridStyle,
+          '& .ag-header-cell-resize': {
+            cursor: 'col-resize !important',
+            opacity: 1,
+          },
+          '& .ag-header-cell:hover .ag-header-cell-resize': {
+            opacity: 1,
+          }
         }}
       >
         <AgGridReact
@@ -128,7 +136,7 @@ const DataGrid = ({ rowData, columnDefs }) => {
             setLoading(false);
           }}
         />
-      </div>
+      </Box>
     </Box>
   );
 };

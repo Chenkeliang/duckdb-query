@@ -137,7 +137,9 @@ const ModernDataDisplay = ({
         sortable: true,
         filter: true,
         resizable: true,
-        width: 150, // 固定宽度，避免重叠
+        width: 150, // 初始宽度
+        minWidth: 80, // 最小宽度
+        // 移除maxWidth，允许无限拖宽
         cellStyle: {
           fontSize: '0.875rem',
           padding: '8px 12px',
@@ -499,6 +501,13 @@ const ModernDataDisplay = ({
                   borderRight: `1px solid ${theme.palette.divider}`,
                   whiteSpace: 'nowrap',
                 },
+                '& .ag-header-cell-resize': {
+                  cursor: 'col-resize !important',
+                  opacity: 1,
+                },
+                '& .ag-header-cell:hover .ag-header-cell-resize': {
+                  opacity: 1,
+                },
                 '& .ag-cell': {
                   borderRight: `1px solid ${theme.palette.divider}`,
                   display: 'flex',
@@ -520,8 +529,8 @@ const ModernDataDisplay = ({
                 columnDefs={columnDefs}
                 defaultColDef={{
                   width: 150,
-                  minWidth: 120,
-                  maxWidth: 300,
+                  minWidth: 80,
+                  // 移除maxWidth限制，允许无限拖宽
                   sortable: true,
                   filter: true,
                   resizable: true,
