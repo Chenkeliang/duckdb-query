@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // 导入Toast上下文
-import { SimpleToastProvider } from './contexts/SimpleToastContext';
+import { ToastProvider } from './contexts/ToastContext';
 
 // 导入原有组件 - 确保包含所有必要的组件
 import QueryBuilder from './components/QueryBuilder/QueryBuilder';
@@ -17,6 +17,7 @@ import ModernDataDisplay from './components/Results/ModernDataDisplay';
 import DuckDBManagementPage from './components/DuckDBManager/DuckDBManagementPage';
 import DatabaseTableManager from './components/DatabaseManager/DatabaseTableManager';
 import ToastTest from './components/ToastTest';
+import ToastDiagnostic from './components/ToastDiagnostic';
 
 // 导入服务
 import {
@@ -155,7 +156,7 @@ const ShadcnApp = () => {
   };
 
   return (
-    <SimpleToastProvider>
+    <ToastProvider>
       <div className="min-h-screen bg-gray-50">
       {/* 顶部导航 */}
       <header className="border-b bg-white">
@@ -181,7 +182,8 @@ const ShadcnApp = () => {
               { id: "query", label: "查询" },
               { id: "sql", label: "SQL执行器" },
               { id: "tablemanagement", label: "数据表管理" },
-              { id: "toasttest", label: "Toast测试" }
+              { id: "toasttest", label: "Toast测试" },
+              { id: "toastdiagnostic", label: "Toast诊断" }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -392,10 +394,17 @@ const ShadcnApp = () => {
               <ToastTest />
             </div>
           )}
+
+          {/* Toast诊断页面 */}
+          {currentTab === "toastdiagnostic" && (
+            <div className="bg-white rounded-lg border shadow-sm p-6">
+              <ToastDiagnostic />
+            </div>
+          )}
         </div>
       </main>
       </div>
-    </SimpleToastProvider>
+    </ToastProvider>
   );
 };
 

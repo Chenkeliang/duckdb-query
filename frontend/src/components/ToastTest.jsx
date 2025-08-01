@@ -1,9 +1,9 @@
 import React from 'react';
 import { Button, Box } from '@mui/material';
-import { useSimpleToast } from '../contexts/SimpleToastContext';
+import { useToast } from '../contexts/ToastContext';
 
 const ToastTest = () => {
-  const { showSuccess, showError, showWarning, showInfo } = useSimpleToast();
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
 
   const handleTestSuccess = () => {
     console.log('测试成功Toast');
