@@ -14,7 +14,13 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # 文件数据源配置文件路径
-FILE_DATASOURCE_CONFIG = "/app/data/file_datasources.json"
+# 使用相对路径，兼容本地开发和Docker环境
+if os.path.exists("/app"):
+    # Docker环境
+    FILE_DATASOURCE_CONFIG = "/app/data/file_datasources.json"
+else:
+    # 本地开发环境
+    FILE_DATASOURCE_CONFIG = "./data/file_datasources.json"
 
 class FileDataSourceManager:
     """文件数据源管理器"""

@@ -28,7 +28,7 @@ import {
 } from '@mui/material';
 import { getDuckDBTables, deleteDuckDBTable } from '../../services/apiClient';
 
-const DuckDBTableManager = ({ onTableSelect }) => {
+const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -101,6 +101,10 @@ const DuckDBTableManager = ({ onTableSelect }) => {
       if (result.success) {
         // 重新加载表列表
         await loadTables();
+        // 通知全局数据源状态更新
+        if (onDataSourceChange) {
+          onDataSourceChange();
+        }
         setDeleteDialogOpen(false);
         setTableToDelete(null);
       } else {

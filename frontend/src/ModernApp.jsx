@@ -23,13 +23,15 @@ import './styles/modern.css';
 // 导入原有组件 - 确保包含所有必要的组件
 import QueryBuilder from './components/QueryBuilder/QueryBuilder';
 import DataGrid from './components/DataGrid';
-import FileUploader from './components/DataSourceManager/FileUploader';
+
 import DatabaseConnector from './components/DataSourceManager/DatabaseConnector';
 import DataPasteBoard from './components/DataSourceManager/DataPasteBoard';
 import DataSourceList from './components/DataSourceManager/DataSourceList';
 import DatabaseConnectionManager from './components/DataSourceManager/DatabaseConnectionManager';
+import DuckDBQueryBuilder from './components/DuckDBQuery/DuckDBQueryBuilder';
+import UnifiedSQLExecutor from './components/UnifiedSQLExecutor/UnifiedSQLExecutor';
+import EnhancedFileUploader from './components/DataSourceManager/EnhancedFileUploader';
 import ModernDataDisplay from './components/Results/ModernDataDisplay';
-import SqlExecutor from './components/DataSourceManager/SqlExecutor';
 import DuckDBManagementPage from './components/DuckDBManager/DuckDBManagementPage';
 import DatabaseTableManager from './components/DatabaseManager/DatabaseTableManager';
 
@@ -57,9 +59,9 @@ const ModernApp = () => {
     const now = Date.now();
     const timeSinceLastFetch = now - lastFetchTime;
 
-    // 如果不是强制刷新且距离上次请求不足30秒，则跳过
-    if (!force && timeSinceLastFetch < 30000) {
-      console.log('跳过数据源请求，距离上次请求不足30秒');
+    // 如果不是强制刷新且距离上次请求不足5秒，则跳过
+    if (!force && timeSinceLastFetch < 5000) {
+      console.log('跳过数据源请求，距离上次请求不足5秒');
       return;
     }
 
@@ -78,11 +80,11 @@ const ModernApp = () => {
       };
 
       const [dbResponse, duckdbResponse] = await Promise.all([
-        fetchWithTimeout('/api/database_connections').catch(err => {
+        fetchWithTimeout('http://localhost:8000/api/database_connections').catch(err => {
           console.warn('获取数据库连接失败:', err);
           return { ok: false, json: () => Promise.resolve({ connections: [] }) };
         }),
-        fetchWithTimeout('/api/duckdb_tables').catch(err => {
+        fetchWithTimeout('http://localhost:8000/api/duckdb/tables').catch(err => {
           console.warn('获取DuckDB表失败:', err);
           return { ok: false, json: () => Promise.resolve({ tables: [] }) };
         })
@@ -377,7 +379,13 @@ const ModernApp = () => {
                               文件上传
                             </Typography>
                           </Box>
-                          <FileUploader onUpload={handleFileUpload} />
+                          <EnhancedFileUploader
+                            onUpload={handleFileUpload}
+                            onUploadComplete={(result) => {
+                              console.log('文件上传完成:', result);
+                              triggerRefresh();
+                            }}
+                          />
                         </CardContent>
                       </Card>
 
@@ -503,41 +511,44 @@ const ModernApp = () => {
               </Box>
             )}
 
-            {/* SQL执行器页面 */}
+            {/* 统一SQL执行器页面 */}
             {currentTab === 2 && (
               <Box sx={{ p: 4 }}>
-                <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
-                  💾 SQL执行器
-                </Typography>
-                <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-                  连接MySQL数据库，执行自定义SQL查询，并可将结果保存为DuckDB数据源
-                </Typography>
+                <UnifiedSQLExecutor
+                  databaseConnections={databaseConnections}
+                  onDataSourceSaved={(newDataSource) => {
+                    triggerRefresh();
+                    console.log('新数据源已保存:', newDataSource);
+                  }}
+                  onResultsReceived={setQueryResults}
+                />
 
-                <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
-                  <CardContent>
-                    <SqlExecutor
-                      databaseConnections={databaseConnections}
-                      onDataSourceSaved={(newDataSource) => {
-                        // 当保存新数据源时，刷新数据源列表
-                        triggerRefresh();
-                        // 可以添加成功提示
-                        console.log('新数据源已保存:', newDataSource);
-                      }}
+                {/* 查询结果显示 */}
+                {queryResults && queryResults.data && queryResults.data.length > 0 && (
+                  <Box sx={{ mt: 4 }}>
+                    <ModernDataDisplay
+                      data={queryResults.data}
+                      columns={queryResults.columns}
+                      title="查询结果"
+                      sqlQuery={queryResults.sqlQuery}
+                      onRefresh={() => console.log('刷新查询结果')}
                     />
-                  </CardContent>
-                </Card>
+                  </Box>
+                )}
               </Box>
             )}
 
             {/* DuckDB管理页面 */}
             {currentTab === 3 && (
-              <DuckDBManagementPage />
+              <DuckDBManagementPage onDataSourceChange={triggerRefresh} />
             )}
 
             {/* 数据库表管理页面 */}
             {currentTab === 4 && (
               <DatabaseTableManager databaseConnections={databaseConnections} />
             )}
+
+
           </Paper>
 
           {/* 底部信息 */}

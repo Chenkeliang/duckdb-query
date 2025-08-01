@@ -12,3 +12,4 @@ pyarrow
 pydantic[email]
 python-json-logger
 httpx
+requests

@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极简现代风格 - 数据查询平台</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-gray-50: #fafafa;
+            --color-gray-100: #f5f5f5;
+            --color-gray-200: #e5e5e5;
+            --color-gray-300: #d4d4d4;
+            --color-gray-400: #a3a3a3;
+            --color-gray-500: #737373;
+            --color-gray-600: #525252;
+            --color-gray-700: #404040;
+            --color-gray-800: #262626;
+            --color-gray-900: #171717;
+            --color-blue-500: #3b82f6;
+            --color-blue-600: #2563eb;
+            --color-green-500: #10b981;
+            --color-orange-500: #f59e0b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--color-gray-50);
+            color: var(--color-gray-900);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* 顶部导航 */
+        .header {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--color-gray-200);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 64px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 18px;
+            color: var(--color-gray-900);
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--color-gray-900);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2px;
+        }
+
+        .nav-link {
+            padding: 8px 16px;
+            color: var(--color-gray-600);
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: var(--color-gray-900);
+            background-color: var(--color-gray-100);
+        }
+
+        /* 主要内容 */
+        .main {
+            padding: 32px 0;
+        }
+
+        .page-header {
+            margin-bottom: 32px;
+        }
+
+        .page-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--color-gray-900);
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            font-size: 16px;
+            color: var(--color-gray-600);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 32px;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: white;
+            border: 1px solid var(--color-gray-200);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            transition: all 0.2s ease;
+        }
+
+        .card:hover {
+            border-color: var(--color-gray-300);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--color-gray-900);
+            margin-bottom: 4px;
+        }
+
+        .card-subtitle {
+            font-size: 14px;
+            color: var(--color-gray-600);
+            margin-bottom: 20px;
+        }
+
+        /* 标签页 */
+        .tabs {
+            display: flex;
+            background: var(--color-gray-100);
+            border-radius: 8px;
+            padding: 2px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 8px 12px;
+            background: none;
+            border: none;
+            color: var(--color-gray-600);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .tab.active {
+            background: white;
+            color: var(--color-gray-900);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 输入框 */
+        .input-group {
+            margin-bottom: 16px;
+        }
+
+        .label {
+            display: block;
+            font-weight: 500;
+            font-size: 14px;
+            color: var(--color-gray-700);
+            margin-bottom: 6px;
+        }
+
+        .input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--color-gray-300);
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            background: white;
+        }
+
+        .input:focus {
+            outline: none;
+            border-color: var(--color-blue-500);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .input::placeholder {
+            color: var(--color-gray-400);
+        }
+
+        .textarea {
+            min-height: 120px;
+            resize: vertical;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+        }
+
+        /* 按钮 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--color-gray-900);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--color-gray-800);
+        }
+
+        .btn-secondary {
+            background: var(--color-gray-100);
+            color: var(--color-gray-700);
+            border: 1px solid var(--color-gray-200);
+        }
+
+        .btn-secondary:hover {
+            background: var(--color-gray-200);
+        }
+
+        /* 文件上传 */
+        .upload-area {
+            border: 2px dashed var(--color-gray-300);
+            border-radius: 12px;
+            padding: 32px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 20px;
+        }
+
+        .upload-area:hover {
+            border-color: var(--color-gray-400);
+            background: var(--color-gray-50);
+        }
+
+        .upload-icon {
+            font-size: 32px;
+            margin-bottom: 12px;
+            color: var(--color-gray-400);
+        }
+
+        .upload-text {
+            font-weight: 500;
+            color: var(--color-gray-700);
+            margin-bottom: 4px;
+        }
+
+        .upload-hint {
+            font-size: 12px;
+            color: var(--color-gray-500);
+        }
+
+        /* 表格列表 */
+        .table-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .table-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            border: 1px solid var(--color-gray-200);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .table-item:hover {
+            border-color: var(--color-gray-300);
+            background: var(--color-gray-50);
+        }
+
+        .table-info h4 {
+            font-weight: 500;
+            color: var(--color-gray-900);
+            margin-bottom: 2px;
+        }
+
+        .table-meta {
+            font-size: 12px;
+            color: var(--color-gray-500);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--color-green-500);
+            border-radius: 50%;
+        }
+
+        /* 数据表格 */
+        .data-table {
+            border: 1px solid var(--color-gray-200);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table th {
+            background: var(--color-gray-50);
+            padding: 12px;
+            text-align: left;
+            font-weight: 500;
+            font-size: 12px;
+            color: var(--color-gray-600);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--color-gray-200);
+        }
+
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--color-gray-200);
+            font-size: 14px;
+        }
+
+        .table tr:hover {
+            background: var(--color-gray-50);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--color-green-500);
+        }
+
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--color-orange-500);
+        }
+
+        /* 工具栏 */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .toolbar-left h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .toolbar-left p {
+            font-size: 14px;
+            color: var(--color-gray-600);
+        }
+
+        .toolbar-right {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .nav {
+                flex-direction: column;
+                height: auto;
+                padding: 16px 0;
+                gap: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <header class="header">
+        <div class="container">
+            <nav class="nav">
+                <div class="logo">
+                    <div class="logo-icon">DQ</div>
+                    <span>DataQuery Pro</span>
+                </div>
+                <div class="nav-links">
+                    <a href="#" class="nav-link">数据源</a>
+                    <a href="#" class="nav-link active">SQL执行器</a>
+                    <a href="#" class="nav-link">管理</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- 主要内容 -->
+    <main class="main">
+        <div class="container">
+            <div class="page-header">
+                <h1 class="page-title">SQL执行器</h1>
+                <p class="page-subtitle">在DuckDB中执行高级SQL查询，支持文件上传、表管理和结果可视化</p>
+            </div>
+
+            <div class="grid">
+                <!-- 左侧面板 -->
+                <aside>
+                    <!-- 数据源管理 -->
+                    <div class="card">
+                        <h3 class="card-title">数据源管理</h3>
+                        <p class="card-subtitle">管理您的数据连接</p>
+                        
+                        <div class="tabs">
+                            <button class="tab active">文件上传</button>
+                            <button class="tab">URL读取</button>
+                        </div>
+
+                        <div class="upload-area">
+                            <div class="upload-icon">📁</div>
+                            <div class="upload-text">选择文件或拖拽到此处</div>
+                            <div class="upload-hint">支持 CSV, JSON, Excel, Parquet</div>
+                        </div>
+
+                        <div class="input-group">
+                            <label class="label">表别名</label>
+                            <input type="text" class="input" placeholder="输入表名...">
+                        </div>
+
+                        <button class="btn btn-primary" style="width: 100%;">上传文件</button>
+                    </div>
+
+                    <!-- DuckDB表列表 -->
+                    <div class="card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3 class="card-title">DuckDB表</h3>
+                            <button class="btn btn-secondary">管理</button>
+                        </div>
+                        
+                        <div class="table-list">
+                            <div class="table-item">
+                                <div class="table-info">
+                                    <h4>iris_data</h4>
+                                    <div class="table-meta">150 行 • 5 列</div>
+                                </div>
+                                <div class="status-dot"></div>
+                            </div>
+                            <div class="table-item">
+                                <div class="table-info">
+                                    <h4>sales_data</h4>
+                                    <div class="table-meta">1,000 行 • 8 列</div>
+                                </div>
+                                <div class="status-dot"></div>
+                            </div>
+                            <div class="table-item">
+                                <div class="table-info">
+                                    <h4>final_clean_test</h4>
+                                    <div class="table-meta">2 行 • 11 列</div>
+                                </div>
+                                <div class="status-dot"></div>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- 右侧主要区域 -->
+                <div>
+                    <!-- SQL查询器 -->
+                    <div class="card">
+                        <h3 class="card-title">SQL查询执行器</h3>
+                        <p class="card-subtitle">执行高级SQL查询并查看结果</p>
+                        
+                        <div class="input-group">
+                            <label class="label">SQL查询</label>
+                            <textarea class="input textarea" placeholder="SELECT * FROM your_table LIMIT 100"></textarea>
+                        </div>
+                        
+                        <div style="display: flex; gap: 12px; align-items: end;">
+                            <div class="input-group" style="flex: 1; margin-bottom: 0;">
+                                <label class="label">保存结果为表 (可选)</label>
+                                <input type="text" class="input" placeholder="新表名...">
+                            </div>
+                            <button class="btn btn-primary">执行查询</button>
+                        </div>
+                    </div>
+
+                    <!-- 查询结果 -->
+                    <div class="card">
+                        <div class="toolbar">
+                            <div class="toolbar-left">
+                                <h3>查询结果</h3>
+                                <p>2 行 • 3 列</p>
+                            </div>
+                            <div class="toolbar-right">
+                                <button class="btn btn-secondary">刷新</button>
+                                <button class="btn btn-secondary">图表</button>
+                                <button class="btn btn-secondary">导出</button>
+                            </div>
+                        </div>
+                        
+                        <div class="data-table">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Date String Col</th>
+                                        <th>String Col</th>
+                                        <th>Value</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>6</td>
+                                        <td>04/01/09</td>
+                                        <td>0</td>
+                                        <td>123.45</td>
+                                        <td><span class="badge badge-success">Active</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>7</td>
+                                        <td>04/01/09</td>
+                                        <td>1</td>
+                                        <td>67.89</td>
+                                        <td><span class="badge badge-warning">Pending</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

@@ -27,8 +27,10 @@ import {
   Description as FileIcon,
   Storage as DatabaseIcon
 } from '@mui/icons-material';
+import { useToast } from '../../contexts/ToastContext';
 
 const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh, refreshTrigger }) => {
+  const { showSuccess, showError } = useToast();
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState('');
@@ -98,11 +100,16 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
       if (response.ok) {
         await silentRefresh();
         setDeleteDialog({ open: false, item: null, type: null });
+        showSuccess('文件删除成功');
       } else {
-        setError('删除文件失败');
+        const errorMsg = '删除文件失败';
+        setError(errorMsg);
+        showError(errorMsg);
       }
     } catch (error) {
-      setError('删除文件失败: ' + error.message);
+      const errorMsg = '删除文件失败: ' + error.message;
+      setError(errorMsg);
+      showError(errorMsg);
     }
   };
 
@@ -116,11 +123,16 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
       if (response.ok) {
         await silentRefresh();
         setDeleteDialog({ open: false, item: null, type: null });
+        showSuccess('数据库连接删除成功');
       } else {
-        setError('删除数据库连接失败');
+        const errorMsg = '删除数据库连接失败';
+        setError(errorMsg);
+        showError(errorMsg);
       }
     } catch (error) {
-      setError('删除数据库连接失败: ' + error.message);
+      const errorMsg = '删除数据库连接失败: ' + error.message;
+      setError(errorMsg);
+      showError(errorMsg);
     }
   };
 
@@ -133,7 +145,9 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
         setPreviewDialog({ open: true, data: { filename, ...data } });
       }
     } catch (error) {
-      setError('预览文件失败: ' + error.message);
+      const errorMsg = '预览文件失败: ' + error.message;
+      setError(errorMsg);
+      showError(errorMsg);
     }
   };
 

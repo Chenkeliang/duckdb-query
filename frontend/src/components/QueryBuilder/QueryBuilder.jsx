@@ -17,39 +17,28 @@ import {
   Fade,
   IconButton,
   Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
   TextField,
   CircularProgress,
   Backdrop
 } from '@mui/material';
+import { useToast } from '../../contexts/ToastContext';
 import JoinCondition from './JoinCondition';
 import SourceSelector from './SourceSelector';
-import { performQuery, downloadResults, executeSQL } from '../../services/apiClient';
+import { performQuery, downloadResults } from '../../services/apiClient';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DownloadIcon from '@mui/icons-material/Download';
 import AddIcon from '@mui/icons-material/Add';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import TableChartIcon from '@mui/icons-material/TableChart';
-import HistoryIcon from '@mui/icons-material/History';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import ReplayIcon from '@mui/icons-material/Replay';
-import DeleteIcon from '@mui/icons-material/Delete';
+
 
 // 受控组件：selectedSources/setSelectedSources 由父组件(App.jsx)传入
 const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSources, onResultsReceived }) => {
+  const { showSuccess, showError } = useToast();
   const [joins, setJoins] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [sqlInput, setSqlInput] = useState('');
-  const [sqlLoading, setSqlLoading] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
+
   const [queryHistory, setQueryHistory] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('queryHistory') || '[]');
@@ -110,13 +99,20 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       // 转换数据源格式以匹配后端期望的DataSource模型
       const convertedSources = selectedSources.map(source => {
         if (source.sourceType === 'file') {
-          // 文件数据源
+          // 文件数据源 - 直接使用DuckDB中的表名，不需要文件路径
           return {
             id: source.id,
-            type: 'file', // 使用DataSourceType枚举值
-            params: {
-              path: `temp_files/${source.path || source.name}` // 使用 path 或 name 字段
-            }
+            type: 'duckdb', // 文件已经加载到DuckDB中，所以类型是duckdb
+            name: source.name,
+            table_name: source.id // 使用source.id作为表名
+          };
+        } else if (source.sourceType === 'duckdb') {
+          // DuckDB数据源 - 使用name字段作为表名
+          return {
+            id: source.id,
+            type: 'duckdb',
+            name: source.name,
+            table_name: source.name // 直接使用name字段，它就是实际的表名
           };
         } else if (source.sourceType === 'database') {
           // 数据库数据源，使用实际的数据库类型
@@ -134,12 +130,12 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
           return source;
         }
 
-        // 否则尝试构建 params 字段
+        // 默认处理：假设是DuckDB表
         return {
-          ...source,
-          params: source.sourceType === 'file'
-            ? { path: `temp_files/${source.path || source.name}` }
-            : { connectionId: source.connectionId }
+          id: source.id,
+          type: 'duckdb',
+          name: source.name || source.id,
+          table_name: source.name || source.id
         };
       });
 
@@ -162,12 +158,41 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
 
       // 获取后端实际执行的SQL
       const results = await performQuery(queryRequest);
+
+      // 检查后端返回的错误信息
+      if (results && results.success === false) {
+        setError(results.error || '查询执行失败');
+        // 如果有可用表信息，也显示出来
+        if (results.available_tables && results.available_tables.length > 0) {
+          console.log('可用的表:', results.available_tables);
+        }
+        return;
+      }
+
       onResultsReceived(results);
       if (results && results.sql) {
         saveHistory(results.sql);
+        showSuccess('查询执行成功');
       }
     } catch (err) {
-      setError(`查询执行失败: ${err.message || '未知错误'}`);
+      // 处理网络错误或其他异常
+      if (err.response && err.response.data) {
+        // 如果后端返回了结构化的错误信息
+        const errorData = err.response.data;
+        if (errorData.success === false) {
+          const errorMsg = errorData.error || '查询执行失败';
+          setError(errorMsg);
+          showError(errorMsg);
+        } else {
+          const errorMsg = `查询执行失败: ${errorData.detail || err.message || '未知错误'}`;
+          setError(errorMsg);
+          showError(errorMsg);
+        }
+      } else {
+        const errorMsg = `查询执行失败: ${err.message || '未知错误'}`;
+        setError(errorMsg);
+        showError(errorMsg);
+      }
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -176,7 +201,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
 
   const handleDownload = async () => {
     if (selectedSources.length === 0) {
-      setError('请至少选择一个数据源');
+      showError('请至少选择一个数据源');
       return;
     }
 
@@ -190,8 +215,11 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       };
 
       await downloadResults(queryRequest);
+      showSuccess('文件下载成功');
     } catch (err) {
-      setError(`下载失败: ${err.message || '未知错误'}`);
+      const errorMsg = `下载失败: ${err.message || '未知错误'}`;
+      setError(errorMsg);
+      showError(errorMsg);
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -210,34 +238,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     localStorage.setItem('queryHistory', JSON.stringify(newHistory));
   };
 
-  const handleSqlExecute = async () => {
-    if (!sqlInput.trim()) {
-      setError('请输入SQL语句');
-      return;
-    }
-    if (selectedSources.length === 0) {
-      setError('请至少选择一个数据源');
-      return;
-    }
-    setError('');
-    setSqlLoading(true);
-    try {
-      // 只传第一个数据源给后端，后端会自动注册
-      const datasource = selectedSources[0];
 
-      const result = await executeSQL(sqlInput, datasource);
-      if (result && (result.data || result.columns)) {
-        onResultsReceived(result);
-      } else {
-        setError('SQL执行无结果');
-      }
-      saveHistory(sqlInput);
-    } catch (err) {
-      setError(`SQL执行失败: ${err.message || '未知错误'}`);
-    } finally {
-      setSqlLoading(false);
-    }
-  };
 
   return (
     <Paper 
@@ -251,32 +252,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         background: 'rgba(255,255,255,0.95)'
       }}
     >
-      <Box sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        mb: 3 
-      }}>
-        <Typography 
-          variant="h6" 
-          sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 1,
-            fontWeight: 500,
-            color: 'text.primary',
-            fontSize: '1.1rem'
-          }}
-        >
-          <TableChartIcon sx={{ color: 'primary.main', fontSize: 22 }} /> 
-          查询构建器
-        </Typography>
-        <Tooltip title="查询构建器帮助信息">
-          <IconButton size="small" color="primary">
-            <HelpOutlineIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Box>
+
 
       {error && (
         <Fade in={!!error}>
@@ -478,95 +454,9 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         </Button>
       </Box>
 
-      <Box sx={{ mt: 4 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 500, mb: 1 }}>
-          SQL自定义查询
-        </Typography>
-        <TextField
-          label="输入SQL语句"
-          value={sqlInput}
-          onChange={e => setSqlInput(e.target.value)}
-          multiline
-          minRows={3}
-          maxRows={8}
-          fullWidth
-          variant="outlined"
-          size="small"
-          placeholder={selectedSources.length > 0 ? `如：SELECT * FROM \"${selectedSources[0]?.id}\" LIMIT 10` : '请先选择数据源'}
-          sx={{ mb: 2 }}
-          disabled={selectedSources.length === 0}
-        />
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Button
-            variant="contained"
-            color="secondary"
-            onClick={handleSqlExecute}
-            disabled={selectedSources.length === 0 || sqlLoading || !sqlInput.trim()}
-            sx={{ borderRadius: 20, px: 3, fontWeight: 500 }}
-            startIcon={sqlLoading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
-          >
-            {sqlLoading ? '执行中...' : '执行SQL'}
-          </Button>
-          <Button
-            variant="outlined"
-            color="primary"
-            startIcon={<HistoryIcon />}
-            onClick={() => setHistoryOpen(true)}
-            sx={{ borderRadius: 20, px: 3, fontWeight: 500 }}
-          >
-            查询历史
-          </Button>
-        </Box>
-      </Box>
 
-      {/* 历史查询弹窗 */}
-      <Dialog open={historyOpen} onClose={() => setHistoryOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ fontWeight: 600, fontSize: '1.1rem' }}>历史查询</DialogTitle>
-        <DialogContent dividers sx={{ p: 0 }}>
-          <List dense>
-            {queryHistory.length === 0 && (
-              <ListItem>
-                <ListItemText primary={<Typography color="text.secondary">暂无历史记录</Typography>} />
-              </ListItem>
-            )}
-            {queryHistory.map((item, idx) => (
-              <ListItem key={item.id} alignItems="flex-start" sx={{ borderBottom: '1px solid #f0f0f0', py: 1.5 }}>
-                <ListItemText
-                  primary={<Box sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', fontSize: '0.95rem', color: '#333' }}>{item.sql}</Box>}
-                  secondary={<Typography variant="caption" color="text.secondary">{item.time}</Typography>}
-                />
-                <ListItemSecondaryAction>
-                  <Tooltip title="复制SQL">
-                    <IconButton edge="end" size="small" onClick={() => {navigator.clipboard.writeText(item.sql)}}>
-                      <ContentCopyIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="重放查询">
-                    <IconButton edge="end" size="small" color="primary" onClick={() => {
-                      setSqlInput(item.sql);
-                      setHistoryOpen(false);
-                    }}>
-                      <ReplayIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="删除记录">
-                    <IconButton edge="end" size="small" color="error" onClick={() => {
-                      const newHistory = queryHistory.filter(h => h.id !== item.id);
-                      setQueryHistory(newHistory);
-                      localStorage.setItem('queryHistory', JSON.stringify(newHistory));
-                    }}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </ListItemSecondaryAction>
-              </ListItem>
-            ))}
-          </List>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setHistoryOpen(false)} color="primary">关闭</Button>
-        </DialogActions>
-      </Dialog>
+
+
 
       {/* 全屏加载遮罩 */}
       <Backdrop
@@ -579,7 +469,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
           flexDirection: 'column',
           gap: 2
         }}
-        open={isLoading || sqlLoading}
+        open={isLoading}
       >
         <CircularProgress
           color="inherit"

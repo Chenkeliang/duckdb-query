@@ -14,6 +14,46 @@ const apiClient = axios.create({
   },
 });
 
+// 统一错误处理函数
+const handleApiError = (error, defaultMessage = '操作失败') => {
+  console.error('API Error:', error);
+
+  // 网络错误
+  if (error.code === 'ECONNABORTED') {
+    throw new Error('请求超时，请检查网络连接');
+  }
+
+  if (!error.response) {
+    throw new Error('网络连接失败，请检查网络状态');
+  }
+
+  const { status, data } = error.response;
+
+  // 根据状态码处理
+  switch (status) {
+    case 400:
+      throw new Error(data?.detail || data?.message || '请求参数错误');
+    case 401:
+      throw new Error('认证失败，请重新登录');
+    case 403:
+      throw new Error('权限不足，无法执行此操作');
+    case 404:
+      throw new Error('请求的资源不存在');
+    case 413:
+      throw new Error('文件太大，请选择较小的文件');
+    case 422:
+      throw new Error(data?.detail || '数据验证失败');
+    case 500:
+      throw new Error(data?.detail || '服务器内部错误，请稍后重试');
+    case 502:
+      throw new Error('服务器网关错误，请稍后重试');
+    case 503:
+      throw new Error('服务暂时不可用，请稍后重试');
+    default:
+      throw new Error(data?.detail || data?.message || defaultMessage);
+  }
+};
+
 export const uploadFile = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
@@ -29,18 +69,7 @@ export const uploadFile = async (file) => {
     });
     return response.data;
   } catch (error) {
-    console.error('Error uploading file:', error);
-
-    // 提供更友好的错误信息
-    if (error.response?.status === 413) {
-      throw new Error('文件太大，请选择小于100MB的文件');
-    } else if (error.code === 'ECONNABORTED') {
-      throw new Error('上传超时，请检查网络连接或选择较小的文件');
-    } else if (error.response?.data?.detail) {
-      throw new Error(error.response.data.detail);
-    } else {
-      throw new Error(error.message || '文件上传失败');
-    }
+    handleApiError(error, '文件上传失败');
   }
 };
 
@@ -49,27 +78,7 @@ export const connectDatabase = async (connectionParams) => {
     const response = await apiClient.post('/api/connect_database', connectionParams);
     return response.data;
   } catch (error) {
-    console.error('Error connecting to database:', error);
-
-    // 提供更友好的错误信息
-    if (error.response?.status === 400) {
-      const detail = error.response.data?.detail || error.message;
-      if (detail.includes('缺少SQL查询参数')) {
-        throw new Error('请输入SQL查询语句');
-      } else if (detail.includes('Connection refused')) {
-        throw new Error('无法连接到数据库服务器，请检查主机地址和端口');
-      } else if (detail.includes('Access denied')) {
-        throw new Error('数据库认证失败，请检查用户名和密码');
-      } else {
-        throw new Error(detail);
-      }
-    } else if (error.response?.status === 500) {
-      throw new Error('服务器内部错误，请稍后重试');
-    } else if (error.code === 'ECONNABORTED') {
-      throw new Error('连接超时，请检查网络连接');
-    } else {
-      throw new Error(error.response?.data?.detail || error.message || '连接失败');
-    }
+    handleApiError(error, '数据库连接失败');
   }
 };
 
@@ -80,26 +89,60 @@ export const performQuery = async (queryRequest) => {
     return response.data;
   } catch (error) {
     console.error('Error performing query:', error);
-    throw error;
+
+    // 如果是HTTP错误但有响应数据，检查是否是友好的错误格式
+    if (error.response && error.response.data) {
+      const errorData = error.response.data;
+      // 如果后端返回了结构化的错误信息，直接返回而不抛出异常
+      if (errorData.success === false && errorData.error) {
+        return errorData;
+      }
+    }
+
+    handleApiError(error, '查询执行失败');
   }
 };
 
 export const downloadResults = async (queryRequest) => {
   try {
+    console.log('开始下载查询结果...', queryRequest);
+
     // 使用下载代理端点来自动转换请求格式
     const response = await apiClient.post('/api/download_proxy', queryRequest, {
       responseType: 'blob',
+      timeout: 60000, // 增加超时时间到60秒
     });
 
+    // 验证响应
+    if (!response.data || response.data.size === 0) {
+      throw new Error('下载的文件为空');
+    }
+
+    console.log(`下载完成，文件大小: ${response.data.size} bytes`);
+
+    // 生成带时间戳的文件名，避免缓存问题
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `query_results_${timestamp}.xlsx`;
+
     // 创建下载链接
-    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const url = window.URL.createObjectURL(new Blob([response.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }));
+
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'query_results.xlsx');
+    link.setAttribute('download', filename);
+    link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
-    link.parentNode.removeChild(link);
 
+    // 清理
+    setTimeout(() => {
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    }, 100);
+
+    console.log(`文件已下载: ${filename}`);
     return true;
   } catch (error) {
     console.error('Error downloading results:', error);
@@ -400,6 +443,102 @@ export const getMySQLDataSources = async () => {
     return response.data;
   } catch (error) {
     console.error('获取MySQL数据源列表失败:', error);
+    throw error;
+  }
+};
+
+// 增强DuckDB API
+export const executeDuckDBSQL = async (sql, saveAsTable = null) => {
+  try {
+    const response = await apiClient.post('/api/duckdb/execute', {
+      sql,
+      save_as_table: saveAsTable
+    });
+    return response.data;
+  } catch (error) {
+    console.error('执行DuckDB SQL失败:', error);
+    throw error;
+  }
+};
+
+export const uploadFileToDuckDB = async (file, tableAlias) => {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('table_alias', tableAlias);
+
+    const response = await apiClient.post('/api/duckdb/upload-file', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 300000, // 5分钟超时
+    });
+    return response.data;
+  } catch (error) {
+    console.error('上传文件到DuckDB失败:', error);
+    throw error;
+  }
+};
+
+export const getDuckDBTablesEnhanced = async () => {
+  try {
+    const response = await apiClient.get('/api/duckdb/tables');
+    return response.data;
+  } catch (error) {
+    console.error('获取DuckDB表列表失败:', error);
+    throw error;
+  }
+};
+
+export const deleteDuckDBTableEnhanced = async (tableName) => {
+  try {
+    const response = await apiClient.delete(`/api/duckdb/tables/${tableName}`);
+    return response.data;
+  } catch (error) {
+    console.error('删除DuckDB表失败:', error);
+    throw error;
+  }
+};
+
+export const getDuckDBTableInfo = async (tableName) => {
+  try {
+    const response = await apiClient.get(`/api/duckdb/table/${tableName}/info`);
+    return response.data;
+  } catch (error) {
+    console.error('获取DuckDB表信息失败:', error);
+    throw error;
+  }
+};
+
+// URL文件读取
+export const readFromUrl = async (url, tableAlias, options = {}) => {
+  try {
+    const requestData = {
+      url: url,
+      table_alias: tableAlias,
+      file_type: options.fileType || null,
+      encoding: options.encoding || 'utf-8',
+      delimiter: options.delimiter || ',',
+      header: options.header !== false
+    };
+
+    const response = await apiClient.post('/api/read_from_url', requestData);
+    return response.data;
+  } catch (error) {
+    console.error('从URL读取文件失败:', error);
+    throw error;
+  }
+};
+
+// 获取URL文件信息
+export const getUrlInfo = async (url) => {
+  try {
+    const response = await apiClient.get('/api/url_info', {
+      params: { url }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('获取URL信息失败:', error);
     throw error;
   }
 };

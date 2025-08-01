@@ -25,7 +25,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Snackbar,
   FormLabel,
   RadioGroup,
   FormControlLabel,
@@ -48,6 +47,7 @@ import {
 import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
+import { useToast } from '../../contexts/ToastContext';
 import { saveQueryResultAsDatasource, saveQueryToDuckDB } from '../../services/apiClient';
 import VirtualTable from '../VirtualTable/VirtualTable';
 import SmartPagination from '../SmartPagination/SmartPagination';
@@ -65,6 +65,7 @@ const ModernDataDisplay = ({
   onDataSourceSaved,
 }) => {
   const theme = useTheme();
+  const { showSuccess, showError } = useToast();
   const [searchText, setSearchText] = useState('');
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
@@ -82,15 +83,33 @@ const ModernDataDisplay = ({
   const [tableAlias, setTableAlias] = useState('');
   const [saveMode, setSaveMode] = useState('duckdb'); // 'duckdb' 或 'legacy'
   const [saving, setSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  // 标准化columns格式 - 支持字符串数组和对象数组
+  const normalizedColumns = useMemo(() => {
+    if (!columns || columns.length === 0) return [];
+
+    // 如果是字符串数组，转换为对象数组
+    if (typeof columns[0] === 'string') {
+      return columns.map(col => ({
+        field: col,
+        headerName: col,
+        sortable: true,
+        filter: true,
+        resizable: true,
+      }));
+    }
+
+    // 如果已经是对象数组，直接返回
+    return columns;
+  }, [columns]);
 
   // 当columns变化时，更新visibleColumns
   React.useEffect(() => {
-    if (columns.length > 0) {
-      setVisibleColumns(new Set(columns.map(col => col.field)));
+    if (normalizedColumns.length > 0) {
+      setVisibleColumns(new Set(normalizedColumns.map(col => col.field)));
     }
-  }, [columns]);
+  }, [normalizedColumns]);
 
   // 过滤和搜索数据
   const filteredData = useMemo(() => {
@@ -111,7 +130,7 @@ const ModernDataDisplay = ({
 
   // AG-Grid列定义
   const columnDefs = useMemo(() => {
-    return columns
+    return normalizedColumns
       .filter(col => visibleColumns.has(col.field))
       .map(col => ({
         ...col,
@@ -128,17 +147,17 @@ const ModernDataDisplay = ({
         },
         headerClass: 'modern-header',
       }));
-  }, [columns, visibleColumns]);
+  }, [normalizedColumns, visibleColumns]);
 
   // 统计信息
   const stats = useMemo(() => {
     return {
       total: data.length,
       filtered: filteredData.length,
-      columns: columns.length,
+      columns: normalizedColumns.length,
       visibleColumns: visibleColumns.size,
     };
-  }, [data, filteredData, columns, visibleColumns]);
+  }, [data, filteredData, normalizedColumns, visibleColumns]);
 
   const handleExportMenuOpen = (event) => {
     setExportMenuAnchor(event.currentTarget);
@@ -157,8 +176,13 @@ const ModernDataDisplay = ({
   };
 
   const handleExport = (format) => {
-    onExport?.(format, filteredData);
-    handleExportMenuClose();
+    try {
+      onExport?.(format, filteredData);
+      showSuccess(`数据导出为 ${format.toUpperCase()} 格式成功`);
+      handleExportMenuClose();
+    } catch (error) {
+      showError(`导出失败: ${error.message || '未知错误'}`);
+    }
   };
 
   const handleColumnToggle = (columnField) => {
@@ -220,10 +244,10 @@ const ModernDataDisplay = ({
         );
 
         if (result.success) {
-          setSaveSuccess(true);
           setSaveDialogOpen(false);
           setTableAlias('');
           setDatasourceName('');
+          showSuccess(`查询结果已保存为DuckDB表: ${result.table_alias}`);
 
           // 通知父组件数据源已保存
           if (onDataSourceSaved) {
@@ -235,14 +259,15 @@ const ModernDataDisplay = ({
               columns: result.columns
             });
           }
-
-          // 3秒后隐藏成功提示
-          setTimeout(() => setSaveSuccess(false), 3000);
         } else {
-          setSaveError(result.message || '保存失败');
+          const errorMsg = result.message || '保存失败';
+          setSaveError(errorMsg);
+          showError(errorMsg);
         }
       } catch (error) {
-        setSaveError(error.message || '保存失败，请重试');
+        const errorMsg = error.message || '保存失败，请重试';
+        setSaveError(errorMsg);
+        showError(errorMsg);
       } finally {
         setSaving(false);
       }
@@ -269,22 +294,23 @@ const ModernDataDisplay = ({
         );
 
         if (result.success) {
-          setSaveSuccess(true);
           setSaveDialogOpen(false);
           setDatasourceName('');
+          showSuccess('查询结果已保存为数据源');
 
           // 通知父组件数据源已保存
           if (onDataSourceSaved) {
             onDataSourceSaved(result.datasource);
           }
-
-          // 3秒后隐藏成功提示
-          setTimeout(() => setSaveSuccess(false), 3000);
         } else {
-          setSaveError(result.message || '保存失败');
+          const errorMsg = result.message || '保存失败';
+          setSaveError(errorMsg);
+          showError(errorMsg);
         }
       } catch (error) {
-        setSaveError(error.message || '保存失败，请重试');
+        const errorMsg = error.message || '保存失败，请重试';
+        setSaveError(errorMsg);
+        showError(errorMsg);
       } finally {
         setSaving(false);
       }
@@ -569,7 +595,7 @@ const ModernDataDisplay = ({
             显示列
           </Typography>
           <Stack spacing={1}>
-            {columns.map((column) => (
+            {normalizedColumns.map((column) => (
               <Box
                 key={column.field}
                 sx={{
@@ -675,18 +701,6 @@ const ModernDataDisplay = ({
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* 成功提示 */}
-      <Snackbar
-        open={saveSuccess}
-        autoHideDuration={3000}
-        onClose={() => setSaveSuccess(false)}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-      >
-        <Alert severity="success" onClose={() => setSaveSuccess(false)}>
-          查询结果已成功保存为数据源！
-        </Alert>
-      </Snackbar>
     </Box>
   );
 };

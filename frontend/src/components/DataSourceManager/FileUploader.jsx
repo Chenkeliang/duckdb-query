@@ -4,8 +4,10 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import { useToast } from '../../contexts/ToastContext';
 
 const FileUploader = ({ onUpload }) => {
+  const { showSuccess, showError } = useToast();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -41,7 +43,9 @@ const FileUploader = ({ onUpload }) => {
     // 检查文件类型
     const fileType = file.name.split('.').pop().toLowerCase();
     if (!['csv', 'xlsx', 'xls'].includes(fileType)) {
-      setError('不支持的文件格式，请上传 CSV 或 Excel 文件');
+      const errorMsg = '不支持的文件格式，请上传 CSV 或 Excel 文件';
+      setError(errorMsg);
+      showError(errorMsg);
       return;
     }
 
@@ -52,9 +56,12 @@ const FileUploader = ({ onUpload }) => {
     try {
       await onUpload(file);
       setSuccess(true);
+      showSuccess(`文件 "${file.name}" 上传成功`);
       setTimeout(() => setSuccess(false), 3000); // 3秒后隐藏成功提示
     } catch (err) {
-      setError(`文件上传失败: ${err.message}`);
+      const errorMsg = `文件上传失败: ${err.message}`;
+      setError(errorMsg);
+      showError(errorMsg);
       console.error("Error uploading file:", err);
     } finally {
       setLoading(false);

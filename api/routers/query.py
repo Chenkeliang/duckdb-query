@@ -2,7 +2,7 @@ from fastapi import APIRouter, Body, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from models.query_models import QueryRequest
-from core.duckdb_engine import get_db_connection, execute_query, create_persistent_table, create_varchar_table_from_dataframe
+from core.duckdb_engine import get_db_connection, execute_query, create_persistent_table, create_varchar_table_from_dataframe, build_single_table_query
 import pandas as pd
 import numpy as np
 import io
@@ -521,13 +521,18 @@ async def perform_query(query_request: QueryRequest):
             # 多表JOIN查询 - 使用改进的多表JOIN支持
             query = build_multi_table_join_query(query_request, con)
         else:
-            # 单表查询
-            source_id = query_request.sources[0].id.strip('"')
-            if source_id not in available_table_names:
-                error_msg = f"无法执行查询，表 '{source_id}' 不存在。可用的表: {', '.join(available_table_names)}"
-                logger.error(error_msg)
-                raise ValueError(error_msg)
-            query = f'SELECT * FROM "{source_id}"'
+            # 单表查询 - 使用build_single_table_query来处理表名
+            query = build_single_table_query(query_request)
+
+            # 验证表是否存在（从查询中提取实际表名）
+            import re
+            table_match = re.search(r'FROM "([^"]+)"', query)
+            if table_match:
+                actual_table_name = table_match.group(1)
+                if actual_table_name not in available_table_names:
+                    error_msg = f"无法执行查询，表 '{actual_table_name}' 不存在。可用的表: {', '.join(available_table_names)}"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
 
         logger.info(f"执行查询: {query}")
 
@@ -557,9 +562,57 @@ async def perform_query(query_request: QueryRequest):
         # 重新抛出HTTPException，保持原始状态码
         raise
     except Exception as e:
-        logger.error(f"查询失败: {str(e)}")
+        error_message = str(e)
+        logger.error(f"查询失败: {error_message}")
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"查询处理失败: {str(e)}")
+
+        # 检查是否是表不存在的错误
+        if "不存在" in error_message or "does not exist" in error_message.lower() or "table" in error_message.lower():
+            # 获取当前可用的表列表
+            try:
+                available_tables = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+                table_list = ", ".join(available_tables) if available_tables else "无"
+
+                # 提取表名（如果可能）
+                import re
+                table_match = re.search(r"表\s*['\"]?([^'\"]+)['\"]?\s*不存在", error_message)
+                if not table_match:
+                    table_match = re.search(r"Table\s*['\"]?([^'\"]+)['\"]?.*does not exist", error_message, re.IGNORECASE)
+
+                missing_table = table_match.group(1) if table_match else "未知表"
+
+                friendly_message = f"无法执行查询，表 '{missing_table}' 不存在。可用的表: {table_list}"
+
+                return {
+                    "success": False,
+                    "error": friendly_message,
+                    "error_type": "table_not_found",
+                    "missing_table": missing_table,
+                    "available_tables": available_tables,
+                    "data": [],
+                    "columns": [],
+                    "row_count": 0
+                }
+            except Exception:
+                # 如果获取表列表失败，返回基本错误信息
+                return {
+                    "success": False,
+                    "error": f"无法执行查询: {error_message}",
+                    "error_type": "query_error",
+                    "data": [],
+                    "columns": [],
+                    "row_count": 0
+                }
+        else:
+            # 其他类型的错误，返回友好的错误信息而不是抛出500
+            return {
+                "success": False,
+                "error": f"查询执行失败: {error_message}",
+                "error_type": "execution_error",
+                "data": [],
+                "columns": [],
+                "row_count": 0
+            }
 
 
 @router.post("/api/download", tags=["Query"])
@@ -647,21 +700,46 @@ async def download_results(query_request: QueryRequest):
             query = f'SELECT * FROM "{source_id}"'
 
         # Execute query
+        logger.info(f"执行下载查询: {query}")
         result_df = execute_query(query, con)
+
+        # 验证查询结果
+        if result_df is None or result_df.empty:
+            raise ValueError("查询结果为空")
+
+        logger.info(f"查询结果: {len(result_df)} 行, {len(result_df.columns)} 列")
+        logger.info(f"列名: {list(result_df.columns)}")
 
         # Replace NaN/inf with None, which is JSON serializable to null
         result_df.replace([np.inf, -np.inf], np.nan, inplace=True)
         result_df = result_df.where(pd.notnull(result_df), None)
 
-        # Convert to Excel
+        # Convert to Excel with better error handling
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            result_df.to_excel(writer, index=False)
-        output.seek(0)
+        try:
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                result_df.to_excel(writer, index=False, sheet_name="QueryResults")
+            output.seek(0)
+
+            # 验证生成的Excel文件
+            if output.getvalue() == b'':
+                raise ValueError("生成的Excel文件为空")
+
+            logger.info(f"Excel文件生成成功，大小: {len(output.getvalue())} bytes")
+
+        except Exception as e:
+            logger.error(f"Excel文件生成失败: {str(e)}")
+            raise ValueError(f"Excel文件生成失败: {str(e)}")
 
         # Return as downloadable file
         filename = "query_results.xlsx"
-        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

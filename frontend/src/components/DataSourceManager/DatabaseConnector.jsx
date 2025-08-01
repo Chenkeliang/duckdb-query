@@ -35,6 +35,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import DeleteIcon from '@mui/icons-material/Delete';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { getMySQLConfigs, saveMySQLConfig, deleteMySQLConfig } from '../../services/apiClient';
+import { useToast } from '../../contexts/ToastContext';
 
 const DB_TYPES = [
   { value: 'mysql', label: 'MySQL' },
@@ -45,6 +46,8 @@ const DB_TYPES = [
 ];
 
 const DatabaseConnector = ({ onConnect }) => {
+  const { showSuccess, showError } = useToast();
+
   // 原有状态
   const [dbType, setDbType] = useState('');
   const [host, setHost] = useState('localhost');
@@ -111,12 +114,15 @@ const DatabaseConnector = ({ onConnect }) => {
       
       await saveMySQLConfig(configToSave);
       await loadMySQLConfigs();
-      
+
       setSuccess(true);
       setShowSaveConfig(false);
+      showSuccess('数据库配置已保存');
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
-      setError(`保存配置失败: ${err.message || '未知错误'}`);
+      const errorMsg = `保存配置失败: ${err.message || '未知错误'}`;
+      setError(errorMsg);
+      showError(errorMsg);
     } finally {
       setSavingConfig(false);
     }
@@ -178,21 +184,27 @@ const DatabaseConnector = ({ onConnect }) => {
       const result = await response.json();
 
       if (result.success) {
+        const successMsg = `连接测试成功！延迟: ${result.latency_ms?.toFixed(2)}ms`;
         setConnectionTestResult({
           success: true,
-          message: `连接测试成功！延迟: ${result.latency_ms?.toFixed(2)}ms`
+          message: successMsg
         });
+        showSuccess(successMsg);
       } else {
+        const errorMsg = result.message || '连接测试失败';
         setConnectionTestResult({
           success: false,
-          message: result.message || '连接测试失败'
+          message: errorMsg
         });
+        showError(errorMsg);
       }
     } catch (err) {
+      const errorMsg = `连接测试失败: ${err.message || '未知错误'}`;
       setConnectionTestResult({
         success: false,
-        message: `连接测试失败: ${err.message || '未知错误'}`
+        message: errorMsg
       });
+      showError(errorMsg);
     } finally {
       setTestingConnection(false);
     }
@@ -244,11 +256,14 @@ const DatabaseConnector = ({ onConnect }) => {
       
       // 调用父组件提供的连接回调
       await onConnect(connectionParams);
-      
+
       setSuccess(true);
+      showSuccess('数据源连接成功');
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
-      setError(`连接失败: ${err.message || '未知错误'}`);
+      const errorMsg = `连接失败: ${err.message || '未知错误'}`;
+      setError(errorMsg);
+      showError(errorMsg);
       console.error("Error connecting to database:", err);
     } finally {
       setLoading(false);

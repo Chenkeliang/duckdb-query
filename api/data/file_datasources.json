@@ -1,0 +1,50 @@
+{
+  "test_drag_fixed": {
+    "source_id": "test_drag_fixed",
+    "filename": "test_drag_fixed.csv",
+    "file_path": "/Users/keliang/mypy/interactive-data-query/api/temp_files/test_drag_fixed.csv",
+    "file_type": "csv",
+    "row_count": 5,
+    "column_count": 4,
+    "columns": [
+      "city",
+      "population",
+      "country",
+      "continent"
+    ],
+    "upload_time": "2025-08-01 12:09:19.805460"
+  },
+  "Result_1": {
+    "source_id": "Result_1",
+    "filename": "Result_1.csv",
+    "file_path": "/Users/keliang/mypy/interactive-data-query/api/temp_files/Result_1.csv",
+    "file_type": "csv",
+    "row_count": 2029,
+    "column_count": 22,
+    "columns": [
+      "385805",
+      "262752435",
+      "7",
+      "202006135934628128",
+      "0",
+      "2020-06-13 03:18:08",
+      "1970-01-01 00:00:00",
+      "WX",
+      "IGET",
+      "2020-06-13 03:17:49",
+      "2020-06-13 03:18:09",
+      "7.1",
+      "134351",
+      "得到锦囊VIP会员连续包月",
+      "18.00",
+      "30",
+      "Unnamed: 16",
+      "WX.1",
+      "qa",
+      "IGET.1",
+      "2020-04-09 11:28:33",
+      "2020-04-09 11:28:33.1"
+    ],
+    "upload_time": "2025-08-01 12:11:45.379335"
+  }
+}

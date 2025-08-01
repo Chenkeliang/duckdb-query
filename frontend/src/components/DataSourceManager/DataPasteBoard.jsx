@@ -24,6 +24,7 @@ import {
   FormControlLabel,
   Switch
 } from '@mui/material';
+import { useToast } from '../../contexts/ToastContext';
 import {
   ContentPaste as PasteIcon,
   Preview as PreviewIcon,
@@ -33,6 +34,7 @@ import {
 } from '@mui/icons-material';
 
 const DataPasteBoard = ({ onDataSaved }) => {
+  const { showSuccess, showError } = useToast();
   const [pastedData, setPastedData] = useState('');
   const [parsedData, setParsedData] = useState(null);
   const [tableName, setTableName] = useState('');
@@ -43,7 +45,6 @@ const DataPasteBoard = ({ onDataSaved }) => {
   const [unifyAsString, setUnifyAsString] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // 数据类型选项
   const dataTypes = [
@@ -139,23 +140,53 @@ const DataPasteBoard = ({ onDataSaved }) => {
       setDelimiter(detectedDelimiter);
 
       const lines = pastedData.trim().split('\n');
-      const rows = lines.map(line =>
-        line.split(detectedDelimiter).map(cell => cleanCellData(cell))
-      );
-      
+      const rows = lines.map(line => {
+        const cells = line.split(detectedDelimiter).map(cell => cleanCellData(cell));
+        // 如果最后一个单元格是空的（由末尾逗号导致），则移除它
+        if (cells.length > 1 && cells[cells.length - 1] === '') {
+          cells.pop();
+        }
+        return cells;
+      });
+
       if (rows.length === 0) {
         setError('没有检测到有效数据');
         return;
       }
-      
-      // 检查列数一致性
-      const columnCount = rows[0].length;
-      const inconsistentRows = rows.filter(row => row.length !== columnCount);
-      
-      if (inconsistentRows.length > 0) {
-        setError(`检测到 ${inconsistentRows.length} 行数据列数不一致，请检查数据格式`);
-        return;
+
+      // 检查列数一致性（改进版）
+      const columnCounts = rows.map(row => row.length);
+      const uniqueColumnCounts = [...new Set(columnCounts)];
+
+      // 如果有多种列数，选择最常见的作为标准
+      let standardColumnCount;
+      if (uniqueColumnCounts.length === 1) {
+        standardColumnCount = uniqueColumnCounts[0];
+      } else {
+        // 找出最常见的列数
+        const countFrequency = {};
+        columnCounts.forEach(count => {
+          countFrequency[count] = (countFrequency[count] || 0) + 1;
+        });
+        standardColumnCount = parseInt(Object.keys(countFrequency).reduce((a, b) =>
+          countFrequency[a] > countFrequency[b] ? a : b
+        ));
+
+        // 过滤掉列数不一致的行，但给出警告
+        const inconsistentRows = rows.filter(row => row.length !== standardColumnCount);
+        if (inconsistentRows.length > 0) {
+          console.warn(`发现 ${inconsistentRows.length} 行数据列数不一致，已自动过滤`);
+          // 只保留列数一致的行
+          const filteredRows = rows.filter(row => row.length === standardColumnCount);
+          if (filteredRows.length === 0) {
+            setError('没有找到格式一致的数据行');
+            return;
+          }
+          rows.splice(0, rows.length, ...filteredRows);
+        }
       }
+
+      const columnCount = standardColumnCount;
       
       // 生成默认列名
       const defaultColumnNames = Array.from({ length: columnCount }, (_, i) => `column_${i + 1}`);
@@ -183,28 +214,28 @@ const DataPasteBoard = ({ onDataSaved }) => {
         rowCount: rows.length
       });
       
-      setSuccess(`成功解析 ${rows.length} 行 ${columnCount} 列数据`);
-      
+      showSuccess(`成功解析 ${rows.length} 行 ${columnCount} 列数据`);
+
     } catch (err) {
-      setError(`数据解析失败: ${err.message}`);
+      showError(`数据解析失败: ${err.message}`);
     }
   };
 
   // 保存数据到DuckDB
   const saveToDatabase = async () => {
     if (!parsedData || !tableName.trim()) {
-      setError('请先解析数据并设置表名');
+      showError('请先解析数据并设置表名');
       return;
     }
 
     if (columnNames.some(name => !name.trim())) {
-      setError('所有列名都必须填写');
+      showError('所有列名都必须填写');
       return;
     }
 
     setLoading(true);
     setError('');
-    
+
     try {
       const response = await fetch('/api/paste-data', {
         method: 'POST',
@@ -222,9 +253,12 @@ const DataPasteBoard = ({ onDataSaved }) => {
       });
 
       const result = await response.json();
-      
+
+      console.log('保存结果:', result);
+
       if (result.success) {
-        setSuccess(`数据已成功保存到表: ${tableName}`);
+        console.log('调用showSuccess:', `数据已成功保存到表: ${tableName}`);
+        showSuccess(`数据已成功保存到表: ${tableName}`);
         if (onDataSaved) {
           onDataSaved({
             id: tableName,
@@ -237,10 +271,11 @@ const DataPasteBoard = ({ onDataSaved }) => {
         // 清空表单
         clearForm();
       } else {
-        setError(result.error || '保存失败');
+        console.log('调用showError:', result.error || '数据保存失败');
+        showError(result.error || '数据保存失败');
       }
     } catch (err) {
-      setError(`保存失败: ${err.message}`);
+      showError(`数据保存失败: ${err.message}`);
     } finally {
       setLoading(false);
     }

@@ -29,11 +29,20 @@ def get_db_connection():
     if _global_duckdb_connection is None:
         logger.info("创建新的DuckDB连接...")
         # 使用持久化文件而不是内存模式
-        db_path = "/app/data/duckdb/main.db"
+        # 兼容本地开发和Docker环境
+        import os
+        if os.path.exists("/app"):
+            # Docker环境
+            db_path = "/app/data/duckdb/main.db"
+            temp_dir = "/app/data/duckdb/temp"
+        else:
+            # 本地开发环境
+            db_path = "./data/duckdb/main.db"
+            temp_dir = "./data/duckdb/temp"
 
         # 确保目录存在
-        import os
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        os.makedirs(temp_dir, exist_ok=True)
 
         _global_duckdb_connection = duckdb.connect(database=db_path)
         logger.info(f"DuckDB连接到持久化文件: {db_path}")
@@ -42,7 +51,7 @@ def get_db_connection():
         _global_duckdb_connection.execute("SET threads=8")  # 增加线程数
         _global_duckdb_connection.execute("SET memory_limit='4GB'")  # 增加内存限制
         _global_duckdb_connection.execute("SET max_memory='4GB'")
-        _global_duckdb_connection.execute("SET temp_directory='/app/data/duckdb/temp'")
+        _global_duckdb_connection.execute(f"SET temp_directory='{temp_dir}'")
 
         # 优化JOIN性能 - 针对VARCHAR类型优化
         try:
@@ -70,9 +79,7 @@ def get_db_connection():
 
         logger.info("DuckDB VARCHAR JOIN优化配置已应用")
 
-        # 确保临时目录存在
-        import os
-        os.makedirs("/app/data/duckdb/temp", exist_ok=True)
+        # 确保临时目录存在（已在上面创建）
     return _global_duckdb_connection
 
 
@@ -583,12 +590,30 @@ def build_join_query(query_request: QueryRequest) -> str:
     return build_multi_table_join_query(query_request)
 
 
+def get_actual_table_name(source) -> str:
+    """
+    获取数据源的实际表名
+    对于DuckDB表，去掉duckdb_前缀
+    """
+    # 检查是否是DuckDB数据源
+    source_type = getattr(source, 'sourceType', None) or getattr(source, 'type', None)
+
+    if source_type == 'duckdb':
+        # 使用name字段，如果没有则从id中去掉duckdb_前缀
+        actual_table_name = getattr(source, 'name', source.id)
+        if actual_table_name.startswith('duckdb_'):
+            actual_table_name = actual_table_name[7:]  # 去掉'duckdb_'前缀
+        return actual_table_name
+    else:
+        return source.id
+
+
 def build_single_table_query(query_request: QueryRequest) -> str:
     """
     构建单表查询
     """
     source = query_request.sources[0]
-    table_name = f'"{source.id}"'
+    table_name = f'"{get_actual_table_name(source)}"'
 
     # 构建SELECT子句
     if query_request.select_columns:
@@ -661,9 +686,9 @@ def build_multi_table_join_query(query_request: QueryRequest) -> str:
     # 构建FROM子句和JOIN子句
     if not joins:
         # 没有JOIN条件，使用CROSS JOIN
-        from_clause = f'"{sources[0].id}"'
+        from_clause = f'"{get_actual_table_name(sources[0])}"'
         for source in sources[1:]:
-            from_clause += f' CROSS JOIN "{source.id}"'
+            from_clause += f' CROSS JOIN "{get_actual_table_name(source)}"'
     else:
         # 有JOIN条件，构建JOIN链
         from_clause = build_join_chain(sources, joins)
@@ -695,15 +720,17 @@ def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
     构建JOIN链
     """
     if not joins:
-        return f'"{sources[0].id}"'
+        return f'"{get_actual_table_name(sources[0])}"'
 
     # 创建表的映射
     source_map = {source.id: source for source in sources}
 
     # 从第一个JOIN开始构建
     first_join = joins[0]
-    left_table = first_join.left_source_id
-    right_table = first_join.right_source_id
+    left_source = source_map[first_join.left_source_id]
+    right_source = source_map[first_join.right_source_id]
+    left_table = get_actual_table_name(left_source)
+    right_table = get_actual_table_name(right_source)
 
     # 构建JOIN类型映射
     join_type_map = {
@@ -719,7 +746,8 @@ def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
 
     for join in joins:
         join_type_sql = join_type_map.get(join.join_type, "INNER JOIN")
-        right_table = join.right_source_id
+        right_source = source_map[join.right_source_id]
+        right_table = get_actual_table_name(right_source)
 
         from_clause += f' {join_type_sql} "{right_table}"'
 
@@ -727,8 +755,12 @@ def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
         if join.join_type != JoinType.CROSS and join.conditions:
             conditions = []
             for condition in join.conditions:
-                left_col = f'"{join.left_source_id}"."{condition.left_column}"'
-                right_col = f'"{join.right_source_id}"."{condition.right_column}"'
+                left_source = source_map[join.left_source_id]
+                right_source = source_map[join.right_source_id]
+                left_table_name = get_actual_table_name(left_source)
+                right_table_name = get_actual_table_name(right_source)
+                left_col = f'"{left_table_name}"."{condition.left_column}"'
+                right_col = f'"{right_table_name}"."{condition.right_column}"'
                 conditions.append(f"{left_col} {condition.operator} {right_col}")
 
             if conditions:
@@ -837,3 +869,28 @@ def validate_query_syntax(query: str, con=None) -> Tuple[bool, str]:
         return True, "查询语法正确"
     except Exception as e:
         return False, f"查询语法错误: {str(e)}"
+
+
+def handle_non_serializable_data(obj):
+    """
+    处理不可序列化的数据类型，转换为JSON可序列化的格式
+    """
+    import json
+    import decimal
+    import numpy as np
+    from datetime import datetime, date
+
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, decimal.Decimal):
+        return float(obj)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif pd.isna(obj):
+        return None
+    else:
+        return str(obj)

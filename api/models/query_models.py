@@ -40,9 +40,14 @@ class ConnectionStatus(str, Enum):
 
 class DataSource(BaseModel):
     id: str
-    type: DataSourceType
-    params: Dict[str, Any]
-    columns: Optional[List[str]] = None
+    name: Optional[str] = None
+    type: Union[DataSourceType, str]  # 允许字符串类型
+    table_name: Optional[str] = None
+    columns: Optional[List[Dict[str, Any]]] = None  # 支持列的详细信息
+    row_count: Optional[int] = None
+    column_count: Optional[int] = None
+    sourceType: Optional[str] = None  # 前端使用的字段
+    params: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime.datetime] = None
     updated_at: Optional[datetime.datetime] = None
 

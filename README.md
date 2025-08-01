@@ -19,7 +19,9 @@ A powerful, modern web-based platform for interactive data analysis and multi-so
 - **🎨 Modern UI/UX**: Responsive interface built with React, Material-UI, and AG-Grid
 - **📈 Visual Query Builder**: Intuitive drag-and-drop interface for building complex queries
 - **🔄 Smart Query Proxy**: Automatic request format conversion for seamless frontend-backend communication
+- **🔄 Auto Data Source Refresh**: Real-time data source list updates without manual page refresh
 - **📤 Export Capabilities**: Export results to Excel, CSV, JSON, and Parquet formats
+- **🔔 Toast Notification System**: Comprehensive user feedback with success/error notifications for all operations
 - **🧪 Comprehensive Testing**: Full test suite with 80%+ coverage and automated testing
 - **🐳 Easy Deployment**: Multiple deployment options including Docker, Vercel, and self-hosted
 
@@ -364,6 +366,7 @@ export CORS_ORIGINS="https://your-frontend-domain.com"
 - **Database Integration**: Query live production databases
 - **Performance Optimization**: Leverage DuckDB's analytical engine
 - **Smart Query Proxy**: Automatic format conversion between frontend and backend
+- **Auto Data Source Refresh**: Real-time updates when data sources are added, modified, or deleted
 - **Responsive Design**: Works on desktop, tablet, and mobile
 
 ### Query Proxy System
@@ -398,6 +401,28 @@ The platform now features complete data persistence with automatic recovery capa
 - Startup process automatically reloads all configured data sources
 - Configuration files (`mysql_datasources.json`, `file_datasources.json`) track data source metadata
 - DuckDB file storage ensures data survives container restarts
+
+### Auto Data Source Refresh
+
+The platform features intelligent real-time data source management that eliminates the need for manual page refreshes:
+
+- **Real-time Updates**: Data source lists automatically update when sources are added, modified, or deleted
+- **Cross-Component Sync**: Changes in one page (e.g., deleting a DuckDB table) immediately reflect in query pages
+- **Smart State Management**: Global state management ensures consistent data source visibility across all components
+- **No Manual Refresh**: Users never need to manually refresh the browser to see updated data sources
+
+**Key Benefits**:
+- ✅ Delete DuckDB tables and see immediate updates in query builder
+- ✅ Upload files and instantly access them in data source selectors
+- ✅ Remove files and see real-time removal from available sources
+- ✅ Save SQL query results as tables with automatic data source registration
+- ✅ Seamless user experience without page refreshes
+
+**Technical Implementation**:
+- Global refresh trigger system using React state management
+- Callback-based communication between components
+- Automatic data source list updates after CRUD operations
+- Comprehensive test coverage for all refresh scenarios
 
 ### Export System
 
@@ -452,7 +477,13 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 ## 📋 版本历史
 
-### v2.2.0 (2025-07-30) - 最新版本 🎉
+### v2.3.0 (2025-08-01) - 最新版本 🎉
+- **🔔 Toast通知系统**：为所有操作按钮添加完善的成功/失败反馈机制
+- **🎨 用户体验大幅提升**：统一的错误处理，中文友好的错误信息
+- **📱 响应式通知**：智能Toast堆叠显示，自动隐藏，手动关闭功能
+- **🧪 完整测试覆盖**：新增Toast通知系统的自动化测试和文档
+
+### v2.2.0 (2025-07-30)
 - **🔧 数据库连接系统重构**：修复MySQL连接参数不一致问题，新增连接测试功能
 - **📁 文件上传系统升级**：解决413错误，支持100MB大文件上传
 - **🛡️ 安全增强**：修复容器内敏感数据残留，完善清理系统

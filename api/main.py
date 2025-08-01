@@ -13,6 +13,9 @@ from routers import (
     mysql_query_fallback,
     mysql_robust_manager,
     paste_data,
+    duckdb_query,
+    chunked_upload,
+    url_reader,
 )
 
 # 尝试导入可能存在的其他路由模块
@@ -186,6 +189,9 @@ app.include_router(mysql_datasource_manager.router)  # 新增：MySQL数据源�
 app.include_router(mysql_query_fallback.router)  # 新增：MySQL安全查询路由
 app.include_router(mysql_robust_manager.router)  # 新增：MySQL强化管理路由
 app.include_router(paste_data.router)  # 新增：数据粘贴板路由
+app.include_router(duckdb_query.router)  # 新增：DuckDB自定义SQL查询路由
+app.include_router(chunked_upload.router)  # 新增：分块文件上传路由
+app.include_router(url_reader.router)  # 新增：URL文件读取路由
 
 # 条件性注册可能存在的其他路由
 if enhanced_data_sources_available:

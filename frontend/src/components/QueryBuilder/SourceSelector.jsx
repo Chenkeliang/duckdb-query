@@ -105,14 +105,14 @@ const SourceSelector = ({
                         disableTypography
                         primary={
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography 
-                              variant="body2" 
-                              sx={{ 
+                            <Typography
+                              variant="body2"
+                              sx={{
                                 fontWeight: 500,
                                 fontSize: '0.875rem'
                               }}
                             >
-                              {source.id}
+                              {source.name || source.id}
                             </Typography>
                             <Chip 
                               label={`${source.columns?.length || 0}列`}
@@ -276,14 +276,14 @@ const SourceSelector = ({
                       disableTypography
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography 
-                            variant="body2" 
-                            sx={{ 
+                          <Typography
+                            variant="body2"
+                            sx={{
                               fontWeight: 500,
                               fontSize: '0.875rem'
                             }}
                           >
-                            {source.id}
+                            {source.name || source.id}
                           </Typography>
                           <Chip 
                             label={`${source.columns?.length || 0}列`}

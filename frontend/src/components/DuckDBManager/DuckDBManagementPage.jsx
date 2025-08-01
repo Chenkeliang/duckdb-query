@@ -34,7 +34,7 @@ import {
 } from '@mui/icons-material';
 import { getDuckDBTables, deleteDuckDBTable } from '../../services/apiClient';
 
-const DuckDBManagementPage = () => {
+const DuckDBManagementPage = ({ onDataSourceChange }) => {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -92,6 +92,10 @@ const DuckDBManagementPage = () => {
       if (result.success) {
         setSuccessMessage(`表 "${tableToDelete.table_name}" 已成功删除`);
         await loadTables(); // 重新加载表列表
+        // 通知全局数据源状态更新
+        if (onDataSourceChange) {
+          onDataSourceChange();
+        }
         setDeleteDialogOpen(false);
         setTableToDelete(null);
       } else {
