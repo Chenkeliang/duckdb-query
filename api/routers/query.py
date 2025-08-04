@@ -1077,7 +1077,7 @@ async def list_duckdb_tables():
 
 @router.delete("/api/duckdb_tables/{table_name}", tags=["Query"])
 async def delete_duckdb_table(table_name: str):
-    """删除DuckDB中的指定表"""
+    """删除DuckDB中的指定表，同时删除对应的源文件"""
     try:
         con = get_db_connection()
 
@@ -1088,7 +1088,47 @@ async def delete_duckdb_table(table_name: str):
         if table_name not in existing_tables:
             raise HTTPException(status_code=404, detail=f"表 '{table_name}' 不存在")
 
-        # 先尝试删除表，如果失败则尝试删除视图
+        # 尝试查找并删除对应的源文件
+        deleted_files = []
+        try:
+            # 查找可能的文件路径
+            temp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "temp_files")
+
+            # 可能的文件名模式
+            possible_filenames = [
+                f"{table_name}.csv",
+                f"{table_name}.xlsx",
+                f"{table_name}.xls",
+                f"{table_name}.json",
+                f"{table_name}.parquet",
+                f"{table_name}.pq"
+            ]
+
+            # 查找并删除匹配的文件
+            if os.path.exists(temp_dir):
+                for filename in os.listdir(temp_dir):
+                    # 检查文件名是否匹配表名（去掉扩展名）
+                    file_base_name = os.path.splitext(filename)[0]
+                    if file_base_name == table_name or filename in possible_filenames:
+                        file_path = os.path.join(temp_dir, filename)
+                        try:
+                            os.remove(file_path)
+                            deleted_files.append(filename)
+                            logger.info(f"已删除源文件: {filename}")
+                        except Exception as file_e:
+                            logger.warning(f"删除源文件失败 {filename}: {str(file_e)}")
+
+            # 从文件数据源配置中删除记录
+            try:
+                from core.file_datasource_manager import file_datasource_manager
+                file_datasource_manager.remove_file_datasource(table_name)
+            except Exception as config_e:
+                logger.warning(f"删除文件数据源配置失败: {str(config_e)}")
+
+        except Exception as cleanup_e:
+            logger.warning(f"清理源文件时出错: {str(cleanup_e)}")
+
+        # 删除DuckDB中的表或视图
         try:
             drop_query = f'DROP TABLE IF EXISTS "{table_name}"'
             con.execute(drop_query)
@@ -1102,9 +1142,15 @@ async def delete_duckdb_table(table_name: str):
 
         logger.info(f"成功删除DuckDB表: {table_name}")
 
+        # 构建返回消息
+        message = f"表 '{table_name}' 已成功删除"
+        if deleted_files:
+            message += f"，同时删除了源文件: {', '.join(deleted_files)}"
+
         return {
             "success": True,
-            "message": f"表 '{table_name}' 已成功删除"
+            "message": message,
+            "deleted_files": deleted_files
         }
 
     except HTTPException:

@@ -96,11 +96,14 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: filePath })
       });
-      
+
       if (response.ok) {
-        await silentRefresh();
         setDeleteDialog({ open: false, item: null, type: null });
         showSuccess('文件删除成功');
+        // 立即触发父组件刷新
+        if (onRefresh) {
+          onRefresh();
+        }
       } else {
         const errorMsg = '删除文件失败';
         setError(errorMsg);
@@ -119,11 +122,14 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
       const response = await fetch(`/api/database_connections/${connectionId}`, {
         method: 'DELETE'
       });
-      
+
       if (response.ok) {
-        await silentRefresh();
         setDeleteDialog({ open: false, item: null, type: null });
         showSuccess('数据库连接删除成功');
+        // 立即触发父组件刷新
+        if (onRefresh) {
+          onRefresh();
+        }
       } else {
         const errorMsg = '删除数据库连接失败';
         setError(errorMsg);

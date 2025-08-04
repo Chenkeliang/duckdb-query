@@ -41,6 +41,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import io
 import datetime
+import time
 from typing import List, Dict, Any, Optional
 
 # 设置日志
@@ -576,7 +577,16 @@ async def upload_file(
         preview_info = get_file_preview(save_path, rows=10)
 
         # 读取完整数据并持久化到DuckDB
+        # 生成SQL兼容的表名，替换特殊字符为下划线
         source_id = file.filename.split(".")[0]
+        source_id = "".join(c if c.isalnum() or c == "_" else "_" for c in source_id)
+        # 确保表名不以数字开头
+        if source_id and source_id[0].isdigit():
+            source_id = f"table_{source_id}"
+        # 确保表名不为空
+        if not source_id:
+            source_id = f"table_{int(time.time())}"
+
         df_full = read_file_by_type(save_path, file_type)
 
         # 使用CREATE TABLE持久化到DuckDB而不是临时注册

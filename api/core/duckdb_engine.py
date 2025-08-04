@@ -474,17 +474,18 @@ def prepare_dataframe_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
                 # 对象类型（包括字符串）
                 processed_df[col] = processed_df[col].fillna("").astype(str)
 
-            # 处理字符编码问题，使用更安全的方法
-            processed_df[col] = processed_df[col].apply(
-                lambda x: safe_encode_string(str(x)) if x else ""
-            )
+            # 简化字符串处理，避免性能问题
+            # 直接转换为字符串，处理空值
+            processed_df[col] = processed_df[col].astype(str).replace('nan', '')
 
         except Exception as e:
             logger.warning(f"处理列 {col} 时出错: {e}，使用默认字符串转换")
-            # 使用最安全的转换方法
-            processed_df[col] = processed_df[col].apply(
-                lambda x: str(x).encode('ascii', errors='ignore').decode('ascii') if x else ""
-            )
+            # 使用最简单的转换方法
+            try:
+                processed_df[col] = processed_df[col].astype(str).fillna('')
+            except:
+                # 如果还是失败，创建一个空字符串列
+                processed_df[col] = [''] * len(processed_df)
 
     # 清理列名，确保是有效的SQL标识符
     clean_columns = []

@@ -333,8 +333,16 @@ async def process_uploaded_file(file_path: str, file_name: str) -> Dict[str, Any
         else:
             raise ValueError(f"不支持的文件类型: {file_extension}")
         
-        # 生成表名
+        # 生成SQL兼容的表名，替换特殊字符为下划线
         source_id = file_name.split('.')[0]
+        source_id = "".join(c if c.isalnum() or c == "_" else "_" for c in source_id)
+        # 确保表名不以数字开头
+        if source_id and source_id[0].isdigit():
+            source_id = f"table_{source_id}"
+        # 确保表名不为空
+        if not source_id:
+            import time
+            source_id = f"table_{int(time.time())}"
         
         # 加载到DuckDB
         con = get_db_connection()

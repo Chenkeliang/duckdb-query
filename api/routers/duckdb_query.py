@@ -320,6 +320,7 @@ async def upload_file_to_duckdb(
         con = get_db_connection()
 
         # 创建表
+        logger.info(f"开始创建DuckDB表: {table_alias}")
         success = create_persistent_table(table_alias, df, con)
 
         if success:
@@ -332,8 +333,9 @@ async def upload_file_to_duckdb(
             # 清理临时文件
             try:
                 os.remove(file_path)
-            except:
-                pass
+                logger.info(f"已清理临时文件: {file_path}")
+            except Exception as cleanup_e:
+                logger.warning(f"清理临时文件失败: {cleanup_e}")
 
             return {
                 "success": True,
@@ -343,7 +345,12 @@ async def upload_file_to_duckdb(
                 "columns": columns
             }
         else:
-            raise HTTPException(status_code=500, detail="创建DuckDB表失败")
+            # 清理临时文件
+            try:
+                os.remove(file_path)
+            except:
+                pass
+            raise HTTPException(status_code=500, detail=f"创建DuckDB表失败: {table_alias}")
 
     except HTTPException:
         raise

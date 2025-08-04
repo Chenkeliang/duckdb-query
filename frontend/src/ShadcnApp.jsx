@@ -371,7 +371,7 @@ const ShadcnApp = () => {
                 {/* DuckDB管理内容 */}
                 {tableManagementTab === "duckdb" && (
                   <div className="p-6">
-                    <DuckDBManagementPage />
+                    <DuckDBManagementPage onDataSourceChange={triggerRefresh} />
                   </div>
                 )}
 
