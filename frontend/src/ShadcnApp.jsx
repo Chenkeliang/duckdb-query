@@ -58,8 +58,8 @@ const ShadcnApp = () => {
       let allDataSources = [];
 
       if (dataSourcesRes.success) {
-        // 使用正确的数据字段
-        const mysqlSources = dataSourcesRes.datasources || dataSourcesRes.data || [];
+        // 使用正确的数据字段 - MySQL连接API返回connections数组
+        const mysqlSources = dataSourcesRes.connections || [];
         allDataSources = [...allDataSources, ...mysqlSources];
       }
 

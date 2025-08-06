@@ -439,7 +439,7 @@ export const deleteDuckDBTable = async (tableName) => {
 // 获取MySQL数据源列表
 export const getMySQLDataSources = async () => {
   try {
-    const response = await apiClient.get('/api/mysql_datasources');
+    const response = await apiClient.get('/api/mysql/connections');
     return response.data;
   } catch (error) {
     console.error('获取MySQL数据源列表失败:', error);
