@@ -1,0 +1,12 @@
+{
+  "debug": false,
+  "cors_origins": [
+    "http://localhost:3000",
+    "http://localhost:5173"
+  ],
+  "max_file_size": 104857600,
+  "query_timeout": 300,
+  "max_query_rows": 10000,
+  "enable_caching": true,
+  "cache_ttl": 3600
+}
