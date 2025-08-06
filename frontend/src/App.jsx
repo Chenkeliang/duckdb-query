@@ -20,7 +20,7 @@ import DatabaseConnector from './components/DataSourceManager/DatabaseConnector'
 import DataPasteBoard from './components/DataSourceManager/DataPasteBoard';
 import DataGrid from './components/DataGrid';
 import QueryBuilder from './components/QueryBuilder/QueryBuilder';
-import { uploadFile, connectDatabase, deleteFile } from './services/apiClient';
+import { uploadFile, connectDatabase, deleteFile, testDatabaseConnection, createDatabaseConnection } from './services/apiClient';
 import StorageIcon from '@mui/icons-material/Storage';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { ToastProvider } from './contexts/ToastContext';
@@ -174,29 +174,64 @@ function App() {
   
   const handleDatabaseConnect = async (connectionParams) => {
     try {
-      const connectResult = await connectDatabase(connectionParams);
-      
-      if (connectResult.success) {
-        // 添加数据库连接到数据源列表
-        const newSource = {
+      // 对于MySQL数据源，使用数据库连接管理API
+      if (connectionParams.type === 'mysql') {
+        // 创建数据库连接对象
+        const connectionData = {
           id: connectionParams.id,
+          name: connectionParams.id,
           type: connectionParams.type,
-          params: connectionParams.params,
-          columns: connectResult.columns || []
+          params: connectionParams.params
         };
-        
-        setDataSources(prev => [...prev, newSource]);
-        
-        // 显示查询结果
-        if (connectResult.data && connectResult.columns) {
-          handleQueryResults({
-            columns: connectResult.columns,
-            data: connectResult.data
-          });
+
+        // 先测试连接
+        const testResult = await testDatabaseConnection({
+          type: connectionParams.type,
+          params: connectionParams.params
+        });
+
+        if (!testResult.success) {
+          throw new Error(testResult.message || '数据库连接测试失败');
         }
+
+        // 创建连接
+        const createResult = await createDatabaseConnection(connectionData);
+
+        if (createResult.success) {
+          return {
+            success: true,
+            message: '数据库连接创建成功',
+            connection: createResult.connection
+          };
+        } else {
+          throw new Error(createResult.message || '数据库连接创建失败');
+        }
+      } else {
+        // 对于其他类型，使用原有的connect_database API
+        const connectResult = await connectDatabase(connectionParams);
+
+        if (connectResult.success) {
+          // 添加数据库连接到数据源列表
+          const newSource = {
+            id: connectionParams.id,
+            type: connectionParams.type,
+            params: connectionParams.params,
+            columns: connectResult.columns || []
+          };
+
+          setDataSources(prev => [...prev, newSource]);
+
+          // 显示查询结果
+          if (connectResult.data && connectResult.columns) {
+            handleQueryResults({
+              columns: connectResult.columns,
+              data: connectResult.data
+            });
+          }
+        }
+
+        return connectResult;
       }
-      
-      return connectResult;
     } catch (error) {
       console.error("Error connecting to database:", error);
       throw error;
