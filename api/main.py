@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 from core.security import security_validator
 from core.config_manager import config_manager
+from core.exceptions import setup_exception_handlers
 
 from routers import (
     data_sources,
@@ -140,6 +141,9 @@ app = FastAPI(
     description="Enhanced API for interactive data querying, joining, and exporting with multi-database support using DuckDB native extensions.",
     version="2.1.0",
 )
+
+# 设置统一异常处理
+setup_exception_handlers(app)
 
 # CORS middleware for frontend communication
 # 使用统一配置管理器
