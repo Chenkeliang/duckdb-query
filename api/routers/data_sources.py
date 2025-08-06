@@ -9,6 +9,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, StreamingResponse
 from core.resource_manager import save_upload_file, schedule_cleanup
+from core.security import security_validator, mask_sensitive_config
 from models.query_models import (
     DatabaseConnection,
     MySQLConfig,
@@ -20,13 +21,18 @@ from models.query_models import (
     ExportRequest,
     ExportFormat,
 )
-from core.duckdb_engine import get_db_connection, register_dataframe, get_table_info, create_persistent_table
+from core.duckdb_engine import (
+    get_db_connection,
+    register_dataframe,
+    get_table_info,
+    create_persistent_table,
+)
 from core.database_manager import db_manager
 from core.file_datasource_manager import (
     file_datasource_manager,
     detect_file_type,
     read_file_by_type,
-    create_table_from_dataframe
+    create_table_from_dataframe,
 )
 import pandas as pd
 import logging
@@ -55,7 +61,9 @@ duckdb_con = get_db_connection()
 
 # MySQL配置文件路径
 MYSQL_CONFIG_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config", "mysql-configs.json"
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "config",
+    "mysql-configs.json",
 )
 # 用于保存原始密码的字典，这样在显示配置时不会暴露密码
 MYSQL_PASSWORDS = {}
@@ -542,21 +550,45 @@ async def upload_file(
 ) -> FileUploadResponse:
     """上传文件并返回详细信息，支持CSV、Excel、JSON、Parquet格式"""
     try:
-        # 检查文件大小 (100MB限制)
-        MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+        # 读取文件内容
         file_content = await file.read()
-        if len(file_content) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail=f"文件太大，最大支持100MB。当前文件大小：{len(file_content) / 1024 / 1024:.1f}MB",
-            )
+        file_size = len(file_content)
 
         # 重置文件指针
         await file.seek(0)
 
-        # 检查文件类型
+        # 保存临时文件用于安全验证
+        temp_file_path = await save_upload_file(file)
+
+        # 安全验证
+        validation_result = security_validator.validate_file_upload(
+            temp_file_path, file.filename, file_size
+        )
+
+        if not validation_result["valid"]:
+            # 清理临时文件
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+            raise HTTPException(
+                status_code=400,
+                detail=f"文件验证失败: {'; '.join(validation_result['errors'])}",
+            )
+
+        # 记录警告信息
+        if validation_result["warnings"]:
+            logger.warning(
+                f"文件上传警告 {file.filename}: {'; '.join(validation_result['warnings'])}"
+            )
+
+        # 检查文件类型（保持向后兼容）
         file_type = detect_file_type(file.filename)
         if file_type == "unknown":
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
             raise HTTPException(
                 status_code=400,
                 detail=f"不支持的文件类型。支持的格式：CSV, Excel, JSON, Parquet",
@@ -604,7 +636,7 @@ async def upload_file(
             "row_count": len(df_full),
             "column_count": len(df_full.columns),
             "columns": list(df_full.columns),
-            "upload_time": datetime.datetime.now()
+            "upload_time": datetime.datetime.now(),
         }
 
         config_saved = file_datasource_manager.save_file_datasource(file_info)
@@ -673,7 +705,9 @@ async def connect_database(connection: DatabaseConnection = Body(...)):
     try:
         logger.info(f"尝试连接到数据库: {connection.type} - {connection.id}")
         logger.info(f"连接参数: {connection.params}")
-        logger.info(f"参数中是否包含query: {'query' in connection.params if connection.params else 'params为空'}")
+        logger.info(
+            f"参数中是否包含query: {'query' in connection.params if connection.params else 'params为空'}"
+        )
 
         # 处理不同类型的数据库连接
         if connection.type == "csv":
@@ -747,7 +781,9 @@ async def connect_database(connection: DatabaseConnection = Body(...)):
                         host = connection.params.get("host", "localhost")
                         port = connection.params.get("port", 3306)
                         # 支持 user 和 username 两种参数名称
-                        user = connection.params.get("user") or connection.params.get("username", "")
+                        user = connection.params.get("user") or connection.params.get(
+                            "username", ""
+                        )
                         password = connection.params.get("password", "")
                         database = connection.params.get("database", "")
 
@@ -811,7 +847,9 @@ async def connect_database(connection: DatabaseConnection = Body(...)):
                     tables = duckdb_con.execute("SHOW TABLES").fetchdf()
                     logger.info(f"当前DuckDB中的表: {tables.to_string()}")
 
-                    logger.info(f"{connection.type}查询结果已创建为持久化表: {table_id}")
+                    logger.info(
+                        f"{connection.type}查询结果已创建为持久化表: {table_id}"
+                    )
 
                     # 处理不可序列化的数据
                     df = handle_non_serializable_data(df)
@@ -1044,27 +1082,32 @@ async def get_database_tables(connection_id: str):
         # 获取数据库连接配置
         connection = db_manager.get_connection(connection_id)
         if not connection:
-            raise HTTPException(status_code=404, detail=f"数据库连接 {connection_id} 不存在")
+            raise HTTPException(
+                status_code=404, detail=f"数据库连接 {connection_id} 不存在"
+            )
 
         # 连接数据库
         import pymysql
+
         db_config = connection.params
 
         # 支持 user 和 username 两种参数名称
-        username = db_config.get('user') or db_config.get('username')
+        username = db_config.get("user") or db_config.get("username")
         if not username:
-            raise HTTPException(status_code=400, detail="缺少用户名参数 (user 或 username)")
+            raise HTTPException(
+                status_code=400, detail="缺少用户名参数 (user 或 username)"
+            )
 
         conn = pymysql.connect(
-            host=db_config.get('host', 'localhost'),
-            port=int(db_config.get('port', 3306)),
+            host=db_config.get("host", "localhost"),
+            port=int(db_config.get("port", 3306)),
             user=username,
-            password=db_config['password'],
-            database=db_config['database'],
-            charset='utf8mb4',
+            password=db_config["password"],
+            database=db_config["database"],
+            charset="utf8mb4",
             connect_timeout=10,  # 连接超时10秒
-            read_timeout=30,     # 读取超时30秒
-            write_timeout=30     # 写入超时30秒
+            read_timeout=30,  # 读取超时30秒
+            write_timeout=30,  # 写入超时30秒
         )
 
         try:
@@ -1084,41 +1127,49 @@ async def get_database_tables(connection_id: str):
                         cursor.execute(f"DESCRIBE `{table_name}`")
                         columns = []
                         for col_row in cursor.fetchall():
-                            columns.append({
-                                'name': col_row[0],
-                                'type': col_row[1],
-                                'null': col_row[2],
-                                'key': col_row[3],
-                                'default': col_row[4],
-                                'extra': col_row[5]
-                            })
+                            columns.append(
+                                {
+                                    "name": col_row[0],
+                                    "type": col_row[1],
+                                    "null": col_row[2],
+                                    "key": col_row[3],
+                                    "default": col_row[4],
+                                    "extra": col_row[5],
+                                }
+                            )
 
                         # 不再统计行数，提升性能
-                        table_info.append({
-                            'table_name': table_name,
-                            'columns': columns,
-                            'column_count': len(columns),
-                            'row_count': 0  # 不再提供行数统计，返回0避免前端错误
-                        })
+                        table_info.append(
+                            {
+                                "table_name": table_name,
+                                "columns": columns,
+                                "column_count": len(columns),
+                                "row_count": 0,  # 不再提供行数统计，返回0避免前端错误
+                            }
+                        )
 
                     except Exception as table_error:
-                        logger.warning(f"获取表 {table_name} 信息失败: {str(table_error)}")
+                        logger.warning(
+                            f"获取表 {table_name} 信息失败: {str(table_error)}"
+                        )
                         # 即使单个表失败，也继续处理其他表
-                        table_info.append({
-                            'table_name': table_name,
-                            'columns': [],
-                            'column_count': 0,
-                            'row_count': 0,  # 返回0避免前端错误
-                            'error': str(table_error)
-                        })
+                        table_info.append(
+                            {
+                                "table_name": table_name,
+                                "columns": [],
+                                "column_count": 0,
+                                "row_count": 0,  # 返回0避免前端错误
+                                "error": str(table_error),
+                            }
+                        )
 
                 return {
-                    'success': True,
-                    'connection_id': connection_id,
-                    'connection_name': connection.name,
-                    'database': db_config['database'],
-                    'tables': table_info,
-                    'table_count': len(table_info)
+                    "success": True,
+                    "connection_id": connection_id,
+                    "connection_name": connection.name,
+                    "database": db_config["database"],
+                    "tables": table_info,
+                    "table_count": len(table_info),
                 }
 
         finally:
@@ -1129,34 +1180,42 @@ async def get_database_tables(connection_id: str):
         raise HTTPException(status_code=500, detail=f"获取数据库表信息失败: {str(e)}")
 
 
-@router.get("/api/database_table_details/{connection_id}/{table_name}", tags=["Database Management"])
+@router.get(
+    "/api/database_table_details/{connection_id}/{table_name}",
+    tags=["Database Management"],
+)
 async def get_table_details(connection_id: str, table_name: str):
     """获取指定表的详细信息，包括字段详情和示例数据"""
     try:
         # 获取数据库连接配置
         connection = db_manager.get_connection(connection_id)
         if not connection:
-            raise HTTPException(status_code=404, detail=f"数据库连接 {connection_id} 不存在")
+            raise HTTPException(
+                status_code=404, detail=f"数据库连接 {connection_id} 不存在"
+            )
 
         # 连接数据库
         import pymysql
+
         db_config = connection.params
 
         # 支持 user 和 username 两种参数名称
-        username = db_config.get('user') or db_config.get('username')
+        username = db_config.get("user") or db_config.get("username")
         if not username:
-            raise HTTPException(status_code=400, detail="缺少用户名参数 (user 或 username)")
+            raise HTTPException(
+                status_code=400, detail="缺少用户名参数 (user 或 username)"
+            )
 
         conn = pymysql.connect(
-            host=db_config.get('host', 'localhost'),
-            port=int(db_config.get('port', 3306)),
+            host=db_config.get("host", "localhost"),
+            port=int(db_config.get("port", 3306)),
             user=username,
-            password=db_config['password'],
-            database=db_config['database'],
-            charset='utf8mb4',
+            password=db_config["password"],
+            database=db_config["database"],
+            charset="utf8mb4",
             connect_timeout=10,  # 连接超时10秒
-            read_timeout=30,     # 读取超时30秒
-            write_timeout=30     # 写入超时30秒
+            read_timeout=30,  # 读取超时30秒
+            write_timeout=30,  # 写入超时30秒
         )
 
         try:
@@ -1165,14 +1224,16 @@ async def get_table_details(connection_id: str, table_name: str):
                 cursor.execute(f"DESCRIBE `{table_name}`")
                 columns = []
                 for col_row in cursor.fetchall():
-                    columns.append({
-                        'name': col_row[0],
-                        'type': col_row[1],
-                        'null': col_row[2],
-                        'key': col_row[3],
-                        'default': col_row[4],
-                        'extra': col_row[5]
-                    })
+                    columns.append(
+                        {
+                            "name": col_row[0],
+                            "type": col_row[1],
+                            "null": col_row[2],
+                            "key": col_row[3],
+                            "default": col_row[4],
+                            "extra": col_row[5],
+                        }
+                    )
 
                 # 不再统计行数，提升性能
                 row_count = 0  # 返回0避免前端错误
@@ -1184,12 +1245,12 @@ async def get_table_details(connection_id: str, table_name: str):
                     sample_data.append(list(row))
 
                 return {
-                    'success': True,
-                    'table_name': table_name,
-                    'columns': columns,
-                    'column_count': len(columns),
-                    'row_count': row_count,
-                    'sample_data': sample_data
+                    "success": True,
+                    "table_name": table_name,
+                    "columns": columns,
+                    "column_count": len(columns),
+                    "row_count": row_count,
+                    "sample_data": sample_data,
                 }
 
         finally:
@@ -1356,30 +1417,32 @@ async def get_duckdb_tables():
                 # 获取表结构
                 schema_df = con.execute(f'DESCRIBE "{table_name}"').fetchdf()
                 # 获取行数
-                count_result = con.execute(f'SELECT COUNT(*) as count FROM "{table_name}"').fetchone()
+                count_result = con.execute(
+                    f'SELECT COUNT(*) as count FROM "{table_name}"'
+                ).fetchone()
                 row_count = count_result[0] if count_result else 0
 
-                table_info.append({
-                    "table_name": table_name,
-                    "columns": schema_df.to_dict('records'),
-                    "column_count": len(schema_df),
-                    "row_count": row_count
-                })
+                table_info.append(
+                    {
+                        "table_name": table_name,
+                        "columns": schema_df.to_dict("records"),
+                        "column_count": len(schema_df),
+                        "row_count": row_count,
+                    }
+                )
             except Exception as table_error:
                 logger.warning(f"获取表 {table_name} 信息失败: {str(table_error)}")
-                table_info.append({
-                    "table_name": table_name,
-                    "columns": [],
-                    "column_count": 0,
-                    "row_count": 0,
-                    "error": str(table_error)
-                })
+                table_info.append(
+                    {
+                        "table_name": table_name,
+                        "columns": [],
+                        "column_count": 0,
+                        "row_count": 0,
+                        "error": str(table_error),
+                    }
+                )
 
-        return {
-            "success": True,
-            "tables": table_info,
-            "count": len(table_info)
-        }
+        return {"success": True, "tables": table_info, "count": len(table_info)}
 
     except Exception as e:
         logger.error(f"获取DuckDB表信息失败: {str(e)}")

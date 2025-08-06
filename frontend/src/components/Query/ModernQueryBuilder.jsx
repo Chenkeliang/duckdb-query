@@ -389,9 +389,21 @@ const ModernQueryBuilder = ({
   );
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      // 防止触控板手势导致的页面导航
+      overscrollBehavior: 'contain',
+      touchAction: 'pan-x pan-y'
+    }}>
       {/* 头部 */}
-      <Card sx={{ mb: 3 }}>
+      <Card sx={{
+        mb: 3,
+        // 防止触控板手势导致的页面导航
+        overscrollBehavior: 'contain',
+        touchAction: 'pan-x pan-y'
+      }}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>

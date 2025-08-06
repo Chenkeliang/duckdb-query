@@ -177,6 +177,12 @@ const ModernApp = () => {
   // 组件挂载时获取数据源（强制）
   useEffect(() => {
     fetchDataSources(true);
+
+    // 移除所有可能干扰React的事件监听器
+    // 只依赖CSS防护
+    return () => {
+      // 清理函数为空，因为我们不再添加事件监听器
+    };
   }, []);
 
   // 响应刷新触发（使用防抖）

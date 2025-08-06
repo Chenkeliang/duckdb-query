@@ -39,7 +39,5 @@ const AppSelector = () => {
 };
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <AppSelector />
-  </React.StrictMode>,
+  <AppSelector />
 )

@@ -5,6 +5,86 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* 强化的防护方案 - 主要依赖CSS */
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
+  -webkit-overscroll-behavior-x: none;
+  -webkit-overscroll-behavior-y: auto;
+}
+
+/* 为ag-Grid添加特定的防护 */
+.ag-theme-alpine {
+  overscroll-behavior: none;
+  -webkit-overscroll-behavior: none;
+  /* 防止触摸手势 */
+  touch-action: pan-y;
+  -webkit-touch-action: pan-y;
+}
+
+/* 为所有表格元素添加防护 */
+table, [role="treegrid"], [role="grid"] {
+  overscroll-behavior: none;
+  -webkit-overscroll-behavior: none;
+  touch-action: pan-y;
+  -webkit-touch-action: pan-y;
+}
+
+/* 为ag-Grid的内部容器添加防护 */
+.ag-body-viewport, .ag-center-cols-container, .ag-center-cols-viewport {
+  overscroll-behavior: none;
+  -webkit-overscroll-behavior: none;
+  touch-action: pan-y;
+  -webkit-touch-action: pan-y;
+}
+
+/* 强制显示滚动条，提供明确的滚动方式 */
+.ag-theme-alpine .ag-body-horizontal-scroll {
+  height: 16px !important;
+  background: #f1f1f1 !important;
+}
+
+.ag-theme-alpine .ag-body-horizontal-scroll-viewport {
+  height: 16px !important;
+}
+
+.ag-theme-alpine .ag-body-horizontal-scroll-container {
+  height: 16px !important;
+}
+
+/* 自定义滚动条样式 */
+.ag-theme-alpine ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.ag-theme-alpine ::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 6px;
+}
+
+.ag-theme-alpine ::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 6px;
+}
+
+.ag-theme-alpine ::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* 确保ag-Grid的水平滚动条可见 */
+.ag-theme-alpine .ag-horizontal-left-spacer,
+.ag-theme-alpine .ag-horizontal-right-spacer {
+  min-width: 0 !important;
+}
+
+/* 为表格容器添加明显的边框，提示用户可以滚动 */
+.ag-theme-alpine {
+  border: 2px solid #e0e0e0 !important;
+  border-radius: 8px !important;
+}
+
+.ag-theme-alpine .ag-header {
+  border-bottom: 2px solid #e0e0e0 !important;
 }
 
 code {

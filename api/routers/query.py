@@ -53,6 +53,7 @@ def build_multi_table_join_query(query_request, con):
     """
     构建多表JOIN查询
     支持多个数据源的复杂JOIN操作
+    增加关联结果列显示JOIN匹配状态
     """
     sources = query_request.sources
     joins = query_request.joins
@@ -113,7 +114,66 @@ def build_multi_table_join_query(query_request, con):
                 alias = f"{prefix}_{j+1}"
                 select_fields.append(f'"{table_id}"."{col}" AS "{alias}"')
 
-    select_clause = ", ".join(select_fields) if select_fields else "*"
+    # 添加关联结果列
+    join_result_fields = []
+    if joins:
+        for i, join in enumerate(joins):
+            left_table = join.left_source_id.strip('"')
+            right_table = join.right_source_id.strip('"')
+
+            # 生成关联结果列名
+            left_prefix = table_prefixes.get(left_table, left_table)
+            right_prefix = table_prefixes.get(right_table, right_table)
+            join_result_column = f"join_result_{left_prefix}_{right_prefix}"
+
+            # 根据JOIN类型生成CASE表达式
+            join_type = join.join_type.lower()
+            if join_type == 'inner':
+                # INNER JOIN: 只有匹配的记录，都标记为'both'
+                join_result_expr = f"'both' AS {join_result_column}"
+            elif join_type == 'left':
+                # LEFT JOIN: 检查右表关键字段是否为NULL
+                if join.conditions and len(join.conditions) > 0:
+                    right_key_col = f'"{right_table}"."{join.conditions[0].right_column}"'
+                else:
+                    # 如果没有条件，使用第一个列作为检查
+                    right_cols = table_columns.get(right_table, [])
+                    right_key_col = f'"{right_table}"."{right_cols[0]}"' if right_cols else f'"{right_table}".rowid'
+                join_result_expr = f"CASE WHEN {right_key_col} IS NULL THEN 'left' ELSE 'both' END AS {join_result_column}"
+            elif join_type == 'right':
+                # RIGHT JOIN: 检查左表关键字段是否为NULL
+                if join.conditions and len(join.conditions) > 0:
+                    left_key_col = f'"{left_table}"."{join.conditions[0].left_column}"'
+                else:
+                    # 如果没有条件，使用第一个列作为检查
+                    left_cols = table_columns.get(left_table, [])
+                    left_key_col = f'"{left_table}"."{left_cols[0]}"' if left_cols else f'"{left_table}".rowid'
+                join_result_expr = f"CASE WHEN {left_key_col} IS NULL THEN 'right' ELSE 'both' END AS {join_result_column}"
+            elif join_type in ['full', 'full_outer', 'outer']:
+                # FULL OUTER JOIN: 检查两边关键字段是否为NULL
+                if join.conditions and len(join.conditions) > 0:
+                    left_key_col = f'"{left_table}"."{join.conditions[0].left_column}"'
+                    right_key_col = f'"{right_table}"."{join.conditions[0].right_column}"'
+                else:
+                    # 如果没有条件，使用第一个列作为检查
+                    left_cols = table_columns.get(left_table, [])
+                    right_cols = table_columns.get(right_table, [])
+                    left_key_col = f'"{left_table}"."{left_cols[0]}"' if left_cols else f'"{left_table}".rowid'
+                    right_key_col = f'"{right_table}"."{right_cols[0]}"' if right_cols else f'"{right_table}".rowid'
+                join_result_expr = f"""CASE
+                    WHEN {left_key_col} IS NULL THEN 'right'
+                    WHEN {right_key_col} IS NULL THEN 'left'
+                    ELSE 'both'
+                END AS {join_result_column}"""
+            else:
+                # 其他类型的JOIN（如CROSS JOIN），默认标记为'both'
+                join_result_expr = f"'both' AS {join_result_column}"
+
+            join_result_fields.append(join_result_expr)
+
+    # 合并所有字段
+    all_fields = select_fields + join_result_fields
+    select_clause = ", ".join(all_fields) if all_fields else "*"
 
     # 构建FROM和JOIN子句
     if not joins:

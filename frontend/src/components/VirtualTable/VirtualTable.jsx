@@ -122,7 +122,16 @@ const VirtualTable = ({
   }
 
   return (
-    <TableContainer component={Paper} sx={{ height, overflow: 'hidden' }}>
+    <TableContainer
+      component={Paper}
+      sx={{
+        height,
+        overflow: 'hidden',
+        // 防止触控板手势导致的页面导航
+        overscrollBehavior: 'contain',
+        touchAction: 'pan-x pan-y'
+      }}
+    >
       <Table stickyHeader>
         <TableHead>
           <TableRow>

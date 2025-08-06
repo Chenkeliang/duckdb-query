@@ -4,6 +4,7 @@ import logging
 import json
 import os
 from datetime import datetime
+from core.security import security_validator
 
 from routers import (
     data_sources,
@@ -35,7 +36,12 @@ except ImportError:
 from core.database_manager import db_manager
 from models.query_models import DatabaseConnection, DataSourceType
 from core.file_datasource_manager import reload_all_file_datasources_to_duckdb
-from core.duckdb_engine import get_db_connection, create_persistent_table, create_varchar_table_from_dataframe, ensure_all_tables_varchar
+from core.duckdb_engine import (
+    get_db_connection,
+    create_persistent_table,
+    create_varchar_table_from_dataframe,
+    ensure_all_tables_varchar,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +130,7 @@ def load_mysql_datasources_on_startup():
                 import pandas as pd
 
                 # 支持 user 和 username 两种参数名称
-                username = mysql_config.get('user') or mysql_config.get('username')
+                username = mysql_config.get("user") or mysql_config.get("username")
                 if not username:
                     logger.error(f"MySQL配置缺少用户名: {connection_name}")
                     continue
@@ -135,21 +141,33 @@ def load_mysql_datasources_on_startup():
                     "?charset=utf8mb4"
                 )
 
+                # 记录安全的连接信息（不包含密码）
+                safe_connection_info = f"mysql://{username}@{mysql_config['host']}:{mysql_config.get('port', 3306)}/{mysql_config['database']}"
+                logger.info(f"连接MySQL数据源: {safe_connection_info}")
+
                 engine = create_engine(connection_str)
                 df = pd.read_sql(sql_query, engine)
 
                 # 创建持久化表，使用VARCHAR类型
-                success = create_varchar_table_from_dataframe(datasource_id, df, duckdb_con)
+                success = create_varchar_table_from_dataframe(
+                    datasource_id, df, duckdb_con
+                )
                 if success:
-                    logger.info(f"成功重新加载MySQL数据源: {datasource_id} ({len(df)}行)")
+                    logger.info(
+                        f"成功重新加载MySQL数据源: {datasource_id} ({len(df)}行)"
+                    )
                     success_count += 1
                 else:
                     logger.error(f"重新加载MySQL数据源失败: {datasource_id}")
 
             except Exception as e:
-                logger.error(f"重新加载MySQL数据源失败 {datasource.get('datasource_id', 'unknown')}: {str(e)}")
+                logger.error(
+                    f"重新加载MySQL数据源失败 {datasource.get('datasource_id', 'unknown')}: {str(e)}"
+                )
 
-        logger.info(f"MySQL数据源重新加载完成，成功: {success_count}/{len(datasources)}")
+        logger.info(
+            f"MySQL数据源重新加载完成，成功: {success_count}/{len(datasources)}"
+        )
 
     except Exception as e:
         logger.error(f"重新加载MySQL数据源时出错: {str(e)}")
@@ -173,12 +191,23 @@ app = FastAPI(
 )
 
 # CORS middleware for frontend communication
+# 从环境变量读取允许的源，默认为开发环境配置
+import os
+
+allowed_origins = os.getenv(
+    "CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for simplicity, restrict in production
+    allow_origins=allowed_origins,  # 限制允许的源
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # 限制允许的方法
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+    ],  # 限制允许的头部
 )
 
 # Include routers

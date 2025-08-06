@@ -241,13 +241,16 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
 
 
   return (
-    <Paper 
-      sx={{ 
-        p: 3, 
-        borderRadius: 3, 
+    <Paper
+      sx={{
+        p: 3,
+        borderRadius: 3,
         boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
         border: '1px solid rgba(0, 0, 0, 0.06)',
         height: '100%',
+        // 防止触控板手势导致的页面导航
+        overscrollBehavior: 'contain',
+        touchAction: 'pan-x pan-y',
         backdropFilter: 'blur(20px)',
         background: 'rgba(255,255,255,0.95)'
       }}

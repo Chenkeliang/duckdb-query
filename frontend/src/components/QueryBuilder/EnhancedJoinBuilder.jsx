@@ -210,7 +210,14 @@ const EnhancedJoinBuilder = ({ dataSources = [], joins = [], onJoinsChange }) =>
   };
 
   return (
-    <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
+    <Paper sx={{
+      p: 3,
+      borderRadius: 3,
+      boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
+      // 防止触控板手势导致的页面导航
+      overscrollBehavior: 'contain',
+      touchAction: 'pan-x pan-y'
+    }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <LinkIcon color="primary" />

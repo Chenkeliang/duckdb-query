@@ -13,3 +13,5 @@ pydantic[email]
 python-json-logger
 httpx
 requests
+python-magic
+cryptography

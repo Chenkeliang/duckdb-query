@@ -44,9 +44,7 @@ import {
   Speed as VirtualIcon,
   Grid3x3 as GridIcon,
 } from '@mui/icons-material';
-import { AgGridReact } from 'ag-grid-react';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
+import StableTable from '../StableTable';
 import { useToast } from '../../contexts/ToastContext';
 import { saveQueryResultAsDatasource, saveQueryToDuckDB } from '../../services/apiClient';
 import VirtualTable from '../VirtualTable/VirtualTable';
@@ -128,27 +126,110 @@ const ModernDataDisplay = ({
     return filteredData.slice(startIndex, startIndex + pageSize);
   }, [filteredData, currentPage, pageSize]);
 
+  // 关联结果列的单元格渲染器
+  const JoinResultCellRenderer = (params) => {
+    const value = params.value;
+    if (!value) return '';
+
+    const getDisplayInfo = (joinResult) => {
+      switch (joinResult) {
+        case 'both':
+          return {
+            label: '匹配',
+            backgroundColor: '#4caf50',
+            color: 'white'
+          };
+        case 'left':
+          return {
+            label: '仅左表',
+            backgroundColor: '#ff9800',
+            color: 'white'
+          };
+        case 'right':
+          return {
+            label: '仅右表',
+            backgroundColor: '#2196f3',
+            color: 'white'
+          };
+        default:
+          return {
+            label: value,
+            backgroundColor: '#e0e0e0',
+            color: '#333'
+          };
+      }
+    };
+
+    const displayInfo = getDisplayInfo(value);
+
+    // 创建DOM元素并返回
+    const container = document.createElement('div');
+    container.style.cssText = 'display: flex; justify-content: center; align-items: center; height: 100%; width: 100%;';
+
+    const chip = document.createElement('span');
+    chip.style.cssText = `
+      background-color: ${displayInfo.backgroundColor};
+      color: ${displayInfo.color};
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-align: center;
+      min-width: 60px;
+      display: inline-block;
+      white-space: nowrap;
+    `;
+    chip.textContent = displayInfo.label;
+
+    // 移除事件防护，避免React错误
+
+    container.appendChild(chip);
+    return container;
+  };
+
   // AG-Grid列定义
   const columnDefs = useMemo(() => {
     return normalizedColumns
       .filter(col => visibleColumns.has(col.field))
-      .map(col => ({
-        ...col,
-        sortable: true,
-        filter: true,
-        resizable: true,
-        width: 150, // 初始宽度
-        minWidth: 80, // 最小宽度
-        // 移除maxWidth，允许无限拖宽
-        cellStyle: {
-          fontSize: '0.875rem',
-          padding: '8px 12px',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        },
-        headerClass: 'modern-header',
-      }));
+      .map(col => {
+        // 检查是否是关联结果列
+        const isJoinResultColumn = col.field && col.field.startsWith('join_result_');
+
+        const baseConfig = {
+          ...col,
+          sortable: true,
+          filter: true,
+          resizable: true,
+          width: isJoinResultColumn ? 120 : 150, // 关联结果列稍窄
+          minWidth: isJoinResultColumn ? 100 : 80,
+          headerClass: isJoinResultColumn ? 'join-result-header' : 'modern-header',
+        };
+
+        if (isJoinResultColumn) {
+          return {
+            ...baseConfig,
+            cellRenderer: JoinResultCellRenderer,
+            cellStyle: {
+              fontSize: '0.875rem',
+              padding: '4px 8px',
+              textAlign: 'center',
+              backgroundColor: 'rgba(33, 150, 243, 0.02)',
+            },
+            headerName: col.headerName || col.field.replace('join_result_', '关联结果_'),
+          };
+        } else {
+          return {
+            ...baseConfig,
+            cellStyle: {
+              fontSize: '0.875rem',
+              padding: '8px 12px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            },
+          };
+        }
+      });
   }, [normalizedColumns, visibleColumns]);
 
   // 统计信息
@@ -486,62 +567,12 @@ const ModernDataDisplay = ({
               loading={loading}
             />
           ) : (
-            <Box
-              className="ag-theme-alpine"
-              sx={{
-                height: 600,
-                width: '100%',
-                overflow: 'auto', // 启用滚动
-                '& .modern-header': {
-                  backgroundColor: theme.palette.grey[50],
-                  fontWeight: 600,
-                  fontSize: '0.875rem',
-                },
-                '& .ag-header-cell': {
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                  whiteSpace: 'nowrap',
-                },
-                '& .ag-header-cell-resize': {
-                  cursor: 'col-resize !important',
-                  opacity: 1,
-                },
-                '& .ag-header-cell:hover .ag-header-cell-resize': {
-                  opacity: 1,
-                },
-                '& .ag-cell': {
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                },
-                '& .ag-row:hover': {
-                  backgroundColor: theme.palette.action.hover,
-                },
-                '& .ag-body-horizontal-scroll': {
-                  display: 'block !important', // 确保水平滚动条显示
-                },
-              }}
-            >
-              <AgGridReact
-                rowData={paginatedData}
-                columnDefs={columnDefs}
-                defaultColDef={{
-                  width: 150,
-                  minWidth: 80,
-                  // 移除maxWidth限制，允许无限拖宽
-                  sortable: true,
-                  filter: true,
-                  resizable: true,
-                }}
-                suppressPaginationPanel={true}
-                suppressMenuHide={true}
-                enableCellTextSelection={true}
-                onSortChanged={(params) => setSortModel(params.api.getSortModel())}
-                onFilterChanged={(params) => setFilterModel(params.api.getFilterModel())}
-              />
-            </Box>
+            <StableTable
+              data={paginatedData}
+              columns={columnDefs}
+              pageSize={pageSize}
+              height={600}
+            />
           )}
         </Box>
 

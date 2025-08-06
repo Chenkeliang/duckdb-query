@@ -54,15 +54,18 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
   const joinTypeInfo = JOIN_TYPES.find(t => t.value === join.how) || JOIN_TYPES[0];
 
   return (
-    <Paper 
-      sx={{ 
-        p: 2.5, 
+    <Paper
+      sx={{
+        p: 2.5,
         mb: 2,
         borderRadius: 2.5,
         position: 'relative',
         boxShadow: 'none',
         border: '1px solid rgba(0, 0, 0, 0.08)',
         transition: 'all 0.2s ease-in-out',
+        // 防止触控板手势导致的页面导航
+        overscrollBehavior: 'contain',
+        touchAction: 'pan-x pan-y',
         '&:hover': {
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
           borderColor: 'rgba(0, 113, 227, 0.3)'
