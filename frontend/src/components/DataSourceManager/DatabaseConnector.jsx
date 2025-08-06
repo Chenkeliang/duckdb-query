@@ -107,8 +107,7 @@ const DatabaseConnector = ({ onConnect }) => {
           port: port ? parseInt(port) : 3306,
           user: username,
           password,
-          database,
-          query: sqlQuery
+          database
         }
       };
       
@@ -146,7 +145,6 @@ const DatabaseConnector = ({ onConnect }) => {
       setUsername(config.params.user || '');
       setPassword(config.params.password === '********' ? '' : (config.params.password || ''));
       setDatabase(config.params.database || '');
-      setSqlQuery(config.params.query || 'SELECT * FROM table_name');
       setAlias(config.id || '');
       setOpenConfigDialog(false);
     }
@@ -248,8 +246,7 @@ const DatabaseConnector = ({ onConnect }) => {
           port: port ? parseInt(port) : undefined,
           user: username,
           password,
-          database,
-          query: sqlQuery
+          database
         },
         id: alias || `${dbType}-${database}`
       };
@@ -284,11 +281,6 @@ const DatabaseConnector = ({ onConnect }) => {
 
       if (!database) {
         setError('请输入数据库名称');
-        return false;
-      }
-
-      if (!sqlQuery || sqlQuery.trim() === '') {
-        setError('请输入SQL查询语句');
         return false;
       }
     }
@@ -478,23 +470,6 @@ const DatabaseConnector = ({ onConnect }) => {
                   onChange={(e) => setDatabase(e.target.value)}
                   fullWidth
                   sx={{ borderRadius: '4px', gridColumn: '1 / -1' }}
-                />
-                
-                <TextField
-                  label="SQL查询"
-                  variant="outlined"
-                  size="small"
-                  multiline
-                  rows={3}
-                  value={sqlQuery}
-                  onChange={(e) => setSqlQuery(e.target.value)}
-                  fullWidth
-                  sx={{ 
-                    borderRadius: '4px', 
-                    gridColumn: '1 / -1',
-                    '& textarea': { fontFamily: 'monospace' }
-                  }}
-                  placeholder="SELECT * FROM table_name"
                 />
               </>
             )}
