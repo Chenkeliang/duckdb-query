@@ -25,7 +25,9 @@ import {
   listDatabaseConnections,
   getMySQLDataSources,
   listFiles,
-  getFileColumns
+  getFileColumns,
+  testDatabaseConnection,
+  createDatabaseConnection
 } from './services/apiClient';
 
 // 导入样式
@@ -155,6 +157,55 @@ const ShadcnApp = () => {
     }
   };
 
+  // 数据库连接处理函数
+  const handleDatabaseConnect = async (connectionParams) => {
+    try {
+      console.log('数据库连接参数:', connectionParams);
+
+      // 对于MySQL数据源，使用数据库连接管理API
+      if (connectionParams.type === 'mysql') {
+        // 创建数据库连接对象
+        const connectionData = {
+          id: connectionParams.id,
+          name: connectionParams.id,
+          type: connectionParams.type,
+          params: connectionParams.params
+        };
+
+        // 先测试连接
+        const testResult = await testDatabaseConnection({
+          type: connectionParams.type,
+          params: connectionParams.params
+        });
+
+        if (!testResult.success) {
+          throw new Error(testResult.message || '数据库连接测试失败');
+        }
+
+        // 创建连接
+        const createResult = await createDatabaseConnection(connectionData);
+
+        if (createResult.success) {
+          triggerRefresh(); // 刷新数据源列表
+          return {
+            success: true,
+            message: '数据库连接创建成功',
+            connection: createResult.connection
+          };
+        } else {
+          throw new Error(createResult.message || '数据库连接创建失败');
+        }
+      } else {
+        // 对于其他类型，暂时只是触发刷新
+        triggerRefresh();
+        return { success: true, message: '数据库连接成功' };
+      }
+    } catch (error) {
+      console.error('数据库连接失败:', error);
+      throw error;
+    }
+  };
+
   return (
     <ToastProvider>
       <div className="min-h-screen bg-gray-50">
@@ -224,7 +275,7 @@ const ShadcnApp = () => {
 
                 {/* 数据库连接 */}
                 <div className="bg-white rounded-lg border shadow-sm p-6">
-                  <DatabaseConnector onConnectionSaved={triggerRefresh} />
+                  <DatabaseConnector onConnect={handleDatabaseConnect} />
                 </div>
 
                 {/* 数据粘贴 */}
