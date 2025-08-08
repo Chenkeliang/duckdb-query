@@ -20,14 +20,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制应用代码
 COPY ./api .
 
-# 复制清理脚本
-COPY ./scripts /app/scripts
+# 创建scripts目录（如果不存在）
+RUN mkdir -p /app/scripts
 
 # 创建必要的目录
 RUN mkdir -p temp_files exports data logs \
-    && mkdir -p /app/data/duckdb /app/data/uploads \
-    && chmod +x /app/scripts/auto-cleanup.sh \
-    && chmod +x /app/scripts/docker-entrypoint.sh
+    && mkdir -p /app/data/duckdb /app/data/uploads
 
 # 设置环境变量
 ENV PYTHONPATH=/app

@@ -58,16 +58,18 @@ class MySQLManager:
     def load_configs(self) -> Dict[str, Any]:
         """加载MySQL配置文件"""
         try:
-            # 使用统一配置管理器
-            mysql_configs = config_manager.get_all_mysql_configs()
+            # 使用统一的配置读取函数（包含解密逻辑）
+            from routers.data_sources import read_mysql_configs
+
+            mysql_configs_list = read_mysql_configs()
 
             # 转换为兼容格式
             self.configs = {}
-            for config_id, config in mysql_configs.items():
-                self.configs[config_id] = {
-                    "id": config.id,
-                    "name": config.name,
-                    "params": config.params,
+            for config in mysql_configs_list:
+                self.configs[config["id"]] = {
+                    "id": config["id"],
+                    "name": config.get("name", config["id"]),
+                    "params": config["params"],
                 }
 
             logger.info(f"成功加载 {len(self.configs)} 个MySQL配置")

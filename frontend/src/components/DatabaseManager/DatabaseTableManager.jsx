@@ -51,6 +51,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
   const [tableDetails, setTableDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
+
   // 创建带超时和重试的fetch函数
   const fetchWithTimeout = (url, options = {}, timeout = 30000) => {
     return Promise.race([
@@ -86,6 +87,8 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
       }
     }
   };
+
+
 
   // 获取数据库表信息
   const fetchDatabaseTables = async (connectionId) => {

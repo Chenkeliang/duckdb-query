@@ -20,6 +20,7 @@ import {
 import { modernTheme } from './theme/modernTheme';
 import './styles/modern.css';
 import { ToastProvider } from './contexts/ToastContext';
+import { listDatabaseConnections, getDuckDBTables, listFiles, uploadFile } from './services/apiClient';
 
 // 导入原有组件 - 确保包含所有必要的组件
 import QueryBuilder from './components/QueryBuilder/QueryBuilder';
@@ -50,8 +51,18 @@ const ModernApp = () => {
     setCurrentTab(newValue);
   };
 
-  // 触发数据源列表刷新
+  // 触发数据源列表刷新（带防抖）
   const triggerRefresh = () => {
+    const now = Date.now();
+    const timeSinceLastTrigger = now - lastFetchTime;
+
+    // 如果距离上次触发不足5秒，则跳过
+    if (timeSinceLastTrigger < 5000) {
+      console.log('ModernApp - 跳过刷新触发，距离上次不足5秒');
+      return;
+    }
+
+    console.log('ModernApp - 触发数据刷新');
     setRefreshTrigger(prev => prev + 1);
   };
 
@@ -80,75 +91,55 @@ const ModernApp = () => {
         ]);
       };
 
+      // 使用apiClient而不是直接fetch，避免绕过请求管理器
       const [dbResponse, duckdbResponse] = await Promise.all([
-        fetchWithTimeout('http://localhost:8000/api/database_connections').catch(err => {
+        listDatabaseConnections().catch(err => {
           console.warn('获取数据库连接失败:', err);
-          return { ok: false, json: () => Promise.resolve({ connections: [] }) };
+          return { connections: [] };
         }),
-        fetchWithTimeout('http://localhost:8000/api/duckdb/tables').catch(err => {
+        getDuckDBTables().catch(err => {
           console.warn('获取DuckDB表失败:', err);
-          return { ok: false, json: () => Promise.resolve({ tables: [] }) };
+          return { tables: [] };
         })
       ]);
 
-      const dbResult = dbResponse.ok ? await dbResponse.json() : { connections: [] };
-      const duckdbResult = duckdbResponse.ok ? await duckdbResponse.json() : { tables: [] };
+      console.log('API响应数据:', { dbResponse, duckdbResponse });
+      const dbResult = dbResponse || { connections: [] };
+      const duckdbResult = duckdbResponse || { tables: [] };
+      console.log('API数据解析结果:', {
+        dbResult: dbResult,
+        dbConnections: dbResult.connections?.length || 0,
+        duckdbTables: duckdbResult.tables?.length || 0
+      });
 
       // 获取文件数据源
       let fileSources = [];
       try {
-        const fileResponse = await fetchWithTimeout('/api/list_files');
-        if (fileResponse.ok) {
-          const fileList = await fileResponse.json();
-          fileSources = (fileList || []).map(filename => ({
-            id: filename,
-            name: filename,
-            type: 'file',
-            sourceType: 'file'
-          }));
-        }
+        const fileList = await listFiles();
+        fileSources = (fileList || []).map(filename => ({
+          id: filename,
+          name: filename,
+          type: 'file',
+          sourceType: 'file'
+        }));
       } catch (error) {
         console.warn('获取文件列表失败:', error);
         fileSources = [];
       }
 
-      // 构建数据库数据源格式（获取列信息）
-      const dbSources = await Promise.all((dbResult.connections || []).map(async (db) => {
-        let columns = [];
-        try {
-          // 通过连接数据库来获取列信息（带超时）
-          const connectResponse = await fetchWithTimeout('/api/connect_database', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              id: db.id,
-              type: db.type,
-              params: db.params
-            })
-          }, 10000); // 10秒超时
-
-          if (connectResponse.ok) {
-            const connectResult = await connectResponse.json();
-            if (connectResult.success && connectResult.columns) {
-              columns = connectResult.columns;
-            }
-          }
-        } catch (error) {
-          console.warn(`获取数据库 ${db.id} 列信息失败:`, error);
-        }
-
+      // 直接使用数据库连接数据，不获取列信息（避免API调用失败）
+      const dbSources = (dbResult.connections || []).map((db) => {
         return {
           id: db.id,
           name: db.name || `${db.type} 连接`,
-          type: db.type, // 使用实际的数据库类型（mysql, postgresql等）
+          type: db.type,
           connectionId: db.id,
-          columns: columns || [],
-          params: db.params, // 保存连接参数
-          sourceType: 'database' // 添加源类型标识
+          columns: [], // 列信息在需要时再获取
+          params: db.params,
+          status: db.status,
+          sourceType: 'database'
         };
-      }));
+      });
 
       // 构建DuckDB数据源格式
       const duckdbSources = (duckdbResult.tables || []).map(table => ({
@@ -167,8 +158,9 @@ const ModernApp = () => {
       const queryDataSources = [...fileSources, ...duckdbSources];
 
       setDataSources(queryDataSources);
-      setDatabaseConnections(dbSources); // 单独保存数据库连接供SQL执行器使用
-      console.log('数据源列表更新完成 - 查询数据源:', queryDataSources.length, '(文件:', fileSources.length, ', DuckDB表:', duckdbSources.length, '), 数据库连接:', dbSources.length);
+      setDatabaseConnections(dbResult.connections || []); // 使用原始数据库连接数据
+      console.log('数据源列表更新完成 - 查询数据源:', queryDataSources.length, '(文件:', fileSources.length, ', DuckDB表:', duckdbSources.length, '), 数据库连接:', (dbResult.connections || []).length);
+      console.log('数据库连接详情:', dbResult.connections);
     } catch (error) {
       console.error('获取数据源失败:', error);
     }
@@ -202,24 +194,12 @@ const ModernApp = () => {
     }, 30000); // 30秒
 
     return () => clearInterval(interval);
-  }, [autoRefreshEnabled, lastFetchTime]);
+  }, [autoRefreshEnabled]); // 移除lastFetchTime依赖，避免定时器重复创建
 
   // 文件上传处理函数
   const handleFileUpload = async (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error(`上传失败: ${response.status}`);
-      }
-
-      const result = await response.json();
+      const result = await uploadFile(file);
       console.log('文件上传成功:', result);
 
       // 触发数据源列表刷新
@@ -510,9 +490,13 @@ const ModernApp = () => {
                         resizable: true
                       })) : []}
                       loading={false}
+                      title="查询结果"
+                      sqlQuery={queryResults.sqlQuery || queryResults.sql || ''}
+                      originalDatasource={queryResults.originalDatasource}
                       onRefresh={() => {
                         // 可以添加刷新逻辑
                       }}
+                      onDataSourceSaved={triggerRefresh}
                     />
                   </CardContent>
                 </Card>
@@ -538,8 +522,10 @@ const ModernApp = () => {
                       data={queryResults.data}
                       columns={queryResults.columns}
                       title="查询结果"
-                      sqlQuery={queryResults.sqlQuery}
+                      sqlQuery={queryResults.sqlQuery || queryResults.sql || ''}
+                      originalDatasource={queryResults.originalDatasource}
                       onRefresh={() => console.log('刷新查询结果')}
+                      onDataSourceSaved={triggerRefresh}
                     />
                   </Box>
                 )}

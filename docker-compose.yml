@@ -18,6 +18,7 @@ services:
     volumes:
       - ./api:/app
       - ./data:/app/data
+      - ./config:/app/config
       - backend_temp:/app/temp_files
       - backend_exports:/app/exports
     networks:

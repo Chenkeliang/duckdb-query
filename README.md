@@ -138,9 +138,14 @@ cd interactive-data-query
 # 🚀 One-click startup (Recommended)
 docker-compose up --build -d
 
-# Or use the startup script
+# Or use the smart startup script (auto-detects paths)
+./start-docker.sh
+
+# Or use the development script
 ./scripts/docker-start.sh
 ```
+
+**⚠️ Important**: Always run Docker commands from the project root directory to avoid path issues.
 
 **Access the application:**
 - 🌐 Frontend Interface: http://localhost:3000
@@ -152,6 +157,8 @@ docker-compose up --build -d
 
 **Common Docker commands:**
 ```bash
+# ⚠️ Always run from project root directory: interactive-data-query/
+
 # View service status
 docker-compose ps
 
@@ -166,7 +173,16 @@ docker-compose up --build -d
 
 # Restart services
 docker-compose restart
+
+# Troubleshooting: If you encounter path errors
+pwd  # Should show: /path/to/interactive-data-query
+ls   # Should show: api/ frontend/ config/ data/ docker-compose.yml
 ```
+
+**📁 Path Configuration Notes:**
+- Use `docker-compose.yml` in project root (recommended)
+- Alternative: `config/docker/docker-compose.yml` with environment variables
+- See [DOCKER_USAGE.md](./DOCKER_USAGE.md) for detailed path configuration
 
 ### Method 2: Local Development Setup
 

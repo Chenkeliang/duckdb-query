@@ -6,10 +6,16 @@ from fastapi import (
     HTTPException,
     Body,
     Query,
+    Request,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
 from core.resource_manager import save_upload_file, schedule_cleanup
 from core.security import security_validator, mask_sensitive_config
+from core.encryption import (
+    decrypt_config_passwords,
+    encrypt_config_passwords,
+    mask_config_passwords,
+)
 from models.query_models import (
     DatabaseConnection,
     MySQLConfig,
@@ -61,7 +67,7 @@ duckdb_con = get_db_connection()
 
 # MySQL配置文件路径
 MYSQL_CONFIG_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    os.path.dirname(os.path.dirname(__file__)),
     "config",
     "mysql-configs.json",
 )
@@ -106,13 +112,29 @@ def ensure_mysql_config_file():
 def read_mysql_configs():
     ensure_mysql_config_file()
     try:
+        logger.info(f"配置文件路径: {MYSQL_CONFIG_FILE}")
+        logger.info(f"配置文件是否存在: {os.path.exists(MYSQL_CONFIG_FILE)}")
+
         with open(MYSQL_CONFIG_FILE, "r") as f:
             configs = json.load(f)
-            # 从内存中恢复密码
-            for config in configs:
-                if "id" in config and config["id"] in MYSQL_PASSWORDS:
-                    config["params"]["password"] = MYSQL_PASSWORDS[config["id"]]
-            return configs
+            logger.info(f"从文件读取到 {len(configs)} 个配置")
+
+            # 解密密码
+            decrypted_configs = []
+            for i, config in enumerate(configs):
+                config_id = config.get("id", f"config_{i}")
+                logger.info(f"处理配置: {config_id}")
+                try:
+                    decrypted_config = decrypt_config_passwords(config)
+                    decrypted_configs.append(decrypted_config)
+                    logger.info(f"配置 {config_id} 解密成功")
+                except Exception as e:
+                    logger.error(f"配置 {config_id} 解密失败: {str(e)}")
+                    # 解密失败时使用原配置
+                    decrypted_configs.append(config)
+
+            logger.info(f"最终返回 {len(decrypted_configs)} 个配置")
+            return decrypted_configs
     except json.JSONDecodeError:
         # 如果文件为空或格式错误，返回空列表
         return []
@@ -121,18 +143,13 @@ def read_mysql_configs():
 # 保存MySQL配置
 def save_mysql_configs(configs):
     ensure_mysql_config_file()
-    # 保存密码到内存中
-    for config in configs:
-        if "params" in config and "password" in config["params"]:
-            MYSQL_PASSWORDS[config["id"]] = config["params"]["password"]
 
     # 创建配置的副本以避免修改原始配置
     configs_to_save = []
     for config in configs:
         config_copy = json.loads(json.dumps(config))  # 深拷贝
-        # 在保存到文件前隐藏密码
-        if "params" in config_copy and "password" in config_copy["params"]:
-            config_copy["params"]["password"] = "********"
+        # 加密密码后保存
+        config_copy = encrypt_config_passwords(config_copy)
         configs_to_save.append(config_copy)
 
     with open(MYSQL_CONFIG_FILE, "w") as f:
@@ -145,11 +162,35 @@ async def get_mysql_configs():
     """获取所有保存的MySQL配置"""
     try:
         configs = read_mysql_configs()
-        # 返回配置但不包含密码
+        # 创建深拷贝以避免修改原始配置
+        import copy
+
+        masked_configs = []
         for config in configs:
-            if "params" in config and "password" in config["params"]:
-                config["params"]["password"] = "********"
-        return {"configs": configs}
+            config_copy = copy.deepcopy(config)
+            if "params" in config_copy and "password" in config_copy["params"]:
+                config_copy["params"]["password"] = "********"
+            masked_configs.append(config_copy)
+        return {"configs": masked_configs}
+    except Exception as e:
+        logger.error(f"获取MySQL配置失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取MySQL配置失败: {str(e)}")
+
+
+# 获取单个MySQL配置的完整信息（包含解密的密码）
+@router.get("/api/mysql_configs/{config_id}/full", tags=["Data Sources"])
+async def get_mysql_config_full(config_id: str):
+    """获取单个MySQL配置的完整信息（包含解密的密码）"""
+    try:
+        configs = read_mysql_configs()
+        for config in configs:
+            if config.get("id") == config_id:
+                # 返回完整配置（包含解密的密码）
+                return config
+
+        raise HTTPException(status_code=404, detail=f"未找到配置: {config_id}")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取MySQL配置失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取MySQL配置失败: {str(e)}")
@@ -258,11 +299,85 @@ async def create_database_connection(connection: DatabaseConnection):
 
 
 @router.get("/api/database_connections", tags=["Database Management"])
-async def list_database_connections():
+async def list_database_connections(request: Request):
     """列出所有数据库连接"""
+    import time
+    import traceback
+
+    # 记录详细的请求信息
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    referer = request.headers.get("referer", "unknown")
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 简单的请求频率限制
+    current_time = time.time()
+
+    # 全局请求限制器
+    if not hasattr(list_database_connections, "_last_requests"):
+        list_database_connections._last_requests = {}
+        list_database_connections._cached_result = None
+
+    # 检查该客户端的最后请求时间
+    last_request_time = list_database_connections._last_requests.get(client_ip, 0)
+    time_since_last = current_time - last_request_time
+
+    # 如果距离上次请求不足2秒，直接返回缓存结果
+    if time_since_last < 2.0 and list_database_connections._cached_result is not None:
+        logger.warning(
+            f"客户端 {client_ip} 请求过于频繁，距离上次请求仅 {time_since_last:.2f} 秒，返回缓存结果"
+        )
+        return list_database_connections._cached_result
+
+    # 更新最后请求时间
+    list_database_connections._last_requests[client_ip] = current_time
+    logger.info(f"处理数据库连接请求 - IP: {client_ip}")
+
     try:
         connections = db_manager.list_connections()
-        return {"success": True, "connections": connections}
+
+        # 将DatabaseConnection对象转换为可序列化的字典
+        serializable_connections = []
+        for conn in connections:
+            conn_dict = {
+                "id": conn.id,
+                "name": conn.name,
+                "type": (
+                    conn.type.value if hasattr(conn.type, "value") else str(conn.type)
+                ),
+                "params": conn.params,
+                "status": (
+                    conn.status.value
+                    if hasattr(conn.status, "value")
+                    else str(conn.status)
+                ),
+                "created_at": conn.created_at.isoformat() if conn.created_at else None,
+                "updated_at": conn.updated_at.isoformat() if conn.updated_at else None,
+                "last_tested": (
+                    conn.last_tested.isoformat() if conn.last_tested else None
+                ),
+            }
+            serializable_connections.append(conn_dict)
+
+        logger.info(f"返回数据库连接列表，共 {len(serializable_connections)} 个连接")
+
+        # 调试信息
+        if len(serializable_connections) == 0:
+            logger.warning("数据库管理器中没有连接！检查启动时的连接加载过程")
+            # 检查原始连接对象
+            raw_connections = db_manager.list_connections()
+            logger.info(f"原始连接对象数量: {len(raw_connections)}")
+            for i, conn in enumerate(raw_connections):
+                logger.info(
+                    f"连接 {i}: id={getattr(conn, 'id', 'N/A')}, type={getattr(conn, 'type', 'N/A')}"
+                )
+
+        result = {"success": True, "connections": serializable_connections}
+
+        # 缓存结果
+        list_database_connections._cached_result = result
+
+        return result
     except Exception as e:
         logger.error(f"获取数据库连接列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取数据库连接列表失败: {str(e)}")

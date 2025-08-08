@@ -16,10 +16,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
 class DataSource(BaseModel):
     id: str
     type: str
     params: Optional[Dict[str, Any]] = None
+
 
 class Join(BaseModel):
     left_source_id: str
@@ -27,9 +29,11 @@ class Join(BaseModel):
     join_type: str
     conditions: List[Dict[str, Any]]
 
+
 class QueryRequest(BaseModel):
     sources: List[DataSource]
     joins: List[Join]
+
 
 @router.post("/api/query_proxy")
 async def query_proxy(request: Request):
@@ -40,7 +44,7 @@ async def query_proxy(request: Request):
         # 获取原始请求数据
         raw_data = await request.json()
         logger.info(f"收到原始查询请求: {raw_data}")
-        
+
         # 转换数据源格式
         converted_sources = []
         for source in raw_data.get("sources", []):
@@ -48,38 +52,47 @@ async def query_proxy(request: Request):
             if "params" in source:
                 converted_sources.append(source)
                 continue
-            
+
             # 转换文件数据源
             if source.get("sourceType") == "file" or source.get("type") == "file":
-                converted_sources.append({
-                    "id": source.get("id"),
-                    "type": "file",
-                    "params": {
-                        "path": f"temp_files/{source.get('path') or source.get('name')}"
+                converted_sources.append(
+                    {
+                        "id": source.get("id"),
+                        "type": "file",
+                        "params": {
+                            "path": f"temp_files/{source.get('path') or source.get('name')}"
+                        },
                     }
-                })
-            elif source.get("sourceType") == "database" or source.get("type") in ["mysql", "postgresql", "sqlite"]:
+                )
+            elif source.get("sourceType") == "database" or source.get("type") in [
+                "mysql",
+                "postgresql",
+                "sqlite",
+            ]:
                 # 数据库数据源
-                converted_sources.append({
-                    "id": source.get("id"),
-                    "type": source.get("type"),
-                    "params": source.get("params") or {
-                        "connectionId": source.get("connectionId")
+                converted_sources.append(
+                    {
+                        "id": source.get("id"),
+                        "type": source.get("type"),
+                        "params": source.get("params")
+                        or {"connectionId": source.get("connectionId")},
                     }
-                })
+                )
             elif source.get("sourceType") == "duckdb" or source.get("type") == "duckdb":
                 # DuckDB数据源
-                converted_sources.append({
-                    "id": source.get("id"),
-                    "type": "duckdb",
-                    "params": {
-                        "table_name": source.get("table_name") or source.get("id")
+                converted_sources.append(
+                    {
+                        "id": source.get("id"),
+                        "type": "duckdb",
+                        "params": {
+                            "table_name": source.get("table_name") or source.get("id")
+                        },
                     }
-                })
+                )
             else:
                 # 其他情况，尝试保持原格式
                 converted_sources.append(source)
-        
+
         # 转换JOIN格式
         converted_joins = []
         for join in raw_data.get("joins", []):
@@ -87,58 +100,57 @@ async def query_proxy(request: Request):
             if "conditions" in join:
                 converted_joins.append(join)
                 continue
-            
+
             # 转换旧格式到新格式
             converted_join = {
                 "left_source_id": join.get("left_source_id"),
                 "right_source_id": join.get("right_source_id"),
                 "join_type": join.get("how", "inner"),  # how -> join_type
-                "conditions": []
+                "conditions": [],
             }
-            
+
             # 转换条件格式
             if "left_on" in join and "right_on" in join:
-                converted_join["conditions"].append({
-                    "left_column": join["left_on"],
-                    "right_column": join["right_on"],
-                    "operator": "="
-                })
-            
+                converted_join["conditions"].append(
+                    {
+                        "left_column": join["left_on"],
+                        "right_column": join["right_on"],
+                        "operator": "=",
+                    }
+                )
+
             converted_joins.append(converted_join)
-        
+
         # 构建转换后的请求
-        converted_request = {
-            "sources": converted_sources,
-            "joins": converted_joins
-        }
-        
+        converted_request = {"sources": converted_sources, "joins": converted_joins}
+
         # 添加其他可能的字段
         for key in ["limit", "where_conditions", "order_by"]:
             if key in raw_data:
                 converted_request[key] = raw_data[key]
-        
+
         logger.info(f"转换后的查询请求: {converted_request}")
-        
+
         # 发送到实际的查询 API（动态获取服务器地址，避免端口不匹配问题）
         # 从请求中获取主机信息
         host = request.headers.get("host", "localhost:8000")
-        scheme = "https" if request.headers.get("x-forwarded-proto") == "https" else "http"
+        scheme = (
+            "https" if request.headers.get("x-forwarded-proto") == "https" else "http"
+        )
         base_url = f"{scheme}://{host}"
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{base_url}/api/query",
-                json=converted_request,
-                timeout=60.0
+                f"{base_url}/api/query", json=converted_request, timeout=60.0
             )
-            
+
             # 返回原始响应，添加代理标识
             result = response.json()
             # 添加代理处理标识
             result["_proxy_processed"] = True
             result["_proxy_timestamp"] = str(datetime.now())
             return result
-            
+
     except Exception as e:
         logger.error(f"查询代理错误: {str(e)}")
         raise HTTPException(status_code=500, detail=f"查询代理错误: {str(e)}")
@@ -164,31 +176,44 @@ async def download_proxy(request: Request):
 
             # 转换文件数据源
             if source.get("sourceType") == "file" or source.get("type") == "file":
-                converted_sources.append({
-                    "id": source.get("id"),
-                    "type": "file",
-                    "params": {
-                        "path": f"temp_files/{source.get('path') or source.get('name')}"
+                converted_sources.append(
+                    {
+                        "id": source.get("id"),
+                        "type": "file",
+                        "params": {
+                            "path": f"temp_files/{source.get('path') or source.get('name')}"
+                        },
                     }
-                })
-            elif source.get("sourceType") == "database" or source.get("type") in ["mysql", "postgresql", "sqlite"]:
+                )
+            elif source.get("sourceType") == "database" or source.get("type") in [
+                "mysql",
+                "postgresql",
+                "sqlite",
+            ]:
                 # 数据库数据源
-                converted_sources.append({
-                    "id": source.get("id"),
-                    "type": source.get("type"),
-                    "params": source.get("params") or {
-                        "connectionId": source.get("connectionId")
+                converted_sources.append(
+                    {
+                        "id": source.get("id"),
+                        "type": source.get("type"),
+                        "params": source.get("params")
+                        or {"connectionId": source.get("connectionId")},
                     }
-                })
-            elif source.get("sourceType") == "duckdb" or source.get("type") == "duckdb":
-                # DuckDB数据源
-                converted_sources.append({
-                    "id": source.get("id"),
-                    "type": "duckdb",
-                    "params": {
-                        "table_name": source.get("table_name") or source.get("id")
+                )
+            elif (
+                source.get("sourceType") == "duckdb"
+                or source.get("type") in ["duckdb", "table"]
+                or source.get("sourceType") == "table"
+            ):
+                # DuckDB数据源 - 支持多种格式
+                converted_sources.append(
+                    {
+                        "id": source.get("id"),
+                        "type": "duckdb",
+                        "params": {
+                            "table_name": source.get("table_name") or source.get("id")
+                        },
                     }
-                })
+                )
             else:
                 # 其他情况，尝试保持原格式
                 converted_sources.append(source)
@@ -206,24 +231,23 @@ async def download_proxy(request: Request):
                 "left_source_id": join.get("left_source_id"),
                 "right_source_id": join.get("right_source_id"),
                 "join_type": join.get("how", "inner"),  # how -> join_type
-                "conditions": []
+                "conditions": [],
             }
 
             # 转换条件格式
             if "left_on" in join and "right_on" in join:
-                converted_join["conditions"].append({
-                    "left_column": join["left_on"],
-                    "right_column": join["right_on"],
-                    "operator": "="
-                })
+                converted_join["conditions"].append(
+                    {
+                        "left_column": join["left_on"],
+                        "right_column": join["right_on"],
+                        "operator": "=",
+                    }
+                )
 
             converted_joins.append(converted_join)
 
         # 构建转换后的请求
-        converted_request = {
-            "sources": converted_sources,
-            "joins": converted_joins
-        }
+        converted_request = {"sources": converted_sources, "joins": converted_joins}
 
         # 添加其他可能的字段
         for key in ["limit", "where_conditions", "order_by"]:
@@ -232,24 +256,23 @@ async def download_proxy(request: Request):
 
         logger.info(f"转换后的下载请求: {converted_request}")
 
-        # 发送到实际的下载 API（动态获取服务器地址，避免端口不匹配问题）
-        # 从请求中获取主机信息
-        host = request.headers.get("host", "localhost:8000")
-        scheme = "https" if request.headers.get("x-forwarded-proto") == "https" else "http"
-        base_url = f"{scheme}://{host}"
+        # 直接导入并调用下载函数，避免HTTP循环调用
+        from .query import download_results
+        from models.query_models import QueryRequest
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{base_url}/api/download",
-                json=converted_request,
-                timeout=60.0
-            )
+        # 将转换后的请求转换为QueryRequest对象
+        try:
+            query_request = QueryRequest(**converted_request)
+            logger.info(f"转换为QueryRequest成功: {query_request}")
 
-            # 返回原始响应（文件流）
-            return StreamingResponse(
-                io.BytesIO(response.content),
-                media_type=response.headers.get("content-type", "application/octet-stream"),
-                headers=dict(response.headers)
+            # 直接调用下载函数
+            return await download_results(query_request)
+
+        except Exception as conversion_error:
+            logger.error(f"QueryRequest转换失败: {str(conversion_error)}")
+            logger.error(f"转换的请求数据: {converted_request}")
+            raise HTTPException(
+                status_code=400, detail=f"请求格式转换失败: {str(conversion_error)}"
             )
 
     except Exception as e:

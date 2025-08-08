@@ -14,10 +14,11 @@ services:
       - PYTHONUNBUFFERED=1
       - ENV=development
     volumes:
-      - ../../api:/app
-      - ../../data:/app/data  # 数据文件挂载
+      - ${PROJECT_ROOT:-../..}/api:/app
+      - ${PROJECT_ROOT:-../..}/data:/app/data  # 数据文件挂载
       - backend_temp:/app/temp_files  # 临时文件
       - backend_exports:/app/exports  # 导出文件
+      - ${PROJECT_ROOT:-../..}/config:/app/config      # 配置文件
     networks:
       - dataquery-network
     restart: unless-stopped
@@ -31,7 +32,7 @@ services:
   # 前端服务 (开发模式)
   frontend:
     build:
-      context: ../../frontend
+      context: ${PROJECT_ROOT:-../..}/frontend
       dockerfile: Dockerfile.dev
       args:
         - UI_MODE=modern
@@ -44,7 +45,7 @@ services:
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
     volumes:
-      - ../../frontend:/app
+      - ${PROJECT_ROOT:-../..}/frontend:/app
       - /app/node_modules  # 避免本地node_modules覆盖
     networks:
       - dataquery-network

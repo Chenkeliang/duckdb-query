@@ -12,6 +12,7 @@ from dataclasses import dataclass, asdict
 
 # 避免循环导入，在需要时动态导入
 # from core.security import mask_sensitive_config
+from core.encryption import decrypt_config_passwords
 
 logger = logging.getLogger(__name__)
 
@@ -133,13 +134,18 @@ class ConfigManager:
             if isinstance(configs_data, list):
                 for config_data in configs_data:
                     if "id" in config_data and "params" in config_data:
+                        # 解密配置中的密码
+                        decrypted_config_data = decrypt_config_passwords(config_data)
+
                         config = DatabaseConfig(
-                            id=config_data["id"],
-                            name=config_data.get("name", config_data["id"]),
-                            type=config_data.get("type", "mysql"),
-                            params=config_data["params"],
-                            enabled=config_data.get("enabled", True),
-                            description=config_data.get("description"),
+                            id=decrypted_config_data["id"],
+                            name=decrypted_config_data.get(
+                                "name", decrypted_config_data["id"]
+                            ),
+                            type=decrypted_config_data.get("type", "mysql"),
+                            params=decrypted_config_data["params"],
+                            enabled=decrypted_config_data.get("enabled", True),
+                            description=decrypted_config_data.get("description"),
                         )
                         self._mysql_configs[config.id] = config
 

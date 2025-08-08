@@ -1,9 +1,10 @@
 import axios from 'axios';
+import requestManager from '../utils/requestManager';
 
 // 根据环境变量设置基础URL
-// 在Docker环境中，如果VITE_API_URL为空或包含占位符，则使用相对路径
-const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const baseURL = (apiUrl === '' || apiUrl.includes('your-api-url-in-production'))
+// 在Docker环境中，使用相对路径通过nginx代理
+const apiUrl = import.meta.env.VITE_API_URL || '';
+const baseURL = (apiUrl === '' || apiUrl.includes('localhost:8000') || apiUrl.includes('your-api-url-in-production'))
   ? '' // 使用相对路径，通过nginx代理
   : apiUrl;
 
@@ -216,8 +217,9 @@ export const getFilePreview = async (filename, rows = 10) => {
 
 export const listFiles = async () => {
   try {
-    const response = await apiClient.get('/api/list_files');
-    return response.data;
+    // 使用请求管理器防止重复请求
+    const data = await requestManager.getFileList();
+    return data;
   } catch (error) {
     console.error('获取文件列表失败:', error);
     throw error;
@@ -257,8 +259,11 @@ export const createDatabaseConnection = async (connectionData) => {
 
 export const listDatabaseConnections = async () => {
   try {
-    const response = await apiClient.get('/api/database_connections');
-    return response.data;
+    console.log('listDatabaseConnections called - 使用请求管理器');
+    // 使用请求管理器防止重复请求
+    const data = await requestManager.getDatabaseConnections();
+    console.log('listDatabaseConnections result:', data);
+    return data;
   } catch (error) {
     console.error('获取数据库连接列表失败:', error);
     throw error;
@@ -439,8 +444,9 @@ export const deleteDuckDBTable = async (tableName) => {
 // 获取MySQL数据源列表
 export const getMySQLDataSources = async () => {
   try {
-    const response = await apiClient.get('/api/mysql/connections');
-    return response.data;
+    // 使用请求管理器防止重复请求
+    const data = await requestManager.getDataSources();
+    return data;
   } catch (error) {
     console.error('获取MySQL数据源列表失败:', error);
     throw error;
@@ -482,8 +488,9 @@ export const uploadFileToDuckDB = async (file, tableAlias) => {
 
 export const getDuckDBTablesEnhanced = async () => {
   try {
-    const response = await apiClient.get('/api/duckdb/tables');
-    return response.data;
+    // 使用请求管理器防止重复请求
+    const data = await requestManager.getDuckDBTables();
+    return data;
   } catch (error) {
     console.error('获取DuckDB表列表失败:', error);
     throw error;

@@ -46,7 +46,7 @@ import {
 } from '@mui/icons-material';
 import StableTable from '../StableTable';
 import { useToast } from '../../contexts/ToastContext';
-import { saveQueryResultAsDatasource, saveQueryToDuckDB } from '../../services/apiClient';
+import { saveQueryResultAsDatasource, saveQueryToDuckDB, quickExport } from '../../services/apiClient';
 import VirtualTable from '../VirtualTable/VirtualTable';
 import SmartPagination from '../SmartPagination/SmartPagination';
 import QuickCharts from '../DataVisualization/QuickCharts';
@@ -62,6 +62,17 @@ const ModernDataDisplay = ({
   originalDatasource = null,
   onDataSourceSaved,
 }) => {
+  // 调试日志 - 检查传入的props
+  console.log('🔍 ModernDataDisplay Props:', {
+    dataLength: data.length,
+    columnsLength: columns.length,
+    loading,
+    title,
+    sqlQuery,
+    originalDatasource,
+    hasOnDataSourceSaved: !!onDataSourceSaved
+  });
+  
   const theme = useTheme();
   const { showSuccess, showError } = useToast();
   const [searchText, setSearchText] = useState('');
@@ -258,13 +269,74 @@ const ModernDataDisplay = ({
     setColumnMenuAnchor(null);
   };
 
-  const handleExport = (format) => {
+  const handleExport = async (format) => {
     try {
-      onExport?.(format, filteredData);
-      showSuccess(`数据导出为 ${format.toUpperCase()} 格式成功`);
       handleExportMenuClose();
+      
+      // 如果有自定义导出函数，优先使用
+      if (onExport) {
+        onExport(format, filteredData);
+        showSuccess(`数据导出为 ${format.toUpperCase()} 格式成功`);
+        return;
+      }
+      
+      // 使用内置快速导出功能
+      if (data.length === 0) {
+        showError('没有数据可导出');
+        return;
+      }
+      
+      showSuccess('正在准备导出文件...');
+      
+      // 构建导出请求
+      const exportRequest = {
+        data: filteredData,
+        columns: normalizedColumns.map(col => col.field),
+        filename: `${title}_${new Date().toLocaleString('zh-CN').replace(/[\/\s:]/g, '_')}`
+      };
+      
+      // 调用快速导出API
+      const response = await quickExport(exportRequest);
+      
+      if (response && response.data) {
+        // 创建下载链接
+        const blob = new Blob([response.data], {
+          type: response.headers['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
+        
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        // 从响应头获取文件名，或使用默认文件名
+        const contentDisposition = response.headers['content-disposition'];
+        let filename = exportRequest.filename + '.xlsx';
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+          if (filenameMatch && filenameMatch[1]) {
+            filename = filenameMatch[1].replace(/['"]/g, '');
+          }
+        }
+        
+        link.setAttribute('download', filename);
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        
+        // 清理
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+        }, 100);
+        
+        showSuccess(`文件导出成功: ${filename}`);
+      } else {
+        throw new Error('导出响应无效');
+      }
+      
     } catch (error) {
-      showError(`导出失败: ${error.message || '未知错误'}`);
+      console.error('导出失败:', error);
+      showError(`导出失败: ${error.message || '网络错误，请重试'}`);
     }
   };
 
@@ -457,11 +529,24 @@ const ModernDataDisplay = ({
                 startIcon={<SaveIcon />}
                 variant="outlined"
                 onClick={handleSaveAsDataSource}
-                disabled={data.length === 0 || !sqlQuery}
+                disabled={data.length === 0 || !sqlQuery || loading}
                 size="small"
                 color="primary"
+                sx={{
+                  '&.Mui-disabled': {
+                    backgroundColor: 'action.disabledBackground',
+                    color: 'action.disabled',
+                  },
+                }}
+                title={`调试信息: data.length=${data.length}, sqlQuery="${sqlQuery}", loading=${loading}, 禁用条件: ${data.length === 0 ? '数据为空' : !sqlQuery ? 'SQL查询为空' : loading ? '正在加载' : '无'}`}
               >
                 保存为数据源
+                {/* 临时调试信息 */}
+                {process.env.NODE_ENV === 'development' && (
+                  <Typography variant="caption" sx={{ ml: 1, fontSize: '10px', opacity: 0.7 }}>
+                    [D:{data.length} S:{sqlQuery ? '✓' : '✗'} L:{loading ? '✓' : '✗'}]
+                  </Typography>
+                )}
               </Button>
 
               <Button
@@ -608,14 +693,8 @@ const ModernDataDisplay = ({
         transformOrigin={{ horizontal: 'right', vertical: 'top' }}
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
       >
-        <MenuItem onClick={() => handleExport('csv')}>
-          导出为 CSV
-        </MenuItem>
         <MenuItem onClick={() => handleExport('excel')}>
           导出为 Excel
-        </MenuItem>
-        <MenuItem onClick={() => handleExport('json')}>
-          导出为 JSON
         </MenuItem>
       </Menu>
 

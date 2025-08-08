@@ -16,7 +16,6 @@ import EnhancedFileUploader from './components/DataSourceManager/EnhancedFileUpl
 import ModernDataDisplay from './components/Results/ModernDataDisplay';
 import DuckDBManagementPage from './components/DuckDBManager/DuckDBManagementPage';
 import DatabaseTableManager from './components/DatabaseManager/DatabaseTableManager';
-import ToastTest from './components/ToastTest';
 // import ToastDiagnostic from './components/ToastDiagnostic';
 
 // 导入服务
@@ -29,6 +28,8 @@ import {
   testDatabaseConnection,
   createDatabaseConnection
 } from './services/apiClient';
+import requestManager from './utils/requestManager';
+import { globalDebounce } from './hooks/useDebounce';
 
 // 导入样式
 import './styles/modern.css';
@@ -42,20 +43,54 @@ const ShadcnApp = () => {
   const [selectedSources, setSelectedSources] = useState([]);
   const [queryResults, setQueryResults] = useState({ data: [], columns: [] });
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [lastFetchTime, setLastFetchTime] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // 数据加载
+  // 初始数据加载
   useEffect(() => {
-    loadInitialData();
+    console.log('🚀 ShadcnApp - 组件挂载，开始初始数据加载');
+    console.log('🚀 当前时间戳:', Date.now());
+    loadInitialData(true); // 初始加载，强制执行
+  }, []);
+
+  // 响应刷新触发（使用防抖）
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      loadInitialData(false); // 手动刷新，使用防抖
+    }
   }, [refreshTrigger]);
 
-  const loadInitialData = async () => {
+  const loadInitialData = async (force = false) => {
+    // 使用全局防抖管理器
+    const debounceKey = `loadInitialData_${force ? 'force' : 'normal'}`;
+
+    return globalDebounce.debounce(debounceKey, async () => {
+      const now = Date.now();
+
+      // 如果正在加载中，跳过
+      if (isLoading) {
+        console.log('ShadcnApp - 跳过数据加载，正在加载中');
+        return;
+      }
+
+      setIsLoading(true);
+      setLastFetchTime(now);
+
     try {
+      console.log('🔄 ShadcnApp - 开始加载数据...');
+      console.log('🔄 当前时间:', new Date().toISOString());
+      console.log('🔄 强制刷新模式:', force);
+      console.log('🔄 RequestManager stats before:', requestManager.getStats());
+
       const [dataSourcesRes, connectionsRes, duckdbTablesRes, filesRes] = await Promise.all([
         getMySQLDataSources(),
         listDatabaseConnections(),
         getDuckDBTables(),
         listFiles()
       ]);
+
+      console.log('🔄 RequestManager stats after:', requestManager.getStats());
+      console.log('🔄 API调用完成，开始处理数据...');
 
       let allDataSources = [];
 
@@ -118,15 +153,40 @@ const ShadcnApp = () => {
 
       setDataSources(allDataSources);
 
+      // 修复数据库连接数据结构问题
+      console.log('ShadcnApp - 数据库连接API响应:', connectionsRes);
+
+      let connections = [];
       if (connectionsRes.success) {
-        setDatabaseConnections(connectionsRes.data || []);
+        // 尝试多种可能的数据字段
+        connections = connectionsRes.connections || connectionsRes.databaseConnectionsData || [];
       }
+
+      console.log('ShadcnApp - 解析到的数据库连接:', connections);
+      setDatabaseConnections(connections);
+      console.log('ShadcnApp - 数据加载完成');
     } catch (error) {
       console.error('ShadcnApp - 加载初始数据失败:', error);
+    } finally {
+      setIsLoading(false);
     }
+    }, force ? 1000 : 3000); // 强制刷新1秒防抖，普通刷新3秒防抖
   };
 
   const triggerRefresh = () => {
+    const now = Date.now();
+    const timeSinceLastTrigger = now - lastFetchTime;
+
+    // 如果距离上次触发不足5秒，则跳过
+    if (timeSinceLastTrigger < 5000) {
+      console.log('ShadcnApp - 跳过刷新触发，距离上次不足5秒');
+      return;
+    }
+
+    // 清除请求管理器的缓存，确保获取最新数据
+    requestManager.clearAllCache();
+
+    console.log('ShadcnApp - 触发数据刷新');
     setRefreshTrigger(prev => prev + 1);
   };
 
@@ -232,8 +292,7 @@ const ShadcnApp = () => {
               { id: "datasource", label: "数据源" },
               { id: "query", label: "查询" },
               { id: "sql", label: "SQL执行器" },
-              { id: "tablemanagement", label: "数据表管理" },
-              { id: "toasttest", label: "Toast测试" }
+              { id: "tablemanagement", label: "数据表管理" }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -287,6 +346,7 @@ const ShadcnApp = () => {
                 <div className="bg-white rounded-lg border shadow-sm p-6">
                   <DataSourceList
                     dataSources={dataSources}
+                    databaseConnections={databaseConnections}
                     onRefresh={triggerRefresh}
                   />
                 </div>
@@ -334,9 +394,13 @@ const ShadcnApp = () => {
                         resizable: true
                       })) : []}
                       loading={false}
+                      title="查询结果"
+                      sqlQuery={queryResults.sqlQuery || queryResults.sql || ''}
+                      originalDatasource={queryResults.originalDatasource}
                       onRefresh={() => {
                         // 可以添加刷新逻辑
                       }}
+                      onDataSourceSaved={triggerRefresh}
                     />
                   </div>
                 )}
@@ -377,8 +441,10 @@ const ShadcnApp = () => {
                       data={queryResults.data}
                       columns={queryResults.columns}
                       title="查询结果"
-                      sqlQuery={queryResults.sqlQuery}
+                      sqlQuery={queryResults.sqlQuery || queryResults.sql || ''}
+                      originalDatasource={queryResults.originalDatasource}
                       onRefresh={() => console.log('刷新查询结果')}
+                      onDataSourceSaved={triggerRefresh}
                     />
                   </div>
                 )}
@@ -436,14 +502,6 @@ const ShadcnApp = () => {
             </div>
           )}
 
-          {/* Toast测试页面 */}
-          {currentTab === "toasttest" && (
-            <div className="bg-white rounded-lg border shadow-sm p-6">
-              <h2 className="text-xl font-semibold mb-4">Toast通知测试</h2>
-              <p className="text-gray-600 mb-4">点击下面的按钮测试Toast通知是否正常工作：</p>
-              <ToastTest />
-            </div>
-          )}
         </div>
       </main>
       </div>

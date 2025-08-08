@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 import json
 import os
+import traceback
 from datetime import datetime
 from core.security import security_validator
 from core.config_manager import config_manager
@@ -49,11 +50,17 @@ def load_mysql_configs_on_startup():
     """应用启动时加载MySQL配置到数据库管理器"""
     try:
         mysql_config_file = "../config/mysql-configs.json"
+        logger.info(f"尝试加载MySQL配置文件: {mysql_config_file}")
+
         if os.path.exists(mysql_config_file):
+            logger.info("找到MySQL配置文件，开始加载...")
             with open(mysql_config_file, "r") as f:
                 configs = json.load(f)
 
+            logger.info(f"配置文件包含 {len(configs)} 个配置")
+
             for config in configs:
+                logger.info(f"正在处理配置: {config.get('id', 'unknown')}")
                 # 创建DatabaseConnection对象
                 db_connection = DatabaseConnection(
                     id=config["id"],
@@ -70,10 +77,23 @@ def load_mysql_configs_on_startup():
                 else:
                     logger.error(f"加载MySQL配置失败: {config['id']}")
         else:
-            logger.info("未找到mysql-configs.json文件")
+            logger.warning(f"未找到MySQL配置文件: {mysql_config_file}")
+            # 检查其他可能的位置
+            alternative_paths = [
+                "config/mysql-configs.json",
+                "mysql-configs.json",
+                "../mysql-configs.json",
+            ]
+            for alt_path in alternative_paths:
+                if os.path.exists(alt_path):
+                    logger.info(f"在备用位置找到配置文件: {alt_path}")
+                    break
+            else:
+                logger.warning("在所有可能的位置都未找到MySQL配置文件")
 
     except Exception as e:
         logger.error(f"加载MySQL配置时出错: {str(e)}")
+        logger.error(f"错误详情: {traceback.format_exc()}")
 
 
 def register_mysql_connections_as_datasources():
@@ -81,8 +101,24 @@ def register_mysql_connections_as_datasources():
     try:
         logger.info("注册MySQL连接为数据源...")
 
-        # 使用统一配置管理器获取MySQL配置
-        mysql_configs = config_manager.get_all_mysql_configs()
+        # 使用统一的配置读取函数（包含解密逻辑）
+        from routers.data_sources import read_mysql_configs
+
+        mysql_configs_list = read_mysql_configs()
+
+        # 转换为字典格式以兼容现有代码
+        mysql_configs = {}
+        for config in mysql_configs_list:
+            mysql_configs[config["id"]] = type(
+                "Config",
+                (),
+                {
+                    "id": config["id"],
+                    "name": config.get("name", config["id"]),
+                    "enabled": config.get("enabled", True),
+                    "params": config["params"],
+                },
+            )()
 
         if not mysql_configs:
             logger.info("未找到MySQL连接配置")

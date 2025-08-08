@@ -138,12 +138,32 @@ const DatabaseConnector = ({ onConnect }) => {
   };
 
   // 使用已保存的MySQL配置
-  const handleUseConfig = (config) => {
+  const handleUseConfig = async (config) => {
     if (config && config.params) {
       setHost(config.params.host || 'localhost');
       setPort(config.params.port?.toString() || '3306');
       setUsername(config.params.user || '');
-      setPassword(config.params.password === '********' ? '' : (config.params.password || ''));
+
+      // 如果密码被遮蔽，需要从后端获取真实密码
+      if (config.params.password === '********') {
+        try {
+          // 调用后端API获取完整配置（包含解密的密码）
+          const response = await fetch(`/api/mysql_configs/${config.id}/full`);
+          if (response.ok) {
+            const fullConfig = await response.json();
+            setPassword(fullConfig.params.password || '');
+          } else {
+            setPassword(''); // 如果获取失败，清空密码字段
+            showError('无法获取配置密码，请重新输入');
+          }
+        } catch (error) {
+          setPassword(''); // 如果获取失败，清空密码字段
+          showError('获取配置密码失败，请重新输入');
+        }
+      } else {
+        setPassword(config.params.password || '');
+      }
+
       setDatabase(config.params.database || '');
       setAlias(config.id || '');
       setOpenConfigDialog(false);

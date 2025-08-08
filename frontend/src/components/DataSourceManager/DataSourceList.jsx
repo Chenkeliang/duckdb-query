@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -30,37 +30,35 @@ import {
 import { useToast } from '../../contexts/ToastContext';
 
 const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh, refreshTrigger }) => {
+  console.log('DataSourceList 组件渲染 - 不再进行任何API调用');
+
   const { showSuccess, showError } = useToast();
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // 使用 ref 来避免不必要的重新渲染
+  const lastPropsRef = useRef({ dataSources: [], databaseConnections: [] });
+
   // 从传递的dataSources中分离文件，数据库连接单独传递
   const files = dataSources.filter(ds => ds.sourceType === 'file').map(ds => ds.name);
-  const databases = databaseConnections; // 使用单独传递的数据库连接
+
+  // ⚠️ 重要：完全依赖 props，绝不进行任何 API 调用
+  const effectiveDatabases = databaseConnections || [];
   const [deleteDialog, setDeleteDialog] = useState({ open: false, item: null, type: null });
   const [previewDialog, setPreviewDialog] = useState({ open: false, data: null });
 
-  // 不再需要独立的API请求函数，使用传递的dataSources
+  // ⚠️ 绝对不进行任何 API 调用，完全依赖 props
 
-  // 静默刷新（不显示loading）
-  const silentRefresh = async () => {
-    try {
-      if (onRefresh) {
-        await onRefresh();
-      }
-    } catch (error) {
-      console.error('静默刷新失败:', error);
-      setError('刷新数据源失败');
-    }
-  };
-
-  // 手动刷新（通知父组件刷新）
+  // 手动刷新（仅通知父组件）
   const manualRefresh = async () => {
+    console.log('DataSourceList - 手动刷新：通知父组件');
     setLoading(true);
     setError('');
     try {
-      if (onRefresh) onRefresh();
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (error) {
       setError('刷新数据源失败');
     } finally {
@@ -68,21 +66,23 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
     }
   };
 
-  // 当数据源或数据库连接有数据时，设置初始加载完成
+  // 简化的初始化逻辑 - 只设置加载状态，不进行任何 API 调用
   useEffect(() => {
-    if (dataSources.length > 0 || databaseConnections.length > 0) {
-      setInitialLoading(false);
-    }
+    console.log('DataSourceList - useEffect 初始化，不进行任何 API 调用');
+    // 立即设置为加载完成，因为数据来自 props
+    setInitialLoading(false);
+  }, []); // 空依赖数组，只执行一次
+
+  // 监听 props 变化，但不进行 API 调用
+  useEffect(() => {
+    console.log('DataSourceList - props 变化:', {
+      dataSources: dataSources.length,
+      databaseConnections: databaseConnections.length
+    });
+
+    // 更新 ref 以避免不必要的重新渲染
+    lastPropsRef.current = { dataSources, databaseConnections };
   }, [dataSources, databaseConnections]);
-
-  // 超时机制：5秒后强制完成初始加载
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      setInitialLoading(false);
-    }, 5000);
-
-    return () => clearTimeout(timeout);
-  }, []);
 
   // 不再需要响应外部刷新触发，数据由父组件管理
 
@@ -252,18 +252,18 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
         <Box sx={{ p: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
             <DatabaseIcon color="secondary" />
-            数据库连接 ({databases.length})
+            数据库连接 ({effectiveDatabases.length})
           </Typography>
         </Box>
         <Divider />
-        {databases.length === 0 ? (
+        {effectiveDatabases.length === 0 ? (
           <Box sx={{ p: 3, textAlign: 'center', color: 'text.secondary' }}>
             暂无数据库连接
           </Box>
         ) : (
           <List>
-            {databases.map((db, index) => (
-              <ListItem key={db.id} divider={index < databases.length - 1}>
+            {effectiveDatabases.map((db, index) => (
+              <ListItem key={db.id} divider={index < effectiveDatabases.length - 1}>
                 <ListItemText
                   primary={
                     <Box>
