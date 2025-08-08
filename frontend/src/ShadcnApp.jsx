@@ -274,8 +274,8 @@ const ShadcnApp = () => {
         <div className="w-full px-6 py-4">
           <div className="flex items-center">
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">DQ</span>
+              <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center" style={{display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                <span className="text-white font-bold text-sm" style={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%'}}>DQ</span>
               </div>
               <h1 className="text-xl font-semibold text-gray-900">DataQuery Pro</h1>
             </div>
