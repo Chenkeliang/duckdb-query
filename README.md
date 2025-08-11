@@ -2,57 +2,41 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Interactive Data Query** is a modern web platform designed to solve ad-hoc, complex data analysis needs. With DuckDB at its core, it empowers users to perform high-performance SQL queries on data from multiple sources directly in the browser, aiming for an ultimate zero-ETL, zero-import analysis experience.
+Have you ever gone to great lengths to set up a database just to analyze a temporary CSV file? Or found yourself racking your brain trying to join data from two different sources?
 
-## 1. Features and Usage
+**Interactive Data Query** is here to solve those headaches for you! We've built a modern, fluid web platform that lets you query and analyze data as easily as drinking water. At its core is a powerful DuckDB engine, ensuring that no matter if your data comes from local files, remote links, or your business databases, it can all be treated equally and explored with the simplest, most direct SQL.
 
-The platform's core design philosophy is "query anything." Whether it's a local file, a file on a remote server, or an existing database, it can be easily loaded into the query engine and analyzed like a regular data table.
+Our goal: Say goodbye to tedious ETL and data imports, and let data analysis return to its essence—quick insights and free exploration.
 
-### 1.1 Big Data Analysis with DuckDB
+## ✨ Core Highlights
 
-The platform features a powerful built-in DuckDB analytics engine, allowing you to process large datasets without relying on any external database.
+### 1. Query Anything, No Import Needed
+- **Local Files, Transformed into Tables**: Whether it's CSV, Parquet, or Excel, just drag and drop or paste, and they'll instantly become queryable tables.
 
-- **Multiple Data Sources**: Directly upload **CSV**, **Parquet**, **Excel** files, or **paste** table-like data (e.g., TSV) directly on the page. The platform automatically loads this data into tables within DuckDB.
-- **High-Performance Queries**: All loaded data is processed by DuckDB in the background, enabling sub-second complex queries and aggregations even on multi-gigabyte files.
-- **Full DuckDB SQL Syntax**: You can leverage DuckDB's rich SQL dialect, including advanced features like window functions, complex data types, and statistical functions.
+### 2. Cross-Source Freedom to JOIN
+This might be the coolest feature! You can join business data from MySQL, a local sales CSV, and a remote Parquet file all within the same query using `JOIN`. We help you smooth out the differences in data sources, so you can focus solely on the analysis.
 
-### 1.2 Cross-Source Data Joins
+### 3. Powerful SQL & Instant Visualization
+- **Full-Featured DuckDB Core**: Enjoy the full power of modern SQL, including window functions, JSON parsing, and more.
 
-One of the platform's most powerful features is its ability to effortlessly handle join operations across different databases and data sources.
-
-- **Mechanism**: You can load data from various origins—for example, a query result from MySQL, an uploaded CSV file, and a Parquet file from a remote URL—into DuckDB. Once loaded, they all become standard tables in the DuckDB environment.
-- **Unified Queries**: In the SQL editor, you can use standard `LEFT JOIN`, `RIGHT JOIN`, `INNER JOIN`, `FULL JOIN`, etc., to perform arbitrary joins across these tables from disparate sources, just as if they were in the same database all along.
-
-### 1.3 Remote Files as a Data Source
-
-In addition to local files, you can also use any publicly accessible URL as a data source.
-
-- **Usage**: Simply provide the file's URL, and the platform will automatically download its content, infer its format (CSV, Parquet, JSON, etc.), and load it as a queryable table.
-- **GitHub Support**: The system intelligently recognizes GitHub `blob` links and automatically converts them to the downloadable `raw` format.
-
-### 1.4 Connecting Remote Databases
-
-The platform also supports connecting to your existing remote databases (e.g., MySQL, PostgreSQL) and making them part of your analysis.
-
-- **Data Loading**: You can execute a SQL query to pull a required subset of data from a remote database.
-- **Integration with DuckDB**: The fetched data can be seamlessly loaded as a new table in DuckDB, making it available for joins with any other data source.
-
-## 2. Quick Start and Usage
+## 🚀 Quick Start and Usage
 
 All you need is a machine with Docker and Docker Compose installed to get the entire platform running with these simple steps.
+
+> **Tip**: `curl` is usually pre-installed on macOS and Linux. Windows users may need to download files using other methods or install `curl`.
 
 ```bash
 # 1. Create and enter a new directory
 mkdir my-data-query-app && cd my-data-query-app
 
-# 2. Download the docker-compose.yml for deployment
+# 2. Download the docker-compose.yml deployment file
 # IMPORTANT: Replace the URL below with the one for your own GitHub repository
-curl -o docker-compose.yml https://raw.githubusercontent.com/graychenk/interactive-data-query/main/deployment/docker-compose.yml
+curl -o docker-compose.yml https://raw.githubusercontent.com/chenkeliang/interactive-data-query/main/deployment/docker-compose.yml
 
 # 3. Create the config directory and sample files
 mkdir -p config
-curl -o config/app-config.json https://raw.githubusercontent.com/graychenk/interactive-data-query/main/deployment/config/app-config.json
-curl -o config/datasources.json https://raw.githubusercontent.com/graychenk/interactive-data-query/main/deployment/config/datasources.json.example
+curl -o config/app-config.json https://raw.githubusercontent.com/chenkeliang/interactive-data-query/main/deployment/config/app-config.json
+curl -o config/datasources.json https://raw.githubusercontent.com/chenkeliang/interactive-data-query/main/deployment/config/datasources.json.example
 
 # 4. Create a directory for data persistence
 mkdir data
@@ -64,16 +48,43 @@ docker compose up -d
 echo "Application started! Open your browser to http://localhost:3000"
 ```
 
-## 3. Security
+## 🔒 Your Data, Only Yours
 
-We take your data security and privacy very seriously.
+We deeply understand the importance of data security, which is why we adhere to a "read-and-forget" philosophy from the very beginning:
+- **Pure Browser & In-Memory Computing**: We do not operate a server, require no login, and store no business data of yours. All data processing occurs within your browser and container memory.
+- **Configuration is Yours to Control**: Sensitive information like database passwords are managed by you through local configuration files, ensuring they never leave your computer.
 
-- **No Login Required**: The platform is ready to use out-of-the-box without any registration or login, and it does not collect any user information.
-- **No Data Storage**: Your data (whether uploaded files or database connection configurations) is managed solely by you through Docker's volume functionality. Our servers do not store any of your business data or files, beyond what you explicitly manage in your local directories.
-- **In-Memory Processing**: All data queries and computations are performed in the container's memory and released upon completion, ensuring the temporary and secure handling of your data.
+## 👨‍💻 Developer Guide
 
-## 4. Open Source
+If you wish to contribute, modify the code, or build from source, please follow these steps.
 
-This is a fully open-source project licensed under the [MIT License](https://opensource.org/licenses/MIT). We welcome contributions of all forms, whether it's code submissions, feature suggestions, or bug reports.
+1.  **Clone the Repository**
+    ```bash
+    git clone https://github.com/graychenk/interactive-data-query.git
+    cd interactive-data-query
+    ```
+
+2.  **Configuration (Optional)**
+    You can modify the configuration files in the `config/` directory as needed.
+
+3.  **Build and Start with Docker Compose**
+    The `docker-compose.yml` file in the project root is designed for the development environment and will build images from the local source code.
+    ```bash
+    docker compose up --build -d
+    ```
+
+4.  **Access the Application**
+    - Frontend: `http://localhost:3000`
+    - Backend API Docs: `http://localhost:8000/docs`
+
+## ⚙️ Configuration
+
+- `config/app-config.json`: The core application configuration file for settings like CORS, file upload size limits, etc.
+- `config/datasources.json`: Define your database connections and preset data source queries here.
+- `config/mysql-configs.json`: Specifically for storing MySQL connection credentials (please use the page to load, involves password encryption algorithms).
+
+## 📄 License
+
+This project is licensed under the [MIT License](https://opensource.org/licenses/MIT) license.
 
 If you find this project helpful, please give us a Star on GitHub!
