@@ -7,11 +7,13 @@ import logging
 import traceback
 import pandas as pd
 import os
+import time
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from core.config_manager import config_manager
 from core.duckdb_engine import (
     get_db_connection,
     handle_non_serializable_data,
@@ -28,7 +30,7 @@ class DuckDBQueryRequest(BaseModel):
     """DuckDB查询请求模型"""
 
     sql: str
-    limit: int = 1000
+    limit: Optional[int] = None  # 可选：将查询结果保存为新表
     save_as_table: Optional[str] = None  # 可选：将查询结果保存为新表
 
 
@@ -114,11 +116,11 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
     - 可选择将结果保存为新表
     - 返回执行时间和表信息
     """
-    import time
+    start_time = time.time()
 
     try:
         con = get_db_connection()
-        start_time = time.time()
+        app_config = config_manager.get_app_config()
 
         # 获取当前可用的表
         available_tables_df = con.execute("SHOW TABLES").fetchdf()
@@ -127,12 +129,12 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
         )
 
         # 验证SQL查询
-        sql_query = request.sql.strip()
-        if not sql_query:
+        sql_to_execute = request.sql.strip()
+        if not sql_to_execute:
             raise HTTPException(status_code=400, detail="SQL查询不能为空")
 
         # 检查是否是简单的SELECT查询（不需要表）
-        sql_upper = sql_query.upper().strip()
+        sql_upper = sql_to_execute.upper().strip()
         is_simple_select = (
             sql_upper.startswith("SELECT")
             and "FROM" not in sql_upper
@@ -156,7 +158,7 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
                 status_code=400, detail="DuckDB中没有可用的表，请先上传文件或连接数据库"
             )
 
-        # 检查SQL中是否包含危险操作（已在上面检查过）
+        # 检查SQL中是否包含危险操作
         dangerous_keywords = [
             "DROP",
             "DELETE",
@@ -176,15 +178,19 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
                         detail=f"不允许执行 {keyword} 操作，仅支持查询操作",
                     )
 
-        # 自动添加LIMIT限制（如果SQL中没有LIMIT）
-        if "LIMIT" not in sql_upper and request.limit > 0:
-            sql_query = f"{sql_query.rstrip(';')} LIMIT {request.limit}"
+        # 确定行数限制
+        limit = request.limit if request.limit is not None else app_config.max_query_rows
 
-        logger.info(f"执行DuckDB查询: {sql_query}")
+        # 自动添加LIMIT限制（如果SQL中没有LIMIT）
+        sql_for_preview = sql_to_execute
+        if "LIMIT" not in sql_upper and limit > 0:
+            sql_for_preview = f"{sql_to_execute.rstrip(';')} LIMIT {limit}"
+
+        logger.info(f"执行DuckDB查询: {sql_for_preview}")
         logger.info(f"可用表: {available_tables}")
 
         # 执行查询
-        result_df = con.execute(sql_query).fetchdf()
+        result_df = con.execute(sql_for_preview).fetchdf()
 
         execution_time = (time.time() - start_time) * 1000
 
@@ -199,8 +205,8 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
             table_name = request.save_as_table.strip()
             if table_name:
                 try:
-                    # 创建新表
-                    create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql_query.rstrip(";").replace(f"LIMIT {request.limit}", "")})'
+                    # 创建新表时使用原始SQL（不带LIMIT）
+                    create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql_to_execute.rstrip(";")})'
                     con.execute(create_sql)
                     saved_table = table_name
                     logger.info(f"查询结果已保存为表: {table_name}")
@@ -214,7 +220,7 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
             data=result_df.to_dict(orient="records"),
             row_count=len(result_df),
             execution_time_ms=execution_time,
-            sql_executed=sql_query,
+            sql_executed=sql_for_preview,
             available_tables=available_tables,
             saved_table=saved_table,
             message=f"查询成功，返回 {len(result_df)} 行数据",

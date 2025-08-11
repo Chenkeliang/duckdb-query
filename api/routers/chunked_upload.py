@@ -15,6 +15,7 @@ from pydantic import BaseModel
 import pandas as pd
 import pyarrow.parquet as pq
 
+from core.config_manager import config_manager
 from core.duckdb_engine import get_db_connection
 from core.file_datasource_manager import file_datasource_manager, create_table_from_dataframe
 from core.resource_manager import schedule_cleanup
@@ -92,12 +93,13 @@ async def init_upload(
         file_hash: 文件MD5哈希（可选）
     """
     try:
-        # 检查文件大小限制 (1GB)
-        MAX_FILE_SIZE = 1024 * 1024 * 1024  # 1GB
-        if file_size > MAX_FILE_SIZE:
+        # 从配置中获取文件大小限制
+        app_config = config_manager.get_app_config()
+        if file_size > app_config.max_file_size:
+            max_file_size_mb = app_config.max_file_size / 1024 / 1024
             raise HTTPException(
                 status_code=413,
-                detail=f"文件太大，最大支持1GB。当前文件大小：{file_size / 1024 / 1024 / 1024:.1f}GB"
+                detail=f"文件太大，最大支持 {max_file_size_mb:.0f}MB。当前文件大小：{file_size / 1024 / 1024:.1f}MB"
             )
         
         # 检查文件类型

@@ -40,13 +40,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# MySQL配置文件路径
-MYSQL_CONFIG_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "config",
-    "mysql-configs.json",
-)
-
 
 class MySQLManager:
     """MySQL连接和查询管理器"""
@@ -90,6 +83,7 @@ class MySQLManager:
         try:
             config = self.get_connection_info(connection_id)
             params = config["params"]
+            app_config = config_manager.get_app_config()
 
             # 支持 user 和 username 两种参数名称
             username = params.get("user") or params.get("username")
@@ -103,7 +97,7 @@ class MySQLManager:
                 user=username,
                 password=params.get("password"),
                 database=params.get("database"),
-                connect_timeout=10,
+                connect_timeout=app_config.query_timeout, # 使用配置的超时
                 charset="utf8mb4",
             )
 
@@ -127,7 +121,7 @@ class MySQLManager:
             )
 
     def execute_query(
-        self, connection_id: str, sql: str, limit: int = 1000
+        self, connection_id: str, sql: str, limit: int
     ) -> pd.DataFrame:
         """执行MySQL查询"""
         try:
@@ -143,9 +137,15 @@ class MySQLManager:
 
             # 使用验证后的SQL
             safe_sql = validation_result["sanitized_sql"]
+            sql_upper = safe_sql.upper().strip()
+
+            # 自动添加LIMIT限制（如果SQL中没有LIMIT）
+            if "LIMIT" not in sql_upper and limit > 0:
+                safe_sql = f"{safe_sql.rstrip(';')} LIMIT {limit}"
 
             config = self.get_connection_info(connection_id)
             params = config["params"]
+            app_config = config_manager.get_app_config()
 
             # 检查缓存
             cached_result = query_cache.get_cached_query_result(safe_sql, params)
@@ -170,7 +170,10 @@ class MySQLManager:
             logger.info(f"执行MySQL查询: {safe_connection_info}")
 
             start_time = time.time()
-            engine = create_engine(connection_str)
+            engine = create_engine(
+                connection_str,
+                connect_args={"connect_timeout": app_config.query_timeout}
+            )
             df = pd.read_sql(safe_sql, engine)
             execution_time = (time.time() - start_time) * 1000
 
@@ -196,8 +199,9 @@ class MySQLManager:
     ) -> Dict[str, Any]:
         """执行MySQL查询并保存结果到DuckDB"""
         try:
-            # 执行查询
-            df = self.execute_query(connection_id, sql)
+            app_config = config_manager.get_app_config()
+            # 执行查询时使用配置中的行数限制
+            df = self.execute_query(connection_id, sql, app_config.max_query_rows)
 
             # 保存到DuckDB
             duckdb_con = get_db_connection()
@@ -271,9 +275,10 @@ async def test_mysql_connection(request: dict = Body(...)):
 async def execute_mysql_query(request: dict = Body(...)):
     """执行MySQL查询"""
     try:
+        app_config = config_manager.get_app_config()
         connection_id = request.get("connection_id")
         sql = request.get("sql")
-        limit = request.get("limit", 1000)
+        limit = request.get("limit", app_config.max_query_rows)
 
         if not connection_id:
             raise HTTPException(status_code=400, detail="缺少connection_id参数")
