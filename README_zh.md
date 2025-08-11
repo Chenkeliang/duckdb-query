@@ -1,31 +1,45 @@
-# Interactive Data Query - 交互式数据查询分析平台
-
-一个现代、强大、易于使用的网页版数据查询与分析平台。它允许您连接到多种数据源（如 MySQL），上传本地文件（CSV/Excel），并通过统一的界面进行 SQL 查询、分析和可视化。
+# Interactive Data Query - 新一代交互式数据查询分析平台
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## ✨ 核心功能
+**Interactive Data Query** 是一个为解决临时、复杂数据分析需求而设计的现代网页平台。它以 DuckDB 为核心，赋予用户直接在浏览器中对多种来源的数据执行高性能 SQL 查询的能力，旨在打造零ETL、零数据导入的极致分析体验。
 
-- **多种数据源支持**: 无缝连接和查询多种关系型数据库。
-- **本地文件查询**: 上传 CSV 或 Excel 文件，使用 DuckDB 引擎进行高性能的 SQL 查询，无需将文件导入数据库。
-- **统一 SQL 编辑器**: 为所有数据源提供一致、智能的 SQL 编辑和执行体验。
-- **数据可视化**: 对查询结果快速生成图表，直观地洞察数据。
-- **查询历史**: 自动保存您的查询记录，方便回溯和复用。
-- **大文件上传**: 支持分片上传，轻松处理 GB 级的大文件。
-- **结果导出**: 将查询结果导出为 CSV 或 Excel 文件。
-- **容器化部署**: 使用 Docker Compose，实现简单、快速的一键部署。
+## 1. 功能使用说明
 
-## 🛠️ 技术栈
+平台的核心设计哲学是“万物皆可查”。无论是本地文件、远程服务器上的文件，还是已有的数据库，都可以被轻松地加载到查询引擎中，像操作普通数据表一样进行关联分析。
 
-- **后端**: Python / FastAPI / DuckDB / SQLAlchemy
-- **前端**: React / Vite / Ant Design / Tailwind CSS
-- **容器化**: Docker / Docker Compose
+### 1.1 基于 DuckDB 的大数据分析
 
-## 🚀 快速开始 (用户)
+平台内置了强大的 DuckDB 分析引擎，让您无需依赖任何外部数据库即可处理大型数据集。
+
+- **支持多种数据源**: 您可以直接上传 **CSV**、**Parquet**、**Excel** 文件，或直接在页面上**粘贴**类表格数据（如 TSV）。平台会自动将这些数据加载为 DuckDB 中的表。
+- **高性能查询**: 所有加载的数据均由 DuckDB 在后台处理，即使是数 GB 大小的文件，也能实现亚秒级的复杂查询和聚合。
+- **完整的 DuckDB SQL 语法**: 您可以利用 DuckDB 丰富的 SQL 方言，包括窗口函数、复杂数据类型、统计函数等高级功能。
+
+### 1.2 跨源数据关联 (JOIN)
+
+本平台最大的特色之一是能够轻松解决跨库、跨数据源的关联查询问题。
+
+- **实现机制**: 您可以将来自不同来源的数据（例如，一个来自 MySQL 的查询结果，一个上传的 CSV 文件，一个来自远程 URL 的 Parquet 文件）全部加载到 DuckDB 中。一旦加载完成，它们就都变成了 DuckDB 环境下的普通表。
+- **统一查询**: 您可以在 SQL 编辑器中，使用标准的 `LEFT JOIN`, `RIGHT JOIN`, `INNER JOIN`, `FULL JOIN` 等语法，将这些来自五湖四海的表进行任意的关联查询，就像它们本来就在同一个数据库中一样。
+
+### 1.3 将远程文件作为数据源
+
+除了上传本地文件，您还可以直接将一个可公开访问的 URL 作为数据源。
+
+- **用法**: 只需提供文件的 URL，平台会自动下载文件内容，推断其格式（CSV, Parquet, JSON 等），并将其加载为一张可查询的表。
+- **GitHub 支持**: 系统能智能识别 GitHub 的 `blob` 链接，并自动转换为可供下载的 `raw` 链接。
+
+### 1.4 连接远程数据库
+
+平台同样支持连接到您已有的远程数据库（如 MySQL、PostgreSQL 等），并将其作为数据分析的一部分。
+
+- **数据加载**: 您可以执行一条 SQL 查询从远程数据库中拉取所需的数据子集。
+- **融入 DuckDB**: 拉取的数据可以被无缝地加载为 DuckDB 中的一张新表，从而可以与其它任何来源的数据进行关联分析。
+
+## 2. 快速启动和使用方式
 
 您只需要一台安装了 Docker 和 Docker Compose 的机器，就可以通过以下简单的步骤启动整个平台。
-
-> **提示**: `curl` 在 macOS 和 Linux 上通常是预装的。Windows 用户可能需要使用其他方式下载文件，或安装 `curl`。
 
 ```bash
 # 1. 创建并进入新目录
@@ -40,9 +54,7 @@ mkdir -p config
 curl -o config/app-config.json https://raw.githubusercontent.com/graychenk/interactive-data-query/main/deployment/config/app-config.json
 curl -o config/datasources.json https://raw.githubusercontent.com/graychenk/interactive-data-query/main/deployment/config/datasources.json.example
 
-echo "配置已下载。如果需要，请修改 config/datasources.json 文件来配置您自己的数据源。"
-
-# 4. 创建用于持久化数据和导出的目录
+# 4. 创建数据目录
 mkdir data
 
 # 5. 启动服务
@@ -50,38 +62,18 @@ docker compose up -d
 
 # 6. 完成!
 echo "应用已启动！请在浏览器中打开 http://localhost:3000"
-echo "使用 'docker compose logs -f' 命令可以查看实时日志。"
 ```
 
-## 👨‍💻 开发者指南
+## 3. 安全性
 
-如果您想参与开发、修改代码或从源码构建，请按照以下步骤操作。
+我们高度重视您的数据安全和隐私。
 
-1.  **克隆仓库**
-    ```bash
-    git clone https://github.com/graychenk/interactive-data-query.git
-    cd interactive-data-query
-    ```
+- **无需登录**: 平台开箱即用，无需注册或登录，不收集任何用户信息。
+- **无数据存储**: 您的数据（无论是上传的文件还是数据库连接配置）仅由您自己通过 Docker 的 volume 功能管理。除了您明确指定的本地目录，我们的服务器不会存储您的任何业务数据或文件。
+- **纯内存处理**: 所有的数据查询和计算都在容器的内存中进行，操作完成后即释放，确保了数据的临时性和安全性。
 
-2.  **配置 (可选)**
-    您可以根据需要修改 `config/` 目录下的配置文件。
+## 4. 开源
 
-3.  **使用 Docker Compose 构建并启动**
-    项目根目录下的 `docker-compose.yml` 文件是为开发环境设计的，它会从本地源码构建镜像。
-    ```bash
-    docker compose up --build -d
-    ```
+本项目是一个完全开源的项目，采用 [MIT License](https://opensource.org/licenses/MIT) 授权。我们欢迎任何形式的贡献，无论是代码提交、功能建议还是问题反馈。
 
-4.  **访问应用**
-    - 前端: `http://localhost:3000`
-    - 后端 API 文档: `http://localhost:8000/docs`
-
-## ⚙️ 配置
-
-- `config/app-config.json`: 应用的核心配置文件，用于设置 CORS、文件上传大小限制等。
-- `config/datasources.json`: 在这里定义您的数据库连接和预设的数据源查询。
-- `config/mysql-configs.json`: (如果使用) 专门用于存储 MySQL 的连接凭据。
-
-## 📄 授权许可
-
-本项目采用 [MIT License](https://opensource.org/licenses/MIT) 授权。
+如果您觉得这个项目对您有帮助，请在 GitHub 上给我们一个 Star！
