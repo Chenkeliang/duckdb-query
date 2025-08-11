@@ -1,0 +1,22 @@
+[
+  {
+    "id": "demo_products_sample",
+    "alias": "products_sample",
+    "connection_name": "demo_connection",
+    "sql_query": "SELECT * FROM products LIMIT 10",
+    "description": "产品表样本数据",
+    "row_count": 10,
+    "columns": [
+      "id",
+      "product_name",
+      "category",
+      "price",
+      "stock_quantity",
+      "description",
+      "created_at",
+      "updated_at"
+    ],
+    "created_at": "2025-01-01T00:00:00.000000",
+    "type": "mysql_query"
+  }
+]

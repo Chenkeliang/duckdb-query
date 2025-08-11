@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  backend:
+    image: graychenk/interactive-data-query-backend:latest
+    container_name: dataquery-backend-prod
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - ENV=production
+      - CONFIG_DIR=/app/config
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - backend_temp_prod:/app/temp_files
+      - backend_exports_prod:/app/exports
+    networks:
+      - dataquery-network-prod
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    image: graychenk/interactive-data-query-frontend:latest
+    container_name: dataquery-frontend-prod
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://dataquery-backend-prod:8000
+    networks:
+      - dataquery-network-prod
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  backend_temp_prod:
+  backend_exports_prod:
+
+networks:
+  dataquery-network-prod:
+    driver: bridge
