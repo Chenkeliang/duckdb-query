@@ -250,9 +250,9 @@ async def complete_upload(
         session["status"] = "processing"
         
         # 合并文件
-        final_file_path = os.path.join(get_upload_dir(), session["file_name"])
+        temp_upload_path = os.path.join(get_upload_dir(), session["file_name"])
         
-        with open(final_file_path, "wb") as final_file:
+        with open(temp_upload_path, "wb") as final_file:
             for chunk_num in range(session["total_chunks"]):
                 chunk_path = os.path.join(session["chunks_dir"], f"chunk_{chunk_num:06d}")
                 if os.path.exists(chunk_path):
@@ -263,6 +263,12 @@ async def complete_upload(
                         status_code=500, 
                         detail=f"分块文件缺失: chunk_{chunk_num:06d}"
                     )
+        
+        # 将合并后的文件移动到主临时目录
+        import shutil
+        final_file_path = os.path.join(os.path.dirname(get_upload_dir()), session["file_name"])
+        shutil.move(temp_upload_path, final_file_path)
+        logger.info(f"文件已移动到: {final_file_path}")
         
         # 验证文件哈希（如果提供）
         if session.get("file_hash"):
@@ -283,7 +289,7 @@ async def complete_upload(
         
         # 安排文件清理（2小时后）
         if background_tasks:
-            schedule_cleanup(final_file_path, background_tasks, delay_hours=2)
+            schedule_cleanup(final_file_path, background_tasks)
         
         # 更新会话状态
         session["status"] = "completed"
@@ -315,69 +321,69 @@ async def complete_upload(
 async def process_uploaded_file(file_path: str, file_name: str) -> Dict[str, Any]:
     """处理上传的文件并加载到DuckDB"""
     try:
+        logger.info(f"开始处理上传的文件: {file_name}, 路径: {file_path}")
+        
         # 检测文件类型
         file_extension = file_name.lower().split('.')[-1]
+        logger.info(f"文件类型: {file_extension}")
         
-        # 读取文件
-        if file_extension == 'csv':
-            df = pd.read_csv(file_path, dtype=str)
-        elif file_extension in ['xlsx', 'xls']:
-            df = pd.read_excel(file_path, dtype=str)
-        elif file_extension in ['json', 'jsonl']:
-            try:
-                df = pd.read_json(file_path, lines=True)
-            except ValueError:
-                df = pd.read_json(file_path)
-            df = df.astype(str)
-        elif file_extension in ['parquet', 'pq']:
-            df = pd.read_parquet(file_path)
-            df = df.astype(str)
-        else:
-            raise ValueError(f"不支持的文件类型: {file_extension}")
-        
-        # 生成SQL兼容的表名，替换特殊字符为下划线
+        # 生成SQL兼容的表名
         source_id = file_name.split('.')[0]
         source_id = "".join(c if c.isalnum() or c == "_" else "_" for c in source_id)
-        # 确保表名不以数字开头
         if source_id and source_id[0].isdigit():
             source_id = f"table_{source_id}"
-        # 确保表名不为空
         if not source_id:
             import time
             source_id = f"table_{int(time.time())}"
         
-        # 加载到DuckDB
-        con = get_db_connection()
-        create_table_from_dataframe(con, source_id, df)
+        logger.info(f"生成的表名: {source_id}")
+        
+        # 加载到DuckDB并获取元数据
+        table_info = None
+        try:
+            logger.info("开始加载到DuckDB...")
+            con = get_db_connection()
+            table_info = create_table_from_dataframe(con, source_id, file_path, file_extension)
+            logger.info(f"成功加载到DuckDB: {table_info}")
+        except Exception as e:
+            logger.error(f"加载到DuckDB失败: {str(e)}")
+            raise
         
         # 保存文件数据源配置
-        file_info = {
+        file_metadata = {
             "source_id": source_id,
             "filename": file_name,
             "file_path": file_path,
             "file_type": file_extension,
-            "row_count": len(df),
-            "column_count": len(df.columns),
-            "columns": list(df.columns),
+            "row_count": table_info.get('row_count', 0),
+            "column_count": table_info.get('column_count', 0),
+            "columns": table_info.get('columns', []),
             "upload_time": pd.Timestamp.now()
         }
         
-        file_datasource_manager.save_file_datasource(file_info)
+        try:
+            logger.info("保存文件数据源配置...")
+            file_datasource_manager.save_file_datasource(file_metadata)
+            logger.info("成功保存文件数据源配置")
+        except Exception as e:
+            logger.error(f"保存文件数据源配置失败: {str(e)}")
+            raise
         
-        logger.info(f"文件处理完成: {file_name}, 表名: {source_id}, 行数: {len(df)}")
+        logger.info(f"文件处理完成: {file_name}, 表名: {source_id}, 行数: {file_metadata['row_count']}")
         
         return {
             "source_id": source_id,
             "filename": file_name,
             "file_size": os.path.getsize(file_path),
-            "row_count": len(df),
-            "column_count": len(df.columns),
-            "columns": list(df.columns),
-            "preview_data": df.head(5).to_dict(orient="records")
+            "row_count": file_metadata['row_count'],
+            "column_count": file_metadata['column_count'],
+            "columns": file_metadata['columns'],
+            "preview_data": [{"提示": "预览数据已禁用以提高性能"}]
         }
         
     except Exception as e:
         logger.error(f"处理文件失败: {str(e)}")
+        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
         raise
 
 

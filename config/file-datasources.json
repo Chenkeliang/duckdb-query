@@ -1,0 +1,497 @@
+[
+  {
+    "source_id": "table_1d10ed8b_ebed_40f4_9f03_d6c64bedf5fa",
+    "filename": "1d10ed8b-ebed-40f4-9f03-d6c64bedf5fa.csv",
+    "file_path": "/app/temp_files/1d10ed8b-ebed-40f4-9f03-d6c64bedf5fa.csv",
+    "file_type": "csv",
+    "row_count": 150074,
+    "column_count": 20,
+    "columns": [
+      {
+        "name": "DCID",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "FILE",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "LEVEL",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "MSG",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "SPANID",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "TIME",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "TRACEID",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__source__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__hostname__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__pack_id__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__path__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__user_defined_id__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_container_ip_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_container_name_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_image_name_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_namespace_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_pod_name_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_pod_uid_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__time__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__topic__",
+        "type": "VARCHAR"
+      }
+    ],
+    "upload_time": "2025-08-12 09:42:40.898734"
+  },
+  {
+    "source_id": "_2025_8_7_20_06_57",
+    "filename": "_2025_8_7_20_06_57.xlsx",
+    "file_path": "/app/temp_files/_2025_8_7_20_06_57.xlsx",
+    "file_type": "excel",
+    "row_count": 1600,
+    "column_count": 91,
+    "columns": [
+      "A_1",
+      "A_2",
+      "A_3",
+      "A_4",
+      "A_5",
+      "A_6",
+      "A_7",
+      "A_8",
+      "A_9",
+      "A_10",
+      "A_11",
+      "A_12",
+      "A_13",
+      "A_14",
+      "A_15",
+      "A_16",
+      "A_17",
+      "A_18",
+      "A_19",
+      "A_20",
+      "A_21",
+      "A_22",
+      "A_23",
+      "A_24",
+      "A_25",
+      "A_26",
+      "A_27",
+      "A_28",
+      "A_29",
+      "A_30",
+      "A_31",
+      "A_32",
+      "A_33",
+      "A_34",
+      "A_35",
+      "A_36",
+      "B_1",
+      "B_2",
+      "B_3",
+      "B_4",
+      "B_5",
+      "B_6",
+      "B_7",
+      "B_8",
+      "B_9",
+      "B_10",
+      "B_11",
+      "B_12",
+      "B_13",
+      "B_14",
+      "B_15",
+      "B_16",
+      "B_17",
+      "B_18",
+      "B_19",
+      "B_20",
+      "B_21",
+      "B_22",
+      "B_23",
+      "B_24",
+      "B_25",
+      "B_26",
+      "B_27",
+      "B_28",
+      "B_29",
+      "B_30",
+      "B_31",
+      "B_32",
+      "B_33",
+      "B_34",
+      "B_35",
+      "B_36",
+      "B_37",
+      "B_38",
+      "B_39",
+      "B_40",
+      "B_41",
+      "B_42",
+      "B_43",
+      "B_44",
+      "B_45",
+      "B_46",
+      "B_47",
+      "B_48",
+      "B_49",
+      "B_50",
+      "B_51",
+      "B_52",
+      "B_53",
+      "B_54",
+      "join_result_A_B"
+    ],
+    "upload_time": "2025-08-12 10:28:49.427209"
+  },
+  {
+    "source_id": "table_2231",
+    "filename": "2231.csv",
+    "file_path": "/app/temp_files/2231.csv",
+    "file_type": "csv",
+    "row_count": 150074,
+    "column_count": 20,
+    "columns": [
+      {
+        "name": "DCID",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "FILE",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "LEVEL",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "MSG",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "SPANID",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "TIME",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "TRACEID",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__source__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__hostname__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__pack_id__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__path__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__user_defined_id__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_container_ip_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_container_name_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_image_name_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_namespace_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_pod_name_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_pod_uid_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__time__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__topic__",
+        "type": "VARCHAR"
+      }
+    ],
+    "upload_time": "2025-08-12 10:29:32.356484"
+  },
+  {
+    "source_id": "订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_1",
+    "filename": "订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_1.xlsx",
+    "file_path": "/app/temp_files/订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_1.xlsx",
+    "file_type": "excel",
+    "row_count": 50000,
+    "column_count": 53,
+    "columns": [
+      "订单号",
+      "订单下单时间",
+      "订单发货时间",
+      "订单确认收货时间",
+      "订单完成结算时间",
+      "订单状态",
+      "发货方式",
+      "收件人姓名",
+      "收件人地址",
+      "省",
+      "市",
+      "区",
+      "收件人手机",
+      "买家备注",
+      "商家备注",
+      "商品总价",
+      "订单实际支付金额",
+      "订单实际收款金额",
+      "订单运费",
+      "商品优惠",
+      "跨店优惠",
+      "商品改价",
+      "积分抵扣",
+      "支付方式",
+      "支付时间",
+      "交易单号",
+      "物流公司",
+      "快递单号",
+      "技术服务费",
+      "技术服务费（将以人气卡形式返还）",
+      "运费险预计投保费用",
+      "带货方式",
+      "带货账号类型",
+      "带货账号昵称",
+      "带货费用渠道",
+      "带货费用类型",
+      "带货费用",
+      "带货佣金率",
+      "礼物单号",
+      "商品名称",
+      "商品编码(平台)",
+      "商品编码(自定义)",
+      "SKU编码(自定义)",
+      "商品属性",
+      "商品价格",
+      "商品实际价格",
+      "是否预售",
+      "商品数量",
+      "定制信息",
+      "定制预览图",
+      "商品发货",
+      "商品售后",
+      "商品已退款金额"
+    ],
+    "upload_time": "2025-08-12 10:31:24.138447"
+  },
+  {
+    "source_id": "订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_2",
+    "filename": "订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_2.xlsx",
+    "file_path": "/app/temp_files/订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_2.xlsx",
+    "file_type": "excel",
+    "row_count": 35485,
+    "column_count": 53,
+    "columns": [
+      "订单号",
+      "订单下单时间",
+      "订单发货时间",
+      "订单确认收货时间",
+      "订单完成结算时间",
+      "订单状态",
+      "发货方式",
+      "收件人姓名",
+      "收件人地址",
+      "省",
+      "市",
+      "区",
+      "收件人手机",
+      "买家备注",
+      "商家备注",
+      "商品总价",
+      "订单实际支付金额",
+      "订单实际收款金额",
+      "订单运费",
+      "商品优惠",
+      "跨店优惠",
+      "商品改价",
+      "积分抵扣",
+      "支付方式",
+      "支付时间",
+      "交易单号",
+      "物流公司",
+      "快递单号",
+      "技术服务费",
+      "技术服务费（将以人气卡形式返还）",
+      "运费险预计投保费用",
+      "带货方式",
+      "带货账号类型",
+      "带货账号昵称",
+      "带货费用渠道",
+      "带货费用类型",
+      "带货费用",
+      "带货佣金率",
+      "礼物单号",
+      "商品名称",
+      "商品编码(平台)",
+      "商品编码(自定义)",
+      "SKU编码(自定义)",
+      "商品属性",
+      "商品价格",
+      "商品实际价格",
+      "是否预售",
+      "商品数量",
+      "定制信息",
+      "定制预览图",
+      "商品发货",
+      "商品售后",
+      "商品已退款金额"
+    ],
+    "upload_time": "2025-08-12 10:51:59.390773"
+  },
+  {
+    "source_id": "测试大文件",
+    "filename": "测试大文件.csv",
+    "file_path": "/app/temp_files/测试大文件.csv",
+    "file_type": "csv",
+    "row_count": 2705756,
+    "column_count": 18,
+    "columns": [
+      {
+        "name": "DCID",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "FILE",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "LEVEL",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "MSG",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "TIME",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__source__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__hostname__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__pack_id__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__path__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:__user_defined_id__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_container_ip_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_container_name_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_image_name_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_namespace_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_pod_name_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__tag__:_pod_uid_",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__time__",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "__topic__",
+        "type": "VARCHAR"
+      }
+    ],
+    "upload_time": "2025-08-13 06:21:55.139148"
+  }
+]

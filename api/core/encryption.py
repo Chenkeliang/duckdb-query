@@ -1,169 +1,116 @@
 """
-密码加密解密工具
-用于安全存储和处理数据库连接密码
+Password encryption and decryption tool using Fernet symmetric encryption.
+This module ensures that sensitive credentials are stored securely.
 """
-
-import base64
 import os
-import hashlib
 import logging
+from pathlib import Path
+from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger(__name__)
 
-
-class SimplePasswordEncryption:
-    """简单的密码加密解密类（使用Base64 + 简单混淆）"""
-
-    def __init__(self, salt: str = "DataQuery2024"):
-        """
-        初始化加密器
-
-        Args:
-            salt: 加密盐值
-        """
-        self.salt = salt
+class PasswordEncryptor:
+    """
+    A secure class for encrypting and decrypting passwords using a secret key.
+    """
+    def __init__(self, secret_key: bytes):
+        if not secret_key or len(secret_key) < 32:
+            raise ValueError("A valid secret key of at least 32 bytes is required.")
+        self.fernet = Fernet(secret_key)
 
     def encrypt_password(self, password: str) -> str:
-        """
-        加密密码（使用Base64 + 简单混淆）
-
-        Args:
-            password: 明文密码
-
-        Returns:
-            加密后的密码
-        """
         if not password:
             return ""
-
         try:
-            # 添加盐值
-            salted_password = f"{self.salt}:{password}:{self.salt}"
-            # Base64编码
-            encoded = base64.b64encode(salted_password.encode("utf-8")).decode("utf-8")
-            # 添加前缀标识这是加密的密码
-            return f"ENC:{encoded}"
+            encrypted = self.fernet.encrypt(password.encode("utf-8"))
+            return encrypted.decode("utf-8")
         except Exception as e:
-            logger.error(f"密码加密失败: {str(e)}")
-            return password
+            logger.error(f"Password encryption failed: {e}")
+            return password # Fallback to plaintext on failure
 
     def decrypt_password(self, encrypted_password: str) -> str:
-        """
-        解密密码
-
-        Args:
-            encrypted_password: 加密的密码
-
-        Returns:
-            明文密码
-        """
         if not encrypted_password or encrypted_password == "********":
             return ""
-
-        # 如果不是加密的密码，直接返回
-        if not encrypted_password.startswith("ENC:"):
-            return encrypted_password
-
         try:
-            # 移除前缀
-            encoded = encrypted_password[4:]
-            # Base64解码
-            decoded = base64.b64decode(encoded.encode("utf-8")).decode("utf-8")
-            # 移除盐值
-            parts = decoded.split(":")
-            if len(parts) >= 3 and parts[0] == self.salt and parts[-1] == self.salt:
-                return ":".join(parts[1:-1])  # 中间部分是原始密码
-            else:
-                # 格式不正确，返回原始值
-                return encrypted_password
+            decrypted = self.fernet.decrypt(encrypted_password.encode("utf-8"))
+            return decrypted.decode("utf-8")
+        except InvalidToken:
+            logger.warning("Invalid token: The password was likely encrypted with a different key or is not encrypted.")
+            return encrypted_password # Return as is if it's not a valid token
         except Exception as e:
-            logger.error(f"密码解密失败: {str(e)}")
-            # 如果解密失败，可能是旧的未加密密码，直接返回
-            return encrypted_password
+            logger.error(f"Password decryption failed: {e}")
+            return encrypted_password # Fallback on other errors
 
     def is_encrypted(self, password: str) -> bool:
-        """
-        检查密码是否已加密
+        if not password:
+            return False
+        try:
+            self.fernet.decrypt(password.encode("utf-8"), ttl=None)
+            return True
+        except (InvalidToken, TypeError):
+            return False
+        except Exception:
+            return False
 
-        Args:
-            password: 密码字符串
+def _initialize_global_encryptor() -> PasswordEncryptor:
+    """
+    Initializes and returns the global password encryptor instance.
+    This function handles key loading/generation upon module import.
+    """
+    try:
+        config_dir = Path(__file__).parent.parent / "config"
+        secret_key_file = config_dir / "secret.key"
+        secret_key = None
 
-        Returns:
-            True if encrypted, False otherwise
-        """
-        return password and password.startswith("ENC:")
+        config_dir.mkdir(exist_ok=True)
+        if secret_key_file.exists():
+            with open(secret_key_file, "rb") as f:
+                secret_key = f.read()
 
+        if not secret_key or len(secret_key) < 32:
+            logger.warning("Secret key not found or invalid. Generating a new one.")
+            secret_key = Fernet.generate_key()
+            with open(secret_key_file, "wb") as f:
+                f.write(secret_key)
+            logger.info(f"New secret key saved to {secret_key_file}")
+        
+        return PasswordEncryptor(secret_key)
 
-# 全局加密器实例
-password_encryptor = SimplePasswordEncryption()
+    except Exception as e:
+        logger.critical(f"Failed to initialize PasswordEncryptor: {e}")
+        return None
 
+# Initialize the global instance when the module is loaded.
+password_encryptor = _initialize_global_encryptor()
 
 def encrypt_config_passwords(config: dict) -> dict:
-    """
-    加密配置中的密码字段
-
-    Args:
-        config: 配置字典
-
-    Returns:
-        加密后的配置字典
-    """
+    if not config or not password_encryptor:
+        return config
     import copy
-
     config_copy = copy.deepcopy(config)
-
     if "params" in config_copy and "password" in config_copy["params"]:
         password = config_copy["params"]["password"]
-        if password and not password_encryptor.is_encrypted(password):
-            config_copy["params"]["password"] = password_encryptor.encrypt_password(
-                password
-            )
-
+        if password and password != "********" and not password_encryptor.is_encrypted(password):
+            config_copy["params"]["password"] = password_encryptor.encrypt_password(password)
     return config_copy
 
-
 def decrypt_config_passwords(config: dict) -> dict:
-    """
-    解密配置中的密码字段
-
-    Args:
-        config: 配置字典
-
-    Returns:
-        解密后的配置字典
-    """
+    if not config or not password_encryptor:
+        return config
     import copy
-
     config_copy = copy.deepcopy(config)
-
     if "params" in config_copy and "password" in config_copy["params"]:
         encrypted_password = config_copy["params"]["password"]
         if encrypted_password and encrypted_password != "********":
-            decrypted_password = password_encryptor.decrypt_password(encrypted_password)
-            config_copy["params"]["password"] = decrypted_password
-            logger.info(
-                f"解密密码: {encrypted_password[:20]}... -> {decrypted_password[:5]}..."
-            )
-
+            config_copy["params"]["password"] = password_encryptor.decrypt_password(encrypted_password)
     return config_copy
 
-
 def mask_config_passwords(config: dict) -> dict:
-    """
-    遮蔽配置中的密码字段（用于显示）
-
-    Args:
-        config: 配置字典
-
-    Returns:
-        遮蔽密码后的配置字典
-    """
+    if not config:
+        return config
     import copy
-
     config_copy = copy.deepcopy(config)
-
     if "params" in config_copy and "password" in config_copy["params"]:
         if config_copy["params"]["password"]:
             config_copy["params"]["password"] = "********"
-
     return config_copy

@@ -13,7 +13,8 @@ import {
   Divider,
   Grid,
   IconButton,
-  Tooltip
+  Tooltip,
+  CircularProgress // 导入 CircularProgress
 } from '@mui/material';
 import {
   CloudUpload as CloudUploadIcon,
@@ -31,6 +32,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadMode, setUploadMode] = useState('auto'); // 'auto', 'standard', 'chunked'
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isUploading, setIsUploading] = useState(false); // 新增上传状态
   const fileInputRef = useRef(null);
 
   // 文件大小阈值（50MB）
@@ -72,6 +74,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
 
   // 手动切换上传方式
   const handleUploadModeChange = (event) => {
+    console.log('切换上传模式:', event.target.checked);
     setUseChunkedUpload(event.target.checked);
     setUploadMode(event.target.checked ? 'chunked' : 'standard');
     setAutoDetectSize(false);
@@ -82,6 +85,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
     setSelectedFile(null);
     setUploadMode('auto');
     setAutoDetectSize(true);
+    setUseChunkedUpload(false); // 重置为标准上传
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -90,6 +94,14 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
   // 处理标准上传
   const handleStandardUpload = async (file) => {
     if (!file || !onUpload) return;
+
+    // 前端文件大小校验
+    if (file.size > LARGE_FILE_THRESHOLD) {
+      showError(`文件大小超过 ${formatFileSize(LARGE_FILE_THRESHOLD)}，请切换使用分块上传。`);
+      return;
+    }
+
+    setIsUploading(true); // 设置加载状态为 true
 
     try {
       await onUpload(file);
@@ -105,6 +117,8 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
       if (onUploadComplete) {
         onUploadComplete({ success: false, error: error.message });
       }
+    } finally {
+      setIsUploading(false); // 结束后设置加载状态为 false
     }
   };
 
@@ -152,56 +166,116 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
           支持CSV、Excel文件上传，自动选择最佳上传方式
         </Typography>
 
-        {/* 文件选择和拖拽区域 */}
-        <Box sx={{ mb: 3 }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.xlsx,.xls,.json,.parquet,.pq"
-            onChange={handleFileSelect}
-            style={{ display: 'none' }}
-            id="enhanced-file-upload"
+        {/* 上传方式选择 - 在文件选择之前 */}
+        <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={useChunkedUpload}
+                onChange={handleUploadModeChange}
+                color="primary"
+              />
+            }
+            label="使用分块上传"
           />
-
-          {/* 拖拽上传区域 */}
-          <Box
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            sx={{
-              border: `2px dashed ${isDragOver ? '#1976d2' : '#ccc'}`,
-              borderRadius: 2,
-              p: 4,
-              textAlign: 'center',
-              backgroundColor: isDragOver ? 'rgba(25, 118, 210, 0.04)' : 'transparent',
-              transition: 'all 0.3s ease',
-              cursor: 'pointer',
-              '&:hover': {
-                borderColor: '#1976d2',
-                backgroundColor: 'rgba(25, 118, 210, 0.04)',
-              }
-            }}
-          >
-            <CloudUploadIcon
-              sx={{
-                fontSize: 48,
-                color: isDragOver ? '#1976d2' : '#999',
-                mb: 2
-              }}
-            />
-            <Typography variant="h6" sx={{ mb: 1, color: isDragOver ? '#1976d2' : 'text.primary' }}>
-              拖放文件到此处
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              或点击选择文件
-            </Typography>
-          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+            {useChunkedUpload ? "已启用分块上传（支持大文件和断点续传）" : "已启用标准上传（适合小文件）"}
+          </Typography>
         </Box>
 
-        {/* 文件信息显示 */}
-        {selectedFile && (
+        {/* 文件选择和拖拽区域 - 根据上传方式显示不同界面 */}
+        {!useChunkedUpload ? (
+          // 标准上传界面
+          <Box sx={{ mb: 3 }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls,.json,.parquet,.pq"
+              onChange={handleFileSelect}
+              style={{ display: 'none' }}
+              id="enhanced-file-upload"
+            />
+
+            {/* 拖拽上传区域 */}
+            <Box
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              sx={{
+                border: `2px dashed ${isDragOver ? '#1976d2' : '#ccc'}`,
+                borderRadius: 2,
+                p: 4,
+                textAlign: 'center',
+                backgroundColor: isDragOver ? 'rgba(25, 118, 210, 0.04)' : 'transparent',
+                transition: 'all 0.3s ease',
+                cursor: 'pointer',
+                '&:hover': {
+                  borderColor: '#1976d2',
+                  backgroundColor: 'rgba(25, 118, 210, 0.04)',
+                }
+              }}
+            >
+              <CloudUploadIcon
+                sx={{
+                  fontSize: 48,
+                  color: isDragOver ? '#1976d2' : '#999',
+                  mb: 2
+                }}
+              />
+              <Typography variant="h6" sx={{ mb: 1, color: isDragOver ? '#1976d2' : 'text.primary' }}>
+                拖放文件到此处
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                或点击选择文件
+              </Typography>
+            </Box>
+          </Box>
+        ) : (
+          // 分块上传界面（直接显示分块上传组件）
+          <Box sx={{ mb: 3 }}>
+            {selectedFile ? (
+              <ChunkedUploader
+                file={selectedFile}
+                onUploadComplete={onUploadComplete}
+                onUploadProgress={(progress) => {
+                  console.log('Upload progress:', progress);
+                }}
+              />
+            ) : (
+              <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
+                <CardContent>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                    请先选择文件
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    请先选择要上传的文件，然后开始分块上传
+                  </Typography>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,.json,.parquet,.pq"
+                    onChange={handleFileSelect}
+                    style={{ display: 'none' }}
+                    id="enhanced-file-upload"
+                  />
+                  <Button
+                    variant="contained"
+                    startIcon={<CloudUploadIcon />}
+                    onClick={() => fileInputRef.current?.click()}
+                    sx={{ borderRadius: 20 }}
+                  >
+                    选择文件
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </Box>
+        )}
+
+        {/* 文件信息显示和标准上传按钮 */}
+        {selectedFile && !useChunkedUpload && (
           <Box sx={{ mb: 3 }}>
             <Alert severity="info" sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -219,84 +293,35 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
               </Box>
             </Alert>
 
-            {/* 上传方式选择 */}
+            {/* 上传方式提示 */}
             <Box sx={{ mb: 2 }}>
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} sm={6}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={useChunkedUpload}
-                        onChange={handleUploadModeChange}
-                        color="primary"
-                      />
-                    }
-                    label="使用分块上传"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    {uploadMode === 'auto' && (
-                      <Chip
-                        icon={<SpeedIcon />}
-                        label="自动选择"
-                        color="primary"
-                        variant="outlined"
-                        size="small"
-                      />
-                    )}
-                    {uploadMode === 'standard' && (
-                      <Chip
-                        label="标准上传"
-                        color="success"
-                        variant="outlined"
-                        size="small"
-                      />
-                    )}
-                    {uploadMode === 'chunked' && (
-                      <Chip
-                        icon={<SpeedIcon />}
-                        label="分块上传"
-                        color="warning"
-                        variant="outlined"
-                        size="small"
-                      />
-                    )}
-                    <Tooltip title="大于50MB的文件建议使用分块上传">
-                      <IconButton size="small" sx={{ ml: 1 }}>
-                        <InfoIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </Grid>
-              </Grid>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Chip
+                  label="标准上传"
+                  color="success"
+                  variant="outlined"
+                  size="small"
+                />
+                <Tooltip title="小于50MB的文件建议使用标准上传">
+                  <IconButton size="small" sx={{ ml: 1 }}>
+                    <InfoIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
             </Box>
 
             <Divider sx={{ mb: 2 }} />
-          </Box>
-        )}
 
-        {/* 上传按钮区域 */}
-        {selectedFile && (
-          <Box sx={{ mb: 3 }}>
-            {!useChunkedUpload ? (
-              <Button
-                variant="contained"
-                fullWidth
-                onClick={() => handleStandardUpload(selectedFile)}
-                sx={{ py: 1.5 }}
-              >
-                开始上传
-              </Button>
-            ) : (
-              <ChunkedUploader
-                file={selectedFile}
-                onUploadComplete={onUploadComplete}
-                onUploadProgress={(progress) => {
-                  console.log('Upload progress:', progress);
-                }}
-              />
-            )}
+            {/* 标准上传按钮 */}
+            <Button
+              variant="contained"
+              fullWidth
+              onClick={() => handleStandardUpload(selectedFile)}
+              sx={{ py: 1.5 }}
+              disabled={isUploading}
+            >
+              {isUploading ? <CircularProgress size={24} color="inherit" /> : '开始上传'}
+            </Button>
           </Box>
         )}
 
@@ -304,8 +329,8 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
         <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
           <Typography variant="caption" color="text.secondary">
             💡 <strong>智能上传提示：</strong><br />
-            • 小文件（&lt;50MB）：使用标准上传，速度快<br />
-            • 大文件（≥50MB）：自动切换到分块上传，支持断点续传<br />
+            • 标准上传：适合小于50MB的小文件，上传速度快<br />
+            • 分块上传：适合大文件，支持断点续传，提高上传成功率<br />
             • 支持格式：CSV, Excel (.xlsx, .xls), JSON, Parquet
           </Typography>
         </Box>

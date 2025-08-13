@@ -4,7 +4,7 @@
     "http://localhost:3000",
     "http://localhost:5173"
   ],
-  "max_file_size": 104857600,
+  "max_file_size": 53687091200,
   "query_timeout": 300,
   "max_query_rows": 10000,
   "enable_caching": true,

@@ -28,36 +28,28 @@ import {
   Storage as DatabaseIcon
 } from '@mui/icons-material';
 import { useToast } from '../../contexts/ToastContext';
+import { deleteFileDataSource } from '../../services/apiClient'; // 导入新的删除函数
 
-const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh, refreshTrigger }) => {
-  console.log('DataSourceList 组件渲染 - 不再进行任何API调用');
-
+const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh }) => {
   const { showSuccess, showError } = useToast();
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // 使用 ref 来避免不必要的重新渲染
-  const lastPropsRef = useRef({ dataSources: [], databaseConnections: [] });
-
-  // 从传递的dataSources中分离文件，数据库连接单独传递
-  const files = dataSources.filter(ds => ds.sourceType === 'file').map(ds => ds.name);
-
-  // ⚠️ 重要：完全依赖 props，绝不进行任何 API 调用
+  // 从传递的dataSources中分离文件数据源
+  const fileDataSources = dataSources.filter(ds => ds.sourceType === 'file');
   const effectiveDatabases = databaseConnections || [];
+
   const [deleteDialog, setDeleteDialog] = useState({ open: false, item: null, type: null });
   const [previewDialog, setPreviewDialog] = useState({ open: false, data: null });
 
-  // ⚠️ 绝对不进行任何 API 调用，完全依赖 props
-
   // 手动刷新（仅通知父组件）
   const manualRefresh = async () => {
-    console.log('DataSourceList - 手动刷新：通知父组件');
     setLoading(true);
     setError('');
     try {
       if (onRefresh) {
-        onRefresh();
+        await onRefresh();
       }
     } catch (error) {
       setError('刷新数据源失败');
@@ -66,51 +58,21 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
     }
   };
 
-  // 简化的初始化逻辑 - 只设置加载状态，不进行任何 API 调用
   useEffect(() => {
-    console.log('DataSourceList - useEffect 初始化，不进行任何 API 调用');
-    // 立即设置为加载完成，因为数据来自 props
     setInitialLoading(false);
-  }, []); // 空依赖数组，只执行一次
+  }, []);
 
-  // 监听 props 变化，但不进行 API 调用
-  useEffect(() => {
-    console.log('DataSourceList - props 变化:', {
-      dataSources: dataSources.length,
-      databaseConnections: databaseConnections.length
-    });
-
-    // 更新 ref 以避免不必要的重新渲染
-    lastPropsRef.current = { dataSources, databaseConnections };
-  }, [dataSources, databaseConnections]);
-
-  // 不再需要响应外部刷新触发，数据由父组件管理
-
-  // 删除文件
-  const deleteFile = async (filename) => {
+  // 新的、健壮的删除文件数据源函数
+  const handleDeleteFileDataSource = async (sourceId) => {
     try {
-      // 构建完整的文件路径
-      const filePath = `temp_files/${filename}`;
-      const response = await fetch('/api/delete_file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: filePath })
-      });
-
-      if (response.ok) {
-        setDeleteDialog({ open: false, item: null, type: null });
-        showSuccess('文件删除成功');
-        // 立即触发父组件刷新
-        if (onRefresh) {
-          onRefresh();
-        }
-      } else {
-        const errorMsg = '删除文件失败';
-        setError(errorMsg);
-        showError(errorMsg);
+      await deleteFileDataSource(sourceId);
+      setDeleteDialog({ open: false, item: null, type: null });
+      showSuccess('文件数据源删除成功');
+      if (onRefresh) {
+        onRefresh();
       }
-    } catch (error) {
-      const errorMsg = '删除文件失败: ' + error.message;
+    } catch (err) {
+      const errorMsg = `删除文件失败: ${err.message}`;
       setError(errorMsg);
       showError(errorMsg);
     }
@@ -126,7 +88,6 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
       if (response.ok) {
         setDeleteDialog({ open: false, item: null, type: null });
         showSuccess('数据库连接删除成功');
-        // 立即触发父组件刷新
         if (onRefresh) {
           onRefresh();
         }
@@ -135,8 +96,8 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
         setError(errorMsg);
         showError(errorMsg);
       }
-    } catch (error) {
-      const errorMsg = '删除数据库连接失败: ' + error.message;
+    } catch (err) {
+      const errorMsg = `删除数据库连接失败: ${err.message}`;
       setError(errorMsg);
       showError(errorMsg);
     }
@@ -149,9 +110,12 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
       if (response.ok) {
         const data = await response.json();
         setPreviewDialog({ open: true, data: { filename, ...data } });
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || '预览失败');
       }
-    } catch (error) {
-      const errorMsg = '预览文件失败: ' + error.message;
+    } catch (err) {
+      const errorMsg = `预览文件失败: ${err.message}`;
       setError(errorMsg);
       showError(errorMsg);
     }
@@ -164,7 +128,7 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
   const confirmDelete = () => {
     const { item, type } = deleteDialog;
     if (type === 'file') {
-      deleteFile(item);
+      handleDeleteFileDataSource(item.id); // 使用新的删除函数和 item.id
     } else if (type === 'database') {
       deleteDatabase(item.id);
     }
@@ -200,24 +164,24 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
         <Box sx={{ p: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
             <FileIcon color="primary" />
-            已上传文件 ({files.length})
+            已上传文件 ({fileDataSources.length})
           </Typography>
         </Box>
         <Divider />
-        {files.length === 0 ? (
+        {fileDataSources.length === 0 ? (
           <Box sx={{ p: 3, textAlign: 'center', color: 'text.secondary' }}>
             暂无上传的文件
           </Box>
         ) : (
           <List>
-            {files.map((filename, index) => (
-              <ListItem key={index} divider={index < files.length - 1}>
+            {fileDataSources.map((source, index) => (
+              <ListItem key={source.id} divider={index < fileDataSources.length - 1}>
                 <ListItemText
                   primary={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body1">{filename}</Typography>
+                      <Typography variant="body1">{source.name}</Typography>
                       <Chip
-                        label={filename.split('.').pop().toUpperCase()}
+                        label={source.name.split('.').pop().toUpperCase()}
                         size="small"
                         color="primary"
                         variant="outlined"
@@ -227,13 +191,13 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
                 />
                 <ListItemSecondaryAction>
                   <Tooltip title="预览数据">
-                    <IconButton onClick={() => previewFile(filename)} size="small">
+                    <IconButton onClick={() => previewFile(source.name)} size="small">
                       <ViewIcon />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="删除文件">
                     <IconButton 
-                      onClick={() => handleDelete(filename, 'file')} 
+                      onClick={() => handleDelete(source, 'file')} 
                       size="small"
                       color="error"
                     >
@@ -302,11 +266,11 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
       <Dialog open={deleteDialog.open} onClose={() => setDeleteDialog({ open: false, item: null, type: null })}>
         <DialogTitle>确认删除</DialogTitle>
         <DialogContent>
-          确定要删除这个{deleteDialog.type === 'file' ? '文件' : '数据库连接'}吗？
+          确定要删除这个{deleteDialog.type === 'file' ? '文件数据源' : '数据库连接'}吗？
           <br />
           <strong>
             {deleteDialog.type === 'file' 
-              ? deleteDialog.item 
+              ? deleteDialog.item?.name 
               : deleteDialog.item?.name || '未命名连接'
             }
           </strong>
@@ -334,7 +298,7 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
             <Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 文件大小: {previewDialog.data.file_size} 字节 | 
-                总行数: {previewDialog.data.total_rows} | 
+                总行数: {previewDialog.data.total_rows === -1 ? 'N/A' : previewDialog.data.total_rows} | 
                 列数: {previewDialog.data.columns?.length}
               </Typography>
               <Box sx={{ overflowX: 'auto' }}>
@@ -351,11 +315,13 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh,
                   <tbody>
                     {previewDialog.data.preview_data?.map((row, i) => (
                       <tr key={i}>
-                        {previewDialog.data.columns?.map((col, j) => (
-                          <td key={j} style={{ border: '1px solid #ddd', padding: '8px' }}>
-                            {row[col]}
-                          </td>
-                        ))}
+                        <tr key={i}>
+                          {previewDialog.data.columns?.map((col, j) => (
+                            <td key={j} style={{ border: '1px solid #ddd', padding: '8px' }}>
+                              {typeof row[col] === 'object' ? JSON.stringify(row[col]) : row[col]}
+                            </td>
+                          ))}
+                        </tr>
                       </tr>
                     ))}
                   </tbody>

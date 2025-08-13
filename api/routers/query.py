@@ -43,6 +43,16 @@ def get_join_type_sql(join_type):
     else:
         return "INNER JOIN"  # 默认使用内连接
 
+def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
+    """确保SQL查询有LIMIT子句，防止返回过多数据。"""
+    # 使用正则表达式检查LIMIT子句，更稳健
+    if not re.search(r'\sLIMIT\s+\d+\s*($|;)', query, re.IGNORECASE):
+        if query.strip().endswith(";"):
+            return f"{query[:-1]} LIMIT {default_limit};"
+        else:
+            return f"{query} LIMIT {default_limit}"
+    return query
+
 
 def safe_alias(table, col):
     import re
@@ -524,7 +534,7 @@ async def perform_query(query_request: QueryRequest):
                         # 读取MySQL配置文件
                         mysql_config_file = os.path.join(
                             os.path.dirname(os.path.dirname(__file__)),
-                            "mysql_configs.json",
+                            "config/mysql-configs.json",
                         )
                         if not os.path.exists(mysql_config_file):
                             raise ValueError("MySQL配置文件不存在")
@@ -1011,7 +1021,7 @@ async def execute_sql(request: dict = Body(...)):
                     from models.query_models import DatabaseConnection, DataSourceType
 
                     config_path = os.path.join(
-                        os.path.dirname(os.path.dirname(__file__)), "mysql_configs.json"
+                        os.path.dirname(os.path.dirname(__file__)), "config/mysql-configs.json"
                     )
                     with open(config_path, "r", encoding="utf-8") as f:
                         configs = json.load(f)
@@ -1221,7 +1231,7 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                         try:
                             config_path = os.path.join(
                                 os.path.dirname(os.path.dirname(__file__)),
-                                "mysql_configs.json",
+                                "config/mysql-configs.json",
                             )
                             if os.path.exists(config_path):
                                 with open(config_path, "r", encoding="utf-8") as f:

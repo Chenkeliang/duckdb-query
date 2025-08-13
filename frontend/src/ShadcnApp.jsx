@@ -25,6 +25,7 @@ import {
   getMySQLDataSources,
   listFiles,
   getFileColumns,
+  getFileDataSources,
   testDatabaseConnection,
   createDatabaseConnection
 } from './services/apiClient';
@@ -78,69 +79,75 @@ const ShadcnApp = () => {
 
     try {
       console.log('🔄 ShadcnApp - 开始加载数据...');
-      console.log('🔄 当前时间:', new Date().toISOString());
-      console.log('🔄 强制刷新模式:', force);
-      console.log('🔄 RequestManager stats before:', requestManager.getStats());
 
-      const [dataSourcesRes, connectionsRes, duckdbTablesRes, filesRes] = await Promise.all([
+      const [dataSourcesRes, connectionsRes, duckdbTablesRes, fileDataSourcesRes, legacyFilesRes] = await Promise.all([
         getMySQLDataSources(),
         listDatabaseConnections(),
         getDuckDBTables(),
+        getFileDataSources(),
         listFiles()
       ]);
 
-      console.log('🔄 RequestManager stats after:', requestManager.getStats());
       console.log('🔄 API调用完成，开始处理数据...');
 
       let allDataSources = [];
+      const knownFileNames = new Set();
 
       if (dataSourcesRes.success) {
-        // 使用正确的数据字段 - MySQL连接API返回connections数组
         const mysqlSources = dataSourcesRes.connections || [];
         allDataSources = [...allDataSources, ...mysqlSources];
       }
 
-      // 加载上传的文件数据源
-      if (Array.isArray(filesRes)) {
-        const filePromises = filesRes.map(async (filename) => {
-          try {
-            const columns = await getFileColumns(filename);
+      // 1. 优先处理有完整元数据的文件数据源
+      if (fileDataSourcesRes.success && Array.isArray(fileDataSourcesRes.datasources)) {
+        const fileSources = fileDataSourcesRes.datasources.map(ds => {
+            knownFileNames.add(ds.filename); // 记录已知文件名，用于去重
             return {
-              id: filename,
-              name: filename,
-              sourceType: 'file',
-              type: 'file',
-              columns: columns || [],
-              columnCount: (columns || []).length
+                id: ds.source_id,
+                name: ds.filename,
+                sourceType: 'file',
+                type: 'file',
+                columns: ds.columns || [],
+                columnCount: ds.column_count || 0
             };
-          } catch (error) {
-            console.error(`获取文件 ${filename} 列信息失败:`, error);
-            return {
-              id: filename,
-              name: filename,
-              sourceType: 'file',
-              type: 'file',
-              columns: [],
-              columnCount: 0
-            };
-          }
         });
-
-        const fileSources = await Promise.all(filePromises);
         allDataSources = [...allDataSources, ...fileSources];
       }
 
+      // 2. 处理扫描到的但未被追踪的“历史”文件
+      if (Array.isArray(legacyFilesRes)) {
+        const legacyFilePromises = legacyFilesRes
+          .filter(filename => !knownFileNames.has(filename)) // 过滤掉已知文件
+          .map(async (filename) => {
+            try {
+              const columns = await getFileColumns(filename);
+              return {
+                id: filename,
+                name: filename,
+                sourceType: 'file',
+                type: 'file',
+                columns: columns || [],
+                columnCount: (columns || []).length
+              };
+            } catch (error) {
+              console.error(`获取历史文件 ${filename} 的列信息失败:`, error);
+              return null;
+            }
+        });
+
+        const legacyFileSources = (await Promise.all(legacyFilePromises)).filter(Boolean);
+        allDataSources = [...allDataSources, ...legacyFileSources];
+      }
+
       if (duckdbTablesRes.success) {
-        // 使用正确的数据字段
         const duckdbTables = duckdbTablesRes.tables || duckdbTablesRes.data || [];
         const duckdbSources = duckdbTables.map(table => {
-          // 处理表名，可能是字符串或对象
           const tableName = typeof table === 'string' ? table : (table.table_name || table.name || String(table));
           const columns = typeof table === 'object' ? (table.columns || []) : [];
           const columnCount = typeof table === 'object' ? (table.column_count || columns.length) : 0;
 
           return {
-            id: tableName, // 直接使用表名作为ID，不添加前缀
+            id: tableName,
             name: tableName,
             sourceType: 'duckdb',
             type: 'table',
@@ -153,36 +160,22 @@ const ShadcnApp = () => {
 
       setDataSources(allDataSources);
 
-      // 修复数据库连接数据结构问题
-      console.log('ShadcnApp - 数据库连接API响应:', connectionsRes);
-
       let connections = [];
       if (connectionsRes.success) {
-        // 尝试多种可能的数据字段
         connections = connectionsRes.connections || connectionsRes.databaseConnectionsData || [];
       }
-
-      console.log('ShadcnApp - 解析到的数据库连接:', connections);
       setDatabaseConnections(connections);
       console.log('ShadcnApp - 数据加载完成');
+
     } catch (error) {
       console.error('ShadcnApp - 加载初始数据失败:', error);
     } finally {
       setIsLoading(false);
     }
-    }, force ? 1000 : 3000); // 强制刷新1秒防抖，普通刷新3秒防抖
+    }, force ? 1000 : 3000);
   };
 
   const triggerRefresh = () => {
-    const now = Date.now();
-    const timeSinceLastTrigger = now - lastFetchTime;
-
-    // 如果距离上次触发不足5秒，则跳过
-    if (timeSinceLastTrigger < 5000) {
-      console.log('ShadcnApp - 跳过刷新触发，距离上次不足5秒');
-      return;
-    }
-
     // 清除请求管理器的缓存，确保获取最新数据
     requestManager.clearAllCache();
 

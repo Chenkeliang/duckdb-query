@@ -35,7 +35,7 @@ class AppConfig:
 
     debug: bool = False
     cors_origins: List[str] = None
-    max_file_size: int = 100 * 1024 * 1024  # 100MB
+    max_file_size: int = 50 * 1024 * 1024 * 1024  # 50GB
     query_timeout: int = 300  # 5分钟
     max_query_rows: int = 10000
     enable_caching: bool = True
@@ -50,11 +50,13 @@ class ConfigManager:
     """统一配置管理器"""
 
     def __init__(self, config_dir: str = None):
-        if config_dir is None:
+        if config_dir:
+            self.config_dir = Path(config_dir)
+        elif os.getenv("CONFIG_DIR"):
+            self.config_dir = Path(os.getenv("CONFIG_DIR"))
+        else:
             # 默认配置目录
             self.config_dir = Path(__file__).parent.parent.parent / "config"
-        else:
-            self.config_dir = Path(config_dir)
 
         self.config_dir.mkdir(exist_ok=True)
 

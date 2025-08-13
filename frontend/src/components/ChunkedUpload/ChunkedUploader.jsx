@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -18,7 +18,8 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Divider
+  Divider,
+  CircularProgress
 } from '@mui/material';
 import {
   CloudUpload as CloudUploadIcon,
@@ -32,14 +33,38 @@ import {
 import { useTheme } from '@mui/material/styles';
 import { useToast } from '../../contexts/ToastContext';
 
-const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
+const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
   const theme = useTheme();
   const { showSuccess, showError } = useToast();
-  const fileInputRef = useRef(null);
   const [uploadSessions, setUploadSessions] = useState({});
   const [dragOver, setDragOver] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [selectedSession, setSelectedSession] = useState(null);
+  const [isCompleting, setIsCompleting] = useState(false); // 添加完成状态
+
+  // 在组件挂载时开始上传文件
+  useEffect(() => {
+    console.log('ChunkedUploader useEffect triggered, file:', file);
+    let isMounted = true;
+    
+    if (file) {
+      console.log('Starting upload for file:', file.name);
+      initializeUpload(file).catch(error => {
+        console.error('上传过程中出现未处理的错误:', error);
+        if (isMounted) {
+          showError(`文件 "${file.name}" 上传失败: ${error.message}`);
+        }
+      });
+    } else {
+      console.log('No file provided to ChunkedUploader');
+    }
+    
+    // 清理函数
+    return () => {
+      console.log('ChunkedUploader 组件即将卸载');
+      isMounted = false;
+    };
+  }, [file]);
 
   // 文件大小格式化
   const formatFileSize = (bytes) => {
@@ -52,30 +77,28 @@ const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
 
   // 计算文件MD5哈希
   const calculateFileHash = (file) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const arrayBuffer = e.target.result;
-        const hashBuffer = await crypto.subtle.digest('MD5', arrayBuffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        resolve(hashHex);
-      };
-      reader.readAsArrayBuffer(file);
-    });
+    // 暂时不计算文件哈希，返回 null
+    return Promise.resolve(null);
   };
 
   // 初始化上传
   const initializeUpload = async (file) => {
     try {
-      const chunkSize = 1024 * 1024; // 1MB chunks
-      const fileHash = await calculateFileHash(file);
+      const chunkSize = 10 * 1024 * 1024; // 10MB chunks
+      // 暂时不计算文件哈希
+      const fileHash = null;
 
       const formData = new FormData();
       formData.append('file_name', file.name);
       formData.append('file_size', file.size.toString());
       formData.append('chunk_size', chunkSize.toString());
-      formData.append('file_hash', fileHash);
+      formData.append('file_hash', fileHash || '');
+
+      console.log('正在初始化上传...', {
+        fileName: file.name,
+        fileSize: file.size,
+        chunkSize: chunkSize
+      });
 
       const response = await fetch('/api/upload/init', {
         method: 'POST',
@@ -83,6 +106,7 @@ const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
       });
 
       const data = await response.json();
+      console.log('上传初始化响应:', data);
 
       if (data.success) {
         const session = {
@@ -105,15 +129,22 @@ const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
           [data.upload_id]: session
         }));
 
+        console.log('开始上传分块...', session);
         // 开始上传分块
-        uploadChunks(session);
+        await uploadChunks(session);
+        console.log('分块上传完成');
 
         return data.upload_id;
       } else {
-        throw new Error(data.detail || '初始化上传失败');
+        const error = new Error(data.detail || '初始化上传失败');
+        showError(`文件 "${file.name}" 初始化上传失败: ${error.message}`);
+        throw error;
       }
     } catch (error) {
       console.error('初始化上传失败:', error);
+      if (error.message) {
+        showError(`文件 "${file.name}" 上传失败: ${error.message}`);
+      }
       throw error;
     }
   };
@@ -123,16 +154,39 @@ const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
     const { uploadId, file, chunkSize, totalChunks } = session;
 
     try {
+      console.log(`开始上传 ${totalChunks} 个分块，每个分块大小: ${chunkSize} bytes`);
+      
       for (let chunkNumber = 0; chunkNumber < totalChunks; chunkNumber++) {
+        console.log(`正在上传分块 ${chunkNumber + 1}/${totalChunks}`);
+        
         // 检查是否已取消
-        const currentSession = uploadSessions[uploadId];
-        if (!currentSession || currentSession.status === 'cancelled') {
+        let currentSession = session; // 默认使用传入的会话
+        
+        // 尝试从状态中获取最新的会话信息
+        setUploadSessions(prev => {
+          if (prev[uploadId]) {
+            currentSession = prev[uploadId];
+          }
+          return prev;
+        });
+        
+        console.log(`当前会话状态:`, currentSession);
+        
+        if (!currentSession) {
+          console.log('会话不存在，上传被取消');
+          return;
+        }
+        
+        if (currentSession.status === 'cancelled') {
+          console.log('会话状态为已取消，上传被取消');
           return;
         }
 
         const start = chunkNumber * chunkSize;
         const end = Math.min(start + chunkSize, file.size);
         const chunk = file.slice(start, end);
+        
+        console.log(`分块 ${chunkNumber} 大小: ${chunk.size} bytes`);
 
         const formData = new FormData();
         formData.append('upload_id', uploadId);
@@ -145,6 +199,7 @@ const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
         });
 
         const data = await response.json();
+        console.log(`分块 ${chunkNumber} 上传响应:`, data);
 
         if (data.success) {
           // 更新进度
@@ -171,27 +226,39 @@ const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
         }
       }
 
+      console.log('所有分块上传完成，开始调用完成接口');
       // 完成上传
       await completeUpload(uploadId);
 
     } catch (error) {
       console.error('上传分块失败:', error);
-      const session = uploadSessions[uploadId];
-      showError(`文件 "${session?.fileName || '未知文件'}" 分块上传失败: ${error.message}`);
-      setUploadSessions(prev => ({
-        ...prev,
-        [uploadId]: {
-          ...prev[uploadId],
-          status: 'failed',
-          error: error.message
+      setUploadSessions(prev => {
+        const session = prev[uploadId];
+        const errorMessage = error.message || '未知错误';
+        showError(`文件 "${session?.fileName || '未知文件'}" 分块上传失败: ${errorMessage}`);
+        
+        if (!session) {
+          return prev;
         }
-      }));
+
+        return {
+          ...prev,
+          [uploadId]: {
+            ...session,
+            status: 'failed',
+            error: errorMessage
+          }
+        };
+      });
     }
   };
 
   // 完成上传
   const completeUpload = async (uploadId) => {
     try {
+      // 设置完成状态为加载中
+      setIsCompleting(true);
+      
       const formData = new FormData();
       formData.append('upload_id', uploadId);
 
@@ -203,45 +270,64 @@ const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
       const data = await response.json();
 
       if (data.success) {
-        const endTime = Date.now();
-        const session = uploadSessions[uploadId];
-        const uploadTime = endTime - session.startTime;
-
-        setUploadSessions(prev => ({
-          ...prev,
-          [uploadId]: {
-            ...prev[uploadId],
-            status: 'completed',
-            progress: 100,
-            uploadTime: uploadTime,
-            fileInfo: data.file_info
+        setUploadSessions(prev => {
+          const session = prev[uploadId];
+          if (!session) {
+            console.error("Session not found for uploadId:", uploadId);
+            showError("An error occurred while completing the upload: session not found.");
+            return prev;
           }
-        }));
 
-        // 通知父组件上传完成
-        showSuccess(`文件 "${session.fileName}" 分块上传完成`);
-        if (onUploadComplete) {
-          onUploadComplete({
-            uploadId,
-            fileInfo: data.file_info,
-            uploadTime
-          });
-        }
+          const endTime = Date.now();
+          const uploadTime = endTime - session.startTime;
+
+          // 通知父组件上传完成
+          showSuccess(`文件 "${session.fileName}" 分块上传完成`);
+          if (onUploadComplete) {
+            onUploadComplete({
+              uploadId,
+              fileInfo: data.file_info,
+              uploadTime
+            });
+          }
+
+          return {
+            ...prev,
+            [uploadId]: {
+              ...session,
+              status: 'completed',
+              progress: 100,
+              uploadTime: uploadTime,
+              fileInfo: data.file_info
+            }
+          };
+        });
       } else {
         throw new Error(data.detail || '完成上传失败');
       }
     } catch (error) {
       console.error('完成上传失败:', error);
-      const session = uploadSessions[uploadId];
-      showError(`文件 "${session?.fileName || '未知文件'}" 上传失败: ${error.message}`);
-      setUploadSessions(prev => ({
-        ...prev,
-        [uploadId]: {
-          ...prev[uploadId],
-          status: 'failed',
-          error: error.message
+      setUploadSessions(prev => {
+        const session = prev[uploadId];
+        const errorMessage = error.message || '未知错误';
+        showError(`文件 "${session?.fileName || '未知文件'}" 上传失败: ${errorMessage}`);
+        
+        if (!session) {
+          return prev;
         }
-      }));
+
+        return {
+          ...prev,
+          [uploadId]: {
+            ...session,
+            status: 'failed',
+            error: errorMessage
+          }
+        };
+      });
+    } finally {
+      // 无论成功还是失败，都要重置加载状态
+      setIsCompleting(false);
     }
   };
 
@@ -262,42 +348,6 @@ const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
     } catch (error) {
       console.error('取消上传失败:', error);
     }
-  };
-
-  // 处理文件选择
-  const handleFileSelect = async (files) => {
-    for (const file of files) {
-      try {
-        await initializeUpload(file);
-      } catch (error) {
-        console.error(`文件 ${file.name} 上传失败:`, error);
-      }
-    }
-  };
-
-  // 拖拽处理
-  const handleDragOver = useCallback((e) => {
-    e.preventDefault();
-    setDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e) => {
-    e.preventDefault();
-    setDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = Array.from(e.dataTransfer.files);
-    handleFileSelect(files);
-  }, []);
-
-  // 文件输入处理
-  const handleFileInputChange = (e) => {
-    const files = Array.from(e.target.files);
-    handleFileSelect(files);
-    e.target.value = ''; // 清空输入
   };
 
   // 获取状态图标
@@ -335,45 +385,19 @@ const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
         📁 大文件分块上传
       </Typography>
 
-      {/* 上传区域 */}
-      <Card
-        sx={{
-          mb: 3,
-          borderRadius: 2,
-          border: dragOver ? `2px dashed ${theme.palette.primary.main}` : '2px dashed #e0e0e0',
-          backgroundColor: dragOver ? theme.palette.primary.light + '10' : 'transparent',
-          transition: 'all 0.3s ease'
-        }}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <CardContent sx={{ textAlign: 'center', py: 4 }}>
-          <CloudUploadIcon sx={{ fontSize: 64, color: theme.palette.primary.main, mb: 2 }} />
-          <Typography variant="h6" gutterBottom>
-            拖拽文件到此处或点击选择文件
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            支持 CSV, Excel, JSON, Parquet 格式，最大 1GB
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<CloudUploadIcon />}
-            onClick={() => fileInputRef.current?.click()}
-            sx={{ borderRadius: 20 }}
-          >
-            选择文件
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept=".csv,.xlsx,.xls,.json,.jsonl,.parquet,.pq"
-            style={{ display: 'none' }}
-            onChange={handleFileInputChange}
-          />
-        </CardContent>
-      </Card>
+      {/* 文件信息显示 */}
+      {file && (
+        <Card sx={{ mb: 3, borderRadius: 2 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 500 }}>
+              正在上传文件: {file.name}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              文件大小: {formatFileSize(file.size)}
+            </Typography>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 上传会话列表 */}
       {sessions.length > 0 && (
@@ -440,6 +464,15 @@ const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
                   </Typography>
                 )}
 
+                {isCompleting && session.status === 'uploading' && session.progress === 100 && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                    <CircularProgress size={16} sx={{ mr: 1 }} />
+                    <Typography variant="caption" color="text.secondary">
+                      正在处理文件，请稍候...
+                    </Typography>
+                  </Box>
+                )}
+
                 {session.error && (
                   <Alert severity="error" sx={{ mt: 1 }}>
                     {session.error}
@@ -479,7 +512,7 @@ const ChunkedUploader = ({ onUploadComplete, onUploadProgress }) => {
               </ListItemIcon>
               <ListItemText
                 primary="格式支持"
-                secondary="支持 CSV, Excel (.xlsx/.xls), JSON, Parquet 格式，最大文件大小 1GB"
+                secondary="支持 CSV, Excel (.xlsx/.xls), JSON, Parquet 格式，最大文件大小 50GB"
               />
             </ListItem>
             <ListItem>

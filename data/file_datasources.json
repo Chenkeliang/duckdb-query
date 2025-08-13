@@ -64,6 +64,29 @@
     ],
     "upload_time": "2025-08-01 10:43:58.925486"
   },
+  "新增地址_AI落地案例集_实体版领取": {
+    "source_id": "新增地址_AI落地案例集_实体版领取",
+    "filename": "新增地址《AI落地案例集》实体版领取.xlsx",
+    "file_path": "/app/temp_files/新增地址《AI落地案例集》实体版领取.xlsx",
+    "file_type": "excel",
+    "row_count": 34,
+    "column_count": 12,
+    "columns": [
+      "序号",
+      "提交答卷时间",
+      "所用时间",
+      "来源",
+      "来源详情",
+      "来自IP",
+      "1、手机号（*请务必核对，填写的手机号是您下单AI学习圈的手机号）",
+      "uid",
+      "2、请输入您的收货地址：—收货人姓名：",
+      "2、所在地区：",
+      "2、详细地址:",
+      "2、收货人电话："
+    ],
+    "upload_time": "2025-08-04 05:58:55.666724"
+  },
   "table_17e5d8d9_5888_4104_bd88_e0330c0c9446": {
     "source_id": "table_17e5d8d9_5888_4104_bd88_e0330c0c9446",
     "filename": "17e5d8d9-5888-4104-bd88-e0330c0c9446.csv",
@@ -88,29 +111,20 @@
       "content",
       "namespace"
     ],
-    "upload_time": "2025-08-04 03:40:11.565172"
+    "upload_time": "2025-08-11 11:41:30.684326"
   },
-  "新增地址_AI落地案例集_实体版领取": {
-    "source_id": "新增地址_AI落地案例集_实体版领取",
-    "filename": "新增地址《AI落地案例集》实体版领取.xlsx",
-    "file_path": "/app/temp_files/新增地址《AI落地案例集》实体版领取.xlsx",
-    "file_type": "excel",
-    "row_count": 34,
-    "column_count": 12,
+  "test_data": {
+    "source_id": "test_data",
+    "filename": "test_data.csv",
+    "file_path": "/app/temp_files/uploads/test_data.csv",
+    "file_type": "csv",
+    "row_count": 3,
+    "column_count": 3,
     "columns": [
-      "序号",
-      "提交答卷时间",
-      "所用时间",
-      "来源",
-      "来源详情",
-      "来自IP",
-      "1、手机号（*请务必核对，填写的手机号是您下单AI学习圈的手机号）",
-      "uid",
-      "2、请输入您的收货地址：—收货人姓名：",
-      "2、所在地区：",
-      "2、详细地址:",
-      "2、收货人电话："
+      "name",
+      "age",
+      "city"
     ],
-    "upload_time": "2025-08-04 05:58:55.666724"
+    "upload_time": "2025-08-12 06:12:40.331017"
   }
 }

@@ -22,7 +22,7 @@ class CacheManager:
     
     def __init__(self, cache_dir: str = None, default_ttl: int = 3600):
         if cache_dir is None:
-            self.cache_dir = Path(__file__).parent.parent.parent / "data" / "cache"
+            self.cache_dir = Path.cwd() / "data" / "cache"
         else:
             self.cache_dir = Path(cache_dir)
         

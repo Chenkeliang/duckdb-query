@@ -1,6 +1,5 @@
 # Docker Compose 开发环境配置
 # 简化版 - 直接在根目录使用
-version: '3.8'
 
 services:
   # 后端API服务
@@ -15,12 +14,13 @@ services:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
       - ENV=development
+      - CONFIG_DIR=/app/config
     volumes:
       - ./api:/app
       - ./data:/app/data
       - ./config:/app/config
-      - backend_temp:/app/temp_files
-      - backend_exports:/app/exports
+      - ./temp_files:/app/temp_files
+      - ./exports:/app/exports
     networks:
       - dataquery-network
     restart: unless-stopped
@@ -65,12 +65,6 @@ services:
     restart: unless-stopped
     stdin_open: true
     tty: true
-
-volumes:
-  backend_temp:
-    driver: local
-  backend_exports:
-    driver: local
 
 networks:
   dataquery-network:

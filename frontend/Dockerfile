@@ -3,10 +3,10 @@ FROM docker.io/node:18-alpine as build
 WORKDIR /app
 
 # 复制package文件
-COPY package*.json ./
+COPY package.json ./
 
 # 安装依赖（包括开发依赖，因为需要vite构建）
-RUN npm ci
+RUN npm install
 
 # 复制源代码
 COPY . .

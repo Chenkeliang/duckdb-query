@@ -36,10 +36,9 @@ from core.duckdb_engine import (
 from core.database_manager import db_manager
 from core.file_datasource_manager import (
     file_datasource_manager,
-    detect_file_type,
-    read_file_by_type,
     create_table_from_dataframe,
 )
+from core.file_utils import detect_file_type, read_file_by_type
 import pandas as pd
 import logging
 import os
@@ -523,56 +522,6 @@ def read_file_with_encoding(file_path, file_type):
     raise ValueError(f"无法解码文件 {file_path}，请检查文件编码")
 
 
-def detect_file_type(filename: str) -> str:
-    """检测文件类型"""
-    extension = filename.lower().split(".")[-1]
-
-    type_mapping = {
-        "csv": "csv",
-        "xls": "excel",
-        "xlsx": "excel",
-        "json": "json",
-        "jsonl": "json",
-        "parquet": "parquet",
-        "pq": "parquet",
-    }
-
-    return type_mapping.get(extension, "unknown")
-
-
-def read_file_by_type(
-    file_path: str, file_type: str = None, nrows: int = None
-) -> pd.DataFrame:
-    """根据文件类型读取文件"""
-    if file_type is None:
-        file_type = detect_file_type(file_path)
-
-    try:
-        if file_type == "csv":
-            return pd.read_csv(file_path, nrows=nrows, dtype=str)
-        elif file_type == "excel":
-            return pd.read_excel(file_path, nrows=nrows, dtype=str)
-        elif file_type == "json":
-            # 尝试读取JSON Lines格式
-            try:
-                df = pd.read_json(file_path, lines=True, nrows=nrows)
-                return df.astype(str)
-            except ValueError:
-                # 如果不是JSON Lines，尝试普通JSON
-                df = pd.read_json(file_path, nrows=nrows)
-                return df.astype(str)
-        elif file_type == "parquet":
-            df = pd.read_parquet(file_path)
-            if nrows:
-                df = df.head(nrows)
-            return df.astype(str)
-        else:
-            raise ValueError(f"不支持的文件类型: {file_type}")
-    except Exception as e:
-        logger.error(f"读取文件失败 {file_path}: {str(e)}")
-        raise
-
-
 def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
     """获取文件预览信息"""
     try:
@@ -582,22 +531,9 @@ def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
         # 获取文件大小
         file_size = os.path.getsize(file_path)
 
-        # 获取完整数据的行数（对于大文件，这可能比较慢）
-        try:
-            if file_type == "csv":
-                # 对于CSV，使用更快的行数统计方法
-                with open(file_path, "r", encoding="utf-8") as f:
-                    total_rows = sum(1 for line in f) - 1  # 减去标题行
-            elif file_type == "parquet":
-                # Parquet文件可以快速获取行数
-                pf = pq.ParquetFile(file_path)
-                total_rows = pf.metadata.num_rows
-            else:
-                # 对于其他格式，读取完整数据
-                full_df = read_file_by_type(file_path, file_type)
-                total_rows = len(full_df)
-        except Exception:
-            total_rows = len(df)  # 如果获取失败，使用预览数据的行数
+        # 优化：不再尝试读取整个文件来获取行数，以提高性能
+        # 对于大文件，这可能非常慢。行数可以在完全加载后获得。
+        total_rows = -1  # 使用-1表示行数未知或延迟计算
 
         # 处理不可序列化的数据（包括NaN值）
         processed_df = handle_non_serializable_data(df)
@@ -1562,3 +1498,63 @@ async def get_duckdb_tables():
     except Exception as e:
         logger.error(f"获取DuckDB表信息失败: {str(e)}")
         return {"success": False, "error": str(e), "tables": [], "count": 0}
+
+
+@router.delete("/api/file_datasources/{source_id}", tags=["Data Sources"])
+async def delete_file_datasource(source_id: str):
+    """删除文件数据源（包括文件、DuckDB表和配置条目）"""
+    try:
+        # 1. Get the datasource config to find the file path
+        datasource_config = file_datasource_manager.get_file_datasource(source_id)
+        
+        if not datasource_config:
+            logger.warning(f"数据源配置 '{source_id}' 不存在，将尝试按约定清理。")
+        else:
+            # 2. Delete the physical file if it exists
+            file_path = datasource_config.get("file_path")
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    logger.info(f"已删除物理文件: {file_path}")
+                except Exception as e:
+                    logger.error(f"删除物理文件失败 {file_path}: {str(e)}")
+
+        # 3. Drop the DuckDB table (table name is the source_id)
+        try:
+            duckdb_con.execute(f'DROP TABLE IF EXISTS "{source_id}"' )
+            logger.info(f"已从DuckDB中删除表: {source_id}")
+        except Exception as e:
+            logger.warning(f"删除DuckDB表失败 {source_id}: {str(e)}")
+
+        # 4. Delete the config entry
+        file_datasource_manager.delete_file_datasource(source_id)
+        
+        return {"success": True, "message": f"数据源 {source_id} 已成功删除"}
+
+    except Exception as e:
+        logger.error(f"删除数据源失败 {source_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除数据源失败: {str(e)}")
+
+
+@router.get("/api/file_datasources", tags=["Data Sources"])
+async def get_file_datasources():
+    """获取所有已保存的文件数据源配置，并过滤掉文件不存在的无效条目"""
+    try:
+        all_datasources = file_datasource_manager.list_file_datasources()
+        
+        # 验证每个数据源的文件是否仍然存在
+        verified_datasources = []
+        for ds in all_datasources:
+            file_path = ds.get("file_path")
+            if file_path and os.path.exists(file_path):
+                verified_datasources.append(ds)
+            else:
+                logger.warning(f"数据源 '{ds.get('source_id')}' 对应的文件不存在: {file_path}。已从列表中过滤。")
+
+        return {
+            "success": True,
+            "datasources": verified_datasources
+        }
+    except Exception as e:
+        logger.error(f"获取文件数据源失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取文件数据源失败: {str(e)}")

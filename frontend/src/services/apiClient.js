@@ -550,4 +550,24 @@ export const getUrlInfo = async (url) => {
   }
 };
 
+export const getFileDataSources = async () => {
+  try {
+    const response = await apiClient.get('/api/file_datasources');
+    return response.data;
+  } catch (error) {
+    console.error('获取文件数据源失败:', error);
+    throw error;
+  }
+};
+
+export const deleteFileDataSource = async (sourceId) => {
+  try {
+    const response = await apiClient.delete(`/api/file_datasources/${sourceId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`删除文件数据源 ${sourceId} 失败:`, error);
+    throw error;
+  }
+};
+
 export default apiClient;

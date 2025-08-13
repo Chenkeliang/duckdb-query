@@ -49,3 +49,14 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
+
+# Added from checklist
+venv/
+__pycache__/
+data/
+logs/
+*.md
+tests/
+*.sh
+*.py
+*.js

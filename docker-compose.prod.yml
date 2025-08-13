@@ -1,0 +1,62 @@
+# Docker Compose for Production/User Deployment
+# (为生产环境/最终用户设计的 Docker Compose 文件)
+# This file is intended for end-users to run the application.
+# (此文件旨在帮助最终用户运行本应用)
+# It uses pre-built images from Docker Hub and does not mount source code.
+# (它使用来自 Docker Hub 的预构建镜像，并且不会挂载源代码)
+
+version: '3.8'
+
+services:
+  backend:
+    # Using local build for testing
+    build:
+      context: .
+      dockerfile: ./api/Dockerfile
+    container_name: dataquery-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # All configurations should be passed via the .env file
+      # (所有的配置都应通过 .env 文件传入)
+      - PYTHONUNBUFFERED=1
+      - ENV=production
+    volumes:
+      # Mount local directories for persistent data
+      # (挂载本地目录以实现数据持久化)
+      - ./data:/app/data
+      - ./exports:/app/exports
+      - ./logs:/app/logs
+      - ./temp_files:/app/temp_files
+      - ./config:/app/config
+      - ./temp_files:/app/temp_files
+    networks:
+      - dataquery-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    # Using local build for testing
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dataquery-frontend
+    restart: unless-stopped
+    ports:
+      # The default port for users to access the UI
+      # (用户访问界面的默认端口)
+      - "80:80"
+    networks:
+      - dataquery-network
+    depends_on:
+      backend:
+        condition: service_healthy
+
+networks:
+  dataquery-network:
+    driver: bridge

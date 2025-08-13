@@ -58,3 +58,15 @@ docker-compose*
 
 # Tests
 tests/
+
+# Added from checklist
+node_modules/
+.env
+.env.*
+!/.env.example
+data/
+logs/
+*.md
+*.sh
+*.py
+*.js

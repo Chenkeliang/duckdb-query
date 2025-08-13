@@ -102,11 +102,10 @@ api/exports/*
 config/mysql-configs.json
 config/mysql-production.json
 config/datasources.json
-data/duckdb_data.db
-data/duckdb/main.db*
-data/duckdb/temp/
-data/uploads/*
+data/
+data/
 !data/uploads/.gitkeep
+!data/duckdb/.gitkeep
 
 # 清理报告文件
 cleanup-report.txt
