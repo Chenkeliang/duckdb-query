@@ -16,6 +16,7 @@ import EnhancedFileUploader from './components/DataSourceManager/EnhancedFileUpl
 import ModernDataDisplay from './components/Results/ModernDataDisplay';
 import DuckDBManagementPage from './components/DuckDBManager/DuckDBManagementPage';
 import DatabaseTableManager from './components/DatabaseManager/DatabaseTableManager';
+import AsyncTaskList from './components/AsyncTasks/AsyncTaskList';
 // import ToastDiagnostic from './components/ToastDiagnostic';
 
 // 导入服务
@@ -281,12 +282,13 @@ const ShadcnApp = () => {
         {/* 标签页导航 - Mantine风格 */}
         <div className="bg-white rounded-lg border shadow-sm mb-6">
           <div className="mantine-tabs">
-            {[
-              { id: "datasource", label: "数据源" },
-              { id: "query", label: "查询" },
-              { id: "sql", label: "SQL执行器" },
-              { id: "tablemanagement", label: "数据表管理" }
-            ].map((tab) => (
+                      {[
+            { id: "datasource", label: "数据源" },
+            { id: "query", label: "查询" },
+            { id: "sql", label: "SQL执行器" },
+            { id: "tablemanagement", label: "数据表管理" },
+            { id: "asynctasks", label: "异步任务" }
+          ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setCurrentTab(tab.id)}
@@ -491,6 +493,36 @@ const ShadcnApp = () => {
                     <DatabaseTableManager databaseConnections={databaseConnections} />
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* 异步任务页面 */}
+          {currentTab === "asynctasks" && (
+            <div className="p-6">
+              {/* 页面介绍 */}
+              <div className="page-intro">
+                <div className="page-intro-content">
+                  <div className="page-intro-desc">
+                    <div><strong>异步任务管理：</strong>提交耗时长的查询任务，避免阻塞界面</div>
+                    <div><strong>实时状态跟踪：</strong>实时查看任务执行状态和进度</div>
+                    <div><strong>结果下载：</strong>任务完成后可下载完整查询结果</div>
+                    <div><strong>结果预览：</strong>将异步查询结果作为数据源进行预览和进一步查询</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg border shadow-sm p-6">
+                <AsyncTaskList 
+                  onPreviewResult={(taskId) => {
+                    // 设置查询语句为 SELECT * FROM "async_result_{taskId}"
+                    const query = `SELECT * FROM "async_result_${taskId}" LIMIT 10000`;
+                    setCurrentTab("sql");
+                    // 这里需要找到一种方式将查询语句传递给SQL执行器
+                    // 暂时先打印到控制台
+                    console.log("预览异步任务结果:", query);
+                  }}
+                />
               </div>
             </div>
           )}

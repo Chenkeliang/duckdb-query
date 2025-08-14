@@ -40,7 +40,8 @@ import {
   deleteDuckDBTableEnhanced,
   getDuckDBTableInfo,
   readFromUrl,
-  getUrlInfo
+  getUrlInfo,
+  submitAsyncQuery
 } from '../services/apiClient';
 
 const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved }) => {
@@ -115,6 +116,32 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved }) => {
       }
     } catch (err) {
       setError(err.message || '查询执行失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 异步执行SQL查询
+  const executeAsyncSQL = async () => {
+    if (!sqlQuery.trim()) {
+      setError('请输入SQL查询语句');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await submitAsyncQuery(sqlQuery);
+
+      if (response.success) {
+        setSuccess(`异步任务已提交，任务ID: ${response.task_id.substring(0, 8)}...。请前往"异步任务"页面查看进度。`);
+      } else {
+        setError(response.message || '提交异步任务失败');
+      }
+    } catch (err) {
+      setError(err.message || '提交异步任务失败');
     } finally {
       setLoading(false);
     }
@@ -374,8 +401,11 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved }) => {
                 placeholder="输入您的SQL查询语句..."
               />
 
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 2 }}>
+                提示：界面查询默认限制10,000行。如需完整结果，请使用异步任务功能。
+              </Typography>
               <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} md={6}>
+                <Grid item xs={12} md={4}>
                   <TextField
                     label="保存结果为表 (可选)"
                     value={saveAsTable}
@@ -384,7 +414,7 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved }) => {
                     placeholder="例如: query_result"
                   />
                 </Grid>
-                <Grid item xs={12} md={6}>
+                <Grid item xs={12} md={4}>
                   <Button
                     variant="contained"
                     onClick={executeSQL}
@@ -393,7 +423,19 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved }) => {
                     fullWidth
                     sx={{ height: '56px' }}
                   >
-                    执行查询
+                    执行预览
+                  </Button>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Button
+                    variant="outlined"
+                    onClick={executeAsyncSQL}
+                    disabled={loading || !sqlQuery.trim()}
+                    startIcon={<PlayArrow />}
+                    fullWidth
+                    sx={{ height: '56px' }}
+                  >
+                    作为异步任务运行
                   </Button>
                 </Grid>
               </Grid>

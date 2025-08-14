@@ -183,9 +183,9 @@ export const deleteMySQLConfig = async (configId) => {
 };
 
 // 添加执行SQL查询的API函数
-export const executeSQL = async (sql, datasource) => {
+export const executeSQL = async (sql, datasource, is_preview = true) => {
   try {
-    const response = await apiClient.post('/api/execute_sql', { sql, datasource });
+    const response = await apiClient.post('/api/execute_sql', { sql, datasource, is_preview });
     return response.data;
   } catch (error) {
     console.error('执行SQL失败:', error);
@@ -454,11 +454,12 @@ export const getMySQLDataSources = async () => {
 };
 
 // 增强DuckDB API
-export const executeDuckDBSQL = async (sql, saveAsTable = null) => {
+export const executeDuckDBSQL = async (sql, saveAsTable = null, is_preview = true) => {
   try {
     const response = await apiClient.post('/api/duckdb/execute', {
       sql,
-      save_as_table: saveAsTable
+      save_as_table: saveAsTable,
+      is_preview: is_preview
     });
     return response.data;
   } catch (error) {
@@ -550,6 +551,7 @@ export const getUrlInfo = async (url) => {
   }
 };
 
+// 获取文件数据源
 export const getFileDataSources = async () => {
   try {
     const response = await apiClient.get('/api/file_datasources');
@@ -566,6 +568,70 @@ export const deleteFileDataSource = async (sourceId) => {
     return response.data;
   } catch (error) {
     console.error(`删除文件数据源 ${sourceId} 失败:`, error);
+    throw error;
+  }
+};
+
+// 异步任务API
+export const listAsyncTasks = async () => {
+  try {
+    const response = await apiClient.get('/api/async_tasks');
+    return response.data;
+  } catch (error) {
+    console.error('获取异步任务列表失败:', error);
+    throw error;
+  }
+};
+
+export const getAsyncTask = async (taskId) => {
+  try {
+    const response = await apiClient.get(`/api/async_tasks/${taskId}`);
+    return response.data;
+  } catch (error) {
+    console.error('获取异步任务详情失败:', error);
+    throw error;
+  }
+};
+
+export const submitAsyncQuery = async (sql) => {
+  try {
+    const response = await apiClient.post('/api/async_query', { sql });
+    return response.data;
+  } catch (error) {
+    console.error('提交异步查询失败:', error);
+    throw error;
+  }
+};
+
+export const downloadAsyncTaskResult = async (taskId) => {
+  try {
+    const response = await apiClient.get(`/api/async_tasks/${taskId}/result`, {
+      responseType: 'blob'
+    });
+    
+    // 获取文件名
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = `task-${taskId}-result.parquet`;
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1];
+      }
+    }
+    
+    // 创建下载链接
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('下载异步任务结果失败:', error);
     throw error;
   }
 };

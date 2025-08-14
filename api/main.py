@@ -17,6 +17,7 @@ from routers import (
     duckdb_query,
     chunked_upload,
     url_reader,
+    async_tasks,  # 异步任务路由
 )
 
 # 尝试导入可能存在的其他路由模块
@@ -205,6 +206,7 @@ app.include_router(paste_data.router)  # 数据粘贴板路由
 app.include_router(duckdb_query.router)  # DuckDB自定义SQL查询路由
 app.include_router(chunked_upload.router)  # 分块文件上传路由
 app.include_router(url_reader.router)  # URL文件读取路由
+app.include_router(async_tasks.router)  # 异步任务路由
 
 # 条件性注册可能存在的其他路由
 if enhanced_data_sources_available:
