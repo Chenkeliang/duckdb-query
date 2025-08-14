@@ -128,7 +128,7 @@ async def download_async_task_result(task_id: str):
         if not task:
             raise HTTPException(status_code=404, detail="任务不存在")
         
-        if task.status != "success":
+        if task.status != TaskStatus.SUCCESS.value:
             raise HTTPException(status_code=400, detail="任务尚未成功完成")
         
         if not task.result_file_path or not os.path.exists(task.result_file_path):

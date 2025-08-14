@@ -14,7 +14,9 @@ import EnhancedSQLExecutor from '../EnhancedSQLExecutor';
 const UnifiedSQLExecutor = ({ 
   databaseConnections = [], 
   onDataSourceSaved, 
-  onResultsReceived 
+  onResultsReceived,
+  previewQuery = "",
+  onPreviewQueryUsed
 }) => {
   const [activeTab, setActiveTab] = useState(0);
 

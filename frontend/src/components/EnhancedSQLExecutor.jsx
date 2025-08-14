@@ -44,7 +44,7 @@ import {
   submitAsyncQuery
 } from '../services/apiClient';
 
-const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved }) => {
+const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuery = "", onPreviewQueryUsed }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [sqlQuery, setSqlQuery] = useState('');
   const [fileUrl, setFileUrl] = useState('');
@@ -57,6 +57,17 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved }) => {
   const [duckdbTables, setDuckdbTables] = useState([]);
   const [tableManagerOpen, setTableManagerOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  // 当previewQuery变化时，设置SQL查询
+  useEffect(() => {
+    if (previewQuery) {
+      setSqlQuery(previewQuery);
+      // 通知父组件查询已被使用
+      if (onPreviewQueryUsed) {
+        onPreviewQueryUsed();
+      }
+    }
+  }, [previewQuery]);
 
   // 获取DuckDB中的表列表
   const fetchDuckDBTables = async () => {

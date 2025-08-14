@@ -47,6 +47,7 @@ const ShadcnApp = () => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lastFetchTime, setLastFetchTime] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [previewQuery, setPreviewQuery] = useState(""); // 用于预览异步任务结果的查询
 
   // 初始数据加载
   useEffect(() => {
@@ -427,6 +428,8 @@ const ShadcnApp = () => {
                     console.log('新数据源已保存:', newDataSource);
                   }}
                   onResultsReceived={setQueryResults}
+                  previewQuery={previewQuery}
+                  onPreviewQueryUsed={() => setPreviewQuery("")}
                 />
 
                 {/* 执行结果 */}
@@ -517,10 +520,10 @@ const ShadcnApp = () => {
                   onPreviewResult={(taskId) => {
                     // 设置查询语句为 SELECT * FROM "async_result_{taskId}"
                     const query = `SELECT * FROM "async_result_${taskId}" LIMIT 10000`;
+                    // 切换到SQL执行器标签页
                     setCurrentTab("sql");
-                    // 这里需要找到一种方式将查询语句传递给SQL执行器
-                    // 暂时先打印到控制台
-                    console.log("预览异步任务结果:", query);
+                    // 设置查询语句到SQL执行器
+                    setPreviewQuery(query);
                   }}
                 />
               </div>
