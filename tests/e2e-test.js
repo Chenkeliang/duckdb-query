@@ -189,40 +189,7 @@ class E2ETestSuite {
     }
   }
 
-  async testTabNavigation() {
-    console.log('\n🗂️ 测试标签页导航...');
-
-    const tabs = [
-      { name: '📁 数据源管理', selectors: ['[role="tab"]:has-text("数据源管理")', '.MuiTab-root:has-text("数据源管理")', 'button:has-text("数据源管理")'] },
-      { name: '🔍 数据查询与结果', selectors: ['[role="tab"]:has-text("数据查询")', '.MuiTab-root:has-text("数据查询")', 'button:has-text("数据查询")'] },
-      { name: '💾 SQL执行器', selectors: ['[role="tab"]:has-text("SQL执行器")', '.MuiTab-root:has-text("SQL执行器")', 'button:has-text("SQL执行器")'] },
-      { name: '🗄️ DuckDB管理', selectors: ['[role="tab"]:has-text("DuckDB管理")', '.MuiTab-root:has-text("DuckDB管理")', 'button:has-text("DuckDB管理")'] },
-      { name: '🗃️ 数据库表管理', selectors: ['[role="tab"]:has-text("数据库表管理")', '.MuiTab-root:has-text("数据库表管理")', 'button:has-text("数据库表管理")'] }
-    ];
-
-    for (const tab of tabs) {
-      let success = false;
-      for (const selector of tab.selectors) {
-        try {
-          const tabElement = this.page.locator(selector).first();
-          if (await tabElement.isVisible({ timeout: 2000 })) {
-            await tabElement.click();
-            await this.page.waitForTimeout(1000);
-            success = true;
-            break;
-          }
-        } catch (error) {
-          continue;
-        }
-      }
-
-      if (success) {
-        await this.addTestResult(`标签页-${tab.name}`, true, '导航成功');
-      } else {
-        await this.addTestResult(`标签页-${tab.name}`, false, '未找到标签页元素');
-      }
-    }
-  }
+  async testTabNavigation() {\n    console.log('\n\\uD83D\\uDDC2\\uFE0F 测试标签页导航...');\n\n    const tabs = [\n      { name: '\uD83D\uDCC1 数据源管理', selectors: ['[role=\"tab\"]:has-text(\"数据源管理\")', '.MuiTab-root:has-text(\"数据源管理\")', 'button:has-text(\"数据源管理\")'] },\n      { name: '\uD83D\uDD0D 数据查询与结果', selectors: ['[role=\"tab\"]:has-text(\"数据查询\")', '.MuiTab-root:has-text(\"数据查询\")', 'button:has-text(\"数据查询\")'] },\n      { name: '\uD83D\uDCBE SQL执行器', selectors: ['[role=\"tab\"]:has-text(\"SQL执行器\")', '.MuiTab-root:has-text(\"SQL执行器\")', 'button:has-text(\"SQL执行器\")'] },\n      { name: '\uD83D\uDDC4\\uFE0F DuckDB管理', selectors: ['[role=\"tab\"]:has-text(\"DuckDB管理\")', '.MuiTab-root:has-text(\"DuckDB管理\")', 'button:has-text(\"DuckDB管理\")'] },\n      { name: '\uD83D\uDCC3 数据库表管理', selectors: ['[role=\"tab\"]:has-text(\"数据库表管理\")', '.MuiTab-root:has-text(\"数据库表管理\")', 'button:has-text(\"数据库表管理\")'] },\n      { name: '\uD83D\uDCCB 异步任务', selectors: ['[role=\"tab\"]:has-text(\"异步任务\")', '.MuiTab-root:has-text(\"异步任务\")', 'button:has-text(\"异步任务\")'] }\n    ];\n\n    for (const tab of tabs) {\n      let success = false;\n      for (const selector of tab.selectors) {\n        try {\n          const tabElement = this.page.locator(selector).first();\n          if (await tabElement.isVisible({ timeout: 2000 })) {\n            await tabElement.click();\n            await this.page.waitForTimeout(1000);\n            success = true;\n            break;\n          }\n        } catch (error) {\n          continue;\n        }\n      }\n\n      if (success) {\n        await this.addTestResult(`标签页-${tab.name}`, true, '导航成功');\n      } else {\n        await this.addTestResult(`标签页-${tab.name}`, false, '未找到标签页元素');\n      }\n    }\n  }
 
   async testDatabaseTableManagement() {
     console.log('\n🗃️ 测试数据库表管理...');
@@ -280,6 +247,52 @@ class E2ETestSuite {
     }
   }
 
+  async testAsyncTasksPage() {
+    console.log('\n📋 测试异步任务页面...');
+
+    try {
+      // 尝试切换到异步任务标签
+      const tabSelectors = [
+        '[role="tab"]:has-text("异步任务")',
+        '.MuiTab-root:has-text("异步任务")',
+        'button:has-text("异步任务")'
+      ];
+
+      let tabFound = false;
+      for (const selector of tabSelectors) {
+        try {
+          const tab = this.page.locator(selector).first();
+          if (await tab.isVisible({ timeout: 2000 })) {
+            await tab.click();
+            await this.page.waitForTimeout(3000);
+            tabFound = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!tabFound) {
+        await this.addTestResult('异步任务页面', false, '未找到异步任务标签页');
+        return false;
+      }
+
+      // 检查页面标题
+      const pageTitle = await this.page.locator('h2:has-text("异步任务列表")');
+      if (await pageTitle.isVisible()) {
+        await this.addTestResult('异步任务页面', true, '页面加载正常');
+        return true;
+      } else {
+        await this.addTestResult('异步任务页面', false, '页面标题未找到');
+        return false;
+      }
+    } catch (error) {
+      await this.addTestResult('异步任务页面', false, `测试失败: ${error.message}`);
+      return false;
+    }
+  }
+
   async runAllTests() {
     console.log('🧪 开始执行完整的端到端测试...\n');
     
@@ -315,7 +328,10 @@ class E2ETestSuite {
       // 7. 测试数据库表管理
       await this.testDatabaseTableManagement();
       
-      // 8. 分析结果
+      // 8. 测试异步任务页面
+      await this.testAsyncTasksPage();
+      
+      // 9. 分析结果
       await this.analyzeResults(files, initialDisplay, refreshedDisplay);
       
     } catch (error) {
