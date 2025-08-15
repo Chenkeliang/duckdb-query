@@ -403,20 +403,23 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         pt: 3,
         borderTop: '1px solid rgba(0,0,0,0.06)'
       }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 1 }}>
+          提示：界面查询默认限制10,000行。如需完整结果，请使用异步任务功能。
+        </Typography>
         <Button
           variant="contained"
-          color="primary"
           onClick={handleExecuteQuery}
           disabled={selectedSources.length === 0 || isLoading}
           sx={{
-            mr: 2,
             borderRadius: 20,
-            px: 3,
-            py: 1,
+            px: 4,
+            py: 1.5,
+            fontSize: '0.95rem',
+            fontWeight: 600,
             textTransform: 'none',
-            fontWeight: 500,
-            boxShadow: 'none',
             backgroundColor: '#0071e3',
+            color: 'white',
+            boxShadow: '0 4px 12px rgba(0, 113, 227, 0.2)',
             '&:hover': {
               backgroundColor: '#0077ed',
               boxShadow: '0 2px 8px rgba(0, 113, 227, 0.3)'

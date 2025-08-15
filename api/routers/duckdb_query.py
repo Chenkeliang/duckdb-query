@@ -28,10 +28,9 @@ router = APIRouter()
 
 class DuckDBQueryRequest(BaseModel):
     """DuckDB查询请求模型"""
-
     sql: str
-    limit: Optional[int] = None  # 可选：将查询结果保存为新表
     save_as_table: Optional[str] = None  # 可选：将查询结果保存为新表
+    is_preview: Optional[bool] = True  # 标准化为 is_preview 标志
 
 
 class DuckDBQueryResponse(BaseModel):
@@ -109,12 +108,6 @@ async def get_available_tables():
 async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryResponse:
     """
     执行DuckDB自定义SQL查询
-
-    支持的功能：
-    - 基于已加载的表进行查询
-    - 自动添加LIMIT限制
-    - 可选择将结果保存为新表
-    - 返回执行时间和表信息
     """
     start_time = time.time()
 
@@ -122,72 +115,22 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
         con = get_db_connection()
         app_config = config_manager.get_app_config()
 
-        # 获取当前可用的表
         available_tables_df = con.execute("SHOW TABLES").fetchdf()
         available_tables = (
             available_tables_df["name"].tolist() if len(available_tables_df) > 0 else []
         )
 
-        # 验证SQL查询
         sql_to_execute = request.sql.strip()
         if not sql_to_execute:
             raise HTTPException(status_code=400, detail="SQL查询不能为空")
 
-        # 检查是否是简单的SELECT查询（不需要表）
-        sql_upper = sql_to_execute.upper().strip()
-        is_simple_select = (
-            sql_upper.startswith("SELECT")
-            and "FROM" not in sql_upper
-            and not any(
-                keyword in sql_upper
-                for keyword in [
-                    "DROP",
-                    "DELETE",
-                    "TRUNCATE",
-                    "ALTER",
-                    "CREATE",
-                    "INSERT",
-                    "UPDATE",
-                ]
-            )
-        )
-
-        # 如果没有可用的表且不是简单SELECT查询，则报错
-        if not available_tables and not is_simple_select:
-            raise HTTPException(
-                status_code=400, detail="DuckDB中没有可用的表，请先上传文件或连接数据库"
-            )
-
-        # 检查SQL中是否包含危险操作
-        dangerous_keywords = [
-            "DROP",
-            "DELETE",
-            "TRUNCATE",
-            "ALTER",
-            "CREATE",
-            "INSERT",
-            "UPDATE",
-        ]
-
-        # 如果要保存为表，允许CREATE操作
-        if not request.save_as_table:
-            for keyword in dangerous_keywords:
-                if keyword in sql_upper and keyword != "CREATE":
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"不允许执行 {keyword} 操作，仅支持查询操作",
-                    )
-
-        # 确定行数限制
-        limit = request.limit if request.limit is not None else app_config.max_query_rows
-
-        # 自动添加LIMIT限制（如果SQL中没有LIMIT）
+        # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式）
         sql_for_preview = sql_to_execute
-        if "LIMIT" not in sql_upper and limit > 0:
+        if request.is_preview and "LIMIT" not in sql_to_execute.upper():
+            limit = app_config.max_query_rows
             sql_for_preview = f"{sql_to_execute.rstrip(';')} LIMIT {limit}"
 
         logger.info(f"执行DuckDB查询: {sql_for_preview}")
-        logger.info(f"可用表: {available_tables}")
 
         # 执行查询
         result_df = con.execute(sql_for_preview).fetchdf()
@@ -206,7 +149,7 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
             if table_name:
                 try:
                     # 创建新表时使用原始SQL（不带LIMIT）
-                    create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql_to_execute.rstrip(";")})'
+                    create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql_to_execute})'
                     con.execute(create_sql)
                     saved_table = table_name
                     logger.info(f"查询结果已保存为表: {table_name}")
@@ -226,19 +169,12 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
             message=f"查询成功，返回 {len(result_df)} 行数据",
         )
 
-        # 性能日志
-        if execution_time > 1000:  # 超过1秒的查询
-            logger.warning(f"慢查询检测: 耗时 {execution_time:.2f}ms")
-        else:
-            logger.info(f"查询执行完成，耗时: {execution_time:.2f}ms")
-
         return response
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"DuckDB查询执行失败: {str(e)}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"查询执行失败: {str(e)}")
 
 

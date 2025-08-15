@@ -111,7 +111,7 @@ export const downloadResults = async (queryRequest) => {
     // 使用下载代理端点来自动转换请求格式
     const response = await apiClient.post('/api/download_proxy', queryRequest, {
       responseType: 'blob',
-      timeout: 60000, // 增加超时时间到60秒
+      timeout: 300000, // 增加超时时间到300秒（5分钟）
     });
 
     // 验证响应
@@ -593,9 +593,10 @@ export const getAsyncTask = async (taskId) => {
   }
 };
 
-export const submitAsyncQuery = async (sql) => {
+// 提交异步查询
+export const submitAsyncQuery = async (sql, format = 'parquet') => {
   try {
-    const response = await apiClient.post('/api/async_query', { sql });
+    const response = await apiClient.post('/api/async_query', { sql, format });
     return response.data;
   } catch (error) {
     console.error('提交异步查询失败:', error);

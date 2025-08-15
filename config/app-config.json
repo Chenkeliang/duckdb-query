@@ -6,6 +6,7 @@
   ],
   "max_file_size": 53687091200,
   "query_timeout": 300,
+  "download_timeout": 600,
   "max_query_rows": 10000,
   "enable_caching": true,
   "cache_ttl": 3600

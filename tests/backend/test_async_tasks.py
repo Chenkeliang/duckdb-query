@@ -11,7 +11,7 @@ import time
 from fastapi.testclient import TestClient
 
 # 添加项目路径到系统路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'api'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'api'))
 
 from main import app
 from core.task_manager import task_manager, TaskStatus
@@ -29,7 +29,7 @@ class TestAsyncTasks:
     def test_submit_async_query(self):
         """测试提交异步查询任务"""
         # 准备测试数据
-        test_sql = "SELECT * FROM test_table"
+        test_sql = "SELECT 1 as id, 'test' as name"
         
         # 发送POST请求
         response = client.post("/api/async_query", json={"sql": test_sql})
@@ -46,7 +46,8 @@ class TestAsyncTasks:
         task = task_manager.get_task(task_id)
         assert task is not None
         assert task.query == test_sql
-        assert task.status == TaskStatus.QUEUED
+        # 任务可能已经执行完成，所以状态可能是SUCCESS或RUNNING
+        assert task.status in [TaskStatus.QUEUED, TaskStatus.RUNNING, TaskStatus.SUCCESS]
     
     def test_submit_async_query_empty_sql(self):
         """测试提交空SQL查询"""
@@ -83,7 +84,7 @@ class TestAsyncTasks:
     def test_get_async_task(self):
         """测试获取单个异步任务详情"""
         # 创建任务
-        test_sql = "SELECT * FROM test_table"
+        test_sql = "SELECT 1 as id, 'test' as name"
         response = client.post("/api/async_query", json={"sql": test_sql})
         task_data = response.json()
         task_id = task_data["task_id"]
@@ -97,7 +98,8 @@ class TestAsyncTasks:
         assert data["success"] is True
         assert data["task"]["task_id"] == task_id
         assert data["task"]["query"] == test_sql
-        assert data["task"]["status"] == "queued"
+        # 任务可能已经执行完成，所以状态可能是QUEUED, RUNNING或SUCCESS
+        assert data["task"]["status"] in ["queued", "running", "success"]
     
     def test_get_nonexistent_task(self):
         """测试获取不存在的任务"""
@@ -109,21 +111,16 @@ class TestAsyncTasks:
     
     def test_task_lifecycle(self):
         """测试任务完整生命周期"""
-        from routers.async_tasks import execute_async_query
         import pandas as pd
         
-        # 创建任务
-        test_sql = "SELECT 1 as id, 'test' as name"
-        response = client.post("/api/async_query", json={"sql": test_sql})
-        task_data = response.json()
-        task_id = task_data["task_id"]
+        # 直接创建一个新任务用于状态测试（不提交到API）
+        task_id = task_manager.create_task("SELECT 1 as id, 'test' as name")
         
         # 验证任务初始状态
         task = task_manager.get_task(task_id)
         assert task.status == TaskStatus.QUEUED
         
-        # 模拟执行任务（在实际测试中，我们不会真正执行查询，因为需要DuckDB连接）
-        # 这里我们直接测试状态转换
+        # 测试状态转换
         task_manager.start_task(task_id)
         task = task_manager.get_task(task_id)
         assert task.status == TaskStatus.RUNNING

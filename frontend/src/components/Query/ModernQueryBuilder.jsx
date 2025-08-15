@@ -418,6 +418,9 @@ const ModernQueryBuilder = ({
               >
                 {showSqlPreview ? '隐藏' : '预览'} SQL
               </Button>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 1 }}>
+                提示：界面查询默认限制10,000行。如需完整结果，请使用异步任务功能。
+              </Typography>
               <Button
                 startIcon={<ExecuteIcon />}
                 variant="contained"

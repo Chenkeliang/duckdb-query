@@ -656,6 +656,13 @@ async def perform_query(query_request: QueryRequest):
                     logger.error(error_msg)
                     raise ValueError(error_msg)
 
+        # 根据is_preview标志决定是否添加LIMIT
+        if query_request.is_preview:
+            from core.config_manager import config_manager
+            limit = config_manager.get_app_config().max_query_rows
+            query = ensure_query_has_limit(query, limit)
+            logger.info(f"预览模式，已应用LIMIT {limit}")
+
         logger.info(f"执行查询: {query}")
 
         # 执行查询
@@ -753,10 +760,19 @@ async def perform_query(query_request: QueryRequest):
 @router.post("/api/download", tags=["Query"])
 async def download_results(query_request: QueryRequest):
     """Performs a query and returns the results as an Excel file."""
+    logger.info("开始执行下载请求")
+    
+    # 获取应用配置，包括下载超时设置
+    from core.config_manager import config_manager
+    app_config = config_manager.get_app_config()
+    download_timeout = app_config.download_timeout
+    
+    logger.info(f"使用下载超时设置: {download_timeout}秒")
     con = get_db_connection()
 
     try:
         # Register all data sources with DuckDB - 使用与查询端点相同的逻辑
+        logger.info(f"注册数据源，共 {len(query_request.sources)} 个源")
         for source in query_request.sources:
             if source.type == "file":
                 logger.info(f"注册数据源: {source.id}, 路径: {source.params['path']}")
@@ -853,6 +869,7 @@ async def download_results(query_request: QueryRequest):
             )
 
         # Build query - 使用与查询端点相同的多表JOIN逻辑
+        logger.info("开始构建查询语句")
         if len(query_request.joins) > 0:
             # 多表JOIN查询 - 使用改进的多表JOIN支持
             query = build_multi_table_join_query(query_request, con)
@@ -861,50 +878,83 @@ async def download_results(query_request: QueryRequest):
             source_id = query_request.sources[0].id.strip('"')
             query = f'SELECT * FROM "{source_id}"'
 
+        # 先查询数据量，决定导出格式
+        count_query = f"SELECT COUNT(*) as row_count FROM ({query}) AS subquery"
+        logger.info(f"执行数据量查询: {count_query}")
+        count_result = con.execute(count_query).fetchone()
+        row_count = count_result[0] if count_result else 0
+        
+        logger.info(f"查询结果行数: {row_count}")
+        
+        # 根据数据量决定导出格式
+        use_csv_format = row_count > 100000  # 超过10万行使用CSV格式
+        if use_csv_format:
+            logger.info(f"数据量较大({row_count}行)，将使用CSV格式导出")
+        else:
+            logger.info(f"数据量适中({row_count}行)，将使用Excel格式导出")
+
         # Execute query
         logger.info(f"执行下载查询: {query}")
         result_df = execute_query(query, con)
-
+        
         # 验证查询结果
-        if result_df is None or result_df.empty:
+        if result_df is None:
+            logger.warning("查询结果为None")
+            raise ValueError("查询结果为空")
+            
+        if result_df.empty:
+            logger.warning("查询结果为空")
             raise ValueError("查询结果为空")
 
         logger.info(f"查询结果: {len(result_df)} 行, {len(result_df.columns)} 列")
         logger.info(f"列名: {list(result_df.columns)}")
 
         # Replace NaN/inf with None, which is JSON serializable to null
+        logger.info("开始处理数据中的NaN和inf值")
         result_df.replace([np.inf, -np.inf], np.nan, inplace=True)
         result_df = result_df.where(pd.notnull(result_df), None)
 
-        # Convert to Excel with better error handling
+        # Convert to file with appropriate format
+        logger.info("开始生成下载文件")
         output = io.BytesIO()
+        filename = "query_results.csv" if use_csv_format else "query_results.xlsx"
+        content_type = "text/csv" if use_csv_format else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        
         try:
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                result_df.to_excel(writer, index=False, sheet_name="QueryResults")
+            if use_csv_format:
+                # 生成CSV格式数据
+                logger.info("使用CSV格式导出数据")
+                result_df.to_csv(output, index=False)
+            else:
+                # 生成Excel格式数据
+                logger.info("使用Excel格式导出数据")
+                with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                    result_df.to_excel(writer, index=False, sheet_name="QueryResults")
+            
             output.seek(0)
-
-            # 验证生成的Excel文件
+            
+            # 验证生成的文件
             if output.getvalue() == b"":
-                raise ValueError("生成的Excel文件为空")
+                raise ValueError("生成的文件为空")
 
-            logger.info(f"Excel文件生成成功，大小: {len(output.getvalue())} bytes")
+            logger.info(f"文件生成成功，大小: {len(output.getvalue())} bytes, 格式: {filename.split('.')[-1]}")
 
         except Exception as e:
-            logger.error(f"Excel文件生成失败: {str(e)}")
-            raise ValueError(f"Excel文件生成失败: {str(e)}")
+            logger.error(f"文件生成失败: {str(e)}")
+            raise ValueError(f"文件生成失败: {str(e)}")
 
         # Return as downloadable file
-        filename = "query_results.xlsx"
         headers = {
             "Content-Disposition": f'attachment; filename="{filename}"',
-            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Type": content_type,
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
             "Expires": "0",
         }
+        logger.info("准备返回下载响应")
         return StreamingResponse(
             output,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            media_type=content_type,
             headers=headers,
         )
     except HTTPException:
@@ -922,8 +972,16 @@ async def execute_sql(request: dict = Body(...)):
     con = get_db_connection()
     sql_query = request.get("sql", "")
     datasource = request.get("datasource", {})
+    is_preview = request.get("is_preview", True)  # 默认为预览模式
 
     try:
+        # 如果是预览模式，则强制添加LIMIT
+        if is_preview:
+            from core.config_manager import config_manager
+            limit = config_manager.get_app_config().max_query_rows
+            sql_query = ensure_query_has_limit(sql_query, limit)
+            logger.info(f"预览模式，已应用LIMIT {limit} 到SQL: {sql_query}")
+
         logger.info(f"=== EXECUTE_SQL 函数开始执行 ===")
         logger.info(f"request type: {type(request)}, content: {request}")
         # 兼容 dict、Pydantic/BaseModel、FormData

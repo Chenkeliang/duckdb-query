@@ -141,7 +141,7 @@ async def query_proxy(request: Request):
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{base_url}/api/query", json=converted_request, timeout=60.0
+                f"{base_url}/api/query", json=converted_request, timeout=300.0
             )
 
             # 返回原始响应，添加代理标识

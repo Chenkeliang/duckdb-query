@@ -37,9 +37,11 @@ class AppConfig:
     cors_origins: List[str] = None
     max_file_size: int = 50 * 1024 * 1024 * 1024  # 50GB
     query_timeout: int = 300  # 5分钟
+    download_timeout: int = 600  # 10分钟，用于下载操作
     max_query_rows: int = 10000
     enable_caching: bool = True
     cache_ttl: int = 3600  # 1小时
+    duckdb_memory_limit: str = "8GB"  # DuckDB内存限制
 
     def __post_init__(self):
         if self.cors_origins is None:

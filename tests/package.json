@@ -8,6 +8,7 @@
     "install-playwright": "npx playwright install chromium"
   },
   "dependencies": {
+    "@playwright/test": "^1.54.2",
     "playwright": "^1.40.0"
   }
 }

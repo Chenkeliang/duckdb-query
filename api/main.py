@@ -4,10 +4,13 @@ import logging
 import json
 import os
 import traceback
+import base64
 from datetime import datetime
+from cryptography.fernet import Fernet
 from core.security import security_validator
 from core.config_manager import config_manager
 from core.exceptions import setup_exception_handlers
+from core.encryption import password_encryptor
 
 from routers import (
     data_sources,
@@ -222,6 +225,9 @@ async def startup_event():
     """应用启动时执行的初始化操作"""
     logger.info("应用启动中...")
 
+    # 初始化加密密钥
+    initialize_encryption_key()
+
     # 加载MySQL配置
     load_mysql_configs_on_startup()
 
@@ -288,8 +294,10 @@ def initialize_encryption_key():
             logger.error(f"Failed to save new secret key: {e}")
             # Fallback to using the key in memory without persisting
     
+    # Note: The password_encryptor is already initialized in core/encryption.py
+    # We don't need to re-initialize it here
     if secret_key:
-        initialize_encryptor(secret_key)
+        logger.info("Encryption key initialized successfully.")
     else:
         logger.error("CRITICAL: Could not initialize encryption key. Password encryption will fail.")
 

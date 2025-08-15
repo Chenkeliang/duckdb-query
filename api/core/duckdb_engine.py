@@ -49,8 +49,15 @@ def get_db_connection():
 
         # 设置DuckDB优化参数
         _global_duckdb_connection.execute("SET threads=8")  # 增加线程数
-        _global_duckdb_connection.execute("SET memory_limit='4GB'")  # 增加内存限制
-        _global_duckdb_connection.execute("SET max_memory='4GB'")
+
+        # 应用内存限制配置
+        from core.config_manager import config_manager
+        app_config = config_manager.get_app_config()
+        memory_limit = app_config.duckdb_memory_limit
+        if memory_limit:
+            _global_duckdb_connection.execute(f"SET memory_limit='{memory_limit}'")
+            _global_duckdb_connection.execute(f"SET max_memory='{memory_limit}'")
+            logger.info(f"DuckDB内存限制已设置为: {memory_limit}")
         _global_duckdb_connection.execute(f"SET temp_directory='{temp_dir}'")
 
         # 优化JOIN性能 - 针对VARCHAR类型优化
@@ -611,18 +618,29 @@ def get_actual_table_name(source) -> str:
 
 def build_single_table_query(query_request: QueryRequest) -> str:
     """
-    构建单表查询
+    构建单表查询，并将SELECT * 展开为所有列
     """
+    con = get_db_connection()
     source = query_request.sources[0]
-    table_name = f'"{get_actual_table_name(source)}"'
+    actual_table_name = get_actual_table_name(source)
+    table_name_sql = f'"{actual_table_name}"'
 
     # 构建SELECT子句
     if query_request.select_columns:
         select_clause = ", ".join([f'"{col}"' for col in query_request.select_columns])
     else:
-        select_clause = "*"
+        try:
+            # 展开 SELECT *
+            columns_df = con.execute(f"PRAGMA table_info({table_name_sql})").fetchdf()
+            all_columns = columns_df['name'].tolist()
+            select_clause = ", ".join([f'"{col}"' for col in all_columns])
+            if not select_clause:  # 如果表没有列
+                select_clause = "*"
+        except Exception as e:
+            logger.warning(f"无法获取表 '{actual_table_name}' 的列信息来展开 '*': {e}。将回退到 'SELECT *'。")
+            select_clause = "*"
 
-    query = f"SELECT {select_clause} FROM {table_name}"
+    query = f"SELECT {select_clause} FROM {table_name_sql}"
 
     # 添加WHERE条件
     if query_request.where_conditions:

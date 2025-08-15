@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from datetime import datetime
 
-from core.task_manager import task_manager
+from core.task_manager import task_manager, TaskStatus
 from core.duckdb_engine import get_db_connection
 from core.file_datasource_manager import file_datasource_manager, create_table_from_dataframe
 from core.config_manager import config_manager
@@ -30,6 +30,7 @@ os.makedirs(EXPORTS_DIR, exist_ok=True)
 class AsyncQueryRequest(BaseModel):
     """异步查询请求模型"""
     sql: str
+    format: str = "parquet"  # 支持 "parquet" 或 "csv"
 
 
 class AsyncQueryResponse(BaseModel):
@@ -61,11 +62,21 @@ async def submit_async_query(request: AsyncQueryRequest, background_tasks: Backg
         if not request.sql.strip():
             raise HTTPException(status_code=400, detail="SQL查询不能为空")
         
+        # 验证输出格式
+        if request.format not in ["parquet", "csv"]:
+            raise HTTPException(status_code=400, detail="不支持的输出格式，仅支持 parquet 或 csv")
+        
+        # 创建任务，将格式信息存储在任务查询中
+        task_query = {
+            "sql": request.sql,
+            "format": request.format
+        }
+        
         # 创建任务
-        task_id = task_manager.create_task(request.sql)
+        task_id = task_manager.create_task(str(task_query))
         
         # 添加后台任务执行查询
-        background_tasks.add_task(execute_async_query, task_id, request.sql)
+        background_tasks.add_task(execute_async_query, task_id, request.sql, request.format)
         
         return AsyncQueryResponse(
             success=True,
@@ -107,9 +118,21 @@ async def get_async_task(task_id: str):
         if not task:
             raise HTTPException(status_code=404, detail="任务不存在")
         
+        # 解析任务查询中的格式信息
+        import json
+        try:
+            task_dict = task.to_dict()
+            query_info = json.loads(task_dict['query'])
+            if isinstance(query_info, dict) and 'sql' in query_info:
+                task_dict['query'] = query_info['sql']
+                task_dict['format'] = query_info.get('format', 'parquet')
+        except (json.JSONDecodeError, TypeError):
+            # 如果不是JSON格式，保持原样
+            pass
+        
         return TaskDetailResponse(
             success=True,
-            task=task.to_dict()
+            task=task_dict
         )
     except HTTPException:
         raise
@@ -128,19 +151,26 @@ async def download_async_task_result(task_id: str):
         if not task:
             raise HTTPException(status_code=404, detail="任务不存在")
         
-        if task.status != TaskStatus.SUCCESS.value:
+        # 统一使用枚举值进行比较
+        if task.status.value != TaskStatus.SUCCESS.value:
             raise HTTPException(status_code=400, detail="任务尚未成功完成")
         
         if not task.result_file_path or not os.path.exists(task.result_file_path):
             raise HTTPException(status_code=404, detail="结果文件不存在")
         
-        # 确定文件名
+        # 确定文件名和媒体类型
         file_name = os.path.basename(task.result_file_path)
+        
+        # 根据文件扩展名确定媒体类型
+        if file_name.endswith('.csv'):
+            media_type = 'text/csv'
+        else:  # 默认为parquet
+            media_type = 'application/octet-stream'
         
         # 返回文件
         return FileResponse(
             task.result_file_path,
-            media_type='application/octet-stream',
+            media_type=media_type,
             headers={'Content-Disposition': f'attachment; filename="{file_name}"'}
         )
         
@@ -151,7 +181,7 @@ async def download_async_task_result(task_id: str):
         raise HTTPException(status_code=500, detail=f"下载结果失败: {str(e)}")
 
 
-def execute_async_query(task_id: str, sql: str):
+def execute_async_query(task_id: str, sql: str, format: str = "parquet"):
     """
     执行异步查询（后台任务）
     """
@@ -173,12 +203,20 @@ def execute_async_query(task_id: str, sql: str):
         
         # 生成结果文件路径
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        result_file_name = f"task-{task_id}_{timestamp}.parquet"
-        result_file_path = os.path.join(EXPORTS_DIR, result_file_name)
-        
-        # 保存结果到Parquet文件
-        result_df.to_parquet(result_file_path, index=False)
-        logger.info(f"查询结果已保存到: {result_file_path}")
+        if format == "csv":
+            result_file_name = f"task-{task_id}_{timestamp}.csv"
+            result_file_path = os.path.join(EXPORTS_DIR, result_file_name)
+            
+            # 保存结果到CSV文件
+            result_df.to_csv(result_file_path, index=False)
+            logger.info(f"查询结果已保存到: {result_file_path}")
+        else:  # 默认为parquet
+            result_file_name = f"task-{task_id}_{timestamp}.parquet"
+            result_file_path = os.path.join(EXPORTS_DIR, result_file_name)
+            
+            # 保存结果到Parquet文件
+            result_df.to_parquet(result_file_path, index=False)
+            logger.info(f"查询结果已保存到: {result_file_path}")
         
         # 注册为新数据源
         source_id = f"async_result_{task_id}"
@@ -186,7 +224,7 @@ def execute_async_query(task_id: str, sql: str):
             "source_id": source_id,
             "filename": result_file_name,
             "file_path": result_file_path,
-            "file_type": "parquet",
+            "file_type": format,
             "created_at": datetime.now().isoformat(),
             "columns": [{"name": col, "type": str(result_df[col].dtype)} for col in result_df.columns],
             "row_count": len(result_df),
@@ -198,16 +236,16 @@ def execute_async_query(task_id: str, sql: str):
         
         # 将结果文件加载到DuckDB中
         try:
-            create_table_from_dataframe(con, source_id, result_file_path, "parquet")
+            create_table_from_dataframe(con, source_id, result_file_path, format)
             logger.info(f"结果文件已注册为数据源: {source_id}")
         except Exception as e:
             logger.warning(f"将结果文件注册为数据源失败: {str(e)}")
-        
+            
         # 标记任务为成功
         execution_time = time.time() - start_time
         if not task_manager.complete_task(task_id, result_file_path):
             logger.error(f"无法标记任务为成功: {task_id}")
-        
+            
         logger.info(f"异步查询任务执行完成: {task_id}, 执行时间: {execution_time:.2f}秒")
         
     except Exception as e:

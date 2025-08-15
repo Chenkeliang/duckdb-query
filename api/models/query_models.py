@@ -133,7 +133,8 @@ class QueryRequest(BaseModel):
     select_columns: Optional[List[str]] = None
     where_conditions: Optional[str] = None
     order_by: Optional[str] = None
-    limit: Optional[int] = None  # 移除默认限制，让用户自己决定
+    limit: Optional[int] = None
+    is_preview: Optional[bool] = True  # 新增字段，用于标记是否为预览查询
 
 
 class ExportFormat(str, Enum):

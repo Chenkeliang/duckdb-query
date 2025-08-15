@@ -16,7 +16,16 @@ import {
   Tooltip,
   CircularProgress,
   Alert,
-  Button
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Divider
 } from '@mui/material';
 import {
   Refresh,
@@ -25,7 +34,8 @@ import {
   HourglassBottom,
   PlayArrow,
   CheckCircle,
-  Error
+  Error,
+  ArrowDropDown
 } from '@mui/icons-material';
 import { listAsyncTasks, downloadAsyncTaskResult } from '../../services/apiClient';
 
@@ -34,6 +44,9 @@ const AsyncTaskList = ({ onPreviewResult }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [refreshInterval, setRefreshInterval] = useState(null);
+  const [formatDialogOpen, setFormatDialogOpen] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [downloadFormat, setDownloadFormat] = useState('parquet');
 
   // 获取任务列表
   const fetchTasks = async () => {
@@ -108,10 +121,58 @@ const AsyncTaskList = ({ onPreviewResult }) => {
     }
   };
 
+  // 解析查询信息以提取格式
+  const parseQueryInfo = (query) => {
+    try {
+      // 尝试解析JSON格式的查询信息
+      const queryInfo = JSON.parse(query.replace(/'/g, '"'));
+      if (typeof queryInfo === 'object' && queryInfo.format) {
+        return queryInfo.format.toLowerCase();
+      }
+    } catch (e) {
+      // 如果不是JSON格式，尝试从字符串中提取格式信息
+      const formatMatch = query.match(/['"]format['"]\s*:\s*['"]([^'"]+)['"]/);
+      if (formatMatch && formatMatch[1]) {
+        return formatMatch[1].toLowerCase();
+      }
+    }
+    // 默认返回parquet格式
+    return 'parquet';
+  };
+
+  // 根据任务ID获取任务对象
+  const getTaskById = (taskId) => {
+    if (!taskId) return null;
+    return tasks.find(task => task.task_id === taskId) || null;
+  };
+
   // 下载结果文件
   const handleDownloadResult = async (taskId) => {
     try {
       await downloadAsyncTaskResult(taskId);
+    } catch (err) {
+      setError(`下载结果失败: ${err.message}`);
+    }
+  };
+
+  // 打开格式选择对话框
+  const openFormatDialog = (taskId) => {
+    setSelectedTaskId(taskId);
+    setFormatDialogOpen(true);
+  };
+
+  // 关闭格式选择对话框
+  const closeFormatDialog = () => {
+    setFormatDialogOpen(false);
+    setSelectedTaskId(null);
+    setDownloadFormat('parquet');
+  };
+
+  // 确认下载格式并开始下载
+  const confirmDownloadWithFormat = async () => {
+    try {
+      await downloadAsyncTaskResult(selectedTaskId);
+      closeFormatDialog();
     } catch (err) {
       setError(`下载结果失败: ${err.message}`);
     }
@@ -192,6 +253,36 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                               {task.query}
                             </Typography>
                           </Tooltip>
+                          {(() => {
+                            // 尝试解析查询中的格式信息
+                            try {
+                              const queryObj = JSON.parse(task.query.replace(/'/g, '"'));
+                              if (queryObj && queryObj.format) {
+                                return (
+                                  <Chip 
+                                    label={`${queryObj.format.toUpperCase()} 格式`} 
+                                    size="small" 
+                                    variant="outlined" 
+                                    sx={{ mt: 1, fontSize: '0.7rem', height: 20 }}
+                                  />
+                                );
+                              }
+                            } catch (e) {
+                              // 如果不是JSON格式，检查是否包含format关键字
+                              const formatMatch = task.query.match(/format['"]?\s*:\s*['"]([^'"]+)['"]/);
+                              if (formatMatch && formatMatch[1]) {
+                                return (
+                                  <Chip 
+                                    label={`${formatMatch[1].toUpperCase()} 格式`} 
+                                    size="small" 
+                                    variant="outlined" 
+                                    sx={{ mt: 1, fontSize: '0.7rem', height: 20 }}
+                                  />
+                                );
+                              }
+                            }
+                            return null;
+                          })()}
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">
@@ -210,12 +301,15 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                             {task.status === 'success' && (
                               <>
                                 <Tooltip title="下载完整结果">
-                                  <IconButton 
-                                    size="small" 
-                                    onClick={() => handleDownloadResult(task.task_id)}
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<Download />}
+                                    onClick={() => openFormatDialog(task.task_id)}
+                                    sx={{ textTransform: 'none' }}
                                   >
-                                    <Download />
-                                  </IconButton>
+                                    下载 ({parseQueryInfo(task.query).toUpperCase()})
+                                  </Button>
                                 </Tooltip>
                                 <Tooltip title="预览结果">
                                   <IconButton 
@@ -238,8 +332,62 @@ const AsyncTaskList = ({ onPreviewResult }) => {
           )}
         </CardContent>
       </Card>
+
+      {/* 格式选择对话框 */}
+      <Dialog open={formatDialogOpen} onClose={closeFormatDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>任务信息</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                此任务在创建时已指定输出格式为 <strong>{parseQueryInfo(getTaskById(selectedTaskId)?.query || '{}').toUpperCase()}</strong> 格式。
+              </Typography>
+            </Alert>
+            
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 'medium', mb: 1 }}>
+                格式说明:
+              </Typography>
+              <Typography variant="body2" component="div">
+                {parseQueryInfo(getTaskById(selectedTaskId)?.query || '{}') === 'parquet' ? (
+                  <>
+                    • <strong>Parquet</strong>: 高效的列式存储格式<br/>
+                    • 适合大数据分析<br/>
+                    • 文件体积小，读取速度快<br/>
+                    • 需要专门工具打开
+                  </>
+                ) : (
+                  <>
+                    • <strong>CSV</strong>: 通用的表格数据格式<br/>
+                    • 兼容性好，几乎所有工具都支持<br/>
+                    • 易于在Excel等工具中打开<br/>
+                    • 文件体积相对较大
+                  </>
+                )}
+              </Typography>
+            </Box>
+            
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                注意：任务完成后格式已锁定。如需其他格式，请重新提交任务并选择所需格式。
+              </Typography>
+            </Alert>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeFormatDialog}>取消</Button>
+          <Button 
+            onClick={confirmDownloadWithFormat} 
+            variant="contained"
+            disabled={loading}
+          >
+            确认下载
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
 
 export default AsyncTaskList;
+

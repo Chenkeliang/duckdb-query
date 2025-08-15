@@ -112,7 +112,7 @@ const StableTable = ({
   return (
     <Box>
       {/* 滚动提示 */}
-      <Box sx={{ 
+      <Box sx={{
         mb: 2, 
         p: 1.5, 
         backgroundColor: '#e3f2fd', 
@@ -125,7 +125,7 @@ const StableTable = ({
         border: '1px solid #bbdefb'
       }}>
         <span>💡</span>
-        <span>提示：使用表格底部和右侧的滚动条来浏览更多列和行，稳定的原生表格组件</span>
+        <span>提示：界面查询默认限制10,000行。如需完整结果，请使用异步任务功能</span>
       </Box>
 
       {/* 表格容器 */}

@@ -21,7 +21,11 @@ import {
   ListItemText,
   IconButton,
   LinearProgress,
-  Paper
+  Paper,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import {
   PlayArrow,
@@ -57,6 +61,7 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuer
   const [duckdbTables, setDuckdbTables] = useState([]);
   const [tableManagerOpen, setTableManagerOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [format, setFormat] = useState('parquet'); // 添加格式选择状态
 
   // 当previewQuery变化时，设置SQL查询
   useEffect(() => {
@@ -144,7 +149,8 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuer
     setSuccess('');
 
     try {
-      const response = await submitAsyncQuery(sqlQuery);
+      // 使用用户选择的格式
+      const response = await submitAsyncQuery(sqlQuery, format);
 
       if (response.success) {
         setSuccess(`异步任务已提交，任务ID: ${response.task_id.substring(0, 8)}...。请前往"异步任务"页面查看进度。`);
@@ -424,6 +430,19 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuer
                     fullWidth
                     placeholder="例如: query_result"
                   />
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <FormControl fullWidth>
+                    <InputLabel>输出格式</InputLabel>
+                    <Select
+                      value={format}
+                      onChange={(e) => setFormat(e.target.value)}
+                      label="输出格式"
+                    >
+                      <MenuItem value="parquet">Parquet格式</MenuItem>
+                      <MenuItem value="csv">CSV格式</MenuItem>
+                    </Select>
+                  </FormControl>
                 </Grid>
                 <Grid item xs={12} md={4}>
                   <Button
