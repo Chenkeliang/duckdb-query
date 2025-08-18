@@ -173,15 +173,50 @@ const StableTable = ({
                     userSelect: 'none',
                     '&:hover': {
                       backgroundColor: theme.palette.grey[100],
-                    }
+                    },
+                    // 横向显示表头文字
+                    writingMode: 'horizontal-tb',
+                    textOrientation: 'mixed',
+                    // 处理长文本
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    // 进一步减少表头高度
+                    height: '40px',
+                    lineHeight: '40px',
+                    verticalAlign: 'middle',
+                    paddingTop: '0px',
+                    paddingBottom: '0px',
+                    paddingLeft: '8px',
+                    paddingRight: '8px',
+                    // 添加悬停提示
+                    title: column.headerName || column.field,
                   }}
                   onClick={() => handleSort(column.field)}
                 >
                   <TableSortLabel
                     active={sortConfig.key === column.field}
                     direction={sortConfig.key === column.field ? sortConfig.direction : 'asc'}
+                    sx={{
+                      // 减少排序标签的内边距
+                      '& .MuiTableSortLabel-icon': {
+                        fontSize: '1rem',
+                      }
+                    }}
                   >
-                    {column.headerName || column.field}
+                    <span 
+                      title={column.headerName || column.field}
+                      style={{
+                        // 限制显示宽度，超出部分用省略号表示
+                        display: 'inline-block',
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        verticalAlign: 'middle'
+                      }}
+                    >
+                      {column.headerName || column.field}
+                    </span>
                   </TableSortLabel>
                 </TableCell>
               ))}
@@ -207,9 +242,27 @@ const StableTable = ({
                       fontSize: '0.875rem',
                       padding: '8px 16px',
                       borderBottom: `1px solid ${theme.palette.divider}`,
+                      // 处理单元格内容过长的问题
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: column.maxWidth || 200,
+                      // 添加悬停提示
+                      title: row[column.field],
                     }}
                   >
-                    {renderCellContent(row[column.field], column)}
+                    <span 
+                      title={row[column.field]}
+                      style={{
+                        // 限制显示宽度，超出部分用省略号表示
+                        display: 'inline-block',
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {renderCellContent(row[column.field], column)}
+                    </span>
                   </TableCell>
                 ))}
               </TableRow>
