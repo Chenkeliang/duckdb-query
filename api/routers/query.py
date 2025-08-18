@@ -8,6 +8,8 @@ from core.duckdb_engine import (
     create_persistent_table,
     create_varchar_table_from_dataframe,
     build_single_table_query,
+    generate_improved_column_aliases,
+    detect_column_conflicts
 )
 import pandas as pd
 import numpy as np
@@ -70,6 +72,7 @@ def build_multi_table_join_query(query_request, con):
     构建多表JOIN查询
     支持多个数据源的复杂JOIN操作
     增加关联结果列显示JOIN匹配状态
+    使用改进的列名生成逻辑
     """
     sources = query_request.sources
     joins = query_request.joins
@@ -93,52 +96,57 @@ def build_multi_table_join_query(query_request, con):
                 f"表 '{table_id}' 未注册到DuckDB中。可用表: {', '.join(available_table_names)}"
             )
 
-    # 获取所有表的列信息
-    table_columns = {}
+    # 为每个source添加columns信息（如果还没有的话）
     for source in sources:
-        table_id = source.id.strip('"')
-        try:
-            cols = (
-                con.execute(f"PRAGMA table_info('{table_id}')")
-                .fetchdf()["name"]
-                .tolist()
-            )
-            table_columns[table_id] = cols
-        except Exception as e:
-            logger.error(f"获取表 {table_id} 的列信息失败: {e}")
-            table_columns[table_id] = []
+        if not hasattr(source, 'columns') or source.columns is None:
+            try:
+                # 获取表的列信息
+                cols_df = con.execute(f"PRAGMA table_info('{source.id}')").fetchdf()
+                source.columns = cols_df["name"].tolist()
+            except Exception as e:
+                logger.error(f"获取表 {source.id} 的列信息失败: {e}")
+                source.columns = []
 
-    # 确定JOIN中涉及的表
-    involved_tables = set()
-    for join in joins:
-        involved_tables.add(join.left_source_id.strip('"'))
-        involved_tables.add(join.right_source_id.strip('"'))
-
-    # 如果没有JOIN，包含所有表
-    if not joins:
-        involved_tables = {source.id.strip('"') for source in sources}
+    # 使用改进的列别名生成逻辑
+    column_aliases = generate_improved_column_aliases(sources)
 
     # 构建SELECT子句 - 只为JOIN中涉及的表生成列
     select_fields = []
-    table_prefixes = {}
-
-    # 为涉及的表分配字母前缀 (A, B, C, D...)
-    prefix_index = 0
-    for source in sources:
-        table_id = source.id.strip('"')
-        if table_id in involved_tables:
-            prefix = chr(65 + prefix_index)  # A=65, B=66, C=67...
-            table_prefixes[table_id] = prefix
-            prefix_index += 1
-
-            cols = table_columns.get(table_id, [])
-            for j, col in enumerate(cols):
-                alias = f"{prefix}_{j+1}"
-                select_fields.append(f'"{table_id}"."{col}" AS "{alias}"')
+    
+    # 为涉及的表生成列（如果有JOIN）
+    if joins:
+        involved_tables = set()
+        for join in joins:
+            involved_tables.add(join.left_source_id.strip('"'))
+            involved_tables.add(join.right_source_id.strip('"'))
+            
+        for source in sources:
+            table_id = source.id.strip('"')
+            if table_id in involved_tables and source.columns:
+                for col in source.columns:
+                    alias = column_aliases[source.id][col]
+                    select_fields.append(f'"{table_id}"."{col}" AS "{alias}"')
+    else:
+        # 如果没有JOIN，包含所有表的所有列
+        for source in sources:
+            table_id = source.id.strip('"')
+            if source.columns:
+                for col in source.columns:
+                    alias = column_aliases[source.id][col]
+                    select_fields.append(f'"{table_id}"."{col}" AS "{alias}"')
 
     # 添加关联结果列
     join_result_fields = []
     if joins:
+        # 为简单起见，我们仍然使用字母前缀来生成JOIN结果列名
+        table_prefixes = {}
+        prefix_index = 0
+        for source in sources:
+            table_id = source.id.strip('"')
+            prefix = chr(65 + prefix_index)  # A=65, B=66, C=67...
+            table_prefixes[table_id] = prefix
+            prefix_index += 1
+
         for i, join in enumerate(joins):
             left_table = join.left_source_id.strip('"')
             right_table = join.right_source_id.strip('"')
@@ -161,7 +169,7 @@ def build_multi_table_join_query(query_request, con):
                     )
                 else:
                     # 如果没有条件，使用第一个列作为检查
-                    right_cols = table_columns.get(right_table, [])
+                    right_cols = [col for col in sources if col.id.strip('"') == right_table][0].columns if any(col.id.strip('"') == right_table for col in sources) else []
                     right_key_col = (
                         f'"{right_table}"."{right_cols[0]}"'
                         if right_cols
@@ -174,7 +182,7 @@ def build_multi_table_join_query(query_request, con):
                     left_key_col = f'"{left_table}"."{join.conditions[0].left_column}"'
                 else:
                     # 如果没有条件，使用第一个列作为检查
-                    left_cols = table_columns.get(left_table, [])
+                    left_cols = [col for col in sources if col.id.strip('"') == left_table][0].columns if any(col.id.strip('"') == left_table for col in sources) else []
                     left_key_col = (
                         f'"{left_table}"."{left_cols[0]}"'
                         if left_cols
@@ -190,8 +198,8 @@ def build_multi_table_join_query(query_request, con):
                     )
                 else:
                     # 如果没有条件，使用第一个列作为检查
-                    left_cols = table_columns.get(left_table, [])
-                    right_cols = table_columns.get(right_table, [])
+                    left_cols = [col for col in sources if col.id.strip('"') == left_table][0].columns if any(col.id.strip('"') == left_table for col in sources) else []
+                    right_cols = [col for col in sources if col.id.strip('"') == right_table][0].columns if any(col.id.strip('"') == right_table for col in sources) else []
                     left_key_col = (
                         f'"{left_table}"."{left_cols[0]}"'
                         if left_cols
@@ -227,7 +235,7 @@ def build_multi_table_join_query(query_request, con):
             from_clause += f' CROSS JOIN "{source_id}"'
     else:
         # 构建JOIN链
-        from_clause = build_join_chain(sources, joins, table_columns)
+        from_clause = build_join_chain(sources, joins, {source.id.strip('"'): source.columns for source in sources})
 
     query = f"SELECT {select_clause} FROM {from_clause}"
 
