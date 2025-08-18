@@ -540,6 +540,93 @@ def get_table_info(table_name: str, con=None) -> Dict[str, Any]:
         return {}
 
 
+def generate_improved_column_aliases(sources: List[DataSource]) -> Dict[str, Dict[str, str]]:
+    """
+    为冲突的列名生成改进的别名
+    使用原始字段名 + 表标识的方式，如：字段名_表标识
+    """
+    conflicts = detect_column_conflicts(sources)
+    aliases = {}
+    
+    # 为每个数据源生成简化的表标识
+    table_identifiers = generate_table_identifiers(sources)
+    
+    for source in sources:
+        source_aliases = {}
+        table_identifier = table_identifiers.get(source.id, source.id)
+        
+        if source.columns:
+            for column in source.columns:
+                if column in conflicts:
+                    # 生成改进的别名：column_name_table_identifier
+                    alias = f"{column}_{table_identifier}"
+                    source_aliases[column] = alias
+                else:
+                    # 非冲突列保持原始名称
+                    source_aliases[column] = column
+        aliases[source.id] = source_aliases
+
+    return aliases
+
+
+def generate_table_identifiers(sources: List[DataSource]) -> Dict[str, str]:
+    """
+    为每个数据源生成简化的表标识
+    """
+    identifiers = {}
+    
+    # 收集所有表名
+    table_names = []
+    for source in sources:
+        # 使用表名或ID作为基础
+        base_name = getattr(source, 'name', None) or source.id
+        table_names.append((source.id, base_name))
+    
+    # 生成唯一标识符
+    used_identifiers = set()
+    for source_id, base_name in table_names:
+        # 简化表名：取前几个字符或使用完整表名
+        simplified_name = simplify_table_name(base_name)
+        
+        # 确保标识符唯一
+        final_identifier = simplified_name
+        counter = 1
+        while final_identifier in used_identifiers:
+            final_identifier = f"{simplified_name}_{counter}"
+            counter += 1
+        
+        identifiers[source_id] = final_identifier
+        used_identifiers.add(final_identifier)
+    
+    return identifiers
+
+
+def simplify_table_name(table_name: str, max_length: int = 10) -> str:
+    """
+    简化表名，使其更适合用作标识符
+    """
+    if not table_name:
+        return "table"
+    
+    # 移除特殊字符并转换为小写
+    import re
+    clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', table_name).lower()
+    
+    # 如果名称太长，进行截断
+    if len(clean_name) > max_length:
+        clean_name = clean_name[:max_length]
+    
+    # 确保不以数字开头
+    if clean_name and clean_name[0].isdigit():
+        clean_name = f"t_{clean_name}"
+    
+    # 如果结果为空或太短，使用默认名称
+    if not clean_name or len(clean_name) < 2:
+        clean_name = "tbl"
+    
+    return clean_name
+
+
 def detect_column_conflicts(sources: List[DataSource]) -> Dict[str, List[str]]:
     """
     检测多个数据源之间的列名冲突
@@ -671,8 +758,8 @@ def build_multi_table_join_query(query_request: QueryRequest) -> str:
         except Exception as e:
             logger.warning(f"创建JOIN索引失败，但继续执行查询: {str(e)}")
 
-    # 生成列别名以处理冲突
-    column_aliases = generate_column_aliases(sources)
+    # 生成改进的列别名以处理冲突
+    column_aliases = generate_improved_column_aliases(sources)
 
     # 构建SELECT子句
     select_parts = []
@@ -692,7 +779,7 @@ def build_multi_table_join_query(query_request: QueryRequest) -> str:
                 # 如果没找到，直接使用列名
                 select_parts.append(f'"{col}"')
     else:
-        # 选择所有列，使用别名避免冲突
+        # 选择所有列，使用改进的别名避免冲突
         for source in sources:
             if source.columns:
                 for col in source.columns:
