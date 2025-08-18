@@ -20,6 +20,7 @@ import DatabaseConnector from './components/DataSourceManager/DatabaseConnector'
 import DataPasteBoard from './components/DataSourceManager/DataPasteBoard';
 import DataGrid from './components/DataGrid';
 import QueryBuilder from './components/QueryBuilder/QueryBuilder';
+import UnifiedQueryInterface from './components/UnifiedQueryInterface/UnifiedQueryInterface';
 import { uploadFile, connectDatabase, deleteFile, testDatabaseConnection, createDatabaseConnection } from './services/apiClient';
 import StorageIcon from '@mui/icons-material/Storage';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -494,11 +495,15 @@ function App() {
                 </Paper>
               )}
 
-              <QueryBuilder
+              <UnifiedQueryInterface
                 dataSources={dataSources}
+                databaseConnections={dataSources.filter(ds => ds.type === 'mysql' || ds.type === 'postgresql' || ds.type === 'sqlite')}
                 selectedSources={selectedSources}
                 setSelectedSources={setSelectedSources}
                 onResultsReceived={handleQueryResults}
+                onDataSourceSaved={(newSource) => {
+                  setDataSources(prev => [...prev, newSource]);
+                }}
               />
             </Grid>
 
