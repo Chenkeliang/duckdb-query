@@ -1,0 +1,116 @@
+[
+  {
+    "source_id": "async_result_463820ab-ee56-432d-beb2-3e84ea7b9193",
+    "filename": "task-463820ab-ee56-432d-beb2-3e84ea7b9193_20250814_185839.parquet",
+    "file_path": "/Users/keliang/mypy/interactive-data-query/tests/backend/../../api/exports/task-463820ab-ee56-432d-beb2-3e84ea7b9193_20250814_185839.parquet",
+    "file_type": "parquet",
+    "created_at": "2025-08-14T18:58:39.552386",
+    "columns": [
+      {
+        "name": "id",
+        "type": "int32"
+      },
+      {
+        "name": "name",
+        "type": "object"
+      }
+    ],
+    "row_count": 1,
+    "column_count": 2
+  },
+  {
+    "source_id": "async_result_39a42aec-6d2e-4ee2-b4b7-8ff0505d62ff",
+    "filename": "task-39a42aec-6d2e-4ee2-b4b7-8ff0505d62ff_20250814_185925.parquet",
+    "file_path": "/Users/keliang/mypy/interactive-data-query/tests/backend/../../api/exports/task-39a42aec-6d2e-4ee2-b4b7-8ff0505d62ff_20250814_185925.parquet",
+    "file_type": "parquet",
+    "created_at": "2025-08-14T18:59:25.473093",
+    "columns": [
+      {
+        "name": "id",
+        "type": "int32"
+      },
+      {
+        "name": "name",
+        "type": "object"
+      }
+    ],
+    "row_count": 1,
+    "column_count": 2
+  },
+  {
+    "source_id": "async_result_76c928d4-714d-4b79-a6be-fcaf9c0ec466",
+    "filename": "task-76c928d4-714d-4b79-a6be-fcaf9c0ec466_20250814_185925.parquet",
+    "file_path": "/Users/keliang/mypy/interactive-data-query/tests/backend/../../api/exports/task-76c928d4-714d-4b79-a6be-fcaf9c0ec466_20250814_185925.parquet",
+    "file_type": "parquet",
+    "created_at": "2025-08-14T18:59:25.498923",
+    "columns": [
+      {
+        "name": "id",
+        "type": "int32"
+      },
+      {
+        "name": "name",
+        "type": "object"
+      }
+    ],
+    "row_count": 1,
+    "column_count": 2
+  },
+  {
+    "source_id": "async_result_c1617657-c54e-4727-b8f9-00e8b190527c",
+    "filename": "task-c1617657-c54e-4727-b8f9-00e8b190527c_20250814_185925.parquet",
+    "file_path": "/Users/keliang/mypy/interactive-data-query/tests/backend/../../api/exports/task-c1617657-c54e-4727-b8f9-00e8b190527c_20250814_185925.parquet",
+    "file_type": "parquet",
+    "created_at": "2025-08-14T18:59:25.507254",
+    "columns": [
+      {
+        "name": "id",
+        "type": "int32"
+      },
+      {
+        "name": "name",
+        "type": "object"
+      }
+    ],
+    "row_count": 1,
+    "column_count": 2
+  },
+  {
+    "source_id": "async_result_98f2c3e0-ec64-4800-8c82-decd700d4fa4",
+    "filename": "task-98f2c3e0-ec64-4800-8c82-decd700d4fa4_20250814_185939.parquet",
+    "file_path": "/Users/keliang/mypy/interactive-data-query/tests/backend/../../api/exports/task-98f2c3e0-ec64-4800-8c82-decd700d4fa4_20250814_185939.parquet",
+    "file_type": "parquet",
+    "created_at": "2025-08-14T18:59:39.208217",
+    "columns": [
+      {
+        "name": "id",
+        "type": "int32"
+      },
+      {
+        "name": "name",
+        "type": "object"
+      }
+    ],
+    "row_count": 1,
+    "column_count": 2
+  },
+  {
+    "source_id": "async_result_35c0c5a1-979f-4823-bb93-589e86a3f667",
+    "filename": "task-35c0c5a1-979f-4823-bb93-589e86a3f667_20250814_185939.parquet",
+    "file_path": "/Users/keliang/mypy/interactive-data-query/tests/backend/../../api/exports/task-35c0c5a1-979f-4823-bb93-589e86a3f667_20250814_185939.parquet",
+    "file_type": "parquet",
+    "created_at": "2025-08-14T18:59:39.287618",
+    "columns": [
+      {
+        "name": "id",
+        "type": "int32"
+      },
+      {
+        "name": "name",
+        "type": "object"
+      }
+    ],
+    "row_count": 1,
+    "column_count": 2
+  }
+]
