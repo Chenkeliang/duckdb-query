@@ -7,8 +7,6 @@ import {
   TextField,
   Button,
   Grid,
-  Tabs,
-  Tab,
   Alert,
   CircularProgress,
   Chip,
@@ -20,7 +18,6 @@ import {
   ListItem,
   ListItemText,
   IconButton,
-  LinearProgress,
   Paper,
   FormControl,
   InputLabel,
@@ -29,8 +26,6 @@ import {
 } from '@mui/material';
 import {
   PlayArrow,
-  CloudUpload,
-  Link,
   Save,
   TableChart,
   Delete,
@@ -39,40 +34,21 @@ import {
 } from '@mui/icons-material';
 import {
   executeDuckDBSQL,
-  uploadFileToDuckDB,
   getDuckDBTablesEnhanced,
   deleteDuckDBTableEnhanced,
   getDuckDBTableInfo,
-  readFromUrl,
-  getUrlInfo,
   submitAsyncQuery
 } from '../services/apiClient';
 
 const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuery = "", onPreviewQueryUsed }) => {
-  const [activeTab, setActiveTab] = useState(0);
   const [sqlQuery, setSqlQuery] = useState('');
-  const [fileUrl, setFileUrl] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [tableAlias, setTableAlias] = useState('');
   const [saveAsTable, setSaveAsTable] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [duckdbTables, setDuckdbTables] = useState([]);
   const [tableManagerOpen, setTableManagerOpen] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [format, setFormat] = useState('parquet'); // 添加格式选择状态
-
-  // 当previewQuery变化时，设置SQL查询
-  useEffect(() => {
-    if (previewQuery) {
-      setSqlQuery(previewQuery);
-      // 通知父组件查询已被使用
-      if (onPreviewQueryUsed) {
-        onPreviewQueryUsed();
-      }
-    }
-  }, [previewQuery]);
 
   // 获取DuckDB中的表列表
   const fetchDuckDBTables = async () => {
@@ -164,49 +140,6 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuer
     }
   };
 
-  // 处理文件上传
-  const handleFileUpload = async () => {
-    if (!selectedFile) {
-      setError('请选择文件');
-      return;
-    }
-
-    if (!tableAlias.trim()) {
-      setError('请输入表别名');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    setUploadProgress(0);
-
-    try {
-      const response = await uploadFileToDuckDB(selectedFile, tableAlias);
-
-      if (response.success) {
-        setSuccess(`文件上传成功，已创建表: ${tableAlias}`);
-        fetchDuckDBTables();
-        // 通知全局数据源状态更新
-        if (onDataSourceSaved) {
-          onDataSourceSaved({
-            id: tableAlias,
-            type: 'duckdb',
-            name: `DuckDB表: ${tableAlias}`,
-            row_count: response.row_count,
-            columns: response.columns
-          });
-        }
-        setSelectedFile(null);
-        setTableAlias('');
-      }
-    } catch (err) {
-      setError(err.message || '文件上传失败');
-    } finally {
-      setLoading(false);
-      setUploadProgress(0);
-    }
-  };
-
   // 删除表
   const handleDeleteTable = async (tableName) => {
     try {
@@ -222,42 +155,6 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuer
     }
   };
 
-  // 处理URL读取
-  const handleUrlRead = async () => {
-    if (!fileUrl.trim()) {
-      setError('请输入文件URL');
-      return;
-    }
-
-    if (!tableAlias.trim()) {
-      setError('请输入表别名');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      const result = await readFromUrl(fileUrl, tableAlias);
-
-      if (result.success) {
-        setSuccess(`成功从URL读取文件并创建表: ${result.table_name}`);
-        fetchDuckDBTables();
-
-        // 清空输入
-        setFileUrl('');
-        setTableAlias('');
-      } else {
-        setError('URL读取失败');
-      }
-    } catch (err) {
-      setError(`URL读取失败: ${err.message || '未知错误'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <Box>
       <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: '#1976d2' }}>
@@ -265,115 +162,17 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuer
       </Typography>
 
       <Grid container spacing={3}>
-        {/* 左侧：数据源管理 */}
+        {/* 左侧：DuckDB表管理 */}
         <Grid item xs={12} md={4}>
           <Card sx={{ height: 'fit-content' }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                📁 数据源管理
+                🗃️ DuckDB表
               </Typography>
 
-              <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} sx={{ mb: 2 }}>
-                <Tab label="文件上传" />
-                <Tab label="URL读取" />
-              </Tabs>
-
-              {activeTab === 0 && (
-                <Box>
-                  <input
-                    type="file"
-                    accept=".csv,.xlsx,.xls,.json,.parquet,.pq"
-                    onChange={(e) => setSelectedFile(e.target.files[0])}
-                    style={{ display: 'none' }}
-                    id="file-upload"
-                  />
-                  <label htmlFor="file-upload">
-                    <Button
-                      variant="outlined"
-                      component="span"
-                      startIcon={<CloudUpload />}
-                      fullWidth
-                      sx={{ mb: 2 }}
-                    >
-                      选择文件
-                    </Button>
-                  </label>
-                  
-                  {selectedFile && (
-                    <Typography variant="body2" sx={{ mb: 2 }}>
-                      已选择: {selectedFile.name}
-                    </Typography>
-                  )}
-
-                  <TextField
-                    label="表别名"
-                    value={tableAlias}
-                    onChange={(e) => setTableAlias(e.target.value)}
-                    fullWidth
-                    sx={{ mb: 2 }}
-                    placeholder="例如: my_data"
-                  />
-
-                  {uploadProgress > 0 && (
-                    <LinearProgress variant="determinate" value={uploadProgress} sx={{ mb: 2 }} />
-                  )}
-
-                  <Button
-                    variant="contained"
-                    onClick={handleFileUpload}
-                    disabled={loading || !selectedFile || !tableAlias}
-                    fullWidth
-                  >
-                    上传并创建表
-                  </Button>
-                </Box>
-              )}
-
-              {activeTab === 1 && (
-                <Box>
-                  <TextField
-                    label="文件URL"
-                    value={fileUrl}
-                    onChange={(e) => setFileUrl(e.target.value)}
-                    fullWidth
-                    sx={{ mb: 1 }}
-                    placeholder="https://example.com/data.csv"
-                  />
-
-                  <Box sx={{ mb: 2, p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      💡 <strong>支持的URL格式：</strong><br />
-                      • 直接文件链接：https://example.com/data.csv<br />
-                      • GitHub文件：https://github.com/user/repo/blob/main/data.csv (自动转换)<br />
-                      • 支持格式：CSV, JSON, Parquet, Excel
-                    </Typography>
-                  </Box>
-
-                  <TextField
-                    label="表别名"
-                    value={tableAlias}
-                    onChange={(e) => setTableAlias(e.target.value)}
-                    fullWidth
-                    sx={{ mb: 2 }}
-                    placeholder="例如: remote_data"
-                  />
-
-                  <Button
-                    variant="contained"
-                    disabled={loading || !fileUrl || !tableAlias}
-                    startIcon={<Link />}
-                    fullWidth
-                    onClick={handleUrlRead}
-                  >
-                    读取远程文件
-                  </Button>
-                </Box>
-              )}
-
-              {/* DuckDB表管理 */}
-              <Box sx={{ mt: 3 }}>
+              <Box sx={{ mb: 2 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6">🗃️ DuckDB表</Typography>
+                  <Typography variant="subtitle1">可用表</Typography>
                   <Button
                     size="small"
                     onClick={() => setTableManagerOpen(true)}
@@ -383,7 +182,7 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuer
                   </Button>
                 </Box>
 
-                <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
+                <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
                   {duckdbTables.map((table) => (
                     <Chip
                       key={table}

@@ -15,7 +15,7 @@ import {
   IconButton,
   Button
 } from '@mui/material';
-import FileUploader from './components/DataSourceManager/FileUploader';
+import DataSourceManagement from './components/DataSourceManagement';
 import DatabaseConnector from './components/DataSourceManager/DatabaseConnector';
 import DataPasteBoard from './components/DataSourceManager/DataPasteBoard';
 import DataGrid from './components/DataGrid';
@@ -255,6 +255,13 @@ function App() {
     localStorage.setItem('dataSources', JSON.stringify(updatedSources));
   };
 
+  const handleDataSourceSaved = (newSource) => {
+    // 添加新数据源到数据源列表
+    const updatedSources = [...dataSources, newSource];
+    setDataSources(updatedSources);
+    localStorage.setItem('dataSources', JSON.stringify(updatedSources));
+  };
+
   const handleQueryResults = (data) => {
     if (!data) return;
     
@@ -447,13 +454,13 @@ function App() {
                   onChange={(e, newValue) => setDataSourceTab(newValue)}
                   variant="fullWidth"
                 >
-                  <Tab label="文件上传" />
+                  <Tab label="数据源管理" />
                   <Tab label="数据库连接" />
                   <Tab label="数据粘贴板" />
                 </Tabs>
 
                 <Box sx={{ p: 2 }}>
-                  {dataSourceTab === 0 && <FileUploader onUpload={handleFileUpload} />}
+                  {dataSourceTab === 0 && <DataSourceManagement onDataSaved={handleDataSourceSaved} />}
                   {dataSourceTab === 1 && <DatabaseConnector onConnect={handleDatabaseConnect} />}
                   {dataSourceTab === 2 && <DataPasteBoard onDataSaved={handlePasteDataSaved} />}
                 </Box>
