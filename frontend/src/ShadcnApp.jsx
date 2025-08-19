@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { ToastProvider } from './contexts/ToastContext';
 
 // 导入原有组件 - 确保包含所有必要的组件
-import QueryBuilder from './components/QueryBuilder/QueryBuilder';
 import DataGrid from './components/DataGrid';
 import DatabaseConnector from './components/DataSourceManager/DatabaseConnector';
 import DataPasteBoard from './components/DataSourceManager/DataPasteBoard';
@@ -17,6 +16,7 @@ import ModernDataDisplay from './components/Results/ModernDataDisplay';
 import DuckDBManagementPage from './components/DuckDBManager/DuckDBManagementPage';
 import DatabaseTableManager from './components/DatabaseManager/DatabaseTableManager';
 import AsyncTaskList from './components/AsyncTasks/AsyncTaskList';
+import UnifiedQueryInterface from './components/UnifiedQueryInterface/UnifiedQueryInterface';
 // import ToastDiagnostic from './components/ToastDiagnostic';
 
 // 导入服务
@@ -285,8 +285,7 @@ const ShadcnApp = () => {
           <div className="mantine-tabs">
                       {[
             { id: "datasource", label: "数据源" },
-            { id: "query", label: "查询" },
-            { id: "sql", label: "SQL执行器" },
+            { id: "unifiedquery", label: "统一查询" },
             { id: "tablemanagement", label: "数据表管理" },
             { id: "asynctasks", label: "异步任务" }
           ].map((tab) => (
@@ -350,30 +349,35 @@ const ShadcnApp = () => {
             </div>
           )}
 
-          {/* 查询页面 */}
-          {currentTab === "query" && (
+          {/* 统一查询页面 */}
+          {currentTab === "unifiedquery" && (
             <div className="p-6">
               {/* 页面介绍 */}
               <div className="page-intro">
                 <div className="page-intro-content">
                   <div className="page-intro-desc">
-                    <div><strong>可视化查询构建：</strong>拖拽选择数据源，无需编写SQL即可构建复杂查询</div>
+                    <div><strong>统一查询界面：</strong>整合图形化查询构建器和SQL编辑器，提供一致的查询体验</div>
+                    <div><strong>图形化查询：</strong>拖拽选择数据源，无需编写SQL即可构建复杂查询</div>
+                    <div><strong>SQL编辑器：</strong>直接编写SQL语句，支持语法高亮和自动补全</div>
                     <div><strong>多表关联：</strong>支持INNER、LEFT、RIGHT、FULL JOIN等多种连接方式</div>
-                    <div><strong>条件筛选：</strong>可视化设置WHERE条件，支持多种比较运算符</div>
-                    <div><strong>排序分组：</strong>灵活设置ORDER BY和GROUP BY条件</div>
-                    <div><strong>实时预览：</strong>查看生成的SQL语句，支持一键执行和结果导出</div>
+                    <div><strong>结果展示：</strong>统一的结果展示界面，支持导出和进一步分析</div>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-6">
-                {/* 查询构建器 */}
+                {/* 统一查询界面 */}
                 <div className="bg-white rounded-lg border shadow-sm p-6">
-                  <QueryBuilder
-                    dataSources={dataSources.filter(ds => ds.sourceType === 'duckdb')}
+                  <UnifiedQueryInterface
+                    dataSources={dataSources.filter(ds => ds.type === 'duckdb' || ds.sourceType === 'duckdb')}
+                    databaseConnections={databaseConnections}
                     selectedSources={selectedSources}
                     setSelectedSources={setSelectedSources}
                     onResultsReceived={setQueryResults}
+                    onDataSourceSaved={(newDataSource) => {
+                      triggerRefresh();
+                      console.log('新数据源已保存:', newDataSource);
+                    }}
                   />
                 </div>
 
@@ -396,52 +400,6 @@ const ShadcnApp = () => {
                       onRefresh={() => {
                         // 可以添加刷新逻辑
                       }}
-                      onDataSourceSaved={triggerRefresh}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* SQL执行器页面 */}
-          {currentTab === "sql" && (
-            <div className="p-6">
-              {/* 页面介绍 */}
-              <div className="page-intro">
-                <div className="page-intro-content">
-                  <div className="page-intro-desc">
-                    <div><strong>数据库SQL执行：</strong>连接MySQL、PostgreSQL等数据库执行SQL查询，支持结果保存到DuckDB</div>
-                    <div><strong>DuckDB增强执行器：</strong>在DuckDB中执行高级SQL，支持文件上传、远程URL读取</div>
-                    <div><strong>表管理功能：</strong>查看、删除DuckDB表，支持表结构和数据预览</div>
-                    <div><strong>结果保存：</strong>查询结果可保存为新表，支持数据持久化</div>
-                    <div><strong>语法高亮：</strong>SQL编辑器支持语法高亮和自动补全</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <UnifiedSQLExecutor
-                  databaseConnections={databaseConnections}
-                  onDataSourceSaved={(newDataSource) => {
-                    triggerRefresh();
-                    console.log('新数据源已保存:', newDataSource);
-                  }}
-                  onResultsReceived={setQueryResults}
-                  previewQuery={previewQuery}
-                  onPreviewQueryUsed={() => setPreviewQuery("")}
-                />
-
-                {/* 执行结果 */}
-                {queryResults && queryResults.data && queryResults.data.length > 0 && (
-                  <div className="bg-white rounded-lg border shadow-sm p-6">
-                    <ModernDataDisplay
-                      data={queryResults.data}
-                      columns={queryResults.columns}
-                      title="查询结果"
-                      sqlQuery={queryResults.sqlQuery || queryResults.sql || ''}
-                      originalDatasource={queryResults.originalDatasource}
-                      onRefresh={() => console.log('刷新查询结果')}
                       onDataSourceSaved={triggerRefresh}
                     />
                   </div>

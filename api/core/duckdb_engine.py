@@ -694,13 +694,22 @@ def get_actual_table_name(source) -> str:
     source_type = getattr(source, 'sourceType', None) or getattr(source, 'type', None)
 
     if source_type == 'duckdb':
-        # 使用name字段，如果没有则从id中去掉duckdb_前缀
-        actual_table_name = getattr(source, 'name', source.id)
-        if actual_table_name.startswith('duckdb_'):
+        # 使用name字段，如果没有则从id中获取
+        actual_table_name = getattr(source, 'name', None) or getattr(source, 'id', None)
+        # 确保表名不为None
+        if not actual_table_name:
+            raise ValueError("DuckDB数据源缺少表名")
+        
+        # 如果表名以'duckdb_'开头，去掉前缀
+        if isinstance(actual_table_name, str) and actual_table_name.startswith('duckdb_'):
             actual_table_name = actual_table_name[7:]  # 去掉'duckdb_'前缀
         return actual_table_name
     else:
-        return source.id
+        # 对于非DuckDB数据源，直接使用id
+        table_id = getattr(source, 'id', None)
+        if not table_id:
+            raise ValueError("数据源缺少ID")
+        return table_id
 
 
 def build_single_table_query(query_request: QueryRequest) -> str:

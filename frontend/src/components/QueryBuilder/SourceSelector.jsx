@@ -138,7 +138,7 @@ const SourceSelector = ({
                               display: 'block'
                             }}
                           >
-                            {source.type.toUpperCase()}
+                            {(source.type || '').toUpperCase()}
                           </Typography>
                         }
                       />
@@ -309,7 +309,7 @@ const SourceSelector = ({
                             display: 'block'
                           }}
                         >
-                          {source.type.toUpperCase()}
+                          {(source.type || '').toUpperCase()}
                         </Typography>
                       }
                     />

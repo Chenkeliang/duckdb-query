@@ -289,7 +289,7 @@ const DatabaseManager = () => {
                 <TableCell>{connection.name || connection.id}</TableCell>
                 <TableCell>
                   <Chip 
-                    label={connection.type.toUpperCase()} 
+                    label={(connection.type || '').toUpperCase()} 
                     size="small" 
                     variant="outlined"
                   />

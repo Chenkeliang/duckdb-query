@@ -116,7 +116,8 @@ const ModernQueryBuilder = ({
 
     // 添加JOIN
     joins.forEach(join => {
-      sql += `\n${join.type.toUpperCase().replace('_', ' ')} ${join.rightTable}`;
+      sql += `
+${(join.type || '').toUpperCase().replace('_', ' ')} ${join.rightTable}`;
       sql += `\n  ON ${join.leftTable}.${join.leftColumn} = ${join.rightTable}.${join.rightColumn}`;
     });
 
@@ -236,7 +237,7 @@ const ModernQueryBuilder = ({
                       {source.id}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {source.type.toUpperCase()} • {source.columns?.length || 0} 列
+                      {(source.type || '').toUpperCase()} • {source.columns?.length || 0} 列
                     </Typography>
                   </Box>
                 </Box>

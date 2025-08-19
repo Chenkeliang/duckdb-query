@@ -260,7 +260,7 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                               if (queryObj && queryObj.format) {
                                 return (
                                   <Chip 
-                                    label={`${queryObj.format.toUpperCase()} 格式`} 
+                                    label={`${(queryObj.format || '').toUpperCase()} 格式`} 
                                     size="small" 
                                     variant="outlined" 
                                     sx={{ mt: 1, fontSize: '0.7rem', height: 20 }}
@@ -273,7 +273,7 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                               if (formatMatch && formatMatch[1]) {
                                 return (
                                   <Chip 
-                                    label={`${formatMatch[1].toUpperCase()} 格式`} 
+                                    label={`${(formatMatch[1] || '').toUpperCase()} 格式`} 
                                     size="small" 
                                     variant="outlined" 
                                     sx={{ mt: 1, fontSize: '0.7rem', height: 20 }}
@@ -308,7 +308,7 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                                     onClick={() => openFormatDialog(task.task_id)}
                                     sx={{ textTransform: 'none' }}
                                   >
-                                    下载 ({parseQueryInfo(task.query).toUpperCase()})
+                                    下载 ({(parseQueryInfo(task.query) || '').toUpperCase()})
                                   </Button>
                                 </Tooltip>
                                 <Tooltip title="预览结果">
@@ -340,7 +340,7 @@ const AsyncTaskList = ({ onPreviewResult }) => {
           <Box sx={{ mt: 2 }}>
             <Alert severity="info" sx={{ mb: 2 }}>
               <Typography variant="body2">
-                此任务在创建时已指定输出格式为 <strong>{parseQueryInfo(getTaskById(selectedTaskId)?.query || '{}').toUpperCase()}</strong> 格式。
+                此任务在创建时已指定输出格式为 <strong>{(parseQueryInfo(getTaskById(selectedTaskId)?.query || '{}') || '').toUpperCase()}</strong> 格式。
               </Typography>
             </Alert>
             
@@ -349,7 +349,7 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                 格式说明:
               </Typography>
               <Typography variant="body2" component="div">
-                {parseQueryInfo(getTaskById(selectedTaskId)?.query || '{}') === 'parquet' ? (
+                {(parseQueryInfo(getTaskById(selectedTaskId)?.query || '{}') || '') === 'parquet' ? (
                   <>
                     • <strong>Parquet</strong>: 高效的列式存储格式<br/>
                     • 适合大数据分析<br/>

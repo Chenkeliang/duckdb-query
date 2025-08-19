@@ -19,7 +19,6 @@ import FileUploader from './components/DataSourceManager/FileUploader';
 import DatabaseConnector from './components/DataSourceManager/DatabaseConnector';
 import DataPasteBoard from './components/DataSourceManager/DataPasteBoard';
 import DataGrid from './components/DataGrid';
-import QueryBuilder from './components/QueryBuilder/QueryBuilder';
 import UnifiedQueryInterface from './components/UnifiedQueryInterface/UnifiedQueryInterface';
 import { uploadFile, connectDatabase, deleteFile, testDatabaseConnection, createDatabaseConnection } from './services/apiClient';
 import StorageIcon from '@mui/icons-material/Storage';

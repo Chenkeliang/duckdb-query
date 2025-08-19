@@ -276,7 +276,7 @@ const ModernDataDisplay = ({
       // 如果有自定义导出函数，优先使用
       if (onExport) {
         onExport(format, filteredData);
-        showSuccess(`数据导出为 ${format.toUpperCase()} 格式成功`);
+        showSuccess(`数据导出为 ${(format || '').toUpperCase()} 格式成功`);
         return;
       }
       

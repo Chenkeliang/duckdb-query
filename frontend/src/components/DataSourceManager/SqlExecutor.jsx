@@ -297,7 +297,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
                       {ds.name}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {ds.type.toUpperCase()} - {ds.params?.database || '数据库'}
+                      {(ds.type || '').toUpperCase()} - {ds.params?.database || '数据库'}
                     </Typography>
                   </Box>
                 </MenuItem>

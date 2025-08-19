@@ -209,5 +209,88 @@
       }
     ],
     "upload_time": "2025-08-13 06:21:55.139148"
+  },
+  {
+    "source_id": "async_result_ba37060d-a59f-4843-bd14-02a624f26aca",
+    "filename": "task-ba37060d-a59f-4843-bd14-02a624f26aca_20250819_063405.csv",
+    "file_path": "/app/exports/task-ba37060d-a59f-4843-bd14-02a624f26aca_20250819_063405.csv",
+    "file_type": "csv",
+    "created_at": "2025-08-19T06:34:45.560341",
+    "columns": [
+      {
+        "name": "DCID",
+        "type": "object"
+      },
+      {
+        "name": "FILE",
+        "type": "object"
+      },
+      {
+        "name": "LEVEL",
+        "type": "object"
+      },
+      {
+        "name": "MSG",
+        "type": "object"
+      },
+      {
+        "name": "TIME",
+        "type": "object"
+      },
+      {
+        "name": "__source__",
+        "type": "object"
+      },
+      {
+        "name": "__tag__:__hostname__",
+        "type": "object"
+      },
+      {
+        "name": "__tag__:__pack_id__",
+        "type": "object"
+      },
+      {
+        "name": "__tag__:__path__",
+        "type": "object"
+      },
+      {
+        "name": "__tag__:__user_defined_id__",
+        "type": "object"
+      },
+      {
+        "name": "__tag__:_container_ip_",
+        "type": "object"
+      },
+      {
+        "name": "__tag__:_container_name_",
+        "type": "object"
+      },
+      {
+        "name": "__tag__:_image_name_",
+        "type": "object"
+      },
+      {
+        "name": "__tag__:_namespace_",
+        "type": "object"
+      },
+      {
+        "name": "__tag__:_pod_name_",
+        "type": "object"
+      },
+      {
+        "name": "__tag__:_pod_uid_",
+        "type": "object"
+      },
+      {
+        "name": "__time__",
+        "type": "object"
+      },
+      {
+        "name": "__topic__",
+        "type": "object"
+      }
+    ],
+    "row_count": 2705756,
+    "column_count": 18
   }
 ]

@@ -314,7 +314,7 @@ const ExportManager = ({ queryRequest, onClose }) => {
               <TableRow key={task.id}>
                 <TableCell>{task.filename}</TableCell>
                 <TableCell>
-                  <Chip label={task.format.toUpperCase()} size="small" variant="outlined" />
+                  <Chip label={(task.format || '').toUpperCase()} size="small" variant="outlined" />
                 </TableCell>
                 <TableCell>
                   <Chip

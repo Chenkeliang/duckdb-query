@@ -294,7 +294,7 @@ const ModernDataSourcePanel = ({
                         <Box sx={{ mt: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                             <Chip
-                              label={source.type.toUpperCase()}
+                              label={(source.type || '').toUpperCase()}
                               size="small"
                               variant="outlined"
                               sx={{ fontSize: '0.75rem', height: 20 }}

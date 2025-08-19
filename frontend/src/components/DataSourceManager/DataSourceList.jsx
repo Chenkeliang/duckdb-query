@@ -235,7 +235,7 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
                         {db.name || `${db.type} 连接`}
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Chip label={db.type.toUpperCase()} size="small" color="secondary" />
+                        <Chip label={(db.type || '').toUpperCase()} size="small" color="secondary" />
                         <Chip
                           label={db.status || 'unknown'}
                           size="small"

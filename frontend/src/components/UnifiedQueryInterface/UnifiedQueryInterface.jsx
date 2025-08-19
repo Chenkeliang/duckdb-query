@@ -81,7 +81,7 @@ const UnifiedQueryInterface = ({
           <Box sx={{ p: 3 }}>
             {activeTab === 0 && (
               <QueryBuilder
-                dataSources={dataSources}
+                dataSources={dataSources.filter(ds => ds.type === 'duckdb' || ds.sourceType === 'duckdb')}
                 selectedSources={selectedSources}
                 setSelectedSources={setSelectedSources}
                 onResultsReceived={handleQueryBuilderResults}
