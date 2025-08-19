@@ -27,7 +27,7 @@ import {
   Cancel as CancelIcon
 } from '@mui/icons-material';
 import ChunkedUploader from '../ChunkedUpload/ChunkedUploader';
-import { uploadFileToDuckDB, readFromUrl } from '../../services/apiClient';
+import { uploadFileToDuckDB, readFromUrl, getDuckDBTableInfo } from '../../services/apiClient';
 
 const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   const [activeTab, setActiveTab] = useState(0);
@@ -149,9 +149,11 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
         handleReset();
       } else {
         setError(response.message || '文件上传失败');
+        showNotification(response.message || '文件上传失败', 'error');
       }
     } catch (err) {
       setError(err.message || '文件上传失败');
+      showNotification(err.message || '文件上传失败', 'error');
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -225,34 +227,63 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
         setTableAlias('');
       } else {
         setError(result.message || 'URL读取失败');
+        showNotification(result.message || 'URL读取失败', 'error');
       }
     } catch (err) {
       setError(`URL读取失败: ${err.message || '未知错误'}`);
+      showNotification(`URL读取失败: ${err.message || '未知错误'}`, 'error');
     } finally {
       setLoading(false);
     }
   };
 
   // 分块上传完成回调
-  const handleChunkedUploadComplete = (result) => {
-    if (result.success) {
-      showNotification(`文件上传成功，已创建表: ${tableAlias}`, 'success');
-      
-      // 通知父组件数据源已保存
-      if (onDataSourceSaved) {
-        onDataSourceSaved({
-          id: tableAlias,
-          type: 'duckdb',
-          name: `DuckDB表: ${tableAlias}`,
-          row_count: result.row_count,
-          columns: result.columns
-        });
+  const handleChunkedUploadComplete = async (result) => {
+    console.log('分块上传完成:', result);
+    
+    // 注意：ChunkedUploader 返回的对象结构与标准上传不同
+    if (result && result.fileInfo) {
+      try {
+        // 分块上传完成后，我们需要获取表的行数和列信息
+        // 这里我们通过API获取表的详细信息
+        const tableInfo = await getDuckDBTableInfo(tableAlias);
+        
+        showNotification(`文件上传成功，已创建表: ${tableAlias}`, 'success');
+        
+        // 通知父组件数据源已保存
+        if (onDataSourceSaved) {
+          onDataSourceSaved({
+            id: tableAlias,
+            type: 'duckdb',
+            name: `DuckDB表: ${tableAlias}`,
+            row_count: tableInfo.row_count || 0,
+            columns: tableInfo.columns || []
+          });
+        }
+      } catch (err) {
+        console.error('获取表信息失败:', err);
+        // 即使获取表信息失败，我们也认为上传是成功的
+        showNotification(`文件上传成功，已创建表: ${tableAlias}`, 'success');
+        
+        // 通知父组件数据源已保存（使用默认值）
+        if (onDataSourceSaved) {
+          onDataSourceSaved({
+            id: tableAlias,
+            type: 'duckdb',
+            name: `DuckDB表: ${tableAlias}`,
+            row_count: 0,
+            columns: []
+          });
+        }
       }
       
       // 清空输入
       handleReset();
     } else {
-      setError(result.message || '文件上传失败');
+      // 如果是错误情况，result可能包含错误信息
+      const errorMessage = result?.message || result?.error || '文件上传失败';
+      setError(errorMessage);
+      showNotification(`文件上传失败: ${errorMessage}`, 'error');
     }
   };
 
