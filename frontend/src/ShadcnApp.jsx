@@ -12,6 +12,7 @@ import DatabaseConnectionManager from './components/DataSourceManager/DatabaseCo
 import DuckDBQueryBuilder from './components/DuckDBQuery/DuckDBQueryBuilder';
 import UnifiedSQLExecutor from './components/UnifiedSQLExecutor/UnifiedSQLExecutor';
 import EnhancedFileUploader from './components/DataSourceManager/EnhancedFileUploader';
+import DataUploadSection from './components/DataSourceManagement/DataUploadSection';
 import ModernDataDisplay from './components/Results/ModernDataDisplay';
 import DuckDBManagementPage from './components/DuckDBManager/DuckDBManagementPage';
 import DatabaseTableManager from './components/DatabaseManager/DatabaseTableManager';
@@ -116,7 +117,7 @@ const ShadcnApp = () => {
         allDataSources = [...allDataSources, ...fileSources];
       }
 
-      // 2. 处理扫描到的但未被追踪的“历史”文件
+      // 2. 处理扫描到的但未被追踪的"历史"文件
       if (Array.isArray(legacyFilesRes)) {
         const legacyFilePromises = legacyFilesRes
           .filter(filename => !knownFileNames.has(filename)) // 过滤掉已知文件
@@ -315,15 +316,13 @@ const ShadcnApp = () => {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* 文件上传 */}
+                {/* 文件上传和URL导入 */}
                 <div className="bg-white rounded-lg border shadow-sm p-6">
-                  <EnhancedFileUploader
-                    onUpload={handleFileUpload}
-                    onUploadComplete={(result) => {
-                      console.log('文件上传完成:', result);
-                      triggerRefresh();
-                    }}
+                  <DataUploadSection 
                     onDataSourceSaved={triggerRefresh}
+                    showNotification={(message, severity) => {
+                      console.log(`${severity}: ${message}`);
+                    }}
                   />
                 </div>
 
