@@ -27,7 +27,7 @@ import {
   Cancel as CancelIcon
 } from '@mui/icons-material';
 import ChunkedUploader from '../ChunkedUpload/ChunkedUploader';
-import { uploadFileToDuckDB, readFromUrl, getDuckDBTableInfo } from '../../services/apiClient';
+import { uploadFile, readFromUrl, getDuckDBTableInfo } from '../../services/apiClient';
 
 const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   const [activeTab, setActiveTab] = useState(0);
@@ -129,17 +129,17 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
     setUploadProgress(0);
 
     try {
-      const response = await uploadFileToDuckDB(selectedFile, tableAlias);
+      const response = await uploadFile(selectedFile);
 
       if (response.success) {
-        showNotification(`文件上传成功，已创建表: ${tableAlias}`, 'success');
+        showNotification(`文件上传成功，已创建表: ${response.file_id}`, 'success');
         
         // 通知父组件数据源已保存
         if (onDataSourceSaved) {
           onDataSourceSaved({
-            id: tableAlias,
+            id: response.file_id,
             type: 'duckdb',
-            name: `DuckDB表: ${tableAlias}`,
+            name: `DuckDB表: ${response.file_id}`,
             row_count: response.row_count,
             columns: response.columns
           });
@@ -242,35 +242,35 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
     console.log('分块上传完成:', result);
     
     // 注意：ChunkedUploader 返回的对象结构与标准上传不同
-    if (result && result.fileInfo) {
+    if (result && result.file_info) {
       try {
-        // 分块上传完成后，我们需要获取表的行数和列信息
-        // 这里我们通过API获取表的详细信息
-        const tableInfo = await getDuckDBTableInfo(tableAlias);
+        // 分块上传完成后，file_info 包含了文件的详细信息
+        const fileInfo = result.file_info;
         
-        showNotification(`文件上传成功，已创建表: ${tableAlias}`, 'success');
+        showNotification(`文件上传成功，已创建表: ${fileInfo.source_id}`, 'success');
         
         // 通知父组件数据源已保存
         if (onDataSourceSaved) {
           onDataSourceSaved({
-            id: tableAlias,
+            id: fileInfo.source_id,
             type: 'duckdb',
-            name: `DuckDB表: ${tableAlias}`,
-            row_count: tableInfo.row_count || 0,
-            columns: tableInfo.columns || []
+            name: `DuckDB表: ${fileInfo.source_id}`,
+            row_count: fileInfo.row_count || 0,
+            columns: fileInfo.columns || []
           });
         }
       } catch (err) {
-        console.error('获取表信息失败:', err);
-        // 即使获取表信息失败，我们也认为上传是成功的
-        showNotification(`文件上传成功，已创建表: ${tableAlias}`, 'success');
+        console.error('处理分块上传结果失败:', err);
+        // 即使处理失败，我们也认为上传是成功的
+        const sourceId = result.file_info?.source_id || 'unknown';
+        showNotification(`文件上传成功，已创建表: ${sourceId}`, 'success');
         
         // 通知父组件数据源已保存（使用默认值）
         if (onDataSourceSaved) {
           onDataSourceSaved({
-            id: tableAlias,
+            id: sourceId,
             type: 'duckdb',
-            name: `DuckDB表: ${tableAlias}`,
+            name: `DuckDB表: ${sourceId}`,
             row_count: 0,
             columns: []
           });
