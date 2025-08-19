@@ -4,18 +4,14 @@ import {
   Card,
   CardContent,
   Typography,
-  Tabs,
-  Tab,
   Alert,
   Snackbar
 } from '@mui/material';
-import FileUploadSection from './FileUploadSection';
-import UrlImportSection from './UrlImportSection';
+import DataUploadSection from './DataUploadSection';
 import DataSourceList from './DataSourceList';
 import { getDuckDBTablesEnhanced } from '../../services/apiClient';
 
 const DataSourceManagement = ({ onDataSaved }) => {
-  const [activeTab, setActiveTab] = useState(0);
   const [duckdbTables, setDuckdbTables] = useState([]);
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
 
@@ -59,28 +55,10 @@ const DataSourceManagement = ({ onDataSaved }) => {
             📁 数据源管理
           </Typography>
           
-          <Tabs 
-            value={activeTab} 
-            onChange={(e, newValue) => setActiveTab(newValue)}
-            sx={{ mb: 2 }}
-          >
-            <Tab label="文件上传" />
-            <Tab label="URL导入" />
-          </Tabs>
-
-          {activeTab === 0 && (
-            <FileUploadSection 
-              onDataSourceSaved={handleDataSourceSaved}
-              showNotification={showNotification}
-            />
-          )}
-
-          {activeTab === 1 && (
-            <UrlImportSection 
-              onDataSourceSaved={handleDataSourceSaved}
-              showNotification={showNotification}
-            />
-          )}
+          <DataUploadSection 
+            onDataSourceSaved={handleDataSourceSaved}
+            showNotification={showNotification}
+          />
         </CardContent>
       </Card>
 
