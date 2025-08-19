@@ -315,13 +315,11 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
                   <tbody>
                     {previewDialog.data.preview_data?.map((row, i) => (
                       <tr key={i}>
-                        <tr key={i}>
-                          {previewDialog.data.columns?.map((col, j) => (
-                            <td key={j} style={{ border: '1px solid #ddd', padding: '8px' }}>
-                              {typeof row[col] === 'object' ? JSON.stringify(row[col]) : row[col]}
-                            </td>
-                          ))}
-                        </tr>
+                        {previewDialog.data.columns?.map((col, j) => (
+                          <td key={j} style={{ border: '1px solid #ddd', padding: '8px' }}>
+                            {typeof row[col] === 'object' ? JSON.stringify(row[col]) : row[col]}
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
