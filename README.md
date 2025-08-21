@@ -82,6 +82,7 @@ If you wish to contribute, modify the code, or build from source, please follow 
 - `config/app-config.json`: The core application configuration file for settings like CORS, file upload size limits, etc.
 - `config/datasources.json`: Define your database connections and preset data source queries here.
 - `config/mysql-configs.json`: Specifically for storing MySQL connection credentials (please use the page to load, involves password encryption algorithms).
+- `config/postgresql-configs.json`: Specifically for storing PostgreSQL connection credentials (please use the page to load, involves password encryption algorithms).
 
 ## 📄 License
 

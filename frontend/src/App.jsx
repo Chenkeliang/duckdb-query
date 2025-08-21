@@ -518,7 +518,7 @@ function App() {
                   const timeB = b.createdAt ? new Date(b.createdAt) : new Date(0);
                   return timeB - timeA;
                 })}
-                databaseConnections={dataSources.filter(ds => ds.type === 'mysql' || ds.type === 'postgresql' || ds.type === 'sqlite')}
+                databaseConnections={dataSources.filter(ds => ds.type === 'mysql' || ds.type === 'postgresql')}
                 selectedSources={selectedSources}
                 setSelectedSources={setSelectedSources}
                 onResultsReceived={handleQueryResults}

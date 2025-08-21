@@ -94,12 +94,14 @@ dist/
 # Project specific files - 敏感信息和数据文件
 # Sensitive information and data files
 api/mysql_configs.json
+api/postgresql_configs.json
 api/mysql_datasources.json
 api/temp_files/*
 !api/temp_files/.gitkeep
 api/exports/*
 !api/exports/.gitkeep
 config/mysql-configs.json
+config/postgresql-configs.json
 config/mysql-production.json
 config/datasources.json
 data/

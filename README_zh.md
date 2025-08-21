@@ -81,6 +81,7 @@ echo "应用已启动！请在浏览器中打开 http://localhost:3000"
 - `config/app-config.json`: 应用的核心配置文件，用于设置 CORS、文件上传大小限制等。
 - `config/datasources.json`: 在这里定义您的数据库连接和预设的数据源查询。
 - `config/mysql-configs.json`: 专门用于存储 MySQL 的连接凭据(请使用页面进行加载，涉及到密码的加密算法)。
+- `config/postgresql-configs.json`: 专门用于存储 PostgreSQL 的连接凭据(请使用页面进行加载，涉及到密码的加密算法)。
 
 ## 📄 授权许可
 

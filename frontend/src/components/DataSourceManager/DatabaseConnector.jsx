@@ -62,8 +62,9 @@ const DatabaseConnector = ({ onConnect }) => {
   const [success, setSuccess] = useState(false);
   const [expanded, setExpanded] = useState(true);
 
-  // 新增MySQL配置管理状态
+  // 新增MySQL和PostgreSQL配置管理状态
   const [mySQLConfigs, setMySQLConfigs] = useState([]);
+  const [postgreSQLConfigs, setPostgreSQLConfigs] = useState([]);
   const [openConfigDialog, setOpenConfigDialog] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [configName, setConfigName] = useState('');
@@ -77,6 +78,8 @@ const DatabaseConnector = ({ onConnect }) => {
   useEffect(() => {
     if (dbType === 'mysql') {
       loadMySQLConfigs();
+    } else if (dbType === 'postgresql') {
+      loadPostgreSQLConfigs();
     }
   }, [dbType]);
 
@@ -91,8 +94,19 @@ const DatabaseConnector = ({ onConnect }) => {
     }
   };
 
+  const loadPostgreSQLConfigs = async () => {
+    try {
+      const result = await getPostgreSQLConfigs();
+      if (result && result.configs) {
+        setPostgreSQLConfigs(result.configs);
+      }
+    } catch (err) {
+      console.error('加载PostgreSQL配置失败:', err);
+    }
+  };
+
   // 保存MySQL配置
-  const handleSaveConfig = async () => {
+  const handleSaveMySQLConfig = async () => {
     if (!validateForm()) return;
     
     setSavingConfig(true);
@@ -127,8 +141,44 @@ const DatabaseConnector = ({ onConnect }) => {
     }
   };
 
+  // 保存PostgreSQL配置
+  const handleSavePostgreSQLConfig = async () => {
+    if (!validateForm()) return;
+    
+    setSavingConfig(true);
+    
+    try {
+      const configToSave = {
+        id: configName || `postgresql-${host}-${database}`,
+        type: 'postgresql',
+        name: configName || `${host}:${port || '5432'}/${database}`,
+        params: {
+          host,
+          port: port ? parseInt(port) : 5432,
+          user: username,
+          password,
+          database
+        }
+      };
+      
+      await savePostgreSQLConfig(configToSave);
+      await loadPostgreSQLConfigs();
+
+      setSuccess(true);
+      setShowSaveConfig(false);
+      showSuccess('数据库配置已保存');
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err) {
+      const errorMsg = `保存配置失败: ${err.message || '未知错误'}`;
+      setError(errorMsg);
+      showError(errorMsg);
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   // 删除MySQL配置
-  const handleDeleteConfig = async (configId) => {
+  const handleDeleteMySQLConfig = async (configId) => {
     try {
       await deleteMySQLConfig(configId);
       await loadMySQLConfigs();
@@ -137,8 +187,18 @@ const DatabaseConnector = ({ onConnect }) => {
     }
   };
 
+  // 删除PostgreSQL配置
+  const handleDeletePostgreSQLConfig = async (configId) => {
+    try {
+      await deletePostgreSQLConfig(configId);
+      await loadPostgreSQLConfigs();
+    } catch (err) {
+      setError(`删除配置失败: ${err.message || '未知错误'}`);
+    }
+  };
+
   // 使用已保存的MySQL配置
-  const handleUseConfig = async (config) => {
+  const handleUseMySQLConfig = async (config) => {
     if (config && config.params) {
       setHost(config.params.host || 'localhost');
       setPort(config.params.port?.toString() || '3306');
@@ -153,20 +213,41 @@ const DatabaseConnector = ({ onConnect }) => {
             const fullConfig = await response.json();
             setPassword(fullConfig.params.password || '');
           } else {
-            setPassword(''); // 如果获取失败，清空密码字段
-            showError('无法获取配置密码，请重新输入');
+            showError('获取完整配置失败');
           }
-        } catch (error) {
-          setPassword(''); // 如果获取失败，清空密码字段
-          showError('获取配置密码失败，请重新输入');
+        } catch (err) {
+          showError('获取完整配置失败');
         }
       } else {
         setPassword(config.params.password || '');
       }
+    }
+  };
 
-      setDatabase(config.params.database || '');
-      setAlias(config.id || '');
-      setOpenConfigDialog(false);
+  // 使用已保存的PostgreSQL配置
+  const handleUsePostgreSQLConfig = async (config) => {
+    if (config && config.params) {
+      setHost(config.params.host || 'localhost');
+      setPort(config.params.port?.toString() || '5432');
+      setUsername(config.params.user || '');
+
+      // 如果密码被遮蔽，需要从后端获取真实密码
+      if (config.params.password === '********') {
+        try {
+          // 调用后端API获取完整配置（包含解密的密码）
+          const response = await fetch(`/api/postgresql_configs/${config.id}/full`);
+          if (response.ok) {
+            const fullConfig = await response.json();
+            setPassword(fullConfig.params.password || '');
+          } else {
+            showError('获取完整配置失败');
+          }
+        } catch (err) {
+          showError('获取完整配置失败');
+        }
+      } else {
+        setPassword(config.params.password || '');
+      }
     }
   };
 
@@ -593,22 +674,34 @@ const DatabaseConnector = ({ onConnect }) => {
             </Button>
 
             {/* 保存配置按钮 */}
-            {dbType === 'mysql' && showSaveConfig && (
-              <Button
-                variant="outlined"
-                startIcon={<SaveIcon />}
-                onClick={handleSaveConfig}
-                disabled={savingConfig}
-                sx={{
-                  borderRadius: '20px',
-                  py: 0.75,
-                  textTransform: 'none',
-                  fontWeight: 500,
-                  fontSize: '0.875rem'
-                }}
-              >
-                {savingConfig ? <CircularProgress size={24} /> : '保存配置'}
-              </Button>
+            {(dbType === 'mysql' || dbType === 'postgresql') && showSaveConfig && (
+              <>
+                <TextField
+                  label="配置名称"
+                  variant="outlined"
+                  size="small"
+                  value={configName}
+                  onChange={(e) => setConfigName(e.target.value)}
+                  sx={{ ml: 2, flexGrow: 1 }}
+                  placeholder="输入配置名称"
+                />
+                <Button
+                  variant="outlined"
+                  startIcon={<SaveIcon />}
+                  onClick={dbType === 'mysql' ? handleSaveMySQLConfig : handleSavePostgreSQLConfig}
+                  disabled={savingConfig}
+                  sx={{
+                    borderRadius: '20px',
+                    py: 0.75,
+                    textTransform: 'none',
+                    fontWeight: 500,
+                    fontSize: '0.875rem',
+                    ml: 2
+                  }}
+                >
+                  {savingConfig ? <CircularProgress size={24} /> : '保存配置'}
+                </Button>
+              </>
             )}
           </Box>
         </AccordionDetails>
@@ -624,39 +717,84 @@ const DatabaseConnector = ({ onConnect }) => {
         <DialogTitle>
           已保存的MySQL配置
         </DialogTitle>
-        <DialogContent dividers>
-          {mySQLConfigs.length > 0 ? (
-            <List>
-              {mySQLConfigs.map((config) => (
-                <React.Fragment key={config.id}>
-                  <ListItem>
-                    <ListItemText 
-                      primary={config.name || config.id} 
-                      secondary={`${config.params.host}:${config.params.port || '3306'}/${config.params.database}`}
-                      primaryTypographyProps={{ fontWeight: 500 }}
-                    />
-                    <ListItemSecondaryAction>
-                      <Tooltip title="使用此配置">
-                        <IconButton edge="end" color="primary" onClick={() => handleUseConfig(config)}>
-                          <FolderOpenIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="删除此配置">
-                        <IconButton edge="end" color="error" onClick={() => handleDeleteConfig(config.id)}>
+        <DialogContent>
+          <Box sx={{ minHeight: '300px' }}>
+            {dbType === 'mysql' && (
+              <>
+                <Typography variant="h6" gutterBottom>
+                  MySQL配置列表
+                </Typography>
+                {mySQLConfigs.length > 0 ? (
+                  <List>
+                    {mySQLConfigs.map((config) => (
+                      <ListItem key={config.id}>
+                        <ListItemText 
+                          primary={config.name || config.id}
+                          secondary={`${config.params.host}:${config.params.port || 3306}/${config.params.database}`} 
+                        />
+                        <Button
+                          size="small"
+                          onClick={() => handleUseMySQLConfig(config)}
+                          sx={{ mr: 1 }}
+                        >
+                          使用
+                        </Button>
+                        <IconButton 
+                          size="small" 
+                          color="error"
+                          onClick={() => handleDeleteMySQLConfig(config.id)}
+                        >
                           <DeleteIcon />
                         </IconButton>
-                      </Tooltip>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                  <Divider />
-                </React.Fragment>
-              ))}
-            </List>
-          ) : (
-            <Typography align="center" color="textSecondary" sx={{ py: 3 }}>
-              没有已保存的MySQL配置
-            </Typography>
-          )}
+                      </ListItem>
+                    ))}
+                  </List>
+                ) : (
+                  <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
+                    暂无保存的MySQL配置
+                  </Typography>
+                )}
+              </>
+            )}
+
+            {dbType === 'postgresql' && (
+              <>
+                <Typography variant="h6" gutterBottom>
+                  PostgreSQL配置列表
+                </Typography>
+                {postgreSQLConfigs.length > 0 ? (
+                  <List>
+                    {postgreSQLConfigs.map((config) => (
+                      <ListItem key={config.id}>
+                        <ListItemText 
+                          primary={config.name || config.id}
+                          secondary={`${config.params.host}:${config.params.port || 5432}/${config.params.database}`} 
+                        />
+                        <Button
+                          size="small"
+                          onClick={() => handleUsePostgreSQLConfig(config)}
+                          sx={{ mr: 1 }}
+                        >
+                          使用
+                        </Button>
+                        <IconButton 
+                          size="small" 
+                          color="error"
+                          onClick={() => handleDeletePostgreSQLConfig(config.id)}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </ListItem>
+                    ))}
+                  </List>
+                ) : (
+                  <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
+                    暂无保存的PostgreSQL配置
+                  </Typography>
+                )}
+              </>
+            )}
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenConfigDialog(false)}>关闭</Button>

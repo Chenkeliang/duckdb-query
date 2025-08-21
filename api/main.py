@@ -165,6 +165,85 @@ def register_mysql_connections_as_datasources():
         logger.error(f"注册MySQL数据源时出错: {str(e)}")
 
 
+def register_postgresql_connections_as_datasources():
+    """将PostgreSQL连接注册为可用数据源（不预执行SQL）"""
+    try:
+        logger.info("注册PostgreSQL连接为数据源...")
+
+        # PostgreSQL配置文件路径
+        postgresql_config_file = os.path.join(
+            os.path.dirname(__file__), 
+            "..", 
+            "config",
+            "postgresql-configs.json"
+        )
+        if not os.path.exists(postgresql_config_file):
+            logger.info("未找到PostgreSQL配置文件")
+            return
+
+        # 读取PostgreSQL配置
+        try:
+            with open(postgresql_config_file, "r") as f:
+                postgresql_configs_list = json.load(f)
+        except Exception as e:
+            logger.error(f"读取PostgreSQL配置文件失败: {str(e)}")
+            return
+            
+        if not postgresql_configs_list:
+            logger.info("未找到PostgreSQL连接配置")
+            return
+
+        # 转换为字典格式以兼容现有代码
+        postgresql_configs = {}
+        for config in postgresql_configs_list:
+            postgresql_configs[config["id"]] = type(
+                "Config",
+                (),
+                {
+                    "id": config["id"],
+                    "name": config.get("name", config["id"]),
+                    "enabled": config.get("enabled", True),
+                    "params": config["params"],
+                },
+            )()
+
+        # 将PostgreSQL连接添加到数据库管理器
+        from core.database_manager import db_manager
+        from models.query_models import DatabaseConnection, DataSourceType
+
+        success_count = 0
+        for config_id, config in postgresql_configs.items():
+            try:
+                if not config.enabled:
+                    logger.info(f"跳过已禁用的PostgreSQL连接: {config_id}")
+                    continue
+
+                # 创建数据库连接对象
+                db_connection = DatabaseConnection(
+                    id=config.id,
+                    name=config.name,
+                    type=DataSourceType.POSTGRESQL,
+                    params=config.params,
+                    created_at=datetime.now(),
+                )
+
+                # 添加到数据库管理器
+                success = db_manager.add_connection(db_connection)
+                if success:
+                    logger.info(f"成功注册PostgreSQL数据源: {config_id}")
+                    success_count += 1
+                else:
+                    logger.error(f"注册PostgreSQL数据源失败: {config_id}")
+
+            except Exception as e:
+                logger.error(f"注册PostgreSQL数据源失败 {config_id}: {str(e)}")
+
+        logger.info(f"PostgreSQL数据源注册完成，成功: {success_count}/{len(postgresql_configs)}")
+
+    except Exception as e:
+        logger.error(f"注册PostgreSQL数据源时出错: {str(e)}")
+
+
 def load_file_datasources_on_startup():
     """应用启动时重新加载所有文件数据源到DuckDB"""
     try:
@@ -222,27 +301,21 @@ if query_proxy_available:
 # 应用启动事件
 @app.on_event("startup")
 async def startup_event():
-    """应用启动时执行的初始化操作"""
-    logger.info("应用启动中...")
-
-    # 初始化加密密钥
-    initialize_encryption_key()
-
-    # 加载MySQL配置
-    load_mysql_configs_on_startup()
-
-    # 注册MySQL连接为数据源
-    register_mysql_connections_as_datasources()
-
-    # 重新加载文件数据源
-    load_file_datasources_on_startup()
-
-    # 确保所有表都是VARCHAR类型（解决JOIN类型转换问题）
-    logger.info("开始检查和转换表类型...")
-    ensure_all_tables_varchar()
-    logger.info("表类型检查和转换完成")
-
-    logger.info("应用启动完成")
+    """应用启动事件"""
+    logger.info("应用正在启动...")
+    
+    try:
+        # 注册MySQL连接
+        register_mysql_connections_as_datasources()
+        
+        # 注册PostgreSQL连接
+        register_postgresql_connections_as_datasources()
+        
+        # 重新加载文件数据源
+        load_file_datasources_on_startup()
+        logger.info("所有数据源加载完成")
+    except Exception as e:
+        logger.error(f"启动时加载数据源失败: {str(e)}")
 
 
 @app.get("/", tags=["Default"])

@@ -153,35 +153,36 @@ export const downloadResults = async (queryRequest) => {
   }
 };
 
-// MySQL配置相关API
+// MySQL配置管理
 export const getMySQLConfigs = async () => {
-  try {
-    const response = await apiClient.get('/api/mysql_configs');
-    return response.data;
-  } catch (error) {
-    console.error('获取MySQL配置失败:', error);
-    throw error;
-  }
+  const response = await apiClient.get('/api/mysql_configs');
+  return response.data;
 };
 
 export const saveMySQLConfig = async (config) => {
-  try {
-    const response = await apiClient.post('/api/mysql_configs', config);
-    return response.data;
-  } catch (error) {
-    console.error('保存MySQL配置失败:', error);
-    throw error;
-  }
+  const response = await apiClient.post('/api/mysql_configs', config);
+  return response.data;
 };
 
 export const deleteMySQLConfig = async (configId) => {
-  try {
-    const response = await apiClient.delete(`/api/mysql_configs/${configId}`);
-    return response.data;
-  } catch (error) {
-    console.error('删除MySQL配置失败:', error);
-    throw error;
-  }
+  const response = await apiClient.delete(`/api/mysql_configs/${configId}`);
+  return response.data;
+};
+
+// PostgreSQL配置管理
+export const getPostgreSQLConfigs = async () => {
+  const response = await apiClient.get('/api/postgresql_configs');
+  return response.data;
+};
+
+export const savePostgreSQLConfig = async (config) => {
+  const response = await apiClient.post('/api/postgresql_configs', config);
+  return response.data;
+};
+
+export const deletePostgreSQLConfig = async (configId) => {
+  const response = await apiClient.delete(`/api/postgresql_configs/${configId}`);
+  return response.data;
 };
 
 // 添加执行SQL查询的API函数

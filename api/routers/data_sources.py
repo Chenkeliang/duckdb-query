@@ -68,92 +68,182 @@ duckdb_con = get_db_connection()
 # MySQL配置文件路径
 MYSQL_CONFIG_FILE = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
+    "..",
     "config",
     "mysql-configs.json",
 )
-# 用于保存原始密码的字典，这样在显示配置时不会暴露密码
-MYSQL_PASSWORDS = {}
+
+# PostgreSQL配置文件路径
+POSTGRESQL_CONFIG_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "..",
+    "config",
+    "postgresql-configs.json",
+)
 
 
-# 确保SQL查询有LIMIT子句
-def ensure_query_has_limit(query, default_limit=500):
-    """
-    检查SQL查询是否包含LIMIT子句，如果没有则添加默认的LIMIT
-
-    Args:
-        query (str): SQL查询语句
-        default_limit (int): 默认的LIMIT值，如果没有指定则为500
-
-    Returns:
-        str: 确保包含LIMIT子句的SQL查询
-    """
-    # 转换为小写来进行不区分大小写的检查
-    query_lower = query.lower()
-
-    # 检查是否已经包含LIMIT子句
-    if "limit " not in query_lower:
-        # 如果查询以分号结束，在分号前添加LIMIT
-        if query.strip().endswith(";"):
-            return f"{query[:-1]} LIMIT {default_limit};"
-        else:
-            return f"{query} LIMIT {default_limit}"
-
-    return query
-
-
-# 确保MySQL配置文件存在
 def ensure_mysql_config_file():
+    """确保MySQL配置文件存在"""
+    config_dir = os.path.dirname(MYSQL_CONFIG_FILE)
+    if not os.path.exists(config_dir):
+        os.makedirs(config_dir)
+        
     if not os.path.exists(MYSQL_CONFIG_FILE):
         with open(MYSQL_CONFIG_FILE, "w") as f:
             json.dump([], f)
+        logger.info(f"创建默认MySQL配置文件: {MYSQL_CONFIG_FILE}")
 
 
-# 读取MySQL配置
+def ensure_postgresql_config_file():
+    """确保PostgreSQL配置文件存在"""
+    config_dir = os.path.dirname(POSTGRESQL_CONFIG_FILE)
+    if not os.path.exists(config_dir):
+        os.makedirs(config_dir)
+        
+    if not os.path.exists(POSTGRESQL_CONFIG_FILE):
+        with open(POSTGRESQL_CONFIG_FILE, "w") as f:
+            json.dump([], f)
+        logger.info(f"创建默认PostgreSQL配置文件: {POSTGRESQL_CONFIG_FILE}")
+
+
 def read_mysql_configs():
+    """读取MySQL配置（包含解密逻辑）"""
     ensure_mysql_config_file()
     try:
         logger.info(f"配置文件路径: {MYSQL_CONFIG_FILE}")
         logger.info(f"配置文件是否存在: {os.path.exists(MYSQL_CONFIG_FILE)}")
-
-        with open(MYSQL_CONFIG_FILE, "r") as f:
-            configs = json.load(f)
-            logger.info(f"从文件读取到 {len(configs)} 个配置")
-
-            # 解密密码
+        
+        with open(MYSQL_CONFIG_FILE, "r", encoding="utf-8") as f:
+            configs_data = json.load(f)
+            logger.info(f"从文件读取到 {len(configs_data)} 个配置")
+            
+            # 解密密码字段
             decrypted_configs = []
-            for i, config in enumerate(configs):
-                config_id = config.get("id", f"config_{i}")
+            for i, config_data in enumerate(configs_data):
+                config_id = config_data.get("id", f"config_{i}")
                 logger.info(f"处理配置: {config_id}")
                 try:
-                    decrypted_config = decrypt_config_passwords(config)
-                    decrypted_configs.append(decrypted_config)
-                    logger.info(f"配置 {config_id} 解密成功")
+                    # 解密密码
+                    if "params" in config_data and "password" in config_data["params"]:
+                        encrypted_password = config_data["params"]["password"]
+                        if password_encryptor.is_encrypted(encrypted_password):
+                            decrypted_password = password_encryptor.decrypt_password(encrypted_password)
+                            config_data["params"]["password"] = decrypted_password
+                            logger.info(f"配置 {config_id} 密码解密成功")
+                        else:
+                            logger.info(f"配置 {config_id} 密码未加密或无需解密")
+                    
+                    decrypted_configs.append(config_data)
+                    logger.info(f"配置 {config_id} 处理成功")
                 except Exception as e:
-                    logger.error(f"配置 {config_id} 解密失败: {str(e)}")
+                    logger.error(f"配置 {config_id} 处理解密失败: {str(e)}")
                     # 解密失败时使用原配置
-                    decrypted_configs.append(config)
+                    decrypted_configs.append(config_data)
 
             logger.info(f"最终返回 {len(decrypted_configs)} 个配置")
             return decrypted_configs
     except json.JSONDecodeError:
         # 如果文件为空或格式错误，返回空列表
+        logger.error("MySQL配置文件格式错误")
+        return []
+    except Exception as e:
+        logger.error(f"读取MySQL配置文件时出错: {str(e)}")
         return []
 
 
-# 保存MySQL配置
+def read_postgresql_configs():
+    """读取PostgreSQL配置（包含解密逻辑）"""
+    ensure_postgresql_config_file()
+    try:
+        logger.info(f"配置文件路径: {POSTGRESQL_CONFIG_FILE}")
+        logger.info(f"配置文件是否存在: {os.path.exists(POSTGRESQL_CONFIG_FILE)}")
+        
+        with open(POSTGRESQL_CONFIG_FILE, "r", encoding="utf-8") as f:
+            configs_data = json.load(f)
+            logger.info(f"从文件读取到 {len(configs_data)} 个配置")
+            
+            # 解密密码字段
+            decrypted_configs = []
+            for i, config_data in enumerate(configs_data):
+                config_id = config_data.get("id", f"config_{i}")
+                logger.info(f"处理配置: {config_id}")
+                try:
+                    # 解密密码
+                    if "params" in config_data and "password" in config_data["params"]:
+                        encrypted_password = config_data["params"]["password"]
+                        if password_encryptor.is_encrypted(encrypted_password):
+                            decrypted_password = password_encryptor.decrypt_password(encrypted_password)
+                            config_data["params"]["password"] = decrypted_password
+                            logger.info(f"配置 {config_id} 密码解密成功")
+                        else:
+                            logger.info(f"配置 {config_id} 密码未加密或无需解密")
+                    
+                    decrypted_configs.append(config_data)
+                    logger.info(f"配置 {config_id} 处理成功")
+                except Exception as e:
+                    logger.error(f"配置 {config_id} 处理解密失败: {str(e)}")
+                    # 解密失败时使用原配置
+                    decrypted_configs.append(config_data)
+
+            logger.info(f"最终返回 {len(decrypted_configs)} 个配置")
+            return decrypted_configs
+    except json.JSONDecodeError:
+        # 如果文件为空或格式错误，返回空列表
+        logger.error("PostgreSQL配置文件格式错误")
+        return []
+    except Exception as e:
+        logger.error(f"读取PostgreSQL配置文件时出错: {str(e)}")
+        return []
+
+
 def save_mysql_configs(configs):
+    """保存MySQL配置（包含加密逻辑）"""
     ensure_mysql_config_file()
 
-    # 创建配置的副本以避免修改原始配置
+    # 创建配置的副本来避免修改原始配置
     configs_to_save = []
     for config in configs:
         config_copy = json.loads(json.dumps(config))  # 深拷贝
+        
         # 加密密码后保存
-        config_copy = encrypt_config_passwords(config_copy)
+        if "params" in config_copy and "password" in config_copy["params"]:
+            plain_password = config_copy["params"]["password"]
+            if plain_password and not password_encryptor.is_encrypted(plain_password):
+                encrypted_password = password_encryptor.encrypt_password(plain_password)
+                config_copy["params"]["password"] = encrypted_password
+                logger.info(f"配置 {config.get('id', 'unknown')} 密码加密成功")
+            else:
+                logger.info(f"配置 {config.get('id', 'unknown')} 密码无需加密")
+
         configs_to_save.append(config_copy)
 
     with open(MYSQL_CONFIG_FILE, "w") as f:
-        json.dump(configs_to_save, f, indent=2)
+        json.dump(configs_to_save, f, indent=2, ensure_ascii=False)
+
+
+def save_postgresql_configs(configs):
+    """保存PostgreSQL配置（包含加密逻辑）"""
+    ensure_postgresql_config_file()
+
+    # 创建配置的副本来避免修改原始配置
+    configs_to_save = []
+    for config in configs:
+        config_copy = json.loads(json.dumps(config))  # 深拷贝
+        
+        # 加密密码后保存
+        if "params" in config_copy and "password" in config_copy["params"]:
+            plain_password = config_copy["params"]["password"]
+            if plain_password and not password_encryptor.is_encrypted(plain_password):
+                encrypted_password = password_encryptor.encrypt_password(plain_password)
+                config_copy["params"]["password"] = encrypted_password
+                logger.info(f"配置 {config.get('id', 'unknown')} 密码加密成功")
+            else:
+                logger.info(f"配置 {config.get('id', 'unknown')} 密码无需加密")
+
+        configs_to_save.append(config_copy)
+
+    with open(POSTGRESQL_CONFIG_FILE, "w") as f:
+        json.dump(configs_to_save, f, indent=2, ensure_ascii=False)
 
 
 # 获取所有MySQL配置
