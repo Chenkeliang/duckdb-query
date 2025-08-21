@@ -7,6 +7,7 @@ from fastapi import (
     Body,
     Query,
     Request,
+    Form,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
 from core.resource_manager import save_upload_file, schedule_cleanup
@@ -597,7 +598,9 @@ def handle_non_serializable_data(df):
 
 @router.post("/api/upload", tags=["Data Sources"])
 async def upload_file(
-    background_tasks: BackgroundTasks, file: UploadFile = File(...)
+    background_tasks: BackgroundTasks, 
+    file: UploadFile = File(...),
+    table_alias: str = Form(None)
 ) -> FileUploadResponse:
     """上传文件并返回详细信息，支持CSV、Excel、JSON、Parquet格式"""
     try:
@@ -659,9 +662,13 @@ async def upload_file(
         # 获取文件预览信息
         preview_info = get_file_preview(save_path, rows=10)
 
-        # 读取完整数据并持久化到DuckDB
         # 生成SQL兼容的表名，替换特殊字符为下划线
-        source_id = file.filename.split(".")[0]
+        if table_alias:
+            # 使用用户提供的表别名
+            source_id = table_alias
+        else:
+            # 使用文件名作为默认表名
+            source_id = file.filename.split(".")[0]
         source_id = "".join(c if c.isalnum() or c == "_" else "_" for c in source_id)
         # 确保表名不以数字开头
         if source_id and source_id[0].isdigit():
@@ -698,6 +705,14 @@ async def upload_file(
             f"已将文件 {file.filename} 持久化到DuckDB，表名: {source_id}, 行数: {len(df_full)}"
         )
 
+        # 删除原始上传文件
+        try:
+            if os.path.exists(save_path):
+                os.remove(save_path)
+                logger.info(f"已删除原始上传文件: {save_path}")
+        except Exception as e:
+            logger.warning(f"删除原始上传文件失败: {str(e)}")
+
         # 安排文件清理（1小时后）
         schedule_cleanup(save_path, background_tasks)
 
@@ -719,35 +734,7 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=f"文件上传处理失败: {str(e)}")
 
 
-@router.get("/api/file_preview/{filename}", tags=["Data Sources"])
-async def get_file_preview_api(filename: str, rows: int = 10):
-    """获取文件预览信息"""
-    try:
-        temp_dir = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "temp_files"
-        )
-        file_path = os.path.join(temp_dir, filename)
 
-        logger.info(f"尝试预览文件: {filename}, 路径: {file_path}")
-
-        if not os.path.exists(file_path):
-            logger.error(f"文件不存在: {file_path}")
-            raise HTTPException(status_code=404, detail="文件不存在")
-
-        # 检测文件类型
-        file_type = detect_file_type(file_path)
-        logger.info(f"检测到文件类型: {file_type}")
-
-        preview_info = get_file_preview(file_path, rows)
-        logger.info(f"文件预览成功: {filename}")
-        return preview_info
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"文件预览失败 {filename}: {str(e)}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"文件预览失败: {str(e)}")
 
 
 @router.post("/api/connect_database", tags=["Data Sources"])
@@ -979,56 +966,7 @@ async def connect_database(connection: DatabaseConnection = Body(...)):
         raise HTTPException(status_code=500, detail=f"数据库连接处理失败: {str(e)}")
 
 
-@router.post("/api/delete_file", tags=["Data Sources"])
-async def delete_file(request: dict = Body(...)):
-    """删除指定的本地文件（仅限于temp_files目录下）并清理DuckDB中的对应表"""
-    file_path = request.get("path")
-    if not file_path:
-        raise HTTPException(status_code=400, detail="缺少文件路径参数")
 
-    # 只允许删除 temp_files 目录下的文件，防止越权
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../temp_files"))
-    abs_path = os.path.abspath(file_path)
-    if not abs_path.startswith(base_dir):
-        raise HTTPException(status_code=403, detail="禁止删除非数据目录文件")
-    if not os.path.exists(abs_path):
-        raise HTTPException(status_code=404, detail="文件不存在")
-
-    try:
-        # 获取文件名（不含扩展名）作为表名
-        filename = os.path.basename(abs_path)
-        table_name = filename.split(".")[0]
-
-        # 1. 删除物理文件
-        os.remove(abs_path)
-        logger.info(f"已删除物理文件: {abs_path}")
-
-        # 2. 清理DuckDB中的对应表
-        try:
-            duckdb_con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-            logger.info(f"已从DuckDB中删除表: {table_name}")
-        except Exception as e:
-            logger.warning(f"删除DuckDB表失败 {table_name}: {str(e)}")
-            # 不抛出异常，因为文件已经删除成功
-
-        # 3. 删除文件数据源配置
-        try:
-            config_removed = file_datasource_manager.remove_file_datasource(table_name)
-            if config_removed:
-                logger.info(f"已删除文件数据源配置: {table_name}")
-            else:
-                logger.warning(f"文件数据源配置不存在: {table_name}")
-        except Exception as e:
-            logger.warning(f"删除文件数据源配置失败 {table_name}: {str(e)}")
-
-        return {
-            "success": True,
-            "message": f"文件已删除，并清理了DuckDB表和配置: {table_name}",
-        }
-
-    except Exception as e:
-        logger.error(f"删除文件失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"文件删除失败: {str(e)}")
 
 
 @router.post("/api/clear_duckdb_tables", tags=["Data Sources"])
@@ -1384,70 +1322,10 @@ async def debug_file_paths():
     return debug_info
 
 
-@router.get("/api/list_files", tags=["Data Sources"])
-async def list_files():
-    """列出 temp_files 目录下所有文件名（不含路径），并验证文件存在性"""
-    temp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "temp_files")
-    if not os.path.exists(temp_dir):
-        return JSONResponse([])
-
-    verified_files = []
-    for filename in os.listdir(temp_dir):
-        file_path = os.path.join(temp_dir, filename)
-        # 严格验证：文件存在且可读取
-        if os.path.isfile(file_path) and os.access(file_path, os.R_OK):
-            try:
-                # 进一步验证文件完整性
-                file_size = os.path.getsize(file_path)
-                if file_size > 0:  # 确保文件不为空
-                    verified_files.append(filename)
-                else:
-                    logger.warning(f"跳过空文件: {filename}")
-            except Exception as e:
-                logger.warning(f"跳过无法访问的文件: {filename}, 错误: {e}")
-
-    logger.info(
-        f"验证文件列表: 目录中有 {len(os.listdir(temp_dir))} 个项目，有效文件 {len(verified_files)} 个"
-    )
-
-    # 返回带有禁用缓存头的响应，确保前端获取最新数据
-    return JSONResponse(
-        verified_files,
-        headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
-        },
-    )
 
 
-@router.get("/api/file_columns", tags=["Data Sources"])
-async def file_columns(filename: str):
-    """获取指定文件的列名，确保文件存在性检查"""
-    temp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "temp_files")
-    file_path = os.path.join(temp_dir, filename)
 
-    # 严格检查文件是否存在
-    if not os.path.exists(file_path):
-        logger.warning(f"请求的文件不存在: {filename}, 路径: {file_path}")
-        return []
 
-    try:
-        if filename.endswith(".csv"):
-            df = pd.read_csv(file_path, nrows=5)
-        elif filename.endswith((".xls", ".xlsx")):
-            df = pd.read_excel(file_path, nrows=5)
-        else:
-            logger.warning(f"不支持的文件类型: {filename}")
-            return []
-
-        columns = df.columns.tolist()
-        logger.info(f"成功获取文件列名: {filename}, 列数: {len(columns)}")
-        return JSONResponse(columns)
-
-    except Exception as e:
-        logger.error(f"读取文件列名失败 {filename}: {str(e)}")
-        return []
 
 
 @router.get("/api/duckdb/tables", tags=["DuckDB"])
@@ -1461,6 +1339,17 @@ async def get_duckdb_tables():
         if tables_df.empty:
             return {"success": True, "tables": [], "count": 0}
 
+        # 获取文件数据源管理器实例
+        from core.file_datasource_manager import file_datasource_manager
+        file_datasources = file_datasource_manager.list_file_datasources()
+        # 创建source_id到上传时间的映射
+        datasource_timestamps = {}
+        for datasource in file_datasources:
+            source_id = datasource.get("source_id")
+            upload_time = datasource.get("created_at")  # 修复：使用created_at而不是upload_time
+            if source_id and upload_time:
+                datasource_timestamps[source_id] = upload_time
+
         table_info = []
         for _, row in tables_df.iterrows():
             table_name = row["name"]
@@ -1473,12 +1362,16 @@ async def get_duckdb_tables():
                 ).fetchone()
                 row_count = count_result[0] if count_result else 0
 
+                # 获取创建时间（如果有的话）
+                created_at = datasource_timestamps.get(table_name)
+
                 table_info.append(
                     {
                         "table_name": table_name,
                         "columns": schema_df.to_dict("records"),
                         "column_count": len(schema_df),
                         "row_count": row_count,
+                        "created_at": created_at
                     }
                 )
             except Exception as table_error:
@@ -1493,6 +1386,9 @@ async def get_duckdb_tables():
                     }
                 )
 
+        # 按创建时间倒序排序，没有创建时间的表排在最后
+        table_info.sort(key=lambda x: x.get("created_at") or "1900-01-01", reverse=True)
+
         return {"success": True, "tables": table_info, "count": len(table_info)}
 
     except Exception as e:
@@ -1500,61 +1396,7 @@ async def get_duckdb_tables():
         return {"success": False, "error": str(e), "tables": [], "count": 0}
 
 
-@router.delete("/api/file_datasources/{source_id}", tags=["Data Sources"])
-async def delete_file_datasource(source_id: str):
-    """删除文件数据源（包括文件、DuckDB表和配置条目）"""
-    try:
-        # 1. Get the datasource config to find the file path
-        datasource_config = file_datasource_manager.get_file_datasource(source_id)
-        
-        if not datasource_config:
-            logger.warning(f"数据源配置 '{source_id}' 不存在，将尝试按约定清理。")
-        else:
-            # 2. Delete the physical file if it exists
-            file_path = datasource_config.get("file_path")
-            if file_path and os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                    logger.info(f"已删除物理文件: {file_path}")
-                except Exception as e:
-                    logger.error(f"删除物理文件失败 {file_path}: {str(e)}")
-
-        # 3. Drop the DuckDB table (table name is the source_id)
-        try:
-            duckdb_con.execute(f'DROP TABLE IF EXISTS "{source_id}"' )
-            logger.info(f"已从DuckDB中删除表: {source_id}")
-        except Exception as e:
-            logger.warning(f"删除DuckDB表失败 {source_id}: {str(e)}")
-
-        # 4. Delete the config entry
-        file_datasource_manager.delete_file_datasource(source_id)
-        
-        return {"success": True, "message": f"数据源 {source_id} 已成功删除"}
-
-    except Exception as e:
-        logger.error(f"删除数据源失败 {source_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"删除数据源失败: {str(e)}")
 
 
-@router.get("/api/file_datasources", tags=["Data Sources"])
-async def get_file_datasources():
-    """获取所有已保存的文件数据源配置，并过滤掉文件不存在的无效条目"""
-    try:
-        all_datasources = file_datasource_manager.list_file_datasources()
-        
-        # 验证每个数据源的文件是否仍然存在
-        verified_datasources = []
-        for ds in all_datasources:
-            file_path = ds.get("file_path")
-            if file_path and os.path.exists(file_path):
-                verified_datasources.append(ds)
-            else:
-                logger.warning(f"数据源 '{ds.get('source_id')}' 对应的文件不存在: {file_path}。已从列表中过滤。")
 
-        return {
-            "success": True,
-            "datasources": verified_datasources
-        }
-    except Exception as e:
-        logger.error(f"获取文件数据源失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取文件数据源失败: {str(e)}")
+

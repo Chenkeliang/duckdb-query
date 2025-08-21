@@ -296,7 +296,18 @@ const EnhancedJoinBuilder = ({ dataSources = [], joins = [], onJoinsChange }) =>
                     onChange={(e) => updateJoinCondition(join.id, 'leftSourceId', e.target.value)}
                     label="左数据源"
                   >
-                    {dataSources.map(source => (
+                    {[...dataSources]
+                      .sort((a, b) => {
+                        // 按创建时间倒序排序（最新的在上面）
+                        // 如果createdAt为null，将其放在最后
+                        if (!a.createdAt && !b.createdAt) return 0;
+                        if (!a.createdAt) return 1;
+                        if (!b.createdAt) return -1;
+                        const timeA = new Date(a.createdAt).getTime();
+                        const timeB = new Date(b.createdAt).getTime();
+                        return timeB - timeA; // 时间大的（新的）排在前面
+                      })
+                      .map(source => (
                       <MenuItem key={source.id} value={source.id}>
                         {source.id}
                       </MenuItem>
@@ -330,7 +341,18 @@ const EnhancedJoinBuilder = ({ dataSources = [], joins = [], onJoinsChange }) =>
                     onChange={(e) => updateJoinCondition(join.id, 'rightSourceId', e.target.value)}
                     label="右数据源"
                   >
-                    {dataSources.map(source => (
+                    {[...dataSources]
+                      .sort((a, b) => {
+                        // 按创建时间倒序排序（最新的在上面）
+                        // 如果createdAt为null，将其放在最后
+                        if (!a.createdAt && !b.createdAt) return 0;
+                        if (!a.createdAt) return 1;
+                        if (!b.createdAt) return -1;
+                        const timeA = new Date(a.createdAt).getTime();
+                        const timeB = new Date(b.createdAt).getTime();
+                        return timeB - timeA; // 时间大的（新的）排在前面
+                      })
+                      .map(source => (
                       <MenuItem key={source.id} value={source.id}>
                         {source.id}
                       </MenuItem>

@@ -472,7 +472,18 @@ function App() {
                     已添加数据源 ({dataSources.length})
                   </Typography>
                   <Box component="ul" sx={{ p: 0, m: 0, listStyle: 'none', maxHeight: '150px', overflow: 'auto' }}>
-                    {dataSources.map((source) => (
+                    {[...dataSources]
+                      .sort((a, b) => {
+                        // 按创建时间倒序排序（最新的在上面）
+                        // 如果createdAt为null，将其放在最后
+                        if (!a.createdAt && !b.createdAt) return 0;
+                        if (!a.createdAt) return 1;
+                        if (!b.createdAt) return -1;
+                        const timeA = new Date(a.createdAt).getTime();
+                        const timeB = new Date(b.createdAt).getTime();
+                        return timeB - timeA; // 时间大的（新的）排在前面
+                      })
+                      .map((source) => (
                       <Box 
                         component="li" 
                         key={source.id}
@@ -502,7 +513,11 @@ function App() {
               )}
 
               <UnifiedQueryInterface
-                dataSources={dataSources}
+                dataSources={dataSources.sort((a, b) => {
+                  const timeA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+                  const timeB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+                  return timeB - timeA;
+                })}
                 databaseConnections={dataSources.filter(ds => ds.type === 'mysql' || ds.type === 'postgresql' || ds.type === 'sqlite')}
                 selectedSources={selectedSources}
                 setSelectedSources={setSelectedSources}

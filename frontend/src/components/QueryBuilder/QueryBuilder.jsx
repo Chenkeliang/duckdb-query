@@ -34,6 +34,8 @@ import TableChartIcon from '@mui/icons-material/TableChart';
 
 // 受控组件：selectedSources/setSelectedSources 由父组件(App.jsx)传入
 const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSources, onResultsReceived }) => {
+  console.log('QueryBuilder - 接收到的数据源:', dataSources);
+  console.log('QueryBuilder - 数据源创建时间:', dataSources.map(ds => ({id: ds.id, createdAt: ds.createdAt})));
   const { showSuccess, showError } = useToast();
   const [joins, setJoins] = useState([]);
   const [error, setError] = useState('');
@@ -403,9 +405,6 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         pt: 3,
         borderTop: '1px solid rgba(0,0,0,0.06)'
       }}>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 1 }}>
-          提示：界面查询默认限制10,000行。如需完整结果，请使用异步任务功能。
-        </Typography>
         <Button
           variant="contained"
           onClick={handleExecuteQuery}
@@ -432,31 +431,6 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
           startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
         >
           {isLoading ? '查询执行中...' : '执行查询'}
-        </Button>
-        <Button
-          variant="outlined"
-          onClick={handleDownload}
-          disabled={selectedSources.length === 0 || isLoading}
-          sx={{
-            borderRadius: 20,
-            px: 3,
-            py: 1,
-            textTransform: 'none',
-            fontWeight: 500,
-            border: '1px solid rgba(0, 113, 227, 0.5)',
-            color: '#0071e3',
-            '&:hover': {
-              border: '1px solid rgba(0, 113, 227, 0.8)',
-              backgroundColor: 'rgba(0, 113, 227, 0.04)'
-            },
-            '&.Mui-disabled': {
-              borderColor: 'rgba(0, 0, 0, 0.12)',
-              color: 'rgba(0, 0, 0, 0.38)'
-            }
-          }}
-          startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <DownloadIcon />}
-        >
-          {isLoading ? '处理中...' : '下载结果'}
         </Button>
       </Box>
 

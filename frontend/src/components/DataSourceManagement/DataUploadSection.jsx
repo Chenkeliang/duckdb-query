@@ -129,7 +129,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
     setUploadProgress(0);
 
     try {
-      const response = await uploadFile(selectedFile);
+      const response = await uploadFile(selectedFile, tableAlias);
 
       if (response.success) {
         showNotification(`文件上传成功，已创建表: ${response.file_id}`, 'success');

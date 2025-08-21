@@ -90,7 +90,7 @@ const ModernDataDisplay = ({
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [datasourceName, setDatasourceName] = useState('');
   const [tableAlias, setTableAlias] = useState('');
-  const [saveMode, setSaveMode] = useState('duckdb'); // 'duckdb' 或 'legacy'
+  const [saveMode, setSaveMode] = useState('duckdb'); // 只支持 'duckdb' 模式
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
@@ -376,99 +376,54 @@ const ModernDataDisplay = ({
   };
 
   const handleSaveConfirm = async () => {
-    if (saveMode === 'duckdb') {
-      // 新架构：保存到DuckDB
-      if (!tableAlias.trim()) {
-        setSaveError('请输入DuckDB表别名');
-        return;
-      }
+    // 新架构：保存到DuckDB
+    if (!tableAlias.trim()) {
+      setSaveError('请输入DuckDB表别名');
+      return;
+    }
 
-      if (!sqlQuery.trim()) {
-        setSaveError('没有可保存的查询结果');
-        return;
-      }
+    if (!sqlQuery.trim()) {
+      setSaveError('没有可保存的查询结果');
+      return;
+    }
 
-      setSaving(true);
-      setSaveError('');
+    setSaving(true);
+    setSaveError('');
 
-      try {
-        const result = await saveQueryToDuckDB(
-          sqlQuery,
-          originalDatasource,
-          tableAlias.trim()
-        );
+    try {
+      const result = await saveQueryToDuckDB(
+        sqlQuery,
+        originalDatasource,
+        tableAlias.trim()
+      );
 
-        if (result.success) {
-          setSaveDialogOpen(false);
-          setTableAlias('');
-          setDatasourceName('');
-          showSuccess(`查询结果已保存为DuckDB表: ${result.table_alias}`);
+      if (result.success) {
+        setSaveDialogOpen(false);
+        setTableAlias('');
+        setDatasourceName('');
+        showSuccess(`查询结果已保存为DuckDB表: ${result.table_alias}`);
 
-          // 通知父组件数据源已保存
-          if (onDataSourceSaved) {
-            onDataSourceSaved({
-              id: result.table_alias,
-              type: 'duckdb',
-              name: `DuckDB表: ${result.table_alias}`,
-              row_count: result.row_count,
-              columns: result.columns
-            });
-          }
-        } else {
-          const errorMsg = result.message || '保存失败';
-          setSaveError(errorMsg);
-          showError(errorMsg);
+        // 通知父组件数据源已保存
+        if (onDataSourceSaved) {
+          onDataSourceSaved({
+            id: result.table_alias,
+            type: 'duckdb',
+            name: `DuckDB表: ${result.table_alias}`,
+            row_count: result.row_count,
+            columns: result.columns
+          });
         }
-      } catch (error) {
-        const errorMsg = error.message || '保存失败，请重试';
+      } else {
+        const errorMsg = result.message || '保存失败';
         setSaveError(errorMsg);
         showError(errorMsg);
-      } finally {
-        setSaving(false);
       }
-    } else {
-      // 旧架构：保存为数据源
-      if (!datasourceName.trim()) {
-        setSaveError('请输入数据源名称');
-        return;
-      }
-
-      if (!sqlQuery.trim()) {
-        setSaveError('没有可保存的查询结果');
-        return;
-      }
-
-      setSaving(true);
-      setSaveError('');
-
-      try {
-        const result = await saveQueryResultAsDatasource(
-          sqlQuery,
-          datasourceName.trim(),
-          originalDatasource
-        );
-
-        if (result.success) {
-          setSaveDialogOpen(false);
-          setDatasourceName('');
-          showSuccess('查询结果已保存为数据源');
-
-          // 通知父组件数据源已保存
-          if (onDataSourceSaved) {
-            onDataSourceSaved(result.datasource);
-          }
-        } else {
-          const errorMsg = result.message || '保存失败';
-          setSaveError(errorMsg);
-          showError(errorMsg);
-        }
-      } catch (error) {
-        const errorMsg = error.message || '保存失败，请重试';
-        setSaveError(errorMsg);
-        showError(errorMsg);
-      } finally {
-        setSaving(false);
-      }
+    } catch (error) {
+      const errorMsg = error.message || '保存失败，请重试';
+      setSaveError(errorMsg);
+      showError(errorMsg);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -761,11 +716,6 @@ const ModernDataDisplay = ({
                 control={<Radio />}
                 label="保存到DuckDB (推荐)"
               />
-              <FormControlLabel
-                value="legacy"
-                control={<Radio />}
-                label="传统方式"
-              />
             </RadioGroup>
           </FormControl>
 
@@ -801,10 +751,7 @@ const ModernDataDisplay = ({
           )}
 
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            {saveMode === 'duckdb'
-              ? '将查询结果保存为DuckDB表，支持高效的关联查询和数据分析。'
-              : '使用传统方式保存为数据源，兼容旧版本功能。'
-            }
+            将查询结果保存为DuckDB表，支持高效的关联查询和数据分析。
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -814,7 +761,7 @@ const ModernDataDisplay = ({
           <Button
             onClick={handleSaveConfirm}
             variant="contained"
-            disabled={saving || (saveMode === 'duckdb' ? !tableAlias.trim() : !datasourceName.trim())}
+            disabled={saving || !tableAlias.trim()}
           >
             {saving ? '保存中...' : '保存'}
           </Button>

@@ -321,10 +321,6 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
             }}
             placeholder="输入SQL查询语句..."
           />
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 2 }}>
-            提示：界面查询默认限制10,000行。如需完整结果，请使用异步任务功能。
-          </Typography>
-          
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
             <Button
               variant="contained"

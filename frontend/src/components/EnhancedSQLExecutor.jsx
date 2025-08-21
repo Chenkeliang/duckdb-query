@@ -54,8 +54,26 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuer
   const fetchDuckDBTables = async () => {
     try {
       const response = await getDuckDBTablesEnhanced();
-      // 提取表名数组
-      const tableNames = response.tables ? response.tables.map(table => table.table_name) : [];
+      // 提取表名数组并按创建时间排序
+      let tableNames = response.tables ? response.tables.map(table => table.table_name) : [];
+      
+      // 创建表名到表信息的映射
+      const tableInfoMap = {};
+      if (response.tables) {
+        response.tables.forEach(table => {
+          tableInfoMap[table.table_name] = table;
+        });
+      }
+      
+      // 按创建时间倒序排序
+      tableNames.sort((a, b) => {
+        const tableA = tableInfoMap[a];
+        const tableB = tableInfoMap[b];
+        const timeA = tableA && tableA.created_at ? new Date(tableA.created_at) : new Date(0);
+        const timeB = tableB && tableB.created_at ? new Date(tableB.created_at) : new Date(0);
+        return timeB - timeA;
+      });
+      
       setDuckdbTables(tableNames);
     } catch (err) {
       console.error('获取表列表失败:', err);
@@ -217,11 +235,8 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuer
                 placeholder="输入您的SQL查询语句..."
               />
 
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 2 }}>
-                提示：界面查询默认限制10,000行。如需完整结果，请使用异步任务功能。
-              </Typography>
               <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={6}>
                   <TextField
                     label="保存结果为表 (可选)"
                     value={saveAsTable}
@@ -230,7 +245,22 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuer
                     placeholder="例如: query_result"
                   />
                 </Grid>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={6}>
+                  <Button
+                    variant="contained"
+                    onClick={executeSQL}
+                    disabled={loading || !sqlQuery.trim()}
+                    startIcon={loading ? <CircularProgress size={20} /> : <PlayArrow />}
+                    fullWidth
+                    sx={{ height: '56px' }}
+                  >
+                    执行预览
+                  </Button>
+                </Grid>
+              </Grid>
+              
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} md={6}>
                   <FormControl fullWidth>
                     <InputLabel>输出格式</InputLabel>
                     <Select
@@ -243,19 +273,7 @@ const EnhancedSQLExecutor = ({ onResultsReceived, onDataSourceSaved, previewQuer
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} md={4}>
-                  <Button
-                    variant="contained"
-                    onClick={executeSQL}
-                    disabled={loading || !sqlQuery.trim()}
-                    startIcon={loading ? <CircularProgress size={20} /> : <PlayArrow />}
-                    fullWidth
-                    sx={{ height: '56px' }}
-                  >
-                    执行预览
-                  </Button>
-                </Grid>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={6}>
                   <Button
                     variant="outlined"
                     onClick={executeAsyncSQL}

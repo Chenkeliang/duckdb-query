@@ -299,27 +299,17 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                         <TableCell>
                           <Box sx={{ display: 'flex', gap: 1 }}>
                             {task.status === 'success' && (
-                              <>
-                                <Tooltip title="下载完整结果">
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    startIcon={<Download />}
-                                    onClick={() => openFormatDialog(task.task_id)}
-                                    sx={{ textTransform: 'none' }}
-                                  >
-                                    下载 ({(parseQueryInfo(task.query) || '').toUpperCase()})
-                                  </Button>
-                                </Tooltip>
-                                <Tooltip title="预览结果">
-                                  <IconButton 
-                                    size="small" 
-                                    onClick={() => onPreviewResult(task.task_id)}
-                                  >
-                                    <Visibility />
-                                  </IconButton>
-                                </Tooltip>
-                              </>
+                              <Tooltip title="下载完整结果">
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<Download />}
+                                  onClick={() => openFormatDialog(task.task_id)}
+                                  sx={{ textTransform: 'none' }}
+                                >
+                                  下载 ({(parseQueryInfo(task.query) || '').toUpperCase()})
+                                </Button>
+                              </Tooltip>
                             )}
                           </Box>
                         </TableCell>

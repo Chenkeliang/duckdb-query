@@ -128,89 +128,6 @@
     "upload_time": "2025-08-12 10:51:59.390773"
   },
   {
-    "source_id": "测试大文件",
-    "filename": "测试大文件.csv",
-    "file_path": "/app/temp_files/测试大文件.csv",
-    "file_type": "csv",
-    "row_count": 2705756,
-    "column_count": 18,
-    "columns": [
-      {
-        "name": "DCID",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "FILE",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "LEVEL",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "MSG",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "TIME",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__source__",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__tag__:__hostname__",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__tag__:__pack_id__",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__tag__:__path__",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__tag__:__user_defined_id__",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__tag__:_container_ip_",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__tag__:_container_name_",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__tag__:_image_name_",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__tag__:_namespace_",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__tag__:_pod_name_",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__tag__:_pod_uid_",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__time__",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "__topic__",
-        "type": "VARCHAR"
-      }
-    ],
-    "upload_time": "2025-08-13 06:21:55.139148"
-  },
-  {
     "source_id": "async_result_ba37060d-a59f-4843-bd14-02a624f26aca",
     "filename": "task-ba37060d-a59f-4843-bd14-02a624f26aca_20250819_063405.csv",
     "file_path": "/app/exports/task-ba37060d-a59f-4843-bd14-02a624f26aca_20250819_063405.csv",
@@ -292,5 +209,110 @@
     ],
     "row_count": 2705756,
     "column_count": 18
+  },
+  {
+    "source_id": "meepo_mp_shipping_2",
+    "filename": "meepo_mp_shipping_2.csv",
+    "file_path": "/app/temp_files/meepo_mp_shipping_2.csv",
+    "file_type": "csv",
+    "row_count": 61,
+    "column_count": 2,
+    "columns": [
+      "order_sn",
+      "waybill"
+    ],
+    "upload_time": "2025-08-20 10:23:05.174824"
+  },
+  {
+    "source_id": "mp4",
+    "filename": "meepo_mp_shipping_2.csv",
+    "file_path": "/app/temp_files/meepo_mp_shipping_2.csv",
+    "file_type": "csv",
+    "row_count": 61,
+    "column_count": 2,
+    "columns": [
+      "order_sn",
+      "waybill"
+    ],
+    "upload_time": "2025-08-20 10:28:50.479566"
+  },
+  {
+    "source_id": "async_result_a55f1a66-c31b-47d2-a290-ffffd3fe2570",
+    "filename": "task-a55f1a66-c31b-47d2-a290-ffffd3fe2570_20250820_102917.parquet",
+    "file_path": "/app/exports/task-a55f1a66-c31b-47d2-a290-ffffd3fe2570_20250820_102917.parquet",
+    "file_type": "parquet",
+    "created_at": "2025-08-20T10:29:17.990657",
+    "columns": [
+      {
+        "name": "order_sn",
+        "type": "object"
+      },
+      {
+        "name": "waybill",
+        "type": "object"
+      }
+    ],
+    "row_count": 2,
+    "column_count": 2
+  },
+  {
+    "source_id": "test_parquet",
+    "filename": "task-a55f1a66-c31b-47d2-a290-ffffd3fe2570_20250820_102917.parquet",
+    "file_path": "/app/temp_files/task-a55f1a66-c31b-47d2-a290-ffffd3fe2570_20250820_102917.parquet",
+    "file_type": "parquet",
+    "row_count": 2,
+    "column_count": 2,
+    "columns": [
+      "order_sn",
+      "waybill"
+    ],
+    "upload_time": "2025-08-20 10:29:53.826019"
+  },
+  {
+    "source_id": "async_result_46847132-a6c2-48fb-86e7-4f315ef05003",
+    "filename": "task-46847132-a6c2-48fb-86e7-4f315ef05003_20250820_103020.csv",
+    "file_path": "/app/exports/task-46847132-a6c2-48fb-86e7-4f315ef05003_20250820_103020.csv",
+    "file_type": "csv",
+    "created_at": "2025-08-20T10:30:20.770619",
+    "columns": [
+      {
+        "name": "order_sn",
+        "type": "object"
+      },
+      {
+        "name": "waybill",
+        "type": "object"
+      }
+    ],
+    "row_count": 2,
+    "column_count": 2
+  },
+  {
+    "source_id": "test_csv",
+    "filename": "task-46847132-a6c2-48fb-86e7-4f315ef05003_20250820_103020.csv",
+    "file_path": "/app/temp_files/task-46847132-a6c2-48fb-86e7-4f315ef05003_20250820_103020.csv",
+    "file_type": "csv",
+    "row_count": 2,
+    "column_count": 2,
+    "columns": [
+      "order_sn",
+      "waybill"
+    ],
+    "upload_time": "2025-08-20 10:30:44.978465"
+  },
+  {
+    "source_id": "async_result_151fdf40-4485-4736-9ec7-5ef98e2011e0",
+    "filename": "task-151fdf40-4485-4736-9ec7-5ef98e2011e0_20250820_112714.parquet",
+    "file_path": "/app/exports/task-151fdf40-4485-4736-9ec7-5ef98e2011e0_20250820_112714.parquet",
+    "file_type": "parquet",
+    "created_at": "2025-08-20T11:27:14.619402",
+    "columns": [
+      {
+        "name": "column_1",
+        "type": "object"
+      }
+    ],
+    "row_count": 1,
+    "column_count": 1
   }
 ]

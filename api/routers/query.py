@@ -1414,6 +1414,17 @@ async def list_duckdb_tables():
         con = get_db_connection()
         tables_df = con.execute("SHOW TABLES").fetchdf()
 
+        # 获取文件数据源管理器实例
+        from core.file_datasource_manager import file_datasource_manager
+        file_datasources = file_datasource_manager.list_file_datasources()
+        # 创建source_id到上传时间的映射
+        datasource_timestamps = {}
+        for datasource in file_datasources:
+            source_id = datasource.get("source_id")
+            upload_time = datasource.get("created_at")  # 使用created_at而不是upload_time
+            if source_id and upload_time:
+                datasource_timestamps[source_id] = upload_time
+
         tables_info = []
         for _, row in tables_df.iterrows():
             table_name = row["name"]
@@ -1429,12 +1440,16 @@ async def list_duckdb_tables():
                 columns_result = con.execute(f"DESCRIBE {quoted_table_name}").fetchdf()
                 columns = columns_result["column_name"].tolist()
 
+                # 获取创建时间（如果有的话）
+                created_at = datasource_timestamps.get(table_name)
+
                 tables_info.append(
                     {
                         "table_name": table_name,
                         "row_count": int(row_count),
                         "columns": columns,
                         "column_count": len(columns),
+                        "created_at": created_at
                     }
                 )
             except Exception as e:
@@ -1448,6 +1463,9 @@ async def list_duckdb_tables():
                         "error": str(e),
                     }
                 )
+
+        # 按创建时间倒序排序，没有创建时间的表排在最后
+        tables_info.sort(key=lambda x: x.get("created_at") or "1900-01-01", reverse=True)
 
         return {
             "success": True,

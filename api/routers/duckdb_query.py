@@ -357,6 +357,13 @@ async def delete_duckdb_table(table_name: str):
 
         logger.info(f"成功删除DuckDB表: {table_name}")
 
+        # 同时尝试删除文件数据源记录
+        try:
+            from core.file_datasource_manager import file_datasource_manager
+            file_datasource_manager.delete_file_datasource(table_name)
+            logger.info(f"已删除文件数据源记录: {table_name}")
+        except Exception as e:
+            logger.warning(f"删除文件数据源记录失败: {str(e)}")
         return {
             "success": True,
             "message": f"表 '{table_name}' 已成功删除",

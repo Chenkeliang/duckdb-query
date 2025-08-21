@@ -55,14 +55,17 @@ const handleApiError = (error, defaultMessage = '操作失败') => {
   }
 };
 
-export const uploadFile = async (file) => {
+export const uploadFile = async (file, tableAlias = null) => {
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append("file", file);
+  if (tableAlias) {
+    formData.append("table_alias", tableAlias);
+  }
 
   try {
-    const response = await apiClient.post('/api/upload', formData, {
+    const response = await apiClient.post("/api/upload", formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        "Content-Type": "multipart/form-data",
       },
       timeout: 300000, // 5分钟超时
       maxContentLength: 100 * 1024 * 1024, // 100MB
@@ -70,10 +73,9 @@ export const uploadFile = async (file) => {
     });
     return response.data;
   } catch (error) {
-    handleApiError(error, '文件上传失败');
+    handleApiError(error, "文件上传失败");
   }
 };
-
 export const connectDatabase = async (connectionParams) => {
   try {
     const response = await apiClient.post('/api/connect_database', connectionParams);
@@ -215,26 +217,9 @@ export const getFilePreview = async (filename, rows = 10) => {
   }
 };
 
-export const listFiles = async () => {
-  try {
-    // 使用请求管理器防止重复请求
-    const data = await requestManager.getFileList();
-    return data;
-  } catch (error) {
-    console.error('获取文件列表失败:', error);
-    throw error;
-  }
-};
 
-export const getFileColumns = async (filename) => {
-  try {
-    const response = await apiClient.get(`/api/file_columns?filename=${filename}`);
-    return response.data;
-  } catch (error) {
-    console.error('获取文件列信息失败:', error);
-    throw error;
-  }
-};
+
+
 
 // 数据库连接管理API
 export const testDatabaseConnection = async (connectionData) => {
@@ -551,26 +536,7 @@ export const getUrlInfo = async (url) => {
   }
 };
 
-// 获取文件数据源
-export const getFileDataSources = async () => {
-  try {
-    const response = await apiClient.get('/api/file_datasources');
-    return response.data;
-  } catch (error) {
-    console.error('获取文件数据源失败:', error);
-    throw error;
-  }
-};
 
-export const deleteFileDataSource = async (sourceId) => {
-  try {
-    const response = await apiClient.delete(`/api/file_datasources/${sourceId}`);
-    return response.data;
-  } catch (error) {
-    console.error(`删除文件数据源 ${sourceId} 失败:`, error);
-    throw error;
-  }
-};
 
 // 异步任务API
 export const listAsyncTasks = async () => {

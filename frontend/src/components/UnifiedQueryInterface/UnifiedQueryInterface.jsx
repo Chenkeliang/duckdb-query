@@ -81,11 +81,19 @@ const UnifiedQueryInterface = ({
           <Box sx={{ p: 3 }}>
             {activeTab === 0 && (
               <QueryBuilder
-                dataSources={dataSources.filter(ds => ds.type === 'duckdb' || ds.sourceType === 'duckdb')}
-                selectedSources={selectedSources}
-                setSelectedSources={setSelectedSources}
-                onResultsReceived={handleQueryBuilderResults}
-              />
+                    dataSources={[...dataSources].filter(ds => ds.type === 'duckdb' || ds.sourceType === 'duckdb').sort((a, b) => {
+                      const timeA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+                      const timeB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+                      // 如果createdAt为null，将其放在最后
+                      if (!a.createdAt && !b.createdAt) return 0;
+                      if (!a.createdAt) return 1;
+                      if (!b.createdAt) return -1;
+                      return timeB - timeA;
+                    })}
+                    selectedSources={selectedSources}
+                    setSelectedSources={setSelectedSources}
+                    onResultsReceived={handleQueryBuilderResults}
+                  />
             )}
 
             {activeTab === 1 && (

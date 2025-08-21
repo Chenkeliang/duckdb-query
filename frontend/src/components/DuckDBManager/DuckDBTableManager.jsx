@@ -46,7 +46,13 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
     try {
       const response = await getDuckDBTables();
       if (response.success) {
-        setTables(response.tables || []);
+        // 按创建时间倒序排序
+        const sortedTables = (response.tables || []).sort((a, b) => {
+          const timeA = a.created_at ? new Date(a.created_at) : new Date(0);
+          const timeB = b.created_at ? new Date(b.created_at) : new Date(0);
+          return timeB - timeA;
+        });
+        setTables(sortedTables);
       } else {
         setError('获取表列表失败');
       }

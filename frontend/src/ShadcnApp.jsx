@@ -25,9 +25,6 @@ import {
   getDuckDBTables,
   listDatabaseConnections,
   getMySQLDataSources,
-  listFiles,
-  getFileColumns,
-  getFileDataSources,
   testDatabaseConnection,
   createDatabaseConnection
 } from './services/apiClient';
@@ -44,6 +41,7 @@ const ShadcnApp = () => {
   const [dataSources, setDataSources] = useState([]);
   const [databaseConnections, setDatabaseConnections] = useState([]);
   const [selectedSources, setSelectedSources] = useState([]);
+  console.log('ShadcnApp - 当前选中的数据源:', selectedSources);
   const [queryResults, setQueryResults] = useState({ data: [], columns: [] });
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lastFetchTime, setLastFetchTime] = useState(0);
@@ -65,81 +63,48 @@ const ShadcnApp = () => {
   }, [refreshTrigger]);
 
   const loadInitialData = async (force = false) => {
+    // 如果是强制刷新，跳过防抖
+    if (force) {
+      await executeLoadInitialData();
+      return;
+    }
+
     // 使用全局防抖管理器
     const debounceKey = `loadInitialData_${force ? 'force' : 'normal'}`;
 
     return globalDebounce.debounce(debounceKey, async () => {
-      const now = Date.now();
+      await executeLoadInitialData();
+    });
+  };
 
-      // 如果正在加载中，跳过
-      if (isLoading) {
-        console.log('ShadcnApp - 跳过数据加载，正在加载中');
-        return;
-      }
+  const executeLoadInitialData = async () => {
+    const now = Date.now();
 
-      setIsLoading(true);
-      setLastFetchTime(now);
+    // 如果正在加载中，跳过
+    if (isLoading) {
+      console.log('ShadcnApp - 跳过数据加载，正在加载中');
+      return;
+    }
+
+    setIsLoading(true);
+    setLastFetchTime(now);
 
     try {
       console.log('🔄 ShadcnApp - 开始加载数据...');
 
-      const [dataSourcesRes, connectionsRes, duckdbTablesRes, fileDataSourcesRes, legacyFilesRes] = await Promise.all([
+      const [dataSourcesRes, connectionsRes, duckdbTablesRes] = await Promise.all([
         getMySQLDataSources(),
         listDatabaseConnections(),
-        getDuckDBTables(),
-        getFileDataSources(),
-        listFiles()
+        getDuckDBTables()
       ]);
 
       console.log('🔄 API调用完成，开始处理数据...');
 
       let allDataSources = [];
-      const knownFileNames = new Set();
 
       if (dataSourcesRes.success) {
         const mysqlSources = dataSourcesRes.connections || [];
         allDataSources = [...allDataSources, ...mysqlSources];
-      }
-
-      // 1. 优先处理有完整元数据的文件数据源
-      if (fileDataSourcesRes.success && Array.isArray(fileDataSourcesRes.datasources)) {
-        const fileSources = fileDataSourcesRes.datasources.map(ds => {
-            knownFileNames.add(ds.filename); // 记录已知文件名，用于去重
-            return {
-                id: ds.source_id,
-                name: ds.filename,
-                sourceType: 'file',
-                type: 'file',
-                columns: ds.columns || [],
-                columnCount: ds.column_count || 0
-            };
-        });
-        allDataSources = [...allDataSources, ...fileSources];
-      }
-
-      // 2. 处理扫描到的但未被追踪的"历史"文件
-      if (Array.isArray(legacyFilesRes)) {
-        const legacyFilePromises = legacyFilesRes
-          .filter(filename => !knownFileNames.has(filename)) // 过滤掉已知文件
-          .map(async (filename) => {
-            try {
-              const columns = await getFileColumns(filename);
-              return {
-                id: filename,
-                name: filename,
-                sourceType: 'file',
-                type: 'file',
-                columns: columns || [],
-                columnCount: (columns || []).length
-              };
-            } catch (error) {
-              console.error(`获取历史文件 ${filename} 的列信息失败:`, error);
-              return null;
-            }
-        });
-
-        const legacyFileSources = (await Promise.all(legacyFilePromises)).filter(Boolean);
-        allDataSources = [...allDataSources, ...legacyFileSources];
       }
 
       if (duckdbTablesRes.success) {
@@ -148,6 +113,8 @@ const ShadcnApp = () => {
           const tableName = typeof table === 'string' ? table : (table.table_name || table.name || String(table));
           const columns = typeof table === 'object' ? (table.columns || []) : [];
           const columnCount = typeof table === 'object' ? (table.column_count || columns.length) : 0;
+          // 添加创建时间字段，如果有的话
+          const createdAt = typeof table === 'object' ? (table.created_at || null) : null;
 
           return {
             id: tableName,
@@ -155,13 +122,46 @@ const ShadcnApp = () => {
             sourceType: 'duckdb',
             type: 'table',
             columns: columns,
-            columnCount: columnCount
+            columnCount: columnCount,
+            createdAt: createdAt
           };
+        });
+        // 按创建时间倒序排序
+        duckdbSources.sort((a, b) => {
+          // 如果createdAt为null，将其放在最后
+          if (!a.createdAt && !b.createdAt) return 0;
+          if (!a.createdAt) return 1;
+          if (!b.createdAt) return -1;
+          const timeA = new Date(a.createdAt);
+          const timeB = new Date(b.createdAt);
+          return timeB - timeA;
         });
         allDataSources = [...allDataSources, ...duckdbSources];
       }
 
+      // 按创建时间倒序排序所有数据源
+      allDataSources.sort((a, b) => {
+        // 如果createdAt为null，将其放在最后
+        if (!a.createdAt && !b.createdAt) return 0;
+        if (!a.createdAt) return 1;
+        if (!b.createdAt) return -1;
+        const timeA = new Date(a.createdAt);
+        const timeB = new Date(b.createdAt);
+        return timeB - timeA;
+      });
+
       setDataSources(allDataSources);
+      console.log('ShadcnApp - 更新后的数据源:', allDataSources);
+      console.log('ShadcnApp - 新数据源结构示例:', allDataSources.length > 0 ? allDataSources[allDataSources.length - 1] : '无数据源');
+      
+      // 检查selectedSources中的数据源是否仍然有效
+      const validSelectedSources = selectedSources.filter(selectedSource => 
+        allDataSources.some(ds => ds.id === selectedSource.id)
+      );
+      if (validSelectedSources.length !== selectedSources.length) {
+        console.log('ShadcnApp - 更新selectedSources，移除无效的数据源');
+        setSelectedSources(validSelectedSources);
+      }
 
       let connections = [];
       if (connectionsRes.success) {
@@ -175,7 +175,6 @@ const ShadcnApp = () => {
     } finally {
       setIsLoading(false);
     }
-    }, force ? 1000 : 3000);
   };
 
   const triggerRefresh = () => {
@@ -183,7 +182,8 @@ const ShadcnApp = () => {
     requestManager.clearAllCache();
 
     console.log('ShadcnApp - 触发数据刷新');
-    setRefreshTrigger(prev => prev + 1);
+    // 强制刷新数据，不使用防抖
+    loadInitialData(true);
   };
 
   // 文件上传处理函数
@@ -368,7 +368,15 @@ const ShadcnApp = () => {
                 {/* 统一查询界面 */}
                 <div className="bg-white rounded-lg border shadow-sm p-6">
                   <UnifiedQueryInterface
-                    dataSources={dataSources.filter(ds => ds.type === 'duckdb' || ds.sourceType === 'duckdb')}
+                    dataSources={[...dataSources].filter(ds => ds.type === 'duckdb' || ds.sourceType === 'duckdb').sort((a, b) => {
+                      const timeA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+                      const timeB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+                      // 如果createdAt为null，将其放在最后
+                      if (!a.createdAt && !b.createdAt) return 0;
+                      if (!a.createdAt) return 1;
+                      if (!b.createdAt) return -1;
+                      return timeB - timeA;
+                    })}
                     databaseConnections={databaseConnections}
                     selectedSources={selectedSources}
                     setSelectedSources={setSelectedSources}

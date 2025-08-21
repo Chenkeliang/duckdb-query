@@ -85,8 +85,18 @@ const SourceSelector = ({
         <Box sx={{ overflow: 'auto', flexGrow: 1 }}>
           {availableSources.length > 0 ? (
             <List disablePadding>
-              {availableSources
+              {[...availableSources]
                 .filter(source => !selectedSources.some(s => s.id === source.id))
+                .sort((a, b) => {
+                  // 按创建时间倒序排序（最新的在上面）
+                  // 如果createdAt为null，将其放在最后
+                  if (!a.createdAt && !b.createdAt) return 0;
+                  if (!a.createdAt) return 1;
+                  if (!b.createdAt) return -1;
+                  const timeA = new Date(a.createdAt).getTime();
+                  const timeB = new Date(b.createdAt).getTime();
+                  return timeB - timeA; // 时间大的（新的）排在前面
+                })
                 .map((source, index, array) => (
                   <React.Fragment key={source.id}>
                     <ListItem

@@ -163,12 +163,7 @@ class RequestManager {
     return this.executeRequest('/api/duckdb/tables', {}, 2000); // 2秒防抖
   }
 
-  /**
-   * 专门用于文件列表请求的方法
-   */
-  async getFileList() {
-    return this.executeRequest('/api/list_files', {}, 2000); // 2秒防抖
-  }
+  
 }
 
 // 创建全局实例

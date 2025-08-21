@@ -257,7 +257,18 @@ const ModernDataSourcePanel = ({
             </Box>
           ) : (
             <List sx={{ p: 0 }}>
-              {dataSources.map((source, index) => (
+              {[...dataSources]
+                .sort((a, b) => {
+                  // 按创建时间倒序排序（最新的在上面）
+                  // 如果createdAt为null，将其放在最后
+                  if (!a.createdAt && !b.createdAt) return 0;
+                  if (!a.createdAt) return 1;
+                  if (!b.createdAt) return -1;
+                  const timeA = new Date(a.createdAt).getTime();
+                  const timeB = new Date(b.createdAt).getTime();
+                  return timeB - timeA; // 时间大的（新的）排在前面
+                })
+                .map((source, index) => (
                 <React.Fragment key={source.id}>
                   <ListItem
                     sx={{

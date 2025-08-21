@@ -211,7 +211,18 @@ ${(join.type || '').toUpperCase().replace('_', ' ')} ${join.rightTable}`;
       </Typography>
       
       <Stack spacing={1}>
-        {dataSources.map((source) => (
+        {[...dataSources]
+          .sort((a, b) => {
+            // 按创建时间倒序排序（最新的在上面）
+            // 如果createdAt为null，将其放在最后
+            if (!a.createdAt && !b.createdAt) return 0;
+            if (!a.createdAt) return 1;
+            if (!b.createdAt) return -1;
+            const timeA = new Date(a.createdAt).getTime();
+            const timeB = new Date(b.createdAt).getTime();
+            return timeB - timeA; // 时间大的（新的）排在前面
+          })
+          .map((source) => (
           <Card
             key={source.id}
             variant="outlined"
@@ -419,9 +430,6 @@ ${(join.type || '').toUpperCase().replace('_', ' ')} ${join.rightTable}`;
               >
                 {showSqlPreview ? '隐藏' : '预览'} SQL
               </Button>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 1 }}>
-                提示：界面查询默认限制10,000行。如需完整结果，请使用异步任务功能。
-              </Typography>
               <Button
                 startIcon={<ExecuteIcon />}
                 variant="contained"
