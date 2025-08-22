@@ -155,34 +155,38 @@ export const downloadResults = async (queryRequest) => {
 
 // MySQL配置管理
 export const getMySQLConfigs = async () => {
-  const response = await apiClient.get('/api/mysql_configs');
-  return response.data;
+  const response = await listDatabaseConnections();
+  if (response.success) {
+    return response.connections.filter(c => c.type === 'mysql');
+  }
+  return [];
 };
 
 export const saveMySQLConfig = async (config) => {
-  const response = await apiClient.post('/api/mysql_configs', config);
-  return response.data;
+  const connectionData = { ...config, type: 'mysql' };
+  return await createDatabaseConnection(connectionData);
 };
 
 export const deleteMySQLConfig = async (configId) => {
-  const response = await apiClient.delete(`/api/mysql_configs/${configId}`);
-  return response.data;
+  return await deleteDatabaseConnection(configId);
 };
 
 // PostgreSQL配置管理
 export const getPostgreSQLConfigs = async () => {
-  const response = await apiClient.get('/api/postgresql_configs');
-  return response.data;
+  const response = await listDatabaseConnections();
+  if (response.success) {
+    return response.connections.filter(c => c.type === 'postgresql');
+  }
+  return [];
 };
 
 export const savePostgreSQLConfig = async (config) => {
-  const response = await apiClient.post('/api/postgresql_configs', config);
-  return response.data;
+  const connectionData = { ...config, type: 'postgresql' };
+  return await createDatabaseConnection(connectionData);
 };
 
 export const deletePostgreSQLConfig = async (configId) => {
-  const response = await apiClient.delete(`/api/postgresql_configs/${configId}`);
-  return response.data;
+  return await deleteDatabaseConnection(configId);
 };
 
 // 添加执行SQL查询的API函数
@@ -236,6 +240,7 @@ export const testDatabaseConnection = async (connectionData) => {
 export const createDatabaseConnection = async (connectionData) => {
   try {
     const response = await apiClient.post('/api/database_connections', connectionData);
+    requestManager.clearCache('/api/database_connections', 'GET');
     return response.data;
   } catch (error) {
     console.error('创建数据库连接失败:', error);
@@ -269,6 +274,7 @@ export const getDatabaseConnection = async (connectionId) => {
 export const updateDatabaseConnection = async (connectionId, connectionData) => {
   try {
     const response = await apiClient.put(`/api/database_connections/${connectionId}`, connectionData);
+    requestManager.clearCache('/api/database_connections', 'GET');
     return response.data;
   } catch (error) {
     console.error('更新数据库连接失败:', error);
@@ -279,6 +285,7 @@ export const updateDatabaseConnection = async (connectionId, connectionData) => 
 export const deleteDatabaseConnection = async (connectionId) => {
   try {
     const response = await apiClient.delete(`/api/database_connections/${connectionId}`);
+    requestManager.clearCache('/api/database_connections', 'GET');
     return response.data;
   } catch (error) {
     console.error('删除数据库连接失败:', error);

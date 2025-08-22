@@ -27,57 +27,22 @@ import {
   Divider,
   Tooltip,
   Switch,
-  FormControlLabel,
-  Tabs,
-  Tab
+  FormControlLabel
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ListIcon from '@mui/icons-material/List';
 import SaveIcon from '@mui/icons-material/Save';
 import DeleteIcon from '@mui/icons-material/Delete';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import { getMySQLConfigs, saveMySQLConfig, deleteMySQLConfig, getPostgreSQLConfigs, savePostgreSQLConfig, deletePostgreSQLConfig } from '../../services/apiClient';
+import { getPostgreSQLConfigs, savePostgreSQLConfig, deletePostgreSQLConfig } from '../../services/apiClient';
 import { useToast } from '../../contexts/ToastContext';
-import PostgreSQLConnector from '../PostgreSQLManager/PostgreSQLConnector';
 
-const DB_TYPES = [
-  { value: 'mysql', label: 'MySQL' },
-  { value: 'postgresql', label: 'PostgreSQL' }
-];
-
-const DatabaseConnector = ({ onConnect }) => {
-  const { showSuccess, showError } = useToast();
-  const [activeTab, setActiveTab] = useState(0);
-
-  return (
-    <Box>
-      <Tabs
-        value={activeTab}
-        onChange={(e, newValue) => setActiveTab(newValue)}
-        variant="fullWidth"
-        sx={{ mb: 2 }}
-      >
-        <Tab label="MySQL" />
-        <Tab label="PostgreSQL" />
-      </Tabs>
-
-      {activeTab === 0 && (
-        <MySQLConnector onConnect={onConnect} />
-      )}
-
-      {activeTab === 1 && (
-        <PostgreSQLConnector onConnect={onConnect} />
-      )}
-    </Box>
-  );
-};
-
-const MySQLConnector = ({ onConnect }) => {
+const PostgreSQLConnector = ({ onConnect }) => {
   const { showSuccess, showError } = useToast();
 
   // 原有状态
   const [host, setHost] = useState('localhost');
-  const [port, setPort] = useState('3306');
+  const [port, setPort] = useState('5432');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [database, setDatabase] = useState('');
@@ -87,8 +52,8 @@ const MySQLConnector = ({ onConnect }) => {
   const [success, setSuccess] = useState(false);
   const [expanded, setExpanded] = useState(true);
 
-  // 新增MySQL配置管理状态
-  const [mySQLConfigs, setMySQLConfigs] = useState([]);
+  // 新增PostgreSQL配置管理状态
+  const [postgreSQLConfigs, setPostgreSQLConfigs] = useState([]);
   const [openConfigDialog, setOpenConfigDialog] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [configName, setConfigName] = useState('');
@@ -98,44 +63,44 @@ const MySQLConnector = ({ onConnect }) => {
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState(null);
 
-  // 加载MySQL配置
+  // 加载PostgreSQL配置
   useEffect(() => {
-    loadMySQLConfigs();
+    loadPostgreSQLConfigs();
   }, []);
 
-  const loadMySQLConfigs = async () => {
+  const loadPostgreSQLConfigs = async () => {
     try {
-      const result = await getMySQLConfigs();
+      const result = await getPostgreSQLConfigs();
       if (result) {
-        setMySQLConfigs(result);
+        setPostgreSQLConfigs(result);
       }
     } catch (err) {
-      console.error('加载MySQL配置失败:', err);
+      console.error('加载PostgreSQL配置失败:', err);
     }
   };
 
-  // 保存MySQL配置
-  const handleSaveMySQLConfig = async () => {
+  // 保存PostgreSQL配置
+  const handleSavePostgreSQLConfig = async () => {
     if (!validateForm()) return;
     
     setSavingConfig(true);
     
     try {
       const configToSave = {
-        id: configName || `mysql-${host}-${database}`,
-        type: 'mysql',
-        name: configName || `${host}:${port || '3306'}/${database}`,
+        id: configName || `postgresql-${host}-${database}`,
+        type: 'postgresql',
+        name: configName || `${host}:${port || '5432'}/${database}`,
         params: {
           host,
-          port: port ? parseInt(port) : 3306,
+          port: port ? parseInt(port) : 5432,
           user: username,
           password,
           database
         }
       };
       
-      await saveMySQLConfig(configToSave);
-      await loadMySQLConfigs();
+      await savePostgreSQLConfig(configToSave);
+      await loadPostgreSQLConfigs();
 
       setSuccess(true);
       setShowSaveConfig(false);
@@ -150,28 +115,28 @@ const MySQLConnector = ({ onConnect }) => {
     }
   };
 
-  // 删除MySQL配置
-  const handleDeleteMySQLConfig = async (configId) => {
+  // 删除PostgreSQL配置
+  const handleDeletePostgreSQLConfig = async (configId) => {
     try {
-      await deleteMySQLConfig(configId);
-      await loadMySQLConfigs();
+      await deletePostgreSQLConfig(configId);
+      await loadPostgreSQLConfigs();
     } catch (err) {
       setError(`删除配置失败: ${err.message || '未知错误'}`);
     }
   };
 
-  // 使用已保存的MySQL配置
-  const handleUseMySQLConfig = async (config) => {
+  // 使用已保存的PostgreSQL配置
+  const handleUsePostgreSQLConfig = async (config) => {
     if (config && config.params) {
       setHost(config.params.host || 'localhost');
-      setPort(config.params.port?.toString() || '3306');
+      setPort(config.params.port?.toString() || '5432');
       setUsername(config.params.user || '');
 
       // 如果密码被遮蔽，需要从后端获取真实密码
       if (config.params.password === '********') {
         try {
           // 调用后端API获取完整配置（包含解密的密码）
-          const response = await fetch(`/api/mysql_configs/${config.id}/full`);
+          const response = await fetch(`/api/postgresql_configs/${config.id}/full`);
           if (response.ok) {
             const fullConfig = await response.json();
             setPassword(fullConfig.params.password || '');
@@ -197,7 +162,7 @@ const MySQLConnector = ({ onConnect }) => {
 
     try {
       const testParams = {
-        type: 'mysql',
+        type: 'postgresql',
         params: {
           host,
           port: port ? parseInt(port) : undefined,
@@ -272,11 +237,11 @@ const MySQLConnector = ({ onConnect }) => {
 
     try {
       const connectionParams = {
-        id: alias || `mysql-${host}-${database}`,
-        type: 'mysql',
+        id: alias || `postgresql-${host}-${database}`,
+        type: 'postgresql',
         params: {
           host,
-          port: port ? parseInt(port) : 3306,
+          port: port ? parseInt(port) : 5432,
           user: username,
           password,
           database
@@ -362,7 +327,7 @@ const MySQLConnector = ({ onConnect }) => {
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <FolderOpenIcon sx={{ mr: 1, fontSize: '1.2rem', color: '#1976d2' }} />
             <Typography sx={{ fontWeight: 500, fontSize: '0.9rem' }}>
-              MySQL数据库连接
+              PostgreSQL数据库连接
             </Typography>
           </Box>
         </AccordionSummary>
@@ -388,7 +353,7 @@ const MySQLConnector = ({ onConnect }) => {
             onChange={(e) => setPort(e.target.value)}
             fullWidth
             sx={{ mb: 1.5 }}
-            placeholder="3306"
+            placeholder="5432"
           />
           
           <TextField
@@ -399,7 +364,7 @@ const MySQLConnector = ({ onConnect }) => {
             onChange={(e) => setUsername(e.target.value)}
             fullWidth
             sx={{ mb: 1.5 }}
-            placeholder="root"
+            placeholder="postgres"
           />
           
           <TextField
@@ -432,7 +397,7 @@ const MySQLConnector = ({ onConnect }) => {
             onChange={(e) => setAlias(e.target.value)}
             fullWidth
             sx={{ mb: 2 }}
-            placeholder="例如: 生产环境MySQL"
+            placeholder="例如: 生产环境PostgreSQL"
           />
 
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
@@ -495,13 +460,13 @@ const MySQLConnector = ({ onConnect }) => {
         <Box sx={{ p: 2, borderBottom: '1px solid #e2e8f0' }}>
           <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <ListIcon fontSize="small" />
-            已保存的MySQL配置
+            已保存的PostgreSQL配置
           </Typography>
         </Box>
         
         <List sx={{ p: 0, maxHeight: 200, overflow: 'auto' }}>
-          {mySQLConfigs.length > 0 ? (
-            mySQLConfigs.map((config) => (
+          {postgreSQLConfigs.length > 0 ? (
+            postgreSQLConfigs.map((config) => (
               <React.Fragment key={config.id}>
                 <ListItem 
                   sx={{ 
@@ -519,7 +484,7 @@ const MySQLConnector = ({ onConnect }) => {
                     }
                     secondary={
                       <Typography variant="caption" color="text.secondary">
-                        {config.params?.host}:{config.params?.port || '3306'}/{config.params?.database}
+                        {config.params?.host}:{config.params?.port || '5432'}/{config.params?.database}
                       </Typography>
                     }
                   />
@@ -528,7 +493,7 @@ const MySQLConnector = ({ onConnect }) => {
                       <IconButton 
                         edge="end" 
                         size="small"
-                        onClick={() => handleUseMySQLConfig(config)}
+                        onClick={() => handleUsePostgreSQLConfig(config)}
                       >
                         <FolderOpenIcon fontSize="small" />
                       </IconButton>
@@ -538,7 +503,7 @@ const MySQLConnector = ({ onConnect }) => {
                         edge="end" 
                         size="small"
                         color="error"
-                        onClick={() => handleDeleteMySQLConfig(config.id)}
+                        onClick={() => handleDeletePostgreSQLConfig(config.id)}
                       >
                         <DeleteIcon fontSize="small" />
                       </IconButton>
@@ -564,7 +529,7 @@ const MySQLConnector = ({ onConnect }) => {
 
       {/* 保存配置对话框 */}
       <Dialog open={showSaveConfig} onClose={() => setShowSaveConfig(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>保存MySQL配置</DialogTitle>
+        <DialogTitle>保存PostgreSQL配置</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -574,7 +539,7 @@ const MySQLConnector = ({ onConnect }) => {
             variant="outlined"
             value={configName}
             onChange={(e) => setConfigName(e.target.value)}
-            placeholder="例如: 生产环境MySQL"
+            placeholder="例如: 生产环境PostgreSQL"
           />
           {error && (
             <Alert severity="error" sx={{ mt: 2 }}>
@@ -587,7 +552,7 @@ const MySQLConnector = ({ onConnect }) => {
             取消
           </Button>
           <Button
-            onClick={handleSaveMySQLConfig}
+            onClick={handleSavePostgreSQLConfig}
             variant="contained"
             disabled={savingConfig || !configName.trim()}
             startIcon={savingConfig ? <CircularProgress size={16} /> : <SaveIcon />}
@@ -600,4 +565,4 @@ const MySQLConnector = ({ onConnect }) => {
   );
 };
 
-export default DatabaseConnector;
+export default PostgreSQLConnector;
