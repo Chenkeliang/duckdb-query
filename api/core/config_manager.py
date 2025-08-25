@@ -39,6 +39,7 @@ class AppConfig:
     query_timeout: int = 300  # 5分钟
     download_timeout: int = 600  # 10分钟，用于下载操作
     max_query_rows: int = 10000
+    max_tables: int = 200  # 数据库表预览最大数量
     enable_caching: bool = True
     cache_ttl: int = 3600  # 1小时
     duckdb_memory_limit: str = "8GB"  # DuckDB内存限制
