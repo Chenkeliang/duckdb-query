@@ -266,7 +266,8 @@ const DataPasteBoard = ({ onDataSaved }) => {
             name: tableName,
             type: 'DUCKDB',
             columns: columnNames.length,
-            rows: parsedData.rowCount
+            rows: parsedData.rowCount,
+            createdAt: result.createdAt
           });
         }
         // 清空表单

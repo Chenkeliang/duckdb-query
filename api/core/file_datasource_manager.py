@@ -251,9 +251,39 @@ def create_varchar_table_from_file_path(duckdb_con, table_name: str, file_path: 
                 # Re-raise the exception to be handled by the calling function
                 raise
         elif file_type in ['xlsx', 'xls']:
-            # 对于Excel文件，直接使用DuckDB的读取功能
-            create_sql = f'CREATE TABLE "{table_name}" AS SELECT * FROM st_read(\'{file_path}\')'
-            duckdb_con.execute(create_sql)
+            # 对于Excel文件，优先尝试使用DuckDB的Excel扩展
+            excel_success = False
+            try:
+                # 安装并加载Excel扩展
+                duckdb_con.execute("INSTALL excel;")
+                duckdb_con.execute("LOAD excel;")
+                # 使用EXCEL_SCAN函数读取Excel文件
+                create_sql = f'CREATE TABLE "{table_name}" AS SELECT * FROM EXCEL_SCAN(\'{file_path}\')'
+                duckdb_con.execute(create_sql)
+                logger.info(f"成功使用DuckDB EXCEL_SCAN读取Excel文件: {file_path}")
+                excel_success = True
+            except Exception as duckdb_excel_error:
+                logger.warning(f"DuckDB Excel扩展处理失败: {str(duckdb_excel_error)}")
+                logger.info("回退到pandas处理Excel文件")
+                
+            # 如果DuckDB Excel扩展失败，使用pandas回退
+            if not excel_success:
+                import pandas as pd
+                try:
+                    df = pd.read_excel(file_path)
+                    logger.info(f"成功使用pandas读取Excel文件: {len(df)}行, {len(df.columns)}列")
+                    # 先删除已存在的表
+                    try:
+                        duckdb_con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+                    except:
+                        pass
+                    # 使用DataFrame创建表
+                    create_varchar_table_from_dataframe_file(duckdb_con, table_name, df)
+                    logger.info(f"回退到pandas读取Excel文件成功: {file_path}")
+                    return  # 提前返回，避免后续的VARCHAR转换
+                except Exception as pandas_error:
+                    logger.error(f"pandas读取Excel文件也失败: {str(pandas_error)}")
+                    raise Exception(f"Excel文件处理完全失败，DuckDB错误: {str(duckdb_excel_error)}, pandas错误: {str(pandas_error)}")
         elif file_type in ['json', 'jsonl']:
             # 对于JSON文件，直接使用DuckDB的读取功能
             create_sql = f'CREATE TABLE "{table_name}" AS SELECT * FROM read_json_auto(\'{file_path}\')'

@@ -4,6 +4,9 @@ from typing import List, Optional
 import pandas as pd
 import logging
 from core.duckdb_engine import get_db_connection, create_persistent_table
+from core.file_datasource_manager import file_datasource_manager
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -130,6 +133,31 @@ async def save_paste_data(request: PasteDataRequest):
         
         logger.info(f"成功保存粘贴数据到表: {clean_table_name}, 行数: {saved_rows}, 列数: {len(request.column_names)}")
         
+        createdAt = datetime.now().isoformat()
+        # 使用全局时区配置
+        try:
+            from core.timezone_utils import get_current_time_iso
+            createdAt = get_current_time_iso()
+        except ImportError:
+            # 如果无法导入时区工具，使用默认时间
+            createdAt = datetime.now().isoformat()
+        # 保存元数据
+        try:
+            file_info = {
+                "source_id": clean_table_name,
+                "filename": f"{clean_table_name}.pasted",
+                "file_path": "pasted_data",
+                "file_type": "pasted",
+                "row_count": saved_rows,
+                "column_count": len(request.column_names),
+                "columns": request.column_names,
+                "created_at": createdAt,  # 使用标准的 created_at 字段
+            }
+            file_datasource_manager.save_file_datasource(file_info)
+            logger.info(f"成功保存粘贴数据的元数据: {clean_table_name}")
+        except Exception as e:
+            logger.warning(f"保存粘贴数据的元数据失败: {str(e)}")
+
         return {
             "success": True,
             "message": f"数据已成功保存到表: {clean_table_name}",
@@ -139,7 +167,8 @@ async def save_paste_data(request: PasteDataRequest):
             "column_info": [
                 {"name": name, "type": type_} 
                 for name, type_ in zip(request.column_names, request.column_types)
-            ]
+            ],
+            "created_at": createdAt  # 使用标准的 created_at 字段
         }
         
     except HTTPException:

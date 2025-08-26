@@ -10,5 +10,6 @@
   "max_query_rows": 10000,
   "max_tables": 200,
   "enable_caching": true,
-  "cache_ttl": 3600
+  "cache_ttl": 3600,
+  "timezone": "Asia/Shanghai"
 }

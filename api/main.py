@@ -15,12 +15,12 @@ from core.encryption import password_encryptor
 from routers import (
     data_sources,
     query,
-    mysql_unified,  # 统一的MySQL路由模块
     paste_data,
     duckdb_query,
     chunked_upload,
     url_reader,
     async_tasks,  # 异步任务路由
+    database_tables,  # 数据库表管理路由
 )
 
 # 尝试导入可能存在的其他路由模块
@@ -50,198 +50,7 @@ from core.duckdb_engine import (
 logger = logging.getLogger(__name__)
 
 
-def load_mysql_configs_on_startup():
-    """应用启动时加载MySQL配置到数据库管理器"""
-    try:
-        mysql_config_file = "../config/mysql-configs.json"
-        logger.info(f"尝试加载MySQL配置文件: {mysql_config_file}")
 
-        if os.path.exists(mysql_config_file):
-            logger.info("找到MySQL配置文件，开始加载...")
-            with open(mysql_config_file, "r") as f:
-                configs = json.load(f)
-
-            logger.info(f"配置文件包含 {len(configs)} 个配置")
-
-            for config in configs:
-                logger.info(f"正在处理配置: {config.get('id', 'unknown')}")
-                # 创建DatabaseConnection对象
-                db_connection = DatabaseConnection(
-                    id=config["id"],
-                    name=config.get("name", config["id"]),
-                    type=DataSourceType.MYSQL,
-                    params=config["params"],
-                    created_at=datetime.now(),
-                )
-
-                # 添加到数据库管理器
-                success = db_manager.add_connection(db_connection)
-                if success:
-                    logger.info(f"成功加载MySQL配置: {config['id']}")
-                else:
-                    logger.error(f"加载MySQL配置失败: {config['id']}")
-        else:
-            logger.warning(f"未找到MySQL配置文件: {mysql_config_file}")
-            # 检查其他可能的位置
-            alternative_paths = [
-                "config/mysql-configs.json",
-                "mysql-configs.json",
-                "../mysql-configs.json",
-            ]
-            for alt_path in alternative_paths:
-                if os.path.exists(alt_path):
-                    logger.info(f"在备用位置找到配置文件: {alt_path}")
-                    break
-            else:
-                logger.warning("在所有可能的位置都未找到MySQL配置文件")
-
-    except Exception as e:
-        logger.error(f"加载MySQL配置时出错: {str(e)}")
-        logger.error(f"错误详情: {traceback.format_exc()}")
-
-
-def register_mysql_connections_as_datasources():
-    """将MySQL连接注册为可用数据源（不预执行SQL）"""
-    try:
-        logger.info("注册MySQL连接为数据源...")
-
-        # 使用统一的配置读取函数（包含解密逻辑）
-        from routers.data_sources import read_mysql_configs
-
-        mysql_configs_list = read_mysql_configs()
-
-        # 转换为字典格式以兼容现有代码
-        mysql_configs = {}
-        for config in mysql_configs_list:
-            mysql_configs[config["id"]] = type(
-                "Config",
-                (),
-                {
-                    "id": config["id"],
-                    "name": config.get("name", config["id"]),
-                    "enabled": config.get("enabled", True),
-                    "params": config["params"],
-                },
-            )()
-
-        if not mysql_configs:
-            logger.info("未找到MySQL连接配置")
-            return
-
-        # 将MySQL连接添加到数据库管理器
-        from core.database_manager import db_manager
-        from models.query_models import DatabaseConnection, DataSourceType
-
-        success_count = 0
-        for config_id, config in mysql_configs.items():
-            try:
-                if not config.enabled:
-                    logger.info(f"跳过已禁用的MySQL连接: {config_id}")
-                    continue
-
-                # 创建数据库连接对象
-                db_connection = DatabaseConnection(
-                    id=config.id,
-                    name=config.name,
-                    type=DataSourceType.MYSQL,
-                    params=config.params,
-                    created_at=datetime.now(),
-                )
-
-                # 添加到数据库管理器
-                success = db_manager.add_connection(db_connection)
-                if success:
-                    logger.info(f"成功注册MySQL数据源: {config_id}")
-                    success_count += 1
-                else:
-                    logger.error(f"注册MySQL数据源失败: {config_id}")
-
-            except Exception as e:
-                logger.error(f"注册MySQL数据源失败 {config_id}: {str(e)}")
-
-        logger.info(f"MySQL数据源注册完成，成功: {success_count}/{len(mysql_configs)}")
-
-    except Exception as e:
-        logger.error(f"注册MySQL数据源时出错: {str(e)}")
-
-
-def register_postgresql_connections_as_datasources():
-    """将PostgreSQL连接注册为可用数据源（不预执行SQL）"""
-    try:
-        logger.info("注册PostgreSQL连接为数据源...")
-
-        # PostgreSQL配置文件路径
-        postgresql_config_file = os.path.join(
-            os.path.dirname(__file__), 
-            "..", 
-            "config",
-            "postgresql-configs.json"
-        )
-        if not os.path.exists(postgresql_config_file):
-            logger.info("未找到PostgreSQL配置文件")
-            return
-
-        # 读取PostgreSQL配置
-        try:
-            with open(postgresql_config_file, "r") as f:
-                postgresql_configs_list = json.load(f)
-        except Exception as e:
-            logger.error(f"读取PostgreSQL配置文件失败: {str(e)}")
-            return
-            
-        if not postgresql_configs_list:
-            logger.info("未找到PostgreSQL连接配置")
-            return
-
-        # 转换为字典格式以兼容现有代码
-        postgresql_configs = {}
-        for config in postgresql_configs_list:
-            postgresql_configs[config["id"]] = type(
-                "Config",
-                (),
-                {
-                    "id": config["id"],
-                    "name": config.get("name", config["id"]),
-                    "enabled": config.get("enabled", True),
-                    "params": config["params"],
-                },
-            )()
-
-        # 将PostgreSQL连接添加到数据库管理器
-        from core.database_manager import db_manager
-        from models.query_models import DatabaseConnection, DataSourceType
-
-        success_count = 0
-        for config_id, config in postgresql_configs.items():
-            try:
-                if not config.enabled:
-                    logger.info(f"跳过已禁用的PostgreSQL连接: {config_id}")
-                    continue
-
-                # 创建数据库连接对象
-                db_connection = DatabaseConnection(
-                    id=config.id,
-                    name=config.name,
-                    type=DataSourceType.POSTGRESQL,
-                    params=config.params,
-                    created_at=datetime.now(),
-                )
-
-                # 添加到数据库管理器
-                success = db_manager.add_connection(db_connection)
-                if success:
-                    logger.info(f"成功注册PostgreSQL数据源: {config_id}")
-                    success_count += 1
-                else:
-                    logger.error(f"注册PostgreSQL数据源失败: {config_id}")
-
-            except Exception as e:
-                logger.error(f"注册PostgreSQL数据源失败 {config_id}: {str(e)}")
-
-        logger.info(f"PostgreSQL数据源注册完成，成功: {success_count}/{len(postgresql_configs)}")
-
-    except Exception as e:
-        logger.error(f"注册PostgreSQL数据源时出错: {str(e)}")
 
 
 def load_file_datasources_on_startup():
@@ -283,12 +92,12 @@ app.add_middleware(
 # Include routers
 app.include_router(data_sources.router)
 app.include_router(query.router)
-app.include_router(mysql_unified.router)  # 统一的MySQL路由模块
 app.include_router(paste_data.router)  # 数据粘贴板路由
 app.include_router(duckdb_query.router)  # DuckDB自定义SQL查询路由
 app.include_router(chunked_upload.router)  # 分块文件上传路由
 app.include_router(url_reader.router)  # URL文件读取路由
 app.include_router(async_tasks.router)  # 异步任务路由
+app.include_router(database_tables.router)  # 数据库表管理路由
 
 # 条件性注册可能存在的其他路由
 if enhanced_data_sources_available:
@@ -305,12 +114,6 @@ async def startup_event():
     logger.info("应用正在启动...")
     
     try:
-        # 注册MySQL连接
-        register_mysql_connections_as_datasources()
-        
-        # 注册PostgreSQL连接
-        register_postgresql_connections_as_datasources()
-        
         # 重新加载文件数据源
         load_file_datasources_on_startup()
         logger.info("所有数据源加载完成")

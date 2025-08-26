@@ -6,6 +6,9 @@
 import asyncio
 import time
 import logging
+import json
+import os
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import QueuePool
@@ -35,6 +38,41 @@ class DatabaseManager:
         self.connections: Dict[str, DatabaseConnection] = {}
         self.engines: Dict[str, Any] = {}
         self.connection_pools: Dict[str, Any] = {}
+        self._load_connections_from_config()
+
+    def _load_connections_from_config(self):
+        config_dir = os.getenv("CONFIG_DIR")
+        if config_dir:
+            config_path = Path(config_dir) / "datasources.json"
+        else:
+            config_path = Path(__file__).parent.parent.parent / "config" / "datasources.json"
+
+        if not os.path.exists(config_path):
+            logger.warning(f"Configuration file not found: {config_path}")
+            return
+
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                
+            for conn_data in config.get("database_sources", []):
+                conn_type_str = conn_data.get("type")
+                conn_type = DataSourceType(conn_type_str) if conn_type_str else None
+
+                if not conn_type:
+                    logger.warning(f"Skipping connection with missing or invalid type: {conn_data.get('id')}")
+                    continue
+
+                connection = DatabaseConnection(
+                    id=conn_data["id"],
+                    name=conn_data.get("name", conn_data["id"]),
+                    type=conn_type,
+                    params=conn_data.get("params", {}),
+                    status=ConnectionStatus.INACTIVE,
+                )
+                self.add_connection(connection)
+        except Exception as e:
+            logger.error(f"Error loading connections from config: {e}")
 
     def add_connection(self, connection: DatabaseConnection) -> bool:
         """添加数据库连接配置"""

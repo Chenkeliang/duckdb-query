@@ -4,7 +4,10 @@
 """
 
 import pandas as pd
+import numpy as np
 import logging
+import os
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -75,4 +78,58 @@ def read_file_by_type(
 
     except Exception as e:
         logger.error(f"读取文件失败 {file_path}: {str(e)}")
+        raise
+
+
+def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
+    """获取文件预览信息"""
+    try:
+        file_type = detect_file_type(file_path)
+        df = read_file_by_type(file_path, file_type, nrows=rows)
+        
+        # 获取文件大小
+        file_size = os.path.getsize(file_path)
+        
+        # 获取全量数据行数（读取完整文件来获取准确行数）
+        try:
+            full_df = read_file_by_type(file_path, file_type)
+            total_rows = len(full_df)
+        except Exception:
+            # 如果读取完整文件失败，估算行数
+            total_rows = len(df)
+        
+        # 处理非序列化数据类型
+        processed_df = df.copy()
+        for col in processed_df.columns:
+            if processed_df[col].dtype == "object":
+                # 处理复杂对象类型
+                processed_df[col] = processed_df[col].apply(
+                    lambda x: (
+                        str(x)
+                        if not (
+                            isinstance(x, (str, int, float, bool, type(None), list, dict))
+                            or x is None
+                        )
+                        else x
+                    )
+                )
+            else:
+                # 处理NaN值
+                processed_df[col] = processed_df[col].replace({pd.isna: None})
+        
+        return {
+            "file_type": file_type,
+            "file_size": file_size,
+            "total_rows": total_rows,
+            "columns": processed_df.columns.tolist(),
+            "column_types": processed_df.dtypes.astype(str).to_dict(),
+            "preview_data": processed_df.head(rows).to_dict(orient="records"),
+            "sample_values": {
+                col: processed_df[col].dropna().head(3).tolist()
+                for col in processed_df.columns
+            },
+        }
+        
+    except Exception as e:
+        logger.error(f"获取文件预览失败 {file_path}: {str(e)}")
         raise

@@ -21,6 +21,8 @@ from core.duckdb_engine import (
 )
 from core.utils import jsonable_encoder
 from core.resource_manager import save_upload_file
+from core.file_datasource_manager import file_datasource_manager
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -47,7 +49,7 @@ class DuckDBQueryResponse(BaseModel):
     message: str = ""
 
 
-@router.get("/api/duckdb/available_tables", tags=["DuckDB Query"])
+@router.get("/api/duckdb/tables", tags=["DuckDB Query"])
 async def get_available_tables():
     """获取DuckDB中所有可用的表"""
     try:
@@ -77,12 +79,19 @@ async def get_available_tables():
                 ).fetchone()
                 row_count = count_result[0] if count_result else 0
 
+                # 获取元数据
+                metadata = file_datasource_manager.get_file_datasource(table_name)
+                logger.info(f"Metadata for table {table_name}: {metadata}")
+                # 只使用标准的 created_at 字段
+                createdAt = metadata.get("created_at") if metadata else None
+
                 table_info.append(
                     {
                         "table_name": table_name,
                         "columns": schema_df.to_dict("records"),
                         "column_count": len(schema_df),
                         "row_count": row_count,
+                        "created_at": createdAt,  # 使用标准的 created_at 字段
                     }
                 )
             except Exception as table_error:
@@ -94,6 +103,7 @@ async def get_available_tables():
                         "column_count": 0,
                         "row_count": 0,
                         "error": str(table_error),
+                        "created_at": None,  # 使用标准的 created_at 字段
                     }
                 )
 
@@ -309,6 +319,29 @@ async def upload_file_to_duckdb(
                 logger.info(f"已清理临时文件: {file_path}")
             except Exception as cleanup_e:
                 logger.warning(f"清理临时文件失败: {cleanup_e}")
+
+            # 保存元数据
+            try:
+                file_info = {
+                    "source_id": table_alias,
+                    "filename": file.filename,
+                    "file_path": file_path,
+                    "file_type": file_extension.lstrip('.'),
+                    "row_count": row_count,
+                    "column_count": len(columns),
+                    "columns": columns,
+                    "created_at": datetime.now().isoformat(),  # 使用标准的 created_at 字段
+                }
+                # 使用全局时区配置更新创建时间
+                try:
+                    from core.timezone_utils import get_current_time_iso
+                    file_info["created_at"] = get_current_time_iso()
+                except ImportError:
+                    pass  # 使用默认时间
+                file_datasource_manager.save_file_datasource(file_info)
+                logger.info(f"成功保存文件数据源的元数据: {table_alias}")
+            except Exception as e:
+                logger.warning(f"保存文件数据源的元数据失败: {str(e)}")
 
             return {
                 "success": True,

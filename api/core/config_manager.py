@@ -43,6 +43,7 @@ class AppConfig:
     enable_caching: bool = True
     cache_ttl: int = 3600  # 1小时
     duckdb_memory_limit: str = "8GB"  # DuckDB内存限制
+    timezone: str = "Asia/Shanghai"  # 应用时区
 
     def __post_init__(self):
         if self.cors_origins is None:

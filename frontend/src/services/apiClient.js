@@ -438,7 +438,7 @@ export const deleteDuckDBTable = async (tableName) => {
 export const getMySQLDataSources = async () => {
   try {
     // 使用请求管理器防止重复请求
-    const data = await requestManager.getDataSources();
+    const data = await requestManager.getDatabaseConnections();
     return data;
   } catch (error) {
     console.error('获取MySQL数据源列表失败:', error);

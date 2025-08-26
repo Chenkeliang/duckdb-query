@@ -1417,13 +1417,13 @@ async def list_duckdb_tables():
         # 获取文件数据源管理器实例
         from core.file_datasource_manager import file_datasource_manager
         file_datasources = file_datasource_manager.list_file_datasources()
-        # 创建source_id到上传时间的映射
+        # 创建source_id到上传时间的映射（统一使用 created_at 字段）
         datasource_timestamps = {}
         for datasource in file_datasources:
             source_id = datasource.get("source_id")
-            upload_time = datasource.get("created_at")  # 使用created_at而不是upload_time
-            if source_id and upload_time:
-                datasource_timestamps[source_id] = upload_time
+            created_at = datasource.get("created_at")  # 只使用标准的 created_at 字段
+            if source_id and created_at:
+                datasource_timestamps[source_id] = created_at
 
         tables_info = []
         for _, row in tables_df.iterrows():

@@ -84,7 +84,43 @@ def get_db_connection():
         _global_duckdb_connection.execute("SET preserve_insertion_order=false")
         _global_duckdb_connection.execute("SET enable_progress_bar=false")
 
-        logger.info("DuckDB VARCHAR JOIN优化配置已应用")
+        # 设置DuckDB的home目录以支持扩展安装
+        try:
+            # 创建专用的扩展目录
+            extension_dir = '/app/data/duckdb/extensions'
+            home_dir = '/app/data/duckdb/home'
+            import os
+            os.makedirs(extension_dir, exist_ok=True)
+            os.makedirs(home_dir, exist_ok=True)
+            
+            _global_duckdb_connection.execute(f"SET home_directory='{home_dir}';")
+            _global_duckdb_connection.execute(f"SET extension_directory='{extension_dir}';")
+            logger.info(f"DuckDB扩展目录设置完成: {extension_dir}")
+        except Exception as e:
+            logger.warning(f"设置DuckDB扩展目录失败: {str(e)}")
+
+        # 安装和加载常用扩展
+        extensions_to_install = [
+            ('excel', 'Excel文件处理'),
+            ('json', 'JSON文件处理'),
+            ('parquet', 'Parquet文件处理')
+        ]
+        
+        for ext_name, ext_desc in extensions_to_install:
+            try:
+                # 先尝试加载扩展（如果已安装）
+                _global_duckdb_connection.execute(f"LOAD {ext_name};")
+                logger.info(f"{ext_desc}扩展已加载")
+            except Exception as load_error:
+                # 如果加载失败，尝试安装后再加载
+                try:
+                    _global_duckdb_connection.execute(f"INSTALL {ext_name};")
+                    _global_duckdb_connection.execute(f"LOAD {ext_name};")
+                    logger.info(f"{ext_desc}扩展安装并加载成功")
+                except Exception as install_error:
+                    logger.warning(f"安装或加载{ext_desc}扩展失败: {str(install_error)}")
+
+        logger.info("DuckDB扩展和优化配置已应用")
 
         # 确保临时目录存在（已在上面创建）
     return _global_duckdb_connection

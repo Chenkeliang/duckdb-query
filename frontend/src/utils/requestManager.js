@@ -149,12 +149,7 @@ class RequestManager {
     return result;
   }
 
-  /**
-   * 专门用于数据源请求的方法
-   */
-  async getDataSources() {
-    return this.executeRequest('/api/mysql/connections', {}, 2000); // 2秒防抖
-  }
+  
 
   /**
    * 专门用于DuckDB表请求的方法

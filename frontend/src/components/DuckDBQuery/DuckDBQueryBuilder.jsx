@@ -56,7 +56,7 @@ const DuckDBQueryBuilder = ({ onResultsReceived }) => {
   const loadAvailableTables = async () => {
     setTablesLoading(true);
     try {
-      const response = await fetch('/api/duckdb/available_tables');
+      const response = await fetch('/api/duckdb/tables');
       const data = await response.json();
       
       if (data.success) {

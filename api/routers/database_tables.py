@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 import logging
 from core.database_manager import db_manager
 from core.config_manager import config_manager
+from core.encryption import password_encryptor
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -35,11 +36,15 @@ async def get_database_tables(connection_id: str):
                     status_code=400, detail="缺少用户名参数 (user 或 username)"
                 )
 
+            password = db_config.get("password", "")
+            if password_encryptor.is_encrypted(password):
+                password = password_encryptor.decrypt_password(password)
+
             conn = pymysql.connect(
                 host=db_config.get("host", "localhost"),
                 port=int(db_config.get("port", 3306)),
                 user=username,
-                password=db_config["password"],
+                password=password,
                 database=db_config["database"],
                 charset="utf8mb4",
                 connect_timeout=10,  # 连接超时10秒
@@ -124,11 +129,15 @@ async def get_database_tables(connection_id: str):
                     status_code=400, detail="缺少用户名参数 (user 或 username)"
                 )
 
+            password = db_config.get("password", "")
+            if password_encryptor.is_encrypted(password):
+                password = password_encryptor.decrypt_password(password)
+
             conn = psycopg2.connect(
                 host=db_config.get("host", "localhost"),
                 port=int(db_config.get("port", 5432)),
                 user=username,
-                password=db_config["password"],
+                password=password,
                 database=db_config["database"],
                 connect_timeout=10,  # 连接超时10秒
             )
@@ -221,8 +230,8 @@ async def get_database_tables(connection_id: str):
             )
 
     except Exception as e:
-        logger.error(f"获取数据库表信息失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取数据库表信息失败: {str(e)}")
+        logger.error(f"获取数据库 '{connection_id}' 的表信息失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取数据库 '{connection_id}' 的表信息失败: {str(e)}")
 
 
 @router.get("/api/database_table_details/{connection_id}/{table_name}", tags=["Database Management"])
@@ -251,11 +260,15 @@ async def get_table_details(connection_id: str, table_name: str):
                     status_code=400, detail="缺少用户名参数 (user 或 username)"
                 )
 
+            password = db_config.get("password", "")
+            if password_encryptor.is_encrypted(password):
+                password = password_encryptor.decrypt_password(password)
+
             conn = pymysql.connect(
                 host=db_config.get("host", "localhost"),
                 port=int(db_config.get("port", 3306)),
                 user=username,
-                password=db_config["password"],
+                password=password,
                 database=db_config["database"],
                 charset="utf8mb4",
                 connect_timeout=10,  # 连接超时10秒
@@ -312,11 +325,15 @@ async def get_table_details(connection_id: str, table_name: str):
                     status_code=400, detail="缺少用户名参数 (user 或 username)"
                 )
 
+            password = db_config.get("password", "")
+            if password_encryptor.is_encrypted(password):
+                password = password_encryptor.decrypt_password(password)
+
             conn = psycopg2.connect(
                 host=db_config.get("host", "localhost"),
                 port=int(db_config.get("port", 5432)),
                 user=username,
-                password=db_config["password"],
+                password=password,
                 database=db_config["database"],
                 connect_timeout=10,  # 连接超时10秒
             )
