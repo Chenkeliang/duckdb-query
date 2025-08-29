@@ -1,35 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 // 导入Toast上下文
 import { ToastProvider, useToast } from './contexts/ToastContext';
 
 // 导入原有组件 - 确保包含所有必要的组件
-import DataGrid from './components/DataGrid';
+import AsyncTaskList from './components/AsyncTasks/AsyncTaskList';
+import DatabaseTableManager from './components/DatabaseManager/DatabaseTableManager';
+import DataUploadSection from './components/DataSourceManagement/DataUploadSection';
 import DatabaseConnector from './components/DataSourceManager/DatabaseConnector';
 import DataPasteBoard from './components/DataSourceManager/DataPasteBoard';
 import DataSourceList from './components/DataSourceManager/DataSourceList';
-import DatabaseConnectionManager from './components/DataSourceManager/DatabaseConnectionManager';
-import DuckDBQueryBuilder from './components/DuckDBQuery/DuckDBQueryBuilder';
-import UnifiedSQLExecutor from './components/UnifiedSQLExecutor/UnifiedSQLExecutor';
-import EnhancedFileUploader from './components/DataSourceManager/EnhancedFileUploader';
-import DataUploadSection from './components/DataSourceManagement/DataUploadSection';
-import ModernDataDisplay from './components/Results/ModernDataDisplay';
 import DuckDBManagementPage from './components/DuckDBManager/DuckDBManagementPage';
-import DatabaseTableManager from './components/DatabaseManager/DatabaseTableManager';
-import AsyncTaskList from './components/AsyncTasks/AsyncTaskList';
+import ModernDataDisplay from './components/Results/ModernDataDisplay';
 import UnifiedQueryInterface from './components/UnifiedQueryInterface/UnifiedQueryInterface';
 // import ToastDiagnostic from './components/ToastDiagnostic';
 
 // 导入服务
+import { globalDebounce } from './hooks/useDebounce';
 import {
+  createDatabaseConnection,
   getDuckDBTables,
-  listDatabaseConnections,
   getMySQLDataSources,
-  testDatabaseConnection,
-  createDatabaseConnection
+  listDatabaseConnections,
+  testDatabaseConnection
 } from './services/apiClient';
 import requestManager from './utils/requestManager';
-import { globalDebounce } from './hooks/useDebounce';
 
 // 导入样式
 import './styles/modern.css';
@@ -37,7 +32,7 @@ import './styles/modern.css';
 const ShadcnApp = () => {
   // 获取Toast功能
   const { showSuccess, showError, showWarning, showInfo } = useToast();
-  
+
   // 状态管理
   const [currentTab, setCurrentTab] = useState("datasource");
   const [tableManagementTab, setTableManagementTab] = useState("duckdb"); // 二级TAB状态
@@ -156,9 +151,9 @@ const ShadcnApp = () => {
       setDataSources(allDataSources);
       console.log('ShadcnApp - 更新后的数据源:', allDataSources);
       console.log('ShadcnApp - 新数据源结构示例:', allDataSources.length > 0 ? allDataSources[allDataSources.length - 1] : '无数据源');
-      
+
       // 检查selectedSources中的数据源是否仍然有效
-      const validSelectedSources = selectedSources.filter(selectedSource => 
+      const validSelectedSources = selectedSources.filter(selectedSource =>
         allDataSources.some(ds => ds.id === selectedSource.id)
       );
       if (validSelectedSources.length !== selectedSources.length) {
@@ -267,31 +262,31 @@ const ShadcnApp = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-    {/* 顶部导航 */}
-    <header className="border-b bg-white">
-      <div className="w-full px-6 py-4">
-        <div className="flex items-center">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center" style={{display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-              <span className="text-white font-bold text-sm" style={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%'}}>DQ</span>
+      {/* 顶部导航 */}
+      <header className="border-b bg-white">
+        <div className="w-full px-6 py-4">
+          <div className="flex items-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span className="text-white font-bold text-sm" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>DQ</span>
+              </div>
+              <h1 className="text-xl font-semibold text-gray-900">DataQuery Pro</h1>
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">DataQuery Pro</h1>
           </div>
         </div>
-      </div>
-    </header>
+      </header>
 
       {/* 主要内容 */}
       <main className="w-full px-6 py-8">
         {/* 标签页导航 - Mantine风格 */}
         <div className="bg-white rounded-lg border shadow-sm mb-6">
           <div className="mantine-tabs">
-                      {[
-            { id: "datasource", label: "数据源" },
-            { id: "unifiedquery", label: "统一查询" },
-            { id: "tablemanagement", label: "数据表管理" },
-            { id: "asynctasks", label: "异步任务" }
-          ].map((tab) => (
+            {[
+              { id: "datasource", label: "数据源" },
+              { id: "unifiedquery", label: "统一查询" },
+              { id: "tablemanagement", label: "数据表管理" },
+              { id: "asynctasks", label: "异步任务" }
+            ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setCurrentTab(tab.id)}
@@ -320,11 +315,11 @@ const ShadcnApp = () => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* 文件上传和URL导入 */}
                 <div className="bg-white rounded-lg border shadow-sm p-6">
-                  <DataUploadSection 
+                  <DataUploadSection
                     onDataSourceSaved={triggerRefresh}
                     showNotification={(message, severity) => {
                       console.log(`Toast通知: ${severity} - ${message}`);
-                      
+
                       // 使用系统现有的Toast组件
                       switch (severity) {
                         case 'success':
@@ -500,7 +495,7 @@ const ShadcnApp = () => {
               </div>
 
               <div className="bg-white rounded-lg border shadow-sm p-6">
-                <AsyncTaskList 
+                <AsyncTaskList
                   onPreviewResult={(taskId) => {
                     // 设置查询语句为 SELECT * FROM "async_result_{taskId}"
                     const query = `SELECT * FROM "async_result_${taskId}" LIMIT 10000`;

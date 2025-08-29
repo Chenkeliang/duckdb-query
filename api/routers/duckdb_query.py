@@ -30,6 +30,7 @@ router = APIRouter()
 
 class DuckDBQueryRequest(BaseModel):
     """DuckDB查询请求模型"""
+
     sql: str
     save_as_table: Optional[str] = None  # 可选：将查询结果保存为新表
     is_preview: Optional[bool] = True  # 标准化为 is_preview 标志
@@ -159,7 +160,9 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
             if table_name:
                 try:
                     # 创建新表时使用原始SQL（不带LIMIT）
-                    create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql_to_execute})'
+                    create_sql = (
+                        f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql_to_execute})'
+                    )
                     con.execute(create_sql)
                     saved_table = table_name
                     logger.info(f"查询结果已保存为表: {table_name}")
@@ -326,7 +329,7 @@ async def upload_file_to_duckdb(
                     "source_id": table_alias,
                     "filename": file.filename,
                     "file_path": file_path,
-                    "file_type": file_extension.lstrip('.'),
+                    "file_type": file_extension.lstrip("."),
                     "row_count": row_count,
                     "column_count": len(columns),
                     "columns": columns,
@@ -335,6 +338,7 @@ async def upload_file_to_duckdb(
                 # 使用全局时区配置更新创建时间
                 try:
                     from core.timezone_utils import get_current_time_iso
+
                     file_info["created_at"] = get_current_time_iso()
                 except ImportError:
                     pass  # 使用默认时间
@@ -393,6 +397,7 @@ async def delete_duckdb_table(table_name: str):
         # 同时尝试删除文件数据源记录
         try:
             from core.file_datasource_manager import file_datasource_manager
+
             file_datasource_manager.delete_file_datasource(table_name)
             logger.info(f"已删除文件数据源记录: {table_name}")
         except Exception as e:
@@ -404,6 +409,77 @@ async def delete_duckdb_table(table_name: str):
         }
 
     except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除DuckDB表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除表失败: {str(e)}")
+
+
+# 新增连接池状态监控接口
+@router.get("/api/duckdb/pool/status", tags=["DuckDB Management"])
+async def get_connection_pool_status():
+    """获取连接池状态"""
+    try:
+        from core.duckdb_pool import get_connection_pool
+
+        pool = get_connection_pool()
+        stats = pool.get_stats()
+
+        return {"success": True, "pool_status": stats, "timestamp": time.time()}
+    except Exception as e:
+        logger.error(f"获取连接池状态失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/duckdb/pool/reset", tags=["DuckDB Management"])
+async def reset_connection_pool():
+    """重置连接池"""
+    try:
+        from core.duckdb_pool import get_connection_pool
+
+        pool = get_connection_pool()
+
+        # 关闭所有连接
+        pool.close_all()
+
+        # 重新初始化连接池
+        from core.duckdb_pool import _connection_pool
+
+        global _connection_pool
+        _connection_pool = None
+
+        return {"success": True, "message": "连接池已重置"}
+    except Exception as e:
+        logger.error(f"重置连接池失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 新增错误统计接口
+@router.get("/api/errors/statistics", tags=["System Management"])
+async def get_error_statistics():
+    """获取错误统计信息"""
+    try:
+        error_handler = get_error_handler()
+        stats = error_handler.get_error_statistics()
+
+        return {"success": True, "error_statistics": stats}
+    except Exception as e:
+        logger.error(f"获取错误统计失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/errors/clear", tags=["System Management"])
+async def clear_old_errors(days: int = 30):
+    """清理旧错误记录"""
+    try:
+        error_handler = get_error_handler()
+        error_handler.clear_old_errors(days)
+
+        return {"success": True, "message": f"已清理 {days} 天前的错误记录"}
+    except Exception as e:
+        logger.error(f"清理错误记录失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
         raise
     except Exception as e:
         logger.error(f"删除DuckDB表失败: {str(e)}")

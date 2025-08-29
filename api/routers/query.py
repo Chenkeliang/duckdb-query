@@ -9,7 +9,7 @@ from core.duckdb_engine import (
     create_varchar_table_from_dataframe,
     build_single_table_query,
     generate_improved_column_aliases,
-    detect_column_conflicts
+    detect_column_conflicts,
 )
 import pandas as pd
 import numpy as np
@@ -45,10 +45,11 @@ def get_join_type_sql(join_type):
     else:
         return "INNER JOIN"  # 默认使用内连接
 
+
 def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
     """确保SQL查询有LIMIT子句，防止返回过多数据。"""
     # 使用正则表达式检查LIMIT子句，更稳健
-    if not re.search(r'\sLIMIT\s+\d+\s*($|;)', query, re.IGNORECASE):
+    if not re.search(r"\sLIMIT\s+\d+\s*($|;)", query, re.IGNORECASE):
         if query.strip().endswith(";"):
             return f"{query[:-1]} LIMIT {default_limit};"
         else:
@@ -98,7 +99,7 @@ def build_multi_table_join_query(query_request, con):
 
     # 为每个source添加columns信息（如果还没有的话）
     for source in sources:
-        if not hasattr(source, 'columns') or source.columns is None:
+        if not hasattr(source, "columns") or source.columns is None:
             try:
                 # 获取表的列信息
                 cols_df = con.execute(f"PRAGMA table_info('{source.id}')").fetchdf()
@@ -112,14 +113,14 @@ def build_multi_table_join_query(query_request, con):
 
     # 构建SELECT子句 - 只为JOIN中涉及的表生成列
     select_fields = []
-    
+
     # 为涉及的表生成列（如果有JOIN）
     if joins:
         involved_tables = set()
         for join in joins:
             involved_tables.add(join.left_source_id.strip('"'))
             involved_tables.add(join.right_source_id.strip('"'))
-            
+
         for source in sources:
             table_id = source.id.strip('"')
             if table_id in involved_tables and source.columns:
@@ -169,7 +170,13 @@ def build_multi_table_join_query(query_request, con):
                     )
                 else:
                     # 如果没有条件，使用第一个列作为检查
-                    right_cols = [col for col in sources if col.id.strip('"') == right_table][0].columns if any(col.id.strip('"') == right_table for col in sources) else []
+                    right_cols = (
+                        [col for col in sources if col.id.strip('"') == right_table][
+                            0
+                        ].columns
+                        if any(col.id.strip('"') == right_table for col in sources)
+                        else []
+                    )
                     right_key_col = (
                         f'"{right_table}"."{right_cols[0]}"'
                         if right_cols
@@ -182,7 +189,13 @@ def build_multi_table_join_query(query_request, con):
                     left_key_col = f'"{left_table}"."{join.conditions[0].left_column}"'
                 else:
                     # 如果没有条件，使用第一个列作为检查
-                    left_cols = [col for col in sources if col.id.strip('"') == left_table][0].columns if any(col.id.strip('"') == left_table for col in sources) else []
+                    left_cols = (
+                        [col for col in sources if col.id.strip('"') == left_table][
+                            0
+                        ].columns
+                        if any(col.id.strip('"') == left_table for col in sources)
+                        else []
+                    )
                     left_key_col = (
                         f'"{left_table}"."{left_cols[0]}"'
                         if left_cols
@@ -198,8 +211,20 @@ def build_multi_table_join_query(query_request, con):
                     )
                 else:
                     # 如果没有条件，使用第一个列作为检查
-                    left_cols = [col for col in sources if col.id.strip('"') == left_table][0].columns if any(col.id.strip('"') == left_table for col in sources) else []
-                    right_cols = [col for col in sources if col.id.strip('"') == right_table][0].columns if any(col.id.strip('"') == right_table for col in sources) else []
+                    left_cols = (
+                        [col for col in sources if col.id.strip('"') == left_table][
+                            0
+                        ].columns
+                        if any(col.id.strip('"') == left_table for col in sources)
+                        else []
+                    )
+                    right_cols = (
+                        [col for col in sources if col.id.strip('"') == right_table][
+                            0
+                        ].columns
+                        if any(col.id.strip('"') == right_table for col in sources)
+                        else []
+                    )
                     left_key_col = (
                         f'"{left_table}"."{left_cols[0]}"'
                         if left_cols
@@ -235,7 +260,9 @@ def build_multi_table_join_query(query_request, con):
             from_clause += f' CROSS JOIN "{source_id}"'
     else:
         # 构建JOIN链
-        from_clause = build_join_chain(sources, joins, {source.id.strip('"'): source.columns for source in sources})
+        from_clause = build_join_chain(
+            sources, joins, {source.id.strip('"'): source.columns for source in sources}
+        )
 
     query = f"SELECT {select_clause} FROM {from_clause}"
 
@@ -667,6 +694,7 @@ async def perform_query(query_request: QueryRequest):
         # 根据is_preview标志决定是否添加LIMIT
         if query_request.is_preview:
             from core.config_manager import config_manager
+
             limit = config_manager.get_app_config().max_query_rows
             query = ensure_query_has_limit(query, limit)
             logger.info(f"预览模式，已应用LIMIT {limit}")
@@ -769,12 +797,13 @@ async def perform_query(query_request: QueryRequest):
 async def download_results(query_request: QueryRequest):
     """Performs a query and returns the results as an Excel file."""
     logger.info("开始执行下载请求")
-    
+
     # 获取应用配置，包括下载超时设置
     from core.config_manager import config_manager
+
     app_config = config_manager.get_app_config()
     download_timeout = app_config.download_timeout
-    
+
     logger.info(f"使用下载超时设置: {download_timeout}秒")
     con = get_db_connection()
 
@@ -891,9 +920,9 @@ async def download_results(query_request: QueryRequest):
         logger.info(f"执行数据量查询: {count_query}")
         count_result = con.execute(count_query).fetchone()
         row_count = count_result[0] if count_result else 0
-        
+
         logger.info(f"查询结果行数: {row_count}")
-        
+
         # 根据数据量决定导出格式
         use_csv_format = row_count > 100000  # 超过10万行使用CSV格式
         if use_csv_format:
@@ -904,12 +933,12 @@ async def download_results(query_request: QueryRequest):
         # Execute query
         logger.info(f"执行下载查询: {query}")
         result_df = execute_query(query, con)
-        
+
         # 验证查询结果
         if result_df is None:
             logger.warning("查询结果为None")
             raise ValueError("查询结果为空")
-            
+
         if result_df.empty:
             logger.warning("查询结果为空")
             raise ValueError("查询结果为空")
@@ -926,8 +955,12 @@ async def download_results(query_request: QueryRequest):
         logger.info("开始生成下载文件")
         output = io.BytesIO()
         filename = "query_results.csv" if use_csv_format else "query_results.xlsx"
-        content_type = "text/csv" if use_csv_format else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        
+        content_type = (
+            "text/csv"
+            if use_csv_format
+            else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
         try:
             if use_csv_format:
                 # 生成CSV格式数据
@@ -938,14 +971,16 @@ async def download_results(query_request: QueryRequest):
                 logger.info("使用Excel格式导出数据")
                 with pd.ExcelWriter(output, engine="openpyxl") as writer:
                     result_df.to_excel(writer, index=False, sheet_name="QueryResults")
-            
+
             output.seek(0)
-            
+
             # 验证生成的文件
             if output.getvalue() == b"":
                 raise ValueError("生成的文件为空")
 
-            logger.info(f"文件生成成功，大小: {len(output.getvalue())} bytes, 格式: {filename.split('.')[-1]}")
+            logger.info(
+                f"文件生成成功，大小: {len(output.getvalue())} bytes, 格式: {filename.split('.')[-1]}"
+            )
 
         except Exception as e:
             logger.error(f"文件生成失败: {str(e)}")
@@ -986,6 +1021,7 @@ async def execute_sql(request: dict = Body(...)):
         # 如果是预览模式，则强制添加LIMIT
         if is_preview:
             from core.config_manager import config_manager
+
             limit = config_manager.get_app_config().max_query_rows
             sql_query = ensure_query_has_limit(sql_query, limit)
             logger.info(f"预览模式，已应用LIMIT {limit} 到SQL: {sql_query}")
@@ -1087,7 +1123,8 @@ async def execute_sql(request: dict = Body(...)):
                     from models.query_models import DatabaseConnection, DataSourceType
 
                     config_path = os.path.join(
-                        os.path.dirname(os.path.dirname(__file__)), "config/mysql-configs.json"
+                        os.path.dirname(os.path.dirname(__file__)),
+                        "config/mysql-configs.json",
                     )
                     with open(config_path, "r", encoding="utf-8") as f:
                         configs = json.load(f)
@@ -1383,6 +1420,35 @@ async def save_query_to_duckdb(request: dict = Body(...)):
             except Exception as verify_error:
                 logger.warning(f"表验证失败: {str(verify_error)}")
 
+            # 获取当前时间
+            from datetime import datetime
+
+            current_time = datetime.now()
+
+            # 创建文件数据源配置，这样 /api/duckdb_tables 接口就能获取到 created_at 时间
+            try:
+                from core.file_datasource_manager import file_datasource_manager
+
+                file_info = {
+                    "source_id": table_alias,
+                    "filename": f"{table_alias}_query_result",
+                    "file_path": f"query_result_{table_alias}",  # 虚拟路径，实际数据在DuckDB中
+                    "file_type": "duckdb_table",
+                    "created_at": current_time.isoformat(),
+                    "columns": result_df.columns.tolist(),
+                    "row_count": len(result_df),
+                    "column_count": len(result_df.columns),
+                    "source_sql": sql_query,
+                    "source_datasource": datasource_id,
+                }
+
+                # 保存到文件数据源管理器
+                file_datasource_manager.save_file_datasource(file_info)
+                logger.info(f"已创建查询结果表的文件数据源配置: {table_alias}")
+
+            except Exception as config_error:
+                logger.warning(f"创建文件数据源配置失败: {str(config_error)}")
+
             return {
                 "success": True,
                 "message": f"查询结果已保存为DuckDB表: {table_alias}",
@@ -1391,6 +1457,17 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                 "columns": result_df.columns.tolist(),
                 "source_sql": sql_query,
                 "source_datasource": datasource_id,
+                "created_at": current_time.isoformat(),
+                "datasource": {
+                    "id": table_alias,
+                    "name": table_alias,
+                    "type": "duckdb",
+                    "table_name": table_alias,
+                    "row_count": len(result_df),
+                    "column_count": len(result_df.columns),
+                    "created_at": current_time.isoformat(),
+                    "updated_at": current_time.isoformat(),
+                },
             }
 
         except Exception as duckdb_error:
@@ -1416,6 +1493,7 @@ async def list_duckdb_tables():
 
         # 获取文件数据源管理器实例
         from core.file_datasource_manager import file_datasource_manager
+
         file_datasources = file_datasource_manager.list_file_datasources()
         # 创建source_id到上传时间的映射（统一使用 created_at 字段）
         datasource_timestamps = {}
@@ -1449,7 +1527,7 @@ async def list_duckdb_tables():
                         "row_count": int(row_count),
                         "columns": columns,
                         "column_count": len(columns),
-                        "created_at": created_at
+                        "created_at": created_at,
                     }
                 )
             except Exception as e:
@@ -1465,7 +1543,9 @@ async def list_duckdb_tables():
                 )
 
         # 按创建时间倒序排序，没有创建时间的表排在最后
-        tables_info.sort(key=lambda x: x.get("created_at") or "1900-01-01", reverse=True)
+        tables_info.sort(
+            key=lambda x: x.get("created_at") or "1900-01-01", reverse=True
+        )
 
         return {
             "success": True,
@@ -1814,11 +1894,37 @@ async def save_query_result_as_datasource(request: dict = Body(...)):
 
         # 生成唯一的数据源ID
         import uuid
+        from datetime import datetime
 
         datasource_id = f"query_result_{uuid.uuid4().hex[:8]}"
+        current_time = datetime.now()
 
         # 将查询结果注册为新的数据源
         con.register(datasource_id, result_df)
+
+        # 创建文件数据源配置，这样 /api/duckdb_tables 接口就能获取到 created_at 时间
+        try:
+            from core.file_datasource_manager import file_datasource_manager
+
+            file_info = {
+                "source_id": datasource_id,
+                "filename": f"{datasource_id}_query_result",
+                "file_path": f"query_result_{datasource_id}",  # 虚拟路径，实际数据在DuckDB中
+                "file_type": "duckdb_table",
+                "created_at": current_time.isoformat(),
+                "columns": result_df.columns.tolist(),
+                "row_count": len(result_df),
+                "column_count": len(result_df.columns),
+                "source_sql": sql_query,
+                "source_datasource": "query_result",
+            }
+
+            # 保存到文件数据源管理器
+            file_datasource_manager.save_file_datasource(file_info)
+            logger.info(f"已创建查询结果数据源的文件数据源配置: {datasource_id}")
+
+        except Exception as config_error:
+            logger.warning(f"创建文件数据源配置失败: {str(config_error)}")
 
         # 保存到临时文件以便持久化
         temp_dir = os.path.join(
@@ -1841,12 +1947,17 @@ async def save_query_result_as_datasource(request: dict = Body(...)):
             "filename": csv_filename,
             "rowCount": len(result_df),
             "columns": result_df.columns.tolist(),
+            "created_at": current_time.isoformat(),
             "datasource": {
                 "id": datasource_id,
                 "name": datasource_name,
                 "type": "file",
                 "filename": csv_filename,
                 "status": "active",
+                "created_at": current_time.isoformat(),
+                "updated_at": current_time.isoformat(),
+                "row_count": len(result_df),
+                "column_count": len(result_df.columns),
             },
         }
 
@@ -2025,3 +2136,197 @@ async def quick_export(request: dict = Body(...)):
         logger.error(f"快速导出失败: {str(e)}")
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"快速导出失败: {str(e)}")
+
+
+# 新增增强查询接口
+@router.post("/api/query/enhanced", tags=["Query"])
+async def perform_query_enhanced(query_request: QueryRequest):
+    """增强的统一查询接口，支持所有查询类型"""
+    try:
+        # 判断查询类型
+        if is_duckdb_only_query(query_request):
+            return await execute_duckdb_only_query(query_request)
+        elif has_external_database(query_request):
+            return await execute_multi_source_query(query_request)
+        else:
+            return await execute_file_based_query(query_request)
+    except Exception as e:
+        logger.error(f"查询执行失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def is_duckdb_only_query(query_request: QueryRequest) -> bool:
+    """判断是否为纯DuckDB查询"""
+    if len(query_request.sources) == 1:
+        source = query_request.sources[0]
+        return source.type in ["file", "duckdb"]
+    return False
+
+
+def has_external_database(query_request: QueryRequest) -> bool:
+    """判断是否包含外部数据库"""
+    return any(
+        source.type in ["mysql", "postgresql", "sqlite"]
+        for source in query_request.sources
+    )
+
+
+async def execute_duckdb_only_query(query_request: QueryRequest) -> dict:
+    """执行纯DuckDB查询（替代 /api/duckdb/execute 功能）"""
+    con = get_db_connection()
+    start_time = time.time()
+
+    try:
+        # 处理文件数据源注册
+        for source in query_request.sources:
+            if source.type == "file":
+                await register_file_source_enhanced(source, con)
+
+        # 构建查询SQL
+        if query_request.joins:
+            sql = build_multi_table_join_query(query_request, con)
+        else:
+            sql = build_single_table_query(query_request, con)
+
+        # 执行查询
+        result_df = con.execute(sql).fetchdf()
+
+        # 格式化结果
+        columns = result_df.columns.tolist()
+        data = result_df.values.tolist()
+
+        execution_time = (time.time() - start_time) * 1000
+
+        return {
+            "success": True,
+            "columns": columns,
+            "data": data,
+            "row_count": len(data),
+            "sql_executed": sql,
+            "execution_time_ms": execution_time,
+        }
+    except Exception as e:
+        logger.error(f"DuckDB查询执行失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def execute_multi_source_query(query_request: QueryRequest) -> dict:
+    """执行包含外部数据库的多源查询（调用原有逻辑）"""
+    # 调用原有的查询逻辑
+    return await perform_query(query_request)
+
+
+async def execute_file_based_query(query_request: QueryRequest) -> dict:
+    """执行纯文件数据源查询（调用原有逻辑）"""
+    # 调用原有的查询逻辑
+    return await perform_query(query_request)
+
+
+async def register_file_source_enhanced(source, con):
+    """增强的文件数据源注册函数"""
+    try:
+        file_path = source.params["path"]
+        file_extension = file_path.lower().split(".")[-1]
+
+        if file_extension in ["xlsx", "xls"]:
+            # Excel文件处理
+            try:
+                con.execute("INSTALL excel;")
+                con.execute("LOAD excel;")
+                duckdb_query = f"SELECT * FROM EXCEL_SCAN('{file_path}') LIMIT 1"
+                con.execute(duckdb_query).fetchdf()
+                # 先创建临时表
+                temp_table = f"temp_{source.id}_{int(time.time())}"
+                con.execute(
+                    f"CREATE TABLE \"{temp_table}\" AS SELECT * FROM EXCEL_SCAN('{file_path}')"
+                )
+
+                # 获取列信息并转换为VARCHAR
+                columns_info = con.execute(f'DESCRIBE "{temp_table}"').fetchall()
+                cast_columns = []
+                for col_name, col_type, *_ in columns_info:
+                    cast_columns.append(
+                        f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"'
+                    )
+
+                cast_sql = ", ".join(cast_columns)
+
+                # 创建最终的VARCHAR表
+                con.execute(f'DROP TABLE IF EXISTS "{source.id}"')
+                con.execute(
+                    f'CREATE TABLE "{source.id}" AS SELECT {cast_sql} FROM "{temp_table}"'
+                )
+
+                # 删除临时表
+                con.execute(f'DROP TABLE "{temp_table}"')
+                logger.info(f"使用duckdb EXCEL_SCAN 注册Excel表: {source.id}")
+            except Exception as duckdb_exc:
+                logger.warning(
+                    f"duckdb EXCEL_SCAN 读取失败，降级为pandas: {duckdb_exc}"
+                )
+                df = pd.read_excel(file_path, dtype=str)
+                con.register(source.id, df)
+                logger.info(
+                    f"已用pandas.read_excel注册表: {source.id}, shape: {df.shape}"
+                )
+
+        elif file_extension == "csv":
+            # CSV文件处理，优先使用DuckDB原生功能
+            try:
+                # 使用DuckDB读取CSV，然后转换所有列为VARCHAR
+                temp_table = f"temp_{source.id}_{int(time.time())}"
+
+                # 先用DuckDB读取到临时表
+                con.execute(
+                    f"CREATE TABLE \"{temp_table}\" AS SELECT * FROM read_csv_auto('{file_path}')"
+                )
+
+                # 获取列信息并转换为VARCHAR
+                columns_info = con.execute(f'DESCRIBE "{temp_table}"').fetchall()
+                cast_columns = []
+                for col_name, col_type, *_ in columns_info:
+                    cast_columns.append(
+                        f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"'
+                    )
+
+                cast_sql = ", ".join(cast_columns)
+
+                # 创建最终表，所有列都是VARCHAR
+                con.execute(f'DROP TABLE IF EXISTS "{source.id}"')
+                con.execute(
+                    f'CREATE TABLE "{source.id}" AS SELECT {cast_sql} FROM "{temp_table}"'
+                )
+
+                # 删除临时表
+                con.execute(f'DROP TABLE "{temp_table}"')
+
+                logger.info(f"使用DuckDB read_csv_auto创建VARCHAR表: {source.id}")
+
+            except Exception as duckdb_exc:
+                logger.warning(f"DuckDB读取CSV失败，降级为pandas: {duckdb_exc}")
+                # 降级为pandas方案
+                df = pd.read_csv(file_path, dtype=str)
+                create_varchar_table_from_dataframe(source.id, df, con)
+                logger.info(
+                    f"已用pandas.read_csv创建持久化表: {source.id}, shape: {df.shape}"
+                )
+
+        else:
+            # 其他文件类型，尝试pandas通用读取
+            logger.warning(f"未知文件类型: {file_extension}，尝试pandas读取")
+            try:
+                df = pd.read_csv(file_path, dtype=str)  # 默认尝试CSV
+                create_varchar_table_from_dataframe(source.id, df, con)
+                logger.info(
+                    f"已用pandas.read_csv创建持久化表: {source.id}, shape: {df.shape}"
+                )
+            except Exception:
+                df = pd.read_excel(file_path, dtype=str)  # 再尝试Excel
+                create_varchar_table_from_dataframe(source.id, df, con)
+                logger.info(
+                    f"已用pandas.read_excel注册表: {source.id}, shape: {df.shape}"
+                )
+
+    except Exception as e:
+        logger.error(f"注册文件数据源失败: {str(e)}")
+        raise ValueError(f"注册文件数据源失败: {source.id}, 错误: {str(e)}")

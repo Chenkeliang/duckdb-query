@@ -583,7 +583,7 @@ export const downloadAsyncTaskResult = async (taskId) => {
     const response = await apiClient.get(`/api/async_tasks/${taskId}/result`, {
       responseType: 'blob'
     });
-    
+
     // 获取文件名
     const contentDisposition = response.headers['content-disposition'];
     let filename = `task-${taskId}-result.parquet`;
@@ -593,7 +593,7 @@ export const downloadAsyncTaskResult = async (taskId) => {
         filename = filenameMatch[1];
       }
     }
-    
+
     // 创建下载链接
     const url = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement('a');
@@ -603,11 +603,99 @@ export const downloadAsyncTaskResult = async (taskId) => {
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
-    
+
     return { success: true };
   } catch (error) {
     console.error('下载异步任务结果失败:', error);
     throw error;
+  }
+};
+
+// 新增连接池状态监控API
+export const getConnectionPoolStatus = async () => {
+  try {
+    const response = await apiClient.get('/api/duckdb/pool/status');
+    return response.data;
+  } catch (error) {
+    console.error('获取连接池状态失败:', error);
+    throw error;
+  }
+};
+
+export const resetConnectionPool = async () => {
+  try {
+    const response = await apiClient.post('/api/duckdb/pool/reset');
+    return response.data;
+  } catch (error) {
+    console.error('重置连接池失败:', error);
+    throw error;
+  }
+};
+
+// 新增错误统计API
+export const getErrorStatistics = async () => {
+  try {
+    const response = await apiClient.get('/api/errors/statistics');
+    return response.data;
+  } catch (error) {
+    console.error('获取错误统计失败:', error);
+    throw error;
+  }
+};
+
+export const clearOldErrors = async (days = 30) => {
+  try {
+    const response = await apiClient.post('/api/errors/clear', { days });
+    return response.data;
+  } catch (error) {
+    console.error('清理错误记录失败:', error);
+    throw error;
+  }
+};
+
+// 新增数据库连接API
+export const connectDatabaseEnhanced = async (connectionParams) => {
+  try {
+    const response = await apiClient.post('/api/database/connect', connectionParams);
+    return response.data;
+  } catch (error) {
+    console.error('数据库连接失败:', error);
+    throw error;
+  }
+};
+
+// 统一表管理接口
+export const getAllTables = async () => {
+  try {
+    const response = await apiClient.get('/api/duckdb/tables');
+    return response.data;
+  } catch (error) {
+    console.error('获取所有表失败:', error);
+    throw error;
+  }
+};
+
+// 增强的文件上传接口（支持target参数）
+export const uploadFileEnhanced = async (file, tableAlias = null, target = 'duckdb') => {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (tableAlias) {
+    formData.append("table_alias", tableAlias);
+  }
+  formData.append("target", target);
+
+  try {
+    const response = await apiClient.post("/api/upload", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      timeout: 300000, // 5分钟超时
+      maxContentLength: 100 * 1024 * 1024, // 100MB
+      maxBodyLength: 100 * 1024 * 1024, // 100MB
+    });
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "文件上传失败");
   }
 };
 

@@ -40,6 +40,7 @@ DATASOURCES_CONFIG_FILE = os.path.join(
     "datasources.json",
 )
 
+
 def _save_connections_to_config():
     try:
         connections = db_manager.list_connections()
@@ -49,8 +50,6 @@ def _save_connections_to_config():
         logger.info("Successfully saved connections to config file.")
     except Exception as e:
         logger.error(f"Error saving connections to config file: {e}")
-
-
 
 
 @router.post("/api/database_connections/test", tags=["Database Management"])
@@ -288,6 +287,7 @@ async def upload_file(
 
         # 获取文件预览信息
         from core.file_utils import get_file_preview
+
         preview_info = get_file_preview(save_path, rows=10)
 
         # 生成SQL兼容的表名，替换特殊字符为下划线
@@ -397,7 +397,7 @@ async def update_database_connection(
 
         # 先删除旧连接
         db_manager.remove_connection(connection_id)
-        
+
         # 添加新连接
         success = db_manager.add_connection(connection)
         if success:
@@ -416,7 +416,9 @@ async def update_database_connection(
         raise HTTPException(status_code=500, detail=f"更新数据库连接失败: {str(e)}")
 
 
-@router.delete("/api/database_connections/{connection_id}", tags=["Database Management"])
+@router.delete(
+    "/api/database_connections/{connection_id}", tags=["Database Management"]
+)
 async def delete_database_connection(connection_id: str):
     """删除数据库连接"""
     try:
@@ -431,3 +433,167 @@ async def delete_database_connection(connection_id: str):
     except Exception as e:
         logger.error(f"删除数据库连接失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"删除数据库连接失败: {str(e)}")
+
+
+# 新增数据库连接接口
+@router.post("/api/database/connect", tags=["Database Management"])
+async def connect_database(connection: DatabaseConnection):
+    """连接数据库并返回表信息"""
+    try:
+        # 测试连接
+        test_result = await test_database_connection(connection)
+        if not test_result.success:
+            raise HTTPException(status_code=400, detail=test_result.message)
+
+        # 创建连接
+        success = db_manager.add_connection(connection)
+        if success:
+            # 获取数据库表信息
+            tables = await get_database_tables(connection)
+            return {
+                "success": True,
+                "message": "数据库连接成功",
+                "connection": connection,
+                "tables": tables,
+            }
+        else:
+            raise HTTPException(status_code=400, detail="数据库连接创建失败")
+    except Exception as e:
+        logger.error(f"数据库连接失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def get_database_tables(connection: DatabaseConnection) -> list:
+    """获取数据库表信息"""
+    try:
+        # 根据数据库类型获取表信息
+        if connection.type == "mysql":
+            return await get_mysql_tables(connection)
+        elif connection.type == "postgresql":
+            return await get_postgresql_tables(connection)
+        else:
+            return []
+    except Exception as e:
+        logger.warning(f"获取数据库表信息失败: {str(e)}")
+        return []
+
+
+async def get_mysql_tables(connection: DatabaseConnection) -> list:
+    """获取MySQL表信息"""
+    try:
+        import pymysql
+
+        # 创建连接
+        conn = pymysql.connect(
+            host=connection.params.get("host", "localhost"),
+            port=connection.params.get("port", 3306),
+            user=connection.params.get("username", ""),
+            password=connection.params.get("password", ""),
+            database=connection.params.get("database", ""),
+            connect_timeout=5,
+        )
+
+        with conn.cursor() as cursor:
+            # 获取表列表
+            cursor.execute("SHOW TABLES")
+            tables = cursor.fetchall()
+
+            table_info = []
+            for table in tables:
+                table_name = table[0]
+
+                # 获取表行数
+                cursor.execute(f"SELECT COUNT(*) FROM `{table_name}`")
+                row_count = cursor.fetchone()[0]
+
+                # 获取表结构
+                cursor.execute(f"DESCRIBE `{table_name}`")
+                columns = cursor.fetchall()
+
+                table_info.append(
+                    {
+                        "table_name": table_name,
+                        "row_count": row_count,
+                        "columns": [
+                            {"name": col[0], "type": col[1], "nullable": col[2]}
+                            for col in columns
+                        ],
+                        "column_count": len(columns),
+                    }
+                )
+
+        conn.close()
+        return table_info
+
+    except Exception as e:
+        logger.error(f"获取MySQL表信息失败: {str(e)}")
+        return []
+
+
+async def get_postgresql_tables(connection: DatabaseConnection) -> list:
+    """获取PostgreSQL表信息"""
+    try:
+        import psycopg2
+
+        # 创建连接
+        conn = psycopg2.connect(
+            host=connection.params.get("host", "localhost"),
+            port=connection.params.get("port", 5432),
+            user=connection.params.get("username", ""),
+            password=connection.params.get("password", ""),
+            database=connection.params.get("database", ""),
+            connect_timeout=5,
+        )
+
+        with conn.cursor() as cursor:
+            # 获取表列表
+            cursor.execute(
+                """
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public'
+            """
+            )
+            tables = cursor.fetchall()
+
+            table_info = []
+            for table in tables:
+                table_name = table[0]
+
+                # 获取表行数
+                cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
+                row_count = cursor.fetchone()[0]
+
+                # 获取表行数
+                cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
+                row_count = cursor.fetchone()[0]
+
+                # 获取表结构
+                cursor.execute(
+                    f"""
+                    SELECT column_name, data_type, is_nullable
+                    FROM information_schema.columns
+                    WHERE table_name = '{table_name}'
+                    ORDER BY ordinal_position
+                """
+                )
+                columns = cursor.fetchall()
+
+                table_info.append(
+                    {
+                        "table_name": table_name,
+                        "row_count": row_count,
+                        "columns": [
+                            {"name": col[0], "type": col[1], "nullable": col[2]}
+                            for col in columns
+                        ],
+                        "column_count": len(columns),
+                    }
+                )
+
+        conn.close()
+        return table_info
+
+    except Exception as e:
+        logger.error(f"获取PostgreSQL表信息失败: {str(e)}")
+        return []

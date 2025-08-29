@@ -12,10 +12,13 @@ from models.query_models import (
     JoinType,
     JoinCondition,
     MultiTableJoin,
-    DataSource
+    DataSource,
 )
 
 logger = logging.getLogger(__name__)
+
+# 导入连接池管理器
+from core.duckdb_pool import get_connection_pool
 
 # 创建一个全局的DuckDB连接实例，确保在整个应用程序中共享
 _global_duckdb_connection = None
@@ -31,6 +34,7 @@ def get_db_connection():
         # 使用持久化文件而不是内存模式
         # 兼容本地开发和Docker环境
         import os
+
         if os.path.exists("/app"):
             # Docker环境
             db_path = "/app/data/duckdb/main.db"
@@ -52,6 +56,7 @@ def get_db_connection():
 
         # 应用内存限制配置
         from core.config_manager import config_manager
+
         app_config = config_manager.get_app_config()
         memory_limit = app_config.duckdb_memory_limit
         if memory_limit:
@@ -64,7 +69,9 @@ def get_db_connection():
         try:
             # DuckDB优化器默认启用，无需手动设置
             _global_duckdb_connection.execute("SET enable_profiling=true")
-            _global_duckdb_connection.execute("SET profiling_output='/app/data/duckdb/profile.json'")
+            _global_duckdb_connection.execute(
+                "SET profiling_output='/app/data/duckdb/profile.json'"
+            )
         except Exception as e:
             logger.warning(f"设置profiling失败: {str(e)}")
 
@@ -87,25 +94,28 @@ def get_db_connection():
         # 设置DuckDB的home目录以支持扩展安装
         try:
             # 创建专用的扩展目录
-            extension_dir = '/app/data/duckdb/extensions'
-            home_dir = '/app/data/duckdb/home'
+            extension_dir = "/app/data/duckdb/extensions"
+            home_dir = "/app/data/duckdb/home"
             import os
+
             os.makedirs(extension_dir, exist_ok=True)
             os.makedirs(home_dir, exist_ok=True)
-            
+
             _global_duckdb_connection.execute(f"SET home_directory='{home_dir}';")
-            _global_duckdb_connection.execute(f"SET extension_directory='{extension_dir}';")
+            _global_duckdb_connection.execute(
+                f"SET extension_directory='{extension_dir}';"
+            )
             logger.info(f"DuckDB扩展目录设置完成: {extension_dir}")
         except Exception as e:
             logger.warning(f"设置DuckDB扩展目录失败: {str(e)}")
 
         # 安装和加载常用扩展
         extensions_to_install = [
-            ('excel', 'Excel文件处理'),
-            ('json', 'JSON文件处理'),
-            ('parquet', 'Parquet文件处理')
+            ("excel", "Excel文件处理"),
+            ("json", "JSON文件处理"),
+            ("parquet", "Parquet文件处理"),
         ]
-        
+
         for ext_name, ext_desc in extensions_to_install:
             try:
                 # 先尝试加载扩展（如果已安装）
@@ -118,7 +128,9 @@ def get_db_connection():
                     _global_duckdb_connection.execute(f"LOAD {ext_name};")
                     logger.info(f"{ext_desc}扩展安装并加载成功")
                 except Exception as install_error:
-                    logger.warning(f"安装或加载{ext_desc}扩展失败: {str(install_error)}")
+                    logger.warning(
+                        f"安装或加载{ext_desc}扩展失败: {str(install_error)}"
+                    )
 
         logger.info("DuckDB扩展和优化配置已应用")
 
@@ -157,10 +169,14 @@ def execute_query(query, con=None):
 
         # 详细的性能日志
         if execution_time > 1000:  # 超过1秒的查询
-            logger.warning(f"慢查询检测: 耗时 {execution_time:.2f}ms，返回 {len(result)} 行")
+            logger.warning(
+                f"慢查询检测: 耗时 {execution_time:.2f}ms，返回 {len(result)} 行"
+            )
             logger.warning(f"慢查询SQL: {query}")
         else:
-            logger.info(f"查询执行完成，耗时: {execution_time:.2f}ms，返回 {len(result)} 行")
+            logger.info(
+                f"查询执行完成，耗时: {execution_time:.2f}ms，返回 {len(result)} 行"
+            )
 
         return result
     except Exception as e:
@@ -181,7 +197,9 @@ def register_dataframe(table_name: str, df: pd.DataFrame, con=None) -> bool:
         # 预处理DataFrame以避免类型转换错误
         processed_df = prepare_dataframe_for_duckdb(df)
         con.register(table_name, processed_df)
-        logger.info(f"成功注册临时表: {table_name}, 行数: {len(processed_df)}, 列数: {len(processed_df.columns)}")
+        logger.info(
+            f"成功注册临时表: {table_name}, 行数: {len(processed_df)}, 列数: {len(processed_df.columns)}"
+        )
         return True
     except Exception as e:
         logger.error(f"注册表失败 {table_name}: {str(e)}")
@@ -214,7 +232,9 @@ def create_persistent_table(table_name: str, df: pd.DataFrame, con=None) -> bool
         # 删除临时表
         con.unregister(temp_table_name)
 
-        logger.info(f"成功创建持久化表: {table_name} ({len(processed_df)}行, {len(processed_df.columns)}列)")
+        logger.info(
+            f"成功创建持久化表: {table_name} ({len(processed_df)}行, {len(processed_df.columns)}列)"
+        )
         return True
 
     except Exception as e:
@@ -251,19 +271,19 @@ def safe_encode_string(value: str) -> str:
         try:
             # 如果是字节类型，尝试不同的编码
             if isinstance(value, bytes):
-                for encoding in ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']:
+                for encoding in ["utf-8", "latin1", "cp1252", "iso-8859-1"]:
                     try:
                         return value.decode(encoding)
                     except UnicodeDecodeError:
                         continue
                 # 如果所有编码都失败，使用错误替换
-                return value.decode('utf-8', errors='replace')
+                return value.decode("utf-8", errors="replace")
             else:
                 # 如果是字符串，直接返回
                 return str(value)
         except Exception:
             # 最后的保险措施
-            return str(value).encode('ascii', errors='ignore').decode('ascii')
+            return str(value).encode("ascii", errors="ignore").decode("ascii")
 
 
 def drop_table_if_exists(table_name: str, con=None) -> bool:
@@ -311,7 +331,9 @@ def backup_table(table_name: str, con=None) -> str:
         return ""
 
 
-def convert_table_to_varchar(table_name: str, backup_table_name: str = "", con=None) -> bool:
+def convert_table_to_varchar(
+    table_name: str, backup_table_name: str = "", con=None
+) -> bool:
     """
     将表的所有列转换为VARCHAR类型
     使用DuckDB原生功能，避免pandas
@@ -333,7 +355,7 @@ def convert_table_to_varchar(table_name: str, backup_table_name: str = "", con=N
         # 构建SELECT语句，将所有列CAST为VARCHAR
         cast_columns = []
         for col_name, col_type, *_ in columns_info:
-            if col_type.upper().startswith('VARCHAR'):
+            if col_type.upper().startswith("VARCHAR"):
                 # 已经是VARCHAR类型，直接使用
                 cast_columns.append(f'"{col_name}"')
             else:
@@ -382,11 +404,13 @@ def check_and_convert_table_types(table_name: str, con=None) -> bool:
         # 检查是否有非VARCHAR类型的列
         non_varchar_columns = []
         for col_name, col_type, *_ in columns_info:
-            if not col_type.upper().startswith('VARCHAR'):
+            if not col_type.upper().startswith("VARCHAR"):
                 non_varchar_columns.append((col_name, col_type))
 
         if non_varchar_columns:
-            logger.info(f"表 {table_name} 有 {len(non_varchar_columns)} 个非VARCHAR列，需要转换")
+            logger.info(
+                f"表 {table_name} 有 {len(non_varchar_columns)} 个非VARCHAR列，需要转换"
+            )
             for col_name, col_type in non_varchar_columns:
                 logger.info(f"  - {col_name}: {col_type}")
 
@@ -430,7 +454,9 @@ def ensure_all_tables_varchar(con=None) -> bool:
         return False
 
 
-def create_varchar_table_from_dataframe(table_name: str, df: pd.DataFrame, con=None) -> bool:
+def create_varchar_table_from_dataframe(
+    table_name: str, df: pd.DataFrame, con=None
+) -> bool:
     """
     从DataFrame创建DuckDB表，所有列都转换为VARCHAR类型
     优先使用DuckDB原生功能，避免pandas预处理
@@ -462,7 +488,9 @@ def create_varchar_table_from_dataframe(table_name: str, df: pd.DataFrame, con=N
         cast_sql = ", ".join(cast_columns)
 
         # 创建最终的VARCHAR表
-        create_sql = f'CREATE TABLE "{table_name}" AS SELECT {cast_sql} FROM "{temp_table}"'
+        create_sql = (
+            f'CREATE TABLE "{table_name}" AS SELECT {cast_sql} FROM "{temp_table}"'
+        )
         con.execute(create_sql)
 
         # 删除临时表
@@ -495,7 +523,9 @@ def prepare_dataframe_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
     # 创建DataFrame的深拷贝
     processed_df = df.copy()
 
-    logger.info(f"开始预处理DataFrame: {len(processed_df)}行, {len(processed_df.columns)}列")
+    logger.info(
+        f"开始预处理DataFrame: {len(processed_df)}行, {len(processed_df.columns)}列"
+    )
 
     # 处理所有列，统一转换为字符串类型
     for col in processed_df.columns:
@@ -519,16 +549,16 @@ def prepare_dataframe_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
 
             # 简化字符串处理，避免性能问题
             # 直接转换为字符串，处理空值
-            processed_df[col] = processed_df[col].astype(str).replace('nan', '')
+            processed_df[col] = processed_df[col].astype(str).replace("nan", "")
 
         except Exception as e:
             logger.warning(f"处理列 {col} 时出错: {e}，使用默认字符串转换")
             # 使用最简单的转换方法
             try:
-                processed_df[col] = processed_df[col].astype(str).fillna('')
+                processed_df[col] = processed_df[col].astype(str).fillna("")
             except:
                 # 如果还是失败，创建一个空字符串列
-                processed_df[col] = [''] * len(processed_df)
+                processed_df[col] = [""] * len(processed_df)
 
     # 清理列名，确保是有效的SQL标识符
     clean_columns = []
@@ -536,7 +566,9 @@ def prepare_dataframe_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
         try:
             clean_col = str(col).encode("utf-8", errors="replace").decode("utf-8")
             # 移除或替换特殊字符
-            clean_col = "".join(c if c.isalnum() or c in ["_", "-"] else "_" for c in clean_col)
+            clean_col = "".join(
+                c if c.isalnum() or c in ["_", "-"] else "_" for c in clean_col
+            )
             if not clean_col or clean_col[0].isdigit():
                 clean_col = f"col_{i}"
             clean_columns.append(clean_col)
@@ -568,29 +600,31 @@ def get_table_info(table_name: str, con=None) -> Dict[str, Any]:
 
         return {
             "table_name": table_name,
-            "columns": schema_df.to_dict('records'),
-            "row_count": row_count
+            "columns": schema_df.to_dict("records"),
+            "row_count": row_count,
         }
     except Exception as e:
         logger.error(f"获取表信息失败 {table_name}: {str(e)}")
         return {}
 
 
-def generate_improved_column_aliases(sources: List[DataSource]) -> Dict[str, Dict[str, str]]:
+def generate_improved_column_aliases(
+    sources: List[DataSource],
+) -> Dict[str, Dict[str, str]]:
     """
     为冲突的列名生成改进的别名
     使用原始字段名 + 表标识的方式，如：字段名_表标识
     """
     conflicts = detect_column_conflicts(sources)
     aliases = {}
-    
+
     # 为每个数据源生成简化的表标识
     table_identifiers = generate_table_identifiers(sources)
-    
+
     for source in sources:
         source_aliases = {}
         table_identifier = table_identifiers.get(source.id, source.id)
-        
+
         if source.columns:
             for column in source.columns:
                 if column in conflicts:
@@ -610,30 +644,30 @@ def generate_table_identifiers(sources: List[DataSource]) -> Dict[str, str]:
     为每个数据源生成简化的表标识
     """
     identifiers = {}
-    
+
     # 收集所有表名
     table_names = []
     for source in sources:
         # 使用表名或ID作为基础
-        base_name = getattr(source, 'name', None) or source.id
+        base_name = getattr(source, "name", None) or source.id
         table_names.append((source.id, base_name))
-    
+
     # 生成唯一标识符
     used_identifiers = set()
     for source_id, base_name in table_names:
         # 简化表名：取前几个字符或使用完整表名
         simplified_name = simplify_table_name(base_name)
-        
+
         # 确保标识符唯一
         final_identifier = simplified_name
         counter = 1
         while final_identifier in used_identifiers:
             final_identifier = f"{simplified_name}_{counter}"
             counter += 1
-        
+
         identifiers[source_id] = final_identifier
         used_identifiers.add(final_identifier)
-    
+
     return identifiers
 
 
@@ -643,23 +677,24 @@ def simplify_table_name(table_name: str, max_length: int = 10) -> str:
     """
     if not table_name:
         return "table"
-    
+
     # 移除特殊字符并转换为小写
     import re
-    clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', table_name).lower()
-    
+
+    clean_name = re.sub(r"[^a-zA-Z0-9_]", "_", table_name).lower()
+
     # 如果名称太长，进行截断
     if len(clean_name) > max_length:
         clean_name = clean_name[:max_length]
-    
+
     # 确保不以数字开头
     if clean_name and clean_name[0].isdigit():
         clean_name = f"t_{clean_name}"
-    
+
     # 如果结果为空或太短，使用默认名称
     if not clean_name or len(clean_name) < 2:
         clean_name = "tbl"
-    
+
     return clean_name
 
 
@@ -675,8 +710,11 @@ def detect_column_conflicts(sources: List[DataSource]) -> Dict[str, List[str]]:
                 column_sources[column].append(source.id)
 
     # 找出冲突的列名
-    conflicts = {col: source_list for col, source_list in column_sources.items()
-                if len(source_list) > 1}
+    conflicts = {
+        col: source_list
+        for col, source_list in column_sources.items()
+        if len(source_list) > 1
+    }
 
     return conflicts
 
@@ -727,22 +765,24 @@ def get_actual_table_name(source) -> str:
     对于DuckDB表，去掉duckdb_前缀
     """
     # 检查是否是DuckDB数据源
-    source_type = getattr(source, 'sourceType', None) or getattr(source, 'type', None)
+    source_type = getattr(source, "sourceType", None) or getattr(source, "type", None)
 
-    if source_type == 'duckdb':
+    if source_type == "duckdb":
         # 使用name字段，如果没有则从id中获取
-        actual_table_name = getattr(source, 'name', None) or getattr(source, 'id', None)
+        actual_table_name = getattr(source, "name", None) or getattr(source, "id", None)
         # 确保表名不为None
         if not actual_table_name:
             raise ValueError("DuckDB数据源缺少表名")
-        
+
         # 如果表名以'duckdb_'开头，去掉前缀
-        if isinstance(actual_table_name, str) and actual_table_name.startswith('duckdb_'):
+        if isinstance(actual_table_name, str) and actual_table_name.startswith(
+            "duckdb_"
+        ):
             actual_table_name = actual_table_name[7:]  # 去掉'duckdb_'前缀
         return actual_table_name
     else:
         # 对于非DuckDB数据源，直接使用id
-        table_id = getattr(source, 'id', None)
+        table_id = getattr(source, "id", None)
         if not table_id:
             raise ValueError("数据源缺少ID")
         return table_id
@@ -764,12 +804,14 @@ def build_single_table_query(query_request: QueryRequest) -> str:
         try:
             # 展开 SELECT *
             columns_df = con.execute(f"PRAGMA table_info({table_name_sql})").fetchdf()
-            all_columns = columns_df['name'].tolist()
+            all_columns = columns_df["name"].tolist()
             select_clause = ", ".join([f'"{col}"' for col in all_columns])
             if not select_clause:  # 如果表没有列
                 select_clause = "*"
         except Exception as e:
-            logger.warning(f"无法获取表 '{actual_table_name}' 的列信息来展开 '*': {e}。将回退到 'SELECT *'。")
+            logger.warning(
+                f"无法获取表 '{actual_table_name}' 的列信息来展开 '*': {e}。将回退到 'SELECT *'。"
+            )
             select_clause = "*"
 
     query = f"SELECT {select_clause} FROM {table_name_sql}"
@@ -889,7 +931,7 @@ def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
         JoinType.LEFT: "LEFT JOIN",
         JoinType.RIGHT: "RIGHT JOIN",
         JoinType.FULL_OUTER: "FULL OUTER JOIN",
-        JoinType.CROSS: "CROSS JOIN"
+        JoinType.CROSS: "CROSS JOIN",
     }
 
     # 开始构建查询
@@ -937,14 +979,22 @@ def create_varchar_index(table_name: str, column_name: str, con=None) -> bool:
             return False
 
         # 创建索引名称
-        index_name = f"idx_{table_name}_{column_name}".replace("-", "_").replace(" ", "_")
+        index_name = f"idx_{table_name}_{column_name}".replace("-", "_").replace(
+            " ", "_"
+        )
 
         # 检查索引是否已存在
         try:
-            existing_indexes = con.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+            existing_indexes = con.execute(
+                f"PRAGMA table_info('{table_name}')"
+            ).fetchall()
             # DuckDB的索引检查方式
-            con.execute(f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}")')
-            logger.info(f"已为表 {table_name} 的列 {column_name} 创建索引: {index_name}")
+            con.execute(
+                f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}")'
+            )
+            logger.info(
+                f"已为表 {table_name} 的列 {column_name} 创建索引: {index_name}"
+            )
             return True
         except Exception as e:
             if "already exists" in str(e).lower():
