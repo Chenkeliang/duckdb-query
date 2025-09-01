@@ -5,9 +5,12 @@ SQL注入防护工具
 
 import re
 import logging
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass
+import json
+from datetime import datetime
+from typing import Dict, List, Any, Optional, Union
 from enum import Enum
+
+from core.timezone_utils import get_current_time  # 导入时区工具
 
 logger = logging.getLogger(__name__)
 
@@ -320,9 +323,15 @@ class SQLInjectionProtector:
 
     def _get_timestamp(self) -> str:
         """获取当前时间戳"""
-        from datetime import datetime
+        try:
+            from core.timezone_utils import get_current_time_iso
 
-        return datetime.now().isoformat()
+            return get_current_time_iso()  # 使用统一的时区配置
+        except ImportError:
+            # 如果无法导入时区工具，使用默认时间
+            from datetime import datetime
+
+            return get_current_time().isoformat()
 
 
 # 全局SQL注入防护器实例

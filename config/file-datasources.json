@@ -1,9 +1,9 @@
 [
   {
     "source_id": "订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_1",
-    "filename": "订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_1.xlsx",
-    "file_path": "/app/temp_files/订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_1.xlsx",
-    "file_type": "excel",
+    "filename": "table_订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_1",
+    "file_path": "duckdb://订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_1",
+    "file_type": "duckdb_table",
     "row_count": 50000,
     "column_count": 53,
     "columns": [
@@ -61,230 +61,71 @@
       "商品售后",
       "商品已退款金额"
     ],
-    "created_at": "2025-08-12 10:31:24.138447"
+    "created_at": "2025-09-01T16:33:35.104981+08:00"
   },
   {
     "source_id": "订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_2",
-    "filename": "订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_2.xlsx",
-    "file_path": "/app/temp_files/订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_2.xlsx",
-    "file_type": "xlsx",
+    "filename": "table_订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_2",
+    "file_path": "duckdb://订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_2",
+    "file_type": "duckdb_table",
     "row_count": 35485,
     "column_count": 53,
     "columns": [
-      {
-        "name": "订单号",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "订单下单时间",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "订单发货时间",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "订单确认收货时间",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "订单完成结算时间",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "订单状态",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "发货方式",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "收件人姓名",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "收件人地址",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "省",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "市",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "区",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "收件人手机",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "买家备注",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商家备注",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品总价",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "订单实际支付金额",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "订单实际收款金额",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "订单运费",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品优惠",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "跨店优惠",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品改价",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "积分抵扣",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "支付方式",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "支付时间",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "交易单号",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "物流公司",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "快递单号",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "技术服务费",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "技术服务费（将以人气卡形式返还）",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "运费险预计投保费用",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "带货方式",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "带货账号类型",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "带货账号昵称",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "带货费用渠道",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "带货费用类型",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "带货费用",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "带货佣金率",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "礼物单号",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品名称",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品编码(平台)",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品编码(自定义)",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "SKU编码(自定义)",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品属性",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品价格",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品实际价格",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "是否预售",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品数量",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "定制信息",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "定制预览图",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品发货",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品售后",
-        "type": "VARCHAR"
-      },
-      {
-        "name": "商品已退款金额",
-        "type": "VARCHAR"
-      }
+      "订单号",
+      "订单下单时间",
+      "订单发货时间",
+      "订单确认收货时间",
+      "订单完成结算时间",
+      "订单状态",
+      "发货方式",
+      "收件人姓名",
+      "收件人地址",
+      "省",
+      "市",
+      "区",
+      "收件人手机",
+      "买家备注",
+      "商家备注",
+      "商品总价",
+      "订单实际支付金额",
+      "订单实际收款金额",
+      "订单运费",
+      "商品优惠",
+      "跨店优惠",
+      "商品改价",
+      "积分抵扣",
+      "支付方式",
+      "支付时间",
+      "交易单号",
+      "物流公司",
+      "快递单号",
+      "技术服务费",
+      "技术服务费（将以人气卡形式返还）",
+      "运费险预计投保费用",
+      "带货方式",
+      "带货账号类型",
+      "带货账号昵称",
+      "带货费用渠道",
+      "带货费用类型",
+      "带货费用",
+      "带货佣金率",
+      "礼物单号",
+      "商品名称",
+      "商品编码(平台)",
+      "商品编码(自定义)",
+      "SKU编码(自定义)",
+      "商品属性",
+      "商品价格",
+      "商品实际价格",
+      "是否预售",
+      "商品数量",
+      "定制信息",
+      "定制预览图",
+      "商品发货",
+      "商品售后",
+      "商品已退款金额"
     ],
-    "created_at": "2025-08-26T09:29:16.337202"
+    "created_at": "2025-09-01T15:38:59.544517+08:00"
   },
   {
     "source_id": "async_result_ba37060d-a59f-4843-bd14-02a624f26aca",
@@ -1211,5 +1052,1413 @@
     "column_count": 53,
     "source_sql": "SELECT \"订单号\", \"订单下单时间\", \"订单发货时间\", \"订单确认收货时间\", \"订单完成结算时间\", \"订单状态\", \"发货方式\", \"收件人姓名\", \"收件人地址\", \"省\", \"市\", \"区\", \"收件人手机\", \"买家备注\", \"商家备注\", \"商品总价\", \"订单实际支付金额\", \"订单实际收款金额\", \"订单运费\", \"商品优惠\", \"跨店优惠\", \"商品改价\", \"积分抵扣\", \"支付方式\", \"支付时间\", \"交易单号\", \"物流公司\", \"快递单号\", \"技术服务费\", \"技术服务费（将以人气卡形式返还）\", \"运费险预计投保费用\", \"带货方式\", \"带货账号类型\", \"带货账号昵称\", \"带货费用渠道\", \"带货费用类型\", \"带货费用\", \"带货佣金率\", \"礼物单号\", \"商品名称\", \"商品编码(平台)\", \"商品编码(自定义)\", \"SKU编码(自定义)\", \"商品属性\", \"商品价格\", \"商品实际价格\", \"是否预售\", \"商品数量\", \"定制信息\", \"定制预览图\", \"商品发货\", \"商品售后\", \"商品已退款金额\" FROM \"async_result_84bc44e1-9590-470a-9a3f-4946b8dab720\" LIMIT 10000",
     "source_datasource": "duckdb_internal"
+  },
+  {
+    "source_id": "r_uid",
+    "filename": "r_uid.pasted",
+    "file_path": "pasted_data",
+    "file_type": "pasted",
+    "row_count": 153,
+    "column_count": 2,
+    "columns": [
+      "column_1",
+      "column_2"
+    ],
+    "created_at": "2025-08-29T18:19:45.780540+08:00"
+  },
+  {
+    "source_id": "r_ori",
+    "filename": "r_ori.pasted",
+    "file_path": "pasted_data",
+    "file_type": "pasted",
+    "row_count": 156,
+    "column_count": 2,
+    "columns": [
+      "column_1",
+      "column_2"
+    ],
+    "created_at": "2025-08-29T18:20:01.843140+08:00"
+  },
+  {
+    "source_id": "async_result_447dcfe8-c5de-4352-b188-8dcf6a768d1e",
+    "filename": "task-447dcfe8-c5de-4352-b188-8dcf6a768d1e_20250829_111130.parquet",
+    "file_path": "/app/exports/task-447dcfe8-c5de-4352-b188-8dcf6a768d1e_20250829_111130.parquet",
+    "file_type": "parquet",
+    "created_at": "2025-08-29T11:11:30.523317",
+    "columns": [
+      {
+        "name": "订单号",
+        "type": "object"
+      },
+      {
+        "name": "订单下单时间",
+        "type": "object"
+      },
+      {
+        "name": "订单发货时间",
+        "type": "object"
+      },
+      {
+        "name": "订单确认收货时间",
+        "type": "object"
+      },
+      {
+        "name": "订单完成结算时间",
+        "type": "object"
+      },
+      {
+        "name": "订单状态",
+        "type": "object"
+      },
+      {
+        "name": "发货方式",
+        "type": "object"
+      },
+      {
+        "name": "收件人姓名",
+        "type": "object"
+      },
+      {
+        "name": "收件人地址",
+        "type": "object"
+      },
+      {
+        "name": "省",
+        "type": "object"
+      },
+      {
+        "name": "市",
+        "type": "object"
+      },
+      {
+        "name": "区",
+        "type": "object"
+      },
+      {
+        "name": "收件人手机",
+        "type": "object"
+      },
+      {
+        "name": "买家备注",
+        "type": "object"
+      },
+      {
+        "name": "商家备注",
+        "type": "object"
+      },
+      {
+        "name": "商品总价",
+        "type": "object"
+      },
+      {
+        "name": "订单实际支付金额",
+        "type": "object"
+      },
+      {
+        "name": "订单实际收款金额",
+        "type": "object"
+      },
+      {
+        "name": "订单运费",
+        "type": "object"
+      },
+      {
+        "name": "商品优惠",
+        "type": "object"
+      },
+      {
+        "name": "跨店优惠",
+        "type": "object"
+      },
+      {
+        "name": "商品改价",
+        "type": "object"
+      },
+      {
+        "name": "积分抵扣",
+        "type": "object"
+      },
+      {
+        "name": "支付方式",
+        "type": "object"
+      },
+      {
+        "name": "支付时间",
+        "type": "object"
+      },
+      {
+        "name": "交易单号",
+        "type": "object"
+      },
+      {
+        "name": "物流公司",
+        "type": "object"
+      },
+      {
+        "name": "快递单号",
+        "type": "object"
+      },
+      {
+        "name": "技术服务费",
+        "type": "object"
+      },
+      {
+        "name": "技术服务费（将以人气卡形式返还）",
+        "type": "object"
+      },
+      {
+        "name": "运费险预计投保费用",
+        "type": "object"
+      },
+      {
+        "name": "带货方式",
+        "type": "object"
+      },
+      {
+        "name": "带货账号类型",
+        "type": "object"
+      },
+      {
+        "name": "带货账号昵称",
+        "type": "object"
+      },
+      {
+        "name": "带货费用渠道",
+        "type": "object"
+      },
+      {
+        "name": "带货费用类型",
+        "type": "object"
+      },
+      {
+        "name": "带货费用",
+        "type": "object"
+      },
+      {
+        "name": "带货佣金率",
+        "type": "object"
+      },
+      {
+        "name": "礼物单号",
+        "type": "object"
+      },
+      {
+        "name": "商品名称",
+        "type": "object"
+      },
+      {
+        "name": "商品编码(平台)",
+        "type": "object"
+      },
+      {
+        "name": "商品编码(自定义)",
+        "type": "object"
+      },
+      {
+        "name": "SKU编码(自定义)",
+        "type": "object"
+      },
+      {
+        "name": "商品属性",
+        "type": "object"
+      },
+      {
+        "name": "商品价格",
+        "type": "object"
+      },
+      {
+        "name": "商品实际价格",
+        "type": "object"
+      },
+      {
+        "name": "是否预售",
+        "type": "object"
+      },
+      {
+        "name": "商品数量",
+        "type": "object"
+      },
+      {
+        "name": "定制信息",
+        "type": "object"
+      },
+      {
+        "name": "定制预览图",
+        "type": "object"
+      },
+      {
+        "name": "商品发货",
+        "type": "object"
+      },
+      {
+        "name": "商品售后",
+        "type": "object"
+      },
+      {
+        "name": "商品已退款金额",
+        "type": "object"
+      }
+    ],
+    "row_count": 100,
+    "column_count": 53
+  },
+  {
+    "source_id": "async_result_bd73277e-5f32-484d-8bc0-cda387430efc",
+    "filename": "task-bd73277e-5f32-484d-8bc0-cda387430efc_20250829_111142.parquet",
+    "file_path": "/app/exports/task-bd73277e-5f32-484d-8bc0-cda387430efc_20250829_111142.parquet",
+    "file_type": "parquet",
+    "created_at": "2025-08-29T11:11:42.449211",
+    "columns": [
+      {
+        "name": "订单号",
+        "type": "object"
+      },
+      {
+        "name": "订单下单时间",
+        "type": "object"
+      },
+      {
+        "name": "订单发货时间",
+        "type": "object"
+      },
+      {
+        "name": "订单确认收货时间",
+        "type": "object"
+      },
+      {
+        "name": "订单完成结算时间",
+        "type": "object"
+      },
+      {
+        "name": "订单状态",
+        "type": "object"
+      },
+      {
+        "name": "发货方式",
+        "type": "object"
+      },
+      {
+        "name": "收件人姓名",
+        "type": "object"
+      },
+      {
+        "name": "收件人地址",
+        "type": "object"
+      },
+      {
+        "name": "省",
+        "type": "object"
+      },
+      {
+        "name": "市",
+        "type": "object"
+      },
+      {
+        "name": "区",
+        "type": "object"
+      },
+      {
+        "name": "收件人手机",
+        "type": "object"
+      },
+      {
+        "name": "买家备注",
+        "type": "object"
+      },
+      {
+        "name": "商家备注",
+        "type": "object"
+      },
+      {
+        "name": "商品总价",
+        "type": "object"
+      },
+      {
+        "name": "订单实际支付金额",
+        "type": "object"
+      },
+      {
+        "name": "订单实际收款金额",
+        "type": "object"
+      },
+      {
+        "name": "订单运费",
+        "type": "object"
+      },
+      {
+        "name": "商品优惠",
+        "type": "object"
+      },
+      {
+        "name": "跨店优惠",
+        "type": "object"
+      },
+      {
+        "name": "商品改价",
+        "type": "object"
+      },
+      {
+        "name": "积分抵扣",
+        "type": "object"
+      },
+      {
+        "name": "支付方式",
+        "type": "object"
+      },
+      {
+        "name": "支付时间",
+        "type": "object"
+      },
+      {
+        "name": "交易单号",
+        "type": "object"
+      },
+      {
+        "name": "物流公司",
+        "type": "object"
+      },
+      {
+        "name": "快递单号",
+        "type": "object"
+      },
+      {
+        "name": "技术服务费",
+        "type": "object"
+      },
+      {
+        "name": "技术服务费（将以人气卡形式返还）",
+        "type": "object"
+      },
+      {
+        "name": "运费险预计投保费用",
+        "type": "object"
+      },
+      {
+        "name": "带货方式",
+        "type": "object"
+      },
+      {
+        "name": "带货账号类型",
+        "type": "object"
+      },
+      {
+        "name": "带货账号昵称",
+        "type": "object"
+      },
+      {
+        "name": "带货费用渠道",
+        "type": "object"
+      },
+      {
+        "name": "带货费用类型",
+        "type": "object"
+      },
+      {
+        "name": "带货费用",
+        "type": "object"
+      },
+      {
+        "name": "带货佣金率",
+        "type": "object"
+      },
+      {
+        "name": "礼物单号",
+        "type": "object"
+      },
+      {
+        "name": "商品名称",
+        "type": "object"
+      },
+      {
+        "name": "商品编码(平台)",
+        "type": "object"
+      },
+      {
+        "name": "商品编码(自定义)",
+        "type": "object"
+      },
+      {
+        "name": "SKU编码(自定义)",
+        "type": "object"
+      },
+      {
+        "name": "商品属性",
+        "type": "object"
+      },
+      {
+        "name": "商品价格",
+        "type": "object"
+      },
+      {
+        "name": "商品实际价格",
+        "type": "object"
+      },
+      {
+        "name": "是否预售",
+        "type": "object"
+      },
+      {
+        "name": "商品数量",
+        "type": "object"
+      },
+      {
+        "name": "定制信息",
+        "type": "object"
+      },
+      {
+        "name": "定制预览图",
+        "type": "object"
+      },
+      {
+        "name": "商品发货",
+        "type": "object"
+      },
+      {
+        "name": "商品售后",
+        "type": "object"
+      },
+      {
+        "name": "商品已退款金额",
+        "type": "object"
+      }
+    ],
+    "row_count": 100,
+    "column_count": 53
+  },
+  {
+    "source_id": "async_result_c2e2cdc2-304b-4068-a59b-b944aabc31be",
+    "filename": "task-c2e2cdc2-304b-4068-a59b-b944aabc31be_20250829_111312.parquet",
+    "file_path": "/app/exports/task-c2e2cdc2-304b-4068-a59b-b944aabc31be_20250829_111312.parquet",
+    "file_type": "parquet",
+    "created_at": "2025-08-29T11:13:12.218013",
+    "columns": [
+      {
+        "name": "订单号",
+        "type": "object"
+      },
+      {
+        "name": "订单下单时间",
+        "type": "object"
+      },
+      {
+        "name": "订单发货时间",
+        "type": "object"
+      },
+      {
+        "name": "订单确认收货时间",
+        "type": "object"
+      },
+      {
+        "name": "订单完成结算时间",
+        "type": "object"
+      },
+      {
+        "name": "订单状态",
+        "type": "object"
+      },
+      {
+        "name": "发货方式",
+        "type": "object"
+      },
+      {
+        "name": "收件人姓名",
+        "type": "object"
+      },
+      {
+        "name": "收件人地址",
+        "type": "object"
+      },
+      {
+        "name": "省",
+        "type": "object"
+      },
+      {
+        "name": "市",
+        "type": "object"
+      },
+      {
+        "name": "区",
+        "type": "object"
+      },
+      {
+        "name": "收件人手机",
+        "type": "object"
+      },
+      {
+        "name": "买家备注",
+        "type": "object"
+      },
+      {
+        "name": "商家备注",
+        "type": "object"
+      },
+      {
+        "name": "商品总价",
+        "type": "object"
+      },
+      {
+        "name": "订单实际支付金额",
+        "type": "object"
+      },
+      {
+        "name": "订单实际收款金额",
+        "type": "object"
+      },
+      {
+        "name": "订单运费",
+        "type": "object"
+      },
+      {
+        "name": "商品优惠",
+        "type": "object"
+      },
+      {
+        "name": "跨店优惠",
+        "type": "object"
+      },
+      {
+        "name": "商品改价",
+        "type": "object"
+      },
+      {
+        "name": "积分抵扣",
+        "type": "object"
+      },
+      {
+        "name": "支付方式",
+        "type": "object"
+      },
+      {
+        "name": "支付时间",
+        "type": "object"
+      },
+      {
+        "name": "交易单号",
+        "type": "object"
+      },
+      {
+        "name": "物流公司",
+        "type": "object"
+      },
+      {
+        "name": "快递单号",
+        "type": "object"
+      },
+      {
+        "name": "技术服务费",
+        "type": "object"
+      },
+      {
+        "name": "技术服务费（将以人气卡形式返还）",
+        "type": "object"
+      },
+      {
+        "name": "运费险预计投保费用",
+        "type": "object"
+      },
+      {
+        "name": "带货方式",
+        "type": "object"
+      },
+      {
+        "name": "带货账号类型",
+        "type": "object"
+      },
+      {
+        "name": "带货账号昵称",
+        "type": "object"
+      },
+      {
+        "name": "带货费用渠道",
+        "type": "object"
+      },
+      {
+        "name": "带货费用类型",
+        "type": "object"
+      },
+      {
+        "name": "带货费用",
+        "type": "object"
+      },
+      {
+        "name": "带货佣金率",
+        "type": "object"
+      },
+      {
+        "name": "礼物单号",
+        "type": "object"
+      },
+      {
+        "name": "商品名称",
+        "type": "object"
+      },
+      {
+        "name": "商品编码(平台)",
+        "type": "object"
+      },
+      {
+        "name": "商品编码(自定义)",
+        "type": "object"
+      },
+      {
+        "name": "SKU编码(自定义)",
+        "type": "object"
+      },
+      {
+        "name": "商品属性",
+        "type": "object"
+      },
+      {
+        "name": "商品价格",
+        "type": "object"
+      },
+      {
+        "name": "商品实际价格",
+        "type": "object"
+      },
+      {
+        "name": "是否预售",
+        "type": "object"
+      },
+      {
+        "name": "商品数量",
+        "type": "object"
+      },
+      {
+        "name": "定制信息",
+        "type": "object"
+      },
+      {
+        "name": "定制预览图",
+        "type": "object"
+      },
+      {
+        "name": "商品发货",
+        "type": "object"
+      },
+      {
+        "name": "商品售后",
+        "type": "object"
+      },
+      {
+        "name": "商品已退款金额",
+        "type": "object"
+      }
+    ],
+    "row_count": 100,
+    "column_count": 53
+  },
+  {
+    "source_id": "1",
+    "filename": "query_result_1",
+    "file_path": "duckdb://1",
+    "file_type": "duckdb_query",
+    "row_count": 100,
+    "column_count": 53,
+    "columns": [
+      "订单号",
+      "订单下单时间",
+      "订单发货时间",
+      "订单确认收货时间",
+      "订单完成结算时间",
+      "订单状态",
+      "发货方式",
+      "收件人姓名",
+      "收件人地址",
+      "省",
+      "市",
+      "区",
+      "收件人手机",
+      "买家备注",
+      "商家备注",
+      "商品总价",
+      "订单实际支付金额",
+      "订单实际收款金额",
+      "订单运费",
+      "商品优惠",
+      "跨店优惠",
+      "商品改价",
+      "积分抵扣",
+      "支付方式",
+      "支付时间",
+      "交易单号",
+      "物流公司",
+      "快递单号",
+      "技术服务费",
+      "技术服务费（将以人气卡形式返还）",
+      "运费险预计投保费用",
+      "带货方式",
+      "带货账号类型",
+      "带货账号昵称",
+      "带货费用渠道",
+      "带货费用类型",
+      "带货费用",
+      "带货佣金率",
+      "礼物单号",
+      "商品名称",
+      "商品编码(平台)",
+      "商品编码(自定义)",
+      "SKU编码(自定义)",
+      "商品属性",
+      "商品价格",
+      "商品实际价格",
+      "是否预售",
+      "商品数量",
+      "定制信息",
+      "定制预览图",
+      "商品发货",
+      "商品售后",
+      "商品已退款金额"
+    ],
+    "created_at": "2025-09-01T14:01:25.022086+08:00",
+    "source_sql": "SELECT * FROM \"1\" LIMIT 100"
+  },
+  {
+    "source_id": "夜忙症单门课程充值工作簿1",
+    "filename": "table_夜忙症单门课程充值工作簿1",
+    "file_path": "duckdb://夜忙症单门课程充值工作簿1",
+    "file_type": "duckdb_table",
+    "row_count": 158,
+    "column_count": 73,
+    "columns": [
+      "订单号",
+      "Unnamed: 1",
+      "包裹备注信息",
+      "订单状态",
+      "售后状态",
+      "订单类型",
+      "订单标记",
+      "收件人姓名",
+      "收件人电话",
+      "收件人地址",
+      "省",
+      "市",
+      "区",
+      "区域编码",
+      "小红书编码",
+      "条形码",
+      "规格ID",
+      "达人ID",
+      "达人名称",
+      "SKU名称",
+      "SKU规格",
+      "SKU件数",
+      "是否为赠品",
+      "发票/Invoice",
+      "商品总价(元)",
+      "用户应付金额(元)",
+      "平台优惠(元)",
+      "店铺优惠(元)",
+      "支付渠道优惠(元)",
+      "SKU商家改价(元)",
+      "商家应收金额(元)（支付金额）",
+      "支付方式",
+      "支付渠道订单号",
+      "支付期数",
+      "利息费用",
+      "手续费承担方",
+      "支付时间",
+      "sku净重(kg)",
+      "包裹总净重(kg)",
+      "包裹总运费(元)",
+      "快递公司",
+      "快递单号",
+      "大头笔/Paint Marker",
+      "集包地/Express Extend 1",
+      "三段码/Express Extend 2",
+      "订购人身份证姓名/ID Name",
+      "订购人身份证号/ID Number",
+      "收件人身份证姓名",
+      "收件人身份证号",
+      "订单创建时间",
+      "预售订单开始发货时间",
+      "预售订单截止发货时间",
+      "承诺发货时间",
+      "订单发货时间",
+      "订单完成时间",
+      "发货仓库",
+      "确认收货类型",
+      "是否延迟收货",
+      "用户备注",
+      "包裹备注标记",
+      "包裹备注信息.1",
+      "异常原因",
+      "店铺名称",
+      "用户编号",
+      "运费模版名称",
+      "物流方案名称",
+      "第三方机构订单号",
+      "国补模式",
+      "供应商id",
+      "供应商名称",
+      "商家编码",
+      "商品ID",
+      "商品名称"
+    ],
+    "created_at": "2025-09-01T15:38:59.711451+08:00"
+  },
+  {
+    "source_id": "导出在库序列号2025_08_29_1756457472968",
+    "filename": "table_导出在库序列号2025_08_29_1756457472968",
+    "file_path": "duckdb://导出在库序列号2025_08_29_1756457472968",
+    "file_type": "duckdb_table",
+    "row_count": 0,
+    "column_count": 5,
+    "columns": [
+      "column0",
+      "column1",
+      "column2",
+      "column3",
+      "column4"
+    ],
+    "created_at": "2025-09-01T15:19:57.970322+08:00"
+  },
+  {
+    "source_id": "上传1",
+    "filename": "订单_20250827145523_104694218_1.xlsx",
+    "file_path": "/app/temp_files/订单_20250827145523_104694218_1.xlsx",
+    "file_type": "excel",
+    "row_count": 2379,
+    "column_count": 94,
+    "columns": [
+      "内部订单号",
+      "线上订单号",
+      "店铺编号",
+      "店铺名称",
+      "平台站点",
+      "店铺简称",
+      "店铺分组",
+      "店铺主账号",
+      "买家帐号",
+      "下单时间",
+      "付款日期",
+      "发货日期",
+      "应付金额",
+      "已付金额",
+      "抵扣金额",
+      "运费",
+      "发货商品",
+      "状态",
+      "店铺状态",
+      "异常类型",
+      "快递公司",
+      "快递单号",
+      "订单类型",
+      "订单来源",
+      "买家留言",
+      "订单备注",
+      "分销商",
+      "最晚发货时间",
+      "供销商",
+      "支付单号",
+      "付款方式",
+      "包裹号",
+      "商品总成交金额",
+      "确认收货时间",
+      "买家实付金额",
+      "卖家实收金额",
+      "外部交易单号",
+      "子订单编号",
+      "线上子订单编号",
+      "原始线上订单号",
+      "款号",
+      "商品编码",
+      "组合装子商品编码",
+      "商品名称",
+      "颜色及规格",
+      "数量",
+      "商品单价",
+      "商品金额",
+      "原价",
+      "是否赠品",
+      "明细供销商",
+      "子订单状态",
+      "分类",
+      "虚拟分类",
+      "供应商",
+      "品牌",
+      "标准商品名",
+      "供应商款号",
+      "供应商商品编码",
+      "备注",
+      "图片地址",
+      "店铺款式编码",
+      "店铺商品编码",
+      "辅助码",
+      "原组合装商品编码",
+      "原始商品编码",
+      "退款状态",
+      "商品重量",
+      "订单商品备注",
+      "商品最晚发货时间",
+      "商品体积",
+      "单位",
+      "加工信息",
+      "买家实付",
+      "卖家实收",
+      "达人ID",
+      "达人名称",
+      "活动ID",
+      "活动名称",
+      "其它价格1",
+      "其它价格2",
+      "其它价格3",
+      "其它价格4",
+      "其它价格5",
+      "其它属性1",
+      "其它属性2",
+      "其它属性3",
+      "其它属性4",
+      "其它属性5",
+      "简称",
+      "多简称",
+      "国标码",
+      "外部订单明细编号",
+      "订单明细修改时间"
+    ],
+    "created_at": "2025-09-01 15:19:18.883598+08:00"
+  },
+  {
+    "source_id": "common_report_serial_with_date_list_罗辑思维公司_2d6af69b_84c5_4a1b_b92c_622417180ce4",
+    "filename": "table_common_report_serial_with_date_list_罗辑思维公司_2d6af69b_84c5_4a1b_b92c_622417180ce4",
+    "file_path": "duckdb://common_report_serial_with_date_list_罗辑思维公司_2d6af69b_84c5_4a1b_b92c_622417180ce4",
+    "file_type": "duckdb_table",
+    "row_count": 0,
+    "column_count": 14,
+    "columns": [
+      "column00",
+      "column01",
+      "column02",
+      "column03",
+      "column04",
+      "column05",
+      "column06",
+      "column07",
+      "column08",
+      "column09",
+      "column10",
+      "column11",
+      "column12",
+      "column13"
+    ],
+    "created_at": "2025-09-01T15:26:46.390241+08:00"
+  },
+  {
+    "source_id": "common_report_serial_with_date_list_罗辑思维公司_1dc199f5_c165_4eb3_8e12_f7e9cc1c3c75",
+    "filename": "common-report-serial_with_date_list-罗辑思维公司-1dc199f5-c165-4eb3-8e12-f7e9cc1c3c75.csv",
+    "file_path": "/app/temp_files/common-report-serial_with_date_list-罗辑思维公司-1dc199f5-c165-4eb3-8e12-f7e9cc1c3c75.csv",
+    "file_type": "csv",
+    "row_count": 0,
+    "column_count": 14,
+    "columns": [
+      {
+        "name": "column00",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column01",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column02",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column03",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column04",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column05",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column06",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column07",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column08",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column09",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column10",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column11",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column12",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "column13",
+        "type": "VARCHAR"
+      }
+    ],
+    "created_at": "2025-09-01T15:33:15.710231+08:00"
+  },
+  {
+    "source_id": "大订单分块2",
+    "filename": "table_大订单分块2",
+    "file_path": "duckdb://大订单分块2",
+    "file_type": "duckdb_table",
+    "row_count": 35485,
+    "column_count": 53,
+    "columns": [
+      "订单号",
+      "订单下单时间",
+      "订单发货时间",
+      "订单确认收货时间",
+      "订单完成结算时间",
+      "订单状态",
+      "发货方式",
+      "收件人姓名",
+      "收件人地址",
+      "省",
+      "市",
+      "区",
+      "收件人手机",
+      "买家备注",
+      "商家备注",
+      "商品总价",
+      "订单实际支付金额",
+      "订单实际收款金额",
+      "订单运费",
+      "商品优惠",
+      "跨店优惠",
+      "商品改价",
+      "积分抵扣",
+      "支付方式",
+      "支付时间",
+      "交易单号",
+      "物流公司",
+      "快递单号",
+      "技术服务费",
+      "技术服务费（将以人气卡形式返还）",
+      "运费险预计投保费用",
+      "带货方式",
+      "带货账号类型",
+      "带货账号昵称",
+      "带货费用渠道",
+      "带货费用类型",
+      "带货费用",
+      "带货佣金率",
+      "礼物单号",
+      "商品名称",
+      "商品编码(平台)",
+      "商品编码(自定义)",
+      "SKU编码(自定义)",
+      "商品属性",
+      "商品价格",
+      "商品实际价格",
+      "是否预售",
+      "商品数量",
+      "定制信息",
+      "定制预览图",
+      "商品发货",
+      "商品售后",
+      "商品已退款金额"
+    ],
+    "created_at": "2025-09-01T16:33:45.810294+08:00"
+  },
+  {
+    "source_id": "table_333",
+    "filename": "table_table_333",
+    "file_path": "duckdb://table_333",
+    "file_type": "duckdb_table",
+    "row_count": 50000,
+    "column_count": 53,
+    "columns": [
+      "订单号",
+      "订单下单时间",
+      "订单发货时间",
+      "订单确认收货时间",
+      "订单完成结算时间",
+      "订单状态",
+      "发货方式",
+      "收件人姓名",
+      "收件人地址",
+      "省",
+      "市",
+      "区",
+      "收件人手机",
+      "买家备注",
+      "商家备注",
+      "商品总价",
+      "订单实际支付金额",
+      "订单实际收款金额",
+      "订单运费",
+      "商品优惠",
+      "跨店优惠",
+      "商品改价",
+      "积分抵扣",
+      "支付方式",
+      "支付时间",
+      "交易单号",
+      "物流公司",
+      "快递单号",
+      "技术服务费",
+      "技术服务费（将以人气卡形式返还）",
+      "运费险预计投保费用",
+      "带货方式",
+      "带货账号类型",
+      "带货账号昵称",
+      "带货费用渠道",
+      "带货费用类型",
+      "带货费用",
+      "带货佣金率",
+      "礼物单号",
+      "商品名称",
+      "商品编码(平台)",
+      "商品编码(自定义)",
+      "SKU编码(自定义)",
+      "商品属性",
+      "商品价格",
+      "商品实际价格",
+      "是否预售",
+      "商品数量",
+      "定制信息",
+      "定制预览图",
+      "商品发货",
+      "商品售后",
+      "商品已退款金额"
+    ],
+    "created_at": "2025-09-01T16:34:00.726230+08:00"
+  },
+  {
+    "source_id": "12322",
+    "filename": "订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_1.xlsx",
+    "file_path": "/app/temp_files/订单_wxd23e17d6834c2808_2025年07月30日11时06分11秒_1.xlsx",
+    "file_type": "xlsx",
+    "row_count": 50000,
+    "column_count": 53,
+    "columns": [
+      {
+        "name": "订单号",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "订单下单时间",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "订单发货时间",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "订单确认收货时间",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "订单完成结算时间",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "订单状态",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "发货方式",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "收件人姓名",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "收件人地址",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "省",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "市",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "区",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "收件人手机",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "买家备注",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商家备注",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品总价",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "订单实际支付金额",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "订单实际收款金额",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "订单运费",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品优惠",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "跨店优惠",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品改价",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "积分抵扣",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "支付方式",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "支付时间",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "交易单号",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "物流公司",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "快递单号",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "技术服务费",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "技术服务费（将以人气卡形式返还）",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "运费险预计投保费用",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "带货方式",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "带货账号类型",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "带货账号昵称",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "带货费用渠道",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "带货费用类型",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "带货费用",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "带货佣金率",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "礼物单号",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品名称",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品编码(平台)",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品编码(自定义)",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "SKU编码(自定义)",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品属性",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品价格",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品实际价格",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "是否预售",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品数量",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "定制信息",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "定制预览图",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品发货",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品售后",
+        "type": "VARCHAR"
+      },
+      {
+        "name": "商品已退款金额",
+        "type": "VARCHAR"
+      }
+    ],
+    "created_at": "2025-09-01T16:34:59.873797+08:00"
   }
 ]

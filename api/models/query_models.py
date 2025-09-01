@@ -211,5 +211,45 @@ class QueryExecutionResponse(BaseModel):
 
 
 class QueryResponse(BaseModel):
-    columns: List[str]
-    data: List[Dict[str, Any]]
+    """查询响应模型"""
+
+    success: bool
+    data: Optional[List[Dict[str, Any]]] = None
+    columns: Optional[List[str]] = None
+    rowCount: Optional[int] = None
+    error: Optional[str] = None
+    sql_query: Optional[str] = None
+    execution_time: Optional[float] = None
+    source_type: Optional[str] = None
+    source_id: Optional[str] = None
+    can_save_to_duckdb: Optional[bool] = False
+
+
+class AsyncQueryRequest(BaseModel):
+    """异步查询请求模型"""
+
+    query: str
+    sources: Optional[List[str]] = None
+    joins: Optional[List[Dict[str, Any]]] = None
+    limit: Optional[int] = 1000
+    timeout: Optional[int] = 300
+
+
+class AsyncQueryResponse(BaseModel):
+    """异步查询响应模型"""
+
+    task_id: str
+    status: str
+    message: str
+    created_at: Optional[datetime.datetime] = None
+
+
+class QueryResult(BaseModel):
+    """查询结果模型"""
+
+    success: bool
+    data: Optional[List[Dict[str, Any]]] = None
+    columns: Optional[List[str]] = None
+    row_count: Optional[int] = None
+    error: Optional[str] = None
+    execution_time: Optional[float] = None

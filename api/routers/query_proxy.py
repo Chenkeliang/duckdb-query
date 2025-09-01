@@ -3,14 +3,20 @@
 自动转换前后端请求格式，解决422错误
 """
 
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
-import httpx
 import logging
-import io
+import json
+import traceback
 from datetime import datetime
+from typing import Dict, Any, Optional, List
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
+import pandas as pd
+import numpy as np
+from pydantic import BaseModel  # 补充 BaseModel 导入
+
+from core.duckdb_engine import get_db_connection
+from core.timezone_utils import get_current_time  # 导入时区工具
+from models.query_models import QueryRequest, QueryResponse
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +154,7 @@ async def query_proxy(request: Request):
             result = response.json()
             # 添加代理处理标识
             result["_proxy_processed"] = True
-            result["_proxy_timestamp"] = str(datetime.now())
+            result["_proxy_timestamp"] = str(get_current_time())
             return result
 
     except Exception as e:

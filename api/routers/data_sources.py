@@ -29,6 +29,7 @@ from core.file_datasource_manager import (
     create_table_from_dataframe,
 )
 import datetime
+from core.timezone_utils import get_current_time  # 导入时区工具
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -132,8 +133,8 @@ async def create_database_connection(connection: DatabaseConnection):
     """创建数据库连接"""
     try:
         # 设置创建时间
-        connection.created_at = datetime.datetime.now()
-        connection.updated_at = datetime.datetime.now()
+        connection.created_at = get_current_time()
+        connection.updated_at = get_current_time()
 
         success = db_manager.add_connection(connection)
         if success:
@@ -290,20 +291,54 @@ async def upload_file(
 
         preview_info = get_file_preview(save_path, rows=10)
 
-        # 生成SQL兼容的表名，替换特殊字符为下划线
+        # 生成SQL兼容的表名
         if table_alias:
-            # 使用用户提供的表别名
+            # 使用用户提供的表别名，保持原始输入
             source_id = table_alias
         else:
             # 使用文件名作为默认表名
             source_id = file.filename.split(".")[0]
-        source_id = "".join(c if c.isalnum() or c == "_" else "_" for c in source_id)
-        # 确保表名不以数字开头
-        if source_id and source_id[0].isdigit():
-            source_id = f"table_{source_id}"
-        # 确保表名不为空
+
+        # 清理特殊字符，但保持用户输入的原始格式
+        if table_alias:
+            # 用户提供的表别名，只清理不兼容的字符
+            source_id = "".join(
+                c if c.isalnum() or c == "_" else "_" for c in source_id
+            )
+        else:
+            # 文件名生成的表名，进行完整清理
+            source_id = "".join(
+                c if c.isalnum() or c == "_" else "_" for c in source_id
+            )
+            if source_id and source_id[0].isdigit():
+                source_id = f"table_{source_id}"
+
         if not source_id:
             source_id = f"table_{int(time.time())}"
+
+        # 检查表名是否已存在，如果存在则添加时间后缀
+        duckdb_con = get_db_connection()
+        original_source_id = source_id
+
+        while True:
+            try:
+                # 检查表是否存在
+                result = duckdb_con.execute(
+                    f'SELECT name FROM sqlite_master WHERE type="table" AND name="{source_id}"'
+                ).fetchone()
+                if result is None:
+                    # 表不存在，可以使用这个名称
+                    break
+                else:
+                    # 表已存在，添加时间后缀
+                    import time
+
+                    timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
+                    source_id = f"{original_source_id}_{timestamp}"
+                    break
+            except Exception as e:
+                logger.warning(f"检查表名时出错: {e}")
+                break
 
         df_full = read_file_by_type(save_path, file_type)
 
@@ -323,7 +358,7 @@ async def upload_file(
             "row_count": len(df_full),
             "column_count": len(df_full.columns),
             "columns": list(df_full.columns),
-            "created_at": datetime.datetime.now(),  # 使用统一的created_at字段
+            "created_at": get_current_time(),  # 使用统一的created_at字段
         }
 
         config_saved = file_datasource_manager.save_file_datasource(file_info)
@@ -393,7 +428,7 @@ async def update_database_connection(
     """更新数据库连接"""
     try:
         # 设置更新时间
-        connection.updated_at = datetime.datetime.now()
+        connection.updated_at = get_current_time()
 
         # 先删除旧连接
         db_manager.remove_connection(connection_id)

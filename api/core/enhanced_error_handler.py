@@ -4,13 +4,16 @@
 """
 
 import logging
-import traceback
-import time
-from typing import Dict, Any, Optional, List, Union
-from dataclasses import dataclass, field
-from enum import Enum
-from datetime import datetime
 import json
+import traceback
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any, Union
+from dataclasses import dataclass, field, asdict
+from enum import Enum
+import os
+import sys
+
+from core.timezone_utils import get_current_time  # 导入时区工具
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +46,7 @@ class ErrorContext:
     method: Optional[str] = None
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=get_current_time)
     additional_data: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -61,7 +64,7 @@ class ErrorInfo:
     error_code: Optional[str] = None
     retry_count: int = 0
     max_retries: int = 3
-    created_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=get_current_time)
     resolved_at: Optional[datetime] = None
 
 
@@ -390,12 +393,12 @@ class EnhancedErrorHandler:
                 }
                 for e in recent_errors
             ],
-            "last_updated": datetime.now().isoformat(),
+            "last_updated": get_current_time(),  # 使用统一的时区配置
         }
 
     def clear_old_errors(self, days: int = 30):
         """清理旧错误记录"""
-        cutoff_date = datetime.now().replace(day=datetime.now().day - days)
+        cutoff_date = get_current_time().replace(day=get_current_time().day - days)
         self.error_log = [
             error for error in self.error_log if error.created_at > cutoff_date
         ]

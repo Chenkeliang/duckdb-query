@@ -235,6 +235,30 @@ def create_persistent_table(table_name: str, df: pd.DataFrame, con=None) -> bool
         logger.info(
             f"成功创建持久化表: {table_name} ({len(processed_df)}行, {len(processed_df.columns)}列)"
         )
+
+        # 保存表元数据，包括created_at时间
+        try:
+            from core.timezone_utils import get_current_time_iso
+            from core.file_datasource_manager import file_datasource_manager
+
+            table_metadata = {
+                "source_id": table_name,
+                "filename": f"table_{table_name}",
+                "file_path": f"duckdb://{table_name}",
+                "file_type": "duckdb_table",
+                "row_count": len(processed_df),
+                "column_count": len(processed_df.columns),
+                "columns": processed_df.columns.tolist(),
+                "created_at": get_current_time_iso(),  # 使用统一的时区配置
+            }
+
+            # 保存到文件数据源管理器
+            file_datasource_manager.save_file_datasource(table_metadata)
+            logger.info(f"成功保存表元数据: {table_name}")
+
+        except Exception as metadata_error:
+            logger.warning(f"保存表元数据失败: {str(metadata_error)}")
+
         return True
 
     except Exception as e:
@@ -500,6 +524,30 @@ def create_varchar_table_from_dataframe(
         col_count = len(columns_info)
 
         logger.info(f"成功创建VARCHAR表: {table_name} ({row_count}行, {col_count}列)")
+
+        # 保存表元数据，包括created_at时间
+        try:
+            from core.timezone_utils import get_current_time_iso
+            from core.file_datasource_manager import file_datasource_manager
+
+            table_metadata = {
+                "source_id": table_name,
+                "filename": f"table_{table_name}",
+                "file_path": f"duckdb://{table_name}",
+                "file_type": "duckdb_table",
+                "row_count": row_count,
+                "column_count": col_count,
+                "columns": [col[0] for col in columns_info],
+                "created_at": get_current_time_iso(),  # 使用统一的时区配置
+            }
+
+            # 保存到文件数据源管理器
+            file_datasource_manager.save_file_datasource(table_metadata)
+            logger.info(f"成功保存表元数据: {table_name}")
+
+        except Exception as metadata_error:
+            logger.warning(f"保存表元数据失败: {str(metadata_error)}")
+
         return True
 
     except Exception as e:

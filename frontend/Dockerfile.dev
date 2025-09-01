@@ -1,0 +1,28 @@
+# 开发环境 Dockerfile
+FROM docker.io/node:18-alpine
+
+# 设置工作目录
+WORKDIR /app
+
+# 安装系统依赖
+RUN apk add --no-cache git
+
+# 复制 package.json 和 package-lock.json
+COPY package*.json ./
+
+# 安装依赖
+RUN npm install
+
+# 复制源代码
+COPY . .
+
+# 设置环境变量
+ENV CHOKIDAR_USEPOLLING=true
+ENV WATCHPACK_POLLING=true
+ENV DOCKER_ENV=true
+
+# 暴露端口
+EXPOSE 3000
+
+# 启动开发服务器
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

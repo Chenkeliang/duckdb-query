@@ -1,33 +1,30 @@
-import React, { useState, useRef } from 'react';
 import {
+  Cancel as CancelIcon,
+  CloudUpload as CloudUploadIcon,
+  Info as InfoIcon,
+  Link as LinkIcon
+} from '@mui/icons-material';
+import {
+  Alert,
   Box,
-  Tabs,
-  Tab,
+  Button,
   Card,
   CardContent,
-  Typography,
-  TextField,
-  Button,
-  LinearProgress,
-  Alert,
-  Switch,
-  FormControlLabel,
   Chip,
+  CircularProgress,
   Divider,
-  Grid,
+  FormControlLabel,
   IconButton,
+  Switch,
+  Tab,
+  Tabs,
+  TextField,
   Tooltip,
-  CircularProgress
+  Typography
 } from '@mui/material';
-import {
-  CloudUpload as CloudUploadIcon,
-  Link as LinkIcon,
-  Speed as SpeedIcon,
-  Info as InfoIcon,
-  Cancel as CancelIcon
-} from '@mui/icons-material';
+import React, { useRef, useState } from 'react';
+import { readFromUrl, uploadFile } from '../../services/apiClient';
 import ChunkedUploader from '../ChunkedUpload/ChunkedUploader';
-import { uploadFile, readFromUrl, getDuckDBTableInfo } from '../../services/apiClient';
 
 const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   const [activeTab, setActiveTab] = useState(0);
@@ -39,13 +36,16 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
-  
+
   // 表别名和其他状态
   const [tableAlias, setTableAlias] = useState('');
   const [fileUrl, setFileUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState('');
+
+  // 添加成功消息状态管理
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   // 文件大小阈值（50MB）
   const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024;
@@ -113,10 +113,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
       return;
     }
 
-    if (!tableAlias.trim()) {
-      setError('请输入表别名');
-      return;
-    }
+    // 表别名现在是可选的，如果为空则使用文件名
 
     // 前端文件大小校验
     if (selectedFile.size > LARGE_FILE_THRESHOLD) {
@@ -133,7 +130,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
       if (response.success) {
         showNotification(`文件上传成功，已创建表: ${response.file_id}`, 'success');
-        
+
         // 通知父组件数据源已保存
         if (onDataSourceSaved) {
           onDataSourceSaved({
@@ -144,7 +141,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
             columns: response.columns
           });
         }
-        
+
         // 清空输入
         handleReset();
       } else {
@@ -210,8 +207,8 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
       if (result.success) {
         showNotification(`成功从URL读取文件并创建表: ${result.table_name}`, 'success');
-        
-        // 通知父组件数据源已保存
+
+        // 通知父组件数据源已保存0
         if (onDataSourceSaved) {
           onDataSourceSaved({
             id: result.table_name,
@@ -221,7 +218,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
             columns: result.columns
           });
         }
-        
+
         // 清空输入
         setFileUrl('');
         setTableAlias('');
@@ -240,15 +237,17 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   // 分块上传完成回调
   const handleChunkedUploadComplete = async (result) => {
     console.log('分块上传完成:', result);
-    
-    // 注意：ChunkedUploader 返回的对象结构与标准上传不同
-    if (result && result.file_info) {
+
+    if (result && result.fileInfo) {
       try {
-        // 分块上传完成后，file_info 包含了文件的详细信息
-        const fileInfo = result.file_info;
-        
+        const fileInfo = result.fileInfo;
+
+        // 设置成功状态，显示成功消息
+        setShowSuccessMessage(true);
+        setError(''); // 清除错误状态
+
         showNotification(`文件上传成功，已创建表: ${fileInfo.source_id}`, 'success');
-        
+
         // 通知父组件数据源已保存
         if (onDataSourceSaved) {
           onDataSourceSaved({
@@ -259,42 +258,41 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
             columns: fileInfo.columns || []
           });
         }
+
+        // 延迟清空输入，让用户看到成功消息
+        setTimeout(() => {
+          handleReset();
+          setShowSuccessMessage(false);
+        }, 3000);
+
       } catch (err) {
         console.error('处理分块上传结果失败:', err);
-        // 即使处理失败，我们也认为上传是成功的
-        const sourceId = result.file_info?.source_id || 'unknown';
-        showNotification(`文件上传成功，已创建表: ${sourceId}`, 'success');
-        
-        // 通知父组件数据源已保存（使用默认值）
-        if (onDataSourceSaved) {
-          onDataSourceSaved({
-            id: sourceId,
-            type: 'duckdb',
-            name: `DuckDB表: ${sourceId}`,
-            row_count: 0,
-            columns: []
-          });
-        }
+        setError('处理上传结果失败');
+        showNotification('处理上传结果失败', 'error');
       }
-      
-      // 清空输入
-      handleReset();
     } else {
-      // 如果是错误情况，result可能包含错误信息
+      // 错误情况
       const errorMessage = result?.message || result?.error || '文件上传失败';
       setError(errorMessage);
+      setShowSuccessMessage(false);
       showNotification(`文件上传失败: ${errorMessage}`, 'error');
     }
   };
 
   return (
     <Box>
-      {error && (
+      {error && !showSuccessMessage && (
         <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
       )}
-      
-      <Tabs 
-        value={activeTab} 
+
+      {showSuccessMessage && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          文件上传成功！
+        </Alert>
+      )}
+
+      <Tabs
+        value={activeTab}
         onChange={(e, newValue) => setActiveTab(newValue)}
         sx={{ mb: 2 }}
       >
@@ -384,16 +382,49 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 </Box>
               </Box>
             ) : (
-              // 分块上传界面（直接显示分块上传组件）
+              // 分块上传界面
               <Box sx={{ mb: 3 }}>
                 {selectedFile ? (
-                  <ChunkedUploader
-                    file={selectedFile}
-                    onUploadComplete={handleChunkedUploadComplete}
-                    onUploadProgress={(progress) => {
-                      console.log('Upload progress:', progress);
-                    }}
-                  />
+                  <>
+                    {/* 文件信息显示 */}
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            已选择文件: {selectedFile.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            大小: {formatFileSize(selectedFile.size)}
+                          </Typography>
+                        </Box>
+                        <IconButton size="small" onClick={handleReset}>
+                          <CancelIcon />
+                        </IconButton>
+                      </Box>
+                    </Alert>
+
+                    {/* 表别名输入 */}
+                    <TextField
+                      label="表别名（可选）"
+                      value={tableAlias}
+                      onChange={(e) => setTableAlias(e.target.value)}
+                      fullWidth
+                      sx={{ mb: 2 }}
+                      placeholder="例如: my_data（留空将使用文件名）"
+                      disabled={isUploading}
+                      helperText="为DuckDB表指定一个自定义名称"
+                    />
+
+                    {/* 分块上传组件 */}
+                    <ChunkedUploader
+                      file={selectedFile}
+                      tableAlias={tableAlias}
+                      onUploadComplete={handleChunkedUploadComplete}
+                      onUploadProgress={(progress) => {
+                        console.log('Upload progress:', progress);
+                      }}
+                    />
+                  </>
                 ) : (
                   <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
                     <CardContent>
@@ -446,13 +477,14 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
                 {/* 表别名输入 */}
                 <TextField
-                  label="表别名"
+                  label="表别名（可选）"
                   value={tableAlias}
                   onChange={(e) => setTableAlias(e.target.value)}
                   fullWidth
                   sx={{ mb: 2 }}
-                  placeholder="例如: my_data"
+                  placeholder="例如: my_data（留空将使用文件名）"
                   disabled={isUploading}
+                  helperText="为DuckDB表指定一个自定义名称"
                 />
 
                 {/* 上传方式提示 */}
@@ -480,7 +512,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                   fullWidth
                   onClick={handleStandardUpload}
                   sx={{ py: 1.5 }}
-                  disabled={isUploading || !selectedFile || !tableAlias}
+                  disabled={isUploading || !selectedFile}
                 >
                   {isUploading ? <CircularProgress size={24} color="inherit" /> : '开始上传'}
                 </Button>

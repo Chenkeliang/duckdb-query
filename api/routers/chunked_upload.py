@@ -17,8 +17,12 @@ import pyarrow.parquet as pq
 
 from core.config_manager import config_manager
 from core.duckdb_engine import get_db_connection
-from core.file_datasource_manager import file_datasource_manager, create_table_from_dataframe
+from core.file_datasource_manager import (
+    file_datasource_manager,
+    create_table_from_dataframe,
+)
 from core.resource_manager import schedule_cleanup
+from core.timezone_utils import get_current_time_iso  # 统一时间
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,6 +30,7 @@ router = APIRouter()
 
 class ChunkUploadRequest(BaseModel):
     """分块上传请求模型"""
+
     chunk_number: int
     total_chunks: int
     file_name: str
@@ -36,6 +41,7 @@ class ChunkUploadRequest(BaseModel):
 
 class UploadStatus(BaseModel):
     """上传状态模型"""
+
     upload_id: str
     file_name: str
     total_chunks: int
@@ -80,17 +86,19 @@ def calculate_file_hash(file_path: str) -> str:
 async def init_upload(
     file_name: str = Form(...),
     file_size: int = Form(...),
-    chunk_size: int = Form(default=1024*1024),  # 默认1MB分块
-    file_hash: str = Form(default=None)
+    chunk_size: int = Form(default=1024 * 1024),  # 默认1MB分块
+    file_hash: str = Form(default=None),
+    table_alias: str = Form(default=None),  # 表别名支持
 ):
     """
     初始化分块上传
-    
+
     Args:
         file_name: 文件名
         file_size: 文件总大小
         chunk_size: 分块大小
         file_hash: 文件MD5哈希（可选）
+        table_alias: 表别名（可选）
     """
     try:
         # 从配置中获取文件大小限制
@@ -99,26 +107,27 @@ async def init_upload(
             max_file_size_mb = app_config.max_file_size / 1024 / 1024
             raise HTTPException(
                 status_code=413,
-                detail=f"文件太大，最大支持 {max_file_size_mb:.0f}MB。当前文件大小：{file_size / 1024 / 1024:.1f}MB"
+                detail=f"文件太大，最大支持 {max_file_size_mb:.0f}MB。当前文件大小：{file_size / 1024 / 1024:.1f}MB",
             )
-        
+
         # 检查文件类型
-        file_extension = file_name.lower().split('.')[-1]
-        supported_formats = ['csv', 'xlsx', 'xls', 'json', 'jsonl', 'parquet', 'pq']
-        
+        file_extension = file_name.lower().split(".")[-1]
+        supported_formats = ["csv", "xlsx", "xls", "json", "jsonl", "parquet", "pq"]
+
         if file_extension not in supported_formats:
             raise HTTPException(
                 status_code=400,
-                detail=f"不支持的文件格式。支持的格式：{', '.join(supported_formats)}"
+                detail=f"不支持的文件格式。支持的格式：{', '.join(supported_formats)}",
             )
-        
+
         # 生成上传ID
         import uuid
+
         upload_id = str(uuid.uuid4())
-        
+
         # 计算总分块数
         total_chunks = (file_size + chunk_size - 1) // chunk_size
-        
+
         # 创建上传会话
         upload_sessions[upload_id] = {
             "upload_id": upload_id,
@@ -129,21 +138,24 @@ async def init_upload(
             "uploaded_chunks": 0,
             "uploaded_chunk_numbers": set(),
             "status": "uploading",
-            "created_at": pd.Timestamp.now().isoformat(),
+            "created_at": get_current_time_iso(),
             "file_hash": file_hash,
-            "chunks_dir": get_chunks_dir(upload_id)
+            "table_alias": table_alias,  # 保存表别名
+            "chunks_dir": get_chunks_dir(upload_id),
         }
-        
-        logger.info(f"初始化上传会话: {upload_id}, 文件: {file_name}, 大小: {file_size}, 分块数: {total_chunks}")
-        
+
+        logger.info(
+            f"初始化上传会话: {upload_id}, 文件: {file_name}, 大小: {file_size}, 分块数: {total_chunks}"
+        )
+
         return {
             "success": True,
             "upload_id": upload_id,
             "total_chunks": total_chunks,
             "chunk_size": chunk_size,
-            "message": "上传会话初始化成功"
+            "message": "上传会话初始化成功",
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -155,11 +167,11 @@ async def init_upload(
 async def upload_chunk(
     upload_id: str = Form(...),
     chunk_number: int = Form(...),
-    chunk: UploadFile = File(...)
+    chunk: UploadFile = File(...),
 ):
     """
     上传文件分块
-    
+
     Args:
         upload_id: 上传会话ID
         chunk_number: 分块编号（从0开始）
@@ -169,51 +181,57 @@ async def upload_chunk(
         # 检查上传会话
         if upload_id not in upload_sessions:
             raise HTTPException(status_code=404, detail="上传会话不存在")
-        
+
         session = upload_sessions[upload_id]
-        
+
         if session["status"] != "uploading":
-            raise HTTPException(status_code=400, detail=f"上传会话状态错误: {session['status']}")
-        
+            raise HTTPException(
+                status_code=400, detail=f"上传会话状态错误: {session['status']}"
+            )
+
         # 检查分块编号
         if chunk_number < 0 or chunk_number >= session["total_chunks"]:
             raise HTTPException(
-                status_code=400, 
-                detail=f"分块编号无效: {chunk_number}, 总分块数: {session['total_chunks']}"
+                status_code=400,
+                detail=f"分块编号无效: {chunk_number}, 总分块数: {session['total_chunks']}",
             )
-        
+
         # 检查分块是否已上传
         if chunk_number in session["uploaded_chunk_numbers"]:
             return {
                 "success": True,
                 "message": f"分块 {chunk_number} 已存在，跳过上传",
-                "progress": len(session["uploaded_chunk_numbers"]) / session["total_chunks"] * 100
+                "progress": len(session["uploaded_chunk_numbers"])
+                / session["total_chunks"]
+                * 100,
             }
-        
+
         # 保存分块
         chunk_path = os.path.join(session["chunks_dir"], f"chunk_{chunk_number:06d}")
         chunk_content = await chunk.read()
-        
+
         with open(chunk_path, "wb") as f:
             f.write(chunk_content)
-        
+
         # 更新会话状态
         session["uploaded_chunk_numbers"].add(chunk_number)
         session["uploaded_chunks"] = len(session["uploaded_chunk_numbers"])
-        
+
         progress = session["uploaded_chunks"] / session["total_chunks"] * 100
-        
-        logger.info(f"上传分块 {chunk_number}/{session['total_chunks']}, 进度: {progress:.1f}%")
-        
+
+        logger.info(
+            f"上传分块 {chunk_number}/{session['total_chunks']}, 进度: {progress:.1f}%"
+        )
+
         return {
             "success": True,
             "chunk_number": chunk_number,
             "uploaded_chunks": session["uploaded_chunks"],
             "total_chunks": session["total_chunks"],
             "progress": progress,
-            "message": f"分块 {chunk_number} 上传成功"
+            "message": f"分块 {chunk_number} 上传成功",
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -223,12 +241,11 @@ async def upload_chunk(
 
 @router.post("/api/upload/complete", tags=["Chunked Upload"])
 async def complete_upload(
-    upload_id: str = Form(...),
-    background_tasks: BackgroundTasks = None
+    upload_id: str = Form(...), background_tasks: BackgroundTasks = None
 ):
     """
     完成分块上传，合并文件并处理
-    
+
     Args:
         upload_id: 上传会话ID
     """
@@ -236,171 +253,233 @@ async def complete_upload(
         # 检查上传会话
         if upload_id not in upload_sessions:
             raise HTTPException(status_code=404, detail="上传会话不存在")
-        
+
         session = upload_sessions[upload_id]
-        
+
         # 检查所有分块是否已上传
         if session["uploaded_chunks"] != session["total_chunks"]:
             raise HTTPException(
-                status_code=400, 
-                detail=f"上传未完成，已上传: {session['uploaded_chunks']}/{session['total_chunks']}"
+                status_code=400,
+                detail=f"上传未完成，已上传: {session['uploaded_chunks']}/{session['total_chunks']}",
             )
-        
+
         # 更新状态为处理中
         session["status"] = "processing"
-        
+
         # 合并文件
         temp_upload_path = os.path.join(get_upload_dir(), session["file_name"])
-        
+
         with open(temp_upload_path, "wb") as final_file:
             for chunk_num in range(session["total_chunks"]):
-                chunk_path = os.path.join(session["chunks_dir"], f"chunk_{chunk_num:06d}")
+                chunk_path = os.path.join(
+                    session["chunks_dir"], f"chunk_{chunk_num:06d}"
+                )
                 if os.path.exists(chunk_path):
                     with open(chunk_path, "rb") as chunk_file:
                         final_file.write(chunk_file.read())
                 else:
                     raise HTTPException(
-                        status_code=500, 
-                        detail=f"分块文件缺失: chunk_{chunk_num:06d}"
+                        status_code=500, detail=f"分块文件缺失: chunk_{chunk_num:06d}"
                     )
-        
+
         # 将合并后的文件移动到主临时目录
         import shutil
-        final_file_path = os.path.join(os.path.dirname(get_upload_dir()), session["file_name"])
+
+        final_file_path = os.path.join(
+            os.path.dirname(get_upload_dir()), session["file_name"]
+        )
         shutil.move(temp_upload_path, final_file_path)
         logger.info(f"文件已移动到: {final_file_path}")
-        
+
         # 验证文件哈希（如果提供）
         if session.get("file_hash"):
             actual_hash = calculate_file_hash(final_file_path)
             if actual_hash != session["file_hash"]:
                 raise HTTPException(
-                    status_code=400, 
-                    detail="文件哈希验证失败，文件可能已损坏"
+                    status_code=400, detail="文件哈希验证失败，文件可能已损坏"
                 )
-        
+
         # 处理文件并加载到DuckDB
-        file_info = await process_uploaded_file(final_file_path, session["file_name"])
-        
+        file_info = await process_uploaded_file(
+            final_file_path, session["file_name"], session.get("table_alias")
+        )
+
         # 清理分块文件
         import shutil
+
         if os.path.exists(session["chunks_dir"]):
             shutil.rmtree(session["chunks_dir"])
-        
+
         # 安排文件清理（2小时后）
         if background_tasks:
             schedule_cleanup(final_file_path, background_tasks)
-        
+
         # 更新会话状态
         session["status"] = "completed"
         session["file_info"] = file_info
-        
-        logger.info(f"文件上传完成: {session['file_name']}, 大小: {session['file_size']}")
-        
+
+        logger.info(
+            f"文件上传完成: {session['file_name']}, 大小: {session['file_size']}"
+        )
+
         return {
             "success": True,
             "upload_id": upload_id,
             "file_info": file_info,
-            "message": "文件上传和处理完成"
+            "message": "文件上传和处理完成",
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"完成上传失败: {str(e)}")
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
-        
+
         # 更新会话状态为失败
         if upload_id in upload_sessions:
             upload_sessions[upload_id]["status"] = "failed"
             upload_sessions[upload_id]["error_message"] = str(e)
-        
+
         raise HTTPException(status_code=500, detail=f"完成上传失败: {str(e)}")
 
 
-async def process_uploaded_file(file_path: str, file_name: str) -> Dict[str, Any]:
+async def process_uploaded_file(
+    file_path: str, file_name: str, table_alias: str = None
+) -> Dict[str, Any]:
     """处理上传的文件并加载到DuckDB"""
     try:
         logger.info(f"开始处理上传的文件: {file_name}, 路径: {file_path}")
-        
+
         # 检测文件类型
-        file_extension = file_name.lower().split('.')[-1]
+        file_extension = file_name.lower().split(".")[-1]
         logger.info(f"文件类型: {file_extension}")
-        
+
         # 生成SQL兼容的表名
-        source_id = file_name.split('.')[0]
-        source_id = "".join(c if c.isalnum() or c == "_" else "_" for c in source_id)
-        if source_id and source_id[0].isdigit():
-            source_id = f"table_{source_id}"
+        if table_alias:
+            # 使用用户提供的表别名，保持原始输入
+            source_id = table_alias
+        else:
+            # 使用文件名作为默认表名
+            source_id = file_name.split(".")[0]
+
+        # 清理特殊字符，但保持用户输入的原始格式
+        if table_alias:
+            # 用户提供的表别名，只清理不兼容的字符
+            source_id = "".join(
+                c if c.isalnum() or c == "_" else "_" for c in source_id
+            )
+        else:
+            # 文件名生成的表名，进行完整清理
+            source_id = "".join(
+                c if c.isalnum() or c == "_" else "_" for c in source_id
+            )
+            if source_id and source_id[0].isdigit():
+                source_id = f"table_{source_id}"
+
         if not source_id:
             import time
+
             source_id = f"table_{int(time.time())}"
-        
+
+        # 检查表名是否已存在，如果存在则添加时间后缀
+        con = get_db_connection()
+        original_source_id = source_id
+        counter = 1
+
+        while True:
+            try:
+                # 检查表是否存在
+                result = con.execute(
+                    f'SELECT name FROM sqlite_master WHERE type="table" AND name="{source_id}"'
+                ).fetchone()
+                if result is None:
+                    # 表不存在，可以使用这个名称
+                    break
+                else:
+                    # 表已存在，添加时间后缀
+                    import time
+
+                    timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
+                    source_id = f"{original_source_id}_{timestamp}"
+                    break
+            except Exception as e:
+                logger.warning(f"检查表名时出错: {e}")
+                break
+
         logger.info(f"生成的表名: {source_id}")
-        
+
         # 加载到DuckDB并获取元数据
         table_info = None
         try:
             logger.info("开始加载到DuckDB...")
             con = get_db_connection()
-            
+
             # 对于Excel文件，使用pandas读取避免spatial扩展问题
-            if file_extension in ['xlsx', 'xls']:
-                import pandas as pd
+            if file_extension in ["xlsx", "xls"]:
                 logger.info(f"使用pandas读取Excel文件: {file_path}")
                 df = pd.read_excel(file_path)
                 logger.info(f"Excel文件读取成功: {len(df)}行, {len(df.columns)}列")
-                
+
                 # 使用DataFrame创建表
-                from core.file_datasource_manager import create_varchar_table_from_dataframe_file
-                
+                from core.file_datasource_manager import (
+                    create_varchar_table_from_dataframe_file,
+                )
+
                 # 先删除已存在的表
                 try:
                     con.execute(f'DROP TABLE IF EXISTS "{source_id}"')
                 except:
                     pass
-                
+
                 # 创建表
                 create_varchar_table_from_dataframe_file(con, source_id, df)
-                
+
                 # 获取表信息
-                row_count_result = con.execute(f'SELECT COUNT(*) FROM "{source_id}"').fetchone()
+                row_count_result = con.execute(
+                    f'SELECT COUNT(*) FROM "{source_id}"'
+                ).fetchone()
                 row_count = row_count_result[0] if row_count_result else 0
-                
-                columns_result = con.execute(f'PRAGMA table_info("{source_id}")').fetchall()
-                columns = [{'name': col[1], 'type': col[2]} for col in columns_result]
-                
+
+                columns_result = con.execute(
+                    f'PRAGMA table_info("{source_id}")'
+                ).fetchall()
+                columns = [{"name": col[1], "type": col[2]} for col in columns_result]
+
                 table_info = {
-                    'row_count': row_count,
-                    'columns': columns,
-                    'column_count': len(columns)
+                    "row_count": row_count,
+                    "columns": columns,
+                    "column_count": len(columns),
                 }
-                
+
                 logger.info(f"成功使用pandas创建表: {source_id}, {row_count}行")
             else:
                 # 对于非Excel文件，使用原有逻辑
-                table_info = create_table_from_dataframe(con, source_id, file_path, file_extension)
-                
+                table_info = create_table_from_dataframe(
+                    con, source_id, file_path, file_extension
+                )
+
             logger.info(f"成功加载到DuckDB: {table_info}")
         except Exception as e:
             logger.error(f"加载到DuckDB失败: {str(e)}")
             # 如果是Excel文件且失败了，提供更友好的错误信息
-            if file_extension in ['xlsx', 'xls']:
-                raise Exception(f"Excel文件处理失败: {str(e)}. 请确保文件格式正确且未损坏。")
+            if file_extension in ["xlsx", "xls"]:
+                raise Exception(
+                    f"Excel文件处理失败: {str(e)}. 请确保文件格式正确且未损坏。"
+                )
             raise
-        
+
         # 保存文件数据源配置
         file_metadata = {
             "source_id": source_id,
             "filename": file_name,
             "file_path": file_path,
             "file_type": file_extension,
-            "row_count": table_info.get('row_count', 0),
-            "column_count": table_info.get('column_count', 0),
-            "columns": table_info.get('columns', []),
-            "created_at": pd.Timestamp.now().isoformat()  # 使用标准的 created_at 字段
+            "row_count": table_info.get("row_count", 0),
+            "column_count": table_info.get("column_count", 0),
+            "columns": table_info.get("columns", []),
+            "created_at": get_current_time_iso(),  # 使用统一的时区配置
         }
-        
+
         try:
             logger.info("保存文件数据源配置...")
             file_datasource_manager.save_file_datasource(file_metadata)
@@ -408,19 +487,21 @@ async def process_uploaded_file(file_path: str, file_name: str) -> Dict[str, Any
         except Exception as e:
             logger.error(f"保存文件数据源配置失败: {str(e)}")
             raise
-        
-        logger.info(f"文件处理完成: {file_name}, 表名: {source_id}, 行数: {file_metadata['row_count']}")
-        
+
+        logger.info(
+            f"文件处理完成: {file_name}, 表名: {source_id}, 行数: {file_metadata['row_count']}"
+        )
+
         return {
             "source_id": source_id,
             "filename": file_name,
             "file_size": os.path.getsize(file_path),
-            "row_count": file_metadata['row_count'],
-            "column_count": file_metadata['column_count'],
-            "columns": file_metadata['columns'],
-            "preview_data": [{"提示": "预览数据已禁用以提高性能"}]
+            "row_count": file_metadata["row_count"],
+            "column_count": file_metadata["column_count"],
+            "columns": file_metadata["columns"],
+            "preview_data": [{"提示": "预览数据已禁用以提高性能"}],
         }
-        
+
     except Exception as e:
         logger.error(f"处理文件失败: {str(e)}")
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
@@ -433,10 +514,10 @@ async def get_upload_status(upload_id: str):
     try:
         if upload_id not in upload_sessions:
             raise HTTPException(status_code=404, detail="上传会话不存在")
-        
+
         session = upload_sessions[upload_id]
         progress = session["uploaded_chunks"] / session["total_chunks"] * 100
-        
+
         return UploadStatus(
             upload_id=upload_id,
             file_name=session["file_name"],
@@ -446,9 +527,9 @@ async def get_upload_status(upload_id: str):
             status=session["status"],
             file_size=session["file_size"],
             created_at=session["created_at"],
-            error_message=session.get("error_message")
+            error_message=session.get("error_message"),
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -462,24 +543,22 @@ async def cancel_upload(upload_id: str):
     try:
         if upload_id not in upload_sessions:
             raise HTTPException(status_code=404, detail="上传会话不存在")
-        
+
         session = upload_sessions[upload_id]
-        
+
         # 清理分块文件
         import shutil
+
         if os.path.exists(session["chunks_dir"]):
             shutil.rmtree(session["chunks_dir"])
-        
+
         # 删除会话
         del upload_sessions[upload_id]
-        
+
         logger.info(f"取消上传: {upload_id}")
-        
-        return {
-            "success": True,
-            "message": "上传已取消"
-        }
-        
+
+        return {"success": True, "message": "上传已取消"}
+
     except HTTPException:
         raise
     except Exception as e:

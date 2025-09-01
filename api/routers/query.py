@@ -1,7 +1,15 @@
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Request, BackgroundTasks
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import StreamingResponse
-from models.query_models import QueryRequest
+from fastapi.responses import StreamingResponse, JSONResponse
+from models.query_models import (
+    QueryRequest,
+    QueryResponse,
+    AsyncQueryRequest,
+    AsyncQueryResponse,
+    QueryResult,
+    DatabaseConnection,
+    DataSourceType,
+)
 from core.duckdb_engine import (
     get_db_connection,
     execute_query,
@@ -19,6 +27,12 @@ import time
 import traceback
 import logging
 import re
+import uuid
+from datetime import datetime
+from typing import List, Optional, Dict, Any, Union
+import duckdb
+from io import StringIO
+import tempfile
 
 # 设置日志
 logging.basicConfig(
@@ -1146,7 +1160,7 @@ async def execute_sql(request: dict = Body(...)):
                         name=config.get("name", config["id"]),
                         type=DataSourceType.MYSQL,
                         params=config["params"],
-                        created_at=datetime.now(),
+                        created_at=get_current_time(),
                     )
 
                     success = db_manager.add_connection(db_connection)
@@ -1352,7 +1366,7 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                                         name=config.get("name", config["id"]),
                                         type=DataSourceType.MYSQL,
                                         params=config["params"],
-                                        created_at=datetime.now(),
+                                        created_at=get_current_time(),
                                     )
                                     db_manager.add_connection(db_connection)
                                     logger.info(f"成功创建数据库连接: {datasource_id}")
@@ -1420,13 +1434,9 @@ async def save_query_to_duckdb(request: dict = Body(...)):
             except Exception as verify_error:
                 logger.warning(f"表验证失败: {str(verify_error)}")
 
-            # 获取当前时间
-            from datetime import datetime
-
-            current_time = datetime.now()
-
-            # 创建文件数据源配置，这样 /api/duckdb_tables 接口就能获取到 created_at 时间
+            # 使用统一的时区配置
             try:
+                from core.timezone_utils import get_current_time_iso
                 from core.file_datasource_manager import file_datasource_manager
 
                 file_info = {
@@ -1434,7 +1444,7 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                     "filename": f"{table_alias}_query_result",
                     "file_path": f"query_result_{table_alias}",  # 虚拟路径，实际数据在DuckDB中
                     "file_type": "duckdb_table",
-                    "created_at": current_time.isoformat(),
+                    "created_at": get_current_time_iso(),  # 使用统一的时区配置
                     "columns": result_df.columns.tolist(),
                     "row_count": len(result_df),
                     "column_count": len(result_df.columns),
@@ -1457,7 +1467,7 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                 "columns": result_df.columns.tolist(),
                 "source_sql": sql_query,
                 "source_datasource": datasource_id,
-                "created_at": current_time.isoformat(),
+                "created_at": get_current_time_iso(),  # 使用统一的时区配置
                 "datasource": {
                     "id": table_alias,
                     "name": table_alias,
@@ -1465,8 +1475,8 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                     "table_name": table_alias,
                     "row_count": len(result_df),
                     "column_count": len(result_df.columns),
-                    "created_at": current_time.isoformat(),
-                    "updated_at": current_time.isoformat(),
+                    "created_at": get_current_time_iso(),  # 使用统一的时区配置
+                    "updated_at": get_current_time_iso(),  # 使用统一的时区配置
                 },
             }
 

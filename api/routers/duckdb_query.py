@@ -165,6 +165,44 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
                     )
                     con.execute(create_sql)
                     saved_table = table_name
+
+                    # 保存表元数据，包括created_at时间
+                    try:
+                        from datetime import datetime
+                        from core.timezone_utils import get_current_time_iso
+                        from core.file_datasource_manager import file_datasource_manager
+
+                        # 获取表信息
+                        row_count_result = con.execute(
+                            f'SELECT COUNT(*) FROM "{table_name}"'
+                        ).fetchone()
+                        row_count = row_count_result[0] if row_count_result else 0
+
+                        columns_result = con.execute(
+                            f'DESCRIBE "{table_name}"'
+                        ).fetchall()
+                        columns = [col[0] for col in columns_result]
+
+                        # 创建元数据
+                        table_metadata = {
+                            "source_id": table_name,
+                            "filename": f"query_result_{table_name}",
+                            "file_path": f"duckdb://{table_name}",
+                            "file_type": "duckdb_query",
+                            "row_count": row_count,
+                            "column_count": len(columns),
+                            "columns": columns,
+                            "created_at": get_current_time_iso(),
+                            "source_sql": sql_to_execute,
+                        }
+
+                        # 保存到文件数据源管理器
+                        file_datasource_manager.save_file_datasource(table_metadata)
+                        logger.info(f"成功保存表元数据: {table_name}")
+
+                    except Exception as metadata_error:
+                        logger.warning(f"保存表元数据失败: {str(metadata_error)}")
+
                     logger.info(f"查询结果已保存为表: {table_name}")
                 except Exception as save_error:
                     logger.warning(f"保存查询结果为表失败: {str(save_error)}")
@@ -325,6 +363,9 @@ async def upload_file_to_duckdb(
 
             # 保存元数据
             try:
+                from core.timezone_utils import get_current_time_iso
+
+                # 保存文件数据源配置到持久化存储（遵循created_at字段标准）
                 file_info = {
                     "source_id": table_alias,
                     "filename": file.filename,
@@ -333,7 +374,7 @@ async def upload_file_to_duckdb(
                     "row_count": row_count,
                     "column_count": len(columns),
                     "columns": columns,
-                    "created_at": datetime.now().isoformat(),  # 使用标准的 created_at 字段
+                    "created_at": get_current_time_iso(),  # 使用统一的时区配置
                 }
                 # 使用全局时区配置更新创建时间
                 try:

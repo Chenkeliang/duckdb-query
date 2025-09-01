@@ -1,39 +1,34 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Button,
-  LinearProgress,
-  Alert,
-  Chip,
-  Grid,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Divider,
-  CircularProgress
-} from '@mui/material';
-import {
-  CloudUpload as CloudUploadIcon,
   Cancel as CancelIcon,
   CheckCircle as CheckCircleIcon,
+  CloudUpload as CloudUploadIcon,
   Error as ErrorIcon,
   InsertDriveFile as FileIcon,
   Speed as SpeedIcon,
   Storage as StorageIcon
 } from '@mui/icons-material';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Grid,
+  IconButton,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Typography
+} from '@mui/material';
 import { useTheme } from '@mui/material/styles';
+import React, { useEffect, useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 
-const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
+const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress }) => {
   const theme = useTheme();
   const { showSuccess, showError } = useToast();
   const [uploadSessions, setUploadSessions] = useState({});
@@ -41,28 +36,28 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [selectedSession, setSelectedSession] = useState(null);
   const [isCompleting, setIsCompleting] = useState(false); // 添加完成状态
+  const [isUploadStarted, setIsUploadStarted] = useState(false); // 添加上传开始状态
 
-  // 在组件挂载时开始上传文件
+  // 添加一个 ref 来跟踪组件是否已挂载，防止重复上传
+  const isMountedRef = useRef(true);
+
+  // 组件挂载时重置状态
   useEffect(() => {
     console.log('ChunkedUploader useEffect triggered, file:', file);
-    let isMounted = true;
-    
+
     if (file) {
-      console.log('Starting upload for file:', file.name);
-      initializeUpload(file).catch(error => {
-        console.error('上传过程中出现未处理的错误:', error);
-        if (isMounted) {
-          showError(`文件 "${file.name}" 上传失败: ${error.message}`);
-        }
-      });
+      console.log('File provided to ChunkedUploader:', file.name);
+      // 重置上传状态，等待用户手动开始
+      setIsUploadStarted(false);
+      isMountedRef.current = true;
     } else {
       console.log('No file provided to ChunkedUploader');
     }
-    
+
     // 清理函数
     return () => {
       console.log('ChunkedUploader 组件即将卸载');
-      isMounted = false;
+      isMountedRef.current = false;
     };
   }, [file]);
 
@@ -81,6 +76,28 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
     return Promise.resolve(null);
   };
 
+  // 手动开始上传
+  const startUpload = async () => {
+    if (!file) {
+      showError('没有选择文件');
+      return;
+    }
+
+    setIsUploadStarted(true);
+    isMountedRef.current = false; // 标记已开始上传
+
+    try {
+      await initializeUpload(file);
+    } catch (error) {
+      console.error('上传过程中出现未处理的错误:', error);
+      setIsUploadStarted(false);
+      isMountedRef.current = true;
+      if (isMountedRef.current) {
+        showError(`文件 "${file.name}" 上传失败: ${error.message}`);
+      }
+    }
+  };
+
   // 初始化上传
   const initializeUpload = async (file) => {
     try {
@@ -93,6 +110,9 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
       formData.append('file_size', file.size.toString());
       formData.append('chunk_size', chunkSize.toString());
       formData.append('file_hash', fileHash || '');
+      if (tableAlias) {
+        formData.append('table_alias', tableAlias);
+      }
 
       console.log('正在初始化上传...', {
         fileName: file.name,
@@ -155,13 +175,13 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
 
     try {
       console.log(`开始上传 ${totalChunks} 个分块，每个分块大小: ${chunkSize} bytes`);
-      
+
       for (let chunkNumber = 0; chunkNumber < totalChunks; chunkNumber++) {
         console.log(`正在上传分块 ${chunkNumber + 1}/${totalChunks}`);
-        
+
         // 检查是否已取消
         let currentSession = session; // 默认使用传入的会话
-        
+
         // 尝试从状态中获取最新的会话信息
         setUploadSessions(prev => {
           if (prev[uploadId]) {
@@ -169,14 +189,14 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
           }
           return prev;
         });
-        
+
         console.log(`当前会话状态:`, currentSession);
-        
+
         if (!currentSession) {
           console.log('会话不存在，上传被取消');
           return;
         }
-        
+
         if (currentSession.status === 'cancelled') {
           console.log('会话状态为已取消，上传被取消');
           return;
@@ -185,7 +205,7 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
         const start = chunkNumber * chunkSize;
         const end = Math.min(start + chunkSize, file.size);
         const chunk = file.slice(start, end);
-        
+
         console.log(`分块 ${chunkNumber} 大小: ${chunk.size} bytes`);
 
         const formData = new FormData();
@@ -236,7 +256,7 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
         const session = prev[uploadId];
         const errorMessage = error.message || '未知错误';
         showError(`文件 "${session?.fileName || '未知文件'}" 分块上传失败: ${errorMessage}`);
-        
+
         if (!session) {
           return prev;
         }
@@ -258,7 +278,7 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
     try {
       // 设置完成状态为加载中
       setIsCompleting(true);
-      
+
       const formData = new FormData();
       formData.append('upload_id', uploadId);
 
@@ -266,6 +286,17 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
         method: 'POST',
         body: formData
       });
+
+      // 优先处理非200响应，提取后端detail
+      if (!response.ok) {
+        try {
+          const errJson = await response.json();
+          throw new Error(errJson?.detail || '完成上传失败');
+        } catch (e) {
+          const errText = await response.text().catch(() => '');
+          throw new Error(errText || '完成上传失败');
+        }
+      }
 
       const data = await response.json();
 
@@ -281,8 +312,7 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
           const endTime = Date.now();
           const uploadTime = endTime - session.startTime;
 
-          // 通知父组件上传完成
-          showSuccess(`文件 "${session.fileName}" 分块上传完成`);
+          // 通知父组件上传完成，移除重复的成功消息显示
           if (onUploadComplete) {
             onUploadComplete({
               uploadId,
@@ -310,8 +340,8 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
       setUploadSessions(prev => {
         const session = prev[uploadId];
         const errorMessage = error.message || '未知错误';
-        showError(`文件 "${session?.fileName || '未知文件'}" 上传失败: ${errorMessage}`);
-        
+        // 移除重复的错误消息显示，让父组件统一处理
+
         if (!session) {
           return prev;
         }
@@ -380,114 +410,107 @@ const ChunkedUploader = ({ file, onUploadComplete, onUploadProgress }) => {
   const sessions = Object.values(uploadSessions);
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, color: theme.palette.primary.main }}>
-        📁 大文件分块上传
-      </Typography>
-
-      {/* 文件信息显示 */}
-      {file && (
-        <Card sx={{ mb: 3, borderRadius: 2 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 500 }}>
-              正在上传文件: {file.name}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              文件大小: {formatFileSize(file.size)}
-            </Typography>
-          </CardContent>
-        </Card>
+    <Box>
+      {/* 开始上传按钮 */}
+      {file && !isUploadStarted && sessions.length === 0 && (
+        <Button
+          variant="contained"
+          onClick={startUpload}
+          startIcon={<CloudUploadIcon />}
+          sx={{ borderRadius: 2, mb: 2 }}
+          fullWidth
+        >
+          开始分块上传
+        </Button>
       )}
 
       {/* 上传会话列表 */}
-      {sessions.length > 0 && (
-        <Card sx={{ borderRadius: 2 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 500 }}>
-              上传进度 ({sessions.length})
-            </Typography>
+      {isUploadStarted && sessions.length > 0 && (
+        <Box>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 500 }}>
+            上传进度 ({sessions.length})
+          </Typography>
 
-            {sessions.map((session) => (
-              <Box key={session.uploadId} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
-                <Grid container alignItems="center" spacing={2}>
-                  <Grid item>
-                    {getStatusIcon(session.status)}
-                  </Grid>
-                  
-                  <Grid item xs>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 500 }}>
-                      {session.fileName}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {formatFileSize(session.fileSize)}
-                    </Typography>
-                  </Grid>
-
-                  <Grid item>
-                    <Chip
-                      label={session.status === 'uploading' ? '上传中' : 
-                            session.status === 'completed' ? '已完成' :
-                            session.status === 'failed' ? '失败' : '已取消'}
-                      color={getStatusColor(session.status)}
-                      size="small"
-                    />
-                  </Grid>
-
-                  <Grid item>
-                    <Typography variant="body2">
-                      {session.progress.toFixed(1)}%
-                    </Typography>
-                  </Grid>
-
-                  {session.status === 'uploading' && (
-                    <Grid item>
-                      <IconButton
-                        size="small"
-                        onClick={() => cancelUpload(session.uploadId)}
-                        color="error"
-                      >
-                        <CancelIcon />
-                      </IconButton>
-                    </Grid>
-                  )}
+          {sessions.map((session) => (
+            <Box key={session.uploadId} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+              <Grid container alignItems="center" spacing={2}>
+                <Grid item>
+                  {getStatusIcon(session.status)}
                 </Grid>
 
-                <LinearProgress
-                  variant="determinate"
-                  value={session.progress}
-                  sx={{ mt: 1, height: 6, borderRadius: 3 }}
-                />
+                <Grid item xs>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 500 }}>
+                    {session.fileName}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {formatFileSize(session.fileSize)}
+                  </Typography>
+                </Grid>
+
+                <Grid item>
+                  <Chip
+                    label={session.status === 'uploading' ? '上传中' :
+                      session.status === 'completed' ? '已完成' :
+                        session.status === 'failed' ? '失败' : '已取消'}
+                    color={getStatusColor(session.status)}
+                    size="small"
+                  />
+                </Grid>
+
+                <Grid item>
+                  <Typography variant="body2">
+                    {session.progress.toFixed(1)}%
+                  </Typography>
+                </Grid>
 
                 {session.status === 'uploading' && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    {session.uploadedChunks} / {session.totalChunks} 分块已上传
+                  <Grid item>
+                    <IconButton
+                      size="small"
+                      onClick={() => cancelUpload(session.uploadId)}
+                      color="error"
+                    >
+                      <CancelIcon />
+                    </IconButton>
+                  </Grid>
+                )}
+              </Grid>
+
+              <LinearProgress
+                variant="determinate"
+                value={session.progress}
+                sx={{ mt: 1, height: 6, borderRadius: 3 }}
+              />
+
+              {session.status === 'uploading' && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  {session.uploadedChunks} / {session.totalChunks} 分块已上传
+                </Typography>
+              )}
+
+              {isCompleting && session.status === 'uploading' && session.progress === 100 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                  <CircularProgress size={16} sx={{ mr: 1 }} />
+                  <Typography variant="caption" color="text.secondary">
+                    正在处理文件，请稍候...
                   </Typography>
-                )}
+                </Box>
+              )}
 
-                {isCompleting && session.status === 'uploading' && session.progress === 100 && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                    <CircularProgress size={16} sx={{ mr: 1 }} />
-                    <Typography variant="caption" color="text.secondary">
-                      正在处理文件，请稍候...
-                    </Typography>
-                  </Box>
-                )}
+              {session.error && (
+                <Alert severity="error" sx={{ mt: 1 }}>
+                  {session.error}
+                </Alert>
+              )}
 
-                {session.error && (
-                  <Alert severity="error" sx={{ mt: 1 }}>
-                    {session.error}
-                  </Alert>
-                )}
-
-                {session.status === 'completed' && session.uploadTime && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    上传完成，耗时 {(session.uploadTime / 1000).toFixed(1)} 秒
-                  </Typography>
-                )}
-              </Box>
-            ))}
-          </CardContent>
-        </Card>
+              {session.status === 'completed' && session.uploadTime && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  上传完成，耗时 {(session.uploadTime / 1000).toFixed(1)} 秒
+                </Typography>
+              )}
+            </Box>
+          ))}
+        </Box>
       )}
 
       {/* 使用说明 */}

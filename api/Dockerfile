@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y gcc g++
 WORKDIR /app
 
 # Copy only the requirements file to leverage Docker cache
-COPY ./api/requirements.txt requirements.txt
+COPY api/requirements.txt requirements.txt
 
 # 将依赖打包成 wheel，加速下一阶段的安装
 RUN pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
@@ -27,7 +27,7 @@ COPY --from=builder /app/requirements.txt .
 RUN pip install --no-cache-dir /wheels/*
 
 # Copy the application code
-COPY ./api .
+COPY api .
 
 # Create necessary directories and set ownership
 RUN mkdir -p temp_files exports data logs /app/data/duckdb /app/data/uploads /config && \
