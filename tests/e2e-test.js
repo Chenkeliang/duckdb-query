@@ -106,7 +106,7 @@ class E2ETestSuite {
       
       // 检查页面标题
       const title = await this.page.title();
-      if (title.includes('Interactive Data Query')) {
+      if (title.includes('Duck Query')) {
         await this.addTestResult('页面加载', true, `页面标题: ${title}`);
         return true;
       } else {

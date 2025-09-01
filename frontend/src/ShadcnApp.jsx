@@ -305,7 +305,7 @@ const ShadcnApp = () => {
                 </span>
               </div>
               <h1 className="text-xl font-semibold text-gray-900">
-                DataQuery Pro
+                Duck Query
               </h1>
             </div>
           </div>

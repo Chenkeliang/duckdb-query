@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Interactive Data Query - Docker 启动脚本
+# Duck Query - Docker 启动脚本
 # 自动检测并使用正确的配置文件
 
 set -e
@@ -71,7 +71,7 @@ check_config() {
 
 # 主函数
 main() {
-    print_info "Interactive Data Query Docker 启动脚本"
+    print_info "Duck Query Docker 启动脚本"
     print_info "========================================"
     
     # 检查环境

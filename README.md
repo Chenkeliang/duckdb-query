@@ -1,10 +1,10 @@
-# Interactive Data Query - Next-Gen Interactive Data Query and Analysis Platform
+# Duck Query - Next-Gen Interactive Data Query and Analysis Platform
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Have you ever gone to great lengths to set up a database just to analyze a temporary CSV file? Or found yourself racking your brain trying to join data from two different sources?
 
-**Interactive Data Query** is here to solve those headaches for you! We've built a modern, fluid web platform that lets you query and analyze data as easily as drinking water. At its core is a powerful DuckDB engine, ensuring that no matter if your data comes from local files, remote links, or your business databases, it can all be treated equally and explored with the simplest, most direct SQL.
+**Duck Query** is here to solve those headaches for you! We've built a modern, fluid web platform that lets you query and analyze data as easily as drinking water. At its core is a powerful DuckDB engine, ensuring that no matter if your data comes from local files, remote links, or your business databases, it can all be treated equally and explored with the simplest, most direct SQL.
 
 Our goal: Say goodbye to tedious ETL and data imports, and let data analysis return to its essence—quick insights and free exploration.
 

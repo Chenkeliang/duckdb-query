@@ -89,7 +89,7 @@ class AsyncTaskTestSuite {
       
       // 检查页面标题
       const title = await this.page.title();
-      if (title.includes('DataQuery') || title.includes('数据查询')) {
+      if (title.includes('Duck Query') || title.includes('数据查询')) {
         await this.addTestResult('页面加载', true, `页面标题: ${title}`);
         return true;
       } else {
