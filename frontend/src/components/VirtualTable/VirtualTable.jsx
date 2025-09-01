@@ -1,18 +1,17 @@
-import React, { useMemo, useCallback } from 'react';
-import { FixedSizeList as List } from 'react-window';
 import {
+  Box,
+  Chip,
+  Paper,
   Table,
-  TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Box,
   Typography,
-  Chip,
   useTheme
 } from '@mui/material';
+import React, { useCallback, useMemo } from 'react';
+import { FixedSizeList as List } from 'react-window';
 
 const VirtualTable = ({
   data = [],
@@ -48,10 +47,10 @@ const VirtualTable = ({
 
     return (
       <div style={style}>
-        <TableRow 
-          hover 
+        <TableRow
+          hover
           onClick={() => onRowClick?.(row, index)}
-          sx={{ 
+          sx={{
             cursor: onRowClick ? 'pointer' : 'default',
             '&:hover': {
               backgroundColor: 'rgba(0, 0, 0, 0.04)'
@@ -61,7 +60,7 @@ const VirtualTable = ({
           {columns.map((column, colIndex) => (
             <TableCell
               key={column.field}
-              sx={{ 
+              sx={{
                 width: columnWidths[colIndex],
                 minWidth: columnWidths[colIndex],
                 maxWidth: columnWidths[colIndex],
@@ -126,13 +125,31 @@ const VirtualTable = ({
       component={Paper}
       sx={{
         height,
-        overflow: 'hidden',
+        overflow: 'auto',
+        overflowX: 'auto',
+        overflowY: 'hidden',
         // 防止触控板手势导致的页面导航
         overscrollBehavior: 'contain',
-        touchAction: 'pan-x pan-y'
+        touchAction: 'pan-x pan-y',
+        // 自定义滚动条样式
+        '&::-webkit-scrollbar': {
+          width: '12px',
+          height: '12px',
+        },
+        '&::-webkit-scrollbar-track': {
+          background: '#f1f1f1',
+          borderRadius: '6px',
+        },
+        '&::-webkit-scrollbar-thumb': {
+          background: '#888',
+          borderRadius: '6px',
+          '&:hover': {
+            background: '#555',
+          },
+        },
       }}
     >
-      <Table stickyHeader>
+      <Table stickyHeader sx={{ minWidth: totalWidth }}>
         <TableHead>
           <TableRow>
             {columns.map((column, index) => (
@@ -165,15 +182,17 @@ const VirtualTable = ({
           </TableRow>
         </TableHead>
       </Table>
-      
-      <List
-        height={height - 56} // 减去表头高度
-        itemCount={data.length}
-        itemSize={rowHeight}
-        width={totalWidth}
-      >
-        {Row}
-      </List>
+
+      <Box sx={{ width: totalWidth }}>
+        <List
+          height={height - 56} // 减去表头高度
+          itemCount={data.length}
+          itemSize={rowHeight}
+          width={totalWidth}
+        >
+          {Row}
+        </List>
+      </Box>
     </TableContainer>
   );
 };
