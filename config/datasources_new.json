@@ -1,0 +1,16 @@
+{
+    "database_sources": [
+        {
+            "id": "sorder-new",
+            "name": "sorder-new",
+            "type": "mysql",
+            "params": {
+                "host": "rr-2ze4ks6ww80gpae5z723.mysql.rds.aliyuncs.com",
+                "port": 3306,
+                "user": "dataread",
+                "password": "GQgx7jbP",
+                "database": "store_order"
+            }
+        }
+    ]
+}
