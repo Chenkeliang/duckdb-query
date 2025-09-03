@@ -310,58 +310,15 @@ GROUP BY date_trunc('month', date_col);
 
 ## 🛠️ 开发
 
-### 本地开发环境
 
-```bash
-# 克隆项目
-git clone https://github.com/Chenkeliang/DuckQuery.git
-cd duck-query
 
-# 后端开发
-cd api
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn main:app --reload
 
-# 前端开发
-cd frontend
-npm install
-npm run dev
-```
-
-### AI驱动开发
-
-本项目完全基于AI技术栈开发：
-
-- 🤖 **代码生成**: 使用 Cursor AI 编程助手进行智能代码生成
-- 💬 **架构设计**: 基于 Qwen 大模型进行系统架构设计和优化
-- 🎭 **自动化测试**: 使用 Playwright 进行端到端自动化测试
-- 🔧 **持续优化**: AI辅助代码重构和性能优化
-
-这是一个展示AI在软件开发全流程应用的实践项目。
 
 ## 🤝 贡献指南
 
 我们欢迎各种形式的贡献！
 
-### 项目贡献
 
-欢迎通过以下方式参与项目：
-
-- 🌟 **Star项目** - 给项目点星标支持
-- 🍴 **Fork代码** - 基于项目进行二次开发
-- 💡 **功能建议** - 在Issues中提出改进建议
-- 📖 **文档完善** - 帮助改进使用文档
-
-## 📊 性能说明
-
-Duck Query 基于 DuckDB 引擎，具有以下性能特点：
-
-- **列式存储**: 优化分析查询性能
-- **向量化执行**: 充分利用现代CPU特性
-- **内存处理**: 减少磁盘I/O，提升查询速度
-- **智能优化**: 自动查询计划优化
 
 
 
