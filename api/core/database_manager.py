@@ -38,7 +38,8 @@ class DatabaseManager:
         self.connections: Dict[str, DatabaseConnection] = {}
         self.engines: Dict[str, Any] = {}
         self.connection_pools: Dict[str, Any] = {}
-        self._load_connections_from_config()
+        self._config_loaded = False
+        # 延迟加载配置，避免初始化顺序问题
 
     def _load_connections_from_config(self):
         config_dir = os.getenv("CONFIG_DIR")
@@ -74,32 +75,46 @@ class DatabaseManager:
                     params=conn_data.get("params", {}),
                     status=ConnectionStatus.INACTIVE,
                 )
-                self.add_connection(connection)
+                # 加载配置时自动激活连接
+                self.add_connection(connection, test_connection=True)
         except Exception as e:
             logger.error(f"Error loading connections from config: {e}")
 
-    def add_connection(self, connection: DatabaseConnection) -> bool:
+        # 标记配置已加载
+        self._config_loaded = True
+
+    def add_connection(
+        self, connection: DatabaseConnection, test_connection: bool = True
+    ) -> bool:
         """添加数据库连接配置"""
         try:
-            # 测试连接
-            test_result = self.test_connection(
-                ConnectionTestRequest(type=connection.type, params=connection.params)
-            )
+            if test_connection:
+                # 测试连接
+                test_result = self.test_connection(
+                    ConnectionTestRequest(
+                        type=connection.type, params=connection.params
+                    )
+                )
 
-            if test_result.success:
-                # 创建连接引擎
-                engine = self._create_engine(connection.type, connection.params)
-
-                self.connections[connection.id] = connection
-                self.engines[connection.id] = engine
-
-                connection.status = ConnectionStatus.ACTIVE
-                logger.info(f"成功添加数据库连接: {connection.id}")
-                return True
+                if test_result.success:
+                    # 创建连接引擎
+                    engine = self._create_engine(connection.type, connection.params)
+                    self.engines[connection.id] = engine
+                    connection.status = ConnectionStatus.ACTIVE
+                    logger.info(f"成功添加数据库连接: {connection.id}")
+                else:
+                    connection.status = ConnectionStatus.ERROR
+                    logger.warning(
+                        f"连接测试失败: {test_result.message}，但仍添加到配置中"
+                    )
             else:
-                connection.status = ConnectionStatus.ERROR
-                logger.error(f"连接测试失败: {test_result.message}")
-                return False
+                # 不测试连接，直接添加配置
+                connection.status = ConnectionStatus.INACTIVE
+                logger.info(f"添加数据库连接配置（未测试）: {connection.id}")
+
+            # 无论测试是否成功，都添加到连接列表
+            self.connections[connection.id] = connection
+            return True
 
         except Exception as e:
             logger.error(f"添加数据库连接失败: {str(e)}")
@@ -132,6 +147,9 @@ class DatabaseManager:
 
     def list_connections(self) -> List[DatabaseConnection]:
         """列出所有数据库连接"""
+        # 确保配置已加载
+        if not self._config_loaded:
+            self._load_connections_from_config()
         return list(self.connections.values())
 
     def test_connection(self, request: ConnectionTestRequest) -> ConnectionTestResponse:

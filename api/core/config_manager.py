@@ -283,12 +283,16 @@ class ConfigManager:
         """加载MySQL配置 - 优先从datasources.json加载，兼容mysql-configs.json"""
         try:
             self._mysql_configs = {}
-            
+
             # 首先尝试从datasources.json加载
             datasources_data = self._load_json(self.datasources_config_file)
             if datasources_data and "database_sources" in datasources_data:
                 for config_data in datasources_data["database_sources"]:
-                    if config_data.get("type") == "mysql" and "id" in config_data and "params" in config_data:
+                    if (
+                        config_data.get("type") == "mysql"
+                        and "id" in config_data
+                        and "params" in config_data
+                    ):
                         # 解密配置中的密码
                         decrypted_config_data = decrypt_config_passwords(config_data)
 
@@ -303,10 +307,12 @@ class ConfigManager:
                             description=decrypted_config_data.get("description"),
                         )
                         self._mysql_configs[config.id] = config
-                
-                logger.info(f"从datasources.json加载了 {len(self._mysql_configs)} 个MySQL配置")
+
+                logger.info(
+                    f"从datasources.json加载了 {len(self._mysql_configs)} 个MySQL配置"
+                )
                 return self._mysql_configs
-            
+
             # 如果datasources.json没有数据，尝试从mysql-configs.json加载（向后兼容）
             configs_data = self._load_json(self.mysql_config_file)
             if isinstance(configs_data, list):
@@ -326,8 +332,10 @@ class ConfigManager:
                             description=decrypted_config_data.get("description"),
                         )
                         self._mysql_configs[config.id] = config
-                
-                logger.info(f"从mysql-configs.json加载了 {len(self._mysql_configs)} 个MySQL配置")
+
+                logger.info(
+                    f"从mysql-configs.json加载了 {len(self._mysql_configs)} 个MySQL配置"
+                )
                 return self._mysql_configs
 
             logger.info(f"没有找到MySQL配置")
@@ -415,7 +423,7 @@ class ConfigManager:
     def get_datasources_config(self) -> Dict[str, Any]:
         """获取数据源配置"""
         return self._datasources_config.copy()
-    
+
     def get_all_database_sources(self) -> List[Dict[str, Any]]:
         """获取所有数据库数据源配置"""
         try:
@@ -426,24 +434,30 @@ class ConfigManager:
         except Exception as e:
             logger.error(f"获取数据库数据源配置失败: {str(e)}")
             return []
-    
+
     def _sync_database_manager_configs(self):
         """同步数据库管理器的配置到MySQL配置中"""
         try:
             # 获取所有数据库数据源
             database_sources = self.get_all_database_sources()
-            
+
             # 将MySQL类型的配置同步到_mysql_configs
             for source in database_sources:
-                if source.get("type") == "mysql" and "id" in source and "params" in source:
+                if (
+                    source.get("type") == "mysql"
+                    and "id" in source
+                    and "params" in source
+                ):
                     # 检查是否已经存在
                     if source["id"] not in self._mysql_configs:
                         # 解密配置中的密码
                         decrypted_config_data = decrypt_config_passwords(source)
-                        
+
                         config = DatabaseConfig(
                             id=decrypted_config_data["id"],
-                            name=decrypted_config_data.get("name", decrypted_config_data["id"]),
+                            name=decrypted_config_data.get(
+                                "name", decrypted_config_data["id"]
+                            ),
                             type=decrypted_config_data.get("type", "mysql"),
                             params=decrypted_config_data["params"],
                             enabled=decrypted_config_data.get("enabled", True),
@@ -451,9 +465,9 @@ class ConfigManager:
                         )
                         self._mysql_configs[config.id] = config
                         logger.info(f"同步MySQL配置: {config.id}")
-            
+
             logger.info(f"同步完成，当前共有 {len(self._mysql_configs)} 个MySQL配置")
-            
+
         except Exception as e:
             logger.error(f"同步数据库管理器配置失败: {str(e)}")
 

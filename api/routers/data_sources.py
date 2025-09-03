@@ -90,8 +90,9 @@ async def test_connection_simple(request: dict = Body(...)):
 
                 # 获取配置的超时时间
                 from core.config_manager import config_manager
+
                 app_config = config_manager.get_app_config()
-                
+
                 conn = pymysql.connect(
                     host=request.get("host", "localhost"),
                     port=request.get("port", 3306),
@@ -189,7 +190,22 @@ async def list_database_connections(request: Request):
     logger.info(f"处理数据库连接请求 - IP: {client_ip}")
 
     try:
+        # 每次调用都重新加载配置，确保数据最新
+        logger.info("重新加载数据库连接配置")
+        logger.info(f"重新加载前连接数量: {len(db_manager.connections)}")
+        logger.info(f"重新加载前配置状态: {getattr(db_manager, '_config_loaded', 'Unknown')}")
+        
+        db_manager._load_connections_from_config()
+        
+        logger.info(f"重新加载后连接数量: {len(db_manager.connections)}")
+        logger.info(f"重新加载后配置状态: {getattr(db_manager, '_config_loaded', 'Unknown')}")
+        
         connections = db_manager.list_connections()
+        logger.info(f"list_connections() 返回: {len(connections)} 个连接")
+        
+        # 调试每个连接的状态
+        for conn in connections:
+            logger.info(f"连接 {conn.id}: 状态={conn.status}, 类型={type(conn.status)}")
 
         # 将DatabaseConnection对象转换为可序列化的字典
         serializable_connections = []
@@ -201,11 +217,7 @@ async def list_database_connections(request: Request):
                     conn.type.value if hasattr(conn.type, "value") else str(conn.type)
                 ),
                 "params": conn.params,
-                "status": (
-                    conn.status.value
-                    if hasattr(conn.status, "value")
-                    else str(conn.status)
-                ),
+                "status": str(conn.status),
                 "created_at": conn.created_at.isoformat() if conn.created_at else None,
                 "updated_at": conn.updated_at.isoformat() if conn.updated_at else None,
                 "last_tested": (
@@ -524,8 +536,9 @@ async def get_mysql_tables(connection: DatabaseConnection) -> list:
 
         # 获取配置的超时时间
         from core.config_manager import config_manager
+
         app_config = config_manager.get_app_config()
-        
+
         # 创建连接
         conn = pymysql.connect(
             host=connection.params.get("host", "localhost"),
