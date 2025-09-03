@@ -216,43 +216,9 @@ npm run preview
 
 🌍 **环境变量覆盖**: 可以通过环境变量覆盖配置文件中的设置，特别适合Docker部署。
 
-### 数据库连接配置
 
-创建 `config/datasources.json`：
 
-```json
-{
-  "database_sources": [
-    {
-      "id": "production_mysql",
-      "name": "生产环境MySQL",
-      "type": "mysql",
-      "host": "localhost",
-      "port": 3306,
-      "database": "production",
-      "username": "user",
-      "password": "encrypted_password"
-    },
-    {
-      "id": "warehouse_pg", 
-      "name": "数据仓库PostgreSQL",
-      "type": "postgresql",
-      "host": "postgres.example.com",
-      "port": 5432,
-      "database": "warehouse",
-      "username": "readonly",
-      "password": "encrypted_password"
-    }
-  ]
-}
-```
 
-### DuckDB引擎配置
-
-Duck Query 在应用启动时自动配置DuckDB引擎，包括：
-- 自动优化参数设置（线程数、内存限制、性能优化等）
-- 自动安装和加载必要扩展（Excel、JSON、Parquet支持）
-- 用户无需手动配置，开箱即用
 
 ## 📖 使用指南
 
