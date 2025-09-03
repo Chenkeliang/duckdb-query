@@ -177,9 +177,24 @@ npm run preview
   "max_tables": 200,                 // 最大表数量
   "enable_caching": true,            // 启用缓存
   "cache_ttl": 3600,                 // 缓存生存时间(秒)
-  "timezone": "Asia/Shanghai"        // 时区设置
+  "timezone": "Asia/Shanghai",       // 时区设置
+  
+  "duckdb_memory_limit": "8GB",      // DuckDB内存限制
+  "duckdb_threads": 8,               // DuckDB并行线程数
+  "duckdb_enable_profiling": true,   // 启用性能分析
+  "duckdb_extensions": [             // 自动加载的扩展
+    "excel",
+    "json", 
+    "parquet"
+  ]
 }
 ```
+
+**配置说明**：
+- **基础配置**：控制应用运行的基本参数
+- **DuckDB配置**：控制查询引擎的行为和性能
+- **自动更新**：系统会自动添加缺失的配置字段
+- **向后兼容**：现有配置不受影响
 
 ### 数据库连接配置
 

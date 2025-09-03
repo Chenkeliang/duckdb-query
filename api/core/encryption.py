@@ -58,7 +58,7 @@ def _initialize_global_encryptor() -> PasswordEncryptor:
     This function handles key loading/generation upon module import.
     """
     try:
-        config_dir = Path(__file__).parent.parent / "config"
+        config_dir = Path(__file__).parent.parent.parent / "config"
         secret_key_file = config_dir / "secret.key"
         secret_key = None
 

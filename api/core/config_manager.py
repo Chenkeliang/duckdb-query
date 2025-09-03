@@ -31,32 +31,82 @@ class DatabaseConfig:
 
 @dataclass
 class AppConfig:
-    """应用配置"""
-
-    debug: bool = False
-    cors_origins: List[str] = None
-    max_file_size: int = 50 * 1024 * 1024 * 1024  # 50GB
-    query_timeout: int = 300  # 5分钟
-    download_timeout: int = 600  # 10分钟，用于下载操作
-    max_query_rows: int = 10000
-    max_tables: int = 200  # 数据库表预览最大数量
-    enable_caching: bool = True
-    cache_ttl: int = 3600  # 1小时
-    timezone: str = "Asia/Shanghai"  # 应用时区
+    """
+    应用配置类
     
-    # DuckDB引擎配置参数
-    duckdb_memory_limit: str = "8GB"           # 内存限制
-    duckdb_threads: int = 8                    # 线程数
-    duckdb_temp_directory: str = None          # 临时目录
-    duckdb_home_directory: str = None          # 主目录
-    duckdb_extension_directory: str = None     # 扩展目录
-    duckdb_enable_profiling: bool = True       # 启用性能分析
-    duckdb_profiling_output: str = None        # 性能分析输出文件
-    duckdb_force_index_join: bool = False      # 强制索引JOIN
-    duckdb_enable_object_cache: bool = True    # 启用对象缓存
-    duckdb_preserve_insertion_order: bool = False  # 保持插入顺序
-    duckdb_enable_progress_bar: bool = False   # 启用进度条
-    duckdb_extensions: List[str] = None        # 要安装的扩展列表
+    包含应用运行所需的所有配置参数，包括基础配置和DuckDB引擎配置。
+    所有配置都可以通过配置文件进行自定义，系统会自动加载和验证。
+    """
+
+    # ==================== 基础应用配置 ====================
+    debug: bool = False
+    """调试模式开关，启用后会输出详细的调试信息"""
+    
+    cors_origins: List[str] = None
+    """跨域请求允许的源列表，用于前端跨域访问"""
+    
+    max_file_size: int = 50 * 1024 * 1024 * 1024  # 50GB
+    """最大文件上传大小限制，单位为字节"""
+    
+    query_timeout: int = 300  # 5分钟
+    """SQL查询超时时间，单位为秒"""
+    
+    download_timeout: int = 600  # 10分钟
+    """文件下载超时时间，单位为秒"""
+    
+    max_query_rows: int = 10000
+    """页面查询结果最大行数，更大数据量使用异步任务"""
+    
+    max_tables: int = 200
+    """数据库表预览最大数量限制"""
+    
+    enable_caching: bool = True
+    """是否启用查询结果缓存"""
+    
+    cache_ttl: int = 3600  # 1小时
+    """缓存生存时间，单位为秒"""
+    
+    timezone: str = "Asia/Shanghai"
+    """应用时区设置，影响时间相关的数据处理"""
+    
+    # ==================== DuckDB引擎配置 ====================
+    # 这些参数控制DuckDB查询引擎的行为和性能
+    
+    duckdb_memory_limit: str = "8GB"
+    """DuckDB内存使用限制，支持KB/MB/GB单位"""
+    
+    duckdb_threads: int = 8
+    """DuckDB并行查询线程数，建议设置为CPU核心数"""
+    
+    duckdb_temp_directory: str = None
+    """DuckDB临时文件目录，None时使用系统默认"""
+    
+    duckdb_home_directory: str = None
+    """DuckDB主目录，用于存储配置和扩展，None时使用系统默认"""
+    
+    duckdb_extension_directory: str = None
+    """DuckDB扩展安装目录，None时使用系统默认"""
+    
+    duckdb_enable_profiling: bool = True
+    """是否启用DuckDB查询性能分析，有助于性能调优"""
+    
+    duckdb_profiling_output: str = None
+    """性能分析输出文件路径，None时使用系统默认"""
+    
+    duckdb_force_index_join: bool = False
+    """是否强制使用索引JOIN，可能影响JOIN性能"""
+    
+    duckdb_enable_object_cache: bool = True
+    """是否启用对象缓存，提升重复查询性能"""
+    
+    duckdb_preserve_insertion_order: bool = False
+    """是否保持数据插入顺序，False可提升查询性能"""
+    
+    duckdb_enable_progress_bar: bool = False
+    """是否启用查询进度条，生产环境建议关闭"""
+    
+    duckdb_extensions: List[str] = None
+    """要自动安装和加载的DuckDB扩展列表"""
 
     def __post_init__(self):
         if self.cors_origins is None:
