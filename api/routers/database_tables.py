@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 async def get_database_tables(connection_id: str):
     """获取指定数据库连接的所有表信息"""
     try:
+        # 获取应用配置
+        from core.config_manager import config_manager
+        app_config = config_manager.get_app_config()
+        
         # 获取数据库连接配置
         connection = db_manager.get_connection(connection_id)
         if not connection:
@@ -256,6 +260,10 @@ async def get_database_tables(connection_id: str):
 async def get_table_details(connection_id: str, table_name: str):
     """获取指定表的详细信息，包括字段详情和示例数据"""
     try:
+        # 获取应用配置
+        from core.config_manager import config_manager
+        app_config = config_manager.get_app_config()
+        
         # 获取数据库连接配置
         connection = db_manager.get_connection(connection_id)
         if not connection:
