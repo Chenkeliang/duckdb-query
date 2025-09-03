@@ -16,6 +16,11 @@ import os
 
 logger = logging.getLogger(__name__)
 
+# 获取应用配置
+from core.config_manager import config_manager
+
+app_config = config_manager.get_app_config()
+
 
 class ConnectionState(Enum):
     IDLE = "idle"
@@ -142,13 +147,19 @@ class DuckDBConnectionPool:
 
         except Exception as e:
             logger.warning(f"应用统一配置失败，使用基础配置: {str(e)}")
-            # 基础配置作为后备
-            connection.execute("SET threads=8")
-            connection.execute(f"SET temp_directory='{temp_dir}'")
-            if app_config.duckdb_memory_limit:
-                connection.execute(
-                    f"SET memory_limit='{app_config.duckdb_memory_limit}'"
-                )
+            # 基础配置作为后备，使用配置文件中的值
+            try:
+                connection.execute(f"SET threads={app_config.duckdb_threads}")
+                connection.execute(f"SET temp_directory='{temp_dir}'")
+                if app_config.duckdb_memory_limit:
+                    connection.execute(
+                        f"SET memory_limit='{app_config.duckdb_memory_limit}'"
+                    )
+            except Exception as fallback_error:
+                logger.error(f"基础配置也失败: {str(fallback_error)}")
+                # 最后的硬编码后备
+                connection.execute("SET threads=8")
+                connection.execute(f"SET temp_directory='{temp_dir}'")
 
     @contextmanager
     def get_connection(self):
@@ -198,7 +209,7 @@ class DuckDBConnectionPool:
                     logger.error("获取连接超时")
                     return None
 
-                self._condition.wait(timeout=1.0)
+                self._condition.wait(timeout=app_config.pool_wait_timeout)
 
     def _release_connection(self, conn_id: int):
         """释放连接"""
@@ -331,9 +342,10 @@ def get_connection_pool() -> DuckDBConnectionPool:
         app_config = config_manager.get_app_config()
 
         _connection_pool = DuckDBConnectionPool(
-            min_connections=2,
-            max_connections=10,
-            connection_timeout=30,
-            idle_timeout=300,
+            min_connections=app_config.pool_min_connections,
+            max_connections=app_config.pool_max_connections,
+            connection_timeout=app_config.pool_connection_timeout,
+            idle_timeout=app_config.pool_idle_timeout,
+            max_retries=app_config.pool_max_retries,
         )
     return _connection_pool

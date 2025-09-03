@@ -39,8 +39,13 @@ async def read_from_url(request: URLReadRequest):
         # 转换GitHub URL
         converted_url = convert_github_url(str(request.url))
 
+        # 获取配置的超时时间
+        from core.config_manager import config_manager
+
+        app_config = config_manager.get_app_config()
+
         # 下载文件
-        response = requests.get(converted_url, timeout=30)
+        response = requests.get(converted_url, timeout=app_config.url_reader_timeout)
         response.raise_for_status()
 
         # 检测文件类型
@@ -267,7 +272,7 @@ async def get_url_info(url: str):
     """获取URL文件信息（不下载完整文件）"""
     try:
         # 发送HEAD请求获取文件信息
-        response = requests.head(url, timeout=10)
+        response = requests.head(url, timeout=app_config.url_reader_head_timeout)
         response.raise_for_status()
 
         content_type = response.headers.get("content-type", "")

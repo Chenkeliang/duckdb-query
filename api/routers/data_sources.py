@@ -88,13 +88,17 @@ async def test_connection_simple(request: dict = Body(...)):
             try:
                 import pymysql
 
+                # 获取配置的超时时间
+                from core.config_manager import config_manager
+                app_config = config_manager.get_app_config()
+                
                 conn = pymysql.connect(
                     host=request.get("host", "localhost"),
                     port=request.get("port", 3306),
                     user=request.get("username", ""),
                     password=request.get("password", ""),
                     database=request.get("database", ""),
-                    connect_timeout=5,
+                    connect_timeout=app_config.db_ping_timeout,
                 )
                 conn.ping()
                 conn.close()
@@ -113,7 +117,7 @@ async def test_connection_simple(request: dict = Body(...)):
                     user=request.get("username", ""),
                     password=request.get("password", ""),
                     database=request.get("database", ""),
-                    connect_timeout=5,
+                    connect_timeout=app_config.db_ping_timeout,
                 )
                 conn.close()
                 return {"success": True, "message": "PostgreSQL连接测试成功"}
@@ -518,6 +522,10 @@ async def get_mysql_tables(connection: DatabaseConnection) -> list:
     try:
         import pymysql
 
+        # 获取配置的超时时间
+        from core.config_manager import config_manager
+        app_config = config_manager.get_app_config()
+        
         # 创建连接
         conn = pymysql.connect(
             host=connection.params.get("host", "localhost"),
@@ -525,7 +533,7 @@ async def get_mysql_tables(connection: DatabaseConnection) -> list:
             user=connection.params.get("username", ""),
             password=connection.params.get("password", ""),
             database=connection.params.get("database", ""),
-            connect_timeout=5,
+            connect_timeout=app_config.db_connect_timeout,
         )
 
         with conn.cursor() as cursor:
@@ -577,7 +585,7 @@ async def get_postgresql_tables(connection: DatabaseConnection) -> list:
             user=connection.params.get("username", ""),
             password=connection.params.get("password", ""),
             database=connection.params.get("database", ""),
-            connect_timeout=5,
+            connect_timeout=app_config.db_connect_timeout,
         )
 
         with conn.cursor() as cursor:

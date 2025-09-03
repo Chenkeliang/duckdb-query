@@ -45,7 +45,9 @@ class DatabaseManager:
         if config_dir:
             config_path = Path(config_dir) / "datasources.json"
         else:
-            config_path = Path(__file__).parent.parent.parent / "config" / "datasources.json"
+            config_path = (
+                Path(__file__).parent.parent.parent / "config" / "datasources.json"
+            )
 
         if not os.path.exists(config_path):
             logger.warning(f"Configuration file not found: {config_path}")
@@ -54,13 +56,15 @@ class DatabaseManager:
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
-                
+
             for conn_data in config.get("database_sources", []):
                 conn_type_str = conn_data.get("type")
                 conn_type = DataSourceType(conn_type_str) if conn_type_str else None
 
                 if not conn_type:
-                    logger.warning(f"Skipping connection with missing or invalid type: {conn_data.get('id')}")
+                    logger.warning(
+                        f"Skipping connection with missing or invalid type: {conn_data.get('id')}"
+                    )
                     continue
 
                 connection = DatabaseConnection(
@@ -168,13 +172,18 @@ class DatabaseManager:
                 password = password_encryptor.decrypt_password(password)
                 logger.info("密码已解密用于连接测试")
 
+            # 获取配置的超时时间
+            from core.config_manager import config_manager
+
+            app_config = config_manager.get_app_config()
+
             connection = pymysql.connect(
                 host=params.get("host"),
                 port=params.get("port", 3306),
                 user=username,
                 password=password,
                 database=params.get("database"),
-                connect_timeout=10,
+                connect_timeout=app_config.db_connect_timeout,
             )
 
             with connection.cursor() as cursor:
@@ -219,7 +228,7 @@ class DatabaseManager:
                 user=username,
                 password=password,
                 database=params.get("database"),
-                connect_timeout=10,
+                connect_timeout=app_config.db_connect_timeout,
             )
 
             with connection.cursor() as cursor:
@@ -250,7 +259,7 @@ class DatabaseManager:
         """测试SQLite连接"""
         try:
             db_path = params.get("database", ":memory:")
-            connection = sqlite3.connect(db_path, timeout=10)
+            connection = sqlite3.connect(db_path, timeout=app_config.sqlite_timeout)
 
             cursor = connection.cursor()
             cursor.execute("SELECT sqlite_version()")

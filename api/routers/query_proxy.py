@@ -145,9 +145,16 @@ async def query_proxy(request: Request):
         )
         base_url = f"{scheme}://{host}"
 
+        # 获取配置的超时时间
+        from core.config_manager import config_manager
+
+        app_config = config_manager.get_app_config()
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{base_url}/api/query", json=converted_request, timeout=300.0
+                f"{base_url}/api/query",
+                json=converted_request,
+                timeout=app_config.query_proxy_timeout,
             )
 
             # 返回原始响应，添加代理标识

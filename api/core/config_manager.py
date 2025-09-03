@@ -33,7 +33,7 @@ class DatabaseConfig:
 class AppConfig:
     """
     应用配置类
-    
+
     包含应用运行所需的所有配置参数，包括基础配置和DuckDB引擎配置。
     所有配置都可以通过配置文件进行自定义，系统会自动加载和验证。
     """
@@ -41,77 +41,128 @@ class AppConfig:
     # ==================== 基础应用配置 ====================
     debug: bool = False
     """调试模式开关，启用后会输出详细的调试信息"""
-    
+
     cors_origins: List[str] = None
     """跨域请求允许的源列表，用于前端跨域访问"""
-    
+
     max_file_size: int = 50 * 1024 * 1024 * 1024  # 50GB
     """最大文件上传大小限制，单位为字节"""
-    
+
     query_timeout: int = 300  # 5分钟
     """SQL查询超时时间，单位为秒"""
-    
+
     download_timeout: int = 600  # 10分钟
     """文件下载超时时间，单位为秒"""
-    
+
     max_query_rows: int = 10000
     """页面查询结果最大行数，更大数据量使用异步任务"""
-    
+
     max_tables: int = 200
     """数据库表预览最大数量限制"""
-    
+
     enable_caching: bool = True
     """是否启用查询结果缓存"""
-    
+
     cache_ttl: int = 3600  # 1小时
     """缓存生存时间，单位为秒"""
-    
+
     timezone: str = "Asia/Shanghai"
     """应用时区设置，影响时间相关的数据处理"""
-    
+
     # ==================== DuckDB引擎配置 ====================
     # 这些参数控制DuckDB查询引擎的行为和性能
-    
+
     duckdb_memory_limit: str = "8GB"
     """DuckDB内存使用限制，支持KB/MB/GB单位"""
-    
+
     duckdb_threads: int = 8
     """DuckDB并行查询线程数，建议设置为CPU核心数"""
-    
+
     duckdb_temp_directory: str = None
     """DuckDB临时文件目录，None时使用系统默认"""
-    
+
     duckdb_home_directory: str = None
     """DuckDB主目录，用于存储配置和扩展，None时使用系统默认"""
-    
+
     duckdb_extension_directory: str = None
     """DuckDB扩展安装目录，None时使用系统默认"""
-    
+
     duckdb_enable_profiling: bool = True
     """是否启用DuckDB查询性能分析，有助于性能调优"""
-    
+
     duckdb_profiling_output: str = None
     """性能分析输出文件路径，None时使用系统默认"""
-    
+
     duckdb_force_index_join: bool = False
     """是否强制使用索引JOIN，可能影响JOIN性能"""
-    
+
     duckdb_enable_object_cache: bool = True
     """是否启用对象缓存，提升重复查询性能"""
-    
+
     duckdb_preserve_insertion_order: bool = False
     """是否保持数据插入顺序，False可提升查询性能"""
-    
+
     duckdb_enable_progress_bar: bool = False
     """是否启用查询进度条，生产环境建议关闭"""
-    
+
     duckdb_extensions: List[str] = None
     """要自动安装和加载的DuckDB扩展列表"""
+
+    # ==================== 连接池配置 ====================
+    # 这些参数控制DuckDB连接池的行为和性能
+
+    pool_min_connections: int = 2
+    """连接池最小连接数"""
+
+    pool_max_connections: int = 10
+    """连接池最大连接数"""
+
+    pool_connection_timeout: int = 30
+    """连接获取超时时间，单位为秒"""
+
+    pool_idle_timeout: int = 300
+    """空闲连接超时时间，单位为秒"""
+
+    pool_max_retries: int = 3
+    """连接重试最大次数"""
+
+    # ==================== 数据库连接配置 ====================
+    # 这些参数控制外部数据库连接的行为
+
+    db_connect_timeout: int = 10
+    """数据库连接超时时间，单位为秒"""
+
+    db_read_timeout: int = 30
+    """数据库读取超时时间，单位为秒"""
+
+    db_write_timeout: int = 30
+    """数据库写入超时时间，单位为秒"""
+
+    db_ping_timeout: int = 5
+    """数据库连接测试超时时间，单位为秒"""
+
+    # ==================== 其他超时配置 ====================
+    # 这些参数控制各种操作的超时行为
+
+    query_proxy_timeout: int = 300
+    """查询代理超时时间，单位为秒"""
+
+    url_reader_timeout: int = 30
+    """URL读取超时时间，单位为秒"""
+
+    url_reader_head_timeout: int = 10
+    """URL HEAD请求超时时间，单位为秒"""
+
+    sqlite_timeout: int = 10
+    """SQLite连接超时时间，单位为秒"""
+
+    pool_wait_timeout: float = 1.0
+    """连接池等待超时时间，单位为秒"""
 
     def __post_init__(self):
         if self.cors_origins is None:
             self.cors_origins = ["http://localhost:3000", "http://localhost:5173"]
-        
+
         # 设置默认DuckDB扩展
         if self.duckdb_extensions is None:
             self.duckdb_extensions = ["excel", "json", "parquet"]
@@ -180,10 +231,10 @@ class ConfigManager:
         try:
             # 读取现有配置
             existing_config = self._load_json(self.app_config_file)
-            
+
             # 创建默认配置
             default_config = asdict(AppConfig())
-            
+
             # 合并配置：保留现有值，添加缺失的字段
             updated_config = {}
             for key, default_value in default_config.items():
@@ -192,11 +243,11 @@ class ConfigManager:
                 else:
                     updated_config[key] = default_value
                     logger.info(f"添加新配置字段: {key} = {default_value}")
-            
+
             # 保存更新后的配置
             self._save_json(self.app_config_file, updated_config)
             logger.info(f"应用配置文件已更新: {self.app_config_file}")
-            
+
         except Exception as e:
             logger.warning(f"更新应用配置文件失败: {str(e)}")
 
@@ -225,13 +276,39 @@ class ConfigManager:
         self.load_mysql_configs()
         self.load_app_config()
         self.load_datasources_config()
+        # 同步数据库管理器的配置
+        self._sync_database_manager_configs()
 
     def load_mysql_configs(self) -> Dict[str, DatabaseConfig]:
-        """加载MySQL配置"""
+        """加载MySQL配置 - 优先从datasources.json加载，兼容mysql-configs.json"""
         try:
-            configs_data = self._load_json(self.mysql_config_file)
             self._mysql_configs = {}
+            
+            # 首先尝试从datasources.json加载
+            datasources_data = self._load_json(self.datasources_config_file)
+            if datasources_data and "database_sources" in datasources_data:
+                for config_data in datasources_data["database_sources"]:
+                    if config_data.get("type") == "mysql" and "id" in config_data and "params" in config_data:
+                        # 解密配置中的密码
+                        decrypted_config_data = decrypt_config_passwords(config_data)
 
+                        config = DatabaseConfig(
+                            id=decrypted_config_data["id"],
+                            name=decrypted_config_data.get(
+                                "name", decrypted_config_data["id"]
+                            ),
+                            type=decrypted_config_data.get("type", "mysql"),
+                            params=decrypted_config_data["params"],
+                            enabled=decrypted_config_data.get("enabled", True),
+                            description=decrypted_config_data.get("description"),
+                        )
+                        self._mysql_configs[config.id] = config
+                
+                logger.info(f"从datasources.json加载了 {len(self._mysql_configs)} 个MySQL配置")
+                return self._mysql_configs
+            
+            # 如果datasources.json没有数据，尝试从mysql-configs.json加载（向后兼容）
+            configs_data = self._load_json(self.mysql_config_file)
             if isinstance(configs_data, list):
                 for config_data in configs_data:
                     if "id" in config_data and "params" in config_data:
@@ -249,8 +326,11 @@ class ConfigManager:
                             description=decrypted_config_data.get("description"),
                         )
                         self._mysql_configs[config.id] = config
+                
+                logger.info(f"从mysql-configs.json加载了 {len(self._mysql_configs)} 个MySQL配置")
+                return self._mysql_configs
 
-            logger.info(f"加载了 {len(self._mysql_configs)} 个MySQL配置")
+            logger.info(f"没有找到MySQL配置")
             return self._mysql_configs
 
         except Exception as e:
@@ -335,6 +415,47 @@ class ConfigManager:
     def get_datasources_config(self) -> Dict[str, Any]:
         """获取数据源配置"""
         return self._datasources_config.copy()
+    
+    def get_all_database_sources(self) -> List[Dict[str, Any]]:
+        """获取所有数据库数据源配置"""
+        try:
+            datasources_data = self._load_json(self.datasources_config_file)
+            if datasources_data and "database_sources" in datasources_data:
+                return datasources_data["database_sources"]
+            return []
+        except Exception as e:
+            logger.error(f"获取数据库数据源配置失败: {str(e)}")
+            return []
+    
+    def _sync_database_manager_configs(self):
+        """同步数据库管理器的配置到MySQL配置中"""
+        try:
+            # 获取所有数据库数据源
+            database_sources = self.get_all_database_sources()
+            
+            # 将MySQL类型的配置同步到_mysql_configs
+            for source in database_sources:
+                if source.get("type") == "mysql" and "id" in source and "params" in source:
+                    # 检查是否已经存在
+                    if source["id"] not in self._mysql_configs:
+                        # 解密配置中的密码
+                        decrypted_config_data = decrypt_config_passwords(source)
+                        
+                        config = DatabaseConfig(
+                            id=decrypted_config_data["id"],
+                            name=decrypted_config_data.get("name", decrypted_config_data["id"]),
+                            type=decrypted_config_data.get("type", "mysql"),
+                            params=decrypted_config_data["params"],
+                            enabled=decrypted_config_data.get("enabled", True),
+                            description=decrypted_config_data.get("description"),
+                        )
+                        self._mysql_configs[config.id] = config
+                        logger.info(f"同步MySQL配置: {config.id}")
+            
+            logger.info(f"同步完成，当前共有 {len(self._mysql_configs)} 个MySQL配置")
+            
+        except Exception as e:
+            logger.error(f"同步数据库管理器配置失败: {str(e)}")
 
     def add_mysql_config(self, config: DatabaseConfig) -> bool:
         """添加MySQL配置"""

@@ -6,6 +6,9 @@ from core.database_manager import db_manager
 from core.config_manager import config_manager
 from core.encryption import password_encryptor
 
+# 获取应用配置
+app_config = config_manager.get_app_config()
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -23,7 +26,11 @@ async def get_database_tables(connection_id: str):
 
         # 根据数据库类型处理不同的连接方式
         db_config = connection.params
-        db_type = connection.type.value if hasattr(connection.type, "value") else str(connection.type)
+        db_type = (
+            connection.type.value
+            if hasattr(connection.type, "value")
+            else str(connection.type)
+        )
 
         if db_type == "mysql":
             # MySQL连接
@@ -47,9 +54,9 @@ async def get_database_tables(connection_id: str):
                 password=password,
                 database=db_config["database"],
                 charset="utf8mb4",
-                connect_timeout=10,  # 连接超时10秒
-                read_timeout=30,  # 读取超时30秒
-                write_timeout=30,  # 写入超时30秒
+                connect_timeout=app_config.db_connect_timeout,
+                read_timeout=app_config.db_read_timeout,
+                write_timeout=app_config.db_write_timeout,
             )
 
             try:
@@ -61,7 +68,7 @@ async def get_database_tables(connection_id: str):
                     table_info = []
                     # 限制表数量，避免超时
                     app_config = config_manager.get_app_config()
-                    max_tables = getattr(app_config, 'max_tables', 200)  # 默认200
+                    max_tables = getattr(app_config, "max_tables", 200)  # 默认200
                     tables_to_process = tables[:max_tables]
 
                     for table_name in tables_to_process:
@@ -139,30 +146,33 @@ async def get_database_tables(connection_id: str):
                 user=username,
                 password=password,
                 database=db_config["database"],
-                connect_timeout=10,  # 连接超时10秒
+                connect_timeout=app_config.db_connect_timeout,
             )
 
             try:
                 with conn.cursor() as cursor:
                     # 获取所有表名 (仅当前数据库的public模式)
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         SELECT tablename 
                         FROM pg_tables 
                         WHERE schemaname = 'public'
                         ORDER BY tablename
-                    """)
+                    """
+                    )
                     tables = [row[0] for row in cursor.fetchall()]
 
                     table_info = []
                     # 限制表数量，避免超时
                     app_config = config_manager.get_app_config()
-                    max_tables = getattr(app_config, 'max_tables', 200)  # 默认200
+                    max_tables = getattr(app_config, "max_tables", 200)  # 默认200
                     tables_to_process = tables[:max_tables]
 
                     for table_name in tables_to_process:
                         try:
                             # 获取表结构信息
-                            cursor.execute("""
+                            cursor.execute(
+                                """
                                 SELECT 
                                     column_name,
                                     data_type,
@@ -172,8 +182,10 @@ async def get_database_tables(connection_id: str):
                                 FROM information_schema.columns 
                                 WHERE table_name = %s AND table_schema = 'public'
                                 ORDER BY ordinal_position
-                            """, (table_name,))
-                            
+                            """,
+                                (table_name,),
+                            )
+
                             columns = []
                             for col_row in cursor.fetchall():
                                 columns.append(
@@ -231,10 +243,16 @@ async def get_database_tables(connection_id: str):
 
     except Exception as e:
         logger.error(f"获取数据库 '{connection_id}' 的表信息失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取数据库 '{connection_id}' 的表信息失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取数据库 '{connection_id}' 的表信息失败: {str(e)}",
+        )
 
 
-@router.get("/api/database_table_details/{connection_id}/{table_name}", tags=["Database Management"])
+@router.get(
+    "/api/database_table_details/{connection_id}/{table_name}",
+    tags=["Database Management"],
+)
 async def get_table_details(connection_id: str, table_name: str):
     """获取指定表的详细信息，包括字段详情和示例数据"""
     try:
@@ -247,7 +265,11 @@ async def get_table_details(connection_id: str, table_name: str):
 
         # 根据数据库类型处理不同的连接方式
         db_config = connection.params
-        db_type = connection.type.value if hasattr(connection.type, "value") else str(connection.type)
+        db_type = (
+            connection.type.value
+            if hasattr(connection.type, "value")
+            else str(connection.type)
+        )
 
         if db_type == "mysql":
             # MySQL连接
@@ -271,9 +293,9 @@ async def get_table_details(connection_id: str, table_name: str):
                 password=password,
                 database=db_config["database"],
                 charset="utf8mb4",
-                connect_timeout=10,  # 连接超时10秒
-                read_timeout=30,  # 读取超时30秒
-                write_timeout=30,  # 写入超时30秒
+                connect_timeout=app_config.db_connect_timeout,
+                read_timeout=app_config.db_read_timeout,
+                write_timeout=app_config.db_write_timeout,
             )
 
             try:
@@ -335,13 +357,14 @@ async def get_table_details(connection_id: str, table_name: str):
                 user=username,
                 password=password,
                 database=db_config["database"],
-                connect_timeout=10,  # 连接超时10秒
+                connect_timeout=app_config.db_connect_timeout,
             )
 
             try:
                 with conn.cursor() as cursor:
                     # 获取表结构详细信息
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         SELECT 
                             column_name,
                             data_type,
@@ -351,8 +374,10 @@ async def get_table_details(connection_id: str, table_name: str):
                         FROM information_schema.columns 
                         WHERE table_name = %s AND table_schema = 'public'
                         ORDER BY ordinal_position
-                    """, (table_name,))
-                    
+                    """,
+                        (table_name,),
+                    )
+
                     columns = []
                     for col_row in cursor.fetchall():
                         columns.append(
@@ -370,7 +395,7 @@ async def get_table_details(connection_id: str, table_name: str):
                     row_count = 0  # 返回0避免前端错误
 
                     # 获取示例数据（前5行）
-                    cursor.execute(f"SELECT * FROM \"{table_name}\" LIMIT 5")
+                    cursor.execute(f'SELECT * FROM "{table_name}" LIMIT 5')
                     sample_data = []
                     for row in cursor.fetchall():
                         sample_data.append(list(row))

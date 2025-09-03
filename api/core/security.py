@@ -32,9 +32,32 @@ ALLOWED_FILE_TYPES = {
     "pq": ["application/octet-stream"],
 }
 
-# 文件大小限制（字节）
-MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
-MAX_CHUNK_FILE_SIZE = 1024 * 1024 * 1024  # 1GB for chunked upload
+
+# 文件大小限制（字节）- 从配置文件读取
+def get_max_file_size():
+    """从配置文件获取最大文件大小限制"""
+    try:
+        from core.config_manager import config_manager
+
+        app_config = config_manager.get_app_config()
+        return app_config.max_file_size
+    except Exception as e:
+        logger.warning(f"无法获取配置文件，使用默认值: {str(e)}")
+        return 100 * 1024 * 1024  # 100MB 默认值
+
+
+def get_max_chunk_file_size():
+    """获取分块上传的最大文件大小限制"""
+    try:
+        from core.config_manager import config_manager
+
+        app_config = config_manager.get_app_config()
+        # 分块上传使用应用配置的文件大小限制
+        return app_config.max_file_size
+    except Exception as e:
+        logger.warning(f"无法获取配置文件，使用默认值: {str(e)}")
+        return 1024 * 1024 * 1024  # 1GB 默认值
+
 
 # 危险的SQL关键词
 DANGEROUS_SQL_KEYWORDS = {
@@ -100,9 +123,10 @@ class SecurityValidator:
 
         try:
             # 1. 检查文件大小
-            if file_size > MAX_FILE_SIZE:
+            max_size = get_max_file_size()
+            if file_size > max_size:
                 result["errors"].append(
-                    f"文件大小超过限制 ({file_size / 1024 / 1024:.1f}MB > {MAX_FILE_SIZE / 1024 / 1024}MB)"
+                    f"文件大小超过限制 ({file_size / 1024 / 1024:.1f}MB > {max_size / 1024 / 1024}MB)"
                 )
                 return result
 
