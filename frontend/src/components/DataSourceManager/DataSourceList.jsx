@@ -1,27 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import {
+  Storage as DatabaseIcon,
+  Delete as DeleteIcon
+} from '@mui/icons-material';
 import {
   Box,
-  Typography,
+  Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
   List,
   ListItem,
-  ListItemText,
   ListItemSecondaryAction,
-  IconButton,
-  Chip,
+  ListItemText,
   Paper,
-  Divider,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Alert,
-  Button
+  Typography
 } from '@mui/material';
-import {
-  Delete as DeleteIcon,
-  Storage as DatabaseIcon
-} from '@mui/icons-material';
+import React, { useEffect, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
+import { deleteDatabaseConnection } from '../../services/apiClient';
 
 const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh }) => {
   const { showSuccess, showError } = useToast();
@@ -37,6 +37,35 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
   useEffect(() => {
     setInitialLoading(false);
   }, []);
+
+  // 处理删除操作
+  const handleDelete = (item, type) => {
+    setDeleteDialog({ open: true, item, type });
+  };
+
+  // 删除数据库连接
+  const deleteDatabase = async (connectionId) => {
+    try {
+      setLoading(true);
+      const response = await deleteDatabaseConnection(connectionId);
+
+      if (response.success) {
+        showSuccess('数据库连接删除成功!');
+        // 关闭对话框
+        setDeleteDialog({ open: false, item: null, type: null });
+        // 刷新数据
+        if (onRefresh) {
+          onRefresh();
+        }
+      } else {
+        showError('删除失败: ' + response.message);
+      }
+    } catch (err) {
+      showError('删除失败: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const confirmDelete = () => {
     const { item, type } = deleteDialog;
@@ -89,8 +118,8 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
                   }
                 />
                 <ListItemSecondaryAction>
-                  <IconButton 
-                    onClick={() => handleDelete(db, 'database')} 
+                  <IconButton
+                    onClick={() => handleDelete(db, 'database')}
                     size="small"
                     color="error"
                   >

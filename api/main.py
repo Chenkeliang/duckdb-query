@@ -111,6 +111,12 @@ async def startup_event():
     logger.info("应用正在启动...")
 
     try:
+        # 预加载数据库连接配置
+        logger.info("开始加载数据库连接配置...")
+        db_manager._load_connections_from_config()
+        connections = db_manager.list_connections()
+        logger.info(f"数据库连接配置加载完成，共 {len(connections)} 个连接")
+
         # 重新加载文件数据源
         load_file_datasources_on_startup()
         logger.info("所有数据源加载完成")

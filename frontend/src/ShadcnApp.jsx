@@ -34,8 +34,24 @@ const ShadcnApp = () => {
   // 获取Toast功能
   const { showSuccess, showError, showWarning, showInfo } = useToast();
 
+  // 检查是否应该显示欢迎页面（7天内不再显示）
+  const shouldShowWelcome = () => {
+    const welcomeShownKey = 'duck-query-welcome-shown';
+    const lastShownTime = localStorage.getItem(welcomeShownKey);
+
+    if (!lastShownTime) {
+      return true; // 从未显示过，应该显示
+    }
+
+    const lastShown = new Date(lastShownTime);
+    const now = new Date();
+    const daysDiff = (now - lastShown) / (1000 * 60 * 60 * 24);
+
+    return daysDiff >= 7; // 7天后才再次显示
+  };
+
   // 状态管理
-  const [showWelcome, setShowWelcome] = useState(true); // 控制是否显示欢迎页面
+  const [showWelcome, setShowWelcome] = useState(shouldShowWelcome()); // 控制是否显示欢迎页面
   const [currentTab, setCurrentTab] = useState("datasource");
   const [tableManagementTab, setTableManagementTab] = useState("duckdb"); // 二级TAB状态
   const [dataSources, setDataSources] = useState([]);
@@ -278,9 +294,16 @@ const ShadcnApp = () => {
     }
   };
 
+  // 处理关闭欢迎页面
+  const handleCloseWelcome = () => {
+    const welcomeShownKey = 'duck-query-welcome-shown';
+    localStorage.setItem(welcomeShownKey, new Date().toISOString());
+    setShowWelcome(false);
+  };
+
   // 如果显示欢迎页面，直接返回欢迎页面组件
   if (showWelcome) {
-    return <WelcomePage onStartUsing={() => setShowWelcome(false)} />;
+    return <WelcomePage onStartUsing={handleCloseWelcome} />;
   }
 
   return (
@@ -317,7 +340,12 @@ const ShadcnApp = () => {
             </div>
             <div className="flex items-center space-x-3">
               <button
-                onClick={() => setShowWelcome(true)}
+                onClick={() => {
+                  setShowWelcome(true);
+                  // 用户主动查看时，也记录时间，防止频繁显示
+                  const welcomeShownKey = 'duck-query-welcome-shown';
+                  localStorage.setItem(welcomeShownKey, new Date().toISOString());
+                }}
                 className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 产品介绍

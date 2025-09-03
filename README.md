@@ -122,7 +122,7 @@ docker-compose up -d
 
 **克隆仓库**
 ```bash
-git clone https://github.com/your-username/duck-query.git
+git clone https://github.com/Chenkeliang/DuckQuery.git
 cd duck-query
 ```
 
@@ -275,7 +275,7 @@ GROUP BY date_trunc('month', date_col);
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/duck-query.git
+git clone https://github.com/Chenkeliang/DuckQuery.git
 cd duck-query
 
 # 后端开发
@@ -353,6 +353,6 @@ Duck Query 基于 DuckDB 引擎，具有以下性能特点：
 
 **基于DuckDB，让数据分析更简单**
 
-[⭐ Star](https://github.com/your-username/duck-query) • [🍴 Fork](https://github.com/your-username/duck-query/fork) • [📥 Download](https://github.com/your-username/duck-query/releases)
+[⭐ Star](https://github.com/Chenkeliang/DuckQuery) • [🍴 Fork](https://github.com/Chenkeliang/DuckQuery/fork) • [📥 Download](https://github.com/Chenkeliang/DuckQuery/releases)
 
 </div>

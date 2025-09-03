@@ -34,10 +34,12 @@ from core.timezone_utils import get_current_time  # 导入时区工具
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# 修复Docker环境中的配置文件路径问题
 DATASOURCES_CONFIG_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "..",
-    "config",
+    os.getenv(
+        "CONFIG_DIR",
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "config"),
+    ),
     "datasources.json",
 )
 
@@ -45,12 +47,42 @@ DATASOURCES_CONFIG_FILE = os.path.join(
 def _save_connections_to_config():
     try:
         connections = db_manager.list_connections()
-        config_data = {"database_sources": [conn.dict() for conn in connections]}
+
+        # 在保存前对密码进行加密，并处理datetime序列化问题
+        from core.encryption import encrypt_config_passwords
+
+        encrypted_connections = []
+        for conn in connections:
+            # 将DatabaseConnection对象转换为字典
+            conn_dict = conn.dict()
+
+            # 处理datetime字段，转换为ISO格式字符串
+            if conn_dict.get("created_at") and hasattr(
+                conn_dict["created_at"], "isoformat"
+            ):
+                conn_dict["created_at"] = conn_dict["created_at"].isoformat()
+            if conn_dict.get("updated_at") and hasattr(
+                conn_dict["updated_at"], "isoformat"
+            ):
+                conn_dict["updated_at"] = conn_dict["updated_at"].isoformat()
+            if conn_dict.get("last_tested") and hasattr(
+                conn_dict["last_tested"], "isoformat"
+            ):
+                conn_dict["last_tested"] = conn_dict["last_tested"].isoformat()
+
+            # 加密密码
+            encrypted_conn = encrypt_config_passwords(conn_dict)
+            encrypted_connections.append(encrypted_conn)
+
+        config_data = {"database_sources": encrypted_connections}
         with open(DATASOURCES_CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config_data, f, indent=2, ensure_ascii=False)
-        logger.info("Successfully saved connections to config file.")
+        logger.info(
+            "Successfully saved connections to config file with encrypted passwords."
+        )
     except Exception as e:
         logger.error(f"Error saving connections to config file: {e}")
+        raise
 
 
 @router.post("/api/database_connections/test", tags=["Database Management"])
@@ -193,16 +225,20 @@ async def list_database_connections(request: Request):
         # 每次调用都重新加载配置，确保数据最新
         logger.info("重新加载数据库连接配置")
         logger.info(f"重新加载前连接数量: {len(db_manager.connections)}")
-        logger.info(f"重新加载前配置状态: {getattr(db_manager, '_config_loaded', 'Unknown')}")
-        
+        logger.info(
+            f"重新加载前配置状态: {getattr(db_manager, '_config_loaded', 'Unknown')}"
+        )
+
         db_manager._load_connections_from_config()
-        
+
         logger.info(f"重新加载后连接数量: {len(db_manager.connections)}")
-        logger.info(f"重新加载后配置状态: {getattr(db_manager, '_config_loaded', 'Unknown')}")
-        
+        logger.info(
+            f"重新加载后配置状态: {getattr(db_manager, '_config_loaded', 'Unknown')}"
+        )
+
         connections = db_manager.list_connections()
         logger.info(f"list_connections() 返回: {len(connections)} 个连接")
-        
+
         # 调试每个连接的状态
         for conn in connections:
             logger.info(f"连接 {conn.id}: 状态={conn.status}, 类型={type(conn.status)}")
@@ -210,14 +246,28 @@ async def list_database_connections(request: Request):
         # 将DatabaseConnection对象转换为可序列化的字典
         serializable_connections = []
         for conn in connections:
+            # 解密密码用于前端显示
+            params = conn.params.copy()
+            if "password" in params and params["password"]:
+                if password_encryptor and password_encryptor.is_encrypted(
+                    params["password"]
+                ):
+                    params["password"] = password_encryptor.decrypt_password(
+                        params["password"]
+                    )
+
             conn_dict = {
                 "id": conn.id,
                 "name": conn.name,
                 "type": (
                     conn.type.value if hasattr(conn.type, "value") else str(conn.type)
                 ),
-                "params": conn.params,
-                "status": conn.status.value if hasattr(conn.status, "value") else str(conn.status),
+                "params": params,
+                "status": (
+                    conn.status.value
+                    if hasattr(conn.status, "value")
+                    else str(conn.status)
+                ),
                 "created_at": conn.created_at.isoformat() if conn.created_at else None,
                 "updated_at": conn.updated_at.isoformat() if conn.updated_at else None,
                 "last_tested": (
@@ -473,9 +523,39 @@ async def update_database_connection(
 async def delete_database_connection(connection_id: str):
     """删除数据库连接"""
     try:
+        # 从内存中删除连接
         success = db_manager.remove_connection(connection_id)
         if success:
-            _save_connections_to_config()
+            # 直接更新配置文件，移除指定的连接
+            try:
+                # 读取当前配置文件
+                with open(DATASOURCES_CONFIG_FILE, "r", encoding="utf-8") as f:
+                    config_data = json.load(f)
+
+                # 移除指定的连接
+                if "database_sources" in config_data:
+                    config_data["database_sources"] = [
+                        conn
+                        for conn in config_data["database_sources"]
+                        if conn.get("id") != connection_id
+                    ]
+
+                # 保存更新后的配置
+                with open(DATASOURCES_CONFIG_FILE, "w", encoding="utf-8") as f:
+                    json.dump(config_data, f, indent=2, ensure_ascii=False)
+
+                logger.info(f"数据库连接 {connection_id} 删除成功，配置文件已更新")
+
+                # 强制重新加载配置，确保内存状态与文件同步
+                db_manager._config_loaded = False
+                db_manager._load_connections_from_config()
+
+            except Exception as e:
+                logger.error(f"更新配置文件失败: {str(e)}")
+                raise HTTPException(
+                    status_code=500, detail=f"更新配置文件失败: {str(e)}"
+                )
+
             return {"success": True, "message": "数据库连接删除成功"}
         else:
             raise HTTPException(status_code=404, detail="数据库连接不存在")

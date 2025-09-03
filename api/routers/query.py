@@ -43,6 +43,45 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def remove_auto_added_limit(sql: str) -> str:
+    """
+    智能移除系统自动添加的LIMIT子句，恢复用户原始SQL
+
+    保存功能应该使用用户的原始SQL意图：
+    - 如果用户原始SQL有LIMIT，完全保留
+    - 如果用户原始SQL无LIMIT，移除系统添加的LIMIT
+
+    Args:
+        sql: 前端传递的SQL（可能被系统修改过）
+
+    Returns:
+        用户原始SQL意图
+    """
+    from core.config_manager import config_manager
+
+    # 获取系统配置的最大行数
+    try:
+        max_rows = config_manager.get_app_config().max_query_rows
+    except:
+        max_rows = 10000  # 默认值
+
+    # 移除末尾的分号和空白
+    sql_cleaned = sql.rstrip("; \t\n\r")
+
+    # 只移除系统自动添加的LIMIT（等于配置的max_rows）
+    # 保留用户原始的所有LIMIT（无论大小）
+    limit_pattern = rf"\s+LIMIT\s+{max_rows}$"
+
+    if re.search(limit_pattern, sql_cleaned, re.IGNORECASE):
+        # 移除系统自动添加的LIMIT，恢复用户原始SQL
+        sql_cleaned = re.sub(limit_pattern, "", sql_cleaned, flags=re.IGNORECASE)
+        logger.info(f"移除了系统自动添加的LIMIT {max_rows}，恢复用户原始SQL")
+    else:
+        logger.info("保留用户原始SQL的LIMIT子句")
+
+    return sql_cleaned.strip()
+
+
 def get_join_type_sql(join_type):
     """将前端的join类型转换为正确的SQL JOIN语法"""
     join_type = join_type.lower()
@@ -1291,6 +1330,7 @@ async def save_query_to_duckdb(request: dict = Body(...)):
         )
         sql_query = request.get("sql") or request.get("sqlQuery", "")
         table_alias = request.get("table_alias") or request.get("tableAlias", "")
+        query_data = request.get("query_data")  # 直接传递的查询结果数据
 
         # 确保datasource是字典类型
         if not isinstance(datasource, dict):
@@ -1318,16 +1358,119 @@ async def save_query_to_duckdb(request: dict = Body(...)):
         # 根据数据源类型处理
         result_df = None
 
-        # 优先处理DuckDB内部查询（大多数情况）
-        try:
-            con = get_db_connection()
-            logger.info(f"在DuckDB中执行查询: {sql_query}")
-            result_df = execute_query(sql_query, con)
-            logger.info(f"DuckDB查询执行完成，结果形状: {result_df.shape}")
-        except Exception as duckdb_error:
-            logger.error(f"DuckDB查询失败: {str(duckdb_error)}")
+        # 对于保存功能，始终重新执行SQL以确保数据完整性
+        # 智能移除系统自动添加的LIMIT，保留用户原始的所有SQL逻辑
+        logger.info("重新执行SQL以获取完整数据，智能处理LIMIT限制")
 
-            # 如果DuckDB查询失败且是外部数据库，尝试外部数据库查询
+        # 判断数据源类型
+        if datasource_type in ["mysql"] and datasource_id != "duckdb_internal":
+            # 处理MySQL等外部数据库
+            try:
+                logger.info(f"执行外部数据库查询: {datasource_id}")
+                from core.database_manager import db_manager
+
+                # 确保数据库连接存在
+                existing_conn = db_manager.get_connection(datasource_id)
+                if not existing_conn:
+                    logger.info(f"连接 {datasource_id} 不存在，尝试从配置创建...")
+                    # 尝试从配置文件创建连接
+                    import json
+                    from datetime import datetime
+                    from models.query_models import (
+                        DatabaseConnection,
+                        DataSourceType,
+                    )
+
+                    try:
+                        # 使用新的数据源配置文件
+                        config_path = os.path.join(
+                            os.getenv(
+                                "CONFIG_DIR",
+                                os.path.join(
+                                    os.path.dirname(os.path.dirname(__file__)),
+                                    "..",
+                                    "config",
+                                ),
+                            ),
+                            "datasources.json",
+                        )
+                        if os.path.exists(config_path):
+                            with open(config_path, "r", encoding="utf-8") as f:
+                                config_data = json.load(f)
+                                configs = config_data.get("database_sources", [])
+
+                            config = None
+                            for cfg in configs:
+                                if cfg["id"] == datasource_id:
+                                    config = cfg
+                                    break
+
+                            if config:
+                                db_connection = DatabaseConnection(
+                                    id=config["id"],
+                                    name=config.get("name", config["id"]),
+                                    type=DataSourceType.MYSQL,
+                                    params=config["params"],
+                                    created_at=get_current_time(),
+                                )
+                                db_manager.add_connection(db_connection)
+                                logger.info(f"成功创建数据库连接: {datasource_id}")
+                            else:
+                                raise Exception(f"未找到数据源配置: {datasource_id}")
+                        else:
+                            raise Exception(f"配置文件不存在: {config_path}")
+
+                    except Exception as config_error:
+                        logger.error(f"创建数据库连接失败: {str(config_error)}")
+                        raise Exception(f"数据库连接失败: {str(config_error)}")
+
+                # 智能清理SQL，移除系统自动添加的LIMIT，保留所有用户条件
+                clean_sql = remove_auto_added_limit(sql_query)
+                if clean_sql != sql_query.strip():
+                    logger.info(
+                        f"MySQL查询移除了系统自动添加的LIMIT: {sql_query} -> {clean_sql}"
+                    )
+
+                # 执行查询获取完整数据（保留所有WHERE条件和用户逻辑）
+                result_df = db_manager.execute_query(datasource_id, clean_sql)
+                logger.info(f"外部数据库查询执行完成，结果形状: {result_df.shape}")
+
+            except Exception as db_error:
+                logger.error(f"外部数据库查询失败: {str(db_error)}")
+                raise HTTPException(
+                    status_code=500, detail=f"外部数据库查询失败: {str(db_error)}"
+                )
+        else:
+            # 处理DuckDB内部查询
+            try:
+                con = get_db_connection()
+
+                # 智能清理SQL：移除系统自动添加的LIMIT，保留所有用户条件和逻辑
+                clean_sql = sql_query.strip()
+                logger.info(f"原始SQL: {clean_sql}")
+
+                # 智能检测并移除系统自动添加的LIMIT（保留用户原始LIMIT和所有WHERE/JOIN/ORDER BY等条件）
+                clean_sql = remove_auto_added_limit(clean_sql)
+
+                if clean_sql != sql_query.strip():
+                    logger.info(
+                        f"DuckDB查询移除了系统自动添加的LIMIT，保留所有用户条件: {clean_sql}"
+                    )
+                else:
+                    logger.info(f"SQL无需清理或包含用户原始LIMIT: {clean_sql}")
+
+                logger.info(f"在DuckDB中执行完整查询: {clean_sql}")
+                result_df = execute_query(clean_sql, con)
+                logger.info(f"DuckDB查询执行完成，结果形状: {result_df.shape}")
+
+            except Exception as duckdb_error:
+                logger.error(f"DuckDB查询失败: {str(duckdb_error)}")
+                raise HTTPException(
+                    status_code=500, detail=f"DuckDB查询失败: {str(duckdb_error)}"
+                )
+
+        # 删除原来的重复处理逻辑
+        if False:  # 禁用原来的逻辑
             if datasource_type not in ["duckdb"] and datasource_id != "duckdb_internal":
                 try:
                     logger.info(f"尝试外部数据库查询: {datasource_id}")
@@ -2036,25 +2179,72 @@ async def get_available_tables():
 
 @router.post("/api/export/quick", tags=["Query"])
 async def quick_export(request: dict = Body(...)):
-    """快速导出查询结果为Excel文件"""
+    """智能快速导出：优先使用SQL重新查询完整数据，备用前端数据"""
+    import pandas as pd  # 移到函数开头，避免作用域问题
+
     try:
         logger.info(f"快速导出请求: {request}")
 
         # 获取请求参数
-        data = request.get("data", [])
-        columns = request.get("columns", [])
+        sql_query = request.get("sql", "")
+        original_datasource = request.get("originalDatasource")
         filename = request.get("filename", "export_data")
 
-        if not data:
-            raise HTTPException(status_code=400, detail="没有数据可导出")
+        # 备用参数（当无法使用SQL时）
+        fallback_data = request.get("fallback_data", [])
+        fallback_columns = request.get("fallback_columns", [])
 
-        if not columns:
-            raise HTTPException(status_code=400, detail="缺少列信息")
+        df = None
 
-        # 将数据转换为DataFrame
-        import pandas as pd
+        # 优先使用SQL重新查询完整数据
+        if sql_query:
+            logger.info(f"使用SQL重新查询完整数据进行导出: {sql_query}")
+            try:
+                # 根据数据源类型处理
+                if original_datasource:
+                    datasource_type = original_datasource.get("type", "duckdb")
+                    datasource_id = original_datasource.get("id", "")
+                else:
+                    # 如果originalDatasource为None，通过SQL特征判断类型
+                    # MySQL通常会有引号包围表名，DuckDB也会，但DuckDB查询通常来自内置表
+                    datasource_type = "duckdb"  # 默认为DuckDB
+                    datasource_id = ""
+                    logger.info(f"originalDatasource为None，默认使用DuckDB处理")
 
-        df = pd.DataFrame(data, columns=columns)
+                if datasource_type == "mysql" and datasource_id:
+                    # MySQL查询 - 使用相同的逻辑处理
+                    from core.database_manager import db_manager
+
+                    # 智能移除系统添加的LIMIT，保留用户原始SQL
+                    clean_sql = remove_auto_added_limit(sql_query)
+                    logger.info(f"MySQL导出，清理后的SQL: {clean_sql}")
+
+                    # 执行完整查询
+                    df = db_manager.execute_query(datasource_id, clean_sql)
+                    logger.info(f"MySQL导出查询完成，数据形状: {df.shape}")
+
+                else:
+                    # DuckDB查询
+                    con = get_db_connection()
+                    clean_sql = remove_auto_added_limit(sql_query)
+                    logger.info(f"DuckDB导出，清理后的SQL: {clean_sql}")
+
+                    df = execute_query(clean_sql, con)
+                    logger.info(f"DuckDB导出查询完成，数据形状: {df.shape}")
+
+            except Exception as sql_error:
+                logger.warning(f"SQL查询导出失败，降级为前端数据导出: {sql_error}")
+                df = None
+
+        # 备用方案：使用前端传递的数据
+        if df is None:
+            logger.info("使用前端传递的数据进行导出（备用方案）")
+            if not fallback_data:
+                raise HTTPException(status_code=400, detail="没有数据可导出")
+            if not fallback_columns:
+                raise HTTPException(status_code=400, detail="缺少列信息")
+
+            df = pd.DataFrame(fallback_data, columns=fallback_columns)
 
         # 处理数据类型和空值
         df.replace([np.inf, -np.inf], np.nan, inplace=True)

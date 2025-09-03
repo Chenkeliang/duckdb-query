@@ -74,12 +74,12 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
                 f"DuckDB性能分析设置为: {config_items['duckdb_enable_profiling']}"
             )
 
-        if config_items.get("duckdb_force_index_join") is not None:
+        if config_items.get("duckdb_prefer_range_joins") is not None:
             connection.execute(
-                f"SET force_index_join={str(config_items['duckdb_force_index_join']).lower()}"
+                f"SET prefer_range_joins={str(config_items['duckdb_prefer_range_joins']).lower()}"
             )
             logger.info(
-                f"DuckDB强制索引JOIN设置为: {config_items['duckdb_force_index_join']}"
+                f"DuckDB优先范围JOIN设置为: {config_items['duckdb_prefer_range_joins']}"
             )
 
         if config_items.get("duckdb_enable_object_cache") is not None:
@@ -201,7 +201,7 @@ def _apply_default_duckdb_config(connection, temp_dir: str):
             f"SET enable_profiling={str(app_config.duckdb_enable_profiling).lower()}"
         )
         connection.execute(
-            f"SET force_index_join={str(app_config.duckdb_force_index_join).lower()}"
+            f"SET prefer_range_joins={str(app_config.duckdb_prefer_range_joins).lower()}"
         )
         connection.execute(
             f"SET enable_object_cache={str(app_config.duckdb_enable_object_cache).lower()}"

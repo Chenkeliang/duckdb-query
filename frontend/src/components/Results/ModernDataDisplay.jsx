@@ -1,55 +1,52 @@
-import React, { useState, useMemo } from 'react';
 import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Button,
-  IconButton,
-  Chip,
-  Stack,
-  Divider,
-  Menu,
-  MenuItem,
-  TextField,
-  InputAdornment,
-  Pagination,
-  Select,
-  FormControl,
-  InputLabel,
-  Tooltip,
-  Alert,
-  LinearProgress,
-  useTheme,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormLabel,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
-} from '@mui/material';
-import {
-  Download as DownloadIcon,
-  FilterList as FilterIcon,
-  Search as SearchIcon,
-  ViewColumn as ColumnsIcon,
-  Refresh as RefreshIcon,
-  MoreVert as MoreIcon,
-  TableChart as TableIcon,
   BarChart as ChartIcon,
   Clear as ClearIcon,
-  Save as SaveIcon,
-  Speed as VirtualIcon,
+  ViewColumn as ColumnsIcon,
+  Download as DownloadIcon,
   Grid3x3 as GridIcon,
+  Refresh as RefreshIcon,
+  Save as SaveIcon,
+  Search as SearchIcon,
+  TableChart as TableIcon,
+  Speed as VirtualIcon
 } from '@mui/icons-material';
-import StableTable from '../StableTable';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
+  IconButton,
+  InputAdornment,
+  InputLabel,
+  LinearProgress,
+  Menu,
+  MenuItem,
+  Pagination,
+  Radio,
+  RadioGroup,
+  Select,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+  useTheme,
+} from '@mui/material';
+import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import { saveQueryResultAsDatasource, saveQueryToDuckDB, quickExport } from '../../services/apiClient';
-import VirtualTable from '../VirtualTable/VirtualTable';
-import SmartPagination from '../SmartPagination/SmartPagination';
+import { quickExport, saveQueryToDuckDB } from '../../services/apiClient';
 import QuickCharts from '../DataVisualization/QuickCharts';
+import StableTable from '../StableTable';
+import VirtualTable from '../VirtualTable/VirtualTable';
 
 const ModernDataDisplay = ({
   data = [],
@@ -72,7 +69,7 @@ const ModernDataDisplay = ({
     originalDatasource,
     hasOnDataSourceSaved: !!onDataSourceSaved
   });
-  
+
   const theme = useTheme();
   const { showSuccess, showError } = useToast();
   const [searchText, setSearchText] = useState('');
@@ -123,7 +120,7 @@ const ModernDataDisplay = ({
   // 过滤和搜索数据
   const filteredData = useMemo(() => {
     if (!searchText) return data;
-    
+
     return data.filter(row =>
       Object.values(row).some(value =>
         String(value).toLowerCase().includes(searchText.toLowerCase())
@@ -272,42 +269,45 @@ const ModernDataDisplay = ({
   const handleExport = async (format) => {
     try {
       handleExportMenuClose();
-      
+
       // 如果有自定义导出函数，优先使用
       if (onExport) {
         onExport(format, filteredData);
         showSuccess(`数据导出为 ${(format || '').toUpperCase()} 格式成功`);
         return;
       }
-      
+
       // 使用内置快速导出功能
       if (data.length === 0) {
         showError('没有数据可导出');
         return;
       }
-      
+
       showSuccess('正在准备导出文件...');
-      
-      // 构建导出请求
+
+      // 构建导出请求 - 使用SQL重新查询完整数据而非前端显示数据
       const exportRequest = {
-        data: filteredData,
-        columns: normalizedColumns.map(col => col.field),
-        filename: `${title}_${new Date().toLocaleString('zh-CN').replace(/[\/\s:]/g, '_')}`
+        sql: sqlQuery,
+        originalDatasource: originalDatasource,
+        filename: `${title}_${new Date().toLocaleString('zh-CN').replace(/[\/\s:]/g, '_')}`,
+        // 备用方案：如果没有SQL，则使用前端数据
+        fallback_data: sqlQuery ? null : filteredData,
+        fallback_columns: sqlQuery ? null : normalizedColumns.map(col => col.field)
       };
-      
+
       // 调用快速导出API
       const response = await quickExport(exportRequest);
-      
+
       if (response && response.data) {
         // 创建下载链接
         const blob = new Blob([response.data], {
           type: response.headers['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         });
-        
+
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        
+
         // 从响应头获取文件名，或使用默认文件名
         const contentDisposition = response.headers['content-disposition'];
         let filename = exportRequest.filename + '.xlsx';
@@ -317,23 +317,23 @@ const ModernDataDisplay = ({
             filename = filenameMatch[1].replace(/['"]/g, '');
           }
         }
-        
+
         link.setAttribute('download', filename);
         link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
-        
+
         // 清理
         setTimeout(() => {
           document.body.removeChild(link);
           window.URL.revokeObjectURL(url);
         }, 100);
-        
+
         showSuccess(`文件导出成功: ${filename}`);
       } else {
         throw new Error('导出响应无效');
       }
-      
+
     } catch (error) {
       console.error('导出失败:', error);
       showError(`导出失败: ${error.message || '网络错误，请重试'}`);
@@ -391,10 +391,12 @@ const ModernDataDisplay = ({
     setSaveError('');
 
     try {
+      // 让后端智能处理SQL：移除系统自动LIMIT，保留用户原始SQL的所有条件和逻辑
       const result = await saveQueryToDuckDB(
         sqlQuery,
         originalDatasource,
-        tableAlias.trim()
+        tableAlias.trim(),
+        null  // 不传递数据，让后端智能处理SQL并获取完整数据
       );
 
       if (result.success) {
@@ -573,7 +575,7 @@ const ModernDataDisplay = ({
       {/* 数据表格 */}
       <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {loading && <LinearProgress />}
-        
+
         <Box sx={{ flex: 1, position: 'relative' }}>
           {data.length === 0 ? (
             <Box
@@ -625,7 +627,7 @@ const ModernDataDisplay = ({
                 显示第 {(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredData.length)} 条，
                 共 {filteredData.length} 条记录
               </Typography>
-              
+
               <Pagination
                 count={totalPages}
                 page={currentPage}

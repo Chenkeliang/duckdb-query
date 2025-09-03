@@ -2,10 +2,16 @@ import {
   Box,
   Card,
   CardContent,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
   Tab,
-  Tabs
+  Tabs,
+  Typography
 } from '@mui/material';
 import React, { useState } from 'react';
+import SqlExecutor from '../DataSourceManager/SqlExecutor';
 import EnhancedSQLExecutor from '../EnhancedSQLExecutor';
 import QueryBuilder from '../QueryBuilder/QueryBuilder';
 
@@ -18,6 +24,7 @@ const UnifiedQueryInterface = ({
   onDataSourceSaved
 }) => {
   const [activeTab, setActiveTab] = useState(0);
+  const [sqlExecutorType, setSqlExecutorType] = useState('mysql'); // 'mysql' 或 'duckdb'
   const [queryBuilderResults, setQueryBuilderResults] = useState(null);
   const [sqlExecutorResults, setSqlExecutorResults] = useState(null);
 
@@ -93,15 +100,47 @@ const UnifiedQueryInterface = ({
             )}
 
             {activeTab === 1 && (
-              <EnhancedSQLExecutor
-                onResultsReceived={handleSqlExecutorResults}
-                onDataSourceSaved={onDataSourceSaved}
-                databaseConnections={databaseConnections}
-              />
+              <Box>
+                {/* 数据库类型选择器 */}
+                <Box sx={{ mb: 3 }}>
+                  <FormControl size="small" sx={{ minWidth: 200 }}>
+                    <InputLabel>查询目标</InputLabel>
+                    <Select
+                      value={sqlExecutorType}
+                      label="查询目标"
+                      onChange={(e) => setSqlExecutorType(e.target.value)}
+                    >
+                      <MenuItem value="mysql">外部数据库 (MySQL)</MenuItem>
+                      <MenuItem value="duckdb">内部数据 (DuckDB)</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1, ml: 1 }}>
+                    {sqlExecutorType === 'mysql'
+                      ? '查询您连接的外部MySQL数据库'
+                      : '查询已上传的文件和保存的查询结果'}
+                  </Typography>
+                </Box>
+
+                {/* SQL执行器 */}
+                {sqlExecutorType === 'mysql' ? (
+                  <SqlExecutor
+                    databaseConnections={databaseConnections}
+                    onDataSourceSaved={onDataSourceSaved}
+                    onResultsReceived={handleSqlExecutorResults}
+                  />
+                ) : (
+                  <EnhancedSQLExecutor
+                    onResultsReceived={handleSqlExecutorResults}
+                    onDataSourceSaved={onDataSourceSaved}
+                  />
+                )}
+              </Box>
             )}
           </Box>
         </CardContent>
       </Card>
+
+
     </Box>
   );
 };

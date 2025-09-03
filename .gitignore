@@ -105,9 +105,13 @@ config/postgresql-configs.json
 config/mysql-production.json
 config/datasources.json
 data/
-data/
 !data/uploads/.gitkeep
 !data/duckdb/.gitkeep
+
+# DuckDB相关文件
+.duckdb/
+*.db
+*.duckdb
 
 # 清理报告文件
 cleanup-report.txt

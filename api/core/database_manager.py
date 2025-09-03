@@ -44,10 +44,14 @@ class DatabaseManager:
     def _load_connections_from_config(self):
         config_dir = os.getenv("CONFIG_DIR")
         if config_dir:
-            config_path = Path(config_dir) / "datasources.json"
+            config_path = (
+                Path(config_dir) / "datasources.json"
+            )  # 恢复为datasources.json
         else:
             config_path = (
-                Path(__file__).parent.parent.parent / "config" / "datasources.json"
+                Path(__file__).parent.parent.parent
+                / "config"
+                / "datasources.json"  # 恢复为datasources.json
             )
 
         if not os.path.exists(config_path):

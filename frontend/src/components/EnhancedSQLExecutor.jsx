@@ -116,7 +116,9 @@ const EnhancedSQLExecutor = ({
         onResultsReceived({
           data: response.data,
           columns: response.columns,
-          sqlQuery: queryToExecute, // Use the fetched query
+          sqlQuery: queryToExecute, // 保存用户原始SQL用于导出
+          originalSql: queryToExecute, // 显式保存原始SQL
+          originalDatasource: { type: 'duckdb', id: 'duckdb' }, // 添加数据源信息
           executionTime: response.execution_time,
           rowCount: response.row_count,
         });

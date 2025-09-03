@@ -93,8 +93,8 @@ class AppConfig:
     duckdb_profiling_output: str = None
     """性能分析输出文件路径，None时使用系统默认"""
 
-    duckdb_force_index_join: bool = False
-    """是否强制使用索引JOIN，可能影响JOIN性能"""
+    duckdb_prefer_range_joins: bool = False
+    """是否优先使用范围JOIN，可能影响JOIN性能"""
 
     duckdb_enable_object_cache: bool = True
     """是否启用对象缓存，提升重复查询性能"""
@@ -382,6 +382,88 @@ class ConfigManager:
                     == "true",
                     "cache_ttl": int(
                         os.getenv("CACHE_TTL", config_data.get("cache_ttl", 3600))
+                    ),
+                    # 数据库超时配置
+                    "db_connect_timeout": int(
+                        os.getenv(
+                            "DB_CONNECT_TIMEOUT",
+                            config_data.get("db_connect_timeout", 10),
+                        )
+                    ),
+                    "db_read_timeout": int(
+                        os.getenv(
+                            "DB_READ_TIMEOUT", config_data.get("db_read_timeout", 30)
+                        )
+                    ),
+                    "db_write_timeout": int(
+                        os.getenv(
+                            "DB_WRITE_TIMEOUT", config_data.get("db_write_timeout", 30)
+                        )
+                    ),
+                    "db_ping_timeout": int(
+                        os.getenv(
+                            "DB_PING_TIMEOUT", config_data.get("db_ping_timeout", 5)
+                        )
+                    ),
+                    # 连接池配置
+                    "pool_min_connections": int(
+                        os.getenv(
+                            "POOL_MIN_CONNECTIONS",
+                            config_data.get("pool_min_connections", 2),
+                        )
+                    ),
+                    "pool_max_connections": int(
+                        os.getenv(
+                            "POOL_MAX_CONNECTIONS",
+                            config_data.get("pool_max_connections", 10),
+                        )
+                    ),
+                    "pool_connection_timeout": int(
+                        os.getenv(
+                            "POOL_CONNECTION_TIMEOUT",
+                            config_data.get("pool_connection_timeout", 30),
+                        )
+                    ),
+                    "pool_idle_timeout": int(
+                        os.getenv(
+                            "POOL_IDLE_TIMEOUT",
+                            config_data.get("pool_idle_timeout", 300),
+                        )
+                    ),
+                    "pool_max_retries": int(
+                        os.getenv(
+                            "POOL_MAX_RETRIES", config_data.get("pool_max_retries", 3)
+                        )
+                    ),
+                    "pool_wait_timeout": float(
+                        os.getenv(
+                            "POOL_WAIT_TIMEOUT",
+                            config_data.get("pool_wait_timeout", 1.0),
+                        )
+                    ),
+                    # 其他超时配置
+                    "query_proxy_timeout": int(
+                        os.getenv(
+                            "QUERY_PROXY_TIMEOUT",
+                            config_data.get("query_proxy_timeout", 300),
+                        )
+                    ),
+                    "url_reader_timeout": int(
+                        os.getenv(
+                            "URL_READER_TIMEOUT",
+                            config_data.get("url_reader_timeout", 30),
+                        )
+                    ),
+                    "url_reader_head_timeout": int(
+                        os.getenv(
+                            "URL_READER_HEAD_TIMEOUT",
+                            config_data.get("url_reader_head_timeout", 10),
+                        )
+                    ),
+                    "sqlite_timeout": int(
+                        os.getenv(
+                            "SQLITE_TIMEOUT", config_data.get("sqlite_timeout", 10)
+                        )
                     ),
                 }
             )

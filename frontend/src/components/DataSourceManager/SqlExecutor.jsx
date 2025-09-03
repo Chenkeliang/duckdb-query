@@ -1,46 +1,72 @@
-import React, { useState, useEffect } from 'react';
+import CodeIcon from '@mui/icons-material/Code';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import SaveIcon from '@mui/icons-material/Save';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Alert,
   Box,
   Button,
-  TextField,
-  Typography,
-  Paper,
-  Alert,
-  Fade,
   CircularProgress,
-  IconButton,
-  Tooltip,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Fade,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  Snackbar,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
-  TableRow,
   TablePagination,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  FormLabel,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
-  Snackbar,
-  Select,
-  MenuItem,
-  InputLabel
+  TableRow,
+  TextField,
+  Typography
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import CodeIcon from '@mui/icons-material/Code';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import SaveIcon from '@mui/icons-material/Save';
-import { executeSQL, saveQueryToDuckDB, getMySQLDataSources } from '../../services/apiClient';
+import React, { useEffect, useState } from 'react';
+import { executeSQL, saveQueryToDuckDB } from '../../services/apiClient';
 
-const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
+// 智能LIMIT处理函数
+const applyDisplayLimit = (sql, maxRows = 10000) => {
+  const sqlTrimmed = sql.trim().replace(/;$/, '');
+
+  // 检查是否已有LIMIT
+  const limitMatch = sqlTrimmed.match(/\bLIMIT\s+(\d+)(\s+OFFSET\s+\d+)?\s*$/i);
+
+  if (limitMatch) {
+    const userLimit = parseInt(limitMatch[1]);
+    if (userLimit > maxRows) {
+      // 用户LIMIT > 10000，前端显示限制为10000，但保存时使用用户原始LIMIT
+      const displaySql = sqlTrimmed.replace(/\bLIMIT\s+\d+(\s+OFFSET\s+\d+)?\s*$/i, `LIMIT ${maxRows}`);
+      return {
+        displaySql: displaySql,
+        originalSql: sqlTrimmed  // 保留用户原始LIMIT
+      };
+    } else {
+      // 用户LIMIT ≤ 10000，前端和保存都使用用户LIMIT
+      return {
+        displaySql: sqlTrimmed,
+        originalSql: sqlTrimmed
+      };
+    }
+  } else {
+    // 用户无LIMIT，前端添加LIMIT 10000，保存时无LIMIT
+    return {
+      displaySql: `${sqlTrimmed} LIMIT ${maxRows}`,
+      originalSql: sqlTrimmed  // 保留用户原始SQL（无LIMIT）
+    };
+  }
+};
+
+const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsReceived }) => {
   const [sqlQuery, setSqlQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -102,16 +128,28 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
         id: selectedDataSource
       };
 
-      // 调用API执行SQL查询
-      const result = await executeSQL(sqlQuery, dataSource);
+      // 智能处理SQL：前端显示限制为10000条，保存时使用原始SQL
+      const { displaySql, originalSql } = applyDisplayLimit(sqlQuery);
+
+      // 调用API执行SQL查询（使用显示SQL）
+      const result = await executeSQL(displaySql, dataSource);
 
       if (result) {
-        setResults({
+        const resultData = {
           columns: result.columns || [],
           data: result.data || [],
           canSaveToDuckDB: result.can_save_to_duckdb || false,
-          sourceType: result.source_type || 'unknown'
-        });
+          sourceType: result.source_type || 'unknown',
+          sqlQuery: originalSql,  // 保存原始SQL用于保存功能
+          originalDatasource: dataSource  // 添加数据源信息用于保存功能
+        };
+        setResults(resultData);
+
+        // 通知父组件查询结果
+        if (onResultsReceived) {
+          onResultsReceived(resultData);
+        }
+
         setSuccess(true);
         setTimeout(() => setSuccess(false), 3000);
       } else {
@@ -220,10 +258,10 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
     <Box sx={{ mb: 3 }}>
       {error && (
         <Fade in={!!error}>
-          <Alert 
-            severity="error" 
-            sx={{ 
-              mb: 2, 
+          <Alert
+            severity="error"
+            sx={{
+              mb: 2,
               borderRadius: 2,
               fontSize: '0.875rem'
             }}
@@ -236,10 +274,10 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
 
       {success && (
         <Fade in={success}>
-          <Alert 
-            severity="success" 
-            sx={{ 
-              mb: 2, 
+          <Alert
+            severity="success"
+            sx={{
+              mb: 2,
               borderRadius: 2,
               fontSize: '0.875rem'
             }}
@@ -248,13 +286,13 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
           </Alert>
         </Fade>
       )}
-      
-      <Accordion 
+
+      <Accordion
         expanded={expanded}
         onChange={() => setExpanded(!expanded)}
         disableGutters
         elevation={0}
-        sx={{ 
+        sx={{
           border: '1px solid rgba(0, 0, 0, 0.1)',
           borderRadius: '8px',
           mb: 2,
@@ -262,9 +300,9 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
           overflow: 'hidden'
         }}
       >
-        <AccordionSummary 
+        <AccordionSummary
           expandIcon={<ExpandMoreIcon />}
-          sx={{ 
+          sx={{
             backgroundColor: '#f9f9f9',
             borderBottom: expanded ? '1px solid rgba(0, 0, 0, 0.1)' : 'none',
             minHeight: '48px',
@@ -278,7 +316,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
             </Typography>
           </Box>
         </AccordionSummary>
-        
+
         <AccordionDetails sx={{ p: 2, pt: 2.5 }}>
           {/* 数据库连接选择器 */}
           <FormControl fullWidth sx={{ mb: 2 }}>
@@ -314,9 +352,9 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
             value={sqlQuery}
             onChange={(e) => setSqlQuery(e.target.value)}
             fullWidth
-            sx={{ 
+            sx={{
               mb: 2,
-              borderRadius: '4px', 
+              borderRadius: '4px',
               '& textarea': { fontFamily: 'monospace', fontSize: '0.9rem' }
             }}
             placeholder="输入SQL查询语句..."
@@ -358,23 +396,23 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
               </Button>
             )}
           </Box>
-          
-          {results && results.data && results.data.length > 0 && (
+
+          {false && results && results.data && results.data.length > 0 && !onResultsReceived && (
             <Box sx={{ mt: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
                 查询结果 ({results.data.length} 条记录)
               </Typography>
-              
+
               <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
                 <TableContainer sx={{ maxHeight: 400 }}>
                   <Table stickyHeader size="small">
                     <TableHead>
                       <TableRow>
                         {results.columns.map((column, index) => (
-                          <TableCell 
+                          <TableCell
                             key={index}
-                            sx={{ 
-                              fontWeight: 'bold', 
+                            sx={{
+                              fontWeight: 'bold',
                               backgroundColor: '#f5f5f5',
                               fontSize: '0.85rem'
                             }}
@@ -390,12 +428,12 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
                         .map((row, rowIndex) => (
                           <TableRow hover key={rowIndex}>
                             {results.columns.map((column, colIndex) => (
-                              <TableCell 
+                              <TableCell
                                 key={colIndex}
                                 sx={{ fontSize: '0.85rem' }}
                               >
-                                {row[column] !== null && row[column] !== undefined 
-                                  ? String(row[column]) 
+                                {row[column] !== null && row[column] !== undefined
+                                  ? String(row[column])
                                   : <span style={{ color: '#999', fontStyle: 'italic' }}>null</span>}
                               </TableCell>
                             ))}
@@ -404,7 +442,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
                     </TableBody>
                   </Table>
                 </TableContainer>
-                
+
                 <TablePagination
                   rowsPerPageOptions={[10, 25, 50, 100]}
                   component="div"
@@ -419,10 +457,10 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved }) => {
               </Paper>
             </Box>
           )}
-          
-          {results && results.data && results.data.length === 0 && (
-            <Alert 
-              severity="info" 
+
+          {false && results && results.data && results.data.length === 0 && !onResultsReceived && (
+            <Alert
+              severity="info"
               sx={{ mt: 3 }}
             >
               查询执行成功，但没有返回数据

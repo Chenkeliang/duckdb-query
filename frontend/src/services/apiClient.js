@@ -423,13 +423,20 @@ export const getAvailableTables = async () => {
 };
 
 // 新架构API: 保存查询结果到DuckDB
-export const saveQueryToDuckDB = async (sql, datasource, tableAlias) => {
+export const saveQueryToDuckDB = async (sql, datasource, tableAlias, queryData = null) => {
   try {
-    const response = await apiClient.post('/api/save_query_to_duckdb', {
+    const requestData = {
       sql,
       datasource,
       table_alias: tableAlias
-    });
+    };
+
+    // 如果提供了查询数据，直接使用数据而不重新执行SQL
+    if (queryData && queryData.length > 0) {
+      requestData.query_data = queryData;
+    }
+
+    const response = await apiClient.post('/api/save_query_to_duckdb', requestData);
     return response.data;
   } catch (error) {
     console.error('保存查询结果到DuckDB失败:', error);

@@ -139,7 +139,7 @@ const WelcomePage = ({ onStartUsing }) => {
                         <p>开源免费，持续更新维护</p>
                         <div className="welcome-cta-buttons">
                             <button className="welcome-cta-button" onClick={onStartUsing}>开始使用 →</button>
-                            <a href="https://github.com/chenkeliang/duck-query" className="welcome-cta-button-secondary" target="_blank" rel="noopener noreferrer">
+                            <a href="https://github.com/Chenkeliang/DuckQuery" className="welcome-cta-button-secondary" target="_blank" rel="noopener noreferrer">
                                 查看源码 →
                             </a>
                         </div>
