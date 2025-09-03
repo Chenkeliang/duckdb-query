@@ -227,6 +227,7 @@ npm run preview
 1. **上传数据文件**
    - 拖拽CSV、Excel、Parquet文件到上传区域
    - 或通过URL直接读取远程文件
+   - 📋 **剪贴板粘贴** - 直接粘贴任意格式化的CSV数据，系统自动识别并成表
 
 2. **连接数据库**
    - 配置MySQL/PostgreSQL连接信息
