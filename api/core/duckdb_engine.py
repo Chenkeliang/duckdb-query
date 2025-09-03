@@ -24,6 +24,135 @@ from core.duckdb_pool import get_connection_pool
 _global_duckdb_connection = None
 
 
+def _apply_duckdb_configuration(connection, temp_dir: str):
+    """
+    自动应用所有DuckDB配置参数
+    
+    Args:
+        connection: DuckDB连接实例
+        temp_dir: 临时目录路径
+    """
+    from core.config_manager import config_manager
+    
+    try:
+        app_config = config_manager.get_app_config()
+        
+        # 获取所有以duckdb_开头的配置项
+        config_items = {k: v for k, v in app_config.__dict__.items() if k.startswith('duckdb_')}
+        
+        logger.info(f"发现 {len(config_items)} 个DuckDB配置项")
+        
+        # 应用基础配置
+        if config_items.get('duckdb_threads'):
+            connection.execute(f"SET threads={config_items['duckdb_threads']}")
+            logger.info(f"DuckDB线程数设置为: {config_items['duckdb_threads']}")
+        
+        if config_items.get('duckdb_memory_limit'):
+            connection.execute(f"SET memory_limit='{config_items['duckdb_memory_limit']}'")
+            connection.execute(f"SET max_memory='{config_items['duckdb_memory_limit']}'")
+            logger.info(f"DuckDB内存限制设置为: {config_items['duckdb_memory_limit']}")
+        
+        # 设置临时目录
+        connection.execute(f"SET temp_directory='{temp_dir}'")
+        
+        # 应用性能优化配置
+        if config_items.get('duckdb_enable_profiling') is not None:
+            if config_items['duckdb_enable_profiling']:
+                connection.execute("SET enable_profiling=true")
+                if config_items.get('duckdb_profiling_output'):
+                    connection.execute(f"SET profiling_output='{config_items['duckdb_profiling_output']}'")
+                logger.info("DuckDB性能分析已启用")
+            else:
+                connection.execute("SET enable_profiling=false")
+                logger.info("DuckDB性能分析已禁用")
+        
+        if config_items.get('duckdb_force_index_join') is not None:
+            connection.execute(f"SET force_index_join={str(config_items['duckdb_force_index_join']).lower()}")
+            logger.info(f"DuckDB强制索引JOIN设置为: {config_items['duckdb_force_index_join']}")
+        
+        if config_items.get('duckdb_enable_object_cache') is not None:
+            connection.execute(f"SET enable_object_cache={str(config_items['duckdb_enable_object_cache']).lower()}")
+            logger.info(f"DuckDB对象缓存设置为: {config_items['duckdb_enable_object_cache']}")
+        
+        if config_items.get('duckdb_preserve_insertion_order') is not None:
+            connection.execute(f"SET preserve_insertion_order={str(config_items['duckdb_preserve_insertion_order']).lower()}")
+            logger.info(f"DuckDB保持插入顺序设置为: {config_items['duckdb_preserve_insertion_order']}")
+        
+        if config_items.get('duckdb_enable_progress_bar') is not None:
+            connection.execute(f"SET enable_progress_bar={str(config_items['duckdb_enable_progress_bar']).lower()}")
+            logger.info(f"DuckDB进度条设置为: {config_items['duckdb_enable_progress_bar']}")
+        
+        # 设置目录配置
+        if config_items.get('duckdb_home_directory'):
+            connection.execute(f"SET home_directory='{config_items['duckdb_home_directory']}'")
+            logger.info(f"DuckDB主目录设置为: {config_items['duckdb_home_directory']}")
+        
+        if config_items.get('duckdb_extension_directory'):
+            connection.execute(f"SET extension_directory='{config_items['duckdb_extension_directory']}'")
+            logger.info(f"DuckDB扩展目录设置为: {config_items['duckdb_extension_directory']}")
+        
+        # 自动安装和加载扩展
+        if config_items.get('duckdb_extensions'):
+            _install_duckdb_extensions(connection, config_items['duckdb_extensions'])
+        else:
+            # 使用默认扩展
+            _install_duckdb_extensions(connection, ["excel", "json", "parquet"])
+            
+    except Exception as e:
+        logger.error(f"应用DuckDB配置时出错: {str(e)}")
+        # 使用默认配置作为后备
+        _apply_default_duckdb_config(connection, temp_dir)
+
+
+def _install_duckdb_extensions(connection, extensions: List[str]):
+    """
+    安装和加载DuckDB扩展
+    
+    Args:
+        connection: DuckDB连接实例
+        extensions: 扩展名称列表
+    """
+    for ext_name in extensions:
+        try:
+            # 先尝试加载扩展（如果已安装）
+            connection.execute(f"LOAD {ext_name};")
+            logger.info(f"DuckDB扩展 {ext_name} 已加载")
+        except Exception as load_error:
+            # 如果加载失败，尝试安装后再加载
+            try:
+                connection.execute(f"INSTALL {ext_name};")
+                connection.execute(f"LOAD {ext_name};")
+                logger.info(f"DuckDB扩展 {ext_name} 安装并加载成功")
+            except Exception as install_error:
+                logger.warning(f"安装或加载DuckDB扩展 {ext_name} 失败: {str(install_error)}")
+
+
+def _apply_default_duckdb_config(connection, temp_dir: str):
+    """
+    应用默认DuckDB配置（作为后备方案）
+    
+    Args:
+        connection: DuckDB连接实例
+        temp_dir: 临时目录路径
+    """
+    logger.info("应用默认DuckDB配置")
+    
+    # 基础设置
+    connection.execute("SET threads=8")
+    connection.execute("SET memory_limit='8GB'")
+    connection.execute(f"SET temp_directory='{temp_dir}'")
+    
+    # 性能优化
+    connection.execute("SET enable_profiling=true")
+    connection.execute("SET force_index_join=false")
+    connection.execute("SET enable_object_cache=true")
+    connection.execute("SET preserve_insertion_order=false")
+    connection.execute("SET enable_progress_bar=false")
+    
+    # 安装默认扩展
+    _install_duckdb_extensions(connection, ["excel", "json", "parquet"])
+
+
 def get_db_connection():
     """
     获取DuckDB连接的单例实例
@@ -44,97 +173,30 @@ def get_db_connection():
             db_path = "./data/duckdb/main.db"
             temp_dir = "./data/duckdb/temp"
 
-        # 确保目录存在
+        # 确保基础目录存在
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         os.makedirs(temp_dir, exist_ok=True)
+        
+        # 创建DuckDB扩展和配置目录
+        if os.path.exists("/app"):
+            # Docker环境
+            extension_dir = "/app/data/duckdb/extensions"
+            home_dir = "/app/data/duckdb/home"
+        else:
+            # 本地开发环境
+            extension_dir = "./data/duckdb/extensions"
+            home_dir = "./data/duckdb/home"
+        
+        os.makedirs(extension_dir, exist_ok=True)
+        os.makedirs(home_dir, exist_ok=True)
 
         _global_duckdb_connection = duckdb.connect(database=db_path)
         logger.info(f"DuckDB连接到持久化文件: {db_path}")
 
-        # 设置DuckDB优化参数
-        _global_duckdb_connection.execute("SET threads=8")  # 增加线程数
+        # 自动应用所有DuckDB配置
+        _apply_duckdb_configuration(_global_duckdb_connection, temp_dir)
 
-        # 应用内存限制配置
-        from core.config_manager import config_manager
-
-        app_config = config_manager.get_app_config()
-        memory_limit = app_config.duckdb_memory_limit
-        if memory_limit:
-            _global_duckdb_connection.execute(f"SET memory_limit='{memory_limit}'")
-            _global_duckdb_connection.execute(f"SET max_memory='{memory_limit}'")
-            logger.info(f"DuckDB内存限制已设置为: {memory_limit}")
-        _global_duckdb_connection.execute(f"SET temp_directory='{temp_dir}'")
-
-        # 优化JOIN性能 - 针对VARCHAR类型优化
-        try:
-            # DuckDB优化器默认启用，无需手动设置
-            _global_duckdb_connection.execute("SET enable_profiling=true")
-            _global_duckdb_connection.execute(
-                "SET profiling_output='/app/data/duckdb/profile.json'"
-            )
-        except Exception as e:
-            logger.warning(f"设置profiling失败: {str(e)}")
-
-        try:
-            # 优化JOIN算法选择
-            _global_duckdb_connection.execute("SET force_index_join=false")
-        except Exception as e:
-            logger.warning(f"设置force_index_join失败: {str(e)}")
-
-        try:
-            # 优化字符串比较性能
-            _global_duckdb_connection.execute("SET enable_object_cache=true")
-        except Exception as e:
-            logger.warning(f"设置enable_object_cache失败: {str(e)}")
-
-        # 优化并行处理
-        _global_duckdb_connection.execute("SET preserve_insertion_order=false")
-        _global_duckdb_connection.execute("SET enable_progress_bar=false")
-
-        # 设置DuckDB的home目录以支持扩展安装
-        try:
-            # 创建专用的扩展目录
-            extension_dir = "/app/data/duckdb/extensions"
-            home_dir = "/app/data/duckdb/home"
-            import os
-
-            os.makedirs(extension_dir, exist_ok=True)
-            os.makedirs(home_dir, exist_ok=True)
-
-            _global_duckdb_connection.execute(f"SET home_directory='{home_dir}';")
-            _global_duckdb_connection.execute(
-                f"SET extension_directory='{extension_dir}';"
-            )
-            logger.info(f"DuckDB扩展目录设置完成: {extension_dir}")
-        except Exception as e:
-            logger.warning(f"设置DuckDB扩展目录失败: {str(e)}")
-
-        # 安装和加载常用扩展
-        extensions_to_install = [
-            ("excel", "Excel文件处理"),
-            ("json", "JSON文件处理"),
-            ("parquet", "Parquet文件处理"),
-        ]
-
-        for ext_name, ext_desc in extensions_to_install:
-            try:
-                # 先尝试加载扩展（如果已安装）
-                _global_duckdb_connection.execute(f"LOAD {ext_name};")
-                logger.info(f"{ext_desc}扩展已加载")
-            except Exception as load_error:
-                # 如果加载失败，尝试安装后再加载
-                try:
-                    _global_duckdb_connection.execute(f"INSTALL {ext_name};")
-                    _global_duckdb_connection.execute(f"LOAD {ext_name};")
-                    logger.info(f"{ext_desc}扩展安装并加载成功")
-                except Exception as install_error:
-                    logger.warning(
-                        f"安装或加载{ext_desc}扩展失败: {str(install_error)}"
-                    )
-
-        logger.info("DuckDB扩展和优化配置已应用")
-
-        # 确保临时目录存在（已在上面创建）
+        logger.info("DuckDB配置和扩展已自动应用")
     return _global_duckdb_connection
 
 

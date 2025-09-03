@@ -42,12 +42,29 @@ class AppConfig:
     max_tables: int = 200  # 数据库表预览最大数量
     enable_caching: bool = True
     cache_ttl: int = 3600  # 1小时
-    duckdb_memory_limit: str = "8GB"  # DuckDB内存限制
     timezone: str = "Asia/Shanghai"  # 应用时区
+    
+    # DuckDB引擎配置参数
+    duckdb_memory_limit: str = "8GB"           # 内存限制
+    duckdb_threads: int = 8                    # 线程数
+    duckdb_temp_directory: str = None          # 临时目录
+    duckdb_home_directory: str = None          # 主目录
+    duckdb_extension_directory: str = None     # 扩展目录
+    duckdb_enable_profiling: bool = True       # 启用性能分析
+    duckdb_profiling_output: str = None        # 性能分析输出文件
+    duckdb_force_index_join: bool = False      # 强制索引JOIN
+    duckdb_enable_object_cache: bool = True    # 启用对象缓存
+    duckdb_preserve_insertion_order: bool = False  # 保持插入顺序
+    duckdb_enable_progress_bar: bool = False   # 启用进度条
+    duckdb_extensions: List[str] = None        # 要安装的扩展列表
 
     def __post_init__(self):
         if self.cors_origins is None:
             self.cors_origins = ["http://localhost:3000", "http://localhost:5173"]
+        
+        # 设置默认DuckDB扩展
+        if self.duckdb_extensions is None:
+            self.duckdb_extensions = ["excel", "json", "parquet"]
 
 
 class ConfigManager:
