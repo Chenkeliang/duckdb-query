@@ -11,5 +11,21 @@
   "max_tables": 200,
   "enable_caching": true,
   "cache_ttl": 3600,
-  "timezone": "Asia/Shanghai"
+  "timezone": "Asia/Shanghai",
+  "duckdb_memory_limit": "8GB",
+  "duckdb_threads": 8,
+  "duckdb_temp_directory": null,
+  "duckdb_home_directory": null,
+  "duckdb_extension_directory": null,
+  "duckdb_enable_profiling": true,
+  "duckdb_profiling_output": null,
+  "duckdb_force_index_join": false,
+  "duckdb_enable_object_cache": true,
+  "duckdb_preserve_insertion_order": false,
+  "duckdb_enable_progress_bar": false,
+  "duckdb_extensions": [
+    "excel",
+    "json",
+    "parquet"
+  ]
 }

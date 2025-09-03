@@ -136,17 +136,19 @@ class DuckDBConnectionPool:
         try:
             # 导入统一的配置应用函数
             from core.duckdb_engine import _apply_duckdb_configuration
-            
+
             # 使用统一的配置系统
             _apply_duckdb_configuration(connection, temp_dir)
-            
+
         except Exception as e:
             logger.warning(f"应用统一配置失败，使用基础配置: {str(e)}")
             # 基础配置作为后备
             connection.execute("SET threads=8")
             connection.execute(f"SET temp_directory='{temp_dir}'")
             if app_config.duckdb_memory_limit:
-                connection.execute(f"SET memory_limit='{app_config.duckdb_memory_limit}'")
+                connection.execute(
+                    f"SET memory_limit='{app_config.duckdb_memory_limit}'"
+                )
 
     @contextmanager
     def get_connection(self):

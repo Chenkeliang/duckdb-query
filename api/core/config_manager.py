@@ -115,12 +115,40 @@ class ConfigManager:
             default_app_config = asdict(AppConfig())
             self._save_json(self.app_config_file, default_app_config)
             logger.info(f"创建默认应用配置文件: {self.app_config_file}")
+        else:
+            # 更新现有配置文件，确保包含所有新字段
+            self._update_existing_app_config()
 
         # 数据源配置模板
         if not self.datasources_config_file.exists():
             default_datasources_config = {"file_sources": [], "database_sources": []}
             self._save_json(self.datasources_config_file, default_datasources_config)
             logger.info(f"创建默认数据源配置文件: {self.datasources_config_file}")
+
+    def _update_existing_app_config(self):
+        """更新现有应用配置文件，确保包含所有新字段"""
+        try:
+            # 读取现有配置
+            existing_config = self._load_json(self.app_config_file)
+            
+            # 创建默认配置
+            default_config = asdict(AppConfig())
+            
+            # 合并配置：保留现有值，添加缺失的字段
+            updated_config = {}
+            for key, default_value in default_config.items():
+                if key in existing_config:
+                    updated_config[key] = existing_config[key]
+                else:
+                    updated_config[key] = default_value
+                    logger.info(f"添加新配置字段: {key} = {default_value}")
+            
+            # 保存更新后的配置
+            self._save_json(self.app_config_file, updated_config)
+            logger.info(f"应用配置文件已更新: {self.app_config_file}")
+            
+        except Exception as e:
+            logger.warning(f"更新应用配置文件失败: {str(e)}")
 
     def _load_json(self, file_path: Path) -> Dict[str, Any]:
         """加载JSON配置文件"""
