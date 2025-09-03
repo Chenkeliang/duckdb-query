@@ -36,8 +36,10 @@ Duck Query 是一个基于 **DuckDB** 构建的现代化数据分析平台，专
 - 📋 剪贴板数据快速成表
 
 **数据库连接**
-- 🐬 MySQL
-- 🐘 PostgreSQL
+- 🐬 MySQL - 支持自定义SQL查询，结果自动加载到DuckDB
+- 🐘 PostgreSQL - 支持自定义SQL查询，结果自动加载到DuckDB
+
+
 
 **DuckDB特性**
 - ⚡ 上传文件自动建表，无需手动导入
