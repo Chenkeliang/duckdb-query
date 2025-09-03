@@ -98,25 +98,58 @@ SELECT * FROM read_parquet('file.parquet');
 - 🐳 Docker 20.10+
 - 🔧 Docker Compose 2.0+
 
-### 一键部署
+### 🐳 Docker配置
+
+**使用统一的 `docker-compose.yml` 配置文件：**
 
 ```bash
-# 1. 创建项目目录
-mkdir duck-query && cd duck-query
-
-# 2. 下载部署配置
-curl -o docker-compose.yml https://raw.githubusercontent.com/your-username/duck-query/main/deployment/docker-compose.yml
-
-# 3. 创建配置目录
-mkdir -p config data
-
-# 4. 启动服务
+# 启动服务
 docker-compose up -d
 
-# 5. 访问应用
+# 重新构建并启动
+docker-compose up -d --build
+
+# 停止服务
+docker-compose down
+```
+
+### 🚀 新用户一键启动（推荐）
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/Chenkeliang/DuckQuery.git
+cd DuckQuery
+
+# 2. 一键启动（自动配置+启动）
+./quick-start.sh
+```
+
+c**💡 提示：** 首次启动前，建议检查 `docker-compose.yml` 中的端口、内存、CPU等配置是否符合你的环境。
+
+### 手动部署
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/Chenkeliang/DuckQuery.git
+cd DuckQuery
+
+# 2. 检查并调整Docker配置
+# 编辑 docker-compose.yml，调整端口、资源限制等
+
+# 3. 启动服务
+docker-compose up -d --build
+
+# 4. 访问应用
 # 前端界面: http://localhost:3000
 # API文档: http://localhost:8000/docs
 ```
+
+** 配置调整要点：**
+- **端口冲突**：如果8000或3000端口被占用，修改 `docker-compose.yml` 中的端口映射
+- **资源限制**：根据服务器配置调整内存和CPU限制
+- **目录权限**：确保数据目录有正确的读写权限
+
+
 
 ### 从源码安装
 
@@ -161,9 +194,27 @@ npm run preview
   "max_tables": 200,                 // 最大表数量
   "enable_caching": true,            // 启用缓存
   "cache_ttl": 3600,                 // 缓存生存时间(秒)
-  "timezone": "Asia/Shanghai"        // 时区设置
+  "timezone": "Asia/Shanghai",       // 时区设置
+  
+  "duckdb_memory_limit": "8GB",      // DuckDB内存限制
+  "duckdb_threads": 8,               // DuckDB线程数
+  "duckdb_extensions": [             // DuckDB扩展
+    "excel", "json", "parquet"
+  ],
+  
+  "pool_min_connections": 2,         // 连接池最小连接数
+  "pool_max_connections": 10,        // 连接池最大连接数
+  "db_connect_timeout": 10,          // 数据库连接超时(秒)
+  "db_read_timeout": 30,             // 数据库读取超时(秒)
+  "db_write_timeout": 30             // 数据库写入超时(秒)
 }
 ```
+
+**💡 提示：** 新用户可以直接复制 `config/app-config.example.json` 作为起点，然后根据需要调整配置。
+
+📖 **详细配置说明**: 查看 [配置文档](docs/CONFIGURATION.md) 了解所有配置项的作用和推荐值。
+
+🌍 **环境变量覆盖**: 可以通过环境变量覆盖配置文件中的设置，特别适合Docker部署。
 
 ### 数据库连接配置
 

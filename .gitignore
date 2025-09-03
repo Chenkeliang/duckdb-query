@@ -100,6 +100,10 @@ api/temp_files/*
 !api/temp_files/.gitkeep
 api/exports/*
 !api/exports/.gitkeep
+exports/*
+!exports/.gitkeep
+temp_files/*
+!temp_files/.gitkeep
 config/mysql-configs.json
 config/postgresql-configs.json
 config/mysql-production.json
@@ -120,6 +124,9 @@ cleanup-report.txt
 # Real configuration files (keep only .example files)
 **/mysql-configs.json
 **/datasources.json
+**/app-config.json
+**/file-datasources.json
+**/secret.key
 !**/*.example
 
 # Frontend build outputs
@@ -139,6 +146,9 @@ Thumbs.db
 ehthumbs.db
 .Spotlight-V100
 .Trashes
+
+# Local clipboard and temporary files
+.gemini-clipboard/
 
 # Docker
 .dockerignore
