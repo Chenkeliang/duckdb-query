@@ -18,19 +18,19 @@ class E2ETestSuite {
     console.log('🚀 启动浏览器...');
     this.browser = await chromium.launch({ headless: false });
     this.page = await this.browser.newPage();
-    
+
     // 监听控制台消息
     this.page.on('console', msg => {
       console.log(`[CONSOLE] ${msg.text()}`);
     });
-    
+
     // 监听网络请求
     this.page.on('request', request => {
       if (request.url().includes('/api/')) {
         console.log(`[REQUEST] ${request.method()} ${request.url()}`);
       }
     });
-    
+
     // 监听网络响应
     this.page.on('response', response => {
       if (response.url().includes('/api/')) {
@@ -53,18 +53,18 @@ class E2ETestSuite {
       timestamp: new Date().toISOString()
     };
     this.testResults.push(result);
-    
+
     const status = success ? '✅' : '❌';
     console.log(`${status} ${testName}: ${message}`);
   }
 
   async testApiHealth() {
     console.log('\n📋 测试API健康状态...');
-    
+
     try {
       const response = await fetch(`${this.apiBaseUrl}/health`);
       const data = await response.json();
-      
+
       if (response.ok && data.status === 'healthy') {
         await this.addTestResult('API健康检查', true, '后端API正常运行');
         return true;
@@ -80,11 +80,11 @@ class E2ETestSuite {
 
   async testFileListAPI() {
     console.log('\n📁 测试文件列表API...');
-    
+
     try {
       const response = await fetch(`${this.apiBaseUrl}/api/list_files`);
       const files = await response.json();
-      
+
       if (response.ok && Array.isArray(files)) {
         await this.addTestResult('文件列表API', true, `返回${files.length}个文件: ${files.join(', ')}`);
         return files;
@@ -100,10 +100,10 @@ class E2ETestSuite {
 
   async testPageLoad() {
     console.log('\n🌐 测试页面加载...');
-    
+
     try {
       await this.page.goto(this.baseUrl, { waitUntil: 'networkidle' });
-      
+
       // 检查页面标题
       const title = await this.page.title();
       if (title.includes('Duck Query')) {
@@ -121,25 +121,25 @@ class E2ETestSuite {
 
   async testDataSourceDisplay() {
     console.log('\n📊 测试数据源显示...');
-    
+
     try {
       // 等待页面完全加载
       await this.page.waitForTimeout(3000);
-      
+
       // 检查文件数据源显示
       const fileCountElement = await this.page.locator('h6:has-text("已上传文件")').first();
       const fileCountText = await fileCountElement.textContent();
-      
+
       // 检查数据库连接显示
       const dbCountElement = await this.page.locator('h6:has-text("数据库连接")').first();
       const dbCountText = await dbCountElement.textContent();
-      
+
       await this.addTestResult('数据源显示', true, `${fileCountText}, ${dbCountText}`);
-      
+
       // 提取文件数量
       const fileMatch = fileCountText.match(/已上传文件 \((\d+)\)/);
       const fileCount = fileMatch ? parseInt(fileMatch[1]) : 0;
-      
+
       return { fileCount, fileCountText, dbCountText };
     } catch (error) {
       await this.addTestResult('数据源显示', false, `获取数据源信息失败: ${error.message}`);
@@ -189,7 +189,7 @@ class E2ETestSuite {
     }
   }
 
-  async testTabNavigation() {\n    console.log('\n\\uD83D\\uDDC2\\uFE0F 测试标签页导航...');\n\n    const tabs = [\n      { name: '\uD83D\uDCC1 数据源管理', selectors: ['[role=\"tab\"]:has-text(\"数据源管理\")', '.MuiTab-root:has-text(\"数据源管理\")', 'button:has-text(\"数据源管理\")'] },\n      { name: '\uD83D\uDD0D 数据查询与结果', selectors: ['[role=\"tab\"]:has-text(\"数据查询\")', '.MuiTab-root:has-text(\"数据查询\")', 'button:has-text(\"数据查询\")'] },\n      { name: '\uD83D\uDCBE SQL执行器', selectors: ['[role=\"tab\"]:has-text(\"SQL执行器\")', '.MuiTab-root:has-text(\"SQL执行器\")', 'button:has-text(\"SQL执行器\")'] },\n      { name: '\uD83D\uDDC4\\uFE0F DuckDB管理', selectors: ['[role=\"tab\"]:has-text(\"DuckDB管理\")', '.MuiTab-root:has-text(\"DuckDB管理\")', 'button:has-text(\"DuckDB管理\")'] },\n      { name: '\uD83D\uDCC3 数据库表管理', selectors: ['[role=\"tab\"]:has-text(\"数据库表管理\")', '.MuiTab-root:has-text(\"数据库表管理\")', 'button:has-text(\"数据库表管理\")'] },\n      { name: '\uD83D\uDCCB 异步任务', selectors: ['[role=\"tab\"]:has-text(\"异步任务\")', '.MuiTab-root:has-text(\"异步任务\")', 'button:has-text(\"异步任务\")'] }\n    ];\n\n    for (const tab of tabs) {\n      let success = false;\n      for (const selector of tab.selectors) {\n        try {\n          const tabElement = this.page.locator(selector).first();\n          if (await tabElement.isVisible({ timeout: 2000 })) {\n            await tabElement.click();\n            await this.page.waitForTimeout(1000);\n            success = true;\n            break;\n          }\n        } catch (error) {\n          continue;\n        }\n      }\n\n      if (success) {\n        await this.addTestResult(`标签页-${tab.name}`, true, '导航成功');\n      } else {\n        await this.addTestResult(`标签页-${tab.name}`, false, '未找到标签页元素');\n      }\n    }\n  }
+  async testTabNavigation() { \n    console.log('\n\\uD83D\\uDDC2\\uFE0F 测试标签页导航...'); \n\n    const tabs = [\n      { name: '\uD83D\uDCC1 数据源管理', selectors: ['[role=\"tab\"]:has-text(\"数据源管理\")', '.MuiTab-root:has-text(\"数据源管理\")', 'button:has-text(\"数据源管理\")'] }, \n      { name: '\uD83D\uDD0D 数据查询与结果', selectors: ['[role=\"tab\"]:has-text(\"数据查询\")', '.MuiTab-root:has-text(\"数据查询\")', 'button:has-text(\"数据查询\")'] }, \n      { name: '\uD83D\uDCBE SQL执行器', selectors: ['[role=\"tab\"]:has-text(\"SQL执行器\")', '.MuiTab-root:has-text(\"SQL执行器\")', 'button:has-text(\"SQL执行器\")'] }, \n      { name: '\uD83D\uDDC4\\uFE0F DuckDB管理', selectors: ['[role=\"tab\"]:has-text(\"DuckDB管理\")', '.MuiTab-root:has-text(\"DuckDB管理\")', 'button:has-text(\"DuckDB管理\")'] }, \n      { name: '\uD83D\uDCC3 数据库表管理', selectors: ['[role=\"tab\"]:has-text(\"数据库表管理\")', '.MuiTab-root:has-text(\"数据库表管理\")', 'button:has-text(\"数据库表管理\")'] }, \n      { name: '\uD83D\uDCCB 异步任务', selectors: ['[role=\"tab\"]:has-text(\"异步任务\")', '.MuiTab-root:has-text(\"异步任务\")', 'button:has-text(\"异步任务\")'] }\n]; \n\n    for (const tab of tabs) { \n      let success = false; \n      for (const selector of tab.selectors) { \n        try { \n          const tabElement = this.page.locator(selector).first(); \n          if (await tabElement.isVisible({ timeout: 2000 })) { \n            await tabElement.click(); \n            await this.page.waitForTimeout(1000); \n            success = true; \n            break; \n } \n } catch (error) { \n          continue; \n } \n } \n\n      if (success) { \n        await this.addTestResult(`标签页-${tab.name}`, true, '导航成功'); \n } else { \n        await this.addTestResult(`标签页-${tab.name}`, false, '未找到标签页元素'); \n } \n } \n }
 
   async testDatabaseTableManagement() {
     console.log('\n🗃️ 测试数据库表管理...');
@@ -295,45 +295,45 @@ class E2ETestSuite {
 
   async runAllTests() {
     console.log('🧪 开始执行完整的端到端测试...\n');
-    
+
     try {
       await this.setup();
-      
+
       // 1. 测试API健康状态
       const apiHealthy = await this.testApiHealth();
       if (!apiHealthy) {
         console.log('❌ API不健康，跳过后续测试');
         return;
       }
-      
+
       // 2. 测试文件列表API
       const files = await this.testFileListAPI();
-      
+
       // 3. 测试页面加载
       const pageLoaded = await this.testPageLoad();
       if (!pageLoaded) {
         console.log('❌ 页面加载失败，跳过后续测试');
         return;
       }
-      
+
       // 4. 测试数据源显示
       const initialDisplay = await this.testDataSourceDisplay();
-      
+
       // 5. 测试数据源刷新
       const refreshedDisplay = await this.testDataSourceRefresh();
-      
+
       // 6. 测试标签页导航
       await this.testTabNavigation();
-      
+
       // 7. 测试数据库表管理
       await this.testDatabaseTableManagement();
-      
+
       // 8. 测试异步任务页面
       await this.testAsyncTasksPage();
-      
+
       // 9. 分析结果
       await this.analyzeResults(files, initialDisplay, refreshedDisplay);
-      
+
     } catch (error) {
       console.error('❌ 测试执行失败:', error);
     } finally {
@@ -343,12 +343,12 @@ class E2ETestSuite {
 
   async analyzeResults(apiFiles, initialDisplay, refreshedDisplay) {
     console.log('\n📈 测试结果分析...');
-    
+
     const successCount = this.testResults.filter(r => r.success).length;
     const totalCount = this.testResults.length;
-    
+
     console.log(`\n📊 测试统计: ${successCount}/${totalCount} 通过`);
-    
+
     // 分析文件显示问题
     if (apiFiles.length > 0 && initialDisplay.fileCount === 0) {
       console.log('\n🔍 问题分析:');
@@ -356,7 +356,7 @@ class E2ETestSuite {
       console.log(`- 前端显示${initialDisplay.fileCount}个文件`);
       console.log('- 问题: 前端没有正确显示API返回的文件');
     }
-    
+
     // 显示失败的测试
     const failedTests = this.testResults.filter(r => !r.success);
     if (failedTests.length > 0) {
@@ -365,7 +365,7 @@ class E2ETestSuite {
         console.log(`  - ${test.test}: ${test.message}`);
       });
     }
-    
+
     console.log('\n✅ 测试完成!');
   }
 }

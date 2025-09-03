@@ -226,7 +226,25 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
         raise
     except Exception as e:
         logger.error(f"DuckDB查询执行失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"查询执行失败: {str(e)}")
+
+        # 使用统一的错误代码系统
+        from core.error_codes import (
+            analyze_error_type,
+            create_error_response,
+            get_http_status_code,
+        )
+
+        original_error = str(e)
+        error_code = analyze_error_type(original_error)
+        status_code = get_http_status_code(error_code)
+
+        # 创建标准化的错误响应
+        error_response = create_error_response(
+            error_code=error_code, original_error=original_error, sql=request.sql
+        )
+
+        # 返回详细的错误响应
+        raise HTTPException(status_code=status_code, detail=error_response)
 
 
 @router.post("/api/duckdb/execute", tags=["DuckDB Query"])

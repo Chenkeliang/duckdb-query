@@ -30,28 +30,55 @@ const handleApiError = (error, defaultMessage = '操作失败') => {
 
   const { status, data } = error.response;
 
+  // 检查新的错误格式: data.error.message = { code, message, details }
+  if (data?.error && data.error.message && typeof data.error.message === 'object' && data.error.message.code) {
+    const enhancedError = new Error(data.error.message.message || defaultMessage);
+    enhancedError.code = data.error.message.code;
+    enhancedError.details = data.error.message.details;
+    enhancedError.statusCode = status;
+    throw enhancedError;
+  }
+
+  // 优先处理结构化错误响应
+  if (data?.detail && typeof data.detail === 'object' && data.detail.code) {
+    const enhancedError = new Error(data.detail.message || defaultMessage);
+    enhancedError.code = data.detail.code;
+    enhancedError.details = data.detail.details;
+    enhancedError.statusCode = status;
+    throw enhancedError;
+  }
+
+  // 检查 data.message 格式的结构化错误响应
+  if (data?.message && typeof data.message === 'object' && data.message.code) {
+    const enhancedError = new Error(data.message.message || defaultMessage);
+    enhancedError.code = data.message.code;
+    enhancedError.details = data.message.details;
+    enhancedError.statusCode = status;
+    throw enhancedError;
+  }
+
   // 根据状态码处理
   switch (status) {
     case 400:
-      throw new Error(data?.detail || data?.message || '请求参数错误');
+      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '请求参数错误');
     case 401:
-      throw new Error('认证失败，请重新登录');
+      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '认证失败，请重新登录');
     case 403:
-      throw new Error('权限不足，无法执行此操作');
+      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '权限不足，无法执行此操作');
     case 404:
-      throw new Error('请求的资源不存在');
+      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '请求的资源不存在');
     case 413:
-      throw new Error('文件太大，请选择较小的文件');
+      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '文件太大，请选择较小的文件');
     case 422:
-      throw new Error(data?.detail || '数据验证失败');
+      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '数据验证失败');
     case 500:
-      throw new Error(data?.detail || '服务器内部错误，请稍后重试');
+      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '服务器内部错误，请稍后重试');
     case 502:
       throw new Error('服务器网关错误，请稍后重试');
     case 503:
       throw new Error('服务暂时不可用，请稍后重试');
     default:
-      throw new Error(data?.detail || data?.message || defaultMessage);
+      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || defaultMessage);
   }
 };
 
@@ -457,7 +484,48 @@ export const executeDuckDBSQL = async (sql, saveAsTable = null, is_preview = tru
     return response.data;
   } catch (error) {
     console.error('执行DuckDB SQL失败:', error);
-    throw error;
+
+    // 处理详细的错误响应
+    if (error.response && error.response.data) {
+      const data = error.response.data;
+
+      // 检查新的错误格式: data.error.message = { code, message, details }
+      if (data.error && data.error.message && typeof data.error.message === 'object' && data.error.message.code) {
+        const enhancedError = new Error(data.error.message.message || '查询执行失败');
+        enhancedError.code = data.error.message.code;
+        enhancedError.details = data.error.message.details;
+        enhancedError.statusCode = error.response.status;
+        throw enhancedError;
+      }
+
+      // 检查 data.detail 格式（HTTPException 格式）
+      if (data.detail && typeof data.detail === 'object' && data.detail.code) {
+        const enhancedError = new Error(data.detail.message || '查询执行失败');
+        enhancedError.code = data.detail.code;
+        enhancedError.details = data.detail.details;
+        enhancedError.statusCode = error.response.status;
+        throw enhancedError;
+      }
+
+      // 检查 data.message 格式（旧格式）
+      if (data.message && typeof data.message === 'object' && data.message.code) {
+        const enhancedError = new Error(data.message.message || '查询执行失败');
+        enhancedError.code = data.message.code;
+        enhancedError.details = data.message.details;
+        enhancedError.statusCode = error.response.status;
+        throw enhancedError;
+      }
+
+      // 检查字符串格式的错误信息（旧格式）
+      if (data.detail && typeof data.detail === 'string') {
+        const enhancedError = new Error(data.detail);
+        enhancedError.statusCode = error.response.status;
+        throw enhancedError;
+      }
+    }
+
+    // 回退到通用错误处理
+    handleApiError(error, '查询执行失败');
   }
 };
 

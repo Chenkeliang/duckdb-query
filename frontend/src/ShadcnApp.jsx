@@ -13,6 +13,7 @@ import DataSourceList from "./components/DataSourceManager/DataSourceList";
 import DuckDBManagementPage from "./components/DuckDBManager/DuckDBManagementPage";
 import ModernDataDisplay from "./components/Results/ModernDataDisplay";
 import UnifiedQueryInterface from "./components/UnifiedQueryInterface/UnifiedQueryInterface";
+import WelcomePage from "./components/WelcomePage";
 // import ToastDiagnostic from './components/ToastDiagnostic';
 
 // 导入服务
@@ -34,6 +35,7 @@ const ShadcnApp = () => {
   const { showSuccess, showError, showWarning, showInfo } = useToast();
 
   // 状态管理
+  const [showWelcome, setShowWelcome] = useState(true); // 控制是否显示欢迎页面
   const [currentTab, setCurrentTab] = useState("datasource");
   const [tableManagementTab, setTableManagementTab] = useState("duckdb"); // 二级TAB状态
   const [dataSources, setDataSources] = useState([]);
@@ -276,12 +278,17 @@ const ShadcnApp = () => {
     }
   };
 
+  // 如果显示欢迎页面，直接返回欢迎页面组件
+  if (showWelcome) {
+    return <WelcomePage onStartUsing={() => setShowWelcome(false)} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* 顶部导航 */}
       <header className="border-b bg-white">
         <div className="w-full px-6 py-4">
-          <div className="flex items-center">
+          <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div
                 className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center"
@@ -307,6 +314,14 @@ const ShadcnApp = () => {
               <h1 className="text-xl font-semibold text-gray-900">
                 Duck Query
               </h1>
+            </div>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setShowWelcome(true)}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                产品介绍
+              </button>
             </div>
           </div>
         </div>
@@ -475,19 +490,19 @@ const ShadcnApp = () => {
                 </div>
 
                 {/* 查询结果 */}
-                {queryResults.data && queryResults.data.length > 0 && (
+                {queryResults.data && (
                   <div className="bg-white rounded-lg border shadow-sm p-6">
                     <ModernDataDisplay
                       data={queryResults.data || []}
                       columns={
                         queryResults.columns
                           ? queryResults.columns.map((col) => ({
-                              field: col,
-                              headerName: col,
-                              sortable: true,
-                              filter: true,
-                              resizable: true,
-                            }))
+                            field: col,
+                            headerName: col,
+                            sortable: true,
+                            filter: true,
+                            resizable: true,
+                          }))
                           : []
                       }
                       loading={false}

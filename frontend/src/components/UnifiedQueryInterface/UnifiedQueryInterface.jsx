@@ -1,5 +1,4 @@
 import {
-  Alert,
   Box,
   Card,
   CardContent,
@@ -94,16 +93,11 @@ const UnifiedQueryInterface = ({
             )}
 
             {activeTab === 1 && (
-              <Box>
-                <Alert severity="info" sx={{ mb: 2 }}>
-                  请选择SQL执行模式：
-                </Alert>
-                <EnhancedSQLExecutor
-                  onResultsReceived={handleSqlExecutorResults}
-                  onDataSourceSaved={onDataSourceSaved}
-                  databaseConnections={databaseConnections}
-                />
-              </Box>
+              <EnhancedSQLExecutor
+                onResultsReceived={handleSqlExecutorResults}
+                onDataSourceSaved={onDataSourceSaved}
+                databaseConnections={databaseConnections}
+              />
             )}
           </Box>
         </CardContent>

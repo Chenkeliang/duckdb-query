@@ -50,9 +50,6 @@ from core.duckdb_engine import (
 logger = logging.getLogger(__name__)
 
 
-
-
-
 def load_file_datasources_on_startup():
     """应用启动时重新加载所有文件数据源到DuckDB"""
     try:
@@ -112,7 +109,7 @@ if query_proxy_available:
 async def startup_event():
     """应用启动事件"""
     logger.info("应用正在启动...")
-    
+
     try:
         # 重新加载文件数据源
         load_file_datasources_on_startup()
@@ -153,7 +150,9 @@ def initialize_encryption_key():
     if secret_key_env:
         logger.info("Found SECRET_KEY in environment variables.")
         # Ensure the key is properly encoded for Fernet
-        secret_key = base64.urlsafe_b64encode(secret_key_env.encode('utf-8').ljust(32)[:32])
+        secret_key = base64.urlsafe_b64encode(
+            secret_key_env.encode("utf-8").ljust(32)[:32]
+        )
     elif os.path.exists(key_file_path):
         logger.info(f"Found persisted secret key file at {key_file_path}.")
         with open(key_file_path, "rb") as f:
@@ -169,13 +168,15 @@ def initialize_encryption_key():
         except Exception as e:
             logger.error(f"Failed to save new secret key: {e}")
             # Fallback to using the key in memory without persisting
-    
+
     # Note: The password_encryptor is already initialized in core/encryption.py
     # We don't need to re-initialize it here
     if secret_key:
         logger.info("Encryption key initialized successfully.")
     else:
-        logger.error("CRITICAL: Could not initialize encryption key. Password encryption will fail.")
+        logger.error(
+            "CRITICAL: Could not initialize encryption key. Password encryption will fail."
+        )
 
 
 @app.get("/health", tags=["Health"])

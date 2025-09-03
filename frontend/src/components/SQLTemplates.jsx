@@ -1,7 +1,6 @@
 import {
     ContentCopy as CopyIcon,
-    ExpandMore as ExpandMoreIcon,
-    PlayArrow as PlayIcon
+    ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import {
     Accordion,
@@ -18,7 +17,7 @@ import {
 } from '@mui/material';
 import React from 'react';
 
-const SQLTemplates = ({ onTemplateSelect, onTemplateExecute, tables = [] }) => {
+const SQLTemplates = ({ onTemplateSelect, tables = [] }) => {
     const templates = [
         {
             category: '基础查询',
@@ -205,11 +204,7 @@ const SQLTemplates = ({ onTemplateSelect, onTemplateExecute, tables = [] }) => {
         }
     };
 
-    const handleTemplateExecute = (template) => {
-        if (onTemplateExecute) {
-            onTemplateExecute(template.sql);
-        }
-    };
+
 
     const handleCopyTemplate = (template) => {
         navigator.clipboard.writeText(template.sql);
@@ -273,17 +268,6 @@ const SQLTemplates = ({ onTemplateSelect, onTemplateExecute, tables = [] }) => {
                                                             <CopyIcon fontSize="small" />
                                                         </IconButton>
                                                     </Tooltip>
-                                                    <Tooltip title="直接执行">
-                                                        <IconButton
-                                                            size="small"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleTemplateExecute(template);
-                                                            }}
-                                                        >
-                                                            <PlayIcon fontSize="small" />
-                                                        </IconButton>
-                                                    </Tooltip>
                                                 </Box>
                                             </Box>
 
@@ -332,16 +316,7 @@ const SQLTemplates = ({ onTemplateSelect, onTemplateExecute, tables = [] }) => {
                 </Accordion>
             ))}
 
-            {tables.length > 0 && (
-                <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
-                    <Typography variant="subtitle2" color="info.contrastText">
-                        💡 提示：当前可用表 - {tables.join(', ')}
-                    </Typography>
-                    <Typography variant="body2" color="info.contrastText" sx={{ mt: 1 }}>
-                        在模板中可以将 "table_name" 替换为实际的表名
-                    </Typography>
-                </Box>
-            )}
+
         </Box>
     );
 };

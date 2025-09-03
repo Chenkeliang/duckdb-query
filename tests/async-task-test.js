@@ -18,22 +18,22 @@ class AsyncTaskTestSuite {
     console.log('🚀 启动浏览器...');
     this.browser = await chromium.launch({ headless: false });
     this.page = await this.browser.newPage();
-    
+
     // 设置视口大小
     await this.page.setViewportSize({ width: 1920, height: 1080 });
-    
+
     // 监听控制台消息
     this.page.on('console', msg => {
       console.log(`[CONSOLE] ${msg.text()}`);
     });
-    
+
     // 监听网络请求
     this.page.on('request', request => {
       if (request.url().includes('/api/async')) {
         console.log(`[ASYNC REQUEST] ${request.method()} ${request.url()}`);
       }
     });
-    
+
     // 监听网络响应
     this.page.on('response', response => {
       if (response.url().includes('/api/async')) {
@@ -56,18 +56,18 @@ class AsyncTaskTestSuite {
       timestamp: new Date().toISOString()
     };
     this.testResults.push(result);
-    
+
     const status = success ? '✅' : '❌';
     console.log(`${status} ${testName}: ${message}`);
   }
 
   async testApiHealth() {
     console.log('\n📋 测试API健康状态...');
-    
+
     try {
       const response = await fetch(`${this.apiBaseUrl}/health`);
       const data = await response.json();
-      
+
       if (response.ok && data.status === 'healthy') {
         await this.addTestResult('API健康检查', true, '后端API正常运行');
         return true;
@@ -83,10 +83,10 @@ class AsyncTaskTestSuite {
 
   async testPageLoad() {
     console.log('\n🌐 测试页面加载...');
-    
+
     try {
       await this.page.goto(this.baseUrl, { waitUntil: 'networkidle' });
-      
+
       // 检查页面标题
       const title = await this.page.title();
       if (title.includes('Duck Query') || title.includes('数据查询')) {
@@ -104,14 +104,14 @@ class AsyncTaskTestSuite {
 
   async testAsyncTaskTabNavigation() {
     console.log('\n📋 测试异步任务标签页导航...');
-    
+
     try {
       // 点击异步任务标签页
       const asyncTab = this.page.locator('button:has-text("异步任务")');
       if (await asyncTab.isVisible({ timeout: 5000 })) {
         await asyncTab.click();
         await this.page.waitForTimeout(2000);
-        
+
         // 检查页面标题
         const pageTitle = this.page.locator('h2:has-text("异步任务列表")');
         if (await pageTitle.isVisible()) {
@@ -133,7 +133,7 @@ class AsyncTaskTestSuite {
 
   async testAsyncTaskListDisplay() {
     console.log('\n📋 测试异步任务列表显示...');
-    
+
     try {
       // 检查任务列表容器
       const taskListContainer = this.page.locator('div:has-text("异步任务列表")').first();
@@ -159,7 +159,7 @@ class AsyncTaskTestSuite {
 
   async testAsyncSQLExecution() {
     console.log('\n⚡ 测试异步SQL执行...');
-    
+
     try {
       // 导航到SQL执行器页面
       const sqlTab = this.page.locator('button:has-text("SQL执行器")');
@@ -170,7 +170,7 @@ class AsyncTaskTestSuite {
         await this.addTestResult('异步SQL执行', false, '未找到SQL执行器标签页');
         return false;
       }
-      
+
       // 输入测试SQL
       const sqlEditor = this.page.locator('textarea[aria-label="SQL查询"]');
       if (await sqlEditor.isVisible()) {
@@ -181,7 +181,7 @@ class AsyncTaskTestSuite {
         await this.addTestResult('异步SQL执行', false, '未找到SQL编辑器');
         return false;
       }
-      
+
       // 点击异步执行按钮
       const asyncButton = this.page.locator('button:has-text("作为异步任务运行")');
       if (await asyncButton.isVisible()) {
@@ -191,7 +191,7 @@ class AsyncTaskTestSuite {
         await this.addTestResult('异步SQL执行', false, '未找到异步执行按钮');
         return false;
       }
-      
+
       // 检查成功消息
       const successMessage = this.page.locator('div[role="alert"]:has-text("异步任务已提交")');
       if (await successMessage.isVisible({ timeout: 5000 })) {
@@ -209,7 +209,7 @@ class AsyncTaskTestSuite {
 
   async testTaskStatusTracking() {
     console.log('\n📋 测试任务状态跟踪...');
-    
+
     try {
       // 导航到异步任务页面
       const asyncTab = this.page.locator('button:has-text("异步任务")');
@@ -220,17 +220,17 @@ class AsyncTaskTestSuite {
         await this.addTestResult('任务状态跟踪', false, '未找到异步任务标签页');
         return false;
       }
-      
+
       // 等待任务列表更新
       await this.page.waitForTimeout(3000);
-      
+
       // 检查是否有任务条目
       const taskRows = await this.page.locator('table tbody tr').count();
       if (taskRows > 0) {
         // 检查第一个任务的状态
         const firstTaskStatus = await this.page.locator('table tbody tr td:nth-child(2) span').first().textContent();
         console.log(`📋 第一个任务状态: ${firstTaskStatus}`);
-        
+
         await this.addTestResult('任务状态跟踪', true, `找到${taskRows}个任务，第一个任务状态: ${firstTaskStatus}`);
         return true;
       } else {
@@ -245,39 +245,39 @@ class AsyncTaskTestSuite {
 
   async runAllTests() {
     console.log('🧪 开始执行异步任务系统专项测试...\n');
-    
+
     try {
       await this.setup();
-      
+
       // 1. 测试API健康状态
       const apiHealthy = await this.testApiHealth();
       if (!apiHealthy) {
         console.log('❌ API不健康，跳过后续测试');
         return;
       }
-      
+
       // 2. 测试页面加载
       const pageLoaded = await this.testPageLoad();
       if (!pageLoaded) {
         console.log('❌ 页面加载失败，跳过后续测试');
         return;
       }
-      
+
       // 3. 测试异步任务标签页导航
       await this.testAsyncTaskTabNavigation();
-      
+
       // 4. 测试异步任务列表显示
       await this.testAsyncTaskListDisplay();
-      
+
       // 5. 测试异步SQL执行
       await this.testAsyncSQLExecution();
-      
+
       // 6. 测试任务状态跟踪
       await this.testTaskStatusTracking();
-      
+
       // 7. 分析结果
       await this.analyzeResults();
-      
+
     } catch (error) {
       console.error('❌ 测试执行失败:', error);
     } finally {
@@ -287,12 +287,12 @@ class AsyncTaskTestSuite {
 
   async analyzeResults() {
     console.log('\n📈 异步任务系统测试结果分析...');
-    
+
     const successCount = this.testResults.filter(r => r.success).length;
     const totalCount = this.testResults.length;
-    
+
     console.log(`\n📊 测试统计: ${successCount}/${totalCount} 通过`);
-    
+
     // 显示失败的测试
     const failedTests = this.testResults.filter(r => !r.success);
     if (failedTests.length > 0) {
@@ -301,7 +301,7 @@ class AsyncTaskTestSuite {
         console.log(`  - ${test.test}: ${test.message}`);
       });
     }
-    
+
     // 总体评估
     const passRate = (successCount / totalCount) * 100;
     if (passRate >= 80) {
@@ -309,7 +309,7 @@ class AsyncTaskTestSuite {
     } else {
       console.log('\n⚠️ 异步任务系统测试未完全通过，请检查失败项。');
     }
-    
+
     console.log('\n✅ 异步任务系统专项测试完成!');
   }
 }

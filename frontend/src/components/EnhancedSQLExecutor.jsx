@@ -1,10 +1,8 @@
 import {
   Code,
-  Delete,
   PlayArrow,
   TableChart,
-  ViewList,
-  Visibility,
+  ViewList
 } from "@mui/icons-material";
 import {
   Alert,
@@ -12,7 +10,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -20,17 +17,13 @@ import {
   DialogTitle,
   FormControl,
   Grid,
-  IconButton,
   InputLabel,
-  List,
-  ListItem,
-  ListItemText,
   MenuItem,
   Select,
   Tab,
   Tabs,
   TextField,
-  Typography,
+  Typography
 } from "@mui/material";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -39,9 +32,11 @@ import {
   getDuckDBTablesEnhanced,
   submitAsyncQuery,
 } from "../services/apiClient";
+import DuckDBManagementPage from "./DuckDBManager/DuckDBManagementPage";
 import DuckDBSQLEditor from "./DuckDBSQLEditor";
 import SQLTemplates from "./SQLTemplates";
 import SQLValidator from "./SQLValidator";
+import TreeTableView from "./TreeTableView";
 
 const EnhancedSQLExecutor = ({
   onResultsReceived,
@@ -143,7 +138,26 @@ const EnhancedSQLExecutor = ({
         }
       }
     } catch (err) {
-      setError(err.message || "查询执行失败");
+      // 处理详细的错误信息
+      let errorMessage = err.message || "查询执行失败";
+
+      // 如果有错误代码，显示更友好的错误信息
+      if (err.code) {
+        // 后端现在返回中文错误消息，直接使用即可
+        errorMessage = err.message;
+
+        // 如果有原始错误信息，添加到控制台日志
+        if (err.details && err.details.original_error) {
+          console.error('原始错误信息:', err.details.original_error);
+        }
+
+        // 如果有详细信息，添加到错误日志
+        if (err.details) {
+          console.error('错误详情:', err.details);
+        }
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -199,22 +213,10 @@ const EnhancedSQLExecutor = ({
 
   return (
     <Box>
-      <Typography
-        variant="h4"
-        gutterBottom
-        sx={{ fontWeight: 600, color: "#1976d2" }}
-      >
-        🚀 增强SQL执行器
-      </Typography>
-
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>
           <Card sx={{ height: "fit-content" }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                🗃️ DuckDB表
-              </Typography>
-
               <Box sx={{ mb: 2 }}>
                 <Box
                   sx={{
@@ -224,7 +226,10 @@ const EnhancedSQLExecutor = ({
                     mb: 2,
                   }}
                 >
-                  <Typography variant="subtitle1">可用表</Typography>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    <TableChart sx={{ mr: 1, color: "primary.main" }} />
+                    <Typography variant="h6">DuckDB表</Typography>
+                  </Box>
                   <Button
                     size="small"
                     onClick={() => setTableManagerOpen(true)}
@@ -234,18 +239,11 @@ const EnhancedSQLExecutor = ({
                   </Button>
                 </Box>
 
-                <Box sx={{ maxHeight: 300, overflow: "auto" }}>
-                  {duckdbTables.map((table) => (
-                    <Chip
-                      key={table}
-                      label={table}
-                      size="small"
-                      sx={{ m: 0.5 }}
-                      onClick={() =>
-                        setSqlQuery(`SELECT * FROM "${table}" LIMIT 100`)
-                      }
-                    />
-                  ))}
+                <Box sx={{ maxHeight: 400, overflow: "auto" }}>
+                  <TreeTableView
+                    tables={duckdbTables}
+                    onTableSelect={(table) => setSqlQuery(`SELECT * FROM "${table}" LIMIT 100`)}
+                  />
                 </Box>
               </Box>
             </CardContent>
@@ -256,7 +254,7 @@ const EnhancedSQLExecutor = ({
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                ⚡ SQL查询执行器
+                SQL查询执行器
               </Typography>
 
               <Tabs
@@ -293,10 +291,6 @@ const EnhancedSQLExecutor = ({
                   <SQLTemplates
                     onTemplateSelect={(template) => {
                       setSqlQuery(template);
-                      setActiveTab(0);
-                    }}
-                    onTemplateExecute={(template) => {
-                      executeSQL(template);
                       setActiveTab(0);
                     }}
                     tables={duckdbTables}
@@ -376,34 +370,41 @@ const EnhancedSQLExecutor = ({
       <Dialog
         open={tableManagerOpen}
         onClose={() => setTableManagerOpen(false)}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
+        sx={{
+          '& .MuiDialog-paper': {
+            maxHeight: '90vh',
+            borderRadius: 2
+          }
+        }}
       >
-        <DialogTitle>🗃️ DuckDB表管理</DialogTitle>
-        <DialogContent>
-          <List>
-            {duckdbTables.map((table) => (
-              <ListItem key={table}>
-                <ListItemText primary={table} />
-                <IconButton
-                  onClick={() =>
-                    setSqlQuery(`SELECT * FROM "${table}" LIMIT 100`)
-                  }
-                >
-                  <Visibility />
-                </IconButton>
-                <IconButton
-                  onClick={() => handleDeleteTable(table)}
-                  color="error"
-                >
-                  <Delete />
-                </IconButton>
-              </ListItem>
-            ))}
-          </List>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <TableChart sx={{ color: 'primary.main' }} />
+            <Typography variant="h5" component="h2" fontWeight="bold">
+              DuckDB表管理
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ p: 1 }}>
+          <DuckDBManagementPage
+            onDataSourceChange={() => {
+              fetchDuckDBTables();
+              if (onDataSourceSaved) {
+                onDataSourceSaved();
+              }
+            }}
+          />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setTableManagerOpen(false)}>关闭</Button>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={() => setTableManagerOpen(false)}
+            variant="contained"
+            sx={{ borderRadius: 2 }}
+          >
+            关闭
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

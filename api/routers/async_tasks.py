@@ -21,7 +21,7 @@ from core.file_datasource_manager import (
     create_table_from_dataframe,
 )
 from core.config_manager import config_manager
-from core.timezone_utils import get_current_time_iso
+from core.timezone_utils import get_current_time_iso, get_current_time
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -70,12 +70,14 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange }) => {
             }
         }
 
-        // 检查 JOIN 语句
-        if (upperQuery.includes('JOIN') && !upperQuery.includes('ON')) {
+        // 检查 JOIN 语句 - 只在真正的JOIN语法时校验
+        const joinPattern = /\b(INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+JOIN|JOIN)\b/gi;
+        const joinMatches = upperQuery.match(joinPattern);
+        if (joinMatches && !upperQuery.includes('ON')) {
             newErrors.push({
                 type: 'syntax',
                 message: 'JOIN语句缺少ON条件',
-                position: upperQuery.indexOf('JOIN'),
+                position: upperQuery.indexOf(joinMatches[0]),
                 suggestion: '添加 ON table1.column = table2.column'
             });
         }
@@ -149,7 +151,8 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange }) => {
 
     const totalIssues = errors.length + warnings.length + suggestions.length;
 
-    if (totalIssues === 0) {
+    // 只有在用户输入了SQL查询且没有语法错误时才显示成功提示
+    if (totalIssues === 0 && sqlQuery.trim()) {
         return (
             <Box sx={{ mt: 2 }}>
                 <Alert severity="success" icon={<CheckCircleIcon />}>
@@ -159,6 +162,11 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange }) => {
                 </Alert>
             </Box>
         );
+    }
+
+    // 如果没有输入内容或没有问题，不显示任何内容
+    if (!sqlQuery.trim() || totalIssues === 0) {
+        return null;
     }
 
     return (
