@@ -137,20 +137,38 @@ def _apply_default_duckdb_config(connection, temp_dir: str):
     """
     logger.info("应用默认DuckDB配置")
     
-    # 基础设置
-    connection.execute("SET threads=8")
-    connection.execute("SET memory_limit='8GB'")
-    connection.execute(f"SET temp_directory='{temp_dir}'")
-    
-    # 性能优化
-    connection.execute("SET enable_profiling=true")
-    connection.execute("SET force_index_join=false")
-    connection.execute("SET enable_object_cache=true")
-    connection.execute("SET preserve_insertion_order=false")
-    connection.execute("SET enable_progress_bar=false")
-    
-    # 安装默认扩展
-    _install_duckdb_extensions(connection, ["excel", "json", "parquet"])
+    try:
+        # 尝试从配置文件获取默认值
+        from core.config_manager import config_manager
+        app_config = config_manager.get_app_config()
+        
+        # 使用配置文件中的默认值
+        connection.execute(f"SET threads={app_config.duckdb_threads}")
+        connection.execute(f"SET memory_limit='{app_config.duckdb_memory_limit}'")
+        connection.execute(f"SET temp_directory='{temp_dir}'")
+        
+        # 性能优化 - 使用配置默认值
+        connection.execute(f"SET enable_profiling={str(app_config.duckdb_enable_profiling).lower()}")
+        connection.execute(f"SET force_index_join={str(app_config.duckdb_force_index_join).lower()}")
+        connection.execute(f"SET enable_object_cache={str(app_config.duckdb_enable_object_cache).lower()}")
+        connection.execute(f"SET preserve_insertion_order={str(app_config.duckdb_preserve_insertion_order).lower()}")
+        connection.execute(f"SET enable_progress_bar={str(app_config.duckdb_enable_progress_bar).lower()}")
+        
+        # 安装默认扩展
+        _install_duckdb_extensions(connection, app_config.duckdb_extensions)
+        
+    except Exception as e:
+        logger.warning(f"使用配置文件默认值失败，使用硬编码默认值: {str(e)}")
+        # 硬编码默认值作为最后后备
+        connection.execute("SET threads=8")
+        connection.execute("SET memory_limit='8GB'")
+        connection.execute(f"SET temp_directory='{temp_dir}'")
+        connection.execute("SET enable_profiling=true")
+        connection.execute("SET force_index_join=false")
+        connection.execute("SET enable_object_cache=true")
+        connection.execute("SET preserve_insertion_order=false")
+        connection.execute("SET enable_progress_bar=false")
+        _install_duckdb_extensions(connection, ["excel", "json", "parquet"])
 
 
 def get_db_connection():

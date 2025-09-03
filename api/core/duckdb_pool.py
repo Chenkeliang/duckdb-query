@@ -132,38 +132,21 @@ class DuckDBConnectionPool:
     def _configure_connection(
         self, connection: duckdb.DuckDBPyConnection, app_config, temp_dir: str
     ):
-        """配置连接参数"""
+        """配置连接参数 - 使用统一的DuckDB配置系统"""
         try:
-            # 基础设置
+            # 导入统一的配置应用函数
+            from core.duckdb_engine import _apply_duckdb_configuration
+            
+            # 使用统一的配置系统
+            _apply_duckdb_configuration(connection, temp_dir)
+            
+        except Exception as e:
+            logger.warning(f"应用统一配置失败，使用基础配置: {str(e)}")
+            # 基础配置作为后备
             connection.execute("SET threads=8")
             connection.execute(f"SET temp_directory='{temp_dir}'")
-
-            # 内存限制
-            memory_limit = app_config.duckdb_memory_limit
-            if memory_limit:
-                connection.execute(f"SET memory_limit='{memory_limit}'")
-                connection.execute(f"SET max_memory='{memory_limit}'")
-
-            # 性能优化
-            connection.execute("SET enable_profiling=true")
-            connection.execute("SET preserve_insertion_order=false")
-            connection.execute("SET enable_progress_bar=false")
-            connection.execute("SET enable_object_cache=true")
-
-            # 扩展目录设置
-            try:
-                extension_dir = "/app/data/duckdb/extensions"
-                home_dir = "/app/data/duckdb/home"
-                os.makedirs(extension_dir, exist_ok=True)
-                os.makedirs(home_dir, exist_ok=True)
-
-                connection.execute(f"SET home_directory='{home_dir}';")
-                connection.execute(f"SET extension_directory='{extension_dir}';")
-            except Exception as e:
-                logger.warning(f"设置扩展目录失败: {str(e)}")
-
-        except Exception as e:
-            logger.warning(f"配置连接参数失败: {str(e)}")
+            if app_config.duckdb_memory_limit:
+                connection.execute(f"SET memory_limit='{app_config.duckdb_memory_limit}'")
 
     @contextmanager
     def get_connection(self):
