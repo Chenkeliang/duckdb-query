@@ -19,8 +19,9 @@ async def get_database_tables(connection_id: str):
     try:
         # 获取应用配置
         from core.config_manager import config_manager
+
         app_config = config_manager.get_app_config()
-        
+
         # 获取数据库连接配置
         connection = db_manager.get_connection(connection_id)
         if not connection:
@@ -71,7 +72,6 @@ async def get_database_tables(connection_id: str):
 
                     table_info = []
                     # 限制表数量，避免超时
-                    app_config = config_manager.get_app_config()
                     max_tables = getattr(app_config, "max_tables", 200)  # 默认200
                     tables_to_process = tables[:max_tables]
 
@@ -168,7 +168,6 @@ async def get_database_tables(connection_id: str):
 
                     table_info = []
                     # 限制表数量，避免超时
-                    app_config = config_manager.get_app_config()
                     max_tables = getattr(app_config, "max_tables", 200)  # 默认200
                     tables_to_process = tables[:max_tables]
 
@@ -262,8 +261,9 @@ async def get_table_details(connection_id: str, table_name: str):
     try:
         # 获取应用配置
         from core.config_manager import config_manager
+
         app_config = config_manager.get_app_config()
-        
+
         # 获取数据库连接配置
         connection = db_manager.get_connection(connection_id)
         if not connection:
