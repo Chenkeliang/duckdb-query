@@ -217,7 +217,7 @@ async def list_database_connections(request: Request):
                     conn.type.value if hasattr(conn.type, "value") else str(conn.type)
                 ),
                 "params": conn.params,
-                "status": str(conn.status),
+                "status": conn.status.value if hasattr(conn.status, "value") else str(conn.status),
                 "created_at": conn.created_at.isoformat() if conn.created_at else None,
                 "updated_at": conn.updated_at.isoformat() if conn.updated_at else None,
                 "last_tested": (
@@ -230,8 +230,8 @@ async def list_database_connections(request: Request):
 
         result = {"success": True, "connections": serializable_connections}
 
-        # 缓存结果
-        list_database_connections._cached_result = result
+        # 不缓存结果，确保每次都是最新状态
+        # list_database_connections._cached_result = result
 
         return result
     except Exception as e:
