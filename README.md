@@ -124,7 +124,7 @@ cd DuckQuery
 ./quick-start.sh
 ```
 
-c**💡 提示：** 首次启动前，建议检查 `docker-compose.yml` 中的端口、内存、CPU等配置是否符合你的环境。
+**💡 提示：** 首次启动前，建议检查 `docker-compose.yml` 中的端口、内存、CPU等配置是否符合你的环境。
 
 ### 手动部署
 
@@ -144,7 +144,7 @@ docker-compose up -d --build
 # API文档: http://localhost:8000/docs
 ```
 
-** 配置调整要点：**
+**配置调整要点：**
 - **端口冲突**：如果8000或3000端口被占用，修改 `docker-compose.yml` 中的端口映射
 - **资源限制**：根据服务器配置调整内存和CPU限制
 - **目录权限**：确保数据目录有正确的读写权限
@@ -249,22 +249,10 @@ npm run preview
 
 ### DuckDB引擎配置
 
-Duck Query 直接使用 DuckDB Python API，在应用启动时自动配置：
-
-```python
-# 系统自动配置的DuckDB优化参数
-_global_duckdb_connection.execute("SET threads=8")                    # 线程数设置
-_global_duckdb_connection.execute("SET memory_limit='2GB'")           # 内存限制
-_global_duckdb_connection.execute("SET preserve_insertion_order=false") # 优化性能
-_global_duckdb_connection.execute("SET enable_object_cache=true")      # 启用对象缓存
-
-# 自动安装和加载扩展
-_global_duckdb_connection.execute("INSTALL excel; LOAD excel;")       # Excel支持
-_global_duckdb_connection.execute("INSTALL json; LOAD json;")         # JSON支持
-_global_duckdb_connection.execute("INSTALL parquet; LOAD parquet;")   # Parquet支持
-```
-
-系统会自动处理DuckDB的初始化和优化配置，用户无需手动设置。
+Duck Query 在应用启动时自动配置DuckDB引擎，包括：
+- 自动优化参数设置（线程数、内存限制、性能优化等）
+- 自动安装和加载必要扩展（Excel、JSON、Parquet支持）
+- 用户无需手动配置，开箱即用
 
 ## 📖 使用指南
 
@@ -375,7 +363,7 @@ Duck Query 基于 DuckDB 引擎，具有以下性能特点：
 - **内存处理**: 减少磁盘I/O，提升查询速度
 - **智能优化**: 自动查询计划优化
 
-性能基准测试结果请参考 [性能文档](docs/performance.md)。
+
 
 ## 🔒 安全特性
 
