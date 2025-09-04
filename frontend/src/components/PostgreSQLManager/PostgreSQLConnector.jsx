@@ -46,6 +46,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [database, setDatabase] = useState('');
+  const [schema, setSchema] = useState('public');
   const [alias, setAlias] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -89,13 +90,14 @@ const PostgreSQLConnector = ({ onConnect }) => {
       const configToSave = {
         id: configName || `postgresql-${host}-${database}`,
         type: 'postgresql',
-        name: configName || `${host}:${port || '5432'}/${database}`,
+        name: configName || `${host}:${port || '5432'}/${database}.${schema}`,
         params: {
           host,
           port: port ? parseInt(port) : 5432,
           user: username,
           password,
-          database
+          database,
+          schema
         }
       };
       
@@ -131,6 +133,8 @@ const PostgreSQLConnector = ({ onConnect }) => {
       setHost(config.params.host || 'localhost');
       setPort(config.params.port?.toString() || '5432');
       setUsername(config.params.user || '');
+      setDatabase(config.params.database || '');
+      setSchema(config.params.schema || 'public');
 
       // 如果密码被遮蔽，需要从后端获取真实密码
       if (config.params.password === '********') {
@@ -168,7 +172,8 @@ const PostgreSQLConnector = ({ onConnect }) => {
           port: port ? parseInt(port) : undefined,
           user: username,
           password,
-          database
+          database,
+          schema
         }
       };
 
@@ -237,14 +242,15 @@ const PostgreSQLConnector = ({ onConnect }) => {
 
     try {
       const connectionParams = {
-        id: alias || `postgresql-${host}-${database}`,
+        id: alias || `postgresql-${host}-${database}-${schema}`,
         type: 'postgresql',
         params: {
           host,
           port: port ? parseInt(port) : 5432,
           user: username,
           password,
-          database
+          database,
+          schema
         }
       };
 
@@ -388,6 +394,18 @@ const PostgreSQLConnector = ({ onConnect }) => {
             sx={{ mb: 1.5 }}
             placeholder="your_database"
           />
+
+          <TextField
+            label="Schema架构"
+            variant="outlined"
+            size="small"
+            value={schema}
+            onChange={(e) => setSchema(e.target.value)}
+            fullWidth
+            sx={{ mb: 1.5 }}
+            placeholder="public"
+            helperText="PostgreSQL架构名称，默认为public"
+          />
           
           <TextField
             label="连接别名（可选）"
@@ -485,6 +503,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
                     secondary={
                       <Typography variant="caption" color="text.secondary">
                         {config.params?.host}:{config.params?.port || '5432'}/{config.params?.database}
+                        {config.params?.schema && config.params.schema !== 'public' && `.${config.params.schema}`}
                       </Typography>
                     }
                   />

@@ -699,6 +699,10 @@ async def get_postgresql_tables(connection: DatabaseConnection) -> list:
     """获取PostgreSQL表信息"""
     try:
         import psycopg2
+        
+        # 获取配置的超时时间
+        from core.config_manager import config_manager
+        app_config = config_manager.get_app_config()
 
         # 创建连接
         conn = psycopg2.connect(
@@ -711,13 +715,17 @@ async def get_postgresql_tables(connection: DatabaseConnection) -> list:
         )
 
         with conn.cursor() as cursor:
+            # 获取schema参数，默认为public
+            schema = connection.params.get("schema", "public")
+            
             # 获取表列表
             cursor.execute(
                 """
                 SELECT table_name 
                 FROM information_schema.tables 
-                WHERE table_schema = 'public'
-            """
+                WHERE table_schema = %s
+            """,
+                (schema,)
             )
             tables = cursor.fetchall()
 

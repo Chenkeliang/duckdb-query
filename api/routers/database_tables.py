@@ -155,14 +155,18 @@ async def get_database_tables(connection_id: str):
 
             try:
                 with conn.cursor() as cursor:
-                    # 获取所有表名 (仅当前数据库的public模式)
+                    # 获取schema参数，默认为public
+                    schema = db_config.get("schema", "public")
+                    
+                    # 获取所有表名 (指定的schema)
                     cursor.execute(
                         """
                         SELECT tablename 
                         FROM pg_tables 
-                        WHERE schemaname = 'public'
+                        WHERE schemaname = %s
                         ORDER BY tablename
-                    """
+                    """,
+                        (schema,)
                     )
                     tables = [row[0] for row in cursor.fetchall()]
 
@@ -370,6 +374,9 @@ async def get_table_details(connection_id: str, table_name: str):
 
             try:
                 with conn.cursor() as cursor:
+                    # 获取schema参数，默认为public
+                    schema = db_config.get("schema", "public")
+                    
                     # 获取表结构详细信息
                     cursor.execute(
                         """
@@ -380,10 +387,10 @@ async def get_table_details(connection_id: str, table_name: str):
                             column_default,
                             '' as extra  -- PostgreSQL没有extra字段，保持与MySQL结构一致
                         FROM information_schema.columns 
-                        WHERE table_name = %s AND table_schema = 'public'
+                        WHERE table_name = %s AND table_schema = %s
                         ORDER BY ordinal_position
                     """,
-                        (table_name,),
+                        (table_name, schema),
                     )
 
                     columns = []
