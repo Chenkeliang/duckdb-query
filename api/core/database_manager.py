@@ -244,6 +244,10 @@ class DatabaseManager:
                 password = password_encryptor.decrypt_password(password)
                 logger.info("密码已解密用于PostgreSQL连接测试")
 
+            # 获取配置的超时时间
+            from core.config_manager import config_manager
+            app_config = config_manager.get_app_config()
+
             connection = psycopg2.connect(
                 host=params.get("host"),
                 port=params.get("port", 5432),

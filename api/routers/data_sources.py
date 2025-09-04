@@ -144,6 +144,10 @@ async def test_connection_simple(request: dict = Body(...)):
             try:
                 import psycopg2
 
+                # 获取配置的超时时间
+                from core.config_manager import config_manager
+                app_config = config_manager.get_app_config()
+
                 conn = psycopg2.connect(
                     host=request.get("host", "localhost"),
                     port=request.get("port", 5432),
