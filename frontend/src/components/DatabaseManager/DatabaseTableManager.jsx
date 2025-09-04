@@ -1,44 +1,46 @@
-import React, { useState, useEffect } from 'react';
 import {
+  Code as CodeIcon,
+  ExpandMore as ExpandMoreIcon,
+  Refresh as RefreshIcon,
+  Search as SearchIcon,
+  Storage as StorageIcon,
+  TableChart as TableChartIcon,
+  Visibility as VisibilityIcon
+} from '@mui/icons-material';
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Grid,
+  IconButton,
+  InputAdornment,
+  Pagination,
+  Paper,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Chip,
-  IconButton,
-  Collapse,
-  Alert,
-  CircularProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Grid,
-  Tooltip,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Tabs,
-  Tab,
-  Divider
+  TextField,
+  Tooltip,
+  Typography
 } from '@mui/material';
-import {
-  ExpandMore as ExpandMoreIcon,
-  Visibility as VisibilityIcon,
-  Storage as StorageIcon,
-  TableChart as TableChartIcon,
-  Info as InfoIcon,
-  Refresh as RefreshIcon,
-  Code as CodeIcon
-} from '@mui/icons-material';
+import React, { useEffect, useMemo, useState } from 'react';
 
 const DatabaseTableManager = ({ databaseConnections = [] }) => {
   const [selectedConnection, setSelectedConnection] = useState(null);
@@ -50,6 +52,10 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
   const [tableDetailsOpen, setTableDetailsOpen] = useState(false);
   const [tableDetails, setTableDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(50); // 每页显示50个表
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showAllColumns, setShowAllColumns] = useState(new Set()); // 记录哪些表显示所有字段
 
 
   // 创建带超时和重试的fetch函数
@@ -153,6 +159,17 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
     setExpandedTables(newExpanded);
   };
 
+  // 切换显示所有字段状态
+  const toggleShowAllColumns = (tableName) => {
+    const newShowAll = new Set(showAllColumns);
+    if (newShowAll.has(tableName)) {
+      newShowAll.delete(tableName);
+    } else {
+      newShowAll.add(tableName);
+    }
+    setShowAllColumns(newShowAll);
+  };
+
   // 生成SQL查询示例
   const generateSampleSQL = (tableName, columns) => {
     const columnNames = columns.slice(0, 5).map(col => col.name).join(', ');
@@ -178,11 +195,38 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
     }
   }, [databaseConnections]);
 
+  // 过滤和分页的表数据
+  const filteredAndPaginatedTables = useMemo(() => {
+    if (!tableData?.tables) return { tables: [], totalPages: 0, totalTables: 0 };
+
+    // 搜索过滤
+    const filtered = tableData.tables.filter(table =>
+      table.table_name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    // 分页
+    const totalPages = Math.ceil(filtered.length / pageSize);
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const paginatedTables = filtered.slice(startIndex, endIndex);
+
+    return {
+      tables: paginatedTables,
+      totalPages,
+      totalTables: filtered.length
+    };
+  }, [tableData?.tables, searchTerm, currentPage, pageSize]);
+
   useEffect(() => {
     if (selectedConnection) {
       fetchDatabaseTables(selectedConnection);
     }
   }, [selectedConnection]);
+
+  // 搜索时重置到第一页
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   if (databaseConnections.length === 0) {
     return (
@@ -213,7 +257,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
               </Button>
             </Box>
           </Box>
-          
+
           {databaseConnections.length > 0 && selectedConnection && (
             <Tabs
               value={selectedConnection}
@@ -284,12 +328,37 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
 
             <Divider sx={{ my: 3 }} />
 
-            {/* 表列表 */}
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-              📋 表列表
-            </Typography>
-            
-            {tableData.tables.map((table) => (
+            {/* 搜索和过滤 */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                📋 表列表
+              </Typography>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="搜索表名..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{ mb: 2 }}
+              />
+
+              {/* 搜索结果统计 */}
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                {searchTerm ?
+                  `找到 ${filteredAndPaginatedTables.totalTables} 个匹配的表` :
+                  `显示第 ${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, tableData.table_count)} 个表，共 ${tableData.table_count} 个`
+                }
+              </Typography>
+            </Box>
+
+            {filteredAndPaginatedTables.tables.map((table) => (
               <Accordion
                 key={table.table_name}
                 expanded={expandedTables.has(table.table_name)}
@@ -330,54 +399,117 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                   </Box>
                 </AccordionSummary>
                 <AccordionDetails>
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
-                      字段信息
-                    </Typography>
-                    <TableContainer component={Paper} variant="outlined">
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell sx={{ fontWeight: 600 }}>字段名</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>类型</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>允许空值</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>键</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>默认值</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>额外</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {table.columns.map((column, index) => (
-                            <TableRow key={index}>
-                              <TableCell sx={{ fontWeight: 500 }}>{column.name}</TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={column.type}
-                                  size="small"
-                                  color={getTypeColor(column.type)}
-                                  variant="outlined"
-                                />
-                              </TableCell>
-                              <TableCell>{column.null}</TableCell>
-                              <TableCell>
-                                {column.key && (
-                                  <Chip
-                                    label={column.key}
-                                    size="small"
-                                    color="warning"
-                                    variant="filled"
-                                  />
-                                )}
-                              </TableCell>
-                              <TableCell>{column.default || '-'}</TableCell>
-                              <TableCell>{column.extra || '-'}</TableCell>
+                  {/* 只在真正展开时才渲染内容，提升性能 */}
+                  {expandedTables.has(table.table_name) && (
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
+                        字段信息 ({table.column_count} 个字段)
+                      </Typography>
+
+                      {/* 如果字段太多，显示警告并提供显示所有字段的选项 */}
+                      {table.column_count > 50 && !showAllColumns.has(table.table_name) && (
+                        <Alert
+                          severity="info"
+                          sx={{ mb: 2 }}
+                          action={
+                            <Button
+                              size="small"
+                              onClick={() => toggleShowAllColumns(table.table_name)}
+                              sx={{ color: 'info.main' }}
+                            >
+                              查看所有字段
+                            </Button>
+                          }
+                        >
+                          此表有 {table.column_count} 个字段，为提升性能仅显示前50个字段。
+                        </Alert>
+                      )}
+
+                      {/* 当显示所有字段时的提示 */}
+                      {table.column_count > 50 && showAllColumns.has(table.table_name) && (
+                        <Alert
+                          severity="warning"
+                          sx={{ mb: 2 }}
+                          action={
+                            <Button
+                              size="small"
+                              onClick={() => toggleShowAllColumns(table.table_name)}
+                              sx={{ color: 'warning.main' }}
+                            >
+                              只显示前50个
+                            </Button>
+                          }
+                        >
+                          正在显示所有 {table.column_count} 个字段，可能会影响页面性能。
+                        </Alert>
+                      )}
+
+                      <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400 }}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ fontWeight: 600, bgcolor: 'grey.50' }}>字段名</TableCell>
+                              <TableCell sx={{ fontWeight: 600, bgcolor: 'grey.50' }}>类型</TableCell>
+                              <TableCell sx={{ fontWeight: 600, bgcolor: 'grey.50' }}>允许空值</TableCell>
+                              <TableCell sx={{ fontWeight: 600, bgcolor: 'grey.50' }}>键</TableCell>
+                              <TableCell sx={{ fontWeight: 600, bgcolor: 'grey.50' }}>默认值</TableCell>
+                              <TableCell sx={{ fontWeight: 600, bgcolor: 'grey.50' }}>额外</TableCell>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                    
-                    {/* SQL查询示例 */}
+                          </TableHead>
+                          <TableBody>
+                            {(showAllColumns.has(table.table_name) ? table.columns : table.columns.slice(0, 50)).map((column, index) => (
+                              <TableRow key={index} hover>
+                                <TableCell sx={{ fontWeight: 500 }}>{column.name}</TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={column.type}
+                                    size="small"
+                                    color={getTypeColor(column.type)}
+                                    variant="outlined"
+                                  />
+                                </TableCell>
+                                <TableCell>{column.null}</TableCell>
+                                <TableCell>
+                                  {column.key && (
+                                    <Chip
+                                      label={column.key}
+                                      size="small"
+                                      color="warning"
+                                      variant="filled"
+                                    />
+                                  )}
+                                </TableCell>
+                                <TableCell>{column.default || '-'}</TableCell>
+                                <TableCell>{column.extra || '-'}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+
+                      {/* 字段统计信息 */}
+                      {table.column_count > 50 && (
+                        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography variant="caption" color="text.secondary">
+                            {showAllColumns.has(table.table_name)
+                              ? `显示所有 ${table.column_count} 个字段`
+                              : `显示前 50 个字段，共 ${table.column_count} 个`
+                            }
+                          </Typography>
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => toggleShowAllColumns(table.table_name)}
+                          >
+                            {showAllColumns.has(table.table_name) ? '收起' : '查看全部'}
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+
+                  {/* SQL查询示例 - 在展开状态下显示 */}
+                  {expandedTables.has(table.table_name) && (
                     <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <CodeIcon sx={{ mr: 1, fontSize: 16 }} />
@@ -398,10 +530,25 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                         {generateSampleSQL(table.table_name, table.columns)}
                       </Typography>
                     </Box>
-                  </Box>
+                  )}
                 </AccordionDetails>
               </Accordion>
             ))}
+
+            {/* 分页组件 */}
+            {filteredAndPaginatedTables.totalPages > 1 && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                <Pagination
+                  count={filteredAndPaginatedTables.totalPages}
+                  page={currentPage}
+                  onChange={(event, value) => setCurrentPage(value)}
+                  color="primary"
+                  size="large"
+                  showFirstButton
+                  showLastButton
+                />
+              </Box>
+            )}
           </CardContent>
         </Card>
       )}
