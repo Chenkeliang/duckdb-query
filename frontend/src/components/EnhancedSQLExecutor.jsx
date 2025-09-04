@@ -273,57 +273,70 @@ const EnhancedSQLExecutor = ({
                   <Tab icon={<ViewList />} label="查询模板" />
                 </Tabs>
 
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() => sqlEditorRef.current?.formatSQL()}
-                    sx={{
-                      textTransform: 'none',
-                      fontWeight: 500,
-                      fontSize: '0.875rem',
-                      px: 2.5,
-                      py: 0.5,
-                      borderRadius: 2,
-                      borderColor: '#e0e0e0',
-                      color: '#666',
-                      '&:hover': {
-                        borderColor: '#1976d2',
-                        color: '#1976d2',
-                        backgroundColor: 'rgba(25, 118, 210, 0.04)'
-                      }
-                    }}
-                  >
-                    格式化SQL
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() => sqlEditorRef.current?.toggleFullscreen()}
-                    sx={{
-                      textTransform: 'none',
-                      fontWeight: 500,
-                      fontSize: '0.875rem',
-                      px: 2.5,
-                      py: 0.5,
-                      borderRadius: 2,
-                      borderColor: '#e0e0e0',
-                      color: '#666',
-                      '&:hover': {
-                        borderColor: '#1976d2',
-                        color: '#1976d2',
-                        backgroundColor: 'rgba(25, 118, 210, 0.04)'
-                      }
-                    }}
-                  >
-                    全屏编辑
-                  </Button>
+                <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1.5 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ mb: 0.5, color: 'text.secondary', fontSize: '0.75rem' }}>
+                      格式化
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => sqlEditorRef.current?.formatSQL()}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 500,
+                        fontSize: '0.875rem',
+                        px: 2.5,
+                        py: 0.5,
+                        borderRadius: 2,
+                        borderColor: '#e0e0e0',
+                        color: '#666',
+                        height: '40px',
+                        '&:hover': {
+                          borderColor: '#1976d2',
+                          color: '#1976d2',
+                          backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                        }
+                      }}
+                    >
+                      格式化SQL
+                    </Button>
+                  </Box>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ mb: 0.5, color: 'text.secondary', fontSize: '0.75rem' }}>
+                      全屏
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => sqlEditorRef.current?.toggleFullscreen()}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 500,
+                        fontSize: '0.875rem',
+                        px: 2.5,
+                        py: 0.5,
+                        borderRadius: 2,
+                        borderColor: '#e0e0e0',
+                        color: '#666',
+                        height: '40px',
+                        '&:hover': {
+                          borderColor: '#1976d2',
+                          color: '#1976d2',
+                          backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                        }
+                      }}
+                    >
+                      全屏编辑
+                    </Button>
+                  </Box>
                   <FormControl size="small" sx={{ minWidth: 120 }}>
                     <InputLabel>主题</InputLabel>
                     <Select
                       value={editorTheme}
                       label="主题"
                       onChange={(e) => setEditorTheme(e.target.value)}
+                      sx={{ height: '40px' }}
                     >
                       <MenuItem value="dark">Dark</MenuItem>
                       <MenuItem value="github-light">GitHub Light</MenuItem>
