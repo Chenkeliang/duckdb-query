@@ -242,7 +242,11 @@ const EnhancedSQLExecutor = ({
                   </Button>
                 </Box>
 
-                <Box sx={{ maxHeight: 400, overflow: "auto" }}>
+                <Box sx={{ 
+                  maxHeight: "70vh", 
+                  overflow: "auto",
+                  minHeight: "200px"
+                }}>
                   <TreeTableView
                     tables={duckdbTables}
                     onTableSelect={(table) => setSqlQuery(`SELECT * FROM "${table}" LIMIT 100`)}
