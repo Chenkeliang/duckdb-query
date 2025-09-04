@@ -334,7 +334,7 @@ const EnhancedSQLExecutor = ({
               </Box>
 
               {activeTab === 0 && (
-                <Box>
+                <Box sx={{ mb: 4 }}>
                   <DuckDBSQLEditor
                     ref={sqlEditorRef} // Assign the ref
                     value={sqlQuery}
@@ -354,7 +354,7 @@ const EnhancedSQLExecutor = ({
               )}
 
               {activeTab === 1 && (
-                <Box>
+                <Box sx={{ mb: 4 }}>
                   <SQLTemplates
                     onTemplateSelect={(template) => {
                       setSqlQuery(template);
