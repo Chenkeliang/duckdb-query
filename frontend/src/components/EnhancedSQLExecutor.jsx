@@ -48,7 +48,7 @@ const EnhancedSQLExecutor = ({
   const [saveAsTable, setSaveAsTable] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [editorTheme, setEditorTheme] = useState("light");
+  const [editorTheme, setEditorTheme] = useState("github-light");
   const [success, setSuccess] = useState("");
   const [duckdbTables, setDuckdbTables] = useState([]);
   const [tableManagerOpen, setTableManagerOpen] = useState(false);
@@ -242,8 +242,8 @@ const EnhancedSQLExecutor = ({
                   </Button>
                 </Box>
 
-                <Box sx={{ 
-                  maxHeight: "70vh", 
+                <Box sx={{
+                  maxHeight: "70vh",
                   overflow: "auto",
                   minHeight: "200px"
                 }}>
