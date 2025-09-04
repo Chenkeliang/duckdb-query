@@ -269,18 +269,64 @@ const EnhancedSQLExecutor = ({
                   <Tab icon={<ViewList />} label="查询模板" />
                 </Tabs>
 
-                <FormControl size="small" sx={{ minWidth: 120 }}>
-                  <InputLabel>主题</InputLabel>
-                  <Select
-                    value={editorTheme}
-                    label="主题"
-                    onChange={(e) => setEditorTheme(e.target.value)}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => sqlEditorRef.current?.formatSQL()}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 500,
+                      fontSize: '0.875rem',
+                      px: 2.5,
+                      py: 0.5,
+                      borderRadius: 2,
+                      borderColor: '#e0e0e0',
+                      color: '#666',
+                      '&:hover': {
+                        borderColor: '#1976d2',
+                        color: '#1976d2',
+                        backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                      }
+                    }}
                   >
-                    <MenuItem value="dark">Dark</MenuItem>
-                    <MenuItem value="github-light">GitHub Light</MenuItem>
-                    <MenuItem value="solarized-light">Solarized Light</MenuItem>
-                  </Select>
-                </FormControl>
+                    格式化SQL
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => sqlEditorRef.current?.toggleFullscreen()}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 500,
+                      fontSize: '0.875rem',
+                      px: 2.5,
+                      py: 0.5,
+                      borderRadius: 2,
+                      borderColor: '#e0e0e0',
+                      color: '#666',
+                      '&:hover': {
+                        borderColor: '#1976d2',
+                        color: '#1976d2',
+                        backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                      }
+                    }}
+                  >
+                    全屏编辑
+                  </Button>
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <InputLabel>主题</InputLabel>
+                    <Select
+                      value={editorTheme}
+                      label="主题"
+                      onChange={(e) => setEditorTheme(e.target.value)}
+                    >
+                      <MenuItem value="dark">Dark</MenuItem>
+                      <MenuItem value="github-light">GitHub Light</MenuItem>
+                      <MenuItem value="solarized-light">Solarized Light</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
               </Box>
 
               {activeTab === 0 && (

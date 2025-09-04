@@ -576,6 +576,24 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   const [editorError, setEditorError] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // 暴露方法给父组件
+  useImperativeHandle(ref, () => ({
+    formatSQL,
+    toggleFullscreen,
+    getValue: () => viewRef.current?.state.doc.toString() || "",
+    setValue: (value) => {
+      if (viewRef.current) {
+        viewRef.current.dispatch({
+          changes: {
+            from: 0,
+            to: viewRef.current.state.doc.length,
+            insert: value
+          }
+        });
+      }
+    }
+  }));
+
   // 全屏切换功能
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
@@ -871,61 +889,6 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
         }}
       />
 
-      {!isFullscreen && (
-        <Box sx={{
-          mt: 3,
-          mb: 2,
-          display: 'flex',
-          justifyContent: 'flex-end',
-          alignItems: 'center',
-          gap: 1.5
-        }}>
-          <Button
-            variant="outlined"
-            size="small"
-            onClick={formatSQL}
-            sx={{
-              textTransform: 'none',
-              fontWeight: 500,
-              fontSize: '0.875rem',
-              px: 2.5,
-              py: 0.5,
-              borderRadius: 2,
-              borderColor: '#e0e0e0',
-              color: '#666',
-              '&:hover': {
-                borderColor: '#1976d2',
-                color: '#1976d2',
-                backgroundColor: 'rgba(25, 118, 210, 0.04)'
-              }
-            }}
-          >
-            格式化SQL
-          </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            onClick={toggleFullscreen}
-            sx={{
-              textTransform: 'none',
-              fontWeight: 500,
-              fontSize: '0.875rem',
-              px: 2.5,
-              py: 0.5,
-              borderRadius: 2,
-              borderColor: '#e0e0e0',
-              color: '#666',
-              '&:hover': {
-                borderColor: '#1976d2',
-                color: '#1976d2',
-                backgroundColor: 'rgba(25, 118, 210, 0.04)'
-              }
-            }}
-          >
-            全屏编辑
-          </Button>
-        </Box>
-      )}
     </Box>
   );
 });
