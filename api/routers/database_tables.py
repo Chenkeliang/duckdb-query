@@ -157,18 +157,98 @@ async def get_database_tables(connection_id: str):
                 with conn.cursor() as cursor:
                     # 获取schema参数，默认为public
                     schema = db_config.get("schema", "public")
-                    
-                    # 获取所有表名 (指定的schema)
+                    logger.info(f"PostgreSQL查询schema: {schema}")
+
+                    # 首先检查schema是否存在
                     cursor.execute(
                         """
-                        SELECT tablename 
-                        FROM pg_tables 
-                        WHERE schemaname = %s
-                        ORDER BY tablename
+                        SELECT schema_name 
+                        FROM information_schema.schemata 
+                        WHERE schema_name = %s
                     """,
-                        (schema,)
+                        (schema,),
+                    )
+                    schema_exists = cursor.fetchall()
+                    logger.info(f"Schema '{schema}' 存在: {len(schema_exists) > 0}")
+
+                    # 获取所有表名 (指定的schema) - 只包含真正的表，排除视图
+                    cursor.execute(
+                        """
+                        SELECT table_name 
+                        FROM information_schema.tables 
+                        WHERE table_schema = %s AND table_type = 'BASE TABLE'
+                        ORDER BY table_name
+                    """,
+                        (schema,),
                     )
                     tables = [row[0] for row in cursor.fetchall()]
+                    logger.info(
+                        f"PostgreSQL找到 {len(tables)} 个表在schema '{schema}'中"
+                    )
+
+                    # 添加详细的诊断信息，无论是否找到表
+                    logger.info(f"尝试诊断schema '{schema}'的访问情况...")
+
+                    # 检查所有表的详细信息，区分表和视图
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT table_type, COUNT(*) as count
+                            FROM information_schema.tables 
+                            WHERE table_schema = %s 
+                            GROUP BY table_type
+                            ORDER BY table_type
+                        """,
+                            (schema,),
+                        )
+                        type_counts = cursor.fetchall()
+                        logger.info(f"schema '{schema}' 对象统计:")
+                        for table_type, count in type_counts:
+                            logger.info(f"  - {table_type}: {count} 个")
+                    except Exception as e:
+                        logger.warning(f"表类型统计查询失败: {e}")
+
+                    # 尝试pg_class查询（更底层的方式）
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT c.relname as table_name
+                            FROM pg_class c
+                            JOIN pg_namespace n ON n.oid = c.relnamespace
+                            WHERE n.nspname = %s AND c.relkind = 'r'
+                            ORDER BY c.relname
+                            LIMIT 5
+                        """,
+                            (schema,),
+                        )
+                        pg_class_tables = cursor.fetchall()
+                        logger.info(f"pg_class查询结果: {len(pg_class_tables)} 个表")
+                        for table in pg_class_tables:
+                            logger.info(f"  - {table[0]} (来自pg_class)")
+                    except Exception as e:
+                        logger.warning(f"pg_class查询失败: {e}")
+
+                    # 如果还是没有找到表，使用最宽松的查询
+                    if len(tables) == 0:
+                        try:
+                            logger.info("尝试最宽松的查询...")
+                            cursor.execute(
+                                """
+                                SELECT table_name 
+                                FROM information_schema.tables 
+                                WHERE table_schema = %s AND table_type != 'VIEW'
+                                ORDER BY table_name
+                            """,
+                                (schema,),
+                            )
+                            loose_tables = cursor.fetchall()
+                            if len(loose_tables) > 0:
+                                logger.info(
+                                    f"宽松查询找到 {len(loose_tables)} 个非视图表，更新主结果"
+                                )
+                                tables = [row[0] for row in loose_tables]
+                        except Exception as e:
+                            logger.warning(f"宽松查询失败: {e}")
 
                     table_info = []
                     # 限制表数量，避免超时
@@ -187,10 +267,10 @@ async def get_database_tables(connection_id: str):
                                     column_default,
                                     '' as extra  -- PostgreSQL没有extra字段，保持与MySQL结构一致
                                 FROM information_schema.columns 
-                                WHERE table_name = %s AND table_schema = 'public'
+                                WHERE table_name = %s AND table_schema = %s
                                 ORDER BY ordinal_position
                             """,
-                                (table_name,),
+                                (table_name, schema),
                             )
 
                             columns = []
@@ -376,7 +456,7 @@ async def get_table_details(connection_id: str, table_name: str):
                 with conn.cursor() as cursor:
                     # 获取schema参数，默认为public
                     schema = db_config.get("schema", "public")
-                    
+
                     # 获取表结构详细信息
                     cursor.execute(
                         """

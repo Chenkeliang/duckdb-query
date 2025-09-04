@@ -146,6 +146,7 @@ async def test_connection_simple(request: dict = Body(...)):
 
                 # 获取配置的超时时间
                 from core.config_manager import config_manager
+
                 app_config = config_manager.get_app_config()
 
                 conn = psycopg2.connect(
@@ -699,9 +700,10 @@ async def get_postgresql_tables(connection: DatabaseConnection) -> list:
     """获取PostgreSQL表信息"""
     try:
         import psycopg2
-        
+
         # 获取配置的超时时间
         from core.config_manager import config_manager
+
         app_config = config_manager.get_app_config()
 
         # 创建连接
@@ -717,7 +719,7 @@ async def get_postgresql_tables(connection: DatabaseConnection) -> list:
         with conn.cursor() as cursor:
             # 获取schema参数，默认为public
             schema = connection.params.get("schema", "public")
-            
+
             # 获取表列表
             cursor.execute(
                 """
@@ -725,7 +727,7 @@ async def get_postgresql_tables(connection: DatabaseConnection) -> list:
                 FROM information_schema.tables 
                 WHERE table_schema = %s
             """,
-                (schema,)
+                (schema,),
             )
             tables = cursor.fetchall()
 
@@ -734,21 +736,18 @@ async def get_postgresql_tables(connection: DatabaseConnection) -> list:
                 table_name = table[0]
 
                 # 获取表行数
-                cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
-                row_count = cursor.fetchone()[0]
-
-                # 获取表行数
-                cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
+                cursor.execute(f'SELECT COUNT(*) FROM "{schema}"."{table_name}"')
                 row_count = cursor.fetchone()[0]
 
                 # 获取表结构
                 cursor.execute(
-                    f"""
+                    """
                     SELECT column_name, data_type, is_nullable
                     FROM information_schema.columns
-                    WHERE table_name = '{table_name}'
+                    WHERE table_name = %s AND table_schema = %s
                     ORDER BY ordinal_position
-                """
+                """,
+                    (table_name, schema),
                 )
                 columns = cursor.fetchall()
 

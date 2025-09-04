@@ -2,10 +2,6 @@ import {
   Box,
   Card,
   CardContent,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
   Tab,
   Tabs,
   Typography
@@ -101,20 +97,23 @@ const UnifiedQueryInterface = ({
 
             {activeTab === 1 && (
               <Box>
-                {/* 数据库类型选择器 */}
+                {/* 查询目标Tab切换 */}
                 <Box sx={{ mb: 3 }}>
-                  <FormControl size="small" sx={{ minWidth: 200 }}>
-                    <InputLabel>查询目标</InputLabel>
-                    <Select
-                      value={sqlExecutorType}
-                      label="查询目标"
-                      onChange={(e) => setSqlExecutorType(e.target.value)}
-                    >
-                      <MenuItem value="mysql">外部数据库 (MySQL)</MenuItem>
-                      <MenuItem value="duckdb">内部数据 (DuckDB)</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1, ml: 1 }}>
+                  <Tabs
+                    value={sqlExecutorType === 'mysql' ? 0 : 1}
+                    onChange={(e, newValue) => setSqlExecutorType(newValue === 0 ? 'mysql' : 'duckdb')}
+                    sx={{ borderBottom: 1, borderColor: 'divider' }}
+                  >
+                    <Tab
+                      label="外部数据库 (MySQL)"
+                      sx={{ textTransform: 'none', fontWeight: 500 }}
+                    />
+                    <Tab
+                      label="内部数据 (DuckDB)"
+                      sx={{ textTransform: 'none', fontWeight: 500 }}
+                    />
+                  </Tabs>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
                     {sqlExecutorType === 'mysql'
                       ? '查询您连接的外部MySQL数据库'
                       : '查询已上传的文件和保存的查询结果'}

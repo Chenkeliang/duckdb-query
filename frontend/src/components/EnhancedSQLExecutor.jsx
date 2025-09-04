@@ -48,6 +48,7 @@ const EnhancedSQLExecutor = ({
   const [saveAsTable, setSaveAsTable] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [editorTheme, setEditorTheme] = useState("light");
   const [success, setSuccess] = useState("");
   const [duckdbTables, setDuckdbTables] = useState([]);
   const [tableManagerOpen, setTableManagerOpen] = useState(false);
@@ -259,14 +260,28 @@ const EnhancedSQLExecutor = ({
                 SQL查询执行器
               </Typography>
 
-              <Tabs
-                value={activeTab}
-                onChange={(e, newValue) => setActiveTab(newValue)}
-                sx={{ mb: 2 }}
-              >
-                <Tab icon={<Code />} label="SQL编辑器" />
-                <Tab icon={<ViewList />} label="查询模板" />
-              </Tabs>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Tabs
+                  value={activeTab}
+                  onChange={(e, newValue) => setActiveTab(newValue)}
+                >
+                  <Tab icon={<Code />} label="SQL编辑器" />
+                  <Tab icon={<ViewList />} label="查询模板" />
+                </Tabs>
+
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel>主题</InputLabel>
+                  <Select
+                    value={editorTheme}
+                    label="主题"
+                    onChange={(e) => setEditorTheme(e.target.value)}
+                  >
+                    <MenuItem value="dark">Dark</MenuItem>
+                    <MenuItem value="github-light">GitHub Light</MenuItem>
+                    <MenuItem value="solarized-light">Solarized Light</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
 
               {activeTab === 0 && (
                 <Box>
@@ -277,7 +292,7 @@ const EnhancedSQLExecutor = ({
                     tables={duckdbTables}
                     height="300px"
                     placeholder="输入您的 SQL 查询语句..."
-                    theme={activeTab === 0 ? "light" : "dark"}
+                    theme={editorTheme}
                   />
 
                   <SQLValidator
