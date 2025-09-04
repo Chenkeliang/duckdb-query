@@ -406,14 +406,39 @@ async def upload_file(
                 logger.warning(f"检查表名时出错: {e}")
                 break
 
-        df_full = read_file_by_type(save_path, file_type)
+        # 对于JSONL文件，直接使用文件路径方式创建表，避免pandas的"Trailing data"问题
+        if file_type == "jsonl":
+            duckdb_con = get_db_connection()
+            try:
+                create_table_from_dataframe(duckdb_con, source_id, save_path, file_type)
+                # 获取表信息用于配置保存
+                row_count_result = duckdb_con.execute(
+                    f'SELECT COUNT(*) FROM "{source_id}"'
+                ).fetchone()
+                row_count = row_count_result[0] if row_count_result else 0
+                columns_result = duckdb_con.execute(
+                    f'PRAGMA table_info("{source_id}")'
+                ).fetchall()
+                columns = [col[1] for col in columns_result]
+                column_count = len(columns)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500, detail=f"持久化到DuckDB失败: {str(e)}"
+                )
+        else:
+            df_full = read_file_by_type(save_path, file_type)
 
-        # 使用CREATE TABLE持久化到DuckDB而不是临时注册
-        duckdb_con = get_db_connection()
-        try:
-            create_table_from_dataframe(duckdb_con, source_id, df_full)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"持久化到DuckDB失败: {str(e)}")
+            # 使用CREATE TABLE持久化到DuckDB而不是临时注册
+            duckdb_con = get_db_connection()
+            try:
+                create_table_from_dataframe(duckdb_con, source_id, df_full)
+                row_count = len(df_full)
+                columns = list(df_full.columns)
+                column_count = len(df_full.columns)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500, detail=f"持久化到DuckDB失败: {str(e)}"
+                )
 
         # 保存文件数据源配置到持久化存储（遵循created_at字段标准）
         file_info = {
@@ -421,9 +446,9 @@ async def upload_file(
             "filename": file.filename,
             "file_path": save_path,
             "file_type": file_type,
-            "row_count": len(df_full),
-            "column_count": len(df_full.columns),
-            "columns": list(df_full.columns),
+            "row_count": row_count,
+            "column_count": column_count,
+            "columns": columns,
             "created_at": get_current_time(),  # 使用统一的created_at字段
         }
 
@@ -432,7 +457,7 @@ async def upload_file(
             logger.warning(f"文件数据源配置保存失败: {source_id}")
 
         logger.info(
-            f"已将文件 {file.filename} 持久化到DuckDB，表名: {source_id}, 行数: {len(df_full)}"
+            f"已将文件 {file.filename} 持久化到DuckDB，表名: {source_id}, 行数: {row_count}"
         )
 
         # 删除原始上传文件（数据已在DuckDB中）

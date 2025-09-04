@@ -1,37 +1,34 @@
-import React, { useState } from 'react';
 import {
+  AutoFixHigh as AutoDetectIcon,
+  Clear as ClearIcon,
+  Preview as PreviewIcon,
+  Save as SaveIcon
+} from '@mui/icons-material';
+import {
+  Alert,
   Box,
-  TextField,
   Button,
-  Typography,
+  Chip,
+  Divider,
+  FormControl,
+  FormControlLabel,
+  Grid,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
+  Switch,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Chip,
-  Alert,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Grid,
-  Divider,
-  IconButton,
-  Tooltip,
-  FormControlLabel,
-  Switch
+  TextField,
+  Typography
 } from '@mui/material';
+import React, { useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import {
-  ContentPaste as PasteIcon,
-  Preview as PreviewIcon,
-  Save as SaveIcon,
-  Clear as ClearIcon,
-  AutoFixHigh as AutoDetectIcon
-} from '@mui/icons-material';
 
 const DataPasteBoard = ({ onDataSaved }) => {
   const { showSuccess, showError } = useToast();
@@ -60,21 +57,21 @@ const DataPasteBoard = ({ onDataSaved }) => {
   const detectDelimiter = (text) => {
     const delimiters = [',', '\t', '|', ';', ' '];
     const lines = text.trim().split('\n').slice(0, 5); // 检查前5行
-    
+
     let bestDelimiter = ',';
     let maxConsistency = 0;
-    
+
     for (const delim of delimiters) {
       const columnCounts = lines.map(line => line.split(delim).length);
       const avgCount = columnCounts.reduce((a, b) => a + b, 0) / columnCounts.length;
       const consistency = columnCounts.filter(count => count === Math.round(avgCount)).length / columnCounts.length;
-      
+
       if (consistency > maxConsistency && avgCount > 1) {
         maxConsistency = consistency;
         bestDelimiter = delim;
       }
     }
-    
+
     return bestDelimiter;
   };
 
@@ -82,25 +79,25 @@ const DataPasteBoard = ({ onDataSaved }) => {
   const detectDataType = (values) => {
     const nonEmptyValues = values.filter(v => v && v.toString().trim() !== '');
     if (nonEmptyValues.length === 0) return 'VARCHAR';
-    
+
     // 检查是否为整数
     const isInteger = nonEmptyValues.every(v => /^\d+$/.test(v.toString().trim()));
     if (isInteger) return 'INTEGER';
-    
+
     // 检查是否为小数
     const isFloat = nonEmptyValues.every(v => /^\d*\.?\d+$/.test(v.toString().trim()));
     if (isFloat) return 'DOUBLE';
-    
+
     // 检查是否为日期
     const isDate = nonEmptyValues.every(v => !isNaN(Date.parse(v.toString().trim())));
     if (isDate) return 'DATE';
-    
+
     // 检查是否为布尔值
-    const isBool = nonEmptyValues.every(v => 
+    const isBool = nonEmptyValues.every(v =>
       ['true', 'false', '1', '0', 'yes', 'no'].includes(v.toString().toLowerCase().trim())
     );
     if (isBool) return 'BOOLEAN';
-    
+
     return 'VARCHAR';
   };
 
@@ -188,11 +185,11 @@ const DataPasteBoard = ({ onDataSaved }) => {
       }
 
       const columnCount = standardColumnCount;
-      
+
       // 生成默认列名
       const defaultColumnNames = Array.from({ length: columnCount }, (_, i) => `column_${i + 1}`);
       setColumnNames(defaultColumnNames);
-      
+
       // 自动检测数据类型或统一为文本类型
       let detectedTypes;
       if (unifyAsString) {
@@ -208,13 +205,13 @@ const DataPasteBoard = ({ onDataSaved }) => {
       // 生成更友好的默认表名
       const timestamp = new Date().toISOString().slice(0, 16).replace(/[:-]/g, '').replace('T', '_');
       setTableName(`粘贴数据_${timestamp}`);
-      
+
       setParsedData({
         rows,
         columnCount,
         rowCount: rows.length
       });
-      
+
       showSuccess(`成功解析 ${rows.length} 行 ${columnCount} 列数据`);
 
     } catch (err) {
@@ -329,7 +326,28 @@ const DataPasteBoard = ({ onDataSaved }) => {
 
   return (
     <Box>
-      {/* 移除重复的标题，因为外层已经有了 */}
+      {/* 数据粘贴区域标题 */}
+      <Box sx={{ mb: 3 }}>
+        <Typography
+          variant="h5"
+          sx={{
+            fontWeight: 700,
+            color: '#2d3748',
+            mb: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1
+          }}
+        >
+          📋 数据粘贴导入
+        </Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+        >
+          支持CSV、TSV等格式数据，系统将自动识别分隔符和数据类型
+        </Typography>
+      </Box>
 
       {/* 数据输入区域 - 现代化设计 */}
       <Box sx={{ mb: 3 }}>
@@ -337,7 +355,7 @@ const DataPasteBoard = ({ onDataSaved }) => {
           fullWidth
           multiline
           rows={6}
-          placeholder="✨ 在此粘贴您的数据...&#10;&#10;💡 支持格式：&#10;• CSV: 23,ali70744,健康学习圈连续包月,39.00&#10;• TSV: 23	ali70744	健康学习圈连续包月	39.00&#10;• 带引号: &quot;23&quot;,&quot;ali70744&quot;,&quot;健康学习圈连续包月&quot;,&quot;39.00&quot;&#10;&#10;🚀 系统将自动识别分隔符和数据类型"
+          placeholder="✨ 在此粘贴您的数据...&#10;&#10;💡 支持格式：&#10;• CSV: 1,张三,技术部,8000,2023-01-15&#10;• TSV: 1	张三	技术部	8000	2023-01-15&#10;• 带引号: &quot;1&quot;,&quot;张三&quot;,&quot;技术部&quot;,&quot;8000&quot;,&quot;2023-01-15&quot;&#10;&#10;🚀 系统将自动识别分隔符和数据类型"
           value={pastedData}
           onChange={(e) => setPastedData(e.target.value)}
           sx={{
@@ -392,7 +410,7 @@ const DataPasteBoard = ({ onDataSaved }) => {
               }
             }}
           >
-            🔍 智能解析
+            智能解析
           </Button>
 
           <Button
@@ -445,7 +463,7 @@ const DataPasteBoard = ({ onDataSaved }) => {
           {error}
         </Alert>
       )}
-      
+
       {success && (
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>
           {success}
@@ -555,7 +573,7 @@ const DataPasteBoard = ({ onDataSaved }) => {
           <Typography variant="subtitle1" gutterBottom>
             列配置
           </Typography>
-          
+
           <Grid container spacing={1} sx={{ mb: 2 }}>
             {columnNames.map((name, index) => (
               <Grid item xs={12} md={6} key={index}>
@@ -593,7 +611,7 @@ const DataPasteBoard = ({ onDataSaved }) => {
           <Typography variant="subtitle1" gutterBottom>
             数据预览 (前5行)
           </Typography>
-          
+
           <TableContainer component={Paper} variant="outlined" sx={{ mb: 2, maxHeight: 300 }}>
             <Table size="small">
               <TableHead>

@@ -1,29 +1,28 @@
-import React, { useState, useRef } from 'react';
 import {
+  Cancel as CancelIcon,
+  CloudUpload as CloudUploadIcon,
+  Info as InfoIcon
+} from '@mui/icons-material';
+import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  Switch,
-  FormControlLabel,
-  Alert,
   Chip,
-  LinearProgress,
-  Divider,
-  Grid,
-  IconButton,
-  Tooltip,
   CircularProgress // 导入 CircularProgress
+  ,
+
+  Divider,
+  FormControlLabel,
+  IconButton,
+  Switch,
+  Tooltip,
+  Typography
 } from '@mui/material';
-import {
-  CloudUpload as CloudUploadIcon,
-  Speed as SpeedIcon,
-  Info as InfoIcon,
-  Cancel as CancelIcon
-} from '@mui/icons-material';
-import ChunkedUploader from '../ChunkedUpload/ChunkedUploader';
+import React, { useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
+import ChunkedUploader from '../ChunkedUpload/ChunkedUploader';
 
 const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
   const { showSuccess, showError } = useToast();
@@ -163,7 +162,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
         </Box>
 
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          支持CSV、Excel文件上传，自动选择最佳上传方式
+          支持CSV、Excel、Parquet、JSON文件上传，自动选择最佳上传方式
         </Typography>
 
         {/* 上传方式选择 - 在文件选择之前 */}
@@ -331,7 +330,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
             💡 <strong>智能上传提示：</strong><br />
             • 标准上传：适合小于50MB的小文件，上传速度快<br />
             • 分块上传：适合大文件，支持断点续传，提高上传成功率<br />
-            • 支持格式：CSV, Excel (.xlsx, .xls), JSON, Parquet
+            • 支持格式：CSV, Excel (xls/xlsx), Parquet, JSON
           </Typography>
         </Box>
       </CardContent>

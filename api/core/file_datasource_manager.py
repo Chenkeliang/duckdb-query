@@ -329,10 +329,35 @@ def create_varchar_table_from_file_path(
                     raise Exception(
                         f"Excel文件处理完全失败，DuckDB错误: {str(duckdb_excel_error)}, pandas错误: {str(pandas_error)}"
                     )
-        elif file_type in ["json", "jsonl"]:
+        elif file_type == "json":
             # 对于JSON文件，直接使用DuckDB的读取功能
             create_sql = f"CREATE TABLE \"{table_name}\" AS SELECT * FROM read_json_auto('{file_path}')"
             duckdb_con.execute(create_sql)
+        elif file_type == "jsonl":
+            # 对于JSONL文件，使用DuckDB的read_json_auto函数
+            try:
+                # 直接使用DuckDB的JSONL读取功能
+                create_sql = f"CREATE TABLE \"{table_name}\" AS SELECT * FROM read_json_auto('{file_path}')"
+                duckdb_con.execute(create_sql)
+                logger.info(f"成功使用DuckDB读取JSONL文件: {table_name}")
+            except Exception as duckdb_error:
+                logger.error(f"DuckDB读取JSONL失败: {str(duckdb_error)}")
+                # 如果DuckDB失败，尝试使用pandas
+                try:
+                    logger.info("尝试使用pandas读取JSONL文件...")
+                    df = pd.read_json(file_path, lines=True)
+                    duckdb_con.register(table_name, df)
+                    # 然后创建持久化表
+                    create_sql = (
+                        f'CREATE TABLE "{table_name}" AS SELECT * FROM {table_name}'
+                    )
+                    duckdb_con.execute(create_sql)
+                    logger.info(f"成功使用pandas读取JSONL文件: {table_name}")
+                except Exception as pandas_error:
+                    logger.error(f"JSONL文件pandas处理也失败: {str(pandas_error)}")
+                    raise ValueError(
+                        f"JSONL文件处理失败: DuckDB错误: {str(duckdb_error)}, Pandas错误: {str(pandas_error)}"
+                    )
         elif file_type in ["parquet", "pq"]:
             # 对于Parquet文件，直接使用DuckDB的读取功能
             create_sql = f"CREATE TABLE \"{table_name}\" AS SELECT * FROM read_parquet('{file_path}')"

@@ -17,13 +17,14 @@
 
 ## 🎯 项目简介
 
-Duck Query 是一个基于 **DuckDB** 构建的现代化数据分析平台，专门为解决跨源数据分析痛点而设计。
+Duck Query 是基于 **DuckDB** 构建的现代化数据分析平台，专为简化跨源数据分析而设计。
+告别复杂的ETL流程，通过简单的复制粘贴即可将任意数据快速转换为可分析的数据表，让数据分析变得前所未有的简单高效。
 
 **核心价值**：
-- 🚫 **无需建库导入** - 文件拖拽即用，数据库直连查询
-- 🔗 **跨源数据关联** - MySQL + CSV + Parquet 一个SQL搞定
-- ⚡ **DuckDB引擎** - 列式存储，亿级数据秒级响应
-- 🌐 **Web界面** - 现代化UI，支持SQL编辑和可视化
+- 📥 **数据接入** - 文件、粘贴数据、直连数据库，零门槛快速导入
+- 🔗 **数据分析** - 跨源关联查询，复杂场景支持自定义SQL
+- ⚡ **性能保障** - DuckDB列式引擎，亿级数据秒级响应
+- 🎨 **用户体验** - 现代化Web界面，CodeMirror SQL编辑器与可视化并重
 
 ## ✨ 功能特性
 
@@ -31,20 +32,19 @@ Duck Query 是一个基于 **DuckDB** 构建的现代化数据分析平台，专
 
 **文件格式**
 - 📄 CSV, Excel (xls/xlsx)
-- 📊 Parquet, JSON, JSONL  
+- 📊 Parquet
+- 📋 JSON, JSONL
 - 🌐 URL远程文件直读
-- 📋 剪贴板数据快速成表
+- 📋 剪贴板数据
 
 **数据库连接**
 - 🐬 MySQL - 支持自定义SQL查询，结果自动加载到DuckDB
 - 🐘 PostgreSQL - 支持自定义SQL查询，结果自动加载到DuckDB
 
-
-
 **DuckDB特性**
 - ⚡ 上传文件自动建表，无需手动导入
 - 🔄 任意SQL查询结果可一键保存为新表
-- 💡 利用DuckDB强大的数据处理能力快速成表
+- 💡 利用DuckDB数据处理能力快速成表
 
 ### 🔄 跨源JOIN能力
 
@@ -73,10 +73,6 @@ FROM sales_data;
 -- JSON处理
 SELECT json_extract(data, '$.name') as name
 FROM json_table;
-
--- 文件直读函数
-SELECT * FROM read_csv('data.csv');
-SELECT * FROM read_parquet('file.parquet');
 ```
 
 **性能优势**
@@ -99,6 +95,8 @@ SELECT * FROM read_parquet('file.parquet');
 
 - 🐳 Docker 20.10+
 - 🔧 Docker Compose 2.0+
+- 🐍 Python 3.8+
+- 📦 Node.js 18+
 
 ### 🐳 Docker配置
 
@@ -128,53 +126,10 @@ cd DuckQuery
 
 **💡 提示：** 首次启动前，建议检查 `docker-compose.yml` 中的端口、内存、CPU等配置是否符合你的环境。
 
-### 手动部署
-
-```bash
-# 1. 克隆项目
-git clone https://github.com/Chenkeliang/DuckQuery.git
-cd DuckQuery
-
-# 2. 检查并调整Docker配置
-# 编辑 docker-compose.yml，调整端口、资源限制等
-
-# 3. 启动服务
-docker-compose up -d --build
-
-# 4. 访问应用
-# 前端界面: http://localhost:3000
-# API文档: http://localhost:8000/docs
-```
-
 **配置调整要点：**
 - **端口冲突**：如果8000或3000端口被占用，修改 `docker-compose.yml` 中的端口映射
 - **资源限制**：根据服务器配置调整内存和CPU限制
 - **目录权限**：确保数据目录有正确的读写权限
-
-
-
-### 从源码安装
-
-**克隆仓库**
-```bash
-git clone https://github.com/Chenkeliang/DuckQuery.git
-cd duck-query
-```
-
-**后端部署**
-```bash
-cd api
-pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-**前端部署**
-```bash
-cd frontend
-npm install
-npm run build
-npm run preview
-```
 
 ## ⚙️ 配置说明
 
@@ -216,11 +171,6 @@ npm run preview
 
 📖 **详细配置说明**: 查看 [配置文档](docs/CONFIGURATION.md) 了解所有配置项的作用和推荐值。
 
-🌍 **环境变量覆盖**: 可以通过环境变量覆盖配置文件中的设置，特别适合Docker部署。
-
-
-
-
 
 ## 📖 使用指南
 
@@ -229,14 +179,14 @@ npm run preview
 1. **上传数据文件**
    - 拖拽CSV、Excel、Parquet文件到上传区域
    - 或通过URL直接读取远程文件
-   - 📋 **剪贴板粘贴** - 直接粘贴任意格式化的CSV数据，系统自动识别并成表
+   - 直接粘贴CSV、TSV格式以及任意粘贴板数据，系统都可自动识别并成表
 
 2. **连接数据库**
    - 配置MySQL/PostgreSQL连接信息
    - 测试连接并同步表结构
 
 3. **编写SQL查询**
-   - 使用Monaco编辑器编写查询
+   - 使用CodeMirror编辑器编写查询
    - 享受语法高亮和智能补全
    - 跨源JOIN不同数据源的表
 
@@ -277,26 +227,23 @@ FROM events
 GROUP BY date_trunc('month', date_col);
 ```
 
-## 🛠️ 开发
-
-
-
-
-
-## 🤝 贡献指南
-
-我们欢迎各种形式的贡献！
-
-
-
-
-
 ## 🔒 安全特性
 
 - 🛡️ SQL注入防护
 - 🔐 数据库密码加密存储
 - 📝 文件类型和大小验证
 - 🌐 CORS安全配置
+
+
+## 🤝 贡献指南
+
+本项目源于日常工作中的跨源数据关联需求，可能无法覆盖所有使用场景。如有需要，欢迎：
+
+- 提交 [Issue](https://github.com/Chenkeliang/DuckQuery/issues) 反馈问题或建议
+- 贡献代码完善功能
+
+欢迎各种形式的贡献！
+
 
 ## 📄 许可证
 
@@ -309,8 +256,6 @@ GROUP BY date_trunc('month', date_col);
 - [DuckDB](https://duckdb.org) - 高性能嵌入式分析数据库
 - [FastAPI](https://fastapi.tiangolo.com) - 现代化Python API框架
 - [React](https://reactjs.org) - 用户界面构建库
-
-
 
 ---
 

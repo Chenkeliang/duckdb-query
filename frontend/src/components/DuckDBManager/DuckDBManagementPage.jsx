@@ -230,7 +230,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
   }, {});
 
   return (
-    <Box sx={{ p: 2, maxWidth: 1200, mx: 'auto' }}>
+    <Box sx={{ p: 2, width: '100%' }}>
       {/* 工具栏 */}
       <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
         <TextField

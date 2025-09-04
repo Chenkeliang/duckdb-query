@@ -21,7 +21,7 @@ def detect_file_type(filename: str) -> str:
         "xls": "excel",
         "xlsx": "excel",
         "json": "json",
-        "jsonl": "json",
+        "jsonl": "jsonl",
         "parquet": "parquet",
         "pq": "parquet",
     }
@@ -64,6 +64,13 @@ def read_file_by_type(
                 df = df.head(nrows)
             else:
                 df = pd.read_json(file_path)
+        elif file_type == "jsonl":
+            # JSONL文件每行一个JSON对象，使用lines=True参数
+            if nrows is not None:
+                df = pd.read_json(file_path, lines=True)
+                df = df.head(nrows)
+            else:
+                df = pd.read_json(file_path, lines=True)
         elif file_type == "parquet":
             if nrows is not None:
                 # Parquet文件不支持nrows参数，需要手动处理
@@ -86,18 +93,23 @@ def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
     try:
         file_type = detect_file_type(file_path)
         df = read_file_by_type(file_path, file_type, nrows=rows)
-        
+
         # 获取文件大小
         file_size = os.path.getsize(file_path)
-        
+
         # 获取全量数据行数（读取完整文件来获取准确行数）
         try:
-            full_df = read_file_by_type(file_path, file_type)
-            total_rows = len(full_df)
+            if file_type == "jsonl":
+                # 对于JSONL文件，通过计算行数来获取总行数，避免pandas的"Trailing data"问题
+                with open(file_path, "r", encoding="utf-8") as f:
+                    total_rows = sum(1 for line in f if line.strip())
+            else:
+                full_df = read_file_by_type(file_path, file_type)
+                total_rows = len(full_df)
         except Exception:
             # 如果读取完整文件失败，估算行数
             total_rows = len(df)
-        
+
         # 处理非序列化数据类型
         processed_df = df.copy()
         for col in processed_df.columns:
@@ -107,7 +119,9 @@ def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
                     lambda x: (
                         str(x)
                         if not (
-                            isinstance(x, (str, int, float, bool, type(None), list, dict))
+                            isinstance(
+                                x, (str, int, float, bool, type(None), list, dict)
+                            )
                             or x is None
                         )
                         else x
@@ -116,7 +130,7 @@ def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
             else:
                 # 处理NaN值
                 processed_df[col] = processed_df[col].replace({pd.isna: None})
-        
+
         return {
             "file_type": file_type,
             "file_size": file_size,
@@ -129,7 +143,7 @@ def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
                 for col in processed_df.columns
             },
         }
-        
+
     except Exception as e:
         logger.error(f"获取文件预览失败 {file_path}: {str(e)}")
         raise

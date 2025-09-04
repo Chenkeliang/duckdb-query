@@ -312,7 +312,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
             </Box>
 
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              支持CSV、Excel文件上传，自动选择最佳上传方式
+              支持CSV、Excel、Parquet、JSON文件上传，自动选择最佳上传方式
             </Typography>
 
             {/* 上传方式选择 - 在文件选择之前 */}
@@ -525,7 +525,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 💡 <strong>智能上传提示：</strong><br />
                 • 标准上传：适合小于50MB的小文件，上传速度快<br />
                 • 分块上传：适合大文件，支持断点续传，提高上传成功率<br />
-                • 支持格式：CSV, Excel (.xlsx, .xls), JSON, Parquet
+                • 支持格式：CSV, Excel (xls/xlsx), Parquet, JSON
               </Typography>
             </Box>
           </CardContent>
@@ -558,7 +558,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 💡 <strong>支持的URL格式：</strong><br />
                 • 直接文件链接：https://example.com/data.csv<br />
                 • GitHub文件：https://github.com/user/repo/blob/main/data.csv (自动转换)<br />
-                • 支持格式：CSV, JSON, Parquet, Excel
+                • 支持格式：CSV, Excel (xls/xlsx), Parquet, JSON
               </Typography>
             </Box>
 

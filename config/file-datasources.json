@@ -2923,5 +2923,39 @@
       "column_4"
     ],
     "created_at": "2025-09-04T11:49:00.701149+08:00"
+  },
+  {
+    "source_id": "test_json_data",
+    "filename": "test_data.json",
+    "file_path": "/app/temp_files/test_data.json",
+    "file_type": "json",
+    "row_count": 5,
+    "column_count": 6,
+    "columns": [
+      "id",
+      "name",
+      "age",
+      "department",
+      "salary",
+      "join_date"
+    ],
+    "created_at": "2025-09-04 15:19:55.320718+08:00"
+  },
+  {
+    "source_id": "test_jsonl_data",
+    "filename": "test_data.jsonl",
+    "file_path": "/app/temp_files/test_data.jsonl",
+    "file_type": "jsonl",
+    "row_count": 5,
+    "column_count": 6,
+    "columns": [
+      "id",
+      "name",
+      "age",
+      "department",
+      "salary",
+      "join_date"
+    ],
+    "created_at": "2025-09-04 15:24:21.280410+08:00"
   }
 ]
