@@ -260,7 +260,7 @@ const EnhancedSQLExecutor = ({
                 SQL查询执行器
               </Typography>
 
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Tabs
                   value={activeTab}
                   onChange={(e, newValue) => setActiveTab(newValue)}
@@ -315,59 +315,134 @@ const EnhancedSQLExecutor = ({
                 </Box>
               )}
 
-              <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    label="保存结果为表 (可选)"
-                    value={saveAsTable}
-                    onChange={(e) => setSaveAsTable(e.target.value)}
-                    fullWidth
-                    placeholder="例如: query_result"
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Button
-                    variant="contained"
-                    onClick={() => executeSQL()} // Ensure it's called without args
-                    disabled={loading || !sqlQuery || !sqlQuery.trim()}
-                    startIcon={
-                      loading ? <CircularProgress size={20} /> : <PlayArrow />
-                    }
-                    fullWidth
-                    sx={{ height: "56px" }}
-                  >
-                    执行预览
-                  </Button>
-                </Grid>
-              </Grid>
+              {/* 执行控制区域 */}
+              <Box sx={{
+                mb: 3,
+                p: 3,
+                backgroundColor: '#ffffff',
+                borderRadius: 3,
+                border: '1px solid #e1e5e9',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+              }}>
+                <Typography variant="subtitle1" sx={{
+                  mb: 2,
+                  fontWeight: 600,
+                  color: '#2c3e50',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1
+                }}>
+                  <PlayArrow sx={{ fontSize: '1.2rem', color: '#1976d2' }} />
+                  执行控制
+                </Typography>
 
-              <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} md={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>输出格式</InputLabel>
-                    <Select
-                      value={format}
-                      onChange={(e) => setFormat(e.target.value)}
-                      label="输出格式"
-                    >
-                      <MenuItem value="parquet">Parquet格式</MenuItem>
-                      <MenuItem value="csv">CSV格式</MenuItem>
-                    </Select>
-                  </FormControl>
+                <Grid container spacing={3}>
+                  {/* 配置选项 */}
+                  <Grid item xs={12} md={8}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                      <TextField
+                        label="保存结果为表 (可选)"
+                        value={saveAsTable}
+                        onChange={(e) => setSaveAsTable(e.target.value)}
+                        fullWidth
+                        placeholder="例如: query_result"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            height: '48px',
+                            borderRadius: 2,
+                            backgroundColor: '#fafbfc'
+                          }
+                        }}
+                      />
+                      <FormControl fullWidth>
+                        <InputLabel>输出格式</InputLabel>
+                        <Select
+                          value={format}
+                          onChange={(e) => setFormat(e.target.value)}
+                          label="输出格式"
+                          sx={{
+                            height: '48px',
+                            borderRadius: 2,
+                            backgroundColor: '#fafbfc'
+                          }}
+                        >
+                          <MenuItem value="parquet">Parquet格式</MenuItem>
+                          <MenuItem value="csv">CSV格式</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+                  </Grid>
+
+                  {/* 执行按钮 */}
+                  <Grid item xs={12} md={4}>
+                    <Box sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 2.5,
+                      height: '100%',
+                      justifyContent: 'center'
+                    }}>
+                      <Button
+                        variant="contained"
+                        onClick={() => executeSQL()}
+                        disabled={loading || !sqlQuery || !sqlQuery.trim()}
+                        startIcon={
+                          loading ? <CircularProgress size={20} color="inherit" /> : <PlayArrow />
+                        }
+                        fullWidth
+                        sx={{
+                          height: "48px",
+                          textTransform: 'none',
+                          fontWeight: 600,
+                          fontSize: '0.9rem',
+                          borderRadius: 2,
+                          background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                          boxShadow: '0 4px 12px rgba(25, 118, 210, 0.3)',
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
+                            boxShadow: '0 6px 16px rgba(25, 118, 210, 0.4)'
+                          },
+                          '&:disabled': {
+                            background: '#e0e0e0',
+                            color: 'rgba(0,0,0,0.38)',
+                            boxShadow: 'none'
+                          }
+                        }}
+                      >
+                        {loading ? '执行中...' : '执行预览'}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={executeAsyncSQL}
+                        disabled={loading || !sqlQuery || !sqlQuery.trim()}
+                        startIcon={<PlayArrow />}
+                        fullWidth
+                        sx={{
+                          height: "48px",
+                          textTransform: 'none',
+                          fontWeight: 600,
+                          fontSize: '0.9rem',
+                          borderRadius: 2,
+                          borderColor: '#1976d2',
+                          color: '#1976d2',
+                          borderWidth: 2,
+                          '&:hover': {
+                            borderWidth: 2,
+                            backgroundColor: 'rgba(25, 118, 210, 0.04)',
+                            borderColor: '#1565c0'
+                          },
+                          '&:disabled': {
+                            borderColor: '#e0e0e0',
+                            color: 'rgba(0,0,0,0.38)'
+                          }
+                        }}
+                      >
+                        异步任务运行
+                      </Button>
+                    </Box>
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} md={6}>
-                  <Button
-                    variant="outlined"
-                    onClick={executeAsyncSQL}
-                    disabled={loading || !sqlQuery || !sqlQuery.trim()}
-                    startIcon={<PlayArrow />}
-                    fullWidth
-                    sx={{ height: "56px" }}
-                  >
-                    作为异步任务运行
-                  </Button>
-                </Grid>
-              </Grid>
+              </Box>
 
               {error && (
                 <Alert severity="error" sx={{ mb: 2 }}>

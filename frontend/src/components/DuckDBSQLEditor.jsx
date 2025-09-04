@@ -804,12 +804,26 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
           paddingBottom: '10px'
         }}>
           <Typography variant="h6">SQL编辑器 - 全屏模式</Typography>
-          <Box>
+          <Box sx={{ display: 'flex', gap: 1.5 }}>
             <Button
               variant="outlined"
               size="small"
               onClick={formatSQL}
-              sx={{ mr: 1 }}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 500,
+                fontSize: '0.875rem',
+                px: 2.5,
+                py: 0.5,
+                borderRadius: 2,
+                borderColor: '#e0e0e0',
+                color: '#666',
+                '&:hover': {
+                  borderColor: '#1976d2',
+                  color: '#1976d2',
+                  backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                }
+              }}
             >
               格式化SQL
             </Button>
@@ -817,6 +831,21 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
               variant="outlined"
               size="small"
               onClick={toggleFullscreen}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 500,
+                fontSize: '0.875rem',
+                px: 2.5,
+                py: 0.5,
+                borderRadius: 2,
+                borderColor: '#e0e0e0',
+                color: '#666',
+                '&:hover': {
+                  borderColor: '#1976d2',
+                  color: '#1976d2',
+                  backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                }
+              }}
             >
               退出全屏
             </Button>
@@ -843,12 +872,33 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
       />
 
       {!isFullscreen && (
-        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+        <Box sx={{
+          mt: 3,
+          mb: 2,
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          gap: 1.5
+        }}>
           <Button
             variant="outlined"
             size="small"
             onClick={formatSQL}
-            sx={{ mr: 1 }}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 500,
+              fontSize: '0.875rem',
+              px: 2.5,
+              py: 0.5,
+              borderRadius: 2,
+              borderColor: '#e0e0e0',
+              color: '#666',
+              '&:hover': {
+                borderColor: '#1976d2',
+                color: '#1976d2',
+                backgroundColor: 'rgba(25, 118, 210, 0.04)'
+              }
+            }}
           >
             格式化SQL
           </Button>
@@ -856,6 +906,21 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
             variant="outlined"
             size="small"
             onClick={toggleFullscreen}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 500,
+              fontSize: '0.875rem',
+              px: 2.5,
+              py: 0.5,
+              borderRadius: 2,
+              borderColor: '#e0e0e0',
+              color: '#666',
+              '&:hover': {
+                borderColor: '#1976d2',
+                color: '#1976d2',
+                backgroundColor: 'rgba(25, 118, 210, 0.04)'
+              }
+            }}
           >
             全屏编辑
           </Button>
