@@ -2856,5 +2856,72 @@
     "column_count": 41,
     "source_sql": "SELECT * FROM yz_order LIMIT 10",
     "source_datasource": "store_order"
+  },
+  {
+    "source_id": "32084370",
+    "filename": "32084370 -- 检查后再发用户.xlsx",
+    "file_path": "/app/temp_files/32084370 -- 检查后再发用户.xlsx",
+    "file_type": "excel",
+    "row_count": 108,
+    "column_count": 9,
+    "columns": [
+      "buyer_id",
+      "订单号",
+      "设备类型",
+      "支付时间",
+      "交易类型",
+      "商品总额",
+      "支付类型",
+      "交易内容",
+      "实付金额"
+    ],
+    "created_at": "2025-09-04 11:47:46.872703+08:00"
+  },
+  {
+    "source_id": "粘贴数据_20250904_0348",
+    "filename": "粘贴数据_20250904_0348.pasted",
+    "file_path": "pasted_data",
+    "file_type": "pasted",
+    "row_count": 2,
+    "column_count": 4,
+    "columns": [
+      "column_1",
+      "column_2",
+      "column_3",
+      "column_4"
+    ],
+    "created_at": "2025-09-04T11:48:09.949844+08:00"
+  },
+  {
+    "source_id": "query_result_09041148",
+    "filename": "query_result_09041148_query_result",
+    "file_path": "query_result_query_result_09041148",
+    "file_type": "duckdb_table",
+    "created_at": "2025-09-04T11:48:40.363762+08:00",
+    "columns": [
+      "column_1",
+      "column_2",
+      "column_3",
+      "column_4"
+    ],
+    "row_count": 2,
+    "column_count": 4,
+    "source_sql": "SELECT * FROM \"粘贴数据_20250904_0348\" LIMIT 100",
+    "source_datasource": "duckdb"
+  },
+  {
+    "source_id": "async_result_9e8fba2e-1f04-48b2-bf09-7cff9f984dc7",
+    "filename": "table_async_result_9e8fba2e-1f04-48b2-bf09-7cff9f984dc7",
+    "file_path": "duckdb://async_result_9e8fba2e-1f04-48b2-bf09-7cff9f984dc7",
+    "file_type": "duckdb_table",
+    "row_count": 2,
+    "column_count": 4,
+    "columns": [
+      "column_1",
+      "column_2",
+      "column_3",
+      "column_4"
+    ],
+    "created_at": "2025-09-04T11:49:00.701149+08:00"
   }
 ]

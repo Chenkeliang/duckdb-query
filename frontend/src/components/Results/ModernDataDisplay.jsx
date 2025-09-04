@@ -67,7 +67,8 @@ const ModernDataDisplay = ({
     title,
     sqlQuery,
     originalDatasource,
-    hasOnDataSourceSaved: !!onDataSourceSaved
+    hasOnDataSourceSaved: !!onDataSourceSaved,
+    sampleData: data.slice(0, 2) // 显示前两行数据用于调试
   });
 
   const theme = useTheme();
@@ -109,6 +110,11 @@ const ModernDataDisplay = ({
     // 如果已经是对象数组，直接返回
     return columns;
   }, [columns]);
+
+  // 调试 normalizedColumns
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔍 Normalized Columns:', normalizedColumns);
+  }
 
   // 当columns变化时，更新visibleColumns
   React.useEffect(() => {
@@ -604,9 +610,10 @@ const ModernDataDisplay = ({
           ) : renderMode === 'virtual' ? (
             <VirtualTable
               data={filteredData}
-              columns={columns}
-              height={400}
+              columns={normalizedColumns}
+              height={600}
               loading={loading}
+              autoRowHeight={true}
             />
           ) : (
             <StableTable
