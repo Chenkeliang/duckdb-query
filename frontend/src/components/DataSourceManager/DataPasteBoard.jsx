@@ -30,7 +30,7 @@ import {
 import React, { useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 
-const DataPasteBoard = ({ onDataSaved }) => {
+const DataPasteBoard = ({ onDataSourceSaved }) => {
   const { showSuccess, showError } = useToast();
   const [pastedData, setPastedData] = useState('');
   const [parsedData, setParsedData] = useState(null);
@@ -257,13 +257,14 @@ const DataPasteBoard = ({ onDataSaved }) => {
       if (result.success) {
         console.log('调用showSuccess:', `数据已成功保存到表: ${tableName}`);
         showSuccess(`数据已成功保存到表: ${tableName}`);
-        if (onDataSaved) {
-          onDataSaved({
+        if (onDataSourceSaved) {
+          onDataSourceSaved({
             id: tableName,
             name: tableName,
-            type: 'DUCKDB',
-            columns: columnNames.length,
-            rows: parsedData.rowCount,
+            sourceType: 'duckdb',
+            type: 'table',
+            columns: columnNames,
+            columnCount: columnNames.length,
             createdAt: result.createdAt
           });
         }
