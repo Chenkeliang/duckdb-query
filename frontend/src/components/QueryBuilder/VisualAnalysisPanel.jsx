@@ -19,7 +19,8 @@ import {
 import ColumnSelector from './ColumnSelector';
 import AggregationControls from './AggregationControls';
 import FilterControls from './FilterControls';
-import SortLimitControls from './SortLimitControls';
+import SortControls from './SortControls';
+import LimitControls from './LimitControls';
 import SQLPreview from './SQLPreview';
 import { 
   createDefaultConfig, 
@@ -38,6 +39,20 @@ const VisualAnalysisPanel = ({
   // Determine if panel should be shown (only for single table selection)
   const shouldShowPanel = selectedSources.length === 1 && isVisible;
   const selectedTable = shouldShowPanel ? selectedSources[0] : null;
+
+  // 调试日志：监控表数据变化
+  useEffect(() => {
+    if (selectedTable) {
+      console.log('🔍 [VisualAnalysisPanel] 表数据变化:', {
+        tableId: selectedTable.id,
+        tableName: selectedTable.name,
+        columnsCount: selectedTable.columns?.length || 0,
+        columnsPreview: selectedTable.columns?.slice(0, 3).map(col => 
+          typeof col === 'string' ? col : col.name
+        )
+      });
+    }
+  }, [selectedTable?.id, selectedTable?.columns?.length]);
 
   // Basic state management for analysis configuration
   const [analysisConfig, setAnalysisConfig] = useState(() => 
@@ -229,7 +244,7 @@ const VisualAnalysisPanel = ({
               </Alert>
             )}
 
-            {/* Analysis Controls Grid - 2x2 Layout按SQL顺序 */}
+            {/* Analysis Controls Grid - 3行布局按SQL顺序 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
               
               {/* 第一行：SELECT相关 */}
@@ -256,7 +271,7 @@ const VisualAnalysisPanel = ({
                 />
               </div>
 
-              {/* 第二行：WHERE和ORDER BY相关 */}
+              {/* 第二行：WHERE相关 */}
               {/* Filter Controls - WHERE */}
               <div>
                 <FilterControls
@@ -267,13 +282,21 @@ const VisualAnalysisPanel = ({
                 />
               </div>
 
-              {/* Sort & Limit Controls - ORDER BY & LIMIT */}
+              {/* Sort Controls - ORDER BY */}
               <div>
-                <SortLimitControls
+                <SortControls
                   columns={selectedTable?.columns || []}
                   orderBy={analysisConfig.orderBy || []}
-                  limit={analysisConfig.limit}
                   onOrderByChange={handleOrderByChange}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* 第三行：LIMIT相关 */}
+              {/* Limit Controls - LIMIT */}
+              <div className="lg:col-span-2">
+                <LimitControls
+                  limit={analysisConfig.limit}
                   onLimitChange={handleLimitChange}
                   disabled={isLoading}
                 />

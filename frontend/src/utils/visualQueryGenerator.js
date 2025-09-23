@@ -140,7 +140,15 @@ function buildSelectClause(config) {
 
   // Add aggregation functions
   if (config.aggregations && config.aggregations.length > 0) {
-    needsGroupBy = config.selectedColumns.length > 0; // Need GROUP BY if we have both columns and aggregations
+    // 只有在明确指定了groupBy或者有非聚合列时才需要GROUP BY
+    // 如果只有聚合函数而没有其他列，说明要统计整体结果，不需要GROUP BY
+    const hasNonAggregationColumns = config.selectedColumns && config.selectedColumns.length > 0;
+    const hasExplicitGroupBy = config.groupBy && config.groupBy.length > 0;
+    
+    // 只有在以下情况才需要GROUP BY：
+    // 1. 明确指定了groupBy字段，或者
+    // 2. 有选中的列且这些列不全是聚合列
+    needsGroupBy = hasExplicitGroupBy || (hasNonAggregationColumns && !config.aggregationOnly);
     
     const aggregationItems = config.aggregations.map(agg => {
       try {
@@ -160,12 +168,14 @@ function buildSelectClause(config) {
         const column = agg.column;
         const func = agg.function;
         
-        // 检查是否需要类型转换（针对discount_fee等数值名称的VARCHAR列）
-        const isNumericColumn = /^(amount|price|fee|cost|total|sum|count|qty|quantity|num|number|rate|percent|score|value|discount)(_|$)/i.test(column);
+        // 检查是否需要类型转换（当SUM/AVG遇到文本类型时）
+        const isTextColumn = typeof column === 'string' || 
+                           (column && ['varchar', 'text', 'string', 'char'].some(type => 
+                             String(column.dataType || column.type || 'text').toLowerCase().includes(type)));
         
         let columnRef;
-        if ((func === 'SUM' || func === 'AVG') && isNumericColumn) {
-          // 对可能是数值的VARCHAR列进行类型转换
+        if ((func === 'SUM' || func === 'AVG') && isTextColumn) {
+          // 对文本类型的列进行类型转换，支持中文字段名和任意命名
           columnRef = `TRY_CAST(${escapeIdentifier(column)} AS DECIMAL)`;
         } else {
           columnRef = escapeIdentifier(column);
@@ -184,7 +194,7 @@ function buildSelectClause(config) {
     selectItems.push(...aggregationItems);
   }
 
-  // If no items specified, select all
+  // If no items specified and no aggregations, select all
   if (selectItems.length === 0) {
     selectItems.push('*');
   }
@@ -302,13 +312,13 @@ function buildWhereClause(filters) {
 function buildGroupByClause(config, needsGroupBy) {
   const groupByColumns = [];
 
-  // Add explicitly specified GROUP BY columns
+  // 优先使用明确指定的GROUP BY列
   if (config.groupBy && config.groupBy.length > 0) {
     groupByColumns.push(...config.groupBy.map(col => escapeIdentifier(col)));
   }
-
-  // Auto-add selected columns when using aggregations
-  if (needsGroupBy && config.selectedColumns && config.selectedColumns.length > 0) {
+  // 如果没有明确指定GROUP BY，但是有选中的列和聚合函数，则自动添加
+  else if (needsGroupBy && config.selectedColumns && config.selectedColumns.length > 0) {
+    // 只有在需要分组统计时才添加选中列到GROUP BY
     config.selectedColumns.forEach(col => {
       const escapedCol = escapeIdentifier(col);
       if (!groupByColumns.includes(escapedCol)) {

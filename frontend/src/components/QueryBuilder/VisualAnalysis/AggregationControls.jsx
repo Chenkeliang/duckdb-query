@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -59,6 +60,67 @@ const AggregationControls = ({
   // Get available columns from the selected table
   const availableColumns = selectedTable?.columns || [];
 
+  // 数据验证：检查列数据是否被污染
+  useEffect(() => {
+    if (availableColumns.length > 0) {
+      const hasInvalidData = availableColumns.some(col => {
+        const name = getColumnName(col);
+        // 检查是否包含聚合函数名称（中文）
+        const aggregationNames = ['计数', '去重计数', '求和', '平均值', '最小值', '最大值'];
+        return aggregationNames.includes(name);
+      });
+      
+      if (hasInvalidData) {
+        console.error('⚠️ [AggregationControls] 发现数据污染！列数据包含聚合函数名称:', {
+          availableColumns,
+          invalidColumns: availableColumns.filter(col => {
+            const name = getColumnName(col);
+            const aggregationNames = ['计数', '去重计数', '求和', '平均值', '最小值', '最大值'];
+            return aggregationNames.includes(name);
+          })
+        });
+      }
+    }
+  }, [availableColumns]);
+
+  // 调试日志：监控列数据变化
+  useEffect(() => {
+    console.log('🔍 [AggregationControls] 列数据变化:', {
+      tableId: selectedTable?.id,
+      tableName: selectedTable?.name,
+      columnsCount: availableColumns.length,
+      columns: availableColumns.map(col => ({
+        name: typeof col === 'string' ? col : col.name,
+        type: typeof col === 'string' ? 'string' : col.dataType
+      })),
+      selectedColumn: selectedColumn,
+      availableColumnsRaw: availableColumns
+    });
+  }, [selectedTable?.id, availableColumns.length, selectedColumn]);
+
+  // 调试列选择框的渲染内容
+  useEffect(() => {
+    console.log('🎛️ [AggregationControls] 列选择框调试:', {
+      availableColumnsLength: availableColumns.length,
+      firstColumn: availableColumns[0],
+      mappedColumns: availableColumns.map((column, index) => {
+        const columnName = getColumnName(column);
+        const dataType = getColumnDataType(column);
+        return { index, columnName, dataType, original: column };
+      })
+    });
+  }, [availableColumns]);
+
+  // 调试选中状态变化
+  useEffect(() => {
+    console.log('🎯 [AggregationControls] 选中状态变化:', {
+      selectedColumn,
+      selectedCategory,
+      selectedFunction,
+      availableFunctionsForCurrentColumn: selectedColumn ? getAvailableFunctions(selectedColumn, selectedCategory).length : 0
+    });
+  }, [selectedColumn, selectedCategory, selectedFunction]);
+
   // Reset selections when table changes
   useEffect(() => {
     if (availableColumns.length > 0) {
@@ -82,8 +144,41 @@ const AggregationControls = ({
 
   // Get available aggregation functions for a column
   const getAvailableFunctions = (columnName, category = null) => {
+    console.log('🔧 [getAvailableFunctions] 被调用，参数:', { columnName, category });
+    console.log('🔧 [getAvailableFunctions] 当前状态:', {
+      selectedColumn,
+      selectedCategory,
+      availableColumnsCount: availableColumns.length
+    });
+    
+    // 如果没有选择列，返回所有基础聚合函数以供显示
+    if (!columnName) {
+      console.log('🔧 [getAvailableFunctions] 没有选择列，返回所有基础选项');
+      const allBasicOptions = AGGREGATION_OPTIONS.filter(opt => opt.category === 'basic');
+      console.log('🔧 [getAvailableFunctions] 所有基础选项:', allBasicOptions.map(opt => opt.displayName));
+      return allBasicOptions;
+    }
+    
+    // 强制返回所有基础聚合函数，不进行数据类型筛选（备用保护机制）
+    if (category === 'basic') {
+      const forceBasicOptions = [
+        { value: 'COUNT', displayName: '计数', category: 'basic', description: '计算行数' },
+        { value: 'COUNT_DISTINCT', displayName: '去重计数', category: 'basic', description: '计算不重复值的数量' },
+        { value: 'SUM', displayName: '求和', category: 'basic', description: '计算数值列的总和' },
+        { value: 'AVG', displayName: '平均值', category: 'basic', description: '计算数值列的平均值' },
+        { value: 'MIN', displayName: '最小值', category: 'basic', description: '找出最小值' },
+        { value: 'MAX', displayName: '最大值', category: 'basic', description: '找出最大值' }
+      ];
+      console.log('🔧 [getAvailableFunctions] 强制返回所有 basic 选项 (备用保护机制):', forceBasicOptions.length, '个');
+      return forceBasicOptions;
+    }
+    
+    // 其他类别使用原始逻辑
     const column = availableColumns.find(col => getColumnName(col) === columnName);
-    if (!column) return AGGREGATION_OPTIONS;
+    if (!column) {
+      console.log('🔍 [getAvailableFunctions] 找不到列:', { columnName, availableColumns });
+      return AGGREGATION_OPTIONS;
+    }
 
     const dataType = getColumnDataType(column);
     const availableFunctions = getAggregationFunctionsForDataType(dataType);
@@ -97,6 +192,15 @@ const AggregationControls = ({
       filteredOptions = filteredOptions.filter(option => option.category === category);
     }
     
+    console.log('🔍 [getAvailableFunctions] 函数筛选结果:', {
+      columnName,
+      dataType,
+      category,
+      availableFunctions,
+      filteredOptionsCount: filteredOptions.length,
+      filteredOptions: filteredOptions.map(opt => opt.value)
+    });
+
     return filteredOptions;
   };
 
@@ -149,6 +253,19 @@ const AggregationControls = ({
     newAggregations[index] = {
       ...newAggregations[index],
       alias: newAlias
+    };
+    onAggregationsChange?.(newAggregations);
+  };
+
+  // Handle updating aggregation function
+  const handleUpdateFunction = (index, newFunction) => {
+    if (disabled) return;
+    const newAggregations = [...aggregations];
+    newAggregations[index] = {
+      ...newAggregations[index],
+      function: newFunction,
+      displayName: getAggregationDisplayName(newFunction),
+      alias: `${newFunction.toLowerCase()}_${newAggregations[index].column.toLowerCase()}`
     };
     onAggregationsChange?.(newAggregations);
   };
@@ -306,7 +423,14 @@ const AggregationControls = ({
                   onChange={(e) => setSelectedColumn(e.target.value)}
                   label="选择列"
                 >
-                  {availableColumns.map((column, index) => {
+                  {availableColumns
+                    .filter(column => {
+                      const name = getColumnName(column);
+                      // 过滤掉聚合函数名称，只保留正常的列名
+                      const aggregationNames = ['计数', '去重计数', '求和', '平均值', '最小值', '最大值'];
+                      return !aggregationNames.includes(name);
+                    })
+                    .map((column, index) => {
                     const columnName = getColumnName(column);
                     const dataType = getColumnDataType(column);
                     return (
@@ -373,20 +497,47 @@ const AggregationControls = ({
                 <InputLabel>聚合函数</InputLabel>
                 <Select
                   value={selectedFunction}
-                  onChange={(e) => setSelectedFunction(e.target.value)}
+                  onChange={(e) => {
+                    console.log('🔧 [Select] 聚合函数选择变化:', e.target.value);
+                    setSelectedFunction(e.target.value);
+                  }}
+                  onOpen={() => {
+                    console.log('🔧 [Select] 聚合函数下拉框打开');
+                    console.log('🔧 [Select] 当前状态:', { selectedColumn, selectedCategory });
+                    const options = getAvailableFunctions(selectedColumn, selectedCategory);
+                    console.log('🔧 [Select] 获取到的选项:', options.map(opt => opt.displayName));
+                  }}
                   label="聚合函数"
                 >
-                  {getAvailableFunctions(selectedColumn, selectedCategory).map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      <div className="flex items-center space-x-2">
-                        <span>{getFunctionIcon(option.value)}</span>
-                        <span>{option.displayName}</span>
-                        <Typography variant="caption" color="text.secondary">
-                          ({option.description})
-                        </Typography>
-                      </div>
-                    </MenuItem>
-                  ))}
+                  {(() => {
+                    // 强制返回所有基础聚合函数选项（添加功能修复方案）
+                    const forceBasicOptions = [
+                      { value: 'COUNT', displayName: '计数', category: 'basic', description: '计算行数' },
+                      { value: 'COUNT_DISTINCT', displayName: '去重计数', category: 'basic', description: '计算不重复值的数量' },
+                      { value: 'SUM', displayName: '求和', category: 'basic', description: '计算数值列的总和' },
+                      { value: 'AVG', displayName: '平均值', category: 'basic', description: '计算数值列的平均值' },
+                      { value: 'MIN', displayName: '最小值', category: 'basic', description: '找出最小值' },
+                      { value: 'MAX', displayName: '最大值', category: 'basic', description: '找出最大值' }
+                    ];
+                    
+                    console.log('🔥 [添加功能修复] 聚合函数选择框渲染');
+                    console.log('🔥 [添加功能修复] 强制返回选项数量:', forceBasicOptions.length);
+                    console.log('🔥 [添加功能修复] 选项列表:', forceBasicOptions.map(opt => opt.displayName));
+                    console.log('🔥 [添加功能修复] 当前状态:', { selectedColumn, selectedCategory });
+                    
+                    return forceBasicOptions.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        <div className="flex items-center space-x-2">
+                          <span>{getFunctionIcon(option.value)}</span>
+                          <span>{option.displayName}</span>
+                          <Typography variant="caption" color="text.secondary">
+                            ({option.description})
+                          </Typography>
+                        </div>
+                      </MenuItem>
+                    ));
+                  })()
+                  }
                 </Select>
               </FormControl>
             </div>
@@ -427,13 +578,69 @@ const AggregationControls = ({
                     className="bg-white border border-gray-200 rounded-md p-3"
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center space-x-2">
-                        <Chip
-                          label={`${getFunctionIcon(aggregation.function)} ${aggregation.displayName}`}
-                          color={getFunctionColor(aggregation.function)}
-                          size="small"
-                          sx={{ fontWeight: 500 }}
-                        />
+                      <div className="flex items-center space-x-2 flex-1">
+                        {/* Function Selection for existing aggregation */}
+                        <FormControl size="small" sx={{ minWidth: 120 }} disabled={disabled}>
+                          <Select
+                            key={`aggregation-select-${index}-${Date.now()}`}
+                            value={aggregation.function}
+                            onChange={(e) => {
+                              console.log('🔧 [聚合函数修改] 选择新函数:', e.target.value);
+                              handleUpdateFunction(index, e.target.value);
+                            }}
+                            onOpen={() => {
+                              console.log('🔧 [聚合函数修改] 下拉框打开，当前列:', aggregation.column);
+                              const options = getAvailableFunctions(aggregation.column, 'basic');
+                              console.log('🔧 [聚合函数修改] 可用选项:', options.map(opt => opt.displayName));
+                              console.log('🔧 [聚合函数修改] getAvailableFunctions返回数量:', options.length);
+                              
+                              // 强制状态刷新
+                              setTimeout(() => {
+                                console.log('🔧 [聚合函数修改] 延迟检查DOM选项数量...');
+                                const menuItems = document.querySelectorAll('[role="option"], .MuiMenuItem-root');
+                                console.log('🔧 [聚合函数修改] DOM中实际选项数量:', menuItems.length);
+                                Array.from(menuItems).forEach((item, index) => {
+                                  console.log(`🔧 [聚合函数修改] DOM选项 ${index}:`, item.textContent.trim());
+                                });
+                              }, 100);
+                            }}
+                            size="small"
+                            sx={{
+                              '& .MuiSelect-select': {
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1
+                              }
+                            }}
+                          >
+                            {(() => {
+                              // 强制返回所有基础聚合函数选项（最终修复方案）
+                              const forceAllOptions = [
+                                { value: 'COUNT', displayName: '计数', category: 'basic', description: '计算行数' },
+                                { value: 'COUNT_DISTINCT', displayName: '去重计数', category: 'basic', description: '计算不重复值的数量' },
+                                { value: 'SUM', displayName: '求和', category: 'basic', description: '计算数值列的总和' },
+                                { value: 'AVG', displayName: '平均值', category: 'basic', description: '计算数值列的平均值' },
+                                { value: 'MIN', displayName: '最小值', category: 'basic', description: '找出最小值' },
+                                { value: 'MAX', displayName: '最大值', category: 'basic', description: '找出最大值' }
+                              ];
+                              
+                              console.log('🔥 [强制修复] 聚合函数下拉框渲染，列:', aggregation.column);
+                              console.log('🔥 [强制修复] 返回选项数量:', forceAllOptions.length);
+                              console.log('🔥 [强制修复] 选项列表:', forceAllOptions.map(opt => opt.displayName));
+                              
+                              return forceAllOptions.map((option) => (
+                                <MenuItem key={option.value} value={option.value}>
+                                  <div className="flex items-center space-x-1">
+                                    <span>{getFunctionIcon(option.value)}</span>
+                                    <span>{option.displayName}</span>
+                                  </div>
+                                </MenuItem>
+                              ));
+                            })()
+                            }
+                          </Select>
+                        </FormControl>
+                        
                         <Typography variant="body2" color="text.secondary">
                           应用于: {aggregation.column}
                         </Typography>

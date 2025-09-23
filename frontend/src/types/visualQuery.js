@@ -753,7 +753,7 @@ export function getAggregationFunctionsForDataType(dataType) {
   if (isTextDataType(dataType)) {
     return [
       ...baseAggregations, 
-      'MIN', 'MAX', 'MODE',
+      'SUM', 'AVG', 'MIN', 'MAX', 'MODE', // 支持SUM和AVG，会自动进行类型转换
       ...windowFunctions,
       'LAG', 'LEAD', 'FIRST_VALUE', 'LAST_VALUE'
     ];
