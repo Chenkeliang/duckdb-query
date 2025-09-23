@@ -534,9 +534,13 @@ const ShadcnApp = () => {
                           : []
                       }
                       loading={false}
-                      title="查询结果"
+                      title={queryResults.isVisualQuery ? "可视化查询结果" : "查询结果"}
                       sqlQuery={queryResults.sqlQuery || queryResults.sql || ""}
                       originalDatasource={queryResults.originalDatasource}
+                      // Visual query specific props
+                      isVisualQuery={queryResults.isVisualQuery || false}
+                      visualConfig={queryResults.visualConfig || null}
+                      generatedSQL={queryResults.generatedSQL || ""}
                       onRefresh={() => {
                         // 可以添加刷新逻辑
                       }}

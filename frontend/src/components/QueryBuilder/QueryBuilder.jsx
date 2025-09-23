@@ -24,7 +24,8 @@ import {
 import { useToast } from '../../contexts/ToastContext';
 import JoinCondition from './JoinCondition';
 import SourceSelector from './SourceSelector';
-import { performQuery, downloadResults } from '../../services/apiClient';
+import VisualAnalysisPanel from './VisualAnalysisPanel';
+import { performQuery, downloadResults, executeDuckDBSQL } from '../../services/apiClient';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DownloadIcon from '@mui/icons-material/Download';
 import AddIcon from '@mui/icons-material/Add';
@@ -40,6 +41,10 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
   const [joins, setJoins] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Visual query state
+  const [visualQuerySQL, setVisualQuerySQL] = useState('');
+  const [visualQueryConfig, setVisualQueryConfig] = useState(null);
 
   const [queryHistory, setQueryHistory] = useState(() => {
     try {
@@ -88,6 +93,12 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     setJoins(updatedJoins);
   };
 
+  // Handle visual query generation
+  const handleVisualQueryGenerated = (sql, config) => {
+    setVisualQuerySQL(sql);
+    setVisualQueryConfig(config);
+  };
+
   const handleExecuteQuery = async () => {
     if (selectedSources.length === 0) {
       setError('请至少选择一个数据源');
@@ -98,6 +109,35 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     setIsLoading(true);
 
     try {
+      // Check if we're in visual analysis mode (single table with visual query)
+      const isVisualAnalysisMode = selectedSources.length === 1 && visualQuerySQL && visualQuerySQL.trim() && visualQueryConfig;
+      
+      if (isVisualAnalysisMode) {
+        console.log('Executing visual query:', visualQuerySQL);
+        
+        // Use executeDuckDBSQL for direct SQL execution
+        const results = await executeDuckDBSQL(visualQuerySQL, null, false);
+        
+        if (results && results.success === false) {
+          setError(results.error || '可视化查询执行失败');
+          return;
+        }
+
+        // Add visual query metadata to results
+        if (results) {
+          results.isVisualQuery = true;
+          results.visualConfig = visualQueryConfig;
+          results.generatedSQL = visualQuerySQL;
+          results.sql = visualQuerySQL; // Ensure SQL is included for history
+        }
+
+        onResultsReceived(results);
+        saveHistory(visualQuerySQL);
+        showSuccess('可视化查询执行成功');
+        return; // 重要：直接返回，不执行后续的常规查询逻辑
+      }
+
+      // Original multi-table query logic (unchanged)
       // 转换数据源格式以匹配后端期望的DataSource模型
       const convertedSources = selectedSources.map(source => {
         if (source.sourceType === 'file') {
@@ -397,6 +437,13 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
           </CardContent>
         </Card>
       )}
+
+      {/* Visual Analysis Panel - Only shown for single table selection */}
+      <VisualAnalysisPanel
+        selectedSources={selectedSources}
+        onVisualQueryGenerated={handleVisualQueryGenerated}
+        isVisible={selectedSources.length === 1}
+      />
 
       <Box sx={{ 
         display: 'flex', 

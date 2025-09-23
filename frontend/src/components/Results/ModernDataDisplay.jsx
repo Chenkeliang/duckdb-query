@@ -58,6 +58,10 @@ const ModernDataDisplay = ({
   sqlQuery = '',
   originalDatasource = null,
   onDataSourceSaved,
+  // Visual query specific props
+  isVisualQuery = false,
+  visualConfig = null,
+  generatedSQL = '',
 }) => {
   // 调试日志 - 检查传入的props
   console.log('🔍 ModernDataDisplay Props:', {
@@ -68,6 +72,9 @@ const ModernDataDisplay = ({
     sqlQuery,
     originalDatasource,
     hasOnDataSourceSaved: !!onDataSourceSaved,
+    isVisualQuery,
+    visualConfig,
+    generatedSQL,
     sampleData: data.slice(0, 2) // 显示前两行数据用于调试
   });
 
@@ -448,9 +455,27 @@ const ModernDataDisplay = ({
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
                   {title}
+                  {isVisualQuery && (
+                    <Chip 
+                      label="可视化查询" 
+                      size="small" 
+                      color="primary" 
+                      sx={{ ml: 1, fontSize: '0.75rem' }}
+                    />
+                  )}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {stats.filtered} / {stats.total} 行 • {stats.visibleColumns} / {stats.columns} 列
+                  {isVisualQuery && visualConfig && (
+                    <>
+                      {visualConfig.aggregations && visualConfig.aggregations.length > 0 && (
+                        <> • {visualConfig.aggregations.length} 个聚合函数</>
+                      )}
+                      {visualConfig.filters && visualConfig.filters.length > 0 && (
+                        <> • {visualConfig.filters.length} 个筛选条件</>
+                      )}
+                    </>
+                  )}
                 </Typography>
               </Box>
             </Box>

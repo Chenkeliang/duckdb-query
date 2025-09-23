@@ -775,3 +775,60 @@ export const uploadFileEnhanced = async (file, tableAlias = null, target = 'duck
 };
 
 export default apiClient;
+// Visual Query Builder API functions
+export const generateVisualQuery = async (config) => {
+  try {
+    const response = await apiClient.post('/api/visual-query/generate', {
+      config,
+      preview: false,
+      include_metadata: true
+    });
+    return response.data;
+  } catch (error) {
+    console.error('生成可视化查询失败:', error);
+    handleApiError(error, '生成可视化查询失败');
+  }
+};
+
+export const previewVisualQuery = async (config, limit = 10) => {
+  try {
+    const response = await apiClient.post('/api/visual-query/preview', {
+      config,
+      limit
+    });
+    return response.data;
+  } catch (error) {
+    console.error('预览可视化查询失败:', error);
+    handleApiError(error, '预览可视化查询失败');
+  }
+};
+
+export const getColumnStatistics = async (tableName, columnName) => {
+  try {
+    const response = await apiClient.get(`/api/visual-query/column-stats/${tableName}/${columnName}`);
+    return response.data;
+  } catch (error) {
+    console.error('获取列统计信息失败:', error);
+    handleApiError(error, '获取列统计信息失败');
+  }
+};
+
+export const getTableMetadata = async (tableName) => {
+  try {
+    const response = await apiClient.get(`/api/visual-query/table-metadata/${tableName}`);
+    return response.data;
+  } catch (error) {
+    console.error('获取表元数据失败:', error);
+    handleApiError(error, '获取表元数据失败');
+  }
+};
+
+export const validateVisualQueryConfig = async (config) => {
+  try {
+    const response = await apiClient.post('/api/visual-query/validate', config);
+    return response.data;
+  } catch (error) {
+    console.error('验证可视化查询配置失败:', error);
+    handleApiError(error, '验证可视化查询配置失败');
+  }
+};

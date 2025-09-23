@@ -10,6 +10,15 @@ from models.query_models import (
     DatabaseConnection,
     DataSourceType,
 )
+from models.visual_query_models import (
+    VisualQueryRequest,
+    VisualQueryResponse,
+    PreviewRequest,
+    PreviewResponse,
+    ColumnStatistics,
+    TableMetadata,
+    VisualQueryConfig,
+)
 from core.duckdb_engine import (
     get_db_connection,
     execute_query,
@@ -18,6 +27,13 @@ from core.duckdb_engine import (
     build_single_table_query,
     generate_improved_column_aliases,
     detect_column_conflicts,
+)
+from core.visual_query_generator import (
+    generate_sql_from_config,
+    validate_query_config,
+    get_column_statistics,
+    get_table_metadata,
+    estimate_query_performance,
 )
 import pandas as pd
 import numpy as np
@@ -2530,3 +2546,197 @@ async def register_file_source_enhanced(source, con):
     except Exception as e:
         logger.error(f"注册文件数据源失败: {str(e)}")
         raise ValueError(f"注册文件数据源失败: {source.id}, 错误: {str(e)}")
+
+
+# Visual Query Builder API Endpoints
+
+@router.post("/api/visual-query/generate", tags=["Visual Query"])
+async def generate_visual_query(request: VisualQueryRequest):
+    """Generate SQL from visual query configuration"""
+    try:
+        # Validate the configuration
+        validation_result = validate_query_config(request.config)
+        if not validation_result.is_valid:
+            return VisualQueryResponse(
+                success=False,
+                errors=validation_result.errors,
+                warnings=validation_result.warnings
+            )
+        
+        # Generate SQL from configuration
+        generated_sql = generate_sql_from_config(request.config)
+        
+        # Get metadata if requested
+        metadata = None
+        if request.include_metadata:
+            con = get_db_connection()
+            metadata = {
+                "estimated_rows": estimate_query_performance(request.config, con).estimated_rows,
+                "complexity_score": validation_result.complexity_score,
+                "has_aggregations": len(request.config.aggregations) > 0,
+                "has_filters": len(request.config.filters) > 0,
+                "has_sorting": len(request.config.order_by) > 0
+            }
+        
+        return VisualQueryResponse(
+            success=True,
+            sql=generated_sql,
+            warnings=validation_result.warnings,
+            metadata=metadata
+        )
+        
+    except Exception as e:
+        logger.error(f"Visual query generation failed: {str(e)}")
+        return VisualQueryResponse(
+            success=False,
+            errors=[f"SQL生成失败: {str(e)}"]
+        )
+
+
+@router.post("/api/visual-query/preview", tags=["Visual Query"])
+async def preview_visual_query(request: PreviewRequest):
+    """Get preview data for visual query configuration"""
+    try:
+        con = get_db_connection()
+        
+        # Validate the configuration
+        validation_result = validate_query_config(request.config)
+        if not validation_result.is_valid:
+            return PreviewResponse(
+                success=False,
+                errors=validation_result.errors,
+                warnings=validation_result.warnings
+            )
+        
+        # Generate SQL with limit for preview
+        preview_config = request.config.copy()
+        preview_config.limit = min(request.limit, 100)  # Cap preview at 100 rows
+        
+        generated_sql = generate_sql_from_config(preview_config)
+        
+        # Execute preview query
+        start_time = time.time()
+        preview_df = execute_query(generated_sql, con)
+        execution_time = time.time() - start_time
+        
+        # Get estimated total row count (without limit)
+        count_config = request.config.copy()
+        count_config.selected_columns = ["*"]
+        count_config.aggregations = []
+        count_config.order_by = []
+        count_config.limit = None
+        
+        count_sql = f"SELECT COUNT(*) as total_rows FROM ({generate_sql_from_config(count_config)}) as subquery"
+        total_rows = execute_query(count_sql, con).iloc[0]['total_rows']
+        
+        # Convert preview data to JSON-serializable format
+        preview_df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        preview_df = preview_df.astype(object).where(pd.notnull(preview_df), None)
+        
+        for col in preview_df.columns:
+            if preview_df[col].dtype == "object":
+                preview_df[col] = preview_df[col].astype(str)
+        
+        return PreviewResponse(
+            success=True,
+            data=preview_df.to_dict(orient="records"),
+            row_count=int(total_rows),
+            estimated_time=execution_time,
+            warnings=validation_result.warnings
+        )
+        
+    except Exception as e:
+        logger.error(f"Visual query preview failed: {str(e)}")
+        return PreviewResponse(
+            success=False,
+            errors=[f"预览查询失败: {str(e)}"]
+        )
+
+
+@router.get("/api/visual-query/column-stats/{table_name}/{column_name}", tags=["Visual Query"])
+async def get_column_stats(table_name: str, column_name: str):
+    """Get statistics for a specific column"""
+    try:
+        con = get_db_connection()
+        
+        # Verify table exists
+        available_tables = con.execute("SHOW TABLES").fetchdf()
+        if table_name not in available_tables["name"].tolist():
+            raise HTTPException(
+                status_code=404,
+                detail=f"表 '{table_name}' 不存在"
+            )
+        
+        # Get column statistics
+        stats = get_column_statistics(table_name, column_name, con)
+        
+        return {
+            "success": True,
+            "statistics": stats
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Column statistics failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取列统计信息失败: {str(e)}"
+        )
+
+
+@router.get("/api/visual-query/table-metadata/{table_name}", tags=["Visual Query"])
+async def get_table_metadata_endpoint(table_name: str):
+    """Get metadata for a table including all column statistics"""
+    try:
+        con = get_db_connection()
+        
+        # Verify table exists
+        available_tables = con.execute("SHOW TABLES").fetchdf()
+        if table_name not in available_tables["name"].tolist():
+            raise HTTPException(
+                status_code=404,
+                detail=f"表 '{table_name}' 不存在"
+            )
+        
+        # Get table metadata
+        metadata = get_table_metadata(table_name, con)
+        
+        return {
+            "success": True,
+            "metadata": metadata
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Table metadata failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取表元数据失败: {str(e)}"
+        )
+
+
+@router.post("/api/visual-query/validate", tags=["Visual Query"])
+async def validate_visual_query_config(config: VisualQueryConfig):
+    """Validate visual query configuration"""
+    try:
+        validation_result = validate_query_config(config)
+        
+        return {
+            "success": True,
+            "is_valid": validation_result.is_valid,
+            "errors": validation_result.errors,
+            "warnings": validation_result.warnings,
+            "complexity_score": validation_result.complexity_score
+        }
+        
+    except Exception as e:
+        logger.error(f"Visual query validation failed: {str(e)}")
+        return {
+            "success": False,
+            "is_valid": False,
+            "errors": [f"配置验证失败: {str(e)}"],
+            "warnings": [],
+            "complexity_score": 0
+        }

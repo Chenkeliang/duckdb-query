@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Visual Query Builder is a comprehensive enhancement to the existing Duck Query platform that provides a no-code interface for data analysis. It will be integrated into the existing "统一查询" (Unified Query) tab, extending the current QueryBuilder component with visual analysis capabilities while maintaining seamless integration with the existing SQL editor and results display system.
+The Visual Query Builder is a comprehensive enhancement to the existing Duck Query platform that provides a no-code interface for data analysis. It will be integrated directly into the existing QueryBuilder component by adding a visual analysis panel above the "执行查询" button. This approach maintains all existing multi-table JOIN functionality while adding single-table visual analysis capabilities with zero disruption to current workflows.
 
 ## Impact Analysis
 
@@ -12,14 +12,14 @@ The Visual Query Builder is a comprehensive enhancement to the existing Duck Que
 
 **Existing Components (No Changes Required)**:
 - `ShadcnApp.jsx` - Main application container (no changes needed)
-- `QueryBuilder.jsx` - Current multi-table query builder (will remain unchanged)
+- `UnifiedQueryInterface.jsx` - Query interface container (no changes needed)
 - `SourceSelector.jsx` - Current source selection logic (will remain unchanged)
 - `ModernDataDisplay.jsx` - Results display component (will reuse as-is)
 
 **Components to Enhance (Minimal Changes)**:
-- `UnifiedQueryInterface.jsx` - Add new tab for visual query builder
-  - **Change**: Add third tab "可视化分析" alongside existing "图形化查询" and "SQL编辑器"
-  - **Risk**: Low - Simple tab addition without affecting existing functionality
+- `QueryBuilder.jsx` - Add visual analysis panel above "执行查询" button
+  - **Change**: Insert VisualAnalysisPanel component above existing execute button
+  - **Risk**: Very Low - Pure additive enhancement, no existing logic modification
 
 **New Components (No Impact on Existing Code)**:
 - All visual query builder components will be new additions
@@ -104,31 +104,294 @@ graph TB
 
 ### Component Integration Strategy
 
-The Visual Query Builder will be integrated into the existing architecture as follows:
+The Visual Query Builder will be integrated into the existing QueryBuilder component as follows:
 
-1. **Extend UnifiedQueryInterface**: Add a new tab/mode for visual query building
-2. **Enhance QueryBuilder**: Add visual analysis controls alongside existing source selection
-3. **Reuse Existing Infrastructure**: Leverage current API endpoints, DuckDB engine, and result display components
-4. **Maintain Backward Compatibility**: Ensure existing functionality remains unchanged
+1. **Enhance QueryBuilder Component**: Add visual analysis controls **above** the "执行查询" button
+2. **Preserve Existing Multi-table Logic**: Keep all existing multi-table JOIN functionality completely unchanged
+3. **Conditional Analysis Mode**: Only activate visual analysis when single table is selected AND analysis conditions are configured
+4. **Default Behavior Maintained**: If no analysis conditions are selected, execute existing query logic as before
+5. **Reuse Existing Infrastructure**: Leverage current API endpoints, DuckDB engine, and result display components
+
+## UI/UX Design Specifications
+
+### Design System and Component Library
+
+**UI Framework**: Hybrid approach - MUI components + Tailwind CSS + Shadcn/ui design system
+**Styling**: Tailwind CSS v4.1.11 + Custom CSS (Shadcn/ui inspired)
+**Typography**: Inter font family (@fontsource/inter)
+**Icons**: Material Icons (@mui/icons-material)
+**Component Strategy**: Use MUI for complex components (Select, Autocomplete) + Tailwind for layout and styling
+
+### Visual Design Language
+
+#### Color Palette (Tailwind CSS Classes)
+```css
+/* Primary Colors */
+bg-blue-600 (#2563eb)           /* Primary action buttons */
+hover:bg-blue-700 (#1d4ed8)     /* Hover state */
+bg-green-500 (#10b981)          /* Success states */
+bg-orange-500 (#f59e0b)         /* Warning states */
+bg-red-500 (#ef4444)            /* Error states */
+
+/* Neutral Colors (Shadcn/ui inspired) */
+bg-gray-50 (#f9fafb)            /* Page background */
+bg-white (#ffffff)              /* Card/surface background */
+border-gray-200 (#e5e7eb)       /* Light borders */
+text-gray-900 (#111827)         /* Primary text */
+text-gray-600 (#4b5563)         /* Secondary text */
+text-gray-400 (#9ca3af)         /* Muted text */
+```
+
+#### Typography Scale (Tailwind Classes)
+```css
+/* Headings */
+text-base font-semibold text-gray-900    /* Section titles (16px) */
+text-sm font-medium text-gray-900        /* Subsection titles (14px) */
+text-sm font-medium text-gray-700        /* Labels (14px) */
+
+/* Body Text */
+text-sm text-gray-900                    /* Body text (14px) */
+text-xs text-gray-600                    /* Caption text (12px) */
+text-xs text-gray-400                    /* Helper text (12px) */
+```
+
+#### Spacing System (Tailwind Classes)
+```css
+/* Consistent spacing scale */
+p-1, m-1, gap-1     /* 4px - Tight spacing */
+p-2, m-2, gap-2     /* 8px - Small spacing */
+p-3, m-3, gap-3     /* 12px - Medium spacing */
+p-4, m-4, gap-4     /* 16px - Large spacing */
+p-6, m-6, gap-6     /* 24px - Extra large spacing */
+p-8, m-8, gap-8     /* 32px - Section spacing */
+```
+
+### Visual Analysis Panel Layout
+
+#### Panel Structure
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 可视化分析 (只在选择单表时显示)                                    │
+├─────────────────────────────────────────────────────────────┤
+│ ┌─ 列选择 ─┐ ┌─ 聚合统计 ─┐ ┌─ 筛选条件 ─┐ ┌─ 排序设置 ─┐      │
+│ │ □ 列1    │ │ 求和 ▼    │ │ 列名 ▼    │ │ 列名 ▼    │      │
+│ │ ☑ 列2    │ │ 平均值    │ │ 等于      │ │ 升序 ○    │      │
+│ │ □ 列3    │ │ 计数      │ │ [值输入]   │ │ 降序 ○    │      │
+│ │ ...      │ │ ...       │ │ + 添加条件 │ │ 显示条数   │      │
+│ └─────────┘ └──────────┘ └──────────┘ └──────────┘      │
+├─────────────────────────────────────────────────────────────┤
+│ 生成的SQL预览: SELECT column1, SUM(column2) FROM table...    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Component Specifications
+
+**VisualAnalysisPanel Container**:
+```jsx
+<div className="mb-6 bg-white rounded-lg border border-gray-200 shadow-sm">
+  <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 rounded-t-lg">
+    <h3 className="text-base font-semibold text-gray-900">可视化分析</h3>
+    <p className="text-sm text-gray-600 mt-1">选择分析条件来生成查询</p>
+  </div>
+  <div className="p-6">
+    {/* Analysis controls */}
+  </div>
+</div>
+```
+
+**Column Selector Design**:
+```jsx
+<div className="space-y-2">
+  <label className="text-sm font-medium text-gray-700">选择分析列</label>
+  <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto p-3 border border-gray-200 rounded-md bg-gray-50">
+    {columns.map(col => (
+      <label key={col.name} className="flex items-center space-x-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={selectedColumns.includes(col.name)}
+          onChange={() => handleColumnToggle(col.name)}
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-gray-900 truncate">{col.name}</div>
+          <div className="text-xs text-gray-500">{col.dataType}</div>
+        </div>
+      </label>
+    ))}
+  </div>
+</div>
+```
+
+**Aggregation Controls Design**:
+```jsx
+<div className="space-y-2">
+  <label className="text-sm font-medium text-gray-700">聚合统计</label>
+  <div className="flex flex-wrap gap-2">
+    {aggregationOptions.map(option => (
+      <button
+        key={option.value}
+        onClick={() => handleAggregationSelect(option)}
+        className={`px-3 py-1.5 text-sm font-medium rounded-full border transition-colors ${
+          selectedAggregations.includes(option.value)
+            ? 'bg-blue-600 text-white border-blue-600'
+            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+        }`}
+      >
+        {option.displayName}
+      </button>
+    ))}
+  </div>
+</div>
+```
+
+**Filter Controls Design**:
+```jsx
+<Stack spacing={2}>
+  {filters.map((filter, index) => (
+    <Paper 
+      key={index} 
+      sx={{ 
+        p: 2, 
+        border: '1px solid #e2e8f0',
+        borderRadius: 2,
+        backgroundColor: '#ffffff'
+      }}
+    >
+      <Grid container spacing={2} alignItems="center">
+        <Grid item xs={3}>
+          <Select size="small" value={filter.column}>
+            {columns.map(col => (
+              <MenuItem key={col.name} value={col.name}>
+                {col.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </Grid>
+        <Grid item xs={2}>
+          <Select size="small" value={filter.operator}>
+            <MenuItem value="=">等于</MenuItem>
+            <MenuItem value="!=">不等于</MenuItem>
+            <MenuItem value=">">大于</MenuItem>
+            <MenuItem value="<">小于</MenuItem>
+            <MenuItem value="LIKE">包含</MenuItem>
+          </Select>
+        </Grid>
+        <Grid item xs={4}>
+          <TextField 
+            size="small" 
+            placeholder="输入筛选值"
+            value={filter.value}
+          />
+        </Grid>
+        <Grid item xs={2}>
+          <Select size="small" value={filter.logicOperator}>
+            <MenuItem value="AND">且</MenuItem>
+            <MenuItem value="OR">或</MenuItem>
+          </Select>
+        </Grid>
+        <Grid item xs={1}>
+          <IconButton size="small" color="error">
+            <DeleteIcon />
+          </IconButton>
+        </Grid>
+      </Grid>
+    </Paper>
+  ))}
+  <Button 
+    startIcon={<AddIcon />} 
+    variant="outlined" 
+    size="small"
+    sx={{ alignSelf: 'flex-start' }}
+  >
+    添加筛选条件
+  </Button>
+</Stack>
+```
+
+**SQL Preview Design**:
+```jsx
+<div className="space-y-2">
+  <label className="text-sm font-medium text-gray-700">生成的SQL查询</label>
+  <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
+    <pre className="bg-white border border-gray-200 rounded p-3 text-sm font-mono text-gray-900 max-h-32 overflow-auto whitespace-pre-wrap">
+      {generatedSQL || '-- 配置分析条件后将显示生成的SQL'}
+    </pre>
+  </div>
+</div>
+```
+
+### Responsive Design
+
+#### Breakpoints
+```css
+/* Mobile First Approach */
+xs: 0px      /* Mobile */
+sm: 600px    /* Tablet */
+md: 900px    /* Small Desktop */
+lg: 1200px   /* Large Desktop */
+xl: 1536px   /* Extra Large Desktop */
+```
+
+#### Layout Adaptations
+- **Mobile (xs-sm)**: Stack analysis controls vertically
+- **Tablet (md)**: 2-column grid for analysis controls
+- **Desktop (lg+)**: 4-column grid for optimal space usage
+
+### Animation and Interactions
+
+#### Micro-interactions
+```jsx
+// Smooth transitions for panel expansion
+sx={{
+  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+  '&:hover': {
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+    transform: 'translateY(-1px)'
+  }
+}}
+
+// Loading states
+<CircularProgress 
+  size={20} 
+  sx={{ 
+    color: '#0071e3',
+    animation: 'pulse 2s infinite'
+  }} 
+/>
+
+// Success feedback
+<Fade in={showSuccess}>
+  <Alert severity="success" sx={{ borderRadius: 2 }}>
+    查询执行成功！
+  </Alert>
+</Fade>
+```
 
 ## Components and Interfaces
 
 ### 1. Frontend Components
 
-#### 1.1 VisualQueryBuilder (New Main Component)
+#### 1.1 QueryBuilder (Enhanced Existing Component)
 
-**Location**: `frontend/src/components/QueryBuilder/VisualQueryBuilder.jsx`
+**Location**: `frontend/src/components/QueryBuilder/QueryBuilder.jsx` (Modified)
 
-**Props**:
+**New Props Added**:
 ```javascript
 {
-  dataSources: Array<DataSource>,
-  selectedTable: DataSource | null,
-  onTableSelect: (table: DataSource) => void,
-  onQueryGenerated: (sql: string, config: VisualQueryConfig) => void,
-  onResultsReceived: (results: QueryResults) => void
+  // Existing props remain unchanged
+  // New props for visual analysis:
+  enableVisualAnalysis?: boolean,
+  onVisualQueryGenerated?: (sql: string, config: VisualQueryConfig) => void
 }
 ```
+
+**Integration Point**: Add VisualAnalysisPanel component above the existing "执行查询" button
+
+#### 1.2 VisualAnalysisPanel (New Component)
+
+**Location**: `frontend/src/components/QueryBuilder/VisualAnalysisPanel.jsx`
+
+**Purpose**: Container for all visual analysis controls, only shown when single table is selected
 
 **State Management**:
 ```javascript
@@ -146,59 +409,57 @@ The Visual Query Builder will be integrated into the existing architecture as fo
 }
 ```
 
-#### 1.2 TableSelector (Enhanced Component)
+#### 1.3 SourceSelector (No Changes Required)
 
-**Location**: `frontend/src/components/QueryBuilder/TableSelector.jsx`
+**Location**: `frontend/src/components/QueryBuilder/SourceSelector.jsx`
 
-Extends existing SourceSelector to support single-table selection mode for visual analysis.
+**Status**: Keep completely unchanged - existing multi-table selection logic preserved
 
-#### 1.3 ColumnSelector (New Component)
+#### 1.4 ColumnSelector (New Sub-component)
 
-**Location**: `frontend/src/components/QueryBuilder/ColumnSelector.jsx`
+**Location**: `frontend/src/components/QueryBuilder/VisualAnalysis/ColumnSelector.jsx`
 
 **Features**:
-- Display available columns with data types
+- Display available columns for selected single table
 - Multi-select columns for analysis
-- Column metadata display (null count, unique values, etc.)
+- Column metadata display (data types, null count, etc.)
 
-#### 1.4 AggregationPanel (New Component)
+#### 1.5 AggregationControls (New Sub-component)
 
-**Location**: `frontend/src/components/QueryBuilder/AggregationPanel.jsx`
+**Location**: `frontend/src/components/QueryBuilder/VisualAnalysis/AggregationControls.jsx`
 
 **Features**:
-- Chinese-labeled aggregation functions
+- Chinese-labeled aggregation functions (求和, 平均值, 计数, etc.)
 - Column-specific aggregation selection
 - Group by configuration
 - Statistical functions panel
 
-#### 1.5 FilterPanel (New Component)
+#### 1.6 FilterControls (New Sub-component)
 
-**Location**: `frontend/src/components/QueryBuilder/FilterPanel.jsx`
+**Location**: `frontend/src/components/QueryBuilder/VisualAnalysis/FilterControls.jsx`
 
 **Features**:
 - Dynamic filter controls based on column data types
+- Chinese-labeled operators (等于, 包含, 大于, etc.)
 - Multiple filter conditions with AND/OR logic
 - Pattern matching for text fields
-- Range filters for numeric/date fields
 
-#### 1.6 SortLimitPanel (New Component)
+#### 1.7 SortLimitControls (New Sub-component)
 
-**Location**: `frontend/src/components/QueryBuilder/SortLimitPanel.jsx`
-
-**Features**:
-- Multi-column sorting configuration
-- Row limit settings
-- Offset configuration
-
-#### 1.7 SQLPreview (Enhanced Component)
-
-**Location**: `frontend/src/components/QueryBuilder/SQLPreview.jsx`
+**Location**: `frontend/src/components/QueryBuilder/VisualAnalysis/SortLimitControls.jsx`
 
 **Features**:
-- Real-time SQL generation display
-- Syntax highlighting
-- Chinese comments explaining query logic
-- Estimated execution time display
+- Multi-column sorting configuration (升序/降序)
+- Row limit settings (显示条数)
+- Simple and intuitive controls
+
+#### 1.8 SQLPreview (Enhanced Display)
+
+**Integration**: Show generated SQL in existing query preview area
+**Features**:
+- Real-time SQL generation when analysis conditions change
+- Chinese comments explaining the analysis logic
+- Fallback to original query when no analysis conditions set
 
 ### 2. Backend Enhancements
 
