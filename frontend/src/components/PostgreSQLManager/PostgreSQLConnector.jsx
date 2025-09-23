@@ -1,8 +1,8 @@
-import DeleteIcon from '@mui/icons-material/Delete';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import ListIcon from '@mui/icons-material/List';
-import SaveIcon from '@mui/icons-material/Save';
+import DeleteIcon from "@mui/icons-material/Delete";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import ListIcon from "@mui/icons-material/List";
+import SaveIcon from "@mui/icons-material/Save";
 import {
   Accordion,
   AccordionDetails,
@@ -25,25 +25,29 @@ import {
   Paper,
   TextField,
   Tooltip,
-  Typography
-} from '@mui/material';
-import React, { useEffect, useState } from 'react';
-import { useToast } from '../../contexts/ToastContext';
-import { deletePostgreSQLConfig, getPostgreSQLConfigs, savePostgreSQLConfig } from '../../services/apiClient';
+  Typography,
+} from "@mui/material";
+import React, { useEffect, useState } from "react";
+import { useToast } from "../../contexts/ToastContext";
+import {
+  deletePostgreSQLConfig,
+  getPostgreSQLConfigs,
+  savePostgreSQLConfig,
+} from "../../services/apiClient";
 
 const PostgreSQLConnector = ({ onConnect }) => {
   const { showSuccess, showError } = useToast();
 
   // 原有状态
-  const [host, setHost] = useState('localhost');
-  const [port, setPort] = useState('5432');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [database, setDatabase] = useState('');
-  const [schema, setSchema] = useState('public');
-  const [alias, setAlias] = useState('');
+  const [host, setHost] = useState("localhost");
+  const [port, setPort] = useState("5432");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [database, setDatabase] = useState("");
+  const [schema, setSchema] = useState("public");
+  const [alias, setAlias] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [expanded, setExpanded] = useState(true);
 
@@ -51,7 +55,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
   const [postgreSQLConfigs, setPostgreSQLConfigs] = useState([]);
   const [openConfigDialog, setOpenConfigDialog] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
-  const [configName, setConfigName] = useState('');
+  const [configName, setConfigName] = useState("");
   const [showSaveConfig, setShowSaveConfig] = useState(false);
 
   // 连接测试状态
@@ -70,7 +74,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
         setPostgreSQLConfigs(result);
       }
     } catch (err) {
-      console.error('加载PostgreSQL配置失败:', err);
+      console.error("加载PostgreSQL配置失败:", err);
     }
   };
 
@@ -83,16 +87,16 @@ const PostgreSQLConnector = ({ onConnect }) => {
     try {
       const configToSave = {
         id: configName || `postgresql-${host}-${database}`,
-        type: 'postgresql',
-        name: configName || `${host}:${port || '5432'}/${database}.${schema}`,
+        type: "postgresql",
+        name: configName || `${host}:${port || "5432"}/${database}.${schema}`,
         params: {
           host,
           port: port ? parseInt(port) : 5432,
           user: username,
           password,
           database,
-          schema
-        }
+          schema,
+        },
       };
 
       await savePostgreSQLConfig(configToSave);
@@ -100,10 +104,10 @@ const PostgreSQLConnector = ({ onConnect }) => {
 
       setSuccess(true);
       setShowSaveConfig(false);
-      showSuccess('数据库配置已保存');
+      showSuccess("数据库配置已保存");
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
-      const errorMsg = `保存配置失败: ${err.message || '未知错误'}`;
+      const errorMsg = `保存配置失败: ${err.message || "未知错误"}`;
       setError(errorMsg);
       showError(errorMsg);
     } finally {
@@ -117,35 +121,37 @@ const PostgreSQLConnector = ({ onConnect }) => {
       await deletePostgreSQLConfig(configId);
       await loadPostgreSQLConfigs();
     } catch (err) {
-      setError(`删除配置失败: ${err.message || '未知错误'}`);
+      setError(`删除配置失败: ${err.message || "未知错误"}`);
     }
   };
 
   // 使用已保存的PostgreSQL配置
   const handleUsePostgreSQLConfig = async (config) => {
     if (config && config.params) {
-      setHost(config.params.host || 'localhost');
-      setPort(config.params.port?.toString() || '5432');
-      setUsername(config.params.user || '');
-      setDatabase(config.params.database || '');
-      setSchema(config.params.schema || 'public');
+      setHost(config.params.host || "localhost");
+      setPort(config.params.port?.toString() || "5432");
+      setUsername(config.params.user || "");
+      setDatabase(config.params.database || "");
+      setSchema(config.params.schema || "public");
 
       // 如果密码被遮蔽，需要从后端获取真实密码
-      if (config.params.password === '********') {
+      if (config.params.password === "********") {
         try {
           // 调用后端API获取完整配置（包含解密的密码）
-          const response = await fetch(`/api/postgresql_configs/${config.id}/full`);
+          const response = await fetch(
+            `/api/postgresql_configs/${config.id}/full`,
+          );
           if (response.ok) {
             const fullConfig = await response.json();
-            setPassword(fullConfig.params.password || '');
+            setPassword(fullConfig.params.password || "");
           } else {
-            showError('获取完整配置失败');
+            showError("获取完整配置失败");
           }
         } catch (err) {
-          showError('获取完整配置失败');
+          showError("获取完整配置失败");
         }
       } else {
-        setPassword(config.params.password || '');
+        setPassword(config.params.password || "");
       }
     }
   };
@@ -156,28 +162,28 @@ const PostgreSQLConnector = ({ onConnect }) => {
 
     setTestingConnection(true);
     setConnectionTestResult(null);
-    setError('');
+    setError("");
 
     try {
       const testParams = {
-        type: 'postgresql',
+        type: "postgresql",
         params: {
           host,
           port: port ? parseInt(port) : undefined,
           user: username,
           password,
           database,
-          schema
-        }
+          schema,
+        },
       };
 
       // 调用测试连接API
-      const response = await fetch('/api/database_connections/test', {
-        method: 'POST',
+      const response = await fetch("/api/database_connections/test", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(testParams)
+        body: JSON.stringify(testParams),
       });
 
       const result = await response.json();
@@ -186,22 +192,22 @@ const PostgreSQLConnector = ({ onConnect }) => {
         const successMsg = `连接测试成功！延迟: ${result.latency_ms?.toFixed(2)}ms`;
         setConnectionTestResult({
           success: true,
-          message: successMsg
+          message: successMsg,
         });
         showSuccess(successMsg);
       } else {
-        const errorMsg = result.message || '连接测试失败';
+        const errorMsg = result.message || "连接测试失败";
         setConnectionTestResult({
           success: false,
-          message: errorMsg
+          message: errorMsg,
         });
         showError(errorMsg);
       }
     } catch (err) {
-      const errorMsg = `连接测试失败: ${err.message || '未知错误'}`;
+      const errorMsg = `连接测试失败: ${err.message || "未知错误"}`;
       setConnectionTestResult({
         success: false,
-        message: errorMsg
+        message: errorMsg,
       });
       showError(errorMsg);
     } finally {
@@ -212,7 +218,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
   // 表单验证
   const validateConnectionForm = () => {
     if (!host || !username || !database) {
-      setError('请填写主机地址、用户名和数据库名称');
+      setError("请填写主机地址、用户名和数据库名称");
       return false;
     }
     return true;
@@ -220,7 +226,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
 
   const validateForm = () => {
     if (!host || !username || !database || !configName) {
-      setError('请填写所有必填字段');
+      setError("请填写所有必填字段");
       return false;
     }
     return true;
@@ -231,21 +237,21 @@ const PostgreSQLConnector = ({ onConnect }) => {
     if (!validateConnectionForm()) return;
 
     setLoading(true);
-    setError('');
+    setError("");
     setSuccess(false);
 
     try {
       const connectionParams = {
         id: alias || `postgresql-${host}-${database}-${schema}`,
-        type: 'postgresql',
+        type: "postgresql",
         params: {
           host,
           port: port ? parseInt(port) : 5432,
           user: username,
           password,
           database,
-          schema
-        }
+          schema,
+        },
       };
 
       const result = await onConnect(connectionParams);
@@ -254,10 +260,10 @@ const PostgreSQLConnector = ({ onConnect }) => {
         setSuccess(true);
         setTimeout(() => setSuccess(false), 3000);
       } else {
-        throw new Error(result?.message || '连接失败');
+        throw new Error(result?.message || "连接失败");
       }
     } catch (err) {
-      const errorMsg = `连接失败: ${err.message || '未知错误'}`;
+      const errorMsg = `连接失败: ${err.message || "未知错误"}`;
       setError(errorMsg);
       showError(errorMsg);
     } finally {
@@ -272,7 +278,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
           <Alert
             severity="error"
             sx={{ mb: 2, borderRadius: 2 }}
-            onClose={() => setError('')}
+            onClose={() => setError("")}
           >
             {error}
           </Alert>
@@ -281,10 +287,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
 
       {success && (
         <Fade in={success}>
-          <Alert
-            severity="success"
-            sx={{ mb: 2, borderRadius: 2 }}
-          >
+          <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
             数据库连接成功
           </Alert>
         </Fade>
@@ -308,25 +311,27 @@ const PostgreSQLConnector = ({ onConnect }) => {
         disableGutters
         elevation={0}
         sx={{
-          border: '1px solid rgba(0, 0, 0, 0.1)',
-          borderRadius: '8px',
+          border: "1px solid rgba(0, 0, 0, 0.1)",
+          borderRadius: "8px",
           mb: 2,
-          '&:before': { display: 'none' },
-          overflow: 'hidden'
+          "&:before": { display: "none" },
+          overflow: "hidden",
         }}
       >
         <AccordionSummary
           expandIcon={<ExpandMoreIcon />}
           sx={{
-            backgroundColor: '#f9f9f9',
-            borderBottom: expanded ? '1px solid rgba(0, 0, 0, 0.1)' : 'none',
-            minHeight: '48px',
-            '& .MuiAccordionSummary-content': { my: 0 }
+            backgroundColor: "#f9f9f9",
+            borderBottom: expanded ? "1px solid rgba(0, 0, 0, 0.1)" : "none",
+            minHeight: "48px",
+            "& .MuiAccordionSummary-content": { my: 0 },
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <FolderOpenIcon sx={{ mr: 1, fontSize: '1.2rem', color: '#1976d2' }} />
-            <Typography sx={{ fontWeight: 500, fontSize: '0.9rem' }}>
+          <Box sx={{ display: "flex", alignItems: "center" }}>
+            <FolderOpenIcon
+              sx={{ mr: 1, fontSize: "1.2rem", color: "#1976d2" }}
+            />
+            <Typography sx={{ fontWeight: 500, fontSize: "0.9rem" }}>
               PostgreSQL数据库连接
             </Typography>
           </Box>
@@ -386,8 +391,8 @@ const PostgreSQLConnector = ({ onConnect }) => {
             onChange={(e) => setDatabase(e.target.value)}
             fullWidth
             sx={{ mb: 1.5 }}
-            placeholder="panshi"
-            helperText="连接到的PostgreSQL数据库名称（如：panshi, postgres）"
+            placeholder="postgres"
+            helperText="连接到的PostgreSQL数据库名称（如：postgres）"
           />
 
           <TextField
@@ -398,8 +403,8 @@ const PostgreSQLConnector = ({ onConnect }) => {
             onChange={(e) => setSchema(e.target.value)}
             fullWidth
             sx={{ mb: 1.5 }}
-            placeholder="rock_financial"
-            helperText="数据库中的schema名称（如：rock_financial, public）。如果无法获取表，请尝试：public"
+            placeholder="public"
+            helperText="数据库中的schema名称（如：public）。如果无法获取表，请尝试：public"
           />
 
           <TextField
@@ -413,22 +418,24 @@ const PostgreSQLConnector = ({ onConnect }) => {
             placeholder="例如: 生产环境PostgreSQL"
           />
 
-          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
+          <Box sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
             <Button
               variant="outlined"
-              startIcon={testingConnection ? <CircularProgress size={16} /> : null}
+              startIcon={
+                testingConnection ? <CircularProgress size={16} /> : null
+              }
               onClick={handleTestConnection}
               disabled={testingConnection}
               sx={{
-                borderRadius: '20px',
-                minWidth: '120px',
+                borderRadius: "20px",
+                minWidth: "120px",
                 py: 0.75,
-                textTransform: 'none',
+                textTransform: "none",
                 fontWeight: 500,
-                fontSize: '0.875rem'
+                fontSize: "0.875rem",
               }}
             >
-              {testingConnection ? '测试中...' : '测试连接'}
+              {testingConnection ? "测试中..." : "测试连接"}
             </Button>
 
             <Button
@@ -437,23 +444,23 @@ const PostgreSQLConnector = ({ onConnect }) => {
               onClick={handleConnect}
               disabled={loading}
               sx={{
-                borderRadius: '20px',
-                minWidth: '120px',
+                borderRadius: "20px",
+                minWidth: "120px",
                 py: 0.75,
-                textTransform: 'none',
+                textTransform: "none",
                 fontWeight: 500,
-                fontSize: '0.875rem'
+                fontSize: "0.875rem",
               }}
             >
-              {loading ? '连接中...' : '连接数据库'}
+              {loading ? "连接中..." : "连接数据库"}
             </Button>
           </Box>
 
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+          <Box sx={{ mt: 2, display: "flex", justifyContent: "center" }}>
             <Button
               startIcon={<SaveIcon />}
               onClick={() => setShowSaveConfig(true)}
-              sx={{ textTransform: 'none', fontSize: '0.875rem' }}
+              sx={{ textTransform: "none", fontSize: "0.875rem" }}
             >
               保存此配置
             </Button>
@@ -466,27 +473,30 @@ const PostgreSQLConnector = ({ onConnect }) => {
         variant="outlined"
         sx={{
           borderRadius: 2,
-          border: '1px solid #e2e8f0',
-          mb: 2
+          border: "1px solid #e2e8f0",
+          mb: 2,
         }}
       >
-        <Box sx={{ p: 2, borderBottom: '1px solid #e2e8f0' }}>
-          <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ p: 2, borderBottom: "1px solid #e2e8f0" }}>
+          <Typography
+            variant="subtitle2"
+            sx={{ display: "flex", alignItems: "center", gap: 1 }}
+          >
             <ListIcon fontSize="small" />
             已保存的PostgreSQL配置
           </Typography>
         </Box>
 
-        <List sx={{ p: 0, maxHeight: 200, overflow: 'auto' }}>
+        <List sx={{ p: 0, maxHeight: 200, overflow: "auto" }}>
           {postgreSQLConfigs.length > 0 ? (
             postgreSQLConfigs.map((config) => (
               <React.Fragment key={config.id}>
                 <ListItem
                   sx={{
                     py: 1,
-                    '&:hover': {
-                      backgroundColor: 'rgba(25, 118, 210, 0.04)'
-                    }
+                    "&:hover": {
+                      backgroundColor: "rgba(25, 118, 210, 0.04)",
+                    },
                   }}
                 >
                   <ListItemText
@@ -497,8 +507,11 @@ const PostgreSQLConnector = ({ onConnect }) => {
                     }
                     secondary={
                       <Typography variant="caption" color="text.secondary">
-                        {config.params?.host}:{config.params?.port || '5432'}/{config.params?.database}
-                        {config.params?.schema && config.params.schema !== 'public' && `.${config.params.schema}`}
+                        {config.params?.host}:{config.params?.port || "5432"}/
+                        {config.params?.database}
+                        {config.params?.schema &&
+                          config.params.schema !== "public" &&
+                          `.${config.params.schema}`}
                       </Typography>
                     }
                   />
@@ -531,7 +544,11 @@ const PostgreSQLConnector = ({ onConnect }) => {
             <ListItem>
               <ListItemText
                 primary={
-                  <Typography variant="body2" color="text.secondary" align="center">
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    align="center"
+                  >
                     暂无保存的配置
                   </Typography>
                 }
@@ -542,7 +559,12 @@ const PostgreSQLConnector = ({ onConnect }) => {
       </Paper>
 
       {/* 保存配置对话框 */}
-      <Dialog open={showSaveConfig} onClose={() => setShowSaveConfig(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={showSaveConfig}
+        onClose={() => setShowSaveConfig(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>保存PostgreSQL配置</DialogTitle>
         <DialogContent>
           <TextField
@@ -562,16 +584,21 @@ const PostgreSQLConnector = ({ onConnect }) => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowSaveConfig(false)} disabled={savingConfig}>
+          <Button
+            onClick={() => setShowSaveConfig(false)}
+            disabled={savingConfig}
+          >
             取消
           </Button>
           <Button
             onClick={handleSavePostgreSQLConfig}
             variant="contained"
             disabled={savingConfig || !configName.trim()}
-            startIcon={savingConfig ? <CircularProgress size={16} /> : <SaveIcon />}
+            startIcon={
+              savingConfig ? <CircularProgress size={16} /> : <SaveIcon />
+            }
           >
-            {savingConfig ? '保存中...' : '保存'}
+            {savingConfig ? "保存中..." : "保存"}
           </Button>
         </DialogActions>
       </Dialog>
