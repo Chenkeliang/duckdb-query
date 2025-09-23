@@ -165,3 +165,6 @@ logs/
 # Backup files
 *.bak
 *.backup
+
+# Cursor IDE files
+.cursorrules
