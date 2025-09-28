@@ -2958,29 +2958,109 @@ async def execute_set_operation(request: SetOperationRequest):
             # 预览模式：限制行数
             preview_sql = f"{sql} LIMIT 1000"
             result_df = con.execute(preview_sql).fetchdf()
+
+            # 转换为字典列表
+            data = result_df.to_dict("records")
+
+            # 获取列信息
+            columns = [
+                {"name": col, "type": str(result_df[col].dtype)}
+                for col in result_df.columns
+            ]
+
+            return {
+                "success": True,
+                "data": data,
+                "row_count": len(data),
+                "column_count": len(columns),
+                "columns": columns,
+                "sql": sql,
+                "errors": [],
+                "warnings": [],
+            }
         else:
-            # 完整执行
-            result_df = con.execute(sql).fetchdf()
+            # 完整执行 - 对于大数据集，只返回统计信息
+            logger.info(f"开始执行集合操作查询: {sql}")
 
-        # 转换为字典列表
-        data = result_df.to_dict("records")
+            # 先获取总行数
+            count_sql = f"SELECT COUNT(*) as total_count FROM ({sql}) as subquery"
+            logger.info(f"执行COUNT查询: {count_sql}")
 
-        # 获取列信息
-        columns = [
-            {"name": col, "type": str(result_df[col].dtype)}
-            for col in result_df.columns
-        ]
+            try:
+                count_result = con.execute(count_sql).fetchone()
+                total_count = count_result[0] if count_result else 0
+                logger.info(f"COUNT查询完成，总行数: {total_count}")
+            except Exception as count_error:
+                logger.error(f"COUNT查询失败: {str(count_error)}")
+                # 如果COUNT查询失败，尝试直接执行原查询但限制行数
+                logger.info("尝试执行限制行数的查询")
+                limited_sql = f"{sql} LIMIT 1000000"
+                result_df = con.execute(limited_sql).fetchdf()
+                total_count = len(result_df)
+                logger.info(f"限制查询完成，返回行数: {total_count}")
 
-        return {
-            "success": True,
-            "data": data,
-            "row_count": len(data),
-            "column_count": len(columns),
-            "columns": columns,
-            "sql": sql,
-            "errors": [],
-            "warnings": [],
-        }
+                # 获取列信息
+                columns = [
+                    {"name": col, "type": str(result_df[col].dtype)}
+                    for col in result_df.columns
+                ]
+
+                return {
+                    "success": True,
+                    "data": (
+                        result_df.to_dict("records") if total_count <= 100000 else None
+                    ),
+                    "row_count": total_count,
+                    "column_count": len(columns),
+                    "columns": columns,
+                    "sql": limited_sql,
+                    "errors": [],
+                    "warnings": [
+                        f"由于COUNT查询失败，返回了限制行数的结果（最多100万行）"
+                    ],
+                    "message": f"查询成功，返回 {total_count:,} 行数据。",
+                }
+
+            # 获取列信息（使用LIMIT 1来避免大数据集问题）
+            sample_sql = f"{sql} LIMIT 1"
+            sample_df = con.execute(sample_sql).fetchdf()
+
+            # 获取列信息
+            columns = [
+                {"name": col, "type": str(sample_df[col].dtype)}
+                for col in sample_df.columns
+            ]
+
+            # 如果数据量超过100万行，不返回完整数据
+            if total_count > 1000000:
+                return {
+                    "success": True,
+                    "data": None,  # 不返回完整数据
+                    "row_count": total_count,
+                    "column_count": len(columns),
+                    "columns": columns,
+                    "sql": sql,
+                    "errors": [],
+                    "warnings": [
+                        f"数据集过大（{total_count:,} 行），建议使用预览模式或导出功能"
+                    ],
+                    "message": f"查询成功，共 {total_count:,} 行数据。由于数据量过大，未返回完整数据。",
+                }
+            else:
+                # 数据量较小，返回完整数据
+                result_df = con.execute(sql).fetchdf()
+                data = result_df.to_dict("records")
+
+                return {
+                    "success": True,
+                    "data": data,
+                    "row_count": len(data),
+                    "column_count": len(columns),
+                    "columns": columns,
+                    "sql": sql,
+                    "errors": [],
+                    "warnings": [],
+                }
 
     except ValueError as e:
         logger.warning(f"集合操作执行失败: {str(e)}")

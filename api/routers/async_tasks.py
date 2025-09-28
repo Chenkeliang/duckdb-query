@@ -28,7 +28,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # 确保导出目录存在
-EXPORTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "exports")
+# 在Docker容器中使用相对路径，在本地开发时使用绝对路径
+if os.path.exists("/app"):
+    # Docker容器环境
+    EXPORTS_DIR = "/app/exports"
+else:
+    # 本地开发环境
+    EXPORTS_DIR = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "exports"
+    )
 os.makedirs(EXPORTS_DIR, exist_ok=True)
 
 # 初始化任务工具类
@@ -195,6 +203,43 @@ async def download_async_task_result(task_id: str):
         raise HTTPException(status_code=500, detail=f"下载结果失败: {str(e)}")
 
 
+@router.get("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
+async def download_file_get(task_id: str, format: str = "csv"):
+    """
+    通过GET请求下载文件（兼容直接URL访问）
+    """
+    try:
+        # 验证格式参数
+        if format not in ["csv", "parquet"]:
+            raise HTTPException(
+                status_code=400, detail="不支持的格式，只支持csv和parquet"
+            )
+
+        # 生成下载文件
+        file_path = generate_download_file(task_id, format)
+
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="生成的文件不存在")
+
+        # 确定文件名和媒体类型
+        file_name = os.path.basename(file_path)
+        media_type = task_utils.get_media_type(file_path)
+
+        # 直接返回文件
+        return FileResponse(
+            file_path,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"下载文件失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载文件失败: {str(e)}")
+
+
 @router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
 async def generate_and_download_file(task_id: str, request: dict = Body(...)):
     """
@@ -346,6 +391,19 @@ def generate_download_file(task_id: str, format: str = "csv"):
         # 检查任务状态
         if not task_utils.is_task_completed(task_info):
             raise ValueError(f"任务 {task_id} 未完成，无法生成下载文件")
+
+        # 检查是否已经有生成的文件
+        if task_info.result_file_path and os.path.exists(task_info.result_file_path):
+            existing_file = task_info.result_file_path
+            existing_format = existing_file.split(".")[-1]
+
+            # 如果请求的格式与现有文件格式相同，直接返回
+            if existing_format == format:
+                logger.info(f"使用现有文件: {existing_file}")
+                return existing_file
+
+            # 如果格式不同，需要转换
+            logger.info(f"需要转换格式: {existing_format} -> {format}")
 
         # 从result_info中获取表名
         if not task_info.result_info:

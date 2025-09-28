@@ -144,12 +144,12 @@ const AsyncTaskList = ({ onPreviewResult }) => {
     return tasks.find(task => task.task_id === taskId) || null;
   };
 
-  // 下载结果文件 - 一步完成生成和下载
+  // 下载结果文件
   const handleDownloadResult = async (taskId, format = 'csv') => {
     try {
       setLoading(true);
 
-      // 调用一步完成的下载API
+      // 调用下载API
       const response = await fetch(`/api/async-tasks/${taskId}/download`, {
         method: 'POST',
         headers: {
@@ -221,6 +221,7 @@ const AsyncTaskList = ({ onPreviewResult }) => {
       setError(`下载结果失败: ${err.message}`);
     }
   };
+
 
   return (
     <Box>
@@ -345,7 +346,7 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                           <Box sx={{ display: 'flex', gap: 1, flexDirection: 'column' }}>
                             {task.status === 'success' && (
                               <>
-                                <Tooltip title="按需生成并下载文件">
+                                <Tooltip title="下载结果文件">
                                   <Button
                                     size="small"
                                     variant="outlined"
@@ -361,15 +362,6 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                                     label="文件已生成"
                                     size="small"
                                     color="success"
-                                    variant="outlined"
-                                    sx={{ fontSize: '0.7rem', height: 20 }}
-                                  />
-                                )}
-                                {!task.file_generated && (
-                                  <Chip
-                                    label="按需生成"
-                                    size="small"
-                                    color="info"
                                     variant="outlined"
                                     sx={{ fontSize: '0.7rem', height: 20 }}
                                   />
@@ -395,7 +387,7 @@ const AsyncTaskList = ({ onPreviewResult }) => {
           <Box sx={{ mt: 2 }}>
             <Alert severity="info" sx={{ mb: 2 }}>
               <Typography variant="body2">
-                选择您希望下载的文件格式。系统将按需生成文件。
+                选择您希望下载的文件格式。
               </Typography>
             </Alert>
 
@@ -436,7 +428,7 @@ const AsyncTaskList = ({ onPreviewResult }) => {
 
             <Alert severity="success" sx={{ mt: 2 }}>
               <Typography variant="body2">
-                文件将按需生成，节省存储空间。生成完成后将自动开始下载。
+                文件生成完成后将自动开始下载。
               </Typography>
             </Alert>
           </Box>
