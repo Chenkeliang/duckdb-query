@@ -3045,8 +3045,39 @@ async def execute_set_operation(request: SetOperationRequest):
                 "message": f"集合操作结果已保存到表: {table_name}，共 {row_count:,} 行数据。",
             }
         else:
-            # 默认行为：执行完整集合操作，但限制数据量以避免内存问题
-            logger.info(f"开始执行完整集合操作查询: {sql}")
+            # 默认行为：执行集合操作预览，使用配置的max_query_rows限制
+            from core.config_manager import config_manager
+            limit = config_manager.get_app_config().max_query_rows
+            preview_sql = f"{sql} LIMIT {limit}"
+            result_df = con.execute(preview_sql).fetchdf()
+
+            # 转换为字典列表
+            data = result_df.to_dict("records")
+
+            # 获取列信息
+            columns = [
+                {"name": col, "type": str(result_df[col].dtype)}
+                for col in result_df.columns
+            ]
+
+            return {
+                "success": True,
+                "data": data,
+                "row_count": len(data),
+                "column_count": len(columns),
+                "columns": columns,
+                "sql": sql,
+                "sqlQuery": sql,  # 为前端兼容性
+                "originalDatasource": {
+                    "type": "set_operation",
+                    "operation": config.operation_type,
+                    "tables": [source.table_name for source in config.tables]
+                },
+                "isSetOperation": True,
+                "setOperationConfig": config,
+                "errors": [],
+                "warnings": [],
+            }
 
             # 先获取总行数
             count_sql = f"SELECT COUNT(*) as total_count FROM ({sql}) as subquery"
