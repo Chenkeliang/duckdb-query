@@ -603,6 +603,7 @@ class SetOperationRequest(BaseModel):
 
     config: SetOperationConfig = Field(..., description="集合操作配置")
     preview: bool = Field(False, description="是否为预览请求")
+    save_as_table: Optional[str] = Field(None, description="保存为表名（可选）")
     include_metadata: bool = Field(True, description="是否包含元数据")
 
     @model_validator(mode="after")

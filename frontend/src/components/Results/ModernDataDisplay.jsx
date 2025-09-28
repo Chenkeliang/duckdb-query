@@ -51,6 +51,9 @@ const ModernDataDisplay = ({
   isVisualQuery = false,
   visualConfig = null,
   generatedSQL = '',
+  // Set operation specific props
+  isSetOperation = false,
+  setOperationConfig = null,
 }) => {
   // 调试日志 - 检查传入的props
   console.log('ModernDataDisplay Props:', {
@@ -64,6 +67,8 @@ const ModernDataDisplay = ({
     isVisualQuery,
     visualConfig,
     generatedSQL,
+    isSetOperation,
+    setOperationConfig,
     sampleData: data.slice(0, 2) // 显示前两行数据用于调试
   });
 
@@ -410,26 +415,62 @@ const ModernDataDisplay = ({
     setSaveError('');
 
     try {
-      // 让后端智能处理SQL：移除系统自动LIMIT，保留用户原始SQL的所有条件和逻辑
-      const result = await saveQueryToDuckDB(
-        sqlQuery,
-        originalDatasource,
-        tableAlias.trim(),
-        null  // 不传递数据，让后端智能处理SQL并获取完整数据
-      );
+      let result;
+      
+      // 检查是否是集合操作结果
+      if (isSetOperation && setOperationConfig) {
+        console.log('使用集合操作API保存到表:', {
+          tableAlias: tableAlias.trim(),
+          setOperationConfig
+        });
+        
+        // 使用集合操作API保存
+        const response = await fetch('/api/set-operations/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            config: setOperationConfig,
+            preview: false,
+            save_as_table: tableAlias.trim()
+          }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.errors?.[0] || '集合操作保存失败');
+        }
+        
+        result = await response.json();
+      } else {
+        console.log('使用原有保存逻辑:', {
+          sqlQuery,
+          originalDatasource,
+          tableAlias: tableAlias.trim()
+        });
+        
+        // 使用原有的保存逻辑
+        result = await saveQueryToDuckDB(
+          sqlQuery,
+          originalDatasource,
+          tableAlias.trim(),
+          null  // 不传递数据，让后端智能处理SQL并获取完整数据
+        );
+      }
 
       if (result.success) {
         setSaveDialogOpen(false);
         setTableAlias('');
         setDatasourceName('');
-        showSuccess(`查询结果已保存为DuckDB表: ${result.table_alias}`);
+        
+        const savedTableName = result.table_alias || result.saved_table;
+        showSuccess(`查询结果已保存为DuckDB表: ${savedTableName}`);
 
         // 通知父组件数据源已保存
         if (onDataSourceSaved) {
           onDataSourceSaved({
-            id: result.table_alias,
+            id: savedTableName,
             type: 'duckdb',
-            name: `DuckDB表: ${result.table_alias}`,
+            name: `DuckDB表: ${savedTableName}`,
             row_count: result.row_count,
             columns: result.columns
           });

@@ -538,13 +538,16 @@ const ShadcnApp = () => {
                           : []
                       }
                       loading={false}
-                      title={queryResults.isVisualQuery ? "可视化查询结果" : "查询结果"}
+                      title={queryResults.isVisualQuery ? "可视化查询结果" : (queryResults.isSetOperation ? "集合操作结果" : "查询结果")}
                       sqlQuery={queryResults.sqlQuery || queryResults.sql || ""}
                       originalDatasource={queryResults.originalDatasource}
                       // Visual query specific props
                       isVisualQuery={queryResults.isVisualQuery || false}
                       visualConfig={queryResults.visualConfig || null}
                       generatedSQL={queryResults.generatedSQL || ""}
+                      // Set operation specific props
+                      isSetOperation={queryResults.isSetOperation || false}
+                      setOperationConfig={queryResults.setOperationConfig || null}
                       onRefresh={() => {
                         // 可以添加刷新逻辑
                       }}
