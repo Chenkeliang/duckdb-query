@@ -1,11 +1,5 @@
 import {
-  Code as CodeIcon,
-  ExpandMore as ExpandMoreIcon,
-  Refresh as RefreshIcon,
-  Search as SearchIcon,
-  Storage as StorageIcon,
-  TableChart as TableChartIcon,
-  Visibility as VisibilityIcon
+  ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import {
   Accordion,
@@ -40,6 +34,7 @@ import {
   Tooltip,
   Typography
 } from '@mui/material';
+import { BarChart3, ClipboardList, Code, Database, Eye, RotateCcw, Search } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 
 const DatabaseTableManager = ({ databaseConnections = [] }) => {
@@ -242,13 +237,13 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
       <Card sx={{ mb: 2, borderRadius: 2, border: '1px solid #e2e8f0' }}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <StorageIcon sx={{ mr: 1, color: 'primary.main' }} />
+            <Database size={20} style={{ marginRight: '8px', color: '#1976d2' }} />
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               数据库表管理
             </Typography>
             <Box sx={{ ml: 'auto' }}>
               <Button
-                startIcon={<RefreshIcon />}
+                startIcon={<RotateCcw size={20} />}
                 onClick={() => fetchDatabaseTables(selectedConnection)}
                 disabled={loading}
                 size="small"
@@ -270,7 +265,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                   key={conn.id}
                   label={conn.name}
                   value={conn.id}
-                  icon={<StorageIcon />}
+                  icon={<Database size={20} />}
                   iconPosition="start"
                 />
               ))}
@@ -300,7 +295,8 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
             {/* 数据库统计信息 */}
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                📊 数据库概览 - {tableData.database}
+                <BarChart3 size={20} style={{ marginRight: '8px' }} />
+                数据库概览 - {tableData.database}
               </Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
@@ -331,7 +327,8 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
             {/* 搜索和过滤 */}
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                📋 表列表
+                <ClipboardList size={20} style={{ marginRight: '8px' }} />
+                表列表
               </Typography>
               <TextField
                 fullWidth
@@ -342,7 +339,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
-                      <SearchIcon />
+                      <Search size={20} />
                     </InputAdornment>
                   ),
                 }}
@@ -367,7 +364,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
               >
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                   <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                    <TableChartIcon sx={{ mr: 2, color: 'primary.main' }} />
+                    <BarChart3 size={20} style={{ marginRight: '16px', color: '#1976d2' }} />
                     <Box sx={{ flexGrow: 1 }}>
                       <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                         {table.table_name}
@@ -393,7 +390,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                         disabled={detailsLoading}
                         size="small"
                       >
-                        <VisibilityIcon />
+                        <Eye size={20} />
                       </IconButton>
                     </Tooltip>
                   </Box>
@@ -512,7 +509,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                   {expandedTables.has(table.table_name) && (
                     <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <CodeIcon sx={{ mr: 1, fontSize: 16 }} />
+                        <Code size={16} style={{ marginRight: '8px' }} />
                         <Typography variant="caption" sx={{ fontWeight: 600 }}>
                           SQL查询示例
                         </Typography>
@@ -562,7 +559,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <TableChartIcon sx={{ mr: 1 }} />
+            <BarChart3 size={20} style={{ marginRight: '8px' }} />
             表详细信息 - {selectedTable}
           </Box>
         </DialogTitle>

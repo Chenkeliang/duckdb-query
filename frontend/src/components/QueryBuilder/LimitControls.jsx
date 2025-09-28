@@ -1,20 +1,21 @@
-import React, { useState } from "react";
+import {
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
+} from "@mui/icons-material";
 import {
   Box,
-  Typography,
-  Switch,
-  FormControlLabel,
-  Slider,
-  TextField,
-  Paper,
-  Tooltip,
-  IconButton,
   Collapse,
+  FormControlLabel,
+  IconButton,
+  Paper,
+  Slider,
+  Switch,
+  TextField,
+  Tooltip,
+  Typography,
 } from "@mui/material";
-import {
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-} from "@mui/icons-material";
+import { Lightbulb } from 'lucide-react';
+import React, { useState } from "react";
 
 /**
  * LimitControls - 限制结果数量控制组件
@@ -132,7 +133,8 @@ const LimitControls = ({
                 color="text.secondary"
                 sx={{ mt: 1, display: "block" }}
               >
-                💡 提示：限制结果数量可以提高查询性能
+                <Lightbulb size={16} style={{ marginRight: '8px' }} />
+                提示：限制结果数量可以提高查询性能
               </Typography>
             </Box>
           )}

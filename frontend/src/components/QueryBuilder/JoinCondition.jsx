@@ -1,20 +1,20 @@
-import React from 'react';
-import {
-  Box,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  IconButton,
-  Paper,
-  Stack,
-  Typography,
-  Tooltip,
-  Chip
-} from '@mui/material';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import DeleteIcon from '@mui/icons-material/Delete';
 import LinkIcon from '@mui/icons-material/Link';
-import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
+import {
+  Box,
+  Chip,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  Stack,
+  Tooltip,
+  Typography
+} from '@mui/material';
+import React from 'react';
 
 const JOIN_TYPES = [
   { value: 'inner', label: '内连接 (Inner Join)', description: '仅返回两表中匹配的行' },
@@ -41,7 +41,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
 
   // 根据连接类型返回对应的颜色
   const getJoinTypeColor = (type) => {
-    switch(type) {
+    switch (type) {
       case 'inner': return '#34c759'; // Apple绿色
       case 'left': return '#007aff'; // Apple蓝色
       case 'right': return '#5856d6'; // Apple紫色
@@ -72,8 +72,8 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
         }
       }}
     >
-      <Box 
-        sx={{ 
+      <Box
+        sx={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -83,11 +83,11 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Chip 
+          <Chip
             icon={<LinkIcon sx={{ fontSize: '1rem !important' }} />}
             label={joinTypeInfo.label}
             size="small"
-            sx={{ 
+            sx={{
               bgcolor: `${getJoinTypeColor(join.how)}10`,
               color: getJoinTypeColor(join.how),
               fontWeight: 500,
@@ -98,10 +98,10 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
             }}
           />
           <Tooltip title={joinTypeInfo.description} placement="top" arrow>
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                ml: 1, 
+            <Typography
+              variant="caption"
+              sx={{
+                ml: 1,
                 color: 'text.secondary',
                 cursor: 'help'
               }}
@@ -110,7 +110,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
             </Typography>
           </Tooltip>
         </Box>
-        
+
         <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel id={`join-type-label-${join.left_source_id}-${join.right_source_id}`}>
             连接类型
@@ -120,7 +120,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
             value={join.how}
             label="连接类型"
             onChange={(e) => handleChange('how', e.target.value)}
-            sx={{ 
+            sx={{
               borderRadius: 2,
               '.MuiOutlinedInput-notchedOutline': {
                 borderColor: 'rgba(0,0,0,0.1)',
@@ -143,26 +143,26 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
         </FormControl>
       </Box>
 
-      <Stack 
-        direction={{ xs: 'column', md: 'row' }} 
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
         spacing={2}
         alignItems="center"
       >
-        <Box sx={{ 
-          flex: 1, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: 2, 
-          width: '100%' 
+        <Box sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          width: '100%'
         }}>
-          <Box sx={{ 
+          <Box sx={{
             display: 'flex',
             alignItems: 'center',
             gap: 1
           }}>
-            <Box sx={{ 
-              width: 24, 
-              height: 24, 
+            <Box sx={{
+              width: 24,
+              height: 24,
               borderRadius: '50%',
               bgcolor: 'rgba(0, 122, 255, 0.1)',
               display: 'flex',
@@ -174,18 +174,18 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
             }}>
               L
             </Box>
-            <Typography 
-              variant="body2" 
-              sx={{ 
-                fontWeight: 500, 
-                color: 'text.primary', 
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 500,
+                color: 'text.primary',
                 fontSize: '0.875rem'
               }}
             >
               左表
             </Typography>
           </Box>
-          
+
           <FormControl fullWidth size="small">
             <InputLabel id={`left-source-label-${join.left_source_id}`}>
               数据表
@@ -195,7 +195,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               value={join.left_source_id}
               label="数据表"
               onChange={(e) => handleChange('left_source_id', e.target.value)}
-              sx={{ 
+              sx={{
                 borderRadius: 2,
                 '.MuiOutlinedInput-notchedOutline': {
                   borderColor: 'rgba(0,0,0,0.1)',
@@ -225,7 +225,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               value={join.left_on}
               label="连接列"
               onChange={(e) => handleChange('left_on', e.target.value)}
-              sx={{ 
+              sx={{
                 borderRadius: 2,
                 '.MuiOutlinedInput-notchedOutline': {
                   borderColor: 'rgba(0,0,0,0.1)',
@@ -245,38 +245,63 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
           </FormControl>
         </Box>
 
-        <Box 
-          sx={{ 
-            display: { xs: 'none', md: 'flex' }, 
-            alignItems: 'center', 
+        <Box
+          sx={{
+            display: { xs: 'none', md: 'flex' },
+            alignItems: 'center',
             justifyContent: 'center',
             height: '100%'
           }}
         >
-          <CompareArrowsIcon 
-            sx={{ 
-              color: getJoinTypeColor(join.how),
-              fontSize: '1.5rem',
-              opacity: 0.7
-            }} 
-          />
+          <Tooltip title="交换左右表" placement="top" arrow>
+            <IconButton
+              onClick={() => {
+                // 交换左右表
+                const newJoin = {
+                  ...join,
+                  left_source_id: join.right_source_id,
+                  right_source_id: join.left_source_id,
+                  left_on: join.right_on,
+                  right_on: join.left_on
+                };
+                onUpdate(newJoin);
+              }}
+              sx={{
+                p: 1,
+                borderRadius: '50%',
+                bgcolor: 'rgba(0, 0, 0, 0.04)',
+                '&:hover': {
+                  bgcolor: 'rgba(0, 0, 0, 0.08)',
+                  transform: 'scale(1.1)'
+                },
+                transition: 'all 0.2s ease-in-out'
+              }}
+            >
+              <CompareArrowsIcon
+                sx={{
+                  color: getJoinTypeColor(join.how),
+                  fontSize: '1.5rem'
+                }}
+              />
+            </IconButton>
+          </Tooltip>
         </Box>
 
-        <Box sx={{ 
-          flex: 1, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: 2, 
-          width: '100%' 
+        <Box sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          width: '100%'
         }}>
-          <Box sx={{ 
+          <Box sx={{
             display: 'flex',
             alignItems: 'center',
             gap: 1
           }}>
-            <Box sx={{ 
-              width: 24, 
-              height: 24, 
+            <Box sx={{
+              width: 24,
+              height: 24,
               borderRadius: '50%',
               bgcolor: 'rgba(88, 86, 214, 0.1)',
               display: 'flex',
@@ -288,11 +313,11 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
             }}>
               R
             </Box>
-            <Typography 
-              variant="body2" 
-              sx={{ 
-                fontWeight: 500, 
-                color: 'text.primary', 
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 500,
+                color: 'text.primary',
                 fontSize: '0.875rem'
               }}
             >
@@ -309,7 +334,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               value={join.right_source_id}
               label="数据表"
               onChange={(e) => handleChange('right_source_id', e.target.value)}
-              sx={{ 
+              sx={{
                 borderRadius: 2,
                 '.MuiOutlinedInput-notchedOutline': {
                   borderColor: 'rgba(0,0,0,0.1)',
@@ -337,7 +362,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               value={join.right_on}
               label="连接列"
               onChange={(e) => handleChange('right_on', e.target.value)}
-              sx={{ 
+              sx={{
                 borderRadius: 2,
                 '.MuiOutlinedInput-notchedOutline': {
                   borderColor: 'rgba(0,0,0,0.1)',
@@ -358,25 +383,25 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
         </Box>
       </Stack>
 
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'flex-end', 
+      <Box sx={{
+        display: 'flex',
+        justifyContent: 'flex-end',
         mt: 2.5,
         pt: 2,
         borderTop: '1px solid rgba(0,0,0,0.06)'
       }}>
         <Tooltip title="删除此连接条件">
-          <IconButton 
-            color="error" 
+          <IconButton
+            color="error"
             onClick={onRemove}
             size="small"
-            sx={{ 
-              border: '1px solid rgba(211,47,47,0.2)', 
+            sx={{
+              border: '1px solid rgba(211,47,47,0.2)',
               borderRadius: 1.5,
-              '&:hover': { 
+              '&:hover': {
                 bgcolor: 'rgba(211,47,47,0.08)',
                 boxShadow: '0 2px 8px rgba(211,47,47,0.2)'
-              } 
+              }
             }}
           >
             <DeleteIcon fontSize="small" />

@@ -1,3 +1,4 @@
+import { Lightbulb } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
@@ -188,10 +189,10 @@ const GuidedTutorial = ({
                   key={index}
                   onClick={() => goToStep(index)}
                   className={`w-3 h-3 rounded-full transition-all duration-200 ${index === currentStep
-                    ? 'bg-blue-600 scale-125'
-                    : completedSteps.has(index)
-                      ? 'bg-green-500'
-                      : 'bg-gray-300'
+                      ? 'bg-blue-600 scale-125'
+                      : completedSteps.has(index)
+                        ? 'bg-green-500'
+                        : 'bg-gray-300'
                     }`}
                   title={`步骤 ${index + 1}: ${tutorialSteps[index].title}`}
                 />
@@ -232,7 +233,10 @@ const GuidedTutorial = ({
           {currentStep > 0 && (
             <div className="mt-4 p-3 bg-blue-50 rounded-md">
               <div className="text-sm text-blue-800">
-                <div className="font-medium mb-1">💡 小贴士:</div>
+                <div className="font-medium mb-1">
+                  <Lightbulb size={16} style={{ marginRight: '8px' }} />
+                  小贴士:
+                </div>
                 {currentStep === 1 && (
                   <div>选择表后，可视化查询面板会自动显示在查询构建器中。</div>
                 )}

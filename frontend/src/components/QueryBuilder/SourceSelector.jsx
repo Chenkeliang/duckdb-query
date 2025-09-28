@@ -1,22 +1,21 @@
-import React from 'react';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import DeleteIcon from '@mui/icons-material/Delete';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import {
   Box,
   Chip,
-  Paper,
-  Typography,
+  Divider,
+  IconButton,
   List,
   ListItem,
-  ListItemText,
   ListItemSecondaryAction,
-  IconButton,
+  ListItemText,
+  Paper,
   Tooltip,
-  Divider
+  Typography
 } from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import StorageIcon from '@mui/icons-material/Storage';
-import TableChartIcon from '@mui/icons-material/TableChart';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import { BarChart3, Database } from 'lucide-react';
+import React from 'react';
 
 const SourceSelector = ({
   availableSources,
@@ -25,17 +24,17 @@ const SourceSelector = ({
   onSourceRemove
 }) => {
   return (
-    <Box sx={{ 
-      display: 'flex', 
-      flexDirection: { xs: 'column', sm: 'row' }, 
-      gap: 3, 
-      mb: 2 
+    <Box sx={{
+      display: 'flex',
+      flexDirection: { xs: 'column', sm: 'row' },
+      gap: 3,
+      mb: 2
     }}>
       {/* 可用数据源列表 */}
-      <Paper sx={{ 
-        flex: 1, 
-        p: 0, 
-        maxHeight: 250, 
+      <Paper sx={{
+        flex: 1,
+        p: 0,
+        maxHeight: 250,
         overflow: 'hidden',
         borderRadius: 2,
         border: '1px solid rgba(0, 0, 0, 0.08)',
@@ -43,26 +42,26 @@ const SourceSelector = ({
         display: 'flex',
         flexDirection: 'column'
       }}>
-        <Box sx={{ 
-          p: 1.5, 
-          pb: 1, 
-          display: 'flex', 
+        <Box sx={{
+          p: 1.5,
+          pb: 1,
+          display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           borderBottom: '1px solid rgba(0, 0, 0, 0.05)',
           bgcolor: 'rgba(0, 0, 0, 0.01)'
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <StorageIcon 
-              sx={{ 
+            <Database
+              sx={{
                 color: 'rgba(0, 113, 227, 0.8)',
                 fontSize: '1rem'
-              }} 
+              }}
             />
-            <Typography 
-              variant="subtitle2" 
-              sx={{ 
-                fontWeight: 500, 
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 500,
                 fontSize: '0.85rem',
                 color: 'text.primary'
               }}
@@ -71,17 +70,17 @@ const SourceSelector = ({
             </Typography>
           </Box>
           <Tooltip title="点击数据源将其添加到查询中">
-            <InfoOutlinedIcon 
-              fontSize="small" 
-              sx={{ 
+            <InfoOutlinedIcon
+              fontSize="small"
+              sx={{
                 fontSize: '0.9rem',
                 color: 'text.secondary',
                 opacity: 0.7
-              }} 
+              }}
             />
           </Tooltip>
         </Box>
-        
+
         <Box sx={{ overflow: 'auto', flexGrow: 1 }}>
           {availableSources.length > 0 ? (
             <List disablePadding>
@@ -102,11 +101,11 @@ const SourceSelector = ({
                     <ListItem
                       button
                       onClick={() => onSourceSelect(source)}
-                      sx={{ 
+                      sx={{
                         py: 1,
                         px: 2,
                         transition: 'all 0.2s',
-                        '&:hover': { 
+                        '&:hover': {
                           bgcolor: 'rgba(0, 113, 227, 0.04)',
                         }
                       }}
@@ -124,10 +123,10 @@ const SourceSelector = ({
                             >
                               {source.name || source.id}
                             </Typography>
-                            <Chip 
+                            <Chip
                               label={`${source.columns?.length || 0}列`}
                               size="small"
-                              sx={{ 
+                              sx={{
                                 height: 18,
                                 fontSize: '0.65rem',
                                 bgcolor: 'rgba(0, 113, 227, 0.08)',
@@ -138,10 +137,10 @@ const SourceSelector = ({
                           </Box>
                         }
                         secondary={
-                          <Typography 
-                            variant="caption" 
+                          <Typography
+                            variant="caption"
                             component="span"
-                            sx={{ 
+                            sx={{
                               color: 'text.secondary',
                               mt: 0.5,
                               fontSize: '0.75rem',
@@ -156,7 +155,7 @@ const SourceSelector = ({
                         <IconButton
                           edge="end"
                           size="small"
-                          sx={{ 
+                          sx={{
                             color: 'primary.main',
                             opacity: 0.7,
                             '&:hover': {
@@ -170,40 +169,40 @@ const SourceSelector = ({
                       </Tooltip>
                     </ListItem>
                     {index < array.length - 1 && (
-                      <Divider 
-                        variant="inset" 
-                        component="li" 
-                        sx={{ 
+                      <Divider
+                        variant="inset"
+                        component="li"
+                        sx={{
                           ml: 2,
                           borderColor: 'rgba(0, 0, 0, 0.04)'
-                        }} 
+                        }}
                       />
                     )}
                   </React.Fragment>
                 ))}
             </List>
           ) : (
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
+            <Box sx={{
+              display: 'flex',
+              alignItems: 'center',
               justifyContent: 'center',
               height: '100%',
               p: 3
             }}>
-              <Typography 
-                variant="body2" 
-                color="text.secondary" 
+              <Typography
+                variant="body2"
+                color="text.secondary"
                 align="center"
-                sx={{ 
+                sx={{
                   fontWeight: 500,
                   fontSize: '0.875rem',
                   opacity: 0.7
                 }}
               >
                 没有可用的数据源
-                <Typography 
-                  variant="caption" 
-                  component="span" 
+                <Typography
+                  variant="caption"
+                  component="span"
                   sx={{ mt: 0.5, display: 'block' }}
                 >
                   请先上传文件
@@ -215,10 +214,10 @@ const SourceSelector = ({
       </Paper>
 
       {/* 已选择数据源 */}
-      <Paper sx={{ 
-        flex: 1, 
-        p: 0, 
-        maxHeight: 250, 
+      <Paper sx={{
+        flex: 1,
+        p: 0,
+        maxHeight: 250,
         overflow: 'hidden',
         borderRadius: 2,
         border: '1px solid rgba(0, 0, 0, 0.08)',
@@ -226,26 +225,26 @@ const SourceSelector = ({
         display: 'flex',
         flexDirection: 'column'
       }}>
-        <Box sx={{ 
-          p: 1.5, 
-          pb: 1, 
-          display: 'flex', 
+        <Box sx={{
+          p: 1.5,
+          pb: 1,
+          display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           borderBottom: '1px solid rgba(0, 0, 0, 0.05)',
           bgcolor: 'rgba(0, 0, 0, 0.01)'
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <TableChartIcon 
-              sx={{ 
+            <BarChart3
+              sx={{
                 color: 'rgba(52, 199, 89, 0.8)', // Apple绿色
                 fontSize: '1rem'
-              }} 
+              }}
             />
-            <Typography 
-              variant="subtitle2" 
-              sx={{ 
-                fontWeight: 500, 
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 500,
                 fontSize: '0.85rem',
                 color: 'text.primary'
               }}
@@ -253,10 +252,10 @@ const SourceSelector = ({
               已选择数据源
             </Typography>
             {selectedSources.length > 0 && (
-              <Chip 
+              <Chip
                 label={selectedSources.length}
                 size="small"
-                sx={{ 
+                sx={{
                   ml: 1,
                   height: 20,
                   minWidth: 20,
@@ -269,14 +268,14 @@ const SourceSelector = ({
             )}
           </Box>
         </Box>
-        
+
         <Box sx={{ overflow: 'auto', flexGrow: 1 }}>
           {selectedSources.length > 0 ? (
             <List disablePadding>
               {selectedSources.map((source, index, array) => (
                 <React.Fragment key={source.id}>
-                  <ListItem 
-                    sx={{ 
+                  <ListItem
+                    sx={{
                       py: 1,
                       px: 2,
                       transition: 'all 0.2s',
@@ -295,10 +294,10 @@ const SourceSelector = ({
                           >
                             {source.name || source.id}
                           </Typography>
-                          <Chip 
+                          <Chip
                             label={`${source.columns?.length || 0}列`}
                             size="small"
-                            sx={{ 
+                            sx={{
                               height: 18,
                               fontSize: '0.65rem',
                               bgcolor: 'rgba(52, 199, 89, 0.08)',
@@ -309,10 +308,10 @@ const SourceSelector = ({
                         </Box>
                       }
                       secondary={
-                        <Typography 
-                          variant="caption" 
+                        <Typography
+                          variant="caption"
                           component="span"
-                          sx={{ 
+                          sx={{
                             color: 'text.secondary',
                             mt: 0.5,
                             fontSize: '0.75rem',
@@ -329,7 +328,7 @@ const SourceSelector = ({
                           edge="end"
                           size="small"
                           onClick={() => onSourceRemove(source.id)}
-                          sx={{ 
+                          sx={{
                             color: 'error.light',
                             opacity: 0.7,
                             '&:hover': {
@@ -338,48 +337,48 @@ const SourceSelector = ({
                             }
                           }}
                         >
-                          <DeleteIcon 
-                            sx={{ fontSize: '1rem' }} 
+                          <DeleteIcon
+                            sx={{ fontSize: '1rem' }}
                           />
                         </IconButton>
                       </Tooltip>
                     </ListItemSecondaryAction>
                   </ListItem>
                   {index < array.length - 1 && (
-                    <Divider 
-                      variant="inset" 
-                      component="li" 
-                      sx={{ 
+                    <Divider
+                      variant="inset"
+                      component="li"
+                      sx={{
                         ml: 2,
                         borderColor: 'rgba(0, 0, 0, 0.04)'
-                      }} 
+                      }}
                     />
                   )}
                 </React.Fragment>
               ))}
             </List>
           ) : (
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
+            <Box sx={{
+              display: 'flex',
+              alignItems: 'center',
               justifyContent: 'center',
               height: '100%',
               p: 3
             }}>
-              <Typography 
-                variant="body2" 
-                color="text.secondary" 
+              <Typography
+                variant="body2"
+                color="text.secondary"
                 align="center"
-                sx={{ 
+                sx={{
                   fontWeight: 500,
                   fontSize: '0.875rem',
                   opacity: 0.7
                 }}
               >
                 尚未选择数据源
-                <Typography 
-                  variant="caption" 
-                  component="span" 
+                <Typography
+                  variant="caption"
+                  component="span"
                   sx={{ mt: 0.5, display: 'block' }}
                 >
                   从左侧列表中选择数据源

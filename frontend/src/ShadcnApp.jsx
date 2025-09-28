@@ -66,8 +66,8 @@ const ShadcnApp = () => {
 
   // 初始数据加载
   useEffect(() => {
-    console.log("🚀 ShadcnApp - 组件挂载，开始初始数据加载");
-    console.log("🚀 当前时间戳:", Date.now());
+    console.log("ShadcnApp - 组件挂载，开始初始数据加载");
+    console.log("当前时间戳:", Date.now());
     loadInitialData(true); // 初始加载，强制执行
   }, []);
 
@@ -486,36 +486,34 @@ const ShadcnApp = () => {
 
               <div className="space-y-6">
                 {/* 统一查询界面 */}
-                <div className="bg-white rounded-lg border shadow-sm p-6">
-                  <UnifiedQueryInterface
-                    dataSources={[...dataSources]
-                      .filter(
-                        (ds) =>
-                          ds.type === "duckdb" || ds.sourceType === "duckdb",
-                      )
-                      .sort((a, b) => {
-                        const timeA = a.createdAt
-                          ? new Date(a.createdAt)
-                          : new Date(0);
-                        const timeB = b.createdAt
-                          ? new Date(b.createdAt)
-                          : new Date(0);
-                        // 如果createdAt为null，将其放在最后
-                        if (!a.createdAt && !b.createdAt) return 0;
-                        if (!a.createdAt) return 1;
-                        if (!b.createdAt) return -1;
-                        return timeB - timeA;
-                      })}
-                    databaseConnections={databaseConnections}
-                    selectedSources={selectedSources}
-                    setSelectedSources={setSelectedSources}
-                    onResultsReceived={setQueryResults}
-                    onDataSourceSaved={(newDataSource) => {
-                      triggerRefresh();
-                      console.log("新数据源已保存:", newDataSource);
-                    }}
-                  />
-                </div>
+                <UnifiedQueryInterface
+                  dataSources={[...dataSources]
+                    .filter(
+                      (ds) =>
+                        ds.type === "duckdb" || ds.sourceType === "duckdb",
+                    )
+                    .sort((a, b) => {
+                      const timeA = a.createdAt
+                        ? new Date(a.createdAt)
+                        : new Date(0);
+                      const timeB = b.createdAt
+                        ? new Date(b.createdAt)
+                        : new Date(0);
+                      // 如果createdAt为null，将其放在最后
+                      if (!a.createdAt && !b.createdAt) return 0;
+                      if (!a.createdAt) return 1;
+                      if (!b.createdAt) return -1;
+                      return timeB - timeA;
+                    })}
+                  databaseConnections={databaseConnections}
+                  selectedSources={selectedSources}
+                  setSelectedSources={setSelectedSources}
+                  onResultsReceived={setQueryResults}
+                  onDataSourceSaved={(newDataSource) => {
+                    triggerRefresh();
+                    console.log("新数据源已保存:", newDataSource);
+                  }}
+                />
 
                 {/* 查询结果 */}
                 {queryResults.data && (
@@ -524,13 +522,19 @@ const ShadcnApp = () => {
                       data={queryResults.data || []}
                       columns={
                         queryResults.columns
-                          ? queryResults.columns.map((col) => ({
-                            field: col,
-                            headerName: col,
-                            sortable: true,
-                            filter: true,
-                            resizable: true,
-                          }))
+                          ? queryResults.columns.map((col, index) => {
+                            // 安全地处理列数据，支持字符串和对象格式
+                            const fieldValue = typeof col === 'string' ? col : (col.name || col.field || `column_${index}`);
+                            const headerValue = typeof col === 'string' ? col : (col.headerName || col.name || col.field || `column_${index}`);
+
+                            return {
+                              field: fieldValue,
+                              headerName: headerValue,
+                              sortable: true,
+                              filter: true,
+                              resizable: true,
+                            };
+                          })
                           : []
                       }
                       loading={false}
@@ -644,18 +648,16 @@ const ShadcnApp = () => {
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg border shadow-sm p-6">
-                <AsyncTaskList
-                  onPreviewResult={(taskId) => {
-                    // 设置查询语句为 SELECT * FROM "async_result_{taskId}"
-                    const query = `SELECT * FROM "async_result_${taskId}" LIMIT 10000`;
-                    // 切换到SQL执行器标签页
-                    setCurrentTab("sql");
-                    // 设置查询语句到SQL执行器
-                    setPreviewQuery(query);
-                  }}
-                />
-              </div>
+              <AsyncTaskList
+                onPreviewResult={(taskId) => {
+                  // 设置查询语句为 SELECT * FROM "async_result_{taskId}"
+                  const query = `SELECT * FROM "async_result_${taskId}" LIMIT 10000`;
+                  // 切换到SQL执行器标签页
+                  setCurrentTab("sql");
+                  // 设置查询语句到SQL执行器
+                  setPreviewQuery(query);
+                }}
+              />
             </div>
           )}
         </div>

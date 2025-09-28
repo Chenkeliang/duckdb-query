@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Card } from '../../ui/Card';
+import { Lightbulb } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '../../ui/Button';
+import { Card } from '../../ui/Card';
 
-const SQLPreview = ({ 
-  config, 
-  tableName, 
+const SQLPreview = ({
+  config,
+  tableName,
   onSQLGenerated,
-  className = '' 
+  className = ''
 }) => {
   const [generatedSQL, setGeneratedSQL] = useState('');
   const [sqlMetadata, setSqlMetadata] = useState(null);
@@ -23,13 +24,13 @@ const SQLPreview = ({
     try {
       // Import the visual query generator
       const { generateSQLPreview } = await import('../../../utils/visualQueryGenerator');
-      
+
       const result = generateSQLPreview(config, tableName);
-      
+
       if (result.success) {
         setGeneratedSQL(result.sql);
         setSqlMetadata(result.metadata);
-        
+
         if (onSQLGenerated) {
           onSQLGenerated(result.sql, result.metadata);
         }
@@ -56,7 +57,7 @@ const SQLPreview = ({
 
   const formatSQL = (sql) => {
     if (!sql) return '';
-    
+
     // Simple SQL formatting
     return sql
       .replace(/SELECT/gi, 'SELECT')
@@ -74,38 +75,38 @@ const SQLPreview = ({
 
   const getSQLExplanation = () => {
     if (!sqlMetadata) return '';
-    
+
     const explanations = [];
-    
+
     if (sqlMetadata.hasColumns) {
       explanations.push('选择指定的列');
     }
-    
+
     if (sqlMetadata.hasAggregations) {
       explanations.push('使用聚合函数进行数据汇总');
     }
-    
+
     if (sqlMetadata.hasFilters) {
       explanations.push('应用筛选条件');
     }
-    
+
     if (sqlMetadata.hasGroupBy) {
       explanations.push('按指定列分组');
     }
-    
+
     if (sqlMetadata.hasOrderBy) {
       explanations.push('按指定顺序排序');
     }
-    
+
     if (sqlMetadata.hasLimit) {
       explanations.push('限制返回行数');
     }
-    
+
     if (sqlMetadata.isDistinct) {
       explanations.push('去除重复行');
     }
-    
-    return explanations.length > 0 
+
+    return explanations.length > 0
       ? `查询说明: ${explanations.join('，')}`
       : '基础查询';
   };
@@ -162,7 +163,7 @@ const SQLPreview = ({
             {isExpanded ? formatSQL(generatedSQL) : generatedSQL}
           </code>
         </pre>
-        
+
         {!isExpanded && generatedSQL.split('\n').length > 8 && (
           <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-gray-900 to-transparent rounded-b-md"></div>
         )}
@@ -177,21 +178,21 @@ const SQLPreview = ({
             </div>
             <div className="text-gray-600">列选择</div>
           </div>
-          
+
           <div className="bg-gray-50 p-2 rounded text-center">
             <div className="font-medium text-gray-800">
               {sqlMetadata.hasAggregations ? '✓' : '○'}
             </div>
             <div className="text-gray-600">聚合函数</div>
           </div>
-          
+
           <div className="bg-gray-50 p-2 rounded text-center">
             <div className="font-medium text-gray-800">
               {sqlMetadata.hasFilters ? '✓' : '○'}
             </div>
             <div className="text-gray-600">筛选条件</div>
           </div>
-          
+
           <div className="bg-gray-50 p-2 rounded text-center">
             <div className="font-medium text-gray-800">
               {sqlMetadata.hasOrderBy ? '✓' : '○'}
@@ -204,7 +205,8 @@ const SQLPreview = ({
       {/* Performance Hints */}
       <div className="mt-3 text-xs text-gray-600">
         <div className="flex items-center space-x-4">
-          <span>💡 提示:</span>
+          <Lightbulb size={16} style={{ marginRight: '8px' }} />
+          提示:
           {sqlMetadata?.hasAggregations && !sqlMetadata?.hasGroupBy && (
             <span className="text-amber-600">使用聚合函数时建议添加分组条件</span>
           )}

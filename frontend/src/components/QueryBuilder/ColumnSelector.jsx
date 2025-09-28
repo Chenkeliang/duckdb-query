@@ -1,30 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import {
+  CheckBox as CheckBoxIcon,
+  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
+  Info as InfoIcon,
+  Search as SearchIcon
+} from '@mui/icons-material';
 import {
   Box,
   Checkbox,
-  FormControlLabel,
-  Typography,
   Chip,
-  IconButton,
-  Tooltip,
-  TextField,
-  InputAdornment,
   Collapse,
+  Divider,
+  FormControlLabel,
+  IconButton,
+  InputAdornment,
   List,
   ListItem,
-  ListItemText,
   ListItemIcon,
+  ListItemText,
   Paper,
-  Divider
+  TextField,
+  Tooltip,
+  Typography
 } from '@mui/material';
-import {
-  Search as SearchIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Info as InfoIcon,
-  CheckBox as CheckBoxIcon,
-  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon
-} from '@mui/icons-material';
+import { Calendar, CheckCircle, FileText, Hash, HelpCircle, Percent } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { detectColumnType } from '../../utils/visualQueryUtils';
 
 /**
@@ -45,7 +46,7 @@ const ColumnSelector = ({
 
   // 获取表的列信息
   const columns = selectedTable?.columns || [];
-  
+
   // 过滤列
   const filteredColumns = columns.filter(column => {
     const columnName = typeof column === 'string' ? column : column.name;
@@ -70,13 +71,13 @@ const ColumnSelector = ({
     if (disabled) return;
 
     const columnName = typeof column === 'string' ? column : column.name;
-    const isSelected = selectedColumns.some(col => 
+    const isSelected = selectedColumns.some(col =>
       (typeof col === 'string' ? col : col.name) === columnName
     );
 
     let newSelection;
     if (isSelected) {
-      newSelection = selectedColumns.filter(col => 
+      newSelection = selectedColumns.filter(col =>
         (typeof col === 'string' ? col : col.name) !== columnName
       );
     } else {
@@ -118,17 +119,17 @@ const ColumnSelector = ({
   const getTypeIcon = (type) => {
     switch (type) {
       case 'integer':
-        return '🔢';
+        return <Hash size={16} />;
       case 'decimal':
-        return '💯';
+        return <Percent size={16} />;
       case 'text':
-        return '📝';
+        return <FileText size={16} />;
       case 'date':
-        return '📅';
+        return <Calendar size={16} />;
       case 'boolean':
-        return '✅';
+        return <CheckCircle size={16} />;
       default:
-        return '❓';
+        return <HelpCircle size={16} />;
     }
   };
 
@@ -199,10 +200,10 @@ const ColumnSelector = ({
         </Box>
 
         {/* 列列表 */}
-        <Paper 
-          variant="outlined" 
-          sx={{ 
-            maxHeight: Math.max(maxHeight, 300), 
+        <Paper
+          variant="outlined"
+          sx={{
+            maxHeight: Math.max(maxHeight, 300),
             overflow: 'auto',
             bgcolor: 'background.paper'
           }}
@@ -211,7 +212,7 @@ const ColumnSelector = ({
             {filteredColumns.map((column, index) => {
               const columnName = typeof column === 'string' ? column : column.name;
               const columnType = columnTypes[columnName] || 'text';
-              const isSelected = selectedColumns.some(col => 
+              const isSelected = selectedColumns.some(col =>
                 (typeof col === 'string' ? col : col.name) === columnName
               );
 
@@ -238,7 +239,7 @@ const ColumnSelector = ({
                         checkedIcon={<CheckBoxIcon fontSize="small" />}
                       />
                     </ListItemIcon>
-                    
+
                     <ListItemText
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -251,8 +252,8 @@ const ColumnSelector = ({
                               size="small"
                               color={getTypeColor(columnType)}
                               variant="outlined"
-                              sx={{ 
-                                height: 20, 
+                              sx={{
+                                height: 20,
                                 fontSize: '0.7rem',
                                 '& .MuiChip-label': { px: 1 }
                               }}
@@ -271,14 +272,14 @@ const ColumnSelector = ({
 
                     {showMetadata && column.nullable !== undefined && (
                       <Tooltip title={column.nullable ? '可为空' : '不可为空'}>
-                        <InfoIcon 
-                          fontSize="small" 
+                        <InfoIcon
+                          fontSize="small"
                           color={column.nullable ? 'action' : 'primary'}
                         />
                       </Tooltip>
                     )}
                   </ListItem>
-                  
+
                   {index < filteredColumns.length - 1 && <Divider />}
                 </React.Fragment>
               );

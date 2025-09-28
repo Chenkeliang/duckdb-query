@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "source_id": "async_result_test_task_456",
+    "filename": "async_query_test_task_456",
+    "file_path": "duckdb://async_result_test_task_456",
+    "file_type": "duckdb_async_query",
+    "row_count": 500,
+    "column_count": 1,
+    "columns": [
+      "col1"
+    ],
+    "created_at": "2025-09-25T16:00:24.831194+08:00",
+    "source_sql": "SELECT * FROM test_table"
+  },
+  {
+    "source_id": "async_result_memory_test_456",
+    "filename": "async_query_memory_test_456",
+    "file_path": "duckdb://async_result_memory_test_456",
+    "file_type": "duckdb_async_query",
+    "row_count": 1000000,
+    "column_count": 3,
+    "columns": [
+      "col1",
+      "col2",
+      "col3"
+    ],
+    "created_at": "2025-09-25T16:00:24.953914+08:00",
+    "source_sql": "SELECT * FROM large_table"
+  }
+]

@@ -1,43 +1,41 @@
-import React, { useState, useEffect } from 'react';
 import {
+  CheckCircle,
+  Download,
+  Error,
+  HourglassBottom,
+  PlayArrow,
+  Refresh
+} from '@mui/icons-material';
+import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Chip,
-  IconButton,
   Tooltip,
-  CircularProgress,
-  Alert,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Divider
+  Typography
 } from '@mui/material';
-import {
-  Refresh,
-  Download,
-  Visibility,
-  HourglassBottom,
-  PlayArrow,
-  CheckCircle,
-  Error,
-  ArrowDropDown
-} from '@mui/icons-material';
-import { listAsyncTasks, downloadAsyncTaskResult } from '../../services/apiClient';
+import { ClipboardList } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { listAsyncTasks } from '../../services/apiClient';
 
 const AsyncTaskList = ({ onPreviewResult }) => {
   const [tasks, setTasks] = useState([]);
@@ -68,13 +66,13 @@ const AsyncTaskList = ({ onPreviewResult }) => {
   // 开始定时刷新
   useEffect(() => {
     fetchTasks(); // 立即获取一次
-    
+
     const interval = setInterval(() => {
       fetchTasks();
     }, 5000); // 每5秒刷新一次
-    
+
     setRefreshInterval(interval);
-    
+
     return () => {
       if (interval) {
         clearInterval(interval);
@@ -146,12 +144,58 @@ const AsyncTaskList = ({ onPreviewResult }) => {
     return tasks.find(task => task.task_id === taskId) || null;
   };
 
-  // 下载结果文件
-  const handleDownloadResult = async (taskId) => {
+  // 下载结果文件 - 一步完成生成和下载
+  const handleDownloadResult = async (taskId, format = 'csv') => {
     try {
-      await downloadAsyncTaskResult(taskId);
+      setLoading(true);
+
+      // 调用一步完成的下载API
+      const response = await fetch(`/api/async-tasks/${taskId}/download`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ format }),
+      });
+
+      if (!response.ok) {
+        // 尝试解析错误响应，如果失败则使用默认错误信息
+        let errorMessage = '下载失败';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.detail || errorData.message || '下载失败';
+        } catch (e) {
+          // 如果无法解析JSON，使用状态文本
+          errorMessage = response.statusText || '下载失败';
+        }
+        throw new Error(errorMessage);
+      }
+
+      // 获取文件名
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `task-${taskId}-result.${format}`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // 创建下载链接
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
     } catch (err) {
       setError(`下载结果失败: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -171,7 +215,7 @@ const AsyncTaskList = ({ onPreviewResult }) => {
   // 确认下载格式并开始下载
   const confirmDownloadWithFormat = async () => {
     try {
-      await downloadAsyncTaskResult(selectedTaskId);
+      await handleDownloadResult(selectedTaskId, downloadFormat);
       closeFormatDialog();
     } catch (err) {
       setError(`下载结果失败: ${err.message}`);
@@ -183,8 +227,9 @@ const AsyncTaskList = ({ onPreviewResult }) => {
       <Card>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <Typography variant="h5" component="h2">
-              📋 异步任务列表
+            <Typography variant="h5" component="h2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ClipboardList size={24} />
+              异步任务列表
             </Typography>
             <IconButton onClick={handleRefresh} disabled={loading}>
               <Refresh />
@@ -241,13 +286,13 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                         </TableCell>
                         <TableCell>
                           <Tooltip title={task.query}>
-                            <Typography 
-                              variant="body2" 
-                              sx={{ 
-                                maxWidth: 200, 
-                                overflow: 'hidden', 
-                                textOverflow: 'ellipsis', 
-                                whiteSpace: 'nowrap' 
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                maxWidth: 200,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
                               }}
                             >
                               {task.query}
@@ -259,10 +304,10 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                               const queryObj = JSON.parse(task.query.replace(/'/g, '"'));
                               if (queryObj && queryObj.format) {
                                 return (
-                                  <Chip 
-                                    label={`${(queryObj.format || '').toUpperCase()} 格式`} 
-                                    size="small" 
-                                    variant="outlined" 
+                                  <Chip
+                                    label={`${(queryObj.format || '').toUpperCase()} 格式`}
+                                    size="small"
+                                    variant="outlined"
                                     sx={{ mt: 1, fontSize: '0.7rem', height: 20 }}
                                   />
                                 );
@@ -272,10 +317,10 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                               const formatMatch = task.query.match(/format['"]?\s*:\s*['"]([^'"]+)['"]/);
                               if (formatMatch && formatMatch[1]) {
                                 return (
-                                  <Chip 
-                                    label={`${(formatMatch[1] || '').toUpperCase()} 格式`} 
-                                    size="small" 
-                                    variant="outlined" 
+                                  <Chip
+                                    label={`${(formatMatch[1] || '').toUpperCase()} 格式`}
+                                    size="small"
+                                    variant="outlined"
                                     sx={{ mt: 1, fontSize: '0.7rem', height: 20 }}
                                   />
                                 );
@@ -291,25 +336,45 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">
-                            {task.status === 'success' || task.status === 'failed' 
-                              ? formatExecutionTime(task.execution_time) 
+                            {task.status === 'success' || task.status === 'failed'
+                              ? formatExecutionTime(task.execution_time)
                               : '-'}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Box sx={{ display: 'flex', gap: 1, flexDirection: 'column' }}>
                             {task.status === 'success' && (
-                              <Tooltip title="下载完整结果">
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  startIcon={<Download />}
-                                  onClick={() => openFormatDialog(task.task_id)}
-                                  sx={{ textTransform: 'none' }}
-                                >
-                                  下载 ({(parseQueryInfo(task.query) || '').toUpperCase()})
-                                </Button>
-                              </Tooltip>
+                              <>
+                                <Tooltip title="按需生成并下载文件">
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<Download />}
+                                    onClick={() => openFormatDialog(task.task_id)}
+                                    sx={{ textTransform: 'none' }}
+                                  >
+                                    下载
+                                  </Button>
+                                </Tooltip>
+                                {task.file_generated && (
+                                  <Chip
+                                    label="文件已生成"
+                                    size="small"
+                                    color="success"
+                                    variant="outlined"
+                                    sx={{ fontSize: '0.7rem', height: 20 }}
+                                  />
+                                )}
+                                {!task.file_generated && (
+                                  <Chip
+                                    label="按需生成"
+                                    size="small"
+                                    color="info"
+                                    variant="outlined"
+                                    sx={{ fontSize: '0.7rem', height: 20 }}
+                                  />
+                                )}
+                              </>
                             )}
                           </Box>
                         </TableCell>
@@ -324,54 +389,67 @@ const AsyncTaskList = ({ onPreviewResult }) => {
       </Card>
 
       {/* 格式选择对话框 */}
-      <Dialog open={formatDialogOpen} onClose={closeFormatDialog} maxWidth="xs" fullWidth>
-        <DialogTitle>任务信息</DialogTitle>
+      <Dialog open={formatDialogOpen} onClose={closeFormatDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>选择下载格式</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
             <Alert severity="info" sx={{ mb: 2 }}>
               <Typography variant="body2">
-                此任务在创建时已指定输出格式为 <strong>{(parseQueryInfo(getTaskById(selectedTaskId)?.query || '{}') || '').toUpperCase()}</strong> 格式。
+                选择您希望下载的文件格式。系统将按需生成文件。
               </Typography>
             </Alert>
-            
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+
+            <FormControl fullWidth sx={{ mb: 3 }}>
+              <InputLabel>下载格式</InputLabel>
+              <Select
+                value={downloadFormat}
+                label="下载格式"
+                onChange={(e) => setDownloadFormat(e.target.value)}
+              >
+                <MenuItem value="csv">CSV 格式</MenuItem>
+                <MenuItem value="parquet">Parquet 格式</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
               <Typography variant="body2" sx={{ fontWeight: 'medium', mb: 1 }}>
                 格式说明:
               </Typography>
               <Typography variant="body2" component="div">
-                {(parseQueryInfo(getTaskById(selectedTaskId)?.query || '{}') || '') === 'parquet' ? (
+                {downloadFormat === 'parquet' ? (
                   <>
-                    • <strong>Parquet</strong>: 高效的列式存储格式<br/>
-                    • 适合大数据分析<br/>
-                    • 文件体积小，读取速度快<br/>
+                    • <strong>Parquet</strong>: 高效的列式存储格式<br />
+                    • 适合大数据分析<br />
+                    • 文件体积小，读取速度快<br />
                     • 需要专门工具打开
                   </>
                 ) : (
                   <>
-                    • <strong>CSV</strong>: 通用的表格数据格式<br/>
-                    • 兼容性好，几乎所有工具都支持<br/>
-                    • 易于在Excel等工具中打开<br/>
+                    • <strong>CSV</strong>: 通用的表格数据格式<br />
+                    • 兼容性好，几乎所有工具都支持<br />
+                    • 易于在Excel等工具中打开<br />
                     • 文件体积相对较大
                   </>
                 )}
               </Typography>
             </Box>
-            
-            <Alert severity="warning" sx={{ mt: 2 }}>
+
+            <Alert severity="success" sx={{ mt: 2 }}>
               <Typography variant="body2">
-                注意：任务完成后格式已锁定。如需其他格式，请重新提交任务并选择所需格式。
+                文件将按需生成，节省存储空间。生成完成后将自动开始下载。
               </Typography>
             </Alert>
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={closeFormatDialog}>取消</Button>
-          <Button 
-            onClick={confirmDownloadWithFormat} 
+          <Button
+            onClick={confirmDownloadWithFormat}
             variant="contained"
             disabled={loading}
+            startIcon={loading ? <CircularProgress size={16} /> : <Download />}
           >
-            确认下载
+            {loading ? '生成中...' : '生成并下载'}
           </Button>
         </DialogActions>
       </Dialog>

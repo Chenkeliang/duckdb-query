@@ -1,8 +1,7 @@
 import {
   AutoFixHigh as AutoDetectIcon,
   Clear as ClearIcon,
-  Preview as PreviewIcon,
-  Save as SaveIcon
+  Preview as PreviewIcon
 } from '@mui/icons-material';
 import {
   Alert,
@@ -27,6 +26,7 @@ import {
   TextField,
   Typography
 } from '@mui/material';
+import { ClipboardList, Save } from 'lucide-react';
 import React, { useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -340,7 +340,8 @@ const DataPasteBoard = ({ onDataSourceSaved }) => {
             gap: 1
           }}
         >
-          📋 数据粘贴导入
+          <ClipboardList size={20} style={{ marginRight: '8px' }} />
+          数据粘贴导入
         </Typography>
         <Typography
           variant="body2"
@@ -356,7 +357,7 @@ const DataPasteBoard = ({ onDataSourceSaved }) => {
           fullWidth
           multiline
           rows={6}
-          placeholder="✨ 在此粘贴您的数据...&#10;&#10;💡 支持格式：&#10;• CSV: 1,张三,技术部,8000,2023-01-15&#10;• TSV: 1	张三	技术部	8000	2023-01-15&#10;• 带引号: &quot;1&quot;,&quot;张三&quot;,&quot;技术部&quot;,&quot;8000&quot;,&quot;2023-01-15&quot;&#10;&#10;🚀 系统将自动识别分隔符和数据类型"
+          placeholder="在此粘贴您的数据...&#10;&#10;支持格式：&#10;• CSV: 1,张三,技术部,8000,2023-01-15&#10;• TSV: 1	张三	技术部	8000	2023-01-15&#10;• 带引号: &quot;1&quot;,&quot;张三&quot;,&quot;技术部&quot;,&quot;8000&quot;,&quot;2023-01-15&quot;&#10;&#10;系统将自动识别分隔符和数据类型"
           value={pastedData}
           onChange={(e) => setPastedData(e.target.value)}
           sx={{
@@ -642,7 +643,7 @@ const DataPasteBoard = ({ onDataSourceSaved }) => {
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
             <Button
               variant="contained"
-              startIcon={<SaveIcon />}
+              startIcon={<Save size={20} />}
               onClick={saveToDatabase}
               disabled={loading || !tableName.trim()}
               size="large"

@@ -39,6 +39,7 @@ class AsyncTask:
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     execution_time: Optional[float] = None  # 执行时间（秒）
+    result_info: Optional[Dict[str, Any]] = None  # 任务结果信息（包含table_name等）
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
@@ -106,12 +107,12 @@ class TaskManager:
             logger.info(f"任务开始运行: {task_id}")
             return True
 
-    def complete_task(self, task_id: str, result_file_path: str) -> bool:
+    def complete_task(self, task_id: str, result_info: Dict[str, Any]) -> bool:
         """标记任务为成功完成
 
         Args:
             task_id: 任务ID
-            result_file_path: 结果文件路径
+            result_info: 任务结果信息字典
 
         Returns:
             bool: 是否成功标记
@@ -127,13 +128,16 @@ class TaskManager:
                 return False
 
             task.status = TaskStatus.SUCCESS
-            task.result_file_path = result_file_path
+            task.result_info = result_info
+            task.result_file_path = (
+                result_info.get("result_file_path") if result_info else None
+            )
             task.completed_at = get_current_time()
             if task.started_at:
                 task.execution_time = (
                     task.completed_at - task.started_at
                 ).total_seconds()
-            logger.info(f"任务执行成功: {task_id}, 结果文件: {result_file_path}")
+            logger.info(f"任务执行成功: {task_id}, 结果文件: {result_info}")
             return True
 
     def fail_task(self, task_id: str, error_message: str) -> bool:

@@ -157,7 +157,7 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange }) => {
             <Box sx={{ mt: 2 }}>
                 <Alert severity="success" icon={<CheckCircleIcon />}>
                     <Typography variant="body2">
-                        SQL 语法检查通过 ✅
+                        SQL 语法检查通过
                     </Typography>
                 </Alert>
             </Box>

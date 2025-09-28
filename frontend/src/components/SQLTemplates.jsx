@@ -15,13 +15,14 @@ import {
     Tooltip,
     Typography
 } from '@mui/material';
+import { BarChart3, FileText, Link, Rocket, Search } from 'lucide-react';
 import React from 'react';
 
 const SQLTemplates = ({ onTemplateSelect, tables = [] }) => {
     const templates = [
         {
             category: '基础查询',
-            icon: '🔍',
+            icon: <Search size={20} />,
             items: [
                 {
                     name: '查看所有数据',
@@ -55,7 +56,7 @@ const SQLTemplates = ({ onTemplateSelect, tables = [] }) => {
         },
         {
             category: '数据分析',
-            icon: '📊',
+            icon: <BarChart3 size={20} />,
             items: [
                 {
                     name: '分组统计',
@@ -137,7 +138,7 @@ const SQLTemplates = ({ onTemplateSelect, tables = [] }) => {
         },
         {
             category: '表关联',
-            icon: '🔗',
+            icon: <Link size={20} />,
             items: [
                 {
                     name: '内连接',
@@ -164,7 +165,7 @@ const SQLTemplates = ({ onTemplateSelect, tables = [] }) => {
         },
         {
             category: '高级查询',
-            icon: '🚀',
+            icon: <Rocket size={20} />,
             items: [
                 {
                     name: '子查询',
@@ -222,7 +223,8 @@ const SQLTemplates = ({ onTemplateSelect, tables = [] }) => {
     return (
         <Box sx={{ width: '100%' }}>
             <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
-                📝 SQL 查询模板
+                <FileText size={20} style={{ marginRight: '8px' }} />
+                SQL 查询模板
                 <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
                     (点击模板可快速填充到编辑器)
                 </Typography>

@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Card } from '../../ui/Card';
+import { AlertTriangle } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Button } from '../../ui/Button';
+import { Card } from '../../ui/Card';
 
-const DataPreview = ({ 
-  config, 
-  tableName, 
+const DataPreview = ({
+  config,
+  tableName,
   onPreviewData,
-  className = '' 
+  className = ''
 }) => {
   const [previewData, setPreviewData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -27,7 +28,7 @@ const DataPreview = ({
     try {
       // Add LIMIT to preview query if not already present
       const previewSQL = sql.includes('LIMIT') ? sql : `${sql} LIMIT 10`;
-      
+
       const response = await fetch('/api/query/execute', {
         method: 'POST',
         headers: {
@@ -44,11 +45,11 @@ const DataPreview = ({
       }
 
       const result = await response.json();
-      
+
       if (result.success) {
         setPreviewData(result.data);
         setRowCount(result.rowCount || result.data?.length || 0);
-        
+
         if (onPreviewData) {
           onPreviewData(result.data, result.rowCount);
         }
@@ -71,7 +72,7 @@ const DataPreview = ({
     try {
       // Get query execution plan for performance estimation
       const explainSQL = `EXPLAIN ${sql}`;
-      
+
       const response = await fetch('/api/query/execute', {
         method: 'POST',
         headers: {
@@ -142,7 +143,7 @@ const DataPreview = ({
       try {
         const { generateSQL } = await import('../../../utils/visualQueryGenerator');
         const result = generateSQL(config, tableName);
-        
+
         if (result.success && result.sql) {
           await executePreviewQuery(result.sql);
           await estimateQueryPerformance(result.sql);
@@ -163,7 +164,7 @@ const DataPreview = ({
 
   useEffect(() => {
     updatePreview();
-    
+
     // Cleanup timeout on unmount
     return () => {
       if (previewTimeout) {
@@ -216,7 +217,7 @@ const DataPreview = ({
       {validationWarnings.length > 0 && (
         <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
           <div className="flex items-start space-x-2">
-            <span className="text-yellow-600">⚠️</span>
+            <AlertTriangle size={16} className="text-yellow-600" style={{ marginRight: '8px' }} />
             <div className="flex-1">
               <h4 className="text-sm font-medium text-yellow-800 mb-1">性能建议</h4>
               <ul className="text-sm text-yellow-700 space-y-1">
@@ -273,7 +274,7 @@ const DataPreview = ({
               ))}
             </tbody>
           </table>
-          
+
           {previewData.length > 5 && (
             <div className="mt-2 text-center text-sm text-gray-500">
               显示前5行，共 {previewData.length} 行预览数据
@@ -295,21 +296,21 @@ const DataPreview = ({
             </div>
             <div className="text-gray-600">列数</div>
           </div>
-          
+
           <div className="bg-gray-50 p-2 rounded text-center">
             <div className="font-medium text-gray-800">
               {previewData.length}
             </div>
             <div className="text-gray-600">预览行数</div>
           </div>
-          
+
           <div className="bg-gray-50 p-2 rounded text-center">
             <div className="font-medium text-gray-800">
               {rowCount || 0}
             </div>
             <div className="text-gray-600">总行数</div>
           </div>
-          
+
           <div className="bg-gray-50 p-2 rounded text-center">
             <div className={`font-medium ${getPerformanceColor(estimatedTime || 0)}`}>
               {estimatedTime ? `${estimatedTime.toFixed(1)}s` : '-'}

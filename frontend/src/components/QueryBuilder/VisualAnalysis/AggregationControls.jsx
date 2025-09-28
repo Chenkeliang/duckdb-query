@@ -1,34 +1,32 @@
-import React, { useState, useEffect } from 'react';
-import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Chip,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  IconButton,
-  Tooltip,
-  Alert,
-  Collapse,
-  TextField
-} from '@mui/material';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
-  ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
   Functions as FunctionsIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
 import {
-  AGGREGATION_OPTIONS,
+  Alert,
+  Chip,
+  Collapse,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
+  TextField,
+  Tooltip,
+  Typography
+} from '@mui/material';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BarChart3, Circle, Flag, Hash, Hash as HashIcon, Hash as HashIcon2, Lightbulb, Medal, Minus, Plus, Sigma, Tilde, TrendingUp, Trophy } from 'lucide-react';
+import { default as React, default as React, useEffect, useState } from 'react';
+import {
   AGGREGATION_CATEGORIES,
-  getAggregationDisplayName,
+  AGGREGATION_OPTIONS,
   createDefaultAggregationConfig,
-  getAggregationFunctionsForDataType,
-  isNumericDataType
+  getAggregationDisplayName,
+  getAggregationFunctionsForDataType
 } from '../../../types/visualQuery';
 
 /**
@@ -69,9 +67,9 @@ const AggregationControls = ({
         const aggregationNames = ['计数', '去重计数', '求和', '平均值', '最小值', '最大值'];
         return aggregationNames.includes(name);
       });
-      
+
       if (hasInvalidData) {
-        console.error('⚠️ [AggregationControls] 发现数据污染！列数据包含聚合函数名称:', {
+        console.error('[AggregationControls] 发现数据污染！列数据包含聚合函数名称:', {
           availableColumns,
           invalidColumns: availableColumns.filter(col => {
             const name = getColumnName(col);
@@ -85,7 +83,7 @@ const AggregationControls = ({
 
   // 调试日志：监控列数据变化
   useEffect(() => {
-    console.log('🔍 [AggregationControls] 列数据变化:', {
+    console.log('[AggregationControls] 列数据变化:', {
       tableId: selectedTable?.id,
       tableName: selectedTable?.name,
       columnsCount: availableColumns.length,
@@ -100,7 +98,7 @@ const AggregationControls = ({
 
   // 调试列选择框的渲染内容
   useEffect(() => {
-    console.log('🎛️ [AggregationControls] 列选择框调试:', {
+    console.log('[AggregationControls] 列选择框调试:', {
       availableColumnsLength: availableColumns.length,
       firstColumn: availableColumns[0],
       mappedColumns: availableColumns.map((column, index) => {
@@ -113,7 +111,7 @@ const AggregationControls = ({
 
   // 调试选中状态变化
   useEffect(() => {
-    console.log('🎯 [AggregationControls] 选中状态变化:', {
+    console.log('[AggregationControls] 选中状态变化:', {
       selectedColumn,
       selectedCategory,
       selectedFunction,
@@ -150,7 +148,7 @@ const AggregationControls = ({
       selectedCategory,
       availableColumnsCount: availableColumns.length
     });
-    
+
     // 如果没有选择列，返回所有基础聚合函数以供显示
     if (!columnName) {
       console.log('🔧 [getAvailableFunctions] 没有选择列，返回所有基础选项');
@@ -158,7 +156,7 @@ const AggregationControls = ({
       console.log('🔧 [getAvailableFunctions] 所有基础选项:', allBasicOptions.map(opt => opt.displayName));
       return allBasicOptions;
     }
-    
+
     // 强制返回所有基础聚合函数，不进行数据类型筛选（备用保护机制）
     if (category === 'basic') {
       const forceBasicOptions = [
@@ -172,18 +170,18 @@ const AggregationControls = ({
       console.log('🔧 [getAvailableFunctions] 强制返回所有 basic 选项 (备用保护机制):', forceBasicOptions.length, '个');
       return forceBasicOptions;
     }
-    
+
     // 其他类别使用原始逻辑
     const column = availableColumns.find(col => getColumnName(col) === columnName);
     if (!column) {
-      console.log('🔍 [getAvailableFunctions] 找不到列:', { columnName, availableColumns });
+      console.log('[getAvailableFunctions] 找不到列:', { columnName, availableColumns });
       return AGGREGATION_OPTIONS;
     }
 
     const dataType = getColumnDataType(column);
     const availableFunctions = getAggregationFunctionsForDataType(dataType);
-    
-    let filteredOptions = AGGREGATION_OPTIONS.filter(option => 
+
+    let filteredOptions = AGGREGATION_OPTIONS.filter(option =>
       availableFunctions.includes(option.value)
     );
 
@@ -191,8 +189,8 @@ const AggregationControls = ({
     if (category) {
       filteredOptions = filteredOptions.filter(option => option.category === category);
     }
-    
-    console.log('🔍 [getAvailableFunctions] 函数筛选结果:', {
+
+    console.log('[getAvailableFunctions] 函数筛选结果:', {
       columnName,
       dataType,
       category,
@@ -208,11 +206,11 @@ const AggregationControls = ({
   const getFunctionsByCategory = (columnName) => {
     const allFunctions = getAvailableFunctions(columnName);
     const grouped = {};
-    
+
     Object.keys(AGGREGATION_CATEGORIES).forEach(category => {
       grouped[category] = allFunctions.filter(func => func.category === category);
     });
-    
+
     return grouped;
   };
 
@@ -221,7 +219,7 @@ const AggregationControls = ({
     if (disabled || !selectedColumn || !selectedFunction) return;
 
     // Check if this column-function combination already exists
-    const exists = aggregations.some(agg => 
+    const exists = aggregations.some(agg =>
       agg.column === selectedColumn && agg.function === selectedFunction
     );
 
@@ -288,15 +286,15 @@ const AggregationControls = ({
   const getFunctionIcon = (func) => {
     const icons = {
       // Basic aggregation functions
-      'SUM': '∑',
-      'AVG': '⌀',
-      'COUNT': '#',
-      'MIN': '↓',
-      'MAX': '↑',
-      'COUNT_DISTINCT': '#{',
-      
+      'SUM': <Sigma size={16} />,
+      'AVG': <Circle size={16} />,
+      'COUNT': <HashIcon size={16} />,
+      'MIN': <ArrowDown size={16} />,
+      'MAX': <ArrowUp size={16} />,
+      'COUNT_DISTINCT': <HashIcon2 size={16} />,
+
       // Statistical functions
-      'MEDIAN': '~',
+      'MEDIAN': <Tilde size={16} />,
       'MODE': '◊',
       'STDDEV_SAMP': 'σ',
       'VAR_SAMP': 'σ²',
@@ -304,23 +302,23 @@ const AggregationControls = ({
       'PERCENTILE_CONT_75': 'Q3',
       'PERCENTILE_DISC_25': 'Q1*',
       'PERCENTILE_DISC_75': 'Q3*',
-      
+
       // Window functions
-      'ROW_NUMBER': '#️⃣',
-      'RANK': '🏆',
-      'DENSE_RANK': '🥇',
-      'PERCENT_RANK': '%🏆',
-      'CUME_DIST': '📈',
-      
+      'ROW_NUMBER': <Hash size={16} />,
+      'RANK': <Trophy size={16} />,
+      'DENSE_RANK': <Medal size={16} />,
+      'PERCENT_RANK': <Trophy size={16} />,
+      'CUME_DIST': <TrendingUp size={16} />,
+
       // Trend analysis functions
-      'SUM_OVER': '∑↗',
-      'AVG_OVER': '⌀↗',
-      'LAG': '⬅️',
-      'LEAD': '➡️',
-      'FIRST_VALUE': '🥇',
-      'LAST_VALUE': '🏁'
+      'SUM_OVER': <Plus size={16} />,
+      'AVG_OVER': <Minus size={16} />,
+      'LAG': <ArrowLeft size={16} />,
+      'LEAD': <ArrowRight size={16} />,
+      'FIRST_VALUE': <Medal size={16} />,
+      'LAST_VALUE': <Flag size={16} />
     };
-    return icons[func] || '📊';
+    return icons[func] || <BarChart3 size={16} />;
   };
 
   if (!selectedTable) {
@@ -358,12 +356,12 @@ const AggregationControls = ({
         </label>
         <div className="flex items-center space-x-1">
           <Tooltip title="聚合函数用于对数据进行统计计算">
-            <InfoIcon 
-              sx={{ 
-                fontSize: '0.875rem', 
+            <InfoIcon
+              sx={{
+                fontSize: '0.875rem',
                 color: 'text.secondary',
                 cursor: 'help'
-              }} 
+              }}
             />
           </Tooltip>
           <Tooltip title={isExpanded ? '收起' : '展开'}>
@@ -401,7 +399,7 @@ const AggregationControls = ({
       </div>
 
       <Collapse in={isExpanded}>
-        <div 
+        <div
           className="border border-gray-200 rounded-md bg-gray-50 p-3 space-y-3"
           style={{ maxHeight: `${maxHeight}px`, overflowY: 'auto' }}
         >
@@ -431,26 +429,26 @@ const AggregationControls = ({
                       return !aggregationNames.includes(name);
                     })
                     .map((column, index) => {
-                    const columnName = getColumnName(column);
-                    const dataType = getColumnDataType(column);
-                    return (
-                      <MenuItem key={`${columnName}-${index}`} value={columnName}>
-                        <div className="flex items-center space-x-2">
-                          <span>{columnName}</span>
-                          <Chip
-                            label={dataType}
-                            size="small"
-                            variant="outlined"
-                            sx={{
-                              height: 16,
-                              fontSize: '0.6rem',
-                              '& .MuiChip-label': { padding: '0 4px' }
-                            }}
-                          />
-                        </div>
-                      </MenuItem>
-                    );
-                  })}
+                      const columnName = getColumnName(column);
+                      const dataType = getColumnDataType(column);
+                      return (
+                        <MenuItem key={`${columnName}-${index}`} value={columnName}>
+                          <div className="flex items-center space-x-2">
+                            <span>{columnName}</span>
+                            <Chip
+                              label={dataType}
+                              size="small"
+                              variant="outlined"
+                              sx={{
+                                height: 16,
+                                fontSize: '0.6rem',
+                                '& .MuiChip-label': { padding: '0 4px' }
+                              }}
+                            />
+                          </div>
+                        </MenuItem>
+                      );
+                    })}
                 </Select>
               </FormControl>
 
@@ -519,12 +517,12 @@ const AggregationControls = ({
                       { value: 'MIN', displayName: '最小值', category: 'basic', description: '找出最小值' },
                       { value: 'MAX', displayName: '最大值', category: 'basic', description: '找出最大值' }
                     ];
-                    
+
                     console.log('🔥 [添加功能修复] 聚合函数选择框渲染');
                     console.log('🔥 [添加功能修复] 强制返回选项数量:', forceBasicOptions.length);
                     console.log('🔥 [添加功能修复] 选项列表:', forceBasicOptions.map(opt => opt.displayName));
                     console.log('🔥 [添加功能修复] 当前状态:', { selectedColumn, selectedCategory });
-                    
+
                     return forceBasicOptions.map((option) => (
                       <MenuItem key={option.value} value={option.value}>
                         <div className="flex items-center space-x-2">
@@ -570,7 +568,7 @@ const AggregationControls = ({
               <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.875rem', color: 'text.primary' }}>
                 当前聚合函数
               </Typography>
-              
+
               <div className="space-y-2">
                 {aggregations.map((aggregation, index) => (
                   <div
@@ -593,7 +591,7 @@ const AggregationControls = ({
                               const options = getAvailableFunctions(aggregation.column, 'basic');
                               console.log('🔧 [聚合函数修改] 可用选项:', options.map(opt => opt.displayName));
                               console.log('🔧 [聚合函数修改] getAvailableFunctions返回数量:', options.length);
-                              
+
                               // 强制状态刷新
                               setTimeout(() => {
                                 console.log('🔧 [聚合函数修改] 延迟检查DOM选项数量...');
@@ -623,11 +621,11 @@ const AggregationControls = ({
                                 { value: 'MIN', displayName: '最小值', category: 'basic', description: '找出最小值' },
                                 { value: 'MAX', displayName: '最大值', category: 'basic', description: '找出最大值' }
                               ];
-                              
+
                               console.log('🔥 [强制修复] 聚合函数下拉框渲染，列:', aggregation.column);
                               console.log('🔥 [强制修复] 返回选项数量:', forceAllOptions.length);
                               console.log('🔥 [强制修复] 选项列表:', forceAllOptions.map(opt => opt.displayName));
-                              
+
                               return forceAllOptions.map((option) => (
                                 <MenuItem key={option.value} value={option.value}>
                                   <div className="flex items-center space-x-1">
@@ -640,12 +638,12 @@ const AggregationControls = ({
                             }
                           </Select>
                         </FormControl>
-                        
+
                         <Typography variant="body2" color="text.secondary">
                           应用于: {aggregation.column}
                         </Typography>
                       </div>
-                      
+
                       <Tooltip title="删除聚合函数">
                         <IconButton
                           size="small"
@@ -702,7 +700,8 @@ const AggregationControls = ({
       {aggregations.length === 0 && (
         <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
           <Typography variant="caption" sx={{ color: '#1e40af', fontSize: '0.75rem' }}>
-            💡 提示：聚合函数用于统计计算，如求和、平均值、计数等
+            <Lightbulb size={16} style={{ marginRight: '8px' }} />
+            提示：聚合函数用于统计计算，如求和、平均值、计数等
           </Typography>
         </div>
       )}

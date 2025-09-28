@@ -3,6 +3,9 @@
  * 可视化查询构建器的工具函数
  */
 
+// 导入escapeIdentifier函数
+import { escapeIdentifier } from './visualQueryGenerator';
+
 // 创建默认配置
 export const createDefaultConfig = (tableName = "") => ({
   tableName: tableName,
@@ -166,8 +169,8 @@ export const generateSQLPreview = (config, tableName) => {
 
     sql += `SELECT ${config.isDistinct ? "DISTINCT " : ""}${selectItems.join(", ")}`;
 
-    // FROM 子句
-    sql += `\nFROM ${tableName}`;
+    // FROM 子句 - 使用escapeIdentifier函数来正确处理表名
+    sql += `\nFROM ${escapeIdentifier(tableName)}`;
 
     // WHERE 子句
     if (config.filters && config.filters.length > 0) {
@@ -284,6 +287,8 @@ export const generateSQLPreview = (config, tableName) => {
             orderByColumn = `TRY_CAST(${order.column} AS DATETIME)`;
           } else if (order.cast === "string") {
             orderByColumn = `TRY_CAST(${order.column} AS VARCHAR)`;
+          } else {
+            orderByColumn = order.column;
           }
 
           const direction = order.direction || SortDirection.ASC;

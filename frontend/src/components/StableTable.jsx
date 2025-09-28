@@ -1,5 +1,8 @@
-import React, { useState, useMemo } from 'react';
 import {
+  Box,
+  Chip,
+  Pagination,
+  Paper,
   Table,
   TableBody,
   TableCell,
@@ -7,19 +10,17 @@ import {
   TableHead,
   TableRow,
   TableSortLabel,
-  Paper,
-  Chip,
-  Box,
   Typography,
-  Pagination,
   useTheme
 } from '@mui/material';
+import { Lightbulb } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
 
-const StableTable = ({ 
-  data = [], 
-  columns = [], 
+const StableTable = ({
+  data = [],
+  columns = [],
   pageSize = 20,
-  height = 600 
+  height = 600
 }) => {
   const theme = useTheme();
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -28,20 +29,20 @@ const StableTable = ({
   // 排序逻辑
   const sortedData = useMemo(() => {
     if (!sortConfig.key) return data;
-    
+
     return [...data].sort((a, b) => {
       const aVal = a[sortConfig.key];
       const bVal = b[sortConfig.key];
-      
+
       if (aVal === null || aVal === undefined) return 1;
       if (bVal === null || bVal === undefined) return -1;
-      
+
       if (typeof aVal === 'string' && typeof bVal === 'string') {
-        return sortConfig.direction === 'asc' 
+        return sortConfig.direction === 'asc'
           ? aVal.localeCompare(bVal)
           : bVal.localeCompare(aVal);
       }
-      
+
       if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -101,11 +102,11 @@ const StableTable = ({
     if (column.field === 'join_result' || column.headerName === '关联结果') {
       return renderJoinResultCell(value);
     }
-    
+
     if (value === null || value === undefined) {
       return <span style={{ color: '#999', fontStyle: 'italic' }}>NULL</span>;
     }
-    
+
     return String(value);
   };
 
@@ -113,9 +114,9 @@ const StableTable = ({
     <Box>
       {/* 滚动提示 */}
       <Box sx={{
-        mb: 2, 
-        p: 1.5, 
-        backgroundColor: '#e3f2fd', 
+        mb: 2,
+        p: 1.5,
+        backgroundColor: '#e3f2fd',
         borderRadius: 1,
         fontSize: '0.875rem',
         color: '#1976d2',
@@ -124,14 +125,14 @@ const StableTable = ({
         gap: 1,
         border: '1px solid #bbdefb'
       }}>
-        <span>💡</span>
+        <Lightbulb size={16} />
         <span>提示：界面查询默认限制10,000行。如需完整结果，请使用异步任务功能</span>
       </Box>
 
       {/* 表格容器 */}
-      <TableContainer 
-        component={Paper} 
-        sx={{ 
+      <TableContainer
+        component={Paper}
+        sx={{
           height: height,
           border: '2px solid #e0e0e0',
           borderRadius: 2,
@@ -204,7 +205,7 @@ const StableTable = ({
                       }
                     }}
                   >
-                    <span 
+                    <span
                       title={column.headerName || column.field}
                       style={{
                         // 限制显示宽度，超出部分用省略号表示
@@ -251,7 +252,7 @@ const StableTable = ({
                       title: row[column.field],
                     }}
                   >
-                    <span 
+                    <span
                       title={row[column.field]}
                       style={{
                         // 限制显示宽度，超出部分用省略号表示
@@ -273,10 +274,10 @@ const StableTable = ({
 
       {/* 分页控件 */}
       {totalPages > 1 && (
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
+        <Box sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           mt: 2,
           p: 1
         }}>

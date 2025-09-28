@@ -1,16 +1,4 @@
 import {
-  BarChart as ChartIcon,
-  Clear as ClearIcon,
-  ViewColumn as ColumnsIcon,
-  Download as DownloadIcon,
-  Grid3x3 as GridIcon,
-  Refresh as RefreshIcon,
-  Save as SaveIcon,
-  Search as SearchIcon,
-  TableChart as TableIcon,
-  Speed as VirtualIcon
-} from '@mui/icons-material';
-import {
   Alert,
   Box,
   Button,
@@ -41,6 +29,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
+import { BarChart3, Columns, Download, Grid3x3, RotateCcw, Save, Search, Table, X, Zap } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { quickExport, saveQueryToDuckDB } from '../../services/apiClient';
@@ -64,7 +53,7 @@ const ModernDataDisplay = ({
   generatedSQL = '',
 }) => {
   // 调试日志 - 检查传入的props
-  console.log('🔍 ModernDataDisplay Props:', {
+  console.log('ModernDataDisplay Props:', {
     dataLength: data.length,
     columnsLength: columns.length,
     loading,
@@ -106,21 +95,38 @@ const ModernDataDisplay = ({
     // 如果是字符串数组，转换为对象数组
     if (typeof columns[0] === 'string') {
       return columns.map(col => ({
-        field: col,
-        headerName: col,
+        field: String(col),
+        headerName: String(col),
         sortable: true,
         filter: true,
         resizable: true,
       }));
     }
 
-    // 如果已经是对象数组，直接返回
-    return columns;
+    // 如果已经是对象数组，安全地处理field字段
+    return columns.map((col, index) => {
+      // 安全地获取field值
+      let fieldValue = '';
+      if (typeof col === 'string') {
+        fieldValue = col;
+      } else if (col && typeof col === 'object') {
+        fieldValue = col.field || col.name || '';
+      }
+
+      // 确保field是有效的字符串
+      const safeField = fieldValue ? String(fieldValue) : `column_${index}`;
+
+      return {
+        ...col,
+        field: safeField,
+        headerName: col.headerName || col.name || safeField,
+      };
+    });
   }, [columns]);
 
   // 调试 normalizedColumns
   if (process.env.NODE_ENV === 'development') {
-    console.log('🔍 Normalized Columns:', normalizedColumns);
+    console.log('Normalized Columns:', normalizedColumns);
   }
 
   // 当columns变化时，更新visibleColumns
@@ -214,7 +220,7 @@ const ModernDataDisplay = ({
       .filter(col => visibleColumns.has(col.field))
       .map(col => {
         // 检查是否是关联结果列
-        const isJoinResultColumn = col.field && col.field.startsWith('join_result_');
+        const isJoinResultColumn = col.field && typeof col.field === 'string' && col.field.startsWith('join_result_');
 
         const baseConfig = {
           ...col,
@@ -451,15 +457,15 @@ const ModernDataDisplay = ({
         <CardContent sx={{ pb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <TableIcon color="primary" />
+              <Table size={20} color="#1976d2" />
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
                   {title}
                   {isVisualQuery && (
-                    <Chip 
-                      label="可视化查询" 
-                      size="small" 
-                      color="primary" 
+                    <Chip
+                      label="可视化查询"
+                      size="small"
+                      color="primary"
                       sx={{ ml: 1, fontSize: '0.75rem' }}
                     />
                   )}
@@ -486,7 +492,7 @@ const ModernDataDisplay = ({
                   onClick={() => setViewMode(viewMode === 'table' ? 'chart' : 'table')}
                   color={viewMode === 'chart' ? 'primary' : 'default'}
                 >
-                  {viewMode === 'chart' ? <ChartIcon /> : <TableIcon />}
+                  {viewMode === 'chart' ? <BarChart3 size={20} /> : <Table size={20} />}
                 </IconButton>
               </Tooltip>
 
@@ -496,25 +502,25 @@ const ModernDataDisplay = ({
                     onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
                     color={renderMode === 'virtual' ? 'primary' : 'default'}
                   >
-                    {renderMode === 'virtual' ? <VirtualIcon /> : <GridIcon />}
+                    {renderMode === 'virtual' ? <Zap size={20} /> : <Grid3x3 size={20} />}
                   </IconButton>
                 </Tooltip>
               )}
 
               <Tooltip title="刷新数据">
                 <IconButton onClick={onRefresh} disabled={loading}>
-                  <RefreshIcon />
+                  <RotateCcw size={20} />
                 </IconButton>
               </Tooltip>
 
               <Tooltip title="列设置">
                 <IconButton onClick={handleColumnMenuOpen}>
-                  <ColumnsIcon />
+                  <Columns size={20} />
                 </IconButton>
               </Tooltip>
 
               <Button
-                startIcon={<SaveIcon />}
+                startIcon={<Save size={20} />}
                 variant="outlined"
                 onClick={handleSaveAsDataSource}
                 disabled={data.length === 0 || !sqlQuery || loading}
@@ -538,7 +544,7 @@ const ModernDataDisplay = ({
               </Button>
 
               <Button
-                startIcon={<DownloadIcon />}
+                startIcon={<Download size={20} />}
                 variant="outlined"
                 onClick={handleExportMenuOpen}
                 disabled={data.length === 0}
@@ -560,13 +566,13 @@ const ModernDataDisplay = ({
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon color="action" />
+                    <Search size={20} color="#666" />
                   </InputAdornment>
                 ),
                 endAdornment: searchText && (
                   <InputAdornment position="end">
                     <IconButton size="small" onClick={handleClearSearch}>
-                      <ClearIcon />
+                      <X size={16} />
                     </IconButton>
                   </InputAdornment>
                 ),
@@ -619,7 +625,7 @@ const ModernDataDisplay = ({
                 color: 'text.secondary',
               }}
             >
-              <TableIcon sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
+              <Table size={64} color="#999" style={{ marginBottom: '16px', opacity: 0.5 }} />
               <Typography variant="h6" sx={{ mb: 1 }}>
                 暂无数据
               </Typography>

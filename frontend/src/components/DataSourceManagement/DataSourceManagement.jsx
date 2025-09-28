@@ -1,15 +1,16 @@
-import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   Box,
   Card,
   CardContent,
-  Typography,
-  Alert,
-  Snackbar
+  Snackbar,
+  Typography
 } from '@mui/material';
-import DataUploadSection from './DataUploadSection';
-import DataSourceList from './DataSourceList';
+import { Database, FolderOpen } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { getDuckDBTablesEnhanced } from '../../services/apiClient';
+import DataSourceList from './DataSourceList';
+import DataUploadSection from './DataUploadSection';
 
 const DataSourceManagement = ({ onDataSaved }) => {
   const [duckdbTables, setDuckdbTables] = useState([]);
@@ -52,10 +53,11 @@ const DataSourceManagement = ({ onDataSaved }) => {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            📁 数据源管理
+            <FolderOpen size={20} style={{ marginRight: '8px' }} />
+            数据源管理
           </Typography>
-          
-          <DataUploadSection 
+
+          <DataUploadSection
             onDataSourceSaved={handleDataSourceSaved}
             showNotification={showNotification}
           />
@@ -65,9 +67,10 @@ const DataSourceManagement = ({ onDataSaved }) => {
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            🗃️ 已上传数据源
+            <Database size={20} style={{ marginRight: '8px' }} />
+            已上传数据源
           </Typography>
-          <DataSourceList 
+          <DataSourceList
             duckdbTables={duckdbTables}
             onRefresh={fetchDuckDBTables}
             showNotification={showNotification}
@@ -81,8 +84,8 @@ const DataSourceManagement = ({ onDataSaved }) => {
         onClose={handleNotificationClose}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={handleNotificationClose} 
+        <Alert
+          onClose={handleNotificationClose}
           severity={notification.severity}
           sx={{ width: '100%' }}
         >

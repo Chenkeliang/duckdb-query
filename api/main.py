@@ -46,6 +46,7 @@ from core.duckdb_engine import (
     create_varchar_table_from_dataframe,
     ensure_all_tables_varchar,
 )
+from core.cleanup_scheduler import start_cleanup_scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -188,3 +189,33 @@ def initialize_encryption_key():
 @app.get("/health", tags=["Health"])
 async def health_check():
     return {"status": "healthy", "timestamp": "2025-01-18"}
+
+
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时的初始化"""
+    logger.info("应用启动中...")
+
+    # 启动文件清理调度器
+    try:
+        from routers.async_tasks import cleanup_old_files
+
+        start_cleanup_scheduler(cleanup_old_files)
+        logger.info("文件清理调度器启动成功")
+    except Exception as e:
+        logger.error(f"启动文件清理调度器失败: {str(e)}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭时的清理"""
+    logger.info("应用关闭中...")
+
+    # 停止文件清理调度器
+    try:
+        from core.cleanup_scheduler import stop_cleanup_scheduler
+
+        stop_cleanup_scheduler()
+        logger.info("文件清理调度器已停止")
+    except Exception as e:
+        logger.error(f"停止文件清理调度器失败: {str(e)}")
