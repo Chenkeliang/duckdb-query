@@ -2957,6 +2957,7 @@ async def execute_set_operation(request: SetOperationRequest):
         if request.preview:
             # 预览模式：使用配置的max_query_rows限制
             from core.config_manager import config_manager
+
             limit = config_manager.get_app_config().max_query_rows
             preview_sql = f"{sql} LIMIT {limit}"
             result_df = con.execute(preview_sql).fetchdf()
@@ -2980,8 +2981,8 @@ async def execute_set_operation(request: SetOperationRequest):
                 "sqlQuery": sql,  # 为前端兼容性
                 "originalDatasource": {
                     "type": "set_operation",
-                    "operation": config.operation,
-                    "tables": [source.table_name for source in config.tables]
+                    "operation": config.operation_type,
+                    "tables": [source.table_name for source in config.tables],
                 },
                 "isSetOperation": True,
                 "setOperationConfig": config,
@@ -2992,25 +2993,27 @@ async def execute_set_operation(request: SetOperationRequest):
             # 保存到表模式：直接创建表，不使用fetchdf避免内存溢出
             table_name = request.save_as_table.strip()
             logger.info(f"开始保存集合操作结果到表: {table_name}")
-            
+
             # 检查表名是否已存在
             existing_tables = con.execute("SHOW TABLES").fetchdf()
             existing_table_names = (
                 existing_tables["name"].tolist() if not existing_tables.empty else []
             )
-            
+
             if table_name in existing_table_names:
                 logger.warning(f"表 {table_name} 已存在，将被替换")
-            
+
             # 直接创建表，不使用fetchdf
             create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql})'
             logger.info(f"执行创建表SQL: {create_sql}")
             con.execute(create_sql)
-            
+
             # 获取统计信息（不使用fetchdf）
-            row_count_result = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()
+            row_count_result = con.execute(
+                f'SELECT COUNT(*) FROM "{table_name}"'
+            ).fetchone()
             row_count = row_count_result[0] if row_count_result else 0
-            
+
             # 获取列信息（使用LIMIT 1避免大数据集问题）
             sample_sql = f'SELECT * FROM "{table_name}" LIMIT 1'
             sample_df = con.execute(sample_sql).fetchdf()
@@ -3018,9 +3021,9 @@ async def execute_set_operation(request: SetOperationRequest):
                 {"name": col, "type": str(sample_df[col].dtype)}
                 for col in sample_df.columns
             ]
-            
+
             logger.info(f"表 {table_name} 创建成功，行数: {row_count}")
-            
+
             return {
                 "success": True,
                 "saved_table": table_name,
@@ -3032,8 +3035,8 @@ async def execute_set_operation(request: SetOperationRequest):
                 "sqlQuery": sql,  # 为前端兼容性
                 "originalDatasource": {
                     "type": "set_operation",
-                    "operation": config.operation,
-                    "tables": [source.table_name for source in config.tables]
+                    "operation": config.operation_type,
+                    "tables": [source.table_name for source in config.tables],
                 },
                 "isSetOperation": True,
                 "setOperationConfig": config,

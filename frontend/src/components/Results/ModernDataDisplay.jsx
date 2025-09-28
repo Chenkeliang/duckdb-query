@@ -416,14 +416,14 @@ const ModernDataDisplay = ({
 
     try {
       let result;
-      
+
       // 检查是否是集合操作结果
       if (isSetOperation && setOperationConfig) {
         console.log('使用集合操作API保存到表:', {
           tableAlias: tableAlias.trim(),
           setOperationConfig
         });
-        
+
         // 使用集合操作API保存
         const response = await fetch('/api/set-operations/execute', {
           method: 'POST',
@@ -434,12 +434,12 @@ const ModernDataDisplay = ({
             save_as_table: tableAlias.trim()
           }),
         });
-        
+
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.errors?.[0] || '集合操作保存失败');
         }
-        
+
         result = await response.json();
       } else {
         console.log('使用原有保存逻辑:', {
@@ -447,7 +447,7 @@ const ModernDataDisplay = ({
           originalDatasource,
           tableAlias: tableAlias.trim()
         });
-        
+
         // 使用原有的保存逻辑
         result = await saveQueryToDuckDB(
           sqlQuery,
@@ -461,7 +461,7 @@ const ModernDataDisplay = ({
         setSaveDialogOpen(false);
         setTableAlias('');
         setDatasourceName('');
-        
+
         const savedTableName = result.table_alias || result.saved_table;
         showSuccess(`查询结果已保存为DuckDB表: ${savedTableName}`);
 
