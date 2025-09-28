@@ -18,6 +18,11 @@ from models.visual_query_models import (
     ColumnStatistics,
     TableMetadata,
     VisualQueryConfig,
+    SetOperationRequest,
+    SetOperationResponse,
+    SetOperationConfig,
+    SetOperationType,
+    UnionOperationRequest,
 )
 from core.duckdb_engine import (
     get_db_connection,
@@ -34,6 +39,8 @@ from core.visual_query_generator import (
     get_column_statistics,
     get_table_metadata,
     estimate_query_performance,
+    generate_set_operation_sql,
+    estimate_set_operation_rows,
 )
 import pandas as pd
 import numpy as np
@@ -2550,6 +2557,7 @@ async def register_file_source_enhanced(source, con):
 
 # Visual Query Builder API Endpoints
 
+
 @router.post("/api/visual-query/generate", tags=["Visual Query"])
 async def generate_visual_query(request: VisualQueryRequest):
     """Generate SQL from visual query configuration"""
@@ -2560,37 +2568,36 @@ async def generate_visual_query(request: VisualQueryRequest):
             return VisualQueryResponse(
                 success=False,
                 errors=validation_result.errors,
-                warnings=validation_result.warnings
+                warnings=validation_result.warnings,
             )
-        
+
         # Generate SQL from configuration
         generated_sql = generate_sql_from_config(request.config)
-        
+
         # Get metadata if requested
         metadata = None
         if request.include_metadata:
             con = get_db_connection()
             metadata = {
-                "estimated_rows": estimate_query_performance(request.config, con).estimated_rows,
+                "estimated_rows": estimate_query_performance(
+                    request.config, con
+                ).estimated_rows,
                 "complexity_score": validation_result.complexity_score,
                 "has_aggregations": len(request.config.aggregations) > 0,
                 "has_filters": len(request.config.filters) > 0,
-                "has_sorting": len(request.config.order_by) > 0
+                "has_sorting": len(request.config.order_by) > 0,
             }
-        
+
         return VisualQueryResponse(
             success=True,
             sql=generated_sql,
             warnings=validation_result.warnings,
-            metadata=metadata
+            metadata=metadata,
         )
-        
+
     except Exception as e:
         logger.error(f"Visual query generation failed: {str(e)}")
-        return VisualQueryResponse(
-            success=False,
-            errors=[f"SQL生成失败: {str(e)}"]
-        )
+        return VisualQueryResponse(success=False, errors=[f"SQL生成失败: {str(e)}"])
 
 
 @router.post("/api/visual-query/preview", tags=["Visual Query"])
@@ -2598,91 +2605,81 @@ async def preview_visual_query(request: PreviewRequest):
     """Get preview data for visual query configuration"""
     try:
         con = get_db_connection()
-        
+
         # Validate the configuration
         validation_result = validate_query_config(request.config)
         if not validation_result.is_valid:
             return PreviewResponse(
                 success=False,
                 errors=validation_result.errors,
-                warnings=validation_result.warnings
+                warnings=validation_result.warnings,
             )
-        
+
         # Generate SQL with limit for preview
         preview_config = request.config.copy()
         preview_config.limit = min(request.limit, 100)  # Cap preview at 100 rows
-        
+
         generated_sql = generate_sql_from_config(preview_config)
-        
+
         # Execute preview query
         start_time = time.time()
         preview_df = execute_query(generated_sql, con)
         execution_time = time.time() - start_time
-        
+
         # Get estimated total row count (without limit)
         count_config = request.config.copy()
         count_config.selected_columns = ["*"]
         count_config.aggregations = []
         count_config.order_by = []
         count_config.limit = None
-        
+
         count_sql = f"SELECT COUNT(*) as total_rows FROM ({generate_sql_from_config(count_config)}) as subquery"
-        total_rows = execute_query(count_sql, con).iloc[0]['total_rows']
-        
+        total_rows = execute_query(count_sql, con).iloc[0]["total_rows"]
+
         # Convert preview data to JSON-serializable format
         preview_df.replace([np.inf, -np.inf], np.nan, inplace=True)
         preview_df = preview_df.astype(object).where(pd.notnull(preview_df), None)
-        
+
         for col in preview_df.columns:
             if preview_df[col].dtype == "object":
                 preview_df[col] = preview_df[col].astype(str)
-        
+
         return PreviewResponse(
             success=True,
             data=preview_df.to_dict(orient="records"),
             row_count=int(total_rows),
             estimated_time=execution_time,
-            warnings=validation_result.warnings
+            warnings=validation_result.warnings,
         )
-        
+
     except Exception as e:
         logger.error(f"Visual query preview failed: {str(e)}")
-        return PreviewResponse(
-            success=False,
-            errors=[f"预览查询失败: {str(e)}"]
-        )
+        return PreviewResponse(success=False, errors=[f"预览查询失败: {str(e)}"])
 
 
-@router.get("/api/visual-query/column-stats/{table_name}/{column_name}", tags=["Visual Query"])
+@router.get(
+    "/api/visual-query/column-stats/{table_name}/{column_name}", tags=["Visual Query"]
+)
 async def get_column_stats(table_name: str, column_name: str):
     """Get statistics for a specific column"""
     try:
         con = get_db_connection()
-        
+
         # Verify table exists
         available_tables = con.execute("SHOW TABLES").fetchdf()
         if table_name not in available_tables["name"].tolist():
-            raise HTTPException(
-                status_code=404,
-                detail=f"表 '{table_name}' 不存在"
-            )
-        
+            raise HTTPException(status_code=404, detail=f"表 '{table_name}' 不存在")
+
         # Get column statistics
         stats = get_column_statistics(table_name, column_name, con)
-        
-        return {
-            "success": True,
-            "statistics": stats
-        }
-        
+
+        return {"success": True, "statistics": stats}
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Column statistics failed: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取列统计信息失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"获取列统计信息失败: {str(e)}")
 
 
 @router.get("/api/visual-query/table-metadata/{table_name}", tags=["Visual Query"])
@@ -2690,31 +2687,22 @@ async def get_table_metadata_endpoint(table_name: str):
     """Get metadata for a table including all column statistics"""
     try:
         con = get_db_connection()
-        
+
         # Verify table exists
         available_tables = con.execute("SHOW TABLES").fetchdf()
         if table_name not in available_tables["name"].tolist():
-            raise HTTPException(
-                status_code=404,
-                detail=f"表 '{table_name}' 不存在"
-            )
-        
+            raise HTTPException(status_code=404, detail=f"表 '{table_name}' 不存在")
+
         # Get table metadata
         metadata = get_table_metadata(table_name, con)
-        
-        return {
-            "success": True,
-            "metadata": metadata
-        }
-        
+
+        return {"success": True, "metadata": metadata}
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Table metadata failed: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取表元数据失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"获取表元数据失败: {str(e)}")
 
 
 @router.post("/api/visual-query/validate", tags=["Visual Query"])
@@ -2722,15 +2710,15 @@ async def validate_visual_query_config(config: VisualQueryConfig):
     """Validate visual query configuration"""
     try:
         validation_result = validate_query_config(config)
-        
+
         return {
             "success": True,
             "is_valid": validation_result.is_valid,
             "errors": validation_result.errors,
             "warnings": validation_result.warnings,
-            "complexity_score": validation_result.complexity_score
+            "complexity_score": validation_result.complexity_score,
         }
-        
+
     except Exception as e:
         logger.error(f"Visual query validation failed: {str(e)}")
         return {
@@ -2738,5 +2726,360 @@ async def validate_visual_query_config(config: VisualQueryConfig):
             "is_valid": False,
             "errors": [f"配置验证失败: {str(e)}"],
             "warnings": [],
-            "complexity_score": 0
+            "complexity_score": 0,
+        }
+
+
+# ==================== 集合操作API端点 ====================
+
+
+@router.post("/api/set-operations/generate", tags=["Set Operations"])
+async def generate_set_operation_query(request: SetOperationRequest):
+    """
+    生成集合操作SQL查询
+
+    支持UNION, UNION ALL, EXCEPT, INTERSECT等集合操作
+    支持BY NAME模式进行列名映射
+    """
+    try:
+        config = request.config
+
+        # 生成SQL查询
+        sql = generate_set_operation_sql(config)
+
+        # 估算结果行数
+        con = get_db_connection()
+        estimated_rows = estimate_set_operation_rows(config, con)
+
+        # 构建元数据
+        metadata = {
+            "operation_type": config.operation_type,
+            "table_count": len(config.tables),
+            "use_by_name": config.use_by_name,
+            "estimated_rows": estimated_rows,
+            "tables": [
+                {
+                    "table_name": table.table_name,
+                    "selected_columns": table.selected_columns,
+                    "alias": table.alias,
+                }
+                for table in config.tables
+            ],
+        }
+
+        return SetOperationResponse(
+            success=True,
+            sql=sql,
+            errors=[],
+            warnings=[],
+            metadata=metadata if request.include_metadata else None,
+            estimated_rows=estimated_rows,
+        )
+
+    except ValueError as e:
+        logger.warning(f"集合操作查询生成失败: {str(e)}")
+        return SetOperationResponse(
+            success=False,
+            sql=None,
+            errors=[str(e)],
+            warnings=[],
+            metadata=None,
+            estimated_rows=0,
+        )
+    except Exception as e:
+        logger.error(f"集合操作查询生成失败: {str(e)}")
+        return SetOperationResponse(
+            success=False,
+            sql=None,
+            errors=[f"生成查询失败: {str(e)}"],
+            warnings=[],
+            metadata=None,
+            estimated_rows=0,
+        )
+
+
+@router.post("/api/set-operations/preview", tags=["Set Operations"])
+async def preview_set_operation(request: SetOperationRequest):
+    """
+    预览集合操作结果
+
+    执行集合操作查询并返回前几行数据
+    """
+    try:
+        config = request.config
+
+        # 生成SQL查询
+        sql = generate_set_operation_sql(config)
+
+        # 添加LIMIT进行预览
+        preview_sql = f"{sql} LIMIT 100"
+
+        # 执行预览查询
+        con = get_db_connection()
+        result_df = con.execute(preview_sql).fetchdf()
+
+        # 转换为字典列表
+        preview_data = result_df.to_dict("records")
+
+        # 获取总行数估算
+        estimated_rows = estimate_set_operation_rows(config, con)
+
+        return {
+            "success": True,
+            "data": preview_data,
+            "row_count": len(preview_data),
+            "estimated_total_rows": estimated_rows,
+            "sql": preview_sql,
+            "errors": [],
+            "warnings": [],
+        }
+
+    except ValueError as e:
+        logger.warning(f"集合操作预览失败: {str(e)}")
+        return {
+            "success": False,
+            "data": None,
+            "row_count": 0,
+            "estimated_total_rows": 0,
+            "sql": None,
+            "errors": [str(e)],
+            "warnings": [],
+        }
+    except Exception as e:
+        logger.error(f"集合操作预览失败: {str(e)}")
+        return {
+            "success": False,
+            "data": None,
+            "row_count": 0,
+            "estimated_total_rows": 0,
+            "sql": None,
+            "errors": [f"预览失败: {str(e)}"],
+            "warnings": [],
+        }
+
+
+@router.post("/api/set-operations/validate", tags=["Set Operations"])
+async def validate_set_operation(request: SetOperationRequest):
+    """
+    验证集合操作配置
+
+    检查表是否存在、列是否兼容等
+    """
+    try:
+        config = request.config
+        con = get_db_connection()
+
+        errors = []
+        warnings = []
+
+        # 检查所有表是否存在
+        for table in config.tables:
+            try:
+                # 检查表是否存在
+                check_sql = f'SELECT COUNT(*) FROM "{table.table_name}"'
+                con.execute(check_sql).fetchone()
+            except Exception as e:
+                errors.append(f"表 {table.table_name} 不存在或无法访问: {str(e)}")
+
+        # 检查列兼容性
+        if not config.use_by_name:
+            # 位置模式：检查列数量是否匹配
+            if len(config.tables) >= 2:
+                first_table = config.tables[0]
+                first_columns = first_table.selected_columns or []
+
+                for i, table in enumerate(config.tables[1:], 1):
+                    table_columns = table.selected_columns or []
+                    if len(first_columns) != len(table_columns):
+                        errors.append(
+                            f"表 {table.table_name} 的列数量({len(table_columns)}) "
+                            f"与第一个表 {first_table.table_name} 的列数量({len(first_columns)})不匹配"
+                        )
+
+        # 检查BY NAME模式的列映射
+        if config.use_by_name:
+            for table in config.tables:
+                if not table.column_mappings:
+                    errors.append(
+                        f"表 {table.table_name} 在BY NAME模式下必须提供列映射"
+                    )
+
+        # 检查操作类型支持
+        if config.use_by_name and config.operation_type not in [
+            SetOperationType.UNION,
+            SetOperationType.UNION_ALL,
+        ]:
+            errors.append("只有UNION和UNION ALL支持BY NAME模式")
+
+        # 性能警告
+        if len(config.tables) > 5:
+            warnings.append("表数量较多，查询性能可能较慢")
+
+        return {
+            "success": len(errors) == 0,
+            "is_valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "table_count": len(config.tables),
+            "operation_type": config.operation_type,
+            "use_by_name": config.use_by_name,
+        }
+
+    except Exception as e:
+        logger.error(f"集合操作验证失败: {str(e)}")
+        return {
+            "success": False,
+            "is_valid": False,
+            "errors": [f"验证失败: {str(e)}"],
+            "warnings": [],
+            "table_count": 0,
+            "operation_type": None,
+            "use_by_name": False,
+        }
+
+
+@router.post("/api/set-operations/execute", tags=["Set Operations"])
+async def execute_set_operation(request: SetOperationRequest):
+    """
+    执行集合操作查询
+
+    执行完整的集合操作并返回结果
+    """
+    try:
+        config = request.config
+
+        # 生成SQL查询
+        sql = generate_set_operation_sql(config)
+
+        # 执行查询
+        con = get_db_connection()
+
+        if request.preview:
+            # 预览模式：限制行数
+            preview_sql = f"{sql} LIMIT 1000"
+            result_df = con.execute(preview_sql).fetchdf()
+        else:
+            # 完整执行
+            result_df = con.execute(sql).fetchdf()
+
+        # 转换为字典列表
+        data = result_df.to_dict("records")
+
+        # 获取列信息
+        columns = [
+            {"name": col, "type": str(result_df[col].dtype)}
+            for col in result_df.columns
+        ]
+
+        return {
+            "success": True,
+            "data": data,
+            "row_count": len(data),
+            "column_count": len(columns),
+            "columns": columns,
+            "sql": sql,
+            "errors": [],
+            "warnings": [],
+        }
+
+    except ValueError as e:
+        logger.warning(f"集合操作执行失败: {str(e)}")
+        return {
+            "success": False,
+            "data": None,
+            "row_count": 0,
+            "column_count": 0,
+            "columns": [],
+            "sql": None,
+            "errors": [str(e)],
+            "warnings": [],
+        }
+    except Exception as e:
+        logger.error(f"集合操作执行失败: {str(e)}")
+        return {
+            "success": False,
+            "data": None,
+            "row_count": 0,
+            "column_count": 0,
+            "columns": [],
+            "sql": None,
+            "errors": [f"执行失败: {str(e)}"],
+            "warnings": [],
+        }
+
+
+@router.post("/api/set-operations/simple-union", tags=["Set Operations"])
+async def simple_union_operation(request: UnionOperationRequest):
+    """
+    简化的UNION操作
+
+    提供简化的UNION操作接口，只需要表名列表
+    """
+    try:
+        tables = request.tables
+        operation_type = request.operation_type
+        use_by_name = request.use_by_name
+        column_mappings = request.column_mappings
+
+        # 构建简化的配置
+        table_configs = []
+        for table_name in tables:
+            table_config = {
+                "table_name": table_name,
+                "selected_columns": [],  # 使用所有列
+                "alias": None,
+            }
+
+            # 如果有列映射，添加到配置中
+            if use_by_name and column_mappings and table_name in column_mappings:
+                table_config["column_mappings"] = column_mappings[table_name]
+
+            table_configs.append(table_config)
+
+        # 创建集合操作配置
+        config = SetOperationConfig(
+            operation_type=operation_type, tables=table_configs, use_by_name=use_by_name
+        )
+
+        # 生成SQL查询
+        sql = generate_set_operation_sql(config)
+
+        # 估算结果行数
+        con = get_db_connection()
+        estimated_rows = estimate_set_operation_rows(config, con)
+
+        return {
+            "success": True,
+            "sql": sql,
+            "estimated_rows": estimated_rows,
+            "table_count": len(tables),
+            "operation_type": operation_type,
+            "use_by_name": use_by_name,
+            "errors": [],
+            "warnings": [],
+        }
+
+    except ValueError as e:
+        logger.warning(f"简化UNION操作失败: {str(e)}")
+        return {
+            "success": False,
+            "sql": None,
+            "estimated_rows": 0,
+            "table_count": 0,
+            "operation_type": None,
+            "use_by_name": False,
+            "errors": [str(e)],
+            "warnings": [],
+        }
+    except Exception as e:
+        logger.error(f"简化UNION操作失败: {str(e)}")
+        return {
+            "success": False,
+            "sql": None,
+            "estimated_rows": 0,
+            "table_count": 0,
+            "operation_type": None,
+            "use_by_name": False,
+            "errors": [f"操作失败: {str(e)}"],
+            "warnings": [],
         }

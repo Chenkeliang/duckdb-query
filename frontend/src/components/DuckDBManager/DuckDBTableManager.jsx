@@ -1,32 +1,32 @@
-import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
+  Chip,
+  CircularProgress,
+  Delete as DeleteIcon,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  Info as InfoIcon,
+  Paper,
+  Refresh as RefreshIcon,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  IconButton,
   Tooltip,
-  Alert,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  CircularProgress,
-  Refresh as RefreshIcon,
-  Delete as DeleteIcon,
-  Info as InfoIcon,
-  Storage as StorageIcon
+  Typography
 } from '@mui/material';
-import { getDuckDBTables, deleteDuckDBTable } from '../../services/apiClient';
+import { Database } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { deleteDuckDBTable, getDuckDBTables } from '../../services/apiClient';
 
 const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
   const [tables, setTables] = useState([]);
@@ -42,7 +42,7 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
   const loadTables = async () => {
     setLoading(true);
     setError('');
-    
+
     try {
       const response = await getDuckDBTables();
       if (response.success) {
@@ -138,15 +138,15 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <StorageIcon color="primary" />
+            <Database size={20} color="#1976d2" />
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               DuckDB 表管理
             </Typography>
-            <Chip 
-              label={`${tables.length} 个表`} 
-              size="small" 
-              color="primary" 
-              variant="outlined" 
+            <Chip
+              label={`${tables.length} 个表`}
+              size="small"
+              color="primary"
+              variant="outlined"
             />
           </Box>
           <Tooltip title="刷新表列表">
@@ -190,19 +190,19 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Chip 
-                        label={formatNumber(table.row_count)} 
-                        size="small" 
-                        color="success" 
-                        variant="outlined" 
+                      <Chip
+                        label={formatNumber(table.row_count)}
+                        size="small"
+                        color="success"
+                        variant="outlined"
                       />
                     </TableCell>
                     <TableCell>
-                      <Chip 
-                        label={table.column_count} 
-                        size="small" 
-                        color="info" 
-                        variant="outlined" 
+                      <Chip
+                        label={table.column_count}
+                        size="small"
+                        color="info"
+                        variant="outlined"
                       />
                     </TableCell>
                     <TableCell>
@@ -241,8 +241,8 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
         )}
 
         {/* 表详细信息对话框 */}
-        <Dialog 
-          open={infoDialogOpen} 
+        <Dialog
+          open={infoDialogOpen}
           onClose={() => setInfoDialogOpen(false)}
           maxWidth="md"
           fullWidth
@@ -273,11 +273,11 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                   {selectedTable.columns?.map((column, index) => (
-                    <Chip 
-                      key={index} 
-                      label={column} 
-                      size="small" 
-                      variant="outlined" 
+                    <Chip
+                      key={index}
+                      label={column}
+                      size="small"
+                      variant="outlined"
                     />
                   ))}
                 </Box>
@@ -289,8 +289,8 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
               关闭
             </Button>
             {selectedTable && (
-              <Button 
-                variant="contained" 
+              <Button
+                variant="contained"
                 onClick={() => {
                   handleSelectTable(selectedTable);
                   setInfoDialogOpen(false);

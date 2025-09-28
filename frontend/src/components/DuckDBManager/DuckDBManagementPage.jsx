@@ -7,9 +7,6 @@ import {
   History,
   Info as InfoIcon,
   QueryStats,
-  Refresh as RefreshIcon,
-  Search as SearchIcon,
-  Storage as StorageIcon,
   TableChart as TableIcon,
   ViewList
 } from '@mui/icons-material';
@@ -43,6 +40,7 @@ import {
   Tooltip,
   Typography
 } from '@mui/material';
+import { Database, RotateCcw, Search } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { deleteDuckDBTable, getDuckDBTables } from '../../services/apiClient';
 
@@ -242,14 +240,14 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <SearchIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                <Search size={20} color="#666" />
               </InputAdornment>
             ),
           }}
         />
         <Button
           variant="outlined"
-          startIcon={<RefreshIcon />}
+          startIcon={<RotateCcw size={20} />}
           onClick={loadTables}
           disabled={loading}
           size="small"
@@ -299,7 +297,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
             backgroundColor: 'rgba(0, 0, 0, 0.02)'
           }}
         >
-          <StorageIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
+          <Database size={48} color="#999" style={{ marginBottom: '16px' }} />
           <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
             {searchTerm ? '没有找到匹配的表' : '暂无DuckDB表'}
           </Typography>

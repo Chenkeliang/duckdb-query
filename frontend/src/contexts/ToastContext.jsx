@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { Snackbar, Alert, Slide } from '@mui/material';
+import { Alert, Slide, Snackbar } from '@mui/material';
+import React, { createContext, useCallback, useContext, useState } from 'react';
 
 // Toast类型定义
 export const TOAST_TYPES = {
@@ -28,7 +28,7 @@ export const ToastProvider = ({ children }) => {
     // 检查DOM状态
     const rootElement = document.getElementById('root');
     if (rootElement) {
-      console.log('📋 Root元素状态:', {
+      console.log('Root元素状态:', {
         ariaHidden: rootElement.getAttribute('aria-hidden'),
         style: rootElement.style.cssText,
         className: rootElement.className
@@ -37,7 +37,7 @@ export const ToastProvider = ({ children }) => {
 
     // 检查是否有其他Modal打开
     const modals = document.querySelectorAll('[role="dialog"], .MuiModal-root, .MuiDialog-root');
-    console.log('🔍 发现的Modal/Dialog元素:', modals.length, modals);
+    console.log('发现的Modal/Dialog元素:', modals.length, modals);
 
     const id = Date.now() + Math.random();
     const newToast = {
@@ -48,10 +48,10 @@ export const ToastProvider = ({ children }) => {
       open: true
     };
 
-    console.log('✨ 创建新Toast:', newToast);
+    console.log('创建新Toast:', newToast);
     setToasts(prev => {
       const newToasts = [...prev, newToast];
-      console.log('📝 更新Toast列表:', newToasts);
+      console.log('更新Toast列表:', newToasts);
       return newToasts;
     });
 

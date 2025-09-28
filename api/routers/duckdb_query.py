@@ -8,6 +8,7 @@ import traceback
 import pandas as pd
 import os
 import time
+import re
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form
 from fastapi.responses import JSONResponse
@@ -26,6 +27,46 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def fix_table_names_in_sql(sql: str, available_tables: List[str]) -> str:
+    """
+    修复SQL中的表名，为包含特殊字符的表名添加引号
+    注意：如果表名已经被引用了，则跳过处理以避免双引号嵌套
+
+    Args:
+        sql: 原始SQL查询
+        available_tables: 可用的表名列表
+
+    Returns:
+        修复后的SQL查询
+    """
+    if not available_tables:
+        return sql
+
+    # 创建表名映射，将包含特殊字符的表名映射到带引号的版本
+    table_mapping = {}
+    for table_name in available_tables:
+        # 检查表名是否包含特殊字符（连字符、点号等）
+        if re.search(r"[-\.]", table_name):
+            # 检查SQL中是否已经存在带引号的表名
+            quoted_pattern = f'"{table_name}"'
+            if quoted_pattern in sql:
+                # 表名已经被引用了，跳过处理
+                continue
+            table_mapping[table_name] = f'"{table_name}"'
+
+    if not table_mapping:
+        return sql
+
+    # 替换SQL中的表名
+    fixed_sql = sql
+    for original_name, quoted_name in table_mapping.items():
+        # 使用单词边界确保只替换完整的表名，避免部分匹配
+        pattern = r"\b" + re.escape(original_name) + r"\b"
+        fixed_sql = re.sub(pattern, quoted_name, fixed_sql, flags=re.IGNORECASE)
+
+    return fixed_sql
 
 
 class DuckDBQueryRequest(BaseModel):
@@ -134,6 +175,12 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
         sql_to_execute = request.sql.strip()
         if not sql_to_execute:
             raise HTTPException(status_code=400, detail="SQL查询不能为空")
+
+        # 修复表名引号问题：为包含特殊字符的表名添加引号
+        logger.info(f"修复前SQL: {sql_to_execute}")
+        logger.info(f"可用表: {available_tables}")
+        sql_to_execute = fix_table_names_in_sql(sql_to_execute, available_tables)
+        logger.info(f"修复后SQL: {sql_to_execute}")
 
         # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式）
         sql_for_preview = sql_to_execute

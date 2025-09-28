@@ -1,6 +1,5 @@
 import {
   Cancel as CancelIcon,
-  CloudUpload as CloudUploadIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
 import {
@@ -13,6 +12,8 @@ import {
   CircularProgress // 导入 CircularProgress
   ,
 
+
+
   Divider,
   FormControlLabel,
   IconButton,
@@ -20,6 +21,7 @@ import {
   Tooltip,
   Typography
 } from '@mui/material';
+import { Lightbulb, Upload } from 'lucide-react';
 import React, { useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import ChunkedUploader from '../ChunkedUpload/ChunkedUploader';
@@ -155,7 +157,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
     <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <CloudUploadIcon sx={{ mr: 1, color: 'primary.main' }} />
+          <Upload size={20} style={{ marginRight: '8px', color: '#1976d2' }} />
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
             智能文件上传
           </Typography>
@@ -216,7 +218,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
                 }
               }}
             >
-              <CloudUploadIcon
+              <Upload
                 sx={{
                   fontSize: 48,
                   color: isDragOver ? '#1976d2' : '#999',
@@ -261,7 +263,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
                   />
                   <Button
                     variant="contained"
-                    startIcon={<CloudUploadIcon />}
+                    startIcon={<Upload size={20} />}
                     onClick={() => fileInputRef.current?.click()}
                     sx={{ borderRadius: 20 }}
                   >
@@ -327,7 +329,8 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
         {/* 功能说明 */}
         <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
           <Typography variant="caption" color="text.secondary">
-            💡 <strong>智能上传提示：</strong><br />
+            <Lightbulb size={16} style={{ marginRight: '8px' }} />
+            <strong>智能上传提示：</strong><br />
             • 标准上传：适合小于50MB的小文件，上传速度快<br />
             • 分块上传：适合大文件，支持断点续传，提高上传成功率<br />
             • 支持格式：CSV, Excel (xls/xlsx), Parquet, JSON

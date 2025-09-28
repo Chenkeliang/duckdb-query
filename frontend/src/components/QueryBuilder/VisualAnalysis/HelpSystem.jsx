@@ -1,11 +1,12 @@
+import { Lightbulb } from 'lucide-react';
 import React, { useState } from 'react';
-import { Card } from '../../ui/Card';
 import { Button } from '../../ui/Button';
+import { Card } from '../../ui/Card';
 
-const HelpSystem = ({ 
+const HelpSystem = ({
   currentStep = 'columns',
   onStepChange,
-  className = '' 
+  className = ''
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState(null);
@@ -137,7 +138,7 @@ const HelpSystem = ({
   };
 
   const Tooltip = ({ content, children, id }) => (
-    <div 
+    <div
       className="relative inline-block"
       onMouseEnter={() => setActiveTooltip(id)}
       onMouseLeave={() => setActiveTooltip(null)}
@@ -193,7 +194,7 @@ const HelpSystem = ({
           <p className="text-sm text-gray-600 mb-3">
             {currentHelp.description}
           </p>
-          
+
           <div className="space-y-2">
             <h5 className="text-sm font-medium text-gray-700">使用技巧:</h5>
             <ul className="text-sm text-gray-600 space-y-1">
@@ -282,10 +283,13 @@ const HelpSystem = ({
         {/* Quick Tips */}
         <div className="mt-3 p-2 bg-blue-50 rounded-md">
           <div className="text-xs text-blue-800">
-            <div className="font-medium mb-1">💡 快速提示:</div>
+            <div className="font-medium mb-1">
+              <Lightbulb size={16} style={{ marginRight: '8px' }} />
+              快速提示:
+            </div>
             <div>
-              • 鼠标悬停在按钮上查看详细说明<br/>
-              • 使用预览功能实时查看结果<br/>
+              • 鼠标悬停在按钮上查看详细说明<br />
+              • 使用预览功能实时查看结果<br />
               • 遇到问题可以重置配置重新开始
             </div>
           </div>
@@ -314,7 +318,7 @@ export const HelpTooltip = ({ content, children, position = 'top' }) => {
   };
 
   return (
-    <div 
+    <div
       className="relative inline-block"
       onMouseEnter={() => setIsVisible(true)}
       onMouseLeave={() => setIsVisible(false)}

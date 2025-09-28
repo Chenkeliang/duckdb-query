@@ -1,40 +1,35 @@
-import React, { useState, useEffect } from 'react';
 import {
-  Box,
-  Paper,
-  Typography,
-  Fade,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon
+} from '@mui/icons-material';
+import {
   Alert,
-  Card,
-  CardContent,
-  CardHeader,
   Collapse,
+  Fade,
   IconButton,
   Tooltip
 } from '@mui/material';
+import { Lightbulb } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import {
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon
-} from '@mui/icons-material';
-import ColumnSelector from './ColumnSelector';
-import AggregationControls from './AggregationControls';
-import FilterControls from './FilterControls';
-import SortControls from './SortControls';
-import LimitControls from './LimitControls';
-import SQLPreview from './SQLPreview';
-import { 
-  createDefaultConfig, 
-  generateSQLPreview 
+  createDefaultConfig,
+  generateSQLPreview
 } from '../../utils/visualQueryUtils';
+import AggregationControls from './AggregationControls';
+import ColumnSelector from './ColumnSelector';
+import FilterControls from './FilterControls';
+import LimitControls from './LimitControls';
+import SortControls from './SortControls';
+import SQLPreview from './SQLPreview';
 
 /**
  * VisualAnalysisPanel - Visual query builder interface for single table analysis
  * Only displays when a single table is selected, providing no-code query building capabilities
  */
-const VisualAnalysisPanel = ({ 
-  selectedSources = [], 
+const VisualAnalysisPanel = ({
+  selectedSources = [],
   onVisualQueryGenerated,
-  isVisible = true 
+  isVisible = true
 }) => {
   // Determine if panel should be shown (only for single table selection)
   const shouldShowPanel = selectedSources.length === 1 && isVisible;
@@ -43,11 +38,11 @@ const VisualAnalysisPanel = ({
   // 调试日志：监控表数据变化
   useEffect(() => {
     if (selectedTable) {
-      console.log('🔍 [VisualAnalysisPanel] 表数据变化:', {
+      console.log('[VisualAnalysisPanel] 表数据变化:', {
         tableId: selectedTable.id,
         tableName: selectedTable.name,
         columnsCount: selectedTable.columns?.length || 0,
-        columnsPreview: selectedTable.columns?.slice(0, 3).map(col => 
+        columnsPreview: selectedTable.columns?.slice(0, 3).map(col =>
           typeof col === 'string' ? col : col.name
         )
       });
@@ -55,7 +50,7 @@ const VisualAnalysisPanel = ({
   }, [selectedTable?.id, selectedTable?.columns?.length]);
 
   // Basic state management for analysis configuration
-  const [analysisConfig, setAnalysisConfig] = useState(() => 
+  const [analysisConfig, setAnalysisConfig] = useState(() =>
     createDefaultConfig(selectedTable?.name || selectedTable?.id || '')
   );
 
@@ -153,27 +148,27 @@ const VisualAnalysisPanel = ({
   // Get configuration summary for collapsed state
   const getConfigSummary = (config) => {
     const parts = [];
-    
+
     if (config.selectedColumns && config.selectedColumns.length > 0) {
       parts.push(`${config.selectedColumns.length}列`);
     }
-    
+
     if (config.aggregations && config.aggregations.length > 0) {
       parts.push(`${config.aggregations.length}个聚合`);
     }
-    
+
     if (config.filters && config.filters.length > 0) {
       parts.push(`${config.filters.length}个筛选`);
     }
-    
+
     if (config.orderBy && config.orderBy.length > 0) {
       parts.push(`${config.orderBy.length}个排序`);
     }
-    
+
     if (config.limit) {
       parts.push(`限制${config.limit}条`);
     }
-    
+
     return parts.length > 0 ? parts.join(' | ') : '未配置分析条件';
   };
 
@@ -188,7 +183,7 @@ const VisualAnalysisPanel = ({
         {/* Main Panel Container - Shadcn/ui inspired styling with Tailwind */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
           {/* Panel Header */}
-          <div 
+          <div
             className="px-6 py-4 bg-gray-50 border-b border-gray-200 rounded-t-lg cursor-pointer hover:bg-gray-100 transition-colors"
             onClick={() => setIsExpanded(!isExpanded)}
           >
@@ -203,7 +198,7 @@ const VisualAnalysisPanel = ({
                   </div>
                 </div>
                 <p className="text-sm text-gray-600 mt-1">
-                  {isExpanded 
+                  {isExpanded
                     ? `为 "${selectedTable?.name || selectedTable?.id}" 配置分析条件`
                     : `${getConfigSummary(analysisConfig)} | 点击展开配置`
                   }
@@ -213,10 +208,10 @@ const VisualAnalysisPanel = ({
                 <Tooltip title={isExpanded ? '收起分析面板' : '展开分析面板'}>
                   <IconButton
                     size="small"
-                    sx={{ 
+                    sx={{
                       color: 'text.secondary',
-                      '&:hover': { 
-                        backgroundColor: 'rgba(0, 0, 0, 0.04)' 
+                      '&:hover': {
+                        backgroundColor: 'rgba(0, 0, 0, 0.04)'
                       }
                     }}
                   >
@@ -230,95 +225,96 @@ const VisualAnalysisPanel = ({
           {/* Panel Content */}
           <Collapse in={isExpanded}>
             <div className="p-6">
-            {error && (
-              <Alert 
-                severity="error" 
-                sx={{ 
-                  mb: 3, 
-                  borderRadius: 2,
-                  border: '1px solid rgba(211, 47, 47, 0.1)'
-                }}
-                onClose={() => setError('')}
-              >
-                {error}
-              </Alert>
-            )}
+              {error && (
+                <Alert
+                  severity="error"
+                  sx={{
+                    mb: 3,
+                    borderRadius: 2,
+                    border: '1px solid rgba(211, 47, 47, 0.1)'
+                  }}
+                  onClose={() => setError('')}
+                >
+                  {error}
+                </Alert>
+              )}
 
-            {/* Analysis Controls Grid - 3行布局按SQL顺序 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              
-              {/* 第一行：SELECT相关 */}
-              {/* Column Selection - SELECT */}
-              <div>
-                <ColumnSelector
-                  selectedTable={selectedTable}
-                  selectedColumns={analysisConfig.selectedColumns}
-                  onColumnSelectionChange={handleColumnSelectionChange}
-                  maxHeight={200}
-                  showMetadata={true}
-                  disabled={isLoading}
+              {/* Analysis Controls Grid - 3行布局按SQL顺序 */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+                {/* 第一行：SELECT相关 */}
+                {/* Column Selection - SELECT */}
+                <div>
+                  <ColumnSelector
+                    selectedTable={selectedTable}
+                    selectedColumns={analysisConfig.selectedColumns}
+                    onColumnSelectionChange={handleColumnSelectionChange}
+                    maxHeight={200}
+                    showMetadata={true}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                {/* Aggregation Controls - SELECT聚合函数 */}
+                <div>
+                  <AggregationControls
+                    selectedTable={selectedTable}
+                    aggregations={analysisConfig.aggregations}
+                    onAggregationsChange={handleAggregationsChange}
+                    disabled={isLoading}
+                    maxHeight={200}
+                  />
+                </div>
+
+                {/* 第二行：WHERE相关 */}
+                {/* Filter Controls - WHERE */}
+                <div>
+                  <FilterControls
+                    columns={selectedTable?.columns || []}
+                    filters={analysisConfig.filters || []}
+                    onFiltersChange={handleFiltersChange}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                {/* Sort Controls - ORDER BY */}
+                <div>
+                  <SortControls
+                    columns={selectedTable?.columns || []}
+                    orderBy={analysisConfig.orderBy || []}
+                    onOrderByChange={handleOrderByChange}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                {/* 第三行：LIMIT相关 */}
+                {/* Limit Controls - LIMIT */}
+                <div className="lg:col-span-2">
+                  <LimitControls
+                    limit={analysisConfig.limit}
+                    onLimitChange={handleLimitChange}
+                    disabled={isLoading}
+                  />
+                </div>
+
+              </div>
+
+              {/* SQL Preview Section */}
+              <div className="space-y-2">
+                <SQLPreview
+                  sql={generatedSQL}
+                  title="生成的SQL查询"
+                  height={120}
                 />
               </div>
 
-              {/* Aggregation Controls - SELECT聚合函数 */}
-              <div>
-                <AggregationControls
-                  selectedTable={selectedTable}
-                  aggregations={analysisConfig.aggregations}
-                  onAggregationsChange={handleAggregationsChange}
-                  disabled={isLoading}
-                  maxHeight={200}
-                />
+              {/* Help Text */}
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm text-blue-800">
+                  <Lightbulb size={16} style={{ marginRight: '8px' }} />
+                  提示：选择分析条件来构建查询，或保持空白使用默认的全表查询
+                </p>
               </div>
-
-              {/* 第二行：WHERE相关 */}
-              {/* Filter Controls - WHERE */}
-              <div>
-                <FilterControls
-                  columns={selectedTable?.columns || []}
-                  filters={analysisConfig.filters || []}
-                  onFiltersChange={handleFiltersChange}
-                  disabled={isLoading}
-                />
-              </div>
-
-              {/* Sort Controls - ORDER BY */}
-              <div>
-                <SortControls
-                  columns={selectedTable?.columns || []}
-                  orderBy={analysisConfig.orderBy || []}
-                  onOrderByChange={handleOrderByChange}
-                  disabled={isLoading}
-                />
-              </div>
-
-              {/* 第三行：LIMIT相关 */}
-              {/* Limit Controls - LIMIT */}
-              <div className="lg:col-span-2">
-                <LimitControls
-                  limit={analysisConfig.limit}
-                  onLimitChange={handleLimitChange}
-                  disabled={isLoading}
-                />
-              </div>
-
-            </div>
-
-            {/* SQL Preview Section */}
-            <div className="space-y-2">
-              <SQLPreview 
-                sql={generatedSQL}
-                title="生成的SQL查询"
-                height={120}
-              />
-            </div>
-
-            {/* Help Text */}
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <p className="text-sm text-blue-800">
-                💡 提示：选择分析条件来构建查询，或保持空白使用默认的全表查询
-              </p>
-            </div>
 
             </div>
           </Collapse>

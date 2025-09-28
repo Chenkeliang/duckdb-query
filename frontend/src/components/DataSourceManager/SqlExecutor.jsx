@@ -1,6 +1,4 @@
-import CodeIcon from '@mui/icons-material/Code';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SaveIcon from '@mui/icons-material/Save';
 import {
   Accordion,
@@ -31,6 +29,7 @@ import {
   TextField,
   Typography
 } from '@mui/material';
+import { Code, Play } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { executeSQL, saveQueryToDuckDB } from '../../services/apiClient';
 
@@ -310,7 +309,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <CodeIcon sx={{ mr: 1, fontSize: '1.2rem', color: '#1976d2' }} />
+            <Code size={20} style={{ marginRight: '8px', color: '#1976d2' }} />
             <Typography sx={{ fontWeight: 500, fontSize: '0.9rem' }}>
               SQL查询执行器 - {selectedDataSource ? databaseConnections.find(ds => ds.id === selectedDataSource)?.name || selectedDataSource : '请选择数据库连接'}
             </Typography>
@@ -362,7 +361,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
             <Button
               variant="contained"
-              startIcon={<PlayArrowIcon />}
+              startIcon={<Play size={20} />}
               onClick={handleExecuteSql}
               disabled={loading}
               sx={{

@@ -6,8 +6,8 @@
  */
 
 import {
-  validateConfig,
-  AGGREGATION_LABELS
+  AGGREGATION_LABELS,
+  validateConfig
 } from '../types/visualQuery';
 
 import {
@@ -35,7 +35,7 @@ export function generateSQL(config, tableName) {
     }
 
     // Check if we have any analysis conditions
-    const hasAnalysisConditions = 
+    const hasAnalysisConditions =
       config.selectedColumns.length > 0 ||
       config.aggregations.length > 0 ||
       config.filters.length > 0 ||
@@ -64,19 +64,19 @@ export function generateSQL(config, tableName) {
 
     // Combine all clauses
     let sql = selectClause.sql + fromClause;
-    
+
     if (whereClause) {
       sql += whereClause;
     }
-    
+
     if (groupByClause) {
       sql += groupByClause;
     }
-    
+
     if (orderByClause) {
       sql += orderByClause;
     }
-    
+
     if (limitClause) {
       sql += limitClause;
     }
@@ -124,7 +124,7 @@ function buildSelectClause(config) {
       const expression = generateCalculatedFieldExpression(field);
       return `${expression} AS ${escapeIdentifier(field.name)}`;
     });
-    
+
     selectItems.push(...calculatedItems);
   }
 
@@ -134,7 +134,7 @@ function buildSelectClause(config) {
       const expression = generateConditionalFieldExpression(field);
       return `${expression} AS ${escapeIdentifier(field.name)}`;
     });
-    
+
     selectItems.push(...conditionalItems);
   }
 
@@ -144,35 +144,35 @@ function buildSelectClause(config) {
     // 如果只有聚合函数而没有其他列，说明要统计整体结果，不需要GROUP BY
     const hasNonAggregationColumns = config.selectedColumns && config.selectedColumns.length > 0;
     const hasExplicitGroupBy = config.groupBy && config.groupBy.length > 0;
-    
+
     // 只有在以下情况才需要GROUP BY：
     // 1. 明确指定了groupBy字段，或者
     // 2. 有选中的列且这些列不全是聚合列
     needsGroupBy = hasExplicitGroupBy || (hasNonAggregationColumns && !config.aggregationOnly);
-    
+
     const aggregationItems = config.aggregations.map(agg => {
       try {
         // 尝试使用自动类型转换的聚合函数生成
         const columnTypeInfo = getColumnTypeInfo(agg.column);
         const aggSQL = generateAggregationSQL(agg, columnTypeInfo.type, columnTypeInfo.name);
-        
+
         if (agg.alias && agg.alias.trim()) {
           return `${aggSQL} AS ${escapeIdentifier(agg.alias)}`;
         }
-        
+
         return aggSQL;
       } catch (error) {
         // 如果类型转换失败，回退到基础实现但对数值名称的VARCHAR列进行TRY_CAST
         console.warn(`聚合函数类型转换失败，使用回退方案: ${error.message}`);
-        
+
         const column = agg.column;
         const func = agg.function;
-        
+
         // 检查是否需要类型转换（当SUM/AVG遇到文本类型时）
-        const isTextColumn = typeof column === 'string' || 
-                           (column && ['varchar', 'text', 'string', 'char'].some(type => 
-                             String(column.dataType || column.type || 'text').toLowerCase().includes(type)));
-        
+        const isTextColumn = typeof column === 'string' ||
+          (column && ['varchar', 'text', 'string', 'char'].some(type =>
+            String(column.dataType || column.type || 'text').toLowerCase().includes(type)));
+
         let columnRef;
         if ((func === 'SUM' || func === 'AVG') && isTextColumn) {
           // 对文本类型的列进行类型转换，支持中文字段名和任意命名
@@ -180,17 +180,17 @@ function buildSelectClause(config) {
         } else {
           columnRef = escapeIdentifier(column);
         }
-        
+
         const funcCall = `${func}(${columnRef})`;
-        
+
         if (agg.alias && agg.alias.trim()) {
           return `${funcCall} AS ${escapeIdentifier(agg.alias)}`;
         }
-        
+
         return funcCall;
       }
     });
-    
+
     selectItems.push(...aggregationItems);
   }
 
@@ -214,7 +214,7 @@ function buildFromClause(tableName) {
   if (!tableName || tableName.trim() === '') {
     throw new Error('表名不能为空');
   }
-  
+
   return ` FROM ${escapeIdentifier(tableName)}`;
 }
 
@@ -229,10 +229,10 @@ function buildWhereClause(filters) {
   }
 
   const conditions = [];
-  
+
   for (let i = 0; i < filters.length; i++) {
     const filter = filters[i];
-    
+
     if (!filter.column || !filter.operator) {
       continue; // Skip invalid filters
     }
@@ -251,7 +251,7 @@ function buildWhereClause(filters) {
         case '<=':
           condition = `${column} ${operator} ${formatSQLValue(filter.value)}`;
           break;
-          
+
         case 'LIKE':
         case 'NOT LIKE':
         case 'ILIKE':
@@ -262,21 +262,21 @@ function buildWhereClause(filters) {
           }
           condition = `${column} ${operator} ${escapeStringLiteral(likeValue)}`;
           break;
-          
+
         case 'IS NULL':
           condition = `${column} IS NULL`;
           break;
-          
+
         case 'IS NOT NULL':
           condition = `${column} IS NOT NULL`;
           break;
-          
+
         case 'BETWEEN':
           if (filter.value !== undefined && filter.value2 !== undefined) {
             condition = `${column} BETWEEN ${formatSQLValue(filter.value)} AND ${formatSQLValue(filter.value2)}`;
           }
           break;
-          
+
         default:
           console.warn(`不支持的筛选操作符: ${operator}`);
           continue;
@@ -349,12 +349,12 @@ function buildOrderByClause(orderBy) {
     .map(order => {
       const column = escapeIdentifier(order.column);
       const direction = order.direction || 'ASC';
-      
+
       // Validate direction
       if (!['ASC', 'DESC'].includes(direction.toUpperCase())) {
         throw new Error(`无效的排序方向: ${direction}`);
       }
-      
+
       return `${column} ${direction.toUpperCase()}`;
     });
 
@@ -389,9 +389,15 @@ function escapeIdentifier(identifier) {
     throw new Error('标识符必须是非空字符串');
   }
 
+  // Check if identifier is already properly quoted
+  if (identifier.startsWith('"') && identifier.endsWith('"') && identifier.length > 1) {
+    // Already quoted, return as-is to avoid double quoting
+    return identifier;
+  }
+
   // Remove any existing quotes and escape internal quotes
   const cleaned = identifier.replace(/"/g, '""');
-  
+
   // Always quote identifiers to handle special characters and reserved words
   return `"${cleaned}"`;
 }
@@ -405,11 +411,11 @@ function escapeStringLiteral(value) {
   if (value === null || value === undefined) {
     return 'NULL';
   }
-  
+
   if (typeof value !== 'string') {
     value = String(value);
   }
-  
+
   // Escape single quotes by doubling them
   const escaped = value.replace(/'/g, "''");
   return `'${escaped}'`;
@@ -429,9 +435,9 @@ function formatSQLValue(value, dataType = 'TEXT') {
   const upperDataType = dataType.toUpperCase();
 
   // Handle numeric types
-  if (upperDataType.includes('INT') || upperDataType.includes('NUMERIC') || 
-      upperDataType.includes('DECIMAL') || upperDataType.includes('FLOAT') || 
-      upperDataType.includes('DOUBLE') || upperDataType.includes('REAL')) {
+  if (upperDataType.includes('INT') || upperDataType.includes('NUMERIC') ||
+    upperDataType.includes('DECIMAL') || upperDataType.includes('FLOAT') ||
+    upperDataType.includes('DOUBLE') || upperDataType.includes('REAL')) {
     const numValue = Number(value);
     if (isNaN(numValue)) {
       throw new Error(`无效的数值: ${value}`);
@@ -462,15 +468,15 @@ function isValidAggregationFunction(func) {
   const validFunctions = [
     // Basic aggregation functions
     'SUM', 'AVG', 'COUNT', 'MIN', 'MAX', 'COUNT_DISTINCT',
-    
+
     // Statistical functions
     'MEDIAN', 'MODE', 'STDDEV_SAMP', 'VAR_SAMP',
     'PERCENTILE_CONT_25', 'PERCENTILE_CONT_75',
     'PERCENTILE_DISC_25', 'PERCENTILE_DISC_75',
-    
+
     // Window functions
     'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'PERCENT_RANK', 'CUME_DIST',
-    
+
     // Trend analysis functions
     'SUM_OVER', 'AVG_OVER', 'LAG', 'LEAD', 'FIRST_VALUE', 'LAST_VALUE'
   ];
@@ -484,12 +490,12 @@ function isValidAggregationFunction(func) {
  */
 function generateCalculatedFieldExpression(field) {
   const { type, operation, expression } = field;
-  
+
   if (expression && expression.trim()) {
     // Use custom expression if provided
     return expression;
   }
-  
+
   // Generate expression based on type and operation
   switch (type) {
     case 'mathematical':
@@ -583,7 +589,7 @@ function generateConditionalFieldExpression(field) {
   } else if (field.type === 'binning') {
     return generateBinningExpression(field);
   }
-  
+
   throw new Error(`不支持的条件字段类型: ${field.type}`);
 }
 
@@ -604,7 +610,7 @@ function generateCaseWhenExpression(field) {
     const result = escapeStringLiteral(condition.result);
 
     let conditionClause = '';
-    
+
     switch (operator) {
       case 'IS NULL':
         conditionClause = `${column} IS NULL`;
@@ -624,7 +630,7 @@ function generateCaseWhenExpression(field) {
   }).join(' ');
 
   const defaultValue = field.defaultValue ? escapeStringLiteral(field.defaultValue) : 'NULL';
-  
+
   return `CASE ${conditions} ELSE ${defaultValue} END`;
 }
 
@@ -650,7 +656,7 @@ function generateBinningExpression(field) {
         WHEN WIDTH_BUCKET(${column}, 0, 100, ${bins}) = 4 THEN '61-80岁'
         ELSE '80岁以上'
       END`;
-      
+
     case 'price_ranges':
       return `CASE 
         WHEN WIDTH_BUCKET(${column}, 0, 10000, ${bins}) = 1 THEN '0-2000元'
@@ -659,82 +665,19 @@ function generateBinningExpression(field) {
         WHEN WIDTH_BUCKET(${column}, 0, 10000, ${bins}) = 4 THEN '6001-8000元'
         ELSE '8000元以上'
       END`;
-      
+
     case 'equal_width':
       return `'区间' || WIDTH_BUCKET(${column}, (SELECT MIN(${column}) FROM ${field.tableName || 'table'}), (SELECT MAX(${column}) FROM ${field.tableName || 'table'}), ${bins})`;
-      
+
     case 'custom_ranges':
       // For custom ranges, use a simple WIDTH_BUCKET with default range
       return `'分组' || WIDTH_BUCKET(${column}, 0, 1000, ${bins})`;
-      
+
     default:
       return `WIDTH_BUCKET(${column}, 0, 100, ${bins})`;
   }
 }
 
-/**
- * Generate SQL for a specific aggregation
- * @param {Object} aggregation - Aggregation configuration
- * @returns {string} SQL aggregation expression
- */
-function generateAggregationSQL(aggregation) {
-  if (!aggregation.function || !aggregation.column) {
-    throw new Error('聚合函数配置不完整');
-  }
-
-  if (!isValidAggregationFunction(aggregation.function)) {
-    throw new Error(`不支持的聚合函数: ${aggregation.function}`);
-  }
-
-  const column = escapeIdentifier(aggregation.column);
-  const func = aggregation.function.toUpperCase();
-
-  // Handle special cases for different function types
-  switch (func) {
-    case 'COUNT_DISTINCT':
-      return `COUNT(DISTINCT ${column})`;
-      
-    // Percentile functions
-    case 'PERCENTILE_CONT_25':
-      return `PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY ${column})`;
-    case 'PERCENTILE_CONT_75':
-      return `PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY ${column})`;
-    case 'PERCENTILE_DISC_25':
-      return `PERCENTILE_DISC(0.25) WITHIN GROUP (ORDER BY ${column})`;
-    case 'PERCENTILE_DISC_75':
-      return `PERCENTILE_DISC(0.75) WITHIN GROUP (ORDER BY ${column})`;
-      
-    // Window functions - ranking
-    case 'ROW_NUMBER':
-      return `ROW_NUMBER() OVER (ORDER BY ${column})`;
-    case 'RANK':
-      return `RANK() OVER (ORDER BY ${column})`;
-    case 'DENSE_RANK':
-      return `DENSE_RANK() OVER (ORDER BY ${column})`;
-    case 'PERCENT_RANK':
-      return `PERCENT_RANK() OVER (ORDER BY ${column})`;
-    case 'CUME_DIST':
-      return `CUME_DIST() OVER (ORDER BY ${column})`;
-      
-    // Window functions - trend analysis
-    case 'SUM_OVER':
-      return `SUM(${column}) OVER (ORDER BY ${column} ROWS UNBOUNDED PRECEDING)`;
-    case 'AVG_OVER':
-      return `AVG(${column}) OVER (ORDER BY ${column} ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)`;
-    case 'LAG':
-      return `LAG(${column}, 1) OVER (ORDER BY ${column})`;
-    case 'LEAD':
-      return `LEAD(${column}, 1) OVER (ORDER BY ${column})`;
-    case 'FIRST_VALUE':
-      return `FIRST_VALUE(${column}) OVER (ORDER BY ${column} ROWS UNBOUNDED PRECEDING)`;
-    case 'LAST_VALUE':
-      return `LAST_VALUE(${column}) OVER (ORDER BY ${column} ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)`;
-      
-    // Standard aggregation functions
-    default:
-      return `${func}(${column})`;
-  }
-}
 
 /**
  * Preview SQL generation - returns formatted SQL with comments
@@ -744,25 +687,25 @@ function generateAggregationSQL(aggregation) {
  */
 export function generateSQLPreview(config, tableName) {
   const result = generateSQL(config, tableName);
-  
+
   if (!result.success) {
     return result;
   }
 
   // Add Chinese comments to explain the query
   let commentedSQL = result.sql;
-  
+
   if (config.selectedColumns && config.selectedColumns.length > 0) {
     commentedSQL = `-- 选择的列: ${config.selectedColumns.join(', ')}\n${commentedSQL}`;
   }
-  
+
   if (config.aggregations && config.aggregations.length > 0) {
-    const aggDescriptions = config.aggregations.map(agg => 
+    const aggDescriptions = config.aggregations.map(agg =>
       `${AGGREGATION_LABELS[agg.function] || agg.function}(${agg.column})`
     );
     commentedSQL = `-- 聚合函数: ${aggDescriptions.join(', ')}\n${commentedSQL}`;
   }
-  
+
   if (config.filters && config.filters.length > 0) {
     commentedSQL = `-- 筛选条件: ${config.filters.length}个条件\n${commentedSQL}`;
   }
@@ -787,6 +730,5 @@ export {
   escapeIdentifier,
   escapeStringLiteral,
   formatSQLValue,
-  isValidAggregationFunction,
-  generateAggregationSQL
+  isValidAggregationFunction
 };

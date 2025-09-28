@@ -73,7 +73,7 @@ class RequestManager {
 
     // 创建新请求
     const fullUrl = url.startsWith('http') ? url : `${window.location.origin}${url}`;
-    
+
     console.log(`🚨 RequestManager - 执行请求: ${key} (第${count}次)`);
     console.log(`🚨 请求URL: ${fullUrl}`);
     console.log(`🚨 当前时间: ${new Date().toISOString()}`);
@@ -141,15 +141,15 @@ class RequestManager {
    * 专门用于数据库连接请求的方法
    */
   async getDatabaseConnections() {
-    console.log('🛡️ RequestManager - getDatabaseConnections called');
-    console.log('🛡️ 当前时间:', new Date().toISOString());
-    console.log('🛡️ 当前请求统计:', this.getStats());
+    console.log('RequestManager - getDatabaseConnections called');
+    console.log('当前时间:', new Date().toISOString());
+    console.log('当前请求统计:', this.getStats());
     const result = await this.executeRequest('/api/database_connections', {}, 2000); // 2秒防抖
-    console.log('🛡️ RequestManager - getDatabaseConnections result:', result);
+    console.log('RequestManager - getDatabaseConnections result:', result);
     return result;
   }
 
-  
+
 
   /**
    * 专门用于DuckDB表请求的方法
@@ -158,7 +158,7 @@ class RequestManager {
     return this.executeRequest('/api/duckdb/tables', {}, 2000); // 2秒防抖
   }
 
-  
+
 }
 
 // 创建全局实例

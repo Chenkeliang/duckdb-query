@@ -9,7 +9,7 @@ import traceback
 import time
 import pandas as pd
 from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from datetime import datetime
@@ -22,6 +22,7 @@ from core.file_datasource_manager import (
 )
 from core.config_manager import config_manager
 from core.timezone_utils import get_current_time_iso, get_current_time
+from core.task_utils import TaskUtils
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -29,6 +30,9 @@ router = APIRouter()
 # 确保导出目录存在
 EXPORTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "exports")
 os.makedirs(EXPORTS_DIR, exist_ok=True)
+
+# 初始化任务工具类
+task_utils = TaskUtils(EXPORTS_DIR)
 
 
 class AsyncQueryRequest(BaseModel):
@@ -156,29 +160,30 @@ async def download_async_task_result(task_id: str):
     下载异步任务结果文件
     """
     try:
+        # 获取任务信息
         task = task_manager.get_task(task_id)
         if not task:
-            raise HTTPException(status_code=404, detail="任务不存在")
+            # 尝试从文件系统恢复任务信息
+            task = task_utils.recover_task_from_files(task_id)
+            if not task:
+                raise HTTPException(status_code=404, detail="任务不存在")
 
-        # 统一使用枚举值进行比较
-        if task.status.value != TaskStatus.SUCCESS.value:
+        # 检查任务状态
+        if not task_utils.is_task_completed(task):
             raise HTTPException(status_code=400, detail="任务尚未成功完成")
 
-        if not task.result_file_path or not os.path.exists(task.result_file_path):
+        # 获取文件路径
+        file_path = task_utils.get_file_path_from_task(task)
+        if not file_path or not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="结果文件不存在")
 
         # 确定文件名和媒体类型
-        file_name = os.path.basename(task.result_file_path)
-
-        # 根据文件扩展名确定媒体类型
-        if file_name.endswith(".csv"):
-            media_type = "text/csv"
-        else:  # 默认为parquet
-            media_type = "application/octet-stream"
+        file_name = os.path.basename(file_path)
+        media_type = task_utils.get_media_type(file_path)
 
         # 返回文件
         return FileResponse(
-            task.result_file_path,
+            file_path,
             media_type=media_type,
             headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
         )
@@ -190,9 +195,51 @@ async def download_async_task_result(task_id: str):
         raise HTTPException(status_code=500, detail=f"下载结果失败: {str(e)}")
 
 
+@router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
+async def generate_and_download_file(task_id: str, request: dict = Body(...)):
+    """
+    按需生成并直接下载文件
+    一步完成文件生成和下载，避免时序问题
+    """
+    try:
+        format = request.get("format", "csv")
+
+        # 验证格式参数
+        if format not in ["csv", "parquet"]:
+            raise HTTPException(
+                status_code=400, detail="不支持的格式，只支持csv和parquet"
+            )
+
+        # 生成下载文件
+        file_path = generate_download_file(task_id, format)
+
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="生成的文件不存在")
+
+        # 确定文件名和媒体类型
+        file_name = os.path.basename(file_path)
+        media_type = task_utils.get_media_type(file_path)
+
+        # 直接返回文件
+        return FileResponse(
+            file_path,
+            media_type=media_type,
+            filename=file_name,
+        )
+
+    except ValueError as e:
+        logger.warning(f"下载文件生成失败: {task_id}, 错误: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"下载文件生成失败: {task_id}, 错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"生成下载文件失败: {str(e)}")
+
+
 def execute_async_query(task_id: str, sql: str, format: str = "parquet"):
     """
-    执行异步查询（后台任务）
+    执行异步查询（后台任务）- 内存优化版本
+    使用DuckDB原生功能，避免Python内存加载
     """
     try:
         # 标记任务为运行中
@@ -206,60 +253,70 @@ def execute_async_query(task_id: str, sql: str, format: str = "parquet"):
         # 获取DuckDB连接
         con = get_db_connection()
 
-        # 执行查询（不带LIMIT）
-        logger.info(f"执行SQL查询: {sql}")
-        result_df = con.execute(sql).fetchdf()
+        # 创建持久表存储查询结果（避免fetchdf()内存问题）
+        table_name = task_utils.task_id_to_table_name(task_id)
+        logger.info(f"创建持久表存储查询结果: {table_name}")
 
-        # 生成结果文件路径
-        timestamp = get_current_time().strftime("%Y%m%d_%H%M%S")
-        if format == "csv":
-            result_file_name = f"task-{task_id}_{timestamp}.csv"
-            result_file_path = os.path.join(EXPORTS_DIR, result_file_name)
+        # 使用CREATE OR REPLACE TABLE直接创建持久表，避免加载到Python内存
+        create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql})'
+        con.execute(create_sql)
+        logger.info(f"持久表创建成功: {table_name}")
 
-            # 保存结果到CSV文件
-            result_df.to_csv(result_file_path, index=False)
-            logger.info(f"查询结果已保存到: {result_file_path}")
-        else:  # 默认为parquet
-            result_file_name = f"task-{task_id}_{timestamp}.parquet"
-            result_file_path = os.path.join(EXPORTS_DIR, result_file_name)
+        # 获取结果统计信息（不加载数据）
+        count_sql = f'SELECT COUNT(*) FROM "{table_name}"'
+        row_count = con.execute(count_sql).fetchone()[0]
+        logger.info(f"查询结果行数: {row_count}")
 
-            # 保存结果到Parquet文件
-            result_df.to_parquet(result_file_path, index=False)
-            logger.info(f"查询结果已保存到: {result_file_path}")
+        # 获取列信息
+        columns_sql = f'DESCRIBE "{table_name}"'
+        columns_info = con.execute(columns_sql).fetchall()
+        columns = [{"name": col[0], "type": col[1]} for col in columns_info]
+        logger.info(f"查询结果列数: {len(columns)}")
 
-        # 注册为新数据源
-        source_id = f"async_result_{task_id}"
-        file_info = {
+        # 保存表元数据到文件数据源管理器
+        source_id = table_name
+        table_metadata = {
             "source_id": source_id,
-            "filename": result_file_name,
-            "file_path": result_file_path,
-            "file_type": format,
-            "created_at": get_current_time_iso(),  # 使用统一的时区配置
-            "columns": [
-                {"name": col, "type": str(result_df[col].dtype)}
-                for col in result_df.columns
-            ],
-            "row_count": len(result_df),
-            "column_count": len(result_df.columns),
+            "filename": f"async_query_{task_id}",
+            "file_path": f"duckdb://{table_name}",
+            "file_type": "duckdb_async_query",
+            "row_count": row_count,
+            "column_count": len(columns),
+            "columns": [col["name"] for col in columns],
+            "created_at": get_current_time_iso(),
+            "source_sql": sql,
         }
 
-        # 保存文件数据源配置
-        file_datasource_manager.save_file_datasource(file_info)
+        # 保存到文件数据源管理器
+        file_datasource_manager.save_file_datasource(table_metadata)
+        logger.info(f"表元数据保存成功: {source_id}")
 
-        # 将结果文件加载到DuckDB中
-        try:
-            create_table_from_dataframe(con, source_id, result_file_path, format)
-            logger.info(f"结果文件已注册为数据源: {source_id}")
-        except Exception as e:
-            logger.warning(f"将结果文件注册为数据源失败: {str(e)}")
+        # 更新任务状态为完成，但不生成文件（按需下载）
+        task_info = {
+            "status": "completed",
+            "table_name": table_name,
+            "row_count": row_count,
+            "columns": columns,
+            "file_generated": False,
+        }
 
-        # 标记任务为成功
-        execution_time = time.time() - start_time
-        if not task_manager.complete_task(task_id, result_file_path):
+        if not task_manager.complete_task(task_id, task_info):
             logger.error(f"无法标记任务为成功: {task_id}")
 
+        # 内存清理
+        try:
+            con.execute("PRAGMA memory_limit='1GB'")
+            con.execute("PRAGMA force_external")
+            import gc
+
+            gc.collect()
+            logger.info("内存清理完成")
+        except Exception as cleanup_error:
+            logger.warning(f"内存清理失败: {str(cleanup_error)}")
+
+        execution_time = time.time() - start_time
         logger.info(
-            f"异步查询任务执行完成: {task_id}, 执行时间: {execution_time:.2f}秒"
+            f"异步查询任务执行完成: {task_id}, 执行时间: {execution_time:.2f}秒, 内存优化版本"
         )
 
     except Exception as e:
@@ -270,3 +327,152 @@ def execute_async_query(task_id: str, sql: str, format: str = "parquet"):
         error_message = str(e)
         if not task_manager.fail_task(task_id, error_message):
             logger.error(f"无法标记任务为失败: {task_id}")
+
+
+def generate_download_file(task_id: str, format: str = "csv"):
+    """
+    按需生成下载文件 - 基于持久DuckDB表进行COPY导出
+    避免重复加载数据到内存
+    """
+    try:
+        # 获取任务信息
+        task_info = task_manager.get_task(task_id)
+        if not task_info:
+            # 尝试从文件系统恢复任务信息
+            task_info = task_utils.recover_task_from_files(task_id)
+            if not task_info:
+                raise ValueError(f"任务 {task_id} 不存在")
+
+        # 检查任务状态
+        if not task_utils.is_task_completed(task_info):
+            raise ValueError(f"任务 {task_id} 未完成，无法生成下载文件")
+
+        # 从result_info中获取表名
+        if not task_info.result_info:
+            raise ValueError(f"任务 {task_id} 缺少结果信息")
+
+        table_name = task_info.result_info.get("table_name")
+        if not table_name:
+            raise ValueError(f"任务 {task_id} 缺少表名信息")
+
+        con = get_db_connection()
+
+        # 验证表是否存在
+        try:
+            con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()
+        except Exception as e:
+            raise ValueError(f"表 {table_name} 不存在或已删除: {str(e)}")
+
+        # 生成文件路径
+        result_file_path = task_utils.generate_file_path(task_id, format)
+
+        # 使用COPY命令基于持久表生成文件（流式处理，避免内存加载）
+        if format == "csv":
+            copy_sql = f'COPY "{table_name}" TO "{result_file_path}" WITH (FORMAT CSV, HEADER true)'
+        else:
+            copy_sql = (
+                f'COPY "{table_name}" TO "{result_file_path}" WITH (FORMAT PARQUET)'
+            )
+
+        logger.info(f"开始生成下载文件: {result_file_path}")
+        con.execute(copy_sql)
+        logger.info(f"下载文件生成成功: {result_file_path}")
+
+        # 更新任务信息，标记文件已生成
+        task_utils.update_task_file_info(task_info, result_file_path, format)
+
+        return result_file_path
+
+    except Exception as e:
+        import traceback
+
+        logger.error(f"生成下载文件失败: {task_id}, 错误: {str(e)}")
+        logger.error(f"完整堆栈跟踪: {traceback.format_exc()}")
+        raise Exception(f"生成下载文件失败: {str(e)}")
+
+
+def cleanup_old_files():
+    """
+    清理过期的临时文件
+    删除24小时前的下载文件，释放存储空间
+    """
+    try:
+        import glob
+        from datetime import datetime, timedelta
+
+        # 获取24小时前的时间
+        cutoff_time = datetime.now() - timedelta(hours=24)
+        cleaned_count = 0
+
+        # 清理exports目录中的旧文件
+        if os.path.exists(EXPORTS_DIR):
+            for file_path in glob.glob(
+                os.path.join(EXPORTS_DIR, "task-*.csv")
+            ) + glob.glob(os.path.join(EXPORTS_DIR, "task-*.parquet")):
+                try:
+                    # 检查文件修改时间
+                    file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
+                    if file_mtime < cutoff_time:
+                        os.remove(file_path)
+                        cleaned_count += 1
+                        logger.info(f"清理过期文件: {file_path}")
+                except Exception as e:
+                    logger.warning(f"清理文件失败: {file_path}, 错误: {str(e)}")
+
+        # 清理过期的DuckDB表
+        try:
+            con = get_db_connection()
+
+            # 获取所有异步结果表
+            tables_sql = """
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_name LIKE 'async_result_%'
+            """
+            tables = con.execute(tables_sql).fetchall()
+
+            for (table_name,) in tables:
+                try:
+                    # 从表名中提取任务ID（需要将下划线还原为连字符）
+                    safe_task_id = table_name.replace("async_result_", "")
+                    task_id = safe_task_id.replace("_", "-")
+
+                    # 检查任务是否过期（24小时前创建）
+                    task_info = task_manager.get_task(task_id)
+                    if task_info:
+                        created_at = task_info.created_at
+                        if created_at < cutoff_time:
+                            # 删除过期的表
+                            con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+                            logger.info(f"清理过期表: {table_name}")
+                            cleaned_count += 1
+                except Exception as e:
+                    logger.warning(f"清理表失败: {table_name}, 错误: {str(e)}")
+
+        except Exception as e:
+            logger.warning(f"清理DuckDB表失败: {str(e)}")
+
+        logger.info(f"文件清理完成，共清理 {cleaned_count} 个文件/表")
+        return cleaned_count
+
+    except Exception as e:
+        logger.error(f"文件清理失败: {str(e)}")
+        return 0
+
+
+@router.post("/api/async-tasks/cleanup", tags=["Async Tasks"])
+async def cleanup_files_endpoint():
+    """
+    手动触发文件清理
+    清理过期的临时文件和DuckDB表
+    """
+    try:
+        cleaned_count = cleanup_old_files()
+        return {
+            "success": True,
+            "cleaned_count": cleaned_count,
+            "message": f"清理完成，共清理 {cleaned_count} 个文件/表",
+        }
+    except Exception as e:
+        logger.error(f"手动清理失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}")

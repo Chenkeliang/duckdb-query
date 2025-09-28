@@ -1,11 +1,9 @@
 import {
   Cancel as CancelIcon,
   CheckCircle as CheckCircleIcon,
-  CloudUpload as CloudUploadIcon,
   Error as ErrorIcon,
   InsertDriveFile as FileIcon,
-  Speed as SpeedIcon,
-  Storage as StorageIcon
+  Speed as SpeedIcon
 } from '@mui/icons-material';
 import {
   Alert,
@@ -25,6 +23,7 @@ import {
   Typography
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
+import { ClipboardList, Database, Upload } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -416,7 +415,7 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
         <Button
           variant="contained"
           onClick={startUpload}
-          startIcon={<CloudUploadIcon />}
+          startIcon={<Upload size={20} />}
           sx={{ borderRadius: 2, mb: 2 }}
           fullWidth
         >
@@ -517,7 +516,8 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
       <Card sx={{ mt: 3, borderRadius: 2 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom sx={{ fontWeight: 500 }}>
-            📋 使用说明
+            <ClipboardList size={20} style={{ marginRight: '8px' }} />
+            使用说明
           </Typography>
           <List dense>
             <ListItem>
@@ -531,7 +531,7 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
             </ListItem>
             <ListItem>
               <ListItemIcon>
-                <StorageIcon color="primary" />
+                <Database size={20} color="#1976d2" />
               </ListItemIcon>
               <ListItemText
                 primary="格式支持"

@@ -1,37 +1,38 @@
-import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  TextField,
-  Typography,
-  IconButton,
-  Tooltip,
-  Paper,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Collapse,
-  Chip,
-  Divider
-} from '@mui/material';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
-  ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
   Functions as FunctionsIcon
 } from '@mui/icons-material';
-import { 
-  AggregationFunction, 
-  getSuggestedAggregations,
+import {
+  Box,
+  Button,
+  Chip,
+  Collapse,
+  Divider,
+  FormControl,
+  IconButton,
+  InputLabel,
+  List,
+  ListItem,
+  ListItemSecondaryAction,
+  ListItemText,
+  MenuItem,
+  Paper,
+  Select,
+  TextField,
+  Tooltip,
+  Typography
+} from '@mui/material';
+import { Lightbulb } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  AggregationFunction,
   detectColumnType,
-  isAggregationCompatible,
-  getColumnTypeInfo
+  getColumnTypeInfo,
+  getSuggestedAggregations,
+  isAggregationCompatible
 } from '../../utils/visualQueryUtils';
 
 /**
@@ -54,20 +55,20 @@ const AggregationControls = ({
 
   // 获取表的列信息
   const columns = selectedTable?.columns || [];
-  
+
   // 获取可用的聚合函数
   const getAvailableFunctions = (columnName) => {
-    const column = columns.find(col => 
+    const column = columns.find(col =>
       (typeof col === 'string' ? col : col.name) === columnName
     );
-    
+
     if (!column) return Object.values(AggregationFunction);
-    
+
     const columnType = detectColumnType(
-      columnName, 
+      columnName,
       column.sampleValues || []
     );
-    
+
     return getSuggestedAggregations(columnType);
   };
 
@@ -85,7 +86,7 @@ const AggregationControls = ({
     };
 
     onAggregationsChange([...aggregations, aggregation]);
-    
+
     // 重置表单
     setNewAggregation({
       function: '',
@@ -104,17 +105,17 @@ const AggregationControls = ({
     const updatedAggregations = aggregations.map(agg => {
       if (agg.id === id) {
         const updated = { ...agg, [field]: value };
-        
+
         // 如果改变了函数或列，自动更新别名
         if (field === 'function' || field === 'column') {
           updated.alias = `${updated.function.toLowerCase()}_${updated.column}`;
         }
-        
+
         return updated;
       }
       return agg;
     });
-    
+
     onAggregationsChange(updatedAggregations);
   };
 
@@ -183,7 +184,7 @@ const AggregationControls = ({
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
             添加聚合函数
           </Typography>
-          
+
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             {/* 选择函数 */}
             <FormControl size="small" sx={{ minWidth: 120 }}>
@@ -191,9 +192,9 @@ const AggregationControls = ({
               <Select
                 value={newAggregation.function}
                 label="函数"
-                onChange={(e) => setNewAggregation(prev => ({ 
-                  ...prev, 
-                  function: e.target.value 
+                onChange={(e) => setNewAggregation(prev => ({
+                  ...prev,
+                  function: e.target.value
                 }))}
                 disabled={disabled}
               >
@@ -201,29 +202,29 @@ const AggregationControls = ({
                   // 检查函数与当前选中列的兼容性
                   let isCompatible = true;
                   let warningMessage = '';
-                  
+
                   if (newAggregation.column) {
                     const columnInfo = getColumnTypeInfo(newAggregation.column);
                     isCompatible = isAggregationCompatible(func, columnInfo.type, columnInfo.name);
-                    
+
                     if (!isCompatible) {
                       warningMessage = `${getFunctionDisplayName(func)}不适用于${columnInfo.type}类型`;
                     }
                   }
-                  
+
                   return (
-                    <MenuItem 
-                      key={func} 
+                    <MenuItem
+                      key={func}
                       value={func}
                       disabled={!isCompatible}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
                         <span>{getFunctionDisplayName(func)}</span>
                         {!isCompatible && (
-                          <Chip 
-                            label="不兼容" 
-                            size="small" 
-                            color="warning" 
+                          <Chip
+                            label="不兼容"
+                            size="small"
+                            color="warning"
                             sx={{ ml: 1, height: 16, fontSize: '0.7rem' }}
                           />
                         )}
@@ -240,18 +241,18 @@ const AggregationControls = ({
               <Select
                 value={newAggregation.column}
                 label="列"
-                onChange={(e) => setNewAggregation(prev => ({ 
-                  ...prev, 
-                  column: e.target.value 
+                onChange={(e) => setNewAggregation(prev => ({
+                  ...prev,
+                  column: e.target.value
                 }))}
                 disabled={disabled}
               >
                 {columns.map(column => {
                   const columnName = typeof column === 'string' ? column : column.name;
-                  
+
                   return (
-                    <MenuItem 
-                      key={columnName} 
+                    <MenuItem
+                      key={columnName}
                       value={columnName}
                     >
                       {columnName}
@@ -266,9 +267,9 @@ const AggregationControls = ({
               size="small"
               label="别名 (可选)"
               value={newAggregation.alias}
-              onChange={(e) => setNewAggregation(prev => ({ 
-                ...prev, 
-                alias: e.target.value 
+              onChange={(e) => setNewAggregation(prev => ({
+                ...prev,
+                alias: e.target.value
               }))}
               disabled={disabled}
               sx={{ minWidth: 120 }}
@@ -290,10 +291,10 @@ const AggregationControls = ({
 
         {/* 已添加的聚合函数列表 */}
         {aggregations.length > 0 && (
-          <Paper 
-            variant="outlined" 
-            sx={{ 
-              maxHeight: maxHeight, 
+          <Paper
+            variant="outlined"
+            sx={{
+              maxHeight: maxHeight,
               overflow: 'auto',
               bgcolor: 'background.paper'
             }}
@@ -328,8 +329,8 @@ const AggregationControls = ({
                             <Select
                               value={aggregation.function}
                               onChange={(e) => handleUpdateAggregation(
-                                aggregation.id, 
-                                'function', 
+                                aggregation.id,
+                                'function',
                                 e.target.value
                               )}
                               disabled={disabled}
@@ -348,8 +349,8 @@ const AggregationControls = ({
                             size="small"
                             value={aggregation.alias}
                             onChange={(e) => handleUpdateAggregation(
-                              aggregation.id, 
-                              'alias', 
+                              aggregation.id,
+                              'alias',
                               e.target.value
                             )}
                             disabled={disabled}
@@ -359,7 +360,7 @@ const AggregationControls = ({
                         </Box>
                       }
                     />
-                    
+
                     <ListItemSecondaryAction>
                       <Tooltip title="删除聚合函数">
                         <IconButton
@@ -374,7 +375,7 @@ const AggregationControls = ({
                       </Tooltip>
                     </ListItemSecondaryAction>
                   </ListItem>
-                  
+
                   {index < aggregations.length - 1 && <Divider />}
                 </React.Fragment>
               ))}
@@ -397,7 +398,8 @@ const AggregationControls = ({
         {aggregations.length > 0 && (
           <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
             <Typography variant="caption" color="info.contrastText">
-              💡 提示：使用聚合函数时，建议在"排序和限制"中添加GROUP BY条件
+              <Lightbulb size={16} style={{ marginRight: '8px' }} />
+              提示：使用聚合函数时，建议在"排序和限制"中添加GROUP BY条件
             </Typography>
           </Box>
         )}

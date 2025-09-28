@@ -30,6 +30,7 @@
     "ag-grid-react": "^31.3.4",
     "axios": "^1.6.2",
     "codemirror": "^6.0.2",
+    "lucide-react": "^0.544.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-window": "^1.8.11",

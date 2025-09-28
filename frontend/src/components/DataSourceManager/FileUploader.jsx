@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
-import { Button, CircularProgress, Box, Typography, Alert, Fade } from '@mui/material';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import { Alert, Box, Button, CircularProgress, Fade, Typography } from '@mui/material';
+import React, { useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 
 const FileUploader = ({ onUpload }) => {
@@ -27,7 +26,7 @@ const FileUploader = ({ onUpload }) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFiles(e.dataTransfer.files[0]);
     }
@@ -74,10 +73,10 @@ const FileUploader = ({ onUpload }) => {
     <Box sx={{ my: 2 }}>
       {error && (
         <Fade in={!!error}>
-          <Alert 
-            severity="error" 
-            sx={{ 
-              mb: 2, 
+          <Alert
+            severity="error"
+            sx={{
+              mb: 2,
               borderRadius: 2,
               border: '1px solid rgba(211, 47, 47, 0.1)',
               '& .MuiAlert-icon': {
@@ -93,11 +92,11 @@ const FileUploader = ({ onUpload }) => {
 
       {success && (
         <Fade in={success}>
-          <Alert 
+          <Alert
             icon={<CheckCircleOutlineIcon fontSize="inherit" />}
-            severity="success" 
-            sx={{ 
-              mb: 2, 
+            severity="success"
+            sx={{
+              mb: 2,
               borderRadius: 2,
               backgroundColor: 'rgba(46, 125, 50, 0.08)',
               color: '#2e7d32',
@@ -112,8 +111,8 @@ const FileUploader = ({ onUpload }) => {
         </Fade>
       )}
 
-      <Box 
-        sx={{ 
+      <Box
+        sx={{
           position: 'relative',
           border: '1px dashed',
           borderColor: dragActive ? 'primary.main' : 'rgba(0,0,0,0.12)',
@@ -134,27 +133,27 @@ const FileUploader = ({ onUpload }) => {
         onDrop={handleDrop}
         onClick={() => document.getElementById('file-upload').click()}
       >
-        <input 
-          id="file-upload" 
-          type="file" 
-          hidden 
-          onChange={handleFileChange} 
-          accept=".csv,.xlsx,.xls" 
+        <input
+          id="file-upload"
+          type="file"
+          hidden
+          onChange={handleFileChange}
+          accept=".csv,.xlsx,.xls"
         />
-        
+
         {loading ? (
           <Box sx={{ textAlign: 'center' }}>
-            <CircularProgress 
-              size={36} 
-              sx={{ 
+            <CircularProgress
+              size={36}
+              sx={{
                 color: 'primary.main',
                 mb: 2
-              }} 
+              }}
             />
-            <Typography 
-              variant="body1" 
+            <Typography
+              variant="body1"
               color="text.secondary"
-              sx={{ 
+              sx={{
                 fontWeight: 500,
               }}
             >
@@ -163,18 +162,18 @@ const FileUploader = ({ onUpload }) => {
           </Box>
         ) : (
           <Box>
-            <ArrowUpwardIcon 
-              sx={{ 
-                fontSize: 36, 
+            <ArrowUpwardIcon
+              sx={{
+                fontSize: 36,
                 color: dragActive ? 'primary.main' : 'text.secondary',
                 mb: 1
-              }} 
+              }}
             />
-            <Typography 
-              variant="body1" 
-              sx={{ 
-                mb: 1, 
-                fontWeight: 500, 
+            <Typography
+              variant="body1"
+              sx={{
+                mb: 1,
+                fontWeight: 500,
                 color: dragActive ? 'primary.main' : 'text.primary'
               }}
             >
@@ -183,12 +182,12 @@ const FileUploader = ({ onUpload }) => {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               或点击选择文件
             </Typography>
-            
+
             <Button
               variant="contained"
               size="small"
-              sx={{ 
-                borderRadius: 6, 
+              sx={{
+                borderRadius: 6,
                 textTransform: 'none',
                 px: 3,
                 py: 0.75,
@@ -203,24 +202,24 @@ const FileUploader = ({ onUpload }) => {
           </Box>
         )}
       </Box>
-      
-      <Box sx={{ 
-        mt: 2, 
+
+      <Box sx={{
+        mt: 2,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 0.5
       }}>
-        <InfoOutlinedIcon 
-          fontSize="small" 
-          sx={{ 
+        <InfoOutlinedIcon
+          fontSize="small"
+          sx={{
             fontSize: '0.875rem',
-            color: 'text.secondary' 
-          }} 
+            color: 'text.secondary'
+          }}
         />
-        <Typography 
-          variant="caption" 
-          sx={{ 
+        <Typography
+          variant="caption"
+          sx={{
             color: 'text.secondary',
             fontWeight: 400
           }}

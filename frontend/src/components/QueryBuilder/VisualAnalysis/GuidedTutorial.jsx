@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Card } from '../../ui/Card';
+import { Lightbulb } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '../../ui/Button';
+import { Card } from '../../ui/Card';
 
-const GuidedTutorial = ({ 
+const GuidedTutorial = ({
   isFirstTime = false,
   onComplete,
   onSkip,
-  className = '' 
+  className = ''
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [isVisible, setIsVisible] = useState(isFirstTime);
@@ -90,7 +91,7 @@ const GuidedTutorial = ({
 
   const nextStep = () => {
     setCompletedSteps(prev => new Set([...prev, currentStep]));
-    
+
     if (currentStep < tutorialSteps.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
@@ -148,7 +149,7 @@ const GuidedTutorial = ({
     <>
       {/* Overlay */}
       <div className="fixed inset-0 bg-black bg-opacity-50 z-40" />
-      
+
       {/* Tutorial Card */}
       <div className={`fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 w-96 ${className}`}>
         <Card className="p-6 shadow-2xl border-2 border-blue-300">
@@ -163,7 +164,7 @@ const GuidedTutorial = ({
               </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
+              <div
                 className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                 style={{ width: `${((currentStep + 1) / tutorialSteps.length) * 100}%` }}
               />
@@ -187,13 +188,12 @@ const GuidedTutorial = ({
                 <button
                   key={index}
                   onClick={() => goToStep(index)}
-                  className={`w-3 h-3 rounded-full transition-all duration-200 ${
-                    index === currentStep
+                  className={`w-3 h-3 rounded-full transition-all duration-200 ${index === currentStep
                       ? 'bg-blue-600 scale-125'
                       : completedSteps.has(index)
-                      ? 'bg-green-500'
-                      : 'bg-gray-300'
-                  }`}
+                        ? 'bg-green-500'
+                        : 'bg-gray-300'
+                    }`}
                   title={`步骤 ${index + 1}: ${tutorialSteps[index].title}`}
                 />
               ))}
@@ -220,7 +220,7 @@ const GuidedTutorial = ({
                 跳过教程
               </Button>
             </div>
-            
+
             <Button
               onClick={nextStep}
               className="bg-blue-600 hover:bg-blue-700"
@@ -233,7 +233,10 @@ const GuidedTutorial = ({
           {currentStep > 0 && (
             <div className="mt-4 p-3 bg-blue-50 rounded-md">
               <div className="text-sm text-blue-800">
-                <div className="font-medium mb-1">💡 小贴士:</div>
+                <div className="font-medium mb-1">
+                  <Lightbulb size={16} style={{ marginRight: '8px' }} />
+                  小贴士:
+                </div>
                 {currentStep === 1 && (
                   <div>选择表后，可视化查询面板会自动显示在查询构建器中。</div>
                 )}
@@ -280,9 +283,9 @@ const GuidedTutorial = ({
 };
 
 // Mini tutorial for specific features
-export const FeatureTutorial = ({ 
-  feature, 
-  isVisible, 
+export const FeatureTutorial = ({
+  feature,
+  isVisible,
   onClose,
   position = { top: '50%', left: '50%' }
 }) => {
@@ -321,10 +324,10 @@ export const FeatureTutorial = ({
   if (!isVisible || !guide) return null;
 
   return (
-    <div 
+    <div
       className="fixed z-50 w-80"
-      style={{ 
-        top: position.top, 
+      style={{
+        top: position.top,
         left: position.left,
         transform: 'translate(-50%, -50%)'
       }}
@@ -342,7 +345,7 @@ export const FeatureTutorial = ({
             ✕
           </Button>
         </div>
-        
+
         <ol className="space-y-2">
           {guide.steps.map((step, index) => (
             <li key={index} className="flex items-start space-x-2 text-sm">

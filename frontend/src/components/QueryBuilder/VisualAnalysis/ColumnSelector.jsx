@@ -1,22 +1,21 @@
-import React, { useState, useEffect } from 'react';
 import {
-  Box,
-  Typography,
-  Checkbox,
-  FormControlLabel,
-  Chip,
-  Tooltip,
-  IconButton,
-  Collapse,
-  Alert
-} from '@mui/material';
-import {
-  ExpandMore as ExpandMoreIcon,
+  CheckBoxOutlineBlank as DeselectAllIcon,
   ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
   Info as InfoIcon,
-  CheckBox as SelectAllIcon,
-  CheckBoxOutlineBlank as DeselectAllIcon
+  CheckBox as SelectAllIcon
 } from '@mui/icons-material';
+import {
+  Alert,
+  Checkbox,
+  Chip,
+  Collapse,
+  IconButton,
+  Tooltip,
+  Typography
+} from '@mui/material';
+import { Calendar, FileText, Hash, HelpCircle, Lightbulb } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 
 /**
  * ColumnSelector Component
@@ -129,10 +128,10 @@ const ColumnSelector = ({
 
   // Get data type icon
   const getDataTypeIcon = (dataType) => {
-    if (isNumericDataType(dataType)) return '🔢';
-    if (isTextDataType(dataType)) return '📝';
-    if (isDateTimeDataType(dataType)) return '📅';
-    return '❓';
+    if (isNumericDataType(dataType)) return <Hash size={16} />;
+    if (isTextDataType(dataType)) return <FileText size={16} />;
+    if (isDateTimeDataType(dataType)) return <Calendar size={16} />;
+    return <HelpCircle size={16} />;
   };
 
   if (!selectedTable) {
@@ -223,7 +222,7 @@ const ColumnSelector = ({
 
       {/* Column Selection Grid */}
       <Collapse in={isExpanded}>
-        <div 
+        <div
           className="border border-gray-200 rounded-md bg-gray-50 p-3"
           style={{ maxHeight: `${maxHeight}px`, overflowY: 'auto' }}
         >
@@ -239,8 +238,8 @@ const ColumnSelector = ({
                   key={`${columnName}-${index}`}
                   className={`
                     flex items-center space-x-2 p-2 rounded-md cursor-pointer transition-colors
-                    ${isSelected 
-                      ? 'bg-blue-50 border border-blue-200' 
+                    ${isSelected
+                      ? 'bg-blue-50 border border-blue-200'
                       : 'bg-white border border-gray-200 hover:bg-gray-50'
                     }
                     ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
@@ -259,7 +258,7 @@ const ColumnSelector = ({
                       }
                     }}
                   />
-                  
+
                   <div className="flex-1 min-w-0">
                     {/* Column Name */}
                     <div className="flex items-center space-x-1">
@@ -277,7 +276,7 @@ const ColumnSelector = ({
                       >
                         {columnName}
                       </Typography>
-                      
+
                       {showMetadata && (
                         <Tooltip
                           title={
@@ -291,12 +290,12 @@ const ColumnSelector = ({
                           }
                           arrow
                         >
-                          <InfoIcon 
-                            sx={{ 
-                              fontSize: '0.75rem', 
+                          <InfoIcon
+                            sx={{
+                              fontSize: '0.75rem',
                               color: 'text.secondary',
                               cursor: 'help'
-                            }} 
+                            }}
                           />
                         </Tooltip>
                       )}
@@ -341,7 +340,8 @@ const ColumnSelector = ({
       {selectedColumns.length === 0 && (
         <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
           <Typography variant="caption" sx={{ color: '#1e40af', fontSize: '0.75rem' }}>
-            💡 提示：选择要分析的列，或保持空白以显示所有列
+            <Lightbulb size={16} style={{ marginRight: '8px' }} />
+            提示：选择要分析的列，或保持空白以显示所有列
           </Typography>
         </div>
       )}

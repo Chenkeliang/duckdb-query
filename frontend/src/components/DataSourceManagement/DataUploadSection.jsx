@@ -1,6 +1,5 @@
 import {
   Cancel as CancelIcon,
-  CloudUpload as CloudUploadIcon,
   Info as InfoIcon,
   Link as LinkIcon
 } from '@mui/icons-material';
@@ -22,6 +21,7 @@ import {
   Tooltip,
   Typography
 } from '@mui/material';
+import { Lightbulb, Upload } from 'lucide-react';
 import React, { useRef, useState } from 'react';
 import { readFromUrl, uploadFile } from '../../services/apiClient';
 import ChunkedUploader from '../ChunkedUpload/ChunkedUploader';
@@ -305,7 +305,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
         <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
           <CardContent>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <CloudUploadIcon sx={{ mr: 1, color: 'primary.main' }} />
+              <Upload size={20} style={{ marginRight: '8px', color: '#1976d2' }} />
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
                 智能文件上传
               </Typography>
@@ -366,7 +366,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                     }
                   }}
                 >
-                  <CloudUploadIcon
+                  <Upload
                     sx={{
                       fontSize: 48,
                       color: isDragOver ? '#1976d2' : '#999',
@@ -444,7 +444,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                       />
                       <Button
                         variant="contained"
-                        startIcon={<CloudUploadIcon />}
+                        startIcon={<Upload size={20} />}
                         onClick={() => fileInputRef.current?.click()}
                         sx={{ borderRadius: 20 }}
                       >
@@ -522,7 +522,8 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
             {/* 功能说明 */}
             <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
               <Typography variant="caption" color="text.secondary">
-                💡 <strong>智能上传提示：</strong><br />
+                <Lightbulb size={16} style={{ marginRight: '8px' }} />
+                <strong>智能上传提示：</strong><br />
                 • 标准上传：适合小于50MB的小文件，上传速度快<br />
                 • 分块上传：适合大文件，支持断点续传，提高上传成功率<br />
                 • 支持格式：CSV, Excel (xls/xlsx), Parquet, JSON
@@ -555,7 +556,8 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
             <Box sx={{ mb: 2, p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
               <Typography variant="caption" color="text.secondary">
-                💡 <strong>支持的URL格式：</strong><br />
+                <Lightbulb size={16} style={{ marginRight: '8px' }} />
+                <strong>支持的URL格式：</strong><br />
                 • 直接文件链接：https://example.com/data.csv<br />
                 • GitHub文件：https://github.com/user/repo/blob/main/data.csv (自动转换)<br />
                 • 支持格式：CSV, Excel (xls/xlsx), Parquet, JSON
@@ -586,7 +588,8 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
             {/* 功能说明 */}
             <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
               <Typography variant="caption" color="text.secondary">
-                💡 <strong>远程文件导入提示：</strong><br />
+                <Lightbulb size={16} style={{ marginRight: '8px' }} />
+                <strong>远程文件导入提示：</strong><br />
                 • 支持从公共URL导入文件<br />
                 • 自动处理GitHub文件链接<br />
                 • 导入的文件将直接创建为DuckDB表
