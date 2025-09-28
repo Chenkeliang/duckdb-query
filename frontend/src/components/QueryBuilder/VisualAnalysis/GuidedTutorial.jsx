@@ -189,10 +189,10 @@ const GuidedTutorial = ({
                   key={index}
                   onClick={() => goToStep(index)}
                   className={`w-3 h-3 rounded-full transition-all duration-200 ${index === currentStep
-                      ? 'bg-blue-600 scale-125'
-                      : completedSteps.has(index)
-                        ? 'bg-green-500'
-                        : 'bg-gray-300'
+                    ? 'bg-blue-600 scale-125'
+                    : completedSteps.has(index)
+                      ? 'bg-green-500'
+                      : 'bg-gray-300'
                     }`}
                   title={`步骤 ${index + 1}: ${tutorialSteps[index].title}`}
                 />
