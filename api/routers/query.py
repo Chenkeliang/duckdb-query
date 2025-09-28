@@ -3047,11 +3047,11 @@ async def execute_set_operation(request: SetOperationRequest):
         else:
             # 默认行为：执行完整集合操作，但限制数据量以避免内存问题
             logger.info(f"开始执行完整集合操作查询: {sql}")
-            
+
             # 先获取总行数
             count_sql = f"SELECT COUNT(*) as total_count FROM ({sql}) as subquery"
             logger.info(f"执行COUNT查询: {count_sql}")
-            
+
             try:
                 count_result = con.execute(count_sql).fetchone()
                 total_count = count_result[0] if count_result else 0
@@ -3064,13 +3064,13 @@ async def execute_set_operation(request: SetOperationRequest):
                 result_df = con.execute(limited_sql).fetchdf()
                 total_count = len(result_df)
                 logger.info(f"限制查询完成，返回行数: {total_count}")
-                
+
                 # 获取列信息
                 columns = [
                     {"name": col, "type": str(result_df[col].dtype)}
                     for col in result_df.columns
                 ]
-                
+
                 return {
                     "success": True,
                     "data": (
@@ -3084,7 +3084,7 @@ async def execute_set_operation(request: SetOperationRequest):
                     "originalDatasource": {
                         "type": "set_operation",
                         "operation": config.operation_type,
-                        "tables": [source.table_name for source in config.tables]
+                        "tables": [source.table_name for source in config.tables],
                     },
                     "isSetOperation": True,
                     "setOperationConfig": config,
@@ -3094,17 +3094,17 @@ async def execute_set_operation(request: SetOperationRequest):
                     ],
                     "message": f"查询成功，返回 {total_count:,} 行数据。",
                 }
-            
+
             # 获取列信息（使用LIMIT 1来避免大数据集问题）
             sample_sql = f"{sql} LIMIT 1"
             sample_df = con.execute(sample_sql).fetchdf()
-            
+
             # 获取列信息
             columns = [
                 {"name": col, "type": str(sample_df[col].dtype)}
                 for col in sample_df.columns
             ]
-            
+
             # 如果数据量超过100万行，不返回完整数据
             if total_count > 1000000:
                 return {
@@ -3118,7 +3118,7 @@ async def execute_set_operation(request: SetOperationRequest):
                     "originalDatasource": {
                         "type": "set_operation",
                         "operation": config.operation_type,
-                        "tables": [source.table_name for source in config.tables]
+                        "tables": [source.table_name for source in config.tables],
                     },
                     "isSetOperation": True,
                     "setOperationConfig": config,
@@ -3132,7 +3132,7 @@ async def execute_set_operation(request: SetOperationRequest):
                 # 数据量较小，返回完整数据
                 result_df = con.execute(sql).fetchdf()
                 data = result_df.to_dict("records")
-                
+
                 return {
                     "success": True,
                     "data": data,
@@ -3144,7 +3144,7 @@ async def execute_set_operation(request: SetOperationRequest):
                     "originalDatasource": {
                         "type": "set_operation",
                         "operation": config.operation_type,
-                        "tables": [source.table_name for source in config.tables]
+                        "tables": [source.table_name for source in config.tables],
                     },
                     "isSetOperation": True,
                     "setOperationConfig": config,

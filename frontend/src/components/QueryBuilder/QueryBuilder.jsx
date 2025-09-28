@@ -11,7 +11,7 @@ import {
   Stack,
   Typography
 } from '@mui/material';
-import { BarChart3, Play } from 'lucide-react';
+import { Play } from 'lucide-react';
 import React, { useCallback, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { downloadResults, executeDuckDBSQL, performQuery } from '../../services/apiClient';
@@ -386,50 +386,6 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     }
   };
 
-  const handlePreviewSetOperation = async () => {
-    if (selectedSources.length < 2) {
-      showError('至少需要选择两个表');
-      return;
-    }
-
-    setError('');
-    setIsLoading(true);
-
-    try {
-      const config = buildSetOperationConfig();
-      const response = await fetch('/api/set-operations/preview', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          config: config
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.errors?.[0] || '集合操作预览失败');
-      }
-
-      const results = await response.json();
-
-      if (results.success) {
-        onResultsReceived(results);
-        showSuccess('集合操作预览成功');
-      } else {
-        setError(results.errors?.[0] || '集合操作预览失败');
-        showError(results.errors?.[0] || '集合操作预览失败');
-      }
-    } catch (err) {
-      const errorMsg = `集合操作预览失败: ${err.message || '未知错误'}`;
-      setError(errorMsg);
-      showError(errorMsg);
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
 
 
@@ -690,28 +646,6 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
 
         {currentOperationMode === 'set_operation' && (
           <>
-            <Button
-              variant="outlined"
-              onClick={handlePreviewSetOperation}
-              disabled={selectedSources.length < 2 || isLoading}
-              sx={{
-                borderRadius: 20,
-                px: 3,
-                py: 1.5,
-                fontSize: '0.9rem',
-                fontWeight: 500,
-                textTransform: 'none',
-                border: '1px solid rgba(0, 113, 227, 0.5)',
-                color: '#0071e3',
-                '&:hover': {
-                  border: '1px solid rgba(0, 113, 227, 0.8)',
-                  backgroundColor: 'rgba(0, 113, 227, 0.04)'
-                }
-              }}
-              startIcon={<BarChart3 size={20} />}
-            >
-              预览结果
-            </Button>
             <Button
               variant="contained"
               onClick={handleExecuteSetOperation}
