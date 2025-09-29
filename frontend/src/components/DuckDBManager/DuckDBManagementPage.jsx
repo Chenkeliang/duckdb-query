@@ -1,5 +1,4 @@
 import {
-  CloudUpload,
   ContentCopy as ContentCopyIcon,
   Delete as DeleteIcon,
   ExpandLess,
@@ -42,7 +41,7 @@ import {
 } from '@mui/material';
 import { Database, RotateCcw, Search } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { deleteDuckDBTable, getDuckDBTables } from '../../services/apiClient';
+import { deleteDuckDBTableEnhanced, getDuckDBTablesEnhanced } from '../../services/apiClient';
 
 const DuckDBManagementPage = ({ onDataSourceChange }) => {
   const [tables, setTables] = useState([]);
@@ -57,10 +56,9 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedGroups, setExpandedGroups] = useState({
     '异步查询结果': true,
-    '查询结果表': true,
-    '上传文件表': true,
+    '数据表': true,
     '临时表': true,
-    '数据表': true
+    '系统表': true
   });
 
   useEffect(() => {
@@ -71,8 +69,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
     setLoading(true);
     setError('');
     try {
-      const data = await getDuckDBTables();
-      console.log('API 返回的数据:', data); // 调试日志
+      const data = await getDuckDBTablesEnhanced();
 
       // 处理 /api/duckdb_tables 返回的数据格式: { success: true, tables: [...], total_tables: number }
       let tablesArray = [];
@@ -86,10 +83,8 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
         tablesArray = data.tables;
       }
 
-      console.log('解析后的表数组:', tablesArray);
       setTables(tablesArray);
     } catch (err) {
-      console.error('加载表列表错误:', err);
       setError(`加载表列表失败: ${err.message}`);
       setTables([]); // 确保设置为空数组
     } finally {
@@ -112,7 +107,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
 
     setDeleting(true);
     try {
-      await deleteDuckDBTable(tableToDelete.table_name);
+      await deleteDuckDBTableEnhanced(tableToDelete.table_name);
       setSuccessMessage(`表 "${tableToDelete.table_name}" 已成功删除`);
       await loadTables();
       if (onDataSourceChange) {
@@ -141,10 +136,20 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
     return num.toString();
   };
 
-  // 获取表类型信息
+  // 获取表类型信息 - 重新设计的分类逻辑
   const getTableTypeInfo = (tableName) => {
+    if (!tableName || typeof tableName !== 'string') {
+      return {
+        label: '未知类型',
+        color: '#9e9e9e',
+        icon: <Database sx={{ fontSize: 16, color: '#9e9e9e' }} />,
+        description: '无法识别的表类型'
+      };
+    }
     const lower = tableName.toLowerCase();
-    if (lower.startsWith('async_result_')) {
+
+    // 1. 异步任务结果表（通过异步任务保存的表）
+    if (lower.startsWith('async_result_') || lower.startsWith('task_')) {
       return {
         label: '异步查询结果',
         color: '#ff9800',
@@ -152,22 +157,23 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
         icon: QueryStats
       };
     }
-    if (lower.startsWith('query_result_')) {
+
+    // 2. 用户自定义表名（通过异步任务保存，使用用户提供的表名）
+    // 这些表名不包含系统前缀，是用户直接指定的
+    if (!lower.startsWith('async_result_') &&
+      !lower.startsWith('task_') &&
+      !lower.startsWith('query_result_') &&
+      !lower.includes('temp') &&
+      !lower.includes('临时')) {
       return {
-        label: '查询结果表',
-        color: '#4caf50',
-        bgColor: '#e8f5e8',
-        icon: TableIcon
-      };
-    }
-    if (lower.includes('upload') || lower.includes('粘贴')) {
-      return {
-        label: '上传文件表',
+        label: '数据表',
         color: '#2196f3',
         bgColor: '#e3f2fd',
-        icon: CloudUpload
+        icon: ViewList
       };
     }
+
+    // 3. 临时表（系统生成的临时表）
     if (lower.includes('temp') || lower.includes('临时')) {
       return {
         label: '临时表',
@@ -176,11 +182,13 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
         icon: History
       };
     }
+
+    // 4. 其他系统表（兼容旧数据）
     return {
-      label: '数据表',
+      label: '系统表',
       color: '#757575',
       bgColor: '#f5f5f5',
-      icon: ViewList
+      icon: TableIcon
     };
   };
 

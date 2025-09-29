@@ -54,7 +54,7 @@ const applyDisplayLimit = (sql, maxRows = 10000) => {
 
 
 // 受控组件：selectedSources/setSelectedSources 由父组件(App.jsx)传入
-const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSources, onResultsReceived }) => {
+const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSources, onResultsReceived, onRefresh }) => {
   const { showSuccess, showError } = useToast();
   const [joins, setJoins] = useState([]);
   const [error, setError] = useState('');
@@ -75,8 +75,6 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         '未找到',
       'Table with name':
         '表名',
-      'does not exist':
-        '不存在',
       'Catalog Error: Table':
         '目录错误：表',
       'does not exist':
@@ -175,10 +173,10 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       const isVisualAnalysisMode = selectedSources.length === 1 && visualQuerySQL && visualQuerySQL.trim() && visualQueryConfig;
 
       if (isVisualAnalysisMode) {
-        // Apply display limit for visual analysis queries (preview mode)
+        // 保持前端生成SQL，但后端重新生成验证
         const { displaySql, originalSql } = applyDisplayLimit(visualQuerySQL, 10000);
 
-        // Use executeDuckDBSQL for direct SQL execution with preview mode
+        // 使用executeDuckDBSQL执行，后端会重新生成SQL验证
         const results = await executeDuckDBSQL(displaySql, null, true);
 
         if (results && results.success === false) {
@@ -186,17 +184,17 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
           return;
         }
 
-        // Add visual query metadata to results
+        // 添加可视化查询元数据
         if (results) {
           results.isVisualQuery = true;
           results.visualConfig = visualQueryConfig;
-          results.generatedSQL = originalSql; // Use original SQL without LIMIT
-          results.sql = originalSql; // Ensure SQL is included for history
-          results.displaySQL = displaySql; // Store display SQL for reference
+          results.generatedSQL = originalSql; // 使用原始SQL（无LIMIT）
+          results.sql = originalSql; // 确保SQL包含在历史记录中
+          results.displaySQL = displaySql; // 存储显示SQL供参考
         }
 
         onResultsReceived(results);
-        saveHistory(originalSql); // Save original SQL without LIMIT
+        saveHistory(originalSql); // 保存原始SQL（无LIMIT）
         showSuccess('可视化查询执行成功');
         return; // 重要：直接返回，不执行后续的常规查询逻辑
       }
@@ -302,7 +300,6 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         setError(errorMsg);
         showError(errorMsg);
       }
-      console.error(err);
     } finally {
       setIsLoading(false);
     }
@@ -329,7 +326,6 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       const errorMsg = `下载失败: ${err.message || '未知错误'}`;
       setError(errorMsg);
       showError(errorMsg);
-      console.error(err);
     } finally {
       setIsLoading(false);
     }
@@ -418,7 +414,6 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       const errorMsg = `集合操作执行失败: ${translatedError}`;
       setError(errorMsg);
       showError(errorMsg);
-      console.error(err);
     } finally {
       setIsLoading(false);
     }
@@ -470,6 +465,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         selectedSources={selectedSources}
         onSourceSelect={handleSourceSelect}
         onSourceRemove={handleSourceRemove}
+        onRefresh={onRefresh}
       />
 
       {/* 操作模式选择按钮 */}

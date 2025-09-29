@@ -84,7 +84,6 @@ const EnhancedSQLExecutor = ({
       });
       setDuckdbTables(tableNames);
     } catch (err) {
-      console.error("获取表列表失败:", err);
     }
   };
 
@@ -151,12 +150,10 @@ const EnhancedSQLExecutor = ({
 
         // 如果有原始错误信息，添加到控制台日志
         if (err.details && err.details.original_error) {
-          console.error('原始错误信息:', err.details.original_error);
         }
 
         // 如果有详细信息，添加到错误日志
         if (err.details) {
-          console.error('错误详情:', err.details);
         }
       }
 

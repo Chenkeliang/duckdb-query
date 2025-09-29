@@ -37,7 +37,7 @@ import { ClipboardList } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { listAsyncTasks } from '../../services/apiClient';
 
-const AsyncTaskList = ({ onPreviewResult }) => {
+const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -45,6 +45,7 @@ const AsyncTaskList = ({ onPreviewResult }) => {
   const [formatDialogOpen, setFormatDialogOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [downloadFormat, setDownloadFormat] = useState('parquet');
+  const [previousTasks, setPreviousTasks] = useState([]); // 用于检测任务状态变化
 
   // 获取任务列表
   const fetchTasks = async () => {
@@ -52,7 +53,32 @@ const AsyncTaskList = ({ onPreviewResult }) => {
       setLoading(true);
       const response = await listAsyncTasks();
       if (response.success) {
-        setTasks(response.tasks);
+        const newTasks = response.tasks;
+
+        // 检测任务状态变化，通知父组件
+
+        if (previousTasks.length > 0 && onTaskCompleted) {
+          newTasks.forEach(newTask => {
+            const oldTask = previousTasks.find(old => old.task_id === newTask.task_id);
+            if (oldTask && oldTask.status !== newTask.status) {
+              // 任务状态发生变化
+              if (newTask.status === 'success' && oldTask.status !== 'success') {
+                // 任务完成，通知父组件刷新数据源
+                onTaskCompleted(newTask);
+              }
+            }
+          });
+        } else if (previousTasks.length === 0 && onTaskCompleted) {
+          // 第一次加载时，检查是否有已完成的任务
+          newTasks.forEach(newTask => {
+            if (newTask.status === 'success') {
+              // 第一次加载时发现已完成的任务
+            }
+          });
+        }
+
+        setTasks(newTasks);
+        setPreviousTasks(newTasks);
       } else {
         setError('获取任务列表失败');
       }
@@ -275,6 +301,16 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                           <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
                             {task.task_id.substring(0, 8)}...
                           </Typography>
+                          {task.result?.custom_table_name && (
+                            <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 0.5 }}>
+                              表名: {task.result.custom_table_name}
+                            </Typography>
+                          )}
+                          {task.result?.display_name && (
+                            <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 0.5 }}>
+                              显示名: {task.result.display_name}
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Chip
@@ -303,9 +339,32 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                             // 尝试解析查询中的格式信息
                             try {
                               const queryObj = JSON.parse(task.query.replace(/'/g, '"'));
-                              if (queryObj && queryObj.format) {
-                                return (
+                              const chips = [];
+
+                              // 显示任务类型
+                              if (queryObj.task_type) {
+                                const typeLabels = {
+                                  'query': '查询任务',
+                                  'save_to_table': '保存到表',
+                                  'export': '导出任务'
+                                };
+                                chips.push(
                                   <Chip
+                                    key="type"
+                                    label={typeLabels[queryObj.task_type] || queryObj.task_type}
+                                    size="small"
+                                    color="primary"
+                                    variant="outlined"
+                                    sx={{ mt: 1, fontSize: '0.7rem', height: 20 }}
+                                  />
+                                );
+                              }
+
+                              // 显示格式信息
+                              if (queryObj.format) {
+                                chips.push(
+                                  <Chip
+                                    key="format"
                                     label={`${(queryObj.format || '').toUpperCase()} 格式`}
                                     size="small"
                                     variant="outlined"
@@ -313,6 +372,8 @@ const AsyncTaskList = ({ onPreviewResult }) => {
                                   />
                                 );
                               }
+
+                              return chips.length > 0 ? chips : null;
                             } catch (e) {
                               // 如果不是JSON格式，检查是否包含format关键字
                               const formatMatch = task.query.match(/format['"]?\s*:\s*['"]([^'"]+)['"]/);

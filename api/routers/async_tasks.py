@@ -48,6 +48,8 @@ class AsyncQueryRequest(BaseModel):
 
     sql: str
     format: str = "parquet"  # 支持 "parquet" 或 "csv"
+    custom_table_name: Optional[str] = None  # 自定义表名（可选）
+    task_type: str = "query"  # 任务类型：query, save_to_table, export
 
 
 class AsyncQueryResponse(BaseModel):
@@ -93,14 +95,24 @@ async def submit_async_query(
             )
 
         # 创建任务，将格式信息存储在任务查询中
-        task_query = {"sql": request.sql, "format": request.format}
+        task_query = {
+            "sql": request.sql,
+            "format": request.format,
+            "custom_table_name": request.custom_table_name,
+            "task_type": request.task_type,
+        }
 
         # 创建任务
         task_id = task_manager.create_task(str(task_query))
 
         # 添加后台任务执行查询
         background_tasks.add_task(
-            execute_async_query, task_id, request.sql, request.format
+            execute_async_query,
+            task_id,
+            request.sql,
+            request.format,
+            request.custom_table_name,
+            request.task_type,
         )
 
         return AsyncQueryResponse(
@@ -281,7 +293,13 @@ async def generate_and_download_file(task_id: str, request: dict = Body(...)):
         raise HTTPException(status_code=500, detail=f"生成下载文件失败: {str(e)}")
 
 
-def execute_async_query(task_id: str, sql: str, format: str = "parquet"):
+def execute_async_query(
+    task_id: str,
+    sql: str,
+    format: str = "parquet",
+    custom_table_name: Optional[str] = None,
+    task_type: str = "query",
+):
     """
     执行异步查询（后台任务）- 内存优化版本
     使用DuckDB原生功能，避免Python内存加载
@@ -295,74 +313,92 @@ def execute_async_query(task_id: str, sql: str, format: str = "parquet"):
         logger.info(f"开始执行异步查询任务: {task_id}")
         start_time = time.time()
 
-        # 获取DuckDB连接
-        con = get_db_connection()
+        # 使用连接池获取DuckDB连接，避免阻塞其他请求
+        from core.duckdb_pool import get_connection_pool
 
-        # 创建持久表存储查询结果（避免fetchdf()内存问题）
-        table_name = task_utils.task_id_to_table_name(task_id)
-        logger.info(f"创建持久表存储查询结果: {table_name}")
+        pool = get_connection_pool()
 
-        # 使用CREATE OR REPLACE TABLE直接创建持久表，避免加载到Python内存
-        create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql})'
-        con.execute(create_sql)
-        logger.info(f"持久表创建成功: {table_name}")
+        with pool.get_connection() as con:
+            # 创建持久表存储查询结果（避免fetchdf()内存问题）
+            if custom_table_name:
+                # 使用自定义表名，确保表名安全
+                safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
+                # 移除特殊字符，只保留字母、数字、下划线
+                import re
 
-        # 获取结果统计信息（不加载数据）
-        count_sql = f'SELECT COUNT(*) FROM "{table_name}"'
-        row_count = con.execute(count_sql).fetchone()[0]
-        logger.info(f"查询结果行数: {row_count}")
+                safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
+                table_name = safe_table_name  # 直接使用用户提供的表名
+            else:
+                table_name = task_utils.task_id_to_table_name(task_id)
+            logger.info(f"创建持久表存储查询结果: {table_name}")
 
-        # 获取列信息
-        columns_sql = f'DESCRIBE "{table_name}"'
-        columns_info = con.execute(columns_sql).fetchall()
-        columns = [{"name": col[0], "type": col[1]} for col in columns_info]
-        logger.info(f"查询结果列数: {len(columns)}")
+            # 使用CREATE OR REPLACE TABLE直接创建持久表，避免加载到Python内存
+            create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql})'
+            con.execute(create_sql)
+            logger.info(f"持久表创建成功: {table_name}")
 
-        # 保存表元数据到文件数据源管理器
-        source_id = table_name
-        table_metadata = {
-            "source_id": source_id,
-            "filename": f"async_query_{task_id}",
-            "file_path": f"duckdb://{table_name}",
-            "file_type": "duckdb_async_query",
-            "row_count": row_count,
-            "column_count": len(columns),
-            "columns": [col["name"] for col in columns],
-            "created_at": get_current_time_iso(),
-            "source_sql": sql,
-        }
+            # 获取结果统计信息（不加载数据）
+            count_sql = f'SELECT COUNT(*) FROM "{table_name}"'
+            row_count = con.execute(count_sql).fetchone()[0]
+            logger.info(f"查询结果行数: {row_count}")
 
-        # 保存到文件数据源管理器
-        file_datasource_manager.save_file_datasource(table_metadata)
-        logger.info(f"表元数据保存成功: {source_id}")
+            # 获取列信息
+            columns_sql = f'DESCRIBE "{table_name}"'
+            columns_info = con.execute(columns_sql).fetchall()
+            columns = [{"name": col[0], "type": col[1]} for col in columns_info]
+            logger.info(f"查询结果列数: {len(columns)}")
 
-        # 更新任务状态为完成，但不生成文件（按需下载）
-        task_info = {
-            "status": "completed",
-            "table_name": table_name,
-            "row_count": row_count,
-            "columns": columns,
-            "file_generated": False,
-        }
+            # 保存表元数据到文件数据源管理器
+            source_id = table_name
+            table_metadata = {
+                "source_id": source_id,
+                "filename": f"async_query_{task_id}",
+                "file_path": f"duckdb://{table_name}",
+                "file_type": "duckdb_async_query",
+                "row_count": row_count,
+                "column_count": len(columns),
+                "columns": [col["name"] for col in columns],
+                "created_at": get_current_time_iso(),
+                "source_sql": sql,
+            }
 
-        if not task_manager.complete_task(task_id, task_info):
-            logger.error(f"无法标记任务为成功: {task_id}")
+            # 保存到文件数据源管理器
+            file_datasource_manager.save_file_datasource(table_metadata)
+            logger.info(f"表元数据保存成功: {source_id}")
 
-        # 内存清理
-        try:
-            con.execute("PRAGMA memory_limit='1GB'")
-            con.execute("PRAGMA force_external")
-            import gc
+            # 更新任务状态为完成，但不生成文件（按需下载）
+            task_info = {
+                "status": "completed",
+                "table_name": table_name,
+                "row_count": row_count,
+                "columns": columns,
+                "file_generated": False,
+                "task_type": task_type,
+            }
 
-            gc.collect()
-            logger.info("内存清理完成")
-        except Exception as cleanup_error:
-            logger.warning(f"内存清理失败: {str(cleanup_error)}")
+            # 如果是自定义表名，添加原始表名信息
+            if custom_table_name:
+                task_info["custom_table_name"] = custom_table_name
+                task_info["display_name"] = custom_table_name
 
-        execution_time = time.time() - start_time
-        logger.info(
-            f"异步查询任务执行完成: {task_id}, 执行时间: {execution_time:.2f}秒, 内存优化版本"
-        )
+            if not task_manager.complete_task(task_id, task_info):
+                logger.error(f"无法标记任务为成功: {task_id}")
+
+            # 内存清理
+            try:
+                con.execute("PRAGMA memory_limit='1GB'")
+                con.execute("PRAGMA force_external")
+                import gc
+
+                gc.collect()
+                logger.info("内存清理完成")
+            except Exception as cleanup_error:
+                logger.warning(f"内存清理失败: {str(cleanup_error)}")
+
+            execution_time = time.time() - start_time
+            logger.info(
+                f"异步查询任务执行完成: {task_id}, 执行时间: {execution_time:.2f}秒, 内存优化版本"
+            )
 
     except Exception as e:
         logger.error(f"执行异步查询任务失败: {task_id}, 错误: {str(e)}")
@@ -413,33 +449,37 @@ def generate_download_file(task_id: str, format: str = "csv"):
         if not table_name:
             raise ValueError(f"任务 {task_id} 缺少表名信息")
 
-        con = get_db_connection()
+        # 使用连接池获取连接
+        from core.duckdb_pool import get_connection_pool
 
-        # 验证表是否存在
-        try:
-            con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()
-        except Exception as e:
-            raise ValueError(f"表 {table_name} 不存在或已删除: {str(e)}")
+        pool = get_connection_pool()
 
-        # 生成文件路径
-        result_file_path = task_utils.generate_file_path(task_id, format)
+        with pool.get_connection() as con:
+            # 验证表是否存在
+            try:
+                con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()
+            except Exception as e:
+                raise ValueError(f"表 {table_name} 不存在或已删除: {str(e)}")
 
-        # 使用COPY命令基于持久表生成文件（流式处理，避免内存加载）
-        if format == "csv":
-            copy_sql = f'COPY "{table_name}" TO "{result_file_path}" WITH (FORMAT CSV, HEADER true)'
-        else:
-            copy_sql = (
-                f'COPY "{table_name}" TO "{result_file_path}" WITH (FORMAT PARQUET)'
-            )
+            # 生成文件路径
+            result_file_path = task_utils.generate_file_path(task_id, format)
 
-        logger.info(f"开始生成下载文件: {result_file_path}")
-        con.execute(copy_sql)
-        logger.info(f"下载文件生成成功: {result_file_path}")
+            # 使用COPY命令基于持久表生成文件（流式处理，避免内存加载）
+            if format == "csv":
+                copy_sql = f'COPY "{table_name}" TO "{result_file_path}" WITH (FORMAT CSV, HEADER true)'
+            else:
+                copy_sql = (
+                    f'COPY "{table_name}" TO "{result_file_path}" WITH (FORMAT PARQUET)'
+                )
 
-        # 更新任务信息，标记文件已生成
-        task_utils.update_task_file_info(task_info, result_file_path, format)
+            logger.info(f"开始生成下载文件: {result_file_path}")
+            con.execute(copy_sql)
+            logger.info(f"下载文件生成成功: {result_file_path}")
 
-        return result_file_path
+            # 更新任务信息，标记文件已生成
+            task_utils.update_task_file_info(task_info, result_file_path, format)
+
+            return result_file_path
 
     except Exception as e:
         import traceback
@@ -479,33 +519,36 @@ def cleanup_old_files():
 
         # 清理过期的DuckDB表
         try:
-            con = get_db_connection()
+            from core.duckdb_pool import get_connection_pool
 
-            # 获取所有异步结果表
-            tables_sql = """
-            SELECT table_name 
-            FROM information_schema.tables 
-            WHERE table_name LIKE 'async_result_%'
-            """
-            tables = con.execute(tables_sql).fetchall()
+            pool = get_connection_pool()
 
-            for (table_name,) in tables:
-                try:
-                    # 从表名中提取任务ID（需要将下划线还原为连字符）
-                    safe_task_id = table_name.replace("async_result_", "")
-                    task_id = safe_task_id.replace("_", "-")
+            with pool.get_connection() as con:
+                # 获取所有异步结果表
+                tables_sql = """
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_name LIKE 'async_result_%'
+                """
+                tables = con.execute(tables_sql).fetchall()
 
-                    # 检查任务是否过期（24小时前创建）
-                    task_info = task_manager.get_task(task_id)
-                    if task_info:
-                        created_at = task_info.created_at
-                        if created_at < cutoff_time:
-                            # 删除过期的表
-                            con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-                            logger.info(f"清理过期表: {table_name}")
-                            cleaned_count += 1
-                except Exception as e:
-                    logger.warning(f"清理表失败: {table_name}, 错误: {str(e)}")
+                for (table_name,) in tables:
+                    try:
+                        # 从表名中提取任务ID（需要将下划线还原为连字符）
+                        safe_task_id = table_name.replace("async_result_", "")
+                        task_id = safe_task_id.replace("_", "-")
+
+                        # 检查任务是否过期（24小时前创建）
+                        task_info = task_manager.get_task(task_id)
+                        if task_info:
+                            created_at = task_info.created_at
+                            if created_at < cutoff_time:
+                                # 删除过期的表
+                                con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+                                logger.info(f"清理过期表: {table_name}")
+                                cleaned_count += 1
+                    except Exception as e:
+                        logger.warning(f"清理表失败: {table_name}, 错误: {str(e)}")
 
         except Exception as e:
             logger.warning(f"清理DuckDB表失败: {str(e)}")

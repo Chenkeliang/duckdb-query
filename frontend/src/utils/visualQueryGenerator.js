@@ -163,7 +163,6 @@ function buildSelectClause(config) {
         return aggSQL;
       } catch (error) {
         // 如果类型转换失败，回退到基础实现但对数值名称的VARCHAR列进行TRY_CAST
-        console.warn(`聚合函数类型转换失败，使用回退方案: ${error.message}`);
 
         const column = agg.column;
         const func = agg.function;
@@ -278,7 +277,6 @@ function buildWhereClause(filters) {
           break;
 
         default:
-          console.warn(`不支持的筛选操作符: ${operator}`);
           continue;
       }
 
@@ -291,7 +289,6 @@ function buildWhereClause(filters) {
         }
       }
     } catch (error) {
-      console.warn(`筛选条件生成失败: ${error.message}`);
       continue;
     }
   }

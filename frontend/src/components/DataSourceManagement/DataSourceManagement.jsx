@@ -23,7 +23,6 @@ const DataSourceManagement = ({ onDataSaved }) => {
       const tableNames = response.tables ? response.tables.map(table => table.table_name) : [];
       setDuckdbTables(tableNames);
     } catch (err) {
-      console.error('获取表列表失败:', err);
       showNotification('获取数据源列表失败', 'error');
     }
   };

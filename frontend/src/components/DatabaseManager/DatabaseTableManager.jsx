@@ -70,7 +70,6 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
     for (let i = 0; i <= maxRetries; i++) {
       try {
         if (i > 0) {
-          console.log(`重试第 ${i} 次: ${url}`);
           // 重试前等待一段时间
           await new Promise(resolve => setTimeout(resolve, 1000 * i));
         }
@@ -79,7 +78,6 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
         return response;
       } catch (error) {
         lastError = error;
-        console.warn(`请求失败 (尝试 ${i + 1}/${maxRetries + 1}):`, error.message);
 
         // 如果是最后一次尝试，抛出错误
         if (i === maxRetries) {
@@ -99,7 +97,6 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
     setError('');
 
     try {
-      console.log(`开始获取数据库表信息: ${connectionId}`);
       const response = await fetchWithRetry(`/api/database_tables/${connectionId}`, {}, 30000, 1);
 
       if (!response.ok) {
@@ -107,10 +104,8 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
       }
 
       const data = await response.json();
-      console.log(`成功获取数据库表信息:`, data);
       setTableData(data);
     } catch (err) {
-      console.error('获取数据库表信息失败:', err);
       setError(`获取数据库表信息失败: ${err.message}`);
       setTableData(null);
     } finally {
@@ -123,7 +118,6 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
     setDetailsLoading(true);
 
     try {
-      console.log(`开始获取表详细信息: ${connectionId}/${tableName}`);
       const response = await fetchWithRetry(`/api/database_table_details/${connectionId}/${tableName}`, {}, 20000, 1);
 
       if (!response.ok) {
@@ -131,12 +125,10 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
       }
 
       const data = await response.json();
-      console.log(`成功获取表详细信息:`, data);
       setTableDetails(data);
       setSelectedTable(tableName);
       setTableDetailsOpen(true);
     } catch (err) {
-      console.error('获取表详细信息失败:', err);
       setError(`获取表详细信息失败: ${err.message}`);
     } finally {
       setDetailsLoading(false);

@@ -654,3 +654,45 @@ SET_OPERATION_LABELS = {
     SetOperationType.EXCEPT: "差集",
     SetOperationType.INTERSECT: "交集",
 }
+
+
+class SetOperationExportRequest(BaseModel):
+    """集合操作导出请求模型"""
+
+    config: SetOperationConfig
+    format: Literal["excel", "csv", "parquet"] = Field(..., description="导出格式")
+    filename: Optional[str] = Field(None, description="自定义文件名（可选）")
+
+
+class QueryType(str, Enum):
+    """查询类型枚举"""
+
+    SINGLE_TABLE = "single_table"  # 单表查询
+    MULTI_TABLE_JOIN = "multi_table_join"  # 多表JOIN
+    SET_OPERATION = "set_operation"  # 集合操作
+    VISUAL_ANALYSIS = "visual_analysis"  # 数据分析
+    CUSTOM_SQL = "custom_sql"  # 自定义SQL
+
+
+class UniversalExportRequest(BaseModel):
+    """通用导出请求模型"""
+
+    query_type: QueryType = Field(..., description="查询类型")
+    sql_query: str = Field(..., description="原始SQL查询")
+    format: Literal["excel", "csv", "parquet"] = Field(..., description="导出格式")
+    filename: Optional[str] = Field(None, description="自定义文件名（可选）")
+
+    # 可选参数，根据查询类型使用
+    original_datasource: Optional[Dict[str, Any]] = Field(
+        None, description="原始数据源信息"
+    )
+    set_operation_config: Optional[SetOperationConfig] = Field(
+        None, description="集合操作配置"
+    )
+    visual_analysis_config: Optional[VisualQueryConfig] = Field(
+        None, description="数据分析配置"
+    )
+
+    # 备用数据（当SQL无法执行时使用）
+    fallback_data: Optional[List[Dict[str, Any]]] = Field(None, description="备用数据")
+    fallback_columns: Optional[List[str]] = Field(None, description="备用列信息")

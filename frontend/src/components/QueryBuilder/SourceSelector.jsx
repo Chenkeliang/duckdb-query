@@ -1,6 +1,7 @@
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DeleteIcon from '@mui/icons-material/Delete';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import {
   Box,
   Chip,
@@ -21,7 +22,8 @@ const SourceSelector = ({
   availableSources,
   selectedSources,
   onSourceSelect,
-  onSourceRemove
+  onSourceRemove,
+  onRefresh
 }) => {
   return (
     <Box sx={{
@@ -69,16 +71,37 @@ const SourceSelector = ({
               可用数据源
             </Typography>
           </Box>
-          <Tooltip title="点击数据源将其添加到查询中">
-            <InfoOutlinedIcon
-              fontSize="small"
-              sx={{
-                fontSize: '0.9rem',
-                color: 'text.secondary',
-                opacity: 0.7
-              }}
-            />
-          </Tooltip>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            {onRefresh && (
+              <Tooltip title="刷新数据源列表">
+                <IconButton
+                  size="small"
+                  onClick={onRefresh}
+                  sx={{
+                    color: 'text.secondary',
+                    opacity: 0.7,
+                    '&:hover': {
+                      opacity: 1,
+                      bgcolor: 'rgba(0, 113, 227, 0.1)',
+                      color: 'primary.main'
+                    }
+                  }}
+                >
+                  <RefreshIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+            <Tooltip title="点击数据源将其添加到查询中">
+              <InfoOutlinedIcon
+                fontSize="small"
+                sx={{
+                  fontSize: '0.9rem',
+                  color: 'text.secondary',
+                  opacity: 0.7
+                }}
+              />
+            </Tooltip>
+          </Box>
         </Box>
 
         <Box sx={{ overflow: 'auto', flexGrow: 1 }}>

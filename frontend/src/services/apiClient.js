@@ -17,7 +17,6 @@ const apiClient = axios.create({
 
 // 统一错误处理函数
 const handleApiError = (error, defaultMessage = '操作失败') => {
-  console.error('API Error:', error);
 
   // 网络错误
   if (error.code === 'ECONNABORTED') {
@@ -118,7 +117,6 @@ export const performQuery = async (queryRequest) => {
     const response = await apiClient.post('/api/query', queryRequest);
     return response.data;
   } catch (error) {
-    console.error('Error performing query:', error);
 
     // 如果是HTTP错误但有响应数据，检查是否是友好的错误格式
     if (error.response && error.response.data) {
@@ -135,7 +133,6 @@ export const performQuery = async (queryRequest) => {
 
 export const downloadResults = async (queryRequest) => {
   try {
-    console.log('开始下载查询结果...', queryRequest);
 
     // 使用下载代理端点来自动转换请求格式
     const response = await apiClient.post('/api/download_proxy', queryRequest, {
@@ -148,7 +145,6 @@ export const downloadResults = async (queryRequest) => {
       throw new Error('下载的文件为空');
     }
 
-    console.log(`下载完成，文件大小: ${response.data.size} bytes`);
 
     // 生成带时间戳的文件名，避免缓存问题
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -172,10 +168,8 @@ export const downloadResults = async (queryRequest) => {
       window.URL.revokeObjectURL(url);
     }, 100);
 
-    console.log(`文件已下载: ${filename}`);
     return true;
   } catch (error) {
-    console.error('Error downloading results:', error);
     throw error;
   }
 };
@@ -222,7 +216,6 @@ export const executeSQL = async (sql, datasource, is_preview = true) => {
     const response = await apiClient.post('/api/execute_sql', { sql, datasource, is_preview });
     return response.data;
   } catch (error) {
-    console.error('执行SQL失败:', error);
     throw error;
   }
 };
@@ -233,7 +226,6 @@ export const deleteFile = async (filePath) => {
     const response = await apiClient.post('/api/delete_file', { path: filePath });
     return response.data;
   } catch (error) {
-    console.error('删除文件失败:', error);
     throw error;
   }
 };
@@ -244,7 +236,6 @@ export const getFilePreview = async (filename, rows = 10) => {
     const response = await apiClient.get(`/api/file_preview/${filename}?rows=${rows}`);
     return response.data;
   } catch (error) {
-    console.error('获取文件预览失败:', error);
     throw error;
   }
 };
@@ -259,7 +250,6 @@ export const testDatabaseConnection = async (connectionData) => {
     const response = await apiClient.post('/api/database_connections/test', connectionData);
     return response.data;
   } catch (error) {
-    console.error('测试数据库连接失败:', error);
     throw error;
   }
 };
@@ -270,20 +260,16 @@ export const createDatabaseConnection = async (connectionData) => {
     requestManager.clearCache('/api/database_connections', 'GET');
     return response.data;
   } catch (error) {
-    console.error('创建数据库连接失败:', error);
     throw error;
   }
 };
 
 export const listDatabaseConnections = async () => {
   try {
-    console.log('listDatabaseConnections called - 使用请求管理器');
     // 使用请求管理器防止重复请求
     const data = await requestManager.getDatabaseConnections();
-    console.log('listDatabaseConnections result:', data);
     return data;
   } catch (error) {
-    console.error('获取数据库连接列表失败:', error);
     throw error;
   }
 };
@@ -293,7 +279,6 @@ export const getDatabaseConnection = async (connectionId) => {
     const response = await apiClient.get(`/api/database_connections/${connectionId}`);
     return response.data;
   } catch (error) {
-    console.error('获取数据库连接失败:', error);
     throw error;
   }
 };
@@ -304,7 +289,6 @@ export const updateDatabaseConnection = async (connectionId, connectionData) => 
     requestManager.clearCache('/api/database_connections', 'GET');
     return response.data;
   } catch (error) {
-    console.error('更新数据库连接失败:', error);
     throw error;
   }
 };
@@ -315,7 +299,6 @@ export const deleteDatabaseConnection = async (connectionId) => {
     requestManager.clearCache('/api/database_connections', 'GET');
     return response.data;
   } catch (error) {
-    console.error('删除数据库连接失败:', error);
     throw error;
   }
 };
@@ -326,19 +309,28 @@ export const exportData = async (exportRequest) => {
     const response = await apiClient.post('/api/export', exportRequest);
     return response.data;
   } catch (error) {
-    console.error('创建导出任务失败:', error);
     throw error;
   }
 };
 
 export const quickExport = async (exportRequest) => {
   try {
-    const response = await apiClient.post('/api/export/quick', exportRequest, {
+    // 转换为新的统一导出接口格式
+    const universalRequest = {
+      query_type: 'custom_sql',
+      sql_query: exportRequest.sql || '',
+      format: 'excel', // 默认Excel格式
+      filename: exportRequest.filename,
+      original_datasource: exportRequest.originalDatasource,
+      fallback_data: exportRequest.fallback_data,
+      fallback_columns: exportRequest.fallback_columns
+    };
+
+    const response = await apiClient.post('/api/export/universal', universalRequest, {
       responseType: 'blob'
     });
     return response;
   } catch (error) {
-    console.error('快速导出失败:', error);
     throw error;
   }
 };
@@ -348,7 +340,6 @@ export const getExportTaskStatus = async (taskId) => {
     const response = await apiClient.get(`/api/export/tasks/${taskId}`);
     return response.data;
   } catch (error) {
-    console.error('获取导出任务状态失败:', error);
     throw error;
   }
 };
@@ -360,7 +351,6 @@ export const downloadExportFile = async (taskId) => {
     });
     return response;
   } catch (error) {
-    console.error('下载导出文件失败:', error);
     throw error;
   }
 };
@@ -370,7 +360,6 @@ export const listExportTasks = async () => {
     const response = await apiClient.get('/api/export/tasks');
     return response.data;
   } catch (error) {
-    console.error('获取导出任务列表失败:', error);
     throw error;
   }
 };
@@ -380,7 +369,6 @@ export const deleteExportTask = async (taskId) => {
     const response = await apiClient.delete(`/api/export/tasks/${taskId}`);
     return response.data;
   } catch (error) {
-    console.error('删除导出任务失败:', error);
     throw error;
   }
 };
@@ -391,7 +379,6 @@ export const executeSqlQuery = async (sqlQuery) => {
     const response = await apiClient.post('/api/sql_query', { query: sqlQuery });
     return response.data;
   } catch (error) {
-    console.error('执行SQL查询失败:', error);
     throw error;
   }
 };
@@ -406,7 +393,6 @@ export const saveQueryResultAsDatasource = async (sql, datasourceName, originalD
     });
     return response.data;
   } catch (error) {
-    console.error('保存查询结果为数据源失败:', error);
     throw error;
   }
 };
@@ -417,7 +403,6 @@ export const getAvailableTables = async () => {
     const response = await apiClient.get('/api/available_tables');
     return response.data;
   } catch (error) {
-    console.error('获取可用表列表失败:', error);
     throw error;
   }
 };
@@ -439,7 +424,6 @@ export const saveQueryToDuckDB = async (sql, datasource, tableAlias, queryData =
     const response = await apiClient.post('/api/save_query_to_duckdb', requestData);
     return response.data;
   } catch (error) {
-    console.error('保存查询结果到DuckDB失败:', error);
     throw error;
   }
 };
@@ -450,7 +434,6 @@ export const getDuckDBTables = async () => {
     const response = await apiClient.get('/api/duckdb_tables');
     return response.data;
   } catch (error) {
-    console.error('获取DuckDB表列表失败:', error);
     throw error;
   }
 };
@@ -463,7 +446,6 @@ export const deleteDuckDBTable = async (tableName) => {
     const response = await apiClient.delete(`/api/duckdb_tables/${tableName}`);
     return response.data;
   } catch (error) {
-    console.error('删除DuckDB表失败:', error);
     throw error;
   }
 };
@@ -475,7 +457,6 @@ export const getMySQLDataSources = async () => {
     const data = await requestManager.getDatabaseConnections();
     return data;
   } catch (error) {
-    console.error('获取MySQL数据源列表失败:', error);
     throw error;
   }
 };
@@ -490,7 +471,6 @@ export const executeDuckDBSQL = async (sql, saveAsTable = null, is_preview = tru
     });
     return response.data;
   } catch (error) {
-    console.error('执行DuckDB SQL失败:', error);
 
     // 处理详细的错误响应
     if (error.response && error.response.data) {
@@ -550,18 +530,27 @@ export const uploadFileToDuckDB = async (file, tableAlias) => {
     });
     return response.data;
   } catch (error) {
-    console.error('上传文件到DuckDB失败:', error);
     throw error;
   }
 };
 
-export const getDuckDBTablesEnhanced = async () => {
+export const getDuckDBTablesEnhanced = async (force = false) => {
   try {
-    // 使用请求管理器防止重复请求
-    const data = await requestManager.getDuckDBTables();
-    return data;
+
+    if (force) {
+      // 强制刷新时，直接调用API，绕过防抖和缓存
+      const response = await fetch('/api/duckdb/tables');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      return data;
+    } else {
+      // 使用请求管理器防止重复请求
+      const data = await requestManager.getDuckDBTables();
+      return data;
+    }
   } catch (error) {
-    console.error('获取DuckDB表列表失败:', error);
     throw error;
   }
 };
@@ -571,7 +560,6 @@ export const deleteDuckDBTableEnhanced = async (tableName) => {
     const response = await apiClient.delete(`/api/duckdb/tables/${tableName}`);
     return response.data;
   } catch (error) {
-    console.error('删除DuckDB表失败:', error);
     throw error;
   }
 };
@@ -581,7 +569,6 @@ export const getDuckDBTableInfo = async (tableName) => {
     const response = await apiClient.get(`/api/duckdb/table/${tableName}/info`);
     return response.data;
   } catch (error) {
-    console.error('获取DuckDB表信息失败:', error);
     throw error;
   }
 };
@@ -601,7 +588,6 @@ export const readFromUrl = async (url, tableAlias, options = {}) => {
     const response = await apiClient.post('/api/read_from_url', requestData);
     return response.data;
   } catch (error) {
-    console.error('从URL读取文件失败:', error);
     throw error;
   }
 };
@@ -614,7 +600,6 @@ export const getUrlInfo = async (url) => {
     });
     return response.data;
   } catch (error) {
-    console.error('获取URL信息失败:', error);
     throw error;
   }
 };
@@ -627,7 +612,6 @@ export const listAsyncTasks = async () => {
     const response = await apiClient.get('/api/async_tasks');
     return response.data;
   } catch (error) {
-    console.error('获取异步任务列表失败:', error);
     throw error;
   }
 };
@@ -637,7 +621,6 @@ export const getAsyncTask = async (taskId) => {
     const response = await apiClient.get(`/api/async_tasks/${taskId}`);
     return response.data;
   } catch (error) {
-    console.error('获取异步任务详情失败:', error);
     throw error;
   }
 };
@@ -648,7 +631,6 @@ export const submitAsyncQuery = async (sql, format = 'parquet') => {
     const response = await apiClient.post('/api/async_query', { sql, format });
     return response.data;
   } catch (error) {
-    console.error('提交异步查询失败:', error);
     throw error;
   }
 };
@@ -681,7 +663,6 @@ export const downloadAsyncTaskResult = async (taskId) => {
 
     return { success: true };
   } catch (error) {
-    console.error('下载异步任务结果失败:', error);
     throw error;
   }
 };
@@ -692,7 +673,6 @@ export const getConnectionPoolStatus = async () => {
     const response = await apiClient.get('/api/duckdb/pool/status');
     return response.data;
   } catch (error) {
-    console.error('获取连接池状态失败:', error);
     throw error;
   }
 };
@@ -702,7 +682,6 @@ export const resetConnectionPool = async () => {
     const response = await apiClient.post('/api/duckdb/pool/reset');
     return response.data;
   } catch (error) {
-    console.error('重置连接池失败:', error);
     throw error;
   }
 };
@@ -713,7 +692,6 @@ export const getErrorStatistics = async () => {
     const response = await apiClient.get('/api/errors/statistics');
     return response.data;
   } catch (error) {
-    console.error('获取错误统计失败:', error);
     throw error;
   }
 };
@@ -723,7 +701,6 @@ export const clearOldErrors = async (days = 30) => {
     const response = await apiClient.post('/api/errors/clear', { days });
     return response.data;
   } catch (error) {
-    console.error('清理错误记录失败:', error);
     throw error;
   }
 };
@@ -734,7 +711,6 @@ export const connectDatabaseEnhanced = async (connectionParams) => {
     const response = await apiClient.post('/api/database/connect', connectionParams);
     return response.data;
   } catch (error) {
-    console.error('数据库连接失败:', error);
     throw error;
   }
 };
@@ -745,7 +721,6 @@ export const getAllTables = async () => {
     const response = await apiClient.get('/api/duckdb/tables');
     return response.data;
   } catch (error) {
-    console.error('获取所有表失败:', error);
     throw error;
   }
 };
@@ -785,7 +760,6 @@ export const generateVisualQuery = async (config) => {
     });
     return response.data;
   } catch (error) {
-    console.error('生成可视化查询失败:', error);
     handleApiError(error, '生成可视化查询失败');
   }
 };
@@ -798,7 +772,6 @@ export const previewVisualQuery = async (config, limit = 10) => {
     });
     return response.data;
   } catch (error) {
-    console.error('预览可视化查询失败:', error);
     handleApiError(error, '预览可视化查询失败');
   }
 };
@@ -808,7 +781,6 @@ export const getColumnStatistics = async (tableName, columnName) => {
     const response = await apiClient.get(`/api/visual-query/column-stats/${tableName}/${columnName}`);
     return response.data;
   } catch (error) {
-    console.error('获取列统计信息失败:', error);
     handleApiError(error, '获取列统计信息失败');
   }
 };
@@ -818,7 +790,6 @@ export const getTableMetadata = async (tableName) => {
     const response = await apiClient.get(`/api/visual-query/table-metadata/${tableName}`);
     return response.data;
   } catch (error) {
-    console.error('获取表元数据失败:', error);
     handleApiError(error, '获取表元数据失败');
   }
 };
@@ -828,7 +799,6 @@ export const validateVisualQueryConfig = async (config) => {
     const response = await apiClient.post('/api/visual-query/validate', config);
     return response.data;
   } catch (error) {
-    console.error('验证可视化查询配置失败:', error);
     handleApiError(error, '验证可视化查询配置失败');
   }
 };

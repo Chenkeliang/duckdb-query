@@ -694,7 +694,6 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   useEffect(() => {
     if (!editorRef.current) return;
 
-    console.log('DuckDBSQLEditor: 初始化编辑器，主题:', theme);
 
     try {
       const state = EditorState.create({
@@ -707,18 +706,13 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
           keymap.of([indentWithTab]), // 添加Tab缩进支持
           EditorView.lineWrapping, // 添加自动换行
           (() => {
-            console.log('DuckDBSQLEditor: 选择主题，当前主题:', theme);
             if (theme === "dark") {
-              console.log('DuckDBSQLEditor: 使用 oneDark 主题');
               return oneDark;
             } else if (theme === "github-light") {
-              console.log('DuckDBSQLEditor: 使用 githubLightTheme 主题');
               return githubLightTheme;
             } else if (theme === "solarized-light") {
-              console.log('DuckDBSQLEditor: 使用 solarizedLightTheme 主题');
               return solarizedLightTheme;
             } else {
-              console.log('DuckDBSQLEditor: 使用默认主题');
               return [];
             }
           })(),
@@ -728,7 +722,6 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
               try {
                 onChange(update.state.doc.toString());
               } catch (e) {
-                console.error("更新文档时出错:", e);
               }
             }
           }),
@@ -763,12 +756,10 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
           try {
             viewRef.current.destroy();
           } catch (e) {
-            console.error("销毁编辑器时出错:", e);
           }
         }
       };
     } catch (e) {
-      console.error("初始化编辑器时出错:", e);
       setEditorError(e.message);
       return () => { };
     }
@@ -786,7 +777,6 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
         });
         viewRef.current.dispatch(transaction);
       } catch (e) {
-        console.error("更新编辑器内容时出错:", e);
         setEditorError(e.message);
       }
     }

@@ -29,7 +29,6 @@ const SystemMonitor = () => {
             const response = await getConnectionPoolStatus();
             setPoolStatus(response.pool_status);
         } catch (error) {
-            console.error('获取连接池状态失败:', error);
         }
     };
 
@@ -38,7 +37,6 @@ const SystemMonitor = () => {
             const response = await getErrorStatistics();
             setErrorStats(response.error_statistics);
         } catch (error) {
-            console.error('获取错误统计失败:', error);
         }
     };
 

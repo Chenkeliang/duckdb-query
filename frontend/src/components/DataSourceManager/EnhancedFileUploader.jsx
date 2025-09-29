@@ -71,7 +71,6 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
 
   // 手动切换上传方式
   const handleUploadModeChange = (event) => {
-    console.log('切换上传模式:', event.target.checked);
     setUseChunkedUpload(event.target.checked);
     setUploadMode(event.target.checked ? 'chunked' : 'standard');
     setAutoDetectSize(false);
@@ -110,7 +109,6 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
     } catch (error) {
       const errorMsg = `文件上传失败: ${error.message}`;
       showError(errorMsg);
-      console.error('上传失败:', error);
       if (onUploadComplete) {
         onUploadComplete({ success: false, error: error.message });
       }
@@ -237,7 +235,6 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
                 file={selectedFile}
                 onUploadComplete={onUploadComplete}
                 onUploadProgress={(progress) => {
-                  console.log('Upload progress:', progress);
                 }}
               />
             ) : (

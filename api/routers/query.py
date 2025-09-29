@@ -23,6 +23,9 @@ from models.visual_query_models import (
     SetOperationConfig,
     SetOperationType,
     UnionOperationRequest,
+    SetOperationExportRequest,
+    UniversalExportRequest,
+    QueryType,
 )
 from core.duckdb_engine import (
     get_db_connection,
@@ -2200,167 +2203,6 @@ async def get_available_tables():
         return {"success": False, "tables": [], "count": 0, "error": str(e)}
 
 
-@router.post("/api/export/quick", tags=["Query"])
-async def quick_export(request: dict = Body(...)):
-    """智能快速导出：优先使用SQL重新查询完整数据，备用前端数据"""
-    import pandas as pd  # 移到函数开头，避免作用域问题
-
-    try:
-        logger.info(f"快速导出请求: {request}")
-
-        # 获取请求参数
-        sql_query = request.get("sql", "")
-        original_datasource = request.get("originalDatasource")
-        filename = request.get("filename", "export_data")
-
-        # 备用参数（当无法使用SQL时）
-        fallback_data = request.get("fallback_data", [])
-        fallback_columns = request.get("fallback_columns", [])
-
-        df = None
-
-        # 优先使用SQL重新查询完整数据
-        if sql_query:
-            logger.info(f"使用SQL重新查询完整数据进行导出: {sql_query}")
-            try:
-                # 根据数据源类型处理
-                if original_datasource:
-                    datasource_type = original_datasource.get("type", "duckdb")
-                    datasource_id = original_datasource.get("id", "")
-                else:
-                    # 如果originalDatasource为None，通过SQL特征判断类型
-                    # MySQL通常会有引号包围表名，DuckDB也会，但DuckDB查询通常来自内置表
-                    datasource_type = "duckdb"  # 默认为DuckDB
-                    datasource_id = ""
-                    logger.info(f"originalDatasource为None，默认使用DuckDB处理")
-
-                if datasource_type == "mysql" and datasource_id:
-                    # MySQL查询 - 使用相同的逻辑处理
-                    from core.database_manager import db_manager
-
-                    # 智能移除系统添加的LIMIT，保留用户原始SQL
-                    clean_sql = remove_auto_added_limit(sql_query)
-                    logger.info(f"MySQL导出，清理后的SQL: {clean_sql}")
-
-                    # 执行完整查询
-                    df = db_manager.execute_query(datasource_id, clean_sql)
-                    logger.info(f"MySQL导出查询完成，数据形状: {df.shape}")
-
-                else:
-                    # DuckDB查询
-                    con = get_db_connection()
-                    clean_sql = remove_auto_added_limit(sql_query)
-                    logger.info(f"DuckDB导出，清理后的SQL: {clean_sql}")
-
-                    df = execute_query(clean_sql, con)
-                    logger.info(f"DuckDB导出查询完成，数据形状: {df.shape}")
-
-            except Exception as sql_error:
-                logger.warning(f"SQL查询导出失败，降级为前端数据导出: {sql_error}")
-                df = None
-
-        # 备用方案：使用前端传递的数据
-        if df is None:
-            logger.info("使用前端传递的数据进行导出（备用方案）")
-            if not fallback_data:
-                raise HTTPException(status_code=400, detail="没有数据可导出")
-            if not fallback_columns:
-                raise HTTPException(status_code=400, detail="缺少列信息")
-
-            df = pd.DataFrame(fallback_data, columns=fallback_columns)
-
-        # 处理数据类型和空值
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)
-        df = df.where(pd.notnull(df), None)
-
-        # 生成Excel文件
-        output = io.BytesIO()
-        try:
-            # 处理字符编码问题：确保所有文本列都是UTF-8编码
-            def safe_encode_text(x):
-                if x is None or pd.isna(x):
-                    return None
-                try:
-                    if isinstance(x, bytes):
-                        # 如果是bytes，尝试解码为unicode
-                        for encoding in ["utf-8", "gbk", "gb2312", "latin1"]:
-                            try:
-                                return x.decode(encoding)
-                            except UnicodeDecodeError:
-                                continue
-                        # 如果所有编码都失败，使用错误处理
-                        return x.decode("utf-8", errors="replace")
-                    else:
-                        # 确保是字符串，并替换不可打印字符
-                        text = str(x)
-                        # 移除或替换控制字符和不可见字符
-                        import re
-
-                        text = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", text)
-                        return text
-                except Exception:
-                    return str(x) if x is not None else None
-
-            # 对所有object类型的列应用编码修复
-            for col in df.columns:
-                if df[col].dtype == "object":
-                    df[col] = df[col].apply(safe_encode_text)
-
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                df.to_excel(writer, index=False, sheet_name="Data")
-            output.seek(0)
-
-            # 验证生成的Excel文件
-            if output.getvalue() == b"":
-                raise ValueError("生成的Excel文件为空")
-
-            logger.info(f"Excel文件生成成功，大小: {len(output.getvalue())} bytes")
-
-        except Exception as e:
-            logger.error(f"Excel文件生成失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Excel文件生成失败: {str(e)}")
-
-        # 生成安全的文件名，确保只包含ASCII字符
-        import re
-        import urllib.parse
-
-        # 移除或替换非ASCII字符
-        safe_filename = re.sub(r"[^\w\-_.]", "_", filename)
-        # 确保文件名只包含ASCII字符
-        safe_filename = safe_filename.encode("ascii", "ignore").decode("ascii")
-        if not safe_filename.endswith(".xlsx"):
-            safe_filename += ".xlsx"
-
-        # 如果文件名为空或只有扩展名，使用默认名称
-        if not safe_filename or safe_filename == ".xlsx":
-            safe_filename = "export_data.xlsx"
-
-        # 使用RFC 6266标准的文件名编码
-        encoded_filename = urllib.parse.quote(safe_filename)
-
-        # 返回文件流
-        headers = {
-            "Content-Disposition": f"attachment; filename=\"{safe_filename}\"; filename*=UTF-8''{encoded_filename}",
-            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
-        }
-
-        return StreamingResponse(
-            io.BytesIO(output.getvalue()),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers=headers,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"快速导出失败: {str(e)}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"快速导出失败: {str(e)}")
-
-
 # 新增增强查询接口
 @router.post("/api/query/enhanced", tags=["Query"])
 async def perform_query_enhanced(query_request: QueryRequest):
@@ -2949,6 +2791,7 @@ async def execute_set_operation(request: SetOperationRequest):
         if request.preview or (not request.save_as_table):
             # 预览模式或默认执行：在子查询级别应用限制，避免大数据集内存问题
             from core.config_manager import config_manager
+
             limit = config_manager.get_app_config().max_query_rows
             sql = generate_set_operation_sql(config, preview_limit=limit)
         else:
@@ -3289,3 +3132,533 @@ async def simple_union_operation(request: UnionOperationRequest):
             "errors": [f"操作失败: {str(e)}"],
             "warnings": [],
         }
+
+
+@router.post("/api/set-operations/export", tags=["Set Operations"])
+async def export_set_operation(request: SetOperationExportRequest):
+    """
+    集合操作异步导出 - 使用DuckDB COPY命令
+
+    支持Excel、CSV、Parquet格式，使用DuckDB COPY命令直接导出完整数据，
+    避免内存限制问题。
+    """
+    import uuid
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from core.task_manager import task_manager
+
+    try:
+        config = request.config
+        export_format = request.format
+        custom_filename = request.filename
+
+        logger.info(
+            f"开始集合操作导出: 格式={export_format}, 操作类型={config.operation_type}"
+        )
+
+        # 生成完整SQL（无LIMIT）
+        sql = generate_set_operation_sql(config)
+        logger.info(f"生成的完整SQL: {sql}")
+
+        # 创建异步导出任务
+        task_id = str(uuid.uuid4())
+
+        # 生成文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if custom_filename:
+            base_filename = custom_filename
+        else:
+            operation_name = config.operation_type.replace(" ", "_").lower()
+            base_filename = f"set_operation_{operation_name}_{timestamp}"
+
+        # 根据格式确定文件扩展名和DuckDB COPY格式
+        if export_format == "csv":
+            file_extension = "csv"
+            copy_format = "CSV"
+            copy_options = "HEADER"
+        elif export_format == "parquet":
+            file_extension = "parquet"
+            copy_format = "PARQUET"
+            copy_options = ""
+        elif export_format == "excel":
+            file_extension = "xlsx"
+            copy_format = "CSV"  # 先导出为CSV，然后转换为Excel
+            copy_options = "HEADER"
+        else:
+            raise ValueError(f"不支持的导出格式: {export_format}")
+
+        # 构建文件路径
+        filename = f"{base_filename}.{file_extension}"
+        file_path = f"/app/exports/{filename}"
+
+        # 创建任务记录
+        task_info = {
+            "task_id": task_id,
+            "type": "set_operation_export",
+            "status": "running",
+            "created_at": datetime.now().isoformat(),
+            "config": config.dict(),
+            "format": export_format,
+            "filename": filename,
+            "file_path": file_path,
+            "progress": 0,
+            "message": "正在准备导出...",
+        }
+
+        # 注册任务
+        task_manager.add_task(task_id, task_info)
+
+        # 在后台线程中执行导出任务
+        def export_task():
+            try:
+                # 更新任务状态
+                task_manager.update_task(
+                    task_id,
+                    {
+                        "status": "running",
+                        "progress": 10,
+                        "message": "正在连接数据库...",
+                    },
+                )
+
+                # 获取数据库连接
+                con = get_db_connection()
+
+                # 更新任务状态
+                task_manager.update_task(
+                    task_id, {"progress": 30, "message": "正在执行查询..."}
+                )
+
+                if export_format == "excel":
+                    # Excel需要特殊处理：先导出为CSV，然后转换为Excel
+                    csv_path = file_path.replace(".xlsx", ".csv")
+                    copy_sql = f"COPY ({sql}) TO '{csv_path}' (FORMAT {copy_format}, {copy_options})"
+
+                    logger.info(f"执行CSV导出: {copy_sql}")
+                    con.execute(copy_sql)
+
+                    # 更新任务状态
+                    task_manager.update_task(
+                        task_id, {"progress": 70, "message": "正在转换为Excel格式..."}
+                    )
+
+                    # 将CSV转换为Excel
+                    import pandas as pd
+
+                    df = pd.read_csv(csv_path)
+                    df.to_excel(file_path, index=False)
+
+                    # 删除临时CSV文件
+                    import os
+
+                    os.remove(csv_path)
+
+                else:
+                    # 直接使用DuckDB COPY命令
+                    copy_sql = f"COPY ({sql}) TO '{file_path}' (FORMAT {copy_format}, {copy_options})"
+
+                    logger.info(f"执行导出: {copy_sql}")
+                    con.execute(copy_sql)
+
+                # 检查文件是否创建成功
+                import os
+
+                if not os.path.exists(file_path):
+                    raise Exception("导出文件未创建")
+
+                file_size = os.path.getsize(file_path)
+
+                # 更新任务状态为完成
+                task_manager.update_task(
+                    task_id,
+                    {
+                        "status": "completed",
+                        "progress": 100,
+                        "message": f"导出完成，文件大小: {file_size / 1024 / 1024:.2f} MB",
+                        "file_size": file_size,
+                        "download_url": f"/api/async-tasks/{task_id}/download",
+                    },
+                )
+
+                logger.info(f"集合操作导出完成: {filename}, 大小: {file_size} bytes")
+
+            except Exception as e:
+                logger.error(f"导出任务执行失败: {str(e)}")
+                task_manager.update_task(
+                    task_id,
+                    {
+                        "status": "failed",
+                        "progress": 0,
+                        "message": f"导出失败: {str(e)}",
+                        "error": str(e),
+                    },
+                )
+
+        # 在后台线程中执行导出任务
+        executor = ThreadPoolExecutor(max_workers=1)
+        executor.submit(export_task)
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "message": "导出任务已创建，请稍后查看异步任务列表",
+            "filename": filename,
+            "format": export_format,
+        }
+
+    except Exception as e:
+        logger.error(f"集合操作导出失败: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"创建导出任务失败: {str(e)}",
+        }
+
+
+@router.post("/api/export/universal", tags=["Export"])
+async def universal_export(request: UniversalExportRequest):
+    """
+    通用导出API - 支持所有查询类型
+
+    根据查询类型自动选择最佳导出策略：
+    - 集合操作：使用DuckDB COPY异步导出
+    - 其他查询：使用SQL重新查询同步导出
+    """
+    import uuid
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from core.task_manager import task_manager
+
+    try:
+        query_type = request.query_type
+        sql_query = request.sql_query
+        export_format = request.format
+        custom_filename = request.filename
+
+        logger.info(f"通用导出请求: 类型={query_type}, 格式={export_format}")
+
+        # 生成文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if custom_filename:
+            base_filename = custom_filename
+        else:
+            type_name = query_type.replace("_", " ").title()
+            base_filename = f"{type_name.lower()}_{timestamp}"
+
+        # 根据格式确定文件扩展名
+        if export_format == "csv":
+            file_extension = "csv"
+        elif export_format == "parquet":
+            file_extension = "parquet"
+        elif export_format == "excel":
+            file_extension = "xlsx"
+        else:
+            raise ValueError(f"不支持的导出格式: {export_format}")
+
+        filename = f"{base_filename}.{file_extension}"
+
+        # 根据查询类型选择导出策略
+        if query_type == QueryType.SET_OPERATION:
+            # 集合操作：使用异步DuckDB COPY导出
+            return await _handle_set_operation_export(request, filename)
+        else:
+            # 其他查询：使用同步SQL重新查询导出
+            return await _handle_sql_export(request, filename)
+
+    except Exception as e:
+        logger.error(f"通用导出失败: {str(e)}")
+        return {"success": False, "error": str(e), "message": f"导出失败: {str(e)}"}
+
+
+async def _handle_set_operation_export(request: UniversalExportRequest, filename: str):
+    """处理集合操作异步导出"""
+    import uuid
+    from concurrent.futures import ThreadPoolExecutor
+    from core.task_manager import task_manager
+
+    if not request.set_operation_config:
+        raise ValueError("集合操作需要提供set_operation_config")
+
+    # 生成完整SQL（无LIMIT）
+    sql = generate_set_operation_sql(request.set_operation_config)
+    logger.info(f"集合操作SQL: {sql}")
+
+    # 创建异步导出任务
+    task_id = str(uuid.uuid4())
+    file_path = f"/app/exports/{filename}"
+
+    # 根据格式确定DuckDB COPY格式
+    if request.format == "csv":
+        copy_format = "CSV"
+        copy_options = "HEADER"
+    elif request.format == "parquet":
+        copy_format = "PARQUET"
+        copy_options = ""
+    elif request.format == "excel":
+        copy_format = "CSV"  # 先导出为CSV，然后转换为Excel
+        copy_options = "HEADER"
+    else:
+        raise ValueError(f"不支持的导出格式: {request.format}")
+
+    # 创建任务记录
+    task_info = {
+        "task_id": task_id,
+        "type": "universal_export",
+        "query_type": request.query_type,
+        "status": "running",
+        "created_at": datetime.now().isoformat(),
+        "format": request.format,
+        "filename": filename,
+        "file_path": file_path,
+        "progress": 0,
+        "message": "正在准备导出...",
+    }
+
+    # 注册任务
+    task_manager.add_task(task_id, task_info)
+
+    # 在后台线程中执行导出任务
+    def export_task():
+        try:
+            # 更新任务状态
+            task_manager.update_task(
+                task_id,
+                {
+                    "status": "running",
+                    "progress": 10,
+                    "message": "正在连接数据库...",
+                },
+            )
+
+            # 获取数据库连接
+            con = get_db_connection()
+
+            # 更新任务状态
+            task_manager.update_task(
+                task_id,
+                {
+                    "progress": 30,
+                    "message": "正在执行查询...",
+                },
+            )
+
+            if request.format == "excel":
+                # Excel需要特殊处理：先导出为CSV，然后转换为Excel
+                csv_path = file_path.replace(".xlsx", ".csv")
+                copy_sql = f"COPY ({sql}) TO '{csv_path}' (FORMAT {copy_format}, {copy_options})"
+
+                logger.info(f"执行CSV导出: {copy_sql}")
+                con.execute(copy_sql)
+
+                # 更新任务状态
+                task_manager.update_task(
+                    task_id,
+                    {
+                        "progress": 70,
+                        "message": "正在转换为Excel格式...",
+                    },
+                )
+
+                # 将CSV转换为Excel
+                import pandas as pd
+
+                df = pd.read_csv(csv_path)
+                df.to_excel(file_path, index=False)
+
+                # 删除临时CSV文件
+                import os
+
+                os.remove(csv_path)
+
+            else:
+                # 直接使用DuckDB COPY命令
+                copy_sql = f"COPY ({sql}) TO '{file_path}' (FORMAT {copy_format}, {copy_options})"
+
+                logger.info(f"执行导出: {copy_sql}")
+                con.execute(copy_sql)
+
+            # 检查文件是否创建成功
+            import os
+
+            if not os.path.exists(file_path):
+                raise Exception("导出文件未创建")
+
+            file_size = os.path.getsize(file_path)
+
+            # 更新任务状态为完成
+            task_manager.update_task(
+                task_id,
+                {
+                    "status": "completed",
+                    "progress": 100,
+                    "message": f"导出完成，文件大小: {file_size / 1024 / 1024:.2f} MB",
+                    "file_size": file_size,
+                    "download_url": f"/api/async-tasks/{task_id}/download",
+                },
+            )
+
+            logger.info(f"集合操作导出完成: {filename}, 大小: {file_size} bytes")
+
+        except Exception as e:
+            logger.error(f"导出任务执行失败: {str(e)}")
+            task_manager.update_task(
+                task_id,
+                {
+                    "status": "failed",
+                    "progress": 0,
+                    "message": f"导出失败: {str(e)}",
+                    "error": str(e),
+                },
+            )
+
+    # 在后台线程中执行导出任务
+    executor = ThreadPoolExecutor(max_workers=1)
+    executor.submit(export_task)
+
+    return {
+        "success": True,
+        "task_id": task_id,
+        "message": "导出任务已创建，请稍后查看异步任务列表",
+        "filename": filename,
+        "format": request.format,
+        "export_type": "async",
+    }
+
+
+async def _handle_sql_export(request: UniversalExportRequest, filename: str):
+    """处理SQL查询同步导出"""
+    import pandas as pd
+    import io
+
+    try:
+        # 清理SQL，移除自动添加的LIMIT
+        clean_sql = remove_auto_added_limit(request.sql_query)
+        logger.info(f"清理后的SQL: {clean_sql}")
+
+        # 根据数据源类型执行查询
+        if request.original_datasource:
+            datasource_type = request.original_datasource.get("type", "duckdb")
+            datasource_id = request.original_datasource.get("id", "")
+        else:
+            datasource_type = "duckdb"
+            datasource_id = ""
+
+        df = None
+
+        if datasource_type == "mysql" and datasource_id:
+            # MySQL查询
+            from core.database_manager import db_manager
+
+            df = db_manager.execute_query(datasource_id, clean_sql)
+        else:
+            # DuckDB查询
+            con = get_db_connection()
+            df = execute_query(clean_sql, con)
+
+        logger.info(f"查询完成，数据形状: {df.shape}")
+
+        # 处理数据类型和空值
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        df = df.where(pd.notnull(df), None)
+
+        # 根据格式生成文件
+        if request.format == "excel":
+            return await _generate_excel_response(df, filename)
+        elif request.format == "csv":
+            return await _generate_csv_response(df, filename)
+        elif request.format == "parquet":
+            return await _generate_parquet_response(df, filename)
+        else:
+            raise ValueError(f"不支持的导出格式: {request.format}")
+
+    except Exception as e:
+        logger.error(f"SQL导出失败: {str(e)}")
+        # 如果SQL导出失败，尝试使用备用数据
+        if request.fallback_data and request.fallback_columns:
+            logger.info("使用备用数据进行导出")
+            df = pd.DataFrame(request.fallback_data, columns=request.fallback_columns)
+
+            if request.format == "excel":
+                return await _generate_excel_response(df, filename)
+            elif request.format == "csv":
+                return await _generate_csv_response(df, filename)
+            elif request.format == "parquet":
+                return await _generate_parquet_response(df, filename)
+
+        raise e
+
+
+async def _generate_excel_response(df, filename):
+    """生成Excel响应"""
+    import pandas as pd
+    import io
+
+    output = io.BytesIO()
+
+    # 处理字符编码问题
+    def safe_encode_text(x):
+        if x is None or pd.isna(x):
+            return None
+        try:
+            if isinstance(x, bytes):
+                for encoding in ["utf-8", "gbk", "gb2312", "latin1"]:
+                    try:
+                        return x.decode(encoding)
+                    except UnicodeDecodeError:
+                        continue
+                return x.decode("utf-8", errors="replace")
+            else:
+                text = str(x)
+                import re
+
+                text = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", text)
+                return text
+        except Exception:
+            return str(x) if x is not None else None
+
+    # 应用文本处理
+    for col in df.columns:
+        if df[col].dtype == "object":
+            df[col] = df[col].apply(safe_encode_text)
+
+    # 生成Excel文件
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Data", index=False)
+
+    output.seek(0)
+
+    return StreamingResponse(
+        io.BytesIO(output.getvalue()),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+async def _generate_csv_response(df, filename):
+    """生成CSV响应"""
+    import io
+
+    output = io.StringIO()
+    df.to_csv(output, index=False, encoding="utf-8")
+    output.seek(0)
+
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+async def _generate_parquet_response(df, filename):
+    """生成Parquet响应"""
+    import io
+
+    output = io.BytesIO()
+    df.to_parquet(output, index=False)
+    output.seek(0)
+
+    return StreamingResponse(
+        io.BytesIO(output.getvalue()),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

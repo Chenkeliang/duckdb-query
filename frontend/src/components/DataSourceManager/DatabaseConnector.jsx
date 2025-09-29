@@ -110,7 +110,6 @@ const MySQLConnector = ({ onConnect }) => {
         setMySQLConfigs(result);
       }
     } catch (err) {
-      console.error('加载MySQL配置失败:', err);
     }
   };
 

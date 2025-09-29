@@ -156,7 +156,6 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
       }
     } catch (err) {
       setError(`执行失败: ${err.message || '未知错误'}`);
-      console.error("SQL执行错误:", err);
     } finally {
       setLoading(false);
     }

@@ -69,7 +69,6 @@ const AggregationControls = ({
       });
 
       if (hasInvalidData) {
-        console.error('[AggregationControls] 发现数据污染！列数据包含聚合函数名称:', {
           availableColumns,
           invalidColumns: availableColumns.filter(col => {
             const name = getColumnName(col);
@@ -83,7 +82,6 @@ const AggregationControls = ({
 
   // 调试日志：监控列数据变化
   useEffect(() => {
-    console.log('[AggregationControls] 列数据变化:', {
       tableId: selectedTable?.id,
       tableName: selectedTable?.name,
       columnsCount: availableColumns.length,
@@ -98,7 +96,6 @@ const AggregationControls = ({
 
   // 调试列选择框的渲染内容
   useEffect(() => {
-    console.log('[AggregationControls] 列选择框调试:', {
       availableColumnsLength: availableColumns.length,
       firstColumn: availableColumns[0],
       mappedColumns: availableColumns.map((column, index) => {
@@ -111,7 +108,6 @@ const AggregationControls = ({
 
   // 调试选中状态变化
   useEffect(() => {
-    console.log('[AggregationControls] 选中状态变化:', {
       selectedColumn,
       selectedCategory,
       selectedFunction,
@@ -142,8 +138,6 @@ const AggregationControls = ({
 
   // Get available aggregation functions for a column
   const getAvailableFunctions = (columnName, category = null) => {
-    console.log('🔧 [getAvailableFunctions] 被调用，参数:', { columnName, category });
-    console.log('🔧 [getAvailableFunctions] 当前状态:', {
       selectedColumn,
       selectedCategory,
       availableColumnsCount: availableColumns.length
@@ -151,9 +145,7 @@ const AggregationControls = ({
 
     // 如果没有选择列，返回所有基础聚合函数以供显示
     if (!columnName) {
-      console.log('🔧 [getAvailableFunctions] 没有选择列，返回所有基础选项');
       const allBasicOptions = AGGREGATION_OPTIONS.filter(opt => opt.category === 'basic');
-      console.log('🔧 [getAvailableFunctions] 所有基础选项:', allBasicOptions.map(opt => opt.displayName));
       return allBasicOptions;
     }
 
@@ -167,14 +159,12 @@ const AggregationControls = ({
         { value: 'MIN', displayName: '最小值', category: 'basic', description: '找出最小值' },
         { value: 'MAX', displayName: '最大值', category: 'basic', description: '找出最大值' }
       ];
-      console.log('🔧 [getAvailableFunctions] 强制返回所有 basic 选项 (备用保护机制):', forceBasicOptions.length, '个');
       return forceBasicOptions;
     }
 
     // 其他类别使用原始逻辑
     const column = availableColumns.find(col => getColumnName(col) === columnName);
     if (!column) {
-      console.log('[getAvailableFunctions] 找不到列:', { columnName, availableColumns });
       return AGGREGATION_OPTIONS;
     }
 
@@ -190,7 +180,6 @@ const AggregationControls = ({
       filteredOptions = filteredOptions.filter(option => option.category === category);
     }
 
-    console.log('[getAvailableFunctions] 函数筛选结果:', {
       columnName,
       dataType,
       category,
@@ -496,14 +485,10 @@ const AggregationControls = ({
                 <Select
                   value={selectedFunction}
                   onChange={(e) => {
-                    console.log('🔧 [Select] 聚合函数选择变化:', e.target.value);
                     setSelectedFunction(e.target.value);
                   }}
                   onOpen={() => {
-                    console.log('🔧 [Select] 聚合函数下拉框打开');
-                    console.log('🔧 [Select] 当前状态:', { selectedColumn, selectedCategory });
                     const options = getAvailableFunctions(selectedColumn, selectedCategory);
-                    console.log('🔧 [Select] 获取到的选项:', options.map(opt => opt.displayName));
                   }}
                   label="聚合函数"
                 >
@@ -518,10 +503,6 @@ const AggregationControls = ({
                       { value: 'MAX', displayName: '最大值', category: 'basic', description: '找出最大值' }
                     ];
 
-                    console.log('🔥 [添加功能修复] 聚合函数选择框渲染');
-                    console.log('🔥 [添加功能修复] 强制返回选项数量:', forceBasicOptions.length);
-                    console.log('🔥 [添加功能修复] 选项列表:', forceBasicOptions.map(opt => opt.displayName));
-                    console.log('🔥 [添加功能修复] 当前状态:', { selectedColumn, selectedCategory });
 
                     return forceBasicOptions.map((option) => (
                       <MenuItem key={option.value} value={option.value}>
@@ -583,22 +564,15 @@ const AggregationControls = ({
                             key={`aggregation-select-${index}-${Date.now()}`}
                             value={aggregation.function}
                             onChange={(e) => {
-                              console.log('🔧 [聚合函数修改] 选择新函数:', e.target.value);
                               handleUpdateFunction(index, e.target.value);
                             }}
                             onOpen={() => {
-                              console.log('🔧 [聚合函数修改] 下拉框打开，当前列:', aggregation.column);
                               const options = getAvailableFunctions(aggregation.column, 'basic');
-                              console.log('🔧 [聚合函数修改] 可用选项:', options.map(opt => opt.displayName));
-                              console.log('🔧 [聚合函数修改] getAvailableFunctions返回数量:', options.length);
 
                               // 强制状态刷新
                               setTimeout(() => {
-                                console.log('🔧 [聚合函数修改] 延迟检查DOM选项数量...');
                                 const menuItems = document.querySelectorAll('[role="option"], .MuiMenuItem-root');
-                                console.log('🔧 [聚合函数修改] DOM中实际选项数量:', menuItems.length);
                                 Array.from(menuItems).forEach((item, index) => {
-                                  console.log(`🔧 [聚合函数修改] DOM选项 ${index}:`, item.textContent.trim());
                                 });
                               }, 100);
                             }}
@@ -622,9 +596,6 @@ const AggregationControls = ({
                                 { value: 'MAX', displayName: '最大值', category: 'basic', description: '找出最大值' }
                               ];
 
-                              console.log('🔥 [强制修复] 聚合函数下拉框渲染，列:', aggregation.column);
-                              console.log('🔥 [强制修复] 返回选项数量:', forceAllOptions.length);
-                              console.log('🔥 [强制修复] 选项列表:', forceAllOptions.map(opt => opt.displayName));
 
                               return forceAllOptions.map((option) => (
                                 <MenuItem key={option.value} value={option.value}>

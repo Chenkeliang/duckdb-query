@@ -236,7 +236,6 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
   // 分块上传完成回调
   const handleChunkedUploadComplete = async (result) => {
-    console.log('分块上传完成:', result);
 
     if (result && result.fileInfo) {
       try {
@@ -266,7 +265,6 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
         }, 3000);
 
       } catch (err) {
-        console.error('处理分块上传结果失败:', err);
         setError('处理上传结果失败');
         showNotification('处理上传结果失败', 'error');
       }
@@ -421,7 +419,6 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                       tableAlias={tableAlias}
                       onUploadComplete={handleChunkedUploadComplete}
                       onUploadProgress={(progress) => {
-                        console.log('Upload progress:', progress);
                       }}
                     />
                   </>

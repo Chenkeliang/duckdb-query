@@ -13,7 +13,6 @@ export const useDebounce = (callback, delay = 1000) => {
 
     // 如果距离上次调用时间不足delay，则跳过
     if (timeSinceLastCall < delay) {
-      console.log(`useDebounce - 跳过调用，距离上次调用仅 ${timeSinceLastCall}ms`);
       return;
     }
 
@@ -52,11 +51,9 @@ class GlobalDebounceManager {
 
     // 如果距离上次调用时间不足delay，则跳过
     if (timeSinceLastCall < delay) {
-      console.log(`GlobalDebounce - 跳过调用 ${key}，距离上次调用仅 ${timeSinceLastCall}ms`);
       
       // 如果有正在进行的调用，返回该Promise
       if (this.pendingCalls.has(key)) {
-        console.log(`GlobalDebounce - 返回正在进行的调用 ${key}`);
         return this.pendingCalls.get(key);
       }
       
@@ -68,7 +65,6 @@ class GlobalDebounceManager {
     this.lastCallTimes.set(key, now);
 
     // 执行函数并缓存Promise
-    console.log(`GlobalDebounce - 执行调用 ${key}`);
     const promise = fn().finally(() => {
       // 调用完成后清除缓存
       this.pendingCalls.delete(key);

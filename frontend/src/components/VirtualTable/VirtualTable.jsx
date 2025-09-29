@@ -79,17 +79,6 @@ const VirtualTable = ({
       // 最终列宽：取表头宽度和内容宽度的最大值
       const finalWidth = Math.max(headerWidth, maxContentWidth, 100);
 
-      // 调试信息
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`列 ${index} (${col.field}):`, {
-          headerText,
-          headerWidth,
-          maxContentWidth,
-          maxContentLength,
-          finalWidth,
-          dataLength: data.length
-        });
-      }
 
       return finalWidth;
     });
@@ -104,16 +93,6 @@ const VirtualTable = ({
       const ratio = containerWidth / calculatedTotalWidth;
       const expandedWidths = columnWidths.map(width => Math.floor(width * ratio));
 
-      // 调试信息
-      if (process.env.NODE_ENV === 'development') {
-        console.log('📏 表格宽度调整:', {
-          calculatedTotalWidth,
-          containerWidth,
-          ratio,
-          originalWidths: columnWidths,
-          expandedWidths
-        });
-      }
 
       return {
         columnWidths: expandedWidths,

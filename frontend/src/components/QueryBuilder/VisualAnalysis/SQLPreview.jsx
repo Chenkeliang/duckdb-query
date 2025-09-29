@@ -39,7 +39,6 @@ const SQLPreview = ({
         setSqlMetadata(null);
       }
     } catch (error) {
-      console.error('SQL预览生成失败:', error);
       setGeneratedSQL(`-- SQL预览生成失败\n-- 错误: ${error.message}`);
       setSqlMetadata(null);
     }
@@ -51,7 +50,6 @@ const SQLPreview = ({
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
     } catch (error) {
-      console.error('复制失败:', error);
     }
   };
 

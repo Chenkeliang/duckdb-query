@@ -23,7 +23,6 @@ const SQLPreview = ({
         await navigator.clipboard.writeText(sqlContent);
         // 可以添加成功提示
       } catch (err) {
-        console.error('复制失败:', err);
       }
     }
   };

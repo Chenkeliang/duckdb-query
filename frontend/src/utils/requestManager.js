@@ -30,7 +30,6 @@ class RequestManager {
     const timeSinceLastRequest = now - lastTime;
 
     if (timeSinceLastRequest < debounceMs) {
-      console.log(`RequestManager - 跳过重复请求: ${key}, 距离上次请求 ${timeSinceLastRequest}ms`);
       return true;
     }
 
@@ -48,21 +47,18 @@ class RequestManager {
     if (this.shouldSkipRequest(key, debounceMs)) {
       // 如果有正在进行的相同请求，返回该请求的Promise
       if (this.pendingRequests.has(key)) {
-        console.log(`RequestManager - 返回正在进行的请求: ${key}`);
         return this.pendingRequests.get(key);
       }
 
       // 如果有缓存且在有效期内，返回缓存
       const cached = this.requestCache.get(key);
       if (cached && (Date.now() - cached.timestamp) < 5000) { // 5秒缓存
-        console.log(`RequestManager - 返回缓存结果: ${key}`);
         return Promise.resolve(cached.data);
       }
     }
 
     // 如果已有相同请求在进行中，返回该请求
     if (this.pendingRequests.has(key)) {
-      console.log(`RequestManager - 等待正在进行的请求: ${key}`);
       return this.pendingRequests.get(key);
     }
 
@@ -74,9 +70,6 @@ class RequestManager {
     // 创建新请求
     const fullUrl = url.startsWith('http') ? url : `${window.location.origin}${url}`;
 
-    console.log(`🚨 RequestManager - 执行请求: ${key} (第${count}次)`);
-    console.log(`🚨 请求URL: ${fullUrl}`);
-    console.log(`🚨 当前时间: ${new Date().toISOString()}`);
     const requestPromise = fetch(fullUrl, options)
       .then(async response => {
         if (!response.ok) {
@@ -94,7 +87,6 @@ class RequestManager {
         return data;
       })
       .catch(error => {
-        console.error(`RequestManager - 请求失败: ${key}`, error);
         throw error;
       })
       .finally(() => {
@@ -141,11 +133,7 @@ class RequestManager {
    * 专门用于数据库连接请求的方法
    */
   async getDatabaseConnections() {
-    console.log('RequestManager - getDatabaseConnections called');
-    console.log('当前时间:', new Date().toISOString());
-    console.log('当前请求统计:', this.getStats());
     const result = await this.executeRequest('/api/database_connections', {}, 2000); // 2秒防抖
-    console.log('RequestManager - getDatabaseConnections result:', result);
     return result;
   }
 

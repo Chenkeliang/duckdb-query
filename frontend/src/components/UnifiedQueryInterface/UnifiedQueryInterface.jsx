@@ -15,7 +15,8 @@ const UnifiedQueryInterface = ({
   selectedSources = [],
   setSelectedSources,
   onResultsReceived,
-  onDataSourceSaved
+  onDataSourceSaved,
+  onRefresh
 }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [sqlExecutorType, setSqlExecutorType] = useState('duckdb'); // 'mysql' 或 'duckdb'，默认显示内部数据
@@ -97,6 +98,7 @@ const UnifiedQueryInterface = ({
             selectedSources={selectedSources}
             setSelectedSources={setSelectedSources}
             onResultsReceived={handleQueryBuilderResults}
+            onRefresh={onRefresh}
           />
         )}
 

@@ -1,16 +1,12 @@
 import {
+    CloudUpload,
     ContentCopy,
     ExpandLess,
     ExpandMore,
-    Folder,
-    FolderOpen,
-    Schedule,
-    Storage,
-    TableChart,
-    CloudUpload,
-    QueryStats,
     History,
-    ViewList,
+    QueryStats,
+    TableChart,
+    ViewList
 } from '@mui/icons-material';
 import {
     Box,
@@ -32,27 +28,39 @@ import React, { useMemo, useState } from 'react';
 const TreeTableView = ({ tables = [], onTableSelect }) => {
     const [expandedGroups, setExpandedGroups] = useState(new Set());
 
-    // 按类型和时间分组表格
+    // 按类型和时间分组表格 - 重新设计的分类逻辑
     const groupedTables = useMemo(() => {
         const groups = {
             recent: [],
             async_results: [],
-            query_results: [],
-            uploads: [],
-            others: []
+            data_tables: [],
+            temp_tables: [],
+            system_tables: []
         };
 
         tables.forEach(table => {
+            if (!table || typeof table !== 'string') return;
             const tableLower = table.toLowerCase();
 
-            if (tableLower.startsWith('async_result_')) {
+            // 1. 异步任务结果表
+            if (tableLower.startsWith('async_result_') || tableLower.startsWith('task_')) {
                 groups.async_results.push(table);
-            } else if (tableLower.startsWith('query_result_')) {
-                groups.query_results.push(table);
-            } else if (tableLower.includes('_2025') || tableLower.includes('upload') || tableLower.includes('粘贴数据')) {
-                groups.uploads.push(table);
-            } else {
-                groups.others.push(table);
+            }
+            // 2. 临时表
+            else if (tableLower.includes('temp') || tableLower.includes('临时')) {
+                groups.temp_tables.push(table);
+            }
+            // 3. 数据表（用户自定义表名，不包含系统前缀）
+            else if (!tableLower.startsWith('async_result_') &&
+                !tableLower.startsWith('task_') &&
+                !tableLower.startsWith('query_result_') &&
+                !tableLower.includes('temp') &&
+                !tableLower.includes('临时')) {
+                groups.data_tables.push(table);
+            }
+            // 4. 系统表（兼容旧数据）
+            else {
+                groups.system_tables.push(table);
             }
         });
 
@@ -91,6 +99,9 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
     };
 
     const getTableIcon = (tableName) => {
+        if (!tableName || typeof tableName !== 'string') {
+            return <ViewList sx={{ fontSize: 16, color: '#757575' }} />;
+        }
         const lower = tableName.toLowerCase();
         if (lower.startsWith('async_result_')) return <QueryStats sx={{ fontSize: 16, color: '#ff9800' }} />;
         if (lower.startsWith('query_result_')) return <TableChart sx={{ fontSize: 16, color: '#4caf50' }} />;
@@ -114,29 +125,29 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                 bgColor: '#fff3e0',
                 description: `${groupedTables.async_results.length} 个表`
             },
-            query_results: {
-                label: '查询结果表',
-                icon: TableChart,
-                color: '#4caf50',
-                bgColor: '#e8f5e8',
-                description: `${groupedTables.query_results.length} 个表`
-            },
-            uploads: {
-                label: '上传文件表',
-                icon: CloudUpload,
+            data_tables: {
+                label: '数据表',
+                icon: ViewList,
                 color: '#2196f3',
                 bgColor: '#e3f2fd',
-                description: `${groupedTables.uploads.length} 个表`
+                description: `${groupedTables.data_tables.length} 个表`
             },
-            others: {
-                label: '其他表',
-                icon: ViewList,
+            temp_tables: {
+                label: '临时表',
+                icon: History,
+                color: '#ff5722',
+                bgColor: '#fbe9e7',
+                description: `${groupedTables.temp_tables.length} 个表`
+            },
+            system_tables: {
+                label: '系统表',
+                icon: TableChart,
                 color: '#757575',
                 bgColor: '#f5f5f5',
-                description: `${groupedTables.others.length} 个表`
+                description: `${groupedTables.system_tables.length} 个表`
             }
         };
-        return configs[groupKey] || configs.others;
+        return configs[groupKey] || configs.system_tables;
     };
 
     const renderTableGroup = (groupKey, tables) => {
@@ -148,9 +159,9 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
 
         return (
             <Box key={groupKey} sx={{ mb: 1 }}>
-                <Card 
+                <Card
                     elevation={0}
-                    sx={{ 
+                    sx={{
                         border: '1px solid',
                         borderColor: 'divider',
                         borderRadius: 2,
@@ -169,16 +180,16 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                 py: 1.5,
                                 px: 2,
                                 background: `linear-gradient(135deg, ${alpha(groupInfo.bgColor, 0.8)}, ${alpha(groupInfo.bgColor, 0.4)})`,
-                                '&:hover': { 
+                                '&:hover': {
                                     background: `linear-gradient(135deg, ${alpha(groupInfo.bgColor, 1)}, ${alpha(groupInfo.bgColor, 0.6)})`,
                                 }
                             }}
                         >
                             <ListItemIcon sx={{ minWidth: 36 }}>
-                                <Box 
-                                    sx={{ 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
+                                <Box
+                                    sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
                                         justifyContent: 'center',
                                         width: 28,
                                         height: 28,
@@ -214,8 +225,8 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                 }
                             />
                             <Box sx={{ ml: 1 }}>
-                                {isExpanded ? 
-                                    <ExpandLess sx={{ color: groupInfo.color }} /> : 
+                                {isExpanded ?
+                                    <ExpandLess sx={{ color: groupInfo.color }} /> :
                                     <ExpandMore sx={{ color: groupInfo.color }} />
                                 }
                             </Box>
@@ -264,7 +275,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                                 py: 1,
                                                 pr: 7, // 为复制按钮留出空间
                                                 minHeight: 44,
-                                                '&:hover': { 
+                                                '&:hover': {
                                                     backgroundColor: alpha(groupInfo.color, 0.08),
                                                     transform: 'translateX(4px)'
                                                 },
@@ -320,9 +331,9 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
 
     if (tables.length === 0) {
         return (
-            <Card 
+            <Card
                 elevation={0}
-                sx={{ 
+                sx={{
                     border: '1px dashed',
                     borderColor: 'divider',
                     borderRadius: 2,
@@ -346,9 +357,9 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
         <Box sx={{ width: '100%', p: 2 }}>
             {renderTableGroup('recent', groupedTables.recent)}
             {renderTableGroup('async_results', groupedTables.async_results)}
-            {renderTableGroup('query_results', groupedTables.query_results)}
-            {renderTableGroup('uploads', groupedTables.uploads)}
-            {renderTableGroup('others', groupedTables.others)}
+            {renderTableGroup('data_tables', groupedTables.data_tables)}
+            {renderTableGroup('temp_tables', groupedTables.temp_tables)}
+            {renderTableGroup('system_tables', groupedTables.system_tables)}
         </Box>
     );
 };

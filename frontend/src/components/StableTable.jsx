@@ -20,11 +20,20 @@ const StableTable = ({
   data = [],
   columns = [],
   pageSize = 20,
-  height = 600
+  height = 600,
+  originalDatasource = null
 }) => {
   const theme = useTheme();
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [currentPage, setCurrentPage] = useState(1);
+
+  // 根据数据源类型生成动态提示
+  const getHintText = (dataSource) => {
+    if (dataSource?.type === 'set_operation') {
+      return '提示：集合操作预览限制10,000行。如需完整结果，请使用"提交异步任务"功能，系统会自动根据结果生成新表';
+    }
+    return '提示：界面查询默认限制10,000行。如需完整结果，请使用异步任务功能，系统会自动根据结果生成新表';
+  };
 
   // 排序逻辑
   const sortedData = useMemo(() => {
@@ -126,7 +135,7 @@ const StableTable = ({
         border: '1px solid #bbdefb'
       }}>
         <Lightbulb size={16} />
-        <span>提示：界面查询默认限制10,000行。如需完整结果，请使用异步任务功能</span>
+        <span>{getHintText(originalDatasource)}</span>
       </Box>
 
       {/* 表格容器 */}

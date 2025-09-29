@@ -74,7 +74,6 @@ const PostgreSQLConnector = ({ onConnect }) => {
         setPostgreSQLConfigs(result);
       }
     } catch (err) {
-      console.error("加载PostgreSQL配置失败:", err);
     }
   };
 

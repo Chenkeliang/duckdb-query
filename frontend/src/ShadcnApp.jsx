@@ -20,10 +20,10 @@ import WelcomePage from "./components/WelcomePage";
 import { globalDebounce } from "./hooks/useDebounce";
 import {
   createDatabaseConnection,
-  getDuckDBTables,
+  getDuckDBTablesEnhanced,
   getMySQLDataSources,
   listDatabaseConnections,
-  testDatabaseConnection,
+  testDatabaseConnection
 } from "./services/apiClient";
 import requestManager from "./utils/requestManager";
 
@@ -57,7 +57,6 @@ const ShadcnApp = () => {
   const [dataSources, setDataSources] = useState([]);
   const [databaseConnections, setDatabaseConnections] = useState([]);
   const [selectedSources, setSelectedSources] = useState([]);
-  console.log("ShadcnApp - 当前选中的数据源:", selectedSources);
   const [queryResults, setQueryResults] = useState({ data: [], columns: [] });
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lastFetchTime, setLastFetchTime] = useState(0);
@@ -66,8 +65,6 @@ const ShadcnApp = () => {
 
   // 初始数据加载
   useEffect(() => {
-    console.log("ShadcnApp - 组件挂载，开始初始数据加载");
-    console.log("当前时间戳:", Date.now());
     loadInitialData(true); // 初始加载，强制执行
   }, []);
 
@@ -81,7 +78,7 @@ const ShadcnApp = () => {
   const loadInitialData = async (force = false) => {
     // 如果是强制刷新，跳过防抖
     if (force) {
-      await executeLoadInitialData();
+      await executeLoadInitialData(force);
       return;
     }
 
@@ -89,16 +86,16 @@ const ShadcnApp = () => {
     const debounceKey = `loadInitialData_${force ? "force" : "normal"}`;
 
     return globalDebounce.debounce(debounceKey, async () => {
-      await executeLoadInitialData();
+      await executeLoadInitialData(force);
     });
   };
 
-  const executeLoadInitialData = async () => {
+  const executeLoadInitialData = async (force = false) => {
     const now = Date.now();
+
 
     // 如果正在加载中，跳过
     if (isLoading) {
-      console.log("ShadcnApp - 跳过数据加载，正在加载中");
       return;
     }
 
@@ -106,16 +103,14 @@ const ShadcnApp = () => {
     setLastFetchTime(now);
 
     try {
-      console.log("🔄 ShadcnApp - 开始加载数据...");
 
       const [dataSourcesRes, connectionsRes, duckdbTablesRes] =
         await Promise.all([
           getMySQLDataSources(),
           listDatabaseConnections(),
-          getDuckDBTables(),
+          getDuckDBTablesEnhanced(force), // 传递force参数
         ]);
 
-      console.log("🔄 API调用完成，开始处理数据...");
 
       let allDataSources = [];
 
@@ -176,20 +171,12 @@ const ShadcnApp = () => {
       });
 
       setDataSources(allDataSources);
-      console.log("ShadcnApp - 更新后的数据源:", allDataSources);
-      console.log(
-        "ShadcnApp - 新数据源结构示例:",
-        allDataSources.length > 0
-          ? allDataSources[allDataSources.length - 1]
-          : "无数据源",
-      );
 
       // 检查selectedSources中的数据源是否仍然有效
       const validSelectedSources = selectedSources.filter((selectedSource) =>
         allDataSources.some((ds) => ds.id === selectedSource.id),
       );
       if (validSelectedSources.length !== selectedSources.length) {
-        console.log("ShadcnApp - 更新selectedSources，移除无效的数据源");
         setSelectedSources(validSelectedSources);
       }
 
@@ -201,9 +188,8 @@ const ShadcnApp = () => {
           [];
       }
       setDatabaseConnections(connections);
-      console.log("ShadcnApp - 数据加载完成");
     } catch (error) {
-      console.error("ShadcnApp - 加载初始数据失败:", error);
+      // 数据加载失败时的处理
     } finally {
       setIsLoading(false);
     }
@@ -213,7 +199,6 @@ const ShadcnApp = () => {
     // 清除请求管理器的缓存，确保获取最新数据
     requestManager.clearAllCache();
 
-    console.log("ShadcnApp - 触发数据刷新");
     // 强制刷新数据，不使用防抖
     loadInitialData(true);
   };
@@ -234,13 +219,11 @@ const ShadcnApp = () => {
       }
 
       const result = await response.json();
-      console.log("文件上传成功:", result);
 
       // 触发数据源列表刷新
       triggerRefresh();
       return result;
     } catch (error) {
-      console.error("文件上传错误:", error);
       throw error;
     }
   };
@@ -248,7 +231,6 @@ const ShadcnApp = () => {
   // 数据库连接处理函数
   const handleDatabaseConnect = async (connectionParams) => {
     try {
-      console.log("数据库连接参数:", connectionParams);
 
       // 对于MySQL数据源，使用数据库连接管理API
       if (connectionParams.type === "mysql") {
@@ -289,7 +271,6 @@ const ShadcnApp = () => {
         return { success: true, message: "数据库连接成功" };
       }
     } catch (error) {
-      console.error("数据库连接失败:", error);
       throw error;
     }
   };
@@ -409,7 +390,6 @@ const ShadcnApp = () => {
                   <DataUploadSection
                     onDataSourceSaved={triggerRefresh}
                     showNotification={(message, severity) => {
-                      console.log(`Toast通知: ${severity} - ${message}`);
 
                       // 使用系统现有的Toast组件
                       switch (severity) {
@@ -511,8 +491,8 @@ const ShadcnApp = () => {
                   onResultsReceived={setQueryResults}
                   onDataSourceSaved={(newDataSource) => {
                     triggerRefresh();
-                    console.log("新数据源已保存:", newDataSource);
                   }}
+                  onRefresh={triggerRefresh}
                 />
 
                 {/* 查询结果 */}
@@ -659,6 +639,10 @@ const ShadcnApp = () => {
                   setCurrentTab("sql");
                   // 设置查询语句到SQL执行器
                   setPreviewQuery(query);
+                }}
+                onTaskCompleted={(completedTask) => {
+                  // 异步任务完成时，刷新数据源列表
+                  triggerRefresh();
                 }}
               />
             </div>

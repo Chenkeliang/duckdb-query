@@ -57,7 +57,6 @@ const DataPreview = ({
         throw new Error(result.error || '查询执行失败');
       }
     } catch (err) {
-      console.error('预览查询失败:', err);
       setError(err.message);
       setPreviewData(null);
       setRowCount(null);
@@ -94,7 +93,6 @@ const DataPreview = ({
         }
       }
     } catch (err) {
-      console.warn('性能估算失败:', err);
       setEstimatedTime(null);
     }
   }, []);
@@ -154,7 +152,6 @@ const DataPreview = ({
           setEstimatedTime(null);
         }
       } catch (err) {
-        console.error('预览更新失败:', err);
         setError(err.message);
       }
     }, 500); // 500ms debounce

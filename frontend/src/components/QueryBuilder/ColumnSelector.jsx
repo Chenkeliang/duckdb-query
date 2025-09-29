@@ -49,7 +49,8 @@ const ColumnSelector = ({
 
   // 过滤列
   const filteredColumns = columns.filter(column => {
-    const columnName = typeof column === 'string' ? column : column.name;
+    const columnName = typeof column === 'string' ? column : (column?.name || '');
+    if (!columnName || typeof columnName !== 'string') return false;
     return columnName.toLowerCase().includes(searchTerm.toLowerCase());
   });
 

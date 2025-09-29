@@ -149,6 +149,15 @@ async def get_available_tables():
                     }
                 )
 
+        # 按创建时间排序：最新的在前，没有创建时间的在最后
+        def sort_key(table):
+            created_at = table.get("created_at")
+            if created_at is None:
+                return "1970-01-01T00:00:00"  # 没有创建时间的排在最后
+            return created_at
+
+        table_info.sort(key=sort_key, reverse=True)  # 降序排列，最新的在前
+
         return {"success": True, "tables": table_info, "count": len(table_info)}
 
     except Exception as e:

@@ -23,21 +23,12 @@ export const ToastProvider = ({ children }) => {
 
   // 显示Toast的函数
   const showToast = useCallback((message, type = 'info', duration = 4000) => {
-    console.log('🔔 showToast调用:', { message, type, duration });
 
     // 检查DOM状态
     const rootElement = document.getElementById('root');
-    if (rootElement) {
-      console.log('Root元素状态:', {
-        ariaHidden: rootElement.getAttribute('aria-hidden'),
-        style: rootElement.style.cssText,
-        className: rootElement.className
-      });
-    }
 
     // 检查是否有其他Modal打开
     const modals = document.querySelectorAll('[role="dialog"], .MuiModal-root, .MuiDialog-root');
-    console.log('发现的Modal/Dialog元素:', modals.length, modals);
 
     const id = Date.now() + Math.random();
     const newToast = {
@@ -48,17 +39,14 @@ export const ToastProvider = ({ children }) => {
       open: true
     };
 
-    console.log('创建新Toast:', newToast);
     setToasts(prev => {
       const newToasts = [...prev, newToast];
-      console.log('更新Toast列表:', newToasts);
       return newToasts;
     });
 
     // 自动隐藏
     if (duration > 0) {
       setTimeout(() => {
-        console.log('⏰ 自动隐藏Toast:', id);
         hideToast(id);
       }, duration);
     }
@@ -109,7 +97,6 @@ export const ToastProvider = ({ children }) => {
 
       {/* 渲染所有Toast */}
       {toasts.map((toast, index) => {
-        console.log('🎨 渲染Toast:', toast, '索引:', index);
         return (
           <Snackbar
             key={toast.id}

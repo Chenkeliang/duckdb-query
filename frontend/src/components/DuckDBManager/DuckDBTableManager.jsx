@@ -26,7 +26,7 @@ import {
 } from '@mui/material';
 import { Database } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { deleteDuckDBTable, getDuckDBTables } from '../../services/apiClient';
+import { deleteDuckDBTableEnhanced, getDuckDBTablesEnhanced } from '../../services/apiClient';
 
 const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
   const [tables, setTables] = useState([]);
@@ -44,7 +44,7 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
     setError('');
 
     try {
-      const response = await getDuckDBTables();
+      const response = await getDuckDBTablesEnhanced();
       if (response.success) {
         // 按创建时间倒序排序
         const sortedTables = (response.tables || []).sort((a, b) => {
@@ -103,7 +103,7 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
     setError('');
 
     try {
-      const result = await deleteDuckDBTable(tableToDelete.table_name);
+      const result = await deleteDuckDBTableEnhanced(tableToDelete.table_name);
       if (result.success) {
         // 重新加载表列表
         await loadTables();

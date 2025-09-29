@@ -42,20 +42,16 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
 
   // 组件挂载时重置状态
   useEffect(() => {
-    console.log('ChunkedUploader useEffect triggered, file:', file);
 
     if (file) {
-      console.log('File provided to ChunkedUploader:', file.name);
       // 重置上传状态，等待用户手动开始
       setIsUploadStarted(false);
       isMountedRef.current = true;
     } else {
-      console.log('No file provided to ChunkedUploader');
     }
 
     // 清理函数
     return () => {
-      console.log('ChunkedUploader 组件即将卸载');
       isMountedRef.current = false;
     };
   }, [file]);
@@ -88,7 +84,6 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
     try {
       await initializeUpload(file);
     } catch (error) {
-      console.error('上传过程中出现未处理的错误:', error);
       setIsUploadStarted(false);
       isMountedRef.current = true;
       if (isMountedRef.current) {
@@ -113,19 +108,12 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
         formData.append('table_alias', tableAlias);
       }
 
-      console.log('正在初始化上传...', {
-        fileName: file.name,
-        fileSize: file.size,
-        chunkSize: chunkSize
-      });
-
       const response = await fetch('/api/upload/init', {
         method: 'POST',
         body: formData
       });
 
       const data = await response.json();
-      console.log('上传初始化响应:', data);
 
       if (data.success) {
         const session = {
@@ -148,10 +136,8 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
           [data.upload_id]: session
         }));
 
-        console.log('开始上传分块...', session);
         // 开始上传分块
         await uploadChunks(session);
-        console.log('分块上传完成');
 
         return data.upload_id;
       } else {
@@ -160,7 +146,6 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
         throw error;
       }
     } catch (error) {
-      console.error('初始化上传失败:', error);
       if (error.message) {
         showError(`文件 "${file.name}" 上传失败: ${error.message}`);
       }
@@ -173,10 +158,8 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
     const { uploadId, file, chunkSize, totalChunks } = session;
 
     try {
-      console.log(`开始上传 ${totalChunks} 个分块，每个分块大小: ${chunkSize} bytes`);
 
       for (let chunkNumber = 0; chunkNumber < totalChunks; chunkNumber++) {
-        console.log(`正在上传分块 ${chunkNumber + 1}/${totalChunks}`);
 
         // 检查是否已取消
         let currentSession = session; // 默认使用传入的会话
@@ -189,15 +172,12 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
           return prev;
         });
 
-        console.log(`当前会话状态:`, currentSession);
 
         if (!currentSession) {
-          console.log('会话不存在，上传被取消');
           return;
         }
 
         if (currentSession.status === 'cancelled') {
-          console.log('会话状态为已取消，上传被取消');
           return;
         }
 
@@ -205,7 +185,6 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
         const end = Math.min(start + chunkSize, file.size);
         const chunk = file.slice(start, end);
 
-        console.log(`分块 ${chunkNumber} 大小: ${chunk.size} bytes`);
 
         const formData = new FormData();
         formData.append('upload_id', uploadId);
@@ -218,7 +197,6 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
         });
 
         const data = await response.json();
-        console.log(`分块 ${chunkNumber} 上传响应:`, data);
 
         if (data.success) {
           // 更新进度
@@ -245,12 +223,10 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
         }
       }
 
-      console.log('所有分块上传完成，开始调用完成接口');
       // 完成上传
       await completeUpload(uploadId);
 
     } catch (error) {
-      console.error('上传分块失败:', error);
       setUploadSessions(prev => {
         const session = prev[uploadId];
         const errorMessage = error.message || '未知错误';
@@ -303,7 +279,6 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
         setUploadSessions(prev => {
           const session = prev[uploadId];
           if (!session) {
-            console.error("Session not found for uploadId:", uploadId);
             showError("An error occurred while completing the upload: session not found.");
             return prev;
           }
@@ -335,7 +310,6 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
         throw new Error(data.detail || '完成上传失败');
       }
     } catch (error) {
-      console.error('完成上传失败:', error);
       setUploadSessions(prev => {
         const session = prev[uploadId];
         const errorMessage = error.message || '未知错误';
@@ -375,7 +349,6 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
         }
       }));
     } catch (error) {
-      console.error('取消上传失败:', error);
     }
   };
 

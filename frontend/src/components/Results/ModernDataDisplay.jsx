@@ -32,7 +32,7 @@ import {
 import { BarChart3, Columns, Download, Grid3x3, RotateCcw, Save, Search, Table, X, Zap } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import { quickExport, saveQueryToDuckDB } from '../../services/apiClient';
+import { quickExport } from '../../services/apiClient';
 import QuickCharts from '../DataVisualization/QuickCharts';
 import StableTable from '../StableTable';
 import VirtualTable from '../VirtualTable/VirtualTable';
@@ -55,22 +55,6 @@ const ModernDataDisplay = ({
   isSetOperation = false,
   setOperationConfig = null,
 }) => {
-  // 调试日志 - 检查传入的props
-  console.log('ModernDataDisplay Props:', {
-    dataLength: data.length,
-    columnsLength: columns.length,
-    loading,
-    title,
-    sqlQuery,
-    originalDatasource,
-    hasOnDataSourceSaved: !!onDataSourceSaved,
-    isVisualQuery,
-    visualConfig,
-    generatedSQL,
-    isSetOperation,
-    setOperationConfig,
-    sampleData: data.slice(0, 2) // 显示前两行数据用于调试
-  });
 
   const theme = useTheme();
   const { showSuccess, showError } = useToast();
@@ -85,7 +69,7 @@ const ModernDataDisplay = ({
   const [renderMode, setRenderMode] = useState('agGrid'); // 'agGrid' 或 'virtual'
   const [viewMode, setViewMode] = useState('table'); // 'table' 或 'chart'
 
-  // 保存为数据源相关状态
+  // 保存到表相关状态
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [datasourceName, setDatasourceName] = useState('');
   const [tableAlias, setTableAlias] = useState('');
@@ -131,7 +115,6 @@ const ModernDataDisplay = ({
 
   // 调试 normalizedColumns
   if (process.env.NODE_ENV === 'development') {
-    console.log('Normalized Columns:', normalizedColumns);
   }
 
   // 当columns变化时，更新visibleColumns
@@ -290,7 +273,7 @@ const ModernDataDisplay = ({
     setColumnMenuAnchor(null);
   };
 
-  const handleExport = async (format) => {
+  const handleLegacyExport = async (format) => {
     try {
       handleExportMenuClose();
 
@@ -359,7 +342,6 @@ const ModernDataDisplay = ({
       }
 
     } catch (error) {
-      console.error('导出失败:', error);
       showError(`导出失败: ${error.message || '网络错误，请重试'}`);
     }
   };
@@ -379,7 +361,60 @@ const ModernDataDisplay = ({
     setCurrentPage(1);
   };
 
-  // 保存为数据源相关函数
+  // 统一导出函数 - 使用新的通用导出接口
+  const handleUniversalExport = async (format) => {
+    try {
+      handleExportMenuClose();
+      showSuccess('正在准备导出...');
+
+      // 构建通用导出请求
+      const exportRequest = {
+        query_type: isSetOperation ? 'set_operation' : 'custom_sql',
+        sql_query: sqlQuery || '',
+        format: format,
+        filename: null, // 让后端自动生成
+        original_datasource: originalDatasource,
+        set_operation_config: isSetOperation ? setOperationConfig : null,
+        visual_analysis_config: null,
+        fallback_data: data.length > 0 ? data : null,
+        fallback_columns: columns.length > 0 ? columns : null
+      };
+
+      const response = await fetch('/api/export/universal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(exportRequest)
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        if (result.export_type === 'async') {
+          // 异步导出（集合操作）
+          showSuccess(`导出任务已创建！任务ID: ${result.task_id}。请查看异步任务列表获取文件。`);
+        } else {
+          // 同步导出（其他查询）
+          showSuccess('导出完成！文件正在下载...');
+        }
+      } else {
+        showError(result.error || '导出失败');
+      }
+    } catch (error) {
+      showError(`导出失败: ${error.message}`);
+    }
+  };
+
+  // 旧版导出函数 - 重定向到新的统一导出
+  const handleExport = async (format) => {
+    return handleUniversalExport(format);
+  };
+
+  // 集合操作导出函数 - 重定向到新的统一导出
+  const handleSetOperationExport = async (format) => {
+    return handleUniversalExport(format);
+  };
+
+  // 保存到表相关函数
   const handleSaveAsDataSource = () => {
     setSaveDialogOpen(true);
     const timestamp = new Date().toLocaleString('zh-CN', {
@@ -417,44 +452,42 @@ const ModernDataDisplay = ({
     try {
       let result;
 
-      // 检查是否是集合操作结果
-      if (isSetOperation && setOperationConfig) {
-        console.log('使用集合操作API保存到表:', {
-          tableAlias: tableAlias.trim(),
-          setOperationConfig
-        });
+      // 统一使用异步任务保存到表
 
-        // 使用集合操作API保存
-        const response = await fetch('/api/set-operations/execute', {
+      // 构建异步任务请求
+      const asyncRequest = {
+        sql: sqlQuery,
+        format: 'parquet', // 保存到表不需要文件格式，但异步任务需要
+        custom_table_name: tableAlias.trim(),
+        task_type: 'save_to_table'
+      };
+
+      // 提交异步任务（设置超时，避免长时间等待）
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+
+      try {
+        const response = await fetch('/api/async_query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            config: setOperationConfig,
-            preview: false,
-            save_as_table: tableAlias.trim()
-          }),
+          body: JSON.stringify(asyncRequest),
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const errorData = await response.json();
-          throw new Error(errorData.errors?.[0] || '集合操作保存失败');
+          throw new Error(errorData.detail || '提交异步任务失败');
         }
 
         result = await response.json();
-      } else {
-        console.log('使用原有保存逻辑:', {
-          sqlQuery,
-          originalDatasource,
-          tableAlias: tableAlias.trim()
-        });
-
-        // 使用原有的保存逻辑
-        result = await saveQueryToDuckDB(
-          sqlQuery,
-          originalDatasource,
-          tableAlias.trim(),
-          null  // 不传递数据，让后端智能处理SQL并获取完整数据
-        );
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+          throw new Error('提交异步任务超时，请稍后查看异步任务列表');
+        }
+        throw error;
       }
 
       if (result.success) {
@@ -462,21 +495,22 @@ const ModernDataDisplay = ({
         setTableAlias('');
         setDatasourceName('');
 
-        const savedTableName = result.table_alias || result.saved_table;
-        showSuccess(`查询结果已保存为DuckDB表: ${savedTableName}`);
+        const taskId = result.task_id;
+        const tableName = tableAlias.trim();
+        showSuccess(`异步任务已提交！任务ID: ${taskId}，表名: ${tableName}。系统将自动根据查询结果生成新表，请到异步任务列表查看进度。`);
 
-        // 通知父组件数据源已保存
+        // 通知父组件数据源已保存（异步任务完成后会更新）
         if (onDataSourceSaved) {
           onDataSourceSaved({
-            id: savedTableName,
-            type: 'duckdb',
-            name: `DuckDB表: ${savedTableName}`,
-            row_count: result.row_count,
-            columns: result.columns
+            id: taskId,
+            type: 'async_task',
+            name: `异步任务: ${tableName}`,
+            status: 'pending',
+            task_id: taskId
           });
         }
       } else {
-        const errorMsg = result.message || '保存失败';
+        const errorMsg = result.message || '提交异步任务失败';
         setSaveError(errorMsg);
         showError(errorMsg);
       }
@@ -575,7 +609,7 @@ const ModernDataDisplay = ({
                 }}
                 title={`调试信息: data.length=${data.length}, sqlQuery="${sqlQuery}", loading=${loading}, 禁用条件: ${data.length === 0 ? '数据为空' : !sqlQuery ? 'SQL查询为空' : loading ? '正在加载' : '无'}`}
               >
-                保存为数据源
+                提交异步任务
                 {/* 临时调试信息 */}
                 {process.env.NODE_ENV === 'development' && (
                   <Typography variant="caption" sx={{ ml: 1, fontSize: '10px', opacity: 0.7 }}>
@@ -693,6 +727,7 @@ const ModernDataDisplay = ({
               columns={columnDefs}
               pageSize={pageSize}
               height={600}
+              originalDatasource={originalDatasource}
             />
           )}
         </Box>
@@ -729,8 +764,15 @@ const ModernDataDisplay = ({
         transformOrigin={{ horizontal: 'right', vertical: 'top' }}
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
       >
-        <MenuItem onClick={() => handleExport('excel')}>
+        {/* 通用多格式导出菜单 */}
+        <MenuItem onClick={() => handleUniversalExport('excel')}>
           导出为 Excel
+        </MenuItem>
+        <MenuItem onClick={() => handleUniversalExport('csv')}>
+          导出为 CSV
+        </MenuItem>
+        <MenuItem onClick={() => handleUniversalExport('parquet')}>
+          导出为 Parquet
         </MenuItem>
       </Menu>
 
@@ -781,9 +823,9 @@ const ModernDataDisplay = ({
         </Box>
       </Menu>
 
-      {/* 保存为数据源对话框 */}
+      {/* 保存到表对话框 */}
       <Dialog open={saveDialogOpen} onClose={handleSaveDialogClose} maxWidth="sm" fullWidth>
-        <DialogTitle>保存查询结果</DialogTitle>
+        <DialogTitle>提交异步保存任务</DialogTitle>
         <DialogContent>
           <FormControl component="fieldset" sx={{ mt: 2, mb: 2 }}>
             <FormLabel component="legend">保存方式</FormLabel>
@@ -804,13 +846,14 @@ const ModernDataDisplay = ({
             <TextField
               autoFocus
               margin="dense"
-              label="DuckDB表别名"
+              label="表名"
               fullWidth
               variant="outlined"
               value={tableAlias}
               onChange={(e) => setTableAlias(e.target.value)}
-              placeholder="请输入表别名，如: finished_orders"
-              helperText="表别名将作为DuckDB中的表名，可用于后续关联查询"
+              placeholder="请输入自定义表名，如: finished_orders"
+              helperText="此表将作为异步任务创建，系统会自动根据查询结果生成新表，完成后可在异步任务列表中查看和下载"
+              required
             />
           ) : (
             <TextField
@@ -844,7 +887,7 @@ const ModernDataDisplay = ({
             variant="contained"
             disabled={saving || !tableAlias.trim()}
           >
-            {saving ? '保存中...' : '保存'}
+            {saving ? '提交中...' : '提交异步任务'}
           </Button>
         </DialogActions>
       </Dialog>

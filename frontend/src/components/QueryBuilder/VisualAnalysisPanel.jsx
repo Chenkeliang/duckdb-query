@@ -35,19 +35,59 @@ const VisualAnalysisPanel = ({
   const shouldShowPanel = selectedSources.length === 1 && isVisible;
   const selectedTable = shouldShowPanel ? selectedSources[0] : null;
 
-  // 调试日志：监控表数据变化
+  // 状态管理：存储表的列信息
+  const [tableColumns, setTableColumns] = useState([]);
+
+  // 调试：监控 tableColumns 状态变化
+  useEffect(() => {
+    console.log('tableColumns 状态变化:', tableColumns);
+    console.log('tableColumns 长度:', tableColumns.length);
+    if (tableColumns.length > 0) {
+      console.log('第一个 tableColumn:', tableColumns[0]);
+    }
+  }, [tableColumns]);
+
+  // 监控表数据变化并获取列信息
   useEffect(() => {
     if (selectedTable) {
-      console.log('[VisualAnalysisPanel] 表数据变化:', {
-        tableId: selectedTable.id,
-        tableName: selectedTable.name,
-        columnsCount: selectedTable.columns?.length || 0,
-        columnsPreview: selectedTable.columns?.slice(0, 3).map(col =>
-          typeof col === 'string' ? col : col.name
-        )
-      });
+      console.log('VisualAnalysisPanel - selectedTable:', selectedTable);
+      console.log('VisualAnalysisPanel - selectedTable.columns:', selectedTable.columns);
+
+      // 如果表已经有列信息，直接使用
+      if (selectedTable.columns && selectedTable.columns.length > 0) {
+        console.log('使用已有的列信息:', selectedTable.columns);
+        console.log('第一个列的详细信息:', selectedTable.columns[0]);
+        // 创建新数组确保状态更新
+        setTableColumns([...selectedTable.columns]);
+      } else {
+        // 如果表没有列信息，需要获取列信息
+        console.log('需要获取列信息，调用API:', `/api/duckdb/table_schema/${selectedTable.id}`);
+        const fetchTableColumns = async () => {
+          try {
+            const response = await fetch(`/api/duckdb/table_schema/${selectedTable.id}`);
+            console.log('API响应状态:', response.status, response.ok);
+            if (response.ok) {
+              const data = await response.json();
+              console.log('API响应数据:', data);
+              if (data.success && data.columns) {
+                console.log('设置列信息:', data.columns);
+                setTableColumns(data.columns);
+              }
+            } else {
+              console.error('API响应错误:', response.status, response.statusText);
+            }
+          } catch (error) {
+            console.error('获取列信息失败:', error);
+            // 获取列信息失败时的处理
+            setTableColumns([]);
+          }
+        };
+        fetchTableColumns();
+      }
+    } else {
+      setTableColumns([]);
     }
-  }, [selectedTable?.id, selectedTable?.columns?.length]);
+  }, [selectedTable?.id]);
 
   // Basic state management for analysis configuration
   const [analysisConfig, setAnalysisConfig] = useState(() =>
@@ -95,7 +135,6 @@ const VisualAnalysisPanel = ({
 
       // Show warnings if any
       if (result.warnings && result.warnings.length > 0) {
-        console.warn('SQL生成警告:', result.warnings);
       }
 
       // Notify parent component of generated SQL
@@ -108,7 +147,6 @@ const VisualAnalysisPanel = ({
     } catch (err) {
       const errorMsg = `SQL生成失败: ${err.message}`;
       setError(errorMsg);
-      console.error('SQL generation error:', err);
     }
   };
 
@@ -246,7 +284,7 @@ const VisualAnalysisPanel = ({
                 {/* Column Selection - SELECT */}
                 <div>
                   <ColumnSelector
-                    selectedTable={selectedTable}
+                    selectedTable={{...selectedTable, columns: tableColumns}}
                     selectedColumns={analysisConfig.selectedColumns}
                     onColumnSelectionChange={handleColumnSelectionChange}
                     maxHeight={200}
@@ -270,7 +308,7 @@ const VisualAnalysisPanel = ({
                 {/* Filter Controls - WHERE */}
                 <div>
                   <FilterControls
-                    columns={selectedTable?.columns || []}
+                    columns={tableColumns}
                     filters={analysisConfig.filters || []}
                     onFiltersChange={handleFiltersChange}
                     disabled={isLoading}
@@ -280,7 +318,7 @@ const VisualAnalysisPanel = ({
                 {/* Sort Controls - ORDER BY */}
                 <div>
                   <SortControls
-                    columns={selectedTable?.columns || []}
+                    columns={tableColumns}
                     orderBy={analysisConfig.orderBy || []}
                     onOrderByChange={handleOrderByChange}
                     disabled={isLoading}

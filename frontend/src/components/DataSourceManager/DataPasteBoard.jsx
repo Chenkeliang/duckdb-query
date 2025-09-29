@@ -173,7 +173,6 @@ const DataPasteBoard = ({ onDataSourceSaved }) => {
         // 过滤掉列数不一致的行，但给出警告
         const inconsistentRows = rows.filter(row => row.length !== standardColumnCount);
         if (inconsistentRows.length > 0) {
-          console.warn(`发现 ${inconsistentRows.length} 行数据列数不一致，已自动过滤`);
           // 只保留列数一致的行
           const filteredRows = rows.filter(row => row.length === standardColumnCount);
           if (filteredRows.length === 0) {
@@ -252,10 +251,8 @@ const DataPasteBoard = ({ onDataSourceSaved }) => {
 
       const result = await response.json();
 
-      console.log('保存结果:', result);
 
       if (result.success) {
-        console.log('调用showSuccess:', `数据已成功保存到表: ${tableName}`);
         showSuccess(`数据已成功保存到表: ${tableName}`);
         if (onDataSourceSaved) {
           onDataSourceSaved({
@@ -271,7 +268,6 @@ const DataPasteBoard = ({ onDataSourceSaved }) => {
         // 清空表单
         clearForm();
       } else {
-        console.log('调用showError:', result.error || '数据保存失败');
         showError(result.error || '数据保存失败');
       }
     } catch (err) {
