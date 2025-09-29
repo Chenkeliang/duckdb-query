@@ -275,7 +275,7 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
                   {selectedTable.columns?.map((column, index) => (
                     <Chip
                       key={index}
-                      label={column}
+                      label={typeof column === 'string' ? column : column.name}
                       size="small"
                       variant="outlined"
                     />

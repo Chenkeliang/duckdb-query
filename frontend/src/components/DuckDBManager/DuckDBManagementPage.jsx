@@ -531,8 +531,8 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                       <TableBody>
                         {selectedTable.columns.map((column, index) => (
                           <TableRow key={index}>
-                            <TableCell>{column.column_name || column}</TableCell>
-                            <TableCell>{column.data_type || 'VARCHAR'}</TableCell>
+                            <TableCell>{typeof column === 'string' ? column : column.name}</TableCell>
+                            <TableCell>{typeof column === 'string' ? 'VARCHAR' : column.type}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
