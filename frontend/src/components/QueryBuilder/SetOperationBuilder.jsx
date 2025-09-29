@@ -8,6 +8,8 @@ import {
     Alert,
     Box,
     Button,
+    Checkbox,
+    Chip,
     Dialog,
     DialogActions,
     DialogContent,
@@ -18,6 +20,7 @@ import {
     Grid,
     IconButton,
     InputLabel,
+    ListItemText,
     MenuItem,
     Paper,
     Select,
@@ -39,9 +42,6 @@ const SetOperationBuilder = ({
         use_by_name: false
     });
 
-    const [errors, setErrors] = useState([]);
-    const [warnings, setWarnings] = useState([]);
-    const [validationResult, setValidationResult] = useState(null);
     const [columnMappingDialog, setColumnMappingDialog] = useState({
         open: false,
         tableIndex: -1,
@@ -155,16 +155,21 @@ const SetOperationBuilder = ({
                 return table;
             })
         }));
+
+        // 如果是BY NAME模式且选择了表名，自动打开列选择对话框
+        if (field === 'table_name' && value && config.use_by_name) {
+            handleOpenColumnMapping(index);
+        }
     };
 
-    // 打开列映射对话框
+    // 打开列选择对话框
     const handleOpenColumnMapping = (index) => {
         const table = config.tables[index];
         setColumnMappingDialog({
             open: true,
             tableIndex: index,
             tableName: table.table_name,
-            columns: table.column_mappings || []
+            columns: table.selected_columns || []
         });
     };
 
@@ -178,85 +183,14 @@ const SetOperationBuilder = ({
         });
     };
 
-    // 保存列映射
+    // 保存列选择
     const handleSaveColumnMapping = () => {
         const { tableIndex, columns } = columnMappingDialog;
-        handleTableChange(tableIndex, 'column_mappings', columns);
+        handleTableChange(tableIndex, 'selected_columns', columns);
         handleCloseColumnMapping();
     };
 
-    // 添加列映射
-    const handleAddColumnMapping = () => {
-        setColumnMappingDialog(prev => ({
-            ...prev,
-            columns: [...prev.columns, { source_column: '', target_column: '' }]
-        }));
-    };
 
-    // 更新列映射
-    const handleUpdateColumnMapping = (index, field, value) => {
-        setColumnMappingDialog(prev => ({
-            ...prev,
-            columns: prev.columns.map((mapping, i) =>
-                i === index ? { ...mapping, [field]: value } : mapping
-            )
-        }));
-    };
-
-    // 删除列映射
-    const handleRemoveColumnMapping = (index) => {
-        setColumnMappingDialog(prev => ({
-            ...prev,
-            columns: prev.columns.filter((_, i) => i !== index)
-        }));
-    };
-
-    // 验证配置
-    const validateConfig = () => {
-        const newErrors = [];
-        const newWarnings = [];
-
-        // 检查表数量
-        if (config.tables.length < 2) {
-            newErrors.push('至少需要选择两个表');
-        }
-
-        // 检查表名
-        config.tables.forEach((table, index) => {
-            if (!table.table_name) {
-                newErrors.push(`表 ${index + 1} 未选择表名`);
-            }
-        });
-
-        // 检查BY NAME模式的列映射
-        if (config.use_by_name) {
-            config.tables.forEach((table, index) => {
-                if (!table.column_mappings || table.column_mappings.length === 0) {
-                    newErrors.push(`表 ${table.table_name} 在BY NAME模式下必须提供列映射`);
-                }
-            });
-        }
-
-        // 检查操作类型支持
-        if (config.use_by_name && !['UNION', 'UNION ALL'].includes(config.operation_type)) {
-            newErrors.push('只有UNION和UNION ALL支持BY NAME模式');
-        }
-
-        // 性能警告
-        if (config.tables.length > 5) {
-            newWarnings.push('表数量较多，查询性能可能较慢');
-        }
-
-        setErrors(newErrors);
-        setWarnings(newWarnings);
-        setValidationResult({
-            is_valid: newErrors.length === 0,
-            errors: newErrors,
-            warnings: newWarnings
-        });
-
-        return newErrors.length === 0;
-    };
 
     // 获取表列信息（模拟）
     const getTableColumns = (tableName) => {
@@ -310,53 +244,51 @@ const SetOperationBuilder = ({
                 </Alert>
             )}
 
-            <Divider sx={{ my: 2 }} />
-
-
-            {/* 验证结果 */}
-            {validationResult && (
-                <Box sx={{ mt: 2 }}>
-                    {validationResult.is_valid ? (
-                        <Alert severity="success" icon={<CheckCircle />}>
-                            配置验证通过
-                        </Alert>
-                    ) : (
-                        <Alert severity="error" icon={<Error />}>
-                            配置验证失败
-                        </Alert>
-                    )}
-
-                    {errors.length > 0 && (
-                        <Box sx={{ mt: 1 }}>
-                            {errors.map((error, index) => (
-                                <Alert key={index} severity="error" sx={{ mb: 1 }}>
-                                    {error}
-                                </Alert>
-                            ))}
-                        </Box>
-                    )}
-
-                    {warnings.length > 0 && (
-                        <Box sx={{ mt: 1 }}>
-                            {warnings.map((warning, index) => (
-                                <Alert key={index} severity="warning" sx={{ mb: 1 }}>
-                                    {warning}
-                                </Alert>
-                            ))}
-                        </Box>
-                    )}
+            {/* 显示已选择的列 */}
+            {config.use_by_name && config.tables.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 500 }}>
+                        已选择的列
+                    </Typography>
+                    {config.tables.map((table, index) => (
+                        <Paper key={index} sx={{ p: 2, mb: 1 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500, mb: 1 }}>
+                                {table.table_name}
+                            </Typography>
+                            {table.selected_columns && table.selected_columns.length > 0 ? (
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                    {table.selected_columns.map((column, colIndex) => (
+                                        <Chip
+                                            key={colIndex}
+                                            label={column}
+                                            size="small"
+                                            variant="outlined"
+                                        />
+                                    ))}
+                                </Box>
+                            ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                    未选择列
+                                </Typography>
+                            )}
+                            <Button
+                                size="small"
+                                onClick={() => handleOpenColumnMapping(index)}
+                                sx={{ mt: 1 }}
+                            >
+                                选择列
+                            </Button>
+                        </Paper>
+                    ))}
                 </Box>
             )}
 
+            <Divider sx={{ my: 2 }} />
+
+
+
             {/* 操作按钮 */}
             <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-                <Button
-                    variant="contained"
-                    onClick={validateConfig}
-                    startIcon={<CheckCircle />}
-                >
-                    验证配置
-                </Button>
                 <Button
                     variant="outlined"
                     onClick={() => setConfig({
@@ -377,65 +309,38 @@ const SetOperationBuilder = ({
                 fullWidth
             >
                 <DialogTitle>
-                    配置列映射 - {columnMappingDialog.tableName}
+                    选择列 - {columnMappingDialog.tableName}
                 </DialogTitle>
                 <DialogContent>
                     <Alert severity="info" sx={{ mb: 2 }}>
                         <Typography variant="body2">
-                            配置源表列与目标列名的映射关系。目标列名将用于结果表的列名。
+                            选择要包含在集合操作中的列。未选择的列将不会出现在结果中。
                         </Typography>
                     </Alert>
 
-                    <Box sx={{ mb: 2 }}>
-                        <Button
-                            variant="outlined"
-                            startIcon={<Add />}
-                            onClick={handleAddColumnMapping}
-                            size="small"
+                    <FormControl fullWidth>
+                        <InputLabel>选择列</InputLabel>
+                        <Select
+                            multiple
+                            value={columnMappingDialog.columns}
+                            label="选择列"
+                            onChange={(e) => {
+                                const selectedColumns = e.target.value;
+                                setColumnMappingDialog(prev => ({
+                                    ...prev,
+                                    columns: selectedColumns
+                                }));
+                            }}
+                            renderValue={(selected) => selected.join(', ')}
                         >
-                            添加映射
-                        </Button>
-                    </Box>
-
-                    {columnMappingDialog.columns.map((mapping, index) => (
-                        <Paper key={index} sx={{ p: 2, mb: 2 }}>
-                            <Grid container spacing={2} alignItems="center">
-                                <Grid item xs={5}>
-                                    <FormControl fullWidth>
-                                        <InputLabel>源列名</InputLabel>
-                                        <Select
-                                            value={mapping.source_column}
-                                            label="源列名"
-                                            onChange={(e) => handleUpdateColumnMapping(index, 'source_column', e.target.value)}
-                                        >
-                                            {getTableColumns(columnMappingDialog.tableName).map(column => (
-                                                <MenuItem key={column} value={column}>
-                                                    {column}
-                                                </MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl>
-                                </Grid>
-                                <Grid item xs={5}>
-                                    <TextField
-                                        fullWidth
-                                        label="目标列名"
-                                        value={mapping.target_column}
-                                        onChange={(e) => handleUpdateColumnMapping(index, 'target_column', e.target.value)}
-                                        placeholder="例如: user_id"
-                                    />
-                                </Grid>
-                                <Grid item xs={2}>
-                                    <IconButton
-                                        color="error"
-                                        onClick={() => handleRemoveColumnMapping(index)}
-                                    >
-                                        <Delete />
-                                    </IconButton>
-                                </Grid>
-                            </Grid>
-                        </Paper>
-                    ))}
+                            {getTableColumns(columnMappingDialog.tableName).map(column => (
+                                <MenuItem key={column} value={column}>
+                                    <Checkbox checked={columnMappingDialog.columns.indexOf(column) > -1} />
+                                    <ListItemText primary={column} />
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={handleCloseColumnMapping}>取消</Button>

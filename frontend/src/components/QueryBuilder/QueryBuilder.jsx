@@ -63,9 +63,9 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
   // 错误信息翻译函数
   const translateError = (errorMessage) => {
     if (!errorMessage) return errorMessage;
-    
+
     const errorTranslations = {
-      'Set operations can only apply to expressions with the same number of result columns': 
+      'Set operations can only apply to expressions with the same number of result columns':
         '集合操作只能应用于具有相同列数的表达式',
       'Binder Error: Set operations can only apply to expressions with the same number of result columns':
         '绑定错误：集合操作只能应用于具有相同列数的表达式',
