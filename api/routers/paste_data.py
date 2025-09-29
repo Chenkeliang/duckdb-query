@@ -254,7 +254,7 @@ async def get_pasted_tables():
                         "columns": len(schema_df),
                         "rows": row_count,
                         "schema": (
-                            schema_df.to_dict("records") if not schema_df.empty else []
+                            [{"name": row["column_name"], "type": row["column_type"]} for _, row in schema_df.iterrows()] if not schema_df.empty else []
                         ),
                     }
                 )
@@ -328,7 +328,7 @@ async def preview_pasted_table(table_name: str, limit: int = 100):
             "table_name": table_name,
             "total_rows": total_rows,
             "preview_rows": len(preview_df),
-            "columns": schema_df.to_dict("records") if not schema_df.empty else [],
+            "columns": [{"name": row["column_name"], "type": row["column_type"]} for _, row in schema_df.iterrows()] if not schema_df.empty else [],
             "data": preview_df.to_dict("records") if not preview_df.empty else [],
         }
 

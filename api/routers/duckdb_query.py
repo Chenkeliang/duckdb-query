@@ -127,25 +127,57 @@ async def get_available_tables():
                 # 只使用标准的 created_at 字段
                 createdAt = metadata.get("created_at") if metadata else None
 
+                # 统一列数据格式：转换为前端期望的对象数组格式
+                columns = []
+                for _, row in schema_df.iterrows():
+                    columns.append(
+                        {"name": row["column_name"], "type": row["column_type"]}
+                    )
+
                 table_info.append(
                     {
                         "table_name": table_name,
-                        "columns": schema_df.to_dict("records"),
-                        "column_count": len(schema_df),
+                        "columns": columns,
+                        "column_count": len(columns),
                         "row_count": row_count,
                         "created_at": createdAt,  # 使用标准的 created_at 字段
                     }
                 )
             except Exception as table_error:
                 logger.warning(f"获取表 {table_name} 信息失败: {str(table_error)}")
+
+                # 尝试从元数据获取列信息
+                metadata = file_datasource_manager.get_file_datasource(table_name)
+                createdAt = metadata.get("created_at") if metadata else None
+
+                # 处理元数据中的列信息
+                columns = []
+                if metadata and metadata.get("columns"):
+                    metadata_columns = metadata["columns"]
+                    if isinstance(metadata_columns, list) and len(metadata_columns) > 0:
+                        # 如果是字符串数组，转换为对象数组
+                        if isinstance(metadata_columns[0], str):
+                            columns = [
+                                {"name": col, "type": "VARCHAR"}
+                                for col in metadata_columns
+                            ]
+                        # 如果已经是对象数组，直接使用
+                        elif isinstance(metadata_columns[0], dict):
+                            columns = metadata_columns
+
+                # 尝试获取行数
+                row_count = 0
+                if metadata:
+                    row_count = metadata.get("row_count", 0)
+
                 table_info.append(
                     {
                         "table_name": table_name,
-                        "columns": [],
-                        "column_count": 0,
-                        "row_count": 0,
+                        "columns": columns,
+                        "column_count": len(columns),
+                        "row_count": row_count,
+                        "created_at": createdAt,
                         "error": str(table_error),
-                        "created_at": None,  # 使用标准的 created_at 字段
                     }
                 )
 

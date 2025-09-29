@@ -779,9 +779,17 @@ def get_table_info(table_name: str, con=None) -> Dict[str, Any]:
         count_result = con.execute(count_query).fetchone()
         row_count = count_result[0] if count_result else 0
 
+        # 统一列数据格式：转换为前端期望的对象数组格式
+        columns = []
+        for _, row in schema_df.iterrows():
+            columns.append({
+                "name": row["column_name"],
+                "type": row["column_type"]
+            })
+
         return {
             "table_name": table_name,
-            "columns": schema_df.to_dict("records"),
+            "columns": columns,
             "row_count": row_count,
         }
     except Exception as e:
