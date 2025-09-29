@@ -284,7 +284,7 @@ const VisualAnalysisPanel = ({
                 {/* Column Selection - SELECT */}
                 <div>
                   <ColumnSelector
-                    selectedTable={{...selectedTable, columns: tableColumns}}
+                    selectedTable={{ ...selectedTable, columns: tableColumns }}
                     selectedColumns={analysisConfig.selectedColumns}
                     onColumnSelectionChange={handleColumnSelectionChange}
                     maxHeight={200}
