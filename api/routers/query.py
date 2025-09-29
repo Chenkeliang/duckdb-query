@@ -2896,13 +2896,10 @@ async def validate_set_operation(request: SetOperationRequest):
                             f"与第一个表 {first_table.table_name} 的列数量({len(first_columns)})不匹配"
                         )
 
-        # 检查BY NAME模式的列映射
+        # BY NAME模式验证
         if config.use_by_name:
-            for table in config.tables:
-                if not table.column_mappings:
-                    errors.append(
-                        f"表 {table.table_name} 在BY NAME模式下必须提供列映射"
-                    )
+            # DuckDB的BY NAME模式会自动按列名匹配，不需要手动列映射
+            pass
 
         # 检查操作类型支持
         if config.use_by_name and config.operation_type not in [

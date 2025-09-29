@@ -381,7 +381,8 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     setIsLoading(true);
 
     try {
-      const config = buildSetOperationConfig();
+      // 使用SetOperationBuilder传递的完整配置，包含column_mappings
+      const config = setOperationConfig;
       const response = await fetch('/api/set-operations/execute', {
         method: 'POST',
         headers: {
@@ -507,6 +508,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
             availableTables={selectedSources.map(s => s.id)}
             initialConfig={setOperationConfig}
             hideTableSelector={true} // 隐藏表选择器，直接使用已选择的表
+            sources={selectedSources} // 传递数据源信息，包含列信息
           />
         </>
       )}

@@ -1,31 +1,16 @@
 import {
-    Add,
-    CheckCircle,
-    Delete,
-    Error
-} from '@mui/icons-material';
-import {
     Alert,
     Box,
     Button,
-    Checkbox,
     Chip,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
     Divider,
     FormControl,
     FormControlLabel,
-    Grid,
-    IconButton,
     InputLabel,
-    ListItemText,
     MenuItem,
     Paper,
     Select,
     Switch,
-    TextField,
     Typography
 } from '@mui/material';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -34,7 +19,8 @@ const SetOperationBuilder = ({
     onOperationChange,
     availableTables = [],
     initialConfig = null,
-    hideTableSelector = false
+    hideTableSelector = false,
+    sources = []
 }) => {
     const [config, setConfig] = useState({
         operation_type: 'UNION',
@@ -42,23 +28,17 @@ const SetOperationBuilder = ({
         use_by_name: false
     });
 
-    const [columnMappingDialog, setColumnMappingDialog] = useState({
-        open: false,
-        tableIndex: -1,
-        tableName: '',
-        columns: []
-    });
 
     // 初始化配置和更新表列表
     useEffect(() => {
-        if (initialConfig) {
+        if (initialConfig && initialConfig.tables && initialConfig.tables.length > 0) {
             // 处理初始配置中的空字符串别名
             const processedConfig = {
                 ...initialConfig,
-                tables: initialConfig.tables?.map(table => ({
+                tables: initialConfig.tables.map(table => ({
                     ...table,
                     alias: table.alias === '' ? null : table.alias
-                })) || []
+                }))
             };
             setConfig(processedConfig);
         } else if (hideTableSelector && availableTables.length > 0) {
@@ -75,6 +55,8 @@ const SetOperationBuilder = ({
             }));
         }
     }, [initialConfig, hideTableSelector, availableTables]);
+
+    // 将选择的列转换为列映射
 
     // 通知父组件配置变化
     const notifyConfigChange = useCallback((newConfig) => {
@@ -156,47 +138,24 @@ const SetOperationBuilder = ({
             })
         }));
 
-        // 如果是BY NAME模式且选择了表名，自动打开列选择对话框
-        if (field === 'table_name' && value && config.use_by_name) {
-            handleOpenColumnMapping(index);
-        }
-    };
-
-    // 打开列选择对话框
-    const handleOpenColumnMapping = (index) => {
-        const table = config.tables[index];
-        setColumnMappingDialog({
-            open: true,
-            tableIndex: index,
-            tableName: table.table_name,
-            columns: table.selected_columns || []
-        });
-    };
-
-    // 关闭列映射对话框
-    const handleCloseColumnMapping = () => {
-        setColumnMappingDialog({
-            open: false,
-            tableIndex: -1,
-            tableName: '',
-            columns: []
-        });
-    };
-
-    // 保存列选择
-    const handleSaveColumnMapping = () => {
-        const { tableIndex, columns } = columnMappingDialog;
-        handleTableChange(tableIndex, 'selected_columns', columns);
-        handleCloseColumnMapping();
+        // 如果是BY NAME模式且选择了表名，不需要额外处理
+        // 列信息会直接从sources中获取
     };
 
 
 
-    // 获取表列信息（模拟）
+
+
+    // 获取表列信息
     const getTableColumns = (tableName) => {
-        // 这里应该调用API获取表的列信息
-        // 暂时返回模拟数据
-        return ['id', 'name', 'value', 'created_at'];
+        if (!tableName) return [];
+
+        // 从sources中查找对应的表
+        const source = sources.find(s => s.id === tableName);
+        if (source && source.columns) {
+            return source.columns;
+        }
+        return [];
     };
 
     return (
@@ -239,47 +198,70 @@ const SetOperationBuilder = ({
             {config.use_by_name && (
                 <Alert severity="info" sx={{ mb: 2 }}>
                     <Typography variant="body2">
-                        BY NAME模式允许不同表结构的数据进行合并，通过列映射指定对应关系。
+                        <strong>BY NAME 模式：</strong><br />
+                        • DuckDB 会自动按列名匹配所有列<br />
+                        • 不需要列数相同，缺失的列会自动填充 NULL<br />
+                        • 所有表的所有列都会包含在结果中
                     </Typography>
                 </Alert>
             )}
 
-            {/* 显示已选择的列 */}
+
+            {/* BY NAME模式的表信息展示 */}
             {config.use_by_name && config.tables.length > 0 && (
                 <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 500 }}>
-                        已选择的列
+                    <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 500 }}>
+                        参与操作的表
                     </Typography>
-                    {config.tables.map((table, index) => (
-                        <Paper key={index} sx={{ p: 2, mb: 1 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 500, mb: 1 }}>
-                                {table.table_name}
-                            </Typography>
-                            {table.selected_columns && table.selected_columns.length > 0 ? (
-                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                    {table.selected_columns.map((column, colIndex) => (
-                                        <Chip
-                                            key={colIndex}
-                                            label={column}
-                                            size="small"
-                                            variant="outlined"
-                                        />
-                                    ))}
-                                </Box>
-                            ) : (
-                                <Typography variant="body2" color="text.secondary">
-                                    未选择列
-                                </Typography>
-                            )}
-                            <Button
-                                size="small"
-                                onClick={() => handleOpenColumnMapping(index)}
-                                sx={{ mt: 1 }}
+
+                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                        {config.tables.map((table, tableIndex) => (
+                            <Paper
+                                key={tableIndex}
+                                elevation={0}
+                                sx={{
+                                    p: 2,
+                                    border: '1px solid',
+                                    borderColor: 'grey.200',
+                                    borderRadius: 2,
+                                    backgroundColor: 'grey.50',
+                                    minWidth: 200
+                                }}
                             >
-                                选择列
-                            </Button>
-                        </Paper>
-                    ))}
+                                <Typography variant="subtitle3" sx={{ mb: 1, fontWeight: 600 }}>
+                                    {table.table_name}
+                                </Typography>
+
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                    可用列：
+                                </Typography>
+
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                    {(() => {
+                                        const columns = getTableColumns(table.table_name);
+                                        return columns.length > 0 ? columns.map((column) => (
+                                            <Chip
+                                                key={column}
+                                                label={column}
+                                                size="small"
+                                                variant="outlined"
+                                                sx={{
+                                                    borderColor: 'primary.200',
+                                                    color: 'primary.700',
+                                                    backgroundColor: 'primary.50',
+                                                    fontSize: '0.75rem'
+                                                }}
+                                            />
+                                        )) : (
+                                            <Typography variant="caption" color="text.secondary">
+                                                暂无可用列
+                                            </Typography>
+                                        );
+                                    })()}
+                                </Box>
+                            </Paper>
+                        ))}
+                    </Box>
                 </Box>
             )}
 
@@ -301,54 +283,6 @@ const SetOperationBuilder = ({
                 </Button>
             </Box>
 
-            {/* 列映射对话框 */}
-            <Dialog
-                open={columnMappingDialog.open}
-                onClose={handleCloseColumnMapping}
-                maxWidth="md"
-                fullWidth
-            >
-                <DialogTitle>
-                    选择列 - {columnMappingDialog.tableName}
-                </DialogTitle>
-                <DialogContent>
-                    <Alert severity="info" sx={{ mb: 2 }}>
-                        <Typography variant="body2">
-                            选择要包含在集合操作中的列。未选择的列将不会出现在结果中。
-                        </Typography>
-                    </Alert>
-
-                    <FormControl fullWidth>
-                        <InputLabel>选择列</InputLabel>
-                        <Select
-                            multiple
-                            value={columnMappingDialog.columns}
-                            label="选择列"
-                            onChange={(e) => {
-                                const selectedColumns = e.target.value;
-                                setColumnMappingDialog(prev => ({
-                                    ...prev,
-                                    columns: selectedColumns
-                                }));
-                            }}
-                            renderValue={(selected) => selected.join(', ')}
-                        >
-                            {getTableColumns(columnMappingDialog.tableName).map(column => (
-                                <MenuItem key={column} value={column}>
-                                    <Checkbox checked={columnMappingDialog.columns.indexOf(column) > -1} />
-                                    <ListItemText primary={column} />
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={handleCloseColumnMapping}>取消</Button>
-                    <Button onClick={handleSaveColumnMapping} variant="contained">
-                        保存
-                    </Button>
-                </DialogActions>
-            </Dialog>
         </Box>
     );
 };

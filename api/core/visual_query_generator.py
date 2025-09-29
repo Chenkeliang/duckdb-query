@@ -753,18 +753,9 @@ class SetOperationQueryGenerator:
         if alias:
             table_ref += f' AS "{alias}"'
 
-        if use_by_name and column_mappings:
-            # BY NAME模式：使用列映射
-            column_list = []
-            for mapping in column_mappings:
-                source_col = mapping.source_column
-                target_col = mapping.target_column
-                column_list.append(f'"{source_col}" AS "{target_col}"')
-
-            if not column_list:
-                raise ValueError(f"表 {table_name} 在BY NAME模式下必须提供列映射")
-
-            columns_sql = ", ".join(column_list)
+        if use_by_name:
+            # BY NAME模式：DuckDB会自动按列名匹配，使用SELECT *即可
+            columns_sql = "*"
         else:
             # 位置模式：使用选择的列
             if not selected_columns:
@@ -805,13 +796,6 @@ class SetOperationQueryGenerator:
                 SetOperationType.UNION_ALL,
             ]:
                 raise ValueError("只有UNION和UNION ALL支持BY NAME模式")
-
-            # 检查所有表都有列映射
-            for table in tables:
-                if not table.column_mappings:
-                    raise ValueError(
-                        f"表 {table.table_name} 在BY NAME模式下必须提供列映射"
-                    )
 
         # 验证列兼容性（非BY NAME模式）
         if not use_by_name:

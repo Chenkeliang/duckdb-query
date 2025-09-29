@@ -567,13 +567,6 @@ class SetOperationConfig(BaseModel):
             ]:
                 raise ValueError("只有UNION和UNION ALL支持BY NAME模式")
 
-            # 检查所有表都有列映射
-            for table in tables:
-                if not table.column_mappings:
-                    raise ValueError(
-                        f"表 {table.table_name} 在BY NAME模式下必须提供列映射"
-                    )
-
         # 验证列兼容性（非BY NAME模式）
         if not use_by_name:
             self._validate_column_compatibility(tables)
