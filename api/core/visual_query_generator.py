@@ -688,12 +688,13 @@ class SetOperationQueryGenerator:
         """初始化集合操作查询生成器"""
         self.logger = logging.getLogger(__name__)
 
-    def build_set_operation_query(self, config: SetOperationConfig) -> str:
+    def build_set_operation_query(self, config: SetOperationConfig, preview_limit: int = None) -> str:
         """
         构建集合操作查询
 
         Args:
             config: 集合操作配置
+            preview_limit: 预览模式下每个表的行数限制
 
         Returns:
             str: 生成的SQL查询
@@ -709,7 +710,7 @@ class SetOperationQueryGenerator:
             # 生成各个子查询
             subqueries = []
             for table in tables:
-                subquery = self._build_table_subquery(table, use_by_name)
+                subquery = self._build_table_subquery(table, use_by_name, preview_limit)
                 subqueries.append(f"({subquery})")
 
             # 组合集合操作查询
@@ -732,13 +733,14 @@ class SetOperationQueryGenerator:
             self.logger.error(f"构建集合操作查询失败: {str(e)}")
             raise ValueError(f"构建集合操作查询失败: {str(e)}")
 
-    def _build_table_subquery(self, table: TableConfig, use_by_name: bool) -> str:
+    def _build_table_subquery(self, table: TableConfig, use_by_name: bool, limit: int = None) -> str:
         """
         构建单表子查询
 
         Args:
             table: 表配置
             use_by_name: 是否使用BY NAME模式
+            limit: 可选的行数限制
 
         Returns:
             str: 子查询SQL
@@ -766,6 +768,11 @@ class SetOperationQueryGenerator:
                 columns_sql = ", ".join(escaped_columns)
 
         subquery = f"SELECT {columns_sql} FROM {table_ref}"
+        
+        # 如果提供了限制，添加LIMIT子句
+        if limit is not None and limit > 0:
+            subquery += f" LIMIT {limit}"
+            
         return subquery
 
     def _validate_config(self, config: SetOperationConfig):
@@ -921,17 +928,18 @@ class SetOperationQueryGenerator:
 set_operation_generator = SetOperationQueryGenerator()
 
 
-def generate_set_operation_sql(config: SetOperationConfig) -> str:
+def generate_set_operation_sql(config: SetOperationConfig, preview_limit: int = None) -> str:
     """
     生成集合操作SQL查询
 
     Args:
         config: 集合操作配置
+        preview_limit: 预览模式下每个表的行数限制
 
     Returns:
         str: 生成的SQL查询
     """
-    return set_operation_generator.build_set_operation_query(config)
+    return set_operation_generator.build_set_operation_query(config, preview_limit)
 
 
 def estimate_set_operation_rows(config: SetOperationConfig, connection=None) -> int:

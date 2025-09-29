@@ -2945,8 +2945,15 @@ async def execute_set_operation(request: SetOperationRequest):
     try:
         config = request.config
 
-        # 生成SQL查询
-        sql = generate_set_operation_sql(config)
+        # 生成SQL查询，根据模式决定是否应用子查询限制
+        if request.preview or (not request.save_as_table):
+            # 预览模式或默认执行：在子查询级别应用限制，避免大数据集内存问题
+            from core.config_manager import config_manager
+            limit = config_manager.get_app_config().max_query_rows
+            sql = generate_set_operation_sql(config, preview_limit=limit)
+        else:
+            # 保存到表模式：生成完整查询
+            sql = generate_set_operation_sql(config)
 
         # 执行查询
         con = get_db_connection()
