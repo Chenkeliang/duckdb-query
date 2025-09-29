@@ -60,6 +60,37 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // 错误信息翻译函数
+  const translateError = (errorMessage) => {
+    if (!errorMessage) return errorMessage;
+    
+    const errorTranslations = {
+      'Set operations can only apply to expressions with the same number of result columns': 
+        '集合操作只能应用于具有相同列数的表达式',
+      'Binder Error: Set operations can only apply to expressions with the same number of result columns':
+        '绑定错误：集合操作只能应用于具有相同列数的表达式',
+      'Binder Error: Referenced column':
+        '绑定错误：引用的列',
+      'not found':
+        '未找到',
+      'Table with name':
+        '表名',
+      'does not exist':
+        '不存在',
+      'Catalog Error: Table':
+        '目录错误：表',
+      'does not exist':
+        '不存在'
+    };
+
+    let translatedError = errorMessage;
+    Object.entries(errorTranslations).forEach(([en, zh]) => {
+      translatedError = translatedError.replace(new RegExp(en, 'g'), zh);
+    });
+
+    return translatedError;
+  };
+
   // Visual query state
   const [visualQuerySQL, setVisualQuerySQL] = useState('');
   const [visualQueryConfig, setVisualQueryConfig] = useState(null);
@@ -236,7 +267,8 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
 
       // 检查后端返回的错误信息
       if (results && results.success === false) {
-        setError(results.error || '查询执行失败');
+        const translatedError = translateError(results.error || '查询执行失败');
+        setError(translatedError);
         // 如果有可用表信息，也显示出来
         if (results.available_tables && results.available_tables.length > 0) {
           // 表信息已获取，无需额外处理
@@ -255,16 +287,18 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         // 如果后端返回了结构化的错误信息
         const errorData = err.response.data;
         if (errorData.success === false) {
-          const errorMsg = errorData.error || '查询执行失败';
-          setError(errorMsg);
-          showError(errorMsg);
+          const translatedError = translateError(errorData.error || '查询执行失败');
+          setError(translatedError);
+          showError(translatedError);
         } else {
-          const errorMsg = `查询执行失败: ${errorData.detail || err.message || '未知错误'}`;
+          const translatedError = translateError(errorData.detail || err.message || '未知错误');
+          const errorMsg = `查询执行失败: ${translatedError}`;
           setError(errorMsg);
           showError(errorMsg);
         }
       } else {
-        const errorMsg = `查询执行失败: ${err.message || '未知错误'}`;
+        const translatedError = translateError(err.message || '未知错误');
+        const errorMsg = `查询执行失败: ${translatedError}`;
         setError(errorMsg);
         showError(errorMsg);
       }
@@ -361,7 +395,8 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.errors?.[0] || '集合操作执行失败');
+        const translatedError = translateError(errorData.errors?.[0] || errorData.error || '集合操作执行失败');
+        throw new Error(translatedError);
       }
 
       const results = await response.json();
@@ -373,11 +408,13 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         }
         showSuccess('集合操作执行成功');
       } else {
-        setError(results.errors?.[0] || '集合操作执行失败');
-        showError(results.errors?.[0] || '集合操作执行失败');
+        const translatedError = translateError(results.errors?.[0] || results.error || '集合操作执行失败');
+        setError(translatedError);
+        showError(translatedError);
       }
     } catch (err) {
-      const errorMsg = `集合操作执行失败: ${err.message || '未知错误'}`;
+      const translatedError = translateError(err.message || '未知错误');
+      const errorMsg = `集合操作执行失败: ${translatedError}`;
       setError(errorMsg);
       showError(errorMsg);
       console.error(err);

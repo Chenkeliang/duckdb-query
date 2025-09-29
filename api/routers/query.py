@@ -3047,6 +3047,7 @@ async def execute_set_operation(request: SetOperationRequest):
         else:
             # 默认行为：执行集合操作预览，使用配置的max_query_rows限制
             from core.config_manager import config_manager
+
             limit = config_manager.get_app_config().max_query_rows
             preview_sql = f"{sql} LIMIT {limit}"
             result_df = con.execute(preview_sql).fetchdf()
@@ -3071,7 +3072,7 @@ async def execute_set_operation(request: SetOperationRequest):
                 "originalDatasource": {
                     "type": "set_operation",
                     "operation": config.operation_type,
-                    "tables": [source.table_name for source in config.tables]
+                    "tables": [source.table_name for source in config.tables],
                 },
                 "isSetOperation": True,
                 "setOperationConfig": config,
