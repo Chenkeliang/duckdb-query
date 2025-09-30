@@ -29,7 +29,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import { BarChart3, Download, Eye, EyeOff, LayoutGrid, RefreshCw, Save, Search, Settings, Table, X, Zap } from 'lucide-react';
+import { BarChart3, Download, Eye, EyeOff, List, RefreshCw, Save, Search, Table, X, Columns3, Scroll } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { quickExport } from '../../services/apiClient';
@@ -572,12 +572,12 @@ const ModernDataDisplay = ({
               </Tooltip>
 
               {viewMode === 'table' && (
-                <Tooltip title={renderMode === 'agGrid' ? '切换到虚拟滚动模式' : '切换到标准表格模式'}>
+                <Tooltip title={renderMode === 'agGrid' ? '切换到虚拟滚动模式（适合大数据量）' : '切换到标准表格模式（适合小数据量）'}>
                   <IconButton
                     onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
                     color={renderMode === 'virtual' ? 'primary' : 'default'}
                   >
-                    {renderMode === 'virtual' ? <Zap size={20} /> : <LayoutGrid size={20} />}
+                    {renderMode === 'virtual' ? <Scroll size={20} /> : <List size={20} />}
                   </IconButton>
                 </Tooltip>
               )}
@@ -588,9 +588,9 @@ const ModernDataDisplay = ({
                 </IconButton>
               </Tooltip>
 
-              <Tooltip title="列设置">
+              <Tooltip title="列设置（显示/隐藏列）">
                 <IconButton onClick={handleColumnMenuOpen}>
-                  <Settings size={20} />
+                  <Columns3 size={20} />
                 </IconButton>
               </Tooltip>
 
