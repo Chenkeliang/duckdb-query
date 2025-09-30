@@ -239,20 +239,23 @@ const SetOperationBuilder = ({
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                                     {(() => {
                                         const columns = getTableColumns(table.table_name);
-                                        return columns.length > 0 ? columns.map((column) => (
-                                            <Chip
-                                                key={column}
-                                                label={column}
-                                                size="small"
-                                                variant="outlined"
-                                                sx={{
-                                                    borderColor: 'primary.200',
-                                                    color: 'primary.700',
-                                                    backgroundColor: 'primary.50',
-                                                    fontSize: '0.75rem'
-                                                }}
-                                            />
-                                        )) : (
+                                        return columns.length > 0 ? columns.map((column) => {
+                                            const columnName = typeof column === 'string' ? column : column.name;
+                                            return (
+                                                <Chip
+                                                    key={columnName}
+                                                    label={columnName}
+                                                    size="small"
+                                                    variant="outlined"
+                                                    sx={{
+                                                        borderColor: 'primary.200',
+                                                        color: 'primary.700',
+                                                        backgroundColor: 'primary.50',
+                                                        fontSize: '0.75rem'
+                                                    }}
+                                                />
+                                            );
+                                        }) : (
                                             <Typography variant="caption" color="text.secondary">
                                                 暂无可用列
                                             </Typography>

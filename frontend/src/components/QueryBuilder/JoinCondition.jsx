@@ -238,9 +238,12 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
                 }
               }}
             >
-              {leftColumns.map((column) => (
-                <MenuItem key={column} value={column}>{column}</MenuItem>
-              ))}
+              {leftColumns.map((column) => {
+                const columnName = typeof column === 'string' ? column : column.name;
+                return (
+                  <MenuItem key={columnName} value={columnName}>{columnName}</MenuItem>
+                );
+              })}
             </Select>
           </FormControl>
         </Box>
@@ -375,9 +378,12 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
                 }
               }}
             >
-              {rightColumns.map((column) => (
-                <MenuItem key={column} value={column}>{column}</MenuItem>
-              ))}
+              {rightColumns.map((column) => {
+                const columnName = typeof column === 'string' ? column : column.name;
+                return (
+                  <MenuItem key={columnName} value={columnName}>{columnName}</MenuItem>
+                );
+              })}
             </Select>
           </FormControl>
         </Box>

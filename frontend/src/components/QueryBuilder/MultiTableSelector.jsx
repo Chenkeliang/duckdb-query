@@ -387,19 +387,22 @@ const MultiTableSelector = ({
                     <Divider sx={{ mb: 2 }} />
 
                     <List dense>
-                        {columnDialog.availableColumns.map((column) => (
-                            <ListItem key={column} dense>
-                                <FormControlLabel
-                                    control={
-                                        <Checkbox
-                                            checked={columnDialog.selectedColumns.includes(column)}
-                                            onChange={() => handleToggleColumn(column)}
-                                        />
-                                    }
-                                    label={column}
-                                />
-                            </ListItem>
-                        ))}
+                        {columnDialog.availableColumns.map((column) => {
+                            const columnName = typeof column === 'string' ? column : column.name;
+                            return (
+                                <ListItem key={columnName} dense>
+                                    <FormControlLabel
+                                        control={
+                                            <Checkbox
+                                                checked={columnDialog.selectedColumns.includes(columnName)}
+                                                onChange={() => handleToggleColumn(columnName)}
+                                            />
+                                        }
+                                        label={columnName}
+                                    />
+                                </ListItem>
+                            );
+                        })}
                     </List>
                 </DialogContent>
                 <DialogActions>
