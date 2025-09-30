@@ -377,7 +377,7 @@ const ModernDataDisplay = ({
         set_operation_config: isSetOperation ? setOperationConfig : null,
         visual_analysis_config: null,
         fallback_data: data.length > 0 ? data : null,
-        fallback_columns: columns.length > 0 ? columns : null
+        fallback_columns: columns.length > 0 ? columns.map(col => col.field || col.headerName || col) : null
       };
 
       const response = await fetch('/api/export/universal', {
