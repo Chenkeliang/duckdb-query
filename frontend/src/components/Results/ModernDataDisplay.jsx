@@ -29,7 +29,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import { BarChart3, Download, Eye, EyeOff, List, RefreshCw, Save, Search, Table, X, Columns3, Scroll } from 'lucide-react';
+import { BarChart, Download, Eye, EyeOff, Filter, Grid3x3, List, PieChart, RefreshCw, Save, Scroll, Search, Table, X } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { quickExport } from '../../services/apiClient';
@@ -567,7 +567,7 @@ const ModernDataDisplay = ({
                   onClick={() => setViewMode(viewMode === 'table' ? 'chart' : 'table')}
                   color={viewMode === 'chart' ? 'primary' : 'default'}
                 >
-                  {viewMode === 'chart' ? <BarChart3 size={20} /> : <Table size={20} />}
+                  {viewMode === 'chart' ? <PieChart size={20} /> : <Grid3x3 size={20} />}
                 </IconButton>
               </Tooltip>
 
@@ -588,9 +588,9 @@ const ModernDataDisplay = ({
                 </IconButton>
               </Tooltip>
 
-              <Tooltip title="列设置（显示/隐藏列）">
+              <Tooltip title="列筛选（显示/隐藏列）">
                 <IconButton onClick={handleColumnMenuOpen}>
-                  <Columns3 size={20} />
+                  <Filter size={20} />
                 </IconButton>
               </Tooltip>
 
