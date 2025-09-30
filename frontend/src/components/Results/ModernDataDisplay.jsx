@@ -29,7 +29,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import { BarChart, Download, Eye, EyeOff, Filter, Grid3x3, List, PieChart, RefreshCw, Save, Scroll, Search, Table, X } from 'lucide-react';
+import { Download, Eye, EyeOff, Filter, Grid3x3, List, PieChart, RefreshCw, Save, Scroll, Search, Table, X } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { quickExport } from '../../services/apiClient';
@@ -567,7 +567,7 @@ const ModernDataDisplay = ({
                   onClick={() => setViewMode(viewMode === 'table' ? 'chart' : 'table')}
                   color={viewMode === 'chart' ? 'primary' : 'default'}
                 >
-                  {viewMode === 'chart' ? <PieChart size={20} /> : <Grid3x3 size={20} />}
+                  {viewMode === 'table' ? <PieChart size={20} /> : <Grid3x3 size={20} />}
                 </IconButton>
               </Tooltip>
 
@@ -577,7 +577,7 @@ const ModernDataDisplay = ({
                     onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
                     color={renderMode === 'virtual' ? 'primary' : 'default'}
                   >
-                    {renderMode === 'virtual' ? <Scroll size={20} /> : <List size={20} />}
+                    {renderMode === 'agGrid' ? <Scroll size={20} /> : <List size={20} />}
                   </IconButton>
                 </Tooltip>
               )}
