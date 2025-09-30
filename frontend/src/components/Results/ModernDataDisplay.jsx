@@ -29,7 +29,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import { BarChart3, Columns, Download, Grid3x3, RotateCcw, Save, Search, Table, X, Zap } from 'lucide-react';
+import { BarChart3, Download, Eye, EyeOff, LayoutGrid, RefreshCw, Save, Search, Settings, Table, X, Zap } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { quickExport } from '../../services/apiClient';
@@ -572,25 +572,25 @@ const ModernDataDisplay = ({
               </Tooltip>
 
               {viewMode === 'table' && (
-                <Tooltip title={renderMode === 'agGrid' ? '切换到虚拟滚动' : '切换到标准表格'}>
+                <Tooltip title={renderMode === 'agGrid' ? '切换到虚拟滚动模式' : '切换到标准表格模式'}>
                   <IconButton
                     onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
                     color={renderMode === 'virtual' ? 'primary' : 'default'}
                   >
-                    {renderMode === 'virtual' ? <Zap size={20} /> : <Grid3x3 size={20} />}
+                    {renderMode === 'virtual' ? <Zap size={20} /> : <LayoutGrid size={20} />}
                   </IconButton>
                 </Tooltip>
               )}
 
               <Tooltip title="刷新数据">
                 <IconButton onClick={onRefresh} disabled={loading}>
-                  <RotateCcw size={20} />
+                  <RefreshCw size={20} />
                 </IconButton>
               </Tooltip>
 
               <Tooltip title="列设置">
                 <IconButton onClick={handleColumnMenuOpen}>
-                  <Columns size={20} />
+                  <Settings size={20} />
                 </IconButton>
               </Tooltip>
 
@@ -811,12 +811,19 @@ const ModernDataDisplay = ({
                 <Typography variant="body2">
                   {column.headerName || column.field}
                 </Typography>
-                <Chip
-                  size="small"
-                  label={visibleColumns.has(column.field) ? '显示' : '隐藏'}
-                  color={visibleColumns.has(column.field) ? 'primary' : 'default'}
-                  variant="outlined"
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {visibleColumns.has(column.field) ? (
+                    <Eye size={16} color="#1976d2" />
+                  ) : (
+                    <EyeOff size={16} color="#666" />
+                  )}
+                  <Chip
+                    size="small"
+                    label={visibleColumns.has(column.field) ? '显示' : '隐藏'}
+                    color={visibleColumns.has(column.field) ? 'primary' : 'default'}
+                    variant="outlined"
+                  />
+                </Box>
               </Box>
             ))}
           </Stack>
