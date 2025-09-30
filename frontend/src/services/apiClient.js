@@ -478,7 +478,9 @@ export const executeDuckDBSQL = async (sql, saveAsTable = null, is_preview = tru
 
       // 检查新的错误格式: data.error.message = { code, message, details }
       if (data.error && data.error.message && typeof data.error.message === 'object' && data.error.message.code) {
-        const enhancedError = new Error(data.error.message.message || '查询执行失败');
+        // 优先使用original_error，如果没有则使用message
+        const errorMessage = data.error.message.details?.original_error || data.error.message.message || '查询执行失败';
+        const enhancedError = new Error(errorMessage);
         enhancedError.code = data.error.message.code;
         enhancedError.details = data.error.message.details;
         enhancedError.statusCode = error.response.status;
@@ -487,7 +489,9 @@ export const executeDuckDBSQL = async (sql, saveAsTable = null, is_preview = tru
 
       // 检查 data.detail 格式（HTTPException 格式）
       if (data.detail && typeof data.detail === 'object' && data.detail.code) {
-        const enhancedError = new Error(data.detail.message || '查询执行失败');
+        // 优先使用original_error，如果没有则使用message
+        const errorMessage = data.detail.details?.original_error || data.detail.message || '查询执行失败';
+        const enhancedError = new Error(errorMessage);
         enhancedError.code = data.detail.code;
         enhancedError.details = data.detail.details;
         enhancedError.statusCode = error.response.status;
@@ -496,7 +500,9 @@ export const executeDuckDBSQL = async (sql, saveAsTable = null, is_preview = tru
 
       // 检查 data.message 格式（旧格式）
       if (data.message && typeof data.message === 'object' && data.message.code) {
-        const enhancedError = new Error(data.message.message || '查询执行失败');
+        // 优先使用original_error，如果没有则使用message
+        const errorMessage = data.message.details?.original_error || data.message.message || '查询执行失败';
+        const enhancedError = new Error(errorMessage);
         enhancedError.code = data.message.code;
         enhancedError.details = data.message.details;
         enhancedError.statusCode = error.response.status;

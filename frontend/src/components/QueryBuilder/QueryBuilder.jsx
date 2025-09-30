@@ -265,7 +265,16 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
 
       // 检查后端返回的错误信息
       if (results && results.success === false) {
-        const translatedError = translateError(results.error || '查询执行失败');
+        // 优先提取original_error
+        let errorMessage = results.error;
+        if (typeof results.error === 'object' && results.error.message) {
+          if (typeof results.error.message === 'object' && results.error.message.details?.original_error) {
+            errorMessage = results.error.message.details.original_error;
+          } else if (typeof results.error.message === 'string') {
+            errorMessage = results.error.message;
+          }
+        }
+        const translatedError = translateError(errorMessage || '查询执行失败');
         setError(translatedError);
         // 如果有可用表信息，也显示出来
         if (results.available_tables && results.available_tables.length > 0) {
@@ -285,7 +294,16 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         // 如果后端返回了结构化的错误信息
         const errorData = err.response.data;
         if (errorData.success === false) {
-          const translatedError = translateError(errorData.error || '查询执行失败');
+          // 优先提取original_error
+          let errorMessage = errorData.error;
+          if (typeof errorData.error === 'object' && errorData.error.message) {
+            if (typeof errorData.error.message === 'object' && errorData.error.message.details?.original_error) {
+              errorMessage = errorData.error.message.details.original_error;
+            } else if (typeof errorData.error.message === 'string') {
+              errorMessage = errorData.error.message;
+            }
+          }
+          const translatedError = translateError(errorMessage || '查询执行失败');
           setError(translatedError);
           showError(translatedError);
         } else {

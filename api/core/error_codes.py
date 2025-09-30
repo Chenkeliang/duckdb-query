@@ -23,6 +23,7 @@ class ErrorCode(Enum):
     QUERY_TIMEOUT = "QUERY_TIMEOUT"
     DUPLICATE_KEY_ERROR = "DUPLICATE_KEY_ERROR"
     CONSTRAINT_VIOLATION = "CONSTRAINT_VIOLATION"
+    GROUP_BY_ERROR = "GROUP_BY_ERROR"
 
     # 连接和网络错误
     CONNECTION_ERROR = "CONNECTION_ERROR"
@@ -65,6 +66,7 @@ ERROR_MESSAGES: Dict[ErrorCode, Tuple[str, int]] = {
     ErrorCode.QUERY_TIMEOUT: ("查询超时", 408),
     ErrorCode.DUPLICATE_KEY_ERROR: ("主键或唯一约束冲突", 409),
     ErrorCode.CONSTRAINT_VIOLATION: ("数据约束违反", 400),
+    ErrorCode.GROUP_BY_ERROR: ("GROUP BY子句错误", 400),
     # 连接和网络错误
     ErrorCode.CONNECTION_ERROR: ("连接失败", 503),
     ErrorCode.DATABASE_CONNECTION_ERROR: ("数据库连接失败", 503),
@@ -166,6 +168,12 @@ def analyze_error_type(error_message: str) -> ErrorCode:
     elif "constraint" in error_msg_lower or "unique" in error_msg_lower:
         return ErrorCode.CONSTRAINT_VIOLATION
 
+    # GROUP BY错误
+    elif "group by" in error_msg_lower and (
+        "must appear" in error_msg_lower or "aggregate function" in error_msg_lower
+    ):
+        return ErrorCode.GROUP_BY_ERROR
+
     # 文件相关错误
     elif "file not found" in error_msg_lower or "no such file" in error_msg_lower:
         return ErrorCode.FILE_NOT_FOUND
@@ -176,7 +184,3 @@ def analyze_error_type(error_message: str) -> ErrorCode:
     # 默认返回未知错误
     else:
         return ErrorCode.UNKNOWN_ERROR
-
-
-
-

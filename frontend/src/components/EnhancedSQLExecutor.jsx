@@ -143,15 +143,12 @@ const EnhancedSQLExecutor = ({
 
       // 如果有错误代码，显示更友好的错误信息
       if (err.code) {
-        // 后端现在返回中文错误消息，直接使用即可
-        errorMessage = err.message;
-
-        // 如果有原始错误信息，添加到控制台日志
+        // 优先使用original_error，如果没有则使用message
         if (err.details && err.details.original_error) {
-        }
-
-        // 如果有详细信息，添加到错误日志
-        if (err.details) {
+          errorMessage = err.details.original_error;
+        } else {
+          // 后端现在返回中文错误消息，直接使用即可
+          errorMessage = err.message;
         }
       }
 
@@ -244,7 +241,7 @@ const EnhancedSQLExecutor = ({
                 }}>
                   <TreeTableView
                     tables={duckdbTables}
-                    onTableSelect={(table) => setSqlQuery(`SELECT * FROM "${table}" LIMIT 100`)}
+                    onTableSelect={(table) => setSqlQuery(`SELECT * FROM "${table}" LIMIT 10000`)}
                   />
                 </Box>
               </Box>
