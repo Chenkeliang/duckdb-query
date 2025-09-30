@@ -29,7 +29,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import { Download, Eye, EyeOff, Filter, Grid3x3, List, PieChart, RefreshCw, Save, Scroll, Search, Table, X } from 'lucide-react';
+import { Download, Eye, EyeOff, Filter, Grid3x3, List, PieChart, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { quickExport } from '../../services/apiClient';
@@ -532,7 +532,7 @@ const ModernDataDisplay = ({
         <CardContent sx={{ pb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Table size={20} color="#1976d2" />
+              <TrendingUp size={24} color="#1976d2" />
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
                   {title}
