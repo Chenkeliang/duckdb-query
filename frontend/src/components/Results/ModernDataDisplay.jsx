@@ -29,10 +29,9 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import { Download, Eye, EyeOff, Filter, Grid3x3, List, PieChart, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X } from 'lucide-react';
+import { Eye, EyeOff, Filter, Grid3x3, List, PieChart, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import { quickExport } from '../../services/apiClient';
 import QuickCharts from '../DataVisualization/QuickCharts';
 import StableTable from '../StableTable';
 import VirtualTable from '../VirtualTable/VirtualTable';
@@ -61,7 +60,6 @@ const ModernDataDisplay = ({
   const [searchText, setSearchText] = useState('');
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
-  const [exportMenuAnchor, setExportMenuAnchor] = useState(null);
   const [columnMenuAnchor, setColumnMenuAnchor] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState(new Set());
   const [sortModel, setSortModel] = useState([]);
@@ -257,13 +255,6 @@ const ModernDataDisplay = ({
     };
   }, [data, filteredData, normalizedColumns, visibleColumns]);
 
-  const handleExportMenuOpen = (event) => {
-    setExportMenuAnchor(event.currentTarget);
-  };
-
-  const handleExportMenuClose = () => {
-    setExportMenuAnchor(null);
-  };
 
   const handleColumnMenuOpen = (event) => {
     setColumnMenuAnchor(event.currentTarget);
@@ -273,78 +264,6 @@ const ModernDataDisplay = ({
     setColumnMenuAnchor(null);
   };
 
-  const handleLegacyExport = async (format) => {
-    try {
-      handleExportMenuClose();
-
-      // 如果有自定义导出函数，优先使用
-      if (onExport) {
-        onExport(format, filteredData);
-        showSuccess(`数据导出为 ${(format || '').toUpperCase()} 格式成功`);
-        return;
-      }
-
-      // 使用内置快速导出功能
-      if (data.length === 0) {
-        showError('没有数据可导出');
-        return;
-      }
-
-      showSuccess('正在准备导出文件...');
-
-      // 构建导出请求 - 使用SQL重新查询完整数据而非前端显示数据
-      const exportRequest = {
-        sql: sqlQuery,
-        originalDatasource: originalDatasource,
-        filename: `${title}_${new Date().toLocaleString('zh-CN').replace(/[\/\s:]/g, '_')}`,
-        // 备用方案：如果没有SQL，则使用前端数据
-        fallback_data: sqlQuery ? null : filteredData,
-        fallback_columns: sqlQuery ? null : normalizedColumns.map(col => col.field)
-      };
-
-      // 调用快速导出API
-      const response = await quickExport(exportRequest);
-
-      if (response && response.data) {
-        // 创建下载链接
-        const blob = new Blob([response.data], {
-          type: response.headers['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        });
-
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-
-        // 从响应头获取文件名，或使用默认文件名
-        const contentDisposition = response.headers['content-disposition'];
-        let filename = exportRequest.filename + '.xlsx';
-        if (contentDisposition) {
-          const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-          if (filenameMatch && filenameMatch[1]) {
-            filename = filenameMatch[1].replace(/['"]/g, '');
-          }
-        }
-
-        link.setAttribute('download', filename);
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-
-        // 清理
-        setTimeout(() => {
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-        }, 100);
-
-        showSuccess(`文件导出成功: ${filename}`);
-      } else {
-        throw new Error('导出响应无效');
-      }
-
-    } catch (error) {
-      showError(`导出失败: ${error.message || '网络错误，请重试'}`);
-    }
-  };
 
   const handleColumnToggle = (columnField) => {
     const newVisibleColumns = new Set(visibleColumns);
@@ -361,58 +280,6 @@ const ModernDataDisplay = ({
     setCurrentPage(1);
   };
 
-  // 统一导出函数 - 使用新的通用导出接口
-  const handleUniversalExport = async (format) => {
-    try {
-      handleExportMenuClose();
-      showSuccess('正在准备导出...');
-
-      // 构建通用导出请求
-      const exportRequest = {
-        query_type: isSetOperation ? 'set_operation' : 'custom_sql',
-        sql_query: sqlQuery || '',
-        format: format,
-        filename: null, // 让后端自动生成
-        original_datasource: originalDatasource,
-        set_operation_config: isSetOperation ? setOperationConfig : null,
-        visual_analysis_config: null,
-        fallback_data: data.length > 0 ? data : null,
-        fallback_columns: columns.length > 0 ? columns.map(col => col.field || col.headerName || col) : null
-      };
-
-      const response = await fetch('/api/export/universal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(exportRequest)
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        if (result.export_type === 'async') {
-          // 异步导出（集合操作）
-          showSuccess(`导出任务已创建！任务ID: ${result.task_id}。请查看异步任务列表获取文件。`);
-        } else {
-          // 同步导出（其他查询）
-          showSuccess('导出完成！文件正在下载...');
-        }
-      } else {
-        showError(result.error || '导出失败');
-      }
-    } catch (error) {
-      showError(`导出失败: ${error.message}`);
-    }
-  };
-
-  // 旧版导出函数 - 重定向到新的统一导出
-  const handleExport = async (format) => {
-    return handleUniversalExport(format);
-  };
-
-  // 集合操作导出函数 - 重定向到新的统一导出
-  const handleSetOperationExport = async (format) => {
-    return handleUniversalExport(format);
-  };
 
   // 保存到表相关函数
   const handleSaveAsDataSource = () => {
@@ -618,17 +485,17 @@ const ModernDataDisplay = ({
                 )}
               </Button>
 
-              <Button
-                startIcon={<Download size={20} />}
-                variant="outlined"
-                onClick={handleExportMenuOpen}
-                disabled={data.length === 0}
-                size="small"
-              >
-                导出
-              </Button>
             </Stack>
           </Box>
+
+          {/* 导出提示信息 */}
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <Typography variant="body2">
+              <strong>数据导出提示：</strong><br />
+              界面查询默认限制10,000行。如需完整结果，请使用异步任务功能，系统会自动根据结果生成新表。<br />
+              导出可在异步任务页面下载。
+            </Typography>
+          </Alert>
 
           {/* 搜索和筛选工具 */}
           <Stack direction="row" spacing={2} alignItems="center">
@@ -756,25 +623,6 @@ const ModernDataDisplay = ({
         )}
       </Card>
 
-      {/* 导出菜单 */}
-      <Menu
-        anchorEl={exportMenuAnchor}
-        open={Boolean(exportMenuAnchor)}
-        onClose={handleExportMenuClose}
-        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-      >
-        {/* 通用多格式导出菜单 */}
-        <MenuItem onClick={() => handleUniversalExport('excel')}>
-          导出为 Excel
-        </MenuItem>
-        <MenuItem onClick={() => handleUniversalExport('csv')}>
-          导出为 CSV
-        </MenuItem>
-        <MenuItem onClick={() => handleUniversalExport('parquet')}>
-          导出为 Parquet
-        </MenuItem>
-      </Menu>
 
       {/* 列设置菜单 */}
       <Menu

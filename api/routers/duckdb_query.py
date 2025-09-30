@@ -197,42 +197,88 @@ async def get_available_tables():
         raise HTTPException(status_code=500, detail=f"获取表信息失败: {str(e)}")
 
 
-@router.post("/api/duckdb/query", tags=["DuckDB Query"])
 async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryResponse:
     """
     执行DuckDB自定义SQL查询
+
+    支持的功能：
+    - 基于已加载的表进行查询
+    - 自动添加LIMIT限制
+    - 可选择将结果保存为新表
+    - 返回执行时间和表信息
     """
-    start_time = time.time()
+    import time
 
     try:
         con = get_db_connection()
-        app_config = config_manager.get_app_config()
+        start_time = time.time()
 
+        # 获取当前可用的表
         available_tables_df = con.execute("SHOW TABLES").fetchdf()
         available_tables = (
             available_tables_df["name"].tolist() if len(available_tables_df) > 0 else []
         )
 
-        sql_to_execute = request.sql.strip()
-        if not sql_to_execute:
+        # 验证SQL查询
+        sql_query = request.sql.strip()
+        if not sql_query:
             raise HTTPException(status_code=400, detail="SQL查询不能为空")
 
-        # 修复表名引号问题：为包含特殊字符的表名添加引号
-        logger.info(f"修复前SQL: {sql_to_execute}")
+        # 检查是否是简单的SELECT查询（不需要表）
+        sql_upper = sql_query.upper().strip()
+        is_simple_select = (
+            sql_upper.startswith("SELECT")
+            and "FROM" not in sql_upper
+            and not any(
+                keyword in sql_upper
+                for keyword in [
+                    "DROP",
+                    "DELETE",
+                    "TRUNCATE",
+                    "ALTER",
+                    "CREATE",
+                    "INSERT",
+                    "UPDATE",
+                ]
+            )
+        )
+
+        # 如果没有可用的表且不是简单SELECT查询，则报错
+        if not available_tables and not is_simple_select:
+            raise HTTPException(
+                status_code=400, detail="DuckDB中没有可用的表，请先上传文件或连接数据库"
+            )
+
+        # 检查SQL中是否包含危险操作（已在上面检查过）
+        dangerous_keywords = [
+            "DROP",
+            "DELETE",
+            "TRUNCATE",
+            "ALTER",
+            "CREATE",
+            "INSERT",
+            "UPDATE",
+        ]
+
+        # 如果要保存为表，允许CREATE操作
+        if not request.save_as_table:
+            for keyword in dangerous_keywords:
+                if keyword in sql_upper and keyword != "CREATE":
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"不允许执行 {keyword} 操作，仅支持查询操作",
+                    )
+
+        # 自动添加LIMIT限制（如果SQL中没有LIMIT）
+        limit = getattr(request, "limit", 10000)  # 默认限制10000行
+        if "LIMIT" not in sql_upper and limit > 0:
+            sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
+
+        logger.info(f"执行DuckDB查询: {sql_query}")
         logger.info(f"可用表: {available_tables}")
-        sql_to_execute = fix_table_names_in_sql(sql_to_execute, available_tables)
-        logger.info(f"修复后SQL: {sql_to_execute}")
-
-        # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式）
-        sql_for_preview = sql_to_execute
-        if request.is_preview and "LIMIT" not in sql_to_execute.upper():
-            limit = app_config.max_query_rows
-            sql_for_preview = f"{sql_to_execute.rstrip(';')} LIMIT {limit}"
-
-        logger.info(f"执行DuckDB查询: {sql_for_preview}")
 
         # 执行查询
-        result_df = con.execute(sql_for_preview).fetchdf()
+        result_df = con.execute(sql_query).fetchdf()
 
         execution_time = (time.time() - start_time) * 1000
 
@@ -247,50 +293,10 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
             table_name = request.save_as_table.strip()
             if table_name:
                 try:
-                    # 创建新表时使用原始SQL（不带LIMIT）
-                    create_sql = (
-                        f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql_to_execute})'
-                    )
+                    # 创建新表
+                    create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql_query.rstrip(";").replace(f"LIMIT {limit}", "")})'
                     con.execute(create_sql)
                     saved_table = table_name
-
-                    # 保存表元数据，包括created_at时间
-                    try:
-                        from datetime import datetime
-                        from core.timezone_utils import get_current_time_iso
-                        from core.file_datasource_manager import file_datasource_manager
-
-                        # 获取表信息
-                        row_count_result = con.execute(
-                            f'SELECT COUNT(*) FROM "{table_name}"'
-                        ).fetchone()
-                        row_count = row_count_result[0] if row_count_result else 0
-
-                        columns_result = con.execute(
-                            f'DESCRIBE "{table_name}"'
-                        ).fetchall()
-                        columns = [col[0] for col in columns_result]
-
-                        # 创建元数据
-                        table_metadata = {
-                            "source_id": table_name,
-                            "filename": f"query_result_{table_name}",
-                            "file_path": f"duckdb://{table_name}",
-                            "file_type": "duckdb_query",
-                            "row_count": row_count,
-                            "column_count": len(columns),
-                            "columns": columns,
-                            "created_at": get_current_time_iso(),
-                            "source_sql": sql_to_execute,
-                        }
-
-                        # 保存到文件数据源管理器
-                        file_datasource_manager.save_file_datasource(table_metadata)
-                        logger.info(f"成功保存表元数据: {table_name}")
-
-                    except Exception as metadata_error:
-                        logger.warning(f"保存表元数据失败: {str(metadata_error)}")
-
                     logger.info(f"查询结果已保存为表: {table_name}")
                 except Exception as save_error:
                     logger.warning(f"保存查询结果为表失败: {str(save_error)}")
@@ -302,11 +308,17 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
             data=result_df.to_dict(orient="records"),
             row_count=len(result_df),
             execution_time_ms=execution_time,
-            sql_executed=sql_for_preview,
+            sql_executed=sql_query,
             available_tables=available_tables,
             saved_table=saved_table,
             message=f"查询成功，返回 {len(result_df)} 行数据",
         )
+
+        # 性能日志
+        if execution_time > 1000:  # 超过1秒的查询
+            logger.warning(f"慢查询检测: 耗时 {execution_time:.2f}ms")
+        else:
+            logger.info(f"查询执行完成，耗时: {execution_time:.2f}ms")
 
         return response
 
@@ -314,25 +326,8 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
         raise
     except Exception as e:
         logger.error(f"DuckDB查询执行失败: {str(e)}")
-
-        # 使用统一的错误代码系统
-        from core.error_codes import (
-            analyze_error_type,
-            create_error_response,
-            get_http_status_code,
-        )
-
-        original_error = str(e)
-        error_code = analyze_error_type(original_error)
-        status_code = get_http_status_code(error_code)
-
-        # 创建标准化的错误响应
-        error_response = create_error_response(
-            error_code=error_code, original_error=original_error, sql=request.sql
-        )
-
-        # 返回详细的错误响应
-        raise HTTPException(status_code=status_code, detail=error_response)
+        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"查询执行失败: {str(e)}")
 
 
 @router.post("/api/duckdb/execute", tags=["DuckDB Query"])
@@ -342,181 +337,6 @@ async def execute_duckdb_sql(request: DuckDBQueryRequest) -> DuckDBQueryResponse
     这是 /api/duckdb/query 的别名端点，保持API兼容性
     """
     return await execute_duckdb_query(request)
-
-
-@router.post("/api/duckdb/explain", tags=["DuckDB Query"])
-async def explain_duckdb_query(request: dict = Body(...)):
-    """
-    解释DuckDB查询执行计划
-    """
-    try:
-        con = get_db_connection()
-        sql_query = request.get("sql", "").strip()
-
-        if not sql_query:
-            raise HTTPException(status_code=400, detail="SQL查询不能为空")
-
-        # 执行EXPLAIN
-        explain_sql = f"EXPLAIN {sql_query}"
-        explain_result = con.execute(explain_sql).fetchdf()
-
-        return {
-            "success": True,
-            "explain_result": explain_result.to_dict(orient="records"),
-            "sql": sql_query,
-        }
-
-    except Exception as e:
-        logger.error(f"查询计划解释失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"查询计划解释失败: {str(e)}")
-
-
-@router.get("/api/duckdb/table_schema/{table_name}", tags=["DuckDB Query"])
-async def get_table_schema(table_name: str):
-    """获取指定表的结构信息"""
-    try:
-        con = get_db_connection()
-
-        # 检查表是否存在
-        tables_df = con.execute("SHOW TABLES").fetchdf()
-        available_tables = tables_df["name"].tolist() if not tables_df.empty else []
-
-        if table_name not in available_tables:
-            raise HTTPException(
-                status_code=404,
-                detail=f"表 '{table_name}' 不存在。可用的表: {', '.join(available_tables)}",
-            )
-
-        # 获取表结构
-        schema_df = con.execute(f'DESCRIBE "{table_name}"').fetchdf()
-
-        # 获取表统计信息
-        count_result = con.execute(
-            f'SELECT COUNT(*) as count FROM "{table_name}"'
-        ).fetchone()
-        row_count = count_result[0] if count_result else 0
-
-        # 获取示例数据
-        sample_df = con.execute(f'SELECT * FROM "{table_name}" LIMIT 5').fetchdf()
-        sample_df = handle_non_serializable_data(sample_df)
-
-        return {
-            "success": True,
-            "table_name": table_name,
-            "schema": schema_df.to_dict(orient="records"),
-            "row_count": row_count,
-            "column_count": len(schema_df),
-            "sample_data": sample_df.to_dict(orient="records"),
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取表结构失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取表结构失败: {str(e)}")
-
-
-@router.post("/api/duckdb/upload-file", tags=["DuckDB Query"])
-async def upload_file_to_duckdb(
-    file: UploadFile = File(...), table_alias: str = Form(...)
-):
-    """上传文件并直接创建DuckDB表"""
-    try:
-        logger.info(f"开始上传文件到DuckDB: {file.filename} -> {table_alias}")
-
-        # 保存上传的文件
-        file_path = await save_upload_file(file)
-        logger.info(f"文件已保存到: {file_path}")
-
-        # 读取文件数据
-        file_extension = os.path.splitext(file.filename)[1].lower()
-
-        if file_extension == ".csv":
-            df = pd.read_csv(file_path)
-        elif file_extension in [".xlsx", ".xls"]:
-            df = pd.read_excel(file_path)
-        elif file_extension == ".json":
-            df = pd.read_json(file_path)
-        elif file_extension in [".parquet", ".pq"]:
-            df = pd.read_parquet(file_path)
-        else:
-            raise HTTPException(
-                status_code=400, detail=f"不支持的文件格式: {file_extension}"
-            )
-
-        logger.info(f"成功读取文件数据: {len(df)} 行, {len(df.columns)} 列")
-
-        # 获取DuckDB连接
-        con = get_db_connection()
-
-        # 创建表
-        logger.info(f"开始创建DuckDB表: {table_alias}")
-        success = create_persistent_table(table_alias, df, con)
-
-        if success:
-            # 获取表信息
-            row_count = len(df)
-            columns = df.columns.tolist()
-
-            logger.info(f"成功创建DuckDB表: {table_alias}")
-
-            # 清理临时文件
-            try:
-                os.remove(file_path)
-                logger.info(f"已清理临时文件: {file_path}")
-            except Exception as cleanup_e:
-                logger.warning(f"清理临时文件失败: {cleanup_e}")
-
-            # 保存元数据
-            try:
-                from core.timezone_utils import get_current_time_iso
-
-                # 保存文件数据源配置到持久化存储（遵循created_at字段标准）
-                file_info = {
-                    "source_id": table_alias,
-                    "filename": file.filename,
-                    "file_path": file_path,
-                    "file_type": file_extension.lstrip("."),
-                    "row_count": row_count,
-                    "column_count": len(columns),
-                    "columns": columns,
-                    "created_at": get_current_time_iso(),  # 使用统一的时区配置
-                }
-                # 使用全局时区配置更新创建时间
-                try:
-                    from core.timezone_utils import get_current_time_iso
-
-                    file_info["created_at"] = get_current_time_iso()
-                except ImportError:
-                    pass  # 使用默认时间
-                file_datasource_manager.save_file_datasource(file_info)
-                logger.info(f"成功保存文件数据源的元数据: {table_alias}")
-            except Exception as e:
-                logger.warning(f"保存文件数据源的元数据失败: {str(e)}")
-
-            return {
-                "success": True,
-                "message": f"文件上传成功，已创建表: {table_alias}",
-                "table_alias": table_alias,
-                "row_count": row_count,
-                "columns": columns,
-            }
-        else:
-            # 清理临时文件
-            try:
-                os.remove(file_path)
-            except:
-                pass
-            raise HTTPException(
-                status_code=500, detail=f"创建DuckDB表失败: {table_alias}"
-            )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"上传文件到DuckDB失败: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
 
 
 @router.delete("/api/duckdb/tables/{table_name}", tags=["DuckDB Query"])

@@ -508,35 +508,6 @@ async def process_uploaded_file(
         raise
 
 
-@router.get("/api/upload/status/{upload_id}", tags=["Chunked Upload"])
-async def get_upload_status(upload_id: str):
-    """获取上传状态"""
-    try:
-        if upload_id not in upload_sessions:
-            raise HTTPException(status_code=404, detail="上传会话不存在")
-
-        session = upload_sessions[upload_id]
-        progress = session["uploaded_chunks"] / session["total_chunks"] * 100
-
-        return UploadStatus(
-            upload_id=upload_id,
-            file_name=session["file_name"],
-            total_chunks=session["total_chunks"],
-            uploaded_chunks=session["uploaded_chunks"],
-            progress=progress,
-            status=session["status"],
-            file_size=session["file_size"],
-            created_at=session["created_at"],
-            error_message=session.get("error_message"),
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取上传状态失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取上传状态失败: {str(e)}")
-
-
 @router.delete("/api/upload/cancel/{upload_id}", tags=["Chunked Upload"])
 async def cancel_upload(upload_id: str):
     """取消上传"""

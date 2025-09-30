@@ -29,7 +29,18 @@ const handleApiError = (error, defaultMessage = '操作失败') => {
 
   const { status, data } = error.response;
 
-  // 检查新的错误格式: data.error.message = { code, message, details }
+  // 检查统一错误格式: data.detail = { code, message, details }
+  if (data?.detail && typeof data.detail === 'object' && data.detail.code) {
+    // 优先使用original_error，如果没有则使用message
+    const errorMessage = data.detail.details?.original_error || data.detail.message || defaultMessage;
+    const enhancedError = new Error(errorMessage);
+    enhancedError.code = data.detail.code;
+    enhancedError.details = data.detail.details;
+    enhancedError.statusCode = status;
+    throw enhancedError;
+  }
+
+  // 兼容旧格式: data.error.message = { code, message, details }
   if (data?.error && data.error.message && typeof data.error.message === 'object' && data.error.message.code) {
     const enhancedError = new Error(data.error.message.message || defaultMessage);
     enhancedError.code = data.error.message.code;
@@ -38,40 +49,24 @@ const handleApiError = (error, defaultMessage = '操作失败') => {
     throw enhancedError;
   }
 
-  // 优先处理结构化错误响应
-  if (data?.detail && typeof data.detail === 'object' && data.detail.code) {
-    const enhancedError = new Error(data.detail.message || defaultMessage);
-    enhancedError.code = data.detail.code;
-    enhancedError.details = data.detail.details;
-    enhancedError.statusCode = status;
-    throw enhancedError;
-  }
 
-  // 检查 data.message 格式的结构化错误响应
-  if (data?.message && typeof data.message === 'object' && data.message.code) {
-    const enhancedError = new Error(data.message.message || defaultMessage);
-    enhancedError.code = data.message.code;
-    enhancedError.details = data.message.details;
-    enhancedError.statusCode = status;
-    throw enhancedError;
-  }
 
-  // 根据状态码处理
+  // 根据状态码处理（简化版本，因为前面已经处理了结构化错误）
   switch (status) {
     case 400:
-      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '请求参数错误');
+      throw new Error(data?.detail || data?.message || '请求参数错误');
     case 401:
-      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '认证失败，请重新登录');
+      throw new Error(data?.detail || data?.message || '认证失败，请重新登录');
     case 403:
-      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '权限不足，无法执行此操作');
+      throw new Error(data?.detail || data?.message || '权限不足，无法执行此操作');
     case 404:
-      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '请求的资源不存在');
+      throw new Error(data?.detail || data?.message || '请求的资源不存在');
     case 413:
-      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '文件太大，请选择较小的文件');
+      throw new Error(data?.detail || data?.message || '文件太大，请选择较小的文件');
     case 422:
-      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '数据验证失败');
+      throw new Error(data?.detail || data?.message || '数据验证失败');
     case 500:
-      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || '服务器内部错误，请稍后重试');
+      throw new Error(data?.detail || data?.message || '服务器内部错误，请稍后重试');
     case 502:
       throw new Error('服务器网关错误，请稍后重试');
     case 503:
@@ -102,14 +97,6 @@ export const uploadFile = async (file, tableAlias = null) => {
     handleApiError(error, "文件上传失败");
   }
 };
-export const connectDatabase = async (connectionParams) => {
-  try {
-    const response = await apiClient.post('/api/connect_database', connectionParams);
-    return response.data;
-  } catch (error) {
-    handleApiError(error, '数据库连接失败');
-  }
-};
 
 export const performQuery = async (queryRequest) => {
   try {
@@ -117,62 +104,21 @@ export const performQuery = async (queryRequest) => {
     const response = await apiClient.post('/api/query', queryRequest);
     return response.data;
   } catch (error) {
-
     // 如果是HTTP错误但有响应数据，检查是否是友好的错误格式
     if (error.response && error.response.data) {
       const errorData = error.response.data;
-      // 如果后端返回了结构化的错误信息，直接返回而不抛出异常
+
+      // 兼容旧格式: 如果后端返回了结构化的错误信息，直接返回而不抛出异常
       if (errorData.success === false && errorData.error) {
         return errorData;
       }
     }
 
+    // 使用统一的错误处理函数
     handleApiError(error, '查询执行失败');
   }
 };
 
-export const downloadResults = async (queryRequest) => {
-  try {
-
-    // 使用下载代理端点来自动转换请求格式
-    const response = await apiClient.post('/api/download_proxy', queryRequest, {
-      responseType: 'blob',
-      timeout: 300000, // 增加超时时间到300秒（5分钟）
-    });
-
-    // 验证响应
-    if (!response.data || response.data.size === 0) {
-      throw new Error('下载的文件为空');
-    }
-
-
-    // 生成带时间戳的文件名，避免缓存问题
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename = `query_results_${timestamp}.xlsx`;
-
-    // 创建下载链接
-    const url = window.URL.createObjectURL(new Blob([response.data], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    }));
-
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', filename);
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-
-    // 清理
-    setTimeout(() => {
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    }, 100);
-
-    return true;
-  } catch (error) {
-    throw error;
-  }
-};
 
 // MySQL配置管理
 export const getMySQLConfigs = async () => {
@@ -220,15 +166,6 @@ export const executeSQL = async (sql, datasource, is_preview = true) => {
   }
 };
 
-// 删除本地文件API
-export const deleteFile = async (filePath) => {
-  try {
-    const response = await apiClient.post('/api/delete_file', { path: filePath });
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
-};
 
 // 文件管理增强API
 export const getFilePreview = async (filename, rows = 10) => {
@@ -303,85 +240,8 @@ export const deleteDatabaseConnection = async (connectionId) => {
   }
 };
 
-// 导出功能API
-export const exportData = async (exportRequest) => {
-  try {
-    const response = await apiClient.post('/api/export', exportRequest);
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
-};
 
-export const quickExport = async (exportRequest) => {
-  try {
-    // 转换为新的统一导出接口格式
-    const universalRequest = {
-      query_type: 'custom_sql',
-      sql_query: exportRequest.sql || '',
-      format: 'excel', // 默认Excel格式
-      filename: exportRequest.filename,
-      original_datasource: exportRequest.originalDatasource,
-      fallback_data: exportRequest.fallback_data,
-      fallback_columns: exportRequest.fallback_columns
-    };
 
-    const response = await apiClient.post('/api/export/universal', universalRequest, {
-      responseType: 'blob'
-    });
-    return response;
-  } catch (error) {
-    throw error;
-  }
-};
-
-export const getExportTaskStatus = async (taskId) => {
-  try {
-    const response = await apiClient.get(`/api/export/tasks/${taskId}`);
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
-};
-
-export const downloadExportFile = async (taskId) => {
-  try {
-    const response = await apiClient.get(`/api/export/download/${taskId}`, {
-      responseType: 'blob'
-    });
-    return response;
-  } catch (error) {
-    throw error;
-  }
-};
-
-export const listExportTasks = async () => {
-  try {
-    const response = await apiClient.get('/api/export/tasks');
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
-};
-
-export const deleteExportTask = async (taskId) => {
-  try {
-    const response = await apiClient.delete(`/api/export/tasks/${taskId}`);
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
-};
-
-// SQL查询API
-export const executeSqlQuery = async (sqlQuery) => {
-  try {
-    const response = await apiClient.post('/api/sql_query', { query: sqlQuery });
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
-};
 
 // 保存查询结果为数据源
 export const saveQueryResultAsDatasource = async (sql, datasourceName, originalDatasource) => {
@@ -471,53 +331,7 @@ export const executeDuckDBSQL = async (sql, saveAsTable = null, is_preview = tru
     });
     return response.data;
   } catch (error) {
-
-    // 处理详细的错误响应
-    if (error.response && error.response.data) {
-      const data = error.response.data;
-
-      // 检查新的错误格式: data.error.message = { code, message, details }
-      if (data.error && data.error.message && typeof data.error.message === 'object' && data.error.message.code) {
-        // 优先使用original_error，如果没有则使用message
-        const errorMessage = data.error.message.details?.original_error || data.error.message.message || '查询执行失败';
-        const enhancedError = new Error(errorMessage);
-        enhancedError.code = data.error.message.code;
-        enhancedError.details = data.error.message.details;
-        enhancedError.statusCode = error.response.status;
-        throw enhancedError;
-      }
-
-      // 检查 data.detail 格式（HTTPException 格式）
-      if (data.detail && typeof data.detail === 'object' && data.detail.code) {
-        // 优先使用original_error，如果没有则使用message
-        const errorMessage = data.detail.details?.original_error || data.detail.message || '查询执行失败';
-        const enhancedError = new Error(errorMessage);
-        enhancedError.code = data.detail.code;
-        enhancedError.details = data.detail.details;
-        enhancedError.statusCode = error.response.status;
-        throw enhancedError;
-      }
-
-      // 检查 data.message 格式（旧格式）
-      if (data.message && typeof data.message === 'object' && data.message.code) {
-        // 优先使用original_error，如果没有则使用message
-        const errorMessage = data.message.details?.original_error || data.message.message || '查询执行失败';
-        const enhancedError = new Error(errorMessage);
-        enhancedError.code = data.message.code;
-        enhancedError.details = data.message.details;
-        enhancedError.statusCode = error.response.status;
-        throw enhancedError;
-      }
-
-      // 检查字符串格式的错误信息（旧格式）
-      if (data.detail && typeof data.detail === 'string') {
-        const enhancedError = new Error(data.detail);
-        enhancedError.statusCode = error.response.status;
-        throw enhancedError;
-      }
-    }
-
-    // 回退到通用错误处理
+    // 使用统一的错误处理函数
     handleApiError(error, '查询执行失败');
   }
 };
@@ -641,37 +455,6 @@ export const submitAsyncQuery = async (sql) => {
   }
 };
 
-export const downloadAsyncTaskResult = async (taskId) => {
-  try {
-    const response = await apiClient.get(`/api/async_tasks/${taskId}/result`, {
-      responseType: 'blob'
-    });
-
-    // 获取文件名
-    const contentDisposition = response.headers['content-disposition'];
-    let filename = `task-${taskId}-result.parquet`;
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-      if (filenameMatch && filenameMatch[1]) {
-        filename = filenameMatch[1];
-      }
-    }
-
-    // 创建下载链接
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
-
-    return { success: true };
-  } catch (error) {
-    throw error;
-  }
-};
 
 // 新增连接池状态监控API
 export const getConnectionPoolStatus = async () => {
@@ -711,15 +494,6 @@ export const clearOldErrors = async (days = 30) => {
   }
 };
 
-// 新增数据库连接API
-export const connectDatabaseEnhanced = async (connectionParams) => {
-  try {
-    const response = await apiClient.post('/api/database/connect', connectionParams);
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
-};
 
 // 统一表管理接口
 export const getAllTables = async () => {

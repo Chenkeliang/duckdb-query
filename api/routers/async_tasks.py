@@ -164,84 +164,6 @@ async def get_async_task(task_id: str):
         raise HTTPException(status_code=500, detail=f"获取任务详情失败: {str(e)}")
 
 
-@router.get("/api/async_tasks/{task_id}/result", tags=["Async Tasks"])
-async def download_async_task_result(task_id: str):
-    """
-    下载异步任务结果文件
-    """
-    try:
-        # 获取任务信息
-        task = task_manager.get_task(task_id)
-        if not task:
-            # 尝试从文件系统恢复任务信息
-            task = task_utils.recover_task_from_files(task_id)
-            if not task:
-                raise HTTPException(status_code=404, detail="任务不存在")
-
-        # 检查任务状态
-        if not task_utils.is_task_completed(task):
-            raise HTTPException(status_code=400, detail="任务尚未成功完成")
-
-        # 获取文件路径
-        file_path = task_utils.get_file_path_from_task(task)
-        if not file_path or not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="结果文件不存在")
-
-        # 确定文件名和媒体类型
-        file_name = os.path.basename(file_path)
-        media_type = task_utils.get_media_type(file_path)
-
-        # 返回文件
-        return FileResponse(
-            file_path,
-            media_type=media_type,
-            headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"下载异步任务结果失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"下载结果失败: {str(e)}")
-
-
-@router.get("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
-async def download_file_get(task_id: str, format: str = "csv"):
-    """
-    通过GET请求下载文件（兼容直接URL访问）
-    """
-    try:
-        # 验证格式参数
-        if format not in ["csv", "parquet"]:
-            raise HTTPException(
-                status_code=400, detail="不支持的格式，只支持csv和parquet"
-            )
-
-        # 生成下载文件
-        file_path = generate_download_file(task_id, format)
-
-        # 检查文件是否存在
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="生成的文件不存在")
-
-        # 确定文件名和媒体类型
-        file_name = os.path.basename(file_path)
-        media_type = task_utils.get_media_type(file_path)
-
-        # 直接返回文件
-        return FileResponse(
-            file_path,
-            media_type=media_type,
-            headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"下载文件失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"下载文件失败: {str(e)}")
-
-
 @router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
 async def generate_and_download_file(task_id: str, request: dict = Body(...)):
     """
@@ -550,19 +472,3 @@ def cleanup_old_files():
         return 0
 
 
-@router.post("/api/async-tasks/cleanup", tags=["Async Tasks"])
-async def cleanup_files_endpoint():
-    """
-    手动触发文件清理
-    清理过期的临时文件和DuckDB表
-    """
-    try:
-        cleaned_count = cleanup_old_files()
-        return {
-            "success": True,
-            "cleaned_count": cleaned_count,
-            "message": f"清理完成，共清理 {cleaned_count} 个文件/表",
-        }
-    except Exception as e:
-        logger.error(f"手动清理失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}")

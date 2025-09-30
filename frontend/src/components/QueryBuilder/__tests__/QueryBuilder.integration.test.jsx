@@ -2,26 +2,25 @@
  * Integration tests for QueryBuilder with Visual Query functionality
  */
 
-import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import '@testing-library/jest-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
-import QueryBuilder from '../QueryBuilder';
+import '@testing-library/jest-dom';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import React from 'react';
 import { ToastProvider } from '../../../contexts/ToastContext';
+import QueryBuilder from '../QueryBuilder';
 
 // Mock API client
 jest.mock('../../../services/apiClient', () => ({
   performQuery: jest.fn(),
   executeDuckDBSQL: jest.fn(),
-  downloadResults: jest.fn()
 }));
 
 // Mock VisualAnalysisPanel
 jest.mock('../VisualAnalysisPanel', () => {
-  return function MockVisualAnalysisPanel({ 
-    selectedSources, 
-    onVisualQueryGenerated, 
-    isVisible 
+  return function MockVisualAnalysisPanel({
+    selectedSources,
+    onVisualQueryGenerated,
+    isVisible
   }) {
     if (!isVisible || selectedSources.length !== 1) {
       return null;
@@ -72,7 +71,7 @@ describe('QueryBuilder Integration Tests', () => {
       columns: ['id', 'name', 'age', 'email', 'status']
     },
     {
-      id: 'orders_table', 
+      id: 'orders_table',
       name: 'Orders',
       sourceType: 'duckdb',
       columns: ['id', 'user_id', 'amount', 'order_date']
@@ -130,7 +129,7 @@ describe('QueryBuilder Integration Tests', () => {
         ],
         columns: ['name', 'age']
       };
-      
+
       executeDuckDBSQL.mockResolvedValue(mockResults);
 
       const props = {
@@ -168,10 +167,10 @@ describe('QueryBuilder Integration Tests', () => {
 
     it('falls back to regular query API if direct SQL execution fails', async () => {
       const { executeDuckDBSQL, performQuery } = require('../../../services/apiClient');
-      
+
       // Mock direct SQL execution failure
       executeDuckDBSQL.mockRejectedValue(new Error('SQL execution failed'));
-      
+
       // Mock regular query API success
       const mockResults = {
         success: true,
@@ -210,7 +209,7 @@ describe('QueryBuilder Integration Tests', () => {
 
     it('handles visual query execution errors', async () => {
       const { executeDuckDBSQL, performQuery } = require('../../../services/apiClient');
-      
+
       // Mock both APIs failing
       executeDuckDBSQL.mockRejectedValue(new Error('SQL execution failed'));
       performQuery.mockResolvedValue({
@@ -244,7 +243,7 @@ describe('QueryBuilder Integration Tests', () => {
   describe('Multi-table Query Integration', () => {
     it('executes multi-table queries without visual analysis', async () => {
       const { performQuery } = require('../../../services/apiClient');
-      
+
       const mockResults = {
         success: true,
         data: [
@@ -254,7 +253,7 @@ describe('QueryBuilder Integration Tests', () => {
         columns: ['users_name', 'orders_amount'],
         sql: 'SELECT users.name as users_name, orders.amount as orders_amount FROM users INNER JOIN orders ON users.id = orders.user_id'
       };
-      
+
       performQuery.mockResolvedValue(mockResults);
 
       const props = {
@@ -288,7 +287,7 @@ describe('QueryBuilder Integration Tests', () => {
 
     it('maintains backward compatibility with existing JOIN functionality', async () => {
       const { performQuery } = require('../../../services/apiClient');
-      
+
       performQuery.mockResolvedValue({
         success: true,
         data: [],
@@ -322,7 +321,7 @@ describe('QueryBuilder Integration Tests', () => {
   describe('Error Handling Integration', () => {
     it('displays error messages for failed queries', async () => {
       const { performQuery } = require('../../../services/apiClient');
-      
+
       performQuery.mockRejectedValue(new Error('Network error'));
 
       const props = {
@@ -342,7 +341,7 @@ describe('QueryBuilder Integration Tests', () => {
 
     it('handles validation errors from backend', async () => {
       const { performQuery } = require('../../../services/apiClient');
-      
+
       performQuery.mockResolvedValue({
         success: false,
         error: 'Invalid table name'
@@ -428,7 +427,7 @@ describe('QueryBuilder Integration Tests', () => {
   describe('Performance Integration', () => {
     it('handles large result sets efficiently', async () => {
       const { executeDuckDBSQL } = require('../../../services/apiClient');
-      
+
       // Mock large result set
       const largeResults = {
         success: true,
@@ -439,7 +438,7 @@ describe('QueryBuilder Integration Tests', () => {
         })),
         columns: ['id', 'name', 'value']
       };
-      
+
       executeDuckDBSQL.mockResolvedValue(largeResults);
 
       const props = {
@@ -469,10 +468,10 @@ describe('QueryBuilder Integration Tests', () => {
 
     it('shows loading state during query execution', async () => {
       const { executeDuckDBSQL } = require('../../../services/apiClient');
-      
+
       // Mock slow query
-      executeDuckDBSQL.mockImplementation(() => 
-        new Promise(resolve => 
+      executeDuckDBSQL.mockImplementation(() =>
+        new Promise(resolve =>
           setTimeout(() => resolve({ success: true, data: [], columns: [] }), 1000)
         )
       );

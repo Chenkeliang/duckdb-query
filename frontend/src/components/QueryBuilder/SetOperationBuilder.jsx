@@ -13,7 +13,7 @@ import {
     Switch,
     Typography
 } from '@mui/material';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const SetOperationBuilder = ({
     onOperationChange,
@@ -29,8 +29,22 @@ const SetOperationBuilder = ({
     });
 
 
+    // 使用ref来跟踪初始化状态，避免重复初始化
+    const initializedRef = useRef(false);
+    const lastAvailableTablesRef = useRef([]);
+    const lastInitialConfigRef = useRef(null);
+
     // 初始化配置和更新表列表
     useEffect(() => {
+        // 检查是否需要初始化
+        const shouldInitialize = !initializedRef.current ||
+            JSON.stringify(availableTables) !== JSON.stringify(lastAvailableTablesRef.current) ||
+            JSON.stringify(initialConfig) !== JSON.stringify(lastInitialConfigRef.current);
+
+        if (!shouldInitialize) {
+            return;
+        }
+
         if (initialConfig && initialConfig.tables && initialConfig.tables.length > 0) {
             // 处理初始配置中的空字符串别名
             const processedConfig = {
@@ -41,18 +55,22 @@ const SetOperationBuilder = ({
                 }))
             };
             setConfig(processedConfig);
+            initializedRef.current = true;
+            lastInitialConfigRef.current = initialConfig;
         } else if (hideTableSelector && availableTables.length > 0) {
             // 如果隐藏表选择器，自动使用可用表
-            setConfig(prevConfig => ({
-                ...prevConfig,
-                operation_type: prevConfig.operation_type || 'UNION',
+            const newConfig = {
+                operation_type: 'UNION',
                 tables: availableTables.map(tableName => ({
                     table_name: tableName,
                     selected_columns: [],
                     alias: null
                 })),
-                use_by_name: prevConfig.use_by_name || false
-            }));
+                use_by_name: false
+            };
+            setConfig(newConfig);
+            initializedRef.current = true;
+            lastAvailableTablesRef.current = [...availableTables];
         }
     }, [initialConfig, hideTableSelector, availableTables]);
 
@@ -65,8 +83,16 @@ const SetOperationBuilder = ({
         }
     }, [onOperationChange]);
 
+    // 使用ref来跟踪上一次的配置，避免不必要的通知
+    const prevConfigRef = useRef(null);
+
     useEffect(() => {
-        notifyConfigChange(config);
+        // 深度比较，只有配置真正变化时才通知父组件
+        if (prevConfigRef.current === null ||
+            JSON.stringify(prevConfigRef.current) !== JSON.stringify(config)) {
+            prevConfigRef.current = config;
+            notifyConfigChange(config);
+        }
     }, [config, notifyConfigChange]);
 
     // 操作类型选项
@@ -146,17 +172,83 @@ const SetOperationBuilder = ({
 
 
 
-    // 获取表列信息
-    const getTableColumns = (tableName) => {
+    // 缓存sources，避免sources变化导致重新计算
+    const sourcesRef = useRef(sources);
+    useEffect(() => {
+        sourcesRef.current = sources;
+    }, [sources]);
+
+    // 获取表列信息 - 使用ref避免依赖变化
+    const getTableColumns = useCallback((tableName) => {
         if (!tableName) return [];
 
         // 从sources中查找对应的表
-        const source = sources.find(s => s.id === tableName);
+        const source = sourcesRef.current.find(s => s.id === tableName);
         if (source && source.columns) {
             return source.columns;
         }
         return [];
-    };
+    }, []);
+
+    // 缓存表列信息，避免重复计算
+    const tableColumnsCache = useMemo(() => {
+        const cache = {};
+        config.tables.forEach(table => {
+            if (table.table_name) {
+                cache[table.table_name] = getTableColumns(table.table_name);
+            }
+        });
+        return cache;
+    }, [config.tables, getTableColumns]);
+
+    // 优化的表信息组件，使用memo避免不必要的重新渲染
+    const TableInfoCard = memo(({ table, columns }) => (
+        <Paper
+            elevation={0}
+            sx={{
+                p: 2,
+                border: '1px solid',
+                borderColor: 'grey.200',
+                borderRadius: 2,
+                backgroundColor: 'grey.50',
+                minWidth: 200
+            }}
+        >
+            <Typography variant="subtitle3" sx={{ mb: 1, fontWeight: 600 }}>
+                {table.table_name}
+            </Typography>
+
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                可用列：
+            </Typography>
+
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                {columns?.length > 0 ?
+                    columns.map((column) => {
+                        const columnName = typeof column === 'string' ? column : column.name;
+                        return (
+                            <Chip
+                                key={`${table.table_name}-${columnName}`}
+                                label={columnName}
+                                size="small"
+                                variant="outlined"
+                                sx={{
+                                    borderColor: 'primary.200',
+                                    color: 'primary.700',
+                                    backgroundColor: 'primary.50',
+                                    fontSize: '0.75rem'
+                                }}
+                            />
+                        );
+                    }) : (
+                        <Typography variant="caption" color="text.secondary">
+                            暂无可用列
+                        </Typography>
+                    )
+                }
+            </Box>
+        </Paper>
+    ));
 
     return (
         <Box>
@@ -216,53 +308,11 @@ const SetOperationBuilder = ({
 
                     <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         {config.tables.map((table, tableIndex) => (
-                            <Paper
-                                key={tableIndex}
-                                elevation={0}
-                                sx={{
-                                    p: 2,
-                                    border: '1px solid',
-                                    borderColor: 'grey.200',
-                                    borderRadius: 2,
-                                    backgroundColor: 'grey.50',
-                                    minWidth: 200
-                                }}
-                            >
-                                <Typography variant="subtitle3" sx={{ mb: 1, fontWeight: 600 }}>
-                                    {table.table_name}
-                                </Typography>
-
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                    可用列：
-                                </Typography>
-
-                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                    {(() => {
-                                        const columns = getTableColumns(table.table_name);
-                                        return columns.length > 0 ? columns.map((column) => {
-                                            const columnName = typeof column === 'string' ? column : column.name;
-                                            return (
-                                                <Chip
-                                                    key={columnName}
-                                                    label={columnName}
-                                                    size="small"
-                                                    variant="outlined"
-                                                    sx={{
-                                                        borderColor: 'primary.200',
-                                                        color: 'primary.700',
-                                                        backgroundColor: 'primary.50',
-                                                        fontSize: '0.75rem'
-                                                    }}
-                                                />
-                                            );
-                                        }) : (
-                                            <Typography variant="caption" color="text.secondary">
-                                                暂无可用列
-                                            </Typography>
-                                        );
-                                    })()}
-                                </Box>
-                            </Paper>
+                            <TableInfoCard
+                                key={`${table.table_name}-${tableIndex}`}
+                                table={table}
+                                columns={tableColumnsCache[table.table_name]}
+                            />
                         ))}
                     </Box>
                 </Box>

@@ -1,5 +1,4 @@
 import AddIcon from '@mui/icons-material/Add';
-import DownloadIcon from '@mui/icons-material/Download';
 import {
   Alert,
   Backdrop,
@@ -14,7 +13,7 @@ import {
 import { Play } from 'lucide-react';
 import React, { useCallback, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import { downloadResults, executeDuckDBSQL, performQuery } from '../../services/apiClient';
+import { executeDuckDBSQL, performQuery } from '../../services/apiClient';
 import JoinCondition from './JoinCondition';
 import SetOperationBuilder from './SetOperationBuilder';
 import SourceSelector from './SourceSelector';
@@ -323,31 +322,6 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     }
   };
 
-  const handleDownload = async () => {
-    if (selectedSources.length === 0) {
-      showError('请至少选择一个数据源');
-      return;
-    }
-
-    setError('');
-    setIsLoading(true);
-
-    try {
-      const queryRequest = {
-        sources: selectedSources,
-        joins: joins
-      };
-
-      await downloadResults(queryRequest);
-      showSuccess('文件下载成功');
-    } catch (err) {
-      const errorMsg = `下载失败: ${err.message || '未知错误'}`;
-      setError(errorMsg);
-      showError(errorMsg);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // 保存历史（只保存最终执行的SQL字符串）
   const saveHistory = (sql) => {
@@ -645,28 +619,6 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
 
         {currentOperationMode === 'join' && (
           <>
-            <Button
-              variant="outlined"
-              onClick={handleDownload}
-              disabled={selectedSources.length === 0 || isLoading}
-              sx={{
-                borderRadius: 20,
-                px: 3,
-                py: 1.5,
-                fontSize: '0.9rem',
-                fontWeight: 500,
-                textTransform: 'none',
-                border: '1px solid rgba(0, 113, 227, 0.5)',
-                color: '#0071e3',
-                '&:hover': {
-                  border: '1px solid rgba(0, 113, 227, 0.8)',
-                  backgroundColor: 'rgba(0, 113, 227, 0.04)'
-                }
-              }}
-              startIcon={<DownloadIcon />}
-            >
-              下载结果
-            </Button>
             <Button
               variant="contained"
               onClick={handleExecuteQuery}
