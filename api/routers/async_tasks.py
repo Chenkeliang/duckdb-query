@@ -47,7 +47,6 @@ class AsyncQueryRequest(BaseModel):
     """异步查询请求模型"""
 
     sql: str
-    format: str = "parquet"  # 支持 "parquet" 或 "csv"
     custom_table_name: Optional[str] = None  # 自定义表名（可选）
     task_type: str = "query"  # 任务类型：query, save_to_table, export
 
@@ -88,16 +87,9 @@ async def submit_async_query(
         if not request.sql.strip():
             raise HTTPException(status_code=400, detail="SQL查询不能为空")
 
-        # 验证输出格式
-        if request.format not in ["parquet", "csv"]:
-            raise HTTPException(
-                status_code=400, detail="不支持的输出格式，仅支持 parquet 或 csv"
-            )
-
-        # 创建任务，将格式信息存储在任务查询中
+        # 创建任务，将信息存储在任务查询中
         task_query = {
             "sql": request.sql,
-            "format": request.format,
             "custom_table_name": request.custom_table_name,
             "task_type": request.task_type,
         }
@@ -110,7 +102,6 @@ async def submit_async_query(
             execute_async_query,
             task_id,
             request.sql,
-            request.format,
             request.custom_table_name,
             request.task_type,
         )
@@ -161,7 +152,6 @@ async def get_async_task(task_id: str):
             query_info = json.loads(task_dict["query"])
             if isinstance(query_info, dict) and "sql" in query_info:
                 task_dict["query"] = query_info["sql"]
-                task_dict["format"] = query_info.get("format", "parquet")
         except (json.JSONDecodeError, TypeError):
             # 如果不是JSON格式，保持原样
             pass
@@ -296,7 +286,6 @@ async def generate_and_download_file(task_id: str, request: dict = Body(...)):
 def execute_async_query(
     task_id: str,
     sql: str,
-    format: str = "parquet",
     custom_table_name: Optional[str] = None,
     task_type: str = "query",
 ):

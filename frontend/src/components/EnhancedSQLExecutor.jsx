@@ -15,11 +15,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
   Grid,
-  InputLabel,
-  MenuItem,
-  Select,
   Tab,
   Tabs,
   TextField,
@@ -52,7 +48,6 @@ const EnhancedSQLExecutor = ({
   const [success, setSuccess] = useState("");
   const [duckdbTables, setDuckdbTables] = useState([]);
   const [tableManagerOpen, setTableManagerOpen] = useState(false);
-  const [format, setFormat] = useState("parquet");
   const [activeTab, setActiveTab] = useState(0);
   const [validationResult, setValidationResult] = useState(null);
   const sqlEditorRef = useRef(null); // Create a ref for the editor component
@@ -179,7 +174,7 @@ const EnhancedSQLExecutor = ({
     setSuccess("");
 
     try {
-      const response = await submitAsyncQuery(currentQuery, format);
+      const response = await submitAsyncQuery(currentQuery);
 
       if (response.success) {
         setSuccess(
@@ -403,22 +398,6 @@ const EnhancedSQLExecutor = ({
                           }
                         }}
                       />
-                      <FormControl fullWidth>
-                        <InputLabel>输出格式</InputLabel>
-                        <Select
-                          value={format}
-                          onChange={(e) => setFormat(e.target.value)}
-                          label="输出格式"
-                          sx={{
-                            height: '48px',
-                            borderRadius: 2,
-                            backgroundColor: '#fafbfc'
-                          }}
-                        >
-                          <MenuItem value="parquet">Parquet格式</MenuItem>
-                          <MenuItem value="csv">CSV格式</MenuItem>
-                        </Select>
-                      </FormControl>
                     </Box>
                   </Grid>
 
@@ -426,10 +405,11 @@ const EnhancedSQLExecutor = ({
                   <Grid item xs={12} md={4}>
                     <Box sx={{
                       display: 'flex',
-                      flexDirection: 'column',
-                      gap: 2.5,
+                      flexDirection: 'row',
+                      gap: 2,
                       height: '100%',
-                      justifyContent: 'center'
+                      justifyContent: 'center',
+                      alignItems: 'center'
                     }}>
                       <Button
                         variant="contained"

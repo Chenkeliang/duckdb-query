@@ -626,9 +626,9 @@ export const getAsyncTask = async (taskId) => {
 };
 
 // 提交异步查询
-export const submitAsyncQuery = async (sql, format = 'parquet') => {
+export const submitAsyncQuery = async (sql) => {
   try {
-    const response = await apiClient.post('/api/async_query', { sql, format });
+    const response = await apiClient.post('/api/async_query', { sql });
     return response.data;
   } catch (error) {
     throw error;
