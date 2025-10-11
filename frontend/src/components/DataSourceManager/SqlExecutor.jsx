@@ -29,9 +29,12 @@ import {
   TextField,
   Typography
 } from '@mui/material';
-import { Code, Play } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { Code, Play, Star } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 import { executeSQL, saveQueryToDuckDB } from '../../services/apiClient';
+import DuckDBSQLEditor from '../DuckDBSQLEditor';
+import AddSQLFavoriteDialog from '../SQLFavorites/AddSQLFavoriteDialog';
+import SQLFavoritesSelect from '../SQLFavorites/SQLFavoritesSelect';
 
 // 智能LIMIT处理函数
 const applyDisplayLimit = (sql, maxRows = 10000) => {
@@ -74,6 +77,14 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
   const [results, setResults] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [editorTheme, setEditorTheme] = useState("github-light");
+
+  // SQL编辑器引用
+  const sqlEditorRef = useRef(null);
+  const [editorReady, setEditorReady] = useState(false);
+
+  // 收藏相关状态
+  const [addFavoriteDialogOpen, setAddFavoriteDialogOpen] = useState(false);
 
   // 数据源相关状态
   const [selectedDataSource, setSelectedDataSource] = useState('');
@@ -106,7 +117,10 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
   }, [selectedDataSource, databaseConnections]);
 
   const handleExecuteSql = async () => {
-    if (!sqlQuery.trim()) {
+    // 从编辑器获取最新的SQL内容
+    const currentQuery = sqlEditorRef.current ? sqlEditorRef.current.getValue() : sqlQuery;
+
+    if (!currentQuery.trim()) {
       setError('请输入SQL查询语句');
       return;
     }
@@ -128,7 +142,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
       };
 
       // 智能处理SQL：前端显示限制为10000条，保存时使用原始SQL
-      const { displaySql, originalSql } = applyDisplayLimit(sqlQuery);
+      const { displaySql, originalSql } = applyDisplayLimit(currentQuery);
 
       // 调用API执行SQL查询（使用显示SQL）
       const result = await executeSQL(displaySql, dataSource);
@@ -185,7 +199,10 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
       return;
     }
 
-    if (!sqlQuery.trim()) {
+    // 从编辑器获取最新的SQL内容
+    const currentQuery = sqlEditorRef.current ? sqlEditorRef.current.getValue() : sqlQuery;
+
+    if (!currentQuery.trim()) {
       setSaveError('没有可保存的查询结果');
       return;
     }
@@ -201,7 +218,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
       };
 
       const result = await saveQueryToDuckDB(
-        sqlQuery,
+        currentQuery,
         dataSource,
         tableAlias.trim()
       );
@@ -241,6 +258,28 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
+  };
+
+  // 处理收藏SQL
+  const handleAddFavorite = () => {
+    const currentQuery = sqlEditorRef.current ? sqlEditorRef.current.getValue() : sqlQuery;
+    if (!currentQuery.trim()) {
+      setError('请先输入SQL查询语句');
+      return;
+    }
+    setAddFavoriteDialogOpen(true);
+  };
+
+  // 处理选择收藏的SQL
+  const handleSelectFavorite = (favorite) => {
+    // 使用 setTimeout 确保编辑器已经渲染完成
+    setTimeout(() => {
+      if (sqlEditorRef.current && sqlEditorRef.current.setValue) {
+        sqlEditorRef.current.setValue(favorite.sql);
+      } else {
+        setSqlQuery(favorite.sql);
+      }
+    }, 100);
   };
 
   // 如果没有可用的数据库连接，显示提示
@@ -341,23 +380,114 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
             </Select>
           </FormControl>
 
-          <TextField
-            label="SQL查询"
-            variant="outlined"
-            size="small"
-            multiline
-            rows={4}
-            value={sqlQuery}
-            onChange={(e) => setSqlQuery(e.target.value)}
-            fullWidth
-            sx={{
-              mb: 2,
-              borderRadius: '4px',
-              '& textarea': { fontFamily: 'monospace', fontSize: '0.9rem' }
-            }}
-            placeholder="输入SQL查询语句..."
+          {/* SQL收藏选择 */}
+          <SQLFavoritesSelect
+            onSelectFavorite={handleSelectFavorite}
+            placeholder="选择收藏的SQL"
+            filterType="mysql"
           />
-          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
+
+          {/* 编辑器工具栏 */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
+              SQL查询编辑器
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={handleAddFavorite}
+                startIcon={<Star size={16} />}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 500,
+                  fontSize: '0.875rem',
+                  px: 2.5,
+                  py: 0.5,
+                  borderRadius: 2,
+                  borderColor: '#e0e0e0',
+                  color: '#666',
+                  height: '40px',
+                  '&:hover': {
+                    borderColor: '#ff9800',
+                    color: '#ff9800',
+                    backgroundColor: 'rgba(255, 152, 0, 0.04)'
+                  }
+                }}
+              >
+                收藏SQL
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => sqlEditorRef.current?.formatSQL()}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 500,
+                  fontSize: '0.875rem',
+                  px: 2.5,
+                  py: 0.5,
+                  borderRadius: 2,
+                  borderColor: '#e0e0e0',
+                  color: '#666',
+                  height: '40px',
+                  '&:hover': {
+                    borderColor: '#1976d2',
+                    color: '#1976d2',
+                    backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                  }
+                }}
+              >
+                格式化SQL
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => sqlEditorRef.current?.toggleFullscreen()}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 500,
+                  fontSize: '0.875rem',
+                  px: 2.5,
+                  py: 0.5,
+                  borderRadius: 2,
+                  borderColor: '#e0e0e0',
+                  color: '#666',
+                  height: '40px',
+                  '&:hover': {
+                    borderColor: '#1976d2',
+                    color: '#1976d2',
+                    backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                  }
+                }}
+              >
+                全屏编辑
+              </Button>
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <Select
+                  value={editorTheme}
+                  displayEmpty
+                  onChange={(e) => setEditorTheme(e.target.value)}
+                  sx={{ height: '40px' }}
+                >
+                  <MenuItem value="dark">Dark</MenuItem>
+                  <MenuItem value="github-light">GitHub Light</MenuItem>
+                  <MenuItem value="solarized-light">Solarized Light</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+          </Box>
+
+          <DuckDBSQLEditor
+            ref={sqlEditorRef}
+            height="200px"
+            placeholder="输入SQL查询语句..."
+            theme={editorTheme}
+            showLineNumbers={true}
+            showGutter={true}
+          />
+
+          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2 }}>
             <Button
               variant="contained"
               startIcon={<Play size={20} />}
@@ -517,6 +647,18 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
           查询结果已成功保存到DuckDB！
         </Alert>
       </Snackbar>
+
+      {/* 添加收藏对话框 */}
+      <AddSQLFavoriteDialog
+        open={addFavoriteDialogOpen}
+        onClose={() => setAddFavoriteDialogOpen(false)}
+        sqlContent={sqlEditorRef.current ? sqlEditorRef.current.getValue() : sqlQuery}
+        sqlType="mysql"
+        onSuccess={() => {
+          // 触发收藏列表刷新
+          window.dispatchEvent(new CustomEvent('sqlFavoritesUpdated'));
+        }}
+      />
     </Box>
   );
 };

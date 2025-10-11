@@ -1,10 +1,4 @@
 import {
-  Code,
-  PlayArrow,
-  TableChart,
-  ViewList
-} from "@mui/icons-material";
-import {
   Alert,
   Box,
   Button,
@@ -24,6 +18,13 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import {
+  Code,
+  List,
+  Play,
+  Star,
+  Table
+} from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import {
   deleteDuckDBTableEnhanced,
@@ -33,6 +34,8 @@ import {
 } from "../services/apiClient";
 import DuckDBManagementPage from "./DuckDBManager/DuckDBManagementPage";
 import DuckDBSQLEditor from "./DuckDBSQLEditor";
+import AddSQLFavoriteDialog from "./SQLFavorites/AddSQLFavoriteDialog";
+import SQLFavoritesManager from "./SQLFavorites/SQLFavoritesManager";
 import SQLTemplates from "./SQLTemplates";
 import SQLValidator from "./SQLValidator";
 import TreeTableView from "./TreeTableView";
@@ -54,6 +57,9 @@ const EnhancedSQLExecutor = ({
   const [activeTab, setActiveTab] = useState(0);
   const [validationResult, setValidationResult] = useState(null);
   const sqlEditorRef = useRef(null); // Create a ref for the editor component
+
+  // 收藏相关状态
+  const [addFavoriteDialogOpen, setAddFavoriteDialogOpen] = useState(false);
 
   const fetchDuckDBTables = async () => {
     try {
@@ -206,6 +212,31 @@ const EnhancedSQLExecutor = ({
     }
   };
 
+  // 处理收藏SQL
+  const handleAddFavorite = () => {
+    const currentQuery = sqlEditorRef.current ? sqlEditorRef.current.getValue() : sqlQuery;
+    if (!currentQuery.trim()) {
+      setError('请先输入SQL查询语句');
+      return;
+    }
+    setAddFavoriteDialogOpen(true);
+  };
+
+  // 处理选择收藏的SQL
+  const handleSelectFavorite = (favorite) => {
+    // 先切换到SQL编辑器标签页
+    setActiveTab(0);
+
+    // 使用 setTimeout 确保编辑器已经渲染完成
+    setTimeout(() => {
+      if (sqlEditorRef.current && sqlEditorRef.current.setValue) {
+        sqlEditorRef.current.setValue(favorite.sql);
+      } else {
+        setSqlQuery(favorite.sql);
+      }
+    }, 100);
+  };
+
   return (
     <Box>
       <Grid container spacing={3}>
@@ -222,26 +253,35 @@ const EnhancedSQLExecutor = ({
                   }}
                 >
                   <Box sx={{ display: "flex", alignItems: "center" }}>
-                    <TableChart sx={{ mr: 1, color: "primary.main" }} />
+                    <Table size={20} color="#1976d2" style={{ marginRight: '8px' }} />
                     <Typography variant="h6">DuckDB表</Typography>
                   </Box>
                   <Button
                     size="small"
                     onClick={() => setTableManagerOpen(true)}
-                    startIcon={<TableChart />}
+                    startIcon={<Table size={16} />}
                   >
                     管理
                   </Button>
                 </Box>
 
                 <Box sx={{
-                  maxHeight: "70vh",
+                  maxHeight: "50vh",
                   overflow: "auto",
                   minHeight: "200px"
                 }}>
                   <TreeTableView
                     tables={duckdbTables}
                     onTableSelect={(table) => setSqlQuery(`SELECT * FROM "${table}" LIMIT 10000`)}
+                  />
+                </Box>
+
+                {/* SQL收藏区域 */}
+                <Box sx={{ mt: 2, borderTop: '1px solid #e0e0e0', pt: 2 }}>
+                  <SQLFavoritesManager
+                    onSelectFavorite={handleSelectFavorite}
+                    compact={true}
+                    filterType="duckdb"
                   />
                 </Box>
               </Box>
@@ -261,11 +301,35 @@ const EnhancedSQLExecutor = ({
                   value={activeTab}
                   onChange={(e, newValue) => setActiveTab(newValue)}
                 >
-                  <Tab icon={<Code />} label="SQL编辑器" />
-                  <Tab icon={<ViewList />} label="查询模板" />
+                  <Tab icon={<Code size={16} />} label="SQL编辑器" />
+                  <Tab icon={<List size={16} />} label="查询模板" />
                 </Tabs>
 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={handleAddFavorite}
+                    startIcon={<Star size={16} />}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 500,
+                      fontSize: '0.875rem',
+                      px: 2.5,
+                      py: 0.5,
+                      borderRadius: 2,
+                      borderColor: '#e0e0e0',
+                      color: '#666',
+                      height: '40px',
+                      '&:hover': {
+                        borderColor: '#ff9800',
+                        color: '#ff9800',
+                        backgroundColor: 'rgba(255, 152, 0, 0.04)'
+                      }
+                    }}
+                  >
+                    收藏SQL
+                  </Button>
                   <Button
                     variant="outlined"
                     size="small"
@@ -376,7 +440,7 @@ const EnhancedSQLExecutor = ({
                   alignItems: 'center',
                   gap: 1
                 }}>
-                  <PlayArrow sx={{ fontSize: '1.2rem', color: '#1976d2' }} />
+                  <Play size={20} color="#1976d2" />
                   执行控制
                 </Typography>
 
@@ -416,7 +480,7 @@ const EnhancedSQLExecutor = ({
                         onClick={() => executeSQL()}
                         disabled={loading || !sqlQuery || !sqlQuery.trim()}
                         startIcon={
-                          loading ? <CircularProgress size={20} color="inherit" /> : <PlayArrow />
+                          loading ? <CircularProgress size={20} color="inherit" /> : <Play size={16} />
                         }
                         fullWidth
                         sx={{
@@ -444,7 +508,7 @@ const EnhancedSQLExecutor = ({
                         variant="outlined"
                         onClick={executeAsyncSQL}
                         disabled={loading || !sqlQuery || !sqlQuery.trim()}
-                        startIcon={<PlayArrow />}
+                        startIcon={<Play size={16} />}
                         fullWidth
                         sx={{
                           height: "48px",
@@ -502,7 +566,7 @@ const EnhancedSQLExecutor = ({
       >
         <DialogTitle sx={{ pb: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <TableChart sx={{ color: 'primary.main' }} />
+            <Table size={20} color="#1976d2" />
             <Typography variant="h5" component="h2" fontWeight="bold">
               DuckDB表管理
             </Typography>
@@ -528,6 +592,18 @@ const EnhancedSQLExecutor = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 添加收藏对话框 */}
+      <AddSQLFavoriteDialog
+        open={addFavoriteDialogOpen}
+        onClose={() => setAddFavoriteDialogOpen(false)}
+        sqlContent={sqlEditorRef.current ? sqlEditorRef.current.getValue() : sqlQuery}
+        sqlType="duckdb"
+        onSuccess={() => {
+          // 触发收藏列表刷新
+          window.dispatchEvent(new CustomEvent('sqlFavoritesUpdated'));
+        }}
+      />
     </Box>
   );
 };
