@@ -30,7 +30,7 @@ import {
   Typography
 } from '@mui/material';
 import { Code, Play, Star } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { executeSQL, saveQueryToDuckDB } from '../../services/apiClient';
 import DuckDBSQLEditor from '../DuckDBSQLEditor';
 import AddSQLFavoriteDialog from '../SQLFavorites/AddSQLFavoriteDialog';
@@ -96,19 +96,22 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // 稳定化databaseConnections引用，避免不必要的重新渲染
+  const stableConnections = useMemo(() => databaseConnections, [JSON.stringify(databaseConnections)]);
+
   // 使用传入的数据库连接列表
   useEffect(() => {
-    if (databaseConnections && databaseConnections.length > 0) {
+    if (stableConnections && stableConnections.length > 0) {
       // 默认选择第一个数据库连接
-      setSelectedDataSource(databaseConnections[0].id);
+      setSelectedDataSource(stableConnections[0].id);
     }
-  }, [databaseConnections]);
+  }, [stableConnections]);
 
-  // 根据选择的数据源预填充示例查询（仅在首次选择且编辑器为空时）
+  // 根据选择的数据源预填充示例查询（仅在首次加载时）
   const hasInitialized = useRef(false);
   React.useEffect(() => {
-    if (selectedDataSource && !hasInitialized.current && !sqlQuery.trim()) {
-      const selectedDS = databaseConnections.find(ds => ds.id === selectedDataSource);
+    if (selectedDataSource && !hasInitialized.current) {
+      const selectedDS = stableConnections.find(ds => ds.id === selectedDataSource);
       if (selectedDS) {
         // 根据数据库名称生成示例查询
         const dbName = selectedDS.params?.database || 'your_table';
@@ -116,7 +119,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
         hasInitialized.current = true;
       }
     }
-  }, [selectedDataSource]); // 移除 databaseConnections 依赖，只在 selectedDataSource 变化时触发
+  }, [selectedDataSource, stableConnections]); // 使用稳定的连接引用
 
   const handleExecuteSql = async () => {
     // 直接使用状态中的SQL内容
