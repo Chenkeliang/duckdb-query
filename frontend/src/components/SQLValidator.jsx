@@ -60,19 +60,19 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange, databaseType 
 
         // 使用 node-sql-parser 进行真正的SQL语法解析
         const parser = new Parser();
-        
+
         try {
             // 根据数据库类型选择对应的方言进行解析
             // 支持: MySQL, PostgresQL, MariaDB, SQLite, BigQuery, Snowflake 等
             const ast = parser.astify(query, { database: databaseType });
-            
+
             // 解析成功，SQL语法正确
             // node-sql-parser 已经能检测所有语法错误，不需要额外的正则检测
-            
+
         } catch (error) {
             // 解析失败，说明有语法错误
             const errorMessage = error.message || '未知的SQL语法错误';
-            
+
             newErrors.push({
                 type: 'syntax',
                 message: errorMessage,

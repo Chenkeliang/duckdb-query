@@ -495,7 +495,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
             tables={[]}
             onValidationChange={setValidationResult}
             databaseType={
-              selectedDataSource 
+              selectedDataSource
                 ? (stableConnections.find(ds => ds.id === selectedDataSource)?.type === 'postgresql' ? 'PostgresQL' : 'MySQL')
                 : 'MySQL'
             }
