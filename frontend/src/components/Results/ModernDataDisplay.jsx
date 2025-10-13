@@ -491,9 +491,7 @@ const ModernDataDisplay = ({
           {/* 导出提示信息 */}
           <Alert severity="info" sx={{ mb: 2 }}>
             <Typography variant="body2">
-              <strong>数据导出提示：</strong><br />
-              界面查询默认限制10,000行。如需完整结果，请使用异步任务功能，系统会自动根据结果生成新表。<br />
-              导出可在异步任务页面下载。
+              <strong>数据导出提示：</strong> 界面查询默认限制10,000行。如需完整结果，请使用异步任务功能，系统会自动根据结果生成新表。导出可在异步任务页面下载。
             </Typography>
           </Alert>
 
