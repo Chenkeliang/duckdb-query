@@ -782,10 +782,7 @@ def get_table_info(table_name: str, con=None) -> Dict[str, Any]:
         # 统一列数据格式：转换为前端期望的对象数组格式
         columns = []
         for _, row in schema_df.iterrows():
-            columns.append({
-                "name": row["column_name"],
-                "type": row["column_type"]
-            })
+            columns.append({"name": row["column_name"], "type": row["column_type"]})
 
         return {
             "table_name": table_name,
@@ -1099,7 +1096,7 @@ def build_multi_table_join_query(query_request: QueryRequest) -> str:
 
 def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
     """
-    构建JOIN链
+    构建JOIN链，支持多表连接和多字段关联
     """
     if not joins:
         return f'"{get_actual_table_name(sources[0])}"'
@@ -1126,19 +1123,47 @@ def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
     # 开始构建查询
     from_clause = f'"{left_table}"'
 
+    # 收集所有相同表对的JOIN条件
+    join_conditions_map = {}
+
     for join in joins:
-        join_type_sql = join_type_map.get(join.join_type, "INNER JOIN")
-        right_source = source_map[join.right_source_id]
+        left_id = join.left_source_id
+        right_id = join.right_source_id
+
+        # 创建JOIN键，用于合并相同表对的JOIN条件
+        join_key = tuple(sorted([left_id, right_id]))
+
+        if join_key not in join_conditions_map:
+            join_conditions_map[join_key] = {
+                "left_table": left_id,
+                "right_table": right_id,
+                "join_type": join.join_type,
+                "conditions": [],
+            }
+
+        # 添加条件到对应的JOIN
+        if join.conditions:
+            join_conditions_map[join_key]["conditions"].extend(join.conditions)
+
+    # 处理所有JOIN（现在每个表对只处理一次）
+    for join_key, join_info in join_conditions_map.items():
+        left_id = join_info["left_table"]
+        right_id = join_info["right_table"]
+        join_type = join_info["join_type"]
+        all_conditions = join_info["conditions"]
+
+        join_type_sql = join_type_map.get(join_type, "INNER JOIN")
+        right_source = source_map[right_id]
         right_table = get_actual_table_name(right_source)
 
         from_clause += f' {join_type_sql} "{right_table}"'
 
-        # 添加JOIN条件
-        if join.join_type != JoinType.CROSS and join.conditions:
+        # 添加所有JOIN条件（包括多字段关联）
+        if join_type != JoinType.CROSS and all_conditions:
             conditions = []
-            for condition in join.conditions:
-                left_source = source_map[join.left_source_id]
-                right_source = source_map[join.right_source_id]
+            for condition in all_conditions:
+                left_source = source_map[left_id]
+                right_source = source_map[right_id]
                 left_table_name = get_actual_table_name(left_source)
                 right_table_name = get_actual_table_name(right_source)
                 left_col = f'"{left_table_name}"."{condition.left_column}"'

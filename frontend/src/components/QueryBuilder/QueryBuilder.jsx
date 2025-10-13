@@ -463,10 +463,10 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       {/* 操作模式选择按钮 */}
       {showJoinBlock && showSetOperationBlock && (
         <>
-          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
+          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600, textAlign: 'right' }}>
             选择操作类型
           </Typography>
-          <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+          <Stack direction="row" spacing={2} sx={{ mb: 3, justifyContent: 'flex-end' }}>
             <Button
               variant={currentOperationMode === 'join' ? 'contained' : 'outlined'}
               onClick={() => setCurrentOperationMode('join')}

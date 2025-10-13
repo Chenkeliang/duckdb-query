@@ -354,7 +354,7 @@ def build_multi_table_join_query(query_request, con):
 
 def build_join_chain(sources, joins, table_columns):
     """
-    构建JOIN链，支持多表连接
+    构建JOIN链，支持多表连接和多字段关联
     """
     if not joins:
         first_source_id = sources[0].id.strip('"')
@@ -375,10 +375,34 @@ def build_join_chain(sources, joins, table_columns):
     from_clause = f'"{left_table}"'
     joined_tables.add(left_table)
 
-    # 处理所有JOIN
+    # 收集所有相同表对的JOIN条件
+    join_conditions_map = {}
+
     for join in joins:
         left_id = join.left_source_id.strip('"')
         right_id = join.right_source_id.strip('"')
+
+        # 创建JOIN键，用于合并相同表对的JOIN条件
+        join_key = tuple(sorted([left_id, right_id]))
+
+        if join_key not in join_conditions_map:
+            join_conditions_map[join_key] = {
+                "left_table": left_id,
+                "right_table": right_id,
+                "join_type": join.join_type,
+                "conditions": [],
+            }
+
+        # 添加条件到对应的JOIN
+        if join.conditions:
+            join_conditions_map[join_key]["conditions"].extend(join.conditions)
+
+    # 处理所有JOIN（现在每个表对只处理一次）
+    for join_key, join_info in join_conditions_map.items():
+        left_id = join_info["left_table"]
+        right_id = join_info["right_table"]
+        join_type = join_info["join_type"]
+        all_conditions = join_info["conditions"]
 
         # 确定哪个表需要被JOIN进来
         if left_id in joined_tables and right_id not in joined_tables:
@@ -394,15 +418,15 @@ def build_join_chain(sources, joins, table_columns):
             # 两个表都已经在查询中，跳过这个JOIN
             continue
 
-        join_type_sql = get_join_type_sql(join.join_type)
+        join_type_sql = get_join_type_sql(join_type)
         from_clause += f' {join_type_sql} "{table_to_join}"'
 
-        # 添加JOIN条件
-        if join.join_type.lower() != "cross" and join.conditions:
+        # 添加所有JOIN条件（包括多字段关联）
+        if join_type.lower() != "cross" and all_conditions:
             conditions = []
-            for condition in join.conditions:
-                left_table_id = join.left_source_id.strip('"')
-                right_table_id = join.right_source_id.strip('"')
+            for condition in all_conditions:
+                left_table_id = left_id
+                right_table_id = right_id
 
                 # 智能数据类型转换和清洗
                 left_col = f'"{left_table_id}"."{condition.left_column}"'

@@ -11,6 +11,7 @@ import React, {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -619,13 +620,19 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
     showGutter = true,
     className = "",
     style = {},
-    tables = [],
+    tables,
   } = props;
+
+  // 使用useMemo稳定tables引用，避免每次都是新数组
+  const stableTables = useMemo(() => tables || [], [JSON.stringify(tables)]);
 
   const editorRef = useRef(null);
   const viewRef = useRef(null);
   const [editorError, setEditorError] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // 使用ref跟踪是否是内部更新，避免光标丢失
+  const isInternalUpdate = useRef(false);
+
 
   // 全屏切换功能
   const toggleFullscreen = () => {
@@ -703,7 +710,7 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   }));
 
   const getTableCompletions = () => {
-    return tables.map((table) => ({
+    return stableTables.map((table) => ({
       label: table,
       type: "table",
       boost: 12,
@@ -739,7 +746,6 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   useEffect(() => {
     if (!editorRef.current) return;
 
-
     try {
       const state = EditorState.create({
         doc: value,
@@ -765,8 +771,11 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
           EditorView.updateListener.of((update) => {
             if (update.docChanged && onChange) {
               try {
+                // 标记为内部更新，避免useEffect触发导致光标丢失
+                isInternalUpdate.current = true;
                 onChange(update.state.doc.toString());
               } catch (e) {
+                console.error('onChange error:', e);
               }
             }
           }),
@@ -808,14 +817,14 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
       setEditorError(e.message);
       return () => { };
     }
-  }, [tables, readOnly, theme, isFullscreen]); // 添加 theme 和 isFullscreen 到依赖数组
+  }, [stableTables, readOnly, theme, isFullscreen]); // 使用stableTables避免不必要的重新创建
 
   useEffect(() => {
-    // 只在 value 被明确传递且不同时才更新编辑器内容
-    // 如果 value 是 undefined 或空字符串且编辑器有内容，则不更新
-    if (viewRef.current) {
+    // 只在外部value变化时更新编辑器内容
+    // 如果是内部更新（用户输入），跳过
+    if (viewRef.current && !isInternalUpdate.current) {
       const currentContent = viewRef.current.state.doc.toString();
-      // 只有在value不为空或编辑器当前为空时才更新
+      // 只有在value不为空且与当前内容不同时才更新
       if (value && value !== currentContent) {
         try {
           const transaction = viewRef.current.state.update({
@@ -831,6 +840,8 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
         }
       }
     }
+    // 重置标志
+    isInternalUpdate.current = false;
   }, [value]);
 
 

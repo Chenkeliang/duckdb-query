@@ -4,7 +4,7 @@ import {
   Tabs,
   Typography
 } from '@mui/material';
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import SqlExecutor from '../DataSourceManager/SqlExecutor';
 import EnhancedSQLExecutor from '../EnhancedSQLExecutor';
 import QueryBuilder from '../QueryBuilder/QueryBuilder';
@@ -27,21 +27,21 @@ const UnifiedQueryInterface = ({
     setActiveTab(newValue);
   };
 
-  // 处理查询构建器结果
-  const handleQueryBuilderResults = (results) => {
+  // 处理查询构建器结果 - 使用useCallback稳定引用
+  const handleQueryBuilderResults = useCallback((results) => {
     setQueryBuilderResults(results);
     if (onResultsReceived) {
       onResultsReceived(results);
     }
-  };
+  }, [onResultsReceived]);
 
-  // 处理SQL执行器结果
-  const handleSqlExecutorResults = (results) => {
+  // 处理SQL执行器结果 - 使用useCallback稳定引用
+  const handleSqlExecutorResults = useCallback((results) => {
     setSqlExecutorResults(results);
     if (onResultsReceived) {
       onResultsReceived(results);
     }
-  };
+  }, [onResultsReceived]);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
