@@ -13,7 +13,6 @@ import {
   Typography,
   useTheme
 } from '@mui/material';
-import { Lightbulb } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 
 const StableTable = ({
