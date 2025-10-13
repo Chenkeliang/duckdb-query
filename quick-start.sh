@@ -169,6 +169,17 @@ EOF
         echo "[]" > config/file-datasources.json
     fi
     
+    # 创建SQL收藏配置文件
+    if [ ! -f "config/sql-favorites.json" ]; then
+        if [ -f "config/sql-favorites.json.example" ]; then
+            cp config/sql-favorites.json.example config/sql-favorites.json
+            print_success "SQL收藏配置已创建: config/sql-favorites.json"
+        else
+            print_warning "SQL收藏配置示例文件不存在，将创建空配置"
+            echo "[]" > config/sql-favorites.json
+        fi
+    fi
+    
     print_success "配置文件设置完成"
 }
 

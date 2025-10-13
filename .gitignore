@@ -126,6 +126,7 @@ cleanup-report.txt
 **/datasources.json
 **/app-config.json
 **/file-datasources.json
+**/sql-favorites.json
 **/secret.key
 !**/*.example
 

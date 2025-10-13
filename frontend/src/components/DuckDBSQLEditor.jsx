@@ -25,7 +25,22 @@ const ayuDarkTheme = EditorView.theme({
     caretColor: "#ffcc66"
   },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#ffcc66" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "#253340" },
+  "&.cm-focused .cm-selectionBackground": {
+    backgroundColor: "#3e4451 !important"
+  },
+  ".cm-selectionBackground": {
+    backgroundColor: "#3e4451 !important",
+    opacity: "1 !important"
+  },
+  ".cm-content ::selection": {
+    backgroundColor: "#3e4451 !important"
+  },
+  "& ::selection": {
+    backgroundColor: "#3e4451 !important"
+  },
+  ".cm-line ::selection": {
+    backgroundColor: "#3e4451 !important"
+  },
   ".cm-panels": { backgroundColor: "#0f1419", color: "#e6e1cf" },
   ".cm-panels.cm-panels-top": { borderBottom: "2px solid black" },
   ".cm-panels.cm-panels-bottom": { borderTop: "2px solid black" },
@@ -85,7 +100,25 @@ const githubLightTheme = EditorView.theme({
     caretColor: "#24292e"
   },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#24292e" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "#c8c8fa" },
+  "&.cm-focused .cm-selectionBackground": {
+    backgroundColor: "#0366d6 !important"
+  },
+  ".cm-selectionBackground": {
+    backgroundColor: "#0366d6 !important",
+    opacity: "0.3 !important"
+  },
+  ".cm-content ::selection": {
+    backgroundColor: "#0366d6 !important",
+    color: "#ffffff !important"
+  },
+  "& ::selection": {
+    backgroundColor: "#0366d6 !important",
+    color: "#ffffff !important"
+  },
+  ".cm-line ::selection": {
+    backgroundColor: "#0366d6 !important",
+    color: "#ffffff !important"
+  },
   ".cm-panels": { backgroundColor: "#f6f8fa", color: "#24292e" },
   ".cm-panels.cm-panels-top": { borderBottom: "2px solid #e1e4e8" },
   ".cm-panels.cm-panels-bottom": { borderTop: "2px solid #e1e4e8" },
@@ -145,7 +178,25 @@ const solarizedLightTheme = EditorView.theme({
     caretColor: "#586e75"
   },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#586e75" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "#eee8d5" },
+  "&.cm-focused .cm-selectionBackground": {
+    backgroundColor: "#cb4b16 !important"
+  },
+  ".cm-selectionBackground": {
+    backgroundColor: "#cb4b16 !important",
+    opacity: "0.3 !important"
+  },
+  ".cm-content ::selection": {
+    backgroundColor: "#cb4b16 !important",
+    color: "#fdf6e3 !important"
+  },
+  "& ::selection": {
+    backgroundColor: "#cb4b16 !important",
+    color: "#fdf6e3 !important"
+  },
+  ".cm-line ::selection": {
+    backgroundColor: "#cb4b16 !important",
+    color: "#fdf6e3 !important"
+  },
   ".cm-panels": { backgroundColor: "#fdf6e3", color: "#586e75" },
   ".cm-panels.cm-panels-top": { borderBottom: "2px solid #93a1a1" },
   ".cm-panels.cm-panels-bottom": { borderTop: "2px solid #93a1a1" },
@@ -576,24 +627,6 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   const [editorError, setEditorError] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // 暴露方法给父组件
-  useImperativeHandle(ref, () => ({
-    formatSQL,
-    toggleFullscreen,
-    getValue: () => viewRef.current?.state.doc.toString() || "",
-    setValue: (value) => {
-      if (viewRef.current) {
-        viewRef.current.dispatch({
-          changes: {
-            from: 0,
-            to: viewRef.current.state.doc.length,
-            insert: value
-          }
-        });
-      }
-    }
-  }));
-
   // 全屏切换功能
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
@@ -652,6 +685,18 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
         return viewRef.current.state.doc.toString();
       }
       return value; // Fallback to prop value
+    },
+    setValue: (newValue) => {
+      if (viewRef.current) {
+        const transaction = viewRef.current.state.update({
+          changes: {
+            from: 0,
+            to: viewRef.current.state.doc.length,
+            insert: newValue || ''
+          }
+        });
+        viewRef.current.dispatch(transaction);
+      }
     },
     toggleFullscreen,
     formatSQL,
@@ -766,18 +811,24 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   }, [tables, readOnly, theme, isFullscreen]); // 添加 theme 和 isFullscreen 到依赖数组
 
   useEffect(() => {
-    if (viewRef.current && value !== viewRef.current.state.doc.toString()) {
-      try {
-        const transaction = viewRef.current.state.update({
-          changes: {
-            from: 0,
-            to: viewRef.current.state.doc.length,
-            insert: value,
-          },
-        });
-        viewRef.current.dispatch(transaction);
-      } catch (e) {
-        setEditorError(e.message);
+    // 只在 value 被明确传递且不同时才更新编辑器内容
+    // 如果 value 是 undefined 或空字符串且编辑器有内容，则不更新
+    if (viewRef.current) {
+      const currentContent = viewRef.current.state.doc.toString();
+      // 只有在value不为空或编辑器当前为空时才更新
+      if (value && value !== currentContent) {
+        try {
+          const transaction = viewRef.current.state.update({
+            changes: {
+              from: 0,
+              to: viewRef.current.state.doc.length,
+              insert: value,
+            },
+          });
+          viewRef.current.dispatch(transaction);
+        } catch (e) {
+          setEditorError(e.message);
+        }
       }
     }
   }, [value]);
@@ -800,6 +851,16 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
           padding: '20px',
           boxSizing: 'border-box'
         })
+      }}
+      sx={{
+        '& .cm-selectionBackground': {
+          backgroundColor: '#0366d6 !important',
+          opacity: '0.3 !important'
+        },
+        '& ::selection': {
+          backgroundColor: '#0366d6 !important',
+          color: '#ffffff !important'
+        }
       }}
     >
       {isFullscreen && (

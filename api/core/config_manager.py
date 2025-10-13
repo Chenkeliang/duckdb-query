@@ -186,6 +186,7 @@ class ConfigManager:
         self.mysql_config_file = self.config_dir / "mysql-configs.json"
         self.app_config_file = self.config_dir / "app-config.json"
         self.datasources_config_file = self.config_dir / "datasources.json"
+        self.sql_favorites_file = self.config_dir / "sql-favorites.json"
 
         # 配置缓存
         self._mysql_configs: Dict[str, DatabaseConfig] = {}
@@ -225,6 +226,12 @@ class ConfigManager:
             default_datasources_config = {"file_sources": [], "database_sources": []}
             self._save_json(self.datasources_config_file, default_datasources_config)
             logger.info(f"创建默认数据源配置文件: {self.datasources_config_file}")
+
+        # SQL收藏配置模板
+        if not self.sql_favorites_file.exists():
+            default_sql_favorites = []
+            self._save_json(self.sql_favorites_file, default_sql_favorites)
+            logger.info(f"创建默认SQL收藏配置文件: {self.sql_favorites_file}")
 
     def _update_existing_app_config(self):
         """更新现有应用配置文件，确保包含所有新字段"""
