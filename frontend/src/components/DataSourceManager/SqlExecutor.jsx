@@ -104,21 +104,23 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
     }
   }, [databaseConnections]);
 
-  // 根据选择的数据源预填充示例查询
+  // 根据选择的数据源预填充示例查询（仅在首次选择且编辑器为空时）
+  const hasInitialized = useRef(false);
   React.useEffect(() => {
-    if (selectedDataSource) {
+    if (selectedDataSource && !hasInitialized.current && !sqlQuery.trim()) {
       const selectedDS = databaseConnections.find(ds => ds.id === selectedDataSource);
       if (selectedDS) {
         // 根据数据库名称生成示例查询
         const dbName = selectedDS.params?.database || 'your_table';
         setSqlQuery(`SELECT * FROM ${dbName === 'store_order' ? 'yz_order' : 'your_table'} LIMIT 10`);
+        hasInitialized.current = true;
       }
     }
-  }, [selectedDataSource, databaseConnections]);
+  }, [selectedDataSource]); // 移除 databaseConnections 依赖，只在 selectedDataSource 变化时触发
 
   const handleExecuteSql = async () => {
-    // 从编辑器获取最新的SQL内容
-    const currentQuery = sqlEditorRef.current ? sqlEditorRef.current.getValue() : sqlQuery;
+    // 直接使用状态中的SQL内容
+    const currentQuery = sqlQuery;
 
     if (!currentQuery.trim()) {
       setError('请输入SQL查询语句');
@@ -199,8 +201,8 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
       return;
     }
 
-    // 从编辑器获取最新的SQL内容
-    const currentQuery = sqlEditorRef.current ? sqlEditorRef.current.getValue() : sqlQuery;
+    // 直接使用状态中的SQL内容
+    const currentQuery = sqlQuery;
 
     if (!currentQuery.trim()) {
       setSaveError('没有可保存的查询结果');
@@ -262,8 +264,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
 
   // 处理收藏SQL
   const handleAddFavorite = () => {
-    const currentQuery = sqlEditorRef.current ? sqlEditorRef.current.getValue() : sqlQuery;
-    if (!currentQuery.trim()) {
+    if (!sqlQuery.trim()) {
       setError('请先输入SQL查询语句');
       return;
     }
@@ -272,14 +273,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
 
   // 处理选择收藏的SQL
   const handleSelectFavorite = (favorite) => {
-    // 使用 setTimeout 确保编辑器已经渲染完成
-    setTimeout(() => {
-      if (sqlEditorRef.current && sqlEditorRef.current.setValue) {
-        sqlEditorRef.current.setValue(favorite.sql);
-      } else {
-        setSqlQuery(favorite.sql);
-      }
-    }, 100);
+    setSqlQuery(favorite.sql);
   };
 
   // 如果没有可用的数据库连接，显示提示
@@ -480,6 +474,8 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
 
           <DuckDBSQLEditor
             ref={sqlEditorRef}
+            value={sqlQuery}
+            onChange={setSqlQuery}
             height="200px"
             placeholder="输入SQL查询语句..."
             theme={editorTheme}
@@ -652,7 +648,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
       <AddSQLFavoriteDialog
         open={addFavoriteDialogOpen}
         onClose={() => setAddFavoriteDialogOpen(false)}
-        sqlContent={sqlEditorRef.current ? sqlEditorRef.current.getValue() : sqlQuery}
+        sqlContent={sqlQuery}
         sqlType="mysql"
         onSuccess={() => {
           // 触发收藏列表刷新

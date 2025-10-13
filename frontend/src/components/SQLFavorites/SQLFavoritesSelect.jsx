@@ -197,32 +197,46 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
         );
     }
 
+    const filteredFavorites = favorites.filter(fav => !filterType || fav.type === filterType);
+    const hasFavorites = filteredFavorites.length > 0;
+
     return (
         <Box sx={{ mb: 2 }}>
             <FormControl fullWidth size="small">
-                <InputLabel id="sql-favorites-select-label">{placeholder}</InputLabel>
+                <InputLabel 
+                    id="sql-favorites-select-label"
+                    shrink={!hasFavorites || selectedValue !== ''}
+                >
+                    {hasFavorites ? placeholder : '暂无收藏的SQL'}
+                </InputLabel>
                 <Select
                     labelId="sql-favorites-select-label"
                     value={selectedValue}
-                    label={placeholder}
+                    label={hasFavorites ? placeholder : '暂无收藏的SQL'}
                     onChange={handleChange}
                     displayEmpty
+                    notched={!hasFavorites || selectedValue !== ''}
+                    renderValue={(value) => {
+                        if (value === '') {
+                            return hasFavorites ? '' : '';
+                        }
+                        const favorite = favorites.find(fav => fav.id === value);
+                        return favorite ? favorite.name : value;
+                    }}
                     sx={{
                         '& .MuiSelect-select': {
                             py: 1.5
                         }
                     }}
                 >
-                    {favorites.filter(fav => !filterType || fav.type === filterType).length === 0 ? (
+                    {!hasFavorites ? (
                         <MenuItem value="" disabled>
                             <Typography color="text.secondary" variant="body2">
                                 暂无收藏的SQL
                             </Typography>
                         </MenuItem>
                     ) : (
-                        favorites
-                            .filter(fav => !filterType || fav.type === filterType)
-                            .map(renderMenuItem)
+                        filteredFavorites.map(renderMenuItem)
                     )}
                 </Select>
             </FormControl>
