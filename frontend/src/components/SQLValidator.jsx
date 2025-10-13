@@ -20,7 +20,7 @@ import {
 import { Parser } from 'node-sql-parser';
 import React, { useEffect, useState } from 'react';
 
-const SQLValidator = ({ sqlQuery, tables = [], onValidationChange }) => {
+const SQLValidator = ({ sqlQuery, tables = [], onValidationChange, databaseType = 'MySQL' }) => {
     const [errors, setErrors] = useState([]);
     const [warnings, setWarnings] = useState([]);
     const [suggestions, setSuggestions] = useState([]);
@@ -60,69 +60,24 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange }) => {
 
         // 使用 node-sql-parser 进行真正的SQL语法解析
         const parser = new Parser();
-
+        
         try {
-            // 尝试解析SQL，支持多种数据库方言
-            const ast = parser.astify(query, { database: 'MySQL' });
-
-            // 如果解析成功，检查是否有可疑的表别名（可能是拼写错误）
-            const suspiciousAliases = ['gorp', 'grop', 'lim', 'selct', 'form', 'wher', 'gropu', 'groupp'];
-            const lowerQuery = query.toLowerCase();
-
-            for (const suspicious of suspiciousAliases) {
-                if (lowerQuery.includes(suspicious)) {
-                    let suggestion = '';
-                    if (suspicious === 'gorp' || suspicious === 'grop' || suspicious === 'gropu' || suspicious === 'groupp') {
-                        suggestion = '可能是 "GROUP BY" 的拼写错误';
-                    } else if (suspicious === 'lim') {
-                        suggestion = '可能是 "LIMIT" 的拼写错误';
-                    } else if (suspicious === 'selct') {
-                        suggestion = '可能是 "SELECT" 的拼写错误';
-                    } else if (suspicious === 'form') {
-                        suggestion = '可能是 "FROM" 的拼写错误';
-                    } else if (suspicious === 'wher') {
-                        suggestion = '可能是 "WHERE" 的拼写错误';
-                    }
-
-                    newWarnings.push({
-                        type: 'warning',
-                        message: `检测到可疑的标识符 "${suspicious}"`,
-                        position: lowerQuery.indexOf(suspicious),
-                        suggestion: suggestion
-                    });
-                }
-            }
-
+            // 根据数据库类型选择对应的方言进行解析
+            // 支持: MySQL, PostgresQL, MariaDB, SQLite, BigQuery, Snowflake 等
+            const ast = parser.astify(query, { database: databaseType });
+            
+            // 解析成功，SQL语法正确
+            // node-sql-parser 已经能检测所有语法错误，不需要额外的正则检测
+            
         } catch (error) {
             // 解析失败，说明有语法错误
             const errorMessage = error.message || '未知的SQL语法错误';
-
-            // 提取错误位置信息
-            let position = 0;
-            let suggestion = '';
-
-            // 尝试从错误信息中提取有用的信息
-            if (errorMessage.includes('Expected')) {
-                suggestion = '请检查SQL语法是否正确';
-            }
-
-            // 检查是否是常见的拼写错误
-            const lowerQuery = query.toLowerCase();
-            if (lowerQuery.includes('gorp') || lowerQuery.includes('grop')) {
-                suggestion = '可能是 "GROUP" 的拼写错误';
-            } else if (lowerQuery.includes('selct')) {
-                suggestion = '可能是 "SELECT" 的拼写错误';
-            } else if (lowerQuery.includes('form ')) {
-                suggestion = '可能是 "FROM" 的拼写错误';
-            } else if (lowerQuery.includes('wher ')) {
-                suggestion = '可能是 "WHERE" 的拼写错误';
-            }
-
+            
             newErrors.push({
                 type: 'syntax',
                 message: errorMessage,
-                position: position,
-                suggestion: suggestion || '请检查SQL语法'
+                position: 0,
+                suggestion: '请检查SQL语法是否正确'
             });
         }
 

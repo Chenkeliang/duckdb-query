@@ -494,6 +494,11 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
             sqlQuery={sqlQuery}
             tables={[]}
             onValidationChange={setValidationResult}
+            databaseType={
+              selectedDataSource 
+                ? (stableConnections.find(ds => ds.id === selectedDataSource)?.type === 'postgresql' ? 'PostgresQL' : 'MySQL')
+                : 'MySQL'
+            }
           />
 
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2 }}>
