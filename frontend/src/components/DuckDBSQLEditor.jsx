@@ -628,6 +628,13 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   // 使用ref跟踪是否是内部更新，避免光标丢失
   const isInternalUpdate = useRef(false);
+  
+  // 调试：跟踪onChange函数引用
+  const onChangeRef = useRef(onChange);
+  if (onChangeRef.current !== onChange) {
+    console.log('[DuckDBSQLEditor] onChange函数引用变化了！');
+    onChangeRef.current = onChange;
+  }
 
   // 全屏切换功能
   const toggleFullscreen = () => {
@@ -819,12 +826,12 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   useEffect(() => {
     // 只在外部value变化时更新编辑器内容
     // 如果是内部更新（用户输入），跳过
-    console.log('[DuckDBSQLEditor] value变化', { 
-      isInternal: isInternalUpdate.current, 
+    console.log('[DuckDBSQLEditor] value变化', {
+      isInternal: isInternalUpdate.current,
       valueLength: value?.length,
-      hasView: !!viewRef.current 
+      hasView: !!viewRef.current
     });
-    
+
     if (viewRef.current && !isInternalUpdate.current) {
       const currentContent = viewRef.current.state.doc.toString();
       // 只有在value不为空且与当前内容不同时才更新

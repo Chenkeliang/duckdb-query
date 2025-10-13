@@ -203,7 +203,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
     return (
         <Box sx={{ mb: 2 }}>
             <FormControl fullWidth size="small">
-                <InputLabel 
+                <InputLabel
                     id="sql-favorites-select-label"
                     shrink={!hasFavorites || selectedValue !== ''}
                 >

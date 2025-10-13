@@ -385,8 +385,6 @@ def build_join_chain(sources, joins, table_columns):
         # 创建JOIN键，用于合并相同表对的JOIN条件
         join_key = tuple(sorted([left_id, right_id]))
 
-        logger.info(f"处理JOIN: {left_id} -> {right_id}, 键: {join_key}")
-
         if join_key not in join_conditions_map:
             join_conditions_map[join_key] = {
                 "left_table": left_id,
@@ -394,16 +392,10 @@ def build_join_chain(sources, joins, table_columns):
                 "join_type": join.join_type,
                 "conditions": [],
             }
-            logger.info(f"创建新的JOIN映射: {join_key}")
 
         # 添加条件到对应的JOIN
         if join.conditions:
-            logger.info(f"添加条件到 {join_key}: {len(join.conditions)} 个条件")
             join_conditions_map[join_key]["conditions"].extend(join.conditions)
-
-    logger.info(f"最终JOIN映射: {len(join_conditions_map)} 个表对")
-    for join_key, join_info in join_conditions_map.items():
-        logger.info(f"表对 {join_key}: {len(join_info['conditions'])} 个条件")
 
     # 处理所有JOIN（现在每个表对只处理一次）
     for join_key, join_info in join_conditions_map.items():

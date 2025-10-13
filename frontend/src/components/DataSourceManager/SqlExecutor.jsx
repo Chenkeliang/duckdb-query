@@ -69,6 +69,8 @@ const applyDisplayLimit = (sql, maxRows = 10000) => {
 };
 
 const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsReceived }) => {
+  console.log('[SqlExecutor] 组件渲染');
+  
   const [sqlQuery, setSqlQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -122,8 +124,8 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
   }, [selectedDataSource, stableConnections]); // 使用稳定的连接引用
 
   const handleExecuteSql = async () => {
-    // 从编辑器获取最新的SQL内容
-    const currentQuery = sqlEditorRef.current ? sqlEditorRef.current.getValue() : '';
+    // 直接使用状态中的SQL内容
+    const currentQuery = sqlQuery;
 
     if (!currentQuery.trim()) {
       setError('请输入SQL查询语句');
