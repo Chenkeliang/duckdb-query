@@ -478,7 +478,7 @@ const EnhancedSQLExecutor = ({
                       <Button
                         variant="contained"
                         onClick={() => executeSQL()}
-                        disabled={loading || !sqlQuery || !sqlQuery.trim()}
+                        disabled={loading || !sqlQuery || !sqlQuery.trim() || (validationResult && validationResult.hasErrors)}
                         startIcon={
                           loading ? <CircularProgress size={20} color="inherit" /> : <Play size={16} />
                         }
@@ -507,7 +507,7 @@ const EnhancedSQLExecutor = ({
                       <Button
                         variant="outlined"
                         onClick={executeAsyncSQL}
-                        disabled={loading || !sqlQuery || !sqlQuery.trim()}
+                        disabled={loading || !sqlQuery || !sqlQuery.trim() || (validationResult && validationResult.hasErrors)}
                         startIcon={<Play size={16} />}
                         fullWidth
                         sx={{

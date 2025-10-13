@@ -11,6 +11,7 @@ import React, {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -619,8 +620,11 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
     showGutter = true,
     className = "",
     style = {},
-    tables = [],
+    tables,
   } = props;
+
+  // 使用useMemo稳定tables引用，避免每次都是新数组
+  const stableTables = useMemo(() => tables || [], [JSON.stringify(tables)]);
 
   const editorRef = useRef(null);
   const viewRef = useRef(null);
@@ -628,13 +632,7 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   // 使用ref跟踪是否是内部更新，避免光标丢失
   const isInternalUpdate = useRef(false);
-  
-  // 调试：跟踪onChange函数引用
-  const onChangeRef = useRef(onChange);
-  if (onChangeRef.current !== onChange) {
-    console.log('[DuckDBSQLEditor] onChange函数引用变化了！');
-    onChangeRef.current = onChange;
-  }
+
 
   // 全屏切换功能
   const toggleFullscreen = () => {
@@ -712,7 +710,7 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   }));
 
   const getTableCompletions = () => {
-    return tables.map((table) => ({
+    return stableTables.map((table) => ({
       label: table,
       type: "table",
       boost: 12,
@@ -747,8 +745,6 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
 
   useEffect(() => {
     if (!editorRef.current) return;
-
-    console.log('[DuckDBSQLEditor] 创建编辑器实例', { tables: tables.length, readOnly, theme, isFullscreen });
 
     try {
       const state = EditorState.create({
@@ -821,22 +817,15 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
       setEditorError(e.message);
       return () => { };
     }
-  }, [tables, readOnly, theme, isFullscreen]); // 添加 theme 和 isFullscreen 到依赖数组
+  }, [stableTables, readOnly, theme, isFullscreen]); // 使用stableTables避免不必要的重新创建
 
   useEffect(() => {
     // 只在外部value变化时更新编辑器内容
     // 如果是内部更新（用户输入），跳过
-    console.log('[DuckDBSQLEditor] value变化', {
-      isInternal: isInternalUpdate.current,
-      valueLength: value?.length,
-      hasView: !!viewRef.current
-    });
-
     if (viewRef.current && !isInternalUpdate.current) {
       const currentContent = viewRef.current.state.doc.toString();
       // 只有在value不为空且与当前内容不同时才更新
       if (value && value !== currentContent) {
-        console.log('[DuckDBSQLEditor] 外部更新编辑器内容');
         try {
           const transaction = viewRef.current.state.update({
             changes: {

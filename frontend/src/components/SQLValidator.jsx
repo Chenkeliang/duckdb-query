@@ -17,6 +17,7 @@ import {
     ListItemText,
     Typography
 } from '@mui/material';
+import { Parser } from 'node-sql-parser';
 import React, { useEffect, useState } from 'react';
 
 const SQLValidator = ({ sqlQuery, tables = [], onValidationChange }) => {
@@ -26,7 +27,12 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange }) => {
     const [expanded, setExpanded] = useState(false);
 
     useEffect(() => {
-        validateSQL();
+        // 添加防抖，避免频繁验证
+        const timer = setTimeout(() => {
+            validateSQL();
+        }, 500); // 500ms 延迟
+
+        return () => clearTimeout(timer);
     }, [sqlQuery, tables]);
 
     const validateSQL = () => {
@@ -35,75 +41,88 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange }) => {
         const newSuggestions = [];
 
         if (!sqlQuery.trim()) {
+            setErrors([]);
+            setWarnings([]);
+            setSuggestions([]);
+            if (onValidationChange) {
+                onValidationChange({
+                    hasErrors: false,
+                    hasWarnings: false,
+                    errorCount: 0,
+                    warningCount: 0,
+                    suggestionCount: 0
+                });
+            }
             return;
         }
 
         const query = sqlQuery.trim();
-        const upperQuery = query.toUpperCase();
 
-        // 只检查最基本的语法错误，不显示任何建议或警告
+        // 使用 node-sql-parser 进行真正的SQL语法解析
+        const parser = new Parser();
 
-        // 检查 SELECT 语句
-        if (upperQuery.includes('SELECT')) {
-            if (!upperQuery.includes('FROM')) {
-                newErrors.push({
-                    type: 'syntax',
-                    message: 'SELECT语句缺少FROM子句',
-                    position: upperQuery.indexOf('SELECT'),
-                    suggestion: '添加 FROM table_name'
-                });
+        try {
+            // 尝试解析SQL，支持多种数据库方言
+            const ast = parser.astify(query, { database: 'MySQL' });
+
+            // 如果解析成功，检查是否有可疑的表别名（可能是拼写错误）
+            const suspiciousAliases = ['gorp', 'grop', 'lim', 'selct', 'form', 'wher', 'gropu', 'groupp'];
+            const lowerQuery = query.toLowerCase();
+
+            for (const suspicious of suspiciousAliases) {
+                if (lowerQuery.includes(suspicious)) {
+                    let suggestion = '';
+                    if (suspicious === 'gorp' || suspicious === 'grop' || suspicious === 'gropu' || suspicious === 'groupp') {
+                        suggestion = '可能是 "GROUP BY" 的拼写错误';
+                    } else if (suspicious === 'lim') {
+                        suggestion = '可能是 "LIMIT" 的拼写错误';
+                    } else if (suspicious === 'selct') {
+                        suggestion = '可能是 "SELECT" 的拼写错误';
+                    } else if (suspicious === 'form') {
+                        suggestion = '可能是 "FROM" 的拼写错误';
+                    } else if (suspicious === 'wher') {
+                        suggestion = '可能是 "WHERE" 的拼写错误';
+                    }
+
+                    newWarnings.push({
+                        type: 'warning',
+                        message: `检测到可疑的标识符 "${suspicious}"`,
+                        position: lowerQuery.indexOf(suspicious),
+                        suggestion: suggestion
+                    });
+                }
             }
-        }
 
-        // 检查 WHERE 条件
-        if (upperQuery.includes('WHERE')) {
-            const whereIndex = upperQuery.indexOf('WHERE');
-            const afterWhere = upperQuery.substring(whereIndex + 5).trim();
+        } catch (error) {
+            // 解析失败，说明有语法错误
+            const errorMessage = error.message || '未知的SQL语法错误';
 
-            if (!afterWhere || afterWhere.startsWith(';')) {
-                newErrors.push({
-                    type: 'syntax',
-                    message: 'WHERE子句缺少条件',
-                    position: whereIndex + 5,
-                    suggestion: '添加具体的WHERE条件'
-                });
+            // 提取错误位置信息
+            let position = 0;
+            let suggestion = '';
+
+            // 尝试从错误信息中提取有用的信息
+            if (errorMessage.includes('Expected')) {
+                suggestion = '请检查SQL语法是否正确';
             }
-        }
 
-        // 检查 JOIN 语句 - 只在真正的JOIN语法时校验
-        const joinPattern = /\b(INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+JOIN|JOIN)\b/gi;
-        const joinMatches = upperQuery.match(joinPattern);
-        if (joinMatches && !upperQuery.includes('ON')) {
+            // 检查是否是常见的拼写错误
+            const lowerQuery = query.toLowerCase();
+            if (lowerQuery.includes('gorp') || lowerQuery.includes('grop')) {
+                suggestion = '可能是 "GROUP" 的拼写错误';
+            } else if (lowerQuery.includes('selct')) {
+                suggestion = '可能是 "SELECT" 的拼写错误';
+            } else if (lowerQuery.includes('form ')) {
+                suggestion = '可能是 "FROM" 的拼写错误';
+            } else if (lowerQuery.includes('wher ')) {
+                suggestion = '可能是 "WHERE" 的拼写错误';
+            }
+
             newErrors.push({
                 type: 'syntax',
-                message: 'JOIN语句缺少ON条件',
-                position: upperQuery.indexOf(joinMatches[0]),
-                suggestion: '添加 ON table1.column = table2.column'
-            });
-        }
-
-        // 检查 GROUP BY
-        if (upperQuery.includes('GROUP BY')) {
-            const groupByIndex = upperQuery.indexOf('GROUP BY');
-            const afterGroupBy = upperQuery.substring(groupByIndex + 8).trim();
-
-            if (!afterGroupBy || afterGroupBy.startsWith(';')) {
-                newErrors.push({
-                    type: 'syntax',
-                    message: 'GROUP BY子句缺少列名',
-                    position: groupByIndex + 8,
-                    suggestion: '添加列名，例如: GROUP BY column_name'
-                });
-            }
-        }
-
-        // 检查 HAVING
-        if (upperQuery.includes('HAVING') && !upperQuery.includes('GROUP BY')) {
-            newErrors.push({
-                type: 'logic',
-                message: 'HAVING子句通常与GROUP BY一起使用',
-                position: upperQuery.indexOf('HAVING'),
-                suggestion: '考虑添加 GROUP BY 子句'
+                message: errorMessage,
+                position: position,
+                suggestion: suggestion || '请检查SQL语法'
             });
         }
 

@@ -35,6 +35,7 @@ import { executeSQL, saveQueryToDuckDB } from '../../services/apiClient';
 import DuckDBSQLEditor from '../DuckDBSQLEditor';
 import AddSQLFavoriteDialog from '../SQLFavorites/AddSQLFavoriteDialog';
 import SQLFavoritesSelect from '../SQLFavorites/SQLFavoritesSelect';
+import SQLValidator from '../SQLValidator';
 
 // 智能LIMIT处理函数
 const applyDisplayLimit = (sql, maxRows = 10000) => {
@@ -69,8 +70,6 @@ const applyDisplayLimit = (sql, maxRows = 10000) => {
 };
 
 const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsReceived }) => {
-  console.log('[SqlExecutor] 组件渲染');
-  
   const [sqlQuery, setSqlQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -87,6 +86,9 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
 
   // 收藏相关状态
   const [addFavoriteDialogOpen, setAddFavoriteDialogOpen] = useState(false);
+
+  // SQL验证结果
+  const [validationResult, setValidationResult] = useState(null);
 
   // 数据源相关状态
   const [selectedDataSource, setSelectedDataSource] = useState('');
@@ -488,12 +490,18 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
             showGutter={true}
           />
 
+          <SQLValidator
+            sqlQuery={sqlQuery}
+            tables={[]}
+            onValidationChange={setValidationResult}
+          />
+
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2 }}>
             <Button
               variant="contained"
               startIcon={<Play size={20} />}
               onClick={handleExecuteSql}
-              disabled={loading}
+              disabled={loading || (validationResult && validationResult.hasErrors)}
               sx={{
                 borderRadius: '20px',
                 minWidth: '160px',
