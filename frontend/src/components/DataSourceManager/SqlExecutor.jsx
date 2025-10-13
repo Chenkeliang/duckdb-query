@@ -122,8 +122,8 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
   }, [selectedDataSource, stableConnections]); // 使用稳定的连接引用
 
   const handleExecuteSql = async () => {
-    // 直接使用状态中的SQL内容
-    const currentQuery = sqlQuery;
+    // 从编辑器获取最新的SQL内容
+    const currentQuery = sqlEditorRef.current ? sqlEditorRef.current.getValue() : '';
 
     if (!currentQuery.trim()) {
       setError('请输入SQL查询语句');
