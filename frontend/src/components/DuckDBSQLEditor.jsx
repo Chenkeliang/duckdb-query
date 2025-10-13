@@ -741,6 +741,7 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   useEffect(() => {
     if (!editorRef.current) return;
 
+    console.log('[DuckDBSQLEditor] 创建编辑器实例', { tables: tables.length, readOnly, theme, isFullscreen });
 
     try {
       const state = EditorState.create({
@@ -818,10 +819,17 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   useEffect(() => {
     // 只在外部value变化时更新编辑器内容
     // 如果是内部更新（用户输入），跳过
+    console.log('[DuckDBSQLEditor] value变化', { 
+      isInternal: isInternalUpdate.current, 
+      valueLength: value?.length,
+      hasView: !!viewRef.current 
+    });
+    
     if (viewRef.current && !isInternalUpdate.current) {
       const currentContent = viewRef.current.state.doc.toString();
       // 只有在value不为空且与当前内容不同时才更新
       if (value && value !== currentContent) {
+        console.log('[DuckDBSQLEditor] 外部更新编辑器内容');
         try {
           const transaction = viewRef.current.state.update({
             changes: {
