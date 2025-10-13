@@ -104,16 +104,14 @@ FROM json_table;
 **性能优势**
 - 🏛️ 列式存储引擎，OLAP查询优化
 - 📊 支持复杂分析函数和聚合
-- ⚡ 内存中处理，查询性能优异
+- ⚡  内存中处理，查询性能优异
 - 📈 自动查询优化和向量化执行
 
 ### 💻 Web界面特性
 
 - 📝 **CodeMirror Editor** - 专业的SQL编辑体验
-- 🔍 **智能补全** - SQL语法高亮和自动补全
-- ✅ **语法检查** - 实时SQL验证和错误提示
 - 📊 **结果展示** - 表格和图表可视化
-- 💾 **数据导出** - 支持CSV、Excel、Parquet格式
+- 💾 **数据导出** - 支持CSV、Parquet格式
 
 ## 🚀 快速开始
 
@@ -221,38 +219,6 @@ cd DuckQuery
    - 自动生成数据可视化图表
    - 导出结果为各种格式
 
-### DuckDB特性使用
-
-**上传文件自动成表**
-```sql
--- 上传CSV文件后，系统自动创建表
-SELECT * FROM uploaded_sales_data;
-
--- 上传Excel文件后，每个工作表成为一个表
-SELECT * FROM excel_sheet1;
-SELECT * FROM excel_sheet2;
-
--- 上传JSON文件后，自动解析为表结构
-SELECT * FROM json_events;
-
--- 剪贴板粘贴数据也会自动成表
-SELECT * FROM pasted_data_table;
-```
-
-**数据类型和函数**
-```sql
--- 处理JSON数据
-SELECT json_extract(data, '$.field') FROM table;
-
--- 数组操作
-SELECT unnest([1, 2, 3]) as numbers;
-
--- 时间序列分析
-SELECT date_trunc('month', date_col), COUNT(*)
-FROM events
-GROUP BY date_trunc('month', date_col);
-```
-
 ## 🔒 安全特性
 
 - 🛡️ SQL注入防护
@@ -263,7 +229,10 @@ GROUP BY date_trunc('month', date_col);
 
 ## 🤝 贡献指南
 
-本项目源于日常工作中的跨源数据关联需求，可能无法覆盖所有使用场景。如有需要，欢迎：
+本项目源于日常工作中的跨源数据关联需求，可能无法覆盖所有使用场景。
+另外代码完全基于AI编写，部分代码有混乱的问题，会尽可能的优化。
+
+如有需要，欢迎：
 
 - 提交 [Issue](https://github.com/Chenkeliang/DuckQuery/issues) 反馈问题或建议
 - 贡献代码完善功能
