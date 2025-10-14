@@ -628,7 +628,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
             <Button
               variant="contained"
               onClick={handleExecuteQuery}
-              disabled={selectedSources.length === 0 || selectedSources.length > 1 && joins.length === 0 || isLoading}
+              disabled={selectedSources.length === 0 || selectedSources.length > 1 && joins.length === 0 || (joins.length > 0 && joins.some(join => !join.left_on || !join.right_on)) || isLoading}
               sx={{
                 borderRadius: 20,
                 px: 4,
