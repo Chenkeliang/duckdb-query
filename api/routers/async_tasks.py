@@ -224,6 +224,15 @@ def execute_async_query(
         logger.info(f"开始执行异步查询任务: {task_id}")
         start_time = time.time()
 
+        # 智能移除系统自动添加的LIMIT，确保异步任务获取完整数据
+        from routers.query import remove_auto_added_limit
+
+        clean_sql = remove_auto_added_limit(sql)
+        if clean_sql != sql.strip():
+            logger.info(f"异步任务移除了系统自动添加的LIMIT: {sql} -> {clean_sql}")
+        else:
+            logger.info(f"异步任务使用原始SQL: {clean_sql}")
+
         # 使用连接池获取DuckDB连接，避免阻塞其他请求
         from core.duckdb_pool import get_connection_pool
 
@@ -243,8 +252,8 @@ def execute_async_query(
                 table_name = task_utils.task_id_to_table_name(task_id)
             logger.info(f"创建持久表存储查询结果: {table_name}")
 
-            # 使用CREATE OR REPLACE TABLE直接创建持久表，避免加载到Python内存
-            create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql})'
+            # 使用清理后的SQL创建持久表，确保获取完整数据
+            create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
             con.execute(create_sql)
             logger.info(f"持久表创建成功: {table_name}")
 
@@ -470,5 +479,3 @@ def cleanup_old_files():
     except Exception as e:
         logger.error(f"文件清理失败: {str(e)}")
         return 0
-
-

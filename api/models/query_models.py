@@ -134,7 +134,9 @@ class QueryRequest(BaseModel):
     where_conditions: Optional[str] = None
     order_by: Optional[str] = None
     limit: Optional[int] = None
-    is_preview: Optional[bool] = True  # 新增字段，用于标记是否为预览查询
+    is_preview: Optional[bool] = (
+        True  # 新增字段，用于标记是否为预览查询，默认为True返回1万条
+    )
 
 
 class ExportFormat(str, Enum):
