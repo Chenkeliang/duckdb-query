@@ -130,7 +130,7 @@ const ColumnSelector = ({
   }
 
   return (
-    <Box sx={{ 
+    <Box sx={{
       width: '100%',
       bgcolor: '#f9fafb',
       borderRadius: 4,
@@ -168,8 +168,7 @@ const ColumnSelector = ({
 
       <Collapse in={isExpanded}>
         {/* 列列表 - 柔和圆润风格 */}
-        <Paper
-          variant="outlined"
+        <Box
           sx={{
             maxHeight: Math.max(maxHeight, 300),
             overflow: 'auto',
@@ -194,8 +193,8 @@ const ColumnSelector = ({
                   sx={{
                     display: 'flex',
                     alignItems: 'center',
-                    p: 1.5,
-                    borderRadius: 3,
+                    p: 3,
+                    borderRadius: 4,
                     bgcolor: isSelected ? 'white' : 'transparent',
                     boxShadow: isSelected ? '0 1px 3px 0 rgb(0 0 0 / 0.1)' : 'none',
                     cursor: disabled ? 'not-allowed' : 'pointer',
@@ -250,7 +249,7 @@ const ColumnSelector = ({
               </Typography>
             </Box>
           )}
-        </Paper>
+        </Box>
       </Collapse>
     </Box>
   );
