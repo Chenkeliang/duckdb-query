@@ -151,7 +151,7 @@ const AggregationControls = ({
   return (
     <Box sx={{
       width: '100%',
-      bgcolor: '#f9fafb',
+      bgcolor: 'white',
       borderRadius: 4,
       border: '1px solid #e5e7eb',
       p: 2
@@ -191,7 +191,7 @@ const AggregationControls = ({
 
       <Collapse in={isExpanded}>
         {/* 添加新聚合函数表单 */}
-        <Box sx={{ bgcolor: '#f9fafb', borderRadius: 4, border: '1px solid #e5e7eb', p: 2, mb: 2 }}>
+        <Box sx={{ bgcolor: 'white', borderRadius: 4, border: '1px solid #e5e7eb', p: 2, mb: 2 }}>
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
             添加聚合函数
           </Typography>
@@ -322,7 +322,7 @@ const AggregationControls = ({
               <Box
                 key={aggregation.id}
                 sx={{
-                  bgcolor: '#f9fafb',
+                  bgcolor: 'white',
                   borderRadius: 4,
                   border: '1px solid #e5e7eb',
                   p: 2

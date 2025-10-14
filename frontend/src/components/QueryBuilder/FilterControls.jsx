@@ -289,7 +289,7 @@ const FilterControls = ({
   return (
     <Box sx={{
       width: '100%',
-      bgcolor: '#f9fafb',
+      bgcolor: 'white',
       borderRadius: 4,
       border: '1px solid #e5e7eb',
       p: 2
@@ -472,7 +472,7 @@ const FilterControls = ({
         {/* 已添加的筛选条件列表 */}
         {filters.length > 0 && (
           <Box sx={{
-            bgcolor: '#f9fafb',
+            bgcolor: 'white',
             borderRadius: 4,
             border: '1px solid #e5e7eb',
             p: 2

@@ -122,7 +122,7 @@ const SortControls = ({
   return (
     <Box sx={{
       width: "100%",
-      bgcolor: '#f9fafb',
+      bgcolor: 'white',
       borderRadius: 4,
       border: '1px solid #e5e7eb',
       p: 2
@@ -164,7 +164,7 @@ const SortControls = ({
 
       <Collapse in={isExpanded}>
         {/* 排序列表 - 柔和圆润风格 */}
-        <Box sx={{ bgcolor: "#f9fafb", borderRadius: 4, border: "1px solid #e5e7eb", p: 2 }}>
+        <Box sx={{ bgcolor: "white", borderRadius: 4, border: "1px solid #e5e7eb", p: 2 }}>
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
             添加排序条件
           </Typography>

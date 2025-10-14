@@ -43,7 +43,7 @@ const LimitControls = ({
   return (
     <Box sx={{
       width: "100%",
-      bgcolor: '#f9fafb',
+      bgcolor: 'white',
       borderRadius: 4,
       border: '1px solid #e5e7eb',
       p: 2

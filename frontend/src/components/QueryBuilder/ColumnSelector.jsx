@@ -132,7 +132,7 @@ const ColumnSelector = ({
   return (
     <Box sx={{
       width: '100%',
-      bgcolor: '#f9fafb',
+      bgcolor: 'white',
       borderRadius: 4,
       border: '1px solid #e5e7eb',
       p: 2
@@ -172,7 +172,7 @@ const ColumnSelector = ({
           sx={{
             maxHeight: Math.max(maxHeight, 300),
             overflow: 'auto',
-            bgcolor: '#f9fafb',
+            bgcolor: 'white',
             borderRadius: 4,
             border: '1px solid #e5e7eb',
             p: 2
