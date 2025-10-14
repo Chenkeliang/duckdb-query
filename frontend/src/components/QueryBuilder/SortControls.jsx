@@ -339,8 +339,9 @@ const SortControls = ({
         {/* 已添加的排序条件列表 */}
         {orderBy.length > 0 && (
           <Box sx={{
+            mt: 2,
             mb: 2,
-            bgcolor: '#f9fafb',
+            bgcolor: 'white',
             borderRadius: 4,
             border: '1px solid #e5e7eb'
           }}>
@@ -513,7 +514,7 @@ const SortControls = ({
           <Box sx={{
             p: 3,
             textAlign: "center",
-            bgcolor: '#f9fafb',
+            bgcolor: 'white',
             borderRadius: 4,
             border: '1px solid #e5e7eb'
           }}>

@@ -592,7 +592,7 @@ const FilterControls = ({
           <Box sx={{
             p: 3,
             textAlign: 'center',
-            bgcolor: '#f9fafb',
+            bgcolor: 'white',
             borderRadius: 4,
             border: '1px solid #e5e7eb'
           }}>

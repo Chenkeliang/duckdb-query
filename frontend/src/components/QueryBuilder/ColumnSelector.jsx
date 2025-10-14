@@ -193,12 +193,12 @@ const ColumnSelector = ({
                   sx={{
                     display: 'flex',
                     alignItems: 'center',
-                    p: 3,
-                    borderRadius: 4,
+                    p: 1.5,
+                    borderRadius: 3,
                     bgcolor: isSelected ? 'white' : 'transparent',
                     boxShadow: isSelected ? '0 1px 3px 0 rgb(0 0 0 / 0.1)' : 'none',
                     cursor: disabled ? 'not-allowed' : 'pointer',
-                    opacity: isSelected ? 1 : 0.6,
+                    opacity: isSelected ? 1 : 0.5,
                     transition: 'all 0.2s',
                     '&:hover': {
                       bgcolor: 'white',

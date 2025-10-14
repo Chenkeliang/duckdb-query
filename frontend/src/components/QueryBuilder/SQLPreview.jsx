@@ -125,7 +125,7 @@ const SQLPreview = ({
           '& .cm-editor': {
             backgroundColor: '#1e293b',
             border: '1px solid #334155',
-            borderRadius: 4
+            borderRadius: 3
           },
           '& .cm-content': {
             color: '#e2e8f0'
