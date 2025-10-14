@@ -19,10 +19,9 @@ import {
   ListItemSecondaryAction,
   ListItemText,
   MenuItem,
-  Paper,
   Select,
   Tooltip,
-  Typography,
+  Typography
 } from "@mui/material";
 import React, { useState } from "react";
 import { SortDirection } from "../../utils/visualQueryUtils";
@@ -121,7 +120,7 @@ const SortControls = ({
   };
 
   return (
-    <Box sx={{ 
+    <Box sx={{
       width: "100%",
       bgcolor: '#f9fafb',
       borderRadius: 4,
@@ -173,9 +172,9 @@ const SortControls = ({
           <Box
             sx={{
               display: "flex",
-              gap: 1,
+              gap: 2,
               flexWrap: "wrap",
-              alignItems: "flex-end",
+              alignItems: "center",
             }}
           >
             {/* 选择列 */}
@@ -339,10 +338,10 @@ const SortControls = ({
 
         {/* 已添加的排序条件列表 */}
         {orderBy.length > 0 && (
-          <Box sx={{ 
-            mb: 2, 
-            bgcolor: '#f9fafb', 
-            borderRadius: 4, 
+          <Box sx={{
+            mb: 2,
+            bgcolor: '#f9fafb',
+            borderRadius: 4,
             border: '1px solid #e5e7eb'
           }}>
             <Box
@@ -511,9 +510,9 @@ const SortControls = ({
 
         {/* 提示信息 */}
         {orderBy.length === 0 && (
-          <Box sx={{ 
-            p: 3, 
-            textAlign: "center", 
+          <Box sx={{
+            p: 3,
+            textAlign: "center",
             bgcolor: '#f9fafb',
             borderRadius: 4,
             border: '1px solid #e5e7eb'

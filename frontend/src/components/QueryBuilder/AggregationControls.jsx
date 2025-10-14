@@ -149,7 +149,7 @@ const AggregationControls = ({
   }
 
   return (
-    <Box sx={{ 
+    <Box sx={{
       width: '100%',
       bgcolor: '#f9fafb',
       borderRadius: 4,
@@ -196,7 +196,7 @@ const AggregationControls = ({
             添加聚合函数
           </Typography>
 
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
             {/* 选择函数 */}
             <FormControl size="small" sx={{ minWidth: 120 }}>
               <InputLabel>函数</InputLabel>

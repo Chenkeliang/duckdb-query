@@ -228,7 +228,7 @@ const VisualAnalysisPanel = ({
 
           {/* Panel Content */}
           <Collapse in={isExpanded}>
-            <div className="p-6 bg-gray-50/30 rounded-b-3xl">
+            <div className="p-6 bg-white rounded-b-3xl">
               {error && (
                 <Alert
                   severity="error"

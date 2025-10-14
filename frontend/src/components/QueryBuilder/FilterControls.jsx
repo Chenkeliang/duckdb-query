@@ -16,7 +16,6 @@ import {
   ListItemSecondaryAction,
   ListItemText,
   MenuItem,
-  Paper,
   Select,
   TextField,
   Tooltip,
@@ -183,7 +182,22 @@ const FilterControls = ({
               onChange={(e) => updateValue('value', e.target.value)}
               disabled={disabled}
               placeholder="最小值"
-              sx={{ width: 80 }}
+              sx={{
+                width: 80,
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 3,
+                  '& fieldset': {
+                    borderColor: '#e5e7eb'
+                  },
+                  '&:hover fieldset': {
+                    borderColor: '#3b82f6'
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: '#3b82f6',
+                    borderWidth: 2
+                  }
+                }
+              }}
             />
             <Typography variant="body2" color="text.secondary">至</Typography>
             <TextField
@@ -192,7 +206,22 @@ const FilterControls = ({
               onChange={(e) => updateValue('value2', e.target.value)}
               disabled={disabled}
               placeholder="最大值"
-              sx={{ width: 80 }}
+              sx={{
+                width: 80,
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 3,
+                  '& fieldset': {
+                    borderColor: '#e5e7eb'
+                  },
+                  '&:hover fieldset': {
+                    borderColor: '#3b82f6'
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: '#3b82f6',
+                    borderWidth: 2
+                  }
+                }
+              }}
             />
           </Box>
         );
@@ -209,7 +238,22 @@ const FilterControls = ({
             }}
             disabled={disabled}
             placeholder="值1, 值2, 值3..."
-            sx={{ minWidth: 150 }}
+            sx={{
+              minWidth: 150,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 3,
+                '& fieldset': {
+                  borderColor: '#e5e7eb'
+                },
+                '&:hover fieldset': {
+                  borderColor: '#3b82f6'
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: '#3b82f6',
+                  borderWidth: 2
+                }
+              }
+            }}
           />
         );
 
@@ -221,14 +265,29 @@ const FilterControls = ({
             onChange={(e) => updateValue('value', e.target.value)}
             disabled={disabled}
             placeholder="筛选值"
-            sx={{ minWidth: 100 }}
+            sx={{
+              minWidth: 100,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 3,
+                '& fieldset': {
+                  borderColor: '#e5e7eb'
+                },
+                '&:hover fieldset': {
+                  borderColor: '#3b82f6'
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: '#3b82f6',
+                  borderWidth: 2
+                }
+              }
+            }}
           />
         );
     }
   };
 
   return (
-    <Box sx={{ 
+    <Box sx={{
       width: '100%',
       bgcolor: '#f9fafb',
       borderRadius: 4,
@@ -277,7 +336,7 @@ const FilterControls = ({
             添加筛选条件
           </Typography>
 
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-end', mb: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', mb: 2 }}>
             {/* 逻辑操作符 (仅在有现有筛选条件时显示) */}
             {filters.length > 0 && (
               <FormControl size="small" sx={{ minWidth: 80 }}>
@@ -412,9 +471,9 @@ const FilterControls = ({
 
         {/* 已添加的筛选条件列表 */}
         {filters.length > 0 && (
-          <Box sx={{ 
-            bgcolor: '#f9fafb', 
-            borderRadius: 4, 
+          <Box sx={{
+            bgcolor: '#f9fafb',
+            borderRadius: 4,
             border: '1px solid #e5e7eb',
             p: 2
           }}>
@@ -530,9 +589,9 @@ const FilterControls = ({
         )}
 
         {filters.length === 0 && (
-          <Box sx={{ 
-            p: 3, 
-            textAlign: 'center', 
+          <Box sx={{
+            p: 3,
+            textAlign: 'center',
             bgcolor: '#f9fafb',
             borderRadius: 4,
             border: '1px solid #e5e7eb'

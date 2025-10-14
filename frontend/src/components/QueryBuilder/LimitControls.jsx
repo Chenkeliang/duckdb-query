@@ -41,7 +41,7 @@ const LimitControls = ({
   };
 
   return (
-    <Box sx={{ 
+    <Box sx={{
       width: "100%",
       bgcolor: '#f9fafb',
       borderRadius: 4,
