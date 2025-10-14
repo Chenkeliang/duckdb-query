@@ -28,11 +28,11 @@ import {
   ExpandLess as ExpandLessIcon,
   FilterList as FilterListIcon
 } from '@mui/icons-material';
-import { 
-  FilterOperator, 
+import {
+  FilterOperator,
   LogicOperator,
   getSuggestedOperators,
-  detectColumnType 
+  detectColumnType
 } from '../../utils/visualQueryUtils';
 
 /**
@@ -89,7 +89,7 @@ const FilterControls = ({
     };
 
     onFiltersChange([...filters, filter]);
-    
+
     // 重置表单
     setNewFilter({
       column: '',
@@ -111,35 +111,35 @@ const FilterControls = ({
     const updatedFilters = filters.map(filter => {
       if (filter.id === id) {
         const updated = { ...filter, [field]: value };
-        
+
         // 如果改变了操作符，清空相关值
         if (field === 'operator') {
           updated.value = '';
           updated.value2 = '';
           updated.values = [];
         }
-        
+
         return updated;
       }
       return filter;
     });
-    
+
     onFiltersChange(updatedFilters);
   };
 
   // 获取列的可用操作符
   const getAvailableOperators = (columnName) => {
-    const column = columns.find(col => 
+    const column = columns.find(col =>
       (typeof col === 'string' ? col : col.name) === columnName
     );
-    
+
     if (!column) return Object.values(FilterOperator);
-    
+
     const columnType = detectColumnType(
-      columnName, 
+      columnName,
       column.sampleValues || []
     );
-    
+
     return getSuggestedOperators(columnType);
   };
 
@@ -170,7 +170,7 @@ const FilterControls = ({
   // 渲染值输入控件
   const renderValueInput = (filter, isNew = false) => {
     const filterData = isNew ? newFilter : filter;
-    const updateValue = isNew 
+    const updateValue = isNew
       ? (field, value) => setNewFilter(prev => ({ ...prev, [field]: value }))
       : (field, value) => handleUpdateFilter(filter.id, field, value);
 
@@ -275,7 +275,7 @@ const FilterControls = ({
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
             添加筛选条件
           </Typography>
-          
+
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-end', mb: 2 }}>
             {/* 逻辑操作符 (仅在有现有筛选条件时显示) */}
             {filters.length > 0 && (
@@ -284,9 +284,9 @@ const FilterControls = ({
                 <Select
                   value={newFilter.logicOperator}
                   label="逻辑"
-                  onChange={(e) => setNewFilter(prev => ({ 
-                    ...prev, 
-                    logicOperator: e.target.value 
+                  onChange={(e) => setNewFilter(prev => ({
+                    ...prev,
+                    logicOperator: e.target.value
                   }))}
                   disabled={disabled}
                 >
@@ -302,8 +302,8 @@ const FilterControls = ({
               <Select
                 value={newFilter.column}
                 label="列"
-                onChange={(e) => setNewFilter(prev => ({ 
-                  ...prev, 
+                onChange={(e) => setNewFilter(prev => ({
+                  ...prev,
                   column: e.target.value,
                   operator: '', // 重置操作符
                   value: '',
@@ -329,8 +329,8 @@ const FilterControls = ({
               <Select
                 value={newFilter.operator}
                 label="操作符"
-                onChange={(e) => setNewFilter(prev => ({ 
-                  ...prev, 
+                onChange={(e) => setNewFilter(prev => ({
+                  ...prev,
                   operator: e.target.value,
                   value: '',
                   value2: '',
@@ -361,7 +361,7 @@ const FilterControls = ({
               添加
             </Button>
           </Box>
-        </Paper>
+        </Box>
 
         {/* 已添加的筛选条件列表 */}
         {filters.length > 0 && (
@@ -416,8 +416,8 @@ const FilterControls = ({
                               <Select
                                 value={filter.logicOperator}
                                 onChange={(e) => handleUpdateFilter(
-                                  filter.id, 
-                                  'logicOperator', 
+                                  filter.id,
+                                  'logicOperator',
                                   e.target.value
                                 )}
                                 disabled={disabled}
@@ -434,8 +434,8 @@ const FilterControls = ({
                             <Select
                               value={filter.operator}
                               onChange={(e) => handleUpdateFilter(
-                                filter.id, 
-                                'operator', 
+                                filter.id,
+                                'operator',
                                 e.target.value
                               )}
                               disabled={disabled}
@@ -454,7 +454,7 @@ const FilterControls = ({
                         </Box>
                       }
                     />
-                    
+
                     <ListItemSecondaryAction>
                       <Tooltip title="删除筛选条件">
                         <IconButton
@@ -469,7 +469,7 @@ const FilterControls = ({
                       </Tooltip>
                     </ListItemSecondaryAction>
                   </ListItem>
-                  
+
                   {index < filters.length - 1 && <Divider />}
                 </React.Fragment>
               ))}

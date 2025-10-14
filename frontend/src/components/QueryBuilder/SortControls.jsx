@@ -286,7 +286,7 @@ const SortControls = ({
               添加
             </Button>
           </Box>
-        </Paper>
+        </Box>
 
         {/* 已添加的排序条件列表 */}
         {orderBy.length > 0 && (

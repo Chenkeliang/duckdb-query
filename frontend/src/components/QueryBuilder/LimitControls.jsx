@@ -130,7 +130,7 @@ const LimitControls = ({
               </Typography>
             </Box>
           )}
-        </Paper>
+        </Box>
       </Collapse>
     </Box>
   );

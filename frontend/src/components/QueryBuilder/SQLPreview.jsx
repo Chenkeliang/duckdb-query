@@ -1,17 +1,16 @@
-import React, { useEffect, useRef } from 'react';
-import { EditorView, basicSetup } from 'codemirror';
 import { sql } from '@codemirror/lang-sql';
 import { EditorState } from '@codemirror/state';
-import { Box, Typography, IconButton, Tooltip } from '@mui/material';
-import { ContentCopy as CopyIcon } from '@mui/icons-material';
+import { Box, Typography } from '@mui/material';
+import { EditorView, basicSetup } from 'codemirror';
+import React, { useEffect, useRef } from 'react';
 
 /**
  * SQLPreview - 只读SQL预览组件，使用CodeMirror显示格式化的SQL
  */
-const SQLPreview = ({ 
-  sql: sqlContent = '', 
+const SQLPreview = ({
+  sql: sqlContent = '',
   title = '生成的SQL查询',
-  height = 150 
+  height = 150
 }) => {
   const editorRef = useRef(null);
   const viewRef = useRef(null);
@@ -82,9 +81,9 @@ const SQLPreview = ({
   return (
     <Box sx={{ width: '100%' }}>
       {/* 标题和复制按钮 - 统一蓝色风格 */}
-      <Box sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
+      <Box sx={{
+        display: 'flex',
+        alignItems: 'center',
         justifyContent: 'space-between',
         mb: 1.5,
         px: 0.5
