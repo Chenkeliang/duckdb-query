@@ -234,26 +234,44 @@ const FilterControls = ({
 
   return (
     <Box sx={{ width: '100%' }}>
-      {/* 标题和控制 */}
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <FilterListIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
-          筛选条件 ({filters.length})
+      {/* 标题和控制 - 统一蓝色风格 */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, px: 0.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ width: 8, height: 8, bgcolor: '#3b82f6', borderRadius: '50%' }} />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+            筛选条件 (WHERE)
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {filters.length}个条件
+          </Typography>
+        </Box>
+        <Typography
+          variant="caption"
+          onClick={handleAddFilter}
+          disabled={disabled || !newFilter.column || !newFilter.operator}
+          sx={{
+            color: '#3b82f6',
+            fontWeight: 600,
+            cursor: disabled || !newFilter.column || !newFilter.operator ? 'not-allowed' : 'pointer',
+            opacity: disabled || !newFilter.column || !newFilter.operator ? 0.5 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.5,
+            '&:hover': {
+              color: '#2563eb'
+            }
+          }}
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+          </svg>
+          添加
         </Typography>
-        <Tooltip title={isExpanded ? '收起' : '展开'}>
-          <IconButton
-            size="small"
-            onClick={() => setIsExpanded(!isExpanded)}
-            disabled={disabled}
-          >
-            {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-          </IconButton>
-        </Tooltip>
       </Box>
 
       <Collapse in={isExpanded}>
-        {/* 添加新筛选条件 */}
-        <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+        {/* 筛选条件列表 - 柔和圆润风格 */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
             添加筛选条件
           </Typography>

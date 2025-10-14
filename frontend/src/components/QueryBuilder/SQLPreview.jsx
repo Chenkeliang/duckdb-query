@@ -81,50 +81,59 @@ const SQLPreview = ({
 
   return (
     <Box sx={{ width: '100%' }}>
-      {/* 标题和复制按钮 */}
+      {/* 标题和复制按钮 - 统一蓝色风格 */}
       <Box sx={{ 
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'space-between',
-        mb: 1
+        mb: 1.5,
+        px: 0.5
       }}>
-        <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary' }}>
-          {title}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ width: 8, height: 8, bgcolor: '#3b82f6', borderRadius: '50%' }} />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+            {title}
+          </Typography>
+        </Box>
         {sqlContent && (
-          <Tooltip title="复制SQL">
-            <IconButton
-              size="small"
-              onClick={handleCopySQL}
-              sx={{ 
-                color: 'text.secondary',
-                '&:hover': { 
-                  color: 'primary.main',
-                  backgroundColor: 'action.hover'
-                }
-              }}
-            >
-              <CopyIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <Typography
+            variant="caption"
+            onClick={handleCopySQL}
+            sx={{
+              color: '#3b82f6',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              '&:hover': {
+                color: '#2563eb'
+              }
+            }}
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+            </svg>
+            复制
+          </Typography>
         )}
       </Box>
 
-      {/* CodeMirror编辑器容器 */}
+      {/* CodeMirror编辑器容器 - 柔和圆润风格 */}
       <Box
         ref={editorRef}
         sx={{
           '& .cm-editor': {
-            backgroundColor: '#fafafa',
-            border: '1px solid #e2e8f0',
-            borderRadius: 1
+            backgroundColor: '#1e293b',
+            border: '1px solid #334155',
+            borderRadius: 4
           },
           '& .cm-content': {
-            color: '#374151'
+            color: '#e2e8f0'
           },
           '& .cm-gutters': {
-            backgroundColor: '#f3f4f6',
-            borderRight: '1px solid #e5e7eb'
+            backgroundColor: '#0f172a',
+            borderRight: '1px solid #334155'
           }
         }}
       />

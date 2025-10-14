@@ -1,27 +1,12 @@
 import {
   CheckBox as CheckBoxIcon,
-  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
-  ExpandLess as ExpandLessIcon,
-  ExpandMore as ExpandMoreIcon,
-  Info as InfoIcon,
-  Search as SearchIcon
+  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon
 } from '@mui/icons-material';
 import {
   Box,
   Checkbox,
-  Chip,
   Collapse,
-  Divider,
-  FormControlLabel,
-  IconButton,
-  InputAdornment,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   Paper,
-  TextField,
-  Tooltip,
   Typography
 } from '@mui/material';
 import { Calendar, CheckCircle, FileText, Hash, HelpCircle, Percent } from 'lucide-react';
@@ -146,70 +131,49 @@ const ColumnSelector = ({
 
   return (
     <Box sx={{ width: '100%' }}>
-      {/* 标题和控制 */}
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
-          选择列 ({selectedColumns.length}/{columns.length})
+      {/* 标题和控制 - 统一蓝色风格 */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, px: 0.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ width: 8, height: 8, bgcolor: '#3b82f6', borderRadius: '50%' }} />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+            选择列 (SELECT)
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            已选 {selectedColumns.length}/{columns.length}
+          </Typography>
+        </Box>
+        <Typography
+          variant="caption"
+          onClick={handleSelectAll}
+          disabled={disabled || filteredColumns.length === 0}
+          sx={{
+            color: '#3b82f6',
+            fontWeight: 600,
+            cursor: disabled || filteredColumns.length === 0 ? 'not-allowed' : 'pointer',
+            opacity: disabled || filteredColumns.length === 0 ? 0.5 : 1,
+            '&:hover': {
+              color: '#2563eb'
+            }
+          }}
+        >
+          全选
         </Typography>
-        <Tooltip title={isExpanded ? '收起' : '展开'}>
-          <IconButton
-            size="small"
-            onClick={() => setIsExpanded(!isExpanded)}
-            disabled={disabled}
-          >
-            {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-          </IconButton>
-        </Tooltip>
       </Box>
 
       <Collapse in={isExpanded}>
-        <Box sx={{ mb: 2 }}>
-          {/* 搜索框 */}
-          <TextField
-            size="small"
-            placeholder="搜索列名..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            disabled={disabled}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              ),
-            }}
-            sx={{ width: '100%', mb: 1 }}
-          />
-
-          {/* 全选控制 */}
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={selectedColumns.length === filteredColumns.length && filteredColumns.length > 0}
-                indeterminate={selectedColumns.length > 0 && selectedColumns.length < filteredColumns.length}
-                onChange={handleSelectAll}
-                disabled={disabled || filteredColumns.length === 0}
-                size="small"
-              />
-            }
-            label={
-              <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                全选 ({filteredColumns.length} 列)
-              </Typography>
-            }
-          />
-        </Box>
-
-        {/* 列列表 */}
+        {/* 列列表 - 柔和圆润风格 */}
         <Paper
           variant="outlined"
           sx={{
             maxHeight: Math.max(maxHeight, 300),
             overflow: 'auto',
-            bgcolor: 'background.paper'
+            bgcolor: '#f9fafb',
+            borderRadius: 4,
+            border: '1px solid #e5e7eb',
+            p: 2
           }}
         >
-          <List dense>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {filteredColumns.map((column, index) => {
               const columnName = typeof column === 'string' ? column : column.name;
               const columnType = columnTypes[columnName] || 'text';
@@ -218,74 +182,60 @@ const ColumnSelector = ({
               );
 
               return (
-                <React.Fragment key={columnName}>
-                  <ListItem
-                    button
-                    onClick={() => handleColumnToggle(column)}
+                <Box
+                  key={columnName}
+                  onClick={() => handleColumnToggle(column)}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    p: 1.5,
+                    borderRadius: 3,
+                    bgcolor: isSelected ? 'white' : 'transparent',
+                    boxShadow: isSelected ? '0 1px 3px 0 rgb(0 0 0 / 0.1)' : 'none',
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    opacity: isSelected ? 1 : 0.6,
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      bgcolor: 'white',
+                      opacity: 1
+                    }
+                  }}
+                >
+                  <Checkbox
+                    checked={isSelected}
                     disabled={disabled}
+                    size="small"
+                    icon={<CheckBoxOutlineBlankIcon fontSize="small" />}
+                    checkedIcon={<CheckBoxIcon fontSize="small" />}
                     sx={{
-                      py: 1.5,
-                      minHeight: 56,
-                      '&:hover': {
-                        bgcolor: 'action.hover'
+                      color: '#3b82f6',
+                      '&.Mui-checked': {
+                        color: '#3b82f6'
                       }
                     }}
-                  >
-                    <ListItemIcon sx={{ minWidth: 36 }}>
-                      <Checkbox
-                        checked={isSelected}
-                        disabled={disabled}
-                        size="small"
-                        icon={<CheckBoxOutlineBlankIcon fontSize="small" />}
-                        checkedIcon={<CheckBoxIcon fontSize="small" />}
-                      />
-                    </ListItemIcon>
-
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography variant="body2" sx={{ fontWeight: isSelected ? 600 : 400 }}>
-                            {columnName}
-                          </Typography>
-                          {showMetadata && (
-                            <Chip
-                              label={`${getTypeIcon(columnType)} ${columnType}`}
-                              size="small"
-                              color={getTypeColor(columnType)}
-                              variant="outlined"
-                              sx={{
-                                height: 20,
-                                fontSize: '0.7rem',
-                                '& .MuiChip-label': { px: 1 }
-                              }}
-                            />
-                          )}
-                        </Box>
-                      }
-                      secondary={
-                        showMetadata && column.description ? (
-                          <Typography variant="caption" color="text.secondary">
-                            {column.description}
-                          </Typography>
-                        ) : null
-                      }
-                    />
-
-                    {showMetadata && column.nullable !== undefined && (
-                      <Tooltip title={column.nullable ? '可为空' : '不可为空'}>
-                        <InfoIcon
-                          fontSize="small"
-                          color={column.nullable ? 'action' : 'primary'}
-                        />
-                      </Tooltip>
-                    )}
-                  </ListItem>
-
-                  {index < filteredColumns.length - 1 && <Divider />}
-                </React.Fragment>
+                  />
+                  <Box sx={{ flex: 1, ml: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" sx={{ fontWeight: isSelected ? 600 : 500, color: 'text.primary' }}>
+                      {columnName}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'text.secondary',
+                        bgcolor: '#f3f4f6',
+                        px: 1.5,
+                        py: 0.5,
+                        borderRadius: 10,
+                        fontSize: '0.7rem'
+                      }}
+                    >
+                      {columnType === 'integer' || columnType === 'decimal' ? '数值' : columnType === 'date' ? '日期' : '文本'}
+                    </Typography>
+                  </Box>
+                </Box>
               );
             })}
-          </List>
+          </Box>
 
           {filteredColumns.length === 0 && (
             <Box sx={{ p: 3, textAlign: 'center' }}>
@@ -295,30 +245,6 @@ const ColumnSelector = ({
             </Box>
           )}
         </Paper>
-
-        {/* 已选择的列标签 */}
-        {selectedColumns.length > 0 && (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-              已选择的列:
-            </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-              {selectedColumns.map((column) => {
-                const columnName = typeof column === 'string' ? column : column.name;
-                return (
-                  <Chip
-                    key={columnName}
-                    label={columnName}
-                    size="small"
-                    onDelete={disabled ? undefined : () => handleColumnToggle(column)}
-                    color="primary"
-                    variant="outlined"
-                  />
-                );
-              })}
-            </Box>
-          </Box>
-        )}
       </Collapse>
     </Box>
   );

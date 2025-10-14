@@ -49,24 +49,16 @@ const LimitControls = ({
 
   return (
     <Box sx={{ width: "100%" }}>
-      {/* 标题和控制 */}
-      <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
-          限制结果数量
+      {/* 标题和控制 - 统一蓝色风格 */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2, px: 0.5 }}>
+        <Box sx={{ width: 8, height: 8, bgcolor: "#3b82f6", borderRadius: "50%" }} />
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "text.primary" }}>
+          限制行数 (LIMIT)
         </Typography>
-        <Tooltip title={isExpanded ? "收起" : "展开"}>
-          <IconButton
-            size="small"
-            onClick={() => setIsExpanded(!isExpanded)}
-            disabled={disabled}
-          >
-            {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-          </IconButton>
-        </Tooltip>
       </Box>
 
       <Collapse in={isExpanded}>
-        <Paper variant="outlined" sx={{ p: 2, bgcolor: "grey.50" }}>
+        <Box sx={{ bgcolor: "#f9fafb", borderRadius: 4, border: "1px solid #e5e7eb", p: 2 }}>
           <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
             <Typography variant="body2" sx={{ fontWeight: 500, flex: 1 }}>
               启用结果数量限制

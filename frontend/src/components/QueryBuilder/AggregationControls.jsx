@@ -1,23 +1,12 @@
 import {
   Add as AddIcon,
-  Delete as DeleteIcon,
-  ExpandLess as ExpandLessIcon,
-  ExpandMore as ExpandMoreIcon,
-  Functions as FunctionsIcon
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import {
   Box,
-  Button,
   Chip,
   Collapse,
-  Divider,
-  FormControl,
   IconButton,
-  InputLabel,
-  List,
-  ListItem,
-  ListItemSecondaryAction,
-  ListItemText,
   MenuItem,
   Paper,
   Select,
@@ -25,14 +14,11 @@ import {
   Tooltip,
   Typography
 } from '@mui/material';
-import { Lightbulb } from 'lucide-react';
 import React, { useState } from 'react';
 import {
   AggregationFunction,
   detectColumnType,
-  getColumnTypeInfo,
-  getSuggestedAggregations,
-  isAggregationCompatible
+  getSuggestedAggregations
 } from '../../utils/visualQueryUtils';
 
 /**
@@ -161,248 +147,166 @@ const AggregationControls = ({
 
   return (
     <Box sx={{ width: '100%' }}>
-      {/* 标题和控制 */}
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <FunctionsIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
-          聚合函数 ({aggregations.length})
+      {/* 标题和控制 - 统一蓝色风格 */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, px: 0.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ width: 8, height: 8, bgcolor: '#3b82f6', borderRadius: '50%' }} />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+            聚合函数
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {aggregations.length}个聚合
+          </Typography>
+        </Box>
+        <Typography
+          variant="caption"
+          onClick={handleAddAggregation}
+          disabled={disabled || !newAggregation.function || !newAggregation.column}
+          sx={{
+            color: '#3b82f6',
+            fontWeight: 600,
+            cursor: disabled || !newAggregation.function || !newAggregation.column ? 'not-allowed' : 'pointer',
+            opacity: disabled || !newAggregation.function || !newAggregation.column ? 0.5 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.5,
+            '&:hover': {
+              color: '#2563eb'
+            }
+          }}
+        >
+          <AddIcon sx={{ fontSize: 14 }} />
+          添加
         </Typography>
-        <Tooltip title={isExpanded ? '收起' : '展开'}>
-          <IconButton
-            size="small"
-            onClick={() => setIsExpanded(!isExpanded)}
-            disabled={disabled}
-          >
-            {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-          </IconButton>
-        </Tooltip>
       </Box>
 
       <Collapse in={isExpanded}>
-        {/* 添加新聚合函数 */}
-        <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
-          <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
-            添加聚合函数
-          </Typography>
 
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            {/* 选择函数 */}
-            <FormControl size="small" sx={{ minWidth: 120 }}>
-              <InputLabel>函数</InputLabel>
-              <Select
-                value={newAggregation.function}
-                label="函数"
-                onChange={(e) => setNewAggregation(prev => ({
-                  ...prev,
-                  function: e.target.value
-                }))}
-                disabled={disabled}
-              >
-                {Object.values(AggregationFunction).map(func => {
-                  // 检查函数与当前选中列的兼容性
-                  let isCompatible = true;
-                  let warningMessage = '';
-
-                  if (newAggregation.column) {
-                    const columnInfo = getColumnTypeInfo(newAggregation.column);
-                    isCompatible = isAggregationCompatible(func, columnInfo.type, columnInfo.name);
-
-                    if (!isCompatible) {
-                      warningMessage = `${getFunctionDisplayName(func)}不适用于${columnInfo.type}类型`;
-                    }
-                  }
-
-                  return (
-                    <MenuItem
-                      key={func}
-                      value={func}
-                      disabled={!isCompatible}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                        <span>{getFunctionDisplayName(func)}</span>
-                        {!isCompatible && (
-                          <Chip
-                            label="不兼容"
-                            size="small"
-                            color="warning"
-                            sx={{ ml: 1, height: 16, fontSize: '0.7rem' }}
-                          />
-                        )}
-                      </div>
-                    </MenuItem>
-                  );
-                })}
-              </Select>
-            </FormControl>
-
-            {/* 选择列 */}
-            <FormControl size="small" sx={{ minWidth: 120 }}>
-              <InputLabel>列</InputLabel>
-              <Select
-                value={newAggregation.column}
-                label="列"
-                onChange={(e) => setNewAggregation(prev => ({
-                  ...prev,
-                  column: e.target.value
-                }))}
-                disabled={disabled}
-              >
-                {columns.map(column => {
-                  const columnName = typeof column === 'string' ? column : column.name;
-
-                  return (
-                    <MenuItem
-                      key={columnName}
-                      value={columnName}
-                    >
-                      {columnName}
-                    </MenuItem>
-                  );
-                })}
-              </Select>
-            </FormControl>
-
-            {/* 别名 */}
-            <TextField
-              size="small"
-              label="别名 (可选)"
-              value={newAggregation.alias}
-              onChange={(e) => setNewAggregation(prev => ({
-                ...prev,
-                alias: e.target.value
-              }))}
-              disabled={disabled}
-              sx={{ minWidth: 120 }}
-            />
-
-            {/* 添加按钮 */}
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={handleAddAggregation}
-              disabled={disabled || !newAggregation.function || !newAggregation.column}
-              sx={{ ml: 1 }}
-            >
-              添加
-            </Button>
-          </Box>
-        </Paper>
-
-        {/* 已添加的聚合函数列表 */}
+        {/* 已添加的聚合函数列表 - 卡片风格 */}
         {aggregations.length > 0 && (
-          <Paper
-            variant="outlined"
-            sx={{
-              maxHeight: maxHeight,
-              overflow: 'auto',
-              bgcolor: 'background.paper'
-            }}
-          >
-            <List dense>
-              {aggregations.map((aggregation, index) => (
-                <React.Fragment key={aggregation.id}>
-                  <ListItem sx={{ py: 1 }}>
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                          <Chip
-                            label={getFunctionDisplayName(aggregation.function)}
-                            size="small"
-                            color={getFunctionColor(aggregation.function)}
-                            variant="outlined"
-                          />
-                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                            {aggregation.column}
-                          </Typography>
-                          {aggregation.alias && (
-                            <Typography variant="caption" color="text.secondary">
-                              → {aggregation.alias}
-                            </Typography>
-                          )}
-                        </Box>
-                      }
-                      secondary={
-                        <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                          {/* 编辑函数 */}
-                          <FormControl size="small" sx={{ minWidth: 100 }}>
-                            <Select
-                              value={aggregation.function}
-                              onChange={(e) => handleUpdateAggregation(
-                                aggregation.id,
-                                'function',
-                                e.target.value
-                              )}
-                              disabled={disabled}
-                              variant="outlined"
-                            >
-                              {getAvailableFunctions(aggregation.column).map(func => (
-                                <MenuItem key={func} value={func}>
-                                  {getFunctionDisplayName(func)}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 2 }}>
+            {aggregations.map((aggregation, index) => (
+              <Box
+                key={aggregation.id}
+                sx={{
+                  bgcolor: '#f9fafb',
+                  borderRadius: 4,
+                  border: '1px solid #e5e7eb',
+                  p: 2
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1.5 }}>
+                  <Chip
+                    label={getFunctionDisplayName(aggregation.function)}
+                    size="small"
+                    sx={{
+                      bgcolor: '#3b82f6',
+                      color: 'white',
+                      fontWeight: 600,
+                      fontSize: '0.7rem',
+                      height: 24,
+                      borderRadius: 10
+                    }}
+                  />
+                  <Tooltip title="删除聚合函数">
+                    <IconButton
+                      size="small"
+                      onClick={() => handleRemoveAggregation(aggregation.id)}
+                      disabled={disabled}
+                      sx={{
+                        color: 'text.secondary',
+                        '&:hover': {
+                          color: 'error.main'
+                        }
+                      }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
 
-                          {/* 编辑别名 */}
-                          <TextField
-                            size="small"
-                            value={aggregation.alias}
-                            onChange={(e) => handleUpdateAggregation(
-                              aggregation.id,
-                              'alias',
-                              e.target.value
-                            )}
-                            disabled={disabled}
-                            placeholder="别名"
-                            sx={{ minWidth: 100 }}
-                          />
-                        </Box>
-                      }
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  {/* 选择列 - 这里显示选择的列但不可编辑 */}
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block', mb: 0.75 }}>
+                      选择列
+                    </Typography>
+                    <Select
+                      size="small"
+                      value={aggregation.column}
+                      onChange={(e) => handleUpdateAggregation(
+                        aggregation.id,
+                        'column',
+                        e.target.value
+                      )}
+                      disabled={disabled}
+                      sx={{
+                        width: '100%',
+                        bgcolor: 'white',
+                        borderRadius: 3,
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: '#e5e7eb'
+                        },
+                        '&:hover .MuiOutlinedInput-notchedOutline': {
+                          borderColor: '#3b82f6'
+                        },
+                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                          borderColor: '#3b82f6',
+                          borderWidth: 2
+                        }
+                      }}
+                    >
+                      {columns.map(column => {
+                        const columnName = typeof column === 'string' ? column : column.name;
+                        return (
+                          <MenuItem key={columnName} value={columnName}>
+                            {columnName}
+                          </MenuItem>
+                        );
+                      })}
+                    </Select>
+                  </Box>
+
+                  {/* 别名 */}
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block', mb: 0.75 }}>
+                      别名 (可选)
+                    </Typography>
+                    <TextField
+                      size="small"
+                      value={aggregation.alias}
+                      onChange={(e) => handleUpdateAggregation(
+                        aggregation.id,
+                        'alias',
+                        e.target.value
+                      )}
+                      disabled={disabled}
+                      placeholder={`${aggregation.function.toLowerCase()}_${aggregation.column}`}
+                      sx={{
+                        width: '100%',
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'white',
+                          borderRadius: 3,
+                          '& fieldset': {
+                            borderColor: '#e5e7eb'
+                          },
+                          '&:hover fieldset': {
+                            borderColor: '#3b82f6'
+                          },
+                          '&.Mui-focused fieldset': {
+                            borderColor: '#3b82f6',
+                            borderWidth: 2
+                          }
+                        }
+                      }}
                     />
-
-                    <ListItemSecondaryAction>
-                      <Tooltip title="删除聚合函数">
-                        <IconButton
-                          edge="end"
-                          size="small"
-                          onClick={() => handleRemoveAggregation(aggregation.id)}
-                          disabled={disabled}
-                          color="error"
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-
-                  {index < aggregations.length - 1 && <Divider />}
-                </React.Fragment>
-              ))}
-            </List>
-          </Paper>
-        )}
-
-        {aggregations.length === 0 && (
-          <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'grey.50' }}>
-            <Typography variant="body2" color="text.secondary">
-              还没有添加聚合函数
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-              聚合函数可以对数据进行统计计算，如求和、平均值等
-            </Typography>
-          </Paper>
-        )}
-
-        {/* 提示信息 */}
-        {aggregations.length > 0 && (
-          <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
-            <Typography variant="caption" color="info.contrastText">
-              <Lightbulb size={16} style={{ marginRight: '8px' }} />
-              提示：使用聚合函数时，建议在"排序和限制"中添加GROUP BY条件
-            </Typography>
+                  </Box>
+                </Box>
+              </Box>
+            ))}
           </Box>
         )}
+
       </Collapse>
     </Box>
   );

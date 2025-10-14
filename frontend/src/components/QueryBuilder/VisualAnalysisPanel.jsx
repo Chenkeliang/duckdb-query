@@ -1,15 +1,10 @@
 import {
-  ExpandLess as ExpandLessIcon,
-  ExpandMore as ExpandMoreIcon
-} from '@mui/icons-material';
-import {
   Alert,
   Collapse,
   Fade,
   IconButton,
   Tooltip
 } from '@mui/material';
-import { Lightbulb } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import {
   createDefaultConfig,
@@ -178,42 +173,53 @@ const VisualAnalysisPanel = ({
   return (
     <Fade in={shouldShowPanel}>
       <div className="mb-6">
-        {/* Main Panel Container - Shadcn/ui inspired styling with Tailwind */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+        {/* Main Panel Container - 柔和圆润风格 */}
+        <div className="bg-white rounded-3xl border border-gray-200 shadow-lg">
           {/* Panel Header */}
           <div
-            className="px-6 py-4 bg-gray-50 border-b border-gray-200 rounded-t-lg cursor-pointer hover:bg-gray-100 transition-colors"
+            className="px-6 py-5 bg-blue-50/30 hover:bg-blue-50/50 transition-colors rounded-t-3xl cursor-pointer border-b border-gray-200"
             onClick={() => setIsExpanded(!isExpanded)}
           >
             <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-2">
-                  <h3 className="text-base font-semibold text-gray-900">
-                    可视化分析
-                  </h3>
-                  <div className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
-                    单表分析
-                  </div>
+              <div className="flex items-center gap-4">
+                {/* Icon - 蓝色渐变图标 */}
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl flex items-center justify-center shadow-md flex-shrink-0">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                  </svg>
                 </div>
-                <p className="text-sm text-gray-600 mt-1">
-                  {isExpanded
-                    ? `为 "${selectedTable?.name || selectedTable?.id}" 配置分析条件`
-                    : `${getConfigSummary(analysisConfig)} | 点击展开配置`
-                  }
-                </p>
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <h3 className="text-base font-bold text-gray-900">
+                      可视化分析
+                    </h3>
+                    <span className="px-3 py-1 text-xs font-semibold text-blue-700 bg-blue-100 rounded-full">
+                      单表分析
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {isExpanded
+                      ? `为 "${selectedTable?.name || selectedTable?.id}" 配置分析条件`
+                      : `${getConfigSummary(analysisConfig)} | 点击展开配置`
+                    }
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="w-10 h-10 rounded-full bg-blue-50 hover:bg-blue-100 flex items-center justify-center transition-colors flex-shrink-0">
                 <Tooltip title={isExpanded ? '收起分析面板' : '展开分析面板'}>
                   <IconButton
                     size="small"
                     sx={{
-                      color: 'text.secondary',
+                      color: '#2563eb',
+                      padding: 0,
                       '&:hover': {
-                        backgroundColor: 'rgba(0, 0, 0, 0.04)'
+                        backgroundColor: 'transparent'
                       }
                     }}
                   >
-                    {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d={isExpanded ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"}></path>
+                    </svg>
                   </IconButton>
                 </Tooltip>
               </div>
@@ -307,11 +313,14 @@ const VisualAnalysisPanel = ({
               </div>
 
               {/* Help Text */}
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                <p className="text-sm text-blue-800">
-                  <Lightbulb size={16} style={{ marginRight: '8px' }} />
-                  提示：选择分析条件来构建查询，或保持空白使用默认的全表查询
-                </p>
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3">
+                <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div>
+                  <p className="text-sm font-medium text-blue-900 mb-1">使用提示</p>
+                  <p className="text-sm text-blue-800">选择分析条件来构建查询，或保持空白使用默认的全表查询。支持多个聚合函数、筛选条件和排序规则。</p>
+                </div>
               </div>
 
             </div>
