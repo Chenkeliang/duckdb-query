@@ -320,7 +320,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
         <AccordionSummary
           expandIcon={<ExpandMoreIcon />}
           sx={{
-            backgroundColor: "#f9f9f9",
+            backgroundColor: "#ffffff",
             borderBottom: expanded ? "1px solid rgba(0, 0, 0, 0.1)" : "none",
             minHeight: "48px",
             "& .MuiAccordionSummary-content": { my: 0 },

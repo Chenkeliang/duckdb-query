@@ -360,12 +360,12 @@ const DataPasteBoard = ({ onDataSourceSaved }) => {
             mb: 2,
             '& .MuiOutlinedInput-root': {
               borderRadius: 2,
-              backgroundColor: '#f8fafc',
+              backgroundColor: '#ffffff',
               border: '2px dashed #cbd5e0',
               transition: 'all 0.3s ease',
               '&:hover': {
                 borderColor: '#667eea',
-                backgroundColor: '#f1f5f9'
+                backgroundColor: '#ffffff'
               },
               '&.Mui-focused': {
                 borderColor: '#667eea',
@@ -422,7 +422,7 @@ const DataPasteBoard = ({ onDataSourceSaved }) => {
               textTransform: 'none',
               '&:hover': {
                 borderColor: '#cbd5e0',
-                backgroundColor: '#f7fafc'
+                backgroundColor: '#ffffff'
               }
             }}
           >
@@ -472,7 +472,7 @@ const DataPasteBoard = ({ onDataSourceSaved }) => {
       {parsedData && (
         <Box
           sx={{
-            background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+            background: '#ffffff',
             borderRadius: 3,
             p: 3,
             mb: 3,

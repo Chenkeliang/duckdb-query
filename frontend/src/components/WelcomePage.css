@@ -80,7 +80,7 @@
 }
 
 .welcome-cta-button-secondary:hover {
-    background: #f8fafc;
+    background: #ffffff;
     color: #5a67d8;
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
@@ -91,7 +91,7 @@
 }
 
 .welcome-bg-gray {
-    background: #f8fafc;
+    background: #ffffff;
 }
 
 .welcome-container-inner {

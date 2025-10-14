@@ -57,7 +57,7 @@ const LimitControls = ({
       </Box>
 
       <Collapse in={isExpanded}>
-        <Box sx={{ bgcolor: "#f9fafb", borderRadius: 4, border: "1px solid #e5e7eb", p: 2 }}>
+        <Box sx={{ bgcolor: "white", borderRadius: 4, border: "1px solid #e5e7eb", p: 2 }}>
           <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
             <Typography variant="body2" sx={{ fontWeight: 500, flex: 1 }}>
               启用结果数量限制

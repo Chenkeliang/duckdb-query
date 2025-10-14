@@ -274,7 +274,7 @@ const SortLimitControls = ({
                 color: '#64748b',
                 '&:hover': {
                   borderColor: '#cbd5e1',
-                  backgroundColor: '#f8fafc'
+                  backgroundColor: '#ffffff'
                 }
               }}
             >
@@ -286,7 +286,7 @@ const SortLimitControls = ({
               <Box sx={{
                 p: 3,
                 textAlign: 'center',
-                backgroundColor: '#f8fafc',
+                backgroundColor: '#ffffff',
                 borderRadius: 2,
                 border: '1px dashed #cbd5e1'
               }}>

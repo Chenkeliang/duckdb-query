@@ -1,10 +1,9 @@
 import {
   Alert,
   Collapse,
-  Fade,
-  IconButton,
-  Tooltip
+  Fade
 } from '@mui/material';
+import { ChevronDown, LineChart } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import {
   createDefaultConfig,
@@ -177,53 +176,45 @@ const VisualAnalysisPanel = ({
         <div className="bg-white rounded-3xl border border-gray-200 shadow-lg">
           {/* Panel Header */}
           <div
-            className="px-6 py-5 bg-blue-50/30 hover:bg-blue-50/50 transition-colors rounded-t-3xl cursor-pointer border-b border-gray-200"
+            className="panel-header cursor-pointer"
             onClick={() => setIsExpanded(!isExpanded)}
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                {/* Icon - 蓝色渐变图标 */}
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl flex items-center justify-center shadow-md flex-shrink-0">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                  </svg>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <h3 className="text-base font-bold text-gray-900">
-                      可视化分析
-                    </h3>
-                    <span className="px-3 py-1 text-xs font-semibold text-blue-700 bg-blue-100 rounded-full">
-                      单表分析
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600">
-                    {isExpanded
-                      ? `为 "${selectedTable?.name || selectedTable?.id}" 配置分析条件`
-                      : `${getConfigSummary(analysisConfig)} | 点击展开配置`
-                    }
-                  </p>
-                </div>
+            <div className="flex items-center gap-3">
+              <div className="panel-icon flex-shrink-0">
+                <LineChart size={16} strokeWidth={2} />
               </div>
-              <div className="w-10 h-10 rounded-full bg-blue-50 hover:bg-blue-100 flex items-center justify-center transition-colors flex-shrink-0">
-                <Tooltip title={isExpanded ? '收起分析面板' : '展开分析面板'}>
-                  <IconButton
-                    size="small"
-                    sx={{
-                      color: '#2563eb',
-                      padding: 0,
-                      '&:hover': {
-                        backgroundColor: 'transparent'
-                      }
-                    }}
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d={isExpanded ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"}></path>
-                    </svg>
-                  </IconButton>
-                </Tooltip>
+              <div className="leading-tight">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-gray-900 leading-none">
+                    可视化分析
+                  </h3>
+                  <span className="panel-pill text-xs font-semibold">
+                    单表分析
+                  </span>
+                </div>
+                <p className="panel-summary text-sm">
+                  {isExpanded
+                    ? `为 "${selectedTable?.name || selectedTable?.id}" 配置分析条件`
+                    : `${getConfigSummary(analysisConfig)} | 点击展开配置`
+                  }
+                </p>
               </div>
             </div>
+            <button
+              type="button"
+              className="toggle-chip flex items-center justify-center flex-shrink-0"
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsExpanded(prev => !prev);
+              }}
+              aria-label={isExpanded ? '收起分析面板' : '展开分析面板'}
+            >
+              <ChevronDown
+                size={16}
+                strokeWidth={2.5}
+                style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
+              />
+            </button>
           </div>
 
           {/* Panel Content */}

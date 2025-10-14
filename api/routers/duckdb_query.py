@@ -29,6 +29,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def contains_keyword(sql_text: str, keyword: str) -> bool:
+    """检测SQL文本中是否包含独立的关键字（忽略字符串字面量内的内容）"""
+    pattern = rf"\b{keyword}\b"
+    return re.search(pattern, sql_text) is not None
+
+
 def fix_table_names_in_sql(sql: str, available_tables: List[str]) -> str:
     """
     修复SQL中的表名，为包含特殊字符的表名添加引号
@@ -226,11 +232,12 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
 
         # 检查是否是简单的SELECT查询（不需要表）
         sql_upper = sql_query.upper().strip()
+        sql_upper_clean = re.sub(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"", " ", sql_upper)
         is_simple_select = (
-            sql_upper.startswith("SELECT")
-            and "FROM" not in sql_upper
+            sql_upper_clean.startswith("SELECT")
+            and "FROM" not in sql_upper_clean
             and not any(
-                keyword in sql_upper
+                contains_keyword(sql_upper_clean, keyword)
                 for keyword in [
                     "DROP",
                     "DELETE",
@@ -263,7 +270,7 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
         # 如果要保存为表，允许CREATE操作
         if not request.save_as_table:
             for keyword in dangerous_keywords:
-                if keyword in sql_upper and keyword != "CREATE":
+                if keyword != "CREATE" and contains_keyword(sql_upper_clean, keyword):
                     raise HTTPException(
                         status_code=400,
                         detail=f"不允许执行 {keyword} 操作，仅支持查询操作",
@@ -271,7 +278,7 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
 
         # 自动添加LIMIT限制（如果SQL中没有LIMIT）
         limit = getattr(request, "limit", 10000)  # 默认限制10000行
-        if "LIMIT" not in sql_upper and limit > 0:
+        if "LIMIT" not in sql_upper_clean and limit > 0:
             sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
 
         logger.info(f"执行DuckDB查询: {sql_query}")

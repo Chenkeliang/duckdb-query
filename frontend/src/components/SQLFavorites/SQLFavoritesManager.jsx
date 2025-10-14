@@ -234,7 +234,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                 display: 'flex',
                 alignItems: 'flex-start',
                 '&:hover': {
-                    backgroundColor: '#f9f9f9',
+                    backgroundColor: '#ffffff',
                     boxShadow: '0 2px 4px rgba(0,0,0,0.08)'
                 }
             }}

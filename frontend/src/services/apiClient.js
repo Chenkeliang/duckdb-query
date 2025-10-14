@@ -15,6 +15,46 @@ const apiClient = axios.create({
   },
 });
 
+const extractMessage = (payload) => {
+  if (!payload) return '';
+  if (typeof payload === 'string') return payload;
+
+  if (typeof payload.detail === 'string') {
+    return payload.detail;
+  }
+
+  if (payload.detail && typeof payload.detail === 'object') {
+    if (typeof payload.detail.message === 'string') {
+      return payload.detail.message;
+    }
+    if (typeof payload.detail.detail === 'string') {
+      return payload.detail.detail;
+    }
+  }
+
+  if (payload.error) {
+    if (typeof payload.error === 'string') {
+      return payload.error;
+    }
+    if (typeof payload.error.message === 'string') {
+      return payload.error.message;
+    }
+    if (payload.error.message && typeof payload.error.message.message === 'string') {
+      return payload.error.message.message;
+    }
+  }
+
+  if (typeof payload.message === 'string') {
+    return payload.message;
+  }
+
+  if (payload.message && typeof payload.message.message === 'string') {
+    return payload.message.message;
+  }
+
+  return '';
+};
+
 // 统一错误处理函数
 const handleApiError = (error, defaultMessage = '操作失败') => {
 
@@ -28,6 +68,21 @@ const handleApiError = (error, defaultMessage = '操作失败') => {
   }
 
   const { status, data } = error.response;
+  const messageFromData = extractMessage(data);
+  const codeFromData = data?.detail?.code || data?.error?.code;
+  const detailsFromData = data?.detail?.details || data?.error?.details;
+
+  const throwWithMessage = (fallbackMessage) => {
+    const err = new Error(messageFromData || fallbackMessage);
+    err.statusCode = status;
+    if (codeFromData) {
+      err.code = codeFromData;
+    }
+    if (detailsFromData) {
+      err.details = detailsFromData;
+    }
+    throw err;
+  };
 
   // 检查统一错误格式: data.detail = { code, message, details }
   if (data?.detail && typeof data.detail === 'object' && data.detail.code) {
@@ -54,25 +109,25 @@ const handleApiError = (error, defaultMessage = '操作失败') => {
   // 根据状态码处理（简化版本，因为前面已经处理了结构化错误）
   switch (status) {
     case 400:
-      throw new Error(data?.detail || data?.message || '请求参数错误');
+      throwWithMessage('请求参数错误');
     case 401:
-      throw new Error(data?.detail || data?.message || '认证失败，请重新登录');
+      throwWithMessage('认证失败，请重新登录');
     case 403:
-      throw new Error(data?.detail || data?.message || '权限不足，无法执行此操作');
+      throwWithMessage('权限不足，无法执行此操作');
     case 404:
-      throw new Error(data?.detail || data?.message || '请求的资源不存在');
+      throwWithMessage('请求的资源不存在');
     case 413:
-      throw new Error(data?.detail || data?.message || '文件太大，请选择较小的文件');
+      throwWithMessage('文件太大，请选择较小的文件');
     case 422:
-      throw new Error(data?.detail || data?.message || '数据验证失败');
+      throwWithMessage('数据验证失败');
     case 500:
-      throw new Error(data?.detail || data?.message || '服务器内部错误，请稍后重试');
+      throwWithMessage('服务器内部错误，请稍后重试');
     case 502:
-      throw new Error('服务器网关错误，请稍后重试');
+      throwWithMessage('服务器网关错误，请稍后重试');
     case 503:
-      throw new Error('服务暂时不可用，请稍后重试');
+      throwWithMessage('服务暂时不可用，请稍后重试');
     default:
-      throw new Error(data?.error?.message?.message || data?.detail?.message || data?.message?.message || data?.detail || data?.message || defaultMessage);
+      throwWithMessage(defaultMessage);
   }
 };
 
