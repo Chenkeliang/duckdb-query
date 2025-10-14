@@ -1,18 +1,11 @@
 import {
-  ExpandLess as ExpandLessIcon,
-  ExpandMore as ExpandMoreIcon,
-} from "@mui/icons-material";
-import {
   Box,
   Collapse,
   FormControlLabel,
-  IconButton,
-  Paper,
   Slider,
   Switch,
   TextField,
-  Tooltip,
-  Typography,
+  Typography
 } from "@mui/material";
 import { Lightbulb } from 'lucide-react';
 import React, { useState } from "react";
@@ -116,7 +109,22 @@ const LimitControls = ({
                   }}
                   disabled={disabled}
                   inputProps={{ min: 1, max: 10000 }}
-                  sx={{ width: 80 }}
+                  sx={{ 
+                    width: 80,
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 3,
+                      '& fieldset': {
+                        borderColor: '#e5e7eb'
+                      },
+                      '&:hover fieldset': {
+                        borderColor: '#3b82f6'
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: '#3b82f6',
+                        borderWidth: 2
+                      }
+                    }
+                  }}
                 />
               </Box>
 

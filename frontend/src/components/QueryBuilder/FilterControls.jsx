@@ -1,38 +1,33 @@
-import React, { useState } from 'react';
+import {
+  Add as AddIcon,
+  Delete as DeleteIcon
+} from '@mui/icons-material';
 import {
   Box,
   Button,
+  Chip,
+  Collapse,
+  Divider,
   FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  TextField,
-  Typography,
   IconButton,
-  Tooltip,
-  Paper,
+  InputLabel,
   List,
   ListItem,
-  ListItemText,
   ListItemSecondaryAction,
-  Collapse,
-  Chip,
-  Divider,
-  Switch,
-  FormControlLabel
+  ListItemText,
+  MenuItem,
+  Paper,
+  Select,
+  TextField,
+  Tooltip,
+  Typography
 } from '@mui/material';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  FilterList as FilterListIcon
-} from '@mui/icons-material';
+import React, { useState } from 'react';
 import {
   FilterOperator,
   LogicOperator,
-  getSuggestedOperators,
-  detectColumnType
+  detectColumnType,
+  getSuggestedOperators
 } from '../../utils/visualQueryUtils';
 
 /**
@@ -289,6 +284,19 @@ const FilterControls = ({
                     logicOperator: e.target.value
                   }))}
                   disabled={disabled}
+                  sx={{
+                    borderRadius: 3,
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: '#e5e7eb'
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: '#3b82f6'
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: '#3b82f6',
+                      borderWidth: 2
+                    }
+                  }}
                 >
                   <MenuItem value={LogicOperator.AND}>并且</MenuItem>
                   <MenuItem value={LogicOperator.OR}>或者</MenuItem>
@@ -311,6 +319,19 @@ const FilterControls = ({
                   values: []
                 }))}
                 disabled={disabled}
+                sx={{
+                  borderRadius: 3,
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#e5e7eb'
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6'
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6',
+                    borderWidth: 2
+                  }
+                }}
               >
                 {columns.map(column => {
                   const columnName = typeof column === 'string' ? column : column.name;
@@ -337,6 +358,19 @@ const FilterControls = ({
                   values: []
                 }))}
                 disabled={disabled || !newFilter.column}
+                sx={{
+                  borderRadius: 3,
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#e5e7eb'
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6'
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6',
+                    borderWidth: 2
+                  }
+                }}
               >
                 {newFilter.column && getAvailableOperators(newFilter.column).map(operator => (
                   <MenuItem key={operator} value={operator}>
@@ -356,7 +390,14 @@ const FilterControls = ({
               startIcon={<AddIcon />}
               onClick={handleAddFilter}
               disabled={disabled || !newFilter.column || !newFilter.operator}
-              sx={{ ml: 1 }}
+              sx={{ 
+                ml: 1,
+                borderRadius: 3,
+                bgcolor: '#3b82f6',
+                '&:hover': {
+                  bgcolor: '#2563eb'
+                }
+              }}
             >
               添加
             </Button>

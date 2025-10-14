@@ -1,33 +1,30 @@
-import React, { useState } from "react";
+import {
+  Add as AddIcon,
+  ArrowDownward as ArrowDownwardIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  Delete as DeleteIcon,
+  HelpOutline as HelpOutlineIcon
+} from "@mui/icons-material";
 import {
   Box,
   Button,
+  Chip,
+  Collapse,
+  Divider,
   FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  Typography,
   IconButton,
-  Tooltip,
-  Paper,
+  InputLabel,
   List,
   ListItem,
-  ListItemText,
   ListItemSecondaryAction,
-  Collapse,
-  Chip,
-  Divider,
+  ListItemText,
+  MenuItem,
+  Paper,
+  Select,
+  Tooltip,
+  Typography,
 } from "@mui/material";
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Sort as SortIcon,
-  ArrowUpward as ArrowUpwardIcon,
-  ArrowDownward as ArrowDownwardIcon,
-  HelpOutline as HelpOutlineIcon,
-} from "@mui/icons-material";
+import React, { useState } from "react";
 import { SortDirection } from "../../utils/visualQueryUtils";
 
 /**
@@ -188,6 +185,19 @@ const SortControls = ({
                   }))
                 }
                 disabled={disabled}
+                sx={{
+                  borderRadius: 3,
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#e5e7eb'
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6'
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6',
+                    borderWidth: 2
+                  }
+                }}
               >
                 {columns.map((column) => {
                   const columnName =
@@ -230,6 +240,19 @@ const SortControls = ({
                   }))
                 }
                 disabled={disabled}
+                sx={{
+                  borderRadius: 3,
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#e5e7eb'
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6'
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6',
+                    borderWidth: 2
+                  }
+                }}
               >
                 <MenuItem value={SortDirection.ASC}>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -259,6 +282,19 @@ const SortControls = ({
                   }))
                 }
                 disabled={disabled}
+                sx={{
+                  borderRadius: 3,
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#e5e7eb'
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6'
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6',
+                    borderWidth: 2
+                  }
+                }}
               >
                 <MenuItem value="auto">自动</MenuItem>
                 <MenuItem value="numeric">按数值</MenuItem>
@@ -281,7 +317,14 @@ const SortControls = ({
               startIcon={<AddIcon />}
               onClick={handleAddSort}
               disabled={disabled || !newSort.column}
-              sx={{ ml: 1 }}
+              sx={{ 
+                ml: 1,
+                borderRadius: 3,
+                bgcolor: '#3b82f6',
+                '&:hover': {
+                  bgcolor: '#2563eb'
+                }
+              }}
             >
               添加
             </Button>

@@ -181,6 +181,130 @@ const AggregationControls = ({
       </Box>
 
       <Collapse in={isExpanded}>
+        {/* 添加新聚合函数表单 */}
+        <Box sx={{ bgcolor: '#f9fafb', borderRadius: 4, border: '1px solid #e5e7eb', p: 2, mb: 2 }}>
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
+            添加聚合函数
+          </Typography>
+          
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            {/* 选择函数 */}
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>函数</InputLabel>
+              <Select
+                value={newAggregation.function}
+                label="函数"
+                onChange={(e) => setNewAggregation(prev => ({
+                  ...prev,
+                  function: e.target.value
+                }))}
+                disabled={disabled}
+                sx={{
+                  borderRadius: 3,
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#e5e7eb'
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6'
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6',
+                    borderWidth: 2
+                  }
+                }}
+              >
+                {Object.values(AggregationFunction).map(func => (
+                  <MenuItem key={func} value={func}>
+                    {getFunctionDisplayName(func)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {/* 选择列 */}
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>列</InputLabel>
+              <Select
+                value={newAggregation.column}
+                label="列"
+                onChange={(e) => setNewAggregation(prev => ({
+                  ...prev,
+                  column: e.target.value
+                }))}
+                disabled={disabled}
+                sx={{
+                  borderRadius: 3,
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#e5e7eb'
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6'
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#3b82f6',
+                    borderWidth: 2
+                  }
+                }}
+              >
+                {columns.map(column => {
+                  const columnName = typeof column === 'string' ? column : column.name;
+                  return (
+                    <MenuItem key={columnName} value={columnName}>
+                      {columnName}
+                    </MenuItem>
+                  );
+                })}
+              </Select>
+            </FormControl>
+
+            {/* 别名 */}
+            <TextField
+              size="small"
+              label="别名 (可选)"
+              value={newAggregation.alias}
+              onChange={(e) => setNewAggregation(prev => ({
+                ...prev,
+                alias: e.target.value
+              }))}
+              disabled={disabled}
+              sx={{ 
+                minWidth: 120,
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 3,
+                  '& fieldset': {
+                    borderColor: '#e5e7eb'
+                  },
+                  '&:hover fieldset': {
+                    borderColor: '#3b82f6'
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: '#3b82f6',
+                    borderWidth: 2
+                  }
+                }
+              }}
+            />
+
+            {/* 添加按钮 */}
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={handleAddAggregation}
+              disabled={disabled || !newAggregation.function || !newAggregation.column}
+              sx={{ 
+                ml: 1,
+                borderRadius: 3,
+                bgcolor: '#3b82f6',
+                '&:hover': {
+                  bgcolor: '#2563eb'
+                }
+              }}
+            >
+              添加
+            </Button>
+          </Box>
+        </Box>
 
         {/* 已添加的聚合函数列表 - 卡片风格 */}
         {aggregations.length > 0 && (
