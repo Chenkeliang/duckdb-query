@@ -178,7 +178,7 @@ const ColumnSelector = ({
             p: 2
           }}
         >
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             {filteredColumns.map((column, index) => {
               const columnName = typeof column === 'string' ? column : column.name;
               const columnType = columnTypes[columnName] || 'text';
@@ -193,7 +193,7 @@ const ColumnSelector = ({
                   sx={{
                     display: 'flex',
                     alignItems: 'center',
-                    p: 1,
+                    p: 0.75,
                     borderRadius: 3,
                     bgcolor: isSelected ? 'white' : 'transparent',
                     boxShadow: isSelected ? '0 1px 3px 0 rgb(0 0 0 / 0.1)' : 'none',
