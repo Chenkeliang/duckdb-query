@@ -512,6 +512,7 @@ const SortControls = ({
         {/* 提示信息 */}
         {orderBy.length === 0 && (
           <Box sx={{
+            mt: 2,
             p: 3,
             textAlign: "center",
             bgcolor: 'white',
