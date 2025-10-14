@@ -191,7 +191,8 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      second: '2-digit'
     }).replace(/[\/\s:]/g, '');
     setTableAlias(`query_result_${timestamp}`);
   };
