@@ -41,7 +41,13 @@ const LimitControls = ({
   };
 
   return (
-    <Box sx={{ width: "100%" }}>
+    <Box sx={{ 
+      width: "100%",
+      bgcolor: '#f9fafb',
+      borderRadius: 4,
+      border: '1px solid #e5e7eb',
+      p: 2
+    }}>
       {/* 标题和控制 - 统一蓝色风格 */}
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2, px: 0.5 }}>
         <Box sx={{ width: 8, height: 8, bgcolor: "#3b82f6", borderRadius: "50%" }} />
