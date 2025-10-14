@@ -124,6 +124,14 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     setJoins(joins.filter(j => j.left_source_id !== sourceId && j.right_source_id !== sourceId));
   };
 
+  // 监听数据源变化，自动添加连接条件
+  React.useEffect(() => {
+    // 当数据源数量达到2个，当前是join模式，且没有连接条件时，自动添加连接
+    if (selectedSources.length >= 2 && currentOperationMode === 'join' && joins.length === 0) {
+      handleAddJoin();
+    }
+  }, [selectedSources.length, currentOperationMode, joins.length]);
+
   const handleAddJoin = () => {
     if (selectedSources.length < 2) {
       setError('需要至少选择两个数据源才能创建连接');
