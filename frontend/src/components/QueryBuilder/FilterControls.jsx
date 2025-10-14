@@ -406,7 +406,12 @@ const FilterControls = ({
 
         {/* 已添加的筛选条件列表 */}
         {filters.length > 0 && (
-          <Paper variant="outlined" sx={{ bgcolor: 'background.paper' }}>
+          <Box sx={{ 
+            bgcolor: '#f9fafb', 
+            borderRadius: 4, 
+            border: '1px solid #e5e7eb',
+            p: 2
+          }}>
             <List dense>
               {filters.map((filter, index) => (
                 <React.Fragment key={filter.id}>
@@ -515,18 +520,24 @@ const FilterControls = ({
                 </React.Fragment>
               ))}
             </List>
-          </Paper>
+          </Box>
         )}
 
         {filters.length === 0 && (
-          <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'grey.50' }}>
+          <Box sx={{ 
+            p: 3, 
+            textAlign: 'center', 
+            bgcolor: '#f9fafb',
+            borderRadius: 4,
+            border: '1px solid #e5e7eb'
+          }}>
             <Typography variant="body2" color="text.secondary">
               还没有添加筛选条件
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
               筛选条件可以限制查询结果的范围
             </Typography>
-          </Paper>
+          </Box>
         )}
       </Collapse>
     </Box>

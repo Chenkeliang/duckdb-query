@@ -333,9 +333,14 @@ const SortControls = ({
 
         {/* 已添加的排序条件列表 */}
         {orderBy.length > 0 && (
-          <Paper variant="outlined" sx={{ mb: 2, bgcolor: "background.paper" }}>
+          <Box sx={{ 
+            mb: 2, 
+            bgcolor: '#f9fafb', 
+            borderRadius: 4, 
+            border: '1px solid #e5e7eb'
+          }}>
             <Box
-              sx={{ p: 2, borderBottom: "1px solid", borderColor: "divider" }}
+              sx={{ p: 2, borderBottom: "1px solid", borderColor: "#e5e7eb" }}
             >
               <Typography variant="body2" sx={{ fontWeight: 500 }}>
                 排序条件 ({orderBy.length})
@@ -495,12 +500,18 @@ const SortControls = ({
                 </React.Fragment>
               ))}
             </List>
-          </Paper>
+          </Box>
         )}
 
         {/* 提示信息 */}
         {orderBy.length === 0 && (
-          <Paper sx={{ p: 3, textAlign: "center", bgcolor: "grey.50" }}>
+          <Box sx={{ 
+            p: 3, 
+            textAlign: "center", 
+            bgcolor: '#f9fafb',
+            borderRadius: 4,
+            border: '1px solid #e5e7eb'
+          }}>
             <Typography variant="body2" color="text.secondary">
               还没有配置排序条件
             </Typography>
@@ -511,7 +522,7 @@ const SortControls = ({
             >
               排序可以控制结果的顺序
             </Typography>
-          </Paper>
+          </Box>
         )}
       </Collapse>
     </Box>
