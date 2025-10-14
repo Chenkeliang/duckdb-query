@@ -469,7 +469,13 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
           <Stack direction="row" spacing={2} sx={{ mb: 3, justifyContent: 'flex-end' }}>
             <Button
               variant={currentOperationMode === 'join' ? 'contained' : 'outlined'}
-              onClick={() => setCurrentOperationMode('join')}
+              onClick={() => {
+                setCurrentOperationMode('join');
+                // 自动触发添加连接，简化用户操作步骤
+                if (selectedSources.length >= 2 && joins.length === 0) {
+                  handleAddJoin();
+                }
+              }}
               sx={{ borderRadius: 2 }}
             >
               表连接 (JOIN)
