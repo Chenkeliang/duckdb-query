@@ -317,7 +317,7 @@ const SortControls = ({
               startIcon={<AddIcon />}
               onClick={handleAddSort}
               disabled={disabled || !newSort.column}
-              sx={{ 
+              sx={{
                 ml: 1,
                 borderRadius: 3,
                 bgcolor: '#3b82f6',

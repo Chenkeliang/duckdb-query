@@ -4,9 +4,12 @@ import {
 } from '@mui/icons-material';
 import {
   Box,
+  Button,
   Chip,
   Collapse,
+  FormControl,
   IconButton,
+  InputLabel,
   MenuItem,
   Paper,
   Select,
@@ -186,7 +189,7 @@ const AggregationControls = ({
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
             添加聚合函数
           </Typography>
-          
+
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             {/* 选择函数 */}
             <FormControl size="small" sx={{ minWidth: 120 }}>
@@ -267,7 +270,7 @@ const AggregationControls = ({
                 alias: e.target.value
               }))}
               disabled={disabled}
-              sx={{ 
+              sx={{
                 minWidth: 120,
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 3,
@@ -292,7 +295,7 @@ const AggregationControls = ({
               startIcon={<AddIcon />}
               onClick={handleAddAggregation}
               disabled={disabled || !newAggregation.function || !newAggregation.column}
-              sx={{ 
+              sx={{
                 ml: 1,
                 borderRadius: 3,
                 bgcolor: '#3b82f6',

@@ -109,7 +109,7 @@ const LimitControls = ({
                   }}
                   disabled={disabled}
                   inputProps={{ min: 1, max: 10000 }}
-                  sx={{ 
+                  sx={{
                     width: 80,
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 3,

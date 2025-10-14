@@ -390,7 +390,7 @@ const FilterControls = ({
               startIcon={<AddIcon />}
               onClick={handleAddFilter}
               disabled={disabled || !newFilter.column || !newFilter.operator}
-              sx={{ 
+              sx={{
                 ml: 1,
                 borderRadius: 3,
                 bgcolor: '#3b82f6',
