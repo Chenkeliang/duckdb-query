@@ -1718,10 +1718,10 @@ const ModernDataDisplay = ({
                         '& .MuiFormControl-root': { height: 40 },
                         '& .MuiInputBase-root': { height: 40 },
                         '& .MuiToggleButtonGroup-root': { height: 40 },
-                        '& .MuiToggleButton-root': { height: 40 },
+                        '& .MuiToggleButton-root': { height: 40 }
                       }}
                     >
-                      <FormControl fullWidth size="small">
+                      <FormControl size="small" sx={{ width: { xs: '100%', md: 280 } }}>
                         <InputLabel>列名</InputLabel>
                         <Select
                           label="列名"
@@ -1759,7 +1759,12 @@ const ModernDataDisplay = ({
 
                     {mode === 'values' ? (
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }}>
+                        <Stack
+                          direction={{ xs: 'column', md: 'row' }}
+                          spacing={1.5}
+                          alignItems={{ xs: 'stretch', md: 'center' }}
+                          sx={{ '& .MuiToggleButton-root': { height: 36 } }}
+                        >
                           <ToggleButtonGroup
                             value={includeMode}
                             exclusive
@@ -1775,7 +1780,7 @@ const ModernDataDisplay = ({
                             placeholder="搜索值..."
                             value={valueSearch}
                             onChange={(e) => handleValueSearchChange(index, e.target.value)}
-                            sx={{ flex: 1 }}
+                            sx={{ flex: 1, minWidth: 180 }}
                             InputProps={{
                               startAdornment: (
                                 <InputAdornment position="start">
@@ -1786,37 +1791,31 @@ const ModernDataDisplay = ({
                           />
 
                           <Stack
-                            direction={{ xs: 'column', sm: 'row' }}
+                            direction="row"
                             spacing={1}
-                            alignItems={{ xs: 'stretch', sm: 'center' }}
-                            sx={{ '& .MuiButton-root': { minWidth: 68, height: 32 } }}
+                            alignItems="center"
+                            sx={{ flexWrap: 'wrap', '& .MuiButton-root': { minWidth: 68, height: 32 } }}
                           >
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              <Button size="small" variant="text" onClick={() => handleSelectAllValues(index)}>全选</Button>
-                              <Button size="small" variant="text" onClick={() => handleClearAllValues(index)}>清空</Button>
-                              <Button size="small" variant="text" onClick={() => handleInvertValues(index)}>反选</Button>
-                            </Stack>
-
-                            <Divider flexItem orientation={{ xs: 'horizontal', sm: 'vertical' }} sx={{ mx: { sm: 1 } }} />
-
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              <Button
-                                size="small"
-                                variant="text"
-                                onClick={() => handleSelectDuplicates(index, filter.field)}
-                                disabled={!distinctInfo || distinctInfo.duplicateKeys.length === 0}
-                              >
-                                重复项
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="text"
-                                onClick={() => handleSelectUnique(index, filter.field)}
-                                disabled={!distinctInfo || distinctInfo.uniqueKeys.length === 0}
-                              >
-                                唯一项
-                              </Button>
-                            </Stack>
+                            <Button size="small" variant="text" onClick={() => handleSelectAllValues(index)}>全选</Button>
+                            <Button size="small" variant="text" onClick={() => handleClearAllValues(index)}>清空</Button>
+                            <Button size="small" variant="text" onClick={() => handleInvertValues(index)}>反选</Button>
+                            <Divider flexItem orientation="vertical" sx={{ height: 18, mx: 0.5 }} />
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => handleSelectDuplicates(index, filter.field)}
+                              disabled={!distinctInfo || distinctInfo.duplicateKeys.length === 0}
+                            >
+                              重复项
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => handleSelectUnique(index, filter.field)}
+                              disabled={!distinctInfo || distinctInfo.uniqueKeys.length === 0}
+                            >
+                              唯一项
+                            </Button>
                           </Stack>
                         </Stack>
 
