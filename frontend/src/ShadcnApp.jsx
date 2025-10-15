@@ -267,7 +267,7 @@ const ShadcnApp = () => {
     return /^-?\d+(\.\d+)?$/.test(trimmed);
   };
 
-  const normalizeBooleanValue = (value) => {
+  function normalizeBooleanValue(value) {
     if (value === null || value === undefined) return null;
     if (typeof value === "boolean") return value;
     if (typeof value === "number") {
@@ -278,9 +278,9 @@ const ShadcnApp = () => {
     if (["true", "t", "1", "yes", "y"].includes(normalized)) return true;
     if (["false", "f", "0", "no", "n"].includes(normalized)) return false;
     return null;
-  };
+  }
 
-  const normalizeColumnType = (rawType) => {
+  function normalizeColumnType(rawType) {
     if (!rawType && rawType !== 0) {
       return "unknown";
     }
@@ -332,9 +332,9 @@ const ShadcnApp = () => {
     }
 
     return "unknown";
-  };
+  }
 
-  const buildColumnTypeMap = (columns = []) => {
+  function buildColumnTypeMap(columns = []) {
     const map = {};
 
     const registerKey = (key, info) => {
@@ -413,9 +413,9 @@ const ShadcnApp = () => {
     });
 
     return map;
-  };
+  }
 
-  const buildFilterConditions = (filters, sourceType, columnTypes) => {
+  function buildFilterConditions(filters, sourceType, columnTypes) {
     const retrieveColumnInfo = (field) => {
       if (!field || !columnTypes) return null;
       const key = String(field);
@@ -604,9 +604,9 @@ const ShadcnApp = () => {
         }
       })
       .filter(Boolean);
-  };
+  }
 
-  const buildFilteredSql = (baseSql, filters, sourceType, columnTypes) => {
+  function buildFilteredSql(baseSql, filters, sourceType, columnTypes) {
     const sanitizedBase = (baseSql || "").trim().replace(/;$/, "");
     const alias = "original_query";
     const conditions = buildFilterConditions(filters, sourceType, columnTypes);
@@ -616,7 +616,7 @@ const ShadcnApp = () => {
     }
     query += " LIMIT 10000";
     return query;
-  };
+  }
 
   const handleResultsReceived = (results) => {
     if (!results) {
