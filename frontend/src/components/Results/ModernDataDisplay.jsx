@@ -1677,6 +1677,11 @@ const ModernDataDisplay = ({
             <Alert severity="info">暂无列信息，无法添加筛选条件</Alert>
           ) : (
             <Stack spacing={2}>
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  此处配置的筛选条件会实时向后端发起查询并刷新结果；若仅需在当前页面展示的数据中快速勾选筛选，请使用表头的列筛选控件。
+                </Typography>
+              </Alert>
               {draftFilters.map((filter, index) => {
                 const mode = filter.mode || 'values';
                 const includeMode = filter.includeMode || 'include';
