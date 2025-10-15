@@ -400,9 +400,8 @@ const ModernDataDisplay = ({
       setColumnFilterSelectedKeys(Array.isArray(existing.selectedKeys) ? [...existing.selectedKeys] : []);
       setColumnFilterHasCustomSelection(true);
     } else {
-      const allKeys = info ? info.options.map(option => option.key) : [];
       setColumnFilterIncludeMode('include');
-      setColumnFilterSelectedKeys(allKeys);
+      setColumnFilterSelectedKeys([]);
       setColumnFilterHasCustomSelection(false);
     }
 
@@ -1458,34 +1457,62 @@ const ModernDataDisplay = ({
             <ToggleButton value="exclude">排除</ToggleButton>
           </ToggleButtonGroup>
 
-          <Stack direction="row" spacing={1} alignItems="center">
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="搜索值..."
-              value={columnFilterSearch}
-              onChange={(e) => setColumnFilterSearch(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search size={16} />
-                  </InputAdornment>
-                ),
-              }}
-            />
-            <Stack direction="row" spacing={1}>
-              <Button size="small" variant="outlined" onClick={handleColumnFilterSelectAll}>全选</Button>
-              <Button size="small" variant="outlined" onClick={handleColumnFilterClearAll}>清空</Button>
-              <Button size="small" variant="outlined" onClick={handleColumnFilterInvert}>反选</Button>
-            </Stack>
-          </Stack>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="搜索值..."
+            value={columnFilterSearch}
+            onChange={(e) => setColumnFilterSearch(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search size={16} />
+                </InputAdornment>
+              ),
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+                backgroundColor: '#f6f8fb',
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'divider',
+                },
+              },
+            }}
+          />
 
-          <Stack direction="row" spacing={1}>
+          <Stack spacing={0.75}>
+            <Button
+              size="small"
+              variant="text"
+              onClick={handleColumnFilterSelectAll}
+              sx={{ justifyContent: 'flex-start' }}
+            >
+              全选
+            </Button>
+            <Button
+              size="small"
+              variant="text"
+              onClick={handleColumnFilterClearAll}
+              sx={{ justifyContent: 'flex-start' }}
+            >
+              清空
+            </Button>
+            <Button
+              size="small"
+              variant="text"
+              onClick={handleColumnFilterInvert}
+              sx={{ justifyContent: 'flex-start' }}
+            >
+              反选
+            </Button>
+            <Divider sx={{ my: 0.5 }} />
             <Button
               size="small"
               variant="text"
               onClick={handleColumnFilterSelectDuplicates}
               disabled={!activeColumnFilterInfo || (activeColumnFilterInfo.duplicateKeys || []).length === 0}
+              sx={{ justifyContent: 'flex-start' }}
             >
               重复项
             </Button>
@@ -1494,6 +1521,7 @@ const ModernDataDisplay = ({
               variant="text"
               onClick={handleColumnFilterSelectUnique}
               disabled={!activeColumnFilterInfo || (activeColumnFilterInfo.uniqueKeys || []).length === 0}
+              sx={{ justifyContent: 'flex-start' }}
             >
               唯一项
             </Button>
