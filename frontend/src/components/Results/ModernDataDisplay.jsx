@@ -5,11 +5,13 @@ import {
   Card,
   CardContent,
   Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  Checkbox,
   FormControl,
   FormControlLabel,
   FormLabel,
@@ -25,15 +27,61 @@ import {
   Select,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
   useTheme,
 } from '@mui/material';
-import { Eye, EyeOff, Filter, List, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X, SlidersHorizontal, Plus, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Filter, List, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X, SlidersHorizontal, Plus, Trash2, ChevronDown } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
+import QuickCharts from '../DataVisualization/QuickCharts';
 import StableTable from '../StableTable';
 import VirtualTable from '../VirtualTable/VirtualTable';
+
+const DISTINCT_SAMPLE_LIMIT = 10000;
+const MAX_DISTINCT_PREVIEW = 1000;
+
+const NULL_KEY = '__NULL__';
+
+const makeValueKey = (value) => {
+  if (value === null || value === undefined) {
+    return NULL_KEY;
+  }
+  if (value instanceof Date) {
+    return `date:${value.toISOString()}`;
+  }
+  const valueType = typeof value;
+  if (valueType === 'number' || valueType === 'boolean' || valueType === 'bigint') {
+    return `${valueType}:${value}`;
+  }
+  if (valueType === 'object') {
+    try {
+      return `obj:${JSON.stringify(value)}`;
+    } catch (error) {
+      return `obj:${String(value)}`;
+    }
+  }
+  return `str:${String(value)}`;
+};
+
+const formatValueLabel = (value) => {
+  if (value === null || value === undefined) {
+    return 'NULL';
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch (err) {
+      return String(value);
+    }
+  }
+  return String(value);
+};
 
 const ModernDataDisplay = ({
   data = [],
@@ -66,6 +114,8 @@ const ModernDataDisplay = ({
   const [renderMode, setRenderMode] = useState('agGrid'); // 'agGrid' 或 'virtual'
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [draftFilters, setDraftFilters] = useState([]);
+  const [visualExpanded, setVisualExpanded] = useState(false);
+  const [valueSearchMap, setValueSearchMap] = useState({});
 
   // 保存到表相关状态
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -91,10 +141,13 @@ const ModernDataDisplay = ({
   ]), []);
 
   const operatorLabelMap = useMemo(() => {
-    return filterOperators.reduce((acc, cur) => {
+    const map = filterOperators.reduce((acc, cur) => {
       acc[cur.value] = cur.label;
       return acc;
     }, {});
+    map.in = '包含';
+    map.notIn = '排除';
+    return map;
   }, [filterOperators]);
 
   const hasFilterSupport = Boolean(onApplyFilters && (sqlQuery || generatedSQL));
@@ -147,14 +200,48 @@ const ModernDataDisplay = ({
   }, [normalizedColumns]);
 
   React.useEffect(() => {
-    if (!filterDialogOpen) {
-      setDraftFilters(Array.isArray(activeFilters) ? activeFilters : []);
+    if (filterDialogOpen) {
+      return;
     }
+
+    if (!Array.isArray(activeFilters) || activeFilters.length === 0) {
+      setDraftFilters([]);
+      return;
+    }
+
+    const mapped = activeFilters.map(filter => {
+      if (filter.operator === 'in' || filter.operator === 'notIn') {
+        const valuesArray = Array.isArray(filter.value) ? filter.value : [];
+        return {
+          field: filter.field,
+          mode: 'values',
+          includeMode: filter.operator === 'notIn' ? 'exclude' : 'include',
+          selectedValueKeys: valuesArray.map(makeValueKey),
+          operator: filter.operator,
+        };
+      }
+
+      return {
+        field: filter.field,
+        mode: 'condition',
+        operator: filter.operator,
+        value: filter.value,
+      };
+    });
+
+    setDraftFilters(mapped);
   }, [activeFilters, filterDialogOpen]);
 
   React.useEffect(() => {
     if (filterDialogOpen && draftFilters.length === 0) {
-      setDraftFilters([{ field: '', operator: 'equals', value: '' }]);
+      setDraftFilters([{
+        field: '',
+        mode: 'values',
+        includeMode: 'include',
+        selectedValueKeys: null,
+        operator: 'in',
+        value: ''
+      }]);
     }
   }, [filterDialogOpen, draftFilters.length]);
 
@@ -168,6 +255,51 @@ const ModernDataDisplay = ({
       )
     );
   }, [data, searchText]);
+
+  const distinctValueMap = useMemo(() => {
+    if (!filteredData || filteredData.length === 0 || normalizedColumns.length === 0) {
+      return {};
+    }
+
+    const sample = filteredData.slice(0, DISTINCT_SAMPLE_LIMIT);
+    const result = {};
+
+    normalizedColumns.forEach((column) => {
+      const counts = new Map();
+
+      sample.forEach((row) => {
+        const rawValue = row[column.field];
+        const key = makeValueKey(rawValue);
+        if (!counts.has(key)) {
+          counts.set(key, {
+            key,
+            value: rawValue === undefined ? null : rawValue,
+            label: formatValueLabel(rawValue === undefined ? null : rawValue),
+            count: 0,
+          });
+        }
+        const entry = counts.get(key);
+        entry.count += 1;
+      });
+
+      const options = Array.from(counts.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, MAX_DISTINCT_PREVIEW);
+
+      result[column.field] = {
+        options,
+        keyMap: options.reduce((acc, curr) => {
+          acc[curr.key] = curr;
+          return acc;
+        }, {}),
+        duplicateKeys: options.filter(item => item.count > 1).map(item => item.key),
+        uniqueKeys: options.filter(item => item.count === 1).map(item => item.key),
+        total: sample.length,
+      };
+    });
+
+    return result;
+  }, [filteredData, normalizedColumns]);
 
   // 分页数据
   const paginatedData = useMemo(() => {
@@ -433,23 +565,172 @@ const ModernDataDisplay = ({
 
   const totalPages = Math.ceil(filteredData.length / pageSize);
 
+  const getAllDistinctKeys = React.useCallback((field) => {
+    const info = distinctValueMap[field];
+    if (!info || !info.options) {
+      return [];
+    }
+    return info.options.map(option => option.key);
+  }, [distinctValueMap]);
+
+  const getDistinctEntriesByKeys = React.useCallback((field, keys = []) => {
+    const info = distinctValueMap[field];
+    if (!info) {
+      return [];
+    }
+    return keys
+      .map(key => info.keyMap?.[key])
+      .filter(Boolean);
+  }, [distinctValueMap]);
+
+  const handleValueSearchChange = (index, value) => {
+    setValueSearchMap(prev => ({ ...prev, [index]: value }));
+  };
+
+  const getSelectionState = (filter, field) => {
+    const allKeys = getAllDistinctKeys(field);
+    const includeMode = filter.includeMode || 'include';
+    const definedKeys = Array.isArray(filter.selectedValueKeys) ? filter.selectedValueKeys : null;
+    const shouldUseDefined = definedKeys && definedKeys.length > 0;
+    const keySet = new Set(
+      shouldUseDefined
+        ? definedKeys
+        : (includeMode === 'exclude' ? [] : allKeys)
+    );
+    return { keySet, allKeys };
+  };
+
+  const updateSelectedKeys = (index, updater) => {
+    setDraftFilters(prev => {
+      const next = [...prev];
+      const target = { ...next[index] };
+      if (!target.field) {
+        return prev;
+      }
+      const { keySet, allKeys } = getSelectionState(target, target.field);
+      const updatedKeys = updater(keySet, allKeys, target.includeMode || 'include');
+      target.selectedValueKeys = Array.from(updatedKeys);
+      target.mode = 'values';
+      if (!target.includeMode) {
+        target.includeMode = 'include';
+      }
+      target.operator = target.includeMode === 'exclude' ? 'notIn' : 'in';
+      next[index] = target;
+      return next;
+    });
+  };
+
+  const handleToggleValueKey = (index, key, checked) => {
+    updateSelectedKeys(index, (keySet) => {
+      if (checked) {
+        keySet.add(key);
+      } else {
+        keySet.delete(key);
+      }
+      return keySet;
+    });
+  };
+
+  const handleSelectAllValues = (index) => {
+    updateSelectedKeys(index, (_, allKeys) => new Set(allKeys));
+  };
+
+  const handleClearAllValues = (index) => {
+    updateSelectedKeys(index, () => new Set());
+  };
+
+  const handleInvertValues = (index) => {
+    updateSelectedKeys(index, (keySet, allKeys) => {
+      const inverted = new Set();
+      allKeys.forEach((key) => {
+        if (!keySet.has(key)) {
+          inverted.add(key);
+        }
+      });
+      return inverted;
+    });
+  };
+
+  const handleSelectDuplicates = (index, field) => {
+    const duplicates = distinctValueMap[field]?.duplicateKeys || [];
+    updateSelectedKeys(index, () => new Set(duplicates));
+  };
+
+  const handleSelectUnique = (index, field) => {
+    const unique = distinctValueMap[field]?.uniqueKeys || [];
+    updateSelectedKeys(index, () => new Set(unique));
+  };
+
+  const handleIncludeModeChange = (index, mode) => {
+    setDraftFilters(prev => {
+      const next = [...prev];
+      const target = { ...next[index] };
+      target.includeMode = mode;
+      target.operator = mode === 'exclude' ? 'notIn' : 'in';
+      target.selectedValueKeys = mode === 'exclude' ? (Array.isArray(target.selectedValueKeys) ? target.selectedValueKeys : []) : target.selectedValueKeys;
+      next[index] = target;
+      return next;
+    });
+  };
+
+  const handleFilterModeChange = (index, mode) => {
+    setDraftFilters(prev => {
+      const next = [...prev];
+      const target = { ...next[index] };
+      target.mode = mode;
+      if (mode === 'condition' && !target.operator) {
+        target.operator = 'equals';
+      }
+      if (mode === 'values' && !target.includeMode) {
+        target.includeMode = 'include';
+        target.operator = 'in';
+      }
+      next[index] = target;
+      return next;
+    });
+  };
+
   const updateDraftFilter = (index, key, value) => {
     setDraftFilters(prev => {
       const next = [...prev];
-      next[index] = {
-        ...next[index],
-        [key]: value
-      };
+      const current = { ...next[index] };
+
+      if (key === 'field') {
+        current.field = value;
+        current.selectedValueKeys = null;
+        current.mode = current.mode || 'values';
+        current.includeMode = current.includeMode || 'include';
+        current.operator = current.mode === 'condition' ? (current.operator || 'equals') : 'in';
+        setValueSearchMap(prevSearch => {
+          const updated = { ...prevSearch };
+          delete updated[index];
+          return updated;
+        });
+      } else if (key === 'operator') {
+        current.operator = value;
+      } else {
+        current[key] = value;
+      }
+
+      next[index] = current;
       return next;
     });
   };
 
   const handleAddFilterRow = () => {
-    setDraftFilters(prev => [...prev, { field: '', operator: 'equals', value: '' }]);
+    setDraftFilters(prev => [...prev, {
+      field: '',
+      mode: 'values',
+      includeMode: 'include',
+      operator: 'in',
+      selectedValueKeys: null,
+      value: ''
+    }]);
   };
 
   const handleRemoveFilterRow = (index) => {
     setDraftFilters(prev => prev.filter((_, i) => i !== index));
+    setValueSearchMap({});
   };
 
   const handleApplyFilterSubmit = () => {
@@ -458,19 +739,65 @@ const ModernDataDisplay = ({
       return;
     }
 
-    const normalized = draftFilters
-      .map(filter => ({
-        field: filter.field,
-        operator: filter.operator || 'equals',
-        value: filter.value
-      }))
-      .filter(filter => {
-        if (!filter.field) return false;
-        if (filter.operator === 'isNull' || filter.operator === 'isNotNull') {
-          return true;
+    const normalized = [];
+
+    draftFilters.forEach((filter) => {
+      if (!filter || !filter.field) {
+        return;
+      }
+
+      if (filter.mode === 'values') {
+        const info = distinctValueMap[filter.field];
+        if (!info) {
+          return;
         }
-        return filter.value !== undefined && filter.value !== null && String(filter.value).trim() !== '';
-      });
+
+        const includeMode = filter.includeMode || 'include';
+        const allKeys = info.options.map(option => option.key);
+        const hasDefinedSelection = Array.isArray(filter.selectedValueKeys) && filter.selectedValueKeys.length > 0;
+        const selectedKeysArray = hasDefinedSelection
+          ? filter.selectedValueKeys
+          : (includeMode === 'exclude' ? [] : allKeys);
+
+        const uniqueSelectedKeys = Array.from(new Set(selectedKeysArray));
+
+        if (includeMode === 'include' && uniqueSelectedKeys.length === allKeys.length) {
+          return;
+        }
+
+        if (includeMode === 'exclude' && uniqueSelectedKeys.length === 0) {
+          return;
+        }
+
+        const entries = getDistinctEntriesByKeys(filter.field, uniqueSelectedKeys);
+        const values = entries.map(entry => (entry.value === undefined ? null : entry.value));
+
+        normalized.push({
+          field: filter.field,
+          operator: includeMode === 'exclude' ? 'notIn' : 'in',
+          value: values,
+        });
+        return;
+      }
+
+      const operator = filter.operator || 'equals';
+      if (operator === 'isNull' || operator === 'isNotNull') {
+        normalized.push({
+          field: filter.field,
+          operator,
+          value: null,
+        });
+        return;
+      }
+
+      if (filter.value !== undefined && filter.value !== null && String(filter.value).trim() !== '') {
+        normalized.push({
+          field: filter.field,
+          operator,
+          value: filter.value,
+        });
+      }
+    });
 
     onApplyFilters(normalized);
     setFilterDialogOpen(false);
@@ -480,6 +807,7 @@ const ModernDataDisplay = ({
     if (onApplyFilters) {
       onApplyFilters([]);
     }
+    setValueSearchMap({});
     setFilterDialogOpen(false);
   };
 
@@ -651,14 +979,24 @@ const ModernDataDisplay = ({
                 const fieldLabel =
                   normalizedColumns.find(col => col.field === filter.field)?.headerName || filter.field;
                 const operatorLabel = operatorLabelMap[filter.operator] || filter.operator;
-                const displayValue =
-                  filter.operator === 'isNull' || filter.operator === 'isNotNull'
-                    ? ''
-                    : ` ${String(filter.value)}`;
+                let valueLabel = '';
+
+                if (filter.operator === 'isNull' || filter.operator === 'isNotNull') {
+                  valueLabel = '';
+                } else if (Array.isArray(filter.value)) {
+                  const labels = filter.value.map((item) => formatValueLabel(item === undefined ? null : item));
+                  const preview = labels.slice(0, 3).join(', ');
+                  valueLabel = labels.length > 3 ? `${preview} 等${labels.length}项` : preview;
+                } else if (filter.value !== undefined && filter.value !== null) {
+                  valueLabel = String(filter.value);
+                }
+
+                const chipLabel = [fieldLabel, operatorLabel, valueLabel].filter(part => part && part.trim()).join(' ');
+
                 return (
                   <Chip
                     key={`${filter.field}-${index}`}
-                    label={`${fieldLabel} ${operatorLabel}${displayValue}`.trim()}
+                    label={chipLabel}
                     onDelete={() => handleRemoveActiveFilter(index)}
                     color="primary"
                     size="small"
@@ -677,6 +1015,43 @@ const ModernDataDisplay = ({
           )}
         </CardContent>
       </Card>
+
+      {isVisualQuery && (
+        <Card sx={{ mb: 2 }}>
+          <CardContent sx={{ pb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Table size={24} color="#3b82f6" />
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    可视化分析
+                    <Chip label="单表分析" size="small" color="primary" variant="outlined" />
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    基于图形化查询的结果，可快速选择字段生成可视图表（预览最多 {DISTINCT_SAMPLE_LIMIT.toLocaleString()} 行数据）
+                  </Typography>
+                </Box>
+              </Box>
+
+              <IconButton onClick={() => setVisualExpanded(expanded => !expanded)}>
+                <ChevronDown
+                  size={20}
+                  style={{
+                    transform: visualExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.2s ease'
+                  }}
+                />
+              </IconButton>
+            </Box>
+
+            <Collapse in={visualExpanded} timeout="auto" unmountOnExit>
+              <Box sx={{ mt: 2 }}>
+                <QuickCharts data={filteredData} columns={normalizedColumns} />
+              </Box>
+            </Collapse>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 数据表格 */}
       <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -814,63 +1189,202 @@ const ModernDataDisplay = ({
           ) : (
             <Stack spacing={2}>
               {draftFilters.map((filter, index) => {
-                const currentOperator = filter.operator || 'equals';
+                const mode = filter.mode || 'values';
+                const includeMode = filter.includeMode || 'include';
+                const currentOperator = filter.operator || (mode === 'values' ? 'in' : 'equals');
                 const requiresValue = currentOperator !== 'isNull' && currentOperator !== 'isNotNull';
+                const valueSearch = valueSearchMap[index] || '';
+                const distinctInfo = filter.field ? distinctValueMap[filter.field] : null;
+                const options = distinctInfo ? distinctInfo.options : [];
+                const filteredOptions = valueSearch
+                  ? options.filter(option => option.label.toLowerCase().includes(valueSearch.toLowerCase()))
+                  : options;
+                const selectionState = filter.field
+                  ? getSelectionState(filter, filter.field)
+                  : { keySet: new Set(), allKeys: [] };
+
                 return (
-                  <Stack
+                  <Box
                     key={`draft-filter-${index}`}
-                    direction={{ xs: 'column', md: 'row' }}
-                    spacing={2}
-                    alignItems={{ xs: 'stretch', md: 'center' }}
+                    sx={{
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 2,
+                      p: 2,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 1.5
+                    }}
                   >
-                    <FormControl fullWidth size="small">
-                      <InputLabel>列名</InputLabel>
-                      <Select
-                        label="列名"
-                        value={filter.field || ''}
-                        onChange={(e) => updateDraftFilter(index, 'field', e.target.value)}
-                      >
-                        {normalizedColumns.map((column) => (
-                          <MenuItem key={column.field} value={column.field}>
-                            {column.headerName || column.field}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>列名</InputLabel>
+                        <Select
+                          label="列名"
+                          value={filter.field || ''}
+                          onChange={(e) => updateDraftFilter(index, 'field', e.target.value)}
+                        >
+                          {normalizedColumns.map((column) => (
+                            <MenuItem key={column.field} value={column.field}>
+                              {column.headerName || column.field}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
 
-                    <FormControl fullWidth size="small">
-                      <InputLabel>条件</InputLabel>
-                      <Select
-                        label="条件"
-                        value={currentOperator}
-                        onChange={(e) => updateDraftFilter(index, 'operator', e.target.value)}
-                      >
-                        {filterOperators.map(option => (
-                          <MenuItem key={option.value} value={option.value}>
-                            {option.label}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-
-                    {requiresValue && (
-                      <TextField
-                        fullWidth
+                      <ToggleButtonGroup
+                        value={mode}
+                        exclusive
                         size="small"
-                        label="值"
-                        value={filter.value || ''}
-                        onChange={(e) => updateDraftFilter(index, 'value', e.target.value)}
-                      />
-                    )}
+                        onChange={(_, value) => value && handleFilterModeChange(index, value)}
+                      >
+                        <ToggleButton value="values">列表筛选</ToggleButton>
+                        <ToggleButton value="condition">条件筛选</ToggleButton>
+                      </ToggleButtonGroup>
 
-                    <IconButton
-                      color="error"
-                      onClick={() => handleRemoveFilterRow(index)}
-                      disabled={draftFilters.length === 1}
-                    >
-                      <Trash2 size={18} />
-                    </IconButton>
-                  </Stack>
+                      <IconButton
+                        color="error"
+                        onClick={() => handleRemoveFilterRow(index)}
+                        disabled={draftFilters.length === 1}
+                        sx={{ alignSelf: 'flex-start' }}
+                      >
+                        <Trash2 size={18} />
+                      </IconButton>
+                    </Stack>
+
+                    {mode === 'values' ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }}>
+                          <ToggleButtonGroup
+                            value={includeMode}
+                            exclusive
+                            size="small"
+                            onChange={(_, value) => value && handleIncludeModeChange(index, value)}
+                          >
+                            <ToggleButton value="include">包含</ToggleButton>
+                            <ToggleButton value="exclude">排除</ToggleButton>
+                          </ToggleButtonGroup>
+
+                          <TextField
+                            size="small"
+                            placeholder="搜索值..."
+                            value={valueSearch}
+                            onChange={(e) => handleValueSearchChange(index, e.target.value)}
+                            sx={{ flex: 1 }}
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <Search size={16} />
+                                </InputAdornment>
+                              ),
+                            }}
+                          />
+
+                          <Stack direction="row" spacing={1}>
+                            <Button size="small" variant="outlined" onClick={() => handleSelectAllValues(index)}>全选</Button>
+                            <Button size="small" variant="outlined" onClick={() => handleClearAllValues(index)}>清空</Button>
+                            <Button size="small" variant="outlined" onClick={() => handleInvertValues(index)}>反选</Button>
+                          </Stack>
+
+                          <Stack direction="row" spacing={1}>
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => handleSelectDuplicates(index, filter.field)}
+                              disabled={!distinctInfo || distinctInfo.duplicateKeys.length === 0}
+                            >
+                              重复项
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => handleSelectUnique(index, filter.field)}
+                              disabled={!distinctInfo || distinctInfo.uniqueKeys.length === 0}
+                            >
+                              唯一项
+                            </Button>
+                          </Stack>
+                        </Stack>
+
+                        <Box
+                          sx={{
+                            maxHeight: 220,
+                            overflowY: 'auto',
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            borderRadius: 1.5,
+                            p: 1,
+                            backgroundColor: '#fafbff'
+                          }}
+                        >
+                          {(!distinctInfo || distinctInfo.options.length === 0) && (
+                            <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 0.5 }}>
+                              {filter.field ? '该列暂无可用值' : '请选择列后再进行筛选'}
+                            </Typography>
+                          )}
+
+                          {filteredOptions.map(option => {
+                            const checked = selectionState.keySet.has(option.key);
+                            return (
+                              <FormControlLabel
+                                key={option.key}
+                                control={(
+                                  <Checkbox
+                                    size="small"
+                                    checked={checked}
+                                    onChange={(e) => handleToggleValueKey(index, option.key, e.target.checked)}
+                                  />
+                                )}
+                                label={
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 2 }}>
+                                    <Typography variant="body2" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {option.label}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {option.count}
+                                    </Typography>
+                                  </Box>
+                                }
+                              />
+                            );
+                          })}
+                        </Box>
+
+                        {distinctInfo && (
+                          <Typography variant="caption" color="text.secondary">
+                            预览 {distinctInfo.options.length} 项（共 {distinctInfo.total} 条记录）
+                          </Typography>
+                        )}
+                      </Box>
+                    ) : (
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>条件</InputLabel>
+                          <Select
+                            label="条件"
+                            value={currentOperator}
+                            onChange={(e) => updateDraftFilter(index, 'operator', e.target.value)}
+                          >
+                            {filterOperators.map(option => (
+                              <MenuItem key={option.value} value={option.value}>
+                                {option.label}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+
+                        {requiresValue && (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="值"
+                            value={filter.value || ''}
+                            onChange={(e) => updateDraftFilter(index, 'value', e.target.value)}
+                          />
+                        )}
+                      </Stack>
+                    )}
+                  </Box>
                 );
               })}
 
