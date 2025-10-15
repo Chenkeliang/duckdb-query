@@ -1495,38 +1495,33 @@ const ModernDataDisplay = ({
             }}
           />
 
-          <Stack spacing={0.75}>
-            <Button
-              size="small"
-              variant="text"
-              onClick={handleColumnFilterSelectAll}
-              sx={{ justifyContent: 'flex-start' }}
-            >
+          <Stack
+            direction="row"
+            spacing={0.5}
+            alignItems="center"
+            flexWrap="nowrap"
+            sx={{
+              '& .MuiButton-root': {
+                minWidth: 60,
+                px: 1,
+              }
+            }}
+          >
+            <Button size="small" variant="text" onClick={handleColumnFilterSelectAll}>
               全选
             </Button>
-            <Button
-              size="small"
-              variant="text"
-              onClick={handleColumnFilterClearAll}
-              sx={{ justifyContent: 'flex-start' }}
-            >
+            <Button size="small" variant="text" onClick={handleColumnFilterClearAll}>
               清空
             </Button>
-            <Button
-              size="small"
-              variant="text"
-              onClick={handleColumnFilterInvert}
-              sx={{ justifyContent: 'flex-start' }}
-            >
+            <Button size="small" variant="text" onClick={handleColumnFilterInvert}>
               反选
             </Button>
-            <Divider sx={{ my: 0.5 }} />
+            <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
             <Button
               size="small"
               variant="text"
               onClick={handleColumnFilterSelectDuplicates}
               disabled={!activeColumnFilterInfo || (activeColumnFilterInfo.duplicateKeys || []).length === 0}
-              sx={{ justifyContent: 'flex-start' }}
             >
               重复项
             </Button>
@@ -1535,7 +1530,6 @@ const ModernDataDisplay = ({
               variant="text"
               onClick={handleColumnFilterSelectUnique}
               disabled={!activeColumnFilterInfo || (activeColumnFilterInfo.uniqueKeys || []).length === 0}
-              sx={{ justifyContent: 'flex-start' }}
             >
               唯一项
             </Button>
