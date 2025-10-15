@@ -274,6 +274,7 @@ const ModernDataDisplay = ({
           includeMode: filter.operator === 'notIn' ? 'exclude' : 'include',
           selectedValueKeys: valuesArray.map(makeValueKey),
           operator: filter.operator,
+          selectionDefined: true,
         };
       }
 
@@ -282,6 +283,7 @@ const ModernDataDisplay = ({
         mode: 'condition',
         operator: filter.operator,
         value: filter.value,
+        selectionDefined: false,
       };
     });
 
@@ -296,7 +298,8 @@ const ModernDataDisplay = ({
         includeMode: 'include',
         selectedValueKeys: null,
         operator: 'in',
-        value: ''
+        value: '',
+        selectionDefined: false,
       }]);
     }
   }, [filterDialogOpen, draftFilters.length]);
@@ -866,14 +869,13 @@ const ModernDataDisplay = ({
   const getSelectionState = (filter, field) => {
     const allKeys = getAllDistinctKeys(field);
     const includeMode = filter.includeMode || 'include';
-    const definedKeys = Array.isArray(filter.selectedValueKeys) ? filter.selectedValueKeys : null;
-    const shouldUseDefined = definedKeys && definedKeys.length > 0;
-    const keySet = new Set(
-      shouldUseDefined
-        ? definedKeys
-        : (includeMode === 'exclude' ? [] : allKeys)
-    );
-    return { keySet, allKeys };
+    const definedKeys = Array.isArray(filter.selectedValueKeys) ? filter.selectedValueKeys : [];
+    const selectionDefined = filter.selectionDefined === true;
+    const sourceKeys = selectionDefined
+      ? definedKeys
+      : (includeMode === 'exclude' ? [] : allKeys);
+    const keySet = new Set(sourceKeys);
+    return { keySet, allKeys, selectionDefined, definedKeys };
   };
 
   const updateSelectedKeys = (index, updater) => {
@@ -891,6 +893,7 @@ const ModernDataDisplay = ({
         target.includeMode = 'include';
       }
       target.operator = target.includeMode === 'exclude' ? 'notIn' : 'in';
+      target.selectionDefined = true;
       next[index] = target;
       return next;
     });
@@ -943,7 +946,12 @@ const ModernDataDisplay = ({
       const target = { ...next[index] };
       target.includeMode = mode;
       target.operator = mode === 'exclude' ? 'notIn' : 'in';
-      target.selectedValueKeys = mode === 'exclude' ? (Array.isArray(target.selectedValueKeys) ? target.selectedValueKeys : []) : target.selectedValueKeys;
+      if (!Array.isArray(target.selectedValueKeys)) {
+        target.selectedValueKeys = [];
+        target.selectionDefined = false;
+      } else {
+        target.selectionDefined = true;
+      }
       next[index] = target;
       return next;
     });
@@ -977,6 +985,7 @@ const ModernDataDisplay = ({
         current.mode = current.mode || 'values';
         current.includeMode = current.includeMode || 'include';
         current.operator = current.mode === 'condition' ? (current.operator || 'equals') : 'in';
+        current.selectionDefined = false;
         setValueSearchMap(prevSearch => {
           const updated = { ...prevSearch };
           delete updated[index];
@@ -1000,7 +1009,8 @@ const ModernDataDisplay = ({
       includeMode: 'include',
       operator: 'in',
       selectedValueKeys: null,
-      value: ''
+      value: '',
+      selectionDefined: false,
     }]);
   };
 
@@ -1030,22 +1040,26 @@ const ModernDataDisplay = ({
 
         const includeMode = filter.includeMode || 'include';
         const allKeys = info.options.map(option => option.key);
-        const hasDefinedSelection = Array.isArray(filter.selectedValueKeys) && filter.selectedValueKeys.length > 0;
-        const selectedKeysArray = hasDefinedSelection
-          ? filter.selectedValueKeys
+        const selectionDefined = filter.selectionDefined === true;
+        const selectedKeysArray = selectionDefined
+          ? (Array.isArray(filter.selectedValueKeys) ? filter.selectedValueKeys : [])
           : (includeMode === 'exclude' ? [] : allKeys);
 
         const uniqueSelectedKeys = Array.from(new Set(selectedKeysArray));
 
-        if (!hasDefinedSelection && includeMode === 'include') {
+        if (!selectionDefined && includeMode === 'include') {
           return;
         }
 
-        if (!hasDefinedSelection && includeMode === 'exclude') {
+        if (!selectionDefined && includeMode === 'exclude') {
           return;
         }
 
         if (includeMode === 'include' && uniqueSelectedKeys.length === allKeys.length) {
+          return;
+        }
+
+        if (includeMode === 'exclude' && uniqueSelectedKeys.length === 0 && selectionDefined) {
           return;
         }
 
