@@ -7,6 +7,7 @@ import logging
 import os
 import traceback
 import time
+import json
 import pandas as pd
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
@@ -15,7 +16,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from core.task_manager import task_manager, TaskStatus
-from core.duckdb_engine import get_db_connection
+from core.duckdb_engine import get_db_connection, create_varchar_table_from_dataframe
 from core.file_datasource_manager import (
     file_datasource_manager,
     create_table_from_dataframe,
@@ -23,6 +24,7 @@ from core.file_datasource_manager import (
 from core.config_manager import config_manager
 from core.timezone_utils import get_current_time_iso, get_current_time
 from core.task_utils import TaskUtils
+from models.query_models import DatabaseConnection, DataSourceType
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -42,6 +44,89 @@ os.makedirs(EXPORTS_DIR, exist_ok=True)
 # 初始化任务工具类
 task_utils = TaskUtils(EXPORTS_DIR)
 
+SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite"}
+
+
+def _ensure_database_connection(datasource_id: str, datasource_type: str):
+    from core.database_manager import db_manager
+
+    connection = db_manager.get_connection(datasource_id)
+    if connection:
+        return connection
+
+    try:
+        db_manager.list_connections()
+    except Exception as load_error:
+        logger.debug(f"加载数据库连接配置失败: {load_error}")
+
+    connection = db_manager.get_connection(datasource_id)
+    if connection:
+        return connection
+
+    config_dir = os.getenv("CONFIG_DIR")
+    if config_dir:
+        config_path = os.path.join(config_dir, "datasources.json")
+    else:
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "config",
+            "datasources.json",
+        )
+
+    if not os.path.exists(config_path):
+        raise ValueError(f"未找到数据源配置文件: {config_path}")
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        config_data = json.load(f)
+
+    target_config = None
+    for cfg in config_data.get("database_sources", []):
+        if cfg.get("id") == datasource_id:
+            target_config = cfg
+            break
+
+    if not target_config:
+        raise ValueError(f"未找到数据源配置: {datasource_id}")
+
+    connection = DatabaseConnection(
+        id=target_config["id"],
+        name=target_config.get("name", target_config["id"]),
+        type=DataSourceType(target_config.get("type", datasource_type)),
+        params=target_config.get("params", {}),
+        created_at=get_current_time(),
+    )
+
+    added = db_manager.add_connection(connection)
+    if not added:
+        raise ValueError(f"创建数据库连接失败: {datasource_id}")
+
+    return db_manager.get_connection(datasource_id)
+
+
+def _fetch_external_query_result(datasource: Dict[str, Any], sql: str) -> pd.DataFrame:
+    if not isinstance(datasource, dict):
+        raise ValueError("无效的数据源配置")
+
+    datasource_type = (datasource.get("type") or "").lower()
+    if datasource_type not in SUPPORTED_EXTERNAL_TYPES:
+        raise ValueError(f"不支持的数据源类型: {datasource_type}")
+
+    datasource_id = datasource.get("id")
+    if not datasource_id:
+        raise ValueError("外部数据源缺少ID")
+
+    connection = _ensure_database_connection(datasource_id, datasource_type)
+    if not connection:
+        raise ValueError(f"无法建立数据源连接: {datasource_id}")
+
+    from core.database_manager import db_manager
+
+    result_df = db_manager.execute_query(datasource_id, sql)
+    if result_df is None or result_df.empty:
+        raise ValueError("查询结果为空，无法创建异步任务")
+
+    return result_df
+
 
 class AsyncQueryRequest(BaseModel):
     """异步查询请求模型"""
@@ -49,6 +134,7 @@ class AsyncQueryRequest(BaseModel):
     sql: str
     custom_table_name: Optional[str] = None  # 自定义表名（可选）
     task_type: str = "query"  # 任务类型：query, save_to_table, export
+    datasource: Optional[Dict[str, Any]] = None
 
 
 class AsyncQueryResponse(BaseModel):
@@ -92,6 +178,7 @@ async def submit_async_query(
             "sql": request.sql,
             "custom_table_name": request.custom_table_name,
             "task_type": request.task_type,
+            "datasource": request.datasource,
         }
 
         # 创建任务
@@ -104,6 +191,7 @@ async def submit_async_query(
             request.sql,
             request.custom_table_name,
             request.task_type,
+            request.datasource,
         )
 
         return AsyncQueryResponse(
@@ -210,6 +298,7 @@ def execute_async_query(
     sql: str,
     custom_table_name: Optional[str] = None,
     task_type: str = "query",
+    datasource: Optional[Dict[str, Any]] = None,
 ):
     """
     执行异步查询（后台任务）- 内存优化版本
@@ -238,6 +327,15 @@ def execute_async_query(
 
         pool = get_connection_pool()
 
+        datasource_info = datasource if isinstance(datasource, dict) else None
+        datasource_type = (
+            (datasource_info.get("type") or "").lower()
+            if datasource_info
+            else ""
+        )
+        use_external_source = datasource_type in SUPPORTED_EXTERNAL_TYPES
+        source_datasource_id = datasource_info.get("id") if datasource_info else None
+
         with pool.get_connection() as con:
             # 创建持久表存储查询结果（避免fetchdf()内存问题）
             if custom_table_name:
@@ -252,10 +350,20 @@ def execute_async_query(
                 table_name = task_utils.task_id_to_table_name(task_id)
             logger.info(f"创建持久表存储查询结果: {table_name}")
 
-            # 使用清理后的SQL创建持久表，确保获取完整数据
-            create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
-            con.execute(create_sql)
-            logger.info(f"持久表创建成功: {table_name}")
+            if use_external_source:
+                logger.info(
+                    f"异步任务将使用外部数据源 {source_datasource_id} ({datasource_type}) 执行查询"
+                )
+                result_df = _fetch_external_query_result(datasource_info, clean_sql)
+                created = create_varchar_table_from_dataframe(table_name, result_df, con)
+                if not created:
+                    raise ValueError("外部数据源结果写入DuckDB失败")
+                logger.info(f"外部数据源查询结果已写入DuckDB表: {table_name}")
+            else:
+                # 使用清理后的SQL创建持久表，确保获取完整数据
+                create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
+                con.execute(create_sql)
+                logger.info(f"持久表创建成功: {table_name}")
 
             # 获取结果统计信息（不加载数据）
             count_sql = f'SELECT COUNT(*) FROM "{table_name}"'
@@ -282,6 +390,10 @@ def execute_async_query(
                 "source_sql": sql,
             }
 
+            if source_datasource_id:
+                table_metadata["source_datasource"] = source_datasource_id
+                table_metadata["source_datasource_type"] = datasource_type
+
             # 保存到文件数据源管理器
             file_datasource_manager.save_file_datasource(table_metadata)
             logger.info(f"表元数据保存成功: {source_id}")
@@ -295,6 +407,10 @@ def execute_async_query(
                 "file_generated": False,
                 "task_type": task_type,
             }
+
+            if source_datasource_id:
+                task_info["source_datasource"] = source_datasource_id
+                task_info["source_datasource_type"] = datasource_type
 
             # 如果是自定义表名，添加原始表名信息
             if custom_table_name:

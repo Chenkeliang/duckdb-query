@@ -20,6 +20,8 @@ import WelcomePage from "./components/WelcomePage";
 import { globalDebounce } from "./hooks/useDebounce";
 import {
   createDatabaseConnection,
+  executeDuckDBSQL,
+  executeSQL,
   getDuckDBTablesEnhanced,
   getMySQLDataSources,
   listDatabaseConnections,
@@ -58,6 +60,15 @@ const ShadcnApp = () => {
   const [databaseConnections, setDatabaseConnections] = useState([]);
   const [selectedSources, setSelectedSources] = useState([]);
   const [queryResults, setQueryResults] = useState({ data: [], columns: [] });
+  const [activeFilters, setActiveFilters] = useState([]);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [queryContext, setQueryContext] = useState({
+    baseSql: "",
+    datasource: null,
+    sourceType: "duckdb",
+    initialData: [],
+    initialColumns: []
+  });
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lastFetchTime, setLastFetchTime] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -201,6 +212,221 @@ const ShadcnApp = () => {
 
     // 强制刷新数据，不使用防抖
     loadInitialData(true);
+  };
+
+  const extractBaseSql = (results) => {
+    if (!results) return "";
+    const candidates = [
+      results.originalSql,
+      results.original_sql,
+      results.sqlQuery,
+      results.sql,
+      results.generatedSQL,
+      results.query
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+    return "";
+  };
+
+  const quoteIdentifier = (field, sourceType, alias = "original_query") => {
+    if (!field) return `${alias}.""`;
+    if (field.includes(".")) {
+      return field;
+    }
+    const quoteChar = sourceType === "mysql" ? "`" : '"';
+    const escaped = field.replace(new RegExp(quoteChar, "g"), `${quoteChar}${quoteChar}`);
+    return `${alias}.${quoteChar}${escaped}${quoteChar}`;
+  };
+
+  const escapeLikeValue = (value) => {
+    return String(value)
+      .replace(/[%_]/g, (match) => `\\${match}`)
+      .replace(/'/g, "''");
+  };
+
+  const escapeLiteralValue = (value) => {
+    return String(value).replace(/'/g, "''");
+  };
+
+  const isNumericValue = (value) => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === "number") return true;
+    const trimmed = String(value).trim();
+    if (!trimmed) return false;
+    return /^-?\d+(\.\d+)?$/.test(trimmed);
+  };
+
+  const buildFilterConditions = (filters, sourceType) =>
+    filters
+      .map((filter) => {
+        const fieldExpr = quoteIdentifier(filter.field, sourceType);
+        const operator = filter.operator || "equals";
+
+        switch (operator) {
+          case "isNull":
+            return `${fieldExpr} IS NULL`;
+          case "isNotNull":
+            return `${fieldExpr} IS NOT NULL`;
+          case "equals":
+            if (isNumericValue(filter.value)) {
+              return `${fieldExpr} = ${filter.value}`;
+            }
+            return `${fieldExpr} = '${escapeLiteralValue(filter.value)}'`;
+          case "notEquals":
+            if (isNumericValue(filter.value)) {
+              return `${fieldExpr} <> ${filter.value}`;
+            }
+            return `${fieldExpr} <> '${escapeLiteralValue(filter.value)}'`;
+          case "greaterThan": {
+            const value = isNumericValue(filter.value)
+              ? filter.value
+              : `'${escapeLiteralValue(filter.value)}'`;
+            return `${fieldExpr} > ${value}`;
+          }
+          case "greaterOrEqual": {
+            const value = isNumericValue(filter.value)
+              ? filter.value
+              : `'${escapeLiteralValue(filter.value)}'`;
+            return `${fieldExpr} >= ${value}`;
+          }
+          case "lessThan": {
+            const value = isNumericValue(filter.value)
+              ? filter.value
+              : `'${escapeLiteralValue(filter.value)}'`;
+            return `${fieldExpr} < ${value}`;
+          }
+          case "lessOrEqual": {
+            const value = isNumericValue(filter.value)
+              ? filter.value
+              : `'${escapeLiteralValue(filter.value)}'`;
+            return `${fieldExpr} <= ${value}`;
+          }
+          case "contains":
+            return `${fieldExpr} LIKE '%${escapeLikeValue(filter.value)}%' ESCAPE '\\'`;
+          case "notContains":
+            return `${fieldExpr} NOT LIKE '%${escapeLikeValue(filter.value)}%' ESCAPE '\\'`;
+          case "startsWith":
+            return `${fieldExpr} LIKE '${escapeLikeValue(filter.value)}%' ESCAPE '\\'`;
+          case "endsWith":
+            return `${fieldExpr} LIKE '%${escapeLikeValue(filter.value)}' ESCAPE '\\'`;
+          default:
+            return null;
+        }
+      })
+      .filter(Boolean);
+
+  const buildFilteredSql = (baseSql, filters, sourceType) => {
+    const sanitizedBase = (baseSql || "").trim().replace(/;$/, "");
+    const alias = "original_query";
+    const conditions = buildFilterConditions(filters, sourceType);
+    let query = `SELECT * FROM (${sanitizedBase}) AS ${alias}`;
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(" AND ")}`;
+    }
+    query += " LIMIT 10000";
+    return query;
+  };
+
+  const handleResultsReceived = (results) => {
+    if (!results) {
+      setQueryResults({ data: [], columns: [] });
+      setQueryContext({
+        baseSql: "",
+        datasource: null,
+        sourceType: "duckdb",
+        initialData: [],
+        initialColumns: []
+      });
+      setActiveFilters([]);
+      setResultsLoading(false);
+      return;
+    }
+
+    const baseSql = extractBaseSql(results);
+    const datasourceInfo = results.originalDatasource || null;
+    const sourceType = datasourceInfo?.type || results.sourceType || "duckdb";
+
+    const normalizedResults = {
+      ...results,
+      data: results.data || [],
+      columns: results.columns || [],
+      sqlQuery: baseSql || results.sqlQuery || ""
+    };
+
+    setQueryResults(normalizedResults);
+    setQueryContext({
+      baseSql,
+      datasource: datasourceInfo,
+      sourceType,
+      initialData: normalizedResults.data,
+      initialColumns: normalizedResults.columns
+    });
+    setActiveFilters([]);
+    setResultsLoading(false);
+  };
+
+  const handleApplyResultFilters = async (filters = []) => {
+    if (!queryContext.baseSql) {
+      if (filters.length === 0) {
+        setActiveFilters([]);
+      } else {
+        showWarning("当前结果集不支持筛选");
+      }
+      return;
+    }
+
+    if (!filters.length) {
+      setActiveFilters([]);
+      setQueryResults((prev) => ({
+        ...prev,
+        data: queryContext.initialData || [],
+        columns: queryContext.initialColumns || prev.columns,
+        sqlQuery: queryContext.baseSql
+      }));
+      return;
+    }
+
+    setResultsLoading(true);
+
+    try {
+      const filteredSql = buildFilteredSql(queryContext.baseSql, filters, queryContext.sourceType);
+      let response;
+
+      if (queryContext.datasource && queryContext.sourceType && queryContext.sourceType !== "duckdb") {
+        response = await executeSQL(filteredSql, queryContext.datasource, true);
+      } else {
+        response = await executeDuckDBSQL(filteredSql, null, true);
+      }
+
+      if (!response) {
+        throw new Error("筛选查询未返回结果");
+      }
+
+      const refreshedResults = {
+        ...queryResults,
+        data: response.data || [],
+        columns: response.columns || queryResults.columns || [],
+        sqlQuery: filteredSql,
+        displaySQL: filteredSql,
+        originalDatasource: queryContext.datasource || queryResults.originalDatasource || null
+      };
+
+      if (response.can_save_to_duckdb !== undefined) {
+        refreshedResults.canSaveToDuckDB = response.can_save_to_duckdb;
+      }
+
+      setQueryResults(refreshedResults);
+      setActiveFilters(filters);
+    } catch (error) {
+      const message = error?.message || "筛选失败";
+      showError(message);
+    } finally {
+      setResultsLoading(false);
+    }
   };
 
   // 文件上传处理函数
@@ -488,7 +714,7 @@ const ShadcnApp = () => {
                   databaseConnections={databaseConnections}
                   selectedSources={selectedSources}
                   setSelectedSources={setSelectedSources}
-                  onResultsReceived={setQueryResults}
+                  onResultsReceived={handleResultsReceived}
                   onDataSourceSaved={(newDataSource) => {
                     triggerRefresh();
                   }}
@@ -517,10 +743,12 @@ const ShadcnApp = () => {
                           })
                           : []
                       }
-                      loading={false}
+                      loading={resultsLoading}
                       title={queryResults.isVisualQuery ? "可视化查询结果" : (queryResults.isSetOperation ? "集合操作结果" : "查询结果")}
                       sqlQuery={queryResults.sqlQuery || queryResults.sql || ""}
                       originalDatasource={queryResults.originalDatasource}
+                      onApplyFilters={handleApplyResultFilters}
+                      activeFilters={activeFilters}
                       // Visual query specific props
                       isVisualQuery={queryResults.isVisualQuery || false}
                       visualConfig={queryResults.visualConfig || null}
@@ -528,9 +756,7 @@ const ShadcnApp = () => {
                       // Set operation specific props
                       isSetOperation={queryResults.isSetOperation || false}
                       setOperationConfig={queryResults.setOperationConfig || null}
-                      onRefresh={() => {
-                        // 可以添加刷新逻辑
-                      }}
+                      onRefresh={triggerRefresh}
                       onDataSourceSaved={triggerRefresh}
                     />
                   </div>

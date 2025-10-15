@@ -151,7 +151,7 @@ const StableTable = ({
                 <TableCell
                   key={column.field}
                   sx={{
-                    backgroundColor: theme.palette.grey[50],
+                    backgroundColor: '#f2f4f8',
                     fontWeight: 600,
                     fontSize: '0.875rem',
                     borderBottom: `2px solid ${theme.palette.divider}`,
@@ -159,7 +159,7 @@ const StableTable = ({
                     cursor: 'pointer',
                     userSelect: 'none',
                     '&:hover': {
-                      backgroundColor: theme.palette.grey[100],
+                      backgroundColor: '#e9edf5',
                     },
                     // 横向显示表头文字
                     writingMode: 'horizontal-tb',
@@ -215,10 +215,10 @@ const StableTable = ({
                 key={index}
                 sx={{
                   '&:nth-of-type(odd)': {
-                    backgroundColor: theme.palette.action.hover,
+                    backgroundColor: '#f7f9fc',
                   },
                   '&:hover': {
-                    backgroundColor: theme.palette.action.selected,
+                    backgroundColor: '#e6ebf4',
                   },
                 }}
               >

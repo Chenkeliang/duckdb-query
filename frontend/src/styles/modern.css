@@ -448,8 +448,8 @@ body {
 .bg-white.rounded-3xl.border.border-gray-200.shadow-lg .cm-editor {
   border-radius: 10px !important;
   overflow: hidden;
-  background-color: #f9fbff !important;
-  border: 1px solid #e1e8f5;
+  background-color: #f5f7fb !important;
+  border: 1px solid #d9e1f2;
 }
 
 .bg-white.rounded-3xl.border.border-gray-200.shadow-lg .cm-content {
@@ -469,17 +469,17 @@ body {
 }
 
 .bg-white.rounded-3xl.border.border-gray-200.shadow-lg .cm-gutters {
-  background-color: #f1f5fb !important;
-  color: #94a3b8 !important;
-  border-right: 1px solid #e1e8f5 !important;
+  background-color: #eef2f6 !important;
+  color: #7c8aa5 !important;
+  border-right: 1px solid #d9e1f2 !important;
 }
 
 .bg-white.rounded-3xl.border.border-gray-200.shadow-lg .cm-activeLine {
-  background-color: #e7ecff !important;
+  background-color: #e3e8f3 !important;
 }
 
 .bg-white.rounded-3xl.border.border-gray-200.shadow-lg .cm-selectionBackground {
-  background-color: rgba(37, 99, 235, 0.22) !important;
+  background-color: rgba(37, 99, 235, 0.16) !important;
 }
 
 .MuiMenu-paper {

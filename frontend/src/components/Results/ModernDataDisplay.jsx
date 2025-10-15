@@ -29,10 +29,9 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import { Eye, EyeOff, Filter, Grid3x3, List, PieChart, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X } from 'lucide-react';
+import { Eye, EyeOff, Filter, List, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X, SlidersHorizontal, Plus, Trash2 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import QuickCharts from '../DataVisualization/QuickCharts';
 import StableTable from '../StableTable';
 import VirtualTable from '../VirtualTable/VirtualTable';
 
@@ -46,6 +45,8 @@ const ModernDataDisplay = ({
   sqlQuery = '',
   originalDatasource = null,
   onDataSourceSaved,
+  onApplyFilters = null,
+  activeFilters = [],
   // Visual query specific props
   isVisualQuery = false,
   visualConfig = null,
@@ -62,10 +63,9 @@ const ModernDataDisplay = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [columnMenuAnchor, setColumnMenuAnchor] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState(new Set());
-  const [sortModel, setSortModel] = useState([]);
-  const [filterModel, setFilterModel] = useState({});
   const [renderMode, setRenderMode] = useState('agGrid'); // 'agGrid' 或 'virtual'
-  const [viewMode, setViewMode] = useState('table'); // 'table' 或 'chart'
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState([]);
 
   // 保存到表相关状态
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -74,6 +74,30 @@ const ModernDataDisplay = ({
   const [saveMode, setSaveMode] = useState('duckdb'); // 只支持 'duckdb' 模式
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  const filterOperators = useMemo(() => ([
+    { value: 'equals', label: '等于' },
+    { value: 'notEquals', label: '不等于' },
+    { value: 'contains', label: '包含' },
+    { value: 'notContains', label: '不包含' },
+    { value: 'startsWith', label: '以...开头' },
+    { value: 'endsWith', label: '以...结尾' },
+    { value: 'greaterThan', label: '大于' },
+    { value: 'greaterOrEqual', label: '大于等于' },
+    { value: 'lessThan', label: '小于' },
+    { value: 'lessOrEqual', label: '小于等于' },
+    { value: 'isNull', label: '为空' },
+    { value: 'isNotNull', label: '不为空' }
+  ]), []);
+
+  const operatorLabelMap = useMemo(() => {
+    return filterOperators.reduce((acc, cur) => {
+      acc[cur.value] = cur.label;
+      return acc;
+    }, {});
+  }, [filterOperators]);
+
+  const hasFilterSupport = Boolean(onApplyFilters && (sqlQuery || generatedSQL));
 
   // 标准化columns格式 - 支持字符串数组和对象数组
   const normalizedColumns = useMemo(() => {
@@ -121,6 +145,18 @@ const ModernDataDisplay = ({
       setVisibleColumns(new Set(normalizedColumns.map(col => col.field)));
     }
   }, [normalizedColumns]);
+
+  React.useEffect(() => {
+    if (!filterDialogOpen) {
+      setDraftFilters(Array.isArray(activeFilters) ? activeFilters : []);
+    }
+  }, [activeFilters, filterDialogOpen]);
+
+  React.useEffect(() => {
+    if (filterDialogOpen && draftFilters.length === 0) {
+      setDraftFilters([{ field: '', operator: 'equals', value: '' }]);
+    }
+  }, [filterDialogOpen, draftFilters.length]);
 
   // 过滤和搜索数据
   const filteredData = useMemo(() => {
@@ -330,6 +366,10 @@ const ModernDataDisplay = ({
         task_type: 'save_to_table'
       };
 
+      if (originalDatasource && typeof originalDatasource === 'object') {
+        asyncRequest.datasource = { ...originalDatasource };
+      }
+
       // 提交异步任务（设置超时，避免长时间等待）
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
@@ -393,6 +433,62 @@ const ModernDataDisplay = ({
 
   const totalPages = Math.ceil(filteredData.length / pageSize);
 
+  const updateDraftFilter = (index, key, value) => {
+    setDraftFilters(prev => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        [key]: value
+      };
+      return next;
+    });
+  };
+
+  const handleAddFilterRow = () => {
+    setDraftFilters(prev => [...prev, { field: '', operator: 'equals', value: '' }]);
+  };
+
+  const handleRemoveFilterRow = (index) => {
+    setDraftFilters(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleApplyFilterSubmit = () => {
+    if (!onApplyFilters) {
+      setFilterDialogOpen(false);
+      return;
+    }
+
+    const normalized = draftFilters
+      .map(filter => ({
+        field: filter.field,
+        operator: filter.operator || 'equals',
+        value: filter.value
+      }))
+      .filter(filter => {
+        if (!filter.field) return false;
+        if (filter.operator === 'isNull' || filter.operator === 'isNotNull') {
+          return true;
+        }
+        return filter.value !== undefined && filter.value !== null && String(filter.value).trim() !== '';
+      });
+
+    onApplyFilters(normalized);
+    setFilterDialogOpen(false);
+  };
+
+  const handleClearFilters = () => {
+    if (onApplyFilters) {
+      onApplyFilters([]);
+    }
+    setFilterDialogOpen(false);
+  };
+
+  const handleRemoveActiveFilter = (index) => {
+    if (!onApplyFilters) return;
+    const next = (activeFilters || []).filter((_, i) => i !== index);
+    onApplyFilters(next);
+  };
+
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 头部工具栏 */}
@@ -430,35 +526,36 @@ const ModernDataDisplay = ({
             </Box>
 
             <Stack direction="row" spacing={1}>
-              <Tooltip title={viewMode === 'table' ? '切换到图表视图' : '切换到表格视图'}>
+              <Tooltip title={renderMode === 'agGrid' ? '切换到虚拟滚动模式（适合大数据量）' : '切换到标准表格模式（适合小数据量）'}>
                 <IconButton
-                  onClick={() => setViewMode(viewMode === 'table' ? 'chart' : 'table')}
-                  color={viewMode === 'chart' ? 'primary' : 'default'}
+                  onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
+                  color={renderMode === 'virtual' ? 'primary' : 'default'}
                 >
-                  {viewMode === 'table' ? <PieChart size={20} /> : <Grid3x3 size={20} />}
+                  {renderMode === 'agGrid' ? <Scroll size={20} /> : <List size={20} />}
                 </IconButton>
               </Tooltip>
 
-              {viewMode === 'table' && (
-                <Tooltip title={renderMode === 'agGrid' ? '切换到虚拟滚动模式（适合大数据量）' : '切换到标准表格模式（适合小数据量）'}>
+              <Tooltip title="列筛选（生成条件查询）">
+                <span>
                   <IconButton
-                    onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
-                    color={renderMode === 'virtual' ? 'primary' : 'default'}
+                    onClick={() => setFilterDialogOpen(true)}
+                    color={activeFilters && activeFilters.length > 0 ? 'primary' : 'default'}
+                    disabled={!hasFilterSupport || loading}
                   >
-                    {renderMode === 'agGrid' ? <Scroll size={20} /> : <List size={20} />}
+                    <Filter size={20} />
                   </IconButton>
-                </Tooltip>
-              )}
+                </span>
+              </Tooltip>
+
+              <Tooltip title="列显示/隐藏">
+                <IconButton onClick={handleColumnMenuOpen}>
+                  <SlidersHorizontal size={20} />
+                </IconButton>
+              </Tooltip>
 
               <Tooltip title="刷新数据">
                 <IconButton onClick={onRefresh} disabled={loading}>
                   <RefreshCw size={20} />
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip title="列筛选（显示/隐藏列）">
-                <IconButton onClick={handleColumnMenuOpen}>
-                  <Filter size={20} />
                 </IconButton>
               </Tooltip>
 
@@ -547,6 +644,37 @@ const ModernDataDisplay = ({
               />
             )}
           </Stack>
+
+          {activeFilters && activeFilters.length > 0 && (
+            <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {activeFilters.map((filter, index) => {
+                const fieldLabel =
+                  normalizedColumns.find(col => col.field === filter.field)?.headerName || filter.field;
+                const operatorLabel = operatorLabelMap[filter.operator] || filter.operator;
+                const displayValue =
+                  filter.operator === 'isNull' || filter.operator === 'isNotNull'
+                    ? ''
+                    : ` ${String(filter.value)}`;
+                return (
+                  <Chip
+                    key={`${filter.field}-${index}`}
+                    label={`${fieldLabel} ${operatorLabel}${displayValue}`.trim()}
+                    onDelete={() => handleRemoveActiveFilter(index)}
+                    color="primary"
+                    size="small"
+                  />
+                );
+              })}
+              <Button
+                size="small"
+                variant="text"
+                onClick={handleClearFilters}
+                sx={{ textTransform: 'none' }}
+              >
+                清除所有筛选
+              </Button>
+            </Box>
+          )}
         </CardContent>
       </Card>
 
@@ -574,11 +702,6 @@ const ModernDataDisplay = ({
                 执行查询以查看结果
               </Typography>
             </Box>
-          ) : viewMode === 'chart' ? (
-            <QuickCharts
-              data={filteredData}
-              columns={columns}
-            />
           ) : renderMode === 'virtual' ? (
             <VirtualTable
               data={filteredData}
@@ -676,6 +799,102 @@ const ModernDataDisplay = ({
           </Stack>
         </Box>
       </Menu>
+
+      {/* 列筛选对话框 */}
+      <Dialog
+        open={filterDialogOpen}
+        onClose={() => setFilterDialogOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>列筛选条件</DialogTitle>
+        <DialogContent dividers>
+          {normalizedColumns.length === 0 ? (
+            <Alert severity="info">暂无列信息，无法添加筛选条件</Alert>
+          ) : (
+            <Stack spacing={2}>
+              {draftFilters.map((filter, index) => {
+                const currentOperator = filter.operator || 'equals';
+                const requiresValue = currentOperator !== 'isNull' && currentOperator !== 'isNotNull';
+                return (
+                  <Stack
+                    key={`draft-filter-${index}`}
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={2}
+                    alignItems={{ xs: 'stretch', md: 'center' }}
+                  >
+                    <FormControl fullWidth size="small">
+                      <InputLabel>列名</InputLabel>
+                      <Select
+                        label="列名"
+                        value={filter.field || ''}
+                        onChange={(e) => updateDraftFilter(index, 'field', e.target.value)}
+                      >
+                        {normalizedColumns.map((column) => (
+                          <MenuItem key={column.field} value={column.field}>
+                            {column.headerName || column.field}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl fullWidth size="small">
+                      <InputLabel>条件</InputLabel>
+                      <Select
+                        label="条件"
+                        value={currentOperator}
+                        onChange={(e) => updateDraftFilter(index, 'operator', e.target.value)}
+                      >
+                        {filterOperators.map(option => (
+                          <MenuItem key={option.value} value={option.value}>
+                            {option.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    {requiresValue && (
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="值"
+                        value={filter.value || ''}
+                        onChange={(e) => updateDraftFilter(index, 'value', e.target.value)}
+                      />
+                    )}
+
+                    <IconButton
+                      color="error"
+                      onClick={() => handleRemoveFilterRow(index)}
+                      disabled={draftFilters.length === 1}
+                    >
+                      <Trash2 size={18} />
+                    </IconButton>
+                  </Stack>
+                );
+              })}
+
+              <Button
+                variant="outlined"
+                startIcon={<Plus size={16} />}
+                onClick={handleAddFilterRow}
+                sx={{ alignSelf: 'flex-start' }}
+              >
+                添加筛选条件
+              </Button>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFilterDialogOpen(false)}>取消</Button>
+          <Button onClick={handleClearFilters} disabled={!hasFilterSupport || (activeFilters?.length ?? 0) === 0}>
+            清除筛选
+          </Button>
+          <Button variant="contained" onClick={handleApplyFilterSubmit} disabled={!hasFilterSupport}>
+            应用筛选
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* 保存到表对话框 */}
       <Dialog open={saveDialogOpen} onClose={handleSaveDialogClose} maxWidth="sm" fullWidth>

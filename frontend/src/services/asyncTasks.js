@@ -23,14 +23,20 @@ export const getAsyncTask = async (taskId) => {
 };
 
 // 提交异步查询
-export const submitAsyncQuery = async (sql) => {
+export const submitAsyncQuery = async (payload) => {
   try {
+    const requestBody = typeof payload === 'string' ? { sql: payload } : { ...(payload || {}) };
+
+    if (!requestBody.sql || !requestBody.sql.trim()) {
+      throw new Error('缺少SQL查询语句');
+    }
+
     const response = await fetch('/api/async_query', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ sql }),
+      body: JSON.stringify(requestBody),
     });
     return await response.json();
   } catch (error) {

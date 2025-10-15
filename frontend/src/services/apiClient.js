@@ -501,9 +501,15 @@ export const getAsyncTask = async (taskId) => {
 };
 
 // 提交异步查询
-export const submitAsyncQuery = async (sql) => {
+export const submitAsyncQuery = async (payload) => {
   try {
-    const response = await apiClient.post('/api/async_query', { sql });
+    const requestBody = typeof payload === 'string' ? { sql: payload } : { ...(payload || {}) };
+
+    if (!requestBody.sql || !requestBody.sql.trim()) {
+      throw new Error('缺少SQL查询语句');
+    }
+
+    const response = await apiClient.post('/api/async_query', requestBody);
     return response.data;
   } catch (error) {
     throw error;
