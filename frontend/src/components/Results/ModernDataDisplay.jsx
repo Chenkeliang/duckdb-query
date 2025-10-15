@@ -1710,7 +1710,17 @@ const ModernDataDisplay = ({
                       gap: 1.5
                     }}
                   >
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
+                    <Stack
+                      direction={{ xs: 'column', md: 'row' }}
+                      spacing={2}
+                      alignItems={{ xs: 'stretch', md: 'center' }}
+                      sx={{
+                        '& .MuiFormControl-root': { height: 40 },
+                        '& .MuiInputBase-root': { height: 40 },
+                        '& .MuiToggleButtonGroup-root': { height: 40 },
+                        '& .MuiToggleButton-root': { height: 40 },
+                      }}
+                    >
                       <FormControl fullWidth size="small">
                         <InputLabel>列名</InputLabel>
                         <Select
@@ -1731,6 +1741,7 @@ const ModernDataDisplay = ({
                         exclusive
                         size="small"
                         onChange={(_, value) => value && handleFilterModeChange(index, value)}
+                        sx={{ height: 40, '& .MuiToggleButton-root': { height: 40 } }}
                       >
                         <ToggleButton value="values">列表筛选</ToggleButton>
                         <ToggleButton value="condition">条件筛选</ToggleButton>
@@ -1740,7 +1751,7 @@ const ModernDataDisplay = ({
                         color="error"
                         onClick={() => handleRemoveFilterRow(index)}
                         disabled={draftFilters.length === 1}
-                        sx={{ alignSelf: 'flex-start' }}
+                        sx={{ alignSelf: 'flex-start', height: 40, width: 40 }}
                       >
                         <Trash2 size={18} />
                       </IconButton>
@@ -1774,29 +1785,38 @@ const ModernDataDisplay = ({
                             }}
                           />
 
-                          <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" onClick={() => handleSelectAllValues(index)}>全选</Button>
-                            <Button size="small" variant="outlined" onClick={() => handleClearAllValues(index)}>清空</Button>
-                            <Button size="small" variant="outlined" onClick={() => handleInvertValues(index)}>反选</Button>
-                          </Stack>
+                          <Stack
+                            direction={{ xs: 'column', sm: 'row' }}
+                            spacing={1}
+                            alignItems={{ xs: 'stretch', sm: 'center' }}
+                            sx={{ '& .MuiButton-root': { minWidth: 68, height: 32 } }}
+                          >
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <Button size="small" variant="text" onClick={() => handleSelectAllValues(index)}>全选</Button>
+                              <Button size="small" variant="text" onClick={() => handleClearAllValues(index)}>清空</Button>
+                              <Button size="small" variant="text" onClick={() => handleInvertValues(index)}>反选</Button>
+                            </Stack>
 
-                          <Stack direction="row" spacing={1}>
-                            <Button
-                              size="small"
-                              variant="text"
-                              onClick={() => handleSelectDuplicates(index, filter.field)}
-                              disabled={!distinctInfo || distinctInfo.duplicateKeys.length === 0}
-                            >
-                              重复项
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="text"
-                              onClick={() => handleSelectUnique(index, filter.field)}
-                              disabled={!distinctInfo || distinctInfo.uniqueKeys.length === 0}
-                            >
-                              唯一项
-                            </Button>
+                            <Divider flexItem orientation={{ xs: 'horizontal', sm: 'vertical' }} sx={{ mx: { sm: 1 } }} />
+
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <Button
+                                size="small"
+                                variant="text"
+                                onClick={() => handleSelectDuplicates(index, filter.field)}
+                                disabled={!distinctInfo || distinctInfo.duplicateKeys.length === 0}
+                              >
+                                重复项
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="text"
+                                onClick={() => handleSelectUnique(index, filter.field)}
+                                disabled={!distinctInfo || distinctInfo.uniqueKeys.length === 0}
+                              >
+                                唯一项
+                              </Button>
+                            </Stack>
                           </Stack>
                         </Stack>
 
