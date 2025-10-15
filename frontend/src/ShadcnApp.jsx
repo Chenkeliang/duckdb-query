@@ -327,7 +327,7 @@ const ShadcnApp = () => {
 
             if (nonNullValues.length > 0) {
               const literals = nonNullValues
-                .map((item) => (isNumericValue(item) ? item : `'${escapeLiteralValue(item)}'`))
+                .map((item) => `'${escapeLiteralValue(item)}'`)
                 .join(", ");
               parts.push(`${fieldExpr} IN (${literals})`);
             }
@@ -354,7 +354,7 @@ const ShadcnApp = () => {
 
             if (nonNullValues.length > 0) {
               const literals = nonNullValues
-                .map((item) => (isNumericValue(item) ? item : `'${escapeLiteralValue(item)}'`))
+                .map((item) => `'${escapeLiteralValue(item)}'`)
                 .join(", ");
               parts.push(`${fieldExpr} NOT IN (${literals})`);
             }
