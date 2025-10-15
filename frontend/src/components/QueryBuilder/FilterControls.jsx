@@ -47,6 +47,7 @@ const FilterControls = ({
     value: '',
     value2: '', // 用于BETWEEN操作
     values: [], // 用于IN操作
+    valuesInput: '',
     logicOperator: LogicOperator.AND
   });
 
@@ -61,7 +62,7 @@ const FilterControls = ({
     const needsSecondValue = newFilter.operator === FilterOperator.BETWEEN;
     const needsMultipleValues = [FilterOperator.IN, FilterOperator.NOT_IN].includes(newFilter.operator);
     const normalizedValues = needsMultipleValues
-      ? parseFilterValueList(newFilter.values)
+      ? parseFilterValueList(newFilter.valuesInput || newFilter.values)
       : [];
 
     if (needsValue && !newFilter.value && !needsMultipleValues) {
@@ -83,6 +84,7 @@ const FilterControls = ({
       value: newFilter.value,
       value2: newFilter.value2,
       values: [...normalizedValues],
+      valuesInput: newFilter.valuesInput,
       logicOperator: filters.length > 0 ? newFilter.logicOperator : LogicOperator.AND
     };
 
@@ -95,6 +97,7 @@ const FilterControls = ({
       value: '',
       value2: '',
       values: [],
+      valuesInput: '',
       logicOperator: LogicOperator.AND
     });
   };
@@ -115,6 +118,7 @@ const FilterControls = ({
           updated.value = '';
           updated.value2 = '';
           updated.values = [];
+          updated.valuesInput = '';
         }
 
         return updated;
@@ -232,16 +236,19 @@ const FilterControls = ({
 
       case FilterOperator.IN:
       case FilterOperator.NOT_IN: {
-        const valueList = Array.isArray(filterData?.values)
-          ? filterData.values
-          : parseFilterValueList(filterData?.value || "");
+        const inputValue = filterData?.valuesInput ?? (
+          Array.isArray(filterData?.values)
+            ? filterData.values.join(', ')
+            : ''
+        );
         return (
           <TextField
             size="small"
-            value={valueList.join(', ')}
+            value={inputValue}
             onChange={(e) => {
               const values = parseFilterValueList(e.target.value);
               updateValue('values', values);
+              updateValue('valuesInput', e.target.value);
             }}
             disabled={disabled}
             placeholder="值1, 值2, 值3..."
@@ -389,7 +396,8 @@ const FilterControls = ({
                   operator: '', // 重置操作符
                   value: '',
                   value2: '',
-                  values: []
+                  values: [],
+                  valuesInput: ''
                 }))}
                 disabled={disabled}
                 sx={{
@@ -428,7 +436,8 @@ const FilterControls = ({
                   operator: e.target.value,
                   value: '',
                   value2: '',
-                  values: []
+                  values: [],
+                  valuesInput: ''
                 }))}
                 disabled={disabled || !newFilter.column}
                 sx={{

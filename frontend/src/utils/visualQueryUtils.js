@@ -307,7 +307,7 @@ function formatValueForColumn(value, columnInfo) {
 
   const stringValue = String(value);
   const trimmed = stringValue.trim();
-  const normalizedType = columnInfo?.normalizedType || "string";
+  const normalizedType = columnInfo?.normalizedType || "unknown";
 
   if (normalizedType === "number") {
     if (NUMERIC_VALUE_REGEX.test(trimmed)) {
@@ -318,6 +318,8 @@ function formatValueForColumn(value, columnInfo) {
     if (!Number.isNaN(numeric)) {
       return { literal: String(numeric), isNull: false };
     }
+
+    return { literal: escapeSqlLiteral(stringValue), isNull: false };
   }
 
   if (normalizedType === "boolean") {
@@ -332,13 +334,25 @@ function formatValueForColumn(value, columnInfo) {
     return { literal: escapeSqlLiteral(trimmed), isNull: false };
   }
 
-  const fallbackBoolean = normalizeBooleanToken(trimmed);
-  if (fallbackBoolean !== null) {
-    return { literal: fallbackBoolean ? "TRUE" : "FALSE", isNull: false };
+  if (normalizedType === "json") {
+    return { literal: escapeSqlLiteral(stringValue), isNull: false };
   }
 
-  if (NUMERIC_VALUE_REGEX.test(trimmed)) {
-    return { literal: trimmed, isNull: false };
+  if (normalizedType === "string") {
+    return { literal: escapeSqlLiteral(stringValue), isNull: false };
+  }
+
+  if (normalizedType === "unknown") {
+    const boolValue = normalizeBooleanToken(trimmed);
+    if (boolValue !== null) {
+      return { literal: boolValue ? "TRUE" : "FALSE", isNull: false };
+    }
+
+    if (NUMERIC_VALUE_REGEX.test(trimmed)) {
+      return { literal: trimmed, isNull: false };
+    }
+
+    return { literal: escapeSqlLiteral(stringValue), isNull: false };
   }
 
   return { literal: escapeSqlLiteral(stringValue), isNull: false };
