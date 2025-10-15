@@ -133,6 +133,33 @@ export function parseFilterValueList(input) {
   );
 }
 
+export function resolveFilterValues(filter) {
+  if (!filter) {
+    return [];
+  }
+
+  if (typeof filter.valuesInput === "string") {
+    const parsed = parseFilterValueList(filter.valuesInput);
+    if (parsed.length > 0) {
+      return parsed;
+    }
+  }
+
+  if (Array.isArray(filter.values) && filter.values.length > 0) {
+    return filter.values;
+  }
+
+  if (Array.isArray(filter.value) && filter.value.length > 0) {
+    return filter.value.filter((item) => item !== null && item !== undefined && item !== "");
+  }
+
+  if (filter.value !== undefined && filter.value !== null && filter.value !== "") {
+    return parseFilterValueList(filter.value);
+  }
+
+  return [];
+}
+
 function normalizeBooleanToken(value) {
   if (value === null || value === undefined) {
     return null;
@@ -358,10 +385,8 @@ function formatValueForColumn(value, columnInfo) {
   return { literal: escapeSqlLiteral(stringValue), isNull: false };
 }
 
-function buildInCondition(column, values, columnInfo, operator) {
-  const effectiveValues = Array.isArray(values)
-    ? values
-    : parseFilterValueList(values);
+function buildInCondition(column, filter, columnInfo, operator) {
+  const effectiveValues = resolveFilterValues(filter);
 
   if (!effectiveValues || effectiveValues.length === 0) {
     return "";
@@ -508,9 +533,7 @@ export const generateSQLPreview = (config, tableName, columns = []) => {
           case FilterOperator.IN: {
             const clause = buildInCondition(
               columnExpression,
-              Array.isArray(filter.values) && filter.values.length > 0
-                ? filter.values
-                : filter.value,
+              filter,
               columnInfo,
               FilterOperator.IN
             );
@@ -522,9 +545,7 @@ export const generateSQLPreview = (config, tableName, columns = []) => {
           case FilterOperator.NOT_IN: {
             const clause = buildInCondition(
               columnExpression,
-              Array.isArray(filter.values) && filter.values.length > 0
-                ? filter.values
-                : filter.value,
+              filter,
               columnInfo,
               FilterOperator.NOT_IN
             );

@@ -27,7 +27,8 @@ import {
   LogicOperator,
   detectColumnType,
   getSuggestedOperators,
-  parseFilterValueList
+  parseFilterValueList,
+  resolveFilterValues
 } from '../../utils/visualQueryUtils';
 
 /**
@@ -127,6 +128,30 @@ const FilterControls = ({
     });
 
     onFiltersChange(updatedFilters);
+  };
+
+  const updateExistingFilterValues = (filterId, rawInput) => {
+    const parsedValues = parseFilterValueList(rawInput);
+    const updatedFilters = filters.map(filter => {
+      if (filter.id !== filterId) {
+        return filter;
+      }
+      return {
+        ...filter,
+        values: parsedValues,
+        valuesInput: rawInput
+      };
+    });
+    onFiltersChange(updatedFilters);
+  };
+
+  const updateNewFilterValues = (rawInput) => {
+    const parsedValues = parseFilterValueList(rawInput);
+    setNewFilter(prev => ({
+      ...prev,
+      valuesInput: rawInput,
+      values: parsedValues
+    }));
   };
 
   // 获取列的可用操作符
@@ -241,15 +266,18 @@ const FilterControls = ({
             ? filterData.values.join(', ')
             : ''
         );
+        const handleMultiValueChange = (rawInput) => {
+          if (isNew) {
+            updateNewFilterValues(rawInput);
+          } else if (filter) {
+            updateExistingFilterValues(filter.id, rawInput);
+          }
+        };
         return (
           <TextField
             size="small"
             value={inputValue}
-            onChange={(e) => {
-              const values = parseFilterValueList(e.target.value);
-              updateValue('values', values);
-              updateValue('valuesInput', e.target.value);
-            }}
+            onChange={(e) => handleMultiValueChange(e.target.value)}
             disabled={disabled}
             placeholder="值1, 值2, 值3..."
             sx={{
@@ -527,7 +555,7 @@ const FilterControls = ({
                             </Typography>
                           ) : filter.operator === FilterOperator.IN || filter.operator === FilterOperator.NOT_IN ? (
                             <Typography variant="body2">
-                              [{filter.values.join(', ')}]
+                              [{resolveFilterValues(filter).join(', ')}]
                             </Typography>
                           ) : ![FilterOperator.IS_NULL, FilterOperator.IS_NOT_NULL].includes(filter.operator) ? (
                             <Typography variant="body2" sx={{ fontWeight: 500 }}>
