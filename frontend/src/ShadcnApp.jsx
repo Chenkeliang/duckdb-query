@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 // 导入Toast上下文
 import { ToastProvider, useToast } from "./contexts/ToastContext";
@@ -73,6 +73,11 @@ const ShadcnApp = () => {
   const [lastFetchTime, setLastFetchTime] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [previewQuery, setPreviewQuery] = useState(""); // 用于预览异步任务结果的查询
+
+  const columnTypeMap = useMemo(
+    () => buildColumnTypeMap(queryContext.initialColumns || queryResults.columns || []),
+    [queryContext.initialColumns, queryResults.columns]
+  );
 
   // 初始数据加载
   useEffect(() => {
@@ -262,50 +267,285 @@ const ShadcnApp = () => {
     return /^-?\d+(\.\d+)?$/.test(trimmed);
   };
 
-  const buildFilterConditions = (filters, sourceType) =>
-    filters
+  const normalizeBooleanValue = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") {
+      if (value === 1) return true;
+      if (value === 0) return false;
+    }
+    const normalized = String(value).trim().toLowerCase();
+    if (["true", "t", "1", "yes", "y"].includes(normalized)) return true;
+    if (["false", "f", "0", "no", "n"].includes(normalized)) return false;
+    return null;
+  };
+
+  const normalizeColumnType = (rawType) => {
+    if (!rawType && rawType !== 0) {
+      return "unknown";
+    }
+    const typeString = String(rawType).toLowerCase();
+
+    if (
+      typeString.includes("int") ||
+      typeString.includes("decimal") ||
+      typeString.includes("numeric") ||
+      typeString.includes("number") ||
+      typeString.includes("real") ||
+      typeString.includes("double") ||
+      typeString.includes("float")
+    ) {
+      return "number";
+    }
+
+    if (typeString.includes("bool")) {
+      return "boolean";
+    }
+
+    if (typeString.includes("timestamp") || typeString.includes("datetime")) {
+      return "datetime";
+    }
+
+    if (typeString.includes("date")) {
+      return "date";
+    }
+
+    if (typeString.includes("time")) {
+      return "time";
+    }
+
+    if (typeString.includes("json")) {
+      return "json";
+    }
+
+    if (
+      typeString.includes("char") ||
+      typeString.includes("string") ||
+      typeString.includes("text") ||
+      typeString.includes("uuid") ||
+      typeString.includes("variant") ||
+      typeString.includes("binary") ||
+      typeString.includes("blob") ||
+      typeString.includes("object")
+    ) {
+      return "string";
+    }
+
+    return "unknown";
+  };
+
+  const buildColumnTypeMap = (columns = []) => {
+    const map = {};
+
+    const registerKey = (key, info) => {
+      if (!key && key !== 0) return;
+      const strKey = String(key);
+      map[strKey] = info;
+      map[strKey.toLowerCase()] = info;
+    };
+
+    if (!Array.isArray(columns)) {
+      return map;
+    }
+
+    columns.forEach((column, index) => {
+      if (column === null || column === undefined) {
+        return;
+      }
+
+      if (typeof column === "string") {
+        const info = { rawType: null, normalizedType: "string" };
+        registerKey(column, info);
+        registerKey(`column_${index}`, info);
+        return;
+      }
+
+      if (typeof column === "object") {
+        const rawType =
+          column.type ||
+          column.dataType ||
+          column.data_type ||
+          column.columnType ||
+          column.column_type ||
+          column.sqlType ||
+          column.dtype ||
+          column.jsType ||
+          column.valueType ||
+          null;
+
+        const normalizedType = normalizeColumnType(rawType);
+        const info = { rawType, normalizedType };
+
+        const candidates = [
+          column.field,
+          column.name,
+          column.column,
+          column.column_name,
+          column.columnName,
+          column.fieldName,
+          column.headerName,
+          column.alias,
+          column.accessor,
+          column.accessorKey,
+          column.key,
+          column.id,
+        ];
+
+        candidates.forEach((candidate) => registerKey(candidate, info));
+
+        if (column.table) {
+          const columnName = column.column || column.field || column.name;
+          if (columnName) {
+            registerKey(`${column.table}.${columnName}`, info);
+          }
+        }
+
+        if (candidates.every((candidate) => candidate === undefined || candidate === null)) {
+          registerKey(`column_${index}`, info);
+        }
+
+        return;
+      }
+
+      // 未知类型，仍按字符串处理
+      const fallbackInfo = { rawType: null, normalizedType: "string" };
+      registerKey(String(column), fallbackInfo);
+    });
+
+    return map;
+  };
+
+  const buildFilterConditions = (filters, sourceType, columnTypes) => {
+    const retrieveColumnInfo = (field) => {
+      if (!field || !columnTypes) return null;
+      const key = String(field);
+
+      if (columnTypes instanceof Map) {
+        let info = columnTypes.get(key) || columnTypes.get(key.toLowerCase());
+        if (!info && key.includes(".")) {
+          const simple = key.split(".").pop();
+          info = columnTypes.get(simple) || columnTypes.get(simple.toLowerCase());
+        }
+        return info || null;
+      }
+
+      const infoDirect = columnTypes[key] || columnTypes[key.toLowerCase()];
+      if (infoDirect) {
+        return infoDirect;
+      }
+
+      if (key.includes(".")) {
+        const simple = key.split(".").pop();
+        return columnTypes[simple] || columnTypes[simple.toLowerCase()] || null;
+      }
+
+      return null;
+    };
+
+    const formatValueForColumn = (value, columnInfo) => {
+      if (value === null || value === undefined) {
+        return { literal: null, isNull: true };
+      }
+
+      const normalizedType = columnInfo?.normalizedType;
+
+      if (normalizedType === "number") {
+        if (typeof value === "number" || typeof value === "bigint") {
+          return { literal: String(value), isNull: false };
+        }
+        const trimmed = String(value).trim();
+        if (trimmed && /^-?\d+(\.\d+)?$/.test(trimmed)) {
+          return { literal: trimmed, isNull: false };
+        }
+      }
+
+      if (normalizedType === "boolean") {
+        const boolValue = normalizeBooleanValue(value);
+        if (boolValue !== null) {
+          return { literal: boolValue ? "TRUE" : "FALSE", isNull: false };
+        }
+      }
+
+      if (
+        normalizedType === "datetime" ||
+        normalizedType === "date" ||
+        normalizedType === "time" ||
+        normalizedType === "json"
+      ) {
+        return { literal: `'${escapeLiteralValue(value)}'`, isNull: false };
+      }
+
+      if (!normalizedType || normalizedType === "unknown") {
+        const boolValue = normalizeBooleanValue(value);
+        if (boolValue !== null) {
+          return { literal: boolValue ? "TRUE" : "FALSE", isNull: false };
+        }
+        if (isNumericValue(value)) {
+          return { literal: String(value), isNull: false };
+        }
+      }
+
+      return { literal: `'${escapeLiteralValue(value)}'`, isNull: false };
+    };
+
+    return filters
       .map((filter) => {
         const fieldExpr = quoteIdentifier(filter.field, sourceType);
         const operator = filter.operator || "equals";
+        const columnInfo = retrieveColumnInfo(filter.field);
 
         switch (operator) {
           case "isNull":
             return `${fieldExpr} IS NULL`;
           case "isNotNull":
             return `${fieldExpr} IS NOT NULL`;
-          case "equals":
-            if (isNumericValue(filter.value)) {
-              return `${fieldExpr} = ${filter.value}`;
+          case "equals": {
+            const { literal, isNull } = formatValueForColumn(filter.value, columnInfo);
+            if (isNull) {
+              return `${fieldExpr} IS NULL`;
             }
-            return `${fieldExpr} = '${escapeLiteralValue(filter.value)}'`;
-          case "notEquals":
-            if (isNumericValue(filter.value)) {
-              return `${fieldExpr} <> ${filter.value}`;
+            if (literal === null) {
+              return null;
             }
-            return `${fieldExpr} <> '${escapeLiteralValue(filter.value)}'`;
+            return `${fieldExpr} = ${literal}`;
+          }
+          case "notEquals": {
+            const { literal, isNull } = formatValueForColumn(filter.value, columnInfo);
+            if (isNull) {
+              return `${fieldExpr} IS NOT NULL`;
+            }
+            if (literal === null) {
+              return null;
+            }
+            return `${fieldExpr} <> ${literal}`;
+          }
           case "greaterThan": {
-            const value = isNumericValue(filter.value)
-              ? filter.value
-              : `'${escapeLiteralValue(filter.value)}'`;
-            return `${fieldExpr} > ${value}`;
+            const { literal, isNull } = formatValueForColumn(filter.value, columnInfo);
+            if (isNull || literal === null) {
+              return null;
+            }
+            return `${fieldExpr} > ${literal}`;
           }
           case "greaterOrEqual": {
-            const value = isNumericValue(filter.value)
-              ? filter.value
-              : `'${escapeLiteralValue(filter.value)}'`;
-            return `${fieldExpr} >= ${value}`;
+            const { literal, isNull } = formatValueForColumn(filter.value, columnInfo);
+            if (isNull || literal === null) {
+              return null;
+            }
+            return `${fieldExpr} >= ${literal}`;
           }
           case "lessThan": {
-            const value = isNumericValue(filter.value)
-              ? filter.value
-              : `'${escapeLiteralValue(filter.value)}'`;
-            return `${fieldExpr} < ${value}`;
+            const { literal, isNull } = formatValueForColumn(filter.value, columnInfo);
+            if (isNull || literal === null) {
+              return null;
+            }
+            return `${fieldExpr} < ${literal}`;
           }
           case "lessOrEqual": {
-            const value = isNumericValue(filter.value)
-              ? filter.value
-              : `'${escapeLiteralValue(filter.value)}'`;
-            return `${fieldExpr} <= ${value}`;
+            const { literal, isNull } = formatValueForColumn(filter.value, columnInfo);
+            if (isNull || literal === null) {
+              return null;
+            }
+            return `${fieldExpr} <= ${literal}`;
           }
           case "contains":
             return `${fieldExpr} LIKE '%${escapeLikeValue(filter.value)}%' ESCAPE '\\'`;
@@ -315,70 +555,61 @@ const ShadcnApp = () => {
             return `${fieldExpr} LIKE '${escapeLikeValue(filter.value)}%' ESCAPE '\\'`;
           case "endsWith":
             return `${fieldExpr} LIKE '%${escapeLikeValue(filter.value)}' ESCAPE '\\'`;
-          case "in": {
-            if (!Array.isArray(filter.value) || filter.value.length === 0) {
-              return null;
-            }
-
-            const values = filter.value;
-            const nonNullValues = values.filter((item) => item !== null && item !== undefined);
-            const hasNull = values.some((item) => item === null || item === undefined);
-            const parts = [];
-
-            if (nonNullValues.length > 0) {
-              const literals = nonNullValues
-                .map((item) => `'${escapeLiteralValue(item)}'`)
-                .join(", ");
-              parts.push(`${fieldExpr} IN (${literals})`);
-            }
-
-            if (hasNull) {
-              parts.push(`${fieldExpr} IS NULL`);
-            }
-
-            if (parts.length === 0) {
-              return null;
-            }
-
-            return parts.length > 1 ? `(${parts.join(" OR ")})` : parts[0];
-          }
+          case "in":
           case "notIn": {
             if (!Array.isArray(filter.value) || filter.value.length === 0) {
               return null;
             }
 
-            const values = filter.value;
-            const nonNullValues = values.filter((item) => item !== null && item !== undefined);
-            const hasNull = values.some((item) => item === null || item === undefined);
-            const parts = [];
+            const formattedValues = filter.value.map((item) =>
+              formatValueForColumn(item, columnInfo)
+            );
+            const nonNullLiterals = formattedValues
+              .filter((item) => !item.isNull && item.literal !== null)
+              .map((item) => item.literal);
+            const hasNull = formattedValues.some((item) => item.isNull);
 
-            if (nonNullValues.length > 0) {
-              const literals = nonNullValues
-                .map((item) => `'${escapeLiteralValue(item)}'`)
-                .join(", ");
-              parts.push(`${fieldExpr} NOT IN (${literals})`);
+            const clauses = [];
+
+            if (nonNullLiterals.length > 0) {
+              clauses.push(
+                `${fieldExpr} ${operator === "notIn" ? "NOT IN" : "IN"} (${nonNullLiterals.join(
+                  ", "
+                )})`
+              );
             }
 
             if (hasNull) {
-              parts.push(`${fieldExpr} IS NOT NULL`);
+              clauses.push(
+                operator === "notIn"
+                  ? `${fieldExpr} IS NOT NULL`
+                  : `${fieldExpr} IS NULL`
+              );
             }
 
-            if (parts.length === 0) {
+            if (clauses.length === 0) {
               return null;
             }
 
-            return parts.length > 1 ? `(${parts.join(" AND ")})` : parts[0];
+            if (clauses.length === 1) {
+              return clauses[0];
+            }
+
+            return operator === "notIn"
+              ? `(${clauses.join(" AND ")})`
+              : `(${clauses.join(" OR ")})`;
           }
           default:
             return null;
         }
       })
       .filter(Boolean);
+  };
 
-  const buildFilteredSql = (baseSql, filters, sourceType) => {
+  const buildFilteredSql = (baseSql, filters, sourceType, columnTypes) => {
     const sanitizedBase = (baseSql || "").trim().replace(/;$/, "");
     const alias = "original_query";
-    const conditions = buildFilterConditions(filters, sourceType);
+    const conditions = buildFilterConditions(filters, sourceType, columnTypes);
     let query = `SELECT * FROM (${sanitizedBase}) AS ${alias}`;
     if (conditions.length > 0) {
       query += ` WHERE ${conditions.join(" AND ")}`;
@@ -449,7 +680,12 @@ const ShadcnApp = () => {
     setResultsLoading(true);
 
     try {
-      const filteredSql = buildFilteredSql(queryContext.baseSql, filters, queryContext.sourceType);
+      const filteredSql = buildFilteredSql(
+        queryContext.baseSql,
+        filters,
+        queryContext.sourceType,
+        columnTypeMap
+      );
       let response;
 
       if (queryContext.datasource && queryContext.sourceType && queryContext.sourceType !== "duckdb") {
