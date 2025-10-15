@@ -1,17 +1,20 @@
 import {
   Box,
   Chip,
+  IconButton,
   Paper,
   Table,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
   useTheme
 } from '@mui/material';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList as List } from 'react-window';
+import { Filter } from 'lucide-react';
 
 const VirtualTable = ({
   data = [],
@@ -20,7 +23,9 @@ const VirtualTable = ({
   rowHeight = 52,
   onRowClick,
   loading = false,
-  autoRowHeight = true // 新增自适应行高选项
+  autoRowHeight = true, // 新增自适应行高选项
+  columnValueFilters = {},
+  onOpenColumnFilterMenu
 }) => {
   const theme = useTheme();
   const containerRef = useRef(null);
@@ -274,7 +279,7 @@ const VirtualTable = ({
                   minWidth: finalColumnWidths[index],
                   maxWidth: finalColumnWidths[index],
                   fontWeight: 'bold',
-                  backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                  backgroundColor: columnValueFilters?.[column.field] ? '#e6ebf4' : 'rgba(0, 0, 0, 0.04)',
                   position: 'sticky',
                   top: 0,
                   zIndex: 1,
@@ -284,16 +289,40 @@ const VirtualTable = ({
                   borderBottom: '2px solid rgba(0, 0, 0, 0.12)'
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {column.headerName || column.field}
-                  {column.type && (
-                    <Chip
-                      label={column.type}
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, overflow: 'hidden' }}>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{
+                        fontWeight: 600,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {column.headerName || column.field}
+                    </Typography>
+                    {column.type && (
+                      <Chip
+                        label={column.type}
+                        size="small"
+                        variant="outlined"
+                        color="primary"
+                      />
+                    )}
+                  </Box>
+                  <Tooltip title="列筛选">
+                    <IconButton
                       size="small"
-                      variant="outlined"
-                      color="primary"
-                    />
-                  )}
+                      color={columnValueFilters?.[column.field] ? 'primary' : 'default'}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenColumnFilterMenu?.(column.field, event.currentTarget);
+                      }}
+                    >
+                      <Filter size={16} />
+                    </IconButton>
+                  </Tooltip>
                 </Box>
               </TableCell>
             ))}

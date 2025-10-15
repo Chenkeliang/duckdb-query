@@ -5,7 +5,6 @@ import {
   Card,
   CardContent,
   Chip,
-  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -33,10 +32,9 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import { Eye, EyeOff, Filter, List, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X, SlidersHorizontal, Plus, Trash2, ChevronDown } from 'lucide-react';
+import { Eye, EyeOff, Filter, List, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X, SlidersHorizontal, Plus, Trash2 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import QuickCharts from '../DataVisualization/QuickCharts';
 import StableTable from '../StableTable';
 import VirtualTable from '../VirtualTable/VirtualTable';
 
@@ -64,6 +62,58 @@ const makeValueKey = (value) => {
     }
   }
   return `str:${String(value)}`;
+};
+
+const keyToReadableLabel = (key) => {
+  if (key === NULL_KEY) {
+    return 'NULL';
+  }
+  if (typeof key !== 'string') {
+    return String(key);
+  }
+  const separatorIndex = key.indexOf(':');
+  if (separatorIndex === -1) {
+    return key;
+  }
+  return key.substring(separatorIndex + 1);
+};
+
+const keyToRawValue = (key) => {
+  if (key === NULL_KEY) {
+    return null;
+  }
+  if (typeof key !== 'string') {
+    return key;
+  }
+  const separatorIndex = key.indexOf(':');
+  if (separatorIndex === -1) {
+    return key;
+  }
+  const type = key.substring(0, separatorIndex);
+  const raw = key.substring(separatorIndex + 1);
+
+  switch (type) {
+    case 'number':
+      return Number(raw);
+    case 'boolean':
+      return raw === 'true';
+    case 'bigint':
+      try {
+        return BigInt(raw);
+      } catch (error) {
+        return raw;
+      }
+    case 'date':
+      return new Date(raw);
+    case 'obj':
+      try {
+        return JSON.parse(raw);
+      } catch (error) {
+        return raw;
+      }
+    default:
+      return raw;
+  }
 };
 
 const formatValueLabel = (value) => {
@@ -114,8 +164,14 @@ const ModernDataDisplay = ({
   const [renderMode, setRenderMode] = useState('agGrid'); // 'agGrid' 或 'virtual'
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [draftFilters, setDraftFilters] = useState([]);
-  const [visualExpanded, setVisualExpanded] = useState(false);
   const [valueSearchMap, setValueSearchMap] = useState({});
+  const [columnValueFilters, setColumnValueFilters] = useState({});
+  const [columnFilterAnchorEl, setColumnFilterAnchorEl] = useState(null);
+  const [columnFilterField, setColumnFilterField] = useState(null);
+  const [columnFilterSearch, setColumnFilterSearch] = useState('');
+  const [columnFilterIncludeMode, setColumnFilterIncludeMode] = useState('include');
+  const [columnFilterSelectedKeys, setColumnFilterSelectedKeys] = useState([]);
+  const [columnFilterHasCustomSelection, setColumnFilterHasCustomSelection] = useState(false);
 
   // 保存到表相关状态
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -245,23 +301,53 @@ const ModernDataDisplay = ({
     }
   }, [filterDialogOpen, draftFilters.length]);
 
+  const columnFilterEntries = useMemo(() => {
+    return Object.entries(columnValueFilters).filter(([, config]) => config && Array.isArray(config.selectedKeys));
+  }, [columnValueFilters]);
+
+  const columnFilteredData = useMemo(() => {
+    if (!columnFilterEntries.length) {
+      return data;
+    }
+
+    return data.filter((row) => {
+      return columnFilterEntries.every(([field, config]) => {
+        const selectedKeys = Array.isArray(config.selectedKeys) ? config.selectedKeys : [];
+        const selectionSet = new Set(selectedKeys);
+        const valueKey = makeValueKey(row[field]);
+
+        if (config.includeMode === 'exclude') {
+          if (selectionSet.size === 0) {
+            return true;
+          }
+          return !selectionSet.has(valueKey);
+        }
+
+        if (selectionSet.size === 0) {
+          return false;
+        }
+        return selectionSet.has(valueKey);
+      });
+    });
+  }, [data, columnFilterEntries]);
+
   // 过滤和搜索数据
   const filteredData = useMemo(() => {
-    if (!searchText) return data;
+    if (!searchText) return columnFilteredData;
 
-    return data.filter(row =>
+    return columnFilteredData.filter(row =>
       Object.values(row).some(value =>
         String(value).toLowerCase().includes(searchText.toLowerCase())
       )
     );
-  }, [data, searchText]);
+  }, [columnFilteredData, searchText]);
 
   const distinctValueMap = useMemo(() => {
-    if (!filteredData || filteredData.length === 0 || normalizedColumns.length === 0) {
+    if (!columnFilteredData || columnFilteredData.length === 0 || normalizedColumns.length === 0) {
       return {};
     }
 
-    const sample = filteredData.slice(0, DISTINCT_SAMPLE_LIMIT);
+    const sample = columnFilteredData.slice(0, DISTINCT_SAMPLE_LIMIT);
     const result = {};
 
     normalizedColumns.forEach((column) => {
@@ -299,7 +385,159 @@ const ModernDataDisplay = ({
     });
 
     return result;
-  }, [filteredData, normalizedColumns]);
+  }, [columnFilteredData, normalizedColumns]);
+
+  React.useEffect(() => {
+    if (!columnFilterAnchorEl || !columnFilterField) {
+      return;
+    }
+
+    const info = distinctValueMap[columnFilterField];
+    const existing = columnValueFilters[columnFilterField];
+
+    if (existing) {
+      setColumnFilterIncludeMode(existing.includeMode || 'include');
+      setColumnFilterSelectedKeys(Array.isArray(existing.selectedKeys) ? [...existing.selectedKeys] : []);
+      setColumnFilterHasCustomSelection(true);
+    } else {
+      const allKeys = info ? info.options.map(option => option.key) : [];
+      setColumnFilterIncludeMode('include');
+      setColumnFilterSelectedKeys(allKeys);
+      setColumnFilterHasCustomSelection(false);
+    }
+
+    setColumnFilterSearch('');
+  }, [columnFilterAnchorEl, columnFilterField, distinctValueMap, columnValueFilters]);
+
+  React.useEffect(() => {
+    setColumnValueFilters(prev => {
+      const validFields = new Set(normalizedColumns.map(column => column.field));
+      const entries = Object.entries(prev).filter(([field]) => validFields.has(field));
+      if (entries.length === Object.keys(prev).length) {
+        return prev;
+      }
+      return entries.reduce((acc, [field, config]) => {
+        acc[field] = config;
+        return acc;
+      }, {});
+    });
+  }, [normalizedColumns]);
+
+  const activeColumnFilterInfo = columnFilterField ? distinctValueMap[columnFilterField] : null;
+
+  const handleColumnFilterToggleKey = (key, checked) => {
+    setColumnFilterSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return Array.from(next);
+    });
+    setColumnFilterHasCustomSelection(true);
+  };
+
+  const handleColumnFilterSelectAll = () => {
+    const allKeys = activeColumnFilterInfo ? activeColumnFilterInfo.options.map(option => option.key) : [];
+    setColumnFilterSelectedKeys(allKeys);
+    setColumnFilterHasCustomSelection(true);
+  };
+
+  const handleColumnFilterClearAll = () => {
+    setColumnFilterSelectedKeys([]);
+    setColumnFilterHasCustomSelection(true);
+  };
+
+  const handleColumnFilterInvert = () => {
+    const info = activeColumnFilterInfo;
+    if (!info) return;
+    const allKeys = info.options.map(option => option.key);
+    const current = new Set(columnFilterSelectedKeys);
+    const inverted = allKeys.filter(key => !current.has(key));
+    setColumnFilterSelectedKeys(inverted);
+    setColumnFilterHasCustomSelection(true);
+  };
+
+  const handleColumnFilterSelectDuplicates = () => {
+    if (!activeColumnFilterInfo) return;
+    setColumnFilterSelectedKeys(activeColumnFilterInfo.duplicateKeys || []);
+    setColumnFilterHasCustomSelection(true);
+  };
+
+  const handleColumnFilterSelectUnique = () => {
+    if (!activeColumnFilterInfo) return;
+    setColumnFilterSelectedKeys(activeColumnFilterInfo.uniqueKeys || []);
+    setColumnFilterHasCustomSelection(true);
+  };
+
+  const handleColumnFilterIncludeModeChange = (mode) => {
+    if (!mode || mode === columnFilterIncludeMode) return;
+
+    const existingFilter = columnFilterField ? columnValueFilters[columnFilterField] : null;
+
+    if (!existingFilter) {
+      if (mode === 'exclude') {
+        setColumnFilterSelectedKeys([]);
+      } else if (mode === 'include' && activeColumnFilterInfo) {
+        setColumnFilterSelectedKeys(activeColumnFilterInfo.options.map(option => option.key));
+      }
+      setColumnFilterHasCustomSelection(false);
+    } else {
+      setColumnFilterHasCustomSelection(true);
+    }
+
+    setColumnFilterIncludeMode(mode);
+  };
+
+  const handleColumnFilterApply = () => {
+    if (!columnFilterField) {
+      handleCloseColumnFilterMenu();
+      return;
+    }
+
+    const info = activeColumnFilterInfo;
+    const allKeys = info ? info.options.map(option => option.key) : [];
+    const selected = Array.from(new Set(columnFilterSelectedKeys));
+
+    if (columnFilterIncludeMode === 'include') {
+      if (!columnFilterHasCustomSelection || selected.length === allKeys.length) {
+        handleClearColumnValueFilter(columnFilterField);
+      } else {
+        handleColumnValueFilterChange(columnFilterField, 'include', selected);
+      }
+    } else {
+      if (!columnFilterHasCustomSelection || selected.length === 0) {
+        handleClearColumnValueFilter(columnFilterField);
+      } else {
+        handleColumnValueFilterChange(columnFilterField, 'exclude', selected);
+      }
+    }
+
+    handleCloseColumnFilterMenu();
+  };
+
+  const handleColumnFilterClear = () => {
+    if (columnFilterField) {
+      handleClearColumnValueFilter(columnFilterField);
+    }
+    handleCloseColumnFilterMenu();
+  };
+
+  const columnFilterOptions = activeColumnFilterInfo ? activeColumnFilterInfo.options : [];
+
+  const filteredColumnFilterOptions = React.useMemo(() => {
+    if (!columnFilterSearch) {
+      return columnFilterOptions;
+    }
+    const lower = columnFilterSearch.toLowerCase();
+    return columnFilterOptions.filter(option => option.label.toLowerCase().includes(lower));
+  }, [columnFilterOptions, columnFilterSearch]);
+
+  const columnFilterSelectionSet = React.useMemo(() => new Set(columnFilterSelectedKeys), [columnFilterSelectedKeys]);
+  const activeColumnLabel = columnFilterField
+    ? (normalizedColumns.find(col => col.field === columnFilterField)?.headerName || columnFilterField)
+    : '';
 
   // 分页数据
   const paginatedData = useMemo(() => {
@@ -432,6 +670,19 @@ const ModernDataDisplay = ({
     setColumnMenuAnchor(null);
   };
 
+  const handleOpenColumnFilterMenu = (field, anchorEl) => {
+    setColumnFilterField(field);
+    setColumnFilterAnchorEl(anchorEl);
+  };
+
+  const handleCloseColumnFilterMenu = () => {
+    setColumnFilterAnchorEl(null);
+    setColumnFilterField(null);
+    setColumnFilterSearch('');
+    setColumnFilterSelectedKeys([]);
+    setColumnFilterHasCustomSelection(false);
+  };
+
 
   const handleColumnToggle = (columnField) => {
     const newVisibleColumns = new Set(visibleColumns);
@@ -445,6 +696,32 @@ const ModernDataDisplay = ({
 
   const handleClearSearch = () => {
     setSearchText('');
+    setCurrentPage(1);
+  };
+
+  const handleColumnValueFilterChange = (field, includeMode, selectedKeys) => {
+    const uniqueKeys = Array.isArray(selectedKeys) ? Array.from(new Set(selectedKeys)) : [];
+    setColumnValueFilters(prev => ({
+      ...prev,
+      [field]: {
+        includeMode: includeMode || 'include',
+        selectedKeys: uniqueKeys,
+      }
+    }));
+    setCurrentPage(1);
+  };
+
+  const handleClearColumnValueFilter = (field) => {
+    setColumnValueFilters(prev => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+    setCurrentPage(1);
+  };
+
+  const handleClearAllColumnValueFilters = () => {
+    setColumnValueFilters({});
     setCurrentPage(1);
   };
 
@@ -761,16 +1038,26 @@ const ModernDataDisplay = ({
 
         const uniqueSelectedKeys = Array.from(new Set(selectedKeysArray));
 
+        if (!hasDefinedSelection && includeMode === 'include') {
+          return;
+        }
+
+        if (!hasDefinedSelection && includeMode === 'exclude') {
+          return;
+        }
+
         if (includeMode === 'include' && uniqueSelectedKeys.length === allKeys.length) {
           return;
         }
 
-        if (includeMode === 'exclude' && uniqueSelectedKeys.length === 0) {
-          return;
-        }
-
-        const entries = getDistinctEntriesByKeys(filter.field, uniqueSelectedKeys);
-        const values = entries.map(entry => (entry.value === undefined ? null : entry.value));
+        const values = uniqueSelectedKeys.map((key) => {
+          const entry = distinctValueMap[filter.field]?.keyMap?.[key];
+          if (entry) {
+            return entry.value === undefined ? null : entry.value;
+          }
+          const rawValue = keyToRawValue(key);
+          return rawValue === undefined ? null : rawValue;
+        });
 
         normalized.push({
           field: filter.field,
@@ -973,9 +1260,34 @@ const ModernDataDisplay = ({
             )}
           </Stack>
 
-          {activeFilters && activeFilters.length > 0 && (
+          {(columnFilterEntries.length > 0 || (activeFilters && activeFilters.length > 0)) && (
             <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {activeFilters.map((filter, index) => {
+              {columnFilterEntries.map(([field, config]) => {
+                const column = normalizedColumns.find(col => col.field === field);
+                const fieldLabel = column?.headerName || field;
+                const entries = getDistinctEntriesByKeys(field, config.selectedKeys || []);
+                const labels = entries.length > 0
+                  ? entries.map(entry => entry.label)
+                  : (config.selectedKeys || []).map(key => keyToReadableLabel(key));
+                const preview = labels.slice(0, 3).join(', ');
+                const totalCount = config.selectedKeys ? config.selectedKeys.length : 0;
+                const valueLabel = totalCount > 3 ? `${preview} 等${totalCount}项` : preview;
+                const modeLabel = config.includeMode === 'exclude' ? '排除' : '包含';
+                const chipLabel = [fieldLabel, modeLabel, valueLabel].filter(Boolean).join(' ');
+
+                return (
+                  <Chip
+                    key={`column-filter-${field}`}
+                    label={chipLabel || `${fieldLabel} ${modeLabel}`}
+                    onDelete={() => handleClearColumnValueFilter(field)}
+                    color="default"
+                    variant="outlined"
+                    size="small"
+                  />
+                );
+              })}
+
+              {activeFilters?.map((filter, index) => {
                 const fieldLabel =
                   normalizedColumns.find(col => col.field === filter.field)?.headerName || filter.field;
                 const operatorLabel = operatorLabelMap[filter.operator] || filter.operator;
@@ -1003,55 +1315,32 @@ const ModernDataDisplay = ({
                   />
                 );
               })}
-              <Button
-                size="small"
-                variant="text"
-                onClick={handleClearFilters}
-                sx={{ textTransform: 'none' }}
-              >
-                清除所有筛选
-              </Button>
+
+              {columnFilterEntries.length > 0 && (
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={handleClearAllColumnValueFilters}
+                  sx={{ textTransform: 'none' }}
+                >
+                  清除列筛选
+                </Button>
+              )}
+
+              {activeFilters && activeFilters.length > 0 && (
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={handleClearFilters}
+                  sx={{ textTransform: 'none' }}
+                >
+                  清除所有筛选
+                </Button>
+              )}
             </Box>
           )}
         </CardContent>
       </Card>
-
-      {isVisualQuery && (
-        <Card sx={{ mb: 2 }}>
-          <CardContent sx={{ pb: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Table size={24} color="#3b82f6" />
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    可视化分析
-                    <Chip label="单表分析" size="small" color="primary" variant="outlined" />
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    基于图形化查询的结果，可快速选择字段生成可视图表（预览最多 {DISTINCT_SAMPLE_LIMIT.toLocaleString()} 行数据）
-                  </Typography>
-                </Box>
-              </Box>
-
-              <IconButton onClick={() => setVisualExpanded(expanded => !expanded)}>
-                <ChevronDown
-                  size={20}
-                  style={{
-                    transform: visualExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                    transition: 'transform 0.2s ease'
-                  }}
-                />
-              </IconButton>
-            </Box>
-
-            <Collapse in={visualExpanded} timeout="auto" unmountOnExit>
-              <Box sx={{ mt: 2 }}>
-                <QuickCharts data={filteredData} columns={normalizedColumns} />
-              </Box>
-            </Collapse>
-          </CardContent>
-        </Card>
-      )}
 
       {/* 数据表格 */}
       <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -1084,6 +1373,8 @@ const ModernDataDisplay = ({
               height={600}
               loading={loading}
               autoRowHeight={true}
+              columnValueFilters={columnValueFilters}
+              onOpenColumnFilterMenu={handleOpenColumnFilterMenu}
             />
           ) : (
             <StableTable
@@ -1092,6 +1383,8 @@ const ModernDataDisplay = ({
               pageSize={pageSize}
               height={600}
               originalDatasource={originalDatasource}
+              columnValueFilters={columnValueFilters}
+              onOpenColumnFilterMenu={handleOpenColumnFilterMenu}
             />
           )}
         </Box>
@@ -1120,6 +1413,160 @@ const ModernDataDisplay = ({
         )}
       </Card>
 
+
+      {/* 列头本地筛选菜单 */}
+      <Menu
+        anchorEl={columnFilterAnchorEl}
+        open={Boolean(columnFilterAnchorEl)}
+        onClose={handleCloseColumnFilterMenu}
+        anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
+        transformOrigin={{ horizontal: 'left', vertical: 'top' }}
+        PaperProps={{
+          sx: {
+            width: 340,
+            maxHeight: 520,
+            p: 2,
+          },
+        }}
+      >
+        <Stack spacing={1.5} sx={{ width: '100%' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              {activeColumnLabel || '列筛选'}
+              {activeColumnFilterInfo && (
+                <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+                  预览 {activeColumnFilterInfo.options.length} 项（共 {activeColumnFilterInfo.total} 条记录）
+                </Typography>
+              )}
+            </Typography>
+            <Button
+              size="small"
+              onClick={handleColumnFilterClear}
+              disabled={!columnFilterField || !columnValueFilters[columnFilterField]}
+            >
+              清除
+            </Button>
+          </Box>
+
+          <ToggleButtonGroup
+            value={columnFilterIncludeMode}
+            exclusive
+            size="small"
+            onChange={(_, value) => handleColumnFilterIncludeModeChange(value)}
+          >
+            <ToggleButton value="include">包含</ToggleButton>
+            <ToggleButton value="exclude">排除</ToggleButton>
+          </ToggleButtonGroup>
+
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="搜索值..."
+              value={columnFilterSearch}
+              onChange={(e) => setColumnFilterSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search size={16} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <Stack direction="row" spacing={1}>
+              <Button size="small" variant="outlined" onClick={handleColumnFilterSelectAll}>全选</Button>
+              <Button size="small" variant="outlined" onClick={handleColumnFilterClearAll}>清空</Button>
+              <Button size="small" variant="outlined" onClick={handleColumnFilterInvert}>反选</Button>
+            </Stack>
+          </Stack>
+
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              variant="text"
+              onClick={handleColumnFilterSelectDuplicates}
+              disabled={!activeColumnFilterInfo || (activeColumnFilterInfo.duplicateKeys || []).length === 0}
+            >
+              重复项
+            </Button>
+            <Button
+              size="small"
+              variant="text"
+              onClick={handleColumnFilterSelectUnique}
+              disabled={!activeColumnFilterInfo || (activeColumnFilterInfo.uniqueKeys || []).length === 0}
+            >
+              唯一项
+            </Button>
+          </Stack>
+
+          <Box
+            sx={{
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 2,
+              maxHeight: 240,
+              overflowY: 'auto',
+              p: 1,
+              backgroundColor: '#fafbff'
+            }}
+          >
+            {filteredColumnFilterOptions.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 0.5 }}>
+                暂无可用值
+              </Typography>
+            ) : (
+              filteredColumnFilterOptions.map(option => {
+                const checked = columnFilterSelectionSet.has(option.key);
+                return (
+                  <FormControlLabel
+                    key={option.key}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      m: 0,
+                      pl: 1,
+                    }}
+                    control={(
+                      <Checkbox
+                        size="small"
+                        checked={checked}
+                        onChange={(event) => handleColumnFilterToggleKey(option.key, event.target.checked)}
+                      />
+                    )}
+                    label={
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, width: '100%' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            flex: 1,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {option.label}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {option.count}
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                );
+              })
+            )}
+          </Box>
+
+          <Stack direction="row" spacing={1} justifyContent="flex-end">
+            <Button onClick={handleCloseColumnFilterMenu}>取消</Button>
+            <Button onClick={handleColumnFilterClear}>清除筛选</Button>
+            <Button variant="contained" onClick={handleColumnFilterApply}>
+              应用
+            </Button>
+          </Stack>
+        </Stack>
+      </Menu>
 
       {/* 列设置菜单 */}
       <Menu

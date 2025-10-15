@@ -1,6 +1,7 @@
 import {
   Box,
   Chip,
+  IconButton,
   Pagination,
   Paper,
   Table,
@@ -10,17 +11,21 @@ import {
   TableHead,
   TableRow,
   TableSortLabel,
+  Tooltip,
   Typography,
   useTheme
 } from '@mui/material';
 import React, { useMemo, useState } from 'react';
+import { Filter } from 'lucide-react';
 
 const StableTable = ({
   data = [],
   columns = [],
   pageSize = 20,
   height = 600,
-  originalDatasource = null
+  originalDatasource = null,
+  columnValueFilters = {},
+  onOpenColumnFilterMenu
 }) => {
   const theme = useTheme();
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -147,66 +152,72 @@ const StableTable = ({
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              {columns.map((column) => (
-                <TableCell
-                  key={column.field}
-                  sx={{
-                    backgroundColor: '#f2f4f8',
-                    fontWeight: 600,
-                    fontSize: '0.875rem',
-                    borderBottom: `2px solid ${theme.palette.divider}`,
-                    minWidth: column.minWidth || 120,
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    '&:hover': {
-                      backgroundColor: '#e9edf5',
-                    },
-                    // 横向显示表头文字
-                    writingMode: 'horizontal-tb',
-                    textOrientation: 'mixed',
-                    // 处理长文本
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    // 进一步减少表头高度
-                    height: '40px',
-                    lineHeight: '40px',
-                    verticalAlign: 'middle',
-                    paddingTop: '0px',
-                    paddingBottom: '0px',
-                    paddingLeft: '8px',
-                    paddingRight: '8px',
-                    // 添加悬停提示
-                    title: column.headerName || column.field,
-                  }}
-                  onClick={() => handleSort(column.field)}
-                >
-                  <TableSortLabel
-                    active={sortConfig.key === column.field}
-                    direction={sortConfig.key === column.field ? sortConfig.direction : 'asc'}
+              {columns.map((column) => {
+                const hasActiveFilter = Boolean(columnValueFilters?.[column.field]);
+                return (
+                  <TableCell
+                    key={column.field}
                     sx={{
-                      // 减少排序标签的内边距
-                      '& .MuiTableSortLabel-icon': {
-                        fontSize: '1rem',
-                      }
+                      backgroundColor: hasActiveFilter ? '#e6ebf4' : '#f2f4f8',
+                      fontWeight: 600,
+                      fontSize: '0.875rem',
+                      borderBottom: `2px solid ${theme.palette.divider}`,
+                      minWidth: column.minWidth || 120,
+                      userSelect: 'none',
+                      writingMode: 'horizontal-tb',
+                      textOrientation: 'mixed',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      height: '40px',
+                      lineHeight: '40px',
+                      verticalAlign: 'middle',
+                      paddingTop: '0px',
+                      paddingBottom: '0px',
+                      paddingLeft: '8px',
+                      paddingRight: '4px',
                     }}
                   >
-                    <span
-                      title={column.headerName || column.field}
-                      style={{
-                        // 限制显示宽度，超出部分用省略号表示
-                        display: 'inline-block',
-                        maxWidth: '100%',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        verticalAlign: 'middle'
-                      }}
-                    >
-                      {column.headerName || column.field}
-                    </span>
-                  </TableSortLabel>
-                </TableCell>
-              ))}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                      <TableSortLabel
+                        active={sortConfig.key === column.field}
+                        direction={sortConfig.key === column.field ? sortConfig.direction : 'asc'}
+                        onClick={() => handleSort(column.field)}
+                        sx={{
+                          '& .MuiTableSortLabel-icon': {
+                            fontSize: '1rem',
+                          }
+                        }}
+                      >
+                        <span
+                          title={column.headerName || column.field}
+                          style={{
+                            display: 'inline-block',
+                            maxWidth: '100%',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            verticalAlign: 'middle'
+                          }}
+                        >
+                          {column.headerName || column.field}
+                        </span>
+                      </TableSortLabel>
+                      <Tooltip title="列筛选">
+                        <IconButton
+                          size="small"
+                          color={hasActiveFilter ? 'primary' : 'default'}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onOpenColumnFilterMenu?.(column.field, event.currentTarget);
+                          }}
+                        >
+                          <Filter size={16} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </TableCell>
+                );
+              })}
             </TableRow>
           </TableHead>
           <TableBody>

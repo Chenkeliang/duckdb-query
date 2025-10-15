@@ -249,12 +249,14 @@ const ShadcnApp = () => {
   };
 
   const escapeLiteralValue = (value) => {
-    return String(value).replace(/'/g, "''");
+    const stringValue = value instanceof Date ? value.toISOString() : String(value);
+    return stringValue.replace(/'/g, "''");
   };
 
   const isNumericValue = (value) => {
     if (value === null || value === undefined) return false;
     if (typeof value === "number") return true;
+    if (typeof value === "bigint") return true;
     const trimmed = String(value).trim();
     if (!trimmed) return false;
     return /^-?\d+(\.\d+)?$/.test(trimmed);
@@ -313,6 +315,60 @@ const ShadcnApp = () => {
             return `${fieldExpr} LIKE '${escapeLikeValue(filter.value)}%' ESCAPE '\\'`;
           case "endsWith":
             return `${fieldExpr} LIKE '%${escapeLikeValue(filter.value)}' ESCAPE '\\'`;
+          case "in": {
+            if (!Array.isArray(filter.value) || filter.value.length === 0) {
+              return null;
+            }
+
+            const values = filter.value;
+            const nonNullValues = values.filter((item) => item !== null && item !== undefined);
+            const hasNull = values.some((item) => item === null || item === undefined);
+            const parts = [];
+
+            if (nonNullValues.length > 0) {
+              const literals = nonNullValues
+                .map((item) => (isNumericValue(item) ? item : `'${escapeLiteralValue(item)}'`))
+                .join(", ");
+              parts.push(`${fieldExpr} IN (${literals})`);
+            }
+
+            if (hasNull) {
+              parts.push(`${fieldExpr} IS NULL`);
+            }
+
+            if (parts.length === 0) {
+              return null;
+            }
+
+            return parts.length > 1 ? `(${parts.join(" OR ")})` : parts[0];
+          }
+          case "notIn": {
+            if (!Array.isArray(filter.value) || filter.value.length === 0) {
+              return null;
+            }
+
+            const values = filter.value;
+            const nonNullValues = values.filter((item) => item !== null && item !== undefined);
+            const hasNull = values.some((item) => item === null || item === undefined);
+            const parts = [];
+
+            if (nonNullValues.length > 0) {
+              const literals = nonNullValues
+                .map((item) => (isNumericValue(item) ? item : `'${escapeLiteralValue(item)}'`))
+                .join(", ");
+              parts.push(`${fieldExpr} NOT IN (${literals})`);
+            }
+
+            if (hasNull) {
+              parts.push(`${fieldExpr} IS NOT NULL`);
+            }
+
+            if (parts.length === 0) {
+              return null;
+            }
+
+            return parts.length > 1 ? `(${parts.join(" AND ")})` : parts[0];
+          }
           default:
             return null;
         }
