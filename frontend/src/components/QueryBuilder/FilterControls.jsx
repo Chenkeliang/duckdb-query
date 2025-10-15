@@ -26,7 +26,8 @@ import {
   FilterOperator,
   LogicOperator,
   detectColumnType,
-  getSuggestedOperators
+  getSuggestedOperators,
+  parseFilterValueList
 } from '../../utils/visualQueryUtils';
 
 /**
@@ -59,6 +60,9 @@ const FilterControls = ({
     const needsValue = ![FilterOperator.IS_NULL, FilterOperator.IS_NOT_NULL].includes(newFilter.operator);
     const needsSecondValue = newFilter.operator === FilterOperator.BETWEEN;
     const needsMultipleValues = [FilterOperator.IN, FilterOperator.NOT_IN].includes(newFilter.operator);
+    const normalizedValues = needsMultipleValues
+      ? parseFilterValueList(newFilter.values)
+      : [];
 
     if (needsValue && !newFilter.value && !needsMultipleValues) {
       return;
@@ -68,7 +72,7 @@ const FilterControls = ({
       return;
     }
 
-    if (needsMultipleValues && newFilter.values.length === 0) {
+    if (needsMultipleValues && normalizedValues.length === 0) {
       return;
     }
 
@@ -78,7 +82,7 @@ const FilterControls = ({
       operator: newFilter.operator,
       value: newFilter.value,
       value2: newFilter.value2,
-      values: [...newFilter.values],
+      values: [...normalizedValues],
       logicOperator: filters.length > 0 ? newFilter.logicOperator : LogicOperator.AND
     };
 
@@ -227,13 +231,16 @@ const FilterControls = ({
         );
 
       case FilterOperator.IN:
-      case FilterOperator.NOT_IN:
+      case FilterOperator.NOT_IN: {
+        const valueList = Array.isArray(filterData?.values)
+          ? filterData.values
+          : parseFilterValueList(filterData?.value || "");
         return (
           <TextField
             size="small"
-            value={filterData.values.join(', ')}
+            value={valueList.join(', ')}
             onChange={(e) => {
-              const values = e.target.value.split(',').map(v => v.trim()).filter(Boolean);
+              const values = parseFilterValueList(e.target.value);
               updateValue('values', values);
             }}
             disabled={disabled}
@@ -256,6 +263,7 @@ const FilterControls = ({
             }}
           />
         );
+      }
 
       default:
         return (

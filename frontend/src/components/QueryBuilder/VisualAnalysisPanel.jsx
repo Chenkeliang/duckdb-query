@@ -76,7 +76,7 @@ const VisualAnalysisPanel = ({
 
     try {
       const tableName = selectedTable.name || selectedTable.id;
-      const result = generateSQLPreview(analysisConfig, tableName);
+      const result = generateSQLPreview(analysisConfig, tableName, selectedTable?.columns || []);
 
       if (!result.success) {
         setError(result.errors.join('; '));

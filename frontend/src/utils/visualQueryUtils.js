@@ -99,8 +99,298 @@ export const detectColumnType = (columnName, sampleValues = []) => {
   return "text";
 };
 
+const MULTI_VALUE_SPLIT_REGEX = /[\s]*[\uFF0C,;；、\n\r]+[\s]*/;
+
+const NUMERIC_VALUE_REGEX = /^[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?$/i;
+
+const BOOLEAN_TRUE_SET = new Set(["true", "t", "1", "yes", "y"]);
+const BOOLEAN_FALSE_SET = new Set(["false", "f", "0", "no", "n"]);
+
+export function parseFilterValueList(input) {
+  if (!input && input !== 0) {
+    return [];
+  }
+
+  if (Array.isArray(input)) {
+    return Array.from(
+      new Set(
+        input
+          .map((value) =>
+            typeof value === "string" ? value.trim() : value
+          )
+          .filter((value) => value !== null && value !== undefined && value !== "")
+      )
+    );
+  }
+
+  return Array.from(
+    new Set(
+      String(input)
+        .split(MULTI_VALUE_SPLIT_REGEX)
+        .map((value) => value.trim())
+        .filter((value) => value !== "")
+    )
+  );
+}
+
+function normalizeBooleanToken(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (BOOLEAN_TRUE_SET.has(normalized)) {
+    return true;
+  }
+
+  if (BOOLEAN_FALSE_SET.has(normalized)) {
+    return false;
+  }
+
+  return null;
+}
+
+function escapeSqlLiteral(value) {
+  if (value === null || value === undefined) {
+    return "NULL";
+  }
+
+  const stringValue = String(value);
+  return `'${stringValue.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
+}
+
+function normalizeColumnTypeName(rawType, sampleValues = []) {
+  if (rawType && typeof rawType === "string") {
+    const type = rawType.toLowerCase();
+
+    if (/int|decimal|numeric|double|float|real|bigint|smallint|tinyint|number/.test(type)) {
+      return "number";
+    }
+
+    if (/bool|bit/.test(type)) {
+      return "boolean";
+    }
+
+    if (/date|time|timestamp/.test(type)) {
+      return "datetime";
+    }
+
+    if (/json|map|array|struct|variant/.test(type)) {
+      return "json";
+    }
+
+    return "string";
+  }
+
+  if (sampleValues && sampleValues.length > 0) {
+    const detected = detectColumnType("", sampleValues);
+
+    switch (detected) {
+      case "integer":
+      case "decimal":
+        return "number";
+      case "date":
+        return "datetime";
+      case "boolean":
+        return "boolean";
+      default:
+        return "string";
+    }
+  }
+
+  return "string";
+}
+
+function buildColumnTypeMap(columns = []) {
+  const map = new Map();
+
+  columns.forEach((column) => {
+    if (column === null || column === undefined) {
+      return;
+    }
+
+    if (typeof column === "string") {
+      const info = { rawType: "text", normalizedType: "string" };
+      map.set(column, info);
+      map.set(column.toLowerCase(), info);
+      return;
+    }
+
+    if (typeof column === "object") {
+      const columnName =
+        column.name ||
+        column.column ||
+        column.columnName ||
+        column.id ||
+        column.field;
+
+      if (!columnName) {
+        return;
+      }
+
+      const rawType =
+        column.dataType ||
+        column.type ||
+        column.columnType ||
+        column.sqlType ||
+        column.dtype ||
+        column.valueType ||
+        column.jsType ||
+        null;
+
+      const sampleValues = column.sampleValues || column.samples || [];
+      const info = {
+        rawType,
+        normalizedType: normalizeColumnTypeName(rawType, sampleValues)
+      };
+
+      const lowerName = columnName.toLowerCase();
+      map.set(columnName, info);
+      map.set(lowerName, info);
+
+      if (column.table) {
+        const qualified = `${column.table}.${columnName}`;
+        map.set(qualified, info);
+        map.set(qualified.toLowerCase(), info);
+      }
+
+      return;
+    }
+  });
+
+  return map;
+}
+
+function resolveColumnInfo(typeMap, columnName) {
+  if (!typeMap || !columnName) {
+    return null;
+  }
+
+  if (typeMap.has(columnName)) {
+    return typeMap.get(columnName);
+  }
+
+  const lower = columnName.toLowerCase();
+  if (typeMap.has(lower)) {
+    return typeMap.get(lower);
+  }
+
+  if (columnName.includes(".")) {
+    const simple = columnName.split(".").pop();
+    if (simple) {
+      if (typeMap.has(simple)) {
+        return typeMap.get(simple);
+      }
+      const lowerSimple = simple.toLowerCase();
+      if (typeMap.has(lowerSimple)) {
+        return typeMap.get(lowerSimple);
+      }
+    }
+  }
+
+  return null;
+}
+
+function formatValueForColumn(value, columnInfo) {
+  if (value === null || value === undefined) {
+    return { literal: null, isNull: true };
+  }
+
+  if (typeof value === "number" || typeof value === "bigint") {
+    return { literal: String(value), isNull: false };
+  }
+
+  const stringValue = String(value);
+  const trimmed = stringValue.trim();
+  const normalizedType = columnInfo?.normalizedType || "string";
+
+  if (normalizedType === "number") {
+    if (NUMERIC_VALUE_REGEX.test(trimmed)) {
+      return { literal: trimmed, isNull: false };
+    }
+
+    const numeric = Number(trimmed.replace(/,/g, ""));
+    if (!Number.isNaN(numeric)) {
+      return { literal: String(numeric), isNull: false };
+    }
+  }
+
+  if (normalizedType === "boolean") {
+    const boolValue = normalizeBooleanToken(trimmed);
+    if (boolValue !== null) {
+      return { literal: boolValue ? "TRUE" : "FALSE", isNull: false };
+    }
+    return { literal: escapeSqlLiteral(stringValue), isNull: false };
+  }
+
+  if (normalizedType === "datetime") {
+    return { literal: escapeSqlLiteral(trimmed), isNull: false };
+  }
+
+  const fallbackBoolean = normalizeBooleanToken(trimmed);
+  if (fallbackBoolean !== null) {
+    return { literal: fallbackBoolean ? "TRUE" : "FALSE", isNull: false };
+  }
+
+  if (NUMERIC_VALUE_REGEX.test(trimmed)) {
+    return { literal: trimmed, isNull: false };
+  }
+
+  return { literal: escapeSqlLiteral(stringValue), isNull: false };
+}
+
+function buildInCondition(column, values, columnInfo, operator) {
+  const effectiveValues = Array.isArray(values)
+    ? values
+    : parseFilterValueList(values);
+
+  if (!effectiveValues || effectiveValues.length === 0) {
+    return "";
+  }
+
+  const formattedValues = effectiveValues.map((item) =>
+    formatValueForColumn(item, columnInfo)
+  );
+
+  const nonNullLiterals = formattedValues
+    .filter((item) => !item.isNull && item.literal !== null)
+    .map((item) => item.literal);
+  const hasNull = formattedValues.some((item) => item.isNull);
+
+  const clauses = [];
+
+  if (nonNullLiterals.length > 0) {
+    clauses.push(`${column} ${operator} (${nonNullLiterals.join(", ")})`);
+  }
+
+  if (hasNull) {
+    clauses.push(
+      operator === FilterOperator.NOT_IN
+        ? `${column} IS NOT NULL`
+        : `${column} IS NULL`
+    );
+  }
+
+  if (clauses.length === 0) {
+    return "";
+  }
+
+  if (clauses.length === 1) {
+    return clauses[0];
+  }
+
+  return operator === FilterOperator.NOT_IN
+    ? `(${clauses.join(" AND ")})`
+    : `(${clauses.join(" OR ")})`;
+}
+
 // 生成SQL预览
-export const generateSQLPreview = (config, tableName) => {
+export const generateSQLPreview = (config, tableName, columns = []) => {
   const errors = [];
   const warnings = [];
 
@@ -111,6 +401,7 @@ export const generateSQLPreview = (config, tableName) => {
 
   try {
     let sql = "";
+    const columnTypeMap = buildColumnTypeMap(columns || []);
 
     // SELECT 子句
     const selectItems = [];
@@ -177,53 +468,85 @@ export const generateSQLPreview = (config, tableName) => {
       const whereConditions = [];
 
       config.filters.forEach((filter) => {
-        if (filter.column && filter.operator) {
-          let condition = "";
+        if (!filter.column || !filter.operator) {
+          return;
+        }
 
-          switch (filter.operator) {
-            case FilterOperator.IS_NULL:
-              condition = `${filter.column} IS NULL`;
-              break;
-            case FilterOperator.IS_NOT_NULL:
-              condition = `${filter.column} IS NOT NULL`;
-              break;
-            case FilterOperator.BETWEEN:
-              if (filter.value && filter.value2) {
-                condition = `${filter.column} BETWEEN '${filter.value}' AND '${filter.value2}'`;
-              }
-              break;
-            case FilterOperator.IN:
-              if (filter.values && filter.values.length > 0) {
-                const valueList = filter.values.map((v) => `'${v}'`).join(", ");
-                condition = `${filter.column} IN (${valueList})`;
-              }
-              break;
-            case FilterOperator.NOT_IN:
-              if (filter.values && filter.values.length > 0) {
-                const valueList = filter.values.map((v) => `'${v}'`).join(", ");
-                condition = `${filter.column} NOT IN (${valueList})`;
-              }
-              break;
-            case FilterOperator.LIKE:
-              if (filter.value !== undefined && filter.value !== null) {
-                // 自动添加通配符进行模糊匹配
-                const likeValue = `%${filter.value}%`;
-                condition = `${filter.column} LIKE '${likeValue}'`;
-              }
-              break;
-            default:
-              if (filter.value !== undefined && filter.value !== null) {
-                const value =
-                  typeof filter.value === "string"
-                    ? `'${filter.value}'`
-                    : filter.value;
-                condition = `${filter.column} ${filter.operator} ${value}`;
-              }
-          }
+        const columnInfo = resolveColumnInfo(columnTypeMap, filter.column);
+        const columnExpression = filter.column;
+        let condition = "";
 
-          if (condition) {
-            whereConditions.push(condition);
+        switch (filter.operator) {
+          case FilterOperator.IS_NULL:
+            condition = `${columnExpression} IS NULL`;
+            break;
+          case FilterOperator.IS_NOT_NULL:
+            condition = `${columnExpression} IS NOT NULL`;
+            break;
+          case FilterOperator.BETWEEN: {
+            const start = formatValueForColumn(filter.value, columnInfo);
+            const end = formatValueForColumn(filter.value2, columnInfo);
+            if (!start.isNull && !end.isNull && start.literal && end.literal) {
+              condition = `${columnExpression} BETWEEN ${start.literal} AND ${end.literal}`;
+            }
+            break;
           }
+          case FilterOperator.IN: {
+            const clause = buildInCondition(
+              columnExpression,
+              Array.isArray(filter.values) && filter.values.length > 0
+                ? filter.values
+                : filter.value,
+              columnInfo,
+              FilterOperator.IN
+            );
+            if (clause) {
+              condition = clause;
+            }
+            break;
+          }
+          case FilterOperator.NOT_IN: {
+            const clause = buildInCondition(
+              columnExpression,
+              Array.isArray(filter.values) && filter.values.length > 0
+                ? filter.values
+                : filter.value,
+              columnInfo,
+              FilterOperator.NOT_IN
+            );
+            if (clause) {
+              condition = clause;
+            }
+            break;
+          }
+          case FilterOperator.LIKE:
+          case "NOT LIKE":
+          case "ILIKE": {
+            if (filter.value !== undefined && filter.value !== null) {
+              let likeValue = String(filter.value);
+              if (!/%|_/.test(likeValue)) {
+                likeValue = `%${likeValue}%`;
+              }
+              condition = `${columnExpression} ${filter.operator} ${escapeSqlLiteral(likeValue)}`;
+            }
+            break;
+          }
+          default: {
+            const { literal, isNull } = formatValueForColumn(filter.value, columnInfo);
+            if (isNull) {
+              if (filter.operator === FilterOperator.NOT_EQUAL) {
+                condition = `${columnExpression} IS NOT NULL`;
+              } else if (filter.operator === FilterOperator.EQUAL) {
+                condition = `${columnExpression} IS NULL`;
+              }
+            } else if (literal !== null) {
+              condition = `${columnExpression} ${filter.operator} ${literal}`;
+            }
+          }
+        }
+
+        if (condition) {
+          whereConditions.push(condition);
         }
       });
 
