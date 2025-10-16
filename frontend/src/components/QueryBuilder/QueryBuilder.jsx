@@ -51,6 +51,11 @@ const applyDisplayLimit = (sql, maxRows = 10000) => {
   }
 };
 
+const createDefaultSetOperationConfig = () => ({
+  operation_type: 'UNION',
+  use_by_name: false
+});
+
 
 // 受控组件：selectedSources/setSelectedSources 由父组件(App.jsx)传入
 const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSources, onResultsReceived, onRefresh }) => {
@@ -93,10 +98,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
   const [visualQueryConfig, setVisualQueryConfig] = useState(null);
 
   // Set operation state
-  const [setOperationConfig, setSetOperationConfig] = useState({
-    operation_type: 'UNION',
-    use_by_name: false
-  });
+  const [setOperationConfig, setSetOperationConfig] = useState(createDefaultSetOperationConfig);
 
   const [queryHistory, setQueryHistory] = useState(() => {
     try {
@@ -131,6 +133,17 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       handleAddJoin();
     }
   }, [selectedSources.length, currentOperationMode, joins.length]);
+
+  React.useEffect(() => {
+    if (selectedSources.length < 2) {
+      if (currentOperationMode !== null) {
+        setCurrentOperationMode(null);
+      }
+      if (currentOperationMode === 'set_operation') {
+        setSetOperationConfig(createDefaultSetOperationConfig());
+      }
+    }
+  }, [selectedSources.length, currentOperationMode]);
 
   const handleAddJoin = () => {
     if (selectedSources.length < 2) {
