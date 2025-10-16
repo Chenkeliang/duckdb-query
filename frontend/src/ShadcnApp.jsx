@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Moon, Sun } from "lucide-react";
 
 // 导入Toast上下文
 import { ToastProvider, useToast } from "./contexts/ToastContext";
@@ -32,6 +33,32 @@ import requestManager from "./utils/requestManager";
 // 导入样式
 import "./styles/modern.css";
 
+const THEME_STORAGE_KEY = "duck-query-theme";
+
+const getInitialTheme = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === "dark") {
+      return true;
+    }
+    if (stored === "light") {
+      return false;
+    }
+  } catch (error) {
+    return false;
+  }
+
+  if (typeof window.matchMedia === "function") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  return false;
+};
+
 const ShadcnApp = () => {
   // 获取Toast功能
   const { showSuccess, showError, showWarning, showInfo } = useToast();
@@ -54,6 +81,7 @@ const ShadcnApp = () => {
 
   // 状态管理
   const [showWelcome, setShowWelcome] = useState(shouldShowWelcome()); // 控制是否显示欢迎页面
+  const [isDarkMode, setIsDarkMode] = useState(getInitialTheme);
   const [currentTab, setCurrentTab] = useState("datasource");
   const [tableManagementTab, setTableManagementTab] = useState("duckdb"); // 二级TAB状态
   const [dataSources, setDataSources] = useState([]);
@@ -78,6 +106,38 @@ const ShadcnApp = () => {
     () => buildColumnTypeMap(queryContext.initialColumns || queryResults.columns || []),
     [queryContext.initialColumns, queryResults.columns]
   );
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const root = document.documentElement;
+
+    if (isDarkMode) {
+      root.classList.add("dark");
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, "dark");
+      } catch (error) {
+        // 忽略本地存储错误
+      }
+    } else {
+      root.classList.remove("dark");
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, "light");
+      } catch (error) {
+        // 忽略本地存储错误
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("duckquery-theme-change", {
+          detail: { isDark: isDarkMode }
+        })
+      );
+    }
+  }, [isDarkMode]);
 
   // 初始数据加载
   useEffect(() => {
@@ -813,36 +873,33 @@ const ShadcnApp = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div
-                className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition ${isDarkMode ? 'bg-[rgba(21,24,31,0.88)] border border-[rgba(148,163,184,0.25)] shadow-[0_18px_38px_-28px_rgba(240,115,53,0.55)]' : 'bg-gray-900'}`}
               >
                 <span
-                  className="text-white font-bold text-sm"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: "100%",
-                    height: "100%",
-                  }}
+                  className={`font-semibold text-sm tracking-[0.18em] ${isDarkMode ? 'text-[rgba(240,115,53,0.85)] drop-shadow-[0_0_8px_rgba(240,115,53,0.45)]' : 'text-white'}`}
                 >
                   DQ
                 </span>
               </div>
-              <h1 className="text-xl font-semibold text-gray-900">Duck Query</h1>
+              <h1 className={`text-xl font-semibold ${isDarkMode ? 'text-[rgba(230,234,243,0.96)]' : 'text-gray-900'}`}>Duck Query</h1>
             </div>
             <div className="flex items-center space-x-3">
+              <button
+                type="button"
+                onClick={() => setIsDarkMode((prev) => !prev)}
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${isDarkMode ? 'border-[rgba(148,163,184,0.25)] bg-[rgba(21,24,31,0.88)] text-[rgba(230,234,243,0.9)] hover:bg-[rgba(21,24,31,0.96)] focus:ring-[rgba(240,115,53,0.45)] focus:ring-offset-[rgba(6,8,12,0.2)] shadow-[0_16px_36px_-28px_rgba(240,115,53,0.55)]' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-blue-500 focus:ring-offset-white'}`}
+                aria-label={isDarkMode ? "切换为浅色模式" : "切换为暗色模式"}
+                title={isDarkMode ? "切换为浅色模式" : "切换为暗色模式"}
+              >
+                {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </button>
               <button
                 onClick={() => {
                   setShowWelcome(true);
                   const welcomeShownKey = 'duck-query-welcome-shown';
                   localStorage.setItem(welcomeShownKey, new Date().toISOString());
                 }}
-                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className={`inline-flex items-center justify-center h-10 px-4 text-sm font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${isDarkMode ? 'bg-[rgba(21,24,31,0.88)] text-[rgba(230,234,243,0.92)] border-[rgba(148,163,184,0.25)] hover:bg-[rgba(21,24,31,0.96)] focus:ring-[rgba(240,115,53,0.45)] focus:ring-offset-[rgba(6,8,12,0.2)] shadow-[0_16px_36px_-28px_rgba(240,115,53,0.55)]' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-blue-500 focus:ring-offset-white'}`}
               >
                 产品介绍
               </button>

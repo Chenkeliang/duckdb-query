@@ -23,10 +23,38 @@ import {
     Typography,
     alpha,
 } from '@mui/material';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+
+const detectDarkMode = () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 
 const TreeTableView = ({ tables = [], onTableSelect }) => {
     const [expandedGroups, setExpandedGroups] = useState(new Set());
+    const [isDarkMode, setIsDarkMode] = useState(detectDarkMode);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const sync = () => setIsDarkMode(detectDarkMode());
+        const handleThemeChange = (event) => {
+            if (event?.detail && typeof event.detail.isDark === 'boolean') {
+                setIsDarkMode(event.detail.isDark);
+            } else {
+                sync();
+            }
+        };
+
+        window.addEventListener('duckquery-theme-change', handleThemeChange);
+        const observer = new MutationObserver(sync);
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        sync();
+
+        return () => {
+            window.removeEventListener('duckquery-theme-change', handleThemeChange);
+            observer.disconnect();
+        };
+    }, []);
 
     // 按类型和时间分组表格 - 重新设计的分类逻辑
     const groupedTables = useMemo(() => {
@@ -99,14 +127,18 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
     };
 
     const getTableIcon = (tableName) => {
+        const defaultColor = isDarkMode ? '#9aa0ac' : '#757575';
+        const asyncColor = isDarkMode ? '#f07335' : '#ff9800';
+        const queryColor = isDarkMode ? '#5aa6ff' : '#4caf50';
+        const uploadColor = isDarkMode ? '#7f9cff' : '#2196f3';
         if (!tableName || typeof tableName !== 'string') {
-            return <ViewList sx={{ fontSize: 16, color: '#757575' }} />;
+            return <ViewList sx={{ fontSize: 16, color: defaultColor }} />;
         }
         const lower = tableName.toLowerCase();
-        if (lower.startsWith('async_result_')) return <QueryStats sx={{ fontSize: 16, color: '#ff9800' }} />;
-        if (lower.startsWith('query_result_')) return <TableChart sx={{ fontSize: 16, color: '#4caf50' }} />;
-        if (lower.includes('upload') || lower.includes('粘贴')) return <CloudUpload sx={{ fontSize: 16, color: '#2196f3' }} />;
-        return <ViewList sx={{ fontSize: 16, color: '#757575' }} />;
+        if (lower.startsWith('async_result_')) return <QueryStats sx={{ fontSize: 16, color: asyncColor }} />;
+        if (lower.startsWith('query_result_')) return <TableChart sx={{ fontSize: 16, color: queryColor }} />;
+        if (lower.includes('upload') || lower.includes('粘贴')) return <CloudUpload sx={{ fontSize: 16, color: uploadColor }} />;
+        return <ViewList sx={{ fontSize: 16, color: defaultColor }} />;
     };
 
     const getGroupInfo = (groupKey) => {
@@ -114,36 +146,36 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
             recent: {
                 label: '最近使用',
                 icon: History,
-                color: '#1976d2',
-                bgColor: '#e3f2fd',
+                color: '#4f8efc',
+                lightBg: '#e3f2fd',
                 description: '最新的5个表'
             },
             async_results: {
                 label: '异步查询结果',
                 icon: QueryStats,
-                color: '#ff9800',
-                bgColor: '#fff3e0',
+                color: '#f07335',
+                lightBg: '#fff3e0',
                 description: `${groupedTables.async_results.length} 个表`
             },
             data_tables: {
                 label: '数据表',
                 icon: ViewList,
-                color: '#2196f3',
-                bgColor: '#e3f2fd',
+                color: '#5aa6ff',
+                lightBg: '#e8f1ff',
                 description: `${groupedTables.data_tables.length} 个表`
             },
             temp_tables: {
                 label: '临时表',
                 icon: History,
-                color: '#ff5722',
-                bgColor: '#fbe9e7',
+                color: '#ff7043',
+                lightBg: '#fbe9e7',
                 description: `${groupedTables.temp_tables.length} 个表`
             },
             system_tables: {
                 label: '系统表',
                 icon: TableChart,
-                color: '#757575',
-                bgColor: '#f5f5f5',
+                color: '#9aa0ac',
+                lightBg: '#f5f5f5',
                 description: `${groupedTables.system_tables.length} 个表`
             }
         };
@@ -156,6 +188,18 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
         const groupInfo = getGroupInfo(groupKey);
         const isExpanded = expandedGroups.has(groupKey);
         const IconComponent = groupInfo.icon;
+        const accentColor = groupInfo.color;
+        const gradientBase = groupInfo.lightBg || '#f5f5f5';
+        const baseSurface = isDarkMode ? 'var(--dq-surface-alt)' : alpha('#f8fafc', 0.9);
+        const headerBackground = baseSurface;
+        const headerHoverBackground = isDarkMode ? 'var(--dq-surface-active)' : '#eef2f6';
+        const iconBackground = alpha(accentColor, isDarkMode ? 0.16 : 0.12);
+        const chipBackground = isDarkMode ? alpha(accentColor, 0.24) : accentColor;
+        const chipTextColor = isDarkMode ? 'var(--dq-background)' : 'white';
+        const collapseBackground = isDarkMode ? 'var(--dq-surface)' : 'rgba(0, 0, 0, 0.01)';
+        const listHoverBackground = alpha(accentColor, isDarkMode ? 0.16 : 0.08);
+        const copyButtonBackground = alpha(accentColor, isDarkMode ? 0.16 : 0.05);
+        const copyButtonHoverBackground = alpha(accentColor, isDarkMode ? 0.25 : 0.1);
 
         return (
             <Box key={groupKey} sx={{ mb: 1 }}>
@@ -163,13 +207,16 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                     elevation={0}
                     sx={{
                         border: '1px solid',
-                        borderColor: 'divider',
+                        borderColor: isDarkMode ? 'var(--dq-border)' : 'divider',
                         borderRadius: 2,
+                        backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#ffffff',
                         overflow: 'hidden',
                         transition: 'all 0.2s ease-in-out',
                         '&:hover': {
-                            borderColor: groupInfo.color,
-                            boxShadow: `0 2px 8px ${alpha(groupInfo.color, 0.15)}`
+                            borderColor: accentColor,
+                            boxShadow: isDarkMode
+                                ? `0 12px 32px -20px ${alpha(accentColor, 0.6)}`
+                                : `0 2px 8px ${alpha(accentColor, 0.15)}`
                         }
                     }}
                 >
@@ -178,10 +225,29 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                             onClick={() => handleGroupToggle(groupKey)}
                             sx={{
                                 py: 1.5,
-                                px: 2,
-                                background: `linear-gradient(135deg, ${alpha(groupInfo.bgColor, 0.8)}, ${alpha(groupInfo.bgColor, 0.4)})`,
+                                pl: 2.75,
+                                pr: 2,
+                                position: 'relative',
+                                backgroundColor: headerBackground,
+                                borderBottom: isDarkMode ? '1px solid var(--dq-border-subtle)' : 'none',
+                                transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
+                                boxShadow: isDarkMode ? 'none' : 'inset 0 1px 0 rgba(255,255,255,0.6)',
+                                '&::before': {
+                                    content: "''",
+                                    position: 'absolute',
+                                    left: 10,
+                                    top: 10,
+                                    bottom: 10,
+                                    width: 3,
+                                    borderRadius: 999,
+                                    background: accentColor,
+                                    opacity: isExpanded ? 1 : 0.6
+                                },
                                 '&:hover': {
-                                    background: `linear-gradient(135deg, ${alpha(groupInfo.bgColor, 1)}, ${alpha(groupInfo.bgColor, 0.6)})`,
+                                    backgroundColor: headerHoverBackground,
+                                    boxShadow: isDarkMode
+                                        ? `0 10px 24px -16px ${alpha(accentColor, 0.45)}`
+                                        : 'inset 0 1px 0 rgba(255,255,255,0.7)'
                                 }
                             }}
                         >
@@ -194,17 +260,17 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                         width: 28,
                                         height: 28,
                                         borderRadius: '50%',
-                                        backgroundColor: alpha(groupInfo.color, 0.1),
+                                        backgroundColor: iconBackground,
                                         transition: 'all 0.2s ease-in-out'
                                     }}
                                 >
-                                    <IconComponent sx={{ fontSize: 16, color: groupInfo.color }} />
+                                    <IconComponent sx={{ fontSize: 16, color: accentColor }} />
                                 </Box>
                             </ListItemIcon>
                             <ListItemText
                                 primary={
                                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: isDarkMode ? 'var(--dq-text-primary)' : 'text.primary' }}>
                                             {groupInfo.label}
                                         </Typography>
                                         <Chip
@@ -214,8 +280,8 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                                 height: 22,
                                                 fontSize: '0.75rem',
                                                 fontWeight: 600,
-                                                backgroundColor: groupInfo.color,
-                                                color: 'white',
+                                                backgroundColor: chipBackground,
+                                                color: chipTextColor,
                                                 '& .MuiChip-label': {
                                                     px: 1
                                                 }
@@ -226,15 +292,15 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                             />
                             <Box sx={{ ml: 1 }}>
                                 {isExpanded ?
-                                    <ExpandLess sx={{ color: groupInfo.color }} /> :
-                                    <ExpandMore sx={{ color: groupInfo.color }} />
+                                    <ExpandLess sx={{ color: accentColor }} /> :
+                                    <ExpandMore sx={{ color: accentColor }} />
                                 }
                             </Box>
                         </ListItemButton>
                     </ListItem>
 
                     <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                        <Box sx={{ backgroundColor: 'rgba(0, 0, 0, 0.01)' }}>
+                        <Box sx={{ backgroundColor: collapseBackground }}>
                             <List component="div" disablePadding>
                                 {tables.map((table, index) => (
                                     <ListItem
@@ -242,7 +308,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                         disablePadding
                                         sx={{
                                             borderTop: index === 0 ? '1px solid' : 'none',
-                                            borderTopColor: 'divider',
+                                            borderTopColor: index === 0 ? (isDarkMode ? 'var(--dq-border-subtle)' : 'divider') : 'transparent',
                                         }}
                                         secondaryAction={
                                             <Tooltip title="复制表名" placement="left">
@@ -255,16 +321,16 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                                         mr: 1,
                                                         width: 28,
                                                         height: 28,
-                                                        backgroundColor: alpha(groupInfo.color, 0.05),
+                                                        backgroundColor: copyButtonBackground,
                                                         '&:hover': {
                                                             opacity: 1,
-                                                            backgroundColor: alpha(groupInfo.color, 0.1),
+                                                            backgroundColor: copyButtonHoverBackground,
                                                             transform: 'scale(1.1)'
                                                         },
                                                         transition: 'all 0.2s ease-in-out'
                                                     }}
                                                 >
-                                                    <ContentCopy sx={{ fontSize: 14, color: groupInfo.color }} />
+                                                    <ContentCopy sx={{ fontSize: 14, color: accentColor }} />
                                                 </IconButton>
                                             </Tooltip>
                                         }
@@ -276,7 +342,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                                 pr: 7, // 为复制按钮留出空间
                                                 minHeight: 44,
                                                 '&:hover': {
-                                                    backgroundColor: alpha(groupInfo.color, 0.08),
+                                                    backgroundColor: listHoverBackground,
                                                     transform: 'translateX(4px)'
                                                 },
                                                 transition: 'all 0.2s ease-in-out'
@@ -292,7 +358,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                                         width: 24,
                                                         height: 24,
                                                         borderRadius: 1,
-                                                        backgroundColor: alpha(groupInfo.color, 0.1),
+                                                        backgroundColor: alpha(accentColor, isDarkMode ? 0.18 : 0.1),
                                                     }}
                                                 >
                                                     {getTableIcon(table)}
@@ -309,7 +375,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                                                 overflow: 'hidden',
                                                                 textOverflow: 'ellipsis',
                                                                 whiteSpace: 'nowrap',
-                                                                color: 'text.primary',
+                                                                color: isDarkMode ? 'var(--dq-text-primary)' : 'text.primary',
                                                                 lineHeight: 1.2
                                                             }}
                                                         >

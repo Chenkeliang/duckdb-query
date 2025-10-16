@@ -8,6 +8,7 @@ import {
   Alert,
   Box,
   Button,
+  ButtonBase,
   Card,
   CardContent,
   Chip,
@@ -22,14 +23,12 @@ import {
   InputAdornment,
   Pagination,
   Paper,
-  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Tabs,
   TextField,
   Tooltip,
   Typography
@@ -246,22 +245,61 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
           </Box>
 
           {databaseConnections.length > 0 && selectedConnection && (
-            <Tabs
-              value={selectedConnection}
-              onChange={(e, newValue) => setSelectedConnection(newValue)}
-              variant="scrollable"
-              scrollButtons="auto"
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                overflowX: 'auto',
+                pb: 1,
+                position: 'relative',
+                '&::-webkit-scrollbar': {
+                  height: 6
+                }
+              }}
             >
-              {databaseConnections.map((conn) => (
-                <Tab
-                  key={conn.id}
-                  label={conn.name}
-                  value={conn.id}
-                  icon={<Database size={20} />}
-                  iconPosition="start"
-                />
-              ))}
-            </Tabs>
+              {databaseConnections.map((conn) => {
+                const isActive = conn.id === selectedConnection;
+                return (
+                  <ButtonBase
+                    key={conn.id}
+                    onClick={() => setSelectedConnection(conn.id)}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      px: 1.5,
+                      py: 1,
+                      borderRadius: 2,
+                      position: 'relative',
+                      color: isActive ? 'var(--dq-text-primary)' : 'var(--dq-text-tertiary)',
+                      transition: 'color 0.2s ease, transform 0.2s ease',
+                      '&:hover': {
+                        color: 'var(--dq-text-primary)'
+                      },
+                      '&::after': {
+                        content: '""',
+                        position: 'absolute',
+                        left: 12,
+                        right: 12,
+                        bottom: -6,
+                        height: 2,
+                        borderRadius: 999,
+                        backgroundColor: 'var(--dq-accent-100)',
+                        opacity: isActive ? 1 : 0,
+                        transform: isActive ? 'scaleX(1)' : 'scaleX(0.6)',
+                        transition: 'opacity 0.2s ease, transform 0.2s ease'
+                      }
+                    }}
+                  >
+                    <Database size={18} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: isActive ? 600 : 500 }}>
+                      {conn.name}
+                    </Typography>
+                  </ButtonBase>
+                );
+              })}
+            </Box>
           )}
         </CardContent>
       </Card>

@@ -40,6 +40,8 @@ import SQLTemplates from "./SQLTemplates";
 import SQLValidator from "./SQLValidator";
 import TreeTableView from "./TreeTableView";
 
+const getIsDarkMode = () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+
 const EnhancedSQLExecutor = ({
   onResultsReceived,
   onDataSourceSaved,
@@ -50,7 +52,8 @@ const EnhancedSQLExecutor = ({
   const [saveAsTable, setSaveAsTable] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [editorTheme, setEditorTheme] = useState("github-light");
+  const [isDarkMode, setIsDarkMode] = useState(getIsDarkMode);
+  const [editorTheme, setEditorTheme] = useState(() => (getIsDarkMode() ? 'dark' : 'github-light'));
   const [success, setSuccess] = useState("");
   const [duckdbTables, setDuckdbTables] = useState([]);
   const [tableManagerOpen, setTableManagerOpen] = useState(false);
@@ -60,6 +63,43 @@ const EnhancedSQLExecutor = ({
 
   // 收藏相关状态
   const [addFavoriteDialogOpen, setAddFavoriteDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const sync = () => setIsDarkMode(getIsDarkMode());
+    const handleThemeChange = (event) => {
+      if (event?.detail && typeof event.detail.isDark === 'boolean') {
+        setIsDarkMode(event.detail.isDark);
+      } else {
+        sync();
+      }
+    };
+
+    window.addEventListener('duckquery-theme-change', handleThemeChange);
+
+    let observer;
+    if (typeof MutationObserver !== 'undefined') {
+      observer = new MutationObserver(sync);
+      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    sync();
+
+    return () => {
+      window.removeEventListener('duckquery-theme-change', handleThemeChange);
+      if (observer) {
+        observer.disconnect();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const nextTheme = isDarkMode ? 'dark' : 'github-light';
+    setEditorTheme((current) => (current === nextTheme ? current : nextTheme));
+  }, [isDarkMode]);
 
   const fetchDuckDBTables = async () => {
     try {
@@ -241,35 +281,61 @@ const EnhancedSQLExecutor = ({
     <Box>
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>
-          <Card sx={{ height: "fit-content" }}>
-            <CardContent>
-              <Box sx={{ mb: 2 }}>
+          <Card
+            sx={{
+              height: 'fit-content',
+              backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#ffffff',
+              borderRadius: 3,
+              border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid rgba(15, 23, 42, 0.08)',
+              boxShadow: isDarkMode ? 'var(--dq-shadow-soft)' : '0 16px 32px -24px rgba(15, 23, 42, 0.12)'
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ mb: 1 }}>
                 <Box
                   sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    mb: 2,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    mb: 2
                   }}
                 >
-                  <Box sx={{ display: "flex", alignItems: "center" }}>
-                    <Table size={20} color="#1976d2" style={{ marginRight: '8px' }} />
-                    <Typography variant="h6">DuckDB表</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Table size={20} color={isDarkMode ? 'var(--dq-accent-100)' : '#1976d2'} />
+                    <Typography variant="h6" sx={{ fontWeight: 600, color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
+                      DuckDB表
+                    </Typography>
                   </Box>
                   <Button
                     size="small"
                     onClick={() => setTableManagerOpen(true)}
                     startIcon={<Table size={16} />}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 500,
+                      borderRadius: 2,
+                      px: 2,
+                      border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid rgba(15,23,42,0.12)',
+                      backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : '#f8fafc',
+                      color: isDarkMode ? 'var(--dq-text-secondary)' : '#1f2937',
+                      '&:hover': {
+                        borderColor: 'var(--dq-accent-100)',
+                        color: 'var(--dq-accent-100)',
+                        backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(25,118,210,0.1)'
+                      }
+                    }}
                   >
                     管理
                   </Button>
                 </Box>
 
-                <Box sx={{
-                  maxHeight: "50vh",
-                  overflow: "auto",
-                  minHeight: "200px"
-                }}>
+                <Box
+                  sx={{
+                    maxHeight: '50vh',
+                    overflow: 'auto',
+                    minHeight: '200px'
+                  }}
+                >
                   <TreeTableView
                     tables={duckdbTables}
                     onTableSelect={(table) => setSqlQuery(`SELECT * FROM "${table}" LIMIT 10000`)}
@@ -277,7 +343,7 @@ const EnhancedSQLExecutor = ({
                 </Box>
 
                 {/* SQL收藏区域 */}
-                <Box sx={{ mt: 2, borderTop: '1px solid #e0e0e0', pt: 2 }}>
+                <Box sx={{ mt: 2.5, borderTop: isDarkMode ? '1px solid var(--dq-border-subtle)' : '1px solid rgba(15,23,42,0.08)', pt: 2 }}>
                   <SQLFavoritesManager
                     onSelectFavorite={handleSelectFavorite}
                     compact={true}
@@ -290,22 +356,46 @@ const EnhancedSQLExecutor = ({
         </Grid>
 
         <Grid item xs={12} md={8}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
+          <Card
+            sx={{
+              backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#ffffff',
+              borderRadius: 3,
+              border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid rgba(15, 23, 42, 0.08)',
+              boxShadow: isDarkMode ? 'var(--dq-shadow-soft)' : '0 18px 36px -24px rgba(15, 23, 42, 0.12)'
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
                 SQL查询执行器
               </Typography>
 
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
                 <Tabs
                   value={activeTab}
                   onChange={(e, newValue) => setActiveTab(newValue)}
+                  sx={{
+                    '& .MuiTab-root': {
+                      textTransform: 'none',
+                      fontWeight: 500,
+                      fontSize: '0.9rem',
+                      minHeight: 44,
+                      color: isDarkMode ? 'var(--dq-text-tertiary)' : '#6b7280',
+                      '&.Mui-selected': {
+                        color: isDarkMode ? 'var(--dq-text-primary)' : '#1f2937'
+                      }
+                    },
+                    '& .MuiTabs-indicator': {
+                      backgroundColor: 'var(--dq-accent-100)',
+                      height: 2,
+                      borderRadius: 1
+                    }
+                  }}
                 >
-                  <Tab icon={<Code size={16} />} label="SQL编辑器" />
-                  <Tab icon={<List size={16} />} label="查询模板" />
+                  <Tab icon={<Code size={16} />} iconPosition="start" label="SQL编辑器" />
+                  <Tab icon={<List size={16} />} iconPosition="start" label="查询模板" />
                 </Tabs>
 
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
                   <Button
                     variant="outlined"
                     size="small"
@@ -318,13 +408,14 @@ const EnhancedSQLExecutor = ({
                       px: 2.5,
                       py: 0.5,
                       borderRadius: 2,
-                      borderColor: '#e0e0e0',
-                      color: '#666',
+                      borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                      color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
+                      backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                       height: '40px',
                       '&:hover': {
-                        borderColor: '#ff9800',
-                        color: '#ff9800',
-                        backgroundColor: 'rgba(255, 152, 0, 0.04)'
+                        borderColor: 'var(--dq-accent-100)',
+                        color: 'var(--dq-accent-100)',
+                        backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(25, 118, 210, 0.08)'
                       }
                     }}
                   >
@@ -341,13 +432,14 @@ const EnhancedSQLExecutor = ({
                       px: 2.5,
                       py: 0.5,
                       borderRadius: 2,
-                      borderColor: '#e0e0e0',
-                      color: '#666',
+                      borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                      color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
+                      backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                       height: '40px',
                       '&:hover': {
-                        borderColor: '#1976d2',
-                        color: '#1976d2',
-                        backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                        borderColor: 'var(--dq-accent-100)',
+                        color: 'var(--dq-accent-100)',
+                        backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(25, 118, 210, 0.08)'
                       }
                     }}
                   >
@@ -364,13 +456,14 @@ const EnhancedSQLExecutor = ({
                       px: 2.5,
                       py: 0.5,
                       borderRadius: 2,
-                      borderColor: '#e0e0e0',
-                      color: '#666',
+                      borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                      color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
+                      backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                       height: '40px',
                       '&:hover': {
-                        borderColor: '#1976d2',
-                        color: '#1976d2',
-                        backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                        borderColor: 'var(--dq-accent-100)',
+                        color: 'var(--dq-accent-100)',
+                        backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(25, 118, 210, 0.08)'
                       }
                     }}
                   >
@@ -381,11 +474,55 @@ const EnhancedSQLExecutor = ({
                       value={editorTheme}
                       displayEmpty
                       onChange={(e) => setEditorTheme(e.target.value)}
-                      sx={{ height: '40px' }}
+                      sx={{
+                        height: '40px',
+                        color: isDarkMode ? 'var(--dq-text-secondary)' : undefined,
+                        backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                        borderRadius: 2,
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined
+                        },
+                        '&:hover .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'var(--dq-accent-100)'
+                        },
+                        '& .MuiSvgIcon-root': {
+                          color: isDarkMode ? 'var(--dq-text-tertiary)' : undefined
+                        }
+                      }}
                     >
-                      <MenuItem value="dark">Dark</MenuItem>
-                      <MenuItem value="github-light">GitHub Light</MenuItem>
-                      <MenuItem value="solarized-light">Solarized Light</MenuItem>
+                      <MenuItem
+                        value="dark"
+                        sx={{
+                          backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                          '&:hover': {
+                            backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
+                          }
+                        }}
+                      >
+                        Dark
+                      </MenuItem>
+                      <MenuItem
+                        value="github-light"
+                        sx={{
+                          backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                          '&:hover': {
+                            backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
+                          }
+                        }}
+                      >
+                        GitHub Light
+                      </MenuItem>
+                      <MenuItem
+                        value="solarized-light"
+                        sx={{
+                          backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                          '&:hover': {
+                            backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
+                          }
+                        }}
+                      >
+                        Solarized Light
+                      </MenuItem>
                     </Select>
                   </FormControl>
                 </Box>
@@ -424,23 +561,28 @@ const EnhancedSQLExecutor = ({
               )}
 
               {/* 执行控制区域 */}
-              <Box sx={{
-                mb: 3,
-                p: 3,
-                backgroundColor: '#ffffff',
-                borderRadius: 3,
-                border: '1px solid #e1e5e9',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-              }}>
-                <Typography variant="subtitle1" sx={{
-                  mb: 2,
-                  fontWeight: 600,
-                  color: '#2c3e50',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1
-                }}>
-                  <Play size={20} color="#1976d2" />
+              <Box
+                sx={{
+                  mb: 3,
+                  p: 3,
+                  backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : '#ffffff',
+                  borderRadius: 3,
+                  border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid #e1e5e9',
+                  boxShadow: isDarkMode ? 'var(--dq-shadow-soft)' : '0 6px 18px -12px rgba(15, 23, 42, 0.12)'
+                }}
+              >
+                <Typography
+                  variant="subtitle1"
+                  sx={{
+                    mb: 2,
+                    fontWeight: 600,
+                    color: isDarkMode ? 'var(--dq-text-primary)' : '#2c3e50',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1
+                  }}
+                >
+                  <Play size={20} color={isDarkMode ? 'var(--dq-accent-100)' : '#1976d2'} />
                   执行控制
                 </Typography>
 
@@ -455,10 +597,25 @@ const EnhancedSQLExecutor = ({
                         fullWidth
                         placeholder="例如: query_result"
                         sx={{
+                          '& .MuiInputLabel-root': {
+                            color: isDarkMode ? 'var(--dq-text-secondary)' : undefined
+                          },
                           '& .MuiOutlinedInput-root': {
                             height: '48px',
                             borderRadius: 2,
-                            backgroundColor: '#fafbfc'
+                            backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#fafbfc',
+                            '& fieldset': {
+                              borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined
+                            },
+                            '&:hover fieldset': {
+                              borderColor: 'var(--dq-accent-100)'
+                            },
+                            '& input': {
+                              color: isDarkMode ? 'var(--dq-text-primary)' : undefined
+                            }
+                          },
+                          '& .MuiFormHelperText-root': {
+                            color: isDarkMode ? 'var(--dq-text-tertiary)' : undefined
                           }
                         }}
                       />
@@ -484,20 +641,28 @@ const EnhancedSQLExecutor = ({
                         }
                         fullWidth
                         sx={{
-                          height: "48px",
+                          height: '48px',
                           textTransform: 'none',
                           fontWeight: 600,
                           fontSize: '0.9rem',
                           borderRadius: 2,
-                          background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
-                          boxShadow: '0 4px 12px rgba(25, 118, 210, 0.3)',
+                          background: isDarkMode
+                            ? 'linear-gradient(135deg, rgba(240, 115, 53, 0.95) 0%, rgba(235, 99, 32, 0.98) 100%)'
+                            : 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                          boxShadow: isDarkMode
+                            ? '0 18px 40px -20px rgba(240, 115, 53, 0.65)'
+                            : '0 4px 12px rgba(25, 118, 210, 0.3)',
                           '&:hover': {
-                            background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
-                            boxShadow: '0 6px 16px rgba(25, 118, 210, 0.4)'
+                            background: isDarkMode
+                              ? 'linear-gradient(135deg, rgba(240, 115, 53, 1) 0%, rgba(235, 99, 32, 1) 100%)'
+                              : 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
+                            boxShadow: isDarkMode
+                              ? '0 22px 44px -18px rgba(240, 115, 53, 0.75)'
+                              : '0 6px 16px rgba(25, 118, 210, 0.4)'
                           },
                           '&:disabled': {
-                            background: '#e0e0e0',
-                            color: 'rgba(0,0,0,0.38)',
+                            background: isDarkMode ? 'rgba(148, 163, 184, 0.12)' : '#e0e0e0',
+                            color: isDarkMode ? 'var(--dq-text-tertiary)' : 'rgba(0,0,0,0.38)',
                             boxShadow: 'none'
                           }
                         }}
@@ -511,22 +676,24 @@ const EnhancedSQLExecutor = ({
                         startIcon={<Play size={16} />}
                         fullWidth
                         sx={{
-                          height: "48px",
+                          height: '48px',
                           textTransform: 'none',
                           fontWeight: 600,
                           fontSize: '0.9rem',
                           borderRadius: 2,
-                          borderColor: '#1976d2',
-                          color: '#1976d2',
+                          borderColor: isDarkMode ? 'var(--dq-border)' : '#1976d2',
+                          color: isDarkMode ? 'var(--dq-text-secondary)' : '#1976d2',
                           borderWidth: 2,
+                          backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                           '&:hover': {
                             borderWidth: 2,
-                            backgroundColor: 'rgba(25, 118, 210, 0.04)',
-                            borderColor: '#1565c0'
+                            borderColor: 'var(--dq-accent-100)',
+                            color: 'var(--dq-accent-100)',
+                            backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(25, 118, 210, 0.08)'
                           },
                           '&:disabled': {
-                            borderColor: '#e0e0e0',
-                            color: 'rgba(0,0,0,0.38)'
+                            borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                            color: isDarkMode ? 'var(--dq-text-tertiary)' : 'rgba(0,0,0,0.38)'
                           }
                         }}
                       >
@@ -557,17 +724,20 @@ const EnhancedSQLExecutor = ({
         onClose={() => setTableManagerOpen(false)}
         maxWidth="lg"
         fullWidth
-        sx={{
-          '& .MuiDialog-paper': {
+        PaperProps={{
+          sx: {
             maxHeight: '90vh',
-            borderRadius: 2
+            borderRadius: 3,
+            backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+            border: isDarkMode ? '1px solid var(--dq-border)' : undefined,
+            boxShadow: isDarkMode ? '0 28px 56px -28px rgba(15, 23, 42, 0.6)' : undefined
           }
         }}
       >
-        <DialogTitle sx={{ pb: 1 }}>
+        <DialogTitle sx={{ pb: 1, color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Table size={20} color="#1976d2" />
-            <Typography variant="h5" component="h2" fontWeight="bold">
+            <Table size={20} color={isDarkMode ? 'var(--dq-accent-100)' : '#1976d2'} />
+            <Typography variant="h5" component="h2" fontWeight="bold" sx={{ color: 'inherit' }}>
               DuckDB表管理
             </Typography>
           </Box>
@@ -586,7 +756,18 @@ const EnhancedSQLExecutor = ({
           <Button
             onClick={() => setTableManagerOpen(false)}
             variant="contained"
-            sx={{ borderRadius: 2 }}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              background: isDarkMode
+                ? 'linear-gradient(135deg, rgba(240, 115, 53, 0.95) 0%, rgba(235, 99, 32, 0.98) 100%)'
+                : undefined,
+              '&:hover': {
+                background: isDarkMode
+                  ? 'linear-gradient(135deg, rgba(240, 115, 53, 1) 0%, rgba(235, 99, 32, 1) 100%)'
+                  : undefined
+              }
+            }}
           >
             关闭
           </Button>

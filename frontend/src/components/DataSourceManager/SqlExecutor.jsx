@@ -37,6 +37,8 @@ import AddSQLFavoriteDialog from '../SQLFavorites/AddSQLFavoriteDialog';
 import SQLFavoritesSelect from '../SQLFavorites/SQLFavoritesSelect';
 import SQLValidator from '../SQLValidator';
 
+const getIsDarkMode = () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+
 // 智能LIMIT处理函数
 const applyDisplayLimit = (sql, maxRows = 10000) => {
   const sqlTrimmed = sql.trim().replace(/;$/, '');
@@ -78,7 +80,8 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
   const [results, setResults] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [editorTheme, setEditorTheme] = useState("github-light");
+  const [isDarkMode, setIsDarkMode] = useState(getIsDarkMode);
+  const [editorTheme, setEditorTheme] = useState(() => (getIsDarkMode() ? 'dark' : 'github-light'));
 
   // SQL编辑器引用
   const sqlEditorRef = useRef(null);
@@ -100,14 +103,48 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const syncFromDom = () => {
+      setIsDarkMode(getIsDarkMode());
+    };
+
+    const handleThemeChange = (event) => {
+      if (event?.detail && typeof event.detail.isDark === 'boolean') {
+        setIsDarkMode(event.detail.isDark);
+      } else {
+        syncFromDom();
+      }
+    };
+
+    window.addEventListener('duckquery-theme-change', handleThemeChange);
+
+    const observer = new MutationObserver(syncFromDom);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+    syncFromDom();
+
+    return () => {
+      window.removeEventListener('duckquery-theme-change', handleThemeChange);
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    const nextTheme = isDarkMode ? 'dark' : 'github-light';
+    setEditorTheme(nextTheme);
+  }, [isDarkMode]);
+
   // 稳定化databaseConnections引用，避免不必要的重新渲染
   const stableConnections = useMemo(() => databaseConnections, [JSON.stringify(databaseConnections)]);
 
   // 使用传入的数据库连接列表
   useEffect(() => {
-    if (stableConnections && stableConnections.length > 0) {
-      // 默认选择第一个数据库连接
-      setSelectedDataSource(stableConnections[0].id);
+    if (stableConnections && stableConnections.length === 0) {
+      setSelectedDataSource('');
     }
   }, [stableConnections]);
 
@@ -332,48 +369,90 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
         disableGutters
         elevation={0}
         sx={{
-          border: '1px solid rgba(0, 0, 0, 0.1)',
-          borderRadius: '8px',
+          border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid rgba(0, 0, 0, 0.1)',
+          borderRadius: '12px',
           mb: 2,
           '&:before': { display: 'none' },
-          overflow: 'hidden'
+          overflow: 'hidden',
+          backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#ffffff',
+          boxShadow: isDarkMode ? 'var(--dq-shadow-soft)' : 'none'
         }}
       >
         <AccordionSummary
           expandIcon={<ExpandMoreIcon />}
           sx={{
-            backgroundColor: '#ffffff',
-            borderBottom: expanded ? '1px solid rgba(0, 0, 0, 0.1)' : 'none',
+            backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : '#ffffff',
+            borderBottom: expanded ? (isDarkMode ? '1px solid var(--dq-border-subtle)' : '1px solid rgba(0, 0, 0, 0.1)') : 'none',
             minHeight: '48px',
             '& .MuiAccordionSummary-content': { my: 0 }
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Code size={20} style={{ marginRight: '8px', color: '#1976d2' }} />
-            <Typography sx={{ fontWeight: 500, fontSize: '0.9rem' }}>
+            <Code size={20} style={{ marginRight: '8px', color: isDarkMode ? 'var(--dq-accent-100)' : '#1976d2' }} />
+            <Typography sx={{ fontWeight: 500, fontSize: '0.9rem', color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
               SQL查询执行器 - {selectedDataSource ? databaseConnections.find(ds => ds.id === selectedDataSource)?.name || selectedDataSource : '请选择数据库连接'}
             </Typography>
           </Box>
         </AccordionSummary>
 
-        <AccordionDetails sx={{ p: 2, pt: 2.5 }}>
+        <AccordionDetails sx={{ p: 2.5, backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#ffffff' }}>
           {/* 数据库连接选择器 */}
           <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel id="datasource-select-label">选择数据库连接</InputLabel>
+            <InputLabel
+              id="datasource-select-label"
+              shrink
+              sx={{ color: isDarkMode ? 'var(--dq-text-secondary)' : undefined }}
+            >
+              数据库连接
+            </InputLabel>
             <Select
               labelId="datasource-select-label"
               value={selectedDataSource}
-              label="选择数据库连接"
+              label="数据库连接"
               onChange={(e) => setSelectedDataSource(e.target.value)}
               size="small"
+              displayEmpty
+              renderValue={(value) => {
+                if (!value) {
+                  return <Typography sx={{ color: isDarkMode ? 'var(--dq-text-tertiary)' : 'rgba(0,0,0,0.6)' }}>请选择数据库连接</Typography>;
+                }
+                const ds = databaseConnections.find(item => item.id === value);
+                return ds ? ds.name : value;
+              }}
+              sx={{
+                color: isDarkMode ? 'var(--dq-text-primary)' : undefined,
+                backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : undefined,
+                borderRadius: 2,
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined
+                },
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'var(--dq-accent-100)'
+                },
+                '& .MuiSvgIcon-root': {
+                  color: isDarkMode ? 'var(--dq-text-tertiary)' : undefined
+                }
+              }}
             >
+              <MenuItem value="" disabled sx={{ display: 'none' }}>
+                请选择数据库连接
+              </MenuItem>
               {databaseConnections.map((ds) => (
-                <MenuItem key={ds.id} value={ds.id}>
+                <MenuItem
+                  key={ds.id}
+                  value={ds.id}
+                  sx={{
+                    backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                    '&:hover': {
+                      backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
+                    }
+                  }}
+                >
                   <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500, color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
                       {ds.name}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="text.secondary" sx={{ color: isDarkMode ? 'var(--dq-text-secondary)' : undefined }}>
                       {(ds.type || '').toUpperCase()} - {ds.params?.database || '数据库'}
                     </Typography>
                   </Box>
@@ -391,7 +470,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
 
           {/* 编辑器工具栏 */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
+            <Typography variant="subtitle2" sx={{ color: isDarkMode ? 'var(--dq-text-secondary)' : 'text.secondary' }}>
               SQL查询编辑器
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -407,13 +486,14 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   px: 2.5,
                   py: 0.5,
                   borderRadius: 2,
-                  borderColor: '#e0e0e0',
-                  color: '#666',
+                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                  color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
+                  backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                   height: '40px',
                   '&:hover': {
-                    borderColor: '#ff9800',
-                    color: '#ff9800',
-                    backgroundColor: 'rgba(255, 152, 0, 0.04)'
+                    borderColor: 'var(--dq-accent-100)',
+                    color: 'var(--dq-accent-100)',
+                    backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(255, 152, 0, 0.08)'
                   }
                 }}
               >
@@ -430,13 +510,14 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   px: 2.5,
                   py: 0.5,
                   borderRadius: 2,
-                  borderColor: '#e0e0e0',
-                  color: '#666',
+                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                  color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
+                  backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                   height: '40px',
                   '&:hover': {
-                    borderColor: '#1976d2',
-                    color: '#1976d2',
-                    backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                    borderColor: 'var(--dq-accent-100)',
+                    color: 'var(--dq-accent-100)',
+                    backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(25, 118, 210, 0.06)'
                   }
                 }}
               >
@@ -453,13 +534,14 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   px: 2.5,
                   py: 0.5,
                   borderRadius: 2,
-                  borderColor: '#e0e0e0',
-                  color: '#666',
+                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                  color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
+                  backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                   height: '40px',
                   '&:hover': {
-                    borderColor: '#1976d2',
-                    color: '#1976d2',
-                    backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                    borderColor: 'var(--dq-accent-100)',
+                    color: 'var(--dq-accent-100)',
+                    backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(25, 118, 210, 0.06)'
                   }
                 }}
               >
@@ -469,12 +551,58 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                 <Select
                   value={editorTheme}
                   displayEmpty
-                  onChange={(e) => setEditorTheme(e.target.value)}
-                  sx={{ height: '40px' }}
+                  onChange={(e) => {
+                    setEditorTheme(e.target.value);
+                  }}
+                  sx={{
+                    height: '40px',
+                    color: isDarkMode ? 'var(--dq-text-secondary)' : undefined,
+                    backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                    borderRadius: 2,
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--dq-accent-100)'
+                    },
+                    '& .MuiSvgIcon-root': {
+                      color: isDarkMode ? 'var(--dq-text-tertiary)' : undefined
+                    }
+                  }}
                 >
-                  <MenuItem value="dark">Dark</MenuItem>
-                  <MenuItem value="github-light">GitHub Light</MenuItem>
-                  <MenuItem value="solarized-light">Solarized Light</MenuItem>
+                  <MenuItem
+                    value="dark"
+                    sx={{
+                      backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                      '&:hover': {
+                        backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
+                      }
+                    }}
+                  >
+                    Dark
+                  </MenuItem>
+                  <MenuItem
+                    value="github-light"
+                    sx={{
+                      backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                      '&:hover': {
+                        backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
+                      }
+                    }}
+                  >
+                    GitHub Light
+                  </MenuItem>
+                  <MenuItem
+                    value="solarized-light"
+                    sx={{
+                      backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                      '&:hover': {
+                        backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
+                      }
+                    }}
+                  >
+                    Solarized Light
+                  </MenuItem>
                 </Select>
               </FormControl>
             </Box>
@@ -507,14 +635,24 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
               variant="contained"
               startIcon={<Play size={20} />}
               onClick={handleExecuteSql}
-              disabled={loading || (validationResult && validationResult.hasErrors)}
+              disabled={loading || !selectedDataSource || (validationResult && validationResult.hasErrors)}
               sx={{
                 borderRadius: '20px',
                 minWidth: '160px',
                 py: 0.75,
                 textTransform: 'none',
                 fontWeight: 500,
-                fontSize: '0.875rem'
+                fontSize: '0.875rem',
+                background: isDarkMode
+                  ? 'linear-gradient(135deg, rgba(240, 115, 53, 0.95) 0%, rgba(235, 99, 32, 0.98) 100%)'
+                  : undefined,
+                boxShadow: isDarkMode ? '0 16px 36px -18px rgba(240, 115, 53, 0.6)' : undefined,
+                '&:hover': {
+                  background: isDarkMode
+                    ? 'linear-gradient(135deg, rgba(240, 115, 53, 1) 0%, rgba(235, 99, 32, 1) 100%)'
+                    : undefined,
+                  boxShadow: isDarkMode ? '0 18px 40px -16px rgba(240, 115, 53, 0.7)' : undefined
+                }
               }}
             >
               {loading ? <CircularProgress size={24} /> : '执行SQL'}
@@ -532,7 +670,15 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   py: 0.75,
                   textTransform: 'none',
                   fontWeight: 500,
-                  fontSize: '0.875rem'
+                  fontSize: '0.875rem',
+                  borderColor: isDarkMode ? 'var(--dq-border)' : undefined,
+                  color: isDarkMode ? 'var(--dq-text-secondary)' : undefined,
+                  backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                  '&:hover': {
+                    borderColor: 'var(--dq-accent-100)',
+                    color: 'var(--dq-accent-100)',
+                    backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : undefined
+                  }
                 }}
               >
                 保存到DuckDB

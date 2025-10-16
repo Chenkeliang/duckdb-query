@@ -12,6 +12,8 @@ import {
 import { Star } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
+const getIsDark = () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+
 // API 调用函数
 const apiClient = {
     async getFavorites() {
@@ -36,6 +38,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [selectedValue, setSelectedValue] = useState('');
+    const [isDarkMode, setIsDarkMode] = useState(getIsDark);
 
     // 加载收藏列表
     const loadFavorites = async () => {
@@ -52,6 +55,10 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
     };
 
     useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
         loadFavorites();
 
         // 监听收藏更新事件
@@ -61,8 +68,29 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
 
         window.addEventListener('sqlFavoritesUpdated', handleFavoritesUpdate);
 
+        const syncTheme = () => setIsDarkMode(getIsDark());
+        const handleThemeChange = (event) => {
+            if (event?.detail && typeof event.detail.isDark === 'boolean') {
+                setIsDarkMode(event.detail.isDark);
+            } else {
+                syncTheme();
+            }
+        };
+
+        window.addEventListener('duckquery-theme-change', handleThemeChange);
+        let observer;
+        if (typeof MutationObserver !== 'undefined') {
+            observer = new MutationObserver(syncTheme);
+            observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        }
+        syncTheme();
+
         return () => {
             window.removeEventListener('sqlFavoritesUpdated', handleFavoritesUpdate);
+            window.removeEventListener('duckquery-theme-change', handleThemeChange);
+            if (observer) {
+                observer.disconnect();
+            }
         };
     }, []);
 
@@ -95,21 +123,36 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
     };
 
     // 渲染菜单项
+    const accentColor = '#f07335';
     const renderMenuItem = (favorite) => (
-        <MenuItem key={favorite.id} value={favorite.id}>
+        <MenuItem
+            key={favorite.id}
+            value={favorite.id}
+            sx={{
+                alignItems: 'flex-start',
+                backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                '&:hover': {
+                    backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
+                }
+            }}
+        >
             <Box sx={{ width: '100%' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <Star size={16} color="#1976d2" />
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                    <Star size={16} color={isDarkMode ? accentColor : '#1976d2'} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
                         {favorite.name}
                     </Typography>
                     {favorite.usage_count > 0 && (
                         <Chip
                             label={`${favorite.usage_count}次`}
                             size="small"
-                            color="primary"
                             variant="outlined"
-                            sx={{ fontSize: '0.75rem', height: 20 }}
+                            sx={{
+                                fontSize: '0.75rem',
+                                height: 20,
+                                borderColor: isDarkMode ? accentColor : undefined,
+                                color: isDarkMode ? accentColor : undefined
+                            }}
                         />
                     )}
                 </Box>
@@ -131,7 +174,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                     variant="caption"
                     sx={{
                         fontFamily: 'monospace',
-                        backgroundColor: '#f5f5f5',
+                        backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : '#f5f5f5',
                         padding: '2px 6px',
                         borderRadius: 1,
                         display: 'block',
@@ -139,7 +182,8 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
-                        fontSize: '0.75rem'
+                        fontSize: '0.75rem',
+                        color: isDarkMode ? 'var(--dq-text-secondary)' : undefined
                     }}
                 >
                     {favorite.sql}
@@ -152,7 +196,12 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                                 label={tag}
                                 size="small"
                                 variant="outlined"
-                                sx={{ fontSize: '0.7rem', height: 18 }}
+                                sx={{
+                                    fontSize: '0.7rem',
+                                    height: 18,
+                                    borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined,
+                                    color: isDarkMode ? 'var(--dq-text-secondary)' : undefined
+                                }}
                             />
                         ))}
                         {favorite.tags.length > 3 && (
@@ -160,7 +209,12 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                                 label={`+${favorite.tags.length - 3}`}
                                 size="small"
                                 variant="outlined"
-                                sx={{ fontSize: '0.7rem', height: 18 }}
+                                sx={{
+                                    fontSize: '0.7rem',
+                                    height: 18,
+                                    borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined,
+                                    color: isDarkMode ? 'var(--dq-text-secondary)' : undefined
+                                }}
                             />
                         )}
                     </Box>
@@ -172,11 +226,18 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
     if (loading) {
         return (
             <FormControl fullWidth>
-                <InputLabel>选择收藏的SQL</InputLabel>
+                <InputLabel sx={{ color: isDarkMode ? 'var(--dq-text-secondary)' : undefined }}>选择收藏的SQL</InputLabel>
                 <Select
                     value=""
                     label="选择收藏的SQL"
                     disabled
+                    sx={{
+                        backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                        color: isDarkMode ? 'var(--dq-text-secondary)' : undefined,
+                        '& .MuiOutlinedInput-notchedOutline': {
+                            borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined
+                        }
+                    }}
                 >
                     <MenuItem value="">
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -206,6 +267,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                 <InputLabel
                     id="sql-favorites-select-label"
                     shrink={!hasFavorites || selectedValue !== ''}
+                    sx={{ color: isDarkMode ? 'var(--dq-text-secondary)' : undefined }}
                 >
                     {hasFavorites ? placeholder : '暂无收藏的SQL'}
                 </InputLabel>
@@ -225,13 +287,25 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                     }}
                     sx={{
                         '& .MuiSelect-select': {
-                            py: 1.5
+                            py: 1.5,
+                            color: isDarkMode ? 'var(--dq-text-primary)' : undefined
+                        },
+                        backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                        borderRadius: 2,
+                        '& .MuiOutlinedInput-notchedOutline': {
+                            borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined
+                        },
+                        '&:hover .MuiOutlinedInput-notchedOutline': {
+                            borderColor: 'var(--dq-accent-100)'
+                        },
+                        '& .MuiSvgIcon-root': {
+                            color: isDarkMode ? 'var(--dq-text-tertiary)' : undefined
                         }
                     }}
                 >
                     {!hasFavorites ? (
                         <MenuItem value="" disabled>
-                            <Typography color="text.secondary" variant="body2">
+                            <Typography color="text.secondary" variant="body2" sx={{ color: isDarkMode ? 'var(--dq-text-secondary)' : undefined }}>
                                 暂无收藏的SQL
                             </Typography>
                         </MenuItem>

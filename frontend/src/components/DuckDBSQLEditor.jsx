@@ -19,74 +19,77 @@ import React, {
 // Ayu Dark 主题配置
 const ayuDarkTheme = EditorView.theme({
   "&": {
-    color: "#e6e1cf",
-    backgroundColor: "#0f1419"
+    color: "#e6eaf3",
+    backgroundColor: "#0f131b"
   },
   ".cm-content": {
-    caretColor: "#ffcc66"
+    caretColor: "#f07335"
   },
-  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#ffcc66" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#f07335" },
   "&.cm-focused .cm-selectionBackground": {
-    backgroundColor: "#3e4451 !important"
+    backgroundColor: "rgba(240, 115, 53, 0.28) !important"
   },
   ".cm-selectionBackground": {
-    backgroundColor: "#3e4451 !important",
+    backgroundColor: "rgba(240, 115, 53, 0.22) !important",
     opacity: "1 !important"
   },
   ".cm-content ::selection": {
-    backgroundColor: "#3e4451 !important"
+    backgroundColor: "rgba(240, 115, 53, 0.25) !important",
+    color: "#0b0d12 !important"
   },
   "& ::selection": {
-    backgroundColor: "#3e4451 !important"
+    backgroundColor: "rgba(240, 115, 53, 0.25) !important",
+    color: "#0b0d12 !important"
   },
   ".cm-line ::selection": {
-    backgroundColor: "#3e4451 !important"
+    backgroundColor: "rgba(240, 115, 53, 0.25) !important",
+    color: "#0b0d12 !important"
   },
-  ".cm-panels": { backgroundColor: "#0f1419", color: "#e6e1cf" },
-  ".cm-panels.cm-panels-top": { borderBottom: "2px solid black" },
-  ".cm-panels.cm-panels-bottom": { borderTop: "2px solid black" },
+  ".cm-panels": { backgroundColor: "#101620", color: "#e6eaf3" },
+  ".cm-panels.cm-panels-top": { borderBottom: "1px solid #1d2531" },
+  ".cm-panels.cm-panels-bottom": { borderTop: "1px solid #1d2531" },
   ".cm-searchMatch": {
-    backgroundColor: "#72a1ff59",
-    outline: "1px solid #457dff"
+    backgroundColor: "rgba(240, 115, 53, 0.18)",
+    outline: "1px solid rgba(240, 115, 53, 0.45)"
   },
   ".cm-searchMatch.cm-searchMatch-selected": {
-    backgroundColor: "#6199ff2f"
+    backgroundColor: "rgba(240, 115, 53, 0.28)"
   },
-  ".cm-activeLine": { backgroundColor: "#253340" },
-  ".cm-selectionMatch": { backgroundColor: "#aafe661a" },
+  ".cm-activeLine": { backgroundColor: "rgba(240, 115, 53, 0.12)" },
+  ".cm-selectionMatch": { backgroundColor: "rgba(240, 115, 53, 0.18)" },
   "&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket": {
-    backgroundColor: "#bad0f847",
-    outline: "1px solid #515a6b"
+    backgroundColor: "rgba(240, 115, 53, 0.18)",
+    outline: "1px solid rgba(240, 115, 53, 0.35)"
   },
   ".cm-gutters": {
-    backgroundColor: "#0f1419",
-    color: "#3c4f66",
+    backgroundColor: "#0f131b",
+    color: "#5b6270",
     border: "none"
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "#253340"
+    backgroundColor: "rgba(240, 115, 53, 0.18)"
   },
   ".cm-foldPlaceholder": {
     backgroundColor: "transparent",
     border: "none",
-    color: "#ddd"
+    color: "#9aa0ac"
   },
   ".cm-tooltip": {
-    border: "1px solid #181a1f",
-    backgroundColor: "#262a33"
+    border: "1px solid #1d2531",
+    backgroundColor: "#151c27"
   },
   ".cm-tooltip .cm-tooltip-arrow:before": {
     borderTopColor: "transparent",
     borderBottomColor: "transparent"
   },
   ".cm-tooltip .cm-tooltip-arrow:after": {
-    borderTopColor: "#262a33",
-    borderBottomColor: "#262a33"
+    borderTopColor: "#151c27",
+    borderBottomColor: "#151c27"
   },
   ".cm-tooltip-autocomplete": {
     "& > ul > li[aria-selected]": {
-      backgroundColor: "#72a1ff",
-      color: "#262a33"
+      backgroundColor: "#f07335",
+      color: "#0b0d12"
     }
   }
 }, { dark: true });
@@ -758,7 +761,7 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
           EditorView.lineWrapping, // 添加自动换行
           (() => {
             if (theme === "dark") {
-              return oneDark;
+              return [oneDark, ayuDarkTheme];
             } else if (theme === "github-light") {
               return githubLightTheme;
             } else if (theme === "solarized-light") {
