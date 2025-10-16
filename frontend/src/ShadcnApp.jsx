@@ -883,20 +883,12 @@ const ShadcnApp = () => {
                 <div className="page-intro-content">
                   <div className="page-intro-desc">
                     <div>
-                      <strong>智能文件上传：</strong>
-                      支持CSV、Excel、JSON、Parquet格式，自动检测大文件并启用分块上传和断点续传
+                      <strong>上传文件：</strong>
+                      支持<b>剪切板/CSV/Excel/JSON/Parquet/远程文件</b>等多类型上传，自动建表用于数据分析查询，默认最大50GB，支持自定义配置
                     </div>
                     <div>
-                      <strong>数据库连接：</strong>
-                      连接MySQL、PostgreSQL等数据库，支持连接测试和配置保存
-                    </div>
-                    <div>
-                      <strong>数据粘贴：</strong>
-                      直接粘贴表格数据，自动识别分隔符和数据类型，快速创建数据表
-                    </div>
-                    <div>
-                      <strong>数据源管理：</strong>
-                      统一管理所有数据源，支持预览、删除和刷新操作
+                      <strong>支持连接远程数据库：</strong>
+                      支持<b>MySQL / PostgreSQL</b>配置之后可在查询页面查询数据加载到本地表中
                     </div>
                   </div>
                 </div>
@@ -949,225 +941,217 @@ const ShadcnApp = () => {
                 </div>
               </div>
             </div>
-          )}
+          )
+          }
 
           {/* 统一查询页面 */}
-          {currentTab === "unifiedquery" && (
-            <div className="p-6">
-              {/* 页面介绍 */}
-              <div className="page-intro">
-                <div className="page-intro-content">
-                  <div className="page-intro-desc">
-                    <div>
-                      <strong>统一查询界面：</strong>
-                      整合图形化查询构建器和SQL编辑器，提供一致的查询体验
-                    </div>
-                    <div>
-                      <strong>图形化查询：</strong>
-                      拖拽选择数据源，无需编写SQL即可构建复杂查询
-                    </div>
-                    <div>
-                      <strong>SQL编辑器：</strong>
-                      直接编写SQL语句，支持语法高亮和自动补全
-                    </div>
-                    <div>
-                      <strong>多表关联：</strong>支持INNER、LEFT、RIGHT、FULL
-                      JOIN等多种连接方式
-                    </div>
-                    <div>
-                      <strong>结果展示：</strong>
-                      统一的结果展示界面，支持导出和进一步分析
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                {/* 统一查询界面 */}
-                <UnifiedQueryInterface
-                  dataSources={[...dataSources]
-                    .filter(
-                      (ds) =>
-                        ds.type === "duckdb" || ds.sourceType === "duckdb",
-                    )
-                    .sort((a, b) => {
-                      const timeA = a.createdAt
-                        ? new Date(a.createdAt)
-                        : new Date(0);
-                      const timeB = b.createdAt
-                        ? new Date(b.createdAt)
-                        : new Date(0);
-                      // 如果createdAt为null，将其放在最后
-                      if (!a.createdAt && !b.createdAt) return 0;
-                      if (!a.createdAt) return 1;
-                      if (!b.createdAt) return -1;
-                      return timeB - timeA;
-                    })}
-                  databaseConnections={databaseConnections}
-                  selectedSources={selectedSources}
-                  setSelectedSources={setSelectedSources}
-                  onResultsReceived={handleResultsReceived}
-                  onDataSourceSaved={(newDataSource) => {
-                    triggerRefresh();
-                  }}
-                  onRefresh={triggerRefresh}
-                />
-
-                {/* 查询结果 */}
-                {queryResults.data && (
-                  <div className="bg-white rounded-lg border shadow-sm p-6">
-                    <ModernDataDisplay
-                      data={queryResults.data || []}
-                      columns={
-                        queryResults.columns
-                          ? queryResults.columns.map((col, index) => {
-                            // 安全地处理列数据，支持字符串和对象格式
-                            const fieldValue = typeof col === 'string' ? col : (col.name || col.field || `column_${index}`);
-                            const headerValue = typeof col === 'string' ? col : (col.headerName || col.name || col.field || `column_${index}`);
-
-                            return {
-                              field: fieldValue,
-                              headerName: headerValue,
-                              sortable: true,
-                              filter: true,
-                              resizable: true,
-                            };
-                          })
-                          : []
-                      }
-                      loading={resultsLoading}
-                      title={queryResults.isVisualQuery ? "可视化查询结果" : (queryResults.isSetOperation ? "集合操作结果" : "查询结果")}
-                      sqlQuery={queryResults.sqlQuery || queryResults.sql || ""}
-                      originalDatasource={queryResults.originalDatasource}
-                      onApplyFilters={handleApplyResultFilters}
-                      activeFilters={activeFilters}
-                      // Visual query specific props
-                      isVisualQuery={queryResults.isVisualQuery || false}
-                      visualConfig={queryResults.visualConfig || null}
-                      generatedSQL={queryResults.generatedSQL || ""}
-                      // Set operation specific props
-                      isSetOperation={queryResults.isSetOperation || false}
-                      setOperationConfig={queryResults.setOperationConfig || null}
-                      onRefresh={triggerRefresh}
-                      onDataSourceSaved={triggerRefresh}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 数据表管理页面 - 包含二级TAB */}
-          {currentTab === "tablemanagement" && (
-            <div className="p-6">
-              {/* 页面介绍 */}
-              <div className="page-intro">
-                <div className="page-intro-content">
-                  <div className="page-intro-desc">
-                    <div>
-                      <strong>DuckDB管理：</strong>
-                      管理内置DuckDB数据库的表结构、数据预览和表操作
-                    </div>
-                    <div>
-                      <strong>外部数据库：</strong>
-                      管理MySQL、PostgreSQL等外部数据库的表结构和数据
-                    </div>
-                    <div>
-                      <strong>统一管理：</strong>
-                      在一个界面中管理所有数据库的表，支持切换和对比
-                    </div>
-                    <div>
-                      <strong>实时同步：</strong>
-                      支持手动刷新表列表，保持数据同步
-                    </div>
-                    <div>
-                      <strong>操作便捷：</strong>
-                      支持表删除、数据预览、结构查看等常用操作
+          {
+            currentTab === "unifiedquery" && (
+              <div className="p-6">
+                {/* 页面介绍 */}
+                <div className="page-intro">
+                  <div className="page-intro-content">
+                    <div className="page-intro-desc">
+                      <div>
+                        <strong>图形化查询：</strong>
+                        像用Excel筛选+排序一样，一键选字段、加条件、排结果（无需写SQL），生成数据分析结果
+                      </div>
+                      <div>
+                        <strong>SQL编辑器：</strong>
+                        可通过内部数据进行查询已上传数据表以及外部数据库加载至内部数据中，支持DUCKDB完整SQL语法
+                      </div>
+                      <div>
+                        <strong>多表关联：</strong>
+                        支持跨系统数据融合：像Excel VLOOKUP一样，一键把多张报表（即使来自不同系统，如ERP和Excel）通过共同字段（如客户编号、日期）横向合并成一张大表
+                      </div>
+                      <div>
+                        <strong>数据集合：</strong>
+                        持跨系统数据汇总：像Excel复制粘贴多张报表一样，一键把多份相似表格（即使来自不同系统，如ERP和Excel）垂直堆叠成一张大表
+                      </div>
+                      <div>
+                        <strong>数据预览导出：</strong>
+                        页面最大支持1w条数据预览，支持完整数据异步任务导出，支持CSV/Parquet格式
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              {/* 二级TAB导航 */}
-              <div className="bg-white rounded-lg border shadow-sm mb-6">
-                <div className="mantine-tabs secondary">
-                  {[
-                    { id: "duckdb", label: "DuckDB管理" },
-                    { id: "external", label: "外部数据库" },
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setTableManagementTab(tab.id)}
-                      className={`mantine-tab secondary ${tableManagementTab === tab.id ? "active" : ""}`}
-                    >
-                      <span>{tab.label}</span>
-                    </button>
-                  ))}
-                </div>
-
-                {/* DuckDB管理内容 */}
-                {tableManagementTab === "duckdb" && (
-                  <div className="p-6">
-                    <DuckDBManagementPage onDataSourceChange={triggerRefresh} />
-                  </div>
-                )}
-
-                {/* 外部数据库管理内容 */}
-                {tableManagementTab === "external" && (
-                  <div className="p-6">
-                    <DatabaseTableManager
+                  <div className="space-y-6">
+                    {/* 统一查询界面 */}
+                    <UnifiedQueryInterface
+                      dataSources={[...dataSources]
+                        .filter(
+                          (ds) =>
+                            ds.type === "duckdb" || ds.sourceType === "duckdb",
+                        )
+                        .sort((a, b) => {
+                          const timeA = a.createdAt
+                            ? new Date(a.createdAt)
+                            : new Date(0);
+                          const timeB = b.createdAt
+                            ? new Date(b.createdAt)
+                            : new Date(0);
+                          // 如果createdAt为null，将其放在最后
+                          if (!a.createdAt && !b.createdAt) return 0;
+                          if (!a.createdAt) return 1;
+                          if (!b.createdAt) return -1;
+                          return timeB - timeA;
+                        })}
                       databaseConnections={databaseConnections}
+                      selectedSources={selectedSources}
+                      setSelectedSources={setSelectedSources}
+                      onResultsReceived={handleResultsReceived}
+                      onDataSourceSaved={(newDataSource) => {
+                        triggerRefresh();
+                      }}
+                      onRefresh={triggerRefresh}
                     />
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* 异步任务页面 */}
-          {currentTab === "asynctasks" && (
-            <div className="p-6">
-              {/* 页面介绍 */}
-              <div className="page-intro">
-                <div className="page-intro-content">
-                  <div className="page-intro-desc">
-                    <div>
-                      <strong>异步任务管理：</strong>
-                      提交耗时长的查询任务，避免阻塞界面
-                    </div>
-                    <div>
-                      <strong>实时状态跟踪：</strong>实时查看任务执行状态和进度
-                    </div>
-                    <div>
-                      <strong>结果下载：</strong>任务完成后可下载完整查询结果
-                    </div>
-                    <div>
-                      <strong>结果预览：</strong>
-                      将异步查询结果作为数据源进行预览和进一步查询
-                    </div>
+                    {/* 查询结果 */}
+                    {queryResults.data && (
+                      <div className="bg-white rounded-lg border shadow-sm p-6">
+                        <ModernDataDisplay
+                          data={queryResults.data || []}
+                          columns={
+                            queryResults.columns
+                              ? queryResults.columns.map((col, index) => {
+                                // 安全地处理列数据，支持字符串和对象格式
+                                const fieldValue = typeof col === 'string' ? col : (col.name || col.field || `column_${index}`);
+                                const headerValue = typeof col === 'string' ? col : (col.headerName || col.name || col.field || `column_${index}`);
+
+                                return {
+                                  field: fieldValue,
+                                  headerName: headerValue,
+                                  sortable: true,
+                                  filter: true,
+                                  resizable: true,
+                                };
+                              })
+                              : []
+                          }
+                          loading={resultsLoading}
+                          title={queryResults.isVisualQuery ? "可视化查询结果" : (queryResults.isSetOperation ? "集合操作结果" : "查询结果")}
+                          sqlQuery={queryResults.sqlQuery || queryResults.sql || ""}
+                          originalDatasource={queryResults.originalDatasource}
+                          onApplyFilters={handleApplyResultFilters}
+                          activeFilters={activeFilters}
+                          // Visual query specific props
+                          isVisualQuery={queryResults.isVisualQuery || false}
+                          visualConfig={queryResults.visualConfig || null}
+                          generatedSQL={queryResults.generatedSQL || ""}
+                          // Set operation specific props
+                          isSetOperation={queryResults.isSetOperation || false}
+                          setOperationConfig={queryResults.setOperationConfig || null}
+                          onRefresh={triggerRefresh}
+                          onDataSourceSaved={triggerRefresh}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
+                )
+          }
 
-              <AsyncTaskList
-                onPreviewResult={(taskId) => {
-                  // 设置查询语句为 SELECT * FROM "async_result_{taskId}"
-                  const query = `SELECT * FROM "async_result_${taskId}" LIMIT 10000`;
-                  // 切换到SQL执行器标签页
-                  setCurrentTab("sql");
-                  // 设置查询语句到SQL执行器
-                  setPreviewQuery(query);
-                }}
-                onTaskCompleted={(completedTask) => {
-                  // 异步任务完成时，刷新数据源列表
-                  triggerRefresh();
-                }}
-              />
-            </div>
-          )}
-        </div>
-      </main>
-    </div>
+                {/* 数据表管理页面 - 包含二级TAB */}
+                {
+                  currentTab === "tablemanagement" && (
+                    <div className="p-6">
+                      {/* 页面介绍 */}
+                      <div className="page-intro">
+                        <div className="page-intro-content">
+                          <div className="page-intro-desc">
+                            <div>
+                              <strong>表浏览与搜索：</strong>
+                              查看已保存的Duckdb内置表，支持搜索表名与查看行列数量
+                            </div>
+                            <div>
+                              <strong>表管理：</strong>
+                              查看表结构，一键复制表名，删除不需要的表
+                            </div>
+                            <div>
+                              <strong>分组展示：</strong>
+                              异步结果表、普通表、临时表分组清晰展示
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 二级TAB导航 */}
+                      <div className="bg-white rounded-lg border shadow-sm mb-6">
+                        <div className="mantine-tabs secondary">
+                          {[
+                            { id: "duckdb", label: "DuckDB管理" },
+                            { id: "external", label: "外部数据库" },
+                          ].map((tab) => (
+                            <button
+                              key={tab.id}
+                              onClick={() => setTableManagementTab(tab.id)}
+                              className={`mantine-tab secondary ${tableManagementTab === tab.id ? "active" : ""}`}
+                            >
+                              <span>{tab.label}</span>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* DuckDB管理内容 */}
+                        {tableManagementTab === "duckdb" && (
+                          <div className="p-6">
+                            <DuckDBManagementPage onDataSourceChange={triggerRefresh} />
+                          </div>
+                        )}
+
+                        {/* 外部数据库管理内容 */}
+                        {tableManagementTab === "external" && (
+                          <div className="p-6">
+                            <DatabaseTableManager
+                              databaseConnections={databaseConnections}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
+
+                {/* 异步任务页面 */}
+                {
+                  currentTab === "asynctasks" && (
+                    <div className="p-6">
+                      {/* 页面介绍 */}
+                      <div className="page-intro">
+                        <div className="page-intro-content">
+                          <div className="page-intro-desc">
+                            <div>
+                              <strong>后台运行：</strong>
+                              长耗时查询在后台运行
+                            </div>
+                            <div>
+                              <strong>结果处理：</strong>
+                              自动更新进度；完成后可下载（CSV/Parquet）或保存为新表
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <AsyncTaskList
+                        onPreviewResult={(taskId) => {
+                          // 设置查询语句为 SELECT * FROM "async_result_{taskId}"
+                          const query = `SELECT * FROM "async_result_${taskId}" LIMIT 10000`;
+                          // 切换到SQL执行器标签页
+                          setCurrentTab("sql");
+                          // 设置查询语句到SQL执行器
+                          setPreviewQuery(query);
+                        }}
+                        onTaskCompleted={(completedTask) => {
+                          // 异步任务完成时，刷新数据源列表
+                          triggerRefresh();
+                        }}
+                      />
+                    </div>
+                  )
+                }
+              </div >
+      </main >
+    </div >
   );
 };
 
