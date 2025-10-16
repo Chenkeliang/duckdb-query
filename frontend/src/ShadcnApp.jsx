@@ -1150,6 +1150,7 @@ const ShadcnApp = () => {
                   )
                 }
               </div >
+            )}
       </main >
     </div >
   );
