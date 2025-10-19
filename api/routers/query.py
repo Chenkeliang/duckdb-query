@@ -37,13 +37,15 @@ from core.duckdb_engine import (
     detect_column_conflicts,
 )
 from core.visual_query_generator import (
-    generate_sql_from_config,
     validate_query_config,
     get_column_statistics,
     get_table_metadata,
     estimate_query_performance,
     generate_set_operation_sql,
     estimate_set_operation_rows,
+    generate_visual_query_sql,
+    _build_where_clause,
+    _quote_identifier,
 )
 import pandas as pd
 import numpy as np
@@ -56,6 +58,7 @@ import re
 import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Union
+from pydantic import BaseModel, Field
 import duckdb
 from io import StringIO
 import tempfile
@@ -67,6 +70,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class DistinctValuesMetric(BaseModel):
+    agg: str = Field(..., description="聚合：SUM|COUNT|AVG|MIN|MAX")
+    column: str = Field(..., description="用于指标排序的列名")
+
+
+class DistinctValuesRequest(BaseModel):
+    config: VisualQueryConfig = Field(
+        ..., description="用于构造基础过滤的配置，仅需表与过滤条件"
+    )
+    column: str = Field(..., description="目标列（可为计算列别名）")
+    limit: int = Field(12, description="Top-N 数量")
+    order_by: Optional[str] = Field("frequency", description="frequency|metric")
+    metric: Optional[DistinctValuesMetric] = None
+    base_limit: Optional[int] = Field(None, description="基础采样行数上限，可选")
 
 
 def remove_auto_added_limit(sql: str) -> str:
@@ -134,6 +153,364 @@ def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
         else:
             return f"{query} LIMIT {default_limit}"
     return query
+
+
+def _strip_sql_semicolon(sql: str) -> str:
+    return sql.rstrip().rstrip(";")
+
+
+def _build_preview_count_sql(sql: str) -> str:
+    cleaned = _strip_sql_semicolon(sql)
+    return f"SELECT COUNT(*) AS total_rows FROM ({cleaned}) AS preview_count"
+
+
+# ==================== Visual Query API 端点 ====================
+
+
+@router.post("/api/visual-query/generate", tags=["Visual Query"])
+async def generate_visual_query(request: VisualQueryRequest) -> VisualQueryResponse:
+    try:
+        validation_result = validate_query_config(request.config)
+
+        if not validation_result.is_valid:
+            return VisualQueryResponse(
+                success=False,
+                sql=None,
+                base_sql=None,
+                pivot_sql=None,
+                errors=validation_result.errors,
+                warnings=validation_result.warnings,
+                metadata=None,
+                mode=request.mode,
+            )
+
+        generation = generate_visual_query_sql(
+            request.config,
+            mode=request.mode,
+            pivot_config=request.pivot_config,
+        )
+
+        combined_warnings = list(validation_result.warnings or [])
+        combined_warnings.extend(generation.warnings)
+
+        metadata: Optional[Dict[str, Any]] = None
+
+        if request.include_metadata:
+            try:
+                con = get_db_connection()
+                estimate = estimate_query_performance(request.config, con)
+                metadata = {
+                    "estimated_rows": estimate.estimated_rows,
+                    "estimated_time": estimate.estimated_time,
+                    "complexity_score": validation_result.complexity_score,
+                }
+            except Exception as perf_exc:
+                logger.warning("查询性能估算失败: %s", perf_exc)
+                combined_warnings.append("无法估算查询性能")
+                metadata = {
+                    "estimated_rows": None,
+                    "estimated_time": None,
+                    "complexity_score": validation_result.complexity_score,
+                }
+
+            if metadata is not None:
+                metadata.update(generation.metadata or {})
+        elif generation.metadata:
+            metadata = generation.metadata
+
+        return VisualQueryResponse(
+            success=True,
+            sql=generation.final_sql,
+            base_sql=generation.base_sql,
+            pivot_sql=generation.pivot_sql,
+            errors=[],
+            warnings=combined_warnings,
+            metadata=metadata,
+            mode=request.mode,
+        )
+
+    except Exception as exc:
+        logger.error("生成可视化查询失败: %s", exc, exc_info=True)
+        return VisualQueryResponse(
+            success=False,
+            sql=None,
+            base_sql=None,
+            pivot_sql=None,
+            errors=[f"生成查询失败: {str(exc)}"],
+            warnings=[],
+            metadata=None,
+            mode=request.mode,
+        )
+
+
+@router.post("/api/visual-query/preview", tags=["Visual Query"])
+async def preview_visual_query(request: PreviewRequest) -> PreviewResponse:
+    try:
+        validation_result = validate_query_config(request.config)
+
+        if not validation_result.is_valid:
+            return PreviewResponse(
+                success=False,
+                data=None,
+                columns=None,
+                row_count=0,
+                estimated_time=None,
+                sql=None,
+                base_sql=None,
+                mode=request.mode,
+                errors=validation_result.errors,
+                warnings=validation_result.warnings,
+            )
+
+        generation = generate_visual_query_sql(
+            request.config,
+            mode=request.mode,
+            pivot_config=request.pivot_config,
+        )
+
+        preview_limit = request.limit or 10
+        preview_sql = ensure_query_has_limit(generation.final_sql, preview_limit)
+
+        con = get_db_connection()
+        preview_df = execute_query(preview_sql, con)
+
+        data = preview_df.to_dict("records")
+        columns = [str(col) for col in preview_df.columns.tolist()]
+        total_rows = len(preview_df)
+
+        try:
+            count_sql = _build_preview_count_sql(generation.final_sql)
+            count_df = execute_query(count_sql, con)
+            if not count_df.empty:
+                total_rows = int(count_df.iloc[0][0])
+        except Exception as count_exc:
+            logger.warning("计算预览总行数失败: %s", count_exc)
+
+        estimated_time = None
+        try:
+            estimate = estimate_query_performance(request.config, con)
+            estimated_time = estimate.estimated_time
+        except Exception as perf_exc:
+            logger.debug("预览性能估算失败: %s", perf_exc)
+
+        combined_warnings = list(validation_result.warnings or [])
+        combined_warnings.extend(generation.warnings)
+
+        return PreviewResponse(
+            success=True,
+            data=data,
+            columns=columns,
+            row_count=total_rows,
+            estimated_time=estimated_time,
+            sql=preview_sql,
+            base_sql=generation.base_sql,
+            # Expose pivot fragment for frontend preview when in pivot mode
+            # (safe even if None)
+            # 注意：PreviewResponse 模型目前未包含 pivot_sql 字段，但 Pydantic 允许额外字段被忽略；
+            # 我们按返回需求补充该字段供前端显示。
+            pivot_sql=generation.pivot_sql,
+            mode=request.mode,
+            errors=[],
+            warnings=combined_warnings,
+        )
+
+    except Exception as exc:
+        logger.error("可视化查询预览失败: %s", exc, exc_info=True)
+        return PreviewResponse(
+            success=False,
+            data=None,
+            columns=None,
+            row_count=0,
+            estimated_time=None,
+            sql=None,
+            base_sql=None,
+            mode=request.mode,
+            errors=[f"查询预览失败: {str(exc)}"],
+            warnings=[],
+        )
+
+
+@router.get("/api/visual-query/table-metadata/{table_name}", tags=["Visual Query"])
+async def get_visual_query_table_metadata(table_name: str):
+    try:
+        con = get_db_connection()
+        available_tables = con.execute("SHOW TABLES").fetchdf()
+        available_names = (
+            available_tables["name"].tolist() if not available_tables.empty else []
+        )
+
+        if table_name not in available_names:
+            raise HTTPException(status_code=404, detail=f"数据表 {table_name} 不存在")
+
+        metadata = get_table_metadata(con, table_name)
+        metadata_dict = (
+            metadata.model_dump()
+            if hasattr(metadata, "model_dump")
+            else metadata.dict()
+        )
+
+        return {
+            "success": True,
+            "metadata": metadata_dict,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("获取表元数据失败: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取表元数据失败: {str(exc)}")
+
+
+@router.post("/api/visual-query/distinct-values", tags=["Visual Query"])
+async def get_distinct_values(req: DistinctValuesRequest):
+    """返回指定列的 Top-N 不同值，可按频次或指标聚合排序。
+
+    安全注意：
+    - 列名使用 _quote_identifier 包裹
+    - 聚合函数白名单校验
+    - LIMIT 使用参数化值
+    """
+    try:
+        validation_result = validate_query_config(req.config)
+        if not validation_result.is_valid:
+            return {
+                "success": False,
+                "values": [],
+                "stats": {},
+                "errors": validation_result.errors,
+                "warnings": validation_result.warnings,
+            }
+
+        con = get_db_connection()
+
+        table = _quote_identifier(req.config.table_name)
+        target_col = _quote_identifier(req.column)
+        where_clause = _build_where_clause(req.config.filters)
+
+        # 可选基础采样限制
+        base_limit_sql = ""
+        if req.base_limit and req.base_limit > 0:
+            base_limit_sql = f" LIMIT {int(req.base_limit)}"
+
+        base_cte = (
+            f"WITH base AS (SELECT * FROM {table} {where_clause}{base_limit_sql})"
+        )
+
+        order_by = (req.order_by or "frequency").lower()
+        sql = ""
+        params = {}
+        limit_val = int(req.limit or 12)
+
+        if order_by == "metric" and req.metric:
+            agg = (req.metric.agg or "").upper()
+            if agg not in ["SUM", "COUNT", "AVG", "MIN", "MAX"]:
+                raise HTTPException(status_code=400, detail="不支持的聚合函数")
+            metric_col = _quote_identifier(req.metric.column)
+            sql = (
+                f"{base_cte} SELECT {target_col} AS v, COUNT(*) AS c, {agg}({metric_col}) AS m "
+                f"FROM base WHERE {target_col} IS NOT NULL GROUP BY 1 ORDER BY m DESC, c DESC LIMIT {limit_val}"
+            )
+        else:
+            sql = (
+                f"{base_cte} SELECT {target_col} AS v, COUNT(*) AS c "
+                f"FROM base WHERE {target_col} IS NOT NULL GROUP BY 1 ORDER BY c DESC LIMIT {limit_val}"
+            )
+
+        df = execute_query(sql, con)
+        values = []
+        topN = []
+        if df is not None and not df.empty:
+            for _, row in df.iterrows():
+                values.append(str(row["v"]))
+                item = {"value": str(row["v"]), "count": int(row.get("c", 0))}
+                if "m" in df.columns:
+                    try:
+                        item["metric"] = float(row.get("m"))
+                    except Exception:
+                        item["metric"] = None
+                topN.append(item)
+
+        # distinct_count 统计
+        distinct_sql = f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base WHERE {target_col} IS NOT NULL"
+        distinct_df = execute_query(distinct_sql, con)
+        distinct_count = (
+            int(distinct_df.iloc[0][0])
+            if distinct_df is not None and not distinct_df.empty
+            else None
+        )
+
+        return {
+            "success": True,
+            "values": values,
+            "stats": {"distinct_count": distinct_count, "topN": topN},
+            "errors": [],
+            "warnings": validation_result.warnings,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("获取列去重值失败: %s", exc, exc_info=True)
+        return {
+            "success": False,
+            "values": [],
+            "stats": {},
+            "errors": [str(exc)],
+            "warnings": [],
+        }
+
+
+@router.get(
+    "/api/visual-query/column-stats/{table_name}/{column_name}",
+    tags=["Visual Query"],
+)
+async def get_visual_query_column_stats(table_name: str, column_name: str):
+    try:
+        con = get_db_connection()
+        available_tables = con.execute("SHOW TABLES").fetchdf()
+        available_names = (
+            available_tables["name"].tolist() if not available_tables.empty else []
+        )
+
+        if table_name not in available_names:
+            raise HTTPException(status_code=404, detail=f"数据表 {table_name} 不存在")
+
+        stats = get_column_statistics(con, table_name, column_name)
+        stats_dict = (
+            stats.model_dump() if hasattr(stats, "model_dump") else stats.dict()
+        )
+
+        return {
+            "success": True,
+            "statistics": stats_dict,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("获取列统计信息失败: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取列统计信息失败: {str(exc)}")
+
+
+@router.post("/api/visual-query/validate", tags=["Visual Query"])
+async def validate_visual_query_config_endpoint(config: VisualQueryConfig):
+    try:
+        result = validate_query_config(config)
+        return {
+            "success": True,
+            "is_valid": result.is_valid,
+            "errors": result.errors,
+            "warnings": result.warnings,
+            "complexity_score": result.complexity_score,
+        }
+    except Exception as exc:
+        logger.error("可视化查询配置验证失败: %s", exc, exc_info=True)
+        return {
+            "success": False,
+            "is_valid": False,
+            "errors": [f"配置验证失败: {str(exc)}"],
+            "warnings": [],
+            "complexity_score": 0,
+        }
 
 
 def safe_alias(table, col):

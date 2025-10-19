@@ -4,15 +4,20 @@ import {
   Fade
 } from '@mui/material';
 import { ChevronDown, LineChart } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { getAppFeatures, previewVisualQuery } from '../../services/apiClient';
 import {
   createDefaultConfig,
-  generateSQLPreview
+  createDefaultPivotConfig,
+  generateSQLPreview,
+  transformPivotConfigForApi,
+  transformVisualConfigForApi
 } from '../../utils/visualQueryUtils';
 import AggregationControls from './AggregationControls';
 import ColumnSelector from './ColumnSelector';
 import FilterControls from './FilterControls';
 import LimitControls from './LimitControls';
+import PivotConfigurator from './PivotConfigurator';
 import SortControls from './SortControls';
 import SQLPreview from './SQLPreview';
 
@@ -47,11 +52,33 @@ const VisualAnalysisPanel = ({
   const [analysisConfig, setAnalysisConfig] = useState(() =>
     createDefaultConfig(selectedTable?.name || selectedTable?.id || '')
   );
+  const [activeMode, setActiveMode] = useState('regular');
+  const [pivotConfig, setPivotConfig] = useState(() => createDefaultPivotConfig());
 
   const [generatedSQL, setGeneratedSQL] = useState('');
+  const [baseSQL, setBaseSQL] = useState('');
+  const [pivotSQL, setPivotSQL] = useState('');
+  const [warnings, setWarnings] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [isExpanded, setIsExpanded] = useState(false); // 默认折叠状态
+  const latestRequestRef = useRef(0);
+  const [features, setFeatures] = useState({ enable_pivot_tables: true });
+
+  // 加载后端特性开关（控制透视入口显隐）
+  useEffect(() => {
+    let mounted = true;
+    getAppFeatures()
+      .then((f) => {
+        if (mounted) setFeatures(f || { enable_pivot_tables: true });
+      })
+      .catch(() => {
+        if (mounted) setFeatures({ enable_pivot_tables: true });
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Reset analysis config when table selection changes
   useEffect(() => {
@@ -64,14 +91,18 @@ const VisualAnalysisPanel = ({
     }
   }, [shouldShowPanel, selectedTable?.id]);
 
-  // Generate SQL when analysis config changes
+  // 根据模式生成/预览 SQL
   useEffect(() => {
-    if (shouldShowPanel && selectedTable) {
-      generateSQL();
+    if (!shouldShowPanel || !selectedTable) return;
+    if (activeMode === 'regular') {
+      generateSQLRegular();
+    } else {
+      generateSQLPivot();
     }
-  }, [analysisConfig, shouldShowPanel, selectedTable]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisConfig, pivotConfig, activeMode, shouldShowPanel, selectedTable]);
 
-  const generateSQL = () => {
+  const generateSQLRegular = () => {
     if (!selectedTable) return;
 
     try {
@@ -101,6 +132,88 @@ const VisualAnalysisPanel = ({
     } catch (err) {
       const errorMsg = `SQL生成失败: ${err.message}`;
       setError(errorMsg);
+    }
+  };
+
+  const generateSQLPivot = async () => {
+    if (!selectedTable) return;
+    if (!features?.enable_pivot_tables) {
+      setError('管理员已关闭透视表功能');
+      return;
+    }
+
+    // 前置拦截：未配置透视条件时，不请求后端，展示基础SQL并提示
+    const hasDim = (arr) => Array.isArray(arr) && arr.length > 0;
+    const hasValues = Array.isArray(pivotConfig?.values) && pivotConfig.values.some(v => v && v.column);
+    if (!(hasDim(pivotConfig?.rows) || hasDim(pivotConfig?.columns)) || !hasValues) {
+      try {
+        const tableName = selectedTable.name || selectedTable.id;
+        const result = generateSQLPreview(analysisConfig, tableName, selectedTable?.columns || []);
+        setBaseSQL(result?.sql || '');
+        setPivotSQL('');
+        setGeneratedSQL(result?.sql || '');
+        setWarnings(result?.warnings || []);
+        setError('请先在透视面板选择“行/列字段”和至少一个“指标”，当前仅展示基础SQL');
+      } catch (e) {
+        setError(`透视前置校验失败：${e.message}`);
+      }
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const tableName = selectedTable.name || selectedTable.id;
+      const configPayload = transformVisualConfigForApi(analysisConfig, tableName);
+      const pivotPayload = transformPivotConfigForApi(pivotConfig);
+
+      // 前置校验：原生透视仅支持 1 个列字段
+      if (!Array.isArray(pivotPayload.columns) || pivotPayload.columns.length !== 1) {
+        setError('原生透视仅支持 1 个列字段');
+        setIsLoading(false);
+        return;
+      }
+      // 前置校验：需要手工列值顺序或列数量上限其一
+      const hasManual = Array.isArray(pivotPayload.manual_column_values) && pivotPayload.manual_column_values.length > 0;
+      const hasLimit = typeof pivotPayload.column_value_limit === 'number' && pivotPayload.column_value_limit > 0;
+      if (!hasManual && !hasLimit) {
+        setError('请填写“列值顺序”或设置“列数量上限”（建议 10~12）');
+        setIsLoading(false);
+        return;
+      }
+
+      const resp = await previewVisualQuery(
+        {
+          config: configPayload,
+          mode: 'pivot',
+          pivotConfig: pivotPayload,
+          includeMetadata: true,
+        },
+        Number(features?.max_query_rows) || 10,
+        {},
+      );
+
+      if (!resp?.success) {
+        setError((resp?.errors && resp.errors.join('; ')) || '透视 SQL 生成失败');
+        setGeneratedSQL('');
+        setBaseSQL('');
+        setPivotSQL('');
+        return;
+      }
+
+      setGeneratedSQL(resp.sql || '');
+      setBaseSQL(resp.base_sql || '');
+      setPivotSQL(resp.pivot_sql || '');
+      setWarnings(resp.warnings || []);
+      setError('');
+
+      if (onVisualQueryGenerated) {
+        const cleanSQL = (resp.sql || '').trim();
+        onVisualQueryGenerated(cleanSQL, { mode: 'pivot', regular: analysisConfig, pivot: pivotConfig });
+      }
+    } catch (err) {
+      setError(`透视 SQL 生成失败: ${err.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -234,6 +347,34 @@ const VisualAnalysisPanel = ({
                 </Alert>
               )}
 
+              {/* 模式切换 */}
+              <div className="flex items-center gap-2 mb-4">
+                <div className="text-sm text-gray-600">分析模式</div>
+                <div className="inline-flex rounded-full border border-gray-200 overflow-hidden">
+                  <button
+                    type="button"
+                    className={`px-3 py-1 text-sm ${activeMode === 'regular' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'}`}
+                    onClick={() => setActiveMode('regular')}
+                    disabled={isLoading}
+                  >
+                    常规
+                  </button>
+                  {features?.enable_pivot_tables && (
+                    <button
+                      type="button"
+                      className={`px-3 py-1 text-sm ${activeMode === 'pivot' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'}`}
+                      onClick={() => setActiveMode('pivot')}
+                      disabled={isLoading}
+                    >
+                      透视
+                    </button>
+                  )}
+                </div>
+                {!features?.enable_pivot_tables && (
+                  <span className="text-xs text-gray-500">透视功能已在系统中关闭</span>
+                )}
+              </div>
+
               {/* Analysis Controls Grid - 3行布局按SQL顺序 */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
 
@@ -294,6 +435,21 @@ const VisualAnalysisPanel = ({
 
               </div>
 
+              {/* 透视配置，仅在 pivot 模式显示 */}
+              {activeMode === 'pivot' && features?.enable_pivot_tables && (
+                <div className="mb-6">
+                  <div className="mb-2 text-sm text-gray-600">小提示：先在左侧选字段，再拖入相应区域即可生成透视表。</div>
+                  <PivotConfigurator
+                    columns={selectedTable?.columns || []}
+                    pivotConfig={pivotConfig}
+                    onChange={setPivotConfig}
+                    disabled={isLoading}
+                    selectedTable={selectedTable}
+                    analysisConfig={analysisConfig}
+                  />
+                </div>
+              )}
+
               {/* SQL Preview Section */}
               <div className="space-y-2">
                 <SQLPreview
@@ -301,6 +457,16 @@ const VisualAnalysisPanel = ({
                   title="生成的SQL查询"
                   height={120}
                 />
+                {activeMode === 'pivot' && (
+                  <>
+                    {baseSQL ? (
+                      <SQLPreview sql={baseSQL} title="基础SQL (base)" height={100} />
+                    ) : null}
+                    {pivotSQL ? (
+                      <SQLPreview sql={pivotSQL} title="透视片段 (pivot)" height={100} />
+                    ) : null}
+                  </>
+                )}
               </div>
 
 

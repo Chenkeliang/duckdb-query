@@ -79,8 +79,8 @@ class DatabaseManager:
                     params=conn_data.get("params", {}),
                     status=ConnectionStatus.INACTIVE,
                 )
-                # 加载配置时自动激活连接
-                self.add_connection(connection, test_connection=True)
+                # 加载配置时不测试连接，提升启动速度
+                self.add_connection(connection, test_connection=False)
         except Exception as e:
             logger.error(f"Error loading connections from config: {e}")
 
@@ -246,6 +246,7 @@ class DatabaseManager:
 
             # 获取配置的超时时间
             from core.config_manager import config_manager
+
             app_config = config_manager.get_app_config()
 
             connection = psycopg2.connect(

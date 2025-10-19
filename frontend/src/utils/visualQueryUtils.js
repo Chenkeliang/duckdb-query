@@ -20,6 +20,209 @@ export const createDefaultConfig = (tableName = "") => ({
   isDistinct: false,
 });
 
+export const PivotValueAxis = {
+  ROWS: 'rows',
+  COLUMNS: 'columns',
+};
+
+export const createDefaultPivotConfig = () => ({
+  rows: [],
+  columns: [],
+  values: [
+    {
+      column: '',
+      aggregation: AggregationFunction.SUM,
+      alias: '',
+    },
+  ],
+  includeSubtotals: false,
+  includeGrandTotals: false,
+  valueAxis: PivotValueAxis.COLUMNS,
+  fillValue: '',
+  manualColumnValues: [],
+  // 默认策略为 auto（优先原生，必要时采用自动采样）
+  strategy: 'auto',
+  // 列数量上限（Top-N 自动采样），避免列爆炸；可由用户修改或留空
+  columnValueLimit: 12,
+});
+
+export const transformPivotConfigForApi = (pivotConfig) => {
+  if (!pivotConfig) {
+    return undefined;
+  }
+
+  const values = Array.isArray(pivotConfig.values)
+    ? pivotConfig.values
+      .filter((item) => item && item.column)
+      .map((item) => ({
+        column: item.column,
+        aggregation: item.aggregation || AggregationFunction.SUM,
+        alias: item.alias && item.alias.trim() ? item.alias.trim() : undefined,
+        typeConversion: item.typeConversion && item.typeConversion !== 'auto' ? item.typeConversion : undefined,
+      }))
+    : [];
+
+  const manualColumnValues = Array.isArray(pivotConfig.manualColumnValues)
+    ? pivotConfig.manualColumnValues.filter((value) => value && String(value).trim())
+    : [];
+
+  return {
+    rows: Array.isArray(pivotConfig.rows) ? pivotConfig.rows.filter(Boolean) : [],
+    columns: Array.isArray(pivotConfig.columns) ? pivotConfig.columns.filter(Boolean) : [],
+    values,
+    include_subtotals: Boolean(pivotConfig.includeSubtotals),
+    include_grand_totals: Boolean(pivotConfig.includeGrandTotals),
+    value_axis: pivotConfig.valueAxis || PivotValueAxis.COLUMNS,
+    fill_value: pivotConfig.fillValue !== undefined && pivotConfig.fillValue !== ''
+      ? pivotConfig.fillValue
+      : null,
+    manual_column_values: manualColumnValues.length > 0 ? manualColumnValues : undefined,
+    // 强制使用原生PIVOT策略（因为扩展不可用）
+    strategy: 'native',
+    // 透传列数量上限（正整数才发送）
+    column_value_limit: (() => {
+      const raw = pivotConfig.columnValueLimit;
+      const num = Number(raw);
+      return Number.isFinite(num) && num > 0 ? num : undefined;
+    })(),
+  };
+};
+
+const sanitizeAggregation = (aggregation) => {
+  if (!aggregation || !aggregation.column || !aggregation.function) {
+    return null;
+  }
+
+  return {
+    column: aggregation.column,
+    function: aggregation.function,
+    alias: aggregation.alias && aggregation.alias.trim() ? aggregation.alias.trim() : undefined,
+  };
+};
+
+const sanitizeFilter = (filter) => {
+  if (!filter || !filter.column || !filter.operator) {
+    return null;
+  }
+
+  return {
+    column: filter.column,
+    operator: filter.operator,
+    value: filter.value !== undefined ? filter.value : null,
+    value2: filter.value2 !== undefined ? filter.value2 : null,
+    logic_operator: filter.logicOperator || filter.logic_operator || LogicOperator.AND,
+  };
+};
+
+const sanitizeSort = (sort, index = 0) => {
+  if (!sort || !sort.column) {
+    return null;
+  }
+
+  return {
+    column: sort.column,
+    direction: sort.direction || SortDirection.ASC,
+    priority: typeof sort.priority === 'number' ? sort.priority : index,
+  };
+};
+
+const sanitizeCalculatedField = (field) => {
+  if (!field || !field.name || !field.expression) {
+    return null;
+  }
+
+  return {
+    id: field.id || field.name,
+    name: field.name,
+    expression: field.expression,
+    type: field.type,
+    operation: field.operation,
+    params: field.params || undefined,
+  };
+};
+
+const sanitizeConditionalField = (field) => {
+  if (!field || !field.name || !field.type) {
+    return null;
+  }
+
+  const conditions = Array.isArray(field.conditions)
+    ? field.conditions
+      .map((condition) => {
+        if (!condition || !condition.column || !condition.operator || !condition.result) {
+          return null;
+        }
+
+        return {
+          column: condition.column,
+          operator: condition.operator,
+          value: condition.value !== undefined ? condition.value : null,
+          result: condition.result,
+        };
+      })
+      .filter(Boolean)
+    : undefined;
+
+  return {
+    id: field.id || field.name,
+    name: field.name,
+    type: field.type,
+    conditions,
+    default_value: field.defaultValue !== undefined ? field.defaultValue : field.default_value,
+    column: field.column || null,
+    bins: field.bins !== undefined ? field.bins : null,
+    binning_type: field.binningType || field.binning_type || null,
+  };
+};
+
+export const transformVisualConfigForApi = (config, tableName) => {
+  if (!config) {
+    return null;
+  }
+
+  const safeTableName = tableName || config.tableName || config.table_name || '';
+
+  const aggregations = (config.aggregations || [])
+    .map(sanitizeAggregation)
+    .filter(Boolean);
+
+  const filters = (config.filters || [])
+    .map(sanitizeFilter)
+    .filter(Boolean);
+
+  const orderBy = (config.orderBy || config.order_by || [])
+    .map(sanitizeSort)
+    .filter(Boolean);
+
+  const calculatedFields = (config.calculatedFields || config.calculated_fields || [])
+    .map(sanitizeCalculatedField)
+    .filter(Boolean);
+
+  const conditionalFields = (config.conditionalFields || config.conditional_fields || [])
+    .map(sanitizeConditionalField)
+    .filter(Boolean);
+
+  return {
+    table_name: safeTableName,
+    selected_columns: (config.selectedColumns || config.selected_columns || []).filter(Boolean),
+    aggregations,
+    calculated_fields: calculatedFields,
+    conditional_fields: conditionalFields,
+    filters,
+    group_by: (config.groupBy || config.group_by || []).filter(Boolean),
+    order_by: orderBy,
+    limit: (() => {
+      const rawLimit = config.limit;
+      if (rawLimit === undefined || rawLimit === null || rawLimit === '') {
+        return null;
+      }
+      const parsed = Number(rawLimit);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    })(),
+    is_distinct: Boolean(config.isDistinct || config.is_distinct),
+  };
+};
+
 // 聚合函数类型
 export const AggregationFunction = {
   SUM: "SUM",

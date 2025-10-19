@@ -591,26 +591,90 @@ export const uploadFileEnhanced = async (file, tableAlias = null, target = 'duck
 };
 
 export default apiClient;
-// Visual Query Builder API functions
-export const generateVisualQuery = async (config) => {
+// 应用配置特性
+export const getAppFeatures = async () => {
   try {
-    const response = await apiClient.post('/api/visual-query/generate', {
+    const response = await apiClient.get('/api/app-config/features');
+    return response.data;
+  } catch (error) {
+    // 不抛出致命错误，返回合理默认值以保障前端可用
+    return {
+      enable_pivot_tables: true,
+      pivot_table_extension: 'pivot_table',
+      max_query_rows: 10000,
+    };
+  }
+};
+// Visual Query Builder API functions
+const extractVisualQueryPayload = (configOrPayload, options = {}) => {
+  if (configOrPayload && typeof configOrPayload === 'object' && configOrPayload.config) {
+    const {
       config,
-      preview: false,
-      include_metadata: true
-    });
+      pivotConfig,
+      pivot_config,
+      mode,
+      includeMetadata,
+      preview,
+      limit,
+    } = configOrPayload;
+
+    const payload = {
+      config,
+      mode: mode || 'regular',
+      include_metadata: includeMetadata !== undefined ? includeMetadata : true,
+    };
+
+    if (preview !== undefined) {
+      payload.preview = preview;
+    }
+
+    if (limit !== undefined) {
+      payload.limit = limit;
+    }
+
+    const resolvedPivot = pivotConfig || pivot_config;
+    if (resolvedPivot) {
+      payload.pivot_config = resolvedPivot;
+    }
+
+    return payload;
+  }
+
+  const payload = {
+    config: configOrPayload,
+    mode: options.mode || 'regular',
+    include_metadata: options.includeMetadata !== undefined ? options.includeMetadata : true,
+  };
+
+  if (options.preview !== undefined) {
+    payload.preview = options.preview;
+  }
+
+  if (options.limit !== undefined) {
+    payload.limit = options.limit;
+  }
+
+  if (options.pivotConfig) {
+    payload.pivot_config = options.pivotConfig;
+  }
+
+  return payload;
+};
+
+export const generateVisualQuery = async (configOrPayload, options = {}) => {
+  try {
+    const requestBody = extractVisualQueryPayload(configOrPayload, options);
+    const response = await apiClient.post('/api/visual-query/generate', requestBody);
     return response.data;
   } catch (error) {
     handleApiError(error, '生成可视化查询失败');
   }
 };
 
-export const previewVisualQuery = async (config, limit = 10) => {
+export const previewVisualQuery = async (configOrPayload, limit = 10, options = {}) => {
   try {
-    const response = await apiClient.post('/api/visual-query/preview', {
-      config,
-      limit
-    });
+    const requestBody = extractVisualQueryPayload(configOrPayload, { ...options, limit });
+    const response = await apiClient.post('/api/visual-query/preview', requestBody);
     return response.data;
   } catch (error) {
     handleApiError(error, '预览可视化查询失败');
@@ -641,5 +705,15 @@ export const validateVisualQueryConfig = async (config) => {
     return response.data;
   } catch (error) {
     handleApiError(error, '验证可视化查询配置失败');
+  }
+};
+
+// 透视增强：获取列的去重 Top-N（可按频次/指标排序）
+export const getDistinctValues = async (payload) => {
+  try {
+    const response = await apiClient.post('/api/visual-query/distinct-values', payload);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, '获取去重值失败');
   }
 };

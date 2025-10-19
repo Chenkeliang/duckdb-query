@@ -26,6 +26,10 @@ from models.visual_query_models import (
     SetOperationType,
     TableConfig,
     ColumnMapping,
+    VisualQueryMode,
+    PivotConfig,
+    PivotValueAxis,
+    PivotValueConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,6 +53,18 @@ class PerformanceEstimate:
     estimated_time: float
     complexity_score: int
     warnings: List[str]
+
+
+@dataclass
+class GeneratedVisualQuery:
+    """Result structure for generated visual analysis SQL."""
+
+    mode: VisualQueryMode
+    base_sql: str
+    final_sql: str
+    pivot_sql: Optional[str]
+    warnings: List[str]
+    metadata: Dict[str, Any]
 
 
 def generate_sql_from_config(config: VisualQueryConfig) -> str:
@@ -103,6 +119,333 @@ def generate_sql_from_config(config: VisualQueryConfig) -> str:
     except Exception as e:
         logger.error(f"SQL generation failed: {str(e)}")
         raise ValueError(f"SQL生成失败: {str(e)}")
+
+
+def generate_visual_query_sql(
+    config: VisualQueryConfig,
+    mode: VisualQueryMode = VisualQueryMode.REGULAR,
+    pivot_config: Optional[PivotConfig] = None,
+    app_config: Optional[Any] = None,
+) -> GeneratedVisualQuery:
+    """Generate final SQL for the requested visual analysis mode."""
+
+    warnings: List[str] = []
+
+    if mode == VisualQueryMode.PIVOT:
+        if pivot_config is None:
+            raise ValueError("Pivot配置不能为空")
+
+        if app_config is None:
+            try:
+                from core.config_manager import config_manager  # Lazy import
+
+                app_config = config_manager.get_app_config()
+            except Exception as exc:  # pragma: no cover - fallback
+                logger.warning("无法从配置管理器加载AppConfig，使用默认设置: %s", exc)
+                app_config = None
+
+        enable_pivot = getattr(app_config, "enable_pivot_tables", True)
+
+        if not enable_pivot:
+            raise ValueError("系统配置已禁用透视表功能，请联系管理员启用")
+
+        # 强制使用原生PIVOT策略（因为扩展不可用）
+        pivot_config.strategy = "native"
+
+        base_sql = _generate_pivot_base_sql(config, pivot_config)
+        pivot_result = _generate_pivot_transformation_sql(
+            base_sql=base_sql,
+            pivot_config=pivot_config,
+            pivot_extension_name=None,  # 不使用扩展
+        )
+
+        warnings.extend(pivot_result.get("warnings", []))
+
+        metadata = {
+            "mode": mode.value,
+            "rows": pivot_config.rows,
+            "columns": pivot_config.columns,
+            "values": [
+                {
+                    "column": value.column,
+                    "aggregation": value.aggregation.value,
+                    "alias": value.alias,
+                }
+                for value in pivot_config.values
+            ],
+        }
+        metadata.update(pivot_result.get("metadata", {}))
+
+        return GeneratedVisualQuery(
+            mode=mode,
+            base_sql=base_sql,
+            final_sql=pivot_result["final_sql"],
+            pivot_sql=pivot_result["pivot_sql"],
+            warnings=warnings,
+            metadata=metadata,
+        )
+
+    # Regular mode fallback
+    base_sql = generate_sql_from_config(config)
+    metadata = {"mode": mode.value}
+    return GeneratedVisualQuery(
+        mode=mode,
+        base_sql=base_sql,
+        final_sql=base_sql,
+        pivot_sql=None,
+        warnings=warnings,
+        metadata=metadata,
+    )
+
+
+def _strip_trailing_semicolon(sql: str) -> str:
+    return sql.rstrip().rstrip(";")
+
+
+def _quote_identifier(identifier: str) -> str:
+    safe = identifier.replace('"', '""')
+    return f'"{safe}"'
+
+
+def _deduplicate_preserve_order(items: List[str]) -> List[str]:
+    seen = set()
+    ordered: List[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            ordered.append(item)
+    return ordered
+
+
+def _generate_pivot_base_sql(
+    config: VisualQueryConfig, pivot_config: PivotConfig
+) -> str:
+    # 构建必需列：行/列维度 + 指标引用列
+    required_columns = (
+        pivot_config.rows
+        + pivot_config.columns
+        + [value.column for value in pivot_config.values]
+    )
+
+    ordered_columns = _deduplicate_preserve_order(required_columns)
+
+    if not ordered_columns:
+        raise ValueError("Pivot分析至少需要选择一个指标或维度列")
+
+    # 支持计算列：如果 required_columns 中包含与 calculated_fields 同名的列，
+    # 则在 SELECT 中使用表达式 AS 别名，而不是裸列名
+    calc_map = {}
+    try:
+        for calc in getattr(config, "calculated_fields", []) or []:
+            # 期待字段: name, expression
+            name = getattr(calc, "name", None) or getattr(calc, "id", None)
+            expr = getattr(calc, "expression", None)
+            if name and expr:
+                calc_map[str(name)] = str(expr)
+    except Exception:
+        calc_map = {}
+
+    select_items: List[str] = []
+    used_aliases = set()
+    for col in ordered_columns:
+        if col in calc_map and col not in used_aliases:
+            select_items.append(f"{calc_map[col]} AS {_quote_identifier(col)}")
+            used_aliases.add(col)
+        else:
+            select_items.append(_quote_identifier(col))
+
+    # 附加其余计算列（如果用户配置了但不在必需列里），以便后续引用（安全扩展）
+    for alias, expr in calc_map.items():
+        if alias not in used_aliases and alias not in ordered_columns:
+            select_items.append(f"{expr} AS {_quote_identifier(alias)}")
+            used_aliases.add(alias)
+
+    select_clause = ", ".join(select_items)
+
+    sql_parts = [
+        f"SELECT {select_clause}",
+        f"FROM {_quote_identifier(config.table_name)}",
+    ]
+
+    where_clause = _build_where_clause(config.filters)
+    if where_clause:
+        sql_parts.append(where_clause)
+
+    return _strip_trailing_semicolon(" ".join(sql_parts))
+
+
+def _build_pivot_value_expression(value: PivotValueConfig) -> str:
+    column_expr = _quote_identifier(value.column)
+
+    # 应用类型转换（如果指定了且不是自动）
+    if (
+        hasattr(value, "typeConversion")
+        and value.typeConversion
+        and value.typeConversion != "auto"
+    ):
+        column_expr = f"TRY_CAST({column_expr} AS {value.typeConversion.upper()})"
+
+    if value.aggregation == AggregationFunction.COUNT_DISTINCT:
+        agg_expr = f"COUNT(DISTINCT {column_expr})"
+    else:
+        agg_expr = f"{value.aggregation.value}({column_expr})"
+
+    alias = value.alias or f"{value.aggregation.value.lower()}_{value.column}"
+    alias_expr = _quote_identifier(alias)
+
+    return f"{agg_expr} AS {alias_expr}"
+
+
+def _format_extension_list(items: List[str]) -> str:
+    if not items:
+        return "[]"
+    quoted_items = [f"'{item}'" for item in items]
+    return f"[{', '.join(quoted_items)}]"
+
+
+def _format_literal(value: Optional[Union[str, int, float]]) -> str:
+    if value is None:
+        return "NULL"
+    if isinstance(value, (int, float)):
+        return str(value)
+    escaped = str(value).replace("'", "''")
+    return f"'{escaped}'"
+
+
+def _generate_pivot_transformation_sql(
+    base_sql: str,
+    pivot_config: PivotConfig,
+    pivot_extension_name: str = None,  # 不再使用扩展
+) -> Dict[str, Any]:
+    value_expressions = [_build_pivot_value_expression(v) for v in pivot_config.values]
+    row_dimensions = [_quote_identifier(dim) for dim in pivot_config.rows]
+    column_dimensions = [_quote_identifier(dim) for dim in pivot_config.columns]
+
+    base_alias = "base"
+    # 强制使用原生PIVOT策略
+    strategy = "native"
+
+    def _autosample_native_in_values(max_values: Optional[int]) -> Optional[List[str]]:
+        """Auto-sample distinct values for the single column dimension to enable native PIVOT.
+        Returns a list of string literals (unescaped) or None when not applicable.
+        """
+        if not pivot_config.columns or len(pivot_config.columns) != 1:
+            return None
+        if not max_values or max_values <= 0:
+            return None
+        try:
+            from core.duckdb_engine import get_db_connection  # type: ignore
+
+            target_col = pivot_config.columns[0]
+            con = get_db_connection()
+            # Use a CTE to reference the same base SQL; avoid trailing semicolon
+            introspect_sql = (
+                f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)\n"
+                f"SELECT DISTINCT {_quote_identifier(target_col)} AS v\n"
+                f"FROM base\n"
+                f"WHERE {_quote_identifier(target_col)} IS NOT NULL\n"
+                f"LIMIT {int(max_values)}"
+            )
+            df = con.execute(introspect_sql).fetchdf()
+            values: List[str] = []
+            if df is not None and not df.empty:
+                for raw in df["v"].tolist():
+                    # Preserve original values as string form; _format_literal will escape
+                    values.append(str(raw))
+            return values or None
+        except Exception as _:
+            return None
+
+    # 只使用原生PIVOT策略
+    native_candidate = _try_generate_native_pivot(base_sql, pivot_config)
+    if native_candidate is not None:
+        native_candidate["metadata"].update(
+            {"uses_pivot_extension": False, "strategy": "native"}
+        )
+        return native_candidate
+
+    # 如果原生PIVOT失败，尝试自动采样
+    if getattr(pivot_config, "column_value_limit", None):
+        sampled = _autosample_native_in_values(int(pivot_config.column_value_limit))
+        if sampled:
+            # 构造临时配置，使用采样的列值
+            try:
+                temp_cfg = pivot_config.model_copy(
+                    update={"manual_column_values": sampled}
+                )
+            except Exception:
+                temp_cfg = pivot_config
+                temp_cfg.manual_column_values = sampled
+
+            native_candidate = _try_generate_native_pivot(base_sql, temp_cfg)
+            if native_candidate is not None:
+                native_candidate["metadata"].update(
+                    {
+                        "uses_pivot_extension": False,
+                        "strategy": "native:auto_sampled",
+                        "auto_sampled_values": sampled[:5],  # preview metadata
+                    }
+                )
+                return native_candidate
+        # 如果自动采样也失败，返回错误
+        raise ValueError(
+            "未满足原生PIVOT条件（需要单一列维度和列值集合）；"
+            "请填写‘列值顺序’或设置‘列数量上限’后重试"
+        )
+
+    # 如果到达这里，说明原生PIVOT和自动采样都失败了
+    raise ValueError(
+        "未满足原生PIVOT条件（需要单一列维度和列值集合）；"
+        "请填写‘列值顺序’或设置‘列数量上限’后重试"
+    )
+
+
+def _try_generate_native_pivot(
+    base_sql: str, pivot_config: PivotConfig
+) -> Optional[Dict[str, Any]]:
+    """Attempt to generate a DuckDB native PIVOT query.
+    Requirements:
+      - Exactly one column dimension is provided (pivot_config.columns length == 1)
+      - manual_column_values present (IN list)
+    """
+    # Must have one column dimension
+    if not pivot_config.columns or len(pivot_config.columns) != 1:
+        return None
+    # Require explicit IN list
+    if not pivot_config.manual_column_values:
+        return None
+
+    # Build aggregated expressions list
+    agg_items = []
+    for v in pivot_config.values:
+        column_expr = _quote_identifier(v.column)
+
+        # 应用类型转换（如果指定了且不是自动）
+        if (
+            hasattr(v, "typeConversion")
+            and v.typeConversion
+            and v.typeConversion != "auto"
+        ):
+            column_expr = f"TRY_CAST({column_expr} AS {v.typeConversion.upper()})"
+
+        agg_items.append(f"{v.aggregation.value}({column_expr})")
+
+    col_dim = _quote_identifier(pivot_config.columns[0])
+    in_values = ", ".join(_format_literal(x) for x in pivot_config.manual_column_values)
+
+    # Construct native PIVOT statement
+    pivot_stmt = f"SELECT * FROM base PIVOT({', '.join(agg_items)} FOR {col_dim} IN ({in_values}))"
+
+    # Wrap CTE
+    base_cte = f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)"
+    final_sql = f"{base_cte}\n{pivot_stmt};"
+
+    return {
+        "final_sql": final_sql,
+        "pivot_sql": pivot_stmt,
+        "warnings": [],
+        "metadata": {"pivot_native_on": pivot_stmt},
+    }
 
 
 def _build_select_clause(config: VisualQueryConfig) -> str:
@@ -688,7 +1031,9 @@ class SetOperationQueryGenerator:
         """初始化集合操作查询生成器"""
         self.logger = logging.getLogger(__name__)
 
-    def build_set_operation_query(self, config: SetOperationConfig, preview_limit: int = None) -> str:
+    def build_set_operation_query(
+        self, config: SetOperationConfig, preview_limit: int = None
+    ) -> str:
         """
         构建集合操作查询
 
@@ -733,7 +1078,9 @@ class SetOperationQueryGenerator:
             self.logger.error(f"构建集合操作查询失败: {str(e)}")
             raise ValueError(f"构建集合操作查询失败: {str(e)}")
 
-    def _build_table_subquery(self, table: TableConfig, use_by_name: bool, limit: int = None) -> str:
+    def _build_table_subquery(
+        self, table: TableConfig, use_by_name: bool, limit: int = None
+    ) -> str:
         """
         构建单表子查询
 
@@ -768,11 +1115,11 @@ class SetOperationQueryGenerator:
                 columns_sql = ", ".join(escaped_columns)
 
         subquery = f"SELECT {columns_sql} FROM {table_ref}"
-        
+
         # 如果提供了限制，添加LIMIT子句
         if limit is not None and limit > 0:
             subquery += f" LIMIT {limit}"
-            
+
         return subquery
 
     def _validate_config(self, config: SetOperationConfig):
@@ -928,7 +1275,9 @@ class SetOperationQueryGenerator:
 set_operation_generator = SetOperationQueryGenerator()
 
 
-def generate_set_operation_sql(config: SetOperationConfig, preview_limit: int = None) -> str:
+def generate_set_operation_sql(
+    config: SetOperationConfig, preview_limit: int = None
+) -> str:
     """
     生成集合操作SQL查询
 

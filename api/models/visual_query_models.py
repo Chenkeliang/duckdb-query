@@ -5,7 +5,7 @@ Pydantic models for visual query configuration and validation.
 Supports Chinese display labels and comprehensive validation logic.
 """
 
-from typing import List, Optional, Dict, Any, Union, Literal
+from typing import List, Optional, Dict, Any, Union, Literal, ClassVar, Set
 from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 
@@ -75,6 +75,13 @@ class SortDirection(str, Enum):
 
     ASC = "ASC"
     DESC = "DESC"
+
+
+class VisualQueryMode(str, Enum):
+    """Modes supported by the visual analysis workflow"""
+
+    REGULAR = "regular"
+    PIVOT = "pivot"
 
 
 class CalculatedFieldType(str, Enum):
@@ -273,6 +280,140 @@ class ConditionalFieldConfig(BaseModel):
         return self
 
 
+class PivotValueAxis(str, Enum):
+    """Axis placement for pivot values."""
+
+    ROWS = "rows"
+    COLUMNS = "columns"
+
+
+class PivotValueConfig(BaseModel):
+    """Configuration for a single pivot value metric."""
+
+    column: str = Field(..., description="Column to aggregate for the pivot value")
+    aggregation: AggregationFunction = Field(
+        ..., description="Aggregation function applied to the column"
+    )
+    alias: Optional[str] = Field(
+        None, description="Alias for the pivoted metric column"
+    )
+    display_name: Optional[str] = Field(
+        None, description="Optional display label for UI presentation"
+    )
+    value_format: Optional[str] = Field(
+        None, description="Optional formatting key used by the UI"
+    )
+    typeConversion: Optional[str] = Field(
+        None,
+        description="Type conversion for the column before aggregation (e.g., 'decimal', 'double')",
+    )
+
+    # Use ClassVar to prevent Pydantic from treating this as a model field/private attr
+    _allowed_aggregations: ClassVar[Set[AggregationFunction]] = {
+        AggregationFunction.SUM,
+        AggregationFunction.AVG,
+        AggregationFunction.COUNT,
+        AggregationFunction.COUNT_DISTINCT,
+        AggregationFunction.MIN,
+        AggregationFunction.MAX,
+    }
+
+    @field_validator("column")
+    @classmethod
+    def validate_column(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("Pivot value column cannot be empty")
+        return value.strip()
+
+    @field_validator("alias")
+    @classmethod
+    def validate_alias(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise ValueError("Pivot value alias cannot be empty")
+        return value.strip() if value else None
+
+    @field_validator("aggregation")
+    @classmethod
+    def validate_aggregation(cls, value: AggregationFunction) -> AggregationFunction:
+        if value not in cls._allowed_aggregations:
+            raise ValueError(f"Aggregation {value} is not supported for pivot values")
+        return value
+
+
+class PivotConfig(BaseModel):
+    """Configuration model describing a pivot operation."""
+
+    rows: List[str] = Field(
+        default_factory=list, description="Row dimension fields for the pivot"
+    )
+    columns: List[str] = Field(
+        default_factory=list, description="Column dimension fields for the pivot"
+    )
+    values: List[PivotValueConfig] = Field(
+        default_factory=list, description="Metrics to compute in the pivot"
+    )
+    include_subtotals: bool = Field(
+        False, description="Whether subtotal rows/columns should be included"
+    )
+    include_grand_totals: bool = Field(
+        False, description="Whether grand total rows/columns should be included"
+    )
+    value_axis: PivotValueAxis = Field(
+        PivotValueAxis.COLUMNS,
+        description="Which axis should display value labels when the extension supports it",
+    )
+    fill_value: Optional[Union[int, float, str]] = Field(
+        None, description="Value used to fill null cells in the pivot output"
+    )
+    manual_column_values: Optional[List[str]] = Field(
+        None,
+        description="Optional explicit list of column dimension values to enforce ordering",
+    )
+    strategy: Optional[Literal["auto", "extension", "native"]] = Field(
+        "native",
+        description="Pivot strategy preference: auto|extension|native (native requires manual_column_values)",
+    )
+    column_value_limit: Optional[int] = Field(
+        None,
+        description="Optional max number of distinct values allowed for the first column dimension",
+    )
+
+    @model_validator(mode="after")
+    def validate_pivot_config(self):
+        if not self.rows and not self.columns:
+            raise ValueError("Pivot configuration requires at least one dimension")
+
+        if not self.values:
+            raise ValueError("Pivot configuration must include at least one value")
+
+        self.rows = [value.strip() for value in self.rows if value and value.strip()]
+        self.columns = [
+            value.strip() for value in self.columns if value and value.strip()
+        ]
+
+        if self.manual_column_values is not None:
+            cleaned_values = []
+            for value in self.manual_column_values:
+                if value is None:
+                    continue
+                value_str = str(value).strip()
+                if value_str:
+                    cleaned_values.append(value_str)
+            self.manual_column_values = cleaned_values or None
+
+        # Validate column_value_limit
+        if self.column_value_limit is not None:
+            if (
+                not isinstance(self.column_value_limit, int)
+                or self.column_value_limit <= 0
+            ):
+                raise ValueError(
+                    "column_value_limit must be a positive integer if provided"
+                )
+
+        return self
+
+
 class VisualQueryConfig(BaseModel):
     """Main configuration for visual query"""
 
@@ -308,11 +449,27 @@ class VisualQueryConfig(BaseModel):
             raise ValueError("Table name cannot be empty")
         return v.strip()
 
-    @field_validator("selected_columns")
+    @field_validator("selected_columns", mode="before")
     @classmethod
-    def validate_selected_columns(cls, v):
-        # Remove empty strings and strip whitespace
-        return [col.strip() for col in v if col and col.strip()]
+    def coerce_selected_columns(cls, v):
+        """Accept either list[str] or list[object] and coerce to list[str].
+        Object items may look like {name, column, id, ...} coming from UI.
+        """
+        if v is None:
+            return []
+        result: List[str] = []
+        for item in v:
+            if isinstance(item, str):
+                candidate = item.strip()
+            elif isinstance(item, dict):
+                candidate = str(
+                    item.get("name") or item.get("column") or item.get("id") or ""
+                ).strip()
+            else:
+                candidate = str(item).strip()
+            if candidate:
+                result.append(candidate)
+        return result
 
     @field_validator("group_by")
     @classmethod
@@ -346,6 +503,12 @@ class VisualQueryRequest(BaseModel):
     """Request model for visual query generation"""
 
     config: VisualQueryConfig = Field(..., description="Visual query configuration")
+    pivot_config: Optional["PivotConfig"] = Field(
+        None, description="Optional pivot configuration when mode is pivot"
+    )
+    mode: VisualQueryMode = Field(
+        VisualQueryMode.REGULAR, description="Visual analysis mode"
+    )
     preview: bool = Field(False, description="Whether this is a preview request")
     include_metadata: bool = Field(
         True, description="Whether to include query metadata"
@@ -357,6 +520,12 @@ class VisualQueryResponse(BaseModel):
 
     success: bool = Field(..., description="Whether the operation was successful")
     sql: Optional[str] = Field(None, description="Generated SQL query")
+    base_sql: Optional[str] = Field(
+        None, description="Base SQL prior to any pivot transformation"
+    )
+    pivot_sql: Optional[str] = Field(
+        None, description="SQL fragment representing the pivot transformation"
+    )
     errors: List[str] = Field(
         default_factory=list, description="List of error messages"
     )
@@ -364,6 +533,9 @@ class VisualQueryResponse(BaseModel):
         default_factory=list, description="List of warning messages"
     )
     metadata: Optional[Dict[str, Any]] = Field(None, description="Query metadata")
+    mode: VisualQueryMode = Field(
+        VisualQueryMode.REGULAR, description="Executed visual analysis mode"
+    )
 
 
 class ColumnStatistics(BaseModel):
@@ -398,6 +570,12 @@ class PreviewRequest(BaseModel):
     """Request model for data preview"""
 
     config: VisualQueryConfig = Field(..., description="Visual query configuration")
+    pivot_config: Optional[PivotConfig] = Field(
+        None, description="Optional pivot configuration when previewing pivot mode"
+    )
+    mode: VisualQueryMode = Field(
+        VisualQueryMode.REGULAR, description="Visual analysis mode"
+    )
     limit: int = Field(10, description="Number of rows to preview")
 
 
@@ -406,11 +584,24 @@ class PreviewResponse(BaseModel):
 
     success: bool = Field(..., description="Whether the operation was successful")
     data: Optional[List[Dict[str, Any]]] = Field(None, description="Preview data")
+    columns: Optional[List[str]] = Field(
+        None, description="List of columns returned in the preview"
+    )
     row_count: Optional[int] = Field(
         None, description="Total number of rows that would be returned"
     )
     estimated_time: Optional[float] = Field(
         None, description="Estimated execution time in seconds"
+    )
+    sql: Optional[str] = Field(None, description="Executed SQL query")
+    base_sql: Optional[str] = Field(
+        None, description="Base SQL prior to pivot transformation"
+    )
+    pivot_sql: Optional[str] = Field(
+        None, description="SQL fragment representing the pivot transformation"
+    )
+    mode: VisualQueryMode = Field(
+        VisualQueryMode.REGULAR, description="Mode used for preview generation"
     )
     errors: List[str] = Field(
         default_factory=list, description="List of error messages"

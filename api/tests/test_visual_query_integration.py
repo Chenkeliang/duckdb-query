@@ -104,8 +104,9 @@ class TestEndToEndWorkflows:
             "include_metadata": True
         }
         
-        # Generate SQL
-        response = client.post("/api/visual-query/generate", json=config_data)
+        with patch('routers.query.estimate_query_performance') as mock_estimate:
+            mock_estimate.return_value = Mock(estimated_rows=100, estimated_time=0.5)
+            response = client.post("/api/visual-query/generate", json=config_data)
         assert response.status_code == 200
         
         generation_result = response.json()
@@ -130,19 +131,23 @@ class TestEndToEndWorkflows:
             "limit": 10
         }
         
-        # Mock preview execution result
         preview_result = sample_data.groupby(['department', 'city']).agg({
             'salary': 'mean',
             'id': 'count'
         }).reset_index().head(10)
         preview_result.columns = ['department', 'city', 'avg_salary', 'employee_count']
-        
-        mock_duckdb_connection.execute.return_value.fetchdf.side_effect = [
-            preview_result,  # Preview query result
-            pd.DataFrame({'total_rows': [25]})  # Count query result
-        ]
-        
-        response = client.post("/api/visual-query/preview", json=preview_data)
+
+        with patch('routers.query.execute_query') as mock_execute, \
+             patch('routers.query.estimate_query_performance') as mock_preview_estimate:
+
+            mock_execute.side_effect = [
+                preview_result,
+                pd.DataFrame({'total_rows': [25]}),
+            ]
+
+            mock_preview_estimate.return_value = Mock(estimated_time=0.2)
+
+            response = client.post("/api/visual-query/preview", json=preview_data)
         assert response.status_code == 200
         
         preview_response = response.json()
@@ -170,7 +175,7 @@ class TestEndToEndWorkflows:
         full_result.columns = ['department', 'city', 'avg_salary', 'employee_count']
         
         mock_duckdb_connection.execute.return_value.fetchdf.return_value = full_result
-        
+
         with patch('routers.query.execute_query') as mock_execute:
             mock_execute.return_value = full_result
             

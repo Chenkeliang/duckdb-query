@@ -24,6 +24,35 @@ from core.duckdb_pool import get_connection_pool
 _global_duckdb_connection = None
 
 
+def _resolve_duckdb_extensions(app_config, override_extensions: Optional[List[str]] = None) -> List[str]:
+    """根据配置和开关生成最终需要加载的DuckDB扩展列表"""
+    base_extensions = []
+    source_extensions = override_extensions if override_extensions is not None else app_config.duckdb_extensions
+
+    if source_extensions:
+        for ext in source_extensions:
+            if ext:
+                base_extensions.append(ext)
+
+    pivot_extension = (app_config.pivot_table_extension or "pivot_table").strip()
+    if pivot_extension:
+        # 先移除重复的透视扩展，避免列表中存在旧值
+        base_extensions = [ext for ext in base_extensions if ext != pivot_extension]
+        if app_config.enable_pivot_tables:
+            base_extensions.append(pivot_extension)
+
+    # 去重但保持顺序（忽略大小写）
+    seen = set()
+    resolved = []
+    for ext in base_extensions:
+        key = ext.lower()
+        if key not in seen:
+            resolved.append(ext)
+            seen.add(key)
+
+    return resolved
+
+
 def _apply_duckdb_configuration(connection, temp_dir: str):
     """
     自动应用所有DuckDB配置参数
@@ -122,27 +151,13 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
             )
 
         # 自动安装和加载扩展
-        if config_items.get("duckdb_extensions"):
-            _install_duckdb_extensions(connection, config_items["duckdb_extensions"])
+        extensions_to_load = _resolve_duckdb_extensions(
+            app_config, config_items.get("duckdb_extensions")
+        )
+        if extensions_to_load:
+            _install_duckdb_extensions(connection, extensions_to_load)
         else:
-            # 从配置文件获取默认扩展
-            try:
-                from core.config_manager import config_manager
-
-                app_config = config_manager.get_app_config()
-                _install_duckdb_extensions(connection, app_config.duckdb_extensions)
-            except Exception as e:
-                logger.warning(f"无法获取默认扩展配置，使用基础扩展: {str(e)}")
-                # 使用配置文件中的基础扩展
-                try:
-                    from core.config_manager import config_manager
-
-                    app_config = config_manager.get_app_config()
-                    _install_duckdb_extensions(connection, app_config.duckdb_extensions)
-                except Exception:
-                    # 最后的硬编码后备，这种情况应该很少发生
-                    logger.error("无法获取任何扩展配置，使用硬编码基础扩展")
-                    _install_duckdb_extensions(connection, ["excel", "json", "parquet"])
+            logger.info("未配置需要加载的DuckDB扩展")
 
     except Exception as e:
         logger.error(f"应用DuckDB配置时出错: {str(e)}")
@@ -158,6 +173,9 @@ def _install_duckdb_extensions(connection, extensions: List[str]):
         connection: DuckDB连接实例
         extensions: 扩展名称列表
     """
+    if not extensions:
+        return
+
     for ext_name in extensions:
         try:
             # 先尝试加载扩展（如果已安装）
@@ -214,7 +232,9 @@ def _apply_default_duckdb_config(connection, temp_dir: str):
         )
 
         # 安装默认扩展
-        _install_duckdb_extensions(connection, app_config.duckdb_extensions)
+        extensions_to_load = _resolve_duckdb_extensions(app_config)
+        if extensions_to_load:
+            _install_duckdb_extensions(connection, extensions_to_load)
 
         logger.info("成功应用配置文件中的默认DuckDB配置")
 

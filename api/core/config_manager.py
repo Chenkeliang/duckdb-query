@@ -69,6 +69,12 @@ class AppConfig:
     timezone: str = "Asia/Shanghai"
     """应用时区设置，影响时间相关的数据处理"""
 
+    enable_pivot_tables: bool = True
+    """是否启用透视表功能，关闭后前端隐藏相关入口并跳过扩展加载"""
+
+    pivot_table_extension: str = "pivot_table"
+    """透视表功能使用的DuckDB扩展名称"""
+
     # ==================== DuckDB引擎配置 ====================
     # 这些参数控制DuckDB查询引擎的行为和性能
 
@@ -390,6 +396,15 @@ class ConfigManager:
                     "cache_ttl": int(
                         os.getenv("CACHE_TTL", config_data.get("cache_ttl", 3600))
                     ),
+                    "enable_pivot_tables": os.getenv(
+                        "ENABLE_PIVOT_TABLES",
+                        str(config_data.get("enable_pivot_tables", True)),
+                    ).lower()
+                    == "true",
+                    "pivot_table_extension": os.getenv(
+                        "PIVOT_TABLE_EXTENSION",
+                        config_data.get("pivot_table_extension", "pivot_table"),
+                    ),
                     # 数据库超时配置
                     "db_connect_timeout": int(
                         os.getenv(
@@ -474,6 +489,12 @@ class ConfigManager:
                     ),
                 }
             )
+
+            pivot_extension = config_data.get("pivot_table_extension")
+            if isinstance(pivot_extension, str):
+                config_data["pivot_table_extension"] = (
+                    pivot_extension.strip() or "pivot_table"
+                )
 
             self._app_config = AppConfig(**config_data)
             logger.info("应用配置加载成功")

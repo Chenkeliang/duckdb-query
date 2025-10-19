@@ -12,6 +12,8 @@
     "enable_caching": true,
     "cache_ttl": 3600,
     "timezone": "Asia/Shanghai",
+    "enable_pivot_tables": true,
+    "pivot_table_extension": "pivot_table",
     "duckdb_memory_limit": "8GB",
     "duckdb_threads": 8,
     "duckdb_temp_directory": null,

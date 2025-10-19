@@ -1,0 +1,24 @@
+# Repository Guidelines
+
+## Project Structure & Module Organization
+Duck Query pairs FastAPI backend in `api/` with React frontend in `frontend/`. Backend modules live under `api/core`, `api/routers`, and `api/models`; configs and secrets are kept in `config/`, while ingestion buffers and exports go to `temp_files/` and `exports/`. Python tests live in `api/tests`, the SPA in `frontend/src`, docs in `docs/`, and Docker assets rely on the root `docker-compose.yml`.
+
+## Build, Test, and Development Commands
+- `python -m uvicorn main:app --reload` (run inside `api/`): start FastAPI service with live reload.
+- `python -m pytest api/tests -q`: execute unit and integration suites.
+- `npm install && npm run dev` (inside `frontend/`): install dependencies and launch the SPA locally.
+- `npm run build`: emit the production bundle to `frontend/dist`.
+- `npm run lint`: enforce the zero-warning ESLint policy.
+- `docker-compose up -d` or `./quick-start.sh`: boot the full stack with DuckDB volumes configured.
+
+## Coding Style & Naming Conventions
+Follow PEP 8 in Python: four-space indents, snake_case modules, descriptive docstrings, and type hints on new public APIs. Align router names and response models with existing patterns such as `visual-query` and `data_sources`. Frontend code keeps ES modules, PascalCase React components, camelCase hooks/utilities, and Tailwind utility classes; run `npm run lint -- --fix` before review to auto-resolve stylistic issues.
+
+## Testing Guidelines
+Backend tests rely on Pytest and FastAPI’s `TestClient`; add coverage under `api/tests` with `test_*.py` files and reuse fixtures from suites like `test_visual_query_api.py`. Cover success and failure paths for DuckDB ingestion, async pipelines, and validation helpers, then rerun `python -m pytest api/tests`. Frontend automation is not yet in place, so accompany UI changes with lint checks, manual verification, and screenshots, and keep shared fixtures in `api/tests/config` or `api/tests/exports`.
+
+## Commit & Pull Request Guidelines
+History mixes Conventional Commit prefixes (`feat:`, `fix:`) with concise Chinese summaries; continue using a lowercase prefix plus a present-tense description (for example, `feat: add parquet preview caching`). Exclude generated assets, keep commits logically scoped, and document problem, solution, and verification (`pytest`, `npm run lint`, manual checks) in each PR alongside linked issues. Attach UI captures when frontend layouts shift and flag new config keys or volume changes so reviewers can sync environments.
+
+## Security & Configuration Tips
+Secrets and connection details live in `config/` (for example `datasources.json`, `secret.key`); commit only sanitized `.example` variants. Clear sensitive artifacts from `temp_files/` before pushing. Document new DuckDB exports and confirm matching volume mounts inside `docker-compose.yml`.

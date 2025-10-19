@@ -23,6 +23,7 @@ from routers import (
     database_tables,  # 数据库表管理路由
     sql_favorites,  # SQL收藏路由
 )
+from routers import config_api  # 配置暴露路由
 
 # 尝试导入可能存在的其他路由模块
 try:
@@ -98,6 +99,7 @@ app.include_router(url_reader.router)  # URL文件读取路由
 app.include_router(async_tasks.router)  # 异步任务路由
 app.include_router(database_tables.router)  # 数据库表管理路由
 app.include_router(sql_favorites.router)  # SQL收藏路由
+app.include_router(config_api.router)  # 配置暴露路由
 
 # 条件性注册可能存在的其他路由
 if enhanced_data_sources_available:
@@ -120,8 +122,8 @@ async def startup_event():
         connections = db_manager.list_connections()
         logger.info(f"数据库连接配置加载完成，共 {len(connections)} 个连接")
 
-        # 重新加载文件数据源
-        load_file_datasources_on_startup()
+        # 跳过启动时文件数据源加载，提升启动速度
+        # load_file_datasources_on_startup()
         logger.info("所有数据源加载完成")
     except Exception as e:
         logger.error(f"启动时加载数据源失败: {str(e)}")
