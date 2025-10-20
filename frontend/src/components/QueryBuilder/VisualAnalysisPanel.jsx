@@ -4,8 +4,8 @@ import {
   Fade
 } from '@mui/material';
 import { ChevronDown, LineChart } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
-import { getAppFeatures, previewVisualQuery } from '../../services/apiClient';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { getAppFeatures, previewVisualQuery, getTableMetadata, validateVisualQueryConfig } from '../../services/apiClient';
 import {
   createDefaultConfig,
   createDefaultPivotConfig,
@@ -20,6 +20,8 @@ import LimitControls from './LimitControls';
 import PivotConfigurator from './PivotConfigurator';
 import SortControls from './SortControls';
 import SQLPreview from './SQLPreview';
+import TypeConflictDialog from './VisualAnalysis/TypeConflictDialog';
+import useTypeConflictCheck from '../../hooks/useTypeConflictCheck';
 
 /**
  * VisualAnalysisPanel - Visual query builder interface for single table analysis
@@ -28,6 +30,7 @@ import SQLPreview from './SQLPreview';
 const VisualAnalysisPanel = ({
   selectedSources = [],
   onVisualQueryGenerated,
+  onVisualQueryInvalid = () => {},
   isVisible = true
 }) => {
   // Determine if panel should be shown (only for single table selection)
@@ -64,6 +67,131 @@ const VisualAnalysisPanel = ({
   const [isExpanded, setIsExpanded] = useState(false); // 默认折叠状态
   const latestRequestRef = useRef(0);
   const [features, setFeatures] = useState({ enable_pivot_tables: true });
+  const [columnProfiles, setColumnProfiles] = useState({});
+  const [resolvedCasts, setResolvedCasts] = useState({});
+  const [conflicts, setConflicts] = useState([]);
+  const [suggestedCasts, setSuggestedCasts] = useState({});
+  const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
+  const [isValidatingTypes, setIsValidatingTypes] = useState(false);
+  const pendingActionRef = useRef(null);
+  const currentConflictKeyRef = useRef(null);
+  const [dismissedConflictKeys, setDismissedConflictKeys] = useState(new Set());
+  const [isMetadataReady, setIsMetadataReady] = useState(false);
+
+  const tableName = selectedTable?.name || selectedTable?.id || '';
+  const { computeLocalConflicts, computePivotConflicts, getColumnProfilesArray, columnProfileMap } = useTypeConflictCheck({
+    analysisConfig,
+    columnProfiles,
+    tableName,
+    resolvedCasts,
+    pivotConfig,
+  });
+
+  const mergeConflictSuggestions = useCallback((conflictList = [], suggestionMap = {}) => {
+    const merged = { ...(suggestionMap || {}) };
+    conflictList.forEach((conflict) => {
+      const column = conflict?.left?.column;
+      if (!column) {
+        return;
+      }
+      const existing = merged[column] || [];
+      const recommended = conflict?.recommended_casts || [];
+      if (recommended.length > 0) {
+        merged[column] = Array.from(new Set([...existing, ...recommended]));
+      } else if (!merged[column]) {
+        merged[column] = [];
+      }
+    });
+    return merged;
+  }, []);
+
+  const conflictKeyFromList = useCallback((conflictList, actionType) => {
+    const columns = (conflictList || [])
+      .map((conflict) => conflict?.left?.column || '')
+      .filter(Boolean);
+    if (columns.length === 0) {
+      return null;
+    }
+    const sorted = [...columns].sort((a, b) => a.localeCompare(b));
+    return `${actionType || 'default'}::${sorted.join('|')}`;
+  }, []);
+
+  const openConflictDialog = useCallback(
+    (conflictList, suggestionMap, actionType) => {
+      if (!conflictList || conflictList.length === 0) {
+        return false;
+      }
+
+      const conflictKey = conflictKeyFromList(conflictList, actionType);
+      if (conflictKey && dismissedConflictKeys.has(conflictKey)) {
+        return false;
+      }
+
+      const mergedSuggestions = mergeConflictSuggestions(conflictList, suggestionMap);
+      setConflicts(conflictList);
+      setSuggestedCasts(mergedSuggestions);
+      setIsConflictDialogOpen(true);
+      pendingActionRef.current = actionType ? { type: actionType } : null;
+      setIsValidatingTypes(false);
+      currentConflictKeyRef.current = conflictKey;
+      return true;
+    },
+    [mergeConflictSuggestions, conflictKeyFromList, dismissedConflictKeys],
+  );
+
+  const clearConflictDialog = useCallback(() => {
+    setConflicts([]);
+    setSuggestedCasts({});
+    setIsConflictDialogOpen(false);
+    pendingActionRef.current = null;
+    currentConflictKeyRef.current = null;
+  }, []);
+
+  const runTypeValidation = useCallback(
+    async (configPayload, actionType) => {
+      setIsValidatingTypes(true);
+      try {
+        const payload = {
+          config: configPayload,
+          columnProfiles: getColumnProfilesArray(),
+          resolvedCasts,
+        };
+
+        const response = await validateVisualQueryConfig(payload);
+        if (!response) {
+          return null;
+        }
+
+        if (!response.success) {
+          if (Array.isArray(response.errors) && response.errors.length > 0) {
+            setError(response.errors.join('; '));
+          }
+          return null;
+        }
+
+        const backendConflicts = response.conflicts || [];
+        if (backendConflicts.length > 0) {
+          const opened = openConflictDialog(backendConflicts, response.suggested_casts || {}, actionType);
+          if (opened) {
+            return null;
+          }
+        }
+
+        if (response.suggested_casts) {
+          setSuggestedCasts(mergeConflictSuggestions([], response.suggested_casts));
+        }
+
+        return response;
+      } catch (err) {
+        console.error('类型校验失败', err);
+        setError(`类型校验失败: ${err.message || err}`);
+        return null;
+      } finally {
+        setIsValidatingTypes(false);
+      }
+    },
+    [getColumnProfilesArray, resolvedCasts, openConflictDialog, mergeConflictSuggestions],
+  );
 
   // 加载后端特性开关（控制透视入口显隐）
   useEffect(() => {
@@ -80,6 +208,111 @@ const VisualAnalysisPanel = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (!shouldShowPanel || !tableName) {
+      onVisualQueryInvalid({
+        reason: 'panel_hidden',
+        mode: activeMode,
+      });
+      setColumnProfiles({});
+      setResolvedCasts({});
+      setIsMetadataReady(false);
+      return;
+    }
+
+    const buildFallbackProfiles = () => {
+      if (!selectedTable || !Array.isArray(selectedTable.columns)) {
+        return {};
+      }
+      return (selectedTable.columns || []).reduce((acc, col) => {
+        const name = typeof col === 'string' ? col : col?.name;
+        if (!name || typeof name !== 'string') {
+          return acc;
+        }
+        const key = name.toLowerCase();
+        const source = typeof col === 'string' ? {} : col;
+        const duckdbType = source?.dataType || source?.type || source?.normalizedType || null;
+        const normalizedType = (source?.normalizedType || duckdbType || '')
+          .toString()
+          .toUpperCase() || null;
+
+        acc[key] = {
+          name,
+          duckdb_type: duckdbType,
+          raw_type: source?.rawType || source?.raw_type || duckdbType,
+          normalized_type: normalizedType,
+          precision: source?.precision ?? source?.numericPrecision ?? null,
+          scale: source?.scale ?? source?.numericScale ?? null,
+          null_count: source?.null_count ?? source?.nullCount ?? null,
+          distinct_count: source?.distinct_count ?? source?.distinctCount ?? null,
+          sample_values: Array.isArray(source?.sample_values)
+            ? source.sample_values
+            : Array.isArray(source?.sampleValues)
+              ? source.sampleValues
+              : [],
+        };
+        return acc;
+      }, {});
+    };
+
+    let cancelled = false;
+
+    setResolvedCasts({});
+    setSuggestedCasts({});
+    setIsMetadataReady(false);
+
+    getTableMetadata(tableName)
+      .then((resp) => {
+        if (cancelled) return;
+        const metadata = resp?.metadata;
+        if (!metadata || !Array.isArray(metadata.columns)) {
+          setColumnProfiles(buildFallbackProfiles());
+          setIsMetadataReady(true);
+          return;
+        }
+
+        const nextProfiles = metadata.columns.reduce((acc, col) => {
+          const name = col.column_name || col.columnName || col.name;
+          if (!name) {
+            return acc;
+          }
+          const key = name.toLowerCase();
+          const duckdbType = col.data_type || col.dataType || col.type || null;
+          const normalizedType = (col.normalized_type || duckdbType || '')
+            .toString()
+            .toUpperCase();
+          acc[key] = {
+            name,
+            duckdb_type: duckdbType,
+            raw_type: col.raw_type || duckdbType,
+            normalized_type: normalizedType,
+            precision: col.precision ?? col.numeric_precision ?? null,
+            scale: col.scale ?? col.numeric_scale ?? null,
+            null_count: col.null_count ?? col.nullCount ?? null,
+            distinct_count: col.distinct_count ?? col.distinctCount ?? null,
+            sample_values: col.sample_values || col.sampleValues || [],
+          };
+          return acc;
+        }, {});
+
+        setColumnProfiles(nextProfiles);
+        setIsMetadataReady(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setColumnProfiles(buildFallbackProfiles());
+        setIsMetadataReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldShowPanel, tableName, selectedTable, onVisualQueryInvalid, activeMode]);
+
+  useEffect(() => {
+    setDismissedConflictKeys(new Set());
+  }, [analysisConfig, resolvedCasts, activeMode, tableName]);
+
   // Reset analysis config when table selection changes
   useEffect(() => {
     if (!shouldShowPanel) {
@@ -91,64 +324,94 @@ const VisualAnalysisPanel = ({
     }
   }, [shouldShowPanel, selectedTable?.id]);
 
-  // 根据模式生成/预览 SQL
-  useEffect(() => {
-    if (!shouldShowPanel || !selectedTable) return;
-    if (activeMode === 'regular') {
-      generateSQLRegular();
-    } else {
-      generateSQLPivot();
+  const handleConflictDialogClose = useCallback(() => {
+    if (currentConflictKeyRef.current) {
+      setDismissedConflictKeys((prev) => {
+        const next = new Set(prev);
+        next.add(currentConflictKeyRef.current);
+        return next;
+      });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analysisConfig, pivotConfig, activeMode, shouldShowPanel, selectedTable]);
+    clearConflictDialog();
+  }, [clearConflictDialog]);
 
-  const generateSQLRegular = () => {
-    if (!selectedTable) return;
+  const generateSQLRegular = useCallback(async () => {
+    if (!selectedTable || !tableName || !isMetadataReady) return;
+
+    const configPayload = transformVisualConfigForApi(analysisConfig, tableName);
+    const localConflicts = computeLocalConflicts();
+    if (localConflicts.length > 0) {
+      const opened = openConflictDialog(localConflicts, {}, 'regular');
+      if (opened) {
+        return;
+      }
+    }
+
+    const validationResult = await runTypeValidation(configPayload, 'regular');
+    if (!validationResult) {
+      return;
+    }
 
     try {
-      const tableName = selectedTable.name || selectedTable.id;
-      const result = generateSQLPreview(analysisConfig, tableName, selectedTable?.columns || []);
+      const result = generateSQLPreview(
+        analysisConfig,
+        tableName,
+        selectedTable?.columns || [],
+        { resolvedCasts },
+      );
 
       if (!result.success) {
-        setError(result.errors.join('; '));
+        setError((result.errors || []).join('; '));
         setGeneratedSQL('');
+        setWarnings(result.warnings || []);
+        setBaseSQL('');
+        setPivotSQL('');
         return;
       }
 
       setGeneratedSQL(result.sql);
+      setBaseSQL('');
+      setPivotSQL('');
+      setWarnings([...(result.warnings || []), ...(validationResult.warnings || [])]);
       setError('');
 
-      // Show warnings if any
-      if (result.warnings && result.warnings.length > 0) {
-      }
-
-      // Notify parent component of generated SQL
       if (onVisualQueryGenerated) {
-        // Remove comments for actual execution
         const cleanSQL = result.sql.replace(/^--.*$/gm, '').trim();
-        onVisualQueryGenerated(cleanSQL, analysisConfig);
+        onVisualQueryGenerated(cleanSQL, {
+          mode: 'regular',
+          config: analysisConfig,
+          tableName,
+          resolvedCasts,
+        });
       }
-
     } catch (err) {
       const errorMsg = `SQL生成失败: ${err.message}`;
       setError(errorMsg);
     }
-  };
+  }, [selectedTable, tableName, analysisConfig, computeLocalConflicts, openConflictDialog, runTypeValidation, resolvedCasts, onVisualQueryGenerated, isMetadataReady]);
 
-  const generateSQLPivot = async () => {
-    if (!selectedTable) return;
+  const generateSQLPivot = useCallback(async () => {
+    if (!selectedTable || !tableName || !isMetadataReady) return;
     if (!features?.enable_pivot_tables) {
       setError('管理员已关闭透视表功能');
+      onVisualQueryInvalid({
+        reason: 'pivot_feature_disabled',
+        mode: 'pivot',
+      });
       return;
     }
 
     // 前置拦截：未配置透视条件时，不请求后端，展示基础SQL并提示
     const hasDim = (arr) => Array.isArray(arr) && arr.length > 0;
-    const hasValues = Array.isArray(pivotConfig?.values) && pivotConfig.values.some(v => v && v.column);
+    const hasValues = Array.isArray(pivotConfig?.values) && pivotConfig.values.some((v) => v && v.column);
     if (!(hasDim(pivotConfig?.rows) || hasDim(pivotConfig?.columns)) || !hasValues) {
       try {
-        const tableName = selectedTable.name || selectedTable.id;
-        const result = generateSQLPreview(analysisConfig, tableName, selectedTable?.columns || []);
+        const result = generateSQLPreview(
+          analysisConfig,
+          tableName,
+          selectedTable?.columns || [],
+          { resolvedCasts },
+        );
         setBaseSQL(result?.sql || '');
         setPivotSQL('');
         setGeneratedSQL(result?.sql || '');
@@ -157,30 +420,59 @@ const VisualAnalysisPanel = ({
       } catch (e) {
         setError(`透视前置校验失败：${e.message}`);
       }
+      onVisualQueryInvalid({
+        reason: 'pivot_requirements_missing',
+        mode: 'pivot',
+      });
+      return;
+    }
+
+    const configPayload = transformVisualConfigForApi(analysisConfig, tableName);
+    const pivotPayload = transformPivotConfigForApi(pivotConfig);
+
+    // 前置校验：原生透视仅支持 1 个列字段
+    if (!Array.isArray(pivotPayload.columns) || pivotPayload.columns.length !== 1) {
+      setError('原生透视仅支持 1 个列字段');
+      onVisualQueryInvalid({
+        reason: 'pivot_column_limit',
+        mode: 'pivot',
+      });
+      return;
+    }
+    // 前置校验：需要手工列值顺序或列数量上限其一
+    const hasManual =
+      Array.isArray(pivotPayload.manual_column_values) && pivotPayload.manual_column_values.length > 0;
+    const hasLimit = typeof pivotPayload.column_value_limit === 'number' && pivotPayload.column_value_limit > 0;
+    if (!hasManual && !hasLimit) {
+      setError('请填写“列值顺序”或设置“列数量上限”（建议 10~12）');
+      onVisualQueryInvalid({
+        reason: 'pivot_limit_required',
+        mode: 'pivot',
+      });
+      return;
+    }
+
+    const localConflicts = computeLocalConflicts();
+    if (localConflicts.length > 0) {
+      openConflictDialog(localConflicts, {}, 'pivot');
+      return;
+    }
+
+    const pivotConflicts = computePivotConflicts();
+    if (pivotConflicts.length > 0) {
+      const opened = openConflictDialog(pivotConflicts, {}, 'pivot');
+      if (opened) {
+        return;
+      }
+    }
+
+    const validationResult = await runTypeValidation(configPayload, 'pivot');
+    if (!validationResult) {
       return;
     }
 
     try {
       setIsLoading(true);
-      const tableName = selectedTable.name || selectedTable.id;
-      const configPayload = transformVisualConfigForApi(analysisConfig, tableName);
-      const pivotPayload = transformPivotConfigForApi(pivotConfig);
-
-      // 前置校验：原生透视仅支持 1 个列字段
-      if (!Array.isArray(pivotPayload.columns) || pivotPayload.columns.length !== 1) {
-        setError('原生透视仅支持 1 个列字段');
-        setIsLoading(false);
-        return;
-      }
-      // 前置校验：需要手工列值顺序或列数量上限其一
-      const hasManual = Array.isArray(pivotPayload.manual_column_values) && pivotPayload.manual_column_values.length > 0;
-      const hasLimit = typeof pivotPayload.column_value_limit === 'number' && pivotPayload.column_value_limit > 0;
-      if (!hasManual && !hasLimit) {
-        setError('请填写“列值顺序”或设置“列数量上限”（建议 10~12）');
-        setIsLoading(false);
-        return;
-      }
-
       const resp = await previewVisualQuery(
         {
           config: configPayload,
@@ -189,7 +481,7 @@ const VisualAnalysisPanel = ({
           includeMetadata: true,
         },
         Number(features?.max_query_rows) || 10,
-        {},
+        { resolvedCasts },
       );
 
       if (!resp?.success) {
@@ -203,26 +495,141 @@ const VisualAnalysisPanel = ({
       setGeneratedSQL(resp.sql || '');
       setBaseSQL(resp.base_sql || '');
       setPivotSQL(resp.pivot_sql || '');
-      setWarnings(resp.warnings || []);
+      setWarnings([...(resp.warnings || []), ...(validationResult.warnings || [])]);
       setError('');
 
       if (onVisualQueryGenerated) {
         const cleanSQL = (resp.sql || '').trim();
-        onVisualQueryGenerated(cleanSQL, { mode: 'pivot', regular: analysisConfig, pivot: pivotConfig });
+        onVisualQueryGenerated(cleanSQL, {
+          mode: 'pivot',
+          regular: analysisConfig,
+          pivot: pivotConfig,
+          tableName,
+          resolvedCasts,
+        });
       }
     } catch (err) {
       setError(`透视 SQL 生成失败: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [
+    selectedTable,
+    tableName,
+    features,
+    analysisConfig,
+    pivotConfig,
+    resolvedCasts,
+    computeLocalConflicts,
+    computePivotConflicts,
+    openConflictDialog,
+    runTypeValidation,
+    onVisualQueryGenerated,
+    isMetadataReady,
+  ]);
+
+  const handleConflictResolution = useCallback(
+    (castsMap) => {
+      if (castsMap && Object.keys(castsMap).length > 0) {
+        const normalized = Object.entries(castsMap).reduce((acc, [column, cast]) => {
+          if (column && cast) {
+            acc[column.toLowerCase()] = cast.toUpperCase();
+          }
+          return acc;
+        }, {});
+        setResolvedCasts((prev) => ({ ...prev, ...normalized }));
+      }
+
+      if (currentConflictKeyRef.current) {
+        setDismissedConflictKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(currentConflictKeyRef.current);
+          return next;
+        });
+      }
+
+      clearConflictDialog();
+      const pending = pendingActionRef.current;
+      pendingActionRef.current = null;
+
+      if (pending?.type === 'regular') {
+        generateSQLRegular();
+      } else if (pending?.type === 'pivot') {
+        generateSQLPivot();
+      }
+    },
+    [clearConflictDialog, generateSQLRegular, generateSQLPivot],
+  );
+
+  // 根据模式生成/预览 SQL
+  useEffect(() => {
+    if (!isMetadataReady || !shouldShowPanel || !selectedTable || isConflictDialogOpen) return;
+    if (activeMode === 'regular') {
+      generateSQLRegular();
+    } else {
+      generateSQLPivot();
+    }
+  }, [
+    analysisConfig,
+    pivotConfig,
+    activeMode,
+    shouldShowPanel,
+    selectedTable,
+    isConflictDialogOpen,
+    generateSQLRegular,
+    generateSQLPivot,
+    isMetadataReady,
+  ]);
 
   // Update analysis configuration
+  const collectActiveColumns = useCallback((config) => {
+    const acc = new Set();
+    const push = (value) => {
+      if (!value) return;
+      if (Array.isArray(value)) {
+        value.forEach(push);
+        return;
+      }
+      const column = typeof value === 'string' ? value : value?.column;
+      if (column && typeof column === 'string') {
+        acc.add(column.toLowerCase());
+      }
+    };
+
+    push(config.selectedColumns);
+    push((config.aggregations || []).map((agg) => agg.column));
+    push((config.filters || []).map((filter) => filter.column));
+    push(config.groupBy);
+    push(config.orderBy?.map((item) => item.column));
+
+    return Array.from(acc);
+  }, []);
+
+  const pruneResolvedCasts = useCallback((activeColumns) => {
+    const normalized = new Set((activeColumns || []).map((col) => col.toLowerCase()));
+    setResolvedCasts((prev) => {
+      const entries = Object.entries(prev);
+      const filtered = entries.filter(([column]) => normalized.has(column));
+      if (filtered.length === entries.length) {
+        return prev;
+      }
+      return filtered.reduce((acc, [column, cast]) => {
+        acc[column] = cast;
+        return acc;
+      }, {});
+    });
+  }, []);
+
   const updateAnalysisConfig = (updates) => {
-    setAnalysisConfig(prev => ({
-      ...prev,
-      ...updates
-    }));
+    setAnalysisConfig(prev => {
+      const next = {
+        ...prev,
+        ...updates
+      };
+      const activeColumns = collectActiveColumns(next);
+      pruneResolvedCasts(activeColumns);
+      return next;
+    });
   };
 
   // Handle column selection changes
@@ -283,10 +690,11 @@ const VisualAnalysisPanel = ({
   }
 
   return (
-    <Fade in={shouldShowPanel}>
-      <div className="mb-6">
-        {/* Main Panel Container - 柔和圆润风格 */}
-        <div className="bg-white rounded-3xl border border-gray-200 shadow-lg">
+    <>
+      <Fade in={shouldShowPanel}>
+        <div className="mb-6">
+          {/* Main Panel Container - 柔和圆润风格 */}
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-lg">
           {/* Panel Header */}
           <div
             className="panel-header cursor-pointer"
@@ -387,6 +795,7 @@ const VisualAnalysisPanel = ({
                     onColumnSelectionChange={handleColumnSelectionChange}
                     maxHeight={200}
                     showMetadata={true}
+                    resolvedCasts={resolvedCasts}
                     disabled={isLoading}
                   />
                 </div>
@@ -399,6 +808,7 @@ const VisualAnalysisPanel = ({
                     onAggregationsChange={handleAggregationsChange}
                     disabled={isLoading}
                     maxHeight={200}
+                    resolvedCasts={resolvedCasts}
                   />
                 </div>
 
@@ -472,9 +882,19 @@ const VisualAnalysisPanel = ({
 
             </div>
           </Collapse>
+          </div>
         </div>
-      </div>
-    </Fade>
+      </Fade>
+      <TypeConflictDialog
+        open={isConflictDialogOpen}
+        conflicts={conflicts}
+        suggestedCasts={suggestedCasts}
+        onClose={handleConflictDialogClose}
+        onSubmit={handleConflictResolution}
+        isSubmitting={isValidatingTypes}
+        resolvedCasts={resolvedCasts}
+      />
+    </>
   );
 };
 

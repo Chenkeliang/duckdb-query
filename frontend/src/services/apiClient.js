@@ -637,6 +637,16 @@ const extractVisualQueryPayload = (configOrPayload, options = {}) => {
       payload.pivot_config = resolvedPivot;
     }
 
+    const resolvedCastsOption = options.resolvedCasts || configOrPayload.resolvedCasts;
+    if (resolvedCastsOption) {
+      const castsArray = Object.entries(resolvedCastsOption)
+        .filter(([column, cast]) => column && cast)
+        .map(([column, cast]) => ({ column, cast }));
+      if (castsArray.length > 0) {
+        payload.resolved_casts = castsArray;
+      }
+    }
+
     return payload;
   }
 
@@ -656,6 +666,15 @@ const extractVisualQueryPayload = (configOrPayload, options = {}) => {
 
   if (options.pivotConfig) {
     payload.pivot_config = options.pivotConfig;
+  }
+
+  if (options.resolvedCasts) {
+    const castsArray = Object.entries(options.resolvedCasts)
+      .filter(([column, cast]) => column && cast)
+      .map(([column, cast]) => ({ column, cast }));
+    if (castsArray.length > 0) {
+      payload.resolved_casts = castsArray;
+    }
   }
 
   return payload;
@@ -701,7 +720,27 @@ export const getTableMetadata = async (tableName) => {
 
 export const validateVisualQueryConfig = async (config) => {
   try {
-    const response = await apiClient.post('/api/visual-query/validate', config);
+    if (!config || typeof config !== 'object') {
+      throw new Error('缺少验证配置参数');
+    }
+
+    const {
+      config: visualConfig,
+      columnProfiles = [],
+      resolvedCasts = {},
+    } = config;
+
+    const castsArray = Object.entries(resolvedCasts)
+      .filter(([column, cast]) => column && cast)
+      .map(([column, cast]) => ({ column, cast }));
+
+    const payload = {
+      config: visualConfig,
+      column_profiles: columnProfiles,
+      resolved_casts: castsArray,
+    };
+
+    const response = await apiClient.post('/api/visual-query/validate', payload);
     return response.data;
   } catch (error) {
     handleApiError(error, '验证可视化查询配置失败');

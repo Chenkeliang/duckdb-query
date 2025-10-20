@@ -6,6 +6,10 @@ import tempfile
 import os
 from typing import Optional
 from core.duckdb_engine import get_db_connection
+from core.file_datasource_manager import (
+    file_datasource_manager,
+    create_table_from_dataframe,
+)
 
 router = APIRouter()
 
@@ -198,55 +202,34 @@ async def read_from_url(request: URLReadRequest):
                     print(f"DEBUG: 检查表名时出错: {e}")
                     break
 
-            # 直接创建表，不使用临时表
-            temp_table_name = f"temp_{table_name}"
-            conn.register(temp_table_name, df)
-            conn.execute(
-                f'CREATE TABLE "{table_name}" AS SELECT * FROM {temp_table_name}'
-            )
+            metadata = create_table_from_dataframe(conn, table_name, df)
 
-            # 清理临时注册的DataFrame
-            try:
-                conn.unregister(temp_table_name)
-                print(f"DEBUG: 已清理临时注册表 {temp_table_name}")
-            except Exception as e:
-                print(f"DEBUG: 清理临时注册表失败: {e}")
+            from core.timezone_utils import get_current_time_iso
 
-            # 保存表元数据，包括created_at时间
-            try:
-                from core.timezone_utils import get_current_time_iso
-                from core.file_datasource_manager import file_datasource_manager
+            table_metadata = {
+                "source_id": table_name,
+                "filename": f"url_{table_name}",
+                "file_path": f"url://{converted_url}",
+                "file_type": file_type,
+                "row_count": metadata.get("row_count", 0),
+                "column_count": metadata.get("column_count", 0),
+                "columns": metadata.get("columns", []),
+                "column_profiles": metadata.get("column_profiles", []),
+                "schema_version": 2,
+                "created_at": get_current_time_iso(),
+                "source_url": converted_url,
+            }
 
-                table_metadata = {
-                    "source_id": table_name,
-                    "filename": f"url_{table_name}",
-                    "file_path": f"url://{converted_url}",
-                    "file_type": file_type,
-                    "row_count": len(df),
-                    "column_count": len(df.columns),
-                    "columns": df.columns.tolist(),
-                    "created_at": get_current_time_iso(),  # 使用统一的时区配置
-                    "source_url": converted_url,
-                }
-
-                # 保存到文件数据源管理器
-                file_datasource_manager.save_file_datasource(table_metadata)
-                print(f"DEBUG: 成功保存表元数据: {table_name}")
-
-            except Exception as metadata_error:
-                print(f"DEBUG: 保存表元数据失败: {str(metadata_error)}")
-
-            # 获取表信息
-            columns_result = conn.execute(f'DESCRIBE "{table_name}"').fetchall()
-            columns = [row[0] for row in columns_result]
+            file_datasource_manager.save_file_datasource(table_metadata)
+            print(f"DEBUG: 成功保存表元数据: {table_name}")
 
             return {
                 "success": True,
                 "message": f"成功从URL读取文件并创建表: {table_name}",
                 "table_name": table_name,
-                "row_count": len(df),
-                "column_count": len(df.columns),
-                "columns": columns,
+                "row_count": metadata.get("row_count", 0),
+                "column_count": metadata.get("column_count", 0),
+                "columns": metadata.get("columns", []),
                 "file_type": file_type,
                 "url": converted_url,
                 "original_url": str(request.url),

@@ -17,7 +17,7 @@ import {
   Tooltip,
   Typography
 } from '@mui/material';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AggregationFunction,
   detectColumnType,
@@ -33,7 +33,8 @@ const AggregationControls = ({
   aggregations = [],
   onAggregationsChange,
   disabled = false,
-  maxHeight = 200
+  maxHeight = 200,
+  resolvedCasts = {}
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [newAggregation, setNewAggregation] = useState({
@@ -45,6 +46,39 @@ const AggregationControls = ({
   // 获取表的列信息
   const columns = selectedTable?.columns || [];
 
+  const resolvedCastTypes = useMemo(() => {
+    const map = {};
+    Object.entries(resolvedCasts || {}).forEach(([column, cast]) => {
+      if (!column || !cast) {
+        return;
+      }
+      const upper = cast.toUpperCase();
+      let mapped = 'text';
+      if (/BOOL/.test(upper)) mapped = 'boolean';
+      else if (/DECIMAL|NUMERIC/.test(upper)) mapped = 'decimal';
+      else if (/DOUBLE|FLOAT|REAL/.test(upper)) mapped = 'decimal';
+      else if (/INT/.test(upper)) mapped = 'integer';
+      else if (/DATE|TIME/.test(upper)) mapped = 'date';
+      map[column.toLowerCase()] = mapped;
+    });
+    return map;
+  }, [resolvedCasts]);
+
+  const getMetadataType = (column) => {
+    if (!column || typeof column === 'string') return null;
+    const columnName = (column.name || '').toLowerCase();
+    if (columnName && resolvedCastTypes[columnName]) {
+      return resolvedCastTypes[columnName];
+    }
+    const rawType = (column.dataType || column.type || column.normalizedType || '').toString().toUpperCase();
+    if (!rawType) return null;
+    if (/BOOL/.test(rawType)) return 'boolean';
+    if (/DECIMAL|NUMERIC|DOUBLE|FLOAT|REAL/.test(rawType)) return 'decimal';
+    if (/INT/.test(rawType)) return 'integer';
+    if (/DATE|TIME/.test(rawType)) return 'date';
+    return 'text';
+  };
+
   // 获取可用的聚合函数
   const getAvailableFunctions = (columnName) => {
     const column = columns.find(col =>
@@ -53,10 +87,8 @@ const AggregationControls = ({
 
     if (!column) return Object.values(AggregationFunction);
 
-    const columnType = detectColumnType(
-      columnName,
-      column.sampleValues || []
-    );
+    const columnType =
+      getMetadataType(column) || detectColumnType(columnName, column.sampleValues || []);
 
     return getSuggestedAggregations(columnType);
   };
@@ -255,14 +287,18 @@ const AggregationControls = ({
                   }
                 }}
               >
-                {columns.map(column => {
-                  const columnName = typeof column === 'string' ? column : column.name;
-                  return (
-                    <MenuItem key={columnName} value={columnName}>
-                      {columnName}
-                    </MenuItem>
-                  );
-                })}
+      {columns.map(column => {
+        const columnName = typeof column === 'string' ? column : column.name;
+        const displayType = getMetadataType(column) || detectColumnType(columnName, column.sampleValues || []);
+        return (
+          <MenuItem key={columnName} value={columnName}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <span>{columnName}</span>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>{displayType}</Typography>
+            </Box>
+          </MenuItem>
+        );
+      })}
               </Select>
             </FormControl>
 
@@ -391,13 +427,29 @@ const AggregationControls = ({
                     >
                       {columns.map(column => {
                         const columnName = typeof column === 'string' ? column : column.name;
+                        const displayType = getMetadataType(column) || detectColumnType(columnName, column.sampleValues || []);
                         return (
                           <MenuItem key={columnName} value={columnName}>
-                            {columnName}
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                              <span>{columnName}</span>
+                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>{displayType}</Typography>
+                            </Box>
                           </MenuItem>
                         );
                       })}
                     </Select>
+                  </Box>
+
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block', mb: 0.75 }}>
+                      当前类型
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#2563eb', fontWeight: 600 }}>
+                      {(() => {
+                        const column = columns.find(col => (typeof col === 'string' ? col : col.name) === aggregation.column);
+                        return getMetadataType(column) || detectColumnType(aggregation.column, column?.sampleValues || []);
+                      })()}
+                    </Typography>
                   </Box>
 
                   {/* 别名 */}

@@ -91,26 +91,36 @@ const PivotConfigurator = ({
 
   // 防抖处理函数
   const debounceRef = useRef({});
+  const latestConfigRef = useRef(pivotConfig);
 
-  const debouncedUpdate = useCallback((updates, delay = 300) => {
-    const key = JSON.stringify(updates);
+  useEffect(() => {
+    latestConfigRef.current = pivotConfig;
+  }, [pivotConfig]);
 
-    // 清除之前的定时器
+  const scheduleConfigUpdate = useCallback((key, updates, delay = 300) => {
     if (debounceRef.current[key]) {
       clearTimeout(debounceRef.current[key]);
     }
 
-    // 设置新的定时器
     debounceRef.current[key] = setTimeout(() => {
       if (onChange) {
         onChange({
-          ...pivotConfig,
+          ...latestConfigRef.current,
           ...updates,
         });
       }
       delete debounceRef.current[key];
     }, delay);
-  }, [onChange, pivotConfig]);
+  }, [onChange]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(debounceRef.current || {}).forEach((timerId) => {
+        clearTimeout(timerId);
+      });
+      debounceRef.current = {};
+    };
+  }, []);
 
   const handleUpdate = useCallback((updates) => {
     if (onChange) {
@@ -215,8 +225,6 @@ const PivotConfigurator = ({
       handleUpdate({ valueAxis: newAxis });
     }
   };
-
-  const manualColumnValuesText = (pivotConfig.manualColumnValues || []).join(', ');
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -465,7 +473,7 @@ const PivotConfigurator = ({
             onChange={(event) => {
               const value = event.target.value;
               setLocalFillValue(value);
-              debouncedUpdate({ fillValue: value });
+              scheduleConfigUpdate('fillValue', { fillValue: value });
             }}
             disabled={disabled}
             fullWidth
@@ -480,7 +488,7 @@ const PivotConfigurator = ({
           onChange={(event) => {
             const value = event.target.value;
             setLocalManualColumnValues(value);
-            debouncedUpdate({
+            scheduleConfigUpdate('manualColumnValues', {
               manualColumnValues: value
                 .split(/[,，\n]+/)
                 .map((item) => item.trim())
@@ -510,11 +518,13 @@ const PivotConfigurator = ({
             setLocalColumnValueLimit(raw);
 
             if (raw === '') {
-              debouncedUpdate({ columnValueLimit: '' });
+              scheduleConfigUpdate('columnValueLimit', { columnValueLimit: '' });
               return;
             }
             const num = Number(raw);
-            debouncedUpdate({ columnValueLimit: Number.isFinite(num) && num > 0 ? num : '' });
+            scheduleConfigUpdate('columnValueLimit', {
+              columnValueLimit: Number.isFinite(num) && num > 0 ? num : '',
+            });
           }}
           disabled={disabled}
           fullWidth

@@ -414,6 +414,54 @@ class PivotConfig(BaseModel):
         return self
 
 
+class ColumnProfilePayload(BaseModel):
+    """前端回传的列类型信息"""
+
+    name: str = Field(..., description="列名")
+    duckdb_type: Optional[str] = Field(None, description="DuckDB 推断类型")
+    raw_type: Optional[str] = Field(None, description="前端原始类型描述")
+    normalized_type: Optional[str] = Field(None, description="前端归一化类型")
+    precision: Optional[int] = Field(None, description="数值精度")
+    scale: Optional[int] = Field(None, description="数值小数位")
+
+
+class ResolvedTypeCast(BaseModel):
+    """用户确认的类型转换设置"""
+
+    column: str = Field(..., description="目标列名")
+    cast: str = Field(..., description="TRY_CAST 目标类型表达式")
+    table: Optional[str] = Field(None, description="所属表，可选")
+
+
+class ColumnTypeReference(BaseModel):
+    """类型冲突报告中的列引用"""
+
+    table: Optional[str] = Field(None, description="表名")
+    column: str = Field(..., description="列名")
+    duckdb_type: Optional[str] = Field(None, description="DuckDB 类型")
+    normalized_type: Optional[str] = Field(None, description="归一化类型")
+
+
+class TypeConflictModel(BaseModel):
+    """类型冲突描述"""
+
+    operation: Literal["aggregation", "join", "filter"] = Field(
+        ..., description="冲突所属操作"
+    )
+    message: str = Field(..., description="提示信息")
+    left: ColumnTypeReference = Field(..., description="主要列信息")
+    right: Optional[ColumnTypeReference] = Field(
+        None, description="对端列信息（JOIN 时使用）"
+    )
+    function: Optional[str] = Field(None, description="相关函数或操作符")
+    recommended_casts: List[str] = Field(
+        default_factory=list, description="推荐的 TRY_CAST 选项"
+    )
+    severity: Literal["error", "warning"] = Field(
+        "error", description="冲突严重程度"
+    )
+
+
 class VisualQueryConfig(BaseModel):
     """Main configuration for visual query"""
 
@@ -499,6 +547,34 @@ class VisualQueryConfig(BaseModel):
         return self
 
 
+class VisualQueryValidationRequest(BaseModel):
+    """可视化查询配置校验请求"""
+
+    config: VisualQueryConfig = Field(..., description="可视化查询配置")
+    column_profiles: List[ColumnProfilePayload] = Field(
+        default_factory=list, description="前端收集的列类型信息"
+    )
+    resolved_casts: List[ResolvedTypeCast] = Field(
+        default_factory=list, description="用户已确认的 TRY_CAST 设置"
+    )
+
+
+class VisualQueryValidationResponse(BaseModel):
+    """可视化查询配置校验响应"""
+
+    success: bool = Field(..., description="校验是否执行成功")
+    is_valid: bool = Field(..., description="配置是否通过基础校验")
+    errors: List[str] = Field(default_factory=list, description="错误信息")
+    warnings: List[str] = Field(default_factory=list, description="警告信息")
+    complexity_score: int = Field(..., description="复杂度评分")
+    conflicts: List[TypeConflictModel] = Field(
+        default_factory=list, description="类型冲突详情"
+    )
+    suggested_casts: Dict[str, List[str]] = Field(
+        default_factory=dict, description="推荐的类型转换选项"
+    )
+
+
 class VisualQueryRequest(BaseModel):
     """Request model for visual query generation"""
 
@@ -512,6 +588,9 @@ class VisualQueryRequest(BaseModel):
     preview: bool = Field(False, description="Whether this is a preview request")
     include_metadata: bool = Field(
         True, description="Whether to include query metadata"
+    )
+    resolved_casts: List[ResolvedTypeCast] = Field(
+        default_factory=list, description="可视化查询生成时应用的 TRY_CAST 设置"
     )
 
 
@@ -577,6 +656,9 @@ class PreviewRequest(BaseModel):
         VisualQueryMode.REGULAR, description="Visual analysis mode"
     )
     limit: int = Field(10, description="Number of rows to preview")
+    resolved_casts: List[ResolvedTypeCast] = Field(
+        default_factory=list, description="预览阶段应用的 TRY_CAST 设置"
+    )
 
 
 class PreviewResponse(BaseModel):

@@ -632,7 +632,7 @@ function buildInCondition(column, filter, columnInfo, operator) {
 }
 
 // 生成SQL预览
-export const generateSQLPreview = (config, tableName, columns = []) => {
+export const generateSQLPreview = (config, tableName, columns = [], options = {}) => {
   const errors = [];
   const warnings = [];
 
@@ -644,6 +644,15 @@ export const generateSQLPreview = (config, tableName, columns = []) => {
   try {
     let sql = "";
     const columnTypeMap = buildColumnTypeMap(columns || []);
+    const resolvedCastsMap = Object.entries(options.resolvedCasts || {}).reduce(
+      (acc, [column, cast]) => {
+        if (column && cast) {
+          acc[column.toLowerCase()] = cast;
+        }
+        return acc;
+      },
+      {},
+    );
 
     // SELECT 子句
     const selectItems = [];
@@ -668,10 +677,12 @@ export const generateSQLPreview = (config, tableName, columns = []) => {
             const columnTypeInfo = getColumnTypeInfo(agg.column);
 
             // 使用类型安全的聚合函数生成
+            const resolvedCast = resolvedCastsMap[agg.column.toLowerCase()];
             const aggStr = generateAggregationSQL(
               agg,
               columnTypeInfo.type,
               columnTypeInfo.name,
+              resolvedCast,
             );
             selectItems.push(aggStr);
           } catch (error) {
@@ -1052,17 +1063,21 @@ export const isAggregationCompatible = (
 };
 
 // 生成带类型转换的聚合函数SQL
-export const generateAggregationSQL = (aggregation, columnType, columnName) => {
+export const generateAggregationSQL = (aggregation, columnType, columnName, resolvedCast) => {
   const { function: func, column, alias } = aggregation;
+  const funcKey = typeof func === "string" ? func.toUpperCase() : func;
 
   // 检查兼容性
-  if (!isAggregationCompatible(func, columnType, column)) {
+  if (!resolvedCast && !isAggregationCompatible(func, columnType, column)) {
     throw new Error(
       `聚合函数 ${func} 不兼容列 ${column} 的数据类型 ${columnType}`,
     );
   }
 
   let sqlColumn = column;
+  const resolvedCastValue = resolvedCast
+    ? resolvedCast.trim().toUpperCase()
+    : null;
 
   // 检查数据类型
   const isNumericType = [
@@ -1078,7 +1093,9 @@ export const generateAggregationSQL = (aggregation, columnType, columnName) => {
   );
 
   // 当使用数值聚合函数（SUM、AVG、MIN、MAX）且字段类型是文本类型时，自动进行类型转换
-  if (
+  if (resolvedCastValue) {
+    sqlColumn = `TRY_CAST(${column} AS ${resolvedCastValue})`;
+  } else if (
     (func === AggregationFunction.SUM ||
       func === AggregationFunction.AVG ||
       func === AggregationFunction.MIN ||
@@ -1088,6 +1105,10 @@ export const generateAggregationSQL = (aggregation, columnType, columnName) => {
   ) {
     // 尝试将文本类型转换为DECIMAL，使用TRY_CAST避免转换失败
     sqlColumn = `TRY_CAST(${column} AS DECIMAL)`;
+  }
+
+  if (funcKey === AggregationFunction.COUNT_DISTINCT || funcKey === "COUNT_DISTINCT") {
+    return `COUNT(DISTINCT ${sqlColumn})${alias ? ` AS ${alias}` : ""}`;
   }
 
   const aggStr = `${func}(${sqlColumn})${alias ? ` AS ${alias}` : ""}`;

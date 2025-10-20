@@ -203,7 +203,24 @@ const ShadcnApp = () => {
             typeof table === "string"
               ? table
               : table.table_name || table.name || String(table);
-          const columns = typeof table === "object" ? table.columns || [] : [];
+          const columnProfiles = Array.isArray(table.column_profiles)
+            ? table.column_profiles
+            : [];
+          const mappedProfileColumns = columnProfiles.map((profile) => ({
+            name: profile.name || profile.column,
+            type: profile.duckdb_type || profile.type,
+            dataType: profile.duckdb_type || profile.type,
+            rawType: profile.rawType || profile.raw_type,
+            normalizedType: profile.normalizedType || profile.normalized_type,
+            nullable: profile.nullable,
+            precision: profile.precision,
+            scale: profile.scale,
+            sampleValues: profile.sampleValues || profile.sample_values || [],
+            statistics: profile.statistics,
+          }));
+          const columns = mappedProfileColumns.length > 0
+            ? mappedProfileColumns
+            : (typeof table === "object" ? table.columns || [] : []);
           const columnCount =
             typeof table === "object"
               ? table.column_count || columns.length

@@ -26,6 +26,12 @@ from models.visual_query_models import (
     SetOperationExportRequest,
     UniversalExportRequest,
     QueryType,
+    VisualQueryValidationRequest,
+    VisualQueryValidationResponse,
+    ColumnProfilePayload,
+    ResolvedTypeCast,
+    TypeConflictModel,
+    ColumnTypeReference,
 )
 from core.duckdb_engine import (
     get_db_connection,
@@ -47,6 +53,10 @@ from core.visual_query_generator import (
     _build_where_clause,
     _quote_identifier,
 )
+from core.file_datasource_manager import (
+    file_datasource_manager,
+    build_table_metadata_snapshot,
+)
 import pandas as pd
 import numpy as np
 import io
@@ -57,8 +67,8 @@ import logging
 import re
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Union
-from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any, Union, Tuple
+from pydantic import BaseModel, Field, ValidationError
 import duckdb
 from io import StringIO
 import tempfile
@@ -71,6 +81,197 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+_NUMERIC_AGG_FUNCTIONS = {
+    "SUM",
+    "AVG",
+    "STDDEV_SAMP",
+    "VAR_SAMP",
+    "MEDIAN",
+    "PERCENTILE_CONT_25",
+    "PERCENTILE_CONT_75",
+    "PERCENTILE_DISC_25",
+    "PERCENTILE_DISC_75",
+    "SUM_OVER",
+    "AVG_OVER",
+}
+
+_NUMERIC_TYPE_PREFIXES = (
+    "DECIMAL",
+    "NUMERIC",
+    "DOUBLE",
+    "FLOAT",
+    "REAL",
+)
+
+_NUMERIC_TYPE_NAMES = {
+    "INTEGER",
+    "INT",
+    "BIGINT",
+    "SMALLINT",
+    "TINYINT",
+    "HUGEINT",
+    "UTINYINT",
+    "USMALLINT",
+    "UINTEGER",
+    "UBIGINT",
+    "DOUBLE",
+    "FLOAT",
+    "REAL",
+}
+
+
+def _normalize_duckdb_type(type_str: Optional[str]) -> Optional[str]:
+    if not type_str:
+        return None
+    normalized = type_str.strip().upper()
+    if "(" in normalized:
+        normalized = normalized.split("(", 1)[0]
+    return normalized
+
+
+def _is_numeric_type(type_str: Optional[str]) -> bool:
+    normalized = _normalize_duckdb_type(type_str)
+    if not normalized:
+        return False
+    if normalized in _NUMERIC_TYPE_NAMES:
+        return True
+    return any(normalized.startswith(prefix) for prefix in _NUMERIC_TYPE_PREFIXES)
+
+
+def _map_resolved_casts(resolved_casts: List[ResolvedTypeCast]) -> Dict[str, str]:
+    casts_map: Dict[str, str] = {}
+    for item in resolved_casts or []:
+        column = (item.column or "").strip()
+        cast = (item.cast or "").strip().upper()
+        if not column or not cast:
+            continue
+        casts_map[column.lower()] = cast
+    return casts_map
+
+
+def _map_frontend_profiles(
+    profiles: List[ColumnProfilePayload],
+) -> Dict[str, ColumnProfilePayload]:
+    return {
+        profile.name.lower(): profile
+        for profile in profiles or []
+        if profile.name and profile.name.strip()
+    }
+
+
+def _load_backend_column_profiles(table_name: str) -> Dict[str, Dict[str, Any]]:
+    try:
+        entry = file_datasource_manager.get_file_datasource(table_name)
+        profiles = (entry or {}).get("column_profiles") if entry else None
+        if profiles:
+            return {
+                str(profile.get("name", "")).lower(): profile for profile in profiles
+            }
+
+        con = get_db_connection()
+        snapshot = build_table_metadata_snapshot(con, table_name)
+        return {
+            str(profile.get("name", "")).lower(): profile
+            for profile in snapshot.get("column_profiles", [])
+        }
+    except Exception as exc:
+        logger.warning("加载后端列元数据失败: %s", exc)
+        return {}
+
+
+def _recommended_numeric_casts(_: Optional[str]) -> List[str]:
+    return ["DECIMAL(18,4)", "DOUBLE"]
+
+
+def _build_conflict_column_ref(
+    table: str,
+    column: str,
+    duckdb_type: Optional[str],
+    normalized_type: Optional[str],
+) -> ColumnTypeReference:
+    return ColumnTypeReference(
+        table=table,
+        column=column,
+        duckdb_type=duckdb_type,
+        normalized_type=normalized_type,
+    )
+
+
+def _detect_aggregation_conflicts(
+    config: VisualQueryConfig,
+    backend_profiles: Dict[str, Dict[str, Any]],
+    frontend_profiles: Dict[str, ColumnProfilePayload],
+    resolved_casts: Dict[str, str],
+) -> Tuple[List[TypeConflictModel], Dict[str, List[str]]]:
+    conflicts: List[TypeConflictModel] = []
+    suggested_casts: Dict[str, List[str]] = {}
+
+    for agg in config.aggregations or []:
+        func = agg.function.value.upper()
+        if func not in _NUMERIC_AGG_FUNCTIONS:
+            continue
+
+        column_key = (agg.column or "").strip()
+        if not column_key:
+            continue
+
+        if column_key.lower() in resolved_casts:
+            # 用户已指定 TRY_CAST，视为已解决
+            continue
+
+        backend_profile = backend_profiles.get(column_key.lower())
+        frontend_profile = frontend_profiles.get(column_key.lower())
+
+        duckdb_type = None
+        normalized_type = None
+
+        if backend_profile:
+            duckdb_type = backend_profile.get("duckdb_type") or backend_profile.get(
+                "type"
+            )
+            normalized_type = _normalize_duckdb_type(duckdb_type)
+
+        if not normalized_type and frontend_profile:
+            duckdb_type = (
+                frontend_profile.duckdb_type
+                or frontend_profile.raw_type
+                or duckdb_type
+            )
+            normalized_type = (
+                frontend_profile.normalized_type
+                or _normalize_duckdb_type(frontend_profile.duckdb_type)
+                or _normalize_duckdb_type(frontend_profile.raw_type)
+            )
+
+        if _is_numeric_type(normalized_type):
+            continue
+
+        recommended = _recommended_numeric_casts(normalized_type)
+        if recommended:
+            suggested_casts[column_key] = recommended
+
+        message = (
+            f"{func} 需要数值类型，但列 {column_key} 当前为 {duckdb_type or '未知类型'}"
+        )
+
+        conflicts.append(
+            TypeConflictModel(
+                operation="aggregation",
+                message=message,
+                left=_build_conflict_column_ref(
+                    table=config.table_name,
+                    column=column_key,
+                    duckdb_type=duckdb_type,
+                    normalized_type=normalized_type,
+                ),
+                right=None,
+                function=func,
+                recommended_casts=recommended,
+            )
+        )
+
+    return conflicts, suggested_casts
 
 class DistinctValuesMetric(BaseModel):
     agg: str = Field(..., description="聚合：SUM|COUNT|AVG|MIN|MAX")
@@ -184,10 +385,13 @@ async def generate_visual_query(request: VisualQueryRequest) -> VisualQueryRespo
                 mode=request.mode,
             )
 
+        resolved_casts_map = _map_resolved_casts(request.resolved_casts)
+
         generation = generate_visual_query_sql(
             request.config,
             mode=request.mode,
             pivot_config=request.pivot_config,
+            resolved_casts=resolved_casts_map,
         )
 
         combined_warnings = list(validation_result.warnings or [])
@@ -262,10 +466,13 @@ async def preview_visual_query(request: PreviewRequest) -> PreviewResponse:
                 warnings=validation_result.warnings,
             )
 
+        resolved_casts_map = _map_resolved_casts(request.resolved_casts)
+
         generation = generate_visual_query_sql(
             request.config,
             mode=request.mode,
             pivot_config=request.pivot_config,
+            resolved_casts=resolved_casts_map,
         )
 
         preview_limit = request.limit or 10
@@ -342,7 +549,7 @@ async def get_visual_query_table_metadata(table_name: str):
         if table_name not in available_names:
             raise HTTPException(status_code=404, detail=f"数据表 {table_name} 不存在")
 
-        metadata = get_table_metadata(con, table_name)
+        metadata = get_table_metadata(table_name, con)
         metadata_dict = (
             metadata.model_dump()
             if hasattr(metadata, "model_dump")
@@ -492,25 +699,75 @@ async def get_visual_query_column_stats(table_name: str, column_name: str):
 
 
 @router.post("/api/visual-query/validate", tags=["Visual Query"])
-async def validate_visual_query_config_endpoint(config: VisualQueryConfig):
+async def validate_visual_query_config_endpoint(
+    payload: Dict[str, Any] = Body(...)
+):
     try:
-        result = validate_query_config(config)
-        return {
-            "success": True,
-            "is_valid": result.is_valid,
-            "errors": result.errors,
-            "warnings": result.warnings,
-            "complexity_score": result.complexity_score,
-        }
+        if isinstance(payload, dict) and "config" in payload:
+            request_payload = VisualQueryValidationRequest(**payload)
+        else:
+            request_payload = VisualQueryValidationRequest(
+                config=VisualQueryConfig(**payload),
+                column_profiles=[],
+                resolved_casts=[],
+            )
+    except ValidationError as exc:
+        logger.error("校验请求解析失败: %s", exc)
+        return VisualQueryValidationResponse(
+            success=False,
+            is_valid=False,
+            errors=["请求格式错误"],
+            warnings=[],
+            complexity_score=0,
+        ).model_dump()
+    except Exception as exc:
+        logger.error("校验请求解析异常: %s", exc, exc_info=True)
+        return VisualQueryValidationResponse(
+            success=False,
+            is_valid=False,
+            errors=[f"配置解析失败: {str(exc)}"],
+            warnings=[],
+            complexity_score=0,
+        ).model_dump()
+
+    try:
+        validation_result = validate_query_config(request_payload.config)
+
+        backend_profiles = _load_backend_column_profiles(
+            request_payload.config.table_name
+        )
+        frontend_profiles = _map_frontend_profiles(request_payload.column_profiles)
+        resolved_casts_map = _map_resolved_casts(request_payload.resolved_casts)
+
+        agg_conflicts, suggested_casts = _detect_aggregation_conflicts(
+            request_payload.config,
+            backend_profiles,
+            frontend_profiles,
+            resolved_casts_map,
+        )
+
+        is_valid = validation_result.is_valid and not agg_conflicts
+
+        response = VisualQueryValidationResponse(
+            success=True,
+            is_valid=is_valid,
+            errors=validation_result.errors,
+            warnings=validation_result.warnings,
+            complexity_score=validation_result.complexity_score,
+            conflicts=agg_conflicts,
+            suggested_casts=suggested_casts,
+        )
+        return response.model_dump()
+
     except Exception as exc:
         logger.error("可视化查询配置验证失败: %s", exc, exc_info=True)
-        return {
-            "success": False,
-            "is_valid": False,
-            "errors": [f"配置验证失败: {str(exc)}"],
-            "warnings": [],
-            "complexity_score": 0,
-        }
+        return VisualQueryValidationResponse(
+            success=False,
+            is_valid=False,
+            errors=[f"配置验证失败: {str(exc)}"],
+            warnings=[],
+            complexity_score=0,
+        ).model_dump()
 
 
 def safe_alias(table, col):
@@ -806,8 +1063,15 @@ def build_join_chain(sources, joins, table_columns):
                 right_table_id = right_id
 
                 # 智能数据类型转换和清洗
-                left_col = f'"{left_table_id}"."{condition.left_column}"'
-                right_col = f'"{right_table_id}"."{condition.right_column}"'
+                base_left_col = (
+                    f'"{left_table_id}"."{condition.left_column}"'
+                )
+                base_right_col = (
+                    f'"{right_table_id}"."{condition.right_column}"'
+                )
+
+                left_col = base_left_col
+                right_col = base_right_col
 
                 # 检查是否需要数据清洗（针对包含JSON或复杂字符串的情况）
                 # 如果左列包含复杂数据，尝试提取数字部分
@@ -824,6 +1088,11 @@ def build_join_chain(sources, joins, table_columns):
                 ] and right_table_id.startswith("query_result"):
                     # 确保右列也是字符串类型进行比较
                     right_col = f"CAST({right_col} AS VARCHAR)"
+
+                if condition.left_cast:
+                    left_col = f"TRY_CAST({left_col} AS {condition.left_cast})"
+                if condition.right_cast:
+                    right_col = f"TRY_CAST({right_col} AS {condition.right_cast})"
 
                 conditions.append(f"{left_col} {condition.operator} {right_col}")
 

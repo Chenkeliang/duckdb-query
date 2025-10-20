@@ -154,7 +154,7 @@ function buildSelectClause(config) {
       try {
         // 尝试使用自动类型转换的聚合函数生成
         const columnTypeInfo = getColumnTypeInfo(agg.column);
-        const aggSQL = generateAggregationSQL(agg, columnTypeInfo.type, columnTypeInfo.name);
+        const aggSQL = generateAggregationSQL(agg, columnTypeInfo.type, columnTypeInfo.name, null);
 
         if (agg.alias && agg.alias.trim()) {
           return `${aggSQL} AS ${escapeIdentifier(agg.alias)}`;
@@ -166,6 +166,7 @@ function buildSelectClause(config) {
 
         const column = agg.column;
         const func = agg.function;
+        const normalizedFunc = typeof func === 'string' ? func.toUpperCase() : func;
 
         // 检查是否需要类型转换（当SUM/AVG遇到文本类型时）
         const isTextColumn = typeof column === 'string' ||
@@ -180,7 +181,9 @@ function buildSelectClause(config) {
           columnRef = escapeIdentifier(column);
         }
 
-        const funcCall = `${func}(${columnRef})`;
+        const funcCall = (normalizedFunc === 'COUNT_DISTINCT')
+          ? `COUNT(DISTINCT ${columnRef})`
+          : `${func}(${columnRef})`;
 
         if (agg.alias && agg.alias.trim()) {
           return `${funcCall} AS ${escapeIdentifier(agg.alias)}`;

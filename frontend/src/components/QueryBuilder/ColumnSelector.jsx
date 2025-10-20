@@ -10,7 +10,7 @@ import {
   Typography
 } from '@mui/material';
 import { Calendar, CheckCircle, FileText, Hash, HelpCircle, Percent } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { detectColumnType } from '../../utils/visualQueryUtils';
 
 /**
@@ -23,7 +23,8 @@ const ColumnSelector = ({
   onColumnSelectionChange,
   maxHeight = 200,
   showMetadata = false,
-  disabled = false
+  disabled = false,
+  resolvedCasts = {}
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isExpanded, setIsExpanded] = useState(true);
@@ -39,18 +40,81 @@ const ColumnSelector = ({
     return columnName.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
+  const resolvedCastTypes = useMemo(() => {
+    const map = {};
+    Object.entries(resolvedCasts || {}).forEach(([column, cast]) => {
+      if (!column || !cast) {
+        return;
+      }
+      const upper = cast.toUpperCase();
+      let mapped = 'text';
+      if (/BOOL/.test(upper)) {
+        mapped = 'boolean';
+      } else if (/DECIMAL|NUMERIC/.test(upper)) {
+        mapped = 'decimal';
+      } else if (/DOUBLE|FLOAT|REAL/.test(upper)) {
+        mapped = 'decimal';
+      } else if (/INT/.test(upper)) {
+        mapped = 'integer';
+      }
+      map[column.toLowerCase()] = mapped;
+    });
+    return map;
+  }, [resolvedCasts]);
+
+  const mapMetadataType = (column) => {
+    if (!column || typeof column === 'string') {
+      return null;
+    }
+    const rawType = (column.dataType || column.type || column.normalizedType || '').toString().toUpperCase();
+    if (!rawType) {
+      return null;
+    }
+    const columnName = (column.name || '').toLowerCase();
+    if (columnName && resolvedCastTypes[columnName]) {
+      return resolvedCastTypes[columnName];
+    }
+    if (/BOOL/.test(rawType)) {
+      return 'boolean';
+    }
+    if (/INT/.test(rawType) && !/BIGDEC/.test(rawType)) {
+      return 'integer';
+    }
+    if (/DECIMAL|NUMERIC|DOUBLE|FLOAT|REAL/.test(rawType)) {
+      return 'decimal';
+    }
+    if (/DATE|TIME/.test(rawType)) {
+      return 'date';
+    }
+    return 'text';
+  };
+
   // 检测列类型
   useEffect(() => {
     if (columns.length > 0) {
       const types = {};
       columns.forEach(column => {
         const columnName = typeof column === 'string' ? column : column.name;
-        const sampleValues = column.sampleValues || [];
-        types[columnName] = detectColumnType(columnName, sampleValues);
+        const lowerName = (columnName || '').toLowerCase();
+        if (!columnName) {
+          return;
+        }
+        const castOverride = resolvedCastTypes[lowerName];
+        if (castOverride) {
+          types[columnName] = castOverride;
+        } else {
+          const metadataType = mapMetadataType(column);
+          if (metadataType) {
+            types[columnName] = metadataType;
+          } else {
+            const sampleValues = column.sampleValues || [];
+            types[columnName] = detectColumnType(columnName, sampleValues);
+          }
+        }
       });
       setColumnTypes(types);
     }
-  }, [columns]);
+  }, [columns, resolvedCastTypes]);
 
   // 处理列选择
   const handleColumnToggle = (column) => {

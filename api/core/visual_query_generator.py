@@ -67,7 +67,9 @@ class GeneratedVisualQuery:
     metadata: Dict[str, Any]
 
 
-def generate_sql_from_config(config: VisualQueryConfig) -> str:
+def generate_sql_from_config(
+    config: VisualQueryConfig, resolved_casts: Optional[Dict[str, str]] = None
+) -> str:
     """
     Generate SQL query from visual query configuration
 
@@ -79,7 +81,7 @@ def generate_sql_from_config(config: VisualQueryConfig) -> str:
     """
     try:
         # Build SELECT clause
-        select_clause = _build_select_clause(config)
+        select_clause = _build_select_clause(config, resolved_casts)
 
         # Build FROM clause
         from_clause = f'FROM "{config.table_name}"'
@@ -126,6 +128,7 @@ def generate_visual_query_sql(
     mode: VisualQueryMode = VisualQueryMode.REGULAR,
     pivot_config: Optional[PivotConfig] = None,
     app_config: Optional[Any] = None,
+    resolved_casts: Optional[Dict[str, str]] = None,
 ) -> GeneratedVisualQuery:
     """Generate final SQL for the requested visual analysis mode."""
 
@@ -157,6 +160,7 @@ def generate_visual_query_sql(
             base_sql=base_sql,
             pivot_config=pivot_config,
             pivot_extension_name=None,  # 不使用扩展
+            casts_map=resolved_casts,
         )
 
         warnings.extend(pivot_result.get("warnings", []))
@@ -186,7 +190,7 @@ def generate_visual_query_sql(
         )
 
     # Regular mode fallback
-    base_sql = generate_sql_from_config(config)
+    base_sql = generate_sql_from_config(config, resolved_casts)
     metadata = {"mode": mode.value}
     return GeneratedVisualQuery(
         mode=mode,
@@ -274,11 +278,17 @@ def _generate_pivot_base_sql(
     return _strip_trailing_semicolon(" ".join(sql_parts))
 
 
-def _build_pivot_value_expression(value: PivotValueConfig) -> str:
+def _build_pivot_value_expression(
+    value: PivotValueConfig, casts_map: Optional[Dict[str, str]] = None
+) -> str:
     column_expr = _quote_identifier(value.column)
 
+    cast_target = _resolve_cast_expression(value.column, casts_map)
+    if cast_target:
+        column_expr = f"TRY_CAST({column_expr} AS {cast_target})"
+
     # 应用类型转换（如果指定了且不是自动）
-    if (
+    elif (
         hasattr(value, "typeConversion")
         and value.typeConversion
         and value.typeConversion != "auto"
@@ -316,10 +326,16 @@ def _generate_pivot_transformation_sql(
     base_sql: str,
     pivot_config: PivotConfig,
     pivot_extension_name: str = None,  # 不再使用扩展
+    casts_map: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
-    value_expressions = [_build_pivot_value_expression(v) for v in pivot_config.values]
+    value_expressions = [
+        _build_pivot_value_expression(v, casts_map) for v in pivot_config.values
+    ]
     row_dimensions = [_quote_identifier(dim) for dim in pivot_config.rows]
     column_dimensions = [_quote_identifier(dim) for dim in pivot_config.columns]
+    manual_values = list(
+        getattr(pivot_config, "manual_column_values", []) or []
+    )
 
     base_alias = "base"
     # 强制使用原生PIVOT策略
@@ -362,6 +378,16 @@ def _generate_pivot_transformation_sql(
         native_candidate["metadata"].update(
             {"uses_pivot_extension": False, "strategy": "native"}
         )
+        # 当需要小计/总计时，构建额外结果集
+        if pivot_config.include_subtotals or pivot_config.include_grand_totals:
+            native_candidate = _inject_pivot_totals(
+                native_candidate,
+                row_dimensions,
+                pivot_config.values,
+                manual_values,
+                include_subtotals=pivot_config.include_subtotals,
+                include_grand_totals=pivot_config.include_grand_totals,
+            )
         return native_candidate
 
     # 如果原生PIVOT失败，尝试自动采样
@@ -386,6 +412,15 @@ def _generate_pivot_transformation_sql(
                         "auto_sampled_values": sampled[:5],  # preview metadata
                     }
                 )
+                if pivot_config.include_subtotals or pivot_config.include_grand_totals:
+                    native_candidate = _inject_pivot_totals(
+                        native_candidate,
+                        row_dimensions,
+                        pivot_config.values,
+                        sampled,
+                        include_subtotals=pivot_config.include_subtotals,
+                        include_grand_totals=pivot_config.include_grand_totals,
+                    )
                 return native_candidate
         # 如果自动采样也失败，返回错误
         raise ValueError(
@@ -433,22 +468,169 @@ def _try_generate_native_pivot(
     col_dim = _quote_identifier(pivot_config.columns[0])
     in_values = ", ".join(_format_literal(x) for x in pivot_config.manual_column_values)
 
-    # Construct native PIVOT statement
-    pivot_stmt = f"SELECT * FROM base PIVOT({', '.join(agg_items)} FOR {col_dim} IN ({in_values}))"
+    # Construct native PIVOT statement并保留基础 CTE 结构，方便注入 totals
+    pivot_select = (
+        f"SELECT * FROM base PIVOT({', '.join(agg_items)} FOR {col_dim} IN ({in_values}))"
+    )
 
-    # Wrap CTE
     base_cte = f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)"
-    final_sql = f"{base_cte}\n{pivot_stmt};"
+    pivot_alias = "pivot_result"
+    pivot_cte = f"{pivot_alias} AS (\n{pivot_select}\n)"
+    final_sql = f"{base_cte},\n{pivot_cte}\nSELECT * FROM {pivot_alias};"
 
     return {
         "final_sql": final_sql,
-        "pivot_sql": pivot_stmt,
+        "pivot_sql": pivot_select,
+        "pivot_alias": pivot_alias,
+        "base_cte": base_cte,
+        "pivot_cte": pivot_cte,
         "warnings": [],
-        "metadata": {"pivot_native_on": pivot_stmt},
+        "metadata": {"pivot_native_on": pivot_select},
     }
 
 
-def _build_select_clause(config: VisualQueryConfig) -> str:
+def _derive_pivot_value_aliases(
+    values: List[PivotValueConfig],
+    manual_values: Optional[List[str]],
+) -> List[str]:
+    """Derive the column aliases produced by the native PIVOT statement."""
+    aliases: List[str] = []
+    manual = manual_values or []
+    for value in values:
+        base_alias = (
+            value.alias
+            if getattr(value, "alias", None)
+            else f"{value.aggregation.value.lower()}_{value.column}"
+        )
+        if manual:
+            for manual_val in manual:
+                aliases.append(f"{base_alias}_{manual_val}")
+        else:
+            aliases.append(base_alias)
+    return aliases
+
+
+def _build_totals_selects(
+    row_dimensions: List[str],
+    value_aliases: List[str],
+    pivot_alias: str = "pivot",
+    include_subtotals: bool = False,
+    include_grand_totals: bool = False,
+) -> List[str]:
+    """Construct SELECT statements for subtotal and grand-total rows."""
+    selects: List[str] = []
+
+    if include_subtotals and row_dimensions:
+        # Generate subtotal for each prefix of the row dimensions (bottom-up)
+        for depth in range(len(row_dimensions), 0, -1):
+            prefix = row_dimensions[:depth]
+            remaining = row_dimensions[depth:]
+
+            select_parts: List[str] = []
+            group_by_parts: List[str] = []
+
+            for dim in prefix:
+                select_parts.append(f"{pivot_alias}.{dim} AS {dim}")
+                group_by_parts.append(f"{pivot_alias}.{dim}")
+
+            # Fill remaining row dimensions with label '全部' (All)
+            select_parts.extend([f"'全部' AS {dim}" for dim in remaining])
+
+            select_parts.extend(
+                [
+                    f"SUM({pivot_alias}.{_quote_identifier(alias)}) AS {_quote_identifier(alias)}"
+                    for alias in value_aliases
+                ]
+            )
+
+            subtotal_select = f"SELECT {', '.join(select_parts)} FROM {pivot_alias}"
+            if group_by_parts:
+                subtotal_select = (
+                    f"{subtotal_select} GROUP BY {', '.join(group_by_parts)}"
+                )
+            selects.append(subtotal_select)
+
+    if include_grand_totals:
+        all_dim_aliases = [f"'总计' AS {dim}" for dim in row_dimensions]
+        total_values = [
+            f"SUM({pivot_alias}.{_quote_identifier(alias)}) AS {_quote_identifier(alias)}"
+            for alias in value_aliases
+        ]
+        grand_total_select = (
+            f"SELECT {', '.join(all_dim_aliases + total_values)} FROM {pivot_alias}"
+        )
+        selects.append(grand_total_select)
+
+    return selects
+
+
+def _inject_pivot_totals(
+    native_candidate: Dict[str, Any],
+    row_dimensions: List[str],
+    values: List[PivotValueConfig],
+    manual_values: List[str],
+    include_subtotals: bool,
+    include_grand_totals: bool,
+) -> Dict[str, Any]:
+    """Augment native pivot SQL to include subtotal / grand-total rows."""
+
+    if not include_subtotals and not include_grand_totals:
+        return native_candidate
+
+    pivot_alias = native_candidate.get("pivot_alias") or "pivot_result"
+    base_cte = native_candidate.get("base_cte")
+    pivot_cte = native_candidate.get("pivot_cte")
+    pivot_sql = native_candidate.get("pivot_sql")
+
+    if not pivot_sql or not base_cte or not pivot_cte:
+        return native_candidate
+
+    value_aliases = _derive_pivot_value_aliases(values, manual_values)
+    if not value_aliases:
+        return native_candidate
+
+    totals_selects = _build_totals_selects(
+        row_dimensions=row_dimensions,
+        value_aliases=value_aliases,
+        pivot_alias=pivot_alias,
+        include_subtotals=include_subtotals,
+        include_grand_totals=include_grand_totals,
+    )
+
+    if not totals_selects:
+        return native_candidate
+
+    union_sql = "\nUNION ALL\n".join(
+        [f"SELECT * FROM {pivot_alias}"] + totals_selects
+    )
+
+    final_with_totals = f"{base_cte},\n{pivot_cte}\n{union_sql};"
+
+    native_candidate["final_sql"] = final_with_totals
+    native_candidate["metadata"] = {
+        **native_candidate.get("metadata", {}),
+        "has_totals": True,
+        "include_subtotals": include_subtotals,
+        "include_grand_totals": include_grand_totals,
+    }
+
+    return native_candidate
+
+
+def _resolve_cast_expression(
+    column: str, casts_map: Optional[Dict[str, str]]
+) -> Optional[str]:
+    if not casts_map or not column:
+        return None
+    key = column.lower()
+    if key in casts_map:
+        return casts_map[key]
+    return casts_map.get(column)
+
+
+def _build_select_clause(
+    config: VisualQueryConfig, casts_map: Optional[Dict[str, str]] = None
+) -> str:
     """Build SELECT clause from configuration"""
     select_items = []
 
@@ -472,7 +654,7 @@ def _build_select_clause(config: VisualQueryConfig) -> str:
 
     # Add aggregations
     for agg in config.aggregations:
-        agg_expr = _build_aggregation_expression(agg)
+        agg_expr = _build_aggregation_expression(agg, casts_map)
         alias = agg.alias or f"{agg.function.value}_{agg.column}"
         select_items.append(f'{agg_expr} AS "{alias}"')
 
@@ -486,58 +668,64 @@ def _build_select_clause(config: VisualQueryConfig) -> str:
     return f"SELECT {distinct_keyword}{', '.join(select_items)}"
 
 
-def _build_aggregation_expression(agg: AggregationConfig) -> str:
+def _build_aggregation_expression(
+    agg: AggregationConfig, casts_map: Optional[Dict[str, str]] = None
+) -> str:
     """Build aggregation expression"""
     func = agg.function.value
-    column = f'"{agg.column}"'
+    column_expr = f'"{agg.column}"'
+
+    cast_target = _resolve_cast_expression(agg.column, casts_map)
+    if cast_target:
+        column_expr = f"TRY_CAST({column_expr} AS {cast_target})"
 
     # Basic aggregation functions
     if func in ["SUM", "AVG", "COUNT", "MIN", "MAX"]:
-        return f"{func}({column})"
+        return f"{func}({column_expr})"
     elif func == "COUNT_DISTINCT":
-        return f"COUNT(DISTINCT {column})"
+        return f"COUNT(DISTINCT {column_expr})"
 
     # Statistical functions
     elif func == "MEDIAN":
-        return f"PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY {column})"
+        return f"PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY {column_expr})"
     elif func == "MODE":
-        return f"MODE() WITHIN GROUP (ORDER BY {column})"
+        return f"MODE() WITHIN GROUP (ORDER BY {column_expr})"
     elif func in ["STDDEV_SAMP", "VAR_SAMP"]:
-        return f"{func}({column})"
+        return f"{func}({column_expr})"
     elif func == "PERCENTILE_CONT_25":
-        return f"PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY {column})"
+        return f"PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY {column_expr})"
     elif func == "PERCENTILE_CONT_75":
-        return f"PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY {column})"
+        return f"PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY {column_expr})"
     elif func == "PERCENTILE_DISC_25":
-        return f"PERCENTILE_DISC(0.25) WITHIN GROUP (ORDER BY {column})"
+        return f"PERCENTILE_DISC(0.25) WITHIN GROUP (ORDER BY {column_expr})"
     elif func == "PERCENTILE_DISC_75":
-        return f"PERCENTILE_DISC(0.75) WITHIN GROUP (ORDER BY {column})"
+        return f"PERCENTILE_DISC(0.75) WITHIN GROUP (ORDER BY {column_expr})"
 
     # Window functions
     elif func == "ROW_NUMBER":
-        return f"ROW_NUMBER() OVER (ORDER BY {column})"
+        return f"ROW_NUMBER() OVER (ORDER BY {column_expr})"
     elif func == "RANK":
-        return f"RANK() OVER (ORDER BY {column})"
+        return f"RANK() OVER (ORDER BY {column_expr})"
     elif func == "DENSE_RANK":
-        return f"DENSE_RANK() OVER (ORDER BY {column})"
+        return f"DENSE_RANK() OVER (ORDER BY {column_expr})"
     elif func == "PERCENT_RANK":
-        return f"PERCENT_RANK() OVER (ORDER BY {column})"
+        return f"PERCENT_RANK() OVER (ORDER BY {column_expr})"
     elif func == "CUME_DIST":
-        return f"CUME_DIST() OVER (ORDER BY {column})"
+        return f"CUME_DIST() OVER (ORDER BY {column_expr})"
 
     # Trend analysis functions
     elif func == "SUM_OVER":
-        return f"SUM({column}) OVER (ORDER BY {column} ROWS UNBOUNDED PRECEDING)"
+        return f"SUM({column_expr}) OVER (ORDER BY {column_expr} ROWS UNBOUNDED PRECEDING)"
     elif func == "AVG_OVER":
-        return f"AVG({column}) OVER (ORDER BY {column} ROWS 2 PRECEDING)"
+        return f"AVG({column_expr}) OVER (ORDER BY {column_expr} ROWS 2 PRECEDING)"
     elif func == "LAG":
-        return f"LAG({column}, 1) OVER (ORDER BY {column})"
+        return f"LAG({column_expr}, 1) OVER (ORDER BY {column_expr})"
     elif func == "LEAD":
-        return f"LEAD({column}, 1) OVER (ORDER BY {column})"
+        return f"LEAD({column_expr}, 1) OVER (ORDER BY {column_expr})"
     elif func == "FIRST_VALUE":
-        return f"FIRST_VALUE({column}) OVER (ORDER BY {column})"
+        return f"FIRST_VALUE({column_expr}) OVER (ORDER BY {column_expr})"
     elif func == "LAST_VALUE":
-        return f"LAST_VALUE({column}) OVER (ORDER BY {column})"
+        return f"LAST_VALUE({column_expr}) OVER (ORDER BY {column_expr})"
 
     else:
         raise ValueError(f"不支持的聚合函数: {func}")

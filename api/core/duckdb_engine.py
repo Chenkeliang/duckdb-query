@@ -367,51 +367,34 @@ def create_persistent_table(table_name: str, df: pd.DataFrame, con=None) -> bool
         con = get_db_connection()
 
     try:
-        # 先删除已存在的表
-        drop_table_if_exists(table_name, con)
-
-        # 预处理DataFrame，统一转换为字符串类型以避免类型转换错误
-        processed_df = prepare_dataframe_for_duckdb(df)
-
-        # 使用CREATE TABLE AS SELECT持久化数据
-        # 首先注册临时表
-        temp_table_name = f"temp_{table_name}_{int(time.time())}"
-        con.register(temp_table_name, processed_df)
-
-        # 创建持久化表
-        create_sql = f'CREATE TABLE "{table_name}" AS SELECT * FROM {temp_table_name}'
-        con.execute(create_sql)
-
-        # 删除临时表
-        con.unregister(temp_table_name)
-
-        logger.info(
-            f"成功创建持久化表: {table_name} ({len(processed_df)}行, {len(processed_df.columns)}列)"
+        from core.file_datasource_manager import (
+            create_typed_table_from_dataframe,
+            file_datasource_manager,
         )
+        from core.timezone_utils import get_current_time_iso
 
-        # 保存表元数据，包括created_at时间
-        try:
-            from core.timezone_utils import get_current_time_iso
-            from core.file_datasource_manager import file_datasource_manager
+        metadata = create_typed_table_from_dataframe(con, table_name, df)
 
-            table_metadata = {
-                "source_id": table_name,
-                "filename": f"table_{table_name}",
-                "file_path": f"duckdb://{table_name}",
-                "file_type": "duckdb_table",
-                "row_count": len(processed_df),
-                "column_count": len(processed_df.columns),
-                "columns": processed_df.columns.tolist(),
-                "created_at": get_current_time_iso(),  # 使用统一的时区配置
-            }
+        table_metadata = {
+            "source_id": table_name,
+            "filename": f"table_{table_name}",
+            "file_path": f"duckdb://{table_name}",
+            "file_type": "duckdb_table",
+            "row_count": metadata.get("row_count", 0),
+            "column_count": metadata.get("column_count", 0),
+            "columns": metadata.get("columns", []),
+            "column_profiles": metadata.get("column_profiles", []),
+            "schema_version": 2,
+            "created_at": get_current_time_iso(),
+        }
 
-            # 保存到文件数据源管理器
-            file_datasource_manager.save_file_datasource(table_metadata)
-            logger.info(f"成功保存表元数据: {table_name}")
-
-        except Exception as metadata_error:
-            logger.warning(f"保存表元数据失败: {str(metadata_error)}")
-
+        file_datasource_manager.save_file_datasource(table_metadata)
+        logger.info(
+            "成功创建Typed持久化表: %s (行: %s, 列: %s)",
+            table_name,
+            table_metadata["row_count"],
+            table_metadata["column_count"],
+        )
         return True
 
     except Exception as e:
@@ -642,74 +625,42 @@ def create_varchar_table_from_dataframe(
         con = get_db_connection()
 
     try:
-        if df.empty:
+        if df is None or df.empty:
             logger.warning(f"DataFrame为空，无法创建表 {table_name}")
             return False
 
-        # 删除已存在的表
-        drop_table_if_exists(table_name, con)
-
-        # 创建临时表名
-        temp_table = f"temp_{table_name}_{int(time.time())}"
-
-        # 先用pandas注册临时表
-        con.register(temp_table, df)
-
-        # 获取列信息并构建VARCHAR转换SQL
-        columns_info = con.execute(f'DESCRIBE "{temp_table}"').fetchall()
-        cast_columns = []
-        for col_name, col_type, *_ in columns_info:
-            # 将所有列转换为VARCHAR，直接CAST避免类型转换问题
-            cast_columns.append(f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"')
-
-        cast_sql = ", ".join(cast_columns)
-
-        # 创建最终的VARCHAR表
-        create_sql = (
-            f'CREATE TABLE "{table_name}" AS SELECT {cast_sql} FROM "{temp_table}"'
+        from core.file_datasource_manager import (
+            create_typed_table_from_dataframe,
+            file_datasource_manager,
         )
-        con.execute(create_sql)
+        from core.timezone_utils import get_current_time_iso
 
-        # 删除临时表
-        con.execute(f'DROP VIEW IF EXISTS "{temp_table}"')
+        metadata = create_typed_table_from_dataframe(con, table_name, df)
 
-        row_count = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
-        col_count = len(columns_info)
+        table_metadata = {
+            "source_id": table_name,
+            "filename": f"table_{table_name}",
+            "file_path": f"duckdb://{table_name}",
+            "file_type": "duckdb_table",
+            "row_count": metadata.get("row_count", 0),
+            "column_count": metadata.get("column_count", 0),
+            "columns": metadata.get("columns", []),
+            "column_profiles": metadata.get("column_profiles", []),
+            "schema_version": 2,
+            "created_at": get_current_time_iso(),
+        }
 
-        logger.info(f"成功创建VARCHAR表: {table_name} ({row_count}行, {col_count}列)")
-
-        # 保存表元数据，包括created_at时间
-        try:
-            from core.timezone_utils import get_current_time_iso
-            from core.file_datasource_manager import file_datasource_manager
-
-            table_metadata = {
-                "source_id": table_name,
-                "filename": f"table_{table_name}",
-                "file_path": f"duckdb://{table_name}",
-                "file_type": "duckdb_table",
-                "row_count": row_count,
-                "column_count": col_count,
-                "columns": [col[0] for col in columns_info],
-                "created_at": get_current_time_iso(),  # 使用统一的时区配置
-            }
-
-            # 保存到文件数据源管理器
-            file_datasource_manager.save_file_datasource(table_metadata)
-            logger.info(f"成功保存表元数据: {table_name}")
-
-        except Exception as metadata_error:
-            logger.warning(f"保存表元数据失败: {str(metadata_error)}")
-
+        file_datasource_manager.save_file_datasource(table_metadata)
+        logger.info(
+            "成功创建Typed DuckDB表: %s (行: %s, 列: %s)",
+            table_name,
+            table_metadata["row_count"],
+            table_metadata["column_count"],
+        )
         return True
 
     except Exception as e:
-        logger.error(f"创建VARCHAR表失败 {table_name}: {str(e)}")
-        # 清理可能的临时表
-        try:
-            con.execute(f'DROP VIEW IF EXISTS "temp_{table_name}_{int(time.time())}"')
-        except:
-            pass
+        logger.error(f"创建Typed表失败 {table_name}: {str(e)}")
         return False
 
 
@@ -1186,8 +1137,19 @@ def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
                 right_source = source_map[right_id]
                 left_table_name = get_actual_table_name(left_source)
                 right_table_name = get_actual_table_name(right_source)
-                left_col = f'"{left_table_name}"."{condition.left_column}"'
-                right_col = f'"{right_table_name}"."{condition.right_column}"'
+                base_left_col = (
+                    f'"{left_table_name}"."{condition.left_column}"'
+                )
+                base_right_col = (
+                    f'"{right_table_name}"."{condition.right_column}"'
+                )
+                left_col = base_left_col
+                right_col = base_right_col
+
+                if condition.left_cast:
+                    left_col = f"TRY_CAST({left_col} AS {condition.left_cast})"
+                if condition.right_cast:
+                    right_col = f"TRY_CAST({right_col} AS {condition.right_cast})"
                 conditions.append(f"{left_col} {condition.operator} {right_col}")
 
             if conditions:

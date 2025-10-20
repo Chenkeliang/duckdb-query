@@ -12,8 +12,6 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import pandas as pd
-import pyarrow.parquet as pq
 
 from core.config_manager import config_manager
 from core.duckdb_engine import get_db_connection
@@ -413,59 +411,12 @@ async def process_uploaded_file(
         try:
             logger.info("开始加载到DuckDB...")
             con = get_db_connection()
-
-            # 对于Excel文件，使用pandas读取避免spatial扩展问题
-            if file_extension in ["xlsx", "xls"]:
-                logger.info(f"使用pandas读取Excel文件: {file_path}")
-                df = pd.read_excel(file_path)
-                logger.info(f"Excel文件读取成功: {len(df)}行, {len(df.columns)}列")
-
-                # 使用DataFrame创建表
-                from core.file_datasource_manager import (
-                    create_varchar_table_from_dataframe_file,
-                )
-
-                # 先删除已存在的表
-                try:
-                    con.execute(f'DROP TABLE IF EXISTS "{source_id}"')
-                except:
-                    pass
-
-                # 创建表
-                create_varchar_table_from_dataframe_file(con, source_id, df)
-
-                # 获取表信息
-                row_count_result = con.execute(
-                    f'SELECT COUNT(*) FROM "{source_id}"'
-                ).fetchone()
-                row_count = row_count_result[0] if row_count_result else 0
-
-                columns_result = con.execute(
-                    f'PRAGMA table_info("{source_id}")'
-                ).fetchall()
-                columns = [{"name": col[1], "type": col[2]} for col in columns_result]
-
-                table_info = {
-                    "row_count": row_count,
-                    "columns": columns,
-                    "column_count": len(columns),
-                }
-
-                logger.info(f"成功使用pandas创建表: {source_id}, {row_count}行")
-            else:
-                # 对于非Excel文件，使用原有逻辑
-                table_info = create_table_from_dataframe(
-                    con, source_id, file_path, file_extension
-                )
-
-            logger.info(f"成功加载到DuckDB: {table_info}")
+            table_info = create_table_from_dataframe(
+                con, source_id, file_path, file_extension
+            )
+            logger.info("成功加载到DuckDB: %s", table_info)
         except Exception as e:
             logger.error(f"加载到DuckDB失败: {str(e)}")
-            # 如果是Excel文件且失败了，提供更友好的错误信息
-            if file_extension in ["xlsx", "xls"]:
-                raise Exception(
-                    f"Excel文件处理失败: {str(e)}. 请确保文件格式正确且未损坏。"
-                )
             raise
 
         # 保存文件数据源配置
@@ -477,6 +428,8 @@ async def process_uploaded_file(
             "row_count": table_info.get("row_count", 0),
             "column_count": table_info.get("column_count", 0),
             "columns": table_info.get("columns", []),
+            "column_profiles": table_info.get("column_profiles", []),
+            "schema_version": 2,
             "created_at": get_current_time_iso(),  # 使用统一的时区配置
         }
 

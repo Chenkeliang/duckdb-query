@@ -6,9 +6,14 @@
 import json
 import os
 import logging
+import re
 import pandas as pd
 import hashlib
-from typing import Dict, Any, List, Optional
+from dataclasses import dataclass
+from decimal import Decimal
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Sequence, Tuple
+from uuid import uuid4
 from datetime import datetime
 
 import duckdb
@@ -19,24 +24,232 @@ from core.config_manager import config_manager
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class ColumnProfile:
+    """列级元数据快照"""
+
+    name: str
+    duckdb_type: str
+    nullable: bool
+    sample_values: List[str]
+    null_count: Optional[int] = None
+    distinct_count: Optional[int] = None
+    min_value: Optional[Any] = None
+    max_value: Optional[Any] = None
+    precision: Optional[int] = None
+    scale: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        min_value = _format_value(self.min_value)
+        max_value = _format_value(self.max_value)
+
+        return {
+            "name": self.name,
+            "duckdb_type": self.duckdb_type,
+            "nullable": self.nullable,
+            "precision": self.precision,
+            "scale": self.scale,
+            "sample_values": [str(val) for val in self.sample_values],
+            "statistics": {
+                "null_count": self.null_count,
+                "distinct_count": self.distinct_count,
+                "min": min_value,
+                "max": max_value,
+            },
+        }
+
+
+def _quote_identifier(identifier: str) -> str:
+    escaped = identifier.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def _parse_decimal_precision_scale(type_str: str) -> Tuple[Optional[int], Optional[int]]:
+    if not type_str:
+        return None, None
+
+    match = re.match(r".*?(?:DECIMAL|NUMERIC)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)", type_str, re.IGNORECASE)
+    if match:
+        try:
+            return int(match.group(1)), int(match.group(2))
+        except ValueError:
+            return None, None
+    return None, None
+
+
+def _format_value(value: Any) -> Optional[Any]:
+    if value is None:
+        return None
+
+    if isinstance(value, Decimal):
+        return format(value, "f")
+
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    # pandas / numpy scalar 转换
+    if hasattr(value, "item"):
+        try:
+            value = value.item()
+        except Exception:
+            value = str(value)
+
+    if value is None:
+        return None
+
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except Exception:
+            return value.decode("latin-1", errors="ignore")
+
+    if isinstance(value, (str, int, float, bool)):
+        return value
+
+    return str(value)
+
+
+def _configure_duckdb_for_ingestion(con: duckdb.DuckDBPyConnection):
+    settings = [
+        "SET decimal_infer_max_length=38",
+        "SET decimal_infer_max_scale=18",
+    ]
+    for stmt in settings:
+        try:
+            con.execute(stmt)
+        except Exception as exc:
+            logger.debug("配置DuckDB推断参数失败 (%s): %s", stmt, exc)
+
+
+def _create_table_atomically(
+    con: duckdb.DuckDBPyConnection, table_name: str, select_sql: str, params: Optional[Sequence[Any]] = None
+):
+    tmp_table = f"__tmp_{table_name}_{uuid4().hex[:8]}"
+    quoted_tmp = _quote_identifier(tmp_table)
+    quoted_target = _quote_identifier(table_name)
+
+    con.execute("BEGIN TRANSACTION")
+    try:
+        con.execute(
+            f"CREATE TABLE {quoted_tmp} AS {select_sql}",
+            params or [],
+        )
+        con.execute(f"DROP TABLE IF EXISTS {quoted_target}")
+        con.execute(f"ALTER TABLE {quoted_tmp} RENAME TO {quoted_target}")
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    finally:
+        try:
+            con.execute(f"DROP TABLE IF EXISTS {quoted_tmp}")
+        except Exception:
+            pass
+
+
+def _collect_column_profiles(
+    con: duckdb.DuckDBPyConnection, table_name: str, sample_limit: int = 6
+) -> List[ColumnProfile]:
+    schema_info = con.execute(f"PRAGMA table_info({_quote_identifier(table_name)})").fetchall()
+    profiles: List[ColumnProfile] = []
+    quoted_table = _quote_identifier(table_name)
+
+    for column in schema_info:
+        col_name = column[1]
+        duckdb_type = column[2]
+        nullable = not bool(column[3])
+        quoted_col = _quote_identifier(col_name)
+
+        precision, scale = _parse_decimal_precision_scale(duckdb_type)
+
+        stats_sql = (
+            f"SELECT "
+            f"COUNT(*) AS total_count, "
+            f"COUNT({quoted_col}) AS non_null_count, "
+            f"COUNT(*) - COUNT({quoted_col}) AS null_count, "
+            f"COUNT(DISTINCT {quoted_col}) AS distinct_count, "
+            f"MIN({quoted_col}) AS min_value, "
+            f"MAX({quoted_col}) AS max_value "
+            f"FROM {quoted_table}"
+        )
+
+        stats_row = con.execute(stats_sql).fetchone()
+        null_count = int(stats_row[2]) if stats_row and stats_row[2] is not None else None
+        distinct_count = int(stats_row[3]) if stats_row and stats_row[3] is not None else None
+        min_value = stats_row[4] if stats_row else None
+        max_value = stats_row[5] if stats_row else None
+
+        sample_sql = (
+            f"SELECT DISTINCT {quoted_col} FROM {quoted_table} "
+            f"WHERE {quoted_col} IS NOT NULL LIMIT {sample_limit}"
+        )
+        sample_rows = con.execute(sample_sql).fetchall()
+        sample_values: List[str] = []
+        for row in sample_rows:
+            formatted = _format_value(row[0])
+            if formatted is not None:
+                sample_values.append(str(formatted))
+
+        profiles.append(
+            ColumnProfile(
+                name=col_name,
+                duckdb_type=duckdb_type,
+                nullable=nullable,
+                precision=precision,
+                scale=scale,
+                sample_values=sample_values,
+                null_count=null_count,
+                distinct_count=distinct_count,
+                min_value=min_value,
+                max_value=max_value,
+            )
+        )
+
+    return profiles
+
+
+def build_table_metadata_snapshot(
+    con: duckdb.DuckDBPyConnection, table_name: str
+) -> Dict[str, Any]:
+    quoted_table = _quote_identifier(table_name)
+    row_count = con.execute(f"SELECT COUNT(*) FROM {quoted_table}").fetchone()[0]
+    profiles = _collect_column_profiles(con, table_name)
+
+    return {
+        "row_count": int(row_count),
+        "column_count": len(profiles),
+        "columns": [profile.name for profile in profiles],
+        "column_profiles": [profile.to_dict() for profile in profiles],
+        "schema_version": 2,
+    }
+
+
 class FileDatasourceManager:
     """文件数据源管理器类"""
 
     def __init__(self):
         """初始化文件数据源管理器"""
-        self.config_file = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "config",
-            "file-datasources.json",
+        self.config_dir = config_manager.config_dir
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.config_file = self.config_dir / "file-datasources.json"
+
+        self.data_dir = (
+            Path(__file__).resolve().parent.parent / "data" / "file_sources"
         )
-        self.data_dir = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "data", "file_sources"
-        )
-        os.makedirs(self.data_dir, exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # 确保配置文件存在
-        if not os.path.exists(self.config_file):
-            with open(self.config_file, "w", encoding="utf-8") as f:
+        if not self.config_file.exists():
+            with self.config_file.open("w", encoding="utf-8") as f:
                 json.dump([], f, ensure_ascii=False, indent=2)
 
     def _get_file_hash(self, file_path: str) -> str:
@@ -52,8 +265,8 @@ class FileDatasourceManager:
         try:
             # 读取现有配置
             configs = []
-            if os.path.exists(self.config_file):
-                with open(self.config_file, "r", encoding="utf-8") as f:
+            if self.config_file.exists():
+                with self.config_file.open("r", encoding="utf-8") as f:
                     configs = json.load(f)
 
             # 查找是否已存在相同source_id的配置
@@ -70,10 +283,11 @@ class FileDatasourceManager:
                 configs.append(file_info)
 
             # 保存配置
-            with open(self.config_file, "w", encoding="utf-8") as f:
+            with self.config_file.open("w", encoding="utf-8") as f:
                 json.dump(configs, f, ensure_ascii=False, indent=2, default=str)
 
             logger.info(f"文件数据源配置已保存: {file_info['source_id']}")
+            return True
 
         except Exception as e:
             logger.error(f"保存文件数据源配置失败: {str(e)}")
@@ -82,10 +296,10 @@ class FileDatasourceManager:
     def get_file_datasource(self, source_id: str) -> Optional[Dict[str, Any]]:
         """获取文件数据源配置"""
         try:
-            if not os.path.exists(self.config_file):
+            if not self.config_file.exists():
                 return None
 
-            with open(self.config_file, "r", encoding="utf-8") as f:
+            with self.config_file.open("r", encoding="utf-8") as f:
                 configs = json.load(f)
 
             for config in configs:
@@ -100,10 +314,10 @@ class FileDatasourceManager:
     def list_file_datasources(self) -> List[Dict[str, Any]]:
         """列出所有文件数据源"""
         try:
-            if not os.path.exists(self.config_file):
+            if not self.config_file.exists():
                 return []
 
-            with open(self.config_file, "r", encoding="utf-8") as f:
+            with self.config_file.open("r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             logger.error(f"列出文件数据源失败: {str(e)}")
@@ -112,10 +326,10 @@ class FileDatasourceManager:
     def delete_file_datasource(self, source_id: str) -> bool:
         """删除文件数据源"""
         try:
-            if not os.path.exists(self.config_file):
+            if not self.config_file.exists():
                 return False
 
-            with open(self.config_file, "r", encoding="utf-8") as f:
+            with self.config_file.open("r", encoding="utf-8") as f:
                 configs = json.load(f)
 
             # 查找并删除配置
@@ -125,7 +339,7 @@ class FileDatasourceManager:
 
             # 如果配置有变化，则保存
             if len(new_configs) != len(configs):
-                with open(self.config_file, "w", encoding="utf-8") as f:
+                with self.config_file.open("w", encoding="utf-8") as f:
                     json.dump(new_configs, f, ensure_ascii=False, indent=2, default=str)
 
                 logger.info(f"文件数据源配置已删除: {source_id}")
@@ -160,22 +374,32 @@ class FileDatasourceManager:
 
                 try:
                     # 重新加载文件到DuckDB
-                    create_varchar_table_from_file_path(
+                    table_metadata = create_table_from_file_path_typed(
                         duckdb_con, source_id, file_path, file_type
                     )
 
-                    # 获取行数信息
-                    try:
-                        row_count_result = duckdb_con.execute(
-                            f'SELECT COUNT(*) FROM "{source_id}"'
-                        ).fetchone()
-                        row_count = row_count_result[0] if row_count_result else 0
-                        logger.info(
-                            f"成功重新加载文件数据源: {source_id} ({row_count}行)"
+                    if table_metadata:
+                        config["row_count"] = table_metadata.get("row_count")
+                        config["column_count"] = table_metadata.get("column_count")
+                        config["columns"] = table_metadata.get("columns", [])
+                        if table_metadata.get("column_profiles") is not None:
+                            config["column_profiles"] = table_metadata["column_profiles"]
+                        config["schema_version"] = table_metadata.get(
+                            "schema_version", config.get("schema_version", 2)
                         )
-                    except:
-                        logger.info(f"成功重新加载文件数据源: {source_id}")
 
+                        try:
+                            self.save_file_datasource(config)
+                        except Exception as save_exc:
+                            logger.warning(
+                                "更新文件元数据失败 %s: %s", source_id, save_exc
+                            )
+
+                    logger.info(
+                        "成功重新加载文件数据源: %s (行: %s)",
+                        source_id,
+                        table_metadata.get("row_count") if table_metadata else "未知",
+                    )
                     success_count += 1
                 except Exception as e:
                     logger.error(f"重新加载文件数据源失败 {source_id}: {str(e)}")
@@ -187,245 +411,151 @@ class FileDatasourceManager:
             logger.error(f"重新加载文件数据源失败: {str(e)}")
 
 
-def create_varchar_table_from_dataframe_file(
-    duckdb_con, table_name: str, df: pd.DataFrame
-):
+def create_typed_table_from_dataframe(
+    duckdb_con: duckdb.DuckDBPyConnection, table_name: str, df: pd.DataFrame
+) -> Dict[str, Any]:
     """
-    使用CREATE TABLE将DataFrame持久化到DuckDB，所有列转换为VARCHAR类型
-    这样数据会真正写入到持久化文件中，并且避免类型转换问题
+    使用 DuckDB 原生能力将 DataFrame 落库且保留列类型。
     """
+    if df is None or df.empty:
+        raise ValueError("DataFrame 为空，无法创建表")
+
+    _configure_duckdb_for_ingestion(duckdb_con)
+
+    temp_view = f"temp_df_{uuid4().hex[:8]}"
+    quoted_temp = _quote_identifier(temp_view)
+
     try:
-        # 先删除已存在的表
+        duckdb_con.register(temp_view, df)
+        select_sql = f"SELECT * FROM {quoted_temp}"
+        _create_table_atomically(duckdb_con, table_name, select_sql)
+    finally:
         try:
-            duckdb_con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-        except:
+            duckdb_con.unregister(temp_view)
+        except Exception:
             pass
 
-        # 使用CREATE TABLE AS SELECT持久化数据
-        # 首先注册临时表
-        temp_table_name = f"temp_{table_name}"
-        duckdb_con.register(temp_table_name, df)
-
-        # 获取列信息并构建VARCHAR转换SQL
-        columns_info = duckdb_con.execute(f"DESCRIBE {temp_table_name}").fetchall()
-        cast_columns = []
-        for col_name, col_type, *_ in columns_info:
-            # 将所有列转换为VARCHAR，直接CAST避免类型转换问题
-            cast_columns.append(f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"')
-
-        cast_sql = ", ".join(cast_columns)
-
-        # 创建最终的VARCHAR表
-        create_sql = (
-            f'CREATE TABLE "{table_name}" AS SELECT {cast_sql} FROM {temp_table_name}'
-        )
-        duckdb_con.execute(create_sql)
-
-        # 删除临时表
-        duckdb_con.unregister(temp_table_name)
-
-        logger.info(
-            f"成功创建持久化表: {table_name} ({len(df)}行, {len(df.columns)}列)"
-        )
-
-        # 保存表元数据，包括created_at时间
-        try:
-            from core.timezone_utils import get_current_time_iso
-
-            table_metadata = {
-                "source_id": table_name,
-                "filename": f"table_{table_name}",
-                "file_path": f"duckdb://{table_name}",
-                "file_type": "duckdb_table",
-                "row_count": len(df),
-                "column_count": len(df.columns),
-                "columns": df.columns.tolist(),
-                "created_at": get_current_time_iso(),  # 使用统一的时区配置
-            }
-
-            # 保存到文件数据源管理器
-            file_datasource_manager.save_file_datasource(table_metadata)
-            logger.info(f"成功保存表元数据: {table_name}")
-
-        except Exception as metadata_error:
-            logger.warning(f"保存表元数据失败: {str(metadata_error)}")
-
-    except Exception as e:
-        logger.error(f"创建持久化表失败 {table_name}: {str(e)}")
-        raise
+    metadata = build_table_metadata_snapshot(duckdb_con, table_name)
+    logger.info(
+        "成功创建Typed表: %s (行: %s, 列: %s)",
+        table_name,
+        metadata["row_count"],
+        metadata["column_count"],
+    )
+    return metadata
 
 
-def create_varchar_table_from_file_path(
-    duckdb_con, table_name: str, file_path: str, file_type: str
-):
+def create_table_from_file_path_typed(
+    duckdb_con: duckdb.DuckDBPyConnection,
+    table_name: str,
+    file_path: str,
+    file_type: str,
+) -> Dict[str, Any]:
     """
-    直接从文件路径创建DuckDB表，所有列转换为VARCHAR类型
-    避免将大文件加载到内存中
+    从文件路径创建带类型的 DuckDB 持久化表。
     """
+    _configure_duckdb_for_ingestion(duckdb_con)
+    normalized_type = (file_type or "").lower()
+
     try:
-        # 先删除已存在的表
-        try:
-            duckdb_con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-        except:
-            pass
-
-        # 根据文件类型构建SQL查询
-        if file_type == "csv":
-            # 对于CSV文件，先安装并加载encodings扩展以支持正确的编码处理
+        if normalized_type in {"csv"}:
             try:
-                duckdb_con.execute("INSTALL encodings; LOAD encodings;")
-            except Exception as e:
-                logger.warning(f"安装或加载encodings扩展失败: {str(e)}")
+                duckdb_con.execute("INSTALL encodings")
+                duckdb_con.execute("LOAD encodings")
+            except Exception:
+                logger.debug("encodings 扩展不可用，继续使用默认编码处理")
 
-            # 对于CSV文件，直接使用DuckDB的读取功能，并指定编码
-            # 强制使用UTF-8编码和所有列作为VARCHAR
-            # ALL_VARCHAR=1 避免类型推断问题
-            # AUTO_DETECT=1 启用自动检测
+            strict_sql = (
+                "SELECT * FROM read_csv_auto(?, AUTO_DETECT=1, SAMPLE_SIZE=-1, "
+                "IGNORE_ERRORS=TRUE)"
+            )
             try:
-                create_sql = f"CREATE TABLE \"{table_name}\" AS SELECT * FROM read_csv_auto('{file_path}', encoding='utf-8', ALL_VARCHAR=1, AUTO_DETECT=1, SAMPLE_SIZE=-1, ignore_errors=true)"
-                duckdb_con.execute(create_sql)
-                logger.info(f"成功使用UTF-8编码和ALL_VARCHAR=1读取CSV文件: {file_path}")
-            except Exception as e:
-                logger.error(f"使用read_csv_auto读取CSV文件失败: {str(e)}")
-                logger.error(f"文件路径: {file_path}")
-                # Re-raise the exception to be handled by the calling function
-                raise
-        elif file_type in ["xlsx", "xls"]:
-            # 对于Excel文件，优先尝试使用DuckDB的Excel扩展
-            excel_success = False
+                _create_table_atomically(
+                    duckdb_con, table_name, strict_sql, [file_path]
+                )
+            except Exception as exc:
+                logger.warning(
+                    "严格小数推断失败，回退普通CSV读取: %s", getattr(exc, "message", exc)
+                )
+                fallback_sql = (
+                    "SELECT * FROM read_csv_auto(?, AUTO_DETECT=1, SAMPLE_SIZE=-1, "
+                    "IGNORE_ERRORS=TRUE)"
+                )
+                _create_table_atomically(
+                    duckdb_con, table_name, fallback_sql, [file_path]
+                )
+        elif normalized_type in {"xlsx", "xls", "excel"}:
             try:
-                # 安装并加载Excel扩展
-                duckdb_con.execute("INSTALL excel;")
-                duckdb_con.execute("LOAD excel;")
-                # 使用EXCEL_SCAN函数读取Excel文件
-                create_sql = f"CREATE TABLE \"{table_name}\" AS SELECT * FROM EXCEL_SCAN('{file_path}')"
-                duckdb_con.execute(create_sql)
-                logger.info(f"成功使用DuckDB EXCEL_SCAN读取Excel文件: {file_path}")
-                excel_success = True
-            except Exception as duckdb_excel_error:
-                logger.warning(f"DuckDB Excel扩展处理失败: {str(duckdb_excel_error)}")
-                logger.info("回退到pandas处理Excel文件")
-
-            # 如果DuckDB Excel扩展失败，使用pandas回退
-            if not excel_success:
-                import pandas as pd
-
-                try:
-                    df = pd.read_excel(file_path)
-                    logger.info(
-                        f"成功使用pandas读取Excel文件: {len(df)}行, {len(df.columns)}列"
-                    )
-                    # 先删除已存在的表
-                    try:
-                        duckdb_con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-                    except:
-                        pass
-                    # 使用DataFrame创建表
-                    create_varchar_table_from_dataframe_file(duckdb_con, table_name, df)
-                    logger.info(f"回退到pandas读取Excel文件成功: {file_path}")
-                    return  # 提前返回，避免后续的VARCHAR转换
-                except Exception as pandas_error:
-                    logger.error(f"pandas读取Excel文件也失败: {str(pandas_error)}")
-                    raise Exception(
-                        f"Excel文件处理完全失败，DuckDB错误: {str(duckdb_excel_error)}, pandas错误: {str(pandas_error)}"
-                    )
-        elif file_type == "json":
-            # 对于JSON文件，直接使用DuckDB的读取功能
-            create_sql = f"CREATE TABLE \"{table_name}\" AS SELECT * FROM read_json_auto('{file_path}')"
-            duckdb_con.execute(create_sql)
-        elif file_type == "jsonl":
-            # 对于JSONL文件，使用DuckDB的read_json_auto函数
+                duckdb_con.execute("INSTALL excel")
+                duckdb_con.execute("LOAD excel")
+                select_sql = "SELECT * FROM EXCEL_SCAN(?)"
+                _create_table_atomically(
+                    duckdb_con, table_name, select_sql, [file_path]
+                )
+            except Exception as excel_exc:
+                logger.warning("DuckDB Excel 扩展失败，回退至 pandas: %s", excel_exc)
+                df = pd.read_excel(file_path)
+                return create_typed_table_from_dataframe(duckdb_con, table_name, df)
+        elif normalized_type in {"json"}:
+            select_sql = "SELECT * FROM read_json_auto(?)"
+            _create_table_atomically(
+                duckdb_con, table_name, select_sql, [file_path]
+            )
+        elif normalized_type in {"jsonl"}:
             try:
-                # 直接使用DuckDB的JSONL读取功能
-                create_sql = f"CREATE TABLE \"{table_name}\" AS SELECT * FROM read_json_auto('{file_path}')"
-                duckdb_con.execute(create_sql)
-                logger.info(f"成功使用DuckDB读取JSONL文件: {table_name}")
-            except Exception as duckdb_error:
-                logger.error(f"DuckDB读取JSONL失败: {str(duckdb_error)}")
-                # 如果DuckDB失败，尝试使用pandas
-                try:
-                    logger.info("尝试使用pandas读取JSONL文件...")
-                    df = pd.read_json(file_path, lines=True)
-                    duckdb_con.register(table_name, df)
-                    # 然后创建持久化表
-                    create_sql = (
-                        f'CREATE TABLE "{table_name}" AS SELECT * FROM {table_name}'
-                    )
-                    duckdb_con.execute(create_sql)
-                    logger.info(f"成功使用pandas读取JSONL文件: {table_name}")
-                except Exception as pandas_error:
-                    logger.error(f"JSONL文件pandas处理也失败: {str(pandas_error)}")
-                    raise ValueError(
-                        f"JSONL文件处理失败: DuckDB错误: {str(duckdb_error)}, Pandas错误: {str(pandas_error)}"
-                    )
-        elif file_type in ["parquet", "pq"]:
-            # 对于Parquet文件，直接使用DuckDB的读取功能
-            create_sql = f"CREATE TABLE \"{table_name}\" AS SELECT * FROM read_parquet('{file_path}')"
-            duckdb_con.execute(create_sql)
+                select_sql = (
+                    "SELECT * FROM read_json_auto(?, format='newline_delimited')"
+                )
+                _create_table_atomically(
+                    duckdb_con, table_name, select_sql, [file_path]
+                )
+            except Exception as jsonl_exc:
+                logger.warning("DuckDB JSONL 读取失败，回退至 pandas: %s", jsonl_exc)
+                df = pd.read_json(file_path, lines=True)
+                return create_typed_table_from_dataframe(duckdb_con, table_name, df)
+        elif normalized_type in {"parquet", "pq"}:
+            select_sql = "SELECT * FROM read_parquet(?)"
+            _create_table_atomically(
+                duckdb_con, table_name, select_sql, [file_path]
+            )
         else:
             raise ValueError(f"不支持的文件类型: {file_type}")
-
-        # 将所有列转换为VARCHAR类型
-        convert_table_to_varchar(table_name, "", duckdb_con)
-
-        logger.info(f"成功从文件路径创建持久化表: {table_name}")
-
-    except Exception as e:
-        logger.error(f"从文件路径创建持久化表失败 {table_name}: {str(e)}")
+    except Exception as exc:
+        logger.error("从文件创建表失败 %s: %s", table_name, exc)
         raise
+
+    metadata = build_table_metadata_snapshot(duckdb_con, table_name)
+    logger.info(
+        "成功创建Typed文件表: %s (行: %s, 列: %s)",
+        table_name,
+        metadata["row_count"],
+        metadata["column_count"],
+    )
+    return metadata
 
 
 def create_table_from_dataframe(
-    duckdb_con, table_name: str, file_path_or_df, file_type=None
-):
+    duckdb_con, table_name: str, file_path_or_df, file_type: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    使用CREATE TABLE将数据持久化到DuckDB
-    这样数据会真正写入到持久化文件中
-    支持文件路径或DataFrame
+    统一入口：支持直接传入文件路径或 DataFrame。
+    返回值包含行数、列数量、列定义与列型元数据。
     """
-    if isinstance(file_path_or_df, str) and file_type:
-        # 如果是文件路径，使用文件路径方式
-        create_varchar_table_from_file_path(
-            duckdb_con, table_name, file_path_or_df, file_type
+    if isinstance(file_path_or_df, str):
+        metadata = create_table_from_file_path_typed(
+            duckdb_con, table_name, file_path_or_df, file_type or ""
         )
     else:
-        # 如果是DataFrame，使用原有的方式
-        create_varchar_table_from_dataframe_file(
+        metadata = create_typed_table_from_dataframe(
             duckdb_con, table_name, file_path_or_df
         )
 
-    # 获取表信息. If this fails, it should raise an exception.
-    row_count_result = duckdb_con.execute(
-        f'SELECT COUNT(*) FROM "{table_name}"'
-    ).fetchone()
-    row_count = row_count_result[0] if row_count_result else 0
+    return metadata
 
-    columns_result = duckdb_con.execute(f'PRAGMA table_info("{table_name}")').fetchall()
-    columns = [{"name": col[1], "type": col[2]} for col in columns_result]
 
-    # 保存表元数据，包括created_at时间
-    try:
-        from core.timezone_utils import get_current_time_iso
-
-        table_metadata = {
-            "source_id": table_name,
-            "filename": f"table_{table_name}",
-            "file_path": f"duckdb://{table_name}",
-            "file_type": "duckdb_table",
-            "row_count": row_count,
-            "column_count": len(columns),
-            "columns": [col["name"] for col in columns],
-            "created_at": get_current_time_iso(),  # 使用统一的时区配置
-        }
-
-        # 保存到文件数据源管理器
-        file_datasource_manager.save_file_datasource(table_metadata)
-        logger.info(f"成功保存表元数据: {table_name}")
-
-    except Exception as metadata_error:
-        logger.warning(f"保存表元数据失败: {str(metadata_error)}")
-
-    return {"row_count": row_count, "columns": columns, "column_count": len(columns)}
+# 兼容旧函数命名，统一走 typed 流程
+create_varchar_table_from_dataframe_file = create_typed_table_from_dataframe
+create_varchar_table_from_file_path = create_table_from_file_path_typed
 
 
 def convert_table_to_varchar(table_name: str, table_alias: str, duckdb_con):

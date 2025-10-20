@@ -322,6 +322,51 @@ class TestVisualQueryModeGeneration:
         assert result.metadata.get("strategy") == "native"
         assert result.metadata.get("uses_pivot_extension") is False
 
+    def test_generate_visual_query_sql_pivot_native_with_totals(self):
+        config = VisualQueryConfig(
+            table_name="sales",
+            selected_columns=[],
+            aggregations=[],
+            filters=[],
+            order_by=[],
+        )
+
+        pivot_config = PivotConfig(
+            rows=["region", "product"],
+            columns=["year"],
+            values=[
+                PivotValueConfig(
+                    column="revenue",
+                    aggregation=AggregationFunction.SUM,
+                )
+            ],
+            manual_column_values=["2022", "2023"],
+            include_subtotals=True,
+            include_grand_totals=True,
+            strategy="native",
+        )
+
+        with patch("core.visual_query_generator.config_manager") as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+            )
+
+            result = generate_visual_query_sql(
+                config,
+                VisualQueryMode.PIVOT,
+                pivot_config=pivot_config,
+            )
+
+        assert result.metadata.get("has_totals") is True
+        assert result.metadata.get("include_subtotals") is True
+        assert result.metadata.get("include_grand_totals") is True
+        assert "pivot_result" in result.final_sql
+        assert "UNION ALL" in result.final_sql
+        assert "'总计'" in result.final_sql
+        assert "'全部'" in result.final_sql
+        assert result.final_sql.strip().endswith(";")
+
     def test_generate_visual_query_sql_pivot_extension_with_limit(self):
         config = VisualQueryConfig(
             table_name="sales",

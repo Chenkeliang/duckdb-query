@@ -23,7 +23,7 @@ from models.query_models import (
 from core.database_manager import db_manager
 from core.security import security_validator
 from core.resource_manager import save_upload_file, schedule_cleanup
-from core.file_utils import detect_file_type, read_file_by_type
+from core.file_utils import detect_file_type
 from core.file_datasource_manager import (
     file_datasource_manager,
     create_table_from_dataframe,
@@ -429,39 +429,20 @@ async def upload_file(
                 logger.warning(f"检查表名时出错: {e}")
                 break
 
-        # 对于JSONL文件，直接使用文件路径方式创建表，避免pandas的"Trailing data"问题
-        if file_type == "jsonl":
-            duckdb_con = get_db_connection()
-            try:
-                create_table_from_dataframe(duckdb_con, source_id, save_path, file_type)
-                # 获取表信息用于配置保存
-                row_count_result = duckdb_con.execute(
-                    f'SELECT COUNT(*) FROM "{source_id}"'
-                ).fetchone()
-                row_count = row_count_result[0] if row_count_result else 0
-                columns_result = duckdb_con.execute(
-                    f'PRAGMA table_info("{source_id}")'
-                ).fetchall()
-                columns = [col[1] for col in columns_result]
-                column_count = len(columns)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=500, detail=f"持久化到DuckDB失败: {str(e)}"
-                )
-        else:
-            df_full = read_file_by_type(save_path, file_type)
+        duckdb_con = get_db_connection()
+        try:
+            table_metadata = create_table_from_dataframe(
+                duckdb_con, source_id, save_path, file_type
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"持久化到DuckDB失败: {str(e)}"
+            )
 
-            # 使用CREATE TABLE持久化到DuckDB而不是临时注册
-            duckdb_con = get_db_connection()
-            try:
-                create_table_from_dataframe(duckdb_con, source_id, df_full)
-                row_count = len(df_full)
-                columns = list(df_full.columns)
-                column_count = len(df_full.columns)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=500, detail=f"持久化到DuckDB失败: {str(e)}"
-                )
+        row_count = table_metadata.get("row_count", 0)
+        column_count = table_metadata.get("column_count", 0)
+        columns = table_metadata.get("columns", [])
+        column_profiles = table_metadata.get("column_profiles", [])
 
         # 保存文件数据源配置到持久化存储（遵循created_at字段标准）
         file_info = {
@@ -472,6 +453,8 @@ async def upload_file(
             "row_count": row_count,
             "column_count": column_count,
             "columns": columns,
+            "column_profiles": column_profiles,
+            "schema_version": 2,
             "created_at": get_current_time(),  # 使用统一的created_at字段
         }
 

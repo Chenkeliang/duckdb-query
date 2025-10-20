@@ -177,27 +177,36 @@ async def save_paste_data(request: PasteDataRequest):
 
             createdAt = get_current_time_iso()
         except ImportError:
-            # 如果无法导入时区工具，使用默认时间
             from datetime import datetime
 
             createdAt = get_current_time().isoformat()
 
-        # 保存元数据
+        # 更新元数据，保留列画像
+        existing_metadata = file_datasource_manager.get_file_datasource(
+            clean_table_name
+        ) or {}
+        metadata_payload = {
+            "source_id": clean_table_name,
+            "filename": f"{clean_table_name}.pasted",
+            "file_path": "pasted_data",
+            "file_type": "pasted",
+            "row_count": saved_rows,
+            "column_count": len(request.column_names),
+            "columns": request.column_names,
+            "created_at": createdAt,
+        }
+        if existing_metadata.get("column_profiles") is not None:
+            metadata_payload["column_profiles"] = existing_metadata["column_profiles"]
+        if existing_metadata.get("schema_version") is not None:
+            metadata_payload["schema_version"] = existing_metadata["schema_version"]
+        else:
+            metadata_payload["schema_version"] = 2
+
         try:
-            file_info = {
-                "source_id": clean_table_name,
-                "filename": f"{clean_table_name}.pasted",
-                "file_path": "pasted_data",
-                "file_type": "pasted",
-                "row_count": saved_rows,
-                "column_count": len(request.column_names),
-                "columns": request.column_names,
-                "created_at": createdAt,  # 使用标准的 created_at 字段
-            }
-            file_datasource_manager.save_file_datasource(file_info)
-            logger.info(f"成功保存粘贴数据的元数据: {clean_table_name}")
-        except Exception as e:
-            logger.warning(f"保存粘贴数据的元数据失败: {str(e)}")
+            file_datasource_manager.save_file_datasource(metadata_payload)
+            logger.info(f"成功刷新粘贴数据的元数据: {clean_table_name}")
+        except Exception as exc:
+            logger.warning(f"刷新粘贴数据的元数据失败: {exc}")
 
         return {
             "success": True,

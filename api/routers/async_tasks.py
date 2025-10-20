@@ -20,6 +20,7 @@ from core.duckdb_engine import get_db_connection, create_varchar_table_from_data
 from core.file_datasource_manager import (
     file_datasource_manager,
     create_table_from_dataframe,
+    build_table_metadata_snapshot,
 )
 from core.config_manager import config_manager
 from core.timezone_utils import get_current_time_iso, get_current_time
@@ -365,12 +366,10 @@ def execute_async_query(
                 con.execute(create_sql)
                 logger.info(f"持久表创建成功: {table_name}")
 
-            # 获取结果统计信息（不加载数据）
-            count_sql = f'SELECT COUNT(*) FROM "{table_name}"'
-            row_count = con.execute(count_sql).fetchone()[0]
+            metadata_snapshot = build_table_metadata_snapshot(con, table_name)
+            row_count = metadata_snapshot.get("row_count", 0)
             logger.info(f"查询结果行数: {row_count}")
 
-            # 获取列信息
             columns_sql = f'DESCRIBE "{table_name}"'
             columns_info = con.execute(columns_sql).fetchall()
             columns = [{"name": col[0], "type": col[1]} for col in columns_info]
@@ -383,11 +382,10 @@ def execute_async_query(
                 "filename": f"async_query_{task_id}",
                 "file_path": f"duckdb://{table_name}",
                 "file_type": "duckdb_async_query",
-                "row_count": row_count,
-                "column_count": len(columns),
-                "columns": [col["name"] for col in columns],
                 "created_at": get_current_time_iso(),
                 "source_sql": sql,
+                "schema_version": 2,
+                **metadata_snapshot,
             }
 
             if source_datasource_id:

@@ -127,18 +127,40 @@ async def get_available_tables():
                 ).fetchone()
                 row_count = count_result[0] if count_result else 0
 
-                # 获取元数据
                 metadata = file_datasource_manager.get_file_datasource(table_name)
                 logger.info(f"Metadata for table {table_name}: {metadata}")
-                # 只使用标准的 created_at 字段
                 createdAt = metadata.get("created_at") if metadata else None
+                column_profiles = metadata.get("column_profiles", []) if metadata else []
 
-                # 统一列数据格式：转换为前端期望的对象数组格式
                 columns = []
-                for _, row in schema_df.iterrows():
-                    columns.append(
-                        {"name": row["column_name"], "type": row["column_type"]}
-                    )
+                if column_profiles:
+                    for profile in column_profiles:
+                        name = profile.get("name")
+                        duckdb_type = profile.get("duckdb_type") or profile.get("type")
+                        columns.append(
+                            {
+                                "name": name,
+                                "type": duckdb_type,
+                                "dataType": duckdb_type,
+                                "rawType": profile.get("raw_type"),
+                                "normalizedType": profile.get("normalized_type"),
+                                "precision": profile.get("precision"),
+                                "scale": profile.get("scale"),
+                                "nullable": profile.get("nullable"),
+                                "statistics": profile.get("statistics"),
+                                "sampleValues": profile.get("sample_values"),
+                            }
+                        )
+                else:
+                    for _, row in schema_df.iterrows():
+                        columns.append(
+                            {
+                                "name": row["column_name"],
+                                "type": row["column_type"],
+                                "dataType": row["column_type"],
+                                "sampleValues": None,
+                            }
+                        )
 
                 table_info.append(
                     {
@@ -147,6 +169,7 @@ async def get_available_tables():
                         "column_count": len(columns),
                         "row_count": row_count,
                         "created_at": createdAt,  # 使用标准的 created_at 字段
+                        "column_profiles": column_profiles,
                     }
                 )
             except Exception as table_error:
@@ -158,16 +181,34 @@ async def get_available_tables():
 
                 # 处理元数据中的列信息
                 columns = []
-                if metadata and metadata.get("columns"):
+                fallback_profiles = metadata.get("column_profiles") if metadata else []
+                if fallback_profiles:
+                    for profile in fallback_profiles:
+                        name = profile.get("name")
+                        duckdb_type = profile.get("duckdb_type") or profile.get("type")
+                        if name:
+                            columns.append(
+                                {
+                                    "name": name,
+                                    "type": duckdb_type or "UNKNOWN",
+                                    "dataType": duckdb_type or "UNKNOWN",
+                                    "rawType": profile.get("raw_type"),
+                                    "normalizedType": profile.get("normalized_type"),
+                                    "precision": profile.get("precision"),
+                                    "scale": profile.get("scale"),
+                                    "nullable": profile.get("nullable"),
+                                    "statistics": profile.get("statistics"),
+                                    "sampleValues": profile.get("sample_values"),
+                                }
+                            )
+                elif metadata and metadata.get("columns"):
                     metadata_columns = metadata["columns"]
                     if isinstance(metadata_columns, list) and len(metadata_columns) > 0:
-                        # 如果是字符串数组，转换为对象数组
                         if isinstance(metadata_columns[0], str):
                             columns = [
-                                {"name": col, "type": "VARCHAR"}
+                                {"name": col, "type": "VARCHAR", "dataType": "VARCHAR", "sampleValues": None}
                                 for col in metadata_columns
                             ]
-                        # 如果已经是对象数组，直接使用
                         elif isinstance(metadata_columns[0], dict):
                             columns = metadata_columns
 

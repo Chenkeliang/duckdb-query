@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, field_validator
 from typing import List, Dict, Any, Optional, Union, Literal
 from enum import Enum
 import datetime
+import re
 
 
 class DataSourceType(str, Enum):
@@ -105,6 +106,24 @@ class JoinCondition(BaseModel):
     left_column: str
     right_column: str
     operator: str = "="  # 支持 =, !=, <, >, <=, >=
+    left_cast: Optional[str] = Field(
+        None, description="对左列应用的TRY_CAST类型，例如 VARCHAR、DECIMAL(18,4)"
+    )
+    right_cast: Optional[str] = Field(
+        None, description="对右列应用的TRY_CAST类型，例如 VARCHAR、DECIMAL(18,4)"
+    )
+
+    @field_validator("left_cast", "right_cast")
+    @classmethod
+    def validate_cast(cls, value: Optional[str]):
+        if value is None:
+            return None
+        cleaned = value.strip().upper()
+        if not cleaned:
+            return None
+        if not re.fullmatch(r"[A-Z0-9_(),\s]+", cleaned):
+            raise ValueError("Invalid cast type")
+        return cleaned
 
 
 class Join(BaseModel):

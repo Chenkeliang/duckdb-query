@@ -11,13 +11,14 @@ import {
   Typography
 } from '@mui/material';
 import { Play } from 'lucide-react';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { executeDuckDBSQL, performQuery } from '../../services/apiClient';
 import JoinCondition from './JoinCondition';
 import SetOperationBuilder from './SetOperationBuilder';
 import SourceSelector from './SourceSelector';
 import VisualAnalysisPanel from './VisualAnalysisPanel';
+import JoinTypeConflictDialog from './JoinTypeConflictDialog';
 
 // 智能LIMIT处理函数
 const applyDisplayLimit = (sql, maxRows = 10000) => {
@@ -107,6 +108,203 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       return [];
     }
   });
+  const [joinTypeConflicts, setJoinTypeConflicts] = useState([]);
+  const [resolvedJoinCasts, setResolvedJoinCasts] = useState({});
+  const [isJoinConflictDialogOpen, setIsJoinConflictDialogOpen] = useState(false);
+  const [pendingJoinAction, setPendingJoinAction] = useState(null);
+  const [activeJoinConflicts, setActiveJoinConflicts] = useState([]);
+  const [isVisualQueryReady, setIsVisualQueryReady] = useState(false);
+  const resolvedJoinSelectionMap = useMemo(() => {
+    return Object.entries(resolvedJoinCasts).reduce((acc, [key, value]) => {
+      if (value?.targetType) {
+        acc[key] = value.targetType;
+      }
+      return acc;
+    }, {});
+  }, [resolvedJoinCasts]);
+
+  const classifyTypeCategory = useCallback((rawType) => {
+    if (!rawType && rawType !== 0) {
+      return { category: 'unknown', display: '未知' };
+    }
+    const upper = String(rawType).toUpperCase();
+
+    if (
+      /INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|REAL|HUGEINT|SMALLINT|TINYINT|BIGINT/.test(upper)
+    ) {
+      return { category: 'numeric', display: upper };
+    }
+    if (/TIMESTAMP|DATETIME/.test(upper)) {
+      return { category: 'datetime', display: upper };
+    }
+    if (/\bDATE\b/.test(upper)) {
+      return { category: 'date', display: upper };
+    }
+    if (/\bTIME\b/.test(upper)) {
+      return { category: 'time', display: upper };
+    }
+    if (/BOOL/.test(upper)) {
+      return { category: 'boolean', display: upper };
+    }
+    if (/JSON|STRUCT|MAP|OBJECT/.test(upper)) {
+      return { category: 'json', display: upper };
+    }
+    return { category: 'text', display: upper || 'TEXT' };
+  }, []);
+
+  const buildRecommendedTypes = useCallback((leftCategory, rightCategory) => {
+    if (leftCategory === rightCategory) {
+      return [];
+    }
+
+    const pair = [leftCategory, rightCategory].sort().join('|');
+
+    switch (pair) {
+      case 'numeric|text':
+      case 'numeric|unknown':
+      case 'text|unknown':
+      case 'numeric|json':
+      case 'numeric|boolean':
+        return ['VARCHAR', 'DOUBLE', 'DECIMAL(18,4)', 'BIGINT'];
+      case 'date|datetime':
+      case 'date|time':
+      case 'datetime|time':
+        return ['TIMESTAMP', 'DATE', 'VARCHAR'];
+      case 'boolean|text':
+        return ['VARCHAR', 'BOOLEAN'];
+      case 'json|text':
+        return ['VARCHAR'];
+      default:
+        return ['VARCHAR', 'DOUBLE'];
+    }
+  }, []);
+
+  const sourceColumnTypeMap = useMemo(() => {
+    const buildMapForSource = (source) => {
+      const map = {};
+      if (!source || !Array.isArray(source.columns)) {
+        return map;
+      }
+      source.columns.forEach((col, index) => {
+        const name = typeof col === 'string' ? col : col?.name;
+        if (!name) {
+          return;
+        }
+        const rawType =
+          (typeof col === 'string' ? 'TEXT' : (
+            col?.dataType ||
+            col?.type ||
+            col?.normalizedType ||
+            col?.rawType ||
+            col?.columnType ||
+            col?.column_type ||
+            col?.sqlType
+          )) || 'TEXT';
+        const info = classifyTypeCategory(rawType);
+        map[name] = {
+          rawType,
+          category: info.category,
+          displayType: info.display,
+          sourceLabel: source.name || source.id,
+        };
+        map[name.toLowerCase()] = map[name];
+        map[`__index_${index}`] = map[name];
+      });
+      return map;
+    };
+
+    return selectedSources.reduce((acc, source) => {
+      acc[source.id] = buildMapForSource(source);
+      return acc;
+    }, {});
+  }, [selectedSources, classifyTypeCategory]);
+
+  useEffect(() => {
+    const conflicts = [];
+
+    joins.forEach((join, index) => {
+      if (!join.left_on || !join.right_on) {
+        return;
+      }
+      const leftSourceMap = sourceColumnTypeMap[join.left_source_id] || {};
+      const rightSourceMap = sourceColumnTypeMap[join.right_source_id] || {};
+
+      const leftInfo =
+        leftSourceMap[join.left_on] ||
+        leftSourceMap[join.left_on?.toLowerCase()] ||
+        null;
+      const rightInfo =
+        rightSourceMap[join.right_on] ||
+        rightSourceMap[join.right_on?.toLowerCase()] ||
+        null;
+
+      if (!leftInfo || !rightInfo) {
+        return;
+      }
+
+      if (leftInfo.category === rightInfo.category) {
+        return;
+      }
+
+      const key = [
+        join.left_source_id,
+        join.left_on,
+        join.right_source_id,
+        join.right_on,
+      ]
+        .map((part) => (part || '').toString().toLowerCase())
+        .join('::');
+
+      const recommendedTypes = buildRecommendedTypes(
+        leftInfo.category,
+        rightInfo.category,
+      );
+
+      conflicts.push({
+        key,
+        joinIndex: index,
+        left: {
+          sourceId: join.left_source_id,
+          sourceLabel: leftInfo.sourceLabel || join.left_source_id,
+          column: join.left_on,
+          category: leftInfo.category,
+          rawType: leftInfo.rawType,
+          displayType: leftInfo.displayType,
+        },
+        right: {
+          sourceId: join.right_source_id,
+          sourceLabel: rightInfo.sourceLabel || join.right_source_id,
+          column: join.right_on,
+          category: rightInfo.category,
+          rawType: rightInfo.rawType,
+          displayType: rightInfo.displayType,
+        },
+        recommendedTypes,
+        defaultType: recommendedTypes[0] || 'VARCHAR',
+      });
+    });
+
+    setJoinTypeConflicts(conflicts);
+  }, [joins, sourceColumnTypeMap, buildRecommendedTypes]);
+
+  useEffect(() => {
+    if (!joinTypeConflicts || joinTypeConflicts.length === 0) {
+      if (Object.keys(resolvedJoinCasts).length === 0) {
+        return;
+      }
+    }
+    const activeKeys = new Set(joinTypeConflicts.map((conflict) => conflict.key));
+    setResolvedJoinCasts((prev) => {
+      const entries = Object.entries(prev).filter(([key]) => activeKeys.has(key));
+      if (entries.length === Object.entries(prev).length) {
+        return prev;
+      }
+      return entries.reduce((acc, [key, value]) => {
+        acc[key] = value;
+        return acc;
+      }, {});
+    });
+  }, [joinTypeConflicts]);
 
   // 智能显示逻辑：根据选择的表数量决定显示哪个操作区块
   const showJoinBlock = selectedSources.length >= 2;
@@ -173,11 +371,47 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     setJoins(updatedJoins);
   };
 
+  const handleJoinConflictDialogClose = () => {
+    setIsJoinConflictDialogOpen(false);
+    setActiveJoinConflicts([]);
+    setPendingJoinAction(null);
+  };
+
+  const handleJoinConflictResolution = (selectionMap = {}) => {
+    if (selectionMap && Object.keys(selectionMap).length > 0) {
+      setResolvedJoinCasts((prev) => {
+        const next = { ...prev };
+        Object.entries(selectionMap).forEach(([key, value]) => {
+          if (!value) return;
+          next[key] = { targetType: value.toUpperCase() };
+        });
+        return next;
+      });
+    }
+    setIsJoinConflictDialogOpen(false);
+    setActiveJoinConflicts([]);
+    const pending = pendingJoinAction;
+    setPendingJoinAction(null);
+    if (pending?.type === 'execute_query') {
+      // 延迟执行，确保状态已经更新
+      setTimeout(() => {
+        handleExecuteQuery();
+      }, 0);
+    }
+  };
+
   // Handle visual query generation
-  const handleVisualQueryGenerated = (sql, config) => {
+  const handleVisualQueryGenerated = useCallback((sql, config) => {
     setVisualQuerySQL(sql);
     setVisualQueryConfig(config);
-  };
+    setIsVisualQueryReady(true);
+  }, []);
+
+  const handleVisualQueryInvalid = useCallback(() => {
+    setVisualQuerySQL('');
+    setVisualQueryConfig(null);
+    setIsVisualQueryReady(false);
+  }, []);
 
   const handleExecuteQuery = async () => {
     if (selectedSources.length === 0) {
@@ -185,12 +419,29 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       return;
     }
 
+    if (joins.length > 0) {
+      const unresolved = joinTypeConflicts.filter(
+        (conflict) => !resolvedJoinCasts[conflict.key],
+      );
+      if (unresolved.length > 0) {
+        setActiveJoinConflicts(unresolved);
+        setIsJoinConflictDialogOpen(true);
+        setPendingJoinAction({ type: 'execute_query' });
+        return;
+      }
+    }
+
     setError('');
     setIsLoading(true);
 
     try {
       // Check if we're in visual analysis mode (single table with visual query)
-      const isVisualAnalysisMode = selectedSources.length === 1 && visualQuerySQL && visualQuerySQL.trim() && visualQueryConfig;
+    const isVisualAnalysisMode =
+      selectedSources.length === 1 &&
+      isVisualQueryReady &&
+      visualQuerySQL &&
+      visualQuerySQL.trim() &&
+      visualQueryConfig;
 
       if (isVisualAnalysisMode) {
         // 保持前端生成SQL，但后端重新生成验证
@@ -264,16 +515,32 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       });
 
       // 转换 JOIN 数据结构以匹配后端期望的格式
-      const convertedJoins = joins.map(join => ({
-        left_source_id: join.left_source_id,
-        right_source_id: join.right_source_id,
-        join_type: join.how || 'inner',
-        conditions: [{
+      const convertedJoins = joins.map(join => {
+        const key = [
+          join.left_source_id,
+          join.left_on,
+          join.right_source_id,
+          join.right_on
+        ]
+          .map((part) => (part || '').toString().toLowerCase())
+          .join('::');
+        const resolvedCast = resolvedJoinCasts[key];
+        const condition = {
           left_column: join.left_on,
           right_column: join.right_on,
           operator: '='
-        }]
-      }));
+        };
+        if (resolvedCast?.targetType) {
+          condition.left_cast = resolvedCast.targetType;
+          condition.right_cast = resolvedCast.targetType;
+        }
+        return {
+          left_source_id: join.left_source_id,
+          right_source_id: join.right_source_id,
+          join_type: join.how || 'inner',
+          conditions: [condition]
+        };
+      });
 
       const queryRequest = {
         sources: convertedSources,
@@ -600,6 +867,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       <VisualAnalysisPanel
         selectedSources={selectedSources}
         onVisualQueryGenerated={handleVisualQueryGenerated}
+        onVisualQueryInvalid={handleVisualQueryInvalid}
         isVisible={selectedSources.length === 1}
       />
 
@@ -705,9 +973,18 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
             >
               {isLoading ? '执行中...' : '执行集合操作'}
             </Button>
-          </>
-        )}
-      </Stack>
+      </>
+    )}
+  </Stack>
+
+      <JoinTypeConflictDialog
+        open={isJoinConflictDialogOpen}
+        conflicts={activeJoinConflicts}
+        resolvedSelections={resolvedJoinSelectionMap}
+        onClose={handleJoinConflictDialogClose}
+        onSubmit={handleJoinConflictResolution}
+        isSubmitting={isLoading}
+      />
 
 
 
