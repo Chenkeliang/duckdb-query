@@ -7,21 +7,17 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
-  FormControlLabel,
   InputLabel,
   MenuItem,
   Select,
   Stack,
-  Switch,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
-import { Eye, HelpCircle, Plus, Trash2 } from 'lucide-react';
+import { Eye, HelpCircle, Plus, Trash2, RotateCcw } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getDistinctValues } from '../../services/apiClient';
-import { AggregationFunction, PivotValueAxis } from '../../utils/visualQueryUtils';
+import { AggregationFunction, createDefaultPivotConfig } from '../../utils/visualQueryUtils';
 
 const PIVOT_AGGREGATIONS = [
   AggregationFunction.SUM,
@@ -131,6 +127,15 @@ const PivotConfigurator = ({
     }
   }, [onChange, pivotConfig]);
 
+  const handleReset = useCallback(() => {
+    if (onChange) {
+      onChange(createDefaultPivotConfig());
+    }
+    setLocalManualColumnValues('');
+    setLocalColumnValueLimit('');
+    setLocalFillValue('');
+  }, [onChange]);
+
   // 采样预览功能
   const handlePreviewValues = async () => {
     if (!selectedTable || !pivotConfig.columns || pivotConfig.columns.length === 0) {
@@ -216,16 +221,6 @@ const PivotConfigurator = ({
     handleUpdate({ values: nextValues.length > 0 ? nextValues : [{ column: '', aggregation: AggregationFunction.SUM, alias: '' }] });
   };
 
-  const handleToggle = (key) => (event) => {
-    handleUpdate({ [key]: event.target.checked });
-  };
-
-  const handleAxisChange = (_event, newAxis) => {
-    if (newAxis) {
-      handleUpdate({ valueAxis: newAxis });
-    }
-  };
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Box sx={{
@@ -236,9 +231,20 @@ const PivotConfigurator = ({
         p: 3,
         boxShadow: 1
       }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-          选择透视布局
-        </Typography>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+          <Typography variant="subtitle1" fontWeight={600}>
+            选择透视布局
+          </Typography>
+          <Button
+            size="small"
+            startIcon={<RotateCcw size={14} />}
+            onClick={handleReset}
+            disabled={disabled}
+            sx={{ borderRadius: 2 }}
+          >
+            重置透视
+          </Button>
+        </Box>
         <Typography variant="body2" color="text.secondary" gutterBottom>
           先挑选需要展开的行、列，再选择要统计的指标。行与列字段越少，结果越易读。
         </Typography>
@@ -417,69 +423,23 @@ const PivotConfigurator = ({
           结果展示选项
         </Typography>
         <Typography variant="body2" color="text.secondary" gutterBottom>
-          配置透视表的显示方式和数据填充选项，让结果更易读。
+          可选地设置缺失值填充或列值顺序，让透视表更易读。
         </Typography>
 
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} mt={2}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={Boolean(pivotConfig.includeSubtotals)}
-                onChange={handleToggle('includeSubtotals')}
-                disabled={disabled}
-              />
-            }
-            label={<Box display="flex" alignItems="center" gap={0.5}>显示分类小计
-              <HelpCircle size={14} title="在每个分类分组下方显示一行小计，快速查看该组汇总。" />
-            </Box>}
-          />
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={Boolean(pivotConfig.includeGrandTotals)}
-                onChange={handleToggle('includeGrandTotals')}
-                disabled={disabled}
-              />
-            }
-            label={<Box display="flex" alignItems="center" gap={0.5}>显示总计
-              <HelpCircle size={14} title="在结果的末尾追加总计行/列，展示整体汇总。" />
-            </Box>}
-          />
-        </Stack>
-
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} mt={2} alignItems="center">
-          <Box>
-            <Typography variant="body2" color="text.secondary">
-              指标标签位置 <HelpCircle size={14} title="多个指标时，选择是在列方向展开还是在行方向展开。" />
-            </Typography>
-            <ToggleButtonGroup
-              value={pivotConfig.valueAxis || PivotValueAxis.COLUMNS}
-              exclusive
-              onChange={handleAxisChange}
-              size="small"
-              disabled={disabled}
-              sx={{ mt: 1 }}
-            >
-              <ToggleButton value={PivotValueAxis.COLUMNS}>与列标题并列</ToggleButton>
-              <ToggleButton value={PivotValueAxis.ROWS}>与行标题并列</ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
-
-          <TextField
-            label="缺失值填充"
-            placeholder="例如：0 或 -"
-            value={localFillValue}
-            onChange={(event) => {
-              const value = event.target.value;
-              setLocalFillValue(value);
-              scheduleConfigUpdate('fillValue', { fillValue: value });
-            }}
-            disabled={disabled}
-            fullWidth
-            helperText="当某些行列组合没有数据时显示的默认值"
-          />
-        </Stack>
+        <TextField
+          label="缺失值填充"
+          placeholder="例如：0 或 -"
+          value={localFillValue}
+          onChange={(event) => {
+            const value = event.target.value;
+            setLocalFillValue(value);
+            scheduleConfigUpdate('fillValue', { fillValue: value });
+          }}
+          disabled={disabled}
+          fullWidth
+          helperText="当某些行列组合没有数据时显示的默认值"
+          sx={{ mt: 2 }}
+        />
 
         <TextField
           label="列值顺序（可选）"
@@ -554,17 +514,8 @@ const PivotConfigurator = ({
         {/* 策略切换（仅保留原生PIVOT） */}
         <Box sx={{ mt: 2 }}>
           <Typography variant="body2" color="text.secondary">
-            策略 <HelpCircle size={14} title="使用数据库原生透视功能，性能更好但需要明确指定列值" />
+            策略：当前仅支持数据库原生透视，需结合列值顺序或列数量上限使用。
           </Typography>
-          <ToggleButtonGroup
-            value="native"
-            exclusive
-            size="small"
-            disabled={true}
-            sx={{ mt: 1 }}
-          >
-            <ToggleButton value="native">NATIVE</ToggleButton>
-          </ToggleButtonGroup>
         </Box>
       </Box>
 

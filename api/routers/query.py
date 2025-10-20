@@ -64,9 +64,11 @@ import os
 import time
 import traceback
 import logging
+import math
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, date, time, timedelta
+from decimal import Decimal
 from typing import List, Optional, Dict, Any, Union, Tuple
 from pydantic import BaseModel, Field, ValidationError
 import duckdb
@@ -158,6 +160,47 @@ def _map_frontend_profiles(
         for profile in profiles or []
         if profile.name and profile.name.strip()
     }
+
+
+def _sanitize_dataframe_for_json(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert dataframe to JSON-friendly object types and drop NaN/Inf."""
+    if df is None:
+        return pd.DataFrame()
+
+    if df.empty:
+        return df.copy()
+
+    sanitized = df.copy()
+    sanitized.replace([np.inf, -np.inf], np.nan, inplace=True)
+    sanitized = sanitized.astype(object)
+    sanitized = sanitized.where(pd.notnull(sanitized), None)
+
+    def _convert_value(value: Any):
+        if value is None:
+            return None
+        if isinstance(value, float) and math.isnan(value):
+            return None
+        if isinstance(value, (np.floating,)):
+            coerced = float(value)
+            return None if math.isnan(coerced) else coerced
+        if isinstance(value, (np.integer,)):
+            return int(value)
+        if isinstance(value, np.bool_):
+            return bool(value)
+        if isinstance(value, Decimal):
+            return float(value)
+        if isinstance(value, pd.Timestamp):
+            return value.isoformat()
+        if isinstance(value, pd.Timedelta):
+            return value.isoformat() if hasattr(value, "isoformat") else str(value)
+        if isinstance(value, (datetime, date, time, timedelta)):
+            return value.isoformat()
+        return value
+
+    sanitized = sanitized.apply(lambda col: col.map(_convert_value))
+    sanitized = sanitized.astype(object)
+    sanitized = sanitized.where(pd.notnull(sanitized), None)
+    return sanitized
 
 
 def _load_backend_column_profiles(table_name: str) -> Dict[str, Dict[str, Any]]:
@@ -475,7 +518,13 @@ async def preview_visual_query(request: PreviewRequest) -> PreviewResponse:
             resolved_casts=resolved_casts_map,
         )
 
-        preview_limit = request.limit or 10
+        preview_limit = request.limit
+        if preview_limit is None or preview_limit <= 0:
+            from core.config_manager import config_manager
+
+            preview_limit = (
+                config_manager.get_app_config().max_query_rows or 10
+            )
         preview_sql = ensure_query_has_limit(generation.final_sql, preview_limit)
 
         con = get_db_connection()
@@ -2327,7 +2376,7 @@ async def preview_set_operation(request: SetOperationRequest):
         result_df = con.execute(preview_sql).fetchdf()
 
         # 转换为字典列表
-        preview_data = result_df.to_dict("records")
+        preview_data = _sanitize_dataframe_for_json(result_df).to_dict("records")
 
         # 获取总行数估算
         estimated_rows = estimate_set_operation_rows(config, con)
@@ -2474,15 +2523,11 @@ async def execute_set_operation(request: SetOperationRequest):
             limit = config_manager.get_app_config().max_query_rows
             preview_sql = f"{sql} LIMIT {limit}"
             result_df = con.execute(preview_sql).fetchdf()
-
-            # 转换为字典列表
-            data = result_df.to_dict("records")
-
-            # 获取列信息
             columns = [
                 {"name": col, "type": str(result_df[col].dtype)}
                 for col in result_df.columns
             ]
+            data = _sanitize_dataframe_for_json(result_df).to_dict("records")
 
             return {
                 "success": True,
@@ -2564,15 +2609,11 @@ async def execute_set_operation(request: SetOperationRequest):
             limit = config_manager.get_app_config().max_query_rows
             preview_sql = f"{sql} LIMIT {limit}"
             result_df = con.execute(preview_sql).fetchdf()
-
-            # 转换为字典列表
-            data = result_df.to_dict("records")
-
-            # 获取列信息
             columns = [
                 {"name": col, "type": str(result_df[col].dtype)}
                 for col in result_df.columns
             ]
+            data = _sanitize_dataframe_for_json(result_df).to_dict("records")
 
             return {
                 "success": True,

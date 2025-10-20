@@ -655,7 +655,9 @@ class PreviewRequest(BaseModel):
     mode: VisualQueryMode = Field(
         VisualQueryMode.REGULAR, description="Visual analysis mode"
     )
-    limit: int = Field(10, description="Number of rows to preview")
+    limit: Optional[int] = Field(
+        None, description="Number of rows to preview (default from config)"
+    )
     resolved_casts: List[ResolvedTypeCast] = Field(
         default_factory=list, description="预览阶段应用的 TRY_CAST 设置"
     )

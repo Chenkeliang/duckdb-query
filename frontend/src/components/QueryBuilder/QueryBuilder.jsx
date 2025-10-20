@@ -13,7 +13,8 @@ import {
 import { Play } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import { executeDuckDBSQL, performQuery } from '../../services/apiClient';
+import { executeDuckDBSQL, performQuery, previewVisualQuery } from '../../services/apiClient';
+import { transformVisualConfigForApi, transformPivotConfigForApi } from '../../utils/visualQueryUtils';
 import JoinCondition from './JoinCondition';
 import SetOperationBuilder from './SetOperationBuilder';
 import SourceSelector from './SourceSelector';
@@ -87,6 +88,10 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     };
 
     let translatedError = errorMessage;
+    if (translatedError && typeof translatedError === 'object') {
+      translatedError = translatedError.message ?? JSON.stringify(translatedError);
+    }
+    translatedError = translatedError != null ? String(translatedError) : '';
     Object.entries(errorTranslations).forEach(([en, zh]) => {
       translatedError = translatedError.replace(new RegExp(en, 'g'), zh);
     });
@@ -403,12 +408,11 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
   // Handle visual query generation
   const handleVisualQueryGenerated = useCallback((sql, config) => {
     setVisualQuerySQL(sql);
-    setVisualQueryConfig(config);
+    setVisualQueryConfig(config || null);
     setIsVisualQueryReady(true);
   }, []);
 
   const handleVisualQueryInvalid = useCallback(() => {
-    setVisualQuerySQL('');
     setVisualQueryConfig(null);
     setIsVisualQueryReady(false);
   }, []);
@@ -435,19 +439,80 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     setIsLoading(true);
 
     try {
-      // Check if we're in visual analysis mode (single table with visual query)
-    const isVisualAnalysisMode =
-      selectedSources.length === 1 &&
-      isVisualQueryReady &&
-      visualQuerySQL &&
-      visualQuerySQL.trim() &&
-      visualQueryConfig;
+      // 单表且可视化查询已生成时，直接执行可视化SQL
+      const canExecuteVisualQuery =
+        selectedSources.length === 1 &&
+        isVisualQueryReady &&
+        visualQueryConfig &&
+        !currentOperationMode;
 
-      if (isVisualAnalysisMode) {
-        // 保持前端生成SQL，但后端重新生成验证
-        const { displaySql, originalSql } = applyDisplayLimit(visualQuerySQL, 10000);
+      if (canExecuteVisualQuery) {
+        const visualMode = visualQueryConfig?.mode || 'regular';
 
-        // 使用executeDuckDBSQL执行，后端会重新生成SQL验证
+        if (visualMode === 'pivot') {
+          try {
+            const tableName =
+              visualQueryConfig?.tableName ||
+              selectedSources[0]?.name ||
+              selectedSources[0]?.id ||
+              '';
+
+            const configPayload = transformVisualConfigForApi(
+              visualQueryConfig?.regular || {},
+              tableName,
+            );
+            const pivotPayload = transformPivotConfigForApi(
+              visualQueryConfig?.pivot || {},
+            );
+
+           const resp = await previewVisualQuery(
+              {
+                config: configPayload,
+                mode: 'pivot',
+                pivotConfig: pivotPayload,
+                includeMetadata: true,
+              },
+              visualQueryConfig?.previewLimit || 10000,
+              { resolvedCasts: visualQueryConfig?.resolvedCasts || {} },
+            );
+
+            if (!resp || resp.success === false) {
+              const message =
+                resp?.errors?.join('; ') ||
+                resp?.error ||
+                '透视查询执行失败';
+              setError(message);
+              return;
+            }
+
+            const results = {
+              ...resp,
+              isVisualQuery: true,
+              visualConfig: visualQueryConfig,
+              visualQueryMeta: visualQueryConfig,
+            };
+
+            onResultsReceived(results);
+            if (resp.sql) {
+              saveHistory(resp.sql);
+            }
+            showSuccess('透视查询执行成功');
+          } catch (error) {
+            setError(error?.message || '透视查询执行失败');
+          }
+          return;
+        }
+
+        if (!visualQuerySQL || !visualQuerySQL.trim()) {
+          setError('未找到可执行的可视化查询 SQL');
+          return;
+        }
+
+        const { displaySql, originalSql } = applyDisplayLimit(
+          visualQuerySQL,
+          10000,
+        );
+
         const results = await executeDuckDBSQL(displaySql, null, true);
 
         if (results && results.success === false) {
@@ -455,19 +520,19 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
           return;
         }
 
-        // 添加可视化查询元数据
         if (results) {
           results.isVisualQuery = true;
           results.visualConfig = visualQueryConfig;
-          results.generatedSQL = originalSql; // 使用原始SQL（无LIMIT）
-          results.sql = originalSql; // 确保SQL包含在历史记录中
-          results.displaySQL = displaySql; // 存储显示SQL供参考
+          results.visualQueryMeta = visualQueryConfig;
+          results.generatedSQL = originalSql;
+          results.sql = originalSql;
+          results.displaySQL = displaySql;
         }
 
         onResultsReceived(results);
-        saveHistory(originalSql); // 保存原始SQL（无LIMIT）
+        saveHistory(originalSql);
         showSuccess('可视化查询执行成功');
-        return; // 重要：直接返回，不执行后续的常规查询逻辑
+        return;
       }
 
       // Original multi-table query logic (unchanged)

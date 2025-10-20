@@ -35,9 +35,6 @@ export const createDefaultPivotConfig = () => ({
       alias: '',
     },
   ],
-  includeSubtotals: false,
-  includeGrandTotals: false,
-  valueAxis: PivotValueAxis.COLUMNS,
   fillValue: '',
   manualColumnValues: [],
   // 默认策略为 auto（优先原生，必要时采用自动采样）
@@ -70,9 +67,6 @@ export const transformPivotConfigForApi = (pivotConfig) => {
     rows: Array.isArray(pivotConfig.rows) ? pivotConfig.rows.filter(Boolean) : [],
     columns: Array.isArray(pivotConfig.columns) ? pivotConfig.columns.filter(Boolean) : [],
     values,
-    include_subtotals: Boolean(pivotConfig.includeSubtotals),
-    include_grand_totals: Boolean(pivotConfig.includeGrandTotals),
-    value_axis: pivotConfig.valueAxis || PivotValueAxis.COLUMNS,
     fill_value: pivotConfig.fillValue !== undefined && pivotConfig.fillValue !== ''
       ? pivotConfig.fillValue
       : null,
@@ -661,9 +655,9 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
     if (config.selectedColumns && config.selectedColumns.length > 0) {
       config.selectedColumns.forEach((col) => {
         if (typeof col === "string") {
-          selectItems.push(col);
+          selectItems.push(escapeIdentifier(col));
         } else if (col.name) {
-          selectItems.push(col.name);
+          selectItems.push(escapeIdentifier(col.name));
         }
       });
     }
@@ -1074,7 +1068,8 @@ export const generateAggregationSQL = (aggregation, columnType, columnName, reso
     );
   }
 
-  let sqlColumn = column;
+  const quotedColumn = escapeIdentifier(column);
+  let sqlColumn = quotedColumn;
   const resolvedCastValue = resolvedCast
     ? resolvedCast.trim().toUpperCase()
     : null;
@@ -1094,7 +1089,7 @@ export const generateAggregationSQL = (aggregation, columnType, columnName, reso
 
   // 当使用数值聚合函数（SUM、AVG、MIN、MAX）且字段类型是文本类型时，自动进行类型转换
   if (resolvedCastValue) {
-    sqlColumn = `TRY_CAST(${column} AS ${resolvedCastValue})`;
+    sqlColumn = `TRY_CAST(${quotedColumn} AS ${resolvedCastValue})`;
   } else if (
     (func === AggregationFunction.SUM ||
       func === AggregationFunction.AVG ||
@@ -1108,10 +1103,10 @@ export const generateAggregationSQL = (aggregation, columnType, columnName, reso
   }
 
   if (funcKey === AggregationFunction.COUNT_DISTINCT || funcKey === "COUNT_DISTINCT") {
-    return `COUNT(DISTINCT ${sqlColumn})${alias ? ` AS ${alias}` : ""}`;
+    return `COUNT(DISTINCT ${sqlColumn})${alias ? ` AS ${escapeIdentifier(alias)}` : ""}`;
   }
 
-  const aggStr = `${func}(${sqlColumn})${alias ? ` AS ${alias}` : ""}`;
+  const aggStr = `${func}(${sqlColumn})${alias ? ` AS ${escapeIdentifier(alias)}` : ""}`;
   return aggStr;
 };
 

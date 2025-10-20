@@ -22,6 +22,7 @@ import SortControls from './SortControls';
 import SQLPreview from './SQLPreview';
 import TypeConflictDialog from './VisualAnalysis/TypeConflictDialog';
 import useTypeConflictCheck from '../../hooks/useTypeConflictCheck';
+import { useToast } from '../../contexts/ToastContext';
 
 /**
  * VisualAnalysisPanel - Visual query builder interface for single table analysis
@@ -77,6 +78,9 @@ const VisualAnalysisPanel = ({
   const currentConflictKeyRef = useRef(null);
   const [dismissedConflictKeys, setDismissedConflictKeys] = useState(new Set());
   const [isMetadataReady, setIsMetadataReady] = useState(false);
+  const { showWarning, showError } = useToast();
+  const [pivotNotice, setPivotNotice] = useState(null);
+  const pivotWarningShownRef = useRef(false);
 
   const tableName = selectedTable?.name || selectedTable?.id || '';
   const { computeLocalConflicts, computePivotConflicts, getColumnProfilesArray, columnProfileMap } = useTypeConflictCheck({
@@ -313,6 +317,13 @@ const VisualAnalysisPanel = ({
     setDismissedConflictKeys(new Set());
   }, [analysisConfig, resolvedCasts, activeMode, tableName]);
 
+  useEffect(() => {
+    if (activeMode !== 'pivot' || !shouldShowPanel) {
+      setPivotNotice(null);
+      pivotWarningShownRef.current = false;
+    }
+  }, [activeMode, shouldShowPanel]);
+
   // Reset analysis config when table selection changes
   useEffect(() => {
     if (!shouldShowPanel) {
@@ -393,7 +404,10 @@ const VisualAnalysisPanel = ({
   const generateSQLPivot = useCallback(async () => {
     if (!selectedTable || !tableName || !isMetadataReady) return;
     if (!features?.enable_pivot_tables) {
-      setError('管理员已关闭透视表功能');
+      const message = '管理员已关闭透视表功能';
+      setError(message);
+      setPivotNotice({ severity: 'error', message });
+      showError(message);
       onVisualQueryInvalid({
         reason: 'pivot_feature_disabled',
         mode: 'pivot',
@@ -412,27 +426,51 @@ const VisualAnalysisPanel = ({
           selectedTable?.columns || [],
           { resolvedCasts },
         );
-        setBaseSQL(result?.sql || '');
+        const fallbackSql = result?.sql || '';
+        setBaseSQL(fallbackSql);
         setPivotSQL('');
-        setGeneratedSQL(result?.sql || '');
+        setGeneratedSQL(fallbackSql);
         setWarnings(result?.warnings || []);
-        setError('请先在透视面板选择“行/列字段”和至少一个“指标”，当前仅展示基础SQL');
+        setError('');
+
+        const warningMessage = '请先在透视面板选择“行/列字段”和至少一个“指标”，当前回落到常规查询';
+        setPivotNotice({ severity: 'warning', message: warningMessage });
+        if (!pivotWarningShownRef.current) {
+          showWarning(warningMessage);
+          pivotWarningShownRef.current = true;
+        }
+
+        if (onVisualQueryGenerated) {
+          const cleanSQL = fallbackSql.replace(/^--.*$/gm, '').trim();
+          onVisualQueryGenerated(cleanSQL, {
+            mode: 'regular',
+            config: analysisConfig,
+            tableName,
+            resolvedCasts,
+          });
+        }
       } catch (e) {
-        setError(`透视前置校验失败：${e.message}`);
+        const message = `透视前置校验失败：${e.message}`;
+        setError(message);
+        setPivotNotice({ severity: 'error', message });
+        showError(message);
       }
-      onVisualQueryInvalid({
-        reason: 'pivot_requirements_missing',
-        mode: 'pivot',
-      });
+      // 保留常规模式配置，让执行按钮走 execute
       return;
     }
+
+    setPivotNotice(null);
+    pivotWarningShownRef.current = false;
 
     const configPayload = transformVisualConfigForApi(analysisConfig, tableName);
     const pivotPayload = transformPivotConfigForApi(pivotConfig);
 
     // 前置校验：原生透视仅支持 1 个列字段
     if (!Array.isArray(pivotPayload.columns) || pivotPayload.columns.length !== 1) {
-      setError('原生透视仅支持 1 个列字段');
+      const message = '原生透视仅支持 1 个列字段';
+      setError('');
+      setPivotNotice({ severity: 'error', message });
+      showError(message);
       onVisualQueryInvalid({
         reason: 'pivot_column_limit',
         mode: 'pivot',
@@ -444,7 +482,10 @@ const VisualAnalysisPanel = ({
       Array.isArray(pivotPayload.manual_column_values) && pivotPayload.manual_column_values.length > 0;
     const hasLimit = typeof pivotPayload.column_value_limit === 'number' && pivotPayload.column_value_limit > 0;
     if (!hasManual && !hasLimit) {
-      setError('请填写“列值顺序”或设置“列数量上限”（建议 10~12）');
+      const message = '请填写“列值顺序”或设置“列数量上限”（建议 10~12）';
+      setError('');
+      setPivotNotice({ severity: 'error', message });
+      showError(message);
       onVisualQueryInvalid({
         reason: 'pivot_limit_required',
         mode: 'pivot',
@@ -473,6 +514,11 @@ const VisualAnalysisPanel = ({
 
     try {
       setIsLoading(true);
+      const configuredMaxRows = Number(features?.max_query_rows);
+      const previewRowLimit = Number.isFinite(configuredMaxRows) && configuredMaxRows > 0
+        ? configuredMaxRows
+        : 10000;
+
       const resp = await previewVisualQuery(
         {
           config: configPayload,
@@ -480,12 +526,15 @@ const VisualAnalysisPanel = ({
           pivotConfig: pivotPayload,
           includeMetadata: true,
         },
-        Number(features?.max_query_rows) || 10,
+        previewRowLimit,
         { resolvedCasts },
       );
 
       if (!resp?.success) {
-        setError((resp?.errors && resp.errors.join('; ')) || '透视 SQL 生成失败');
+        const message = (resp?.errors && resp.errors.join('; ')) || '透视 SQL 生成失败';
+        setError(message);
+        setPivotNotice({ severity: 'error', message });
+        showError(message);
         setGeneratedSQL('');
         setBaseSQL('');
         setPivotSQL('');
@@ -497,6 +546,7 @@ const VisualAnalysisPanel = ({
       setPivotSQL(resp.pivot_sql || '');
       setWarnings([...(resp.warnings || []), ...(validationResult.warnings || [])]);
       setError('');
+      setPivotNotice(null);
 
       if (onVisualQueryGenerated) {
         const cleanSQL = (resp.sql || '').trim();
@@ -506,10 +556,14 @@ const VisualAnalysisPanel = ({
           pivot: pivotConfig,
           tableName,
           resolvedCasts,
+          previewLimit: previewRowLimit,
         });
       }
     } catch (err) {
-      setError(`透视 SQL 生成失败: ${err.message}`);
+      const message = `透视 SQL 生成失败: ${err.message}`;
+      setError(message);
+      setPivotNotice({ severity: 'error', message });
+      showError(message);
     } finally {
       setIsLoading(false);
     }
@@ -526,6 +580,8 @@ const VisualAnalysisPanel = ({
     runTypeValidation,
     onVisualQueryGenerated,
     isMetadataReady,
+    showWarning,
+    showError,
   ]);
 
   const handleConflictResolution = useCallback(
@@ -848,7 +904,15 @@ const VisualAnalysisPanel = ({
               {/* 透视配置，仅在 pivot 模式显示 */}
               {activeMode === 'pivot' && features?.enable_pivot_tables && (
                 <div className="mb-6">
-                  <div className="mb-2 text-sm text-gray-600">小提示：先在左侧选字段，再拖入相应区域即可生成透视表。</div>
+                  <div className="mb-2 text-sm text-gray-600">小提示：勾选行/列字段并选择指标，即可生成透视表，无需拖拽。</div>
+                  {pivotNotice && (
+                    <Alert
+                      severity={pivotNotice.severity || 'info'}
+                      sx={{ mb: 2 }}
+                    >
+                      {pivotNotice.message}
+                    </Alert>
+                  )}
                   <PivotConfigurator
                     columns={selectedTable?.columns || []}
                     pivotConfig={pivotConfig}
