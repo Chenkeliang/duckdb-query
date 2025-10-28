@@ -1,3 +1,46 @@
+:root {
+  --dq-font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --dq-font-mono: "SFMono-Regular", Menlo, monospace;
+  --dq-neutral-50: #f9fafb;
+  --dq-neutral-100: #eef1f6;
+  --dq-neutral-200: #d8dde6;
+  --dq-neutral-300: #c1c8d6;
+  --dq-neutral-400: #aab3c3;
+  --dq-neutral-500: #939cb0;
+  --dq-neutral-600: #7a8294;
+  --dq-neutral-700: #636978;
+  --dq-neutral-800: #4c515d;
+  --dq-neutral-900: #373a43;
+  --dq-background: #ffffff;
+  --dq-surface: #ffffff;
+  --dq-surface-alt: #f7f8fc;
+  --dq-surface-card: #ffffff;
+  --dq-surface-card-active: #fcfdff;
+  --dq-surface-hover: rgba(37, 99, 235, 0.04);
+  --dq-border: rgba(15, 23, 42, 0.035);
+  --dq-border-subtle: rgba(15, 23, 42, 0.06);
+  --dq-border-card: rgba(15, 23, 42, 0.1);
+  --dq-border-strong: rgba(15, 23, 42, 0.16);
+  --dq-text-primary: #0f172a;
+  --dq-text-secondary: #1f2937;
+  --dq-text-tertiary: #4b5563;
+  --dq-accent-100: #2563eb;
+  --dq-accent-200: #1d4ed8;
+  --dq-accent-300: #60a5fa;
+  --dq-accent-primary: #2563eb;
+  --dq-radius-card: 16px;
+  --dq-radius-cta: 20px;
+  --dq-shadow-soft: 0 14px 30px -20px rgba(15, 23, 42, 0.08);
+  --dq-selection-bg: rgba(37, 99, 235, 0.16);
+  --dq-selection-fg: #0b1120;
+}
+
+:root body {
+  background-color: var(--dq-background);
+  color: var(--dq-text-primary);
+  font-family: var(--dq-font-sans);
+}
+
 .dark :focus-visible {
   outline: 2px solid color-mix(in oklab, var(--dq-accent-100) 45%, transparent);
   outline-offset: 2px;
@@ -20,17 +63,24 @@
   --dq-accent-100: #f07335;
   --dq-accent-200: #eb6320;
   --dq-accent-300: #d45318;
+  --dq-accent-primary: #f07335;
   --dq-background: #040506;
   --dq-surface: color-mix(in oklab, var(--dq-neutral-1000) 90%, transparent);
   --dq-surface-alt: color-mix(in oklab, var(--dq-neutral-1000) 82%, transparent);
   --dq-surface-active: color-mix(in oklab, var(--dq-neutral-1000) 74%, transparent);
   --dq-surface-elevated: color-mix(in oklab, var(--dq-neutral-1000) 68%, transparent);
+  --dq-surface-card: color-mix(in oklab, var(--dq-neutral-1000) 88%, transparent);
+  --dq-surface-card-active: color-mix(in oklab, var(--dq-neutral-900) 78%, transparent);
   --dq-text-primary: #e6eaf3;
   --dq-text-secondary: #b3bac6;
   --dq-text-tertiary: #8b929f;
   --dq-border: color-mix(in oklab, var(--dq-neutral-900) 78%, transparent);
   --dq-border-subtle: color-mix(in oklab, var(--dq-neutral-900) 58%, transparent);
+  --dq-border-card: color-mix(in oklab, var(--dq-neutral-900) 64%, transparent);
   --dq-border-strong: color-mix(in oklab, var(--dq-neutral-900) 92%, transparent);
+  --dq-radius-card: 16px;
+  --dq-radius-cta: 20px;
+  --dq-surface-hover: color-mix(in oklab, var(--dq-accent-primary) 22%, transparent);
   --dq-shadow-soft: 0 24px 96px -60px rgba(2, 6, 12, 0.65);
   --dq-selection-bg: color-mix(in oklab, var(--dq-accent-100) 80%, transparent);
   --dq-selection-fg: #0c0d10;
@@ -797,10 +847,10 @@ body {
 .h-5 { height: 1.25rem; }
 
 .text-xl { font-size: 1.25rem; line-height: 1.75rem; }
-.text-lg { font-size: 1.125rem; line-height: 1.75rem; }
-.text-sm { font-size: 0.875rem; line-height: 1.25rem; }
-.text-xs { font-size: 0.75rem; line-height: 1rem; }
-.text-base { font-size: 1rem; line-height: 1.5rem; }
+.text-lg { font-size: 1.25rem; line-height: 1.85rem; }
+.text-sm { font-size: 1rem; line-height: 1.6rem; }
+.text-xs { font-size: 1rem; line-height: 1.6rem; }
+.text-base { font-size: 1.125rem; line-height: 1.75rem; }
 .text-2xl { font-size: 1.5rem; line-height: 2rem; }
 
 .font-bold { font-weight: 700; }
@@ -814,6 +864,10 @@ body {
 .hover\:bg-gray-50:hover { background-color: #ffffff; }
 .hover\:bg-gray-100:hover { background-color: #ffffff; }
 
+.hover-surface:hover {
+  background-color: var(--dq-surface-hover);
+}
+
 @media (min-width: 768px) {
   .md\:flex { display: flex; }
 }
@@ -825,37 +879,38 @@ body {
 /* Mantine风格的标签页 */
 .mantine-tabs {
   display: flex;
-  border-bottom: 1px solid #e5e7eb;
-  gap: 2px;
-  background: white;
-  border-radius: 0.5rem 0.5rem 0 0;
+  border-bottom: 1px solid var(--dq-border-subtle);
+  gap: 0;
+  background: var(--dq-surface);
+  border-radius: 12px 12px 0 0;
+  padding: 0;
 }
 
 .mantine-tab {
-  padding: 12px 16px;
+  padding: 16px 20px;
   border: none;
-  background: none;
+  background: transparent;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  color: #6b7280;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--dq-text-tertiary);
   border-bottom: 2px solid transparent;
-  transition: all 0.15s ease;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
   white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 8px;
+  border-radius: 12px 12px 0 0;
 }
 
 .mantine-tab.active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
-  background: rgba(37, 99, 235, 0.05);
+  color: var(--dq-accent-primary);
+  border-bottom-color: var(--dq-accent-primary);
 }
 
 .mantine-tab:hover:not(.active) {
-  color: #111827;
-  background-color: #ffffff;
+  color: var(--dq-text-primary);
+  background-color: var(--dq-surface-card-active);
 }
 
 .mantine-tab-icon {
@@ -864,29 +919,30 @@ body {
 
 /* 二级TAB样式 */
 .mantine-tabs.secondary {
-  border-bottom: 1px solid #e5e7eb;
-  background: #ffffff;
+  border-bottom: 1px solid var(--dq-border-subtle);
+  background: var(--dq-surface);
   border-radius: 0;
   padding: 0 16px;
 }
 
 .mantine-tab.secondary {
-  padding: 8px 12px;
-  font-size: 13px;
-  color: #6b7280;
+  padding: 12px 16px;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--dq-text-tertiary);
   border-bottom: 2px solid transparent;
-  background: none;
+  background: transparent;
+  border-radius: 10px 10px 0 0;
 }
 
 .mantine-tab.secondary.active {
-  color: #1f2937;
-  border-bottom-color: #3b82f6;
-  background: none;
+  color: var(--dq-text-primary);
+  border-bottom-color: var(--dq-accent-primary);
 }
 
 .mantine-tab.secondary:hover:not(.active) {
-  color: #374151;
-  background-color: #ffffff;
+  color: var(--dq-text-secondary);
+  background-color: var(--dq-surface-card);
 }
 
 /* 统一字体大小和颜色 */
@@ -1238,9 +1294,46 @@ body {
 }
 
 .MuiMenuItem-root {
-  font-size: 0.875rem;
+  font-size: 1rem;
   border-radius: 8px;
   margin: 2px 8px;
+}
+
+/* 统一 MUI 元素基础字号至 16px */
+.MuiButtonBase-root,
+.MuiButton-root,
+.MuiToggleButton-root,
+.MuiListItemButton-root,
+.MuiMenuItem-root,
+.MuiPaginationItem-root,
+.MuiTab-root,
+.MuiChip-label,
+.MuiFormControlLabel-label,
+.MuiAutocomplete-option,
+.MuiTypography-body2,
+.MuiTypography-caption,
+.MuiTypography-subtitle2,
+.MuiInputBase-input,
+.MuiInputLabel-root,
+.MuiFormHelperText-root,
+.MuiTooltip-tooltip,
+.MuiAlert-message {
+  font-size: 1rem !important;
+  line-height: 1.5 !important;
+}
+
+.MuiDialogContentText-root,
+.MuiTableCell-root,
+.MuiTableSortLabel-root,
+.MuiTablePagination-root,
+.MuiTablePagination-toolbar,
+.MuiTablePagination-displayedRows,
+.MuiTablePagination-selectLabel,
+.MuiTablePagination-select,
+.MuiTablePagination-selectIcon,
+.MuiTablePagination-actions {
+  font-size: 1rem !important;
+  line-height: 1.5 !important;
 }
 
 .MuiMenuItem-root.Mui-selected,
@@ -1255,11 +1348,11 @@ body {
 
 /* 现代化提示样式 */
 .page-intro {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #d7ca83 0%, #efc66f 50%, #ffc86a 100%);
   border-radius: 12px;
   padding: 16px 20px;
   margin-bottom: 24px;
-  color: white;
+  color: #0f172a;
   position: relative;
   overflow: hidden;
 }
@@ -1271,8 +1364,8 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(18px);
   border-radius: 12px;
 }
 
@@ -1287,16 +1380,16 @@ body {
 }
 
 .page-intro-title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   margin: 0 0 8px 0;
-  color: white;
+  color: #1f2937;
 }
 
 .page-intro-desc {
   font-size: 14px;
   margin: 0;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(31, 41, 55, 0.9);
   line-height: 1.6;
   word-wrap: break-word;
   word-break: break-word;
@@ -1318,7 +1411,7 @@ body {
   content: '•';
   position: absolute;
   left: 0;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(37, 99, 235, 0.55);
   font-weight: bold;
 }
 

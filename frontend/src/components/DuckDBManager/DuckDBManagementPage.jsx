@@ -364,7 +364,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                               size="small"
                               sx={{
                                 height: 20,
-                                fontSize: '0.75rem',
+                                fontSize: '1rem',
                                 fontWeight: 600,
                                 backgroundColor: typeInfo.color,
                                 color: 'white'

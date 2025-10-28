@@ -221,7 +221,7 @@ const TypeConflictDialog = ({
                               },
                             },
                             '& .MuiAutocomplete-input': {
-                              fontSize: '0.875rem',
+                              fontSize: '1rem',
                             },
                           }}
                         />

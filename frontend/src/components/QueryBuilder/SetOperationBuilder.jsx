@@ -236,7 +236,7 @@ const SetOperationBuilder = ({
                                     borderColor: 'primary.200',
                                     color: 'primary.700',
                                     backgroundColor: 'primary.50',
-                                    fontSize: '0.75rem'
+                                    fontSize: '1rem'
                                 }}
                             />
                         );

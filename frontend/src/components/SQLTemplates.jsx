@@ -300,7 +300,7 @@ const SQLTemplates = ({ onTemplateSelect, tables = [] }) => {
                                                     backgroundColor: '#f5f5f5',
                                                     p: 1,
                                                     borderRadius: 1,
-                                                    fontSize: '0.8rem',
+                                                    fontSize: '1rem',
                                                     overflow: 'hidden',
                                                     textOverflow: 'ellipsis',
                                                     whiteSpace: 'nowrap'

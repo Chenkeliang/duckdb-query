@@ -355,7 +355,7 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                                     size="small"
                                     color="primary"
                                     variant="outlined"
-                                    sx={{ mt: 1, fontSize: '0.7rem', height: 20 }}
+                                    sx={{ mt: 1, fontSize: '1rem', height: 20 }}
                                   />
                                 );
                               }
@@ -368,7 +368,7 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                                     label={`${(queryObj.format || '').toUpperCase()} 格式`}
                                     size="small"
                                     variant="outlined"
-                                    sx={{ mt: 1, fontSize: '0.7rem', height: 20 }}
+                                    sx={{ mt: 1, fontSize: '1rem', height: 20 }}
                                   />
                                 );
                               }
@@ -383,7 +383,7 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                                     label={`${(formatMatch[1] || '').toUpperCase()} 格式`}
                                     size="small"
                                     variant="outlined"
-                                    sx={{ mt: 1, fontSize: '0.7rem', height: 20 }}
+                                    sx={{ mt: 1, fontSize: '1rem', height: 20 }}
                                   />
                                 );
                               }
@@ -424,7 +424,7 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                                     size="small"
                                     color="success"
                                     variant="outlined"
-                                    sx={{ fontSize: '0.7rem', height: 20 }}
+                                    sx={{ fontSize: '1rem', height: 20 }}
                                   />
                                 )}
                               </>

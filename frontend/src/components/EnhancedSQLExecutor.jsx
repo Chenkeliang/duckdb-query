@@ -377,7 +377,7 @@ const EnhancedSQLExecutor = ({
                     '& .MuiTab-root': {
                       textTransform: 'none',
                       fontWeight: 500,
-                      fontSize: '0.9rem',
+                      fontSize: '1rem',
                       minHeight: 44,
                       color: isDarkMode ? 'var(--dq-text-tertiary)' : '#6b7280',
                       '&.Mui-selected': {
@@ -404,7 +404,7 @@ const EnhancedSQLExecutor = ({
                     sx={{
                       textTransform: 'none',
                       fontWeight: 500,
-                      fontSize: '0.875rem',
+                      fontSize: '1rem',
                       px: 2.5,
                       py: 0.5,
                       borderRadius: 2,
@@ -428,7 +428,7 @@ const EnhancedSQLExecutor = ({
                     sx={{
                       textTransform: 'none',
                       fontWeight: 500,
-                      fontSize: '0.875rem',
+                      fontSize: '1rem',
                       px: 2.5,
                       py: 0.5,
                       borderRadius: 2,
@@ -452,7 +452,7 @@ const EnhancedSQLExecutor = ({
                     sx={{
                       textTransform: 'none',
                       fontWeight: 500,
-                      fontSize: '0.875rem',
+                      fontSize: '1rem',
                       px: 2.5,
                       py: 0.5,
                       borderRadius: 2,
@@ -644,7 +644,7 @@ const EnhancedSQLExecutor = ({
                           height: '48px',
                           textTransform: 'none',
                           fontWeight: 600,
-                          fontSize: '0.9rem',
+                          fontSize: '1rem',
                           borderRadius: 2,
                           background: isDarkMode
                             ? 'linear-gradient(135deg, rgba(240, 115, 53, 0.95) 0%, rgba(235, 99, 32, 0.98) 100%)'
@@ -679,7 +679,7 @@ const EnhancedSQLExecutor = ({
                           height: '48px',
                           textTransform: 'none',
                           fontWeight: 600,
-                          fontSize: '0.9rem',
+                          fontSize: '1rem',
                           borderRadius: 2,
                           borderColor: isDarkMode ? 'var(--dq-border)' : '#1976d2',
                           color: isDarkMode ? 'var(--dq-text-secondary)' : '#1976d2',

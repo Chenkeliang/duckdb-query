@@ -4,10 +4,12 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
-[![DuckDB](https://img.shields.io/badge/DuckDB-Latest-orange.svg)](https://duckdb.org)
+[![DuckDB](https://img.shields.io/badge/DuckDB-Visual%20Analytics-FFBF00.svg?logo=duckdb&logoColor=white)](https://duckdb.org)
 [![Docker](https://img.shields.io/badge/Docker-Supported-2496ED.svg)](https://docker.com)
+[![Docs](https://img.shields.io/badge/Docs-DuckQuery%20Pages-3b82f6.svg)](https://chenkeliang.github.io/DuckQuery/)
+[![Discussions](https://img.shields.io/badge/Discussions-Welcome-22c55e.svg)](https://github.com/Chenkeliang/duckdb-query/discussions)
 
-**基于DuckDB的现代数据分析平台 • 简化跨源数据关联 • 无需建库无需ETL**
+**基于 DuckDB 的现代数据分析平台 • 简化跨源数据关联 • 无需建库无需 ETL**
 
 [🚀 快速开始](#-快速开始) • [📖 功能特性](#-功能特性) • [⚙️ 配置说明](#️-配置说明) • [🤝 贡献指南](#-贡献指南)
 
@@ -15,10 +17,26 @@
  
 ---
 
+## TL;DR (EN)
+
+- **DuckDB-first analytics**: import Excel/CSV/Parquet, connect MySQL/PostgreSQL, and materialise into DuckDB tables in seconds.  
+- **Dual-mode experience**: visual builder with type-conflict guards + full DuckDB SQL editor (window functions, JSON, PIVOT, etc.).  
+- **Local & secure**: deploy via Docker or source, keep all DuckDB workloads on your own infrastructure.  
+- **Docs & demo**: explore the [DuckQuery product page](https://chenkeliang.github.io/DuckQuery/) and follow the [DuckDB getting started guide](docs/duckdb-getting-started.md).
+
+> 想快速了解？访问 [DuckQuery · DuckDB 可视化分析平台](https://chenkeliang.github.io/DuckQuery/) 浏览单页介绍与应用场景。
+
 ## 🎯 项目简介
 
 Duck Query 是基于 **DuckDB** 构建的现代化数据分析平台，专为简化跨源数据分析而设计。
 告别复杂的ETL流程，通过简单的复制粘贴即可将任意数据快速转换为可分析的数据表，简化数据分析流程。
+
+### 🔍 针对 DuckDB 用户的亮点
+
+- **DuckDB 即插即用**：内置 DuckDB 运行时、扩展加载与资源限制配置，开箱即用。  
+- **跨格式建表**：自动生成列统计与类型画像，便于 DuckDB SQL 进一步建模。  
+- **智能类型守护**：JOIN/透视时自动建议 `TRY_CAST`，减少 DuckDB 报错。  
+- **DuckDB 原生导出**：结果表可落地为 DuckDB 表或导出 Parquet/CSV，方便重用。
 
 ## 🆚 Duck Query vs 传统方案
 
@@ -112,6 +130,7 @@ FROM json_table;
 - 📝 **CodeMirror Editor** - 专业的SQL编辑体验
 - 📊 **结果展示** - 表格和图表可视化
 - 💾 **数据导出** - 支持CSV、Parquet格式
+- 🌐 **产品页** - [DuckQuery · DuckDB Visual Analytics](https://chenkeliang.github.io/DuckQuery/) 提供演示截图与常见问答
 
 ## 🚀 快速开始
 
@@ -141,14 +160,16 @@ docker-compose down
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/Chenkeliang/DuckQuery.git
-cd DuckQuery
+git clone https://github.com/Chenkeliang/duckdb-query.git
+cd duckdb-query
 
 # 2. 一键启动（自动配置+启动）
 ./quick-start.sh
 ```
 
 **💡 提示：** 首次启动前，建议检查 `docker-compose.yml` 中的端口、内存、CPU等配置是否符合你的环境。
+
+> 📘 面向 DuckDB 用户的更详细流程，请阅读 [DuckDB 快速上手指南](docs/duckdb-getting-started.md) 与 [DuckDB 集成手册](docs/duckdb-integration-guide.md)。
 
 **配置调整要点：**
 - **端口冲突**：如果8000或3000端口被占用，修改 `docker-compose.yml` 中的端口映射
@@ -229,15 +250,14 @@ cd DuckQuery
 
 ## 🤝 贡献指南
 
-本项目源于日常工作中的跨源数据关联需求，可能无法覆盖所有使用场景。
-另外代码完全基于AI编写，部分代码有混乱的问题，会尽可能的优化。
+欢迎通过以下方式参与：
 
-如有需要，欢迎：
+- 阅读并遵循 [CONTRIBUTING.md](CONTRIBUTING.md)；
+- 使用 Issue 模板反馈 [Bug](https://github.com/Chenkeliang/duckdb-query/issues/new?template=bug_report.md) / [Feature 请求](https://github.com/Chenkeliang/duckdb-query/issues/new?template=feature_request.md)，记得附上 DuckDB 版本；
+- 发起 Pull Request 前，执行 `pytest` / `npm run lint` 并填好 [PR 模板](.github/PULL_REQUEST_TEMPLATE.md)；
+- 任何想法都可以在 [Discussions](https://github.com/Chenkeliang/duckdb-query/discussions) 中交流。
 
-- 提交 [Issue](https://github.com/Chenkeliang/DuckQuery/issues) 反馈问题或建议
-- 贡献代码完善功能
-
-欢迎各种形式的贡献！
+我们期待更多 DuckDB 场景的反馈与实现。
 
 
 ## 📄 许可证
@@ -258,6 +278,6 @@ cd DuckQuery
 
 **基于DuckDB，让数据分析更简单**
 
-[⭐ Star](https://github.com/Chenkeliang/DuckQuery) • [🍴 Fork](https://github.com/Chenkeliang/DuckQuery/fork) • [📥 Download](https://github.com/Chenkeliang/DuckQuery/releases)
+[⭐ Star](https://github.com/Chenkeliang/duckdb-query) • [🍴 Fork](https://github.com/Chenkeliang/duckdb-query/fork) • [📥 Download](https://github.com/Chenkeliang/duckdb-query/releases)
 
 </div>

@@ -9,7 +9,6 @@ import {
   AccordionSummary,
   Alert,
   Box,
-  Button,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -22,10 +21,8 @@ import {
   ListItem,
   ListItemSecondaryAction,
   ListItemText,
-  Paper,
-  TextField,
   Tooltip,
-  Typography,
+  Typography
 } from "@mui/material";
 import React, { useEffect, useState } from "react";
 import { useToast } from "../../contexts/ToastContext";
@@ -34,6 +31,7 @@ import {
   getPostgreSQLConfigs,
   savePostgreSQLConfig,
 } from "../../services/apiClient";
+import { CardSurface, RoundedButton, RoundedTextField } from "../common";
 
 const PostgreSQLConnector = ({ onConnect }) => {
   const { showSuccess, showError } = useToast();
@@ -276,7 +274,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
         <Fade in={!!error}>
           <Alert
             severity="error"
-            sx={{ mb: 2, borderRadius: 2 }}
+            sx={{ mb: 2, borderRadius: "var(--dq-radius-card)" }}
             onClose={() => setError("")}
           >
             {error}
@@ -286,7 +284,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
 
       {success && (
         <Fade in={success}>
-          <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
+          <Alert severity="success" sx={{ mb: 2, borderRadius: "var(--dq-radius-card)" }}>
             数据库连接成功
           </Alert>
         </Fade>
@@ -296,7 +294,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
         <Fade in={!!connectionTestResult}>
           <Alert
             severity={connectionTestResult.success ? "success" : "error"}
-            sx={{ mb: 2, borderRadius: 2 }}
+            sx={{ mb: 2, borderRadius: "var(--dq-radius-card)" }}
             onClose={() => setConnectionTestResult(null)}
           >
             {connectionTestResult.message}
@@ -310,37 +308,38 @@ const PostgreSQLConnector = ({ onConnect }) => {
         disableGutters
         elevation={0}
         sx={{
-          border: "1px solid rgba(0, 0, 0, 0.1)",
-          borderRadius: "8px",
+          border: "1px solid var(--dq-border-card)",
+          borderRadius: "var(--dq-radius-card)",
+          backgroundColor: "var(--dq-surface)",
           mb: 2,
           "&:before": { display: "none" },
           overflow: "hidden",
+          boxShadow: expanded ? "var(--dq-shadow-soft)" : "none",
+          transition: "box-shadow 0.2s ease, border-color 0.2s ease",
         }}
       >
         <AccordionSummary
           expandIcon={<ExpandMoreIcon />}
           sx={{
-            backgroundColor: "#ffffff",
-            borderBottom: expanded ? "1px solid rgba(0, 0, 0, 0.1)" : "none",
+            backgroundColor: "var(--dq-surface)",
+            borderBottom: expanded ? "1px solid var(--dq-border-subtle)" : "none",
             minHeight: "48px",
             "& .MuiAccordionSummary-content": { my: 0 },
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center" }}>
             <FolderOpenIcon
-              sx={{ mr: 1, fontSize: "1.2rem", color: "#1976d2" }}
+              sx={{ mr: 1, fontSize: "1.2rem", color: "var(--dq-accent-primary)" }}
             />
-            <Typography sx={{ fontWeight: 500, fontSize: "0.9rem" }}>
+            <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--dq-text-secondary)" }}>
               PostgreSQL数据库连接
             </Typography>
           </Box>
         </AccordionSummary>
 
-        <AccordionDetails sx={{ p: 2, pt: 2.5 }}>
-          <TextField
+        <AccordionDetails sx={{ p: 3, backgroundColor: "var(--dq-surface)" }}>
+          <RoundedTextField
             label="主机地址"
-            variant="outlined"
-            size="small"
             value={host}
             onChange={(e) => setHost(e.target.value)}
             fullWidth
@@ -348,10 +347,8 @@ const PostgreSQLConnector = ({ onConnect }) => {
             placeholder="localhost"
           />
 
-          <TextField
+          <RoundedTextField
             label="端口"
-            variant="outlined"
-            size="small"
             type="number"
             value={port}
             onChange={(e) => setPort(e.target.value)}
@@ -360,10 +357,8 @@ const PostgreSQLConnector = ({ onConnect }) => {
             placeholder="5432"
           />
 
-          <TextField
+          <RoundedTextField
             label="用户名"
-            variant="outlined"
-            size="small"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             fullWidth
@@ -371,10 +366,8 @@ const PostgreSQLConnector = ({ onConnect }) => {
             placeholder="postgres"
           />
 
-          <TextField
+          <RoundedTextField
             label="密码"
-            variant="outlined"
-            size="small"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -382,34 +375,28 @@ const PostgreSQLConnector = ({ onConnect }) => {
             sx={{ mb: 1.5 }}
           />
 
-          <TextField
+          <RoundedTextField
             label="数据库名称"
-            variant="outlined"
-            size="small"
             value={database}
             onChange={(e) => setDatabase(e.target.value)}
             fullWidth
             sx={{ mb: 1.5 }}
             placeholder="postgres"
-            helperText="连接到的PostgreSQL数据库名称（如：postgres）"
+            helperText="连接到的 PostgreSQL 数据库名称（如：postgres）"
           />
 
-          <TextField
-            label="Schema架构"
-            variant="outlined"
-            size="small"
+          <RoundedTextField
+            label="Schema 架构"
             value={schema}
             onChange={(e) => setSchema(e.target.value)}
             fullWidth
             sx={{ mb: 1.5 }}
             placeholder="public"
-            helperText="数据库中的schema名称（如：public）。如果无法获取表，请尝试：public"
+            helperText="数据库中的 schema 名称（如：public）。如果无法获取表，请尝试 public"
           />
 
-          <TextField
+          <RoundedTextField
             label="连接别名（可选）"
-            variant="outlined"
-            size="small"
             value={alias}
             onChange={(e) => setAlias(e.target.value)}
             fullWidth
@@ -418,75 +405,52 @@ const PostgreSQLConnector = ({ onConnect }) => {
           />
 
           <Box sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
-            <Button
+            <RoundedButton
               variant="outlined"
-              startIcon={
-                testingConnection ? <CircularProgress size={16} /> : null
-              }
+              startIcon={testingConnection ? <CircularProgress size={16} /> : null}
               onClick={handleTestConnection}
               disabled={testingConnection}
-              sx={{
-                borderRadius: "20px",
-                minWidth: "120px",
-                py: 0.75,
-                textTransform: "none",
-                fontWeight: 500,
-                fontSize: "0.875rem",
-              }}
+              sx={{ minWidth: 120 }}
             >
               {testingConnection ? "测试中..." : "测试连接"}
-            </Button>
+            </RoundedButton>
 
-            <Button
-              variant="contained"
-              startIcon={loading ? <CircularProgress size={16} /> : null}
-              onClick={handleConnect}
-              disabled={loading}
-              sx={{
-                borderRadius: "20px",
-                minWidth: "120px",
-                py: 0.75,
-                textTransform: "none",
-                fontWeight: 500,
-                fontSize: "0.875rem",
-              }}
-            >
-              {loading ? "连接中..." : "连接数据库"}
-            </Button>
+          <RoundedButton
+            startIcon={loading ? <CircularProgress size={16} /> : null}
+            onClick={handleConnect}
+            disabled={loading}
+            sx={{ minWidth: 120 }}
+          >
+            {loading ? "连接中..." : "连接数据库"}
+          </RoundedButton>
           </Box>
 
           <Box sx={{ mt: 2, display: "flex", justifyContent: "center" }}>
-            <Button
+            <RoundedButton
+              variant="outlined"
               startIcon={<SaveIcon />}
               onClick={() => setShowSaveConfig(true)}
-              sx={{ textTransform: "none", fontSize: "0.875rem" }}
+              size="small"
             >
               保存此配置
-            </Button>
+            </RoundedButton>
           </Box>
         </AccordionDetails>
       </Accordion>
 
       {/* 已保存的配置列表 */}
-      <Paper
-        variant="outlined"
-        sx={{
-          borderRadius: 2,
-          border: "1px solid #e2e8f0",
-          mb: 2,
-        }}
-      >
-        <Box sx={{ p: 2, borderBottom: "1px solid #e2e8f0" }}>
+      <CardSurface padding={0} sx={{ borderColor: "var(--dq-border-card)", borderRadius: "var(--dq-radius-card)", mb: 2 }}>
+        <Box sx={{ p: 2.5, borderBottom: "1px solid var(--dq-border-subtle)", display: "flex", alignItems: "center", gap: 1 }}>
+          <ListIcon fontSize="small" sx={{ color: "var(--dq-accent-primary)" }} />
           <Typography
             variant="subtitle2"
-            sx={{ display: "flex", alignItems: "center", gap: 1 }}
+            sx={{ fontWeight: 600, color: "var(--dq-text-secondary)" }}
           >
-            <ListIcon fontSize="small" />
             已保存的PostgreSQL配置
           </Typography>
         </Box>
 
-        <List sx={{ p: 0, maxHeight: 200, overflow: "auto" }}>
+        <List sx={{ p: 0, maxHeight: 220, overflow: "auto" }}>
           {postgreSQLConfigs.length > 0 ? (
             postgreSQLConfigs.map((config) => (
               <React.Fragment key={config.id}>
@@ -494,7 +458,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
                   sx={{
                     py: 1,
                     "&:hover": {
-                      backgroundColor: "rgba(25, 118, 210, 0.04)",
+                      backgroundColor: "color-mix(in oklab, var(--dq-accent-primary) 8%, transparent)",
                     },
                   }}
                 >
@@ -505,7 +469,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
                       </Typography>
                     }
                     secondary={
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{ color: "var(--dq-text-tertiary)" }}>
                         {config.params?.host}:{config.params?.port || "5432"}/
                         {config.params?.database}
                         {config.params?.schema &&
@@ -545,7 +509,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
                 primary={
                   <Typography
                     variant="body2"
-                    color="text.secondary"
+                    sx={{ color: "var(--dq-text-tertiary)" }}
                     align="center"
                   >
                     暂无保存的配置
@@ -555,7 +519,7 @@ const PostgreSQLConnector = ({ onConnect }) => {
             </ListItem>
           )}
         </List>
-      </Paper>
+      </CardSurface>
 
       {/* 保存配置对话框 */}
       <Dialog
@@ -566,39 +530,38 @@ const PostgreSQLConnector = ({ onConnect }) => {
       >
         <DialogTitle>保存PostgreSQL配置</DialogTitle>
         <DialogContent>
-          <TextField
+          <RoundedTextField
             autoFocus
             margin="dense"
             label="配置名称"
             fullWidth
-            variant="outlined"
             value={configName}
             onChange={(e) => setConfigName(e.target.value)}
             placeholder="例如: 生产环境PostgreSQL"
           />
           {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
+            <Alert severity="error" sx={{ mt: 2, borderRadius: "var(--dq-radius-card)" }}>
               {error}
             </Alert>
           )}
         </DialogContent>
         <DialogActions>
-          <Button
+          <RoundedButton
+            variant="outlined"
             onClick={() => setShowSaveConfig(false)}
             disabled={savingConfig}
           >
             取消
-          </Button>
-          <Button
+          </RoundedButton>
+          <RoundedButton
             onClick={handleSavePostgreSQLConfig}
-            variant="contained"
             disabled={savingConfig || !configName.trim()}
             startIcon={
               savingConfig ? <CircularProgress size={16} /> : <SaveIcon />
             }
           >
             {savingConfig ? "保存中..." : "保存"}
-          </Button>
+          </RoundedButton>
         </DialogActions>
       </Dialog>
     </Box>

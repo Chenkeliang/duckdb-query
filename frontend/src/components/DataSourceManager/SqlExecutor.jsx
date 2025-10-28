@@ -339,7 +339,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
             sx={{
               mb: 2,
               borderRadius: 2,
-              fontSize: '0.875rem'
+              fontSize: '1rem'
             }}
             onClose={() => setError('')}
           >
@@ -355,7 +355,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
             sx={{
               mb: 2,
               borderRadius: 2,
-              fontSize: '0.875rem'
+              fontSize: '1rem'
             }}
           >
             SQL查询执行成功
@@ -389,7 +389,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
         >
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <Code size={20} style={{ marginRight: '8px', color: isDarkMode ? 'var(--dq-accent-100)' : '#1976d2' }} />
-            <Typography sx={{ fontWeight: 500, fontSize: '0.9rem', color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
+            <Typography sx={{ fontWeight: 500, fontSize: '1rem', color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
               SQL查询执行器 - {selectedDataSource ? databaseConnections.find(ds => ds.id === selectedDataSource)?.name || selectedDataSource : '请选择数据库连接'}
             </Typography>
           </Box>
@@ -482,7 +482,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                 sx={{
                   textTransform: 'none',
                   fontWeight: 500,
-                  fontSize: '0.875rem',
+                  fontSize: '1rem',
                   px: 2.5,
                   py: 0.5,
                   borderRadius: 2,
@@ -506,7 +506,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                 sx={{
                   textTransform: 'none',
                   fontWeight: 500,
-                  fontSize: '0.875rem',
+                  fontSize: '1rem',
                   px: 2.5,
                   py: 0.5,
                   borderRadius: 2,
@@ -530,7 +530,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                 sx={{
                   textTransform: 'none',
                   fontWeight: 500,
-                  fontSize: '0.875rem',
+                  fontSize: '1rem',
                   px: 2.5,
                   py: 0.5,
                   borderRadius: 2,
@@ -642,7 +642,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                 py: 0.75,
                 textTransform: 'none',
                 fontWeight: 500,
-                fontSize: '0.875rem',
+                fontSize: '1rem',
                 background: isDarkMode
                   ? 'linear-gradient(135deg, rgba(240, 115, 53, 0.95) 0%, rgba(235, 99, 32, 0.98) 100%)'
                   : undefined,
@@ -670,7 +670,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   py: 0.75,
                   textTransform: 'none',
                   fontWeight: 500,
-                  fontSize: '0.875rem',
+                  fontSize: '1rem',
                   borderColor: isDarkMode ? 'var(--dq-border)' : undefined,
                   color: isDarkMode ? 'var(--dq-text-secondary)' : undefined,
                   backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
@@ -703,7 +703,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                             sx={{
                               fontWeight: 'bold',
                               backgroundColor: '#f5f5f5',
-                              fontSize: '0.85rem'
+                              fontSize: '1rem'
                             }}
                           >
                             {column}
@@ -719,7 +719,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                             {results.columns.map((column, colIndex) => (
                               <TableCell
                                 key={colIndex}
-                                sx={{ fontSize: '0.85rem' }}
+                                sx={{ fontSize: '1rem' }}
                               >
                                 {row[column] !== null && row[column] !== undefined
                                   ? String(row[column])

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Duck Query - 新用户快速开始脚本
-# 自动设置配置文件并启动服务
+# DuckQuery · DuckDB 可视化分析快速开始脚本
+# 自动设置 DuckDB 后端配置并启动全栈服务
 
 set -e
 
@@ -42,7 +42,7 @@ check_docker() {
         exit 1
     fi
     
-    print_success "Docker 环境检查通过"
+    print_success "Docker 环境检查通过，已准备好运行 DuckDB 引擎"
 }
 
 # 检查并修复权限
@@ -185,7 +185,7 @@ EOF
 
 # 启动服务
 start_services() {
-    print_info "启动 Duck Query 服务..."
+    print_info "启动 DuckQuery · DuckDB 可视化服务..."
     
     # 停止现有服务
     docker-compose down 2>/dev/null || true
@@ -199,25 +199,27 @@ start_services() {
     # 等待服务就绪
     sleep 10
     
-    print_success "🎉 Duck Query 启动成功！"
-    print_info "前端界面: http://localhost:3000"
-    print_info "API文档: http://localhost:8000/docs"
+    print_success "🎉 DuckQuery + DuckDB 启动成功！"
+    print_info "前端界面（DuckDB 可视化分析）: http://localhost:3000"
+    print_info "API 文档 (FastAPI + DuckDB 数据服务): http://localhost:8000/docs"
     print_info ""
     print_info "提示："
-    print_info "- 首次使用建议查看 API 文档了解功能"
-    print_info "- 可以在前端界面直接拖拽文件进行分析"
-    print_info "- 支持 CSV、Excel、Parquet 等多种格式"
-    print_info "- 如需调整配置，请编辑 docker-compose.yml 文件"
+    print_info "- 推荐先阅读 DuckDB 快速上手: docs/duckdb-getting-started.md"
+    print_info "- 在前端可拖拽 Excel/CSV/Parquet，自动建 DuckDB 表"
+    print_info "- DuckQuery 支持剪贴板、远程文件、多库连接的 DuckDB 分析"
+    print_info "- 调整资源/端口可编辑 docker-compose.yml 或 config/app-config.json"
     print_info ""
     print_info "如果遇到权限问题："
     print_info "- 检查目录权限: ls -la data/ temp_files/ exports/"
     print_info "- 修复权限: chmod 755 data/ temp_files/ exports/"
     print_info "- 或使用: sudo chown -R \$USER:\$USER data/ temp_files/ exports/"
+    print_info ""
+    print_info "更多示例与截图: https://chenkeliang.github.io/DuckQuery/"
 }
 
 # 主函数
 main() {
-    echo "🦆 Duck Query - 新用户快速开始"
+    echo "🦆 DuckQuery · DuckDB Visual Analytics - Quick Start"
     echo "=================================="
     
     check_docker

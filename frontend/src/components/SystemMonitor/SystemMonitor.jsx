@@ -273,7 +273,7 @@ const SystemMonitor = () => {
                                                     <p className="text-sm text-muted-foreground mt-1">
                                                         {error.message}
                                                     </p>
-                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                    <p className="text-sm text-muted-foreground mt-1">
                                                         {new Date(error.timestamp).toLocaleString()}
                                                     </p>
                                                 </AlertDescription>

@@ -1,8 +1,17 @@
 {
-  "name": "frontend",
+  "name": "duckquery-frontend",
+  "description": "DuckQuery · DuckDB visual analytics SPA frontend",
+  "homepage": "https://chenkeliang.github.io/DuckQuery/",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "keywords": [
+    "duckquery",
+    "duckdb",
+    "visual-analytics",
+    "sql-editor",
+    "data-visualization"
+  ],
   "scripts": {
     "dev": "vite",
     "start": "vite",

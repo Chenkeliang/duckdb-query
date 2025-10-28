@@ -72,12 +72,25 @@ class DatabaseManager:
                     )
                     continue
 
+                status_str = conn_data.get("status")
+                try:
+                    saved_status = (
+                        ConnectionStatus(status_str)
+                        if status_str
+                        else ConnectionStatus.INACTIVE
+                    )
+                except ValueError:
+                    saved_status = ConnectionStatus.INACTIVE
+
                 connection = DatabaseConnection(
                     id=conn_data["id"],
                     name=conn_data.get("name", conn_data["id"]),
                     type=conn_type,
                     params=conn_data.get("params", {}),
-                    status=ConnectionStatus.INACTIVE,
+                    status=saved_status,
+                    created_at=conn_data.get("created_at"),
+                    updated_at=conn_data.get("updated_at"),
+                    last_tested=conn_data.get("last_tested"),
                 )
                 # 加载配置时不测试连接，提升启动速度
                 self.add_connection(connection, test_connection=False)
@@ -113,7 +126,6 @@ class DatabaseManager:
                     )
             else:
                 # 不测试连接，直接添加配置
-                connection.status = ConnectionStatus.INACTIVE
                 logger.info(f"添加数据库连接配置（未测试）: {connection.id}")
 
             # 无论测试是否成功，都添加到连接列表

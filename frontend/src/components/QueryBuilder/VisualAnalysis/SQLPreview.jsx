@@ -169,7 +169,7 @@ const SQLPreview = ({
 
       {/* SQL Statistics */}
       {sqlMetadata && (
-        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
           <div className="bg-gray-50 p-2 rounded text-center">
             <div className="font-medium text-gray-800">
               {sqlMetadata.hasColumns ? '✓' : '○'}
@@ -201,7 +201,7 @@ const SQLPreview = ({
       )}
 
       {/* Performance Hints */}
-      <div className="mt-3 text-xs text-gray-600">
+      <div className="mt-3 text-sm text-gray-600">
         <div className="flex items-center space-x-4">
           <Lightbulb size={16} style={{ marginRight: '8px' }} />
           提示:

@@ -6,9 +6,6 @@ import {
 import {
   Alert,
   Box,
-  Button,
-  Card,
-  CardContent,
   Chip,
   CircularProgress,
   Divider,
@@ -17,7 +14,6 @@ import {
   Switch,
   Tab,
   Tabs,
-  TextField,
   Tooltip,
   Typography
 } from '@mui/material';
@@ -25,6 +21,13 @@ import { Lightbulb, Upload } from 'lucide-react';
 import React, { useRef, useState } from 'react';
 import { readFromUrl, uploadFile } from '../../services/apiClient';
 import ChunkedUploader from '../ChunkedUpload/ChunkedUploader';
+import ExcelSheetSelector from './ExcelSheetSelector';
+import {
+  CardSurface,
+  RoundedButton,
+  RoundedTextField,
+  SectionHeader
+} from '../common';
 
 const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   const [activeTab, setActiveTab] = useState(0);
@@ -46,6 +49,8 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
   // 添加成功消息状态管理
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [pendingExcel, setPendingExcel] = useState(null);
+  const [excelDialogOpen, setExcelDialogOpen] = useState(false);
 
   // 文件大小阈值（50MB）
   const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024;
@@ -106,6 +111,31 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
     }
   };
 
+  const handleExcelPending = (pending) => {
+    if (!pending) return;
+    setPendingExcel(pending);
+    setExcelDialogOpen(true);
+  };
+
+  const handleExcelSelectorClose = () => {
+    setExcelDialogOpen(false);
+    setPendingExcel(null);
+  };
+
+  const handleExcelImportComplete = (result) => {
+    const items = result?.results || [];
+    items.forEach(item => {
+      onDataSourceSaved?.({
+        id: item.target_table,
+        type: 'duckdb',
+        name: `DuckDB表: ${item.target_table}`,
+        row_count: item.row_count,
+        columns: item.columns || []
+      });
+    });
+    handleExcelSelectorClose();
+  };
+
   // 处理标准上传
   const handleStandardUpload = async () => {
     if (!selectedFile) {
@@ -127,6 +157,16 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
     try {
       const response = await uploadFile(selectedFile, tableAlias);
+
+      if (response?.pending_excel) {
+        showNotification('Excel 文件上传成功，请选择需要导入的工作表', 'info');
+        handleExcelPending({
+          ...response.pending_excel,
+          file_id: response.pending_excel.file_id
+        });
+        handleReset();
+        return;
+      }
 
       if (response.success) {
         showNotification(`文件上传成功，已创建表: ${response.file_id}`, 'success');
@@ -236,6 +276,17 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
   // 分块上传完成回调
   const handleChunkedUploadComplete = async (result) => {
+    if (result?.pending_excel) {
+      showNotification('Excel 文件上传成功，请选择需要导入的工作表', 'info');
+      handleExcelPending({
+        ...result.pending_excel,
+        file_id: result.pending_excel.file_id
+      });
+      setShowSuccessMessage(false);
+      setError('');
+      handleReset();
+      return;
+    }
 
     if (result && result.fileInfo) {
       try {
@@ -258,9 +309,10 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
           });
         }
 
+        handleReset();
+
         // 延迟清空输入，让用户看到成功消息
         setTimeout(() => {
-          handleReset();
           setShowSuccessMessage(false);
         }, 3000);
 
@@ -280,11 +332,11 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   return (
     <Box>
       {error && !showSuccessMessage && (
-        <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+        <Alert severity="error" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>{error}</Alert>
       )}
 
       {showSuccessMessage && (
-        <Alert severity="success" sx={{ mb: 2 }}>
+        <Alert severity="success" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
           文件上传成功！
         </Alert>
       )}
@@ -294,27 +346,21 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
         onChange={(e, newValue) => setActiveTab(newValue)}
         sx={{ mb: 2 }}
       >
-        <Tab label="本地文件上传" />
-        <Tab label="远程文件导入" />
+        <Tab label="本地文件上传" sx={{ fontSize: '16px', fontWeight: 600, textTransform: 'none' }} />
+        <Tab label="远程文件导入" sx={{ fontSize: '16px', fontWeight: 600, textTransform: 'none' }} />
       </Tabs>
 
       {/* 本地文件上传 */}
       {activeTab === 0 && (
-        <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <Upload size={20} style={{ marginRight: '8px', color: '#1976d2' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                智能文件上传
-              </Typography>
-            </Box>
-
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              支持CSV、Excel、Parquet、JSON文件上传，自动选择最佳上传方式
-            </Typography>
+        <CardSurface padding={3} elevation sx={{ borderColor: 'var(--dq-border-card)', borderRadius: 'var(--dq-radius-card)' }}>
+          <SectionHeader
+            title="智能文件上传"
+            subtitle="支持 CSV、Excel、Parquet、JSON 文件上传，自动选择最佳上传方式"
+            icon={<Upload size={18} color="var(--dq-accent-primary)" />}
+          />
 
             {/* 上传方式选择 - 在文件选择之前 */}
-            <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+            <Box sx={{ mb: 3, p: 2, backgroundColor: 'var(--dq-surface)', borderRadius: 'var(--dq-radius-card)', border: '1px solid var(--dq-border-subtle)' }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -325,7 +371,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 }
                 label="使用分块上传"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+              <Typography variant="caption" sx={{ ml: 2, color: 'var(--dq-text-tertiary)' }}>
                 {useChunkedUpload ? "已启用分块上传（支持大文件和断点续传）" : "已启用标准上传（适合小文件）"}
               </Typography>
             </Box>
@@ -351,30 +397,33 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
                   sx={{
-                    border: `2px dashed ${isDragOver ? '#1976d2' : '#ccc'}`,
-                    borderRadius: 2,
+                    border: '2px dashed',
+                    borderColor: isDragOver ? 'var(--dq-accent-primary)' : 'var(--dq-border-subtle)',
+                    borderRadius: 'var(--dq-radius-card)',
                     p: 4,
                     textAlign: 'center',
-                    backgroundColor: isDragOver ? 'rgba(25, 118, 210, 0.04)' : 'transparent',
-                    transition: 'all 0.3s ease',
+                    backgroundColor: isDragOver
+                      ? 'var(--dq-surface-hover)'
+                      : 'transparent',
+                    transition: 'background-color 0.2s ease, border-color 0.2s ease',
                     cursor: 'pointer',
                     '&:hover': {
-                      borderColor: '#1976d2',
-                      backgroundColor: 'rgba(25, 118, 210, 0.04)',
+                      borderColor: 'var(--dq-accent-primary)',
+                      backgroundColor: 'var(--dq-surface-hover)'
                     }
                   }}
                 >
                   <Upload
                     sx={{
                       fontSize: 48,
-                      color: isDragOver ? '#1976d2' : '#999',
+                      color: isDragOver ? 'var(--dq-accent-primary)' : 'var(--dq-text-tertiary)',
                       mb: 2
                     }}
                   />
-                  <Typography variant="h6" sx={{ mb: 1, color: isDragOver ? '#1976d2' : 'text.primary' }}>
+                  <Typography variant="h6" sx={{ mb: 1, color: isDragOver ? 'var(--dq-accent-primary)' : 'var(--dq-text-primary)' }}>
                     拖放文件到此处
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{ color: 'var(--dq-text-tertiary)' }}>
                     或点击选择文件
                   </Typography>
                 </Box>
@@ -385,13 +434,13 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 {selectedFile ? (
                   <>
                     {/* 文件信息显示 */}
-                    <Alert severity="info" sx={{ mb: 2 }}>
+                    <Alert severity="info" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Box>
                           <Typography variant="body2" sx={{ fontWeight: 500 }}>
                             已选择文件: {selectedFile.name}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>
                             大小: {formatFileSize(selectedFile.size)}
                           </Typography>
                         </Box>
@@ -402,7 +451,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                     </Alert>
 
                     {/* 表别名输入 */}
-                    <TextField
+                    <RoundedTextField
                       label="表别名（可选）"
                       value={tableAlias}
                       onChange={(e) => setTableAlias(e.target.value)}
@@ -423,32 +472,28 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                     />
                   </>
                 ) : (
-                  <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
-                    <CardContent>
-                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                        请先选择文件
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                        请先选择要上传的文件，然后开始分块上传
-                      </Typography>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".csv,.xlsx,.xls,.json,.parquet,.pq"
-                        onChange={handleFileSelect}
-                        style={{ display: 'none' }}
-                        id="file-upload"
-                      />
-                      <Button
-                        variant="contained"
-                        startIcon={<Upload size={20} />}
-                        onClick={() => fileInputRef.current?.click()}
-                        sx={{ borderRadius: 20 }}
-                      >
-                        选择文件
-                      </Button>
-                    </CardContent>
-                  </Card>
+                  <CardSurface padding={3} sx={{ borderColor: 'var(--dq-border-subtle)', textAlign: 'center' }}>
+                    <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                      请先选择文件
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'var(--dq-text-tertiary)', mb: 3 }}>
+                      选择要上传的文件后即可开始分块上传
+                    </Typography>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls,.json,.parquet,.pq"
+                      onChange={handleFileSelect}
+                      style={{ display: 'none' }}
+                      id="file-upload"
+                    />
+                    <RoundedButton
+                      startIcon={<Upload size={20} />}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      选择文件
+                    </RoundedButton>
+                  </CardSurface>
                 )}
               </Box>
             )}
@@ -456,13 +501,13 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
             {/* 文件信息显示和标准上传按钮 */}
             {selectedFile && !useChunkedUpload && (
               <Box sx={{ mb: 3 }}>
-                <Alert severity="info" sx={{ mb: 2 }}>
+                <Alert severity="info" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Box>
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>
                         已选择文件: {selectedFile.name}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>
                         大小: {formatFileSize(selectedFile.size)}
                       </Typography>
                     </Box>
@@ -473,7 +518,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 </Alert>
 
                 {/* 表别名输入 */}
-                <TextField
+                <RoundedTextField
                   label="表别名（可选）"
                   value={tableAlias}
                   onChange={(e) => setTableAlias(e.target.value)}
@@ -504,21 +549,20 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 <Divider sx={{ mb: 2 }} />
 
                 {/* 标准上传按钮 */}
-                <Button
-                  variant="contained"
+                <RoundedButton
                   fullWidth
                   onClick={handleStandardUpload}
                   sx={{ py: 1.5 }}
                   disabled={isUploading || !selectedFile}
                 >
                   {isUploading ? <CircularProgress size={24} color="inherit" /> : '开始上传'}
-                </Button>
+                </RoundedButton>
               </Box>
             )}
 
             {/* 功能说明 */}
-            <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-              <Typography variant="caption" color="text.secondary">
+            <Box sx={{ mt: 3, p: 2, backgroundColor: 'var(--dq-surface-alt)', borderRadius: 'var(--dq-radius-card)', border: '1px solid var(--dq-border-subtle)' }}>
+              <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
                 <Lightbulb size={16} style={{ marginRight: '8px' }} />
                 <strong>智能上传提示：</strong><br />
                 • 标准上传：适合小于50MB的小文件，上传速度快<br />
@@ -526,22 +570,19 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 • 支持格式：CSV, Excel (xls/xlsx), Parquet, JSON
               </Typography>
             </Box>
-          </CardContent>
-        </Card>
+        </CardSurface>
       )}
 
       {/* 远程文件导入 */}
       {activeTab === 1 && (
-        <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <LinkIcon sx={{ mr: 1, color: 'primary.main' }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                远程文件导入
-              </Typography>
-            </Box>
+        <CardSurface padding={3} elevation sx={{ borderColor: 'var(--dq-border-card)', borderRadius: 'var(--dq-radius-card)' }}>
+          <SectionHeader
+            title="远程文件导入"
+            subtitle="支持从公共 URL 或 GitHub 仓库读取常见文件格式"
+            icon={<LinkIcon sx={{ color: 'var(--dq-accent-primary)' }} />}
+          />
 
-            <TextField
+            <RoundedTextField
               label="文件URL"
               value={fileUrl}
               onChange={(e) => setFileUrl(e.target.value)}
@@ -551,8 +592,8 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
               disabled={loading}
             />
 
-            <Box sx={{ mb: 2, p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
-              <Typography variant="caption" color="text.secondary">
+            <Box sx={{ mb: 2, p: 1.5, backgroundColor: 'var(--dq-surface)', borderRadius: 'var(--dq-radius-card)', border: '1px solid var(--dq-border-subtle)' }}>
+              <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
                 <Lightbulb size={16} style={{ marginRight: '8px' }} />
                 <strong>支持的URL格式：</strong><br />
                 • 直接文件链接：https://example.com/data.csv<br />
@@ -561,7 +602,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
               </Typography>
             </Box>
 
-            <TextField
+            <RoundedTextField
               label="表别名"
               value={tableAlias}
               onChange={(e) => setTableAlias(e.target.value)}
@@ -571,8 +612,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
               disabled={loading}
             />
 
-            <Button
-              variant="contained"
+            <RoundedButton
               disabled={loading || !fileUrl || !tableAlias}
               startIcon={<LinkIcon />}
               fullWidth
@@ -580,11 +620,11 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
               sx={{ py: 1.5 }}
             >
               {loading ? <CircularProgress size={24} color="inherit" /> : '读取远程文件'}
-            </Button>
+            </RoundedButton>
 
             {/* 功能说明 */}
-            <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-              <Typography variant="caption" color="text.secondary">
+            <Box sx={{ mt: 3, p: 2, backgroundColor: 'var(--dq-surface)', borderRadius: 'var(--dq-radius-card)', border: '1px solid var(--dq-border-subtle)' }}>
+              <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
                 <Lightbulb size={16} style={{ marginRight: '8px' }} />
                 <strong>远程文件导入提示：</strong><br />
                 • 支持从公共URL导入文件<br />
@@ -592,9 +632,16 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 • 导入的文件将直接创建为DuckDB表
               </Typography>
             </Box>
-          </CardContent>
-        </Card>
+        </CardSurface>
       )}
+
+      <ExcelSheetSelector
+        open={excelDialogOpen}
+        pendingInfo={pendingExcel}
+        onClose={handleExcelSelectorClose}
+        onImported={handleExcelImportComplete}
+        showNotification={showNotification}
+      />
     </Box>
   );
 };

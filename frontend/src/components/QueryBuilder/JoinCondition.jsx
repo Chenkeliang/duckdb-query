@@ -131,7 +131,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                 borderColor: 'primary.main',
               },
-              fontSize: '0.875rem'
+              fontSize: '1rem'
             }}
           >
             {JOIN_TYPES.map((type) => (
@@ -170,7 +170,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               justifyContent: 'center',
               color: '#007aff',
               fontWeight: 'bold',
-              fontSize: '0.75rem'
+              fontSize: '1rem'
             }}>
               L
             </Box>
@@ -179,7 +179,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               sx={{
                 fontWeight: 500,
                 color: 'text.primary',
-                fontSize: '0.875rem'
+                fontSize: '1rem'
               }}
             >
               左表
@@ -312,7 +312,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               justifyContent: 'center',
               color: '#5856d6',
               fontWeight: 'bold',
-              fontSize: '0.75rem'
+              fontSize: '1rem'
             }}>
               R
             </Box>
@@ -321,7 +321,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               sx={{
                 fontWeight: 500,
                 color: 'text.primary',
-                fontSize: '0.875rem'
+                fontSize: '1rem'
               }}
             >
               右表

@@ -1,17 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Button, 
-  TextField, 
-  Typography, 
-  FormControl,
-  Select, 
-  MenuItem, 
-  Paper, 
-  Alert, 
+import {
+  Box,
+  Typography,
+  Alert,
   Fade,
   CircularProgress,
-  InputLabel,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -26,8 +19,6 @@ import {
   ListItemSecondaryAction,
   Divider,
   Tooltip,
-  Switch,
-  FormControlLabel,
   Tabs,
   Tab
 } from '@mui/material';
@@ -39,6 +30,7 @@ import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { getMySQLConfigs, saveMySQLConfig, deleteMySQLConfig, getPostgreSQLConfigs, savePostgreSQLConfig, deletePostgreSQLConfig } from '../../services/apiClient';
 import { useToast } from '../../contexts/ToastContext';
 import PostgreSQLConnector from '../PostgreSQLManager/PostgreSQLConnector';
+import { CardSurface, RoundedButton, RoundedTextField } from '../common';
 
 const DB_TYPES = [
   { value: 'mysql', label: 'MySQL' },
@@ -57,8 +49,8 @@ const DatabaseConnector = ({ onConnect }) => {
         variant="fullWidth"
         sx={{ mb: 2 }}
       >
-        <Tab label="MySQL" />
-        <Tab label="PostgreSQL" />
+        <Tab label="MySQL" sx={{ fontSize: '16px', fontWeight: 600, textTransform: 'none' }} />
+        <Tab label="PostgreSQL" sx={{ fontSize: '16px', fontWeight: 600, textTransform: 'none' }} />
       </Tabs>
 
       {activeTab === 0 && (
@@ -305,7 +297,7 @@ const MySQLConnector = ({ onConnect }) => {
         <Fade in={!!error}>
           <Alert 
             severity="error" 
-            sx={{ mb: 2, borderRadius: 2 }}
+            sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}
             onClose={() => setError('')}
           >
             {error}
@@ -317,7 +309,7 @@ const MySQLConnector = ({ onConnect }) => {
         <Fade in={success}>
           <Alert 
             severity="success" 
-            sx={{ mb: 2, borderRadius: 2 }}
+            sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}
           >
             数据库连接成功
           </Alert>
@@ -328,7 +320,7 @@ const MySQLConnector = ({ onConnect }) => {
         <Fade in={!!connectionTestResult}>
           <Alert 
             severity={connectionTestResult.success ? "success" : "error"} 
-            sx={{ mb: 2, borderRadius: 2 }}
+            sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}
             onClose={() => setConnectionTestResult(null)}
           >
             {connectionTestResult.message}
@@ -342,35 +334,36 @@ const MySQLConnector = ({ onConnect }) => {
         disableGutters
         elevation={0}
         sx={{ 
-          border: '1px solid rgba(0, 0, 0, 0.1)',
-          borderRadius: '8px',
+          border: '1px solid var(--dq-border-card)',
+          borderRadius: 'var(--dq-radius-card)',
+          backgroundColor: 'var(--dq-surface)',
           mb: 2,
           '&:before': { display: 'none' },
-          overflow: 'hidden'
+          overflow: 'hidden',
+          boxShadow: expanded ? 'var(--dq-shadow-soft)' : 'none',
+          transition: 'box-shadow 0.2s ease, border-color 0.2s ease'
         }}
       >
         <AccordionSummary 
           expandIcon={<ExpandMoreIcon />}
           sx={{ 
-            backgroundColor: '#ffffff',
-            borderBottom: expanded ? '1px solid rgba(0, 0, 0, 0.1)' : 'none',
+            backgroundColor: 'var(--dq-surface)',
+            borderBottom: expanded ? '1px solid var(--dq-border-subtle)' : 'none',
             minHeight: '48px',
             '& .MuiAccordionSummary-content': { my: 0 }
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <FolderOpenIcon sx={{ mr: 1, fontSize: '1.2rem', color: '#1976d2' }} />
-            <Typography sx={{ fontWeight: 500, fontSize: '0.9rem' }}>
+            <FolderOpenIcon sx={{ mr: 1, fontSize: '1.2rem', color: 'var(--dq-accent-primary)' }} />
+            <Typography sx={{ fontWeight: 600, fontSize: '16px', color: 'var(--dq-text-secondary)' }}>
               MySQL数据库连接
             </Typography>
           </Box>
         </AccordionSummary>
         
-        <AccordionDetails sx={{ p: 2, pt: 2.5 }}>
-          <TextField
+        <AccordionDetails sx={{ p: 3, backgroundColor: 'var(--dq-surface)' }}>
+          <RoundedTextField
             label="主机地址"
-            variant="outlined"
-            size="small"
             value={host}
             onChange={(e) => setHost(e.target.value)}
             fullWidth
@@ -378,10 +371,8 @@ const MySQLConnector = ({ onConnect }) => {
             placeholder="localhost"
           />
           
-          <TextField
+          <RoundedTextField
             label="端口"
-            variant="outlined"
-            size="small"
             type="number"
             value={port}
             onChange={(e) => setPort(e.target.value)}
@@ -390,10 +381,8 @@ const MySQLConnector = ({ onConnect }) => {
             placeholder="3306"
           />
           
-          <TextField
+          <RoundedTextField
             label="用户名"
-            variant="outlined"
-            size="small"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             fullWidth
@@ -401,10 +390,8 @@ const MySQLConnector = ({ onConnect }) => {
             placeholder="root"
           />
           
-          <TextField
+          <RoundedTextField
             label="密码"
-            variant="outlined"
-            size="small"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -412,10 +399,8 @@ const MySQLConnector = ({ onConnect }) => {
             sx={{ mb: 1.5 }}
           />
           
-          <TextField
+          <RoundedTextField
             label="数据库名称"
-            variant="outlined"
-            size="small"
             value={database}
             onChange={(e) => setDatabase(e.target.value)}
             fullWidth
@@ -423,10 +408,8 @@ const MySQLConnector = ({ onConnect }) => {
             placeholder="your_database"
           />
           
-          <TextField
+          <RoundedTextField
             label="连接别名（可选）"
-            variant="outlined"
-            size="small"
             value={alias}
             onChange={(e) => setAlias(e.target.value)}
             fullWidth
@@ -435,70 +418,49 @@ const MySQLConnector = ({ onConnect }) => {
           />
 
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
-            <Button
+            <RoundedButton
               variant="outlined"
               startIcon={testingConnection ? <CircularProgress size={16} /> : null}
               onClick={handleTestConnection}
               disabled={testingConnection}
-              sx={{
-                borderRadius: '20px',
-                minWidth: '120px',
-                py: 0.75,
-                textTransform: 'none',
-                fontWeight: 500,
-                fontSize: '0.875rem'
-              }}
+              sx={{ minWidth: 120 }}
             >
               {testingConnection ? '测试中...' : '测试连接'}
-            </Button>
+            </RoundedButton>
 
-            <Button
-              variant="contained"
+            <RoundedButton
               startIcon={loading ? <CircularProgress size={16} /> : null}
               onClick={handleConnect}
               disabled={loading}
-              sx={{
-                borderRadius: '20px',
-                minWidth: '120px',
-                py: 0.75,
-                textTransform: 'none',
-                fontWeight: 500,
-                fontSize: '0.875rem'
-              }}
+              sx={{ minWidth: 120 }}
             >
               {loading ? '连接中...' : '连接数据库'}
-            </Button>
+            </RoundedButton>
           </Box>
 
           <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
-            <Button
+            <RoundedButton
+              variant="outlined"
               startIcon={<SaveIcon />}
               onClick={() => setShowSaveConfig(true)}
-              sx={{ textTransform: 'none', fontSize: '0.875rem' }}
+              size="small"
             >
               保存此配置
-            </Button>
+            </RoundedButton>
           </Box>
         </AccordionDetails>
       </Accordion>
 
       {/* 已保存的配置列表 */}
-      <Paper 
-        variant="outlined" 
-        sx={{ 
-          borderRadius: 2, 
-          border: '1px solid #e2e8f0',
-          mb: 2
-        }}
-      >
-        <Box sx={{ p: 2, borderBottom: '1px solid #e2e8f0' }}>
-          <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <ListIcon fontSize="small" />
+      <CardSurface padding={0} sx={{ borderColor: 'var(--dq-border-card)', borderRadius: 'var(--dq-radius-card)', mb: 2 }}>
+        <Box sx={{ p: 2.5, borderBottom: '1px solid var(--dq-border-subtle)', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ListIcon fontSize="small" color="var(--dq-accent-primary)" />
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'var(--dq-text-secondary)' }}>
             已保存的MySQL配置
           </Typography>
         </Box>
         
-        <List sx={{ p: 0, maxHeight: 200, overflow: 'auto' }}>
+        <List sx={{ p: 0, maxHeight: 220, overflow: 'auto' }}>
           {mySQLConfigs.length > 0 ? (
             mySQLConfigs.map((config) => (
               <React.Fragment key={config.id}>
@@ -506,7 +468,7 @@ const MySQLConnector = ({ onConnect }) => {
                   sx={{ 
                     py: 1,
                     '&:hover': {
-                      backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                      backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 8%, transparent)'
                     }
                   }}
                 >
@@ -517,7 +479,7 @@ const MySQLConnector = ({ onConnect }) => {
                       </Typography>
                     }
                     secondary={
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>
                         {config.params?.host}:{config.params?.port || '3306'}/{config.params?.database}
                       </Typography>
                     }
@@ -551,7 +513,7 @@ const MySQLConnector = ({ onConnect }) => {
             <ListItem>
               <ListItemText 
                 primary={
-                  <Typography variant="body2" color="text.secondary" align="center">
+                  <Typography variant="body2" sx={{ color: 'var(--dq-text-tertiary)' }} align="center">
                     暂无保存的配置
                   </Typography>
                 }
@@ -559,18 +521,17 @@ const MySQLConnector = ({ onConnect }) => {
             </ListItem>
           )}
         </List>
-      </Paper>
+      </CardSurface>
 
       {/* 保存配置对话框 */}
       <Dialog open={showSaveConfig} onClose={() => setShowSaveConfig(false)} maxWidth="sm" fullWidth>
         <DialogTitle>保存MySQL配置</DialogTitle>
         <DialogContent>
-          <TextField
+          <RoundedTextField
             autoFocus
             margin="dense"
             label="配置名称"
             fullWidth
-            variant="outlined"
             value={configName}
             onChange={(e) => setConfigName(e.target.value)}
             placeholder="例如: 生产环境MySQL"
@@ -582,17 +543,16 @@ const MySQLConnector = ({ onConnect }) => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowSaveConfig(false)} disabled={savingConfig}>
+          <RoundedButton variant="outlined" onClick={() => setShowSaveConfig(false)} disabled={savingConfig}>
             取消
-          </Button>
-          <Button
+          </RoundedButton>
+          <RoundedButton
             onClick={handleSaveMySQLConfig}
-            variant="contained"
             disabled={savingConfig || !configName.trim()}
             startIcon={savingConfig ? <CircularProgress size={16} /> : <SaveIcon />}
           >
             {savingConfig ? '保存中...' : '保存'}
-          </Button>
+          </RoundedButton>
         </DialogActions>
       </Dialog>
     </Box>

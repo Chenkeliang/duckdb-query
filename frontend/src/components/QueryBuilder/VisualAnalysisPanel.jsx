@@ -765,7 +765,7 @@ const VisualAnalysisPanel = ({
                   <h3 className="text-base font-bold text-gray-900 leading-none">
                     可视化分析
                   </h3>
-                  <span className="panel-pill text-xs font-semibold">
+                  <span className="panel-pill text-sm font-semibold">
                     单表分析
                   </span>
                 </div>
@@ -835,7 +835,7 @@ const VisualAnalysisPanel = ({
                   )}
                 </div>
                 {!features?.enable_pivot_tables && (
-                  <span className="text-xs text-gray-500">透视功能已在系统中关闭</span>
+                  <span className="text-sm text-gray-500">透视功能已在系统中关闭</span>
                 )}
               </div>
 

@@ -372,7 +372,7 @@ const AggregationControls = ({
                       bgcolor: '#3b82f6',
                       color: 'white',
                       fontWeight: 600,
-                      fontSize: '0.7rem',
+                      fontSize: '1rem',
                       height: 24,
                       borderRadius: 10
                     }}

@@ -347,7 +347,7 @@ const AggregationControls = ({
           <Tooltip title="聚合函数用于对数据进行统计计算">
             <InfoIcon
               sx={{
-                fontSize: '0.875rem',
+                fontSize: '1rem',
                 color: 'text.secondary',
                 cursor: 'help'
               }}
@@ -371,7 +371,7 @@ const AggregationControls = ({
       </div>
 
       {/* Aggregation Summary */}
-      <div className="flex items-center space-x-2 text-xs text-gray-600">
+      <div className="flex items-center space-x-2 text-sm text-gray-600">
         <span>已配置 {aggregations.length} 个聚合函数</span>
         {aggregations.length > 0 && (
           <Chip
@@ -380,7 +380,7 @@ const AggregationControls = ({
             color="primary"
             sx={{
               height: 18,
-              fontSize: '0.65rem',
+              fontSize: '1rem',
               fontWeight: 500
             }}
           />
@@ -396,7 +396,7 @@ const AggregationControls = ({
           <div className="bg-white border border-gray-200 rounded-md p-3 space-y-3">
             <div className="flex items-center space-x-2">
               <FunctionsIcon sx={{ fontSize: '1rem', color: 'primary.main' }} />
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '1rem' }}>
                 添加聚合函数
               </Typography>
             </div>
@@ -430,7 +430,7 @@ const AggregationControls = ({
                               variant="outlined"
                               sx={{
                                 height: 16,
-                                fontSize: '0.6rem',
+                                fontSize: '1rem',
                                 '& .MuiChip-label': { padding: '0 4px' }
                               }}
                             />
@@ -468,7 +468,7 @@ const AggregationControls = ({
                             variant="outlined"
                             sx={{
                               height: 16,
-                              fontSize: '0.6rem',
+                              fontSize: '1rem',
                               '& .MuiChip-label': { padding: '0 4px' }
                             }}
                           />
@@ -546,7 +546,7 @@ const AggregationControls = ({
           {/* Current Aggregations List */}
           {aggregations.length > 0 && (
             <div className="space-y-2">
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.875rem', color: 'text.primary' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '1rem', color: 'text.primary' }}>
                 当前聚合函数
               </Typography>
 
@@ -642,7 +642,7 @@ const AggregationControls = ({
                       placeholder={`${aggregation.function.toLowerCase()}_${aggregation.column.toLowerCase()}`}
                       sx={{
                         '& .MuiInputBase-input': {
-                          fontSize: '0.875rem'
+                          fontSize: '1rem'
                         }
                       }}
                       fullWidth
@@ -670,7 +670,7 @@ const AggregationControls = ({
       {/* Help Text */}
       {aggregations.length === 0 && (
         <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-          <Typography variant="caption" sx={{ color: '#1e40af', fontSize: '0.75rem' }}>
+          <Typography variant="caption" sx={{ color: '#1e40af', fontSize: '1rem' }}>
             <Lightbulb size={16} style={{ marginRight: '8px' }} />
             提示：聚合函数用于统计计算，如求和、平均值、计数等
           </Typography>

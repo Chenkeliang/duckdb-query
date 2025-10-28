@@ -210,7 +210,7 @@ const FileUploader = ({ onUpload }) => {
         <InfoOutlinedIcon
           fontSize="small"
           sx={{
-            fontSize: '0.875rem',
+            fontSize: '1rem',
             color: 'text.secondary'
           }}
         />

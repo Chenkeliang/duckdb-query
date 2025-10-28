@@ -95,7 +95,7 @@ const StableTable = ({
         {...chipProps}
         size="small"
         sx={{
-          fontSize: '0.75rem',
+          fontSize: '1rem',
           height: '24px',
           fontWeight: 500,
         }}
@@ -160,7 +160,7 @@ const StableTable = ({
                     sx={{
                       backgroundColor: hasActiveFilter ? '#e6ebf4' : '#f2f4f8',
                       fontWeight: 600,
-                      fontSize: '0.875rem',
+                      fontSize: '1rem',
                       borderBottom: `2px solid ${theme.palette.divider}`,
                       minWidth: column.minWidth || 120,
                       userSelect: 'none',
@@ -237,7 +237,7 @@ const StableTable = ({
                   <TableCell
                     key={column.field}
                     sx={{
-                      fontSize: '0.875rem',
+                      fontSize: '1rem',
                       padding: '8px 16px',
                       borderBottom: `1px solid ${theme.palette.divider}`,
                       // 处理单元格内容过长的问题

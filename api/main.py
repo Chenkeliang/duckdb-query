@@ -65,8 +65,8 @@ def load_file_datasources_on_startup():
 
 
 app = FastAPI(
-    title="Duck Query API",
-    description="Enhanced API for interactive data querying, joining, and exporting with multi-database support using DuckDB native extensions.",
+    title="DuckQuery · DuckDB Visual Analytics API",
+    description="Interactive API for DuckDB-powered data ingestion, cross-source joins, and analytics with native DuckDB extensions.",
     version="2.1.0",
 )
 
@@ -132,14 +132,14 @@ async def startup_event():
 @app.get("/", tags=["Default"])
 async def root():
     return {
-        "message": "Welcome to the Enhanced Duck Query API",
+        "message": "Welcome to the DuckQuery · DuckDB analytics API",
         "version": "2.0.0",
         "features": [
-            "Multi-database support (MySQL, PostgreSQL, SQLite)",
-            "Enhanced file format support (CSV, Excel, JSON, Parquet)",
-            "Advanced JOIN operations",
-            "Data export functionality",
-            "Connection management",
+            "DuckDB-native execution with multi-database federation (MySQL, PostgreSQL, SQLite)",
+            "High-performance file ingestion (CSV, Excel, JSON, Parquet)",
+            "Visual + SQL driven JOIN operations and type-aware validation",
+            "Asynchronous task execution and result export",
+            "Connection management & credential security",
         ],
     }
 

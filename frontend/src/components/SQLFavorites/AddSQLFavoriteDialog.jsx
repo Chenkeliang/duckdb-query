@@ -204,7 +204,7 @@ const AddSQLFavoriteDialog = ({ open, onClose, sqlContent, sqlType = 'duckdb', o
                             borderRadius: 1,
                             padding: 2,
                             fontFamily: 'monospace',
-                            fontSize: '0.875rem',
+                            fontSize: '1rem',
                             maxHeight: 200,
                             overflow: 'auto',
                             whiteSpace: 'pre-wrap'

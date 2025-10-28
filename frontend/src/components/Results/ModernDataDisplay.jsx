@@ -593,7 +593,7 @@ const ModernDataDisplay = ({
       color: ${displayInfo.color};
       padding: 4px 8px;
       border-radius: 12px;
-      font-size: 0.75rem;
+      font-size: 1rem;
       font-weight: 500;
       text-align: center;
       min-width: 60px;
@@ -631,7 +631,7 @@ const ModernDataDisplay = ({
             ...baseConfig,
             cellRenderer: JoinResultCellRenderer,
             cellStyle: {
-              fontSize: '0.875rem',
+              fontSize: '1rem',
               padding: '4px 8px',
               textAlign: 'center',
               backgroundColor: 'rgba(33, 150, 243, 0.02)',
@@ -642,7 +642,7 @@ const ModernDataDisplay = ({
           return {
             ...baseConfig,
             cellStyle: {
-              fontSize: '0.875rem',
+              fontSize: '1rem',
               padding: '8px 12px',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -1133,7 +1133,7 @@ const ModernDataDisplay = ({
                       label="可视化查询"
                       size="small"
                       color="primary"
-                      sx={{ ml: 1, fontSize: '0.75rem' }}
+                      sx={{ ml: 1, fontSize: '1rem' }}
                     />
                   )}
                 </Typography>

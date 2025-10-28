@@ -148,7 +148,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                             size="small"
                             variant="outlined"
                             sx={{
-                                fontSize: '0.75rem',
+                                fontSize: '1rem',
                                 height: 20,
                                 borderColor: isDarkMode ? accentColor : undefined,
                                 color: isDarkMode ? accentColor : undefined
@@ -182,7 +182,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
-                        fontSize: '0.75rem',
+                        fontSize: '1rem',
                         color: isDarkMode ? 'var(--dq-text-secondary)' : undefined
                     }}
                 >
@@ -197,7 +197,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                                 size="small"
                                 variant="outlined"
                                 sx={{
-                                    fontSize: '0.7rem',
+                                    fontSize: '1rem',
                                     height: 18,
                                     borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined,
                                     color: isDarkMode ? 'var(--dq-text-secondary)' : undefined
@@ -210,7 +210,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                                 size="small"
                                 variant="outlined"
                                 sx={{
-                                    fontSize: '0.7rem',
+                                    fontSize: '1rem',
                                     height: 18,
                                     borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined,
                                     color: isDarkMode ? 'var(--dq-text-secondary)' : undefined

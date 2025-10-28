@@ -6,9 +6,9 @@ const WelcomePage = ({ onStartUsing }) => {
         <div className="welcome-container">
             <div className="welcome-hero">
                 <div className="welcome-content">
-                    <h1>Duck Query</h1>
-                    <p className="welcome-tagline">简化跨源数据分析</p>
-                    <p className="welcome-description">不写代码，不建数据库，Excel、CSV、数据库等多源数据一键关联分析</p>
+                    <h1>DuckQuery · DuckDB</h1>
+                    <p className="welcome-tagline">DuckDB 驱动的跨源数据可视化分析平台</p>
+                    <p className="welcome-description">不建仓、不写脚本，Excel、CSV、数据库及 DuckDB SQL 统一处理，几分钟完成分析与导出</p>
                     <button className="welcome-cta-button" onClick={onStartUsing}>
                         开始使用 →
                     </button>
@@ -135,11 +135,11 @@ const WelcomePage = ({ onStartUsing }) => {
             <div className="welcome-section welcome-bg-gray">
                 <div className="welcome-container-inner">
                     <div className="welcome-cta-section">
-                        <h2>立即体验Duck Query</h2>
+                        <h2>立即体验 DuckQuery + DuckDB</h2>
                         <p>开源免费，持续更新维护</p>
                         <div className="welcome-cta-buttons">
                             <button className="welcome-cta-button" onClick={onStartUsing}>开始使用 →</button>
-                            <a href="https://github.com/Chenkeliang/DuckQuery" className="welcome-cta-button-secondary" target="_blank" rel="noopener noreferrer">
+                            <a href="https://github.com/Chenkeliang/duckdb-query" className="welcome-cta-button-secondary" target="_blank" rel="noopener noreferrer">
                                 查看源码 →
                             </a>
                         </div>

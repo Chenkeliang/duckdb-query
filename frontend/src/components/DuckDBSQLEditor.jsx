@@ -895,7 +895,7 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
               sx={{
                 textTransform: 'none',
                 fontWeight: 500,
-                fontSize: '0.875rem',
+                fontSize: '1rem',
                 px: 2.5,
                 py: 0.5,
                 borderRadius: 2,
@@ -917,7 +917,7 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
               sx={{
                 textTransform: 'none',
                 fontWeight: 500,
-                fontSize: '0.875rem',
+                fontSize: '1rem',
                 px: 2.5,
                 py: 0.5,
                 borderRadius: 2,
@@ -937,7 +937,7 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
       )}
 
       {editorError && (
-        <Box sx={{ color: "red", mb: 1, fontSize: "0.875rem" }}>
+        <Box sx={{ color: "red", mb: 1, fontSize: "1rem" }}>
           编辑器错误: {editorError}
         </Box>
       )}

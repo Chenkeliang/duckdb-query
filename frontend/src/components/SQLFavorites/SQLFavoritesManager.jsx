@@ -307,7 +307,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
             <Box sx={{ flex: 1, minWidth: 0 }}>
                 {/* 标题和使用次数 */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: '0.95rem', color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: '16px', color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
                         {favorite.name}
                     </Typography>
                     {favorite.usage_count > 0 && (
@@ -316,7 +316,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                             size="small"
                             sx={{
                                 height: 20,
-                                fontSize: '0.7rem',
+                                fontSize: '1rem',
                                 fontWeight: 500,
                                 backgroundColor: isDarkMode ? alpha(accent, 0.25) : alpha(accent, 0.12),
                                 color: isDarkMode ? '#fefefe' : accent
@@ -330,7 +330,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                     <Typography
                         variant="body2"
                         color="text.secondary"
-                        sx={{ mb: 1, fontSize: '0.85rem', lineHeight: 1.4, color: isDarkMode ? 'var(--dq-text-secondary)' : undefined }}
+                        sx={{ mb: 1, fontSize: '1rem', lineHeight: 1.4, color: isDarkMode ? 'var(--dq-text-secondary)' : undefined }}
                     >
                         {favorite.description}
                     </Typography>
@@ -349,7 +349,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
-                        fontSize: '0.75rem',
+                        fontSize: '1rem',
                         color: isDarkMode ? 'var(--dq-text-secondary)' : '#555',
                         mb: 1
                     }}
@@ -367,7 +367,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                                 size="small"
                                 variant="outlined"
                                 sx={{
-                                    fontSize: '0.7rem',
+                                    fontSize: '1rem',
                                     height: 20,
                                     borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#ddd',
                                     color: isDarkMode ? 'var(--dq-text-secondary)' : '#666'

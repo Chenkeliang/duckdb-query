@@ -47,26 +47,15 @@ const UnifiedQueryInterface = ({
           sx={{
             px: 3,
             pt: 2,
-            '& .MuiTab-root': {
-              textTransform: 'none',
-              fontWeight: 500,
-              fontSize: '0.95rem',
-              minHeight: 48,
-              color: '#6b7280',
-              '&.Mui-selected': {
-                color: '#3b82f6',
-                fontWeight: 600
-              }
-            },
             '& .MuiTabs-indicator': {
               backgroundColor: '#3b82f6',
               height: 2
             }
           }}
         >
-          <Tab label="图形化查询" value="visual" sx={{ mr: 2 }} />
-          <Tab label="SQL编辑器 · 内部数据" value="duckdb" sx={{ mr: 2 }} />
-          <Tab label="SQL编辑器 · 外部数据库" value="external" />
+        <Tab label="图形化查询" value="visual" sx={{ mr: 2, fontSize: '18px', fontWeight: 600, textTransform: 'none', minHeight: 52 }} />
+        <Tab label="SQL编辑器 · 内部数据" value="duckdb" sx={{ mr: 2, fontSize: '18px', fontWeight: 600, textTransform: 'none', minHeight: 52 }} />
+        <Tab label="SQL编辑器 · 外部数据库" value="external" sx={{ fontSize: '18px', fontWeight: 600, textTransform: 'none', minHeight: 52 }} />
         </Tabs>
       </div>
 

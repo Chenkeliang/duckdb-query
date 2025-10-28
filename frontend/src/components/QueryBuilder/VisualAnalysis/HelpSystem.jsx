@@ -212,7 +212,7 @@ const HelpSystem = ({
               <h5 className="text-sm font-medium text-gray-700 mb-1">快捷键:</h5>
               <div className="space-y-1">
                 {currentHelp.shortcuts.map((shortcut, index) => (
-                  <div key={index} className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
+                  <div key={index} className="text-sm bg-gray-100 px-2 py-1 rounded font-mono">
                     {shortcut}
                   </div>
                 ))}
@@ -227,7 +227,7 @@ const HelpSystem = ({
             <h5 className="text-sm font-medium text-gray-700 mb-2">常用示例:</h5>
             <div className="space-y-2">
               {aggregationExamples.map((example, index) => (
-                <div key={index} className="bg-gray-50 p-2 rounded text-xs">
+                <div key={index} className="bg-gray-50 p-2 rounded text-sm">
                   <div className="font-mono text-blue-600 mb-1">
                     {example.example}
                   </div>
@@ -245,7 +245,7 @@ const HelpSystem = ({
             <h5 className="text-sm font-medium text-gray-700 mb-2">筛选示例:</h5>
             <div className="space-y-2">
               {filterExamples.map((example, index) => (
-                <div key={index} className="bg-gray-50 p-2 rounded text-xs">
+                <div key={index} className="bg-gray-50 p-2 rounded text-sm">
                   <div className="font-mono text-blue-600 mb-1">
                     {example.example}
                   </div>
@@ -272,7 +272,7 @@ const HelpSystem = ({
                     onStepChange(step.id);
                   }
                 }}
-                className="text-xs justify-start"
+                className="text-sm justify-start"
               >
                 {step.title}
               </Button>
@@ -282,7 +282,7 @@ const HelpSystem = ({
 
         {/* Quick Tips */}
         <div className="mt-3 p-2 bg-blue-50 rounded-md">
-          <div className="text-xs text-blue-800">
+          <div className="text-sm text-blue-800">
             <div className="font-medium mb-1">
               <Lightbulb size={16} style={{ marginRight: '8px' }} />
               快速提示:

@@ -1,8 +1,10 @@
 import os
+import shutil
+import time
 import uuid
 from pathlib import Path
+
 from fastapi import BackgroundTasks
-import time
 
 TEMP_DIR = Path("temp_files")
 TEMP_DIR.mkdir(exist_ok=True)
@@ -16,14 +18,17 @@ async def save_upload_file(upload_file) -> str:
         buffer.write(await upload_file.read())
     return str(file_path)
 
-def cleanup_file(file_path: str):
-    """Removes a file after a delay."""
-    time.sleep(3600)  # 1 hour
+def _cleanup_resource(file_path: str, delay_seconds: int = 3600):
+    """Removes a file or directory after a delay."""
+    time.sleep(delay_seconds)
     try:
-        os.remove(file_path)
+        if os.path.isdir(file_path):
+            shutil.rmtree(file_path, ignore_errors=True)
+        else:
+            os.remove(file_path)
     except OSError:
         pass
 
-def schedule_cleanup(file_path: str, background_tasks: BackgroundTasks):
-    """Schedules a file to be cleaned up."""
-    background_tasks.add_task(cleanup_file, file_path)
+def schedule_cleanup(file_path: str, background_tasks: BackgroundTasks, delay_seconds: int = 3600):
+    """Schedules a file or directory to be cleaned up."""
+    background_tasks.add_task(_cleanup_resource, file_path, delay_seconds)

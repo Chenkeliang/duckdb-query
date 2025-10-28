@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
+  <rect width="1200" height="630" rx="36" fill="url(#gradient)" />
+  <defs>
+    <linearGradient id="gradient" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4f46e5" />
+      <stop offset="0.45" stop-color="#7c3aed" />
+      <stop offset="1" stop-color="#9333ea" />
+    </linearGradient>
+  </defs>
+  <g fill="#ffffff" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
+    <text x="80" y="200" font-size="86" font-weight="700">DuckQuery</text>
+    <text x="80" y="280" font-size="40" opacity="0.9">DuckDB Visual Analytics Platform</text>
+  </g>
+  <g transform="translate(80, 354)">
+    <rect width="1040" height="186" rx="24" fill="rgba(15,23,42,0.14)" />
+    <text x="36" y="68" font-size="36" fill="#ffffff" font-family="Inter, sans-serif" font-weight="600">
+      • Import Excel / CSV / Parquet directly into DuckDB tables
+    </text>
+    <text x="36" y="118" font-size="36" fill="#ffffff" font-family="Inter, sans-serif" font-weight="600">
+      • Visual builder + SQL editor with type-safe JOINs
+    </text>
+    <text x="36" y="168" font-size="36" fill="#ffffff" font-family="Inter, sans-serif" font-weight="600">
+      • Local-first, asynchronous exports, secure by design
+    </text>
+  </g>
+</svg>

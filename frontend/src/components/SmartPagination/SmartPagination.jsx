@@ -208,7 +208,7 @@ const SmartPagination = ({
                 padding: '4px 8px',
                 border: '1px solid #ccc',
                 borderRadius: '4px',
-                fontSize: '14px'
+                fontSize: '16px'
               }}
               placeholder="页码"
               disabled={loading}

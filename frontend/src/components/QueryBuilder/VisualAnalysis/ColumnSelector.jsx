@@ -204,7 +204,7 @@ const ColumnSelector = ({
       </div>
 
       {/* Selection Summary */}
-      <div className="flex items-center space-x-2 text-xs text-gray-600">
+      <div className="flex items-center space-x-2 text-sm text-gray-600">
         <span>已选择 {selectedColumns.length} / {availableColumns.length} 列</span>
         {selectedColumns.length > 0 && (
           <Chip
@@ -213,7 +213,7 @@ const ColumnSelector = ({
             color="primary"
             sx={{
               height: 18,
-              fontSize: '0.65rem',
+              fontSize: '1rem',
               fontWeight: 500
             }}
           />
@@ -266,7 +266,7 @@ const ColumnSelector = ({
                         variant="body2"
                         sx={{
                           fontWeight: isSelected ? 600 : 500,
-                          fontSize: '0.875rem',
+                          fontSize: '1rem',
                           color: isSelected ? '#1e40af' : '#374151',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -292,7 +292,7 @@ const ColumnSelector = ({
                         >
                           <InfoIcon
                             sx={{
-                              fontSize: '0.75rem',
+                              fontSize: '1rem',
                               color: 'text.secondary',
                               cursor: 'help'
                             }}
@@ -303,7 +303,7 @@ const ColumnSelector = ({
 
                     {/* Data Type Display */}
                     <div className="flex items-center space-x-1 mt-1">
-                      <span className="text-xs">{getDataTypeIcon(dataType)}</span>
+                      <span className="text-sm">{getDataTypeIcon(dataType)}</span>
                       <Chip
                         label={dataType}
                         size="small"
@@ -311,7 +311,7 @@ const ColumnSelector = ({
                         variant="outlined"
                         sx={{
                           height: 16,
-                          fontSize: '0.6rem',
+                          fontSize: '1rem',
                           fontWeight: 500,
                           '& .MuiChip-label': {
                             padding: '0 4px'
@@ -339,7 +339,7 @@ const ColumnSelector = ({
       {/* Help Text */}
       {selectedColumns.length === 0 && (
         <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-          <Typography variant="caption" sx={{ color: '#1e40af', fontSize: '0.75rem' }}>
+          <Typography variant="caption" sx={{ color: '#1e40af', fontSize: '1rem' }}>
             <Lightbulb size={16} style={{ marginRight: '8px' }} />
             提示：选择要分析的列，或保持空白以显示所有列
           </Typography>

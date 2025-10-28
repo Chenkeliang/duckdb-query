@@ -8,9 +8,9 @@ import hashlib
 import logging
 import traceback
 import asyncio
+import time
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.config_manager import config_manager
@@ -19,6 +19,7 @@ from core.file_datasource_manager import (
     file_datasource_manager,
     create_table_from_dataframe,
 )
+from core.excel_import_manager import register_excel_upload, sanitize_identifier
 from core.resource_manager import schedule_cleanup
 from core.timezone_utils import get_current_time_iso  # 统一时间
 
@@ -299,7 +300,10 @@ async def complete_upload(
 
         # 处理文件并加载到DuckDB
         file_info = await process_uploaded_file(
-            final_file_path, session["file_name"], session.get("table_alias")
+            final_file_path,
+            session["file_name"],
+            session.get("table_alias"),
+            background_tasks=background_tasks,
         )
 
         # 清理分块文件
@@ -308,9 +312,12 @@ async def complete_upload(
         if os.path.exists(session["chunks_dir"]):
             shutil.rmtree(session["chunks_dir"])
 
-        # 安排文件清理（2小时后）
         if background_tasks:
-            schedule_cleanup(final_file_path, background_tasks)
+            cleanup_target = file_info.pop("cleanup_path", None)
+            if cleanup_target:
+                schedule_cleanup(cleanup_target, background_tasks)
+            elif not file_info.get("pending_excel") and os.path.exists(final_file_path):
+                schedule_cleanup(final_file_path, background_tasks)
 
         # 更新会话状态
         session["status"] = "completed"
@@ -342,71 +349,65 @@ async def complete_upload(
 
 
 async def process_uploaded_file(
-    file_path: str, file_name: str, table_alias: str = None
+    file_path: str,
+    file_name: str,
+    table_alias: str = None,
+    background_tasks: Optional[BackgroundTasks] = None,
 ) -> Dict[str, Any]:
     """处理上传的文件并加载到DuckDB"""
     try:
         logger.info(f"开始处理上传的文件: {file_name}, 路径: {file_path}")
 
-        # 检测文件类型
         file_extension = file_name.lower().split(".")[-1]
         logger.info(f"文件类型: {file_extension}")
 
-        # 生成SQL兼容的表名
-        if table_alias:
-            # 使用用户提供的表别名，保持原始输入
-            source_id = table_alias
-        else:
-            # 使用文件名作为默认表名
-            source_id = file_name.split(".")[0]
+        if file_extension in {"xlsx", "xls"}:
+            pending_excel = register_excel_upload(file_path, file_name, table_alias)
+            if background_tasks:
+                from pathlib import Path
 
-        # 清理特殊字符，但保持用户输入的原始格式
-        if table_alias:
-            # 用户提供的表别名，只清理不兼容的字符
-            source_id = "".join(
-                c if c.isalnum() or c == "_" else "_" for c in source_id
-            )
-        else:
-            # 文件名生成的表名，进行完整清理
-            source_id = "".join(
-                c if c.isalnum() or c == "_" else "_" for c in source_id
-            )
-            if source_id and source_id[0].isdigit():
-                source_id = f"table_{source_id}"
+                pending_dir = Path(pending_excel.stored_path).parent
+                schedule_cleanup(str(pending_dir), background_tasks, delay_seconds=6 * 3600)
 
+            return {
+                "success": True,
+                "pending_excel": {
+                    "file_id": pending_excel.file_id,
+                    "original_filename": pending_excel.original_filename,
+                    "file_size": pending_excel.file_size,
+                    "table_alias": pending_excel.table_alias,
+                    "uploaded_at": pending_excel.uploaded_at,
+                    "default_table_prefix": pending_excel.default_table_prefix,
+                },
+                "message": "Excel 文件已上传，请选择需要导入的工作表。",
+                "cleanup_path": None,
+            }
+
+        source_id = table_alias if table_alias else file_name.split(".")[0]
+        source_id = sanitize_identifier(source_id, allow_leading_digit=False, prefix="table")
         if not source_id:
-            import time
-
             source_id = f"table_{int(time.time())}"
 
-        # 检查表名是否已存在，如果存在则添加时间后缀
         con = get_db_connection()
         original_source_id = source_id
-        counter = 1
 
         while True:
             try:
-                # 检查表是否存在
                 result = con.execute(
-                    f'SELECT name FROM sqlite_master WHERE type="table" AND name="{source_id}"'
+                    "SELECT 1 FROM information_schema.tables WHERE lower(table_name) = lower(?)",
+                    [source_id],
                 ).fetchone()
                 if result is None:
-                    # 表不存在，可以使用这个名称
                     break
-                else:
-                    # 表已存在，添加时间后缀
-                    import time
-
-                    timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
-                    source_id = f"{original_source_id}_{timestamp}"
-                    break
+                timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
+                source_id = f"{original_source_id}_{timestamp}"
+                break
             except Exception as e:
                 logger.warning(f"检查表名时出错: {e}")
                 break
 
         logger.info(f"生成的表名: {source_id}")
 
-        # 加载到DuckDB并获取元数据
         table_info = None
         try:
             logger.info("开始加载到DuckDB...")
@@ -419,7 +420,6 @@ async def process_uploaded_file(
             logger.error(f"加载到DuckDB失败: {str(e)}")
             raise
 
-        # 保存文件数据源配置
         file_metadata = {
             "source_id": source_id,
             "filename": file_name,
@@ -430,7 +430,7 @@ async def process_uploaded_file(
             "columns": table_info.get("columns", []),
             "column_profiles": table_info.get("column_profiles", []),
             "schema_version": 2,
-            "created_at": get_current_time_iso(),  # 使用统一的时区配置
+            "created_at": get_current_time_iso(),
         }
 
         try:
@@ -453,6 +453,7 @@ async def process_uploaded_file(
             "column_count": file_metadata["column_count"],
             "columns": file_metadata["columns"],
             "preview_data": [{"提示": "预览数据已禁用以提高性能"}],
+            "cleanup_path": file_path,
         }
 
     except Exception as e:

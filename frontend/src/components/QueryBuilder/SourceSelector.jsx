@@ -64,7 +64,7 @@ const SourceSelector = ({
               variant="subtitle2"
               sx={{
                 fontWeight: 500,
-                fontSize: '0.85rem',
+                fontSize: '1rem',
                 color: 'text.primary'
               }}
             >
@@ -95,7 +95,7 @@ const SourceSelector = ({
               <InfoOutlinedIcon
                 fontSize="small"
                 sx={{
-                  fontSize: '0.9rem',
+                  fontSize: '1rem',
                   color: 'text.secondary',
                   opacity: 0.7
                 }}
@@ -141,7 +141,7 @@ const SourceSelector = ({
                               variant="body2"
                               sx={{
                                 fontWeight: 500,
-                                fontSize: '0.875rem'
+                                fontSize: '1rem'
                               }}
                             >
                               {source.name || source.id}
@@ -151,7 +151,7 @@ const SourceSelector = ({
                               size="small"
                               sx={{
                                 height: 18,
-                                fontSize: '0.65rem',
+                                fontSize: '1rem',
                                 bgcolor: 'rgba(0, 113, 227, 0.08)',
                                 color: 'rgba(0, 113, 227, 0.8)',
                                 fontWeight: 500
@@ -166,7 +166,7 @@ const SourceSelector = ({
                             sx={{
                               color: 'text.secondary',
                               mt: 0.5,
-                              fontSize: '0.75rem',
+                              fontSize: '1rem',
                               display: 'block'
                             }}
                           >
@@ -218,7 +218,7 @@ const SourceSelector = ({
                 align="center"
                 sx={{
                   fontWeight: 500,
-                  fontSize: '0.875rem',
+                  fontSize: '1rem',
                   opacity: 0.7
                 }}
               >
@@ -268,7 +268,7 @@ const SourceSelector = ({
               variant="subtitle2"
               sx={{
                 fontWeight: 500,
-                fontSize: '0.85rem',
+                fontSize: '1rem',
                 color: 'text.primary'
               }}
             >
@@ -282,7 +282,7 @@ const SourceSelector = ({
                   ml: 1,
                   height: 20,
                   minWidth: 20,
-                  fontSize: '0.7rem',
+                  fontSize: '1rem',
                   bgcolor: 'rgba(52, 199, 89, 0.1)',
                   color: 'rgba(52, 199, 89, 0.8)',
                   fontWeight: 600
@@ -312,7 +312,7 @@ const SourceSelector = ({
                             variant="body2"
                             sx={{
                               fontWeight: 500,
-                              fontSize: '0.875rem'
+                              fontSize: '1rem'
                             }}
                           >
                             {source.name || source.id}
@@ -322,7 +322,7 @@ const SourceSelector = ({
                             size="small"
                             sx={{
                               height: 18,
-                              fontSize: '0.65rem',
+                              fontSize: '1rem',
                               bgcolor: 'rgba(52, 199, 89, 0.08)',
                               color: 'rgba(52, 199, 89, 0.8)',
                               fontWeight: 500
@@ -337,7 +337,7 @@ const SourceSelector = ({
                           sx={{
                             color: 'text.secondary',
                             mt: 0.5,
-                            fontSize: '0.75rem',
+                            fontSize: '1rem',
                             display: 'block'
                           }}
                         >
@@ -394,7 +394,7 @@ const SourceSelector = ({
                 align="center"
                 sx={{
                   fontWeight: 500,
-                  fontSize: '0.875rem',
+                  fontSize: '1rem',
                   opacity: 0.7
                 }}
               >

@@ -176,10 +176,12 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
   };
 
   useEffect(() => {
-    if (databaseConnections.length > 0 && !selectedConnection) {
-      setSelectedConnection(databaseConnections[0].id);
+    if (!selectedConnection) return;
+    const stillExists = databaseConnections.some(conn => conn.id === selectedConnection);
+    if (!stillExists) {
+      setSelectedConnection(null);
     }
-  }, [databaseConnections]);
+  }, [databaseConnections, selectedConnection]);
 
   // 过滤和分页的表数据
   const filteredAndPaginatedTables = useMemo(() => {
@@ -204,9 +206,15 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
   }, [tableData?.tables, searchTerm, currentPage, pageSize]);
 
   useEffect(() => {
-    if (selectedConnection) {
-      fetchDatabaseTables(selectedConnection);
+    if (!selectedConnection) {
+      setTableData(null);
+      setError('');
+      return;
     }
+    setCurrentPage(1);
+    setExpandedTables(new Set());
+    setTableData(null);
+    fetchDatabaseTables(selectedConnection);
   }, [selectedConnection]);
 
   // 搜索时重置到第一页
@@ -235,8 +243,8 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
             <Box sx={{ ml: 'auto' }}>
               <Button
                 startIcon={<RotateCcw size={20} />}
-                onClick={() => fetchDatabaseTables(selectedConnection)}
-                disabled={loading}
+                onClick={() => selectedConnection && fetchDatabaseTables(selectedConnection)}
+                disabled={loading || !selectedConnection}
                 size="small"
               >
                 刷新
@@ -244,7 +252,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
             </Box>
           </Box>
 
-          {databaseConnections.length > 0 && selectedConnection && (
+          {databaseConnections.length > 0 && (
             <Box
               sx={{
                 display: 'flex',
@@ -263,7 +271,10 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                 return (
                   <ButtonBase
                     key={conn.id}
-                    onClick={() => setSelectedConnection(conn.id)}
+                    onClick={() => {
+                      setSelectedConnection(conn.id);
+                      setError('');
+                    }}
                     sx={{
                       display: 'flex',
                       alignItems: 'center',
@@ -293,7 +304,10 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                     }}
                   >
                     <Database size={18} />
-                    <Typography variant="subtitle2" sx={{ fontWeight: isActive ? 600 : 500 }}>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: isActive ? 600 : 500, fontSize: '16px', lineHeight: 1.3 }}
+                    >
                       {conn.name}
                     </Typography>
                   </ButtonBase>
@@ -308,6 +322,12 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
           {error}
+        </Alert>
+      )}
+
+      {!selectedConnection && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          请选择要查看的数据库连接。
         </Alert>
       )}
 

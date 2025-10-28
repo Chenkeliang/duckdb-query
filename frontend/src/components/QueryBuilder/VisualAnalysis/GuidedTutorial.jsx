@@ -349,7 +349,7 @@ export const FeatureTutorial = ({
         <ol className="space-y-2">
           {guide.steps.map((step, index) => (
             <li key={index} className="flex items-start space-x-2 text-sm">
-              <span className="flex-shrink-0 w-5 h-5 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-xs font-medium">
+              <span className="flex-shrink-0 w-5 h-5 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
                 {index + 1}
               </span>
               <span className="text-gray-700">{step}</span>

@@ -184,6 +184,26 @@ export const getMySQLConfigs = async () => {
   return [];
 };
 
+export const inspectExcelSheets = async (fileId) => {
+  try {
+    const response = await apiClient.post('/api/data-sources/excel/inspect', {
+      file_id: fileId
+    });
+    return response.data;
+  } catch (error) {
+    handleApiError(error, '获取Excel工作表失败');
+  }
+};
+
+export const importExcelSheets = async (payload) => {
+  try {
+    const response = await apiClient.post('/api/data-sources/excel/import', payload);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, 'Excel导入失败');
+  }
+};
+
 export const saveMySQLConfig = async (config) => {
   const connectionData = { ...config, type: 'mysql' };
   return await createDatabaseConnection(connectionData);
@@ -288,6 +308,16 @@ export const updateDatabaseConnection = async (connectionId, connectionData) => 
 export const deleteDatabaseConnection = async (connectionId) => {
   try {
     const response = await apiClient.delete(`/api/database_connections/${connectionId}`);
+    requestManager.clearCache('/api/database_connections', 'GET');
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const refreshDatabaseConnection = async (connectionId) => {
+  try {
+    const response = await apiClient.post(`/api/database_connections/${connectionId}/refresh`);
     requestManager.clearCache('/api/database_connections', 'GET');
     return response.data;
   } catch (error) {

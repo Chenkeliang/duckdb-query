@@ -161,7 +161,7 @@ const CalculatedFieldsControls = ({
                 variant={newField.operation === op.value ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setNewField({ ...newField, operation: op.value })}
-                className="text-xs"
+                className="text-sm"
               >
                 {op.label}
               </Button>
@@ -172,7 +172,7 @@ const CalculatedFieldsControls = ({
                 variant={newField.operation === func.value ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setNewField({ ...newField, operation: func.value })}
-                className="text-xs"
+                className="text-sm"
               >
                 {func.label}
               </Button>
@@ -183,7 +183,7 @@ const CalculatedFieldsControls = ({
                 variant={newField.operation === func.value ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setNewField({ ...newField, operation: func.value })}
-                className="text-xs"
+                className="text-sm"
               >
                 {func.label}
               </Button>
@@ -201,7 +201,7 @@ const CalculatedFieldsControls = ({
             placeholder="输入计算表达式，如: column1 + column2"
             className="w-full"
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 mt-1">
             可用列: {columns.map(col => col.name).join(', ')}
           </p>
         </div>

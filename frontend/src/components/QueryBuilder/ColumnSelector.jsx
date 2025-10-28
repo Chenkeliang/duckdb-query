@@ -295,7 +295,7 @@ const ColumnSelector = ({
                         px: 1.5,
                         py: 0.5,
                         borderRadius: 10,
-                        fontSize: '0.7rem'
+                        fontSize: '1rem'
                       }}
                     >
                       {columnType === 'integer' || columnType === 'decimal' ? '数值' : columnType === 'date' ? '日期' : '文本'}

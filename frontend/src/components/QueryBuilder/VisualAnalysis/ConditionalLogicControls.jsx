@@ -188,7 +188,7 @@ const ConditionalLogicControls = ({
               <div key={field.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                 <div className="flex-1">
                   <span className="font-medium text-gray-800">{field.name}</span>
-                  <div className="text-xs text-gray-600 mt-1 font-mono">
+                  <div className="text-sm text-gray-600 mt-1 font-mono">
                     {field.type === 'conditional' 
                       ? generateCaseWhenPreview(field)
                       : generateBinningPreview(field)
@@ -249,7 +249,7 @@ const ConditionalLogicControls = ({
                   
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <div>
-                      <label className="block text-xs text-gray-600 mb-1">列名</label>
+                      <label className="block text-sm text-gray-600 mb-1">列名</label>
                       <select
                         value={condition.column}
                         onChange={(e) => updateCondition(index, 'column', e.target.value)}
@@ -263,7 +263,7 @@ const ConditionalLogicControls = ({
                     </div>
                     
                     <div>
-                      <label className="block text-xs text-gray-600 mb-1">操作符</label>
+                      <label className="block text-sm text-gray-600 mb-1">操作符</label>
                       <select
                         value={condition.operator}
                         onChange={(e) => updateCondition(index, 'operator', e.target.value)}
@@ -276,7 +276,7 @@ const ConditionalLogicControls = ({
                     </div>
                     
                     <div>
-                      <label className="block text-xs text-gray-600 mb-1">比较值</label>
+                      <label className="block text-sm text-gray-600 mb-1">比较值</label>
                       <Input
                         value={condition.value}
                         onChange={(e) => updateCondition(index, 'value', e.target.value)}
@@ -287,7 +287,7 @@ const ConditionalLogicControls = ({
                     </div>
                     
                     <div>
-                      <label className="block text-xs text-gray-600 mb-1">返回值</label>
+                      <label className="block text-sm text-gray-600 mb-1">返回值</label>
                       <Input
                         value={condition.result}
                         onChange={(e) => updateCondition(index, 'result', e.target.value)}
@@ -378,7 +378,7 @@ const ConditionalLogicControls = ({
                 >
                   <div>
                     <div className="font-medium">{type.label}</div>
-                    <div className="text-xs text-gray-500">{type.description}</div>
+                    <div className="text-sm text-gray-500">{type.description}</div>
                   </div>
                 </Button>
               ))}
@@ -397,7 +397,7 @@ const ConditionalLogicControls = ({
               max="20"
               className="w-full"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-sm text-gray-500 mt-1">
               将数据分为 {newBinning.bins} 个区间
             </p>
           </div>

@@ -802,7 +802,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
 
 
       {/* 数据源选择器 - 始终显示 */}
-      <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 500, fontSize: '0.95rem', color: 'text.primary' }}>
+      <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, fontSize: '16px', color: 'text.primary' }}>
         选择数据源
       </Typography>
       <SourceSelector
@@ -847,7 +847,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       {/* 集合操作区块 */}
       {showSetOperationBlock && currentOperationMode === 'set_operation' && (
         <>
-          <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 500, fontSize: '0.95rem', color: 'text.primary' }}>
+          <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, fontSize: '16px', color: 'text.primary' }}>
             集合操作配置
           </Typography>
           <SetOperationBuilder
@@ -864,7 +864,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       {showJoinBlock && currentOperationMode === 'join' && (
         <>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 500, fontSize: '0.95rem', color: 'text.primary' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: '16px', color: 'text.primary' }}>
               连接条件
             </Typography>
             <Button
@@ -956,7 +956,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
               borderRadius: 20,
               px: 4,
               py: 1.5,
-              fontSize: '0.95rem',
+              fontSize: '16px',
               fontWeight: 600,
               textTransform: 'none',
               backgroundColor: '#0071e3',
@@ -987,7 +987,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
                 borderRadius: 20,
                 px: 4,
                 py: 1.5,
-                fontSize: '0.95rem',
+                fontSize: '16px',
                 fontWeight: 600,
                 textTransform: 'none',
                 backgroundColor: '#0071e3',
@@ -1019,7 +1019,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
                 borderRadius: 20,
                 px: 4,
                 py: 1.5,
-                fontSize: '0.95rem',
+                fontSize: '16px',
                 fontWeight: 600,
                 textTransform: 'none',
                 backgroundColor: '#0071e3',

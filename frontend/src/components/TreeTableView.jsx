@@ -278,7 +278,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                             size="small"
                                             sx={{
                                                 height: 22,
-                                                fontSize: '0.75rem',
+                                                fontSize: '1rem',
                                                 fontWeight: 600,
                                                 backgroundColor: chipBackground,
                                                 color: chipTextColor,
@@ -370,7 +370,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                                         <Typography
                                                             variant="body2"
                                                             sx={{
-                                                                fontSize: '0.875rem',
+                                                                fontSize: '1rem',
                                                                 fontWeight: 500,
                                                                 overflow: 'hidden',
                                                                 textOverflow: 'ellipsis',
