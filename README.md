@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
 [![DuckDB](https://img.shields.io/badge/DuckDB-Visual%20Analytics-FFBF00.svg?logo=duckdb&logoColor=white)](https://duckdb.org)
 [![Docker](https://img.shields.io/badge/Docker-Supported-2496ED.svg)](https://docker.com)
-[![Docs](https://img.shields.io/badge/Docs-DuckQuery%20Pages-3b82f6.svg)](https://chenkeliang.github.io/DuckQuery/)
+[![Docs](https://img.shields.io/badge/Docs-DuckQuery%20Pages-3b82f6.svg)](https://chenkeliang.github.io/duckdb-query/)
 [![Discussions](https://img.shields.io/badge/Discussions-Welcome-22c55e.svg)](https://github.com/Chenkeliang/duckdb-query/discussions)
 
 **基于 DuckDB 的现代数据分析平台 • 简化跨源数据关联 • 无需建库无需 ETL**
@@ -22,9 +22,9 @@
 - **DuckDB-first analytics**: import Excel/CSV/Parquet, connect MySQL/PostgreSQL, and materialise into DuckDB tables in seconds.  
 - **Dual-mode experience**: visual builder with type-conflict guards + full DuckDB SQL editor (window functions, JSON, PIVOT, etc.).  
 - **Local & secure**: deploy via Docker or source, keep all DuckDB workloads on your own infrastructure.  
-- **Docs & demo**: explore the [DuckQuery product page](https://chenkeliang.github.io/DuckQuery/) and follow the [DuckDB getting started guide](docs/duckdb-getting-started.md).
+- **Docs & demo**: explore the [DuckQuery product page](https://chenkeliang.github.io/duckdb-query/) and follow the [DuckDB getting started guide](docs/duckdb-getting-started.md).
 
-> 想快速了解？访问 [DuckQuery · DuckDB 可视化分析平台](https://chenkeliang.github.io/DuckQuery/) 浏览单页介绍与应用场景。
+> 想快速了解？访问 [DuckQuery · DuckDB 可视化分析平台](https://chenkeliang.github.io/duckdb-query/) 浏览单页介绍与应用场景。
 
 ## 🎯 项目简介
 
@@ -130,7 +130,7 @@ FROM json_table;
 - 📝 **CodeMirror Editor** - 专业的SQL编辑体验
 - 📊 **结果展示** - 表格和图表可视化
 - 💾 **数据导出** - 支持CSV、Parquet格式
-- 🌐 **产品页** - [DuckQuery · DuckDB Visual Analytics](https://chenkeliang.github.io/DuckQuery/) 提供演示截图与常见问答
+- 🌐 **产品页** - [DuckQuery · DuckDB Visual Analytics](https://chenkeliang.github.io/duckdb-query/) 提供演示截图与常见问答
 
 ## 🚀 快速开始
 

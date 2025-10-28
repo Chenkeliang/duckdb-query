@@ -96,6 +96,12 @@ setup_config() {
     fi
     
     print_success "目录权限设置完成"
+
+    # 初始化文件数据源索引
+    if [ ! -f "data/file_datasources.json" ]; then
+        echo "[]" > data/file_datasources.json
+        print_success "文件数据源索引已创建: data/file_datasources.json"
+    fi
     
     # 复制示例配置文件
     if [ ! -f "config/app-config.json" ]; then
@@ -214,7 +220,7 @@ start_services() {
     print_info "- 修复权限: chmod 755 data/ temp_files/ exports/"
     print_info "- 或使用: sudo chown -R \$USER:\$USER data/ temp_files/ exports/"
     print_info ""
-    print_info "更多示例与截图: https://chenkeliang.github.io/DuckQuery/"
+    print_info "更多示例与截图: https://chenkeliang.github.io/duckdb-query/"
 }
 
 # 主函数

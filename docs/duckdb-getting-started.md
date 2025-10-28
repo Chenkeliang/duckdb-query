@@ -114,7 +114,7 @@ LEFT JOIN postgres_inventory_view AS inv
 ## 9. 下一步
 
 - 阅读 [DuckDB 集成手册](./duckdb-integration-guide.md)，了解如何与外部工具、CI、BI 平台协同；
-- 浏览 [DuckQuery 产品页](https://chenkeliang.github.io/DuckQuery/) 查看最新特性、截图与发布公告；
+- 浏览 [DuckQuery 产品页](https://chenkeliang.github.io/duckdb-query/) 查看最新特性、截图与发布公告；
 - 如果遇到问题或希望贡献功能，欢迎在 [Issues](https://github.com/Chenkeliang/duckdb-query/issues/new/choose) / [Discussions](https://github.com/Chenkeliang/duckdb-query/discussions) 留言。
 
 祝使用愉快！DuckDB 与 DuckQuery 的组合能让你的数据分析流程更快、更安全、更轻量。

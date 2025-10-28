@@ -5,7 +5,7 @@
 ## 快速链接
 
 - [项目首页](https://github.com/Chenkeliang/duckdb-query)
-- [产品介绍（GitHub Pages）](https://chenkeliang.github.io/DuckQuery/)
+- [产品介绍（GitHub Pages）](https://chenkeliang.github.io/duckdb-query/)
 - [Issues 列表](https://github.com/Chenkeliang/duckdb-query/issues)
 - [Discussions](https://github.com/Chenkeliang/duckdb-query/discussions)
 - [DuckDB 快速上手指南](docs/duckdb-getting-started.md)

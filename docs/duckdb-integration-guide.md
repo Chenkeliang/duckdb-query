@@ -144,6 +144,6 @@ curl -X POST http://localhost:8000/api/async-tasks/submit \
 
 - [DuckDB 官方文档](https://duckdb.org/docs/)
 - [DuckQuery GitHub 仓库](https://github.com/Chenkeliang/duckdb-query)
-- [DuckQuery 产品介绍 · GitHub Pages](https://chenkeliang.github.io/DuckQuery/)
+- [DuckQuery 产品介绍 · GitHub Pages](https://chenkeliang.github.io/duckdb-query/)
 
 如需更多集成案例或希望补充文档，欢迎在 [Discussions](https://github.com/Chenkeliang/duckdb-query/discussions) 与我们交流。
