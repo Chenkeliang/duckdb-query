@@ -12,14 +12,11 @@ from contextlib import contextmanager
 import duckdb
 from dataclasses import dataclass
 from enum import Enum
-import os
 
 logger = logging.getLogger(__name__)
 
 # 获取应用配置
 from core.config_manager import config_manager
-
-app_config = config_manager.get_app_config()
 
 
 class ConnectionState(Enum):
@@ -82,21 +79,11 @@ class DuckDBConnectionPool:
         """创建新连接"""
         try:
             # 获取数据库配置
-            from core.config_manager import config_manager
-
             app_config = config_manager.get_app_config()
+            paths = config_manager.get_duckdb_paths()
 
-            # 确定数据库路径
-            if os.path.exists("/app"):  # Docker环境
-                db_path = "/app/data/duckdb/main.db"
-                temp_dir = "/app/data/duckdb/temp"
-            else:  # 本地环境
-                db_path = "./data/duckdb/main.db"
-                temp_dir = "./data/duckdb/temp"
-
-            # 确保目录存在
-            os.makedirs(os.path.dirname(db_path), exist_ok=True)
-            os.makedirs(temp_dir, exist_ok=True)
+            db_path = str(paths.database_path)
+            temp_dir = str(paths.temp_dir)
 
             # 创建连接
             connection = duckdb.connect(database=db_path)
@@ -186,6 +173,7 @@ class DuckDBConnectionPool:
         with self._condition:
             # 等待可用连接
             start_time = time.time()
+            app_config = config_manager.get_app_config()
             while True:
                 # 查找空闲连接
                 for conn_id, conn_info in self._connections.items():
@@ -209,6 +197,7 @@ class DuckDBConnectionPool:
                     logger.error("获取连接超时")
                     return None
 
+                app_config = config_manager.get_app_config()
                 self._condition.wait(timeout=app_config.pool_wait_timeout)
 
     def _release_connection(self, conn_id: int):

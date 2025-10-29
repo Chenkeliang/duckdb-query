@@ -9,13 +9,22 @@ import logging
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from dataclasses import dataclass, asdict
+from threading import Lock
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class DuckDBPaths:
+    """DuckDB 数据目录集合"""
+
+    database_path: Path
+    temp_dir: Path
+    extension_dir: Path
+    home_dir: Path
 
 # 避免循环导入，在需要时动态导入
 # from core.security import mask_sensitive_config
 from core.encryption import decrypt_config_passwords
-
-logger = logging.getLogger(__name__)
-
 
 @dataclass
 class DatabaseConfig:
@@ -93,6 +102,12 @@ class AppConfig:
     duckdb_extension_directory: str = None
     """DuckDB扩展安装目录，None时使用系统默认"""
 
+    duckdb_data_dir: str = None
+    """DuckDB数据根目录，包含数据库文件、临时目录、扩展目录"""
+
+    duckdb_database_path: str = None
+    """DuckDB数据库文件路径，为空时在数据目录下创建 main.db"""
+
     duckdb_enable_profiling: bool = True
     """是否启用DuckDB查询性能分析，有助于性能调优"""
 
@@ -113,6 +128,18 @@ class AppConfig:
 
     duckdb_extensions: List[str] = None
     """要自动安装和加载的DuckDB扩展列表"""
+
+    duckdb_debug_logging: bool = False
+    """是否启用DuckDB调试日志（SHOW TABLES / EXPLAIN等）"""
+
+    duckdb_auto_explain_threshold_ms: int = 0
+    """慢查询阈值，超过后自动记录EXPLAIN，0表示关闭"""
+
+    exports_dir: str = None
+    """导出文件目录，默认在运行根目录的exports"""
+
+    temp_files_dir: str = None
+    """临时文件目录，默认在运行根目录的temp_files"""
 
     # ==================== 连接池配置 ====================
     # 这些参数控制DuckDB连接池的行为和性能
@@ -178,6 +205,9 @@ class ConfigManager:
     """统一配置管理器"""
 
     def __init__(self, config_dir: str = None):
+        self._write_lock = Lock()
+        self._project_root = self._resolve_project_root()
+
         if config_dir:
             self.config_dir = Path(config_dir)
         elif os.getenv("CONFIG_DIR"):
@@ -277,12 +307,7 @@ class ConfigManager:
 
     def _save_json(self, file_path: Path, data: Any):
         """保存JSON配置文件"""
-        try:
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"保存配置文件失败 {file_path}: {str(e)}")
-            raise
+        self.atomic_write_json(file_path, data)
 
     def load_all_configs(self):
         """加载所有配置"""
@@ -291,6 +316,110 @@ class ConfigManager:
         self.load_datasources_config()
         # 同步数据库管理器的配置
         self._sync_database_manager_configs()
+
+    def _resolve_project_root(self) -> Path:
+        """确定项目运行根目录"""
+        override = os.getenv("APP_ROOT")
+        if override:
+            return Path(override)
+        container_root = Path("/app")
+        if container_root.exists():
+            return container_root
+        return Path(__file__).resolve().parent.parent.parent
+
+    def _default_data_dir(self) -> Path:
+        """默认数据目录"""
+        return self._project_root / "data"
+
+    def get_duckdb_paths(self, ensure_dirs: bool = True) -> DuckDBPaths:
+        """获取DuckDB相关目录配置"""
+        app_config = self.get_app_config()
+
+        base_dir = (
+            Path(app_config.duckdb_data_dir)
+            if app_config.duckdb_data_dir
+            else self._default_data_dir() / "duckdb"
+        )
+
+        database_path = (
+            Path(app_config.duckdb_database_path)
+            if app_config.duckdb_database_path
+            else base_dir / "main.db"
+        )
+
+        temp_dir = (
+            Path(app_config.duckdb_temp_directory)
+            if app_config.duckdb_temp_directory
+            else base_dir / "temp"
+        )
+        extension_dir = (
+            Path(app_config.duckdb_extension_directory)
+            if app_config.duckdb_extension_directory
+            else base_dir / "extensions"
+        )
+        home_dir = (
+            Path(app_config.duckdb_home_directory)
+            if app_config.duckdb_home_directory
+            else base_dir / "home"
+        )
+
+        if ensure_dirs:
+            for path in [
+                database_path.parent,
+                temp_dir,
+                extension_dir,
+                home_dir,
+            ]:
+                path.mkdir(parents=True, exist_ok=True)
+
+        return DuckDBPaths(
+            database_path=database_path,
+            temp_dir=temp_dir,
+            extension_dir=extension_dir,
+            home_dir=home_dir,
+        )
+
+    def get_exports_dir(self, ensure_dir: bool = True) -> Path:
+        """获取导出目录"""
+        app_config = self.get_app_config()
+        exports_dir = (
+            Path(app_config.exports_dir)
+            if app_config.exports_dir
+            else self._project_root / "exports"
+        )
+        if ensure_dir:
+            exports_dir.mkdir(parents=True, exist_ok=True)
+        return exports_dir
+
+    def get_temp_files_dir(self, ensure_dir: bool = True) -> Path:
+        """获取临时文件目录"""
+        app_config = self.get_app_config()
+        temp_dir = (
+            Path(app_config.temp_files_dir)
+            if app_config.temp_files_dir
+            else self._project_root / "temp_files"
+        )
+        if ensure_dir:
+            temp_dir.mkdir(parents=True, exist_ok=True)
+        return temp_dir
+
+    def atomic_write_json(self, file_path: Path, data: Any):
+        """原子写入JSON配置"""
+        tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with self._write_lock:
+                with open(tmp_path, "w", encoding="utf-8") as tmp_file:
+                    json.dump(data, tmp_file, indent=2, ensure_ascii=False, default=str)
+                os.replace(tmp_path, file_path)
+        except Exception as exc:
+            logger.error(f"保存配置文件失败 {file_path}: {exc}")
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    logger.debug("移除临时文件失败: %s", tmp_path)
+            raise
 
     def load_mysql_configs(self) -> Dict[str, DatabaseConfig]:
         """加载MySQL配置 - 优先从datasources.json加载，兼容mysql-configs.json"""
@@ -405,6 +534,50 @@ class ConfigManager:
                         "PIVOT_TABLE_EXTENSION",
                         config_data.get("pivot_table_extension", "pivot_table"),
                     ),
+                    "duckdb_data_dir": os.getenv(
+                        "DUCKDB_DATA_DIR", config_data.get("duckdb_data_dir")
+                    )
+                    or None,
+                    "duckdb_database_path": os.getenv(
+                        "DUCKDB_DATABASE_PATH",
+                        config_data.get("duckdb_database_path"),
+                    )
+                    or None,
+                    "duckdb_temp_directory": os.getenv(
+                        "DUCKDB_TEMP_DIRECTORY",
+                        config_data.get("duckdb_temp_directory"),
+                    )
+                    or None,
+                    "duckdb_home_directory": os.getenv(
+                        "DUCKDB_HOME_DIRECTORY",
+                        config_data.get("duckdb_home_directory"),
+                    )
+                    or None,
+                    "duckdb_extension_directory": os.getenv(
+                        "DUCKDB_EXTENSION_DIRECTORY",
+                        config_data.get("duckdb_extension_directory"),
+                    )
+                    or None,
+                    "duckdb_debug_logging": os.getenv(
+                        "DUCKDB_DEBUG_LOGGING",
+                        str(config_data.get("duckdb_debug_logging", False)),
+                    ).lower()
+                    == "true",
+                    "duckdb_auto_explain_threshold_ms": int(
+                        os.getenv(
+                            "DUCKDB_AUTO_EXPLAIN_THRESHOLD_MS",
+                            config_data.get("duckdb_auto_explain_threshold_ms", 0)
+                            or 0,
+                        )
+                    ),
+                    "exports_dir": os.getenv(
+                        "EXPORTS_DIR", config_data.get("exports_dir")
+                    )
+                    or None,
+                    "temp_files_dir": os.getenv(
+                        "TEMP_FILES_DIR", config_data.get("temp_files_dir")
+                    )
+                    or None,
                     # 数据库超时配置
                     "db_connect_timeout": int(
                         os.getenv(

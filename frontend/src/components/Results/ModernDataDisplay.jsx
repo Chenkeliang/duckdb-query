@@ -1120,7 +1120,7 @@ const ModernDataDisplay = ({
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 头部工具栏 */}
-      <Card sx={{ mb: 2 }}>
+      <CardSurface padding={0} elevation sx={{ mb: 2 }}>
         <CardContent sx={{ pb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1353,10 +1353,10 @@ const ModernDataDisplay = ({
             </Box>
           )}
         </CardContent>
-      </Card>
+      </CardSurface>
 
       {/* 数据表格 */}
-      <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <CardSurface padding={0} elevation sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {loading && <LinearProgress />}
 
         <Box sx={{ flex: 1, position: 'relative' }}>

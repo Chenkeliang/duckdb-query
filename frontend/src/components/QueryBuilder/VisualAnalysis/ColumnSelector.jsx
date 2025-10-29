@@ -24,7 +24,7 @@ import React, { useEffect, useState } from 'react';
  * with responsive grid layout and column metadata display.
  * 
  * Features:
- * - Checkbox-based multi-select interface with Tailwind styling
+ * - Checkbox-based multi-select interface with custom utility styling
  * - Display column names, data types, and metadata
  * - Column selection state management
  * - Responsive grid layout for mobile/desktop

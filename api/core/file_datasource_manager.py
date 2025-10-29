@@ -18,7 +18,7 @@ from datetime import datetime
 
 import duckdb
 
-from core.duckdb_engine import get_db_connection
+from core.duckdb_engine import with_duckdb_connection
 from core.config_manager import config_manager
 
 logger = logging.getLogger(__name__)
@@ -283,8 +283,7 @@ class FileDatasourceManager:
                 configs.append(file_info)
 
             # 保存配置
-            with self.config_file.open("w", encoding="utf-8") as f:
-                json.dump(configs, f, ensure_ascii=False, indent=2, default=str)
+            config_manager.atomic_write_json(self.config_file, configs)
 
             logger.info(f"文件数据源配置已保存: {file_info['source_id']}")
             return True
@@ -339,8 +338,7 @@ class FileDatasourceManager:
 
             # 如果配置有变化，则保存
             if len(new_configs) != len(configs):
-                with self.config_file.open("w", encoding="utf-8") as f:
-                    json.dump(new_configs, f, ensure_ascii=False, indent=2, default=str)
+                config_manager.atomic_write_json(self.config_file, new_configs)
 
                 logger.info(f"文件数据源配置已删除: {source_id}")
                 return True
@@ -350,15 +348,17 @@ class FileDatasourceManager:
             logger.error(f"删除文件数据源配置失败: {str(e)}")
             return False
 
-    def reload_all_file_datasources(self):
+    def reload_all_file_datasources(self, con: Optional[duckdb.DuckDBPyConnection] = None):
         """重新加载所有文件数据源到DuckDB"""
+        if con is None:
+            with with_duckdb_connection() as connection:
+                return self._reload_all_file_datasources(connection)
+        return self._reload_all_file_datasources(con)
+
+    def _reload_all_file_datasources(self, duckdb_con: duckdb.DuckDBPyConnection):
         try:
             logger.info("开始重新加载所有文件数据源到DuckDB...")
 
-            # 获取DuckDB连接
-            duckdb_con = get_db_connection()
-
-            # 获取所有文件数据源配置
             configs = self.list_file_datasources()
             success_count = 0
 
@@ -367,13 +367,11 @@ class FileDatasourceManager:
                 file_path = config["file_path"]
                 file_type = config["file_type"]
 
-                # 检查文件是否存在
                 if not os.path.exists(file_path):
                     logger.warning(f"文件不存在，跳过: {file_path}")
                     continue
 
                 try:
-                    # 重新加载文件到DuckDB
                     table_metadata = create_table_from_file_path_typed(
                         duckdb_con, source_id, file_path, file_type
                     )
@@ -401,14 +399,14 @@ class FileDatasourceManager:
                         table_metadata.get("row_count") if table_metadata else "未知",
                     )
                     success_count += 1
-                except Exception as e:
-                    logger.error(f"重新加载文件数据源失败 {source_id}: {str(e)}")
+                except Exception as exc:
+                    logger.error(f"重新加载文件数据源失败 {source_id}: {str(exc)}")
 
             logger.info(f"文件数据源重新加载完成，成功: {success_count}/{len(configs)}")
             return success_count
 
-        except Exception as e:
-            logger.error(f"重新加载文件数据源失败: {str(e)}")
+        except Exception as exc:
+            logger.error(f"重新加载文件数据源失败: {str(exc)}")
 
 
 def create_typed_table_from_dataframe(
@@ -617,9 +615,11 @@ def convert_table_to_varchar(table_name: str, table_alias: str, duckdb_con):
         raise
 
 
-def reload_all_file_datasources_to_duckdb(duckdb_con):
+def reload_all_file_datasources_to_duckdb(
+    duckdb_con: Optional[duckdb.DuckDBPyConnection] = None,
+):
     """重新加载所有文件数据源到DuckDB"""
-    return file_datasource_manager.reload_all_file_datasources()
+    return file_datasource_manager.reload_all_file_datasources(duckdb_con)
 
 
 # 创建全局实例

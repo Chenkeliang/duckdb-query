@@ -290,7 +290,7 @@ const ExcelSheetSelector = ({
 
   return (
     <ThemeProvider theme={dialogTheme}>
-      <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
+      <Dialog className="dq-dialog" open={open} onClose={onClose} fullWidth maxWidth="lg">
         <DialogTitle disableTypography>
           <SectionHeader
             title="Excel 工作表导入"

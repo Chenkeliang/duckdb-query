@@ -53,7 +53,7 @@ const EnhancedSQLExecutor = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [isDarkMode, setIsDarkMode] = useState(getIsDarkMode);
-  const [editorTheme, setEditorTheme] = useState(() => (getIsDarkMode() ? 'dark' : 'github-light'));
+  const [editorTheme, setEditorTheme] = useState(() => (getIsDarkMode() ? 'dark' : 'light'));
   const [success, setSuccess] = useState("");
   const [duckdbTables, setDuckdbTables] = useState([]);
   const [tableManagerOpen, setTableManagerOpen] = useState(false);
@@ -97,7 +97,7 @@ const EnhancedSQLExecutor = ({
   }, []);
 
   useEffect(() => {
-    const nextTheme = isDarkMode ? 'dark' : 'github-light';
+    const nextTheme = isDarkMode ? 'dark' : 'light';
     setEditorTheme((current) => (current === nextTheme ? current : nextTheme));
   }, [isDarkMode]);
 
@@ -490,8 +490,7 @@ const EnhancedSQLExecutor = ({
                         }
                       }}
                     >
-                      <MenuItem
-                        value="dark"
+                      <MenuItem value="dark"
                         sx={{
                           backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
                           '&:hover': {
@@ -501,8 +500,7 @@ const EnhancedSQLExecutor = ({
                       >
                         Dark
                       </MenuItem>
-                      <MenuItem
-                        value="github-light"
+                      <MenuItem value="light"
                         sx={{
                           backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
                           '&:hover': {
@@ -510,18 +508,7 @@ const EnhancedSQLExecutor = ({
                           }
                         }}
                       >
-                        GitHub Light
-                      </MenuItem>
-                      <MenuItem
-                        value="solarized-light"
-                        sx={{
-                          backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
-                          '&:hover': {
-                            backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
-                          }
-                        }}
-                      >
-                        Solarized Light
+                        Light
                       </MenuItem>
                     </Select>
                   </FormControl>
@@ -544,6 +531,7 @@ const EnhancedSQLExecutor = ({
                     sqlQuery={sqlQuery}
                     tables={duckdbTables}
                     onValidationChange={setValidationResult}
+                    databaseType="DuckDB"
                   />
                 </Box>
               )}

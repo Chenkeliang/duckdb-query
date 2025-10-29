@@ -20,6 +20,21 @@ import {
 import { Parser } from 'node-sql-parser';
 import React, { useEffect, useState } from 'react';
 
+const DIALECT_MAP = {
+    mysql: 'mysql',
+    mariadb: 'mariadb',
+    postgres: 'postgresql',
+    postgresql: 'postgresql',
+    redshift: 'postgresql',
+    sqlite: 'sqlite',
+    snowflake: 'snowflake',
+    bigquery: 'bigquery',
+    hive: 'hive',
+    trino: 'trino',
+    duckdb: 'trino',
+    default: 'trino'
+};
+
 const SQLValidator = ({ sqlQuery, tables = [], onValidationChange, databaseType = 'MySQL' }) => {
     const [errors, setErrors] = useState([]);
     const [warnings, setWarnings] = useState([]);
@@ -60,25 +75,36 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange, databaseType 
 
         // 使用 node-sql-parser 进行真正的SQL语法解析
         const parser = new Parser();
+        const normalizedType = (databaseType || '').toLowerCase();
+        const targetDialect = DIALECT_MAP[normalizedType] || DIALECT_MAP.default;
+        const fallbackDialects = normalizedType === 'duckdb' || (!databaseType && targetDialect === DIALECT_MAP.default)
+            ? [DIALECT_MAP.trino]
+            : [];
 
         try {
-            // 根据数据库类型选择对应的方言进行解析
-            // 支持: MySQL, PostgresQL, MariaDB, SQLite, BigQuery, Snowflake 等
-            const ast = parser.astify(query, { database: databaseType });
+            parser.astify(query, { database: targetDialect });
+        } catch (primaryError) {
+            let parsed = false;
 
-            // 解析成功，SQL语法正确
-            // node-sql-parser 已经能检测所有语法错误，不需要额外的正则检测
+            for (const fallback of fallbackDialects) {
+                try {
+                    parser.astify(query, { database: fallback });
+                    parsed = true;
+                    break;
+                } catch (fallbackError) {
+                    // 继续尝试下一个备用方言
+                }
+            }
 
-        } catch (error) {
-            // 解析失败，说明有语法错误
-            const errorMessage = error.message || '未知的SQL语法错误';
-
-            newErrors.push({
-                type: 'syntax',
-                message: errorMessage,
-                position: 0,
-                suggestion: '请检查SQL语法是否正确'
-            });
+            if (!parsed) {
+                const errorMessage = primaryError.message || '未知的SQL语法错误';
+                newErrors.push({
+                    type: 'syntax',
+                    message: errorMessage,
+                    position: 0,
+                    suggestion: '请检查SQL语法是否正确'
+                });
+            }
         }
 
         setErrors(newErrors);

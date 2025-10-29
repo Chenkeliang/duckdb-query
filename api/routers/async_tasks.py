@@ -30,17 +30,8 @@ from models.query_models import DatabaseConnection, DataSourceType
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# 确保导出目录存在
-# 在Docker容器中使用相对路径，在本地开发时使用绝对路径
-if os.path.exists("/app"):
-    # Docker容器环境
-    EXPORTS_DIR = "/app/exports"
-else:
-    # 本地开发环境
-    EXPORTS_DIR = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "exports"
-    )
-os.makedirs(EXPORTS_DIR, exist_ok=True)
+# 使用统一配置管理获取导出目录
+EXPORTS_DIR = str(config_manager.get_exports_dir())
 
 # 初始化任务工具类
 task_utils = TaskUtils(EXPORTS_DIR)
@@ -161,6 +152,20 @@ class TaskDetailResponse(BaseModel):
     task: dict
 
 
+class CancelTaskRequest(BaseModel):
+    """手动取消任务请求"""
+
+    reason: Optional[str] = "用户手动取消"
+
+
+class RetryTaskRequest(BaseModel):
+    """重试任务请求，可选覆盖部分配置"""
+
+    override_sql: Optional[str] = None
+    custom_table_name: Optional[str] = None
+    datasource_override: Optional[Dict[str, Any]] = None
+
+
 @router.post(
     "/api/async_query", response_model=AsyncQueryResponse, tags=["Async Tasks"]
 )
@@ -182,8 +187,13 @@ async def submit_async_query(
             "datasource": request.datasource,
         }
 
-        # 创建任务
-        task_id = task_manager.create_task(str(task_query))
+        # 创建任务并保存元数据
+        task_id = task_manager.create_task(
+            request.sql,
+            task_type=request.task_type,
+            datasource=request.datasource,
+            metadata=task_query,
+        )
 
         # 添加后台任务执行查询
         background_tasks.add_task(
@@ -251,6 +261,131 @@ async def get_async_task(task_id: str):
     except Exception as e:
         logger.error(f"获取异步任务详情失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取任务详情失败: {str(e)}")
+
+
+@router.post(
+    "/api/async_tasks/{task_id}/cancel",
+    tags=["Async Tasks"],
+)
+async def cancel_async_task(task_id: str, request: CancelTaskRequest):
+    """
+    手动取消异步任务，状态强制设为失败
+    """
+    reason = (request.reason or "用户手动取消").strip()
+    success = task_manager.force_fail_task(
+        task_id,
+        reason,
+        {
+            "manual_cancelled": True,
+            "cancel_reason": reason,
+            "cancelled_at": get_current_time_iso(),
+        },
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail="任务状态不允许取消或任务不存在")
+    return {"success": True, "task_id": task_id, "message": "任务已取消"}
+
+
+def _extract_task_payload(task) -> Dict[str, Any]:
+    """
+    提取任务的原始执行参数
+    """
+    metadata = task.metadata or {}
+    payload: Dict[str, Any] = {}
+    if isinstance(metadata, dict):
+        payload.update(metadata)
+    else:
+        # 尝试从 query 字段解析
+        import json
+
+        try:
+            payload.update(json.loads(str(metadata)))
+        except Exception:
+            pass
+
+    if "sql" not in payload or not payload["sql"]:
+        raw_sql = task.query
+        if isinstance(raw_sql, str):
+            # 如果是字典字符串，尝试解析
+            if raw_sql.strip().startswith("{") and "sql" in raw_sql:
+                import json
+
+                try:
+                    guess = json.loads(raw_sql.replace("'", '"'))
+                    if isinstance(guess, dict) and "sql" in guess:
+                        payload.setdefault("sql", guess.get("sql"))
+                        payload.setdefault("task_type", guess.get("task_type"))
+                        payload.setdefault("custom_table_name", guess.get("custom_table_name"))
+                        payload.setdefault("datasource", guess.get("datasource"))
+                except Exception:
+                    pass
+            else:
+                payload.setdefault("sql", raw_sql)
+    payload.setdefault("task_type", getattr(task, "task_type", None) or "query")
+    return payload
+
+
+@router.post(
+    "/api/async_tasks/{task_id}/retry",
+    response_model=AsyncQueryResponse,
+    tags=["Async Tasks"],
+)
+async def retry_async_task(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    request: RetryTaskRequest,
+):
+    """
+    重试指定异步任务，可选覆盖 SQL / 数据源等参数
+    """
+    task = task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    payload = _extract_task_payload(task)
+
+    sql = (request.override_sql or payload.get("sql") or "").strip()
+    if not sql:
+        raise HTTPException(status_code=400, detail="原任务缺少SQL，无法重试")
+
+    task_type = payload.get("task_type", "query")
+    datasource = request.datasource_override or payload.get("datasource")
+    custom_table_name = request.custom_table_name or payload.get("custom_table_name")
+
+    retry_metadata = dict(payload)
+    retry_metadata.update(
+        {
+            "sql": sql,
+            "task_type": task_type,
+            "custom_table_name": custom_table_name,
+            "datasource": datasource,
+            "retry_of": task_id,
+        }
+    )
+
+    new_task_id = task_manager.create_task(
+        sql,
+        task_type=task_type,
+        datasource=datasource,
+        metadata=retry_metadata,
+    )
+
+    background_tasks.add_task(
+        execute_async_query,
+        new_task_id,
+        sql,
+        custom_table_name,
+        task_type,
+        datasource,
+    )
+
+    task_manager.update_task(task_id, {"last_retry_id": new_task_id})
+
+    return AsyncQueryResponse(
+        success=True,
+        task_id=new_task_id,
+        message="任务已重新提交执行",
+    )
 
 
 @router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
@@ -534,7 +669,7 @@ def cleanup_old_files():
 
         # 获取24小时前的时间
         cutoff_time = datetime.now() - timedelta(hours=24)
-        cleaned_count = 0
+        cleaned_count = task_manager.cleanup_expired_exports(cutoff_time)
 
         # 清理exports目录中的旧文件
         if os.path.exists(EXPORTS_DIR):

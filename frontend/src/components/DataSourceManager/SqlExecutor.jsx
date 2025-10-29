@@ -81,7 +81,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [isDarkMode, setIsDarkMode] = useState(getIsDarkMode);
-  const [editorTheme, setEditorTheme] = useState(() => (getIsDarkMode() ? 'dark' : 'github-light'));
+  const [editorTheme, setEditorTheme] = useState(() => (getIsDarkMode() ? 'dark' : 'light'));
 
   // SQL编辑器引用
   const sqlEditorRef = useRef(null);
@@ -134,7 +134,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
   }, []);
 
   useEffect(() => {
-    const nextTheme = isDarkMode ? 'dark' : 'github-light';
+    const nextTheme = isDarkMode ? 'dark' : 'light';
     setEditorTheme(nextTheme);
   }, [isDarkMode]);
 
@@ -570,40 +570,27 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                     }
                   }}
                 >
-                  <MenuItem
-                    value="dark"
-                    sx={{
-                      backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
-                      '&:hover': {
-                        backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
-                      }
-                    }}
-                  >
-                    Dark
-                  </MenuItem>
-                  <MenuItem
-                    value="github-light"
-                    sx={{
-                      backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
-                      '&:hover': {
-                        backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
-                      }
-                    }}
-                  >
-                    GitHub Light
-                  </MenuItem>
-                  <MenuItem
-                    value="solarized-light"
-                    sx={{
-                      backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
-                      '&:hover': {
-                        backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
-                      }
-                    }}
-                  >
-                    Solarized Light
-                  </MenuItem>
-                </Select>
+                  <MenuItem value="dark"
+                        sx={{
+                          backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                          '&:hover': {
+                            backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
+                          }
+                        }}
+                      >
+                        Dark
+                      </MenuItem>
+                      <MenuItem value="light"
+                        sx={{
+                          backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                          '&:hover': {
+                            backgroundColor: isDarkMode ? 'var(--dq-surface-active)' : undefined
+                          }
+                        }}
+                      >
+                        Light
+                      </MenuItem>
+                    </Select>
               </FormControl>
             </Box>
           </Box>
@@ -624,9 +611,13 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
             tables={[]}
             onValidationChange={setValidationResult}
             databaseType={
-              selectedDataSource
-                ? (stableConnections.find(ds => ds.id === selectedDataSource)?.type === 'postgresql' ? 'PostgresQL' : 'MySQL')
-                : 'MySQL'
+              (() => {
+                if (!selectedDataSource) {
+                  return 'mysql';
+                }
+                const conn = stableConnections.find((ds) => ds.id === selectedDataSource);
+                return conn?.type || 'mysql';
+              })()
             }
           />
 

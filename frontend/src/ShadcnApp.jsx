@@ -1,19 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 
 // 导入Toast上下文
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 
 // 导入原有组件 - 确保包含所有必要的组件
-import AsyncTaskList from "./components/AsyncTasks/AsyncTaskList";
-import DatabaseTableManager from "./components/DatabaseManager/DatabaseTableManager";
 import DataUploadSection from "./components/DataSourceManagement/DataUploadSection";
 import DatabaseConnector from "./components/DataSourceManager/DatabaseConnector";
 import DataPasteBoard from "./components/DataSourceManager/DataPasteBoard";
 import DataSourceList from "./components/DataSourceManager/DataSourceList";
-import DuckDBManagementPage from "./components/DuckDBManager/DuckDBManagementPage";
-import ModernDataDisplay from "./components/Results/ModernDataDisplay";
-import UnifiedQueryInterface from "./components/UnifiedQueryInterface/UnifiedQueryInterface";
 import WelcomePage from "./components/WelcomePage";
 // import ToastDiagnostic from './components/ToastDiagnostic';
 
@@ -29,6 +24,16 @@ import {
   testDatabaseConnection
 } from "./services/apiClient";
 import requestManager from "./utils/requestManager";
+
+const AsyncTaskList = React.lazy(() => import("./components/AsyncTasks/AsyncTaskList"));
+const DatabaseTableManager = React.lazy(() => import("./components/DatabaseManager/DatabaseTableManager"));
+const DuckDBManagementPage = React.lazy(() => import("./components/DuckDBManager/DuckDBManagementPage"));
+const ModernDataDisplay = React.lazy(() => import("./components/Results/ModernDataDisplay"));
+const UnifiedQueryInterface = React.lazy(() => import("./components/UnifiedQueryInterface/UnifiedQueryInterface"));
+
+const LazyFallback = () => (
+  <div className="p-6 text-gray-500 text-sm">模块加载中...</div>
+);
 
 // 导入样式
 import "./styles/modern.css";
@@ -1035,60 +1040,64 @@ const ShadcnApp = () => {
               </div>
 
               <div className="space-y-6">
-                <UnifiedQueryInterface
-                  dataSources={[...dataSources]
-                    .filter((ds) => ds.type === "duckdb" || ds.sourceType === "duckdb")
-                    .sort((a, b) => {
-                      const timeA = a.createdAt ? new Date(a.createdAt) : new Date(0);
-                      const timeB = b.createdAt ? new Date(b.createdAt) : new Date(0);
-                      if (!a.createdAt && !b.createdAt) return 0;
-                      if (!a.createdAt) return 1;
-                      if (!b.createdAt) return -1;
-                      return timeB - timeA;
-                    })}
-                  databaseConnections={databaseConnections}
-                  selectedSources={selectedSources}
-                  setSelectedSources={setSelectedSources}
-                  onResultsReceived={handleResultsReceived}
-                  onDataSourceSaved={() => {
-                    triggerRefresh();
-                  }}
-                  onRefresh={triggerRefresh}
-                />
+                <Suspense fallback={<LazyFallback />}>
+                  <UnifiedQueryInterface
+                    dataSources={[...dataSources]
+                      .filter((ds) => ds.type === "duckdb" || ds.sourceType === "duckdb")
+                      .sort((a, b) => {
+                        const timeA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+                        const timeB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+                        if (!a.createdAt && !b.createdAt) return 0;
+                        if (!a.createdAt) return 1;
+                        if (!b.createdAt) return -1;
+                        return timeB - timeA;
+                      })}
+                    databaseConnections={databaseConnections}
+                    selectedSources={selectedSources}
+                    setSelectedSources={setSelectedSources}
+                    onResultsReceived={handleResultsReceived}
+                    onDataSourceSaved={() => {
+                      triggerRefresh();
+                    }}
+                    onRefresh={triggerRefresh}
+                  />
+                </Suspense>
 
                 {queryResults.data && (
                   <div className="bg-white rounded-lg border shadow-sm p-6">
-                    <ModernDataDisplay
-                      data={queryResults.data || []}
-                      columns={
-                        queryResults.columns
-                          ? queryResults.columns.map((col, index) => {
-                            const fieldValue = typeof col === "string" ? col : (col.name || col.field || `column_${index}`);
-                            const headerValue = typeof col === "string" ? col : (col.headerName || col.name || col.field || `column_${index}`);
-                            return {
-                              field: fieldValue,
-                              headerName: headerValue,
-                              sortable: true,
-                              filter: true,
-                              resizable: true,
-                            };
-                          })
-                          : []
-                      }
-                      loading={resultsLoading}
-                      title={queryResults.isVisualQuery ? "可视化查询结果" : queryResults.isSetOperation ? "集合操作结果" : "查询结果"}
-                      sqlQuery={queryResults.sqlQuery || queryResults.sql || ""}
-                      originalDatasource={queryResults.originalDatasource}
-                      onApplyFilters={handleApplyResultFilters}
-                      activeFilters={activeFilters}
-                      isVisualQuery={queryResults.isVisualQuery || false}
-                      visualConfig={queryResults.visualConfig || null}
-                      generatedSQL={queryResults.generatedSQL || ""}
-                      isSetOperation={queryResults.isSetOperation || false}
-                      setOperationConfig={queryResults.setOperationConfig || null}
-                      onRefresh={triggerRefresh}
-                      onDataSourceSaved={triggerRefresh}
-                    />
+                    <Suspense fallback={<LazyFallback />}>
+                      <ModernDataDisplay
+                        data={queryResults.data || []}
+                        columns={
+                          queryResults.columns
+                            ? queryResults.columns.map((col, index) => {
+                              const fieldValue = typeof col === "string" ? col : (col.name || col.field || `column_${index}`);
+                              const headerValue = typeof col === "string" ? col : (col.headerName || col.name || col.field || `column_${index}`);
+                              return {
+                                field: fieldValue,
+                                headerName: headerValue,
+                                sortable: true,
+                                filter: true,
+                                resizable: true,
+                              };
+                            })
+                            : []
+                        }
+                        loading={resultsLoading}
+                        title={queryResults.isVisualQuery ? "可视化查询结果" : queryResults.isSetOperation ? "集合操作结果" : "查询结果"}
+                        sqlQuery={queryResults.sqlQuery || queryResults.sql || ""}
+                        originalDatasource={queryResults.originalDatasource}
+                        onApplyFilters={handleApplyResultFilters}
+                        activeFilters={activeFilters}
+                        isVisualQuery={queryResults.isVisualQuery || false}
+                        visualConfig={queryResults.visualConfig || null}
+                        generatedSQL={queryResults.generatedSQL || ""}
+                        isSetOperation={queryResults.isSetOperation || false}
+                        setOperationConfig={queryResults.setOperationConfig || null}
+                        onRefresh={triggerRefresh}
+                        onDataSourceSaved={triggerRefresh}
+                      />
+                    </Suspense>
                   </div>
                 )}
               </div>
@@ -1134,13 +1143,17 @@ const ShadcnApp = () => {
 
                 {tableManagementTab === "duckdb" && (
                   <div className="p-6">
-                    <DuckDBManagementPage onDataSourceChange={triggerRefresh} />
+                    <Suspense fallback={<LazyFallback />}>
+                      <DuckDBManagementPage onDataSourceChange={triggerRefresh} />
+                    </Suspense>
                   </div>
                 )}
 
                 {tableManagementTab === "external" && (
                   <div className="p-6">
-                    <DatabaseTableManager databaseConnections={databaseConnections} />
+                    <Suspense fallback={<LazyFallback />}>
+                      <DatabaseTableManager databaseConnections={databaseConnections} />
+                    </Suspense>
                   </div>
                 )}
               </div>
@@ -1164,16 +1177,18 @@ const ShadcnApp = () => {
                 </div>
               </div>
 
-              <AsyncTaskList
-                onPreviewResult={(taskId) => {
-                  const query = `SELECT * FROM "async_result_${taskId}" LIMIT 10000`;
-                  setCurrentTab("sql");
-                  setPreviewQuery(query);
-                }}
-                onTaskCompleted={() => {
-                  triggerRefresh();
-                }}
-              />
+              <Suspense fallback={<LazyFallback />}>
+                <AsyncTaskList
+                  onPreviewResult={(taskId) => {
+                    const query = `SELECT * FROM "async_result_${taskId}" LIMIT 10000`;
+                    setCurrentTab("sql");
+                    setPreviewQuery(query);
+                  }}
+                  onTaskCompleted={() => {
+                    triggerRefresh();
+                  }}
+                />
+              </Suspense>
             </div>
           )}
         </div>

@@ -546,6 +546,24 @@ export const submitAsyncQuery = async (payload) => {
   }
 };
 
+export const cancelAsyncTask = async (taskId, payload = {}) => {
+  try {
+    const response = await apiClient.post(`/api/async_tasks/${taskId}/cancel`, payload);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const retryAsyncTask = async (taskId, payload = {}) => {
+  try {
+    const response = await apiClient.post(`/api/async_tasks/${taskId}/retry`, payload);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
 
 // 新增连接池状态监控API
 export const getConnectionPoolStatus = async () => {

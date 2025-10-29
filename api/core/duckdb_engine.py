@@ -5,6 +5,7 @@ import time
 from typing import List, Dict, Any, Optional, Tuple
 import re
 from collections import defaultdict
+from contextlib import contextmanager
 
 from models.query_models import (
     QueryRequest,
@@ -20,8 +21,50 @@ logger = logging.getLogger(__name__)
 # 导入连接池管理器
 from core.duckdb_pool import get_connection_pool
 
-# 创建一个全局的DuckDB连接实例，确保在整个应用程序中共享
-_global_duckdb_connection = None
+
+class PooledConnectionProxy:
+    """DuckDB连接代理，确保使用后自动归还到连接池"""
+
+    def __init__(self):
+        self._pool = get_connection_pool()
+        self._ctx = self._pool.get_connection()
+        self._connection = self._ctx.__enter__()
+        self._closed = False
+
+    def __getattr__(self, item):
+        return getattr(self._connection, item)
+
+    def close(self):
+        if not self._closed:
+            self._ctx.__exit__(None, None, None)
+            self._closed = True
+
+    def __enter__(self):
+        return self._connection
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
+
+
+@contextmanager
+def with_duckdb_connection():
+    """使用DuckDB连接池获取连接"""
+    pool = get_connection_pool()
+    with pool.get_connection() as connection:
+        yield connection
+
+
+@contextmanager
+def _use_connection(connection=None):
+    """内部工具：优先使用传入连接，否则从连接池获取"""
+    if connection is not None:
+        yield connection
+        return
+    with with_duckdb_connection() as pooled_con:
+        yield pooled_con
 
 
 def _resolve_duckdb_extensions(app_config, override_extensions: Optional[List[str]] = None) -> List[str]:
@@ -65,6 +108,7 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
 
     try:
         app_config = config_manager.get_app_config()
+        paths = config_manager.get_duckdb_paths()
 
         # 获取所有以duckdb_开头的配置项
         config_items = {
@@ -87,8 +131,11 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
             )
             logger.info(f"DuckDB内存限制设置为: {config_items['duckdb_memory_limit']}")
 
-        # 设置临时目录
-        connection.execute(f"SET temp_directory='{temp_dir}'")
+        # 设置目录相关配置
+        resolved_temp_dir = temp_dir or str(paths.temp_dir)
+        connection.execute(f"SET temp_directory='{resolved_temp_dir}'")
+        connection.execute(f"SET home_directory='{paths.home_dir}'")
+        connection.execute(f"SET extension_directory='{paths.extension_dir}'")
 
         # 应用性能优化配置
         if config_items.get("duckdb_enable_profiling") is not None:
@@ -210,9 +257,12 @@ def _apply_default_duckdb_config(connection, temp_dir: str):
         app_config = config_manager.get_app_config()
 
         # 使用配置文件中的默认值
+        paths = config_manager.get_duckdb_paths()
         connection.execute(f"SET threads={app_config.duckdb_threads}")
         connection.execute(f"SET memory_limit='{app_config.duckdb_memory_limit}'")
-        connection.execute(f"SET temp_directory='{temp_dir}'")
+        connection.execute(f"SET temp_directory='{temp_dir or str(paths.temp_dir)}'")
+        connection.execute(f"SET home_directory='{paths.home_dir}'")
+        connection.execute(f"SET extension_directory='{paths.extension_dir}'")
 
         # 性能优化 - 使用配置默认值
         connection.execute(
@@ -246,96 +296,59 @@ def _apply_default_duckdb_config(connection, temp_dir: str):
 
 def get_db_connection():
     """
-    获取DuckDB连接的单例实例
+    获取DuckDB连接（兼容旧接口）。
+    返回的连接对象在使用完成后会自动归还连接池。
     """
-    global _global_duckdb_connection
-    if _global_duckdb_connection is None:
-        logger.info("创建新的DuckDB连接...")
-        # 使用持久化文件而不是内存模式
-        # 兼容本地开发和Docker环境
-        import os
-
-        if os.path.exists("/app"):
-            # Docker环境
-            db_path = "/app/data/duckdb/main.db"
-            temp_dir = "/app/data/duckdb/temp"
-        else:
-            # 本地开发环境
-            db_path = "./data/duckdb/main.db"
-            temp_dir = "./data/duckdb/temp"
-
-        # 确保基础目录存在
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        os.makedirs(temp_dir, exist_ok=True)
-
-        # 创建DuckDB扩展和配置目录
-        if os.path.exists("/app"):
-            # Docker环境
-            extension_dir = "/app/data/duckdb/extensions"
-            home_dir = "/app/data/duckdb/home"
-        else:
-            # 本地开发环境
-            extension_dir = "./data/duckdb/extensions"
-            home_dir = "./data/duckdb/home"
-
-        os.makedirs(extension_dir, exist_ok=True)
-        os.makedirs(home_dir, exist_ok=True)
-
-        _global_duckdb_connection = duckdb.connect(database=db_path)
-        logger.info(f"DuckDB连接到持久化文件: {db_path}")
-
-        # 自动应用所有DuckDB配置
-        _apply_duckdb_configuration(_global_duckdb_connection, temp_dir)
-
-        logger.info("DuckDB配置和扩展已自动应用")
-    return _global_duckdb_connection
+    return PooledConnectionProxy()
 
 
 def execute_query(query, con=None):
     """
     在DuckDB中执行查询 - 带性能监控
     """
-    if con is None:
-        con = get_db_connection()
+    from core.config_manager import config_manager
 
-    logger.info(f"执行DuckDB查询: {query}")
+    app_config = config_manager.get_app_config()
+    debug_logging = bool(app_config.debug or app_config.duckdb_debug_logging)
+    explain_threshold = max(app_config.duckdb_auto_explain_threshold_ms or 0, 0)
+
     start_time = time.time()
-
-    try:
-        # 先获取表列表，用于调试
-        tables = con.execute("SHOW TABLES").fetchdf()
-        logger.info(f"当前DuckDB中的表: {tables.to_string()}")
-
-        # 对于JOIN查询，先分析查询计划
-        if "JOIN" in query.upper():
+    with _use_connection(con) as connection:
+        if debug_logging:
             try:
-                explain_query = f"EXPLAIN ANALYZE {query}"
-                plan_result = con.execute(explain_query).fetchdf()
-                logger.info(f"JOIN查询执行计划:\n{plan_result.to_string()}")
-            except Exception as e:
-                logger.warning(f"获取查询计划失败: {str(e)}")
+                tables = connection.execute("SHOW TABLES").fetchdf()
+                logger.debug("当前DuckDB中的表:\n%s", tables.to_string())
+            except Exception as debug_error:
+                logger.debug("调试模式下SHOW TABLES失败: %s", debug_error)
 
-        # 执行查询
-        result = con.execute(query).fetchdf()
+        try:
+            result = connection.execute(query).fetchdf()
+        except Exception as err:
+            execution_time = (time.time() - start_time) * 1000
+            logger.error(
+                "DuckDB查询执行失败 (耗时 %.2fms): %s", execution_time, err, exc_info=True
+            )
+            raise
 
         execution_time = (time.time() - start_time) * 1000
+        row_count = len(result)
 
-        # 详细的性能日志
-        if execution_time > 1000:  # 超过1秒的查询
+        if execution_time > 1000:
             logger.warning(
-                f"慢查询检测: 耗时 {execution_time:.2f}ms，返回 {len(result)} 行"
+                "慢查询检测: 耗时 %.2fms，返回 %d 行", execution_time, row_count
             )
-            logger.warning(f"慢查询SQL: {query}")
         else:
-            logger.info(
-                f"查询执行完成，耗时: {execution_time:.2f}ms，返回 {len(result)} 行"
-            )
+            logger.debug("查询完成: %.2fms，返回 %d 行", execution_time, row_count)
+
+        if explain_threshold and execution_time >= explain_threshold:
+            try:
+                plan_rows = connection.execute(f"EXPLAIN {query}").fetchall()
+                plan_text = "\n".join(str(row[0]) for row in plan_rows)
+                logger.warning("慢查询执行计划:\n%s", plan_text)
+            except Exception as explain_error:
+                logger.debug("生成执行计划失败: %s", explain_error)
 
         return result
-    except Exception as e:
-        execution_time = (time.time() - start_time) * 1000
-        logger.error(f"DuckDB查询执行失败 (耗时: {execution_time:.2f}ms): {str(e)}")
-        raise
 
 
 def register_dataframe(table_name: str, df: pd.DataFrame, con=None) -> bool:
@@ -343,13 +356,11 @@ def register_dataframe(table_name: str, df: pd.DataFrame, con=None) -> bool:
     将DataFrame注册到DuckDB (临时表，重启后会丢失)
     建议使用 create_persistent_table() 进行持久化
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
         # 预处理DataFrame以避免类型转换错误
         processed_df = prepare_dataframe_for_duckdb(df)
-        con.register(table_name, processed_df)
+        with _use_connection(con) as connection:
+            connection.register(table_name, processed_df)
         logger.info(
             f"成功注册临时表: {table_name}, 行数: {len(processed_df)}, 列数: {len(processed_df.columns)}"
         )
@@ -363,9 +374,6 @@ def create_persistent_table(table_name: str, df: pd.DataFrame, con=None) -> bool
     """
     创建持久化表到DuckDB，数据会写入磁盘文件
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
         from core.file_datasource_manager import (
             create_typed_table_from_dataframe,
@@ -373,7 +381,8 @@ def create_persistent_table(table_name: str, df: pd.DataFrame, con=None) -> bool
         )
         from core.timezone_utils import get_current_time_iso
 
-        metadata = create_typed_table_from_dataframe(con, table_name, df)
+        with _use_connection(con) as connection:
+            metadata = create_typed_table_from_dataframe(connection, table_name, df)
 
         table_metadata = {
             "source_id": table_name,
@@ -406,11 +415,9 @@ def table_exists(table_name: str, con=None) -> bool:
     """
     检查表是否存在
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
-        tables_df = con.execute("SHOW TABLES").fetchdf()
+        with _use_connection(con) as connection:
+            tables_df = connection.execute("SHOW TABLES").fetchdf()
         return table_name in tables_df["name"].tolist()
     except Exception as e:
         logger.error(f"检查表是否存在失败 {table_name}: {str(e)}")
@@ -450,11 +457,9 @@ def drop_table_if_exists(table_name: str, con=None) -> bool:
     """
     删除表（如果存在）
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
-        con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+        with _use_connection(con) as connection:
+            connection.execute(f'DROP TABLE IF EXISTS "{table_name}"')
         logger.info(f"已删除表: {table_name}")
         return True
     except Exception as e:
@@ -467,22 +472,21 @@ def backup_table(table_name: str, con=None) -> str:
     备份表到临时表
     返回备份表名
     """
-    if con is None:
-        con = get_db_connection()
-
     backup_name = f"{table_name}_backup_{int(time.time())}"
 
     try:
-        # 检查原表是否存在
-        tables = con.execute("SHOW TABLES").fetchall()
-        table_exists = any(table[0] == table_name for table in tables)
+        with _use_connection(con) as connection:
+            tables = connection.execute("SHOW TABLES").fetchall()
+            table_exists = any(table[0] == table_name for table in tables)
 
-        if not table_exists:
-            logger.warning(f"表 {table_name} 不存在，无需备份")
-            return ""
+            if not table_exists:
+                logger.warning(f"表 {table_name} 不存在，无需备份")
+                return ""
 
-        # 创建备份表
-        con.execute(f'CREATE TABLE "{backup_name}" AS SELECT * FROM "{table_name}"')
+            # 创建备份表
+            connection.execute(
+                f'CREATE TABLE "{backup_name}" AS SELECT * FROM "{table_name}"'
+            )
         logger.info(f"已备份表 {table_name} 到 {backup_name}")
         return backup_name
 
@@ -498,9 +502,6 @@ def convert_table_to_varchar(
     将表的所有列转换为VARCHAR类型
     使用DuckDB原生功能，避免pandas
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
         # 如果没有提供备份表名，先创建备份
         if not backup_table_name:
@@ -510,7 +511,10 @@ def convert_table_to_varchar(
                 return False
 
         # 获取表结构
-        columns_info = con.execute(f'DESCRIBE "{backup_table_name}"').fetchall()
+        with _use_connection(con) as connection:
+            columns_info = connection.execute(
+                f'DESCRIBE "{backup_table_name}"'
+            ).fetchall()
 
         # 构建SELECT语句，将所有列CAST为VARCHAR
         cast_columns = []
@@ -529,7 +533,8 @@ def convert_table_to_varchar(
 
         # 重新创建表，所有列都是VARCHAR类型
         create_sql = f'CREATE TABLE "{table_name}" AS SELECT {cast_sql} FROM "{backup_table_name}"'
-        con.execute(create_sql)
+        with _use_connection(con) as connection:
+            connection.execute(create_sql)
 
         # 删除备份表
         drop_table_if_exists(backup_table_name, con)
@@ -546,12 +551,10 @@ def check_and_convert_table_types(table_name: str, con=None) -> bool:
     """
     检查表的列类型，如果有非VARCHAR类型则转换
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
         # 检查表是否存在
-        tables = con.execute("SHOW TABLES").fetchall()
+        with _use_connection(con) as connection:
+            tables = connection.execute("SHOW TABLES").fetchall()
         table_exists = any(table[0] == table_name for table in tables)
 
         if not table_exists:
@@ -559,7 +562,8 @@ def check_and_convert_table_types(table_name: str, con=None) -> bool:
             return True
 
         # 获取表结构
-        columns_info = con.execute(f'DESCRIBE "{table_name}"').fetchall()
+        with _use_connection(con) as connection:
+            columns_info = connection.execute(f'DESCRIBE "{table_name}"').fetchall()
 
         # 检查是否有非VARCHAR类型的列
         non_varchar_columns = []
@@ -589,12 +593,10 @@ def ensure_all_tables_varchar(con=None) -> bool:
     """
     确保所有表的列都是VARCHAR类型
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
         # 获取所有表
-        tables = con.execute("SHOW TABLES").fetchall()
+        with _use_connection(con) as connection:
+            tables = connection.execute("SHOW TABLES").fetchall()
 
         success_count = 0
         total_count = len(tables)
@@ -621,9 +623,6 @@ def create_varchar_table_from_dataframe(
     从DataFrame创建DuckDB表，所有列都转换为VARCHAR类型
     优先使用DuckDB原生功能，避免pandas预处理
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
         if df is None or df.empty:
             logger.warning(f"DataFrame为空，无法创建表 {table_name}")
@@ -635,7 +634,8 @@ def create_varchar_table_from_dataframe(
         )
         from core.timezone_utils import get_current_time_iso
 
-        metadata = create_typed_table_from_dataframe(con, table_name, df)
+        with _use_connection(con) as connection:
+            metadata = create_typed_table_from_dataframe(connection, table_name, df)
 
         table_metadata = {
             "source_id": table_name,
@@ -737,17 +737,15 @@ def get_table_info(table_name: str, con=None) -> Dict[str, Any]:
     """
     获取表的信息
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
-        # 获取表结构
-        schema_query = f"DESCRIBE {table_name}"
-        schema_df = con.execute(schema_query).fetchdf()
+        with _use_connection(con) as connection:
+            # 获取表结构
+            schema_query = f"DESCRIBE {table_name}"
+            schema_df = connection.execute(schema_query).fetchdf()
 
-        # 获取行数
-        count_query = f"SELECT COUNT(*) as row_count FROM {table_name}"
-        count_result = con.execute(count_query).fetchone()
+            # 获取行数
+            count_query = f"SELECT COUNT(*) as row_count FROM {table_name}"
+            count_result = connection.execute(count_query).fetchone()
         row_count = count_result[0] if count_result else 0
 
         # 统一列数据格式：转换为前端期望的对象数组格式
@@ -949,7 +947,6 @@ def build_single_table_query(query_request: QueryRequest) -> str:
     """
     构建单表查询，并将SELECT * 展开为所有列
     """
-    con = get_db_connection()
     source = query_request.sources[0]
     actual_table_name = get_actual_table_name(source)
     table_name_sql = f'"{actual_table_name}"'
@@ -960,7 +957,10 @@ def build_single_table_query(query_request: QueryRequest) -> str:
     else:
         try:
             # 展开 SELECT *
-            columns_df = con.execute(f"PRAGMA table_info({table_name_sql})").fetchdf()
+            with _use_connection() as connection:
+                columns_df = connection.execute(
+                    f"PRAGMA table_info({table_name_sql})"
+                ).fetchdf()
             all_columns = columns_df["name"].tolist()
             select_clause = ", ".join([f'"{col}"' for col in all_columns])
             if not select_clause:  # 如果表没有列
@@ -1162,41 +1162,31 @@ def create_varchar_index(table_name: str, column_name: str, con=None) -> bool:
     """
     为VARCHAR列创建索引以优化JOIN性能
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
-        # 检查表是否存在
-        tables = con.execute("SHOW TABLES").fetchall()
-        table_exists = any(table[0] == table_name for table in tables)
+        with _use_connection(con) as connection:
+            tables = connection.execute("SHOW TABLES").fetchall()
+            table_exists = any(table[0] == table_name for table in tables)
 
-        if not table_exists:
-            logger.warning(f"表 {table_name} 不存在，无法创建索引")
-            return False
+            if not table_exists:
+                logger.warning(f"表 {table_name} 不存在，无法创建索引")
+                return False
 
-        # 创建索引名称
-        index_name = f"idx_{table_name}_{column_name}".replace("-", "_").replace(
-            " ", "_"
-        )
-
-        # 检查索引是否已存在
-        try:
-            existing_indexes = con.execute(
-                f"PRAGMA table_info('{table_name}')"
-            ).fetchall()
-            # DuckDB的索引检查方式
-            con.execute(
-                f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}")'
+            index_name = f"idx_{table_name}_{column_name}".replace("-", "_").replace(
+                " ", "_"
             )
-            logger.info(
-                f"已为表 {table_name} 的列 {column_name} 创建索引: {index_name}"
-            )
-            return True
-        except Exception as e:
-            if "already exists" in str(e).lower():
-                logger.info(f"索引 {index_name} 已存在")
+
+            try:
+                connection.execute(
+                    f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}")'
+                )
+                logger.info(
+                    f"已为表 {table_name} 的列 {column_name} 创建索引: {index_name}"
+                )
                 return True
-            else:
+            except Exception as e:
+                if "already exists" in str(e).lower():
+                    logger.info(f"索引 {index_name} 已存在")
+                    return True
                 raise e
 
     except Exception as e:
@@ -1208,9 +1198,6 @@ def create_join_indexes(sources: List[DataSource], joins: List[Join], con=None) 
     """
     为JOIN操作中涉及的列创建索引
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
         # 收集所有JOIN列
         join_columns = set()
@@ -1234,13 +1221,10 @@ def optimize_query_plan(query: str, con=None) -> str:
     """
     优化查询计划
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
-        # 获取查询计划
-        explain_query = f"EXPLAIN {query}"
-        plan = con.execute(explain_query).fetchdf()
+        with _use_connection(con) as connection:
+            explain_query = f"EXPLAIN {query}"
+            plan = connection.execute(explain_query).fetchdf()
         logger.info(f"查询计划:\n{plan.to_string()}")
 
         # 这里可以添加查询优化逻辑
@@ -1256,13 +1240,10 @@ def validate_query_syntax(query: str, con=None) -> Tuple[bool, str]:
     """
     验证查询语法
     """
-    if con is None:
-        con = get_db_connection()
-
     try:
-        # 使用EXPLAIN来验证语法
-        explain_query = f"EXPLAIN {query}"
-        con.execute(explain_query)
+        with _use_connection(con) as connection:
+            explain_query = f"EXPLAIN {query}"
+            connection.execute(explain_query)
         return True, "查询语法正确"
     except Exception as e:
         return False, f"查询语法错误: {str(e)}"

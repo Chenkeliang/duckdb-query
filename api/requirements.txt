@@ -3,15 +3,12 @@ uvicorn
 pandas
 duckdb
 python-multipart
-aiofiles
 openpyxl
 sqlalchemy
 pymysql
 psycopg2-binary
 pyarrow
 pydantic[email]
-python-json-logger
-httpx
 requests
 python-magic
 cryptography

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import List, Any, Optional, Dict
 
 from pydantic import BaseModel, Field, validator
-from core.duckdb_engine import get_db_connection
+from core.duckdb_engine import with_duckdb_connection
 from core.encryption import password_encryptor
 from models.query_models import (
     DatabaseConnection,
@@ -562,33 +562,32 @@ async def upload_file(
         if not source_id:
             source_id = f"table_{int(time.time())}"
 
-        duckdb_con = get_db_connection()
         original_source_id = source_id
 
-        while True:
-            try:
-                result = duckdb_con.execute(
-                    "SELECT table_name FROM information_schema.tables WHERE table_name = ?",
-                    [source_id],
-                ).fetchone()
-                if result is None:
+        with with_duckdb_connection() as duckdb_con:
+            while True:
+                try:
+                    result = duckdb_con.execute(
+                        "SELECT table_name FROM information_schema.tables WHERE table_name = ?",
+                        [source_id],
+                    ).fetchone()
+                    if result is None:
+                        break
+                    timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
+                    source_id = f"{original_source_id}_{timestamp}"
                     break
-                timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
-                source_id = f"{original_source_id}_{timestamp}"
-                break
-            except Exception as e:
-                logger.warning(f"检查表名时出错: {e}")
-                break
+                except Exception as e:
+                    logger.warning(f"检查表名时出错: {e}")
+                    break
 
-        duckdb_con = get_db_connection()
-        try:
-            table_metadata = create_table_from_dataframe(
-                duckdb_con, source_id, save_path, file_type
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"持久化到DuckDB失败: {str(e)}"
-            )
+            try:
+                table_metadata = create_table_from_dataframe(
+                    duckdb_con, source_id, save_path, file_type
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500, detail=f"持久化到DuckDB失败: {str(e)}"
+                )
 
         row_count = table_metadata.get("row_count", 0)
         column_count = table_metadata.get("column_count", 0)
@@ -700,8 +699,6 @@ async def import_excel(request: ExcelImportRequest):
     if not pending:
         raise HTTPException(status_code=404, detail="未找到对应的Excel缓存文件，请重新上传。")
 
-    con = get_db_connection()
-
     processed_results = []
     metadata_to_persist = []
     sanitized_name_map = {}
@@ -717,90 +714,91 @@ async def import_excel(request: ExcelImportRequest):
             )
         sanitized_name_map[sheet_cfg.name] = sanitized
 
-    try:
-        con.execute("BEGIN TRANSACTION")
-        for sheet_cfg in request.sheets:
-            target_table = sanitized_name_map[sheet_cfg.name]
-            df = load_excel_sheet_dataframe(
-                pending.stored_path,
-                sheet_cfg.name,
-                header_rows=sheet_cfg.header_rows,
-                header_row_index=sheet_cfg.header_row_index,
-                fill_merged=sheet_cfg.fill_merged,
-            )
+    with with_duckdb_connection() as con:
+        try:
+            con.execute("BEGIN TRANSACTION")
+            for sheet_cfg in request.sheets:
+                target_table = sanitized_name_map[sheet_cfg.name]
+                df = load_excel_sheet_dataframe(
+                    pending.stored_path,
+                    sheet_cfg.name,
+                    header_rows=sheet_cfg.header_rows,
+                    header_row_index=sheet_cfg.header_row_index,
+                    fill_merged=sheet_cfg.fill_merged,
+                )
 
-            if df.empty:
-                raise ValueError(f"工作表 {sheet_cfg.name} 不包含可导入的数据。")
+                if df.empty:
+                    raise ValueError(f"工作表 {sheet_cfg.name} 不包含可导入的数据。")
 
-            table_exists = _table_exists(con, target_table)
-            mode = sheet_cfg.mode
+                table_exists = _table_exists(con, target_table)
+                mode = sheet_cfg.mode
 
-            if mode == "fail" and table_exists:
-                raise ValueError(f"目标表 {target_table} 已存在，导入模式为 fail。")
+                if mode == "fail" and table_exists:
+                    raise ValueError(f"目标表 {target_table} 已存在，导入模式为 fail。")
 
-            view_name = f"excel_view_{uuid4().hex[:8]}"
-            con.register(view_name, df)
+                view_name = f"excel_view_{uuid4().hex[:8]}"
+                con.register(view_name, df)
 
-            columns_clause = ", ".join(f"{_quote_identifier(col)}" for col in df.columns)
-            try:
-                if mode == "append" and table_exists:
-                    existing_cols = _fetch_existing_columns(con, target_table)
-                    if [col.lower() for col in existing_cols] != [
-                        col.lower() for col in df.columns
-                    ]:
-                        raise ValueError(
-                            f"目标表 {target_table} 的列结构与工作表 {sheet_cfg.name} 不匹配，无法追加。"
+                columns_clause = ", ".join(f"{_quote_identifier(col)}" for col in df.columns)
+                try:
+                    if mode == "append" and table_exists:
+                        existing_cols = _fetch_existing_columns(con, target_table)
+                        if [col.lower() for col in existing_cols] != [
+                            col.lower() for col in df.columns
+                        ]:
+                            raise ValueError(
+                                f"目标表 {target_table} 的列结构与工作表 {sheet_cfg.name} 不匹配，无法追加。"
+                            )
+                        insert_sql = (
+                            f"INSERT INTO {_quote_identifier(target_table)} ({columns_clause}) "
+                            f"SELECT {columns_clause} FROM {view_name}"
                         )
-                    insert_sql = (
-                        f"INSERT INTO {_quote_identifier(target_table)} ({columns_clause}) "
-                        f"SELECT {columns_clause} FROM {view_name}"
-                    )
-                    con.execute(insert_sql)
-                else:
-                    statement = (
-                        f"CREATE OR REPLACE TABLE {_quote_identifier(target_table)} "
-                        f"AS SELECT * FROM {view_name}"
-                    )
-                    if mode == "append" and not table_exists:
+                        con.execute(insert_sql)
+                    else:
                         statement = (
-                            f"CREATE TABLE {_quote_identifier(target_table)} "
+                            f"CREATE OR REPLACE TABLE {_quote_identifier(target_table)} "
                             f"AS SELECT * FROM {view_name}"
                         )
-                    con.execute(statement)
-            finally:
-                con.unregister(view_name)
+                        if mode == "append" and not table_exists:
+                            statement = (
+                                f"CREATE TABLE {_quote_identifier(target_table)} "
+                                f"AS SELECT * FROM {view_name}"
+                            )
+                        con.execute(statement)
+                finally:
+                    con.unregister(view_name)
 
-            metadata = build_table_metadata_snapshot(con, target_table)
-            metadata_to_persist.append((target_table, metadata, sheet_cfg))
+                metadata = build_table_metadata_snapshot(con, target_table)
+                metadata_to_persist.append((target_table, metadata, sheet_cfg))
 
-            processed_results.append(
-                {
-                    "sheet_name": sheet_cfg.name,
-                    "target_table": target_table,
-                    "mode": mode,
-                    "row_count": metadata.get("row_count", 0),
-                    "column_count": metadata.get("column_count", 0),
-                    "columns": metadata.get("columns", []),
-                    "column_profiles": metadata.get("column_profiles", []),
-                    "header_rows": sheet_cfg.header_rows,
-                    "header_row_index": sheet_cfg.header_row_index,
-                }
+                processed_results.append(
+                    {
+                        "sheet_name": sheet_cfg.name,
+                        "target_table": target_table,
+                        "mode": mode,
+                        "row_count": metadata.get("row_count", 0),
+                        "column_count": metadata.get("column_count", 0),
+                        "columns": metadata.get("columns", []),
+                        "column_profiles": metadata.get("column_profiles", []),
+                        "header_rows": sheet_cfg.header_rows,
+                        "header_row_index": sheet_cfg.header_row_index,
+                    }
+                )
+
+            con.execute("COMMIT")
+        except Exception as exc:
+            logger.error("Excel 导入失败: %s", exc, exc_info=True)
+            try:
+                con.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "EXCEL_IMPORT_FAILED",
+                    "message": str(exc),
+                },
             )
-
-        con.execute("COMMIT")
-    except Exception as exc:
-        logger.error("Excel 导入失败: %s", exc, exc_info=True)
-        try:
-            con.execute("ROLLBACK")
-        except Exception:
-            pass
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": "EXCEL_IMPORT_FAILED",
-                "message": str(exc),
-            },
-        )
 
     for target_table, metadata, sheet_cfg in metadata_to_persist:
         file_info = {

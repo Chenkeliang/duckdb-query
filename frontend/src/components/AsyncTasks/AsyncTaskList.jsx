@@ -4,7 +4,9 @@ import {
   Error,
   HourglassBottom,
   PlayArrow,
-  Refresh
+  Refresh,
+  Replay,
+  StopCircle
 } from '@mui/icons-material';
 import {
   Alert,
@@ -30,12 +32,13 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Tooltip,
   Typography
 } from '@mui/material';
 import { ClipboardList } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { listAsyncTasks } from '../../services/apiClient';
+import { cancelAsyncTask, listAsyncTasks, retryAsyncTask } from '../../services/apiClient';
 
 const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
   const [tasks, setTasks] = useState([]);
@@ -46,6 +49,13 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [downloadFormat, setDownloadFormat] = useState('parquet');
   const [previousTasks, setPreviousTasks] = useState([]); // 用于检测任务状态变化
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('用户手动取消');
+  const [pendingCancelTaskId, setPendingCancelTaskId] = useState(null);
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [retryDialogOpen, setRetryDialogOpen] = useState(false);
+  const [retrySubmitting, setRetrySubmitting] = useState(false);
+  const [pendingRetryTask, setPendingRetryTask] = useState(null);
 
   // 获取任务列表
   const fetchTasks = async () => {
@@ -248,6 +258,68 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
     }
   };
 
+  const openCancelDialog = (taskId) => {
+    setPendingCancelTaskId(taskId);
+    setCancelReason('用户手动取消');
+    setCancelDialogOpen(true);
+    setError('');
+  };
+
+  const closeCancelDialog = () => {
+    if (cancelSubmitting) return;
+    setCancelDialogOpen(false);
+    setPendingCancelTaskId(null);
+  };
+
+  const confirmCancelTask = async () => {
+    if (!pendingCancelTaskId) return;
+    try {
+      setCancelSubmitting(true);
+      await cancelAsyncTask(pendingCancelTaskId, {
+        reason: cancelReason.trim() || undefined
+      });
+      setError('');
+      await fetchTasks();
+      setCancelDialogOpen(false);
+      setPendingCancelTaskId(null);
+    } catch (err) {
+      setError(`取消任务失败: ${err.message}`);
+    } finally {
+      setCancelSubmitting(false);
+    }
+  };
+
+  const openRetryDialog = (task) => {
+    setPendingRetryTask(task);
+    setRetryDialogOpen(true);
+    setError('');
+  };
+
+  const closeRetryDialog = () => {
+    if (retrySubmitting) return;
+    setRetryDialogOpen(false);
+    setPendingRetryTask(null);
+  };
+
+  const confirmRetryTask = async () => {
+    if (!pendingRetryTask) return;
+    try {
+      setRetrySubmitting(true);
+      const response = await retryAsyncTask(pendingRetryTask.task_id, {});
+      if (!response?.success) {
+        throw new Error(response?.message || '重试任务失败');
+      }
+      setError('');
+      await fetchTasks();
+    } catch (err) {
+      setError(`重试任务失败: ${err.message}`);
+    } finally {
+      setRetrySubmitting(false);
+      setRetryDialogOpen(false);
+      setPendingRetryTask(null);
+    }
+  };
+
 
   return (
     <Box>
@@ -405,6 +477,33 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', gap: 1, flexDirection: 'column' }}>
+                            {(task.status === 'running' || task.status === 'queued') && (
+                              <Tooltip title="取消任务">
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="warning"
+                                  startIcon={<StopCircle />}
+                                  onClick={() => openCancelDialog(task.task_id)}
+                                  sx={{ textTransform: 'none' }}
+                                >
+                                  取消
+                                </Button>
+                              </Tooltip>
+                            )}
+                            {task.status === 'failed' && (
+                              <Tooltip title="重新执行">
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<Replay />}
+                                  onClick={() => openRetryDialog(task)}
+                                  sx={{ textTransform: 'none' }}
+                                >
+                                  重试
+                                </Button>
+                              </Tooltip>
+                            )}
                             {task.status === 'success' && (
                               <>
                                 <Tooltip title="下载结果文件">
@@ -442,73 +541,136 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
       </Card>
 
       {/* 格式选择对话框 */}
-      <Dialog open={formatDialogOpen} onClose={closeFormatDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>选择下载格式</DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2 }}>
-            <Alert severity="info" sx={{ mb: 2 }}>
-              <Typography variant="body2">
-                选择您希望下载的文件格式。
-              </Typography>
-            </Alert>
-
-            <FormControl fullWidth sx={{ mb: 3 }}>
-              <InputLabel>下载格式</InputLabel>
-              <Select
-                value={downloadFormat}
-                label="下载格式"
-                onChange={(e) => setDownloadFormat(e.target.value)}
-              >
-                <MenuItem value="csv">CSV 格式</MenuItem>
-                <MenuItem value="parquet">Parquet 格式</MenuItem>
-              </Select>
-            </FormControl>
-
-            <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-              <Typography variant="body2" sx={{ fontWeight: 'medium', mb: 1 }}>
-                格式说明:
-              </Typography>
-              <Typography variant="body2" component="div">
-                {downloadFormat === 'parquet' ? (
-                  <>
-                    • <strong>Parquet</strong>: 高效的列式存储格式<br />
-                    • 适合大数据分析<br />
-                    • 文件体积小，读取速度快<br />
-                    • 需要专门工具打开
-                  </>
-                ) : (
-                  <>
-                    • <strong>CSV</strong>: 通用的表格数据格式<br />
-                    • 兼容性好，几乎所有工具都支持<br />
-                    • 易于在Excel等工具中打开<br />
-                    • 文件体积相对较大
-                  </>
-                )}
-              </Typography>
+        <Dialog className="dq-dialog" open={cancelDialogOpen} onClose={closeCancelDialog} maxWidth="sm" fullWidth>
+          <DialogTitle>取消任务</DialogTitle>
+          <DialogContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 420 }}>
+              <Alert severity="warning">
+                <Typography variant="body2">
+                  将任务标记为失败，后续可通过“重试”按钮重新执行。
+                </Typography>
+              </Alert>
+              <TextField
+                label="取消原因（可留空）"
+                value={cancelReason}
+                onChange={(event) => setCancelReason(event.target.value)}
+                fullWidth
+                placeholder="例如：不再需要结果或 SQL 填写错误"
+              />
             </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeCancelDialog} disabled={cancelSubmitting}>
+              保留
+            </Button>
+            <Button
+              onClick={confirmCancelTask}
+              variant="contained"
+              color="warning"
+              startIcon={cancelSubmitting ? <CircularProgress size={16} /> : <StopCircle />}
+              disabled={cancelSubmitting}
+            >
+              {cancelSubmitting ? '取消中...' : '确认取消'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-            <Alert severity="success" sx={{ mt: 2 }}>
+        <Dialog className="dq-dialog" open={retryDialogOpen} onClose={closeRetryDialog} maxWidth="xs" fullWidth>
+          <DialogTitle>重新执行任务</DialogTitle>
+          <DialogContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 400 }}>
               <Typography variant="body2">
-                文件生成完成后将自动开始下载。
+                确认要重新执行任务
+                {pendingRetryTask ? `（${pendingRetryTask.task_id.slice(0, 8)}...）` : ''} 吗？
               </Typography>
-            </Alert>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeFormatDialog}>取消</Button>
-          <Button
-            onClick={confirmDownloadWithFormat}
-            variant="contained"
-            disabled={loading}
-            startIcon={loading ? <CircularProgress size={16} /> : <Download />}
-          >
-            {loading ? '生成中...' : '生成并下载'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+              <Alert severity="info" sx={{ alignItems: 'flex-start' }}>
+                <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+                  重试会复用原始 SQL 与数据源配置，并新建一个任务。原任务状态将保持不变，可在完成后对比结果。
+                </Typography>
+              </Alert>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeRetryDialog} disabled={retrySubmitting}>
+              取消
+            </Button>
+            <Button
+              onClick={confirmRetryTask}
+              variant="contained"
+              startIcon={retrySubmitting ? <CircularProgress size={16} /> : <Replay />}
+              disabled={retrySubmitting}
+            >
+              {retrySubmitting ? '重新提交中...' : '确认重试'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog className="dq-dialog" open={formatDialogOpen} onClose={closeFormatDialog} maxWidth="sm" fullWidth>
+          <DialogTitle>选择下载格式</DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 2 }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  选择您希望下载的文件格式。
+                </Typography>
+              </Alert>
+
+              <FormControl fullWidth sx={{ mb: 3 }}>
+                <InputLabel>下载格式</InputLabel>
+                <Select
+                  value={downloadFormat}
+                  label="下载格式"
+                  onChange={(e) => setDownloadFormat(e.target.value)}
+                >
+                  <MenuItem value="csv">CSV 格式</MenuItem>
+                  <MenuItem value="parquet">Parquet 格式</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Box sx={{ p: 2, bgcolor: 'var(--dq-surface-card)', borderRadius: 2, border: '1px solid var(--dq-border-subtle)' }}>
+                <Typography variant="body2" sx={{ fontWeight: 'medium', mb: 1 }}>
+                  格式说明:
+                </Typography>
+                <Typography variant="body2" component="div">
+                  {downloadFormat === 'parquet' ? (
+                    <>
+                      • <strong>Parquet</strong>: 高效的列式存储格式<br />
+                      • 适合大数据分析<br />
+                      • 文件体积小，读取速度快<br />
+                      • 需要专门工具打开
+                    </>
+                  ) : (
+                    <>
+                      • <strong>CSV</strong>: 通用的表格数据格式<br />
+                      • 兼容性好，几乎所有工具都支持<br />
+                      • 易于在Excel等工具中打开<br />
+                      • 文件体积相对较大
+                    </>
+                  )}
+                </Typography>
+              </Box>
+
+              <Alert severity="success" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  文件生成完成后将自动开始下载。
+                </Typography>
+              </Alert>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeFormatDialog}>取消</Button>
+            <Button
+              onClick={confirmDownloadWithFormat}
+              variant="contained"
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={16} /> : <Download />}
+            >
+              {loading ? '生成中...' : '生成并下载'}
+            </Button>
+          </DialogActions>
+        </Dialog>
     </Box>
   );
 };
 
 export default AsyncTaskList;
-

@@ -43,7 +43,7 @@ from core.database_manager import db_manager
 from models.query_models import DatabaseConnection, DataSourceType
 from core.file_datasource_manager import reload_all_file_datasources_to_duckdb
 from core.duckdb_engine import (
-    get_db_connection,
+    with_duckdb_connection,
     create_persistent_table,
     create_varchar_table_from_dataframe,
     ensure_all_tables_varchar,
@@ -57,8 +57,8 @@ def load_file_datasources_on_startup():
     """应用启动时重新加载所有文件数据源到DuckDB"""
     try:
         logger.info("开始重新加载文件数据源...")
-        duckdb_con = get_db_connection()
-        success_count = reload_all_file_datasources_to_duckdb(duckdb_con)
+        with with_duckdb_connection() as duckdb_con:
+            success_count = reload_all_file_datasources_to_duckdb(duckdb_con)
         logger.info(f"文件数据源重新加载完成，成功加载 {success_count} 个文件")
     except Exception as e:
         logger.error(f"重新加载文件数据源时出错: {str(e)}")

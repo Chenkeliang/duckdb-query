@@ -48,3 +48,12 @@
 - 风险  
   - 调整过多样式可能短期破坏现有页面，需要分阶段处理并配合 QA 预览。  
   - 若组件忘记加新 class，可能在暗色模式下退回默认外观；需要文档说明并进行代码搜索保障。
+
+## 3. Current Status & Follow-up Checklist
+
+- ✅ CodeMirror 选区与字体已经改用 `--dq-selection-*` token，通过移除主题内的 `!important` 保持与整体肤色一致。
+- ☐ **清理遗留规则**：逐段替换 `modern.css` 中的 `.dark .Mui* { … !important; }`，改为基于 `.dq-card`、`.dq-chip`、`.dq-dialog` 等类的样式文件。
+- ☐ **组件对齐**：在所有卡片、按钮组、提示等位置使用统一的 `dq-*` 类或现有的 `CardSurface`、`RoundedButton` 等封装，避免直接引用 MUI 根节点。
+- ☐ **视觉验收**：完成清理后，在浅色/深色模式下走查核心页面（SQL 执行器、数据源管理、可视化面板、系统监控等），确保无回退或对比度问题。
+
+若以上步骤完成，可将 Task 06 标记为 Done，并在 `AGENTS.md` 中保持规则同步。

@@ -1,3 +1,8 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+
 :root {
   --dq-font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
   --dq-font-mono: "SFMono-Regular", Menlo, monospace;
@@ -694,16 +699,7 @@
   color: #0f172a;
   letter-spacing: -0.01em;
 }
-/* 导入Inter字体 */
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
-@import '@fontsource/inter/700.css';
-
-/* 暂时注释掉Tailwind，使用自定义CSS实现Shadcn风格 */
-/* @tailwind base;
-@tailwind components;
-@tailwind utilities; */
+/* Tailwind 导入已移除，统一使用自定义 CSS 实现 Shadcn 风格 */
 
 /* Shadcn/ui风格的CSS变量和样式 */
 :root {
@@ -1743,4 +1739,35 @@ body {
   border: 1px solid var(--dq-border-subtle);
   text-transform: uppercase;
   letter-spacing: -0.015rem;
+}
+
+/* Unified dialog styling */
+.dq-dialog .MuiPaper-root {
+  border-radius: var(--dq-radius-card);
+  background-color: var(--dq-surface-card);
+  border: 1px solid var(--dq-border-card);
+  box-shadow: var(--dq-shadow-soft);
+}
+
+.dq-dialog .MuiDialogTitle-root {
+  padding: 24px 28px 16px;
+  border-bottom: 1px solid var(--dq-border-subtle);
+  color: var(--dq-text-primary);
+}
+
+.dq-dialog .MuiDialogContent-root {
+  padding: 24px 28px;
+  background-color: var(--dq-surface);
+  color: var(--dq-text-primary);
+}
+
+.dq-dialog .MuiDialogActions-root {
+  padding: 16px 28px 24px;
+  border-top: 1px solid var(--dq-border-subtle);
+  background-color: var(--dq-surface);
+}
+
+.dark .dq-dialog .MuiPaper-root {
+  border: 1px solid color-mix(in oklab, var(--dq-neutral-900) 64%, transparent);
+  box-shadow: 0 24px 96px -60px rgba(2, 6, 12, 0.75);
 }
