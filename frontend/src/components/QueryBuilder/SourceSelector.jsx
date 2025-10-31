@@ -65,7 +65,7 @@ const SourceSelector = ({
               sx={{
                 fontWeight: 500,
                 fontSize: '1rem',
-                color: 'text.primary'
+                color: 'var(--dq-text-primary)'
               }}
             >
               可用数据源
@@ -78,12 +78,12 @@ const SourceSelector = ({
                   size="small"
                   onClick={onRefresh}
                   sx={{
-                    color: 'text.secondary',
-                    opacity: 0.7,
+                    color: 'var(--dq-text-secondary)',
+                    opacity: 0.75,
                     '&:hover': {
                       opacity: 1,
-                      bgcolor: 'rgba(0, 113, 227, 0.1)',
-                      color: 'primary.main'
+                      bgcolor: 'var(--dq-surface-hover)',
+                      color: 'var(--dq-text-primary)'
                     }
                   }}
                 >
@@ -96,7 +96,7 @@ const SourceSelector = ({
                 fontSize="small"
                 sx={{
                   fontSize: '1rem',
-                  color: 'text.secondary',
+                  color: 'var(--dq-text-secondary)',
                   opacity: 0.7
                 }}
               />
@@ -127,9 +127,12 @@ const SourceSelector = ({
                       sx={{
                         py: 1,
                         px: 2,
-                        transition: 'all 0.2s',
+                        transition: 'background-color 0.2s ease, border-color 0.2s ease',
+                        borderRadius: 1.5,
+                        border: '1px solid transparent',
                         '&:hover': {
-                          bgcolor: 'rgba(0, 113, 227, 0.04)',
+                          bgcolor: 'var(--dq-surface)',
+                          borderColor: 'var(--dq-border-card)'
                         }
                       }}
                     >
@@ -141,7 +144,8 @@ const SourceSelector = ({
                               variant="body2"
                               sx={{
                                 fontWeight: 500,
-                                fontSize: '1rem'
+                                fontSize: '1rem',
+                                color: 'var(--dq-text-primary)'
                               }}
                             >
                               {source.name || source.id}
@@ -152,39 +156,39 @@ const SourceSelector = ({
                               sx={{
                                 height: 18,
                                 fontSize: '1rem',
-                                bgcolor: 'rgba(0, 113, 227, 0.08)',
-                                color: 'rgba(0, 113, 227, 0.8)',
-                                fontWeight: 500
+                                bgcolor: 'var(--dq-surface-card-active)',
+                                color: 'var(--dq-accent-primary)',
+                                fontWeight: 600
                               }}
                             />
                           </Box>
                         }
                         secondary={
-                          <Typography
-                            variant="caption"
-                            component="span"
-                            sx={{
-                              color: 'text.secondary',
-                              mt: 0.5,
-                              fontSize: '1rem',
-                              display: 'block'
-                            }}
-                          >
-                            {(source.type || '').toUpperCase()}
-                          </Typography>
+                  <Typography
+                    variant="caption"
+                    component="span"
+                    sx={{
+                      color: 'var(--dq-text-secondary)',
+                      mt: 0.5,
+                      fontSize: '1rem',
+                      display: 'block'
+                    }}
+                  >
+                    {(source.type || '').toUpperCase()}
+                  </Typography>
                         }
                       />
-                      <Tooltip title="添加到查询">
-                        <IconButton
-                          edge="end"
-                          size="small"
-                          sx={{
-                            color: 'primary.main',
-                            opacity: 0.7,
-                            '&:hover': {
-                              opacity: 1,
-                              bgcolor: 'rgba(0, 113, 227, 0.1)'
-                            }
+                    <Tooltip title="添加到查询">
+                      <IconButton
+                        edge="end"
+                        size="small"
+                        sx={{
+                          color: 'var(--dq-accent-primary)',
+                          opacity: 0.75,
+                          '&:hover': {
+                            opacity: 1,
+                            bgcolor: 'var(--dq-surface-hover)'
+                          }
                           }}
                         >
                           <AddCircleOutlineIcon fontSize="small" />
@@ -269,7 +273,7 @@ const SourceSelector = ({
               sx={{
                 fontWeight: 500,
                 fontSize: '1rem',
-                color: 'text.primary'
+                color: 'var(--dq-text-primary)'
               }}
             >
               已选择数据源
@@ -301,7 +305,10 @@ const SourceSelector = ({
                     sx={{
                       py: 1,
                       px: 2,
-                      transition: 'all 0.2s',
+                      borderRadius: 1.5,
+                      transition: 'background-color 0.2s ease, border-color 0.2s ease',
+                      backgroundColor: 'var(--dq-surface)',
+                      border: '1px solid var(--dq-border-card)'
                     }}
                   >
                     <ListItemText
@@ -312,7 +319,8 @@ const SourceSelector = ({
                             variant="body2"
                             sx={{
                               fontWeight: 500,
-                              fontSize: '1rem'
+                              fontSize: '1rem',
+                              color: 'var(--dq-text-primary)'
                             }}
                           >
                             {source.name || source.id}
@@ -323,7 +331,7 @@ const SourceSelector = ({
                             sx={{
                               height: 18,
                               fontSize: '1rem',
-                              bgcolor: 'rgba(52, 199, 89, 0.08)',
+                              bgcolor: 'color-mix(in oklab, var(--dq-surface-card-active) 70%, transparent)',
                               color: 'rgba(52, 199, 89, 0.8)',
                               fontWeight: 500
                             }}
@@ -331,33 +339,33 @@ const SourceSelector = ({
                         </Box>
                       }
                       secondary={
-                        <Typography
-                          variant="caption"
-                          component="span"
-                          sx={{
-                            color: 'text.secondary',
-                            mt: 0.5,
-                            fontSize: '1rem',
-                            display: 'block'
-                          }}
-                        >
-                          {(source.type || '').toUpperCase()}
-                        </Typography>
+                <Typography
+                  variant="caption"
+                  component="span"
+                  sx={{
+                    color: 'var(--dq-text-secondary)',
+                    mt: 0.5,
+                    fontSize: '1rem',
+                    display: 'block'
+                  }}
+                >
+                  {(source.type || '').toUpperCase()}
+                </Typography>
                       }
                     />
                     <ListItemSecondaryAction>
                       <Tooltip title="从查询中移除">
                         <IconButton
-                          edge="end"
-                          size="small"
-                          onClick={() => onSourceRemove(source.id)}
-                          sx={{
-                            color: 'error.light',
-                            opacity: 0.7,
-                            '&:hover': {
-                              opacity: 1,
-                              bgcolor: 'rgba(211, 47, 47, 0.05)'
-                            }
+                        edge="end"
+                        size="small"
+                        onClick={() => onSourceRemove(source.id)}
+                        sx={{
+                          color: 'var(--dq-accent-100)',
+                          opacity: 0.75,
+                          '&:hover': {
+                            opacity: 1,
+                            bgcolor: 'var(--dq-surface-hover)'
+                          }
                           }}
                         >
                           <DeleteIcon

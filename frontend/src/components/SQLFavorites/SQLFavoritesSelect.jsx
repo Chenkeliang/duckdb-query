@@ -123,7 +123,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
     };
 
     // 渲染菜单项
-    const accentColor = '#f07335';
+    const accentColor = 'var(--dq-accent-100)';
     const renderMenuItem = (favorite) => (
         <MenuItem
             key={favorite.id}
@@ -138,7 +138,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
         >
             <Box sx={{ width: '100%' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <Star size={16} color={isDarkMode ? accentColor : '#1976d2'} />
+                    <Star size={16} color={isDarkMode ? accentColor : 'var(--dq-accent-primary)'} />
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
                         {favorite.name}
                     </Typography>
@@ -174,7 +174,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                     variant="caption"
                     sx={{
                         fontFamily: 'monospace',
-                        backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : '#f5f5f5',
+                        backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : 'var(--dq-surface)',
                         padding: '2px 6px',
                         borderRadius: 1,
                         display: 'block',

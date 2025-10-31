@@ -750,26 +750,32 @@ const VisualAnalysisPanel = ({
       <Fade in={shouldShowPanel}>
         <div className="mb-6">
           {/* Main Panel Container - 柔和圆润风格 */}
-          <div className="bg-white rounded-3xl border border-gray-200 shadow-lg">
+          <div className="visual-analysis-panel">
           {/* Panel Header */}
           <div
-            className="panel-header cursor-pointer"
+            className="visual-analysis-panel__header cursor-pointer"
             onClick={() => setIsExpanded(!isExpanded)}
           >
             <div className="flex items-center gap-3">
-              <div className="panel-icon flex-shrink-0">
+              <div className="visual-analysis-panel__icon flex-shrink-0">
                 <LineChart size={16} strokeWidth={2} />
               </div>
               <div className="leading-tight">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-gray-900 leading-none">
+                  <h3
+                    className="text-base font-bold leading-none visual-analysis-panel__title"
+                  >
                     可视化分析
                   </h3>
-                  <span className="panel-pill text-sm font-semibold">
+                  <span
+                    className="text-sm font-semibold visual-analysis-panel__pill"
+                  >
                     单表分析
                   </span>
                 </div>
-                <p className="panel-summary text-sm">
+                <p
+                  className="text-sm visual-analysis-panel__summary"
+                >
                   {isExpanded
                     ? `为 "${selectedTable?.name || selectedTable?.id}" 配置分析条件`
                     : `${getConfigSummary(analysisConfig)} | 点击展开配置`
@@ -779,7 +785,7 @@ const VisualAnalysisPanel = ({
             </div>
             <button
               type="button"
-              className="toggle-chip flex items-center justify-center flex-shrink-0"
+              className="toggle-chip visual-analysis-panel__toggle flex items-center justify-center flex-shrink-0"
               onClick={(event) => {
                 event.stopPropagation();
                 setIsExpanded(prev => !prev);
@@ -796,7 +802,9 @@ const VisualAnalysisPanel = ({
 
           {/* Panel Content */}
           <Collapse in={isExpanded}>
-            <div className="p-6 bg-white rounded-b-3xl">
+            <div
+              className="visual-analysis-panel__content rounded-b-3xl p-6"
+            >
               {error && (
                 <Alert
                   severity="error"
@@ -813,11 +821,13 @@ const VisualAnalysisPanel = ({
 
               {/* 模式切换 */}
               <div className="flex items-center gap-2 mb-4">
-                <div className="text-sm text-gray-600">分析模式</div>
-                <div className="inline-flex rounded-full border border-gray-200 overflow-hidden">
+                <div className="text-sm text-gray-600 visual-analysis-panel__mode-label">分析模式</div>
+                <div
+                  className="inline-flex rounded-full overflow-hidden visual-analysis-panel__mode-switch"
+                >
                   <button
                     type="button"
-                    className={`px-3 py-1 text-sm ${activeMode === 'regular' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'}`}
+                    className={`px-3 py-1 text-sm visual-analysis-panel__mode-button ${activeMode === 'regular' ? 'is-active' : ''}`}
                     onClick={() => setActiveMode('regular')}
                     disabled={isLoading}
                   >
@@ -826,7 +836,7 @@ const VisualAnalysisPanel = ({
                   {features?.enable_pivot_tables && (
                     <button
                       type="button"
-                      className={`px-3 py-1 text-sm ${activeMode === 'pivot' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'}`}
+                      className={`px-3 py-1 text-sm visual-analysis-panel__mode-button ${activeMode === 'pivot' ? 'is-active' : ''}`}
                       onClick={() => setActiveMode('pivot')}
                       disabled={isLoading}
                     >
@@ -840,11 +850,11 @@ const VisualAnalysisPanel = ({
               </div>
 
               {/* Analysis Controls Grid - 3行布局按SQL顺序 */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6 visual-analysis-panel__grid">
 
                 {/* 第一行：SELECT相关 */}
                 {/* Column Selection - SELECT */}
-                <div>
+                <div className="visual-analysis-section-card">
                   <ColumnSelector
                     selectedTable={selectedTable}
                     selectedColumns={analysisConfig.selectedColumns}
@@ -857,7 +867,7 @@ const VisualAnalysisPanel = ({
                 </div>
 
                 {/* Aggregation Controls - SELECT聚合函数 */}
-                <div>
+                <div className="visual-analysis-section-card">
                   <AggregationControls
                     selectedTable={selectedTable}
                     aggregations={analysisConfig.aggregations}
@@ -870,7 +880,7 @@ const VisualAnalysisPanel = ({
 
                 {/* 第二行：WHERE相关 */}
                 {/* Filter Controls - WHERE */}
-                <div>
+                <div className="visual-analysis-section-card">
                   <FilterControls
                     columns={selectedTable?.columns || []}
                     filters={analysisConfig.filters || []}
@@ -880,7 +890,7 @@ const VisualAnalysisPanel = ({
                 </div>
 
                 {/* Sort Controls - ORDER BY */}
-                <div>
+                <div className="visual-analysis-section-card">
                   <SortControls
                     columns={selectedTable?.columns || []}
                     orderBy={analysisConfig.orderBy || []}
@@ -891,7 +901,7 @@ const VisualAnalysisPanel = ({
 
                 {/* 第三行：LIMIT相关 */}
                 {/* Limit Controls - LIMIT */}
-                <div className="lg:col-span-2">
+                <div className="lg:col-span-2 visual-analysis-section-card">
                   <LimitControls
                     limit={analysisConfig.limit}
                     onLimitChange={handleLimitChange}
@@ -903,8 +913,10 @@ const VisualAnalysisPanel = ({
 
               {/* 透视配置，仅在 pivot 模式显示 */}
               {activeMode === 'pivot' && features?.enable_pivot_tables && (
-                <div className="mb-6">
-                  <div className="mb-2 text-sm text-gray-600">小提示：勾选行/列字段并选择指标，即可生成透视表，无需拖拽。</div>
+                <div className="mb-6 visual-analysis-section-card visual-analysis-section-card--pivot">
+                  <div className="mb-2 text-sm text-gray-600 visual-analysis-panel__pivot-tip">
+                    小提示：勾选行/列字段并选择指标，即可生成透视表，无需拖拽。
+                  </div>
                   {pivotNotice && (
                     <Alert
                       severity={pivotNotice.severity || 'info'}

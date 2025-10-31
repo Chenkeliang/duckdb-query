@@ -118,6 +118,7 @@ const ShadcnApp = () => {
     }
 
     const root = document.documentElement;
+    const body = document.body;
 
     if (isDarkMode) {
       root.classList.add("dark");
@@ -135,6 +136,12 @@ const ShadcnApp = () => {
       }
     }
 
+    if (body) {
+      body.classList.add("dq-theme");
+      body.classList.remove("dq-theme--dark", "dq-theme--light");
+      body.classList.add(isDarkMode ? "dq-theme--dark" : "dq-theme--light");
+    }
+
     if (typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent("duckquery-theme-change", {
@@ -142,6 +149,12 @@ const ShadcnApp = () => {
         })
       );
     }
+
+    return () => {
+      if (body) {
+        body.classList.remove("dq-theme", "dq-theme--dark", "dq-theme--light");
+      }
+    };
   }, [isDarkMode]);
 
   // 初始数据加载
@@ -887,10 +900,12 @@ const ShadcnApp = () => {
     return <WelcomePage onStartUsing={handleCloseWelcome} />;
   }
 
+  const themeClassName = `dq-theme ${isDarkMode ? "dq-theme--dark" : "dq-theme--light"}`;
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={`${themeClassName} dq-page min-h-screen`}>
       {/* 顶部导航 */}
-      <header className="border-b bg-white">
+      <header className="dq-topbar">
         <div className="w-full px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -932,7 +947,7 @@ const ShadcnApp = () => {
 
       {/* 主要内容 */}
       <main className="w-full px-6 py-8">
-        <div className="bg-white rounded-lg border shadow-sm mb-6">
+        <div className="dq-shell mb-6">
           <div className="mantine-tabs">
             {[
               { id: "datasource", label: "数据源" },
@@ -968,7 +983,7 @@ const ShadcnApp = () => {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white rounded-lg border shadow-sm p-6">
+                <div className="dq-shell p-6">
                   <DataUploadSection
                     onDataSourceSaved={triggerRefresh}
                     showNotification={(message, severity) => {
@@ -991,15 +1006,15 @@ const ShadcnApp = () => {
                   />
                 </div>
 
-                <div className="bg-white rounded-lg border shadow-sm p-6">
+                <div className="dq-shell p-6">
                   <DatabaseConnector onConnect={handleDatabaseConnect} />
                 </div>
 
-                <div className="bg-white rounded-lg border shadow-sm p-6">
+                <div className="dq-shell p-6">
                   <DataPasteBoard onDataSourceSaved={triggerRefresh} />
                 </div>
 
-                <div className="bg-white rounded-lg border shadow-sm p-6">
+                <div className="dq-shell p-6">
                   <DataSourceList
                     dataSources={dataSources}
                     databaseConnections={databaseConnections}
@@ -1064,7 +1079,7 @@ const ShadcnApp = () => {
                 </Suspense>
 
                 {queryResults.data && (
-                  <div className="bg-white rounded-lg border shadow-sm p-6">
+                  <div className="dq-shell p-6">
                     <Suspense fallback={<LazyFallback />}>
                       <ModernDataDisplay
                         data={queryResults.data || []}
@@ -1125,7 +1140,7 @@ const ShadcnApp = () => {
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg border shadow-sm mb-6">
+              <div className="dq-shell mb-6">
                 <div className="mantine-tabs secondary">
                   {[
                     { id: "duckdb", label: "DuckDB管理" },

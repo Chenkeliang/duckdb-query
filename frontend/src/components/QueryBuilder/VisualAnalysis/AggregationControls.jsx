@@ -8,6 +8,7 @@ import {
 } from '@mui/icons-material';
 import {
   Alert,
+  Box,
   Chip,
   Collapse,
   FormControl,
@@ -314,11 +315,19 @@ const AggregationControls = ({
     return (
       <div className="space-y-2">
         <label className="text-sm font-medium text-gray-700">聚合统计</label>
-        <div className="p-4 border border-gray-200 rounded-md bg-gray-50 text-center">
+        <Box
+          sx={{
+            p: 4,
+            borderRadius: 2,
+            border: '1px solid var(--dq-border-subtle)',
+            backgroundColor: 'var(--dq-surface-card)',
+            textAlign: 'center'
+          }}
+        >
           <Typography variant="body2" color="text.secondary">
             请先选择一个数据表
           </Typography>
-        </div>
+        </Box>
       </div>
     );
   }
@@ -348,7 +357,7 @@ const AggregationControls = ({
             <InfoIcon
               sx={{
                 fontSize: '1rem',
-                color: 'text.secondary',
+                color: 'var(--dq-text-secondary)',
                 cursor: 'help'
               }}
             />
@@ -358,9 +367,9 @@ const AggregationControls = ({
               size="small"
               onClick={() => setIsExpanded(!isExpanded)}
               sx={{
-                color: 'text.secondary',
+                color: 'var(--dq-text-secondary)',
                 '&:hover': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.04)'
+                  backgroundColor: 'var(--dq-surface-hover)'
                 }
               }}
             >
@@ -371,7 +380,15 @@ const AggregationControls = ({
       </div>
 
       {/* Aggregation Summary */}
-      <div className="flex items-center space-x-2 text-sm text-gray-600">
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          fontSize: '0.95rem',
+          color: 'var(--dq-text-tertiary)'
+        }}
+      >
         <span>已配置 {aggregations.length} 个聚合函数</span>
         {aggregations.length > 0 && (
           <Chip
@@ -385,17 +402,31 @@ const AggregationControls = ({
             }}
           />
         )}
-      </div>
+      </Box>
 
       <Collapse in={isExpanded}>
-        <div
-          className="border border-gray-200 rounded-md bg-gray-50 p-3 space-y-3"
-          style={{ maxHeight: `${maxHeight}px`, overflowY: 'auto' }}
+        <Box
+          className="rounded-md p-3 space-y-3"
+          sx={{
+            border: '1px solid var(--dq-border-subtle)',
+            backgroundColor: 'var(--dq-surface-card)',
+            maxHeight: `${maxHeight}px`,
+            overflowY: 'auto',
+            transition: 'background-color 0.18s ease, border-color 0.18s ease'
+          }}
         >
           {/* Add New Aggregation Section */}
-          <div className="bg-white border border-gray-200 rounded-md p-3 space-y-3">
+          <Box
+            className="rounded-md space-y-3"
+            sx={{
+              border: '1px solid var(--dq-border-subtle)',
+              backgroundColor: 'var(--dq-surface)',
+              p: 3,
+              boxShadow: 'none'
+            }}
+          >
             <div className="flex items-center space-x-2">
-              <FunctionsIcon sx={{ fontSize: '1rem', color: 'primary.main' }} />
+              <FunctionsIcon sx={{ fontSize: '1rem', color: 'var(--dq-text-primary)' }} />
               <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '1rem' }}>
                 添加聚合函数
               </Typography>
@@ -528,33 +559,44 @@ const AggregationControls = ({
                 onClick={handleAddAggregation}
                 disabled={disabled || !selectedColumn || !selectedFunction}
                 sx={{
-                  color: 'primary.main',
-                  backgroundColor: 'rgba(25, 118, 210, 0.04)',
+                  color: 'var(--dq-text-primary)',
+                  backgroundColor: 'var(--dq-accent-primary-soft)',
                   '&:hover': {
-                    backgroundColor: 'rgba(25, 118, 210, 0.08)'
+                    backgroundColor: "color-mix(in oklab, var(--dq-accent-primary) 45%, transparent)"
                   },
                   '&.Mui-disabled': {
-                    backgroundColor: 'transparent'
+                    backgroundColor: 'transparent',
+                    color: 'var(--dq-text-tertiary)'
                   }
                 }}
               >
                 <AddIcon fontSize="small" />
               </IconButton>
             </div>
-          </div>
+          </Box>
 
           {/* Current Aggregations List */}
           {aggregations.length > 0 && (
-            <div className="space-y-2">
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '1rem', color: 'text.primary' }}>
+            <Box className="space-y-2">
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '1rem', color: 'var(--dq-text-primary)' }}>
                 当前聚合函数
               </Typography>
 
-              <div className="space-y-2">
+              <Box className="space-y-2">
                 {aggregations.map((aggregation, index) => (
-                  <div
+                  <Box
                     key={`${aggregation.column}-${aggregation.function}-${index}`}
-                    className="bg-white border border-gray-200 rounded-md p-3"
+                    sx={{
+                      border: '1px solid var(--dq-border-subtle)',
+                      backgroundColor: 'var(--dq-surface)',
+                      borderRadius: 2,
+                      p: 3,
+                      transition: 'border-color 0.18s ease, box-shadow 0.18s ease',
+                      '&:hover': {
+                        borderColor: 'var(--dq-border-card)',
+                        boxShadow: '0 10px 24px -18px rgba(15, 23, 42, 0.35)'
+                      }
+                    }}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-2 flex-1">
@@ -621,9 +663,9 @@ const AggregationControls = ({
                           onClick={() => handleRemoveAggregation(index)}
                           disabled={disabled}
                           sx={{
-                            color: 'error.main',
+                            color: 'var(--dq-text-primary)',
                             '&:hover': {
-                              backgroundColor: 'rgba(211, 47, 47, 0.04)'
+                              backgroundColor: 'var(--dq-status-error-bg)'
                             }
                           }}
                         >
@@ -648,9 +690,10 @@ const AggregationControls = ({
                       fullWidth
                     />
                   </div>
+                  </Box>
                 ))}
-              </div>
-            </div>
+              </Box>
+            </Box>
           )}
 
           {/* Empty State */}
@@ -664,17 +707,28 @@ const AggregationControls = ({
               </Typography>
             </div>
           )}
-        </div>
+        </Box>
       </Collapse>
 
       {/* Help Text */}
       {aggregations.length === 0 && (
-        <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-          <Typography variant="caption" sx={{ color: '#1e40af', fontSize: '1rem' }}>
-            <Lightbulb size={16} style={{ marginRight: '8px' }} />
+        <Box
+          sx={{
+            mt: 2,
+            p: 2,
+            borderRadius: 2,
+            border: '1px solid var(--dq-border-card)',
+            backgroundColor: 'var(--dq-surface-card-active)'
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{ color: 'var(--dq-text-secondary)', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 1 }}
+          >
+            <Lightbulb size={16} />
             提示：聚合函数用于统计计算，如求和、平均值、计数等
           </Typography>
-        </div>
+        </Box>
       )}
     </div>
   );

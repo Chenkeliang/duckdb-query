@@ -256,7 +256,7 @@ const VirtualTable = ({
           height: '12px',
         },
         '&::-webkit-scrollbar-track': {
-          background: '#f1f1f1',
+          background: 'var(--dq-surface-alt)',
           borderRadius: '6px',
         },
         '&::-webkit-scrollbar-thumb': {
@@ -279,7 +279,7 @@ const VirtualTable = ({
                   minWidth: finalColumnWidths[index],
                   maxWidth: finalColumnWidths[index],
                   fontWeight: 'bold',
-                  backgroundColor: columnValueFilters?.[column.field] ? '#e6ebf4' : 'rgba(0, 0, 0, 0.04)',
+                  backgroundColor: columnValueFilters?.[column.field] ? 'var(--dq-surface-card-active)' : 'rgba(0, 0, 0, 0.04)',
                   position: 'sticky',
                   top: 0,
                   zIndex: 1,

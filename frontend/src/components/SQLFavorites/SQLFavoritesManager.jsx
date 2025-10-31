@@ -15,7 +15,6 @@ import {
     Tooltip,
     Typography
 } from '@mui/material';
-import { alpha } from '@mui/material/styles';
 import {
     Play,
     Plus,
@@ -24,6 +23,7 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
+import { withOpacity } from '../../utils/colorUtils';
 
 const getIsDarkMode = () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 
@@ -256,7 +256,9 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
     };
 
     // 渲染收藏项
-    const accent = isDarkMode ? '#f07335' : '#1976d2';
+    const accent = isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)';
+    const accentFallback = isDarkMode ? '#f07335' : '#2563eb';
+    const accentOverlay = (amount) => withOpacity(accent, amount, accentFallback);
     const inputFieldSx = {
         '& .MuiInputLabel-root': {
             color: isDarkMode ? 'var(--dq-text-secondary)' : undefined
@@ -282,25 +284,22 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
         <ListItem
             key={favorite.id}
             sx={{
-                border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid #e0e0e0',
+                border: '1px solid var(--dq-border-subtle)',
                 borderRadius: 2,
                 mb: 1.5,
-                backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : '#fff',
+                backgroundColor: 'var(--dq-surface-card)',
                 padding: 2,
                 display: 'flex',
                 alignItems: 'flex-start',
-                transition: 'border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease',
+                transition: 'border-color 0.18s ease, background-color 0.18s ease',
                 '&:hover': {
-                    borderColor: isDarkMode ? 'var(--dq-accent-100)' : alpha(accent, 0.8),
-                    backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.09)' : alpha(accent, 0.08),
-                    boxShadow: isDarkMode ? '0 14px 30px -24px rgba(240, 115, 53, 0.6)' : '0 2px 6px rgba(15, 23, 42, 0.12)'
+                    borderColor: 'var(--dq-border-card)',
+                    backgroundColor: 'var(--dq-surface-card-active)'
                 },
                 '&:focus-within': {
                     borderColor: 'var(--dq-accent-100)',
-                    backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : alpha(accent, 0.12),
-                    boxShadow: isDarkMode
-                        ? '0 0 0 1px rgba(240, 115, 53, 0.55), 0 20px 32px -24px rgba(240, 115, 53, 0.6)'
-                        : '0 0 0 1px rgba(25, 118, 210, 0.4)'
+                    backgroundColor: 'var(--dq-surface-card-active)',
+                    boxShadow: 'none'
                 }
             }}
         >
@@ -318,8 +317,8 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                                 height: 20,
                                 fontSize: '1rem',
                                 fontWeight: 500,
-                                backgroundColor: isDarkMode ? alpha(accent, 0.25) : alpha(accent, 0.12),
-                                color: isDarkMode ? '#fefefe' : accent
+                                backgroundColor: accentOverlay(isDarkMode ? 0.25 : 0.12),
+                                color: isDarkMode ? 'var(--dq-surface)' : accent
                             }}
                         />
                     )}
@@ -342,8 +341,8 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                     component="div"
                     sx={{
                         fontFamily: 'monospace',
-                        backgroundColor: isDarkMode ? 'rgba(148, 163, 184, 0.08)' : '#f5f5f5',
-                        border: isDarkMode ? '1px solid rgba(148, 163, 184, 0.16)' : '1px solid rgba(148, 163, 184, 0.3)',
+                        backgroundColor: isDarkMode ? 'rgba(148, 163, 184, 0.08)' : 'var(--dq-surface)',
+                        border: isDarkMode ? '1px solid rgba(148, 163, 184, 0.16)' : '1px solid var(--dq-border-subtle)',
                         padding: '6px 10px',
                         borderRadius: 1,
                         overflow: 'hidden',
@@ -385,9 +384,9 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                             onClick={() => handleSelectFavorite(favorite)}
                             sx={{
                                 color: isDarkMode ? 'var(--dq-accent-100)' : accent,
-                                backgroundColor: alpha(accent, isDarkMode ? 0.12 : 0.08),
+                                backgroundColor: accentOverlay(isDarkMode ? 0.12 : 0.08),
                                 '&:hover': {
-                                    backgroundColor: alpha(accent, isDarkMode ? 0.22 : 0.16)
+                                    backgroundColor: accentOverlay(isDarkMode ? 0.22 : 0.16)
                                 }
                             }}
                         >
@@ -402,7 +401,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                                 handleDeleteFavorite(favorite);
                             }}
                             sx={{
-                                color: isDarkMode ? '#fb7185' : 'error.main',
+                                color: isDarkMode ? 'color-mix(in oklab, var(--dq-status-error-fg) 65%, transparent)' : 'var(--dq-text-primary)',
                                 '&:hover': {
                                     backgroundColor: isDarkMode ? 'rgba(251, 113, 133, 0.12)' : 'rgba(244, 67, 54, 0.08)'
                                 }
@@ -421,7 +420,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
             <Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                     <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
-                        <Star size={20} color={isDarkMode ? 'var(--dq-accent-100)' : '#1976d2'} />
+                        <Star size={20} color={isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)'} />
                         收藏的SQL
                     </Typography>
                 </Box>
@@ -472,7 +471,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
         <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
-                    <Star size={24} color={isDarkMode ? 'var(--dq-accent-100)' : '#1976d2'} />
+                    <Star size={24} color={isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)'} />
                     SQL收藏管理
                 </Typography>
                 <Button
@@ -619,8 +618,8 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                                     onDelete={() => removeTag(tag)}
                                     size="small"
                                     sx={{
-                                        backgroundColor: alpha(accent, isDarkMode ? 0.18 : 0.12),
-                                        color: isDarkMode ? '#fefefe' : accent
+                                        backgroundColor: accentOverlay(isDarkMode ? 0.18 : 0.12),
+                                        color: isDarkMode ? 'var(--dq-surface)' : accent
                                     }}
                                 />
                             ))}
@@ -732,8 +731,8 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                                     onDelete={() => removeTag(tag)}
                                     size="small"
                                     sx={{
-                                        backgroundColor: isDarkMode ? alpha('#f07335', 0.18) : undefined,
-                                        color: isDarkMode ? '#fefefe' : undefined
+                                        backgroundColor: isDarkMode ? withOpacity('var(--dq-accent-100)', 0.18, '#f07335') : undefined,
+                                        color: isDarkMode ? 'var(--dq-surface)' : undefined
                                     }}
                                 />
                             ))}

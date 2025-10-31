@@ -93,8 +93,8 @@ const TypeConflictDialog = ({
       fullWidth
       PaperProps={{
         sx: {
-          backgroundColor: '#0f172a',
-          color: '#e2e8f0',
+          backgroundColor: 'var(--dq-surface)',
+          color: 'var(--dq-text-primary)',
           borderRadius: 3,
           boxShadow: '0 28px 60px rgba(15, 23, 42, 0.55)',
           border: '1px solid rgba(148, 163, 184, 0.25)',
@@ -112,8 +112,8 @@ const TypeConflictDialog = ({
         <Stack direction="row" spacing={1.5} alignItems="center">
           <Box
             sx={{
-              background: 'rgba(14, 165, 233, 0.12)',
-              color: '#38bdf8',
+              background: "color-mix(in oklab, var(--dq-status-info-fg) 20%, transparent)",
+              color: 'var(--dq-status-info-fg)',
               borderRadius: '50%',
               width: 32,
               height: 32,
@@ -125,10 +125,10 @@ const TypeConflictDialog = ({
             <AlertTriangle size={18} />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#e2e8f0' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: 'var(--dq-text-secondary)' }}>
               检测到类型冲突
             </Typography>
-            <Typography variant="body2" sx={{ color: 'rgba(148, 163, 184, 0.9)' }}>
+            <Typography variant="body2" sx={{ color: "color-mix(in oklab, var(--dq-text-tertiary) 85%, transparent)" }}>
               请选择合适的 TRY_CAST 类型以继续运行分析
             </Typography>
           </Box>
@@ -139,11 +139,11 @@ const TypeConflictDialog = ({
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ color: 'rgba(226, 232, 240, 0.8)' }}>列名</TableCell>
-              <TableCell sx={{ color: 'rgba(226, 232, 240, 0.8)' }}>当前类型</TableCell>
-              <TableCell sx={{ color: 'rgba(226, 232, 240, 0.8)' }}>操作</TableCell>
-              <TableCell sx={{ color: 'rgba(226, 232, 240, 0.8)' }}>推荐转换</TableCell>
-              <TableCell sx={{ color: 'rgba(226, 232, 240, 0.8)' }}>应用类型</TableCell>
+              <TableCell sx={{ color: "color-mix(in oklab, var(--dq-text-secondary) 80%, transparent)" }}>列名</TableCell>
+              <TableCell sx={{ color: "color-mix(in oklab, var(--dq-text-secondary) 80%, transparent)" }}>当前类型</TableCell>
+              <TableCell sx={{ color: "color-mix(in oklab, var(--dq-text-secondary) 80%, transparent)" }}>操作</TableCell>
+              <TableCell sx={{ color: "color-mix(in oklab, var(--dq-text-secondary) 80%, transparent)" }}>推荐转换</TableCell>
+              <TableCell sx={{ color: "color-mix(in oklab, var(--dq-text-secondary) 80%, transparent)" }}>应用类型</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -166,7 +166,7 @@ const TypeConflictDialog = ({
                 <TableRow key={column} hover>
                   <TableCell>
                     <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography sx={{ fontWeight: 600, color: '#e2e8f0' }}>
+                      <Typography sx={{ fontWeight: 600, color: 'var(--dq-text-secondary)' }}>
                         {column}
                       </Typography>
                       {func && (
@@ -174,8 +174,8 @@ const TypeConflictDialog = ({
                           label={func}
                           size="small"
                           sx={{
-                            bgcolor: 'rgba(56, 189, 248, 0.12)',
-                            color: '#38bdf8',
+                            bgcolor: "color-mix(in oklab, var(--dq-status-info-fg) 20%, transparent)",
+                            color: 'var(--dq-status-info-fg)',
                             fontWeight: 500,
                           }}
                         />
@@ -183,12 +183,12 @@ const TypeConflictDialog = ({
                     </Stack>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" sx={{ color: 'rgba(148, 163, 184, 0.9)' }}>
+                    <Typography variant="body2" sx={{ color: "color-mix(in oklab, var(--dq-text-tertiary) 85%, transparent)" }}>
                       {currentType || normalized || '未知'}
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" sx={{ color: 'rgba(226, 232, 240, 0.8)' }}>
+                    <Typography variant="body2" sx={{ color: "color-mix(in oklab, var(--dq-text-secondary) 80%, transparent)" }}>
                       TRY_CAST
                     </Typography>
                   </TableCell>
@@ -207,17 +207,17 @@ const TypeConflictDialog = ({
                           placeholder="例如 DECIMAL(18,4)"
                           sx={{
                             '& .MuiOutlinedInput-root': {
-                              color: '#e2e8f0',
-                              backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                              color: 'var(--dq-text-secondary)',
+                              backgroundColor: "color-mix(in oklab, var(--dq-neutral-1000) 60%, transparent)",
                               borderRadius: 2,
                               '& fieldset': {
-                                borderColor: 'rgba(148, 163, 184, 0.25)',
+                                borderColor: "color-mix(in oklab, var(--dq-border) 35%, transparent)",
                               },
                               '&:hover fieldset': {
-                                borderColor: '#38bdf8',
+                                borderColor: 'var(--dq-status-info-fg)',
                               },
                               '&.Mui-focused fieldset': {
-                                borderColor: '#38bdf8',
+                                borderColor: 'var(--dq-status-info-fg)',
                               },
                             },
                             '& .MuiAutocomplete-input': {
@@ -229,7 +229,7 @@ const TypeConflictDialog = ({
                     />
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" sx={{ color: '#38bdf8', fontWeight: 600 }}>
+                    <Typography variant="body2" sx={{ color: 'var(--dq-status-info-fg)', fontWeight: 600 }}>
                       {value || '保持原类型'}
                     </Typography>
                   </TableCell>
@@ -240,7 +240,7 @@ const TypeConflictDialog = ({
         </Table>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={handleClose} disabled={isSubmitting} sx={{ color: 'rgba(148, 163, 184, 0.9)' }}>
+        <Button onClick={handleClose} disabled={isSubmitting} sx={{ color: "color-mix(in oklab, var(--dq-text-tertiary) 85%, transparent)" }}>
           取消
         </Button>
         <Button
@@ -251,10 +251,10 @@ const TypeConflictDialog = ({
             borderRadius: 2,
             px: 3,
             fontWeight: 600,
-            background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
+            background: 'linear-gradient(135deg, var(--dq-chart-7), var(--dq-status-info-fg))',
             boxShadow: '0 12px 30px rgba(14, 165, 233, 0.35)',
             '&:hover': {
-              background: 'linear-gradient(135deg, #0284c7, #0ea5e9)',
+              background: 'linear-gradient(135deg, color-mix(in oklab, var(--dq-status-info-fg) 80%, transparent), var(--dq-chart-7))',
             },
           }}
         >

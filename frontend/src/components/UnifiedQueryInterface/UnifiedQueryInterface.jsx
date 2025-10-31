@@ -38,9 +38,9 @@ const UnifiedQueryInterface = ({
   }, [onResultsReceived]);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+    <div className="unified-query-shell">
       {/* 查询模式切换 */}
-      <div className="border-b border-gray-200">
+      <div className="unified-query-shell__tabs">
         <Tabs
           value={activeTab}
           onChange={handleTabChange}
@@ -48,19 +48,29 @@ const UnifiedQueryInterface = ({
             px: 3,
             pt: 2,
             '& .MuiTabs-indicator': {
-              backgroundColor: '#3b82f6',
+              backgroundColor: 'var(--dq-accent-primary)',
               height: 2
+            },
+            '& .MuiTab-root': {
+              color: 'var(--dq-text-tertiary)',
+              fontSize: '18px',
+              fontWeight: 600,
+              textTransform: 'none',
+              minHeight: 52
+            },
+            '& .MuiTab-root.Mui-selected': {
+              color: 'var(--dq-text-primary)'
             }
           }}
         >
-        <Tab label="图形化查询" value="visual" sx={{ mr: 2, fontSize: '18px', fontWeight: 600, textTransform: 'none', minHeight: 52 }} />
-        <Tab label="SQL编辑器 · 内部数据" value="duckdb" sx={{ mr: 2, fontSize: '18px', fontWeight: 600, textTransform: 'none', minHeight: 52 }} />
-        <Tab label="SQL编辑器 · 外部数据库" value="external" sx={{ fontSize: '18px', fontWeight: 600, textTransform: 'none', minHeight: 52 }} />
+          <Tab label="图形化查询" value="visual" sx={{ mr: 2 }} />
+          <Tab label="SQL编辑器 · 内部数据" value="duckdb" sx={{ mr: 2 }} />
+          <Tab label="SQL编辑器 · 外部数据库" value="external" />
         </Tabs>
       </div>
 
       {/* 查询构建区域 */}
-      <div className="p-6">
+      <div className="unified-query-shell__content">
         {activeTab === 'visual' && (
           <QueryBuilder
             dataSources={[...dataSources].filter(ds => ds.type === 'duckdb' || ds.sourceType === 'duckdb').sort((a, b) => {

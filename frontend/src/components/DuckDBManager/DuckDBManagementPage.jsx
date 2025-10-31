@@ -11,7 +11,6 @@ import {
 } from '@mui/icons-material';
 import {
   Alert,
-  alpha,
   Box,
   Button,
   Card,
@@ -53,6 +52,12 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
   const [tableToDelete, setTableToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof document === 'undefined') {
+      return false;
+    }
+    return document.documentElement.classList.contains('dark');
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedGroups, setExpandedGroups] = useState({
     '异步查询结果': true,
@@ -63,6 +68,26 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
 
   useEffect(() => {
     loadTables();
+  }, []);
+
+  useEffect(() => {
+    const syncTheme = () => {
+      if (typeof document === 'undefined') {
+        return;
+      }
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    };
+    const handleThemeChange = (event) => {
+      if (event?.detail && typeof event.detail.isDark === 'boolean') {
+        setIsDarkMode(event.detail.isDark);
+      } else {
+        syncTheme();
+      }
+    };
+    window.addEventListener('duckquery-theme-change', handleThemeChange);
+    return () => {
+      window.removeEventListener('duckquery-theme-change', handleThemeChange);
+    };
   }, []);
 
   const loadTables = async () => {
@@ -136,60 +161,44 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
     return num.toString();
   };
 
+  const buildTypeInfo = (label, IconComponent, accentVar) => ({
+    label,
+    IconComponent,
+    accent: accentVar,
+    iconBackground: `color-mix(in oklab, ${accentVar} 20%, transparent)`,
+    headerBackground: `color-mix(in oklab, ${accentVar} 6%, transparent)`,
+    hoverBackground: `color-mix(in oklab, ${accentVar} 12%, transparent)`,
+    chipBackground: `color-mix(in oklab, ${accentVar} 18%, transparent)`
+  });
+
   // 获取表类型信息 - 重新设计的分类逻辑
   const getTableTypeInfo = (tableName) => {
     if (!tableName || typeof tableName !== 'string') {
-      return {
-        label: '未知类型',
-        color: '#9e9e9e',
-        icon: <Database sx={{ fontSize: 16, color: '#9e9e9e' }} />,
-        description: '无法识别的表类型'
-      };
+      return buildTypeInfo('未知类型', Database, 'var(--dq-text-secondary)');
     }
     const lower = tableName.toLowerCase();
 
     // 1. 异步任务结果表（通过异步任务保存的表）
     if (lower.startsWith('async_result_') || lower.startsWith('task_')) {
-      return {
-        label: '异步查询结果',
-        color: '#ff9800',
-        bgColor: '#fff3e0',
-        icon: QueryStats
-      };
+      return buildTypeInfo('异步查询结果', QueryStats, 'var(--dq-accent-100)');
     }
 
     // 2. 用户自定义表名（通过异步任务保存，使用用户提供的表名）
-    // 这些表名不包含系统前缀，是用户直接指定的
     if (!lower.startsWith('async_result_') &&
       !lower.startsWith('task_') &&
       !lower.startsWith('query_result_') &&
       !lower.includes('temp') &&
       !lower.includes('临时')) {
-      return {
-        label: '数据表',
-        color: '#2196f3',
-        bgColor: '#e3f2fd',
-        icon: ViewList
-      };
+      return buildTypeInfo('数据表', ViewList, 'var(--dq-accent-primary)');
     }
 
     // 3. 临时表（系统生成的临时表）
     if (lower.includes('temp') || lower.includes('临时')) {
-      return {
-        label: '临时表',
-        color: '#ff5722',
-        bgColor: '#fbe9e7',
-        icon: History
-      };
+      return buildTypeInfo('临时表', History, 'var(--dq-accent-200)');
     }
 
-    // 4. 其他系统表（兼容旧数据）
-    return {
-      label: '系统表',
-      color: '#757575',
-      bgColor: '#f5f5f5',
-      icon: TableIcon
-    };
+    // 4. 系统表
+    return buildTypeInfo('系统表', TableIcon, 'var(--dq-text-secondary)');
   };
 
   // 复制表名到剪贴板
@@ -248,7 +257,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <Search size={20} color="#666" />
+                <Search size={20} style={{ color: 'var(--dq-text-tertiary)' }} />
               </InputAdornment>
             ),
           }}
@@ -259,22 +268,38 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
           onClick={loadTables}
           disabled={loading}
           size="small"
-          sx={{ textTransform: 'none' }}
+          sx={{
+            textTransform: 'none',
+            color: 'var(--dq-text-secondary)',
+            borderColor: 'var(--dq-border-subtle)',
+            '&:hover': {
+              borderColor: 'var(--dq-accent-100)',
+              color: 'var(--dq-accent-100)'
+            }
+          }}
         >
           刷新
         </Button>
         <Box sx={{ ml: 'auto', display: 'flex', gap: 2 }}>
           <Chip
             label={`${filteredTables.length} 个表`}
-            color="primary"
-            variant="outlined"
             size="small"
+            sx={{
+              backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 12%, transparent)',
+              color: 'var(--dq-accent-primary)',
+              fontWeight: 600,
+              borderRadius: '999px'
+            }}
           />
           <Chip
             label={`${formatNumber(filteredTables.reduce((sum, table) => sum + (table && table.row_count ? table.row_count : 0), 0))} 行`}
-            color="success"
-            variant="outlined"
             size="small"
+            sx={{
+              backgroundColor: 'color-mix(in oklab, var(--dq-accent-100) 12%, transparent)',
+              color: 'var(--dq-accent-100)',
+              fontWeight: 600,
+              borderRadius: '999px'
+            }}
           />
         </Box>
       </Box>
@@ -289,7 +314,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
       {/* 树状结构表列表 */}
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <Typography variant="body1" color="text.secondary">
+          <Typography variant="body1" sx={{ color: 'var(--dq-text-secondary)' }}>
             加载中...
           </Typography>
         </Box>
@@ -298,18 +323,18 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
           elevation={0}
           sx={{
             border: '1px dashed',
-            borderColor: 'divider',
+            borderColor: 'var(--dq-border-subtle)',
             borderRadius: 2,
             p: 4,
             textAlign: 'center',
-            backgroundColor: 'rgba(0, 0, 0, 0.02)'
+            backgroundColor: 'color-mix(in oklab, var(--dq-text-tertiary) 4%, transparent)'
           }}
         >
-          <Database size={48} color="#999" style={{ marginBottom: '16px' }} />
-          <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 500, mb: 1 }}>
+          <Database size={48} style={{ marginBottom: '16px', color: 'var(--dq-text-tertiary)' }} />
+          <Typography variant="h6" sx={{ fontWeight: 500, mb: 1, color: 'var(--dq-text-secondary)' }}>
             {searchTerm ? '没有找到匹配的表' : '暂无DuckDB表'}
           </Typography>
-          <Typography variant="body2" color="text.disabled">
+          <Typography variant="body2" sx={{ color: 'var(--dq-text-tertiary)' }}>
             {searchTerm ? '尝试调整搜索条件' : '执行SQL查询并保存结果后，表格将显示在这里'}
           </Typography>
         </Card>
@@ -318,7 +343,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
           <List component="nav" disablePadding>
             {Object.entries(groupedTables).map(([groupName, groupTables], groupIndex) => {
               const typeInfo = getTableTypeInfo(groupTables[0].table_name);
-              const IconComponent = typeInfo.icon;
+              const IconComponent = typeInfo.IconComponent;
               const isExpanded = expandedGroups[groupName];
 
               return (
@@ -331,10 +356,10 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                         py: 1.5,
                         px: 2,
                         borderBottom: groupIndex < Object.keys(groupedTables).length - 1 ? '1px solid' : 'none',
-                        borderColor: 'divider',
-                        backgroundColor: alpha(typeInfo.color, 0.02),
+                        borderColor: 'var(--dq-border-subtle)',
+                        backgroundColor: typeInfo.headerBackground,
                         '&:hover': {
-                          backgroundColor: alpha(typeInfo.color, 0.05)
+                          backgroundColor: typeInfo.hoverBackground
                         }
                       }}
                     >
@@ -347,16 +372,16 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                             width: 28,
                             height: 28,
                             borderRadius: '50%',
-                            backgroundColor: alpha(typeInfo.color, 0.1)
+                            backgroundColor: typeInfo.iconBackground
                           }}
                         >
-                          <IconComponent sx={{ fontSize: 16, color: typeInfo.color }} />
+                          <IconComponent sx={{ fontSize: 16, color: typeInfo.accent }} />
                         </Box>
                       </ListItemIcon>
                       <ListItemText
                         primary={
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <Typography variant="subtitle1" fontWeight="600" color="text.primary">
+                            <Typography variant="subtitle1" fontWeight="600" sx={{ color: 'var(--dq-text-primary)' }}>
                               {groupName}
                             </Typography>
                             <Chip
@@ -366,8 +391,8 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                                 height: 20,
                                 fontSize: '1rem',
                                 fontWeight: 600,
-                                backgroundColor: typeInfo.color,
-                                color: 'white'
+                                backgroundColor: typeInfo.chipBackground,
+                                color: typeInfo.accent
                               }}
                             />
                           </Box>
@@ -386,7 +411,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                           disablePadding
                           sx={{
                             borderBottom: tableIndex < groupTables.length - 1 ? '1px solid' : 'none',
-                            borderColor: alpha(typeInfo.color, 0.1)
+                            borderColor: 'var(--dq-border-subtle)'
                           }}
                           secondaryAction={
                             <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -398,13 +423,16 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                                   sx={{
                                     width: 24,
                                     height: 24,
-                                    backgroundColor: alpha(typeInfo.color, 0.1),
+                                    backgroundColor: typeInfo.iconBackground,
                                     '&:hover': {
-                                      backgroundColor: alpha(typeInfo.color, 0.2)
+                                      backgroundColor: typeInfo.hoverBackground
+                                    },
+                                    '& svg': {
+                                      color: typeInfo.accent
                                     }
                                   }}
                                 >
-                                  <ContentCopyIcon sx={{ fontSize: 12, color: typeInfo.color }} />
+                                  <ContentCopyIcon sx={{ fontSize: 12 }} />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="查看详细信息">
@@ -415,13 +443,16 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                                   sx={{
                                     width: 24,
                                     height: 24,
-                                    backgroundColor: alpha('#2196f3', 0.1),
+                                    backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 20%, transparent)',
                                     '&:hover': {
-                                      backgroundColor: alpha('#2196f3', 0.2)
+                                      backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 30%, transparent)'
+                                    },
+                                    '& svg': {
+                                      color: 'var(--dq-accent-primary)'
                                     }
                                   }}
                                 >
-                                  <InfoIcon sx={{ fontSize: 12, color: '#2196f3' }} />
+                                  <InfoIcon sx={{ fontSize: 12 }} />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="删除表">
@@ -432,13 +463,16 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                                   sx={{
                                     width: 24,
                                     height: 24,
-                                    backgroundColor: alpha('#f44336', 0.1),
+                                    backgroundColor: 'color-mix(in oklab, var(--dq-status-error-fg) 22%, transparent)',
                                     '&:hover': {
-                                      backgroundColor: alpha('#f44336', 0.2)
+                                      backgroundColor: 'color-mix(in oklab, var(--dq-status-error-fg) 32%, transparent)'
+                                    },
+                                    '& svg': {
+                                      color: 'var(--dq-status-error-fg)'
                                     }
                                   }}
                                 >
-                                  <DeleteIcon sx={{ fontSize: 12, color: '#f44336' }} />
+                                  <DeleteIcon sx={{ fontSize: 12 }} />
                                 </IconButton>
                               </Tooltip>
                             </Box>
@@ -450,13 +484,13 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                               pr: 12, // 为操作按钮留出空间
                               py: 1,
                               '&:hover': {
-                                backgroundColor: alpha(typeInfo.color, 0.05)
+                                backgroundColor: typeInfo.hoverBackground
                               }
                             }}
                             onClick={() => handleShowInfo(table)}
                           >
                             <ListItemIcon sx={{ minWidth: 32 }}>
-                              <TableIcon sx={{ fontSize: 16, color: typeInfo.color, opacity: 0.8 }} />
+                              <TableIcon sx={{ fontSize: 16, color: typeInfo.accent, opacity: 0.85 }} />
                             </ListItemIcon>
                             <ListItemText
                               primary={
@@ -472,7 +506,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                                   >
                                     {table.table_name}
                                   </Typography>
-                                  <Typography variant="caption" color="text.secondary">
+                                  <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
                                     {formatNumber(table && typeof table.row_count === 'number' ? table.row_count : 0)} 行 · {table && typeof table.column_count === 'number' ? table.column_count : 0} 列
                                   </Typography>
                                 </Box>
@@ -491,10 +525,16 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
       )}
 
       {/* 表详细信息对话框 */}
-      <Dialog open={infoDialogOpen} onClose={() => setInfoDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog
+        open={infoDialogOpen}
+        onClose={() => setInfoDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+        className={`dq-dialog dq-theme ${isDarkMode ? 'dq-theme--dark' : 'dq-theme--light'}`}
+      >
         <DialogTitle sx={{ pb: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <TableIcon sx={{ color: 'primary.main' }} />
+            <TableIcon sx={{ color: 'var(--dq-text-primary)' }} />
             <Typography variant="h6" component="h2" fontWeight="bold">
               表详细信息
             </Typography>
@@ -508,11 +548,11 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
               </Typography>
               <Box sx={{ display: 'flex', gap: 4, mb: 2 }}>
                 <Box>
-                  <Typography variant="body2" color="text.secondary">行数</Typography>
+                  <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>行数</Typography>
                   <Typography variant="body1">{formatNumber(selectedTable.row_count || 0)}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="body2" color="text.secondary">列数</Typography>
+                  <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>列数</Typography>
                   <Typography variant="body1">{selectedTable.column_count || 0}</Typography>
                 </Box>
               </Box>
@@ -552,7 +592,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
       <Dialog open={deleteDialogOpen} onClose={handleDeleteCancel}>
         <DialogTitle sx={{ pb: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <DeleteIcon sx={{ color: 'error.main' }} />
+            <DeleteIcon sx={{ color: 'var(--dq-text-primary)' }} />
             <Typography variant="h6" component="h2" fontWeight="bold">
               确认删除
             </Typography>
@@ -562,7 +602,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
           <Typography>
             确定要删除表 <strong>{tableToDelete?.table_name}</strong> 吗？
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography variant="body2" sx={{ mt: 1, color: 'var(--dq-text-secondary)' }}>
             此操作不可撤销，表中的所有数据将被永久删除。
           </Typography>
         </DialogContent>

@@ -37,6 +37,12 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [tableToDelete, setTableToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof document === 'undefined') {
+      return false;
+    }
+    return document.documentElement.classList.contains('dark');
+  });
 
   // 加载DuckDB表列表
   const loadTables = async () => {
@@ -66,6 +72,26 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
   // 组件挂载时加载表列表
   useEffect(() => {
     loadTables();
+  }, []);
+
+  useEffect(() => {
+    const syncTheme = () => {
+      if (typeof document === 'undefined') {
+        return;
+      }
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    };
+    const handleThemeChange = (event) => {
+      if (event?.detail && typeof event.detail.isDark === 'boolean') {
+        setIsDarkMode(event.detail.isDark);
+      } else {
+        syncTheme();
+      }
+    };
+    window.addEventListener('duckquery-theme-change', handleThemeChange);
+    return () => {
+      window.removeEventListener('duckquery-theme-change', handleThemeChange);
+    };
   }, []);
 
   // 显示表详细信息
@@ -134,23 +160,39 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
   };
 
   return (
-    <Card>
+    <Card sx={{ borderRadius: 2, border: '1px solid var(--dq-border-subtle)', backgroundColor: 'var(--dq-surface-card)' }}>
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Database size={20} color="#1976d2" />
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            <Database size={20} style={{ color: 'var(--dq-accent-primary)' }} />
+            <Typography variant="h6" sx={{ fontWeight: 600, color: 'var(--dq-text-primary)' }}>
               DuckDB 表管理
             </Typography>
             <Chip
               label={`${tables.length} 个表`}
               size="small"
-              color="primary"
-              variant="outlined"
+              sx={{
+                backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 12%, transparent)',
+                color: 'var(--dq-accent-primary)',
+                fontWeight: 600,
+                borderRadius: '999px'
+              }}
             />
           </Box>
           <Tooltip title="刷新表列表">
-            <IconButton onClick={loadTables} disabled={loading}>
+            <IconButton
+              onClick={loadTables}
+              disabled={loading}
+              sx={{
+                backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 18%, transparent)',
+                '&:hover': {
+                  backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 28%, transparent)'
+                },
+                '& svg': {
+                  color: 'var(--dq-accent-primary)'
+                }
+              }}
+            >
               <RefreshIcon />
             </IconButton>
           </Tooltip>

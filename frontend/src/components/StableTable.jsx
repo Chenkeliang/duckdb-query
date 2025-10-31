@@ -125,7 +125,7 @@ const StableTable = ({
         component={Paper}
         sx={{
           height: height,
-          border: '2px solid #e0e0e0',
+          border: '2px solid var(--dq-border-subtle)',
           borderRadius: 2,
           // 强制显示滚动条
           overflow: 'auto',
@@ -137,7 +137,7 @@ const StableTable = ({
             height: '12px',
           },
           '&::-webkit-scrollbar-track': {
-            background: '#f1f1f1',
+            background: 'var(--dq-surface-alt)',
             borderRadius: '6px',
           },
           '&::-webkit-scrollbar-thumb': {
@@ -158,7 +158,7 @@ const StableTable = ({
                   <TableCell
                     key={column.field}
                     sx={{
-                      backgroundColor: hasActiveFilter ? '#e6ebf4' : '#f2f4f8',
+                      backgroundColor: hasActiveFilter ? 'var(--dq-surface-card-active)' : 'var(--dq-surface-card-active)',
                       fontWeight: 600,
                       fontSize: '1rem',
                       borderBottom: `2px solid ${theme.palette.divider}`,
@@ -226,10 +226,10 @@ const StableTable = ({
                 key={index}
                 sx={{
                   '&:nth-of-type(odd)': {
-                    backgroundColor: '#f7f9fc',
+                    backgroundColor: 'var(--dq-surface-card-active)',
                   },
                   '&:hover': {
-                    backgroundColor: '#e6ebf4',
+                    backgroundColor: 'var(--dq-surface-card-active)',
                   },
                 }}
               >

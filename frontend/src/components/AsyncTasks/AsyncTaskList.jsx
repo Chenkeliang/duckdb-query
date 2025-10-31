@@ -41,6 +41,12 @@ import React, { useEffect, useState } from 'react';
 import { cancelAsyncTask, listAsyncTasks, retryAsyncTask } from '../../services/apiClient';
 
 const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof document === 'undefined') {
+      return false;
+    }
+    return document.documentElement.classList.contains('dark');
+  });
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -117,6 +123,29 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
   }, []);
 
   // 手动刷新
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const syncTheme = () => {
+      if (typeof document === 'undefined') {
+        return;
+      }
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    };
+    const handleThemeChange = (event) => {
+      if (event?.detail && typeof event.detail.isDark === 'boolean') {
+        setIsDarkMode(event.detail.isDark);
+      } else {
+        syncTheme();
+      }
+    };
+    window.addEventListener('duckquery-theme-change', handleThemeChange);
+    return () => {
+      window.removeEventListener('duckquery-theme-change', handleThemeChange);
+    };
+  }, []);
+
   const handleRefresh = () => {
     fetchTasks();
   };
@@ -125,15 +154,15 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
   const getStatusInfo = (status) => {
     switch (status) {
       case 'queued':
-        return { icon: <HourglassBottom />, color: 'default', label: '排队中' };
+        return { icon: <HourglassBottom />, background: 'var(--dq-status-info-bg)', color: 'var(--dq-status-info-fg)', label: '排队中' };
       case 'running':
-        return { icon: <PlayArrow />, color: 'primary', label: '运行中' };
+        return { icon: <PlayArrow />, background: 'var(--dq-status-warning-bg)', color: 'var(--dq-status-warning-fg)', label: '运行中' };
       case 'success':
-        return { icon: <CheckCircle />, color: 'success', label: '成功' };
+        return { icon: <CheckCircle />, background: 'var(--dq-status-success-bg)', color: 'var(--dq-status-success-fg)', label: '成功' };
       case 'failed':
-        return { icon: <Error />, color: 'error', label: '失败' };
+        return { icon: <Error />, background: 'var(--dq-status-error-bg)', color: 'var(--dq-status-error-fg)', label: '失败' };
       default:
-        return { icon: <HourglassBottom />, color: 'default', label: status };
+        return { icon: <HourglassBottom />, background: 'var(--dq-status-info-bg)', color: 'var(--dq-status-info-fg)', label: status };
     }
   };
 
@@ -154,6 +183,8 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
       return `${minutes}分${remainingSeconds.toFixed(0)}秒`;
     }
   };
+
+  const menuPaperClass = `dq-theme ${isDarkMode ? 'dq-theme--dark' : 'dq-theme--light'}`;
 
   // 解析查询信息以提取格式
   const parseQueryInfo = (query) => {
@@ -336,7 +367,17 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
           </Box>
 
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+            <Alert
+              severity="error"
+              sx={{
+                mb: 2,
+                backgroundColor: 'var(--dq-status-error-bg)',
+                color: 'var(--dq-status-error-fg)',
+                border: '1px solid var(--dq-border-subtle)'
+              }}
+            >
+              {error}
+            </Alert>
           )}
 
           {loading && tasks.length === 0 && (
@@ -346,7 +387,7 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
           )}
 
           {!loading && tasks.length === 0 && (
-            <Typography variant="body1" sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
+            <Typography variant="body1" sx={{ textAlign: 'center', py: 4, color: 'var(--dq-text-secondary)' }}>
               暂无异步任务
             </Typography>
           )}
@@ -374,12 +415,30 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                             {task.task_id.substring(0, 8)}...
                           </Typography>
                           {task.result?.custom_table_name && (
-                            <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 0.5 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                backgroundColor: 'var(--dq-status-info-bg)',
+                                color: 'var(--dq-status-info-fg)',
+                                border: 'none',
+                                display: 'block',
+                                mt: 0.5
+                              }}
+                            >
                               表名: {task.result.custom_table_name}
                             </Typography>
                           )}
                           {task.result?.display_name && (
-                            <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 0.5 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                backgroundColor: 'var(--dq-status-info-bg)',
+                                color: 'var(--dq-status-info-fg)',
+                                border: 'none',
+                                display: 'block',
+                                mt: 0.5
+                              }}
+                            >
                               显示名: {task.result.display_name}
                             </Typography>
                           )}
@@ -388,7 +447,12 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                           <Chip
                             icon={statusInfo.icon}
                             label={statusInfo.label}
-                            color={statusInfo.color}
+                            sx={{
+                            backgroundColor: statusInfo.background,
+                            color: statusInfo.color,
+                            border: 'none',
+                            '& .MuiChip-icon': { color: 'inherit' }
+                          }}
                             size="small"
                             variant="outlined"
                           />
@@ -425,9 +489,8 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                                     key="type"
                                     label={typeLabels[queryObj.task_type] || queryObj.task_type}
                                     size="small"
-                                    color="primary"
+                                    sx={{ backgroundColor: 'var(--dq-status-info-bg)', color: 'var(--dq-status-info-fg)', border: 'none', mt: 1, fontSize: '1rem', height: 20 }}
                                     variant="outlined"
-                                    sx={{ mt: 1, fontSize: '1rem', height: 20 }}
                                   />
                                 );
                               }
@@ -440,7 +503,7 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                                     label={`${(queryObj.format || '').toUpperCase()} 格式`}
                                     size="small"
                                     variant="outlined"
-                                    sx={{ mt: 1, fontSize: '1rem', height: 20 }}
+                                    sx={{ mt: 1, fontSize: '1rem', height: 20, backgroundColor: 'var(--dq-status-info-bg)', color: 'var(--dq-status-info-fg)', border: 'none' }}
                                   />
                                 );
                               }
@@ -521,9 +584,8 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                                   <Chip
                                     label="文件已生成"
                                     size="small"
-                                    color="success"
                                     variant="outlined"
-                                    sx={{ fontSize: '1rem', height: 20 }}
+                                    sx={{ fontSize: '1rem', height: 20, backgroundColor: 'var(--dq-status-success-bg)', color: 'var(--dq-status-success-fg)', border: 'none' }}
                                   />
                                 )}
                               </>
@@ -545,8 +607,15 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
           <DialogTitle>取消任务</DialogTitle>
           <DialogContent>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 420 }}>
-              <Alert severity="warning">
-                <Typography variant="body2">
+              <Alert
+                severity="warning"
+                sx={{
+                  backgroundColor: 'var(--dq-status-warning-bg)',
+                  color: 'var(--dq-status-warning-fg)',
+                  border: '1px solid var(--dq-border-subtle)'
+                }}
+              >
+                <Typography variant="body2" sx={{ color: 'inherit' }}>
                   将任务标记为失败，后续可通过“重试”按钮重新执行。
                 </Typography>
               </Alert>
@@ -583,8 +652,16 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                 确认要重新执行任务
                 {pendingRetryTask ? `（${pendingRetryTask.task_id.slice(0, 8)}...）` : ''} 吗？
               </Typography>
-              <Alert severity="info" sx={{ alignItems: 'flex-start' }}>
-                <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+              <Alert
+                severity="info"
+                sx={{
+                  alignItems: 'flex-start',
+                  backgroundColor: 'var(--dq-status-info-bg)',
+                  color: 'var(--dq-status-info-fg)',
+                  border: '1px solid var(--dq-border-subtle)'
+                }}
+              >
+                <Typography variant="body2" sx={{ lineHeight: 1.6, color: 'inherit' }}>
                   重试会复用原始 SQL 与数据源配置，并新建一个任务。原任务状态将保持不变，可在完成后对比结果。
                 </Typography>
               </Alert>
@@ -609,8 +686,8 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
           <DialogTitle>选择下载格式</DialogTitle>
           <DialogContent>
             <Box sx={{ mt: 2 }}>
-              <Alert severity="info" sx={{ mb: 2 }}>
-                <Typography variant="body2">
+              <Alert severity="info" sx={{ mb: 2, backgroundColor: 'var(--dq-status-info-bg)', color: 'var(--dq-status-info-fg)', border: '1px solid var(--dq-border-subtle)' }}>
+                <Typography variant="body2" sx={{ color: 'inherit' }}>
                   选择您希望下载的文件格式。
                 </Typography>
               </Alert>
@@ -621,6 +698,11 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                   value={downloadFormat}
                   label="下载格式"
                   onChange={(e) => setDownloadFormat(e.target.value)}
+                  MenuProps={{
+                    slotProps: {
+                      paper: { className: menuPaperClass }
+                    }
+                  }}
                 >
                   <MenuItem value="csv">CSV 格式</MenuItem>
                   <MenuItem value="parquet">Parquet 格式</MenuItem>
@@ -650,8 +732,8 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
                 </Typography>
               </Box>
 
-              <Alert severity="success" sx={{ mt: 2 }}>
-                <Typography variant="body2">
+              <Alert severity="success" sx={{ mt: 2, backgroundColor: 'var(--dq-status-success-bg)', color: 'var(--dq-status-success-fg)', border: '1px solid var(--dq-border-subtle)' }}>
+                <Typography variant="body2" sx={{ color: 'inherit' }}>
                   文件生成完成后将自动开始下载。
                 </Typography>
               </Alert>

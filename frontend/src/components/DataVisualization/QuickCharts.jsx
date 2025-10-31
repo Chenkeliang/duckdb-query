@@ -114,8 +114,8 @@ const QuickCharts = ({ data = [], columns = [] }) => {
 
   // 颜色配置
   const colors = [
-    '#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00',
-    '#ff00ff', '#00ffff', '#ff0000', '#0000ff', '#ffff00'
+    'var(--dq-chart-1)', 'var(--dq-chart-2)', 'var(--dq-chart-3)', 'var(--dq-chart-4)', 'var(--dq-chart-2)',
+    'var(--dq-chart-1)', 'var(--dq-chart-7)', 'var(--dq-chart-6)', 'var(--dq-chart-7)', 'var(--dq-chart-3)'
   ];
 
   // 渲染图表
@@ -150,7 +150,7 @@ const QuickCharts = ({ data = [], columns = [] }) => {
               <YAxis />
               <Tooltip formatter={(value) => [value.toLocaleString(), 'Value']} />
               <Legend />
-              <Bar dataKey="value" fill="#8884d8" />
+              <Bar dataKey="value" fill="var(--dq-chart-1)" />
             </BarChart>
           </ResponsiveContainer>
         );
@@ -169,7 +169,7 @@ const QuickCharts = ({ data = [], columns = [] }) => {
               <YAxis />
               <Tooltip formatter={(value) => [value.toLocaleString(), 'Value']} />
               <Legend />
-              <Line type="monotone" dataKey="value" stroke="#8884d8" strokeWidth={2} />
+              <Line type="monotone" dataKey="value" stroke="var(--dq-chart-1)" strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
         );
@@ -185,7 +185,7 @@ const QuickCharts = ({ data = [], columns = [] }) => {
                 labelLine={false}
                 label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                 outerRadius={80}
-                fill="#8884d8"
+                fill="var(--dq-chart-1)"
                 dataKey="value"
               >
                 {chartData.map((entry, index) => (
@@ -349,7 +349,7 @@ const QuickCharts = ({ data = [], columns = [] }) => {
         </Grid>
 
         {/* 图表区域 */}
-        <Box sx={{ height: 350, border: '1px solid #e0e0e0', borderRadius: 1, p: 2 }}>
+        <Box sx={{ height: 350, border: '1px solid var(--dq-border-subtle)', borderRadius: 1, p: 2 }}>
           {renderChart()}
         </Box>
 

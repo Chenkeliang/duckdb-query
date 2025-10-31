@@ -124,13 +124,13 @@ const SortControls = ({
       width: "100%",
       bgcolor: 'white',
       borderRadius: 4,
-      border: '1px solid #e5e7eb',
+      border: '1px solid var(--dq-border-subtle)',
       p: 2
     }}>
       {/* 标题和控制 - 统一蓝色风格 */}
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2, px: 0.5 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <Box sx={{ width: 8, height: 8, bgcolor: "#3b82f6", borderRadius: "50%" }} />
+          <Box sx={{ width: 8, height: 8, bgcolor: "var(--dq-accent-primary)", borderRadius: "50%" }} />
           <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "text.primary" }}>
             排序 (ORDER BY)
           </Typography>
@@ -143,7 +143,7 @@ const SortControls = ({
           onClick={handleAddSort}
           disabled={disabled || !newSort.column}
           sx={{
-            color: "#3b82f6",
+            color: "var(--dq-accent-primary)",
             fontWeight: 600,
             cursor: disabled || !newSort.column ? "not-allowed" : "pointer",
             opacity: disabled || !newSort.column ? 0.5 : 1,
@@ -151,7 +151,7 @@ const SortControls = ({
             alignItems: "center",
             gap: 0.5,
             "&:hover": {
-              color: "#2563eb"
+              color: "var(--dq-accent-primary)"
             }
           }}
         >
@@ -164,7 +164,7 @@ const SortControls = ({
 
       <Collapse in={isExpanded}>
         {/* 排序列表 - 柔和圆润风格 */}
-        <Box sx={{ bgcolor: "white", borderRadius: 4, border: "1px solid #e5e7eb", p: 2 }}>
+        <Box sx={{ bgcolor: "white", borderRadius: 4, border: "1px solid var(--dq-border-subtle)", p: 2 }}>
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
             添加排序条件
           </Typography>
@@ -193,13 +193,13 @@ const SortControls = ({
                 sx={{
                   borderRadius: 3,
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#e5e7eb'
+                    borderColor: 'var(--dq-border-subtle)'
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6'
+                    borderColor: 'var(--dq-accent-primary)'
                   },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6',
+                    borderColor: 'var(--dq-accent-primary)',
                     borderWidth: 2
                   }
                 }}
@@ -248,13 +248,13 @@ const SortControls = ({
                 sx={{
                   borderRadius: 3,
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#e5e7eb'
+                    borderColor: 'var(--dq-border-subtle)'
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6'
+                    borderColor: 'var(--dq-accent-primary)'
                   },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6',
+                    borderColor: 'var(--dq-accent-primary)',
                     borderWidth: 2
                   }
                 }}
@@ -290,13 +290,13 @@ const SortControls = ({
                 sx={{
                   borderRadius: 3,
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#e5e7eb'
+                    borderColor: 'var(--dq-border-subtle)'
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6'
+                    borderColor: 'var(--dq-accent-primary)'
                   },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6',
+                    borderColor: 'var(--dq-accent-primary)',
                     borderWidth: 2
                   }
                 }}
@@ -325,9 +325,9 @@ const SortControls = ({
               sx={{
                 ml: 1,
                 borderRadius: 3,
-                bgcolor: '#3b82f6',
+                bgcolor: 'var(--dq-accent-primary)',
                 '&:hover': {
-                  bgcolor: '#2563eb'
+                  bgcolor: 'var(--dq-accent-primary)'
                 }
               }}
             >
@@ -343,10 +343,10 @@ const SortControls = ({
             mb: 2,
             bgcolor: 'white',
             borderRadius: 4,
-            border: '1px solid #e5e7eb'
+            border: '1px solid var(--dq-border-subtle)'
           }}>
             <Box
-              sx={{ p: 2, borderBottom: "1px solid", borderColor: "#e5e7eb" }}
+              sx={{ p: 2, borderBottom: "1px solid", borderColor: "var(--dq-border-subtle)" }}
             >
               <Typography variant="body2" sx={{ fontWeight: 500 }}>
                 排序条件 ({orderBy.length})
@@ -517,7 +517,7 @@ const SortControls = ({
             textAlign: "center",
             bgcolor: 'white',
             borderRadius: 4,
-            border: '1px solid #e5e7eb'
+            border: '1px solid var(--dq-border-subtle)'
           }}>
             <Typography variant="body2" color="text.secondary">
               还没有配置排序条件

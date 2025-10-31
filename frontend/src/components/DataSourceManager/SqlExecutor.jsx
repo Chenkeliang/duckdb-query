@@ -374,28 +374,28 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
           mb: 2,
           '&:before': { display: 'none' },
           overflow: 'hidden',
-          backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#ffffff',
+          backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface)',
           boxShadow: isDarkMode ? 'var(--dq-shadow-soft)' : 'none'
         }}
       >
         <AccordionSummary
           expandIcon={<ExpandMoreIcon />}
           sx={{
-            backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : '#ffffff',
+            backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : 'var(--dq-surface)',
             borderBottom: expanded ? (isDarkMode ? '1px solid var(--dq-border-subtle)' : '1px solid rgba(0, 0, 0, 0.1)') : 'none',
             minHeight: '48px',
             '& .MuiAccordionSummary-content': { my: 0 }
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Code size={20} style={{ marginRight: '8px', color: isDarkMode ? 'var(--dq-accent-100)' : '#1976d2' }} />
+            <Code size={20} style={{ marginRight: '8px', color: isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)' }} />
             <Typography sx={{ fontWeight: 500, fontSize: '1rem', color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
               SQL查询执行器 - {selectedDataSource ? databaseConnections.find(ds => ds.id === selectedDataSource)?.name || selectedDataSource : '请选择数据库连接'}
             </Typography>
           </Box>
         </AccordionSummary>
 
-        <AccordionDetails sx={{ p: 2.5, backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#ffffff' }}>
+        <AccordionDetails sx={{ p: 2.5, backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface)' }}>
           {/* 数据库连接选择器 */}
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel
@@ -412,6 +412,13 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
               onChange={(e) => setSelectedDataSource(e.target.value)}
               size="small"
               displayEmpty
+              MenuProps={{
+                slotProps: {
+                  paper: {
+                    className: `dq-theme ${isDarkMode ? 'dq-theme--dark' : 'dq-theme--light'}`
+                  }
+                }
+              }}
               renderValue={(value) => {
                 if (!value) {
                   return <Typography sx={{ color: isDarkMode ? 'var(--dq-text-tertiary)' : 'rgba(0,0,0,0.6)' }}>请选择数据库连接</Typography>;
@@ -470,7 +477,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
 
           {/* 编辑器工具栏 */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="subtitle2" sx={{ color: isDarkMode ? 'var(--dq-text-secondary)' : 'text.secondary' }}>
+            <Typography variant="subtitle2" sx={{ color: isDarkMode ? 'var(--dq-text-secondary)' : 'var(--dq-text-secondary)' }}>
               SQL查询编辑器
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -486,7 +493,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   px: 2.5,
                   py: 0.5,
                   borderRadius: 2,
-                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : 'var(--dq-border-subtle)',
                   color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
                   backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                   height: '40px',
@@ -510,7 +517,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   px: 2.5,
                   py: 0.5,
                   borderRadius: 2,
-                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : 'var(--dq-border-subtle)',
                   color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
                   backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                   height: '40px',
@@ -534,7 +541,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   px: 2.5,
                   py: 0.5,
                   borderRadius: 2,
-                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : 'var(--dq-border-subtle)',
                   color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
                   backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                   height: '40px',
@@ -553,6 +560,13 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   displayEmpty
                   onChange={(e) => {
                     setEditorTheme(e.target.value);
+                  }}
+                  MenuProps={{
+                    slotProps: {
+                      paper: {
+                        className: `dq-theme ${isDarkMode ? 'dq-theme--dark' : 'dq-theme--light'}`
+                      }
+                    }
                   }}
                   sx={{
                     height: '40px',
@@ -693,7 +707,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                             key={index}
                             sx={{
                               fontWeight: 'bold',
-                              backgroundColor: '#f5f5f5',
+                              backgroundColor: 'var(--dq-surface)',
                               fontSize: '1rem'
                             }}
                           >

@@ -198,17 +198,17 @@ const ColumnSelector = ({
       width: '100%',
       bgcolor: 'white',
       borderRadius: 4,
-      border: '1px solid #e5e7eb',
+      border: '1px solid var(--dq-border-subtle)',
       p: 2
     }}>
       {/* 标题和控制 - 统一蓝色风格 */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, px: 0.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box sx={{ width: 8, height: 8, bgcolor: '#3b82f6', borderRadius: '50%' }} />
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+          <Box sx={{ width: 8, height: 8, bgcolor: 'var(--dq-accent-primary)', borderRadius: '50%' }} />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--dq-text-primary)' }}>
             选择列 (SELECT)
           </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
             已选 {selectedColumns.length}/{columns.length}
           </Typography>
         </Box>
@@ -217,12 +217,12 @@ const ColumnSelector = ({
           onClick={handleSelectAll}
           disabled={disabled || filteredColumns.length === 0}
           sx={{
-            color: '#3b82f6',
+            color: 'var(--dq-accent-primary)',
             fontWeight: 600,
             cursor: disabled || filteredColumns.length === 0 ? 'not-allowed' : 'pointer',
             opacity: disabled || filteredColumns.length === 0 ? 0.5 : 1,
             '&:hover': {
-              color: '#2563eb'
+              color: 'var(--dq-accent-primary)'
             }
           }}
         >
@@ -238,7 +238,7 @@ const ColumnSelector = ({
             overflow: 'auto',
             bgcolor: 'white',
             borderRadius: 4,
-            border: '1px solid #e5e7eb',
+            border: '1px solid var(--dq-border-subtle)',
             p: 2
           }}
         >
@@ -259,13 +259,13 @@ const ColumnSelector = ({
                     alignItems: 'center',
                     p: 0.75,
                     borderRadius: 3,
-                    bgcolor: isSelected ? 'white' : 'transparent',
+                    bgcolor: isSelected ? 'var(--dq-surface-card)' : 'transparent',
                     boxShadow: isSelected ? '0 1px 3px 0 rgb(0 0 0 / 0.1)' : 'none',
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     opacity: isSelected ? 1 : 0.5,
                     transition: 'all 0.2s',
                     '&:hover': {
-                      bgcolor: 'white',
+                      bgcolor: 'var(--dq-surface-card)',
                       opacity: 1
                     }
                   }}
@@ -277,21 +277,21 @@ const ColumnSelector = ({
                     icon={<CheckBoxOutlineBlankIcon fontSize="small" />}
                     checkedIcon={<CheckBoxIcon fontSize="small" />}
                     sx={{
-                      color: '#3b82f6',
+                      color: 'var(--dq-accent-primary)',
                       '&.Mui-checked': {
-                        color: '#3b82f6'
+                        color: 'var(--dq-accent-primary)'
                       }
                     }}
                   />
                   <Box sx={{ flex: 1, ml: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" sx={{ fontWeight: isSelected ? 600 : 500, color: 'text.primary' }}>
+                    <Typography variant="body2" sx={{ fontWeight: isSelected ? 600 : 500, color: 'var(--dq-text-primary)' }}>
                       {columnName}
                     </Typography>
                     <Typography
                       variant="caption"
                       sx={{
-                        color: 'text.secondary',
-                        bgcolor: '#f3f4f6',
+                        color: 'var(--dq-text-secondary)',
+                        bgcolor: 'var(--dq-surface-alt)',
                         px: 1.5,
                         py: 0.5,
                         borderRadius: 10,

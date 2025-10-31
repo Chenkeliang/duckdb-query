@@ -651,11 +651,11 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
                 px: 2.5,
                 py: 0.5,
                 borderRadius: 2,
-                borderColor: '#e0e0e0',
+                borderColor: 'var(--dq-border-subtle)',
                 color: '#666',
                 '&:hover': {
-                  borderColor: '#1976d2',
-                  color: '#1976d2',
+                  borderColor: 'var(--dq-accent-primary)',
+                  color: 'var(--dq-accent-primary)',
                   backgroundColor: 'rgba(25, 118, 210, 0.04)'
                 }
               }}
@@ -673,11 +673,11 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
                 px: 2.5,
                 py: 0.5,
                 borderRadius: 2,
-                borderColor: '#e0e0e0',
+                borderColor: 'var(--dq-border-subtle)',
                 color: '#666',
                 '&:hover': {
-                  borderColor: '#1976d2',
-                  color: '#1976d2',
+                  borderColor: 'var(--dq-accent-primary)',
+                  color: 'var(--dq-accent-primary)',
                   backgroundColor: 'rgba(25, 118, 210, 0.04)'
                 }
               }}

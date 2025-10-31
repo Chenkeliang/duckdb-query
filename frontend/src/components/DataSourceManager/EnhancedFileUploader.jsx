@@ -148,10 +148,10 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
   };
 
   return (
-    <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
+    <Card sx={{ borderRadius: 2, border: '1px solid var(--dq-border-subtle)' }}>
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <Upload size={20} style={{ marginRight: '8px', color: '#1976d2' }} />
+          <Upload size={20} style={{ marginRight: '8px', color: 'var(--dq-accent-primary)' }} />
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
             智能文件上传
           </Typography>
@@ -199,7 +199,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
               sx={{
-                border: `2px dashed ${isDragOver ? '#1976d2' : '#ccc'}`,
+                border: `2px dashed ${isDragOver ? 'var(--dq-accent-primary)' : '#ccc'}`,
                 borderRadius: 2,
                 p: 4,
                 textAlign: 'center',
@@ -207,7 +207,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
                 transition: 'all 0.3s ease',
                 cursor: 'pointer',
                 '&:hover': {
-                  borderColor: '#1976d2',
+                  borderColor: 'var(--dq-accent-primary)',
                   backgroundColor: 'rgba(25, 118, 210, 0.04)',
                 }
               }}
@@ -215,11 +215,11 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
               <Upload
                 sx={{
                   fontSize: 48,
-                  color: isDragOver ? '#1976d2' : '#999',
+                  color: isDragOver ? 'var(--dq-accent-primary)' : '#999',
                   mb: 2
                 }}
               />
-              <Typography variant="h6" sx={{ mb: 1, color: isDragOver ? '#1976d2' : 'text.primary' }}>
+              <Typography variant="h6" sx={{ mb: 1, color: isDragOver ? 'var(--dq-accent-primary)' : 'var(--dq-text-primary)' }}>
                 拖放文件到此处
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -238,7 +238,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
                 }}
               />
             ) : (
-              <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
+              <Card sx={{ borderRadius: 2, border: '1px solid var(--dq-border-subtle)' }}>
                 <CardContent>
                   <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
                     请先选择文件

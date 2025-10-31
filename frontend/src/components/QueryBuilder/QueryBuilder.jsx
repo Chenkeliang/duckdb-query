@@ -802,7 +802,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
 
 
       {/* 数据源选择器 - 始终显示 */}
-      <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, fontSize: '16px', color: 'text.primary' }}>
+      <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, fontSize: '16px', color: 'var(--dq-text-primary)' }}>
         选择数据源
       </Typography>
       <SourceSelector
@@ -847,7 +847,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       {/* 集合操作区块 */}
       {showSetOperationBlock && currentOperationMode === 'set_operation' && (
         <>
-          <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, fontSize: '16px', color: 'text.primary' }}>
+          <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, fontSize: '16px', color: 'var(--dq-text-primary)' }}>
             集合操作配置
           </Typography>
           <SetOperationBuilder
@@ -864,7 +864,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       {showJoinBlock && currentOperationMode === 'join' && (
         <>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: '16px', color: 'text.primary' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: '16px', color: 'var(--dq-text-primary)' }}>
               连接条件
             </Typography>
             <Button
@@ -959,15 +959,15 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
               fontSize: '16px',
               fontWeight: 600,
               textTransform: 'none',
-              backgroundColor: '#0071e3',
+              backgroundColor: 'var(--dq-accent-primary-strong)',
               color: 'white',
               boxShadow: '0 4px 12px rgba(0, 113, 227, 0.2)',
               '&:hover': {
-                backgroundColor: '#0077ed',
+                backgroundColor: 'var(--dq-accent-primary-strong)',
                 boxShadow: '0 2px 8px rgba(0, 113, 227, 0.3)'
               },
               '&.Mui-disabled': {
-                backgroundColor: '#e0e0e0',
+                backgroundColor: 'var(--dq-border-subtle)',
                 color: 'rgba(0, 0, 0, 0.38)'
               }
             }}
@@ -990,15 +990,15 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
                 fontSize: '16px',
                 fontWeight: 600,
                 textTransform: 'none',
-                backgroundColor: '#0071e3',
+                backgroundColor: 'var(--dq-accent-primary-strong)',
                 color: 'white',
                 boxShadow: '0 4px 12px rgba(0, 113, 227, 0.2)',
                 '&:hover': {
-                  backgroundColor: '#0077ed',
+                  backgroundColor: 'var(--dq-accent-primary-strong)',
                   boxShadow: '0 2px 8px rgba(0, 113, 227, 0.3)'
                 },
                 '&.Mui-disabled': {
-                  backgroundColor: '#e0e0e0',
+                  backgroundColor: 'var(--dq-border-subtle)',
                   color: 'rgba(0, 0, 0, 0.38)'
                 }
               }}
@@ -1022,15 +1022,15 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
                 fontSize: '16px',
                 fontWeight: 600,
                 textTransform: 'none',
-                backgroundColor: '#0071e3',
+                backgroundColor: 'var(--dq-accent-primary-strong)',
                 color: 'white',
                 boxShadow: '0 4px 12px rgba(0, 113, 227, 0.2)',
                 '&:hover': {
-                  backgroundColor: '#0077ed',
+                  backgroundColor: 'var(--dq-accent-primary-strong)',
                   boxShadow: '0 2px 8px rgba(0, 113, 227, 0.3)'
                 },
                 '&.Mui-disabled': {
-                  backgroundColor: '#e0e0e0',
+                  backgroundColor: 'var(--dq-border-subtle)',
                   color: 'rgba(0, 0, 0, 0.38)'
                 }
               }}

@@ -2,7 +2,6 @@ import {
   Alert,
   Box,
   Button,
-  Card,
   CardContent,
   Chip,
   Dialog,
@@ -37,6 +36,7 @@ import React, { useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import StableTable from '../StableTable';
 import VirtualTable from '../VirtualTable/VirtualTable';
+import { CardSurface } from '../common';
 
 const DISTINCT_SAMPLE_LIMIT = 10000;
 const MAX_DISTINCT_PREVIEW = 1000;
@@ -557,25 +557,25 @@ const ModernDataDisplay = ({
         case 'both':
           return {
             label: '匹配',
-            backgroundColor: '#4caf50',
+            backgroundColor: 'var(--dq-status-success-fg)',
             color: 'white'
           };
         case 'left':
           return {
             label: '仅左表',
-            backgroundColor: '#ff9800',
+            backgroundColor: 'var(--dq-status-warning-fg)',
             color: 'white'
           };
         case 'right':
           return {
             label: '仅右表',
-            backgroundColor: '#2196f3',
+            backgroundColor: 'var(--dq-accent-primary)',
             color: 'white'
           };
         default:
           return {
             label: value,
-            backgroundColor: '#e0e0e0',
+            backgroundColor: 'var(--dq-border-subtle)',
             color: '#333'
           };
       }
@@ -1124,7 +1124,7 @@ const ModernDataDisplay = ({
         <CardContent sx={{ pb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <TrendingUp size={24} color="#1976d2" />
+              <TrendingUp size={24} color="var(--dq-accent-primary)" />
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
                   {title}
@@ -1368,7 +1368,7 @@ const ModernDataDisplay = ({
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: '100%',
-                color: 'text.secondary',
+                color: 'var(--dq-text-secondary)',
               }}
             >
               <Table size={64} color="#999" style={{ marginBottom: '16px', opacity: 0.5 }} />
@@ -1424,7 +1424,7 @@ const ModernDataDisplay = ({
             </Box>
           </>
         )}
-      </Card>
+      </CardSurface>
 
 
       {/* 列头本地筛选菜单 */}
@@ -1447,7 +1447,7 @@ const ModernDataDisplay = ({
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
               {activeColumnLabel || '列筛选'}
               {activeColumnFilterInfo && (
-                <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+                <Typography component="span" variant="caption" sx={{ ml: 1, color: 'var(--dq-text-secondary)' }}>
                   预览 {activeColumnFilterInfo.options.length} 项（共 {activeColumnFilterInfo.total} 条记录）
                 </Typography>
               )}
@@ -1487,7 +1487,7 @@ const ModernDataDisplay = ({
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 2,
-                backgroundColor: '#f6f8fb',
+                backgroundColor: 'var(--dq-surface-card-active)',
                 '&:hover .MuiOutlinedInput-notchedOutline': {
                   borderColor: 'divider',
                 },
@@ -1543,7 +1543,7 @@ const ModernDataDisplay = ({
               maxHeight: 240,
               overflowY: 'auto',
               p: 1,
-              backgroundColor: '#fafbff'
+              backgroundColor: 'var(--dq-surface-card-active)'
             }}
           >
             {filteredColumnFilterOptions.length === 0 ? (
@@ -1641,7 +1641,7 @@ const ModernDataDisplay = ({
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   {visibleColumns.has(column.field) ? (
-                    <Eye size={16} color="#1976d2" />
+                    <Eye size={16} color="var(--dq-accent-primary)" />
                   ) : (
                     <EyeOff size={16} color="#666" />
                   )}
@@ -1821,7 +1821,7 @@ const ModernDataDisplay = ({
                             borderColor: 'divider',
                             borderRadius: 1.5,
                             p: 1,
-                            backgroundColor: '#fafbff'
+                            backgroundColor: 'var(--dq-surface-card-active)'
                           }}
                         >
                           {(!distinctInfo || distinctInfo.options.length === 0) && (

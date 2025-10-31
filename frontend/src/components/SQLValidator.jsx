@@ -221,7 +221,7 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange, databaseType 
 
                     {warnings.length > 0 && (
                         <Box sx={{ mb: 2 }}>
-                            <Typography variant="subtitle2" color="warning.main" sx={{ mb: 1 }}>
+                            <Typography variant="subtitle2" color="var(--dq-text-primary)" sx={{ mb: 1 }}>
                                 警告 ({warnings.length})
                             </Typography>
                             <List dense>
@@ -248,7 +248,7 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange, databaseType 
 
                     {suggestions.length > 0 && (
                         <Box>
-                            <Typography variant="subtitle2" color="info.main" sx={{ mb: 1 }}>
+                            <Typography variant="subtitle2" color="var(--dq-text-primary)" sx={{ mb: 1 }}>
                                 建议 ({suggestions.length})
                             </Typography>
                             <List dense>

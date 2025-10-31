@@ -7,6 +7,7 @@ import {
 } from '@mui/icons-material';
 import {
   Alert,
+  Box,
   Checkbox,
   Chip,
   Collapse,
@@ -175,7 +176,7 @@ const ColumnSelector = ({
               onClick={handleSelectAll}
               disabled={disabled}
               sx={{
-                color: selectAllState === 'all' ? 'primary.main' : 'text.secondary',
+                color: selectAllState === 'all' ? 'var(--dq-text-primary)' : 'var(--dq-text-secondary)',
                 '&:hover': {
                   backgroundColor: 'rgba(0, 113, 227, 0.04)'
                 }
@@ -191,7 +192,7 @@ const ColumnSelector = ({
               size="small"
               onClick={() => setIsExpanded(!isExpanded)}
               sx={{
-                color: 'text.secondary',
+                color: 'var(--dq-text-secondary)',
                 '&:hover': {
                   backgroundColor: 'rgba(0, 0, 0, 0.04)'
                 }
@@ -204,7 +205,15 @@ const ColumnSelector = ({
       </div>
 
       {/* Selection Summary */}
-      <div className="flex items-center space-x-2 text-sm text-gray-600">
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          fontSize: '0.95rem',
+          color: 'var(--dq-text-tertiary)'
+        }}
+      >
         <span>已选择 {selectedColumns.length} / {availableColumns.length} 列</span>
         {selectedColumns.length > 0 && (
           <Chip
@@ -218,13 +227,20 @@ const ColumnSelector = ({
             }}
           />
         )}
-      </div>
+      </Box>
 
       {/* Column Selection Grid */}
       <Collapse in={isExpanded}>
-        <div
-          className="border border-gray-200 rounded-md bg-gray-50 p-3"
-          style={{ maxHeight: `${maxHeight}px`, overflowY: 'auto' }}
+        <Box
+          className="rounded-md p-3 visual-analysis-card-inner"
+          sx={{
+            border: '1px solid var(--dq-border-subtle)',
+            backgroundColor: 'transparent',
+            maxHeight: `${maxHeight}px`,
+            overflowY: 'auto',
+            transition: 'background-color 0.18s ease, border-color 0.18s ease'
+          }}
+          style={{ backgroundColor: 'var(--dq-surface-card)' }}
         >
           {/* Responsive Grid Layout */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -234,16 +250,31 @@ const ColumnSelector = ({
               const isSelected = selectedColumns.includes(columnName);
 
               return (
-                <div
+                <Box
                   key={`${columnName}-${index}`}
-                  className={`
-                    flex items-center space-x-2 p-2 rounded-md cursor-pointer transition-colors
-                    ${isSelected
-                      ? 'bg-blue-50 border border-blue-200'
-                      : 'bg-white border border-gray-200 hover:bg-gray-50'
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    px: 1.5,
+                    py: 1,
+                    borderRadius: 2,
+                    border: `1px solid ${isSelected ? 'var(--dq-accent-primary)' : 'var(--dq-border-subtle)'}`,
+                    backgroundColor: isSelected ? 'var(--dq-accent-primary-soft)' : 'var(--dq-surface)',
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    opacity: disabled ? 0.55 : 1,
+                    pointerEvents: disabled ? 'none' : 'auto',
+                    transition: 'border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease',
+                    '&:hover': {
+                      backgroundColor: isSelected
+                        ? 'var(--dq-accent-primary-soft)'
+                        : 'var(--dq-surface-alt)',
+                      borderColor: isSelected
+                        ? 'var(--dq-accent-primary)'
+                        : 'var(--dq-border-card)',
+                      transform: disabled ? 'none' : 'translateY(-1px)'
                     }
-                    ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
-                  `}
+                  }}
                   onClick={() => handleColumnToggle(columnName)}
                 >
                   <Checkbox
@@ -252,14 +283,15 @@ const ColumnSelector = ({
                     disabled={disabled}
                     size="small"
                     sx={{
-                      padding: 0,
+                      p: 0,
+                      flexShrink: 0,
                       '&.Mui-checked': {
-                        color: '#2563eb'
+                        color: 'var(--dq-accent-primary)'
                       }
                     }}
                   />
 
-                  <div className="flex-1 min-w-0">
+                  <Box className="flex-1 min-w-0">
                     {/* Column Name */}
                     <div className="flex items-center space-x-1">
                       <Typography
@@ -267,7 +299,7 @@ const ColumnSelector = ({
                         sx={{
                           fontWeight: isSelected ? 600 : 500,
                           fontSize: '1rem',
-                          color: isSelected ? '#1e40af' : '#374151',
+                          color: isSelected ? 'var(--dq-accent-primary)' : 'var(--dq-text-secondary)',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap'
@@ -293,7 +325,7 @@ const ColumnSelector = ({
                           <InfoIcon
                             sx={{
                               fontSize: '1rem',
-                              color: 'text.secondary',
+                              color: 'var(--dq-text-secondary)',
                               cursor: 'help'
                             }}
                           />
@@ -319,8 +351,8 @@ const ColumnSelector = ({
                         }}
                       />
                     </div>
-                  </div>
-                </div>
+                  </Box>
+                </Box>
               );
             })}
           </div>
@@ -333,17 +365,25 @@ const ColumnSelector = ({
               </Typography>
             </div>
           )}
-        </div>
+        </Box>
       </Collapse>
 
       {/* Help Text */}
       {selectedColumns.length === 0 && (
-        <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-          <Typography variant="caption" sx={{ color: '#1e40af', fontSize: '1rem' }}>
-            <Lightbulb size={16} style={{ marginRight: '8px' }} />
+        <Box
+          sx={{
+            mt: 2,
+            p: 2,
+            borderRadius: 2,
+            border: '1px solid var(--dq-border-card)',
+            backgroundColor: 'var(--dq-surface-card-active)'
+          }}
+        >
+          <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Lightbulb size={16} />
             提示：选择要分析的列，或保持空白以显示所有列
           </Typography>
-        </div>
+        </Box>
       )}
     </div>
   );

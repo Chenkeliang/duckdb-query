@@ -42,11 +42,11 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
   // 根据连接类型返回对应的颜色
   const getJoinTypeColor = (type) => {
     switch (type) {
-      case 'inner': return '#34c759'; // Apple绿色
-      case 'left': return '#007aff'; // Apple蓝色
-      case 'right': return '#5856d6'; // Apple紫色
-      case 'outer': return '#ff9500'; // Apple橙色
-      default: return '#007aff';
+      case 'inner': return 'var(--dq-highlight-green)'; // Apple绿色
+      case 'left': return 'var(--dq-highlight-blue)'; // Apple蓝色
+      case 'right': return 'var(--dq-highlight-purple)'; // Apple紫色
+      case 'outer': return 'var(--dq-highlight-orange)'; // Apple橙色
+      default: return 'var(--dq-highlight-blue)';
     }
   };
 
@@ -102,7 +102,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               variant="caption"
               sx={{
                 ml: 1,
-                color: 'text.secondary',
+                color: 'var(--dq-text-secondary)',
                 cursor: 'help'
               }}
             >
@@ -129,7 +129,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
                 borderColor: 'rgba(0,0,0,0.2)',
               },
               '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                borderColor: 'primary.main',
+                borderColor: 'var(--dq-text-primary)',
               },
               fontSize: '1rem'
             }}
@@ -168,7 +168,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#007aff',
+              color: 'var(--dq-highlight-blue)',
               fontWeight: 'bold',
               fontSize: '1rem'
             }}>
@@ -178,7 +178,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               variant="body2"
               sx={{
                 fontWeight: 500,
-                color: 'text.primary',
+                color: 'var(--dq-text-primary)',
                 fontSize: '1rem'
               }}
             >
@@ -204,7 +204,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
                   borderColor: 'rgba(0,0,0,0.2)',
                 },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'primary.main',
+                  borderColor: 'var(--dq-text-primary)',
                 }
               }}
             >
@@ -234,7 +234,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
                   borderColor: 'rgba(0,0,0,0.2)',
                 },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'primary.main',
+                  borderColor: 'var(--dq-text-primary)',
                 }
               }}
             >
@@ -310,7 +310,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#5856d6',
+              color: 'var(--dq-highlight-purple)',
               fontWeight: 'bold',
               fontSize: '1rem'
             }}>
@@ -320,7 +320,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               variant="body2"
               sx={{
                 fontWeight: 500,
-                color: 'text.primary',
+                color: 'var(--dq-text-primary)',
                 fontSize: '1rem'
               }}
             >
@@ -346,7 +346,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
                   borderColor: 'rgba(0,0,0,0.2)',
                 },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'primary.main',
+                  borderColor: 'var(--dq-text-primary)',
                 }
               }}
             >
@@ -374,7 +374,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
                   borderColor: 'rgba(0,0,0,0.2)',
                 },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'primary.main',
+                  borderColor: 'var(--dq-text-primary)',
                 }
               }}
             >

@@ -25,70 +25,81 @@ const SQLPreview = ({
   const viewRef = useRef(null);
   const [isDarkMode, setIsDarkMode] = useState(detectDarkMode);
 
-  const previewDarkTheme = useMemo(() => EditorView.theme({
-    '&': {
-      color: '#e6eaf3',
-      backgroundColor: '#0f131b'
-    },
-    '.cm-editor': {
-      borderRadius: '12px',
-      border: '1px solid rgba(148, 163, 184, 0.22)',
-      backgroundColor: '#0f131b'
-    },
-    '.cm-scroller': {
-      backgroundColor: 'transparent'
-    },
-    '.cm-content': {
-      padding: '12px',
-      minHeight: `${height}px`
-    },
-    '.cm-gutters': {
-      backgroundColor: '#0f131b',
-      color: 'rgba(148, 163, 184, 0.68)',
-      borderRight: '1px solid rgba(148, 163, 184, 0.16)'
-    },
-    '.cm-activeLine': {
-      backgroundColor: 'rgba(240, 115, 53, 0.15)'
-    },
-    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-      backgroundColor: 'rgba(240, 115, 53, 0.28) !important'
-    },
-    '.cm-lineNumbers .cm-gutterElement': {
-      paddingRight: '12px'
-    },
-    '.cm-tooltip': {
-      border: '1px solid rgba(148, 163, 184, 0.2)',
-      backgroundColor: '#151c27',
-      color: '#e6eaf3'
-    }
-  }, { dark: true }), [height]);
+  const previewDarkTheme = useMemo(
+    () =>
+      EditorView.theme(
+        {
+          '&': {
+            color: 'var(--dq-text-primary)',
+            backgroundColor: 'var(--dq-neutral-1000)'
+          },
+          '.cm-editor': {
+            borderRadius: '12px',
+            border: '1px solid rgba(148, 163, 184, 0.22)',
+            backgroundColor: 'var(--dq-neutral-1000)'
+          },
+          '.cm-scroller': {
+            backgroundColor: 'transparent'
+          },
+          '.cm-content': {
+            padding: '12px',
+            minHeight: `${height}px`
+          },
+          '.cm-gutters': {
+            backgroundColor: 'var(--dq-neutral-1000)',
+            color: "color-mix(in oklab, var(--dq-text-tertiary) 80%, transparent)",
+            borderRight: "1px solid color-mix(in oklab, var(--dq-border) 45%, transparent)"
+          },
+          '.cm-activeLine': {
+            backgroundColor: 'rgba(240, 115, 53, 0.15)'
+          },
+          '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+            backgroundColor: 'rgba(240, 115, 53, 0.28) !important'
+          },
+          '.cm-lineNumbers .cm-gutterElement': {
+            paddingRight: '12px'
+          },
+          '.cm-tooltip': {
+            border: '1px solid rgba(148, 163, 184, 0.2)',
+            backgroundColor: "color-mix(in oklab, var(--dq-neutral-1000) 80%, transparent)",
+            color: 'var(--dq-text-primary)'
+          }
+        },
+        { dark: true }
+      ),
+    [height]
+  );
 
-  const previewLightTheme = useMemo(() => EditorView.theme({
-    '&': {
-      color: '#1e293b',
-      backgroundColor: '#f7fafc'
-    },
-    '.cm-editor': {
-      borderRadius: '12px',
-      border: '1px solid #e2e8f0',
-      backgroundColor: '#f8fafc'
-    },
-    '.cm-content': {
-      padding: '12px',
-      minHeight: `${height}px`
-    },
-    '.cm-gutters': {
-      backgroundColor: '#eef2ff',
-      color: '#64748b',
-      borderRight: '1px solid #e2e8f0'
-    },
-    '.cm-activeLine': {
-      backgroundColor: 'rgba(37, 99, 235, 0.1)'
-    },
-    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-      backgroundColor: 'rgba(37, 99, 235, 0.18) !important'
-    }
-  }), [height]);
+  const previewLightTheme = useMemo(
+    () =>
+      EditorView.theme({
+        '&': {
+          color: 'var(--dq-text-secondary)',
+          backgroundColor: 'var(--dq-surface)'
+        },
+        '.cm-editor': {
+          borderRadius: '12px',
+          border: '1px solid var(--dq-border-subtle)',
+          backgroundColor: 'var(--dq-surface)'
+        },
+        '.cm-content': {
+          padding: '12px',
+          minHeight: `${height}px`
+        },
+        '.cm-gutters': {
+          backgroundColor: "color-mix(in oklab, var(--dq-accent-primary) 15%, var(--dq-surface))",
+          color: 'var(--dq-text-tertiary)',
+          borderRight: '1px solid var(--dq-border-subtle)'
+        },
+        '.cm-activeLine': {
+          backgroundColor: 'rgba(37, 99, 235, 0.1)'
+        },
+        '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+          backgroundColor: 'rgba(37, 99, 235, 0.18) !important'
+        }
+      }),
+    [height]
+  );
 
   // 复制SQL到剪贴板
   const handleCopySQL = async () => {
@@ -181,8 +192,8 @@ const SQLPreview = ({
         px: 0.5
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box sx={{ width: 8, height: 8, bgcolor: isDarkMode ? 'var(--dq-accent-100)' : '#3b82f6', borderRadius: '50%' }} />
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: isDarkMode ? 'var(--dq-text-primary)' : 'text.primary' }}>
+          <Box sx={{ width: 8, height: 8, bgcolor: isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)', borderRadius: '50%' }} />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: isDarkMode ? 'var(--dq-text-primary)' : 'var(--dq-text-primary)' }}>
             {title}
           </Typography>
         </Box>
@@ -191,14 +202,14 @@ const SQLPreview = ({
             variant="caption"
             onClick={handleCopySQL}
             sx={{
-              color: isDarkMode ? 'var(--dq-accent-100)' : '#3b82f6',
+              color: isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)',
               fontWeight: 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: 0.5,
               '&:hover': {
-                color: isDarkMode ? 'var(--dq-accent-200)' : '#2563eb'
+                color: isDarkMode ? 'var(--dq-accent-200)' : 'var(--dq-accent-primary)'
               }
             }}
           >

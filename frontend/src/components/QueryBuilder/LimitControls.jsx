@@ -45,19 +45,19 @@ const LimitControls = ({
       width: "100%",
       bgcolor: 'white',
       borderRadius: 4,
-      border: '1px solid #e5e7eb',
+      border: '1px solid var(--dq-border-subtle)',
       p: 2
     }}>
       {/* 标题和控制 - 统一蓝色风格 */}
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2, px: 0.5 }}>
-        <Box sx={{ width: 8, height: 8, bgcolor: "#3b82f6", borderRadius: "50%" }} />
+        <Box sx={{ width: 8, height: 8, bgcolor: "var(--dq-accent-primary)", borderRadius: "50%" }} />
         <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "text.primary" }}>
           限制行数 (LIMIT)
         </Typography>
       </Box>
 
       <Collapse in={isExpanded}>
-        <Box sx={{ bgcolor: "white", borderRadius: 4, border: "1px solid #e5e7eb", p: 2 }}>
+        <Box sx={{ bgcolor: "white", borderRadius: 4, border: "1px solid var(--dq-border-subtle)", p: 2 }}>
           <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
             <Typography variant="body2" sx={{ fontWeight: 500, flex: 1 }}>
               启用结果数量限制
@@ -120,13 +120,13 @@ const LimitControls = ({
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 3,
                       '& fieldset': {
-                        borderColor: '#e5e7eb'
+                        borderColor: 'var(--dq-border-subtle)'
                       },
                       '&:hover fieldset': {
-                        borderColor: '#3b82f6'
+                        borderColor: 'var(--dq-accent-primary)'
                       },
                       '&.Mui-focused fieldset': {
-                        borderColor: '#3b82f6',
+                        borderColor: 'var(--dq-accent-primary)',
                         borderWidth: 2
                       }
                     }

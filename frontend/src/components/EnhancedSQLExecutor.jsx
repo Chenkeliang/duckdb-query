@@ -284,7 +284,7 @@ const EnhancedSQLExecutor = ({
           <Card
             sx={{
               height: 'fit-content',
-              backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#ffffff',
+              backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface)',
               borderRadius: 3,
               border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid rgba(15, 23, 42, 0.08)',
               boxShadow: isDarkMode ? 'var(--dq-shadow-soft)' : '0 16px 32px -24px rgba(15, 23, 42, 0.12)'
@@ -301,7 +301,7 @@ const EnhancedSQLExecutor = ({
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Table size={20} color={isDarkMode ? 'var(--dq-accent-100)' : '#1976d2'} />
+                    <Table size={20} color={isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)'} />
                     <Typography variant="h6" sx={{ fontWeight: 600, color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
                       DuckDB表
                     </Typography>
@@ -316,8 +316,8 @@ const EnhancedSQLExecutor = ({
                       borderRadius: 2,
                       px: 2,
                       border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid rgba(15,23,42,0.12)',
-                      backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : '#f8fafc',
-                      color: isDarkMode ? 'var(--dq-text-secondary)' : '#1f2937',
+                      backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : 'var(--dq-surface)',
+                      color: isDarkMode ? 'var(--dq-text-secondary)' : 'var(--dq-text-secondary)',
                       '&:hover': {
                         borderColor: 'var(--dq-accent-100)',
                         color: 'var(--dq-accent-100)',
@@ -358,7 +358,7 @@ const EnhancedSQLExecutor = ({
         <Grid item xs={12} md={8}>
           <Card
             sx={{
-              backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#ffffff',
+              backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface)',
               borderRadius: 3,
               border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid rgba(15, 23, 42, 0.08)',
               boxShadow: isDarkMode ? 'var(--dq-shadow-soft)' : '0 18px 36px -24px rgba(15, 23, 42, 0.12)'
@@ -379,9 +379,9 @@ const EnhancedSQLExecutor = ({
                       fontWeight: 500,
                       fontSize: '1rem',
                       minHeight: 44,
-                      color: isDarkMode ? 'var(--dq-text-tertiary)' : '#6b7280',
+                      color: isDarkMode ? 'var(--dq-text-tertiary)' : 'var(--dq-text-tertiary)',
                       '&.Mui-selected': {
-                        color: isDarkMode ? 'var(--dq-text-primary)' : '#1f2937'
+                        color: isDarkMode ? 'var(--dq-text-primary)' : 'var(--dq-text-secondary)'
                       }
                     },
                     '& .MuiTabs-indicator': {
@@ -408,7 +408,7 @@ const EnhancedSQLExecutor = ({
                       px: 2.5,
                       py: 0.5,
                       borderRadius: 2,
-                      borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                      borderColor: isDarkMode ? 'var(--dq-border-subtle)' : 'var(--dq-border-subtle)',
                       color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
                       backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                       height: '40px',
@@ -432,7 +432,7 @@ const EnhancedSQLExecutor = ({
                       px: 2.5,
                       py: 0.5,
                       borderRadius: 2,
-                      borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                      borderColor: isDarkMode ? 'var(--dq-border-subtle)' : 'var(--dq-border-subtle)',
                       color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
                       backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                       height: '40px',
@@ -456,7 +456,7 @@ const EnhancedSQLExecutor = ({
                       px: 2.5,
                       py: 0.5,
                       borderRadius: 2,
-                      borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                      borderColor: isDarkMode ? 'var(--dq-border-subtle)' : 'var(--dq-border-subtle)',
                       color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
                       backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                       height: '40px',
@@ -474,6 +474,13 @@ const EnhancedSQLExecutor = ({
                       value={editorTheme}
                       displayEmpty
                       onChange={(e) => setEditorTheme(e.target.value)}
+                      MenuProps={{
+                        slotProps: {
+                          paper: {
+                            className: `dq-theme ${isDarkMode ? 'dq-theme--dark' : 'dq-theme--light'}`
+                          }
+                        }
+                      }}
                       sx={{
                         height: '40px',
                         color: isDarkMode ? 'var(--dq-text-secondary)' : undefined,
@@ -553,9 +560,9 @@ const EnhancedSQLExecutor = ({
                 sx={{
                   mb: 3,
                   p: 3,
-                  backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : '#ffffff',
+                  backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : 'var(--dq-surface)',
                   borderRadius: 3,
-                  border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid #e1e5e9',
+                  border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid var(--dq-border-subtle)',
                   boxShadow: isDarkMode ? 'var(--dq-shadow-soft)' : '0 6px 18px -12px rgba(15, 23, 42, 0.12)'
                 }}
               >
@@ -564,13 +571,13 @@ const EnhancedSQLExecutor = ({
                   sx={{
                     mb: 2,
                     fontWeight: 600,
-                    color: isDarkMode ? 'var(--dq-text-primary)' : '#2c3e50',
+                    color: isDarkMode ? 'var(--dq-text-primary)' : 'var(--dq-text-secondary)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 1
                   }}
                 >
-                  <Play size={20} color={isDarkMode ? 'var(--dq-accent-100)' : '#1976d2'} />
+                  <Play size={20} color={isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)'} />
                   执行控制
                 </Typography>
 
@@ -591,7 +598,7 @@ const EnhancedSQLExecutor = ({
                           '& .MuiOutlinedInput-root': {
                             height: '48px',
                             borderRadius: 2,
-                            backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#fafbfc',
+                            backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface-card-active)',
                             '& fieldset': {
                               borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined
                             },
@@ -636,20 +643,20 @@ const EnhancedSQLExecutor = ({
                           borderRadius: 2,
                           background: isDarkMode
                             ? 'linear-gradient(135deg, rgba(240, 115, 53, 0.95) 0%, rgba(235, 99, 32, 0.98) 100%)'
-                            : 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                            : 'linear-gradient(135deg, var(--dq-accent-primary) 0%, var(--dq-accent-primary) 100%)',
                           boxShadow: isDarkMode
                             ? '0 18px 40px -20px rgba(240, 115, 53, 0.65)'
                             : '0 4px 12px rgba(25, 118, 210, 0.3)',
                           '&:hover': {
                             background: isDarkMode
                               ? 'linear-gradient(135deg, rgba(240, 115, 53, 1) 0%, rgba(235, 99, 32, 1) 100%)'
-                              : 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
+                              : 'linear-gradient(135deg, var(--dq-accent-primary) 0%, var(--dq-accent-primary-strong) 100%)',
                             boxShadow: isDarkMode
                               ? '0 22px 44px -18px rgba(240, 115, 53, 0.75)'
                               : '0 6px 16px rgba(25, 118, 210, 0.4)'
                           },
                           '&:disabled': {
-                            background: isDarkMode ? 'rgba(148, 163, 184, 0.12)' : '#e0e0e0',
+                            background: isDarkMode ? 'rgba(148, 163, 184, 0.12)' : 'var(--dq-border-subtle)',
                             color: isDarkMode ? 'var(--dq-text-tertiary)' : 'rgba(0,0,0,0.38)',
                             boxShadow: 'none'
                           }
@@ -669,8 +676,8 @@ const EnhancedSQLExecutor = ({
                           fontWeight: 600,
                           fontSize: '1rem',
                           borderRadius: 2,
-                          borderColor: isDarkMode ? 'var(--dq-border)' : '#1976d2',
-                          color: isDarkMode ? 'var(--dq-text-secondary)' : '#1976d2',
+                          borderColor: isDarkMode ? 'var(--dq-border)' : 'var(--dq-accent-primary)',
+                          color: isDarkMode ? 'var(--dq-text-secondary)' : 'var(--dq-accent-primary)',
                           borderWidth: 2,
                           backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
                           '&:hover': {
@@ -680,7 +687,7 @@ const EnhancedSQLExecutor = ({
                             backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(25, 118, 210, 0.08)'
                           },
                           '&:disabled': {
-                            borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#e0e0e0',
+                            borderColor: isDarkMode ? 'var(--dq-border-subtle)' : 'var(--dq-border-subtle)',
                             color: isDarkMode ? 'var(--dq-text-tertiary)' : 'rgba(0,0,0,0.38)'
                           }
                         }}
@@ -724,7 +731,7 @@ const EnhancedSQLExecutor = ({
       >
         <DialogTitle sx={{ pb: 1, color: isDarkMode ? 'var(--dq-text-primary)' : undefined }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Table size={20} color={isDarkMode ? 'var(--dq-accent-100)' : '#1976d2'} />
+            <Table size={20} color={isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)'} />
             <Typography variant="h5" component="h2" fontWeight="bold" sx={{ color: 'inherit' }}>
               DuckDB表管理
             </Typography>

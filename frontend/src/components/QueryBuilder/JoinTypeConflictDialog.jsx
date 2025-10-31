@@ -92,8 +92,8 @@ const JoinTypeConflictDialog = ({
       fullWidth
       PaperProps={{
         sx: {
-          backgroundColor: '#0f172a',
-          color: '#e2e8f0',
+          backgroundColor: 'var(--dq-text-primary)',
+          color: 'var(--dq-border-subtle)',
           borderRadius: 3,
           boxShadow: '0 28px 60px rgba(15, 23, 42, 0.55)',
           border: '1px solid rgba(148, 163, 184, 0.25)',
@@ -112,7 +112,7 @@ const JoinTypeConflictDialog = ({
           <Box
             sx={{
               background: 'rgba(251, 191, 36, 0.12)',
-              color: '#facc15',
+              color: 'var(--dq-status-warning-fg)',
               borderRadius: '50%',
               width: 32,
               height: 32,
@@ -124,7 +124,7 @@ const JoinTypeConflictDialog = ({
             <AlertTriangle size={18} />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#e2e8f0' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: 'var(--dq-border-subtle)' }}>
               检测到JOIN类型冲突
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(148, 163, 184, 0.9)' }}>
@@ -153,7 +153,7 @@ const JoinTypeConflictDialog = ({
                 <TableRow key={key} hover>
                   <TableCell>
                     <Stack spacing={0.5}>
-                      <Typography sx={{ fontWeight: 600, color: '#e2e8f0' }}>
+                      <Typography sx={{ fontWeight: 600, color: 'var(--dq-border-subtle)' }}>
                         {conflict.left.sourceLabel}.{conflict.left.column}
                       </Typography>
                       <Stack direction="row" spacing={1} alignItems="center">
@@ -162,11 +162,11 @@ const JoinTypeConflictDialog = ({
                           size="small"
                           sx={{
                             bgcolor: 'rgba(148, 163, 184, 0.12)',
-                            color: '#e2e8f0',
+                            color: 'var(--dq-border-subtle)',
                             fontWeight: 500,
                           }}
                         />
-                        <Typography sx={{ fontWeight: 600, color: '#e2e8f0' }}>
+                        <Typography sx={{ fontWeight: 600, color: 'var(--dq-border-subtle)' }}>
                           {conflict.right.sourceLabel}.{conflict.right.column}
                         </Typography>
                       </Stack>
@@ -197,17 +197,17 @@ const JoinTypeConflictDialog = ({
                           placeholder="例如 VARCHAR"
                           sx={{
                             '& .MuiOutlinedInput-root': {
-                              color: '#e2e8f0',
+                              color: 'var(--dq-border-subtle)',
                               backgroundColor: 'rgba(15, 23, 42, 0.6)',
                               borderRadius: 2,
                               '& fieldset': {
                                 borderColor: 'rgba(148, 163, 184, 0.25)',
                               },
                               '&:hover fieldset': {
-                                borderColor: '#facc15',
+                                borderColor: 'var(--dq-status-warning-fg)',
                               },
                               '&.Mui-focused fieldset': {
-                                borderColor: '#facc15',
+                                borderColor: 'var(--dq-status-warning-fg)',
                               },
                             },
                             '& .MuiAutocomplete-input': {
@@ -236,10 +236,10 @@ const JoinTypeConflictDialog = ({
             borderRadius: 2,
             px: 3,
             fontWeight: 600,
-            background: 'linear-gradient(135deg, #f97316, #facc15)',
+            background: 'linear-gradient(135deg, var(--dq-chart-8), var(--dq-status-warning-fg))',
             boxShadow: '0 12px 30px rgba(250, 204, 21, 0.35)',
             '&:hover': {
-              background: 'linear-gradient(135deg, #ea580c, #f59e0b)',
+              background: 'linear-gradient(135deg, color-mix(in oklab, var(--dq-status-warning-fg) 85%, transparent), var(--dq-status-warning-fg))',
             },
           }}
         >

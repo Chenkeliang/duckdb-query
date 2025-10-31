@@ -24,6 +24,7 @@ import {
     alpha,
 } from '@mui/material';
 import React, { useEffect, useMemo, useState } from 'react';
+import { resolveColor, withOpacity } from '../utils/colorUtils';
 
 const detectDarkMode = () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 
@@ -127,10 +128,10 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
     };
 
     const getTableIcon = (tableName) => {
-        const defaultColor = isDarkMode ? '#9aa0ac' : '#757575';
-        const asyncColor = isDarkMode ? '#f07335' : '#ff9800';
-        const queryColor = isDarkMode ? '#5aa6ff' : '#4caf50';
-        const uploadColor = isDarkMode ? '#7f9cff' : '#2196f3';
+        const defaultColor = isDarkMode ? 'var(--dq-text-secondary)' : 'var(--dq-text-tertiary)';
+        const asyncColor = isDarkMode ? 'var(--dq-status-warning-fg)' : 'var(--dq-status-warning-fg)';
+        const queryColor = isDarkMode ? 'var(--dq-status-success-fg)' : 'var(--dq-status-success-fg)';
+        const uploadColor = isDarkMode ? 'color-mix(in oklab, var(--dq-accent-primary) 70%, white 30%)' : 'var(--dq-accent-primary)';
         if (!tableName || typeof tableName !== 'string') {
             return <ViewList sx={{ fontSize: 16, color: defaultColor }} />;
         }
@@ -146,36 +147,36 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
             recent: {
                 label: '最近使用',
                 icon: History,
-                color: '#4f8efc',
-                lightBg: '#e3f2fd',
+                color: 'var(--dq-accent-primary)',
+                lightBg: 'var(--dq-surface-card-active)',
                 description: '最新的5个表'
             },
             async_results: {
                 label: '异步查询结果',
                 icon: QueryStats,
-                color: '#f07335',
-                lightBg: '#fff3e0',
+                color: 'var(--dq-accent-100)',
+                lightBg: 'color-mix(in oklab, var(--dq-status-warning-bg) 100%, transparent)',
                 description: `${groupedTables.async_results.length} 个表`
             },
             data_tables: {
                 label: '数据表',
                 icon: ViewList,
-                color: '#5aa6ff',
-                lightBg: '#e8f1ff',
+                color: 'var(--dq-accent-primary-soft)',
+                lightBg: 'var(--dq-surface-card-active)',
                 description: `${groupedTables.data_tables.length} 个表`
             },
             temp_tables: {
                 label: '临时表',
                 icon: History,
-                color: '#ff7043',
-                lightBg: '#fbe9e7',
+                color: 'var(--dq-status-warning-fg)',
+                lightBg: 'var(--dq-status-warning-bg)',
                 description: `${groupedTables.temp_tables.length} 个表`
             },
             system_tables: {
                 label: '系统表',
                 icon: TableChart,
-                color: '#9aa0ac',
-                lightBg: '#f5f5f5',
+                color: 'var(--dq-text-tertiary)',
+                lightBg: 'var(--dq-surface-alt)',
                 description: `${groupedTables.system_tables.length} 个表`
             }
         };
@@ -189,17 +190,21 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
         const isExpanded = expandedGroups.has(groupKey);
         const IconComponent = groupInfo.icon;
         const accentColor = groupInfo.color;
-        const gradientBase = groupInfo.lightBg || '#f5f5f5';
-        const baseSurface = isDarkMode ? 'var(--dq-surface-alt)' : alpha('#f8fafc', 0.9);
+        const accentResolved =
+            resolveColor(accentColor, isDarkMode ? '#f07335' : '#2563eb') ||
+            (isDarkMode ? '#f07335' : '#2563eb');
+        const accentOverlay = (amount) => withOpacity(accentColor, amount, accentResolved);
+        const gradientBase = groupInfo.lightBg || 'var(--dq-surface)';
+        const baseSurface = isDarkMode ? 'var(--dq-surface-alt)' : 'var(--dq-surface)';
         const headerBackground = baseSurface;
-        const headerHoverBackground = isDarkMode ? 'var(--dq-surface-active)' : '#eef2f6';
-        const iconBackground = alpha(accentColor, isDarkMode ? 0.16 : 0.12);
-        const chipBackground = isDarkMode ? alpha(accentColor, 0.24) : accentColor;
+        const headerHoverBackground = isDarkMode ? 'var(--dq-surface-active)' : 'var(--dq-surface-muted)';
+        const iconBackground = accentOverlay(isDarkMode ? 0.16 : 0.12);
+        const chipBackground = isDarkMode ? accentOverlay(0.24) : accentResolved;
         const chipTextColor = isDarkMode ? 'var(--dq-background)' : 'white';
-        const collapseBackground = isDarkMode ? 'var(--dq-surface)' : 'rgba(0, 0, 0, 0.01)';
-        const listHoverBackground = alpha(accentColor, isDarkMode ? 0.16 : 0.08);
-        const copyButtonBackground = alpha(accentColor, isDarkMode ? 0.16 : 0.05);
-        const copyButtonHoverBackground = alpha(accentColor, isDarkMode ? 0.25 : 0.1);
+        const collapseBackground = isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface)';
+        const listHoverBackground = accentOverlay(isDarkMode ? 0.16 : 0.08);
+        const copyButtonBackground = accentOverlay(isDarkMode ? 0.16 : 0.05);
+        const copyButtonHoverBackground = accentOverlay(isDarkMode ? 0.25 : 0.1);
 
         return (
             <Box key={groupKey} sx={{ mb: 1 }}>
@@ -209,14 +214,14 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                         border: '1px solid',
                         borderColor: isDarkMode ? 'var(--dq-border)' : 'divider',
                         borderRadius: 2,
-                        backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#ffffff',
+                        backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface)',
                         overflow: 'hidden',
                         transition: 'all 0.2s ease-in-out',
                         '&:hover': {
                             borderColor: accentColor,
                             boxShadow: isDarkMode
-                                ? `0 12px 32px -20px ${alpha(accentColor, 0.6)}`
-                                : `0 2px 8px ${alpha(accentColor, 0.15)}`
+                                ? `0 12px 32px -20px ${accentOverlay(0.6)}`
+                                : `0 2px 8px ${accentOverlay(0.15)}`
                         }
                     }}
                 >
@@ -246,7 +251,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                 '&:hover': {
                                     backgroundColor: headerHoverBackground,
                                     boxShadow: isDarkMode
-                                        ? `0 10px 24px -16px ${alpha(accentColor, 0.45)}`
+                                        ? `0 10px 24px -16px ${accentOverlay(0.45)}`
                                         : 'inset 0 1px 0 rgba(255,255,255,0.7)'
                                 }
                             }}
@@ -270,7 +275,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                             <ListItemText
                                 primary={
                                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: isDarkMode ? 'var(--dq-text-primary)' : 'text.primary' }}>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: isDarkMode ? 'var(--dq-text-primary)' : 'var(--dq-text-primary)' }}>
                                             {groupInfo.label}
                                         </Typography>
                                         <Chip
@@ -358,7 +363,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                                         width: 24,
                                                         height: 24,
                                                         borderRadius: 1,
-                                                        backgroundColor: alpha(accentColor, isDarkMode ? 0.18 : 0.1),
+                                                        backgroundColor: accentOverlay(isDarkMode ? 0.18 : 0.1),
                                                     }}
                                                 >
                                                     {getTableIcon(table)}
@@ -375,7 +380,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                                                 overflow: 'hidden',
                                                                 textOverflow: 'ellipsis',
                                                                 whiteSpace: 'nowrap',
-                                                                color: isDarkMode ? 'var(--dq-text-primary)' : 'text.primary',
+                                                                color: isDarkMode ? 'var(--dq-text-primary)' : 'var(--dq-text-primary)',
                                                                 lineHeight: 1.2
                                                             }}
                                                         >
@@ -408,7 +413,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                     backgroundColor: 'rgba(0, 0, 0, 0.02)'
                 }}
             >
-                <ViewList sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
+                <ViewList sx={{ fontSize: 48, color: 'var(--dq-text-tertiary)', mb: 2 }} />
                 <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 500 }}>
                     暂无可用表
                 </Typography>

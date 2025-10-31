@@ -220,13 +220,13 @@ const FilterControls = ({
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 3,
                   '& fieldset': {
-                    borderColor: '#e5e7eb'
+                    borderColor: 'var(--dq-border-subtle)'
                   },
                   '&:hover fieldset': {
-                    borderColor: '#3b82f6'
+                    borderColor: 'var(--dq-accent-primary)'
                   },
                   '&.Mui-focused fieldset': {
-                    borderColor: '#3b82f6',
+                    borderColor: 'var(--dq-accent-primary)',
                     borderWidth: 2
                   }
                 }
@@ -244,13 +244,13 @@ const FilterControls = ({
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 3,
                   '& fieldset': {
-                    borderColor: '#e5e7eb'
+                    borderColor: 'var(--dq-border-subtle)'
                   },
                   '&:hover fieldset': {
-                    borderColor: '#3b82f6'
+                    borderColor: 'var(--dq-accent-primary)'
                   },
                   '&.Mui-focused fieldset': {
-                    borderColor: '#3b82f6',
+                    borderColor: 'var(--dq-accent-primary)',
                     borderWidth: 2
                   }
                 }
@@ -285,13 +285,13 @@ const FilterControls = ({
               '& .MuiOutlinedInput-root': {
                 borderRadius: 3,
                 '& fieldset': {
-                  borderColor: '#e5e7eb'
+                  borderColor: 'var(--dq-border-subtle)'
                 },
                 '&:hover fieldset': {
-                  borderColor: '#3b82f6'
+                  borderColor: 'var(--dq-accent-primary)'
                 },
                 '&.Mui-focused fieldset': {
-                  borderColor: '#3b82f6',
+                  borderColor: 'var(--dq-accent-primary)',
                   borderWidth: 2
                 }
               }
@@ -313,13 +313,13 @@ const FilterControls = ({
               '& .MuiOutlinedInput-root': {
                 borderRadius: 3,
                 '& fieldset': {
-                  borderColor: '#e5e7eb'
+                  borderColor: 'var(--dq-border-subtle)'
                 },
                 '&:hover fieldset': {
-                  borderColor: '#3b82f6'
+                  borderColor: 'var(--dq-accent-primary)'
                 },
                 '&.Mui-focused fieldset': {
-                  borderColor: '#3b82f6',
+                  borderColor: 'var(--dq-accent-primary)',
                   borderWidth: 2
                 }
               }
@@ -334,17 +334,17 @@ const FilterControls = ({
       width: '100%',
       bgcolor: 'white',
       borderRadius: 4,
-      border: '1px solid #e5e7eb',
+      border: '1px solid var(--dq-border-subtle)',
       p: 2
     }}>
       {/* 标题和控制 - 统一蓝色风格 */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, px: 0.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box sx={{ width: 8, height: 8, bgcolor: '#3b82f6', borderRadius: '50%' }} />
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+          <Box sx={{ width: 8, height: 8, bgcolor: 'var(--dq-accent-primary)', borderRadius: '50%' }} />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--dq-text-primary)' }}>
             筛选条件 (WHERE)
           </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
             {filters.length}个条件
           </Typography>
         </Box>
@@ -353,7 +353,7 @@ const FilterControls = ({
           onClick={handleAddFilter}
           disabled={disabled || !newFilter.column || !newFilter.operator}
           sx={{
-            color: '#3b82f6',
+            color: 'var(--dq-accent-primary)',
             fontWeight: 600,
             cursor: disabled || !newFilter.column || !newFilter.operator ? 'not-allowed' : 'pointer',
             opacity: disabled || !newFilter.column || !newFilter.operator ? 0.5 : 1,
@@ -361,7 +361,7 @@ const FilterControls = ({
             alignItems: 'center',
             gap: 0.5,
             '&:hover': {
-              color: '#2563eb'
+              color: 'var(--dq-accent-primary)'
             }
           }}
         >
@@ -395,13 +395,13 @@ const FilterControls = ({
                   sx={{
                     borderRadius: 3,
                     '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: '#e5e7eb'
+                      borderColor: 'var(--dq-border-subtle)'
                     },
                     '&:hover .MuiOutlinedInput-notchedOutline': {
-                      borderColor: '#3b82f6'
+                      borderColor: 'var(--dq-accent-primary)'
                     },
                     '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                      borderColor: '#3b82f6',
+                      borderColor: 'var(--dq-accent-primary)',
                       borderWidth: 2
                     }
                   }}
@@ -431,13 +431,13 @@ const FilterControls = ({
                 sx={{
                   borderRadius: 3,
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#e5e7eb'
+                    borderColor: 'var(--dq-border-subtle)'
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6'
+                    borderColor: 'var(--dq-accent-primary)'
                   },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6',
+                    borderColor: 'var(--dq-accent-primary)',
                     borderWidth: 2
                   }
                 }}
@@ -471,13 +471,13 @@ const FilterControls = ({
                 sx={{
                   borderRadius: 3,
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#e5e7eb'
+                    borderColor: 'var(--dq-border-subtle)'
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6'
+                    borderColor: 'var(--dq-accent-primary)'
                   },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6',
+                    borderColor: 'var(--dq-accent-primary)',
                     borderWidth: 2
                   }
                 }}
@@ -503,9 +503,9 @@ const FilterControls = ({
               sx={{
                 ml: 1,
                 borderRadius: 3,
-                bgcolor: '#3b82f6',
+                bgcolor: 'var(--dq-accent-primary)',
                 '&:hover': {
-                  bgcolor: '#2563eb'
+                  bgcolor: 'var(--dq-accent-primary)'
                 }
               }}
             >
@@ -519,7 +519,7 @@ const FilterControls = ({
           <Box sx={{
             bgcolor: 'white',
             borderRadius: 4,
-            border: '1px solid #e5e7eb',
+            border: '1px solid var(--dq-border-subtle)',
             p: 2
           }}>
             <List dense>
@@ -639,7 +639,7 @@ const FilterControls = ({
             textAlign: 'center',
             bgcolor: 'white',
             borderRadius: 4,
-            border: '1px solid #e5e7eb'
+            border: '1px solid var(--dq-border-subtle)'
           }}>
             <Typography variant="body2" color="text.secondary">
               还没有添加筛选条件

@@ -233,10 +233,10 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
   return (
     <Box sx={{ mb: 3 }}>
       {/* 数据库连接选择 */}
-      <Card sx={{ mb: 2, borderRadius: 2, border: '1px solid #e2e8f0' }}>
+      <Card sx={{ mb: 2, borderRadius: 2, border: '1px solid var(--dq-border-subtle)' }}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <Database size={20} style={{ marginRight: '8px', color: '#1976d2' }} />
+            <Database size={20} style={{ marginRight: '8px', color: 'var(--dq-accent-primary)' }} />
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               数据库表管理
             </Typography>
@@ -340,7 +340,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
 
       {/* 数据库表信息 */}
       {tableData && !loading && (
-        <Card sx={{ borderRadius: 2, border: '1px solid #e2e8f0' }}>
+        <Card sx={{ borderRadius: 2, border: '1px solid var(--dq-border-subtle)' }}>
           <CardContent>
             {/* 数据库统计信息 */}
             <Box sx={{ mb: 3 }}>
@@ -351,7 +351,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'primary.50' }}>
-                    <Typography variant="h4" color="primary.main" sx={{ fontWeight: 700 }}>
+                    <Typography variant="h4" color="var(--dq-text-primary)" sx={{ fontWeight: 700 }}>
                       {tableData.table_count}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
@@ -361,7 +361,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'warning.50' }}>
-                    <Typography variant="h4" color="warning.main" sx={{ fontWeight: 700 }}>
+                    <Typography variant="h4" color="var(--dq-text-primary)" sx={{ fontWeight: 700 }}>
                       {tableData.tables.reduce((sum, table) => sum + table.column_count, 0)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
@@ -410,11 +410,11 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                 key={table.table_name}
                 expanded={expandedTables.has(table.table_name)}
                 onChange={() => toggleTableExpanded(table.table_name)}
-                sx={{ mb: 1, border: '1px solid #e2e8f0', borderRadius: 1 }}
+                sx={{ mb: 1, border: '1px solid var(--dq-border-subtle)', borderRadius: 1 }}
               >
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                   <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                    <BarChart3 size={20} style={{ marginRight: '16px', color: '#1976d2' }} />
+                    <BarChart3 size={20} style={{ marginRight: '16px', color: 'var(--dq-accent-primary)' }} />
                     <Box sx={{ flexGrow: 1 }}>
                       <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                         {table.table_name}
@@ -462,7 +462,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                             <Button
                               size="small"
                               onClick={() => toggleShowAllColumns(table.table_name)}
-                              sx={{ color: 'info.main' }}
+                              sx={{ color: 'var(--dq-text-primary)' }}
                             >
                               查看所有字段
                             </Button>
@@ -481,7 +481,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                             <Button
                               size="small"
                               onClick={() => toggleShowAllColumns(table.table_name)}
-                              sx={{ color: 'warning.main' }}
+                              sx={{ color: 'var(--dq-text-primary)' }}
                             >
                               只显示前50个
                             </Button>
@@ -571,7 +571,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                           bgcolor: 'white',
                           p: 1,
                           borderRadius: 0.5,
-                          border: '1px solid #e2e8f0'
+                          border: '1px solid var(--dq-border-subtle)'
                         }}
                       >
                         {generateSampleSQL(table.table_name, table.columns)}
@@ -624,7 +624,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
               <Grid container spacing={2} sx={{ mb: 3 }}>
                 <Grid item xs={12}>
                   <Paper sx={{ p: 2, textAlign: 'center' }}>
-                    <Typography variant="h5" color="secondary.main">
+                    <Typography variant="h5" color="var(--dq-text-primary)">
                       {tableDetails.column_count}
                     </Typography>
                     <Typography variant="body2">总列数</Typography>

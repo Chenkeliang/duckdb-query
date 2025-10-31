@@ -297,7 +297,7 @@ const SQLTemplates = ({ onTemplateSelect, tables = [] }) => {
                                                 variant="body2"
                                                 sx={{
                                                     fontFamily: 'monospace',
-                                                    backgroundColor: '#f5f5f5',
+                                                    backgroundColor: 'var(--dq-surface)',
                                                     p: 1,
                                                     borderRadius: 1,
                                                     fontSize: '1rem',

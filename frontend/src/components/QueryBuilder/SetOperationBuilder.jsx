@@ -22,6 +22,12 @@ const SetOperationBuilder = ({
     hideTableSelector = false,
     sources = []
 }) => {
+    const [isDarkMode, setIsDarkMode] = useState(() => {
+        if (typeof document === 'undefined') {
+            return false;
+        }
+        return document.documentElement.classList.contains('dark');
+    });
     const [config, setConfig] = useState({
         operation_type: 'UNION',
         tables: [],
@@ -73,6 +79,30 @@ const SetOperationBuilder = ({
             lastAvailableTablesRef.current = [...availableTables];
         }
     }, [initialConfig, hideTableSelector, availableTables]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const syncTheme = () => {
+            if (typeof document === 'undefined') {
+                return;
+            }
+            setIsDarkMode(document.documentElement.classList.contains('dark'));
+        };
+        const handleThemeChange = (event) => {
+            if (event?.detail && typeof event.detail.isDark === 'boolean') {
+                setIsDarkMode(event.detail.isDark);
+            } else {
+                syncTheme();
+            }
+        };
+        window.addEventListener('duckquery-theme-change', handleThemeChange);
+        return () => {
+            window.removeEventListener('duckquery-theme-change', handleThemeChange);
+        };
+    }, []);
 
     // 将选择的列转换为列映射
 
@@ -208,17 +238,17 @@ const SetOperationBuilder = ({
             sx={{
                 p: 2,
                 border: '1px solid',
-                borderColor: 'grey.200',
-                borderRadius: 2,
-                backgroundColor: 'grey.50',
+                borderColor: 'var(--dq-border-subtle)',
+                borderRadius: 'var(--dq-radius-card)',
+                backgroundColor: 'var(--dq-surface-card)',
                 minWidth: 200
             }}
         >
-            <Typography variant="subtitle3" sx={{ mb: 1, fontWeight: 600 }}>
+            <Typography variant="subtitle3" sx={{ mb: 1, fontWeight: 600, color: 'var(--dq-text-primary)' }}>
                 {table.table_name}
             </Typography>
 
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            <Typography variant="body2" sx={{ mb: 1, color: 'var(--dq-text-secondary)' }}>
                 可用列：
             </Typography>
 
@@ -229,19 +259,19 @@ const SetOperationBuilder = ({
                         return (
                             <Chip
                                 key={`${table.table_name}-${columnName}`}
-                                label={columnName}
-                                size="small"
-                                variant="outlined"
-                                sx={{
-                                    borderColor: 'primary.200',
-                                    color: 'primary.700',
-                                    backgroundColor: 'primary.50',
-                                    fontSize: '1rem'
-                                }}
-                            />
+                                    label={columnName}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{
+                                        borderColor: 'var(--dq-border-subtle)',
+                                        color: 'var(--dq-text-secondary)',
+                                        backgroundColor: 'var(--dq-surface-card-active)',
+                                        fontSize: '1rem'
+                                    }}
+                                />
                         );
                     }) : (
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
                             暂无可用列
                         </Typography>
                     )
@@ -260,12 +290,19 @@ const SetOperationBuilder = ({
                     value={config.operation_type}
                     label="操作类型"
                     onChange={handleOperationTypeChange}
+                    MenuProps={{
+                        slotProps: {
+                            paper: {
+                                className: `dq-theme ${isDarkMode ? 'dq-theme--dark' : 'dq-theme--light'}`
+                            }
+                        }
+                    }}
                 >
                     {operationTypes.map(type => (
                         <MenuItem key={type.value} value={type.value}>
                             <Box>
                                 <Typography variant="body1">{type.label}</Typography>
-                                <Typography variant="caption" color="text.secondary">
+                                <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
                                     {type.description}
                                 </Typography>
                             </Box>
@@ -284,12 +321,20 @@ const SetOperationBuilder = ({
                     />
                 }
                 label="使用BY NAME模式（按列名匹配）"
-                sx={{ mb: 2 }}
+                sx={{ mb: 2, color: 'var(--dq-text-secondary)' }}
             />
 
             {config.use_by_name && (
-                <Alert severity="info" sx={{ mb: 2 }}>
-                    <Typography variant="body2">
+                <Alert
+                    severity="info"
+                    sx={{
+                        mb: 2,
+                        backgroundColor: 'var(--dq-status-info-bg)',
+                        color: 'var(--dq-status-info-fg)',
+                        border: '1px solid var(--dq-border-subtle)'
+                    }}
+                >
+                    <Typography variant="body2" sx={{ color: 'inherit' }}>
                         <strong>BY NAME 模式：</strong><br />
                         • DuckDB 会自动按列名匹配所有列<br />
                         • 不需要列数相同，缺失的列会自动填充 NULL<br />

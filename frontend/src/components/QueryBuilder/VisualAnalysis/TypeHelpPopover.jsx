@@ -24,7 +24,7 @@ const TypeHelpPopover = () => {
         sx={{
           color: 'rgba(148, 163, 184, 0.9)',
           '&:hover': {
-            color: '#0ea5e9',
+            color: 'var(--dq-chart-7)',
           },
         }}
       >
@@ -38,8 +38,8 @@ const TypeHelpPopover = () => {
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         PaperProps={{
           sx: {
-            backgroundColor: '#0f172a',
-            color: '#e2e8f0',
+            backgroundColor: 'var(--dq-text-primary)',
+            color: 'var(--dq-border-subtle)',
             borderRadius: 2,
             boxShadow: '0 18px 40px rgba(15, 23, 42, 0.35)',
             border: '1px solid rgba(148, 163, 184, 0.2)',
@@ -59,7 +59,7 @@ const TypeHelpPopover = () => {
             <ListItem disableGutters>
               <ListItemText
                 primary={
-                  <Typography variant="body2" sx={{ color: '#38bdf8' }}>
+                  <Typography variant="body2" sx={{ color: 'var(--dq-status-info-fg)' }}>
                     DECIMAL(18,4)
                   </Typography>
                 }
@@ -73,7 +73,7 @@ const TypeHelpPopover = () => {
             <ListItem disableGutters>
               <ListItemText
                 primary={
-                  <Typography variant="body2" sx={{ color: '#38bdf8' }}>
+                  <Typography variant="body2" sx={{ color: 'var(--dq-status-info-fg)' }}>
                     DOUBLE
                   </Typography>
                 }
@@ -87,7 +87,7 @@ const TypeHelpPopover = () => {
             <ListItem disableGutters>
               <ListItemText
                 primary={
-                  <Typography variant="body2" sx={{ color: '#38bdf8' }}>
+                  <Typography variant="body2" sx={{ color: 'var(--dq-status-info-fg)' }}>
                     VARCHAR
                   </Typography>
                 }

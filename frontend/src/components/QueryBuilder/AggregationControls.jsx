@@ -185,17 +185,17 @@ const AggregationControls = ({
       width: '100%',
       bgcolor: 'white',
       borderRadius: 4,
-      border: '1px solid #e5e7eb',
+      border: '1px solid var(--dq-border-subtle)',
       p: 2
     }}>
       {/* 标题和控制 - 统一蓝色风格 */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, px: 0.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box sx={{ width: 8, height: 8, bgcolor: '#3b82f6', borderRadius: '50%' }} />
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+          <Box sx={{ width: 8, height: 8, bgcolor: 'var(--dq-accent-primary)', borderRadius: '50%' }} />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--dq-text-primary)' }}>
             聚合函数
           </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
             {aggregations.length}个聚合
           </Typography>
         </Box>
@@ -204,7 +204,7 @@ const AggregationControls = ({
           onClick={handleAddAggregation}
           disabled={disabled || !newAggregation.function || !newAggregation.column}
           sx={{
-            color: '#3b82f6',
+            color: 'var(--dq-accent-primary)',
             fontWeight: 600,
             cursor: disabled || !newAggregation.function || !newAggregation.column ? 'not-allowed' : 'pointer',
             opacity: disabled || !newAggregation.function || !newAggregation.column ? 0.5 : 1,
@@ -212,7 +212,7 @@ const AggregationControls = ({
             alignItems: 'center',
             gap: 0.5,
             '&:hover': {
-              color: '#2563eb'
+              color: 'var(--dq-accent-primary)'
             }
           }}
         >
@@ -223,7 +223,7 @@ const AggregationControls = ({
 
       <Collapse in={isExpanded}>
         {/* 添加新聚合函数表单 */}
-        <Box sx={{ bgcolor: 'white', borderRadius: 4, border: '1px solid #e5e7eb', p: 2, mb: 2 }}>
+        <Box sx={{ bgcolor: 'white', borderRadius: 4, border: '1px solid var(--dq-border-subtle)', p: 2, mb: 2 }}>
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
             添加聚合函数
           </Typography>
@@ -243,13 +243,13 @@ const AggregationControls = ({
                 sx={{
                   borderRadius: 3,
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#e5e7eb'
+                    borderColor: 'var(--dq-border-subtle)'
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6'
+                    borderColor: 'var(--dq-accent-primary)'
                   },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6',
+                    borderColor: 'var(--dq-accent-primary)',
                     borderWidth: 2
                   }
                 }}
@@ -276,13 +276,13 @@ const AggregationControls = ({
                 sx={{
                   borderRadius: 3,
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#e5e7eb'
+                    borderColor: 'var(--dq-border-subtle)'
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6'
+                    borderColor: 'var(--dq-accent-primary)'
                   },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#3b82f6',
+                    borderColor: 'var(--dq-accent-primary)',
                     borderWidth: 2
                   }
                 }}
@@ -294,7 +294,7 @@ const AggregationControls = ({
           <MenuItem key={columnName} value={columnName}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
               <span>{columnName}</span>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>{displayType}</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>{displayType}</Typography>
             </Box>
           </MenuItem>
         );
@@ -317,13 +317,13 @@ const AggregationControls = ({
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 3,
                   '& fieldset': {
-                    borderColor: '#e5e7eb'
+                    borderColor: 'var(--dq-border-subtle)'
                   },
                   '&:hover fieldset': {
-                    borderColor: '#3b82f6'
+                    borderColor: 'var(--dq-accent-primary)'
                   },
                   '&.Mui-focused fieldset': {
-                    borderColor: '#3b82f6',
+                    borderColor: 'var(--dq-accent-primary)',
                     borderWidth: 2
                   }
                 }
@@ -340,9 +340,9 @@ const AggregationControls = ({
               sx={{
                 ml: 1,
                 borderRadius: 3,
-                bgcolor: '#3b82f6',
+                bgcolor: 'var(--dq-accent-primary)',
                 '&:hover': {
-                  bgcolor: '#2563eb'
+                  bgcolor: 'var(--dq-accent-primary)'
                 }
               }}
             >
@@ -360,7 +360,7 @@ const AggregationControls = ({
                 sx={{
                   bgcolor: 'white',
                   borderRadius: 4,
-                  border: '1px solid #e5e7eb',
+                  border: '1px solid var(--dq-border-subtle)',
                   p: 2
                 }}
               >
@@ -369,7 +369,7 @@ const AggregationControls = ({
                     label={getFunctionDisplayName(aggregation.function)}
                     size="small"
                     sx={{
-                      bgcolor: '#3b82f6',
+                      bgcolor: 'var(--dq-accent-primary)',
                       color: 'white',
                       fontWeight: 600,
                       fontSize: '1rem',
@@ -383,9 +383,9 @@ const AggregationControls = ({
                       onClick={() => handleRemoveAggregation(aggregation.id)}
                       disabled={disabled}
                       sx={{
-                        color: 'text.secondary',
+                        color: 'var(--dq-text-secondary)',
                         '&:hover': {
-                          color: 'error.main'
+                          color: 'var(--dq-text-primary)'
                         }
                       }}
                     >
@@ -397,7 +397,7 @@ const AggregationControls = ({
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                   {/* 选择列 - 这里显示选择的列但不可编辑 */}
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block', mb: 0.75 }}>
+                    <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}>
                       选择列
                     </Typography>
                     <Select
@@ -414,13 +414,13 @@ const AggregationControls = ({
                         bgcolor: 'white',
                         borderRadius: 3,
                         '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: '#e5e7eb'
+                          borderColor: 'var(--dq-border-subtle)'
                         },
                         '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: '#3b82f6'
+                          borderColor: 'var(--dq-accent-primary)'
                         },
                         '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                          borderColor: '#3b82f6',
+                          borderColor: 'var(--dq-accent-primary)',
                           borderWidth: 2
                         }
                       }}
@@ -432,7 +432,7 @@ const AggregationControls = ({
                           <MenuItem key={columnName} value={columnName}>
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                               <span>{columnName}</span>
-                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>{displayType}</Typography>
+                              <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>{displayType}</Typography>
                             </Box>
                           </MenuItem>
                         );
@@ -441,10 +441,10 @@ const AggregationControls = ({
                   </Box>
 
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block', mb: 0.75 }}>
+                    <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}>
                       当前类型
                     </Typography>
-                    <Typography variant="body2" sx={{ color: '#2563eb', fontWeight: 600 }}>
+                    <Typography variant="body2" sx={{ color: 'var(--dq-accent-primary)', fontWeight: 600 }}>
                       {(() => {
                         const column = columns.find(col => (typeof col === 'string' ? col : col.name) === aggregation.column);
                         return getMetadataType(column) || detectColumnType(aggregation.column, column?.sampleValues || []);
@@ -454,7 +454,7 @@ const AggregationControls = ({
 
                   {/* 别名 */}
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block', mb: 0.75 }}>
+                    <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}>
                       别名 (可选)
                     </Typography>
                     <TextField
@@ -473,13 +473,13 @@ const AggregationControls = ({
                           bgcolor: 'white',
                           borderRadius: 3,
                           '& fieldset': {
-                            borderColor: '#e5e7eb'
+                            borderColor: 'var(--dq-border-subtle)'
                           },
                           '&:hover fieldset': {
-                            borderColor: '#3b82f6'
+                            borderColor: 'var(--dq-accent-primary)'
                           },
                           '&.Mui-focused fieldset': {
-                            borderColor: '#3b82f6',
+                            borderColor: 'var(--dq-accent-primary)',
                             borderWidth: 2
                           }
                         }

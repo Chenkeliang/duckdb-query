@@ -1,14 +1,14 @@
 /* Welcome Page Styles */
 .welcome-container {
     min-height: 100vh;
-    background: #ffffff;
+    background: var(--dq-surface);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     line-height: 1.6;
 }
 
 .welcome-hero {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: linear-gradient(135deg, var(--dq-gradient-welcome-start) 0%, var(--dq-gradient-welcome-end) 100%);
+    color: var(--dq-surface);
     text-align: center;
     padding: 80px 24px;
     min-height: 60vh;
@@ -46,8 +46,8 @@
 }
 
 .welcome-cta-button {
-    background: white;
-    color: #667eea;
+    background: var(--dq-surface);
+    color: var(--dq-highlight-indigo);
     border: none;
     padding: 16px 32px;
     font-size: 1.1rem;
@@ -64,8 +64,8 @@
 }
 
 .welcome-cta-button-secondary {
-    background: white;
-    color: #667eea;
+    background: var(--dq-surface);
+    color: var(--dq-highlight-indigo);
     border: none;
     padding: 16px 32px;
     font-size: 1.1rem;
@@ -80,8 +80,8 @@
 }
 
 .welcome-cta-button-secondary:hover {
-    background: #ffffff;
-    color: #5a67d8;
+    background: var(--dq-surface);
+    color: var(--dq-highlight-indigo);
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
 }
@@ -91,7 +91,7 @@
 }
 
 .welcome-bg-gray {
-    background: #ffffff;
+    background: var(--dq-surface);
 }
 
 .welcome-container-inner {
@@ -104,7 +104,7 @@
     font-weight: 700;
     text-align: center;
     margin: 0 0 48px 0;
-    color: #1e293b;
+    color: var(--dq-text-secondary);
 }
 
 .welcome-grid-2 {
@@ -124,11 +124,11 @@
 .welcome-feature-card,
 .welcome-highlight-card,
 .welcome-case-card {
-    background: white;
+    background: var(--dq-surface);
     padding: 32px 24px;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--dq-border-subtle);
     transition: all 0.3s ease;
 }
 
@@ -145,13 +145,13 @@
     font-size: 1.3rem;
     font-weight: 600;
     margin: 0 0 12px 0;
-    color: #1e293b;
+    color: var(--dq-text-secondary);
 }
 
 .welcome-feature-card p,
 .welcome-highlight-card p,
 .welcome-case-card p {
-    color: #64748b;
+    color: var(--dq-text-tertiary);
     margin: 0;
     font-size: 1rem;
     line-height: 1.6;
@@ -161,7 +161,7 @@
     width: 48px;
     height: 48px;
     border-radius: 12px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--dq-gradient-welcome-start) 0%, var(--dq-gradient-welcome-end) 100%);
     margin-bottom: 16px;
     position: relative;
 }
@@ -217,7 +217,7 @@
 
 .welcome-cta-section p {
     font-size: 1.1rem;
-    color: #64748b;
+    color: var(--dq-text-tertiary);
     margin: 0 0 32px 0;
 }
 

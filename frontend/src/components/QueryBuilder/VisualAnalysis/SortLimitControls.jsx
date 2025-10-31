@@ -157,9 +157,9 @@ const SortLimitControls = ({
                 key={sort.id}
                 sx={{
                   p: 2,
-                  border: '1px solid #e2e8f0',
+                  border: '1px solid var(--dq-border-subtle)',
                   borderRadius: 2,
-                  backgroundColor: '#ffffff',
+                  backgroundColor: 'var(--dq-surface)',
                   '&:hover': {
                     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
                   }
@@ -251,7 +251,7 @@ const SortLimitControls = ({
                     onClick={() => handleRemoveSort(sort.id)}
                     sx={{
                       '&:hover': {
-                        backgroundColor: 'rgba(244, 67, 54, 0.1)'
+                        backgroundColor: 'var(--dq-status-error-bg)'
                       }
                     }}
                   >
@@ -270,11 +270,11 @@ const SortLimitControls = ({
               disabled={orderBy.length >= columns.length}
               sx={{
                 alignSelf: 'flex-start',
-                borderColor: '#e2e8f0',
-                color: '#64748b',
+                borderColor: 'var(--dq-border-subtle)',
+                color: 'var(--dq-text-tertiary)',
                 '&:hover': {
-                  borderColor: '#cbd5e1',
-                  backgroundColor: '#ffffff'
+                  borderColor: 'var(--dq-border-muted)',
+                  backgroundColor: 'var(--dq-surface)'
                 }
               }}
             >
@@ -286,9 +286,9 @@ const SortLimitControls = ({
               <Box sx={{
                 p: 3,
                 textAlign: 'center',
-                backgroundColor: '#ffffff',
+                backgroundColor: 'var(--dq-surface)',
                 borderRadius: 2,
-                border: '1px dashed #cbd5e1'
+                border: '1px dashed var(--dq-border-muted)'
               }}>
                 <Typography variant="body2" color="text.secondary">
                   点击"添加排序列"开始配置数据排序
@@ -330,13 +330,15 @@ const SortLimitControls = ({
 
         {/* Summary */}
         {(orderBy.length > 0 || limit) && (
-          <Box sx={{
-            p: 2,
-            backgroundColor: '#f0f9ff',
-            borderRadius: 2,
-            border: '1px solid #bae6fd'
-          }}>
-            <Typography variant="body2" color="primary.main" sx={{ fontWeight: 500 }}>
+          <Box
+            sx={{
+              p: 2,
+              backgroundColor: "color-mix(in oklab, var(--dq-status-info-fg) 12%, transparent)",
+              borderRadius: 2,
+              border: "1px solid color-mix(in oklab, var(--dq-status-info-fg) 45%, transparent)"
+            }}
+          >
+            <Typography variant="body2" color="var(--dq-text-primary)" sx={{ fontWeight: 500 }}>
               排序设置摘要：
             </Typography>
             <Box sx={{ mt: 1 }}>

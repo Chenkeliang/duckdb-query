@@ -129,7 +129,7 @@ const AddSQLFavoriteDialog = ({ open, onClose, sqlContent, sqlType = 'duckdb', o
     return (
         <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Star size={20} color="#1976d2" />
+                <Star size={20} color="var(--dq-accent-primary)" />
                 添加SQL收藏
             </DialogTitle>
 
@@ -199,8 +199,8 @@ const AddSQLFavoriteDialog = ({ open, onClose, sqlContent, sqlType = 'duckdb', o
                     <Typography variant="subtitle2" sx={{ mb: 1 }}>SQL内容</Typography>
                     <Box
                         sx={{
-                            backgroundColor: '#f5f5f5',
-                            border: '1px solid #e0e0e0',
+                            backgroundColor: 'var(--dq-surface)',
+                            border: '1px solid var(--dq-border-subtle)',
                             borderRadius: 1,
                             padding: 2,
                             fontFamily: 'monospace',

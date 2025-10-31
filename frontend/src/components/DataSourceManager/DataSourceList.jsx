@@ -145,7 +145,7 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
                               ? 'rgba(34,197,94,0.15)'
                               : 'var(--dq-surface-alt)',
                             color: db.status === 'active'
-                              ? '#166534'
+                              ? 'var(--dq-status-success-fg)'
                               : 'var(--dq-text-tertiary)'
                           }}
                         />
@@ -179,7 +179,7 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
                             onClick={() => handleDelete(db, 'database')}
                             size="small"
                             sx={{
-                              color: '#ef4444',
+                              color: 'var(--dq-status-error-fg)',
                               '&:hover': { backgroundColor: 'rgba(239,68,68,0.08)' }
                             }}
                           >
@@ -215,8 +215,8 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
             onClick={confirmDelete}
             size="small"
             sx={{
-              backgroundColor: '#ef4444',
-              '&:hover': { backgroundColor: '#dc2626' }
+              backgroundColor: 'var(--dq-status-error-fg)',
+              '&:hover': { backgroundColor: 'var(--dq-status-error-fg)' }
             }}
           >
             删除

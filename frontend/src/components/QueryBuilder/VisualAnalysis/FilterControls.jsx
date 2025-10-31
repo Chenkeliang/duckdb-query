@@ -183,9 +183,9 @@ const FilterControls = ({
             key={filter.id}
             sx={{ 
               p: 2, 
-              border: '1px solid #e2e8f0',
+              border: '1px solid var(--dq-border-subtle)',
               borderRadius: 2,
-              backgroundColor: '#ffffff',
+              backgroundColor: 'var(--dq-surface)',
               '&:hover': {
                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
               }
@@ -267,13 +267,13 @@ const FilterControls = ({
 
               {/* Remove Button */}
               <Grid item xs={12} sm={1}>
-                <IconButton 
+                    <IconButton 
                   size="small" 
                   color="error"
                   onClick={() => handleRemoveFilter(filter.id)}
                   sx={{ 
                     '&:hover': { 
-                      backgroundColor: 'rgba(244, 67, 54, 0.1)' 
+                      backgroundColor: 'var(--dq-status-error-bg)' 
                     } 
                   }}
                 >
@@ -292,11 +292,11 @@ const FilterControls = ({
           onClick={handleAddFilter}
           sx={{ 
             alignSelf: 'flex-start',
-            borderColor: '#e2e8f0',
-            color: '#64748b',
+            borderColor: 'var(--dq-border-subtle)',
+            color: 'var(--dq-text-tertiary)',
             '&:hover': {
-              borderColor: '#cbd5e1',
-              backgroundColor: '#ffffff'
+              borderColor: 'var(--dq-border-muted)',
+              backgroundColor: 'var(--dq-surface)'
             }
           }}
         >
@@ -308,9 +308,9 @@ const FilterControls = ({
           <Box sx={{ 
             p: 3, 
             textAlign: 'center', 
-            backgroundColor: '#ffffff',
+            backgroundColor: 'var(--dq-surface)',
             borderRadius: 2,
-            border: '1px dashed #cbd5e1'
+            border: '1px dashed var(--dq-border-muted)'
           }}>
             <Typography variant="body2" color="text.secondary">
               点击"添加筛选条件"开始配置数据筛选

@@ -34,3 +34,4 @@ Secrets and connection details live in `config/` (for example `datasources.json`
 - On the data source views, remove the blue `SectionHeader` dot when an adjacent SVG/icon already conveys the state, preventing duplicate visual markers.
 - Typographic scale: primary module headings 20px / semi-bold, primary tabs 18px / semi-bold, secondary tabs 16px / medium, content headings 16px or 18px / 600, body text 14px, supporting text 13px. New or updated copy should follow these levels.
 - Custom dialogs must use the shared `.dq-dialog` styles (defined in `frontend/src/styles/modern.css`) or follow the Excel sheet selector example. Avoid native `alert`/`confirm`/`prompt`; ensure padding, radius, and shadows stay consistent in both light and dark themes.
+- If any requirement or context remains unclear, ask clarifying questions instead of guessing.

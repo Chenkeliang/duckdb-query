@@ -404,7 +404,7 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
           </Typography>
 
           {sessions.map((session) => (
-            <Box key={session.uploadId} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+            <Box key={session.uploadId} sx={{ mb: 2, p: 2, border: '1px solid var(--dq-border-subtle)', borderRadius: 1 }}>
               <Grid container alignItems="center" spacing={2}>
                 <Grid item>
                   {getStatusIcon(session.status)}
@@ -504,7 +504,7 @@ const ChunkedUploader = ({ file, tableAlias, onUploadComplete, onUploadProgress 
             </ListItem>
             <ListItem>
               <ListItemIcon>
-                <Database size={20} color="#1976d2" />
+                <Database size={20} color="var(--dq-accent-primary)" />
               </ListItemIcon>
               <ListItemText
                 primary="格式支持"

@@ -77,7 +77,7 @@ const FileUploader = ({ onUpload }) => {
               borderRadius: 2,
               border: '1px solid rgba(211, 47, 47, 0.1)',
               '& .MuiAlert-icon': {
-                color: '#d32f2f',
+                color: 'var(--dq-status-error-fg)',
               }
             }}
             onClose={() => setError('')}
@@ -96,10 +96,10 @@ const FileUploader = ({ onUpload }) => {
               mb: 2,
               borderRadius: 2,
               backgroundColor: 'rgba(46, 125, 50, 0.08)',
-              color: '#2e7d32',
+              color: 'var(--dq-status-success-fg)',
               border: '1px solid rgba(46, 125, 50, 0.1)',
               '& .MuiAlert-icon': {
-                color: '#2e7d32',
+                color: 'var(--dq-status-success-fg)',
               }
             }}
           >
@@ -112,7 +112,7 @@ const FileUploader = ({ onUpload }) => {
         sx={{
           position: 'relative',
           border: '1px dashed',
-          borderColor: dragActive ? 'primary.main' : 'rgba(0,0,0,0.12)',
+          borderColor: dragActive ? 'var(--dq-text-primary)' : 'rgba(0,0,0,0.12)',
           borderRadius: 3,
           p: 4,
           backgroundColor: dragActive ? 'rgba(0, 113, 227, 0.04)' : 'rgba(0,0,0,0.01)',
@@ -120,7 +120,7 @@ const FileUploader = ({ onUpload }) => {
           textAlign: 'center',
           cursor: 'pointer',
           '&:hover': {
-            borderColor: 'primary.main',
+            borderColor: 'var(--dq-text-primary)',
             backgroundColor: 'rgba(0, 113, 227, 0.04)'
           }
         }}
@@ -143,7 +143,7 @@ const FileUploader = ({ onUpload }) => {
             <CircularProgress
               size={36}
               sx={{
-                color: 'primary.main',
+                color: 'var(--dq-text-primary)',
                 mb: 2
               }}
             />
@@ -162,7 +162,7 @@ const FileUploader = ({ onUpload }) => {
             <ArrowUpwardIcon
               sx={{
                 fontSize: 36,
-                color: dragActive ? 'primary.main' : 'text.secondary',
+                color: dragActive ? 'var(--dq-text-primary)' : 'var(--dq-text-secondary)',
                 mb: 1
               }}
             />
@@ -171,7 +171,7 @@ const FileUploader = ({ onUpload }) => {
               sx={{
                 mb: 1,
                 fontWeight: 500,
-                color: dragActive ? 'primary.main' : 'text.primary'
+                color: dragActive ? 'var(--dq-text-primary)' : 'var(--dq-text-primary)'
               }}
             >
               拖放文件到此处
@@ -211,13 +211,13 @@ const FileUploader = ({ onUpload }) => {
           fontSize="small"
           sx={{
             fontSize: '1rem',
-            color: 'text.secondary'
+            color: 'var(--dq-text-secondary)'
           }}
         />
         <Typography
           variant="caption"
           sx={{
-            color: 'text.secondary',
+            color: 'var(--dq-text-secondary)',
             fontWeight: 400
           }}
         >
