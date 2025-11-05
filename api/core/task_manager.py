@@ -17,6 +17,11 @@ from core.config_manager import config_manager
 from core.duckdb_engine import with_duckdb_connection
 from core.timezone_utils import get_current_time
 
+ASYNC_TASKS_TABLE = "systerm_async_tasks"
+TASK_EXPORTS_TABLE = "systerm_task_exports"
+LEGACY_ASYNC_TASKS_TABLE = "async_tasks"
+LEGACY_TASK_EXPORTS_TABLE = "task_exports"
+
 logger = logging.getLogger(__name__)
 
 
@@ -72,9 +77,11 @@ class TaskManager:
     def _ensure_tables(self) -> None:
         """确保所需的DuckDB表已创建"""
         with with_duckdb_connection() as connection:
+            self._migrate_legacy_tables(connection)
+
             connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS async_tasks (
+                f"""
+                CREATE TABLE IF NOT EXISTS {ASYNC_TASKS_TABLE} (
                     task_id TEXT PRIMARY KEY,
                     status TEXT,
                     query TEXT,
@@ -93,8 +100,8 @@ class TaskManager:
             )
 
             connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS task_exports (
+                f"""
+                CREATE TABLE IF NOT EXISTS {TASK_EXPORTS_TABLE} (
                     export_id TEXT PRIMARY KEY,
                     task_id TEXT,
                     file_path TEXT,
@@ -108,8 +115,46 @@ class TaskManager:
             )
 
             connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_async_tasks_status ON async_tasks(status)"
+                f"CREATE INDEX IF NOT EXISTS idx_{ASYNC_TASKS_TABLE}_status ON {ASYNC_TASKS_TABLE}(status)"
             )
+
+    def _migrate_legacy_tables(self, connection) -> None:
+        """迁移旧版本的系统表名称"""
+        try:
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT table_name FROM duckdb_tables()"
+                ).fetchall()
+            }
+
+            if (
+                LEGACY_ASYNC_TASKS_TABLE in tables
+                and ASYNC_TASKS_TABLE not in tables
+            ):
+                logger.info(
+                    "检测到旧版 async_tasks 表，正在迁移到 %s",
+                    ASYNC_TASKS_TABLE,
+                )
+                connection.execute("DROP INDEX IF EXISTS idx_async_tasks_status")
+                connection.execute(
+                    f'ALTER TABLE "{LEGACY_ASYNC_TASKS_TABLE}" RENAME TO "{ASYNC_TASKS_TABLE}"'
+                )
+
+            if (
+                LEGACY_TASK_EXPORTS_TABLE in tables
+                and TASK_EXPORTS_TABLE not in tables
+            ):
+                logger.info(
+                    "检测到旧版 task_exports 表，正在迁移到 %s",
+                    TASK_EXPORTS_TABLE,
+                )
+                connection.execute(
+                    f'ALTER TABLE "{LEGACY_TASK_EXPORTS_TABLE}" RENAME TO "{TASK_EXPORTS_TABLE}"'
+                )
+
+        except Exception as exc:
+            logger.warning("迁移旧版系统表失败: %s", exc)
 
     @staticmethod
     def _json_default(value: Any) -> Any:
@@ -228,10 +273,12 @@ class TaskManager:
         completed_at = self._normalize_datetime(completed_at)
 
         with with_duckdb_connection() as connection:
-            connection.execute("DELETE FROM async_tasks WHERE task_id = ?", [task_id])
             connection.execute(
-                """
-                INSERT INTO async_tasks (
+                f'DELETE FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?', [task_id]
+            )
+            connection.execute(
+                f"""
+                INSERT INTO {ASYNC_TASKS_TABLE} (
                     task_id, status, query, task_type, datasource,
                     result_file_path, error_message,
                     created_at, started_at, completed_at, execution_time,
@@ -329,8 +376,8 @@ class TaskManager:
             started_at = self._normalize_datetime(get_current_time())
             with with_duckdb_connection() as connection:
                 rows = connection.execute(
-                    """
-                    UPDATE async_tasks
+                    f"""
+                    UPDATE {ASYNC_TASKS_TABLE}
                     SET status = ?, started_at = ?
                     WHERE task_id = ? AND status IN (?, ?)
                     RETURNING task_id
@@ -356,7 +403,8 @@ class TaskManager:
             completed_at = self._normalize_datetime(get_current_time())
             with with_duckdb_connection() as connection:
                 started_row = connection.execute(
-                    "SELECT started_at FROM async_tasks WHERE task_id = ?", [task_id]
+                    f'SELECT started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
+                    [task_id],
                 ).fetchone()
                 if not started_row:
                     logger.warning("任务不存在: %s", task_id)
@@ -377,8 +425,8 @@ class TaskManager:
                 )
 
                 rows = connection.execute(
-                    """
-                    UPDATE async_tasks
+                    f"""
+                    UPDATE {ASYNC_TASKS_TABLE}
                     SET status = ?, result_file_path = ?, result_info = ?,
                         error_message = NULL, completed_at = ?, execution_time = ?
                     WHERE task_id = ?
@@ -407,7 +455,8 @@ class TaskManager:
             completed_at = self._normalize_datetime(get_current_time())
             with with_duckdb_connection() as connection:
                 started_row = connection.execute(
-                    "SELECT started_at FROM async_tasks WHERE task_id = ?", [task_id]
+                    f'SELECT started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
+                    [task_id],
                 ).fetchone()
                 execution_time = None
                 if started_row and isinstance(started_row[0], datetime):
@@ -415,8 +464,8 @@ class TaskManager:
                     execution_time = (completed_at - started_at).total_seconds()
 
                 rows = connection.execute(
-                    """
-                    UPDATE async_tasks
+                    f"""
+                    UPDATE {ASYNC_TASKS_TABLE}
                     SET status = ?, error_message = ?, completed_at = ?, execution_time = ?
                     WHERE task_id = ?
                     RETURNING task_id
@@ -445,7 +494,8 @@ class TaskManager:
             completed_at = self._normalize_datetime(get_current_time())
             with with_duckdb_connection() as connection:
                 started_row = connection.execute(
-                    "SELECT started_at FROM async_tasks WHERE task_id = ?", [task_id]
+                    f'SELECT started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
+                    [task_id],
                 ).fetchone()
                 execution_time = None
                 if started_row and isinstance(started_row[0], datetime):
@@ -454,8 +504,8 @@ class TaskManager:
                         execution_time = (completed_at - started_at).total_seconds()
 
                 rows = connection.execute(
-                    """
-                    UPDATE async_tasks
+                    f"""
+                    UPDATE {ASYNC_TASKS_TABLE}
                     SET status = ?, error_message = ?, completed_at = ?, execution_time = ?
                     WHERE task_id = ?
                     RETURNING task_id
@@ -483,12 +533,12 @@ class TaskManager:
         """获取任务信息"""
         with with_duckdb_connection() as connection:
             row = connection.execute(
-                """
+                f"""
                 SELECT task_id, status, query, task_type, datasource,
                        result_file_path, error_message, created_at,
                        started_at, completed_at, execution_time,
                        result_info, metadata
-                FROM async_tasks
+                FROM {ASYNC_TASKS_TABLE}
                 WHERE task_id = ?
                 """,
                 [task_id],
@@ -500,12 +550,12 @@ class TaskManager:
         """列出任务（按创建时间倒序）"""
         with with_duckdb_connection() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT task_id, status, query, task_type, datasource,
                        result_file_path, error_message, created_at,
                        started_at, completed_at, execution_time,
                        result_info, metadata
-                FROM async_tasks
+                FROM {ASYNC_TASKS_TABLE}
                 ORDER BY created_at DESC
                 LIMIT ?
                 """,
@@ -518,7 +568,7 @@ class TaskManager:
         """获取排队中的任务ID"""
         with with_duckdb_connection() as connection:
             rows = connection.execute(
-                "SELECT task_id FROM async_tasks WHERE status = ?",
+                f"SELECT task_id FROM {ASYNC_TASKS_TABLE} WHERE status = ?",
                 [TaskStatus.QUEUED.value],
             ).fetchall()
         return [row[0] for row in rows]
@@ -530,7 +580,7 @@ class TaskManager:
 
         with self._lock, with_duckdb_connection() as connection:
             metadata_row = connection.execute(
-                "SELECT metadata FROM async_tasks WHERE task_id = ?",
+                f'SELECT metadata FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                 [task_id],
             ).fetchone()
 
@@ -565,7 +615,7 @@ class TaskManager:
             params.append(self._serialize_json(metadata))
 
             params.append(task_id)
-            sql = f"UPDATE async_tasks SET {', '.join(columns)} WHERE task_id = ? RETURNING task_id"
+            sql = f'UPDATE "{ASYNC_TASKS_TABLE}" SET {", ".join(columns)} WHERE task_id = ? RETURNING task_id'
             rows = connection.execute(sql, params).fetchall()
 
         success = bool(rows)
@@ -588,8 +638,8 @@ class TaskManager:
         created_at = get_current_time()
         with with_duckdb_connection() as connection:
             connection.execute(
-                """
-                INSERT INTO task_exports (
+                f"""
+                INSERT INTO {TASK_EXPORTS_TABLE} (
                     export_id, task_id, file_path, file_size,
                     created_at, expires_at, status, metadata
                 )
@@ -618,8 +668,8 @@ class TaskManager:
 
         with with_duckdb_connection() as connection:
             rows = connection.execute(
-                """
-                SELECT export_id, file_path FROM task_exports
+                f"""
+                SELECT export_id, file_path FROM {TASK_EXPORTS_TABLE}
                 WHERE expires_at IS NOT NULL AND expires_at <= ?
                 """,
                 [cutoff],
@@ -638,12 +688,12 @@ class TaskManager:
                             logger.warning("删除导出文件失败 %s: %s", path, exc)
 
                 connection.execute(
-                    "UPDATE task_exports SET status = 'expired' WHERE export_id = ?",
+                    f"UPDATE {TASK_EXPORTS_TABLE} SET status = 'expired' WHERE export_id = ?",
                     [export_id],
                 )
 
             connection.execute(
-                "DELETE FROM task_exports WHERE status = 'expired' AND expires_at <= ?",
+                f"DELETE FROM {TASK_EXPORTS_TABLE} WHERE status = 'expired' AND expires_at <= ?",
                 [cutoff],
             )
 

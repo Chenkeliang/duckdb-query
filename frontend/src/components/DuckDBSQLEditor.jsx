@@ -403,6 +403,67 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
   // 使用ref跟踪是否是内部更新，避免光标丢失
   const isInternalUpdate = useRef(false);
 
+  const normalizedHeight = typeof height === "number" ? `${height}px` : height;
+  const editorViewportHeight = isFullscreen ? "calc(100vh - 120px)" : normalizedHeight;
+
+  const editorAppearance = useMemo(() => {
+    const isDark = theme === "dark";
+    const lightBackground = "var(--dq-editor-light-bg)";
+    const lightGutter = "var(--dq-editor-light-border)";
+    const lightText = "var(--dq-editor-light-text)";
+    const darkBackground = "var(--dq-editor-dark-bg)";
+    const darkGutter = "var(--dq-editor-dark-border)";
+    const darkText = "var(--dq-editor-dark-text)";
+    const darkSelection = "var(--dq-editor-dark-selection)";
+    const darkActiveLine = "color-mix(in oklab, var(--dq-accent-primary) 18%, transparent)";
+
+    return EditorView.theme(
+      {
+        "&": {
+          fontSize: "14px",
+          fontFamily: '"Monaco", "Menlo", "Ubuntu Mono", monospace',
+          backgroundColor: isDark ? darkBackground : lightBackground,
+          color: isDark ? darkText : lightText
+        },
+        ".cm-content": {
+          padding: "12px",
+          color: isDark ? darkText : lightText
+        },
+        ".cm-line": {
+          color: isDark ? darkText : lightText
+        },
+        ".cm-scroller": {
+          fontFamily: '"Monaco", "Menlo", "Ubuntu Mono", monospace',
+          minHeight: editorViewportHeight,
+          backgroundColor: isDark ? darkBackground : lightBackground
+        },
+        ".cm-gutters": showGutter
+          ? {
+              padding: "0 8px",
+              backgroundColor: isDark ? darkBackground : lightBackground,
+              color: isDark ? "var(--dq-text-tertiary)" : "var(--dq-text-muted-strong)",
+              borderRight: `1px solid ${isDark ? darkGutter : lightGutter}`
+            }
+          : {
+              display: "none"
+            },
+        ".cm-activeLine": {
+          backgroundColor: isDark ? darkActiveLine : "var(--dq-editor-light-active)"
+        },
+        ".cm-selectionBackground": {
+          backgroundColor: isDark ? darkSelection : "var(--dq-editor-light-selection)"
+        },
+        ".cm-placeholder": {
+          color: "var(--dq-text-tertiary)"
+        },
+        ".cm-cursor": {
+          borderLeftColor: isDark ? darkText : lightText
+        }
+      },
+      { dark: isDark }
+    );
+  }, [editorViewportHeight, showGutter, theme]);
+
 
   // 全屏切换功能
   const toggleFullscreen = () => {
@@ -517,50 +578,33 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
     if (!editorRef.current) return;
 
     try {
+      const baseExtensions = [
+        basicSetup,
+        sql(),
+        autocompletion({ override: [enhancedSqlCompletions] }),
+        lintGutter(),
+        keymap.of([indentWithTab]), // 添加Tab缩进支持
+        EditorView.lineWrapping, // 添加自动换行
+        EditorView.editable.of(!readOnly), // 添加 readOnly 状态控制
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged && onChange) {
+            try {
+              // 标记为内部更新，避免useEffect触发导致光标丢失
+              isInternalUpdate.current = true;
+              onChange(update.state.doc.toString());
+            } catch (e) {
+              console.error('onChange error:', e);
+            }
+          }
+        }),
+        editorAppearance,
+      ];
+
+      const themeExtensions = theme === "dark" ? [oneDark] : [];
+
       const state = EditorState.create({
         doc: value,
-        extensions: [
-          basicSetup,
-          sql(),
-          autocompletion({ override: [enhancedSqlCompletions] }),
-          lintGutter(),
-          keymap.of([indentWithTab]), // 添加Tab缩进支持
-          EditorView.lineWrapping, // 添加自动换行
-          (() => {
-            if (theme === "dark") {
-              return oneDark;
-            }
-            return [];
-          })(),
-          EditorView.editable.of(!readOnly), // 添加 readOnly 状态控制
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged && onChange) {
-              try {
-                // 标记为内部更新，避免useEffect触发导致光标丢失
-                isInternalUpdate.current = true;
-                onChange(update.state.doc.toString());
-              } catch (e) {
-                console.error('onChange error:', e);
-              }
-            }
-          }),
-          EditorView.theme({
-            "&": {
-              height: isFullscreen ? "100vh" : height,
-              fontSize: "14px",
-              fontFamily: '"Monaco", "Menlo", "Ubuntu Mono", monospace',
-            },
-            ".cm-editor": {
-              height: "100%",
-            },
-            ".cm-scroller": {
-              fontFamily: '"Monaco", "Menlo", "Ubuntu Mono", monospace',
-            },
-            ".cm-placeholder": {
-              color: "#999",
-            },
-          }),
-        ],
+        extensions: [...baseExtensions, ...themeExtensions],
       });
 
       const view = new EditorView({
@@ -582,7 +626,7 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
       setEditorError(e.message);
       return () => { };
     }
-  }, [stableTables, readOnly, theme, isFullscreen]); // 使用stableTables避免不必要的重新创建
+  }, [stableTables, readOnly, theme, editorAppearance]); // 使用stableTables避免不必要的重新创建
 
   useEffect(() => {
     // 只在外部value变化时更新编辑器内容
@@ -623,7 +667,7 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
           width: '100vw',
           height: '100vh',
           zIndex: 9999,
-          backgroundColor: 'white',
+          backgroundColor: theme === 'dark' ? 'var(--dq-neutral-1000)' : 'var(--dq-surface)',
           padding: '20px',
           boxSizing: 'border-box'
         })
@@ -635,7 +679,7 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
           justifyContent: 'space-between',
           alignItems: 'center',
           mb: 2,
-          borderBottom: '1px solid #ccc',
+          borderBottom: '1px solid var(--dq-border-subtle)',
           paddingBottom: '10px'
         }}>
           <Typography variant="h6">SQL编辑器 - 全屏模式</Typography>
@@ -652,11 +696,11 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
                 py: 0.5,
                 borderRadius: 2,
                 borderColor: 'var(--dq-border-subtle)',
-                color: '#666',
+                color: 'var(--dq-text-secondary)',
                 '&:hover': {
-                  borderColor: 'var(--dq-accent-primary)',
+                  borderColor: 'var(--dq-border-hover)',
                   color: 'var(--dq-accent-primary)',
-                  backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                  backgroundColor: 'var(--dq-surface-hover)'
                 }
               }}
             >
@@ -674,11 +718,11 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
                 py: 0.5,
                 borderRadius: 2,
                 borderColor: 'var(--dq-border-subtle)',
-                color: '#666',
+                color: 'var(--dq-text-secondary)',
                 '&:hover': {
-                  borderColor: 'var(--dq-accent-primary)',
+                  borderColor: 'var(--dq-border-hover)',
                   color: 'var(--dq-accent-primary)',
-                  backgroundColor: 'rgba(25, 118, 210, 0.04)'
+                  backgroundColor: 'var(--dq-surface-hover)'
                 }
               }}
             >
@@ -697,11 +741,13 @@ const DuckDBSQLEditor = forwardRef((props, ref) => {
       <Box
         ref={editorRef}
         sx={{
-          border: "1px solid #ccc",
-          borderRadius: "4px",
+          width: '100%',
+          border: `1px solid ${theme === "dark" ? 'var(--dq-border-card)' : 'var(--dq-border-subtle)'}`,
+          borderRadius: "8px",
           overflow: "hidden",
+          backgroundColor: theme === "dark" ? 'var(--dq-editor-dark-bg)' : 'var(--dq-editor-light-bg)',
           "& .cm-editor": {
-            height: isFullscreen ? "calc(100vh - 120px)" : height,
+            height: editorViewportHeight,
           },
         }}
       />

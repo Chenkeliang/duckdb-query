@@ -75,7 +75,8 @@ const FileUploader = ({ onUpload }) => {
             sx={{
               mb: 2,
               borderRadius: 2,
-              border: '1px solid rgba(211, 47, 47, 0.1)',
+              border: '1px solid color-mix(in oklab, var(--dq-status-error-fg) 28%, transparent)',
+              backgroundColor: 'color-mix(in oklab, var(--dq-status-error-bg) 100%, transparent)',
               '& .MuiAlert-icon': {
                 color: 'var(--dq-status-error-fg)',
               }
@@ -95,9 +96,9 @@ const FileUploader = ({ onUpload }) => {
             sx={{
               mb: 2,
               borderRadius: 2,
-              backgroundColor: 'rgba(46, 125, 50, 0.08)',
+              backgroundColor: 'color-mix(in oklab, var(--dq-status-success-fg) 18%, transparent)',
               color: 'var(--dq-status-success-fg)',
-              border: '1px solid rgba(46, 125, 50, 0.1)',
+              border: '1px solid color-mix(in oklab, var(--dq-status-success-fg) 28%, transparent)',
               '& .MuiAlert-icon': {
                 color: 'var(--dq-status-success-fg)',
               }
@@ -112,16 +113,16 @@ const FileUploader = ({ onUpload }) => {
         sx={{
           position: 'relative',
           border: '1px dashed',
-          borderColor: dragActive ? 'var(--dq-text-primary)' : 'rgba(0,0,0,0.12)',
+          borderColor: dragActive ? 'var(--dq-text-primary)' : 'var(--dq-border-subtle)',
           borderRadius: 3,
           p: 4,
-          backgroundColor: dragActive ? 'rgba(0, 113, 227, 0.04)' : 'rgba(0,0,0,0.01)',
+          backgroundColor: dragActive ? 'color-mix(in oklab, var(--dq-accent-primary) 12%, transparent)' : 'var(--dq-surface)',
           transition: 'all 0.2s ease-in-out',
           textAlign: 'center',
           cursor: 'pointer',
           '&:hover': {
             borderColor: 'var(--dq-text-primary)',
-            backgroundColor: 'rgba(0, 113, 227, 0.04)'
+            backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 12%, transparent)'
           }
         }}
         onDragEnter={handleDrag}
@@ -190,7 +191,7 @@ const FileUploader = ({ onUpload }) => {
                 py: 0.75,
                 boxShadow: 'none',
                 '&:hover': {
-                  boxShadow: '0 2px 8px rgba(0, 113, 227, 0.3)'
+                  boxShadow: 'var(--dq-accent-shadow)'
                 }
               }}
             >

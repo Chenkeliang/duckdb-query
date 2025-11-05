@@ -107,11 +107,10 @@ export const ToastProvider = ({ children }) => {
               vertical: 'top',
               horizontal: 'center'
             }}
-            sx={{
-              // 多个Toast时的垂直偏移
-              top: `${80 + index * 70}px !important`,
-              zIndex: `${9999 + index} !important`,
-              position: 'fixed !important'
+            style={{
+              top: `${80 + index * 70}px`,
+              zIndex: 9999 + index,
+              position: 'fixed'
             }}
             // 强制显示，忽略aria-hidden
             disablePortal={false}
@@ -128,7 +127,7 @@ export const ToastProvider = ({ children }) => {
                 maxWidth: '600px',
                 fontSize: '0.95rem',
                 fontWeight: 500,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                boxShadow: 'var(--dq-shadow-soft)',
                 '& .MuiAlert-message': {
                   wordBreak: 'break-word'
                 }

@@ -16,7 +16,7 @@ import {
   useTheme
 } from '@mui/material';
 import React, { useMemo, useState } from 'react';
-import { Filter } from 'lucide-react';
+import { Copy, Filter } from 'lucide-react';
 
 const StableTable = ({
   data = [],
@@ -25,7 +25,8 @@ const StableTable = ({
   height = 600,
   originalDatasource = null,
   columnValueFilters = {},
-  onOpenColumnFilterMenu
+  onOpenColumnFilterMenu,
+  onCopyColumnName = null
 }) => {
   const theme = useTheme();
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -110,10 +111,47 @@ const StableTable = ({
     }
 
     if (value === null || value === undefined) {
-      return <span style={{ color: '#999', fontStyle: 'italic' }}>NULL</span>;
+      return <span style={{ color: 'var(--dq-text-tertiary)', fontStyle: 'italic' }}>NULL</span>;
     }
 
     return String(value);
+  };
+
+  const headerActionBaseSx = {
+    color: 'var(--dq-text-secondary)',
+    border: '1px solid var(--dq-border-card)',
+    backgroundColor: 'var(--dq-surface)',
+    borderRadius: '10px',
+    padding: '4px',
+    transition: 'all 0.18s ease',
+    '&:hover': {
+      color: 'var(--dq-accent-100)',
+      borderColor: 'var(--dq-border-hover)',
+      backgroundColor: 'var(--dq-surface-hover)'
+    }
+  };
+
+  const headerActionActiveSx = {
+    color: 'var(--dq-accent-100)',
+    borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 48%, transparent)',
+    backgroundColor: 'var(--dq-accent-soft-bg)',
+    '&:hover': {
+      color: 'var(--dq-accent-100)',
+      borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 65%, transparent)',
+      backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 26%, transparent)'
+    }
+  };
+
+  const handleCopyColumnLabel = (label) => {
+    const resolved = label || '';
+    if (!resolved) return;
+    if (onCopyColumnName) {
+      onCopyColumnName(resolved);
+      return;
+    }
+    if (typeof navigator !== 'undefined' && navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(resolved).catch(() => {});
+    }
   };
 
   return (
@@ -141,10 +179,10 @@ const StableTable = ({
             borderRadius: '6px',
           },
           '&::-webkit-scrollbar-thumb': {
-            background: '#888',
+            background: 'var(--dq-border-subtle)',
             borderRadius: '6px',
             '&:hover': {
-              background: '#555',
+              background: 'var(--dq-border-hover)',
             },
           },
         }}
@@ -158,12 +196,13 @@ const StableTable = ({
                   <TableCell
                     key={column.field}
                     sx={{
-                      backgroundColor: hasActiveFilter ? 'var(--dq-surface-card-active)' : 'var(--dq-surface-card-active)',
+                      backgroundColor: hasActiveFilter ? 'var(--dq-surface-card-active)' : 'var(--dq-surface)',
                       fontWeight: 600,
                       fontSize: '1rem',
                       borderBottom: `2px solid ${theme.palette.divider}`,
                       minWidth: column.minWidth || 120,
-                      userSelect: 'none',
+                      userSelect: 'text',
+                      color: 'var(--dq-text-primary)',
                       writingMode: 'horizontal-tb',
                       textOrientation: 'mixed',
                       whiteSpace: 'nowrap',
@@ -196,24 +235,45 @@ const StableTable = ({
                             maxWidth: '100%',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
-                            verticalAlign: 'middle'
+                            verticalAlign: 'middle',
+                            userSelect: 'text',
+                            cursor: 'text'
                           }}
                         >
                           {column.headerName || column.field}
                         </span>
                       </TableSortLabel>
-                      <Tooltip title="列筛选">
-                        <IconButton
-                          size="small"
-                          color={hasActiveFilter ? 'primary' : 'default'}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onOpenColumnFilterMenu?.(column.field, event.currentTarget);
-                          }}
-                        >
-                          <Filter size={16} />
-                        </IconButton>
-                      </Tooltip>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Tooltip title="复制列名">
+                          <IconButton
+                            size="small"
+                            aria-label={`复制列名 ${column.headerName || column.field}`}
+                            sx={headerActionBaseSx}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleCopyColumnLabel(column.headerName || column.field);
+                            }}
+                          >
+                            <Copy size={16} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="列筛选">
+                          <IconButton
+                            size="small"
+                            aria-label={`列筛选 ${column.headerName || column.field}`}
+                            sx={{
+                              ...headerActionBaseSx,
+                              ...(hasActiveFilter ? headerActionActiveSx : {})
+                            }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onOpenColumnFilterMenu?.(column.field, event.currentTarget);
+                            }}
+                          >
+                            <Filter size={16} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     </Box>
                   </TableCell>
                 );
@@ -229,7 +289,7 @@ const StableTable = ({
                     backgroundColor: 'var(--dq-surface-card-active)',
                   },
                   '&:hover': {
-                    backgroundColor: 'var(--dq-surface-card-active)',
+                    backgroundColor: 'var(--dq-surface-hover)',
                   },
                 }}
               >

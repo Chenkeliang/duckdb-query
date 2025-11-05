@@ -1,6 +1,6 @@
 import { Lightbulb } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { Button } from '../../ui/Button';
+import { Button } from '@mui/material';
 import { Card } from '../../ui/Card';
 
 const SQLPreview = ({
@@ -112,7 +112,7 @@ const SQLPreview = ({
   if (!generatedSQL) {
     return (
       <Card className={`p-4 ${className}`}>
-        <div className="text-center text-gray-500">
+        <div className="text-center dq-text-tertiary">
           <p>配置查询条件后将显示SQL预览</p>
         </div>
       </Card>
@@ -122,20 +122,20 @@ const SQLPreview = ({
   return (
     <Card className={`p-4 ${className}`}>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-semibold text-gray-800">SQL预览</h3>
+        <h3 className="text-lg font-semibold dq-text-primary">SQL预览</h3>
         <div className="flex space-x-2">
           <Button
-            variant="outline"
-            size="sm"
+            variant={isExpanded ? 'contained' : 'outlined'}
+            size="small"
             onClick={() => setIsExpanded(!isExpanded)}
           >
             {isExpanded ? '收起' : '展开'}
           </Button>
           <Button
-            variant="outline"
-            size="sm"
+            variant={copySuccess ? 'contained' : 'outlined'}
+            size="small"
+            color={copySuccess ? 'success' : 'primary'}
             onClick={copyToClipboard}
-            className={copySuccess ? 'bg-green-50 text-green-700' : ''}
           >
             {copySuccess ? '已复制' : '复制'}
           </Button>
@@ -154,7 +154,7 @@ const SQLPreview = ({
       {/* SQL Code Display */}
       <div className="relative">
         <pre className={`
-          bg-gray-900 text-gray-100 p-4 rounded-md overflow-x-auto text-sm font-mono
+          bg-gray-900 dq-text-primary p-4 rounded-md overflow-x-auto text-sm font-mono
           ${isExpanded ? 'max-h-none' : 'max-h-48'}
         `}>
           <code className="language-sql">
@@ -171,37 +171,37 @@ const SQLPreview = ({
       {sqlMetadata && (
         <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
           <div className="bg-gray-50 p-2 rounded text-center">
-            <div className="font-medium text-gray-800">
+            <div className="font-medium dq-text-primary">
               {sqlMetadata.hasColumns ? '✓' : '○'}
             </div>
-            <div className="text-gray-600">列选择</div>
+            <div className="dq-text-tertiary">列选择</div>
           </div>
 
           <div className="bg-gray-50 p-2 rounded text-center">
-            <div className="font-medium text-gray-800">
+            <div className="font-medium dq-text-primary">
               {sqlMetadata.hasAggregations ? '✓' : '○'}
             </div>
-            <div className="text-gray-600">聚合函数</div>
+            <div className="dq-text-tertiary">聚合函数</div>
           </div>
 
           <div className="bg-gray-50 p-2 rounded text-center">
-            <div className="font-medium text-gray-800">
+            <div className="font-medium dq-text-primary">
               {sqlMetadata.hasFilters ? '✓' : '○'}
             </div>
-            <div className="text-gray-600">筛选条件</div>
+            <div className="dq-text-tertiary">筛选条件</div>
           </div>
 
           <div className="bg-gray-50 p-2 rounded text-center">
-            <div className="font-medium text-gray-800">
+            <div className="font-medium dq-text-primary">
               {sqlMetadata.hasOrderBy ? '✓' : '○'}
             </div>
-            <div className="text-gray-600">排序</div>
+            <div className="dq-text-tertiary">排序</div>
           </div>
         </div>
       )}
 
       {/* Performance Hints */}
-      <div className="mt-3 text-sm text-gray-600">
+      <div className="mt-3 text-sm dq-text-tertiary">
         <div className="flex items-center space-x-4">
           <Lightbulb size={16} style={{ marginRight: '8px' }} />
           提示:

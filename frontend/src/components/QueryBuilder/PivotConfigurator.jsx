@@ -225,11 +225,10 @@ const PivotConfigurator = ({
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Box sx={{
         borderRadius: 3,
-        border: '1px solid',
-        borderColor: 'divider',
-        bgcolor: 'background.paper',
+        border: '1px solid var(--dq-border-subtle)',
+        backgroundColor: 'var(--dq-surface)',
         p: 3,
-        boxShadow: 1
+        boxShadow: 'var(--dq-shadow-soft)'
       }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
           <Typography variant="subtitle1" fontWeight={600}>
@@ -245,7 +244,7 @@ const PivotConfigurator = ({
             重置透视
           </Button>
         </Box>
-        <Typography variant="body2" color="text.secondary" gutterBottom>
+        <Typography variant="body2" sx={{ color: 'var(--dq-text-tertiary)' }} gutterBottom>
           先挑选需要展开的行、列，再选择要统计的指标。行与列字段越少，结果越易读。
         </Typography>
 
@@ -294,7 +293,7 @@ const PivotConfigurator = ({
                 </MenuItem>
               ))}
             </Select>
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+            <Typography variant="caption" sx={{ mt: 0.5, display: 'block', color: 'var(--dq-text-tertiary)' }}>
               原生透视仅支持 1 个列字段
             </Typography>
           </FormControl>
@@ -303,16 +302,15 @@ const PivotConfigurator = ({
 
       <Box sx={{
         borderRadius: 3,
-        border: '1px solid',
-        borderColor: 'divider',
-        bgcolor: 'background.paper',
+        border: '1px solid var(--dq-border-subtle)',
+        backgroundColor: 'var(--dq-surface)',
         p: 3,
-        boxShadow: 1
+        boxShadow: 'var(--dq-shadow-soft)'
       }}>
         <Typography variant="subtitle1" fontWeight={600} gutterBottom>
           指标与汇总方式
         </Typography>
-        <Typography variant="body2" color="text.secondary" gutterBottom>
+        <Typography variant="body2" sx={{ color: 'var(--dq-text-tertiary)' }} gutterBottom>
           每条指标都会生成一列，可为不同指标设置不同的聚合方式与别名。
         </Typography>
 
@@ -334,9 +332,9 @@ const PivotConfigurator = ({
               key={`pivot-value-${index}`}
               sx={{
                 borderRadius: 2,
-                border: '1px dashed',
-                borderColor: 'divider',
-                p: 3
+                border: '1px dashed var(--dq-border-control)',
+                p: 3,
+                backgroundColor: 'var(--dq-surface-control)'
               }}
             >
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="center">
@@ -413,16 +411,15 @@ const PivotConfigurator = ({
 
       <Box sx={{
         borderRadius: 3,
-        border: '1px solid',
-        borderColor: 'divider',
-        bgcolor: 'background.paper',
+        border: '1px solid var(--dq-border-subtle)',
+        backgroundColor: 'var(--dq-surface)',
         p: 3,
-        boxShadow: 1
+        boxShadow: 'var(--dq-shadow-soft)'
       }}>
         <Typography variant="subtitle1" fontWeight={600} gutterBottom>
           结果展示选项
         </Typography>
-        <Typography variant="body2" color="text.secondary" gutterBottom>
+        <Typography variant="body2" sx={{ color: 'var(--dq-text-tertiary)' }} gutterBottom>
           可选地设置缺失值填充或列值顺序，让透视表更易读。
         </Typography>
 
@@ -438,7 +435,20 @@ const PivotConfigurator = ({
           disabled={disabled}
           fullWidth
           helperText="当某些行列组合没有数据时显示的默认值"
+          FormHelperTextProps={{ sx: { color: 'var(--dq-text-tertiary)' } }}
           sx={{ mt: 2 }}
+          InputProps={{
+            sx: {
+              borderRadius: 2,
+              backgroundColor: 'var(--dq-surface-control)',
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'var(--dq-border-control)'
+              },
+              '&:hover .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'var(--dq-accent-primary)'
+              }
+            }
+          }}
         />
 
         <TextField
@@ -461,11 +471,23 @@ const PivotConfigurator = ({
           minRows={2}
           sx={{ mt: 3 }}
           helperText={
-            <Box display="flex" alignItems="center" gap={0.5}>
+            <Box display="flex" alignItems="center" gap={0.5} sx={{ color: 'var(--dq-text-tertiary)' }}>
               <HelpCircle size={14} />
               指定列维度的值出现顺序（如按年份排序），未填则自动推断。
             </Box>
           }
+          InputProps={{
+            sx: {
+              borderRadius: 2,
+              backgroundColor: 'var(--dq-surface-control)',
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'var(--dq-border-control)'
+              },
+              '&:hover .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'var(--dq-accent-primary)'
+              }
+            }
+          }}
         />
 
         {/* 列数量上限（Top-N 自动采样） */}
@@ -489,8 +511,20 @@ const PivotConfigurator = ({
           disabled={disabled}
           fullWidth
           sx={{ mt: 2 }}
+          InputProps={{
+            sx: {
+              borderRadius: 2,
+              backgroundColor: 'var(--dq-surface-control)',
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'var(--dq-border-control)'
+              },
+              '&:hover .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'var(--dq-accent-primary)'
+              }
+            }
+          }}
           helperText={
-            <Box display="flex" alignItems="center" gap={0.5}>
+            <Box display="flex" alignItems="center" gap={0.5} sx={{ color: 'var(--dq-text-tertiary)' }}>
               <HelpCircle size={14} />
               建议 10~12，避免列爆炸；未填则需提供"列值顺序"
             </Box>
@@ -513,7 +547,7 @@ const PivotConfigurator = ({
 
         {/* 策略切换（仅保留原生PIVOT） */}
         <Box sx={{ mt: 2 }}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{ color: 'var(--dq-text-tertiary)' }}>
             策略：当前仅支持数据库原生透视，需结合列值顺序或列数量上限使用。
           </Typography>
         </Box>
@@ -596,7 +630,7 @@ const PivotConfigurator = ({
                 <Typography variant="subtitle2" gutterBottom>
                   采样结果 ({previewValues.length} 个值)
                   {previewStats.distinct_count && (
-                    <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                    <Typography component="span" variant="caption" sx={{ ml: 1, color: 'var(--dq-text-tertiary)' }}>
                       (共 {previewStats.distinct_count} 个不同值)
                     </Typography>
                   )}

@@ -1,5 +1,6 @@
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { Moon, Sun } from "lucide-react";
+import { Button, IconButton, Tab, Tabs } from "@mui/material";
 
 // 导入Toast上下文
 import { ToastProvider, useToast } from "./contexts/ToastContext";
@@ -32,7 +33,7 @@ const ModernDataDisplay = React.lazy(() => import("./components/Results/ModernDa
 const UnifiedQueryInterface = React.lazy(() => import("./components/UnifiedQueryInterface/UnifiedQueryInterface"));
 
 const LazyFallback = () => (
-  <div className="p-6 text-gray-500 text-sm">模块加载中...</div>
+  <div className="p-6 dq-text-tertiary text-sm">模块加载中...</div>
 );
 
 // 导入样式
@@ -910,36 +911,70 @@ const ShadcnApp = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center transition ${isDarkMode ? 'bg-[rgba(21,24,31,0.88)] border border-[rgba(148,163,184,0.25)] shadow-[0_18px_38px_-28px_rgba(240,115,53,0.55)]' : 'bg-gray-900'}`}
+                className="dq-header-brand w-10 h-10 rounded-xl flex items-center justify-center transition"
               >
                 <span
-                  className={`font-semibold text-sm tracking-[0.18em] ${isDarkMode ? 'text-[rgba(240,115,53,0.85)] drop-shadow-[0_0_8px_rgba(240,115,53,0.45)]' : 'text-white'}`}
+                  className="dq-header-brand__text font-semibold text-sm tracking-[0.18em]"
                 >
                   DQ
                 </span>
               </div>
-              <h1 className={`text-xl font-semibold ${isDarkMode ? 'text-[rgba(230,234,243,0.96)]' : 'text-gray-900'}`}>Duck Query</h1>
+              <h1 className="text-xl font-semibold" style={{ color: 'var(--dq-text-primary)' }}>Duck Query</h1>
             </div>
             <div className="flex items-center space-x-3">
-              <button
-                type="button"
+              <IconButton
+                size="small"
+                disableRipple
                 onClick={() => setIsDarkMode((prev) => !prev)}
-                className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${isDarkMode ? 'border-[rgba(148,163,184,0.25)] bg-[rgba(21,24,31,0.88)] text-[rgba(230,234,243,0.9)] hover:bg-[rgba(21,24,31,0.96)] focus:ring-[rgba(240,115,53,0.45)] focus:ring-offset-[rgba(6,8,12,0.2)] shadow-[0_16px_36px_-28px_rgba(240,115,53,0.55)]' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-blue-500 focus:ring-offset-white'}`}
                 aria-label={isDarkMode ? "切换为浅色模式" : "切换为暗色模式"}
                 title={isDarkMode ? "切换为浅色模式" : "切换为暗色模式"}
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '12px',
+                  border: '1.5px solid var(--dq-accent-primary)',
+                  backgroundColor: 'var(--dq-surface)',
+                  color: 'var(--dq-accent-primary)',
+                  transition: 'background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease',
+                  '&:hover': {
+                    backgroundColor: 'var(--dq-accent-primary)',
+                    color: 'var(--dq-text-on-primary)',
+                    borderColor: 'var(--dq-accent-primary)'
+                  }
+                }}
               >
                 {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-              </button>
-              <button
+              </IconButton>
+              <Button
+                variant="outlined"
+                size="small"
+                disableRipple
                 onClick={() => {
                   setShowWelcome(true);
                   const welcomeShownKey = 'duck-query-welcome-shown';
                   localStorage.setItem(welcomeShownKey, new Date().toISOString());
                 }}
-                className={`inline-flex items-center justify-center h-10 px-4 text-sm font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${isDarkMode ? 'bg-[rgba(21,24,31,0.88)] text-[rgba(230,234,243,0.92)] border-[rgba(148,163,184,0.25)] hover:bg-[rgba(21,24,31,0.96)] focus:ring-[rgba(240,115,53,0.45)] focus:ring-offset-[rgba(6,8,12,0.2)] shadow-[0_16px_36px_-28px_rgba(240,115,53,0.55)]' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-blue-500 focus:ring-offset-white'}`}
+                sx={{
+                  borderRadius: '8px',
+                  border: '1.5px solid var(--dq-accent-primary)',
+                  px: 2.5,
+                  py: 0.75,
+                  textTransform: 'none',
+                  fontWeight: 500,
+                  fontSize: '0.95rem',
+                  letterSpacing: '-0.01em',
+                  color: 'var(--dq-accent-primary)',
+                  backgroundColor: 'var(--dq-surface)',
+                  transition: 'background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease',
+                  '&:hover': {
+                    backgroundColor: 'var(--dq-accent-primary)',
+                    color: 'var(--dq-text-on-primary)',
+                    borderColor: 'var(--dq-accent-primary)'
+                  }
+                }}
               >
                 产品介绍
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -948,22 +983,54 @@ const ShadcnApp = () => {
       {/* 主要内容 */}
       <main className="w-full px-6 py-8">
         <div className="dq-shell mb-6">
-          <div className="mantine-tabs">
-            {[
-              { id: "datasource", label: "数据源" },
-              { id: "unifiedquery", label: "统一查询" },
-              { id: "tablemanagement", label: "数据表管理" },
-              { id: "asynctasks", label: "异步任务" },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setCurrentTab(tab.id)}
-                className={`mantine-tab ${currentTab === tab.id ? "active" : ""}`}
+            <div className="mantine-tabs">
+              <Tabs
+                value={currentTab}
+                onChange={(_, value) => setCurrentTab(value)}
+                variant="scrollable"
+                scrollButtons={false}
+                aria-label="主功能切换"
+                sx={{
+                  minHeight: 0,
+                  px: 2.5,
+                  pt: 1.5,
+                  pb: 1,
+                  borderBottom: '1px solid var(--dq-border-subtle)',
+                  backgroundColor: 'var(--dq-surface)',
+                  '& .MuiTabs-indicator': {
+                    backgroundColor: 'var(--dq-tab-indicator)',
+                    height: 'var(--dq-tab-indicator-height)',
+                    borderRadius: 999
+                  },
+                  '& .MuiTabs-flexContainer': {
+                    gap: 'calc(var(--dq-tab-gap) + 4px)'
+                  },
+                  '& .MuiTab-root': {
+                    minHeight: 0,
+                    minWidth: 'auto',
+                    padding: 'calc(var(--dq-tab-padding-y) + 4px) calc(var(--dq-tab-padding-x) + 6px)',
+                    color: 'var(--dq-tab-text)',
+                    fontSize: 'var(--dq-tab-font-size-primary)',
+                    fontWeight: 'var(--dq-tab-font-weight-primary)',
+                    textTransform: 'none',
+                    letterSpacing: '-0.01em',
+                    borderRadius: 0,
+                    lineHeight: 1.6,
+                    '&:hover': {
+                      color: 'var(--dq-tab-text-active)'
+                    }
+                  },
+                  '& .MuiTab-root.Mui-selected': {
+                    color: 'var(--dq-tab-active-color)'
+                  }
+                }}
               >
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
+                <Tab disableRipple value="datasource" label="数据源" />
+                <Tab disableRipple value="unifiedquery" label="统一查询" />
+                <Tab disableRipple value="tablemanagement" label="数据表管理" />
+                <Tab disableRipple value="asynctasks" label="异步任务" />
+              </Tabs>
+            </div>
 
           {currentTab === "datasource" && (
             <div className="p-6">
@@ -1141,20 +1208,45 @@ const ShadcnApp = () => {
               </div>
 
               <div className="dq-shell mb-6">
-                <div className="mantine-tabs secondary">
-                  {[
-                    { id: "duckdb", label: "DuckDB管理" },
-                    { id: "external", label: "外部数据库" },
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setTableManagementTab(tab.id)}
-                      className={`mantine-tab secondary ${tableManagementTab === tab.id ? "active" : ""}`}
-                    >
-                      <span>{tab.label}</span>
-                    </button>
-                  ))}
-                </div>
+                <Tabs
+                  value={tableManagementTab}
+                  onChange={(_, value) => setTableManagementTab(value)}
+                  aria-label="数据表管理分组"
+                  sx={{
+                    px: 2,
+                    pt: 1.25,
+                    pb: 0.75,
+                    borderBottom: '1px solid var(--dq-border-subtle)',
+                    '& .MuiTabs-indicator': {
+                      backgroundColor: 'var(--dq-tab-indicator)',
+                      height: 'var(--dq-tab-indicator-height)',
+                      borderRadius: 999
+                    },
+                    '& .MuiTabs-flexContainer': {
+                      gap: 'calc(var(--dq-tab-gap) + 4px)'
+                    },
+                    '& .MuiTab-root': {
+                      minHeight: 0,
+                      minWidth: 'auto',
+                      padding: 'calc(var(--dq-tab-padding-y)) calc(var(--dq-tab-padding-x) + 4px)',
+                      color: 'var(--dq-tab-text)',
+                      fontSize: 'var(--dq-tab-font-size-secondary)',
+                      fontWeight: 'var(--dq-tab-font-weight-secondary)',
+                      textTransform: 'none',
+                      letterSpacing: '-0.01em',
+                      borderRadius: 0,
+                      '&:hover': {
+                        color: 'var(--dq-tab-text-active)'
+                      }
+                    },
+                    '& .MuiTab-root.Mui-selected': {
+                      color: 'var(--dq-tab-active-color)'
+                    }
+                  }}
+                >
+                  <Tab disableRipple value="duckdb" label="DuckDB管理" />
+                  <Tab disableRipple value="external" label="外部数据库" />
+                </Tabs>
 
                 {tableManagementTab === "duckdb" && (
                   <div className="p-6">

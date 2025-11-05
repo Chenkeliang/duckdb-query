@@ -557,7 +557,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
 
                   {/* SQL查询示例 - 在展开状态下显示 */}
                   {expandedTables.has(table.table_name) && (
-                    <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                    <Box sx={{ mt: 2, p: 2, bgcolor: 'var(--dq-surface-hover)', borderRadius: 1 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <Code size={16} style={{ marginRight: '8px' }} />
                         <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -568,7 +568,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                         variant="body2"
                         sx={{
                           fontFamily: 'monospace',
-                          bgcolor: 'white',
+                          bgcolor: 'var(--dq-surface)',
                           p: 1,
                           borderRadius: 0.5,
                           border: '1px solid var(--dq-border-subtle)'

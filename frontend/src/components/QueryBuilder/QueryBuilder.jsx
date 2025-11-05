@@ -771,15 +771,15 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     <Paper
       sx={{
         p: 3,
-        borderRadius: 3,
-        boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
-        border: '1px solid rgba(0, 0, 0, 0.06)',
+        borderRadius: 'var(--dq-radius-card)',
+        boxShadow: 'var(--dq-shadow-soft)',
+        border: '1px solid var(--dq-border-card)',
         height: '100%',
         // 防止触控板手势导致的页面导航
         overscrollBehavior: 'contain',
         touchAction: 'pan-x pan-y',
         backdropFilter: 'blur(20px)',
-        background: 'rgba(255,255,255,0.95)'
+        backgroundColor: 'var(--dq-surface-card)'
       }}
     >
 
@@ -791,7 +791,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
             sx={{
               mb: 3,
               borderRadius: 2,
-              border: '1px solid rgba(211, 47, 47, 0.1)'
+              border: '1px solid var(--dq-status-error-bg)'
             }}
             onClose={() => setError('')}
           >
@@ -877,10 +877,10 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
                 fontWeight: 500,
                 textTransform: 'none',
                 fontSize: '0.8125rem',
-                border: '1px solid rgba(0, 113, 227, 0.5)',
+                border: '1px solid color-mix(in oklab, var(--dq-accent-primary) 45%, transparent)',
                 '&:hover': {
-                  border: '1px solid rgba(0, 113, 227, 0.8)',
-                  backgroundColor: 'rgba(0, 113, 227, 0.04)'
+                  border: '1px solid color-mix(in oklab, var(--dq-accent-primary) 65%, transparent)',
+                  backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 14%, transparent)'
                 }
               }}
             >
@@ -903,9 +903,9 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
             <Box sx={{
               p: 3,
               textAlign: 'center',
-              backgroundColor: 'rgba(0,0,0,0.01)',
+              backgroundColor: 'var(--dq-surface-hover)',
               borderRadius: 2,
-              border: '1px dashed rgba(0,0,0,0.1)'
+              border: '1px dashed var(--dq-border-subtle)'
             }}>
               <Typography
                 variant="body2"
@@ -943,7 +943,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         sx={{
           mt: 'auto',
           pt: 3,
-          borderTop: '1px solid rgba(0,0,0,0.06)'
+          borderTop: '1px solid var(--dq-border)'
         }}
       >
         {/* 默认执行查询按钮 - 当没有选择操作模式时显示 */}
@@ -960,15 +960,15 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
               fontWeight: 600,
               textTransform: 'none',
               backgroundColor: 'var(--dq-accent-primary-strong)',
-              color: 'white',
-              boxShadow: '0 4px 12px rgba(0, 113, 227, 0.2)',
+              color: 'var(--dq-text-on-primary)',
+              boxShadow: 'var(--dq-accent-shadow)',
               '&:hover': {
                 backgroundColor: 'var(--dq-accent-primary-strong)',
-                boxShadow: '0 2px 8px rgba(0, 113, 227, 0.3)'
+                boxShadow: 'var(--dq-accent-shadow)'
               },
               '&.Mui-disabled': {
                 backgroundColor: 'var(--dq-border-subtle)',
-                color: 'rgba(0, 0, 0, 0.38)'
+                color: 'var(--dq-text-tertiary)'
               }
             }}
             startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <Play size={20} />}
@@ -991,15 +991,15 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
                 fontWeight: 600,
                 textTransform: 'none',
                 backgroundColor: 'var(--dq-accent-primary-strong)',
-                color: 'white',
-                boxShadow: '0 4px 12px rgba(0, 113, 227, 0.2)',
+                color: 'var(--dq-text-on-primary)',
+                boxShadow: 'var(--dq-accent-shadow)',
                 '&:hover': {
                   backgroundColor: 'var(--dq-accent-primary-strong)',
-                  boxShadow: '0 2px 8px rgba(0, 113, 227, 0.3)'
+                  boxShadow: 'var(--dq-accent-shadow)'
                 },
                 '&.Mui-disabled': {
                   backgroundColor: 'var(--dq-border-subtle)',
-                  color: 'rgba(0, 0, 0, 0.38)'
+                  color: 'var(--dq-text-tertiary)'
                 }
               }}
               startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <Play size={20} />}
@@ -1023,15 +1023,15 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
                 fontWeight: 600,
                 textTransform: 'none',
                 backgroundColor: 'var(--dq-accent-primary-strong)',
-                color: 'white',
-                boxShadow: '0 4px 12px rgba(0, 113, 227, 0.2)',
+                color: 'var(--dq-text-on-primary)',
+                boxShadow: 'var(--dq-accent-shadow)',
                 '&:hover': {
                   backgroundColor: 'var(--dq-accent-primary-strong)',
-                  boxShadow: '0 2px 8px rgba(0, 113, 227, 0.3)'
+                  boxShadow: 'var(--dq-accent-shadow)'
                 },
                 '&.Mui-disabled': {
                   backgroundColor: 'var(--dq-border-subtle)',
-                  color: 'rgba(0, 0, 0, 0.38)'
+                  color: 'var(--dq-text-tertiary)'
                 }
               }}
               startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <Play size={20} />}
@@ -1058,9 +1058,9 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
       {/* 全屏加载遮罩 */}
       <Backdrop
         sx={{
-          color: '#fff',
+          color: 'var(--dq-text-on-primary)',
           zIndex: (theme) => theme.zIndex.drawer + 1,
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          backgroundColor: 'var(--dq-overlay-strong)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           flexDirection: 'column',

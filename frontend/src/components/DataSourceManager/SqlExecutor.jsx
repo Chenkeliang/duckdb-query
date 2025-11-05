@@ -103,6 +103,13 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  const accentPrimary = 'var(--dq-accent-primary)';
+  const accentSoftBg = 'var(--dq-accent-soft-bg)';
+  const accentGradientBase = `linear-gradient(135deg, color-mix(in oklab, ${accentPrimary} 95%, transparent) 0%, color-mix(in oklab, ${accentPrimary} 80%, transparent) 100%)`;
+  const accentGradientHover = `linear-gradient(135deg, color-mix(in oklab, ${accentPrimary} 100%, transparent) 0%, color-mix(in oklab, ${accentPrimary} 90%, transparent) 100%)`;
+  const accentShadow = 'var(--dq-accent-shadow)';
+  const neutralShadowStrong = 'var(--dq-neutral-shadow-strong)';
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -369,20 +376,20 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
         disableGutters
         elevation={0}
         sx={{
-          border: isDarkMode ? '1px solid var(--dq-border)' : '1px solid rgba(0, 0, 0, 0.1)',
+          border: `1px solid ${isDarkMode ? 'var(--dq-border)' : 'var(--dq-border-subtle)'}`,
           borderRadius: '12px',
           mb: 2,
           '&:before': { display: 'none' },
           overflow: 'hidden',
-          backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface)',
-          boxShadow: isDarkMode ? 'var(--dq-shadow-soft)' : 'none'
+          backgroundColor: 'var(--dq-surface)',
+          boxShadow: isDarkMode ? 'var(--dq-shadow-soft)' : neutralShadowStrong
         }}
       >
         <AccordionSummary
           expandIcon={<ExpandMoreIcon />}
           sx={{
             backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : 'var(--dq-surface)',
-            borderBottom: expanded ? (isDarkMode ? '1px solid var(--dq-border-subtle)' : '1px solid rgba(0, 0, 0, 0.1)') : 'none',
+            borderBottom: expanded ? '1px solid var(--dq-border-subtle)' : 'none',
             minHeight: '48px',
             '& .MuiAccordionSummary-content': { my: 0 }
           }}
@@ -421,7 +428,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
               }}
               renderValue={(value) => {
                 if (!value) {
-                  return <Typography sx={{ color: isDarkMode ? 'var(--dq-text-tertiary)' : 'rgba(0,0,0,0.6)' }}>请选择数据库连接</Typography>;
+                  return <Typography sx={{ color: 'var(--dq-text-tertiary)' }}>请选择数据库连接</Typography>;
                 }
                 const ds = databaseConnections.find(item => item.id === value);
                 return ds ? ds.name : value;
@@ -431,7 +438,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                 backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : undefined,
                 borderRadius: 2,
                 '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined
+                  borderColor: 'var(--dq-border-subtle)'
                 },
                 '&:hover .MuiOutlinedInput-notchedOutline': {
                   borderColor: 'var(--dq-accent-100)'
@@ -494,13 +501,13 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   py: 0.5,
                   borderRadius: 2,
                   borderColor: isDarkMode ? 'var(--dq-border-subtle)' : 'var(--dq-border-subtle)',
-                  color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
-                  backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
+                  color: 'var(--dq-text-secondary)',
+                  backgroundColor: 'var(--dq-surface)',
                   height: '40px',
                   '&:hover': {
-                    borderColor: 'var(--dq-accent-100)',
+                    borderColor: 'var(--dq-border-hover)',
                     color: 'var(--dq-accent-100)',
-                    backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(255, 152, 0, 0.08)'
+                    backgroundColor: accentSoftBg
                   }
                 }}
               >
@@ -517,14 +524,14 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   px: 2.5,
                   py: 0.5,
                   borderRadius: 2,
-                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : 'var(--dq-border-subtle)',
-                  color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
-                  backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
+                  borderColor: 'var(--dq-border-subtle)',
+                  color: 'var(--dq-text-secondary)',
+                  backgroundColor: 'var(--dq-surface)',
                   height: '40px',
                   '&:hover': {
-                    borderColor: 'var(--dq-accent-100)',
+                    borderColor: 'var(--dq-border-hover)',
                     color: 'var(--dq-accent-100)',
-                    backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(25, 118, 210, 0.06)'
+                    backgroundColor: accentSoftBg
                   }
                 }}
               >
@@ -541,14 +548,14 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   px: 2.5,
                   py: 0.5,
                   borderRadius: 2,
-                  borderColor: isDarkMode ? 'var(--dq-border-subtle)' : 'var(--dq-border-subtle)',
-                  color: isDarkMode ? 'var(--dq-text-tertiary)' : '#666',
-                  backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'transparent',
+                  borderColor: 'var(--dq-border-subtle)',
+                  color: 'var(--dq-text-secondary)',
+                  backgroundColor: 'var(--dq-surface)',
                   height: '40px',
                   '&:hover': {
-                    borderColor: 'var(--dq-accent-100)',
+                    borderColor: 'var(--dq-border-hover)',
                     color: 'var(--dq-accent-100)',
-                    backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : 'rgba(25, 118, 210, 0.06)'
+                    backgroundColor: accentSoftBg
                   }
                 }}
               >
@@ -648,15 +655,16 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                 textTransform: 'none',
                 fontWeight: 500,
                 fontSize: '1rem',
-                background: isDarkMode
-                  ? 'linear-gradient(135deg, rgba(240, 115, 53, 0.95) 0%, rgba(235, 99, 32, 0.98) 100%)'
-                  : undefined,
-                boxShadow: isDarkMode ? '0 16px 36px -18px rgba(240, 115, 53, 0.6)' : undefined,
+                background: accentGradientBase,
+                boxShadow: accentShadow,
                 '&:hover': {
-                  background: isDarkMode
-                    ? 'linear-gradient(135deg, rgba(240, 115, 53, 1) 0%, rgba(235, 99, 32, 1) 100%)'
-                    : undefined,
-                  boxShadow: isDarkMode ? '0 18px 40px -16px rgba(240, 115, 53, 0.7)' : undefined
+                  background: accentGradientHover,
+                  boxShadow: accentShadow
+                },
+                '&:disabled': {
+                  background: 'var(--dq-surface-muted)',
+                  color: 'var(--dq-text-tertiary)',
+                  boxShadow: 'none'
                 }
               }}
             >
@@ -676,13 +684,13 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                   textTransform: 'none',
                   fontWeight: 500,
                   fontSize: '1rem',
-                  borderColor: isDarkMode ? 'var(--dq-border)' : undefined,
-                  color: isDarkMode ? 'var(--dq-text-secondary)' : undefined,
-                  backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                  borderColor: 'var(--dq-border-subtle)',
+                  color: 'var(--dq-text-secondary)',
+                  backgroundColor: 'var(--dq-surface)',
                   '&:hover': {
-                    borderColor: 'var(--dq-accent-100)',
+                    borderColor: 'var(--dq-border-hover)',
                     color: 'var(--dq-accent-100)',
-                    backgroundColor: isDarkMode ? 'rgba(240, 115, 53, 0.12)' : undefined
+                    backgroundColor: accentSoftBg
                   }
                 }}
               >
@@ -728,7 +736,7 @@ const SqlExecutor = ({ databaseConnections = [], onDataSourceSaved, onResultsRec
                               >
                                 {row[column] !== null && row[column] !== undefined
                                   ? String(row[column])
-                                  : <span style={{ color: '#999', fontStyle: 'italic' }}>null</span>}
+                                  : <span style={{ color: 'var(--dq-text-tertiary)', fontStyle: 'italic' }}>null</span>}
                               </TableCell>
                             ))}
                           </TableRow>

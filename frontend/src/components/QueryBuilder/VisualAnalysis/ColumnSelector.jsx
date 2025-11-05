@@ -138,8 +138,14 @@ const ColumnSelector = ({
   if (!selectedTable) {
     return (
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700">选择分析列</label>
-        <div className="p-4 border border-gray-200 rounded-md bg-gray-50 text-center">
+        <label className="text-sm font-medium" style={{ color: 'var(--dq-text-secondary)' }}>选择分析列</label>
+        <div
+          className="p-4 rounded-md text-center"
+          style={{
+            border: '1px solid var(--dq-border-subtle)',
+            backgroundColor: 'color-mix(in oklab, var(--dq-surface-card) 92%, var(--dq-accent-primary) 8%)'
+          }}
+        >
           <Typography variant="body2" color="text.secondary">
             请先选择一个数据表
           </Typography>
@@ -151,7 +157,7 @@ const ColumnSelector = ({
   if (availableColumns.length === 0) {
     return (
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700">选择分析列</label>
+        <label className="text-sm font-medium" style={{ color: 'var(--dq-text-secondary)' }}>选择分析列</label>
         <Alert severity="warning" sx={{ borderRadius: 2 }}>
           <Typography variant="body2">
             所选表没有可用的列信息
@@ -165,7 +171,7 @@ const ColumnSelector = ({
     <div className="space-y-2">
       {/* Header with expand/collapse and select all controls */}
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-gray-700">
+        <label className="text-sm font-medium" style={{ color: 'var(--dq-text-secondary)' }}>
           选择分析列
         </label>
         <div className="flex items-center space-x-1">
@@ -178,7 +184,7 @@ const ColumnSelector = ({
               sx={{
                 color: selectAllState === 'all' ? 'var(--dq-text-primary)' : 'var(--dq-text-secondary)',
                 '&:hover': {
-                  backgroundColor: 'rgba(0, 113, 227, 0.04)'
+                  backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 14%, transparent)'
                 }
               }}
             >
@@ -194,7 +200,7 @@ const ColumnSelector = ({
               sx={{
                 color: 'var(--dq-text-secondary)',
                 '&:hover': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.04)'
+                  backgroundColor: 'var(--dq-accent-primary-soft)'
                 }
               }}
             >
@@ -268,10 +274,10 @@ const ColumnSelector = ({
                     '&:hover': {
                       backgroundColor: isSelected
                         ? 'var(--dq-accent-primary-soft)'
-                        : 'var(--dq-surface-alt)',
+                        : 'var(--dq-accent-primary-soft)',
                       borderColor: isSelected
                         ? 'var(--dq-accent-primary)'
-                        : 'var(--dq-border-card)',
+                        : 'color-mix(in oklab, var(--dq-accent-primary) 30%, var(--dq-border-card))',
                       transform: disabled ? 'none' : 'translateY(-1px)'
                     }
                   }}

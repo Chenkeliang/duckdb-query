@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList as List } from 'react-window';
-import { Filter } from 'lucide-react';
+import { Copy, Filter } from 'lucide-react';
 
 const VirtualTable = ({
   data = [],
@@ -25,7 +25,8 @@ const VirtualTable = ({
   loading = false,
   autoRowHeight = true, // 新增自适应行高选项
   columnValueFilters = {},
-  onOpenColumnFilterMenu
+  onOpenColumnFilterMenu,
+  onCopyColumnName = null
 }) => {
   const theme = useTheme();
   const containerRef = useRef(null);
@@ -44,6 +45,43 @@ const VirtualTable = ({
     window.addEventListener('resize', updateWidth);
     return () => window.removeEventListener('resize', updateWidth);
   }, []);
+
+  const headerActionBaseSx = {
+    color: 'var(--dq-text-secondary)',
+    border: '1px solid var(--dq-border-card)',
+    backgroundColor: 'var(--dq-surface)',
+    borderRadius: '10px',
+    padding: '4px',
+    transition: 'all 0.18s ease',
+    '&:hover': {
+      color: 'var(--dq-accent-100)',
+      borderColor: 'var(--dq-border-hover)',
+      backgroundColor: 'var(--dq-surface-hover)'
+    }
+  };
+
+  const headerActionActiveSx = {
+    color: 'var(--dq-accent-100)',
+    borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 48%, transparent)',
+    backgroundColor: 'var(--dq-accent-soft-bg)',
+    '&:hover': {
+      color: 'var(--dq-accent-100)',
+      borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 65%, transparent)',
+      backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 26%, transparent)'
+    }
+  };
+
+  const handleCopyColumnLabel = (label) => {
+    const resolved = label || '';
+    if (!resolved) return;
+    if (onCopyColumnName) {
+      onCopyColumnName(resolved);
+      return;
+    }
+    if (typeof navigator !== 'undefined' && navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(resolved).catch(() => {});
+    }
+  };
 
   // 计算列宽 - 简化但更有效的自适应算法
   const columnWidths = useMemo(() => {
@@ -162,10 +200,10 @@ const VirtualTable = ({
           display: 'block',
           width: '100%',
           cursor: 'help',
+          borderRadius: '4px',
+          padding: '2px 4px',
           '&:hover': {
-            backgroundColor: 'rgba(0, 0, 0, 0.04)',
-            borderRadius: '4px',
-            padding: '2px 4px'
+            backgroundColor: 'var(--dq-surface-hover)'
           }
         }}
       >
@@ -187,7 +225,7 @@ const VirtualTable = ({
           sx={{
             cursor: onRowClick ? 'pointer' : 'default',
             '&:hover': {
-              backgroundColor: 'rgba(0, 0, 0, 0.04)'
+              backgroundColor: 'var(--dq-surface-hover)'
             },
             display: 'flex',
             width: totalWidth
@@ -203,13 +241,13 @@ const VirtualTable = ({
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
-                borderBottom: '1px solid rgba(224, 224, 224, 1)',
+                borderBottom: '1px solid var(--dq-border-subtle)',
                 flex: '0 0 auto',
                 padding: '8px 12px',
                 verticalAlign: 'top',
                 // 改进内容显示
                 '&:hover': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                  backgroundColor: 'var(--dq-surface-hover)',
                 }
               }}
             >
@@ -260,10 +298,10 @@ const VirtualTable = ({
           borderRadius: '6px',
         },
         '&::-webkit-scrollbar-thumb': {
-          background: '#888',
+          background: 'var(--dq-border-subtle)',
           borderRadius: '6px',
           '&:hover': {
-            background: '#555',
+            background: 'var(--dq-border-hover)',
           },
         },
       }}
@@ -279,14 +317,15 @@ const VirtualTable = ({
                   minWidth: finalColumnWidths[index],
                   maxWidth: finalColumnWidths[index],
                   fontWeight: 'bold',
-                  backgroundColor: columnValueFilters?.[column.field] ? 'var(--dq-surface-card-active)' : 'rgba(0, 0, 0, 0.04)',
+                  backgroundColor: columnValueFilters?.[column.field] ? 'var(--dq-surface-card-active)' : 'var(--dq-surface)',
                   position: 'sticky',
                   top: 0,
                   zIndex: 1,
                   flex: '0 0 auto',
                   padding: '12px 12px',
                   verticalAlign: 'top',
-                  borderBottom: '2px solid rgba(0, 0, 0, 0.12)'
+                  borderBottom: '2px solid var(--dq-border-subtle)',
+                  color: 'var(--dq-text-primary)'
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
@@ -297,7 +336,9 @@ const VirtualTable = ({
                         fontWeight: 600,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
+                        whiteSpace: 'nowrap',
+                        userSelect: 'text',
+                        cursor: 'text'
                       }}
                     >
                       {column.headerName || column.field}
@@ -311,18 +352,37 @@ const VirtualTable = ({
                       />
                     )}
                   </Box>
-                  <Tooltip title="列筛选">
-                    <IconButton
-                      size="small"
-                      color={columnValueFilters?.[column.field] ? 'primary' : 'default'}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onOpenColumnFilterMenu?.(column.field, event.currentTarget);
-                      }}
-                    >
-                      <Filter size={16} />
-                    </IconButton>
-                  </Tooltip>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Tooltip title="复制列名">
+                      <IconButton
+                        size="small"
+                        aria-label={`复制列名 ${column.headerName || column.field}`}
+                        sx={headerActionBaseSx}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleCopyColumnLabel(column.headerName || column.field);
+                        }}
+                      >
+                        <Copy size={16} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="列筛选">
+                      <IconButton
+                        size="small"
+                        aria-label={`列筛选 ${column.headerName || column.field}`}
+                        sx={{
+                          ...headerActionBaseSx,
+                          ...(columnValueFilters?.[column.field] ? headerActionActiveSx : {})
+                        }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onOpenColumnFilterMenu?.(column.field, event.currentTarget);
+                        }}
+                      >
+                        <Filter size={16} />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
                 </Box>
               </TableCell>
             ))}

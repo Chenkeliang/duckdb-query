@@ -53,13 +53,19 @@ const UnifiedQueryInterface = ({
             },
             '& .MuiTab-root': {
               color: 'var(--dq-text-tertiary)',
-              fontSize: '18px',
-              fontWeight: 600,
+              fontSize: 'var(--dq-tab-font-size-secondary)',
+              fontWeight: 'var(--dq-tab-font-weight-secondary)',
               textTransform: 'none',
-              minHeight: 52
+              minHeight: 52,
+              minWidth: 'auto',
+              backgroundColor: 'transparent',
+              '&:hover': {
+                color: 'var(--dq-text-primary)'
+              }
             },
             '& .MuiTab-root.Mui-selected': {
-              color: 'var(--dq-text-primary)'
+              color: 'var(--dq-tab-active-color)',
+              backgroundColor: 'transparent'
             }
           }}
         >

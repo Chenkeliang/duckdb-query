@@ -92,11 +92,11 @@ const JoinTypeConflictDialog = ({
       fullWidth
       PaperProps={{
         sx: {
-          backgroundColor: 'var(--dq-text-primary)',
-          color: 'var(--dq-border-subtle)',
-          borderRadius: 3,
-          boxShadow: '0 28px 60px rgba(15, 23, 42, 0.55)',
-          border: '1px solid rgba(148, 163, 184, 0.25)',
+          backgroundColor: 'var(--dq-surface-card)',
+          color: 'var(--dq-text-primary)',
+          borderRadius: 'var(--dq-radius-card)',
+          boxShadow: 'var(--dq-shadow-soft)',
+          border: '1px solid var(--dq-border-card)',
         },
       }}
     >
@@ -111,7 +111,7 @@ const JoinTypeConflictDialog = ({
         <Stack direction="row" spacing={1.5} alignItems="center">
           <Box
             sx={{
-              background: 'rgba(251, 191, 36, 0.12)',
+              background: 'color-mix(in oklab, var(--dq-status-warning-fg) 24%, transparent)',
               color: 'var(--dq-status-warning-fg)',
               borderRadius: '50%',
               width: 32,
@@ -124,10 +124,10 @@ const JoinTypeConflictDialog = ({
             <AlertTriangle size={18} />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: 'var(--dq-border-subtle)' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: 'var(--dq-text-primary)' }}>
               检测到JOIN类型冲突
             </Typography>
-            <Typography variant="body2" sx={{ color: 'rgba(148, 163, 184, 0.9)' }}>
+            <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>
               请选择一个统一的类型来对齐左右两侧字段，以避免 DuckDB 类型转换错误。
             </Typography>
           </Box>
@@ -137,10 +137,10 @@ const JoinTypeConflictDialog = ({
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ color: 'rgba(226, 232, 240, 0.8)' }}>JOIN 条件</TableCell>
-              <TableCell sx={{ color: 'rgba(226, 232, 240, 0.8)' }}>左侧类型</TableCell>
-              <TableCell sx={{ color: 'rgba(226, 232, 240, 0.8)' }}>右侧类型</TableCell>
-              <TableCell sx={{ color: 'rgba(226, 232, 240, 0.8)' }}>统一为</TableCell>
+              <TableCell sx={{ color: 'var(--dq-text-secondary)' }}>JOIN 条件</TableCell>
+              <TableCell sx={{ color: 'var(--dq-text-secondary)' }}>左侧类型</TableCell>
+              <TableCell sx={{ color: 'var(--dq-text-secondary)' }}>右侧类型</TableCell>
+              <TableCell sx={{ color: 'var(--dq-text-secondary)' }}>统一为</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -153,7 +153,7 @@ const JoinTypeConflictDialog = ({
                 <TableRow key={key} hover>
                   <TableCell>
                     <Stack spacing={0.5}>
-                      <Typography sx={{ fontWeight: 600, color: 'var(--dq-border-subtle)' }}>
+                      <Typography sx={{ fontWeight: 600, color: 'var(--dq-text-primary)' }}>
                         {conflict.left.sourceLabel}.{conflict.left.column}
                       </Typography>
                       <Stack direction="row" spacing={1} alignItems="center">
@@ -161,24 +161,24 @@ const JoinTypeConflictDialog = ({
                           label="="
                           size="small"
                           sx={{
-                            bgcolor: 'rgba(148, 163, 184, 0.12)',
-                            color: 'var(--dq-border-subtle)',
+                            bgcolor: 'color-mix(in oklab, var(--dq-text-secondary) 18%, transparent)',
+                            color: 'var(--dq-text-secondary)',
                             fontWeight: 500,
                           }}
                         />
-                        <Typography sx={{ fontWeight: 600, color: 'var(--dq-border-subtle)' }}>
+                        <Typography sx={{ fontWeight: 600, color: 'var(--dq-text-primary)' }}>
                           {conflict.right.sourceLabel}.{conflict.right.column}
                         </Typography>
                       </Stack>
                     </Stack>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" sx={{ color: 'rgba(148, 163, 184, 0.9)' }}>
+                    <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>
                       {conflict.left.displayType}
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" sx={{ color: 'rgba(148, 163, 184, 0.9)' }}>
+                    <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>
                       {conflict.right.displayType}
                     </Typography>
                   </TableCell>
@@ -195,13 +195,13 @@ const JoinTypeConflictDialog = ({
                           variant="outlined"
                           size="small"
                           placeholder="例如 VARCHAR"
-                          sx={{
+                            sx={{
                             '& .MuiOutlinedInput-root': {
-                              color: 'var(--dq-border-subtle)',
-                              backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                              color: 'var(--dq-text-primary)',
+                              backgroundColor: 'var(--dq-surface-active)',
                               borderRadius: 2,
                               '& fieldset': {
-                                borderColor: 'rgba(148, 163, 184, 0.25)',
+                                borderColor: 'var(--dq-border-subtle)',
                               },
                               '&:hover fieldset': {
                                 borderColor: 'var(--dq-status-warning-fg)',
@@ -225,7 +225,7 @@ const JoinTypeConflictDialog = ({
         </Table>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={handleClose} disabled={isSubmitting} sx={{ color: 'rgba(148, 163, 184, 0.9)' }}>
+        <Button onClick={handleClose} disabled={isSubmitting} sx={{ color: 'var(--dq-text-secondary)' }}>
           取消
         </Button>
         <Button
@@ -237,7 +237,7 @@ const JoinTypeConflictDialog = ({
             px: 3,
             fontWeight: 600,
             background: 'linear-gradient(135deg, var(--dq-chart-8), var(--dq-status-warning-fg))',
-            boxShadow: '0 12px 30px rgba(250, 204, 21, 0.35)',
+            boxShadow: '0 12px 30px -14px color-mix(in oklab, var(--dq-status-warning-fg) 45%, transparent)',
             '&:hover': {
               background: 'linear-gradient(135deg, color-mix(in oklab, var(--dq-status-warning-fg) 85%, transparent), var(--dq-status-warning-fg))',
             },

@@ -25,80 +25,33 @@ const SQLPreview = ({
   const viewRef = useRef(null);
   const [isDarkMode, setIsDarkMode] = useState(detectDarkMode);
 
-  const previewDarkTheme = useMemo(
+  const resolvedHeight = useMemo(
+    () => (typeof height === 'number' ? `${height}px` : `${height}`),
+    [height]
+  );
+
+  const previewAppearance = useMemo(
     () =>
       EditorView.theme(
         {
           '&': {
-            color: 'var(--dq-text-primary)',
-            backgroundColor: 'var(--dq-neutral-1000)'
-          },
-          '.cm-editor': {
-            borderRadius: '12px',
-            border: '1px solid rgba(148, 163, 184, 0.22)',
-            backgroundColor: 'var(--dq-neutral-1000)'
-          },
-          '.cm-scroller': {
-            backgroundColor: 'transparent'
+            fontFamily: '"Monaco", "Menlo", "Ubuntu Mono", monospace',
+            fontSize: '13px'
           },
           '.cm-content': {
-            padding: '12px',
-            minHeight: `${height}px`
+            padding: '12px'
+          },
+          '.cm-scroller': {
+            fontFamily: '"Monaco", "Menlo", "Ubuntu Mono", monospace',
+            minHeight: resolvedHeight
           },
           '.cm-gutters': {
-            backgroundColor: 'var(--dq-neutral-1000)',
-            color: "color-mix(in oklab, var(--dq-text-tertiary) 80%, transparent)",
-            borderRight: "1px solid color-mix(in oklab, var(--dq-border) 45%, transparent)"
-          },
-          '.cm-activeLine': {
-            backgroundColor: 'rgba(240, 115, 53, 0.15)'
-          },
-          '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-            backgroundColor: 'rgba(240, 115, 53, 0.28) !important'
-          },
-          '.cm-lineNumbers .cm-gutterElement': {
-            paddingRight: '12px'
-          },
-          '.cm-tooltip': {
-            border: '1px solid rgba(148, 163, 184, 0.2)',
-            backgroundColor: "color-mix(in oklab, var(--dq-neutral-1000) 80%, transparent)",
-            color: 'var(--dq-text-primary)'
+            padding: '0 8px'
           }
         },
-        { dark: true }
+        { dark: isDarkMode }
       ),
-    [height]
-  );
-
-  const previewLightTheme = useMemo(
-    () =>
-      EditorView.theme({
-        '&': {
-          color: 'var(--dq-text-secondary)',
-          backgroundColor: 'var(--dq-surface)'
-        },
-        '.cm-editor': {
-          borderRadius: '12px',
-          border: '1px solid var(--dq-border-subtle)',
-          backgroundColor: 'var(--dq-surface)'
-        },
-        '.cm-content': {
-          padding: '12px',
-          minHeight: `${height}px`
-        },
-        '.cm-gutters': {
-          backgroundColor: "color-mix(in oklab, var(--dq-accent-primary) 15%, var(--dq-surface))",
-          color: 'var(--dq-text-tertiary)',
-          borderRight: '1px solid var(--dq-border-subtle)'
-        },
-        '.cm-activeLine': {
-          backgroundColor: 'rgba(37, 99, 235, 0.1)'
-        },
-        '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-          backgroundColor: 'rgba(37, 99, 235, 0.18) !important'
-        }
-      }),
-    [height]
+    [isDarkMode, resolvedHeight]
   );
 
   // 复制SQL到剪贴板
@@ -156,12 +109,11 @@ const SQLPreview = ({
       highlightActiveLineGutter(),
       sql(),
       EditorView.lineWrapping,
-      EditorState.readOnly.of(true)
+      EditorState.readOnly.of(true),
+      previewAppearance
     ];
 
-    const themeExtensions = isDarkMode
-      ? [oneDark, previewDarkTheme]
-      : [previewLightTheme];
+    const themeExtensions = isDarkMode ? [oneDark] : [];
 
     const state = EditorState.create({
       doc: sqlContent || '-- 配置分析条件后将显示生成的SQL',
@@ -179,7 +131,7 @@ const SQLPreview = ({
         viewRef.current = null;
       }
     };
-  }, [sqlContent, isDarkMode, previewDarkTheme, previewLightTheme]);
+  }, [sqlContent, isDarkMode, previewAppearance]);
 
   return (
     <Box sx={{ width: '100%' }}>
@@ -225,9 +177,11 @@ const SQLPreview = ({
       <Box
         ref={editorRef}
         sx={{
-          '& .cm-editor': {
-            boxShadow: isDarkMode ? '0 20px 36px -28px rgba(240, 115, 53, 0.55)' : '0 1px 2px rgba(15, 23, 42, 0.08)'
-          }
+          width: '100%',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          border: isDarkMode ? '1px solid var(--dq-border-card)' : '1px solid var(--dq-border-subtle)',
+          boxShadow: isDarkMode ? 'var(--dq-accent-shadow)' : 'var(--dq-shadow-soft)'
         }}
       />
     </Box>

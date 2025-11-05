@@ -35,3 +35,9 @@ Secrets and connection details live in `config/` (for example `datasources.json`
 - Typographic scale: primary module headings 20px / semi-bold, primary tabs 18px / semi-bold, secondary tabs 16px / medium, content headings 16px or 18px / 600, body text 14px, supporting text 13px. New or updated copy should follow these levels.
 - Custom dialogs must use the shared `.dq-dialog` styles (defined in `frontend/src/styles/modern.css`) or follow the Excel sheet selector example. Avoid native `alert`/`confirm`/`prompt`; ensure padding, radius, and shadows stay consistent in both light and dark themes.
 - If any requirement or context remains unclear, ask clarifying questions instead of guessing.
+
+## Agent Constraints
+- Do not modify repository code unless the user explicitly instructs you to do so; when the user only asks for analysis, respond with analysis and leave the code untouched.
+- Avoid introducing `!important` in new CSS. If a legacy rule forces it, prefer refactoring the base styles instead of relying on `!important`.
+- CSS must reuse existing design tokens (`--dq-*`) whenever they fit the need. If no suitable token exists, create a reusable token (and register it in the theme/docs) before using it; never hard-code one-off values.
+- When implementing UI, prefer the official shared component first. Only fall back to a custom build if no existing component fits, then check for design tokens before adding new styles.

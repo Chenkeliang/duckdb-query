@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Pagination,
@@ -9,7 +9,8 @@ import {
   Typography,
   Chip,
   IconButton,
-  Tooltip
+  Tooltip,
+  TextField
 } from '@mui/material';
 import {
   FirstPage as FirstPageIcon,
@@ -99,14 +100,14 @@ const SmartPagination = ({
   const performanceTip = getPerformanceTip();
 
   return (
-    <Box sx={{ 
-      display: 'flex', 
-      alignItems: 'center', 
+    <Box sx={{
+      display: 'flex',
+      alignItems: 'center',
       justifyContent: 'space-between',
       flexWrap: 'wrap',
       gap: 2,
       p: 2,
-      borderTop: '1px solid rgba(224, 224, 224, 1)'
+      borderTop: '1px solid var(--dq-border)'
     }}>
       {/* 左侧：统计信息 */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -196,22 +197,41 @@ const SmartPagination = ({
             <Typography variant="body2" color="text.secondary">
               跳转到
             </Typography>
-            <input
+            <TextField
               type="number"
-              min="1"
-              max={totalPages}
+              size="small"
               value={quickJumpPage}
               onChange={(e) => setQuickJumpPage(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleQuickJump()}
-              style={{
-                width: '60px',
-                padding: '4px 8px',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                fontSize: '16px'
-              }}
               placeholder="页码"
               disabled={loading}
+              inputProps={{
+                min: 1,
+                max: totalPages,
+                inputMode: 'numeric',
+                style: { textAlign: 'right' }
+              }}
+              sx={{
+                width: 84,
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '8px',
+                  backgroundColor: 'var(--dq-surface)',
+                  '& fieldset': {
+                    borderColor: 'var(--dq-border-subtle)'
+                  },
+                  '&:hover fieldset': {
+                    borderColor: 'var(--dq-border-hover)'
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: 'var(--dq-accent-primary)'
+                  }
+                },
+                '& .MuiOutlinedInput-input': {
+                  padding: '6px 10px',
+                  fontSize: '0.95rem',
+                  color: 'var(--dq-text-primary)'
+                }
+              }}
             />
             <Typography variant="body2" color="text.secondary">
               页

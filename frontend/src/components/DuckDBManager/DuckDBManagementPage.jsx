@@ -60,10 +60,8 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedGroups, setExpandedGroups] = useState({
-    '异步查询结果': true,
-    '数据表': true,
-    '临时表': true,
-    '系统表': true
+    '查询结果表': true,
+    '数据表': true
   });
 
   useEffect(() => {
@@ -178,27 +176,19 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
     }
     const lower = tableName.toLowerCase();
 
-    // 1. 异步任务结果表（通过异步任务保存的表）
-    if (lower.startsWith('async_result_') || lower.startsWith('task_')) {
-      return buildTypeInfo('异步查询结果', QueryStats, 'var(--dq-accent-100)');
+    if (lower.startsWith('systerm_')) {
+      return buildTypeInfo('系统表', TableIcon, 'var(--dq-text-secondary)');
     }
 
-    // 2. 用户自定义表名（通过异步任务保存，使用用户提供的表名）
-    if (!lower.startsWith('async_result_') &&
-      !lower.startsWith('task_') &&
-      !lower.startsWith('query_result_') &&
-      !lower.includes('temp') &&
-      !lower.includes('临时')) {
-      return buildTypeInfo('数据表', ViewList, 'var(--dq-accent-primary)');
+    if (
+      lower.startsWith('async_result_') ||
+      lower.startsWith('query_result_') ||
+      lower.startsWith('task_')
+    ) {
+      return buildTypeInfo('查询结果表', QueryStats, 'var(--dq-accent-100)');
     }
 
-    // 3. 临时表（系统生成的临时表）
-    if (lower.includes('temp') || lower.includes('临时')) {
-      return buildTypeInfo('临时表', History, 'var(--dq-accent-200)');
-    }
-
-    // 4. 系统表
-    return buildTypeInfo('系统表', TableIcon, 'var(--dq-text-secondary)');
+    return buildTypeInfo('数据表', ViewList, 'var(--dq-accent-primary)');
   };
 
   // 复制表名到剪贴板
@@ -228,9 +218,14 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
   };
 
   // 过滤表格 - 添加安全检查
-  const filteredTables = (Array.isArray(tables) ? tables : []).filter(table =>
-    table && table.table_name && table.table_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredTables = (Array.isArray(tables) ? tables : []).filter(table => {
+    if (!table || !table.table_name) return false;
+    const lower = table.table_name.toLowerCase();
+    if (lower.startsWith('systerm_')) {
+      return false;
+    }
+    return lower.includes(searchTerm.toLowerCase());
+  });
 
   // 按类型分组表格
   const groupedTables = filteredTables.reduce((groups, table) => {
@@ -339,7 +334,15 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
           </Typography>
         </Card>
       ) : (
-        <Card elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+        <Card
+          elevation={0}
+          sx={{
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 2,
+            backgroundColor: 'var(--dq-surface-card)'
+          }}
+        >
           <List component="nav" disablePadding>
             {Object.entries(groupedTables).map(([groupName, groupTables], groupIndex) => {
               const typeInfo = getTableTypeInfo(groupTables[0].table_name);

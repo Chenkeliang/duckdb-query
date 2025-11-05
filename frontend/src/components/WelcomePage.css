@@ -55,12 +55,12 @@
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px color-mix(in oklab, var(--dq-text-primary) 18%, transparent);
 }
 
 .welcome-cta-button:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 6px 20px color-mix(in oklab, var(--dq-text-primary) 22%, transparent);
 }
 
 .welcome-cta-button-secondary {
@@ -76,14 +76,14 @@
     text-decoration: none;
     display: inline-block;
     margin-left: 16px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px color-mix(in oklab, var(--dq-text-primary) 18%, transparent);
 }
 
 .welcome-cta-button-secondary:hover {
     background: var(--dq-surface);
     color: var(--dq-highlight-indigo);
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 6px 20px color-mix(in oklab, var(--dq-text-primary) 22%, transparent);
 }
 
 .welcome-section {
@@ -127,7 +127,7 @@
     background: var(--dq-surface);
     padding: 32px 24px;
     border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 8px color-mix(in oklab, var(--dq-text-primary) 12%, transparent);
     border: 1px solid var(--dq-border-subtle);
     transition: all 0.3s ease;
 }
@@ -136,7 +136,7 @@
 .welcome-highlight-card:hover,
 .welcome-case-card:hover {
     transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 8px 24px color-mix(in oklab, var(--dq-text-primary) 18%, transparent);
 }
 
 .welcome-feature-card h3,

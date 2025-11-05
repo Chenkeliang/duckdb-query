@@ -314,7 +314,7 @@ const AggregationControls = ({
   if (!selectedTable) {
     return (
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700">聚合统计</label>
+        <label className="text-sm font-medium dq-text-secondary">聚合统计</label>
         <Box
           sx={{
             p: 4,
@@ -335,7 +335,7 @@ const AggregationControls = ({
   if (availableColumns.length === 0) {
     return (
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700">聚合统计</label>
+        <label className="text-sm font-medium dq-text-secondary">聚合统计</label>
         <Alert severity="warning" sx={{ borderRadius: 2 }}>
           <Typography variant="body2">
             所选表没有可用的列信息
@@ -349,7 +349,7 @@ const AggregationControls = ({
     <div className="space-y-2">
       {/* Header with expand/collapse controls */}
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-gray-700">
+        <label className="text-sm font-medium dq-text-secondary">
           聚合统计
         </label>
         <div className="flex items-center space-x-1">
@@ -369,7 +369,7 @@ const AggregationControls = ({
               sx={{
                 color: 'var(--dq-text-secondary)',
                 '&:hover': {
-                  backgroundColor: 'var(--dq-surface-hover)'
+                  backgroundColor: 'var(--dq-accent-primary-soft)'
                 }
               }}
             >
@@ -594,7 +594,7 @@ const AggregationControls = ({
                       transition: 'border-color 0.18s ease, box-shadow 0.18s ease',
                       '&:hover': {
                         borderColor: 'var(--dq-border-card)',
-                        boxShadow: '0 10px 24px -18px rgba(15, 23, 42, 0.35)'
+                        boxShadow: '0 10px 24px -18px color-mix(in oklab, var(--dq-text-primary) 28%, transparent)'
                       }
                     }}
                   >

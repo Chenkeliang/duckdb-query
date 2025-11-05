@@ -185,8 +185,8 @@ const ColumnSelector = ({
 
   if (!selectedTable || columns.length === 0) {
     return (
-      <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'grey.50' }}>
-        <Typography variant="body2" color="text.secondary">
+      <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'var(--dq-surface)', borderRadius: 3, border: '1px solid var(--dq-border-subtle)' }}>
+        <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>
           {!selectedTable ? '请先选择数据表' : '该表没有可用的列'}
         </Typography>
       </Paper>
@@ -196,10 +196,11 @@ const ColumnSelector = ({
   return (
     <Box sx={{
       width: '100%',
-      bgcolor: 'white',
+      bgcolor: 'var(--dq-surface)',
       borderRadius: 4,
       border: '1px solid var(--dq-border-subtle)',
-      p: 2
+      p: 2,
+      color: 'var(--dq-text-primary)'
     }}>
       {/* 标题和控制 - 统一蓝色风格 */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, px: 0.5 }}>
@@ -236,7 +237,7 @@ const ColumnSelector = ({
           sx={{
             maxHeight: Math.max(maxHeight, 300),
             overflow: 'auto',
-            bgcolor: 'white',
+            bgcolor: 'var(--dq-surface)',
             borderRadius: 4,
             border: '1px solid var(--dq-border-subtle)',
             p: 2
@@ -308,7 +309,7 @@ const ColumnSelector = ({
 
           {filteredColumns.length === 0 && (
             <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>
                 {searchTerm ? `没有找到匹配 "${searchTerm}" 的列` : '没有可用的列'}
               </Typography>
             </Box>

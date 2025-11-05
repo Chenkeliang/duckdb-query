@@ -95,9 +95,9 @@ const TypeConflictDialog = ({
         sx: {
           backgroundColor: 'var(--dq-surface)',
           color: 'var(--dq-text-primary)',
-          borderRadius: 3,
-          boxShadow: '0 28px 60px rgba(15, 23, 42, 0.55)',
-          border: '1px solid rgba(148, 163, 184, 0.25)',
+          borderRadius: 'var(--dq-radius-card)',
+          boxShadow: 'var(--dq-shadow-soft)',
+          border: '1px solid var(--dq-border-card)',
         },
       }}
     >
@@ -240,7 +240,7 @@ const TypeConflictDialog = ({
         </Table>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={handleClose} disabled={isSubmitting} sx={{ color: "color-mix(in oklab, var(--dq-text-tertiary) 85%, transparent)" }}>
+        <Button onClick={handleClose} disabled={isSubmitting} sx={{ color: 'var(--dq-text-secondary)' }}>
           取消
         </Button>
         <Button
@@ -252,7 +252,7 @@ const TypeConflictDialog = ({
             px: 3,
             fontWeight: 600,
             background: 'linear-gradient(135deg, var(--dq-chart-7), var(--dq-status-info-fg))',
-            boxShadow: '0 12px 30px rgba(14, 165, 233, 0.35)',
+            boxShadow: '0 12px 30px -14px color-mix(in oklab, var(--dq-status-info-fg) 45%, transparent)',
             '&:hover': {
               background: 'linear-gradient(135deg, color-mix(in oklab, var(--dq-status-info-fg) 80%, transparent), var(--dq-chart-7))',
             },

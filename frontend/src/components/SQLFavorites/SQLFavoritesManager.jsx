@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import { withOpacity } from '../../utils/colorUtils';
+import { withOpacity, resolveColor } from '../../utils/colorUtils';
 
 const getIsDarkMode = () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 
@@ -257,17 +257,22 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
 
     // 渲染收藏项
     const accent = isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)';
-    const accentFallback = isDarkMode ? '#f07335' : '#2563eb';
+    const accentFallback = resolveColor('var(--dq-accent-primary)', isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)');
     const accentOverlay = (amount) => withOpacity(accent, amount, accentFallback);
+    const neutralOverlay = (amount) => withOpacity('var(--dq-border)', amount, resolveColor('var(--dq-border)', 'var(--dq-border)'));
+    const accentGradientBase = `linear-gradient(135deg, color-mix(in oklab, ${accentFallback} 95%, transparent) 0%, color-mix(in oklab, ${accentFallback} 80%, transparent) 100%)`;
+    const accentGradientHover = `linear-gradient(135deg, color-mix(in oklab, ${accentFallback} 100%, transparent) 0%, color-mix(in oklab, ${accentFallback} 90%, transparent) 100%)`;
+    const accentShadow = 'var(--dq-accent-shadow)';
+    const neutralDialogShadow = 'var(--dq-shadow-soft)';
     const inputFieldSx = {
         '& .MuiInputLabel-root': {
             color: isDarkMode ? 'var(--dq-text-secondary)' : undefined
         },
         '& .MuiOutlinedInput-root': {
             borderRadius: 2,
-            backgroundColor: isDarkMode ? 'var(--dq-surface)' : '#fff',
+            backgroundColor: 'var(--dq-surface)',
             '& fieldset': {
-                borderColor: isDarkMode ? 'var(--dq-border-subtle)' : undefined
+                borderColor: 'var(--dq-border-subtle)'
             },
             '&:hover fieldset': {
                 borderColor: 'var(--dq-accent-100)'
@@ -341,15 +346,15 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                     component="div"
                     sx={{
                         fontFamily: 'monospace',
-                        backgroundColor: isDarkMode ? 'rgba(148, 163, 184, 0.08)' : 'var(--dq-surface)',
-                        border: isDarkMode ? '1px solid rgba(148, 163, 184, 0.16)' : '1px solid var(--dq-border-subtle)',
+                        backgroundColor: isDarkMode ? neutralOverlay(0.12) : 'var(--dq-surface)',
+                        border: isDarkMode ? `1px solid ${neutralOverlay(0.26)}` : '1px solid var(--dq-border-subtle)',
                         padding: '6px 10px',
                         borderRadius: 1,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                         fontSize: '1rem',
-                        color: isDarkMode ? 'var(--dq-text-secondary)' : '#555',
+                        color: isDarkMode ? 'var(--dq-text-secondary)' : 'var(--dq-text-secondary)',
                         mb: 1
                     }}
                 >
@@ -368,8 +373,8 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                                 sx={{
                                     fontSize: '1rem',
                                     height: 20,
-                                    borderColor: isDarkMode ? 'var(--dq-border-subtle)' : '#ddd',
-                                    color: isDarkMode ? 'var(--dq-text-secondary)' : '#666'
+                                    borderColor: 'var(--dq-border-subtle)',
+                                    color: 'var(--dq-text-secondary)'
                                 }}
                             />
                         ))}
@@ -403,7 +408,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                             sx={{
                                 color: isDarkMode ? 'color-mix(in oklab, var(--dq-status-error-fg) 65%, transparent)' : 'var(--dq-text-primary)',
                                 '&:hover': {
-                                    backgroundColor: isDarkMode ? 'rgba(251, 113, 133, 0.12)' : 'rgba(244, 67, 54, 0.08)'
+                            backgroundColor: isDarkMode ? 'color-mix(in oklab, var(--dq-status-error-fg) 18%, transparent)' : 'color-mix(in oklab, var(--dq-status-error-fg) 12%, transparent)'
                                 }
                             }}
                         >
@@ -453,7 +458,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                                 width: '6px'
                             },
                             '&::-webkit-scrollbar-thumb': {
-                                backgroundColor: isDarkMode ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.4)',
+                                backgroundColor: isDarkMode ? neutralOverlay(0.28) : neutralOverlay(0.4),
                                 borderRadius: '999px'
                             }
                         }}
@@ -482,14 +487,11 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                         textTransform: 'none',
                         borderRadius: 2,
                         fontWeight: 600,
-                        background: isDarkMode
-                            ? 'linear-gradient(135deg, rgba(240, 115, 53, 0.95) 0%, rgba(235, 99, 32, 0.98) 100%)'
-                            : undefined,
-                        boxShadow: isDarkMode ? '0 18px 36px -24px rgba(240, 115, 53, 0.65)' : undefined,
+                        background: accentGradientBase,
+                        boxShadow: accentShadow,
                         '&:hover': {
-                            background: isDarkMode
-                                ? 'linear-gradient(135deg, rgba(240, 115, 53, 1) 0%, rgba(235, 99, 32, 1) 100%)'
-                                : undefined
+                            background: accentGradientHover,
+                            boxShadow: accentShadow
                         }
                     }}
                 >
@@ -525,7 +527,7 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                             width: '6px'
                         },
                         '&::-webkit-scrollbar-thumb': {
-                            backgroundColor: isDarkMode ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.4)',
+                        backgroundColor: isDarkMode ? neutralOverlay(0.28) : neutralOverlay(0.4),
                             borderRadius: '999px'
                         }
                     }}
@@ -544,10 +546,10 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                 fullWidth
                 PaperProps={{
                     sx: {
-                        backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                        backgroundColor: 'var(--dq-surface)',
                         borderRadius: 3,
-                        border: isDarkMode ? '1px solid var(--dq-border)' : undefined,
-                        boxShadow: isDarkMode ? '0 28px 56px -28px rgba(15, 23, 42, 0.6)' : undefined
+                        border: `1px solid ${isDarkMode ? 'var(--dq-border)' : 'var(--dq-border-subtle)'}`,
+                        boxShadow: neutralDialogShadow
                     }
                 }}
             >
@@ -602,10 +604,10 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                             <Button size="small" variant="outlined" onClick={addTag} sx={{
                                 textTransform: 'none',
                                 borderRadius: 2,
-                                borderColor: isDarkMode ? 'var(--dq-border)' : undefined,
-                                color: isDarkMode ? 'var(--dq-text-secondary)' : undefined,
+                                borderColor: 'var(--dq-border-subtle)',
+                                color: 'var(--dq-text-secondary)',
                                 '&:hover': {
-                                    borderColor: 'var(--dq-accent-100)',
+                                    borderColor: 'var(--dq-border-hover)',
                                     color: 'var(--dq-accent-100)'
                                 }
                             }}>添加</Button>
@@ -634,13 +636,11 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                         sx={{
                             textTransform: 'none',
                             borderRadius: 2,
-                            background: isDarkMode
-                                ? 'linear-gradient(135deg, rgba(240, 115, 53, 0.95) 0%, rgba(235, 99, 32, 0.98) 100%)'
-                                : undefined,
+                            background: accentGradientBase,
+                            boxShadow: accentShadow,
                             '&:hover': {
-                                background: isDarkMode
-                                    ? 'linear-gradient(135deg, rgba(240, 115, 53, 1) 0%, rgba(235, 99, 32, 1) 100%)'
-                                    : undefined
+                                background: accentGradientHover,
+                                boxShadow: accentShadow
                             }
                         }}
                     >
@@ -657,10 +657,10 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                 fullWidth
                 PaperProps={{
                     sx: {
-                        backgroundColor: isDarkMode ? 'var(--dq-surface)' : undefined,
+                        backgroundColor: 'var(--dq-surface)',
                         borderRadius: 3,
-                        border: isDarkMode ? '1px solid var(--dq-border)' : undefined,
-                        boxShadow: isDarkMode ? '0 28px 56px -28px rgba(15, 23, 42, 0.6)' : undefined
+                        border: `1px solid ${isDarkMode ? 'var(--dq-border)' : 'var(--dq-border-subtle)'}`,
+                        boxShadow: neutralDialogShadow
                     }
                 }}
             >
@@ -712,16 +712,23 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                                 }}
                                 sx={{ ...inputFieldSx, flex: 1 }}
                             />
-                            <Button size="small" variant="outlined" onClick={addTag} sx={{
-                                textTransform: 'none',
-                                borderRadius: 2,
-                                borderColor: isDarkMode ? 'var(--dq-border)' : undefined,
-                                color: isDarkMode ? 'var(--dq-text-secondary)' : undefined,
-                                '&:hover': {
-                                    borderColor: 'var(--dq-accent-100)',
-                                    color: 'var(--dq-accent-100)'
-                                }
-                            }}>添加</Button>
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={addTag}
+                                sx={{
+                                    textTransform: 'none',
+                                    borderRadius: 2,
+                                    borderColor: 'var(--dq-border-subtle)',
+                                    color: 'var(--dq-text-secondary)',
+                                    '&:hover': {
+                                        borderColor: 'var(--dq-border-hover)',
+                                        color: 'var(--dq-accent-100)'
+                                    }
+                                }}
+                            >
+                                添加
+                            </Button>
                         </Box>
                         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                             {formData.tags.map((tag, index) => (
@@ -731,8 +738,8 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                                     onDelete={() => removeTag(tag)}
                                     size="small"
                                     sx={{
-                                        backgroundColor: isDarkMode ? withOpacity('var(--dq-accent-100)', 0.18, '#f07335') : undefined,
-                                        color: isDarkMode ? 'var(--dq-surface)' : undefined
+                                        backgroundColor: isDarkMode ? accentOverlay(0.18) : accentOverlay(0.12),
+                                        color: isDarkMode ? 'var(--dq-surface)' : accentFallback
                                     }}
                                 />
                             ))}
@@ -747,13 +754,11 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                         sx={{
                             textTransform: 'none',
                             borderRadius: 2,
-                            background: isDarkMode
-                                ? 'linear-gradient(135deg, rgba(240, 115, 53, 0.95) 0%, rgba(235, 99, 32, 0.98) 100%)'
-                                : undefined,
+                            background: accentGradientBase,
+                            boxShadow: accentShadow,
                             '&:hover': {
-                                background: isDarkMode
-                                    ? 'linear-gradient(135deg, rgba(240, 115, 53, 1) 0%, rgba(235, 99, 32, 1) 100%)'
-                                    : undefined
+                                background: accentGradientHover,
+                                boxShadow: accentShadow
                             }
                         }}
                     >

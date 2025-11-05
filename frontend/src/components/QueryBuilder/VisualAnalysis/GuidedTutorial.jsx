@@ -1,6 +1,7 @@
-import { Lightbulb } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { Button } from '../../ui/Button';
+import { Lightbulb } from 'lucide-react';
+import Button from '@mui/material/Button';
+import ButtonBase from '@mui/material/ButtonBase';
 import { Card } from '../../ui/Card';
 
 const GuidedTutorial = ({
@@ -152,31 +153,44 @@ const GuidedTutorial = ({
 
       {/* Tutorial Card */}
       <div className={`fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 w-96 ${className}`}>
-        <Card className="p-6 shadow-2xl border-2 border-blue-300">
+        <Card
+          className="p-6"
+          style={{
+            border: '1px solid var(--dq-border-card)',
+            boxShadow: 'var(--dq-shadow-soft)',
+            background: 'var(--dq-surface-card)'
+          }}
+        >
           {/* Progress Bar */}
           <div className="mb-4">
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm text-gray-600">
+              <span className="text-sm dq-text-tertiary">
                 步骤 {currentStep + 1} / {tutorialSteps.length}
               </span>
-              <span className="text-sm text-gray-600">
+              <span className="text-sm dq-text-tertiary">
                 {Math.round(((currentStep + 1) / tutorialSteps.length) * 100)}%
               </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="w-full rounded-full h-2"
+              style={{ backgroundColor: 'color-mix(in oklab, var(--dq-border) 65%, transparent)' }}
+            >
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${((currentStep + 1) / tutorialSteps.length) * 100}%` }}
+                className="h-2 rounded-full transition-all duration-300"
+                style={{
+                  width: `${((currentStep + 1) / tutorialSteps.length) * 100}%`,
+                  backgroundColor: 'var(--dq-accent-primary)'
+                }}
               />
             </div>
           </div>
 
           {/* Step Content */}
           <div className="mb-6">
-            <h3 className="text-xl font-semibold text-gray-800 mb-3">
+            <h3 className="text-xl font-semibold dq-text-primary mb-3">
               {currentTutorialStep.title}
             </h3>
-            <p className="text-gray-600 leading-relaxed">
+            <p className="dq-text-tertiary leading-relaxed">
               {currentTutorialStep.content}
             </p>
           </div>
@@ -185,16 +199,28 @@ const GuidedTutorial = ({
           <div className="mb-6">
             <div className="flex justify-center space-x-2">
               {tutorialSteps.map((_, index) => (
-                <button
+                <ButtonBase
                   key={index}
                   onClick={() => goToStep(index)}
-                  className={`w-3 h-3 rounded-full transition-all duration-200 ${index === currentStep
-                    ? 'bg-blue-600 scale-125'
-                    : completedSteps.has(index)
-                      ? 'bg-green-500'
-                      : 'bg-gray-300'
-                    }`}
                   title={`步骤 ${index + 1}: ${tutorialSteps[index].title}`}
+                  sx={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '999px',
+                    transition: 'transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease',
+                    transform: index === currentStep ? 'scale(1.15)' : 'scale(1)',
+                    backgroundColor:
+                      index === currentStep
+                        ? 'var(--dq-accent-primary)'
+                        : completedSteps.has(index)
+                          ? 'color-mix(in oklab, var(--dq-status-success-fg) 55%, transparent)'
+                          : 'color-mix(in oklab, var(--dq-border-card) 90%, transparent)',
+                    boxShadow:
+                      index === currentStep
+                        ? '0 0 0 2px color-mix(in oklab, var(--dq-accent-primary) 35%, transparent)'
+                        : 'none'
+                  }}
+                  aria-label={`跳转到步骤 ${index + 1}`}
                 />
               ))}
             </div>
@@ -204,26 +230,38 @@ const GuidedTutorial = ({
           <div className="flex justify-between items-center">
             <div className="flex space-x-2">
               <Button
-                variant="outline"
-                size="sm"
+                variant="outlined"
+                size="small"
                 onClick={prevStep}
                 disabled={currentStep === 0}
+                sx={{ minWidth: 96 }}
               >
                 上一步
               </Button>
               <Button
-                variant="outline"
-                size="sm"
+                variant="outlined"
+                size="small"
                 onClick={skipTutorial}
-                className="text-gray-600"
+                sx={{
+                  color: 'var(--dq-text-tertiary)',
+                  borderColor: 'color-mix(in oklab, var(--dq-border-card) 85%, transparent)'
+                }}
               >
                 跳过教程
               </Button>
             </div>
 
             <Button
+              variant="contained"
               onClick={nextStep}
-              className="bg-blue-600 hover:bg-blue-700"
+              sx={{
+                minWidth: 120,
+                backgroundColor: 'var(--dq-accent-primary)',
+                color: 'var(--dq-text-on-primary)',
+                '&:hover': {
+                  backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 85%, var(--dq-accent-200) 15%)'
+                }
+              }}
             >
               {currentTutorialStep.action}
             </Button>
@@ -231,8 +269,14 @@ const GuidedTutorial = ({
 
           {/* Quick Tips */}
           {currentStep > 0 && (
-            <div className="mt-4 p-3 bg-blue-50 rounded-md">
-              <div className="text-sm text-blue-800">
+            <div
+              className="mt-4 p-3 rounded-md"
+              style={{ backgroundColor: 'var(--dq-accent-soft-bg)' }}
+            >
+              <div
+                className="text-sm"
+                style={{ color: 'color-mix(in oklab, var(--dq-accent-primary) 65%, var(--dq-text-primary) 35%)' }}
+              >
                 <div className="font-medium mb-1">
                   <Lightbulb size={16} style={{ marginRight: '8px' }} />
                   小贴士:
@@ -273,7 +317,7 @@ const GuidedTutorial = ({
           ${currentTutorialStep.target} {
             position: relative;
             z-index: 45;
-            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5);
+            box-shadow: 0 0 0 4px color-mix(in oklab, var(--dq-accent-primary) 55%, transparent);
             border-radius: 8px;
           }
         `}</style>
@@ -332,15 +376,26 @@ export const FeatureTutorial = ({
         transform: 'translate(-50%, -50%)'
       }}
     >
-      <Card className="p-4 shadow-xl border-2 border-blue-200">
+      <Card
+        className="p-4"
+        style={{
+          border: '1px solid var(--dq-border-card)',
+          boxShadow: 'var(--dq-shadow-soft)',
+          background: 'var(--dq-surface-card)'
+        }}
+      >
         <div className="flex items-center justify-between mb-3">
-          <h4 className="font-semibold text-blue-800">
+          <h4
+            className="font-semibold"
+            style={{ color: 'color-mix(in oklab, var(--dq-accent-primary) 70%, var(--dq-text-primary) 30%)' }}
+          >
             {guide.title}
           </h4>
           <Button
-            variant="outline"
-            size="sm"
+            variant="outlined"
+            size="small"
             onClick={onClose}
+            sx={{ minWidth: 40, padding: '2px 10px' }}
           >
             ✕
           </Button>
@@ -349,10 +404,16 @@ export const FeatureTutorial = ({
         <ol className="space-y-2">
           {guide.steps.map((step, index) => (
             <li key={index} className="flex items-start space-x-2 text-sm">
-              <span className="flex-shrink-0 w-5 h-5 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
+              <span
+                className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-sm font-medium"
+                style={{
+                  backgroundColor: 'var(--dq-accent-soft-bg)',
+                  color: 'color-mix(in oklab, var(--dq-accent-primary) 70%, var(--dq-text-primary) 30%)'
+                }}
+              >
                 {index + 1}
               </span>
-              <span className="text-gray-700">{step}</span>
+              <span className="dq-text-secondary">{step}</span>
             </li>
           ))}
         </ol>

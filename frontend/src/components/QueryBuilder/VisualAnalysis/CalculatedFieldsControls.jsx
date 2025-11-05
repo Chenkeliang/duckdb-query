@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Card } from '../../ui/Card';
-import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
+import { Button } from '@mui/material';
 
 const CalculatedFieldsControls = ({ 
   columns = [], 
@@ -78,26 +78,26 @@ const CalculatedFieldsControls = ({
 
   return (
     <Card className="p-4">
-      <h3 className="text-lg font-semibold mb-4 text-gray-800">计算字段</h3>
+      <h3 className="text-lg font-semibold mb-4 dq-text-primary">计算字段</h3>
       
       {/* Existing calculated fields */}
       {calculatedFields.length > 0 && (
         <div className="mb-4">
-          <h4 className="text-sm font-medium mb-2 text-gray-700">已创建的计算字段</h4>
+          <h4 className="text-sm font-medium mb-2 dq-text-secondary">已创建的计算字段</h4>
           <div className="space-y-2">
             {calculatedFields.map((field) => (
               <div key={field.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                 <div className="flex-1">
-                  <span className="font-medium text-gray-800">{field.name}</span>
-                  <span className="ml-2 text-sm text-gray-600">
+                  <span className="font-medium dq-text-primary">{field.name}</span>
+                  <span className="ml-2 text-sm dq-text-tertiary">
                     ({generateExpression(field)})
                   </span>
                 </div>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="outlined"
+                  size="small"
+                  color="error"
                   onClick={() => removeCalculatedField(field.id)}
-                  className="text-red-600 hover:text-red-700"
                 >
                   删除
                 </Button>
@@ -110,7 +110,7 @@ const CalculatedFieldsControls = ({
       {/* Add new calculated field */}
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium dq-text-secondary mb-1">
             字段名称
           </label>
           <Input
@@ -122,77 +122,51 @@ const CalculatedFieldsControls = ({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium dq-text-secondary mb-2">
             计算类型
           </label>
-          <div className="flex space-x-2">
-            <Button
-              variant={newField.type === 'mathematical' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setNewField({ ...newField, type: 'mathematical', operation: 'add' })}
-            >
-              数学运算
-            </Button>
-            <Button
-              variant={newField.type === 'date' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setNewField({ ...newField, type: 'date', operation: 'extract_year' })}
-            >
-              日期函数
-            </Button>
-            <Button
-              variant={newField.type === 'string' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setNewField({ ...newField, type: 'string', operation: 'upper' })}
-            >
-              字符串函数
-            </Button>
+          <div className="dq-tab-group">
+            {[
+              { id: 'mathematical', label: '数学运算', defaultOp: 'add' },
+              { id: 'date', label: '日期函数', defaultOp: 'extract_year' },
+              { id: 'string', label: '字符串函数', defaultOp: 'upper' }
+            ].map(item => (
+              <Button
+                key={item.id}
+                variant="text"
+                disableRipple
+                className={`dq-tab ${newField.type === item.id ? 'dq-tab--active' : ''}`}
+                onClick={() => setNewField({ ...newField, type: item.id, operation: item.defaultOp })}
+                sx={{ minWidth: 'auto', padding: 'var(--dq-tab-padding-y) var(--dq-tab-padding-x)' }}
+              >
+                {item.label}
+              </Button>
+            ))}
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium dq-text-secondary mb-2">
             操作类型
           </label>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {newField.type === 'mathematical' && mathematicalOperations.map((op) => (
+            {(newField.type === 'mathematical' ? mathematicalOperations : newField.type === 'date' ? dateFunctions : stringFunctions).map((option) => (
               <Button
-                key={op.value}
-                variant={newField.operation === op.value ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setNewField({ ...newField, operation: op.value })}
-                className="text-sm"
+                key={option.value}
+                variant="text"
+                disableRipple
+                className={`dq-tab ${newField.operation === option.value ? 'dq-tab--active' : ''}`}
+                onClick={() => setNewField({ ...newField, operation: option.value })}
+                sx={{ justifyContent: 'flex-start', textAlign: 'left', minWidth: 'auto', padding: 'var(--dq-tab-padding-y) var(--dq-tab-padding-x)' }}
               >
-                {op.label}
-              </Button>
-            ))}
-            {newField.type === 'date' && dateFunctions.map((func) => (
-              <Button
-                key={func.value}
-                variant={newField.operation === func.value ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setNewField({ ...newField, operation: func.value })}
-                className="text-sm"
-              >
-                {func.label}
-              </Button>
-            ))}
-            {newField.type === 'string' && stringFunctions.map((func) => (
-              <Button
-                key={func.value}
-                variant={newField.operation === func.value ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setNewField({ ...newField, operation: func.value })}
-                className="text-sm"
-              >
-                {func.label}
+                {option.label}
               </Button>
             ))}
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium dq-text-secondary mb-1">
             表达式
           </label>
           <Input
@@ -201,15 +175,16 @@ const CalculatedFieldsControls = ({
             placeholder="输入计算表达式，如: column1 + column2"
             className="w-full"
           />
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm dq-text-tertiary mt-1">
             可用列: {columns.map(col => col.name).join(', ')}
           </p>
         </div>
 
         <Button
+          variant="contained"
           onClick={addCalculatedField}
           disabled={!newField.name.trim()}
-          className="w-full"
+          sx={{ width: '100%' }}
         >
           添加计算字段
         </Button>

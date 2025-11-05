@@ -15,6 +15,7 @@ import {
   Typography
 } from '@mui/material';
 import React from 'react';
+import { resolveColor, withOpacity } from '../../utils/colorUtils';
 
 const JOIN_TYPES = [
   { value: 'inner', label: '内连接 (Inner Join)', description: '仅返回两表中匹配的行' },
@@ -52,6 +53,11 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
 
   // 连接类型信息
   const joinTypeInfo = JOIN_TYPES.find(t => t.value === join.how) || JOIN_TYPES[0];
+  const joinBaseColor = resolveColor(getJoinTypeColor(join.how), getJoinTypeColor(join.how));
+  const joinOverlay = (amount) => withOpacity(getJoinTypeColor(join.how), amount, joinBaseColor);
+  const neutralOverlay = (amount) => withOpacity('var(--dq-border)', amount, resolveColor('var(--dq-border)', 'var(--dq-border)'));
+  const badgeOverlay = (colorVar) => withOpacity(colorVar, 0.12, resolveColor(colorVar, colorVar));
+  const errorOverlay = (amount) => withOpacity('var(--dq-status-error-fg)', amount, resolveColor('var(--dq-status-error-fg)', 'var(--dq-status-error-fg)'));
 
   return (
     <Paper
@@ -61,14 +67,14 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
         borderRadius: 2.5,
         position: 'relative',
         boxShadow: 'none',
-        border: '1px solid rgba(0, 0, 0, 0.08)',
+        border: '1px solid var(--dq-border-subtle)',
         transition: 'all 0.2s ease-in-out',
         // 防止触控板手势导致的页面导航
         overscrollBehavior: 'contain',
         touchAction: 'pan-x pan-y',
         '&:hover': {
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
-          borderColor: 'rgba(0, 113, 227, 0.3)'
+          boxShadow: 'var(--dq-shadow-soft)',
+          borderColor: 'var(--dq-border-hover)'
         }
       }}
     >
@@ -79,19 +85,19 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
           justifyContent: 'space-between',
           mb: 2.5,
           pb: 2,
-          borderBottom: '1px solid rgba(0,0,0,0.06)'
+          borderBottom: '1px solid var(--dq-border-subtle)'
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Chip
-            icon={<LinkIcon sx={{ fontSize: '1rem !important' }} />}
+            icon={<LinkIcon sx={{ fontSize: '1rem' }} />}
             label={joinTypeInfo.label}
             size="small"
             sx={{
-              bgcolor: `${getJoinTypeColor(join.how)}10`,
+              bgcolor: joinOverlay(0.12),
               color: getJoinTypeColor(join.how),
               fontWeight: 500,
-              border: `1px solid ${getJoinTypeColor(join.how)}30`,
+              border: `1px solid ${joinOverlay(0.3)}`,
               '& .MuiChip-icon': {
                 color: getJoinTypeColor(join.how)
               }
@@ -123,10 +129,10 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
             sx={{
               borderRadius: 2,
               '.MuiOutlinedInput-notchedOutline': {
-                borderColor: 'rgba(0,0,0,0.1)',
+                borderColor: 'var(--dq-border-subtle)',
               },
               '&:hover .MuiOutlinedInput-notchedOutline': {
-                borderColor: 'rgba(0,0,0,0.2)',
+                borderColor: 'var(--dq-border-hover)',
               },
               '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                 borderColor: 'var(--dq-text-primary)',
@@ -164,7 +170,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               width: 24,
               height: 24,
               borderRadius: '50%',
-              bgcolor: 'rgba(0, 122, 255, 0.1)',
+              bgcolor: badgeOverlay('var(--dq-highlight-blue)'),
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -198,10 +204,10 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               sx={{
                 borderRadius: 2,
                 '.MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(0,0,0,0.1)',
+                  borderColor: 'var(--dq-border-subtle)',
                 },
                 '&:hover .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(0,0,0,0.2)',
+                  borderColor: 'var(--dq-border-hover)',
                 },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                   borderColor: 'var(--dq-text-primary)',
@@ -228,10 +234,10 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               sx={{
                 borderRadius: 2,
                 '.MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(0,0,0,0.1)',
+                  borderColor: 'var(--dq-border-subtle)',
                 },
                 '&:hover .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(0,0,0,0.2)',
+                  borderColor: 'var(--dq-border-hover)',
                 },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                   borderColor: 'var(--dq-text-primary)',
@@ -272,9 +278,9 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               sx={{
                 p: 1,
                 borderRadius: '50%',
-                bgcolor: 'rgba(0, 0, 0, 0.04)',
+                bgcolor: 'var(--dq-surface-hover)',
                 '&:hover': {
-                  bgcolor: 'rgba(0, 0, 0, 0.08)',
+                  bgcolor: neutralOverlay(0.12),
                   transform: 'scale(1.1)'
                 },
                 transition: 'all 0.2s ease-in-out'
@@ -306,7 +312,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               width: 24,
               height: 24,
               borderRadius: '50%',
-              bgcolor: 'rgba(88, 86, 214, 0.1)',
+              bgcolor: badgeOverlay('var(--dq-highlight-purple)'),
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -340,10 +346,10 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               sx={{
                 borderRadius: 2,
                 '.MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(0,0,0,0.1)',
+                  borderColor: 'var(--dq-border-subtle)',
                 },
                 '&:hover .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(0,0,0,0.2)',
+                  borderColor: 'var(--dq-border-hover)',
                 },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                   borderColor: 'var(--dq-text-primary)',
@@ -368,10 +374,10 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
               sx={{
                 borderRadius: 2,
                 '.MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(0,0,0,0.1)',
+                  borderColor: 'var(--dq-border-subtle)',
                 },
                 '&:hover .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(0,0,0,0.2)',
+                  borderColor: 'var(--dq-border-hover)',
                 },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                   borderColor: 'var(--dq-text-primary)',
@@ -394,7 +400,7 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
         justifyContent: 'flex-end',
         mt: 2.5,
         pt: 2,
-        borderTop: '1px solid rgba(0,0,0,0.06)'
+        borderTop: '1px solid var(--dq-border-subtle)'
       }}>
         <Tooltip title="删除此连接条件">
           <IconButton
@@ -402,11 +408,11 @@ const JoinCondition = ({ join, sources, onUpdate, onRemove }) => {
             onClick={onRemove}
             size="small"
             sx={{
-              border: '1px solid rgba(211,47,47,0.2)',
+              border: `1px solid ${errorOverlay(0.32)}`,
               borderRadius: 1.5,
               '&:hover': {
-                bgcolor: 'rgba(211,47,47,0.08)',
-                boxShadow: '0 2px 8px rgba(211,47,47,0.2)'
+                bgcolor: errorOverlay(0.18),
+                boxShadow: `0 2px 8px ${errorOverlay(0.32)}`
               }
             }}
           >

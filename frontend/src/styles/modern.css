@@ -21,17 +21,56 @@
   --dq-surface: #ffffff;
   --dq-surface-alt: #ffffff;
   --dq-surface-card: #ffffff;
-  --dq-surface-card-active: #ffffff;
-  --dq-surface-hover: rgba(15, 23, 42, 0.05);
+  --dq-surface-card-active: #f6f8fd;
+  --dq-surface-hover: rgba(15, 23, 42, 0.06);
+  --dq-surface-active: #eef2fb;
+  --dq-surface-elevated: #f9fbff;
+  --dq-overlay-strong: rgba(15, 23, 42, 0.65);
   --dq-border: rgba(15, 23, 42, 0.035);
   --dq-border-subtle: rgba(15, 23, 42, 0.06);
   --dq-border-card: rgba(15, 23, 42, 0.1);
   --dq-border-muted: color-mix(in oklab, var(--dq-border) 65%, transparent);
   --dq-surface-muted: color-mix(in oklab, var(--dq-text-primary) 4%, transparent);
   --dq-border-strong: rgba(15, 23, 42, 0.16);
+  --dq-surface-card-active: color-mix(in oklab, var(--dq-text-primary) 10%, var(--dq-surface-card));
+  --dq-surface-hover: color-mix(in oklab, var(--dq-text-primary) 8%, transparent);
+  --dq-surface-active: color-mix(in oklab, var(--dq-text-primary) 12%, var(--dq-surface));
+  --dq-surface-elevated: color-mix(in oklab, var(--dq-text-primary) 6%, var(--dq-background));
+  --dq-overlay-strong: color-mix(in oklab, var(--dq-text-primary) 12%, rgba(15, 23, 42, 0.65));
+  --dq-border-hover: color-mix(in oklab, var(--dq-border-card) 80%, transparent);
+  --dq-editor-light-bg: #f6f8fa;
+  --dq-editor-light-border: #d0d7de;
+  --dq-editor-light-text: #24292f;
+  --dq-editor-light-active: color-mix(in oklab, var(--dq-text-primary) 12%, transparent);
+  --dq-editor-light-selection: color-mix(in oklab, var(--dq-text-primary) 18%, transparent);
+  --dq-editor-dark-bg: #1e1f2a;
+  --dq-editor-dark-border: #2f3545;
+  --dq-editor-dark-text: #e6ecff;
+  --dq-editor-dark-selection: color-mix(in oklab, #3f8cff 36%, transparent);
+  --dq-text-muted-strong: #57606a;
+  --dq-text-on-primary: #ffffff;
+  --dq-accent-soft-bg: color-mix(in oklab, var(--dq-accent-primary) 12%, transparent);
+  --dq-accent-strong-bg: color-mix(in oklab, var(--dq-accent-primary) 24%, transparent);
+  --dq-accent-shadow: 0 18px 36px -24px color-mix(in oklab, var(--dq-text-primary) 12%, transparent);
+  --dq-neutral-shadow-strong: 0 16px 32px -24px color-mix(in oklab, var(--dq-text-primary) 14%, transparent);
   --dq-text-primary: #0f172a;
   --dq-text-secondary: #1f2937;
   --dq-text-tertiary: #4b5563;
+  --dq-tab-text: #4b5563;
+  --dq-tab-text-active: #0f172a;
+  --dq-tab-indicator: #2563eb;
+  --dq-tab-gap: 12px;
+  --dq-tab-padding-y: 10px;
+  --dq-tab-padding-x: 8px;
+  --dq-tab-indicator-height: 2px;
+  --dq-tab-active-color: #2563eb;
+  --dq-tab-font-size-primary: 20px;
+  --dq-tab-font-weight-primary: 600;
+  --dq-tab-font-size-secondary: 18px;
+  --dq-tab-font-weight-secondary: 600;
+  --dq-surface-control: #ffffff;
+  --dq-surface-control-active: color-mix(in oklab, var(--dq-accent-primary) 10%, #ffffff);
+  --dq-border-control: color-mix(in oklab, var(--dq-accent-primary) 30%, transparent);
   --dq-accent-100: #2563eb;
   --dq-accent-200: #1d4ed8;
   --dq-accent-300: #60a5fa;
@@ -108,17 +147,28 @@ body,
   --dq-surface: color-mix(in oklab, var(--dq-neutral-1000) 90%, transparent);
   --dq-surface-alt: #0d121a;
   --dq-surface-alt: color-mix(in oklab, var(--dq-neutral-1000) 82%, transparent);
-  --dq-surface-active: #181d27;
-  --dq-surface-active: color-mix(in oklab, var(--dq-neutral-1000) 74%, transparent);
-  --dq-surface-elevated: #1d2330;
-  --dq-surface-elevated: color-mix(in oklab, var(--dq-neutral-1000) 68%, transparent);
+  --dq-surface-active: #392723;
+  --dq-surface-active: color-mix(in oklab, var(--dq-accent-primary) 18%, var(--dq-surface));
+  --dq-surface-elevated: #2c2223;
+  --dq-surface-elevated: color-mix(in oklab, var(--dq-accent-primary) 12%, var(--dq-surface));
   --dq-surface-card: #141924;
   --dq-surface-card: color-mix(in oklab, var(--dq-neutral-1000) 88%, transparent);
-  --dq-surface-card-active: #1d2533;
-  --dq-surface-card-active: color-mix(in oklab, var(--dq-neutral-900) 78%, transparent);
+  --dq-surface-card-active: #372727;
+  --dq-surface-card-active: color-mix(in oklab, var(--dq-accent-primary) 16%, var(--dq-surface-card));
   --dq-text-primary: #e6eaf3;
   --dq-text-secondary: #b3bac6;
   --dq-text-tertiary: #8b929f;
+  --dq-tab-text: #8b929f;
+  --dq-tab-text-active: #e6eaf3;
+  --dq-tab-indicator: #f07335;
+  --dq-tab-active-color: #4f8dff;
+  --dq-tab-font-size-primary: 20px;
+  --dq-tab-font-weight-primary: 600;
+  --dq-tab-font-size-secondary: 18px;
+  --dq-tab-font-weight-secondary: 600;
+  --dq-surface-control: color-mix(in oklab, var(--dq-neutral-1000) 85%, transparent);
+  --dq-surface-control-active: color-mix(in oklab, var(--dq-accent-primary) 22%, transparent);
+  --dq-border-control: color-mix(in oklab, var(--dq-accent-primary) 48%, transparent);
   --dq-border: rgba(148, 163, 184, 0.26);
   --dq-border: color-mix(in oklab, var(--dq-neutral-900) 78%, transparent);
   --dq-border-subtle: rgba(148, 163, 184, 0.18);
@@ -127,6 +177,22 @@ body,
   --dq-border-card: color-mix(in oklab, var(--dq-neutral-900) 64%, transparent);
   --dq-border-strong: rgba(148, 163, 184, 0.36);
   --dq-border-strong: color-mix(in oklab, var(--dq-neutral-900) 92%, transparent);
+  --dq-border-hover: color-mix(in oklab, var(--dq-accent-primary) 45%, transparent);
+  --dq-editor-light-bg: #f6f8fa;
+  --dq-editor-light-border: #d0d7de;
+  --dq-editor-light-text: #24292f;
+  --dq-text-muted-strong: #57606a;
+  --dq-text-on-primary: #ffffff;
+  --dq-editor-light-active: color-mix(in oklab, var(--dq-text-primary) 12%, transparent);
+  --dq-editor-light-selection: color-mix(in oklab, var(--dq-text-primary) 18%, transparent);
+  --dq-editor-dark-bg: color-mix(in oklab, var(--dq-neutral-1000) 92%, transparent);
+  --dq-editor-dark-border: color-mix(in oklab, var(--dq-neutral-900) 72%, transparent);
+  --dq-editor-dark-text: var(--dq-text-primary);
+  --dq-editor-dark-selection: color-mix(in oklab, var(--dq-accent-primary) 28%, transparent);
+  --dq-accent-soft-bg: color-mix(in oklab, var(--dq-accent-primary) 24%, transparent);
+  --dq-accent-strong-bg: color-mix(in oklab, var(--dq-accent-primary) 36%, transparent);
+  --dq-accent-shadow: 0 24px 48px -20px color-mix(in oklab, var(--dq-accent-primary) 45%, transparent);
+  --dq-neutral-shadow-strong: 0 24px 56px -28px color-mix(in oklab, var(--dq-text-primary) 18%, transparent);
   --dq-accent-primary-soft: rgba(240, 115, 53, 0.18);
   --dq-accent-primary-soft: color-mix(in oklab, var(--dq-accent-primary) 18%, transparent);
   --dq-radius-card: 16px;
@@ -137,6 +203,8 @@ body,
   --dq-selection-bg: rgba(240, 115, 53, 0.3);
   --dq-selection-bg: color-mix(in oklab, var(--dq-accent-100) 80%, transparent);
   --dq-selection-fg: #0c0d10;
+  --dq-overlay-strong: rgba(9, 10, 14, 0.76);
+  --dq-overlay-strong: color-mix(in oklab, var(--dq-neutral-1000) 78%, transparent);
   --dq-status-success-bg: rgba(34, 197, 94, 0.22);
   --dq-status-success-bg: color-mix(in oklab, var(--dq-accent-100) 24%, transparent);
   --dq-status-success-fg: #22c55e;
@@ -162,18 +230,6 @@ body,
   color: var(--dq-text-primary);
   font-family: var(--dq-font-sans);
 }
-.dq-theme .cm-content .cm-comment {
-  color: var(--dq-text-tertiary);
-}
-
-.dq-theme .cm-content .cm-keyword {
-  color: var(--dq-accent-100);
-}
-
-.dq-theme .cm-content .cm-string {
-  color: color-mix(in oklab, var(--dq-accent-100) 75%, #f8fbff 25%);
-}
-
 .dq-theme ::selection {
   background-color: var(--dq-selection-bg);
   color: var(--dq-selection-fg);
@@ -181,23 +237,24 @@ body,
 
 .dq-theme .MuiPaper-root,
 .dq-theme .MuiCard-root,
+.dq-theme .MuiCardContent-root,
+.dq-theme .MuiDialog-paper,
+.dq-theme .MuiMenu-paper,
+.dq-theme .MuiPopover-paper,
+.dq-theme .MuiDrawer-paper,
+.dq-theme .MuiAutocomplete-paper,
 .dq-theme .MuiAccordion-root,
 .dq-theme .MuiAccordionSummary-root,
-.dq-theme .MuiAccordionDetails-root,
-.dq-theme .MuiTabs-root,
-.dq-theme .MuiTab-root,
-.dq-theme .MuiCardContent-root,
-.dq-theme .MuiCardHeader-root,
-.dq-theme .MuiAlert-root,
-.dq-theme .MuiMenu-paper,
-.dq-theme .MuiDrawer-paper,
-.dq-theme .MuiPopover-paper,
-.dq-theme .MuiAutocomplete-paper,
-.dq-theme .MuiDialog-paper {
+.dq-theme .MuiAccordionDetails-root {
   background-color: var(--dq-surface);
   color: var(--dq-text-primary);
-  border-color: var(--dq-border);
+  border-color: var(--dq-border-subtle);
   box-shadow: var(--dq-shadow-soft);
+}
+
+.dq-theme .MuiPaper-root.MuiPaper-outlined,
+.dq-theme .MuiDialog-paper.MuiPaper-outlined {
+  border-color: var(--dq-border-subtle);
 }
 
 .dq-theme .MuiTypography-colorTextSecondary,
@@ -205,6 +262,89 @@ body,
 .dq-theme .MuiTypography-body2,
 .dq-theme .MuiTypography-caption {
   color: var(--dq-text-secondary);
+}
+
+.dq-theme .dq-header-brand {
+  background-color: var(--dq-surface-card);
+  border: 1px solid var(--dq-border-card);
+  box-shadow: var(--dq-shadow-soft);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.dq-theme.dq-theme--dark .dq-header-brand {
+  background-color: var(--dq-surface-elevated);
+  box-shadow: var(--dq-accent-shadow);
+  border-color: var(--dq-border-card);
+}
+
+.dq-theme .dq-header-brand__text {
+  color: var(--dq-accent-primary);
+  text-shadow: none;
+}
+
+.dq-theme.dq-theme--dark .dq-header-brand__text {
+  color: var(--dq-accent-primary);
+  text-shadow: 0 0 8px color-mix(in oklab, var(--dq-accent-primary) 45%, transparent);
+}
+
+.dq-theme .dq-header-toggle,
+.dq-theme .dq-header-button {
+  border: 1px solid var(--dq-border-card);
+  background-color: var(--dq-surface);
+  color: var(--dq-text-secondary);
+  box-shadow: var(--dq-shadow-soft);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.dq-theme .dq-header-toggle:hover,
+.dq-theme .dq-header-button:hover {
+  background-color: var(--dq-surface-hover);
+  border-color: var(--dq-border-hover);
+}
+
+.dq-theme.dq-theme--dark .dq-header-toggle,
+.dq-theme.dq-theme--dark .dq-header-button {
+  background-color: var(--dq-surface-elevated);
+  color: var(--dq-text-primary);
+  border-color: var(--dq-border-card);
+  box-shadow: var(--dq-accent-shadow);
+}
+
+.dq-theme.dq-theme--dark .dq-header-toggle:hover,
+.dq-theme.dq-theme--dark .dq-header-button:hover {
+  background-color: color-mix(in oklab, var(--dq-accent-primary) 18%, transparent);
+}
+
+.dq-theme .text-gray-900,
+.dq-theme .text-gray-800 {
+  color: var(--dq-text-primary);
+}
+
+.dq-theme .text-gray-700 {
+  color: var(--dq-text-secondary);
+}
+
+.dq-theme .text-gray-600,
+.dq-theme .text-gray-500 {
+  color: var(--dq-text-tertiary);
+}
+
+.dq-theme .text-gray-100,
+.dq-theme .text-white {
+  color: var(--dq-text-on-primary);
+}
+
+.dq-theme .bg-gray-900 {
+  background-color: var(--dq-surface-active);
+}
+
+.dq-theme .bg-gray-50,
+.dq-theme .bg-white {
+  background-color: var(--dq-surface);
+}
+
+.dq-theme .hover\:bg-gray-50:hover {
+  background-color: var(--dq-surface-hover);
 }
 
 .dq-theme .MuiChip-root {
@@ -263,13 +403,48 @@ body,
   background-color: color-mix(in oklab, var(--dq-accent-100) 16%, transparent) !important;
 }
 
-.dq-theme .MuiAlert-standardInfo,
-.dq-theme .MuiAlert-standardSuccess,
-.dq-theme .MuiAlert-standardWarning,
+.dq-theme .MuiAlert-standardSuccess {
+  background-color: var(--dq-status-success-bg);
+  color: var(--dq-status-success-fg);
+  border-color: color-mix(in oklab, var(--dq-status-success-fg) 25%, transparent);
+}
+
+.dq-theme .MuiAlert-standardInfo {
+  background-color: var(--dq-status-info-bg);
+  color: var(--dq-status-info-fg);
+  border-color: color-mix(in oklab, var(--dq-status-info-fg) 25%, transparent);
+}
+
+.dq-theme .MuiAlert-standardWarning {
+  background-color: var(--dq-status-warning-bg);
+  color: var(--dq-status-warning-fg);
+  border-color: color-mix(in oklab, var(--dq-status-warning-fg) 25%, transparent);
+}
+
 .dq-theme .MuiAlert-standardError {
-  background-color: var(--dq-surface);
-  color: var(--dq-text-secondary);
-  border-color: var(--dq-border-subtle);
+  background-color: var(--dq-status-error-bg);
+  color: var(--dq-status-error-fg);
+  border-color: color-mix(in oklab, var(--dq-status-error-fg) 25%, transparent);
+}
+
+.dq-theme .MuiAlert-filledSuccess {
+  background-color: var(--dq-status-success-fg);
+  color: var(--dq-background);
+}
+
+.dq-theme .MuiAlert-filledInfo {
+  background-color: var(--dq-status-info-fg);
+  color: var(--dq-background);
+}
+
+.dq-theme .MuiAlert-filledWarning {
+  background-color: var(--dq-status-warning-fg);
+  color: var(--dq-background);
+}
+
+.dq-theme .MuiAlert-filledError {
+  background-color: var(--dq-status-error-fg);
+  color: var(--dq-background);
 }
 
 .dq-theme .MuiInputBase-root,
@@ -344,32 +519,34 @@ body,
 .dq-theme.dq-theme--dark .unified-title,
 .dq-theme.dq-theme--dark .mantine-tab.secondary span,
 .dq-theme.dq-theme--dark .mantine-tab span {
-  color: #e6edf7;
+  color: var(--dq-tab-text);
 }
 
-.dq-theme.dq-theme--dark .MuiButtonBase-root.Mui-selected,
-.dq-theme.dq-theme--dark .MuiToggleButton-root.Mui-selected,
 .dq-theme.dq-theme--dark .MuiMenuItem-root.Mui-selected,
-.dq-theme.dq-theme--dark .MuiListItem-root.Mui-selected,
-.dq-theme.dq-theme--dark .mantine-tab.active,
-.dq-theme.dq-theme--dark .mantine-tab.secondary.active {
-  background-color: var(--dq-surface-active);
-  color: var(--dq-text-primary);
-  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--dq-accent-100) 35%, transparent);
+.dq-theme.dq-theme--dark .MuiListItem-root.Mui-selected {
+  background-color: color-mix(in oklab, var(--dq-accent-primary) 22%, transparent);
+  color: var(--dq-text-on-primary);
+  box-shadow: none;
 }
 
-.dq-theme.dq-theme--dark .MuiButtonBase-root.Mui-selected:hover,
-.dq-theme.dq-theme--dark .MuiToggleButton-root.Mui-selected:hover,
 .dq-theme.dq-theme--dark .MuiMenuItem-root.Mui-selected:hover,
 .dq-theme.dq-theme--dark .MuiListItem-root.Mui-selected:hover {
-  background-color: #111111;
+  background-color: color-mix(in oklab, var(--dq-accent-primary) 30%, transparent);
+  color: var(--dq-text-on-primary);
+}
+
+.dq-theme.dq-theme--dark .mantine-tab.active,
+.dq-theme.dq-theme--dark .mantine-tab.secondary.active {
+  background-color: transparent;
+  color: var(--dq-tab-active-color);
+  box-shadow: none;
 }
 
 .dq-theme.dq-theme--dark .MuiButtonBase-root:hover,
 .dq-theme.dq-theme--dark .MuiListItemButton-root:hover,
 .dq-theme.dq-theme--dark .MuiMenuItem-root:hover {
-  background-color: #111111;
-  color: #f8fbff;
+  background-color: color-mix(in oklab, var(--dq-accent-primary) 16%, transparent);
+  color: var(--dq-text-primary);
 }
 
 
@@ -378,29 +555,6 @@ body,
   border-color: rgba(96, 125, 170, 0.35);
 }
 
-.dq-theme .cm-editor {
-  background-color: var(--dq-surface);
-  border: 1px solid var(--dq-border);
-  color: var(--dq-text-primary);
-}
-
-.dq-theme .cm-content {
-  color: var(--dq-text-primary);
-}
-
-.dq-theme .cm-gutters {
-  background-color: var(--dq-surface-alt);
-  color: var(--dq-text-tertiary);
-  border-right: 1px solid var(--dq-border);
-}
-
-.dq-theme .cm-activeLine {
-  background-color: color-mix(in oklab, var(--dq-accent-100) 18%, transparent);
-}
-
-.dq-theme .cm-selectionBackground {
-  background-color: color-mix(in oklab, var(--dq-accent-100) 45%, transparent);
-}
 .dq-theme.dq-theme--dark .ag-theme-alpine .ag-ltr .ag-cell-range-single-cell,
 .dq-theme.dq-theme--dark .ag-theme-alpine .ag-range-selected,
 .dq-theme.dq-theme--dark .ag-theme-alpine .ag-cell-range-selected,
@@ -786,7 +940,7 @@ body,
 
 .dq-card--active {
   background-color: var(--dq-surface-card-active);
-  border-color: var(--dq-border-card);
+  border-color: var(--dq-border-card) !important;
 }
 
 .dq-card--elevated {
@@ -801,7 +955,7 @@ body,
 
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .dq-card--active {
   background-color: var(--dq-surface-active);
-  border-color: var(--dq-border-card);
+  border-color: var(--dq-border-card) !important;
 }
 
 :root {
@@ -830,16 +984,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
   margin: 0;
   padding: 0;
-  background-color: #ffffff;
+  background-color: var(--dq-background);
 }
 
 /* Shadcn/ui风格的工具类 */
 .min-h-screen { min-height: 100vh; }
-.bg-gray-50 { background-color: #ffffff; }
-.bg-white { background-color: #ffffff; }
-.bg-gray-900 { background-color: #111827; }
-.bg-gray-100 { background-color: #ffffff; }
-.bg-gray-200 { background-color: #e5e7eb; }
+.bg-gray-50 { background-color: var(--dq-surface); }
+.bg-white { background-color: var(--dq-surface); }
+.bg-gray-900 { background-color: color-mix(in oklab, var(--dq-text-primary) 82%, #0b1120 18%); }
+.bg-gray-100 { background-color: var(--dq-surface-alt); }
+.bg-gray-200 { background-color: color-mix(in oklab, var(--dq-text-primary) 12%, transparent); }
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .bg-gray-900,
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .bg-gray-800,
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .bg-neutral-900,
@@ -847,11 +1001,13 @@ body {
   background-color: var(--dq-surface) !important;
   color: var(--dq-text-primary) !important;
 }
-.bg-blue-50 { background-color: #eff6ff; }
-.bg-blue-100 { background-color: #dbeafe; }
-.bg-blue-50\/30 { background-color: rgba(239, 246, 255, 0.3); }
-.hover\:bg-blue-50\/50:hover { background-color: #ffffff; }
-.hover\:bg-blue-100:hover { background-color: #ffffff; }
+.bg-blue-50 { background-color: color-mix(in oklab, var(--dq-accent-primary) 12%, transparent); }
+.bg-blue-100 { background-color: color-mix(in oklab, var(--dq-accent-primary) 18%, transparent); }
+.bg-blue-50\/30 { background-color: color-mix(in oklab, var(--dq-accent-primary) 12%, transparent); }
+.hover\:bg-blue-50\/50:hover,
+.hover\:bg-blue-100:hover {
+  background-color: var(--dq-surface-hover);
+}
 .bg-slate-800 { background-color: #1e293b; }
 .bg-slate-900 { background-color: #111827; }
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .bg-slate-900,
@@ -863,20 +1019,25 @@ body {
 }
 
 .text-white { color: #ffffff; }
-.text-gray-900 { color: #111827; }
-.text-gray-600 { color: #4b5563; }
-.text-blue-600 { color: #2563eb; }
-.text-blue-700 { color: #1d4ed8; }
-.bg-blue-500 { background-color: #3b82f6; }
-.bg-blue-600 { background-color: #2563eb; }
-.bg-blue-700 { background-color: #1d4ed8; }
+.text-gray-900 { color: var(--dq-text-primary); }
+.text-gray-600 { color: var(--dq-text-tertiary); }
+.text-blue-600 { color: var(--dq-accent-primary); }
+.text-blue-700 { color: color-mix(in oklab, var(--dq-accent-primary) 85%, #0f172a 15%); }
+.bg-blue-500 { background-color: color-mix(in oklab, var(--dq-accent-primary) 85%, transparent); }
+.bg-blue-600 { background-color: var(--dq-accent-primary); }
+.bg-blue-700 { background-color: color-mix(in oklab, var(--dq-accent-primary) 82%, #0f172a 18%); }
+.bg-red-600 { background-color: var(--dq-status-error-fg); }
 
-.border { border: 1px solid #e5e7eb; }
-.border-b { border-bottom: 1px solid #e5e7eb; }
+.hover\:bg-red-700:hover {
+  background-color: color-mix(in oklab, var(--dq-status-error-fg) 82%, #0f172a 18%);
+}
+
+.border { border: 1px solid var(--dq-border-subtle); }
+.border-b { border-bottom: 1px solid var(--dq-border-subtle); }
 .border-b-2 { border-bottom: 2px solid; }
 .border-transparent { border-color: transparent; }
-.border-blue-500 { border-color: #3b82f6; }
-.border-gray-200 { border-color: #e5e7eb !important; }
+.border-blue-500 { border-color: var(--dq-accent-primary); }
+.border-gray-200 { border-color: var(--dq-border-subtle) !important; }
 
 .rounded-lg { border-radius: 0.5rem; }
 .rounded-md { border-radius: 0.375rem; }
@@ -959,8 +1120,22 @@ body {
 .cursor-pointer { cursor: pointer; }
 
 .hover\:text-gray-900:hover { color: #111827; }
-.hover\:bg-gray-50:hover { background-color: #ffffff; }
-.hover\:bg-gray-100:hover { background-color: #ffffff; }
+.hover\:bg-gray-50:hover,
+.hover\:bg-gray-100:hover {
+  background-color: var(--dq-surface-hover);
+}
+
+.hover\:bg-gray-200:hover {
+  background-color: var(--dq-surface-hover);
+}
+
+.hover\:bg-blue-700:hover {
+  background-color: color-mix(in oklab, var(--dq-accent-primary) 82%, #0f172a 18%);
+}
+
+.hover\:bg-gray-800:hover {
+  background-color: color-mix(in oklab, var(--dq-text-primary) 65%, #0b1120 35%);
+}
 
 .hover-surface:hover {
   background-color: var(--dq-surface-hover);
@@ -1025,21 +1200,21 @@ body {
 
 .mantine-tab.secondary {
   padding: 12px 16px;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--dq-text-tertiary);
+  font-size: var(--dq-tab-font-size-secondary);
+  font-weight: var(--dq-tab-font-weight-secondary);
+  color: var(--dq-tab-text);
   border-bottom: 2px solid transparent;
   background: transparent;
   border-radius: 10px 10px 0 0;
 }
 
 .mantine-tab.secondary.active {
-  color: var(--dq-text-primary);
-  border-bottom-color: var(--dq-accent-primary);
+  color: var(--dq-tab-active-color);
+  border-bottom-color: var(--dq-tab-active-color);
 }
 
 .mantine-tab.secondary:hover:not(.active) {
-  color: var(--dq-text-secondary);
+  color: var(--dq-tab-text-active);
   background-color: var(--dq-surface-card);
 }
 
@@ -1061,20 +1236,22 @@ body {
 }
 
 .unified-card {
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--dq-surface-card);
+  border: 1px solid var(--dq-border-subtle);
   border-radius: 8px;
+  color: var(--dq-text-primary);
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   transition: all 0.2s ease;
 }
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .unified-card {
   background: var(--dq-surface) !important;
   border-color: var(--dq-border) !important;
-  color: var(--dq-text-primary) !important;
   box-shadow: var(--dq-shadow-soft) !important;
 }
 
 .unified-card:hover {
+  background: var(--dq-surface-hover);
+  border-color: var(--dq-border-hover);
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 }
 
@@ -1105,18 +1282,20 @@ body {
 }
 
 .unified-query-shell .MuiTab-root {
-  border-radius: 12px;
-  padding: 0.6rem 1.1rem;
-  transition: background-color 0.18s ease, color 0.18s ease;
+  border-radius: 0;
+  padding: 0.6rem 1.2rem;
+  background-color: transparent;
+  transition: color 0.18s ease;
 }
 
 .unified-query-shell .MuiTab-root:hover {
-  background-color: var(--dq-surface-hover);
+  background-color: transparent;
+  color: var(--dq-text-primary);
 }
 
 .unified-query-shell .MuiTab-root.Mui-selected {
-  background-color: var(--dq-surface-active);
-  color: var(--dq-text-primary);
+  background-color: transparent;
+  color: var(--dq-accent-100);
 }
 
 .dq-page {
@@ -1204,7 +1383,7 @@ body {
 
 .visual-analysis-panel__toggle:hover {
   background: var(--dq-surface-hover);
-  border-color: var(--dq-border-card);
+  border-color: var(--dq-border-card) !important;
 }
 
 .visual-analysis-panel__content {
@@ -1215,42 +1394,6 @@ body {
 
 .visual-analysis-panel__mode-label {
   color: var(--dq-text-secondary);
-}
-
-.visual-analysis-panel__mode-switch {
-  border: 1px solid var(--dq-border-subtle);
-  background-color: var(--dq-surface-alt);
-  transition: background-color 0.18s ease, border-color 0.18s ease;
-}
-
-.visual-analysis-panel__mode-button {
-  padding: 0.4rem 0.85rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-  border: none;
-  background: transparent;
-  color: var(--dq-text-secondary);
-  cursor: pointer;
-  transition: background-color 0.18s ease, color 0.18s ease;
-}
-
-.visual-analysis-panel__mode-button:hover:not(:disabled) {
-  background-color: var(--dq-surface-hover);
-}
-
-.visual-analysis-panel__mode-button.is-active {
-  background: var(--dq-accent-primary);
-  color: var(--dq-background);
-  box-shadow: 0 16px 32px -28px color-mix(in oklab, var(--dq-accent-primary) 70%, transparent);
-}
-
-.visual-analysis-panel__mode-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.65;
-}
-
-.visual-analysis-panel__mode-switch:focus-within {
-  border-color: color-mix(in oklab, var(--dq-accent-primary) 60%, transparent);
 }
 
 .visual-analysis-panel__grid {
@@ -1265,7 +1408,9 @@ body {
 }
 
 .visual-analysis-section-card > .MuiBox-root:hover {
-  border-color: var(--dq-border-card);
+  border-color: color-mix(in oklab, var(--dq-accent-primary) 26%, var(--dq-border-card)) !important;
+  background-color: var(--dq-surface-card);
+  box-shadow: 0 20px 42px -34px color-mix(in oklab, var(--dq-accent-primary) 28%, transparent);
 }
 
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .visual-analysis-section-card > .MuiBox-root {
@@ -1286,7 +1431,8 @@ body {
 }
 
 .visual-analysis-section-card .visual-analysis-card-inner:hover {
-  border-color: var(--dq-border-card);
+  border-color: color-mix(in oklab, var(--dq-accent-primary) 35%, var(--dq-border-card)) !important;
+  background-color: var(--dq-accent-primary-soft);
 }
 
 .visual-analysis-section-card {
@@ -1300,8 +1446,9 @@ body {
 }
 
 .visual-analysis-section-card:hover {
-  border-color: var(--dq-border-card);
-  box-shadow: 0 26px 48px -30px rgba(15, 23, 42, 0.55);
+  border-color: color-mix(in oklab, var(--dq-accent-primary) 30%, var(--dq-border-card)) !important;
+  background-color: var(--dq-surface-card);
+  box-shadow: 0 26px 48px -30px color-mix(in oklab, var(--dq-accent-primary) 32%, rgba(15, 23, 42, 0.55));
 }
 
 .visual-analysis-section-card .MuiBox-root {
@@ -1336,7 +1483,7 @@ body {
 }
 
 .visual-analysis-section-card .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
-  border-color: var(--dq-border-card);
+  border-color: var(--dq-border-card) !important;
 }
 
 .visual-analysis-section-card .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
@@ -1375,6 +1522,27 @@ body {
   background: color-mix(in oklab, var(--dq-accent-primary) 12%, transparent);
 }
 
+
+:where(.dark, .dq-theme.dq-theme--dark) .visual-analysis-section-card {
+  background-color: var(--dq-neutral-1000, #0b1018) !important;
+  border-color: var(--dq-border-card) !important;
+}
+
+:where(.dark, .dq-theme.dq-theme--dark) .visual-analysis-section-card > .MuiBox-root,
+:where(.dark, .dq-theme.dq-theme--dark) .visual-analysis-card-inner {
+  background-color: var(--dq-neutral-1000, #0b1018) !important;
+  border-color: var(--dq-border-card) !important;
+}
+
+:where(.dark, .dq-theme.dq-theme--dark) .visual-analysis-card-inner:hover {
+  background-color: var(--dq-accent-primary-soft) !important;
+  border-color: color-mix(in oklab, var(--dq-accent-primary) 42%, var(--dq-border-card)) !important;
+}
+
+:where(.dark, .dq-theme.dq-theme--dark) .visual-analysis-section-card--pivot {
+  background-color: var(--dq-neutral-1000, #0b1018) !important;
+}
+
 .visual-analysis-section-card .cm-editor {
   background: var(--dq-surface-alt);
   border-radius: 12px;
@@ -1394,6 +1562,179 @@ body {
   background: color-mix(in oklab, var(--dq-accent-primary) 28%, transparent);
 }
 
+.dq-theme .MuiButton-root:not(.MuiIconButton-root) {
+  border-radius: 8px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.dq-theme .MuiButton-contained:not(.MuiButton-containedError):not(.MuiButton-containedSuccess):not(.MuiButton-containedWarning):not(.MuiButton-containedInfo),
+.dq-theme .MuiButton-outlined:not(.MuiButton-outlinedError):not(.MuiButton-outlinedSuccess):not(.MuiButton-outlinedWarning):not(.MuiButton-outlinedInfo) {
+  border: 1.5px solid var(--dq-accent-primary);
+  background-color: var(--dq-surface);
+  color: var(--dq-accent-primary);
+  box-shadow: none;
+  padding: 10px 22px;
+}
+
+.dq-theme .MuiButton-contained:not(.MuiButton-containedError):not(.MuiButton-containedSuccess):not(.MuiButton-containedWarning):not(.MuiButton-containedInfo):hover,
+.dq-theme .MuiButton-outlined:not(.MuiButton-outlinedError):not(.MuiButton-outlinedSuccess):not(.MuiButton-outlinedWarning):not(.MuiButton-outlinedInfo):hover {
+  background-color: var(--dq-accent-primary);
+  color: var(--dq-text-on-primary);
+  border-color: var(--dq-accent-primary);
+}
+
+.dq-theme .MuiButton-text:not(.MuiButton-textError):not(.MuiButton-textSuccess):not(.MuiButton-textWarning):not(.MuiButton-textInfo) {
+  color: var(--dq-accent-primary);
+  padding: 8px 12px;
+}
+
+.dq-theme .MuiToggleButton-root {
+  border-radius: 8px;
+  border: 1.5px solid var(--dq-accent-primary);
+  background-color: var(--dq-surface);
+  color: var(--dq-accent-primary);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  padding: 10px 22px;
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.dq-theme .MuiToggleButton-root:hover {
+  background-color: var(--dq-accent-primary);
+  color: var(--dq-text-on-primary);
+  border-color: var(--dq-accent-primary);
+}
+
+.dq-theme .MuiToggleButton-root.Mui-selected {
+  background-color: var(--dq-accent-primary);
+  color: var(--dq-text-on-primary);
+  border-color: var(--dq-accent-primary);
+}
+
+.dq-theme .MuiToggleButton-root.Mui-selected:hover {
+  background-color: color-mix(in oklab, var(--dq-accent-primary) 94%, transparent);
+  border-color: var(--dq-accent-primary);
+}
+
+.dq-tab-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--dq-tab-gap);
+  align-items: flex-end;
+}
+
+.dq-tab,
+.dq-tab--secondary {
+  position: relative;
+  border: none;
+  background: transparent;
+  color: var(--dq-tab-text);
+  font-weight: var(--dq-tab-font-weight-secondary);
+  font-size: var(--dq-tab-font-size-secondary);
+  letter-spacing: -0.01em;
+  padding: var(--dq-tab-padding-y) var(--dq-tab-padding-x);
+  min-width: auto;
+  border-radius: 0;
+  transition: color 0.18s ease;
+}
+
+.dq-tab--primary {
+  font-size: var(--dq-tab-font-size-primary);
+  font-weight: var(--dq-tab-font-weight-primary);
+}
+
+.dq-tab:hover {
+  color: var(--dq-tab-text-active);
+}
+
+.mantine-tabs .dq-tab {
+  color: var(--dq-tab-text);
+}
+
+.mantine-tabs .dq-tab:hover {
+  color: var(--dq-tab-text-active);
+}
+
+.mantine-tabs .dq-tab.dq-tab--active {
+  color: var(--dq-tab-active-color);
+}
+
+.dq-tab::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0;
+  background: transparent;
+  transition: height 0.18s ease, background-color 0.18s ease;
+}
+
+.dq-tab--active {
+  color: var(--dq-tab-active-color);
+}
+
+.dq-tab--active::after {
+  height: var(--dq-tab-indicator-height);
+  background: var(--dq-tab-indicator);
+}
+
+.dq-tab:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--dq-tab-indicator) 45%, transparent);
+  outline-offset: 2px;
+}
+
+:root .dq-text-primary {
+  color: var(--dq-text-primary);
+}
+
+:root .dq-text-secondary {
+  color: var(--dq-text-secondary);
+}
+
+:root .dq-text-tertiary {
+  color: var(--dq-text-tertiary);
+}
+
+:root .dq-surface-card {
+  background-color: var(--dq-surface-card);
+}
+
+:where(.dark, .dq-theme.dq-theme--dark) .MuiButton-contained:not(.MuiButton-containedError):not(.MuiButton-containedSuccess):not(.MuiButton-containedWarning):not(.MuiButton-containedInfo),
+:where(.dark, .dq-theme.dq-theme--dark) .MuiButton-outlined:not(.MuiButton-outlinedError):not(.MuiButton-outlinedSuccess):not(.MuiButton-outlinedWarning):not(.MuiButton-outlinedInfo),
+:where(.dark, .dq-theme.dq-theme--dark) .MuiToggleButton-root {
+  background-color: transparent;
+  color: var(--dq-accent-primary);
+  border-color: var(--dq-accent-primary);
+}
+
+:where(.dark, .dq-theme.dq-theme--dark) .MuiButton-contained:not(.MuiButton-containedError):not(.MuiButton-containedSuccess):not(.MuiButton-containedWarning):not(.MuiButton-containedInfo):hover,
+:where(.dark, .dq-theme.dq-theme--dark) .MuiButton-outlined:not(.MuiButton-outlinedError):not(.MuiButton-outlinedSuccess):not(.MuiButton-outlinedWarning):not(.MuiButton-outlinedInfo):hover,
+:where(.dark, .dq-theme.dq-theme--dark) .MuiToggleButton-root:hover {
+  background-color: var(--dq-accent-primary);
+  color: var(--dq-text-on-primary);
+  border-color: var(--dq-accent-primary);
+  box-shadow: none;
+}
+
+:where(.dark, .dq-theme.dq-theme--dark) .MuiToggleButton-root.Mui-selected {
+  background-color: var(--dq-accent-primary);
+  color: var(--dq-text-on-primary);
+  border-color: var(--dq-accent-primary);
+}
+
+:where(.dark, .dq-theme.dq-theme--dark) .MuiToggleButton-root.Mui-selected:hover {
+  background-color: color-mix(in oklab, var(--dq-accent-primary) 94%, transparent);
+}
+
+:where(.dark, .dq-theme.dq-theme--dark) .MuiButton-text:not(.MuiButton-textError):not(.MuiButton-textSuccess):not(.MuiButton-textWarning):not(.MuiButton-textInfo) {
+  color: var(--dq-accent-primary);
+}
+
 
 .MuiMenu-paper {
   border: 1px solid #e1e8f5;
@@ -1409,13 +1750,12 @@ body {
 }
 
 /* 统一 MUI 元素基础字号至 16px */
-.MuiButtonBase-root,
-.MuiButton-root,
+.MuiButtonBase-root:not(.dq-tab),
+.MuiButton-root:not(.dq-tab),
 .MuiToggleButton-root,
 .MuiListItemButton-root,
 .MuiMenuItem-root,
 .MuiPaginationItem-root,
-.MuiTab-root,
 .MuiChip-label,
 .MuiFormControlLabel-label,
 .MuiAutocomplete-option,
@@ -1427,8 +1767,8 @@ body {
 .MuiFormHelperText-root,
 .MuiTooltip-tooltip,
 .MuiAlert-message {
-  font-size: 1rem !important;
-  line-height: 1.5 !important;
+  font-size: 1rem;
+  line-height: 1.5;
 }
 
 .MuiDialogContentText-root,
@@ -1448,6 +1788,30 @@ body {
 .MuiMenuItem-root.Mui-selected,
 .MuiMenuItem-root:hover {
   background-color: rgba(37, 99, 235, 0.12) !important;
+}
+
+.dq-theme .MuiToggleButton-root {
+  color: var(--dq-text-secondary);
+  border-color: var(--dq-border-subtle);
+  background-color: transparent;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.dq-theme .MuiToggleButton-root:hover {
+  color: var(--dq-text-primary);
+  background-color: var(--dq-surface-hover);
+  border-color: var(--dq-border-hover);
+}
+
+.dq-theme .MuiToggleButton-root.Mui-selected {
+  color: var(--dq-text-primary);
+  border-color: color-mix(in oklab, var(--dq-accent-primary) 55%, transparent);
+  background-color: color-mix(in oklab, var(--dq-accent-primary) 18%, transparent);
+}
+
+.dq-theme .MuiToggleButton-root.Mui-selected:hover {
+  background-color: color-mix(in oklab, var(--dq-accent-primary) 22%, transparent);
+  border-color: color-mix(in oklab, var(--dq-accent-primary) 65%, transparent);
 }
 
 /* 间距工具类 */
@@ -1528,18 +1892,21 @@ body {
 .modern-card {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border-radius: 12px !important;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--dq-border-subtle);
+  background: var(--dq-surface-card);
+  color: var(--dq-text-primary);
   box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
 }
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .modern-card {
   background: var(--dq-surface) !important;
   border-color: var(--dq-border) !important;
-  color: var(--dq-text-primary) !important;
   box-shadow: var(--dq-shadow-soft) !important;
 }
 
 .modern-card:hover {
   transform: translateY(-2px);
+  background: var(--dq-surface-hover);
+  border-color: var(--dq-border-hover);
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
@@ -1724,7 +2091,7 @@ body {
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tab.secondary,
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tab button,
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tabs button {
-  color: var(--dq-text-tertiary);
+  color: var(--dq-tab-text);
   border-radius: 12px 12px 0 0;
   background-color: transparent;
 }
@@ -1737,7 +2104,7 @@ body {
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .text-gray-600,
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .text-gray-500,
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .text-gray-400 {
-  color: var(--dq-text-primary) !important;
+  color: var(--dq-tab-text) !important;
 }
 
 
@@ -1771,16 +2138,21 @@ body {
 
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tab.active,
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tab.secondary.active {
-  color: var(--dq-text-primary);
-  border-bottom-color: var(--dq-accent-100);
-  background: var(--dq-surface-active);
-  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--dq-accent-100) 32%, transparent);
+  color: var(--dq-tab-active-color);
+  border-bottom-color: var(--dq-tab-active-color);
+  background: transparent;
+  box-shadow: none;
+}
+
+:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tab.active span,
+:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tab.secondary.active span {
+  color: var(--dq-tab-active-color) !important;
 }
 
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tab:hover:not(.active),
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tab.secondary:hover:not(.active) {
-  color: var(--dq-accent-100);
-  background: var(--dq-surface-alt);
+  color: var(--dq-tab-text-active);
+  background: color-mix(in oklab, var(--dq-accent-primary) 12%, transparent);
 }
 
 
@@ -1803,47 +2175,6 @@ body {
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .inline-flex.h-10.w-10,
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .btn,
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .btn-default,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .btn-primary,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tabs button {
-  background-color: var(--dq-surface);
-  color: var(--dq-text-primary);
-  border-color: var(--dq-border);
-  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
-}
-
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) button:hover,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .inline-flex.h-10.w-10:hover,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .btn:hover,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tabs button:hover {
-  background-color: var(--dq-surface-alt);
-  border-color: var(--dq-accent-100);
-  color: var(--dq-accent-100);
-  transform: translateY(-1px);
-}
-
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .btn-primary,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) button.btn-primary,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .MuiButton-root.MuiButton-containedPrimary,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .MuiButton-contained,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tabs button.btn-primary {
-  background: linear-gradient(135deg, color-mix(in oklab, var(--dq-accent-100) 85%, transparent) 0%, color-mix(in oklab, var(--dq-accent-200) 95%, transparent) 100%) !important;
-  border-color: color-mix(in oklab, var(--dq-accent-200) 85%, transparent) !important;
-  color: #0e0f12 !important;
-  font-family: var(--dq-font-mono);
-  text-transform: uppercase;
-  letter-spacing: -0.01em;
-}
-
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .btn-primary:hover,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) button.btn-primary:hover,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .MuiButton-root.MuiButton-containedPrimary:hover,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .MuiButton-contained:hover,
-:where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tabs button.btn-primary:hover {
-  background: linear-gradient(135deg, color-mix(in oklab, var(--dq-accent-100) 70%, transparent) 0%, color-mix(in oklab, var(--dq-accent-200) 85%, transparent) 100%) !important;
-  border-color: color-mix(in oklab, var(--dq-accent-100) 80%, transparent) !important;
-  color: #0a0906 !important;
-}
-
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .badge,
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .mantine-tab .badge,
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .page-intro .badge {

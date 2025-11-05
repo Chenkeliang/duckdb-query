@@ -20,24 +20,10 @@ const RoundedButton = React.forwardRef(function RoundedButton(
         fontWeight: 600,
         px: paddingX,
         py: paddingY,
-        '&.MuiButton-contained': {
-          backgroundColor: 'var(--dq-accent-primary)',
-          color: '#fff',
-          '&:hover': {
-            backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 88%, transparent)'
-          }
-        },
-        '&.MuiButton-outlined': {
-          borderColor: 'var(--dq-border-card)',
-          color: 'var(--dq-accent-primary)',
-          '&:hover': {
-            borderColor: 'var(--dq-accent-primary)',
-            backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 8%, transparent)'
-          }
-        },
         '&.Mui-disabled': {
-          backgroundColor: 'color-mix(in oklab, var(--dq-neutral-200) 90%, transparent)',
-          color: 'var(--dq-neutral-500)'
+          backgroundColor: 'color-mix(in oklab, var(--dq-neutral-200) 85%, transparent)',
+          color: 'var(--dq-neutral-500)',
+          borderColor: 'transparent'
         },
         ...sx
       }}

@@ -39,8 +39,9 @@ const SourceSelector = ({
         maxHeight: 250,
         overflow: 'hidden',
         borderRadius: 2,
-        border: '1px solid rgba(0, 0, 0, 0.08)',
+        border: '1px solid var(--dq-border-subtle)',
         boxShadow: 'none',
+        backgroundColor: 'var(--dq-surface-card)',
         display: 'flex',
         flexDirection: 'column'
       }}>
@@ -50,13 +51,13 @@ const SourceSelector = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid rgba(0, 0, 0, 0.05)',
-          bgcolor: 'rgba(0, 0, 0, 0.01)'
+          borderBottom: '1px solid var(--dq-border-subtle)',
+          bgcolor: 'var(--dq-surface)'
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Database
               sx={{
-                color: 'rgba(0, 113, 227, 0.8)',
+                color: 'var(--dq-accent-primary)',
                 fontSize: '1rem'
               }}
             />
@@ -82,11 +83,11 @@ const SourceSelector = ({
                     opacity: 0.75,
                     '&:hover': {
                       opacity: 1,
-                      bgcolor: 'var(--dq-surface-hover)',
+                      bgcolor: 'var(--dq-accent-primary-soft)',
                       color: 'var(--dq-text-primary)'
                     }
                   }}
-                >
+              >
                   <RefreshIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -130,9 +131,10 @@ const SourceSelector = ({
                         transition: 'background-color 0.2s ease, border-color 0.2s ease',
                         borderRadius: 1.5,
                         border: '1px solid transparent',
+                        backgroundColor: 'var(--dq-surface)',
                         '&:hover': {
-                          bgcolor: 'var(--dq-surface)',
-                          borderColor: 'var(--dq-border-card)'
+                          bgcolor: 'var(--dq-accent-primary-soft)',
+                          borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 30%, var(--dq-border-card))'
                         }
                       }}
                     >
@@ -156,7 +158,7 @@ const SourceSelector = ({
                               sx={{
                                 height: 18,
                                 fontSize: '1rem',
-                                bgcolor: 'var(--dq-surface-card-active)',
+                                bgcolor: 'color-mix(in oklab, var(--dq-accent-primary) 14%, transparent)',
                                 color: 'var(--dq-accent-primary)',
                                 fontWeight: 600
                               }}
@@ -187,7 +189,7 @@ const SourceSelector = ({
                           opacity: 0.75,
                           '&:hover': {
                             opacity: 1,
-                            bgcolor: 'var(--dq-surface-hover)'
+                            bgcolor: 'var(--dq-accent-primary-soft)'
                           }
                           }}
                         >
@@ -201,7 +203,7 @@ const SourceSelector = ({
                         component="li"
                         sx={{
                           ml: 2,
-                          borderColor: 'rgba(0, 0, 0, 0.04)'
+                        borderColor: 'var(--dq-border-subtle)'
                         }}
                       />
                     )}
@@ -247,8 +249,9 @@ const SourceSelector = ({
         maxHeight: 250,
         overflow: 'hidden',
         borderRadius: 2,
-        border: '1px solid rgba(0, 0, 0, 0.08)',
+        border: '1px solid var(--dq-border-subtle)',
         boxShadow: 'none',
+        backgroundColor: 'var(--dq-surface-card)',
         display: 'flex',
         flexDirection: 'column'
       }}>
@@ -258,13 +261,13 @@ const SourceSelector = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid rgba(0, 0, 0, 0.05)',
-          bgcolor: 'rgba(0, 0, 0, 0.01)'
+          borderBottom: '1px solid var(--dq-border-subtle)',
+          bgcolor: 'var(--dq-surface)'
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <BarChart3
               sx={{
-                color: 'rgba(52, 199, 89, 0.8)', // Apple绿色
+                color: 'var(--dq-status-success-fg)',
                 fontSize: '1rem'
               }}
             />
@@ -278,22 +281,22 @@ const SourceSelector = ({
             >
               已选择数据源
             </Typography>
-            {selectedSources.length > 0 && (
-              <Chip
-                label={selectedSources.length}
-                size="small"
-                sx={{
-                  ml: 1,
-                  height: 20,
-                  minWidth: 20,
-                  fontSize: '1rem',
-                  bgcolor: 'rgba(52, 199, 89, 0.1)',
-                  color: 'rgba(52, 199, 89, 0.8)',
-                  fontWeight: 600
-                }}
-              />
-            )}
-          </Box>
+                {selectedSources.length > 0 && (
+                  <Chip
+                    label={selectedSources.length}
+                    size="small"
+                    sx={{
+                      ml: 1,
+                      height: 20,
+                      minWidth: 20,
+                      fontSize: '1rem',
+                      bgcolor: 'color-mix(in oklab, var(--dq-status-success-fg) 18%, transparent)',
+                      color: 'var(--dq-status-success-fg)',
+                      fontWeight: 600
+                    }}
+                  />
+                )}
+              </Box>
         </Box>
 
         <Box sx={{ overflow: 'auto', flexGrow: 1 }}>
@@ -301,16 +304,20 @@ const SourceSelector = ({
             <List disablePadding>
               {selectedSources.map((source, index, array) => (
                 <React.Fragment key={source.id}>
-                  <ListItem
-                    sx={{
-                      py: 1,
-                      px: 2,
-                      borderRadius: 1.5,
-                      transition: 'background-color 0.2s ease, border-color 0.2s ease',
-                      backgroundColor: 'var(--dq-surface)',
-                      border: '1px solid var(--dq-border-card)'
-                    }}
-                  >
+                    <ListItem
+                      sx={{
+                        py: 1,
+                        px: 2,
+                        borderRadius: 1.5,
+                        transition: 'background-color 0.2s ease, border-color 0.2s ease',
+                        backgroundColor: 'var(--dq-surface)',
+                        border: '1px solid var(--dq-border-subtle)',
+                        '&:hover': {
+                          backgroundColor: 'var(--dq-accent-primary-soft)',
+                          borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 30%, var(--dq-border-card))'
+                        }
+                      }}
+                    >
                     <ListItemText
                       disableTypography
                       primary={
@@ -331,8 +338,8 @@ const SourceSelector = ({
                             sx={{
                               height: 18,
                               fontSize: '1rem',
-                              bgcolor: 'color-mix(in oklab, var(--dq-surface-card-active) 70%, transparent)',
-                              color: 'rgba(52, 199, 89, 0.8)',
+                              bgcolor: 'color-mix(in oklab, var(--dq-status-success-fg) 14%, transparent)',
+                              color: 'var(--dq-status-success-fg)',
                               fontWeight: 500
                             }}
                           />
@@ -364,7 +371,7 @@ const SourceSelector = ({
                           opacity: 0.75,
                           '&:hover': {
                             opacity: 1,
-                            bgcolor: 'var(--dq-surface-hover)'
+                            bgcolor: 'var(--dq-accent-primary-soft)'
                           }
                           }}
                         >
@@ -381,7 +388,7 @@ const SourceSelector = ({
                       component="li"
                       sx={{
                         ml: 2,
-                        borderColor: 'rgba(0, 0, 0, 0.04)'
+                        borderColor: 'var(--dq-border-subtle)'
                       }}
                     />
                   )}

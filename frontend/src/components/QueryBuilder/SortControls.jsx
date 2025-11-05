@@ -122,19 +122,20 @@ const SortControls = ({
   return (
     <Box sx={{
       width: "100%",
-      bgcolor: 'white',
+      bgcolor: 'var(--dq-surface)',
       borderRadius: 4,
       border: '1px solid var(--dq-border-subtle)',
-      p: 2
+      p: 2,
+      color: 'var(--dq-text-primary)'
     }}>
       {/* 标题和控制 - 统一蓝色风格 */}
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2, px: 0.5 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Box sx={{ width: 8, height: 8, bgcolor: "var(--dq-accent-primary)", borderRadius: "50%" }} />
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "text.primary" }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--dq-text-primary)' }}>
             排序 (ORDER BY)
           </Typography>
-          <Typography variant="caption" sx={{ color: "text.secondary" }}>
+          <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
             {orderBy.length}个规则
           </Typography>
         </Box>
@@ -164,8 +165,8 @@ const SortControls = ({
 
       <Collapse in={isExpanded}>
         {/* 排序列表 - 柔和圆润风格 */}
-        <Box sx={{ bgcolor: "white", borderRadius: 4, border: "1px solid var(--dq-border-subtle)", p: 2 }}>
-          <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
+        <Box sx={{ bgcolor: 'var(--dq-surface)', borderRadius: 4, border: "1px solid var(--dq-border-subtle)", p: 2 }}>
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 500, color: 'var(--dq-text-primary)' }}>
             添加排序条件
           </Typography>
 
@@ -341,7 +342,7 @@ const SortControls = ({
           <Box sx={{
             mt: 2,
             mb: 2,
-            bgcolor: 'white',
+            bgcolor: 'var(--dq-surface)',
             borderRadius: 4,
             border: '1px solid var(--dq-border-subtle)'
           }}>
@@ -351,7 +352,7 @@ const SortControls = ({
               <Typography variant="body2" sx={{ fontWeight: 500 }}>
                 排序条件 ({orderBy.length})
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
                 排序优先级从上到下递减
               </Typography>
             </Box>
@@ -515,17 +516,16 @@ const SortControls = ({
             mt: 2,
             p: 3,
             textAlign: "center",
-            bgcolor: 'white',
+            bgcolor: 'var(--dq-surface)',
             borderRadius: 4,
             border: '1px solid var(--dq-border-subtle)'
           }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>
               还没有配置排序条件
             </Typography>
             <Typography
               variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", mt: 1 }}
+              sx={{ display: "block", mt: 1, color: 'var(--dq-text-tertiary)' }}
             >
               排序可以控制结果的顺序
             </Typography>

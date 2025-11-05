@@ -232,7 +232,7 @@ const FilterControls = ({
                 }
               }}
             />
-            <Typography variant="body2" color="text.secondary">至</Typography>
+            <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>至</Typography>
             <TextField
               size="small"
               value={filterData.value2}
@@ -332,10 +332,11 @@ const FilterControls = ({
   return (
     <Box sx={{
       width: '100%',
-      bgcolor: 'white',
+      bgcolor: 'var(--dq-surface)',
       borderRadius: 4,
       border: '1px solid var(--dq-border-subtle)',
-      p: 2
+      p: 2,
+      color: 'var(--dq-text-primary)'
     }}>
       {/* 标题和控制 - 统一蓝色风格 */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, px: 0.5 }}>
@@ -375,7 +376,7 @@ const FilterControls = ({
       <Collapse in={isExpanded}>
         {/* 筛选条件列表 - 柔和圆润风格 */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 500, color: 'var(--dq-text-primary)' }}>
             添加筛选条件
           </Typography>
 
@@ -517,7 +518,7 @@ const FilterControls = ({
         {/* 已添加的筛选条件列表 */}
         {filters.length > 0 && (
           <Box sx={{
-            bgcolor: 'white',
+            bgcolor: 'var(--dq-surface)',
             borderRadius: 4,
             border: '1px solid var(--dq-border-subtle)',
             p: 2
@@ -637,14 +638,14 @@ const FilterControls = ({
           <Box sx={{
             p: 3,
             textAlign: 'center',
-            bgcolor: 'white',
+            bgcolor: 'var(--dq-surface)',
             borderRadius: 4,
             border: '1px solid var(--dq-border-subtle)'
           }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>
               还没有添加筛选条件
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'var(--dq-text-tertiary)' }}>
               筛选条件可以限制查询结果的范围
             </Typography>
           </Box>

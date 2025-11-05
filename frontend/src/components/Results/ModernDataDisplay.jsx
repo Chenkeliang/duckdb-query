@@ -32,7 +32,7 @@ import {
   useTheme,
 } from '@mui/material';
 import { Eye, EyeOff, Filter, List, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X, SlidersHorizontal, Plus, Trash2 } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import StableTable from '../StableTable';
 import VirtualTable from '../VirtualTable/VirtualTable';
@@ -207,6 +207,62 @@ const ModernDataDisplay = ({
   }, [filterOperators]);
 
   const hasFilterSupport = Boolean(onApplyFilters && (sqlQuery || generatedSQL));
+
+  const defaultIconButtonSx = {
+    color: 'var(--dq-text-secondary)',
+    '&:hover': {
+      color: 'var(--dq-text-primary)',
+      backgroundColor: 'var(--dq-surface-hover)'
+    }
+  };
+
+  const activeIconButtonSx = {
+    color: 'var(--dq-accent-100)',
+    backgroundColor: 'var(--dq-accent-soft-bg)',
+    '&:hover': {
+      color: 'var(--dq-accent-100)',
+      backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 28%, transparent)'
+    }
+  };
+
+  const toggleButtonBaseSx = {
+    color: 'var(--dq-text-secondary)',
+    borderColor: 'var(--dq-border-subtle)',
+    backgroundColor: 'transparent',
+    '&:hover': {
+      color: 'var(--dq-text-primary)',
+      backgroundColor: 'var(--dq-surface-hover)',
+      borderColor: 'var(--dq-border-hover)'
+    },
+    '&.Mui-selected': {
+      color: 'var(--dq-text-primary)',
+      borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 55%, transparent)',
+      backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 18%, transparent)',
+      '&:hover': {
+        backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 22%, transparent)',
+        borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 65%, transparent)'
+      }
+    }
+  };
+
+  const handleCopyColumnName = useCallback(async (label) => {
+    const resolved = typeof label === 'string' ? label.trim() : '';
+    if (!resolved) {
+      showError('无法复制空列名');
+      return;
+    }
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(resolved);
+        showSuccess(`已复制列名「${resolved}」`);
+      } else {
+        throw new Error('clipboard unavailable');
+      }
+    } catch (error) {
+      showError('复制列名失败，请手动复制');
+    }
+  }, [showError, showSuccess]);
 
   // 标准化columns格式 - 支持字符串数组和对象数组
   const normalizedColumns = useMemo(() => {
@@ -558,25 +614,25 @@ const ModernDataDisplay = ({
           return {
             label: '匹配',
             backgroundColor: 'var(--dq-status-success-fg)',
-            color: 'white'
+            color: 'var(--dq-text-on-primary)'
           };
         case 'left':
           return {
             label: '仅左表',
             backgroundColor: 'var(--dq-status-warning-fg)',
-            color: 'white'
+            color: 'var(--dq-text-on-primary)'
           };
         case 'right':
           return {
             label: '仅右表',
             backgroundColor: 'var(--dq-accent-primary)',
-            color: 'white'
+            color: 'var(--dq-text-on-primary)'
           };
         default:
           return {
             label: value,
             backgroundColor: 'var(--dq-border-subtle)',
-            color: '#333'
+            color: 'var(--dq-text-primary)'
           };
       }
     };
@@ -634,7 +690,7 @@ const ModernDataDisplay = ({
               fontSize: '1rem',
               padding: '4px 8px',
               textAlign: 'center',
-              backgroundColor: 'rgba(33, 150, 243, 0.02)',
+              backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 8%, transparent)',
             },
             headerName: col.headerName || col.field.replace('join_result_', '关联结果_'),
           };
@@ -1158,6 +1214,7 @@ const ModernDataDisplay = ({
                 <IconButton
                   onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
                   color={renderMode === 'virtual' ? 'primary' : 'default'}
+                  sx={renderMode === 'virtual' ? activeIconButtonSx : defaultIconButtonSx}
                 >
                   {renderMode === 'agGrid' ? <Scroll size={20} /> : <List size={20} />}
                 </IconButton>
@@ -1169,6 +1226,7 @@ const ModernDataDisplay = ({
                     onClick={() => setFilterDialogOpen(true)}
                     color={activeFilters && activeFilters.length > 0 ? 'primary' : 'default'}
                     disabled={!hasFilterSupport || loading}
+                    sx={activeFilters && activeFilters.length > 0 ? activeIconButtonSx : defaultIconButtonSx}
                   >
                     <Filter size={20} />
                   </IconButton>
@@ -1176,13 +1234,16 @@ const ModernDataDisplay = ({
               </Tooltip>
 
               <Tooltip title="列显示/隐藏">
-                <IconButton onClick={handleColumnMenuOpen}>
+                <IconButton
+                  onClick={handleColumnMenuOpen}
+                  sx={defaultIconButtonSx}
+                >
                   <SlidersHorizontal size={20} />
                 </IconButton>
               </Tooltip>
 
               <Tooltip title="刷新数据">
-                <IconButton onClick={onRefresh} disabled={loading}>
+                <IconButton onClick={onRefresh} disabled={loading} sx={defaultIconButtonSx}>
                   <RefreshCw size={20} />
                 </IconButton>
               </Tooltip>
@@ -1196,8 +1257,8 @@ const ModernDataDisplay = ({
                 color="primary"
                 sx={{
                   '&.Mui-disabled': {
-                    backgroundColor: 'action.disabledBackground',
-                    color: 'action.disabled',
+                    backgroundColor: 'var(--dq-surface-hover)',
+                    color: 'var(--dq-text-tertiary)',
                   },
                 }}
                 title={`调试信息: data.length=${data.length}, sqlQuery="${sqlQuery}", loading=${loading}, 禁用条件: ${data.length === 0 ? '数据为空' : !sqlQuery ? 'SQL查询为空' : loading ? '正在加载' : '无'}`}
@@ -1232,7 +1293,7 @@ const ModernDataDisplay = ({
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <Search size={20} color="#666" />
+                    <Search size={20} color="var(--dq-text-tertiary)" />
                   </InputAdornment>
                 ),
                 endAdornment: searchText && (
@@ -1371,7 +1432,7 @@ const ModernDataDisplay = ({
                 color: 'var(--dq-text-secondary)',
               }}
             >
-              <Table size={64} color="#999" style={{ marginBottom: '16px', opacity: 0.5 }} />
+              <Table size={64} color="var(--dq-text-tertiary)" style={{ marginBottom: '16px', opacity: 0.5 }} />
               <Typography variant="h6" sx={{ mb: 1 }}>
                 暂无数据
               </Typography>
@@ -1388,6 +1449,7 @@ const ModernDataDisplay = ({
               autoRowHeight={true}
               columnValueFilters={columnValueFilters}
               onOpenColumnFilterMenu={handleOpenColumnFilterMenu}
+              onCopyColumnName={handleCopyColumnName}
             />
           ) : (
             <StableTable
@@ -1398,6 +1460,7 @@ const ModernDataDisplay = ({
               originalDatasource={originalDatasource}
               columnValueFilters={columnValueFilters}
               onOpenColumnFilterMenu={handleOpenColumnFilterMenu}
+              onCopyColumnName={handleCopyColumnName}
             />
           )}
         </Box>
@@ -1466,6 +1529,31 @@ const ModernDataDisplay = ({
             exclusive
             size="small"
             onChange={(_, value) => handleColumnFilterIncludeModeChange(value)}
+            sx={{
+              backgroundColor: 'var(--dq-surface-control)',
+              border: '1px solid var(--dq-border-control)',
+              borderRadius: 2,
+              overflow: 'hidden',
+              '& .MuiToggleButton-root': {
+                flex: 1,
+                textTransform: 'none',
+                fontWeight: 500,
+                color: 'var(--dq-text-secondary)',
+                border: 'none',
+                backgroundColor: 'transparent',
+                '&:hover': {
+                  backgroundColor: 'var(--dq-surface-control-active)',
+                  color: 'var(--dq-text-primary)'
+                },
+                '&.Mui-selected': {
+                  backgroundColor: 'var(--dq-accent-primary)',
+                  color: 'var(--dq-text-on-primary)'
+                }
+              },
+              '& .MuiToggleButton-root + .MuiToggleButton-root': {
+                borderLeft: '1px solid var(--dq-border-control)'
+              }
+            }}
           >
             <ToggleButton value="include">包含</ToggleButton>
             <ToggleButton value="exclude">排除</ToggleButton>
@@ -1487,10 +1575,13 @@ const ModernDataDisplay = ({
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 2,
-                backgroundColor: 'var(--dq-surface-card-active)',
-                '&:hover .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'divider',
+                backgroundColor: 'var(--dq-surface-control)',
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'var(--dq-border-control)'
                 },
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'var(--dq-accent-primary)',
+                }
               },
             }}
           />
@@ -1537,13 +1628,12 @@ const ModernDataDisplay = ({
 
           <Box
             sx={{
-              border: '1px solid',
-              borderColor: 'divider',
+              border: '1px solid var(--dq-border-control)',
               borderRadius: 2,
               maxHeight: 240,
               overflowY: 'auto',
               p: 1,
-              backgroundColor: 'var(--dq-surface-card-active)'
+              backgroundColor: 'var(--dq-surface-control)'
             }}
           >
             {filteredColumnFilterOptions.length === 0 ? (
@@ -1631,7 +1721,7 @@ const ModernDataDisplay = ({
                   p: 1,
                   borderRadius: 1,
                   '&:hover': {
-                    backgroundColor: 'action.hover',
+                    backgroundColor: 'var(--dq-surface-hover)',
                   },
                 }}
                 onClick={() => handleColumnToggle(column.field)}
@@ -1643,7 +1733,7 @@ const ModernDataDisplay = ({
                   {visibleColumns.has(column.field) ? (
                     <Eye size={16} color="var(--dq-accent-primary)" />
                   ) : (
-                    <EyeOff size={16} color="#666" />
+                    <EyeOff size={16} color="var(--dq-text-tertiary)" />
                   )}
                   <Chip
                     size="small"
@@ -1731,15 +1821,21 @@ const ModernDataDisplay = ({
                       </FormControl>
 
                       <ToggleButtonGroup
-                        value={mode}
-                        exclusive
-                        size="small"
-                        onChange={(_, value) => value && handleFilterModeChange(index, value)}
-                        sx={{ height: 40, '& .MuiToggleButton-root': { height: 40 } }}
-                      >
-                        <ToggleButton value="values">列表筛选</ToggleButton>
-                        <ToggleButton value="condition">条件筛选</ToggleButton>
-                      </ToggleButtonGroup>
+                      value={mode}
+                      exclusive
+                      size="small"
+                      onChange={(_, value) => value && handleFilterModeChange(index, value)}
+                      sx={{
+                        height: 40,
+                        '& .MuiToggleButton-root': {
+                          height: 40,
+                          ...toggleButtonBaseSx
+                        }
+                      }}
+                    >
+                      <ToggleButton value="values">列表筛选</ToggleButton>
+                      <ToggleButton value="condition">条件筛选</ToggleButton>
+                    </ToggleButtonGroup>
 
                       <IconButton
                         color="error"
@@ -1760,14 +1856,19 @@ const ModernDataDisplay = ({
                           sx={{ '& .MuiToggleButton-root': { height: 36 } }}
                         >
                           <ToggleButtonGroup
-                            value={includeMode}
-                            exclusive
-                            size="small"
-                            onChange={(_, value) => value && handleIncludeModeChange(index, value)}
-                          >
-                            <ToggleButton value="include">包含</ToggleButton>
-                            <ToggleButton value="exclude">排除</ToggleButton>
-                          </ToggleButtonGroup>
+                          value={includeMode}
+                          exclusive
+                          size="small"
+                          onChange={(_, value) => value && handleIncludeModeChange(index, value)}
+                          sx={{
+                            '& .MuiToggleButton-root': {
+                              ...toggleButtonBaseSx
+                            }
+                          }}
+                        >
+                          <ToggleButton value="include">包含</ToggleButton>
+                          <ToggleButton value="exclude">排除</ToggleButton>
+                        </ToggleButtonGroup>
 
                           <TextField
                             size="small"

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Card } from '../../ui/Card';
-import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
+import { Button } from '@mui/material';
 
 const ConditionalLogicControls = ({ 
   columns = [], 
@@ -159,36 +159,42 @@ const ConditionalLogicControls = ({
 
   return (
     <Card className="p-4">
-      <h3 className="text-lg font-semibold mb-4 text-gray-800">条件判断与数据分组</h3>
+      <h3 className="text-lg font-semibold mb-4 dq-text-primary">条件判断与数据分组</h3>
       
       {/* Tab Navigation */}
-      <div className="flex space-x-2 mb-4">
-        <Button
-          variant={activeTab === 'conditional' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setActiveTab('conditional')}
-        >
-          条件判断
-        </Button>
-        <Button
-          variant={activeTab === 'binning' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setActiveTab('binning')}
-        >
-          数据分组
-        </Button>
+      <div className="flex mb-4">
+        <div className="dq-tab-group">
+          <Button
+            variant="text"
+            disableRipple
+            className={`dq-tab ${activeTab === 'conditional' ? 'dq-tab--active' : ''}`}
+            onClick={() => setActiveTab('conditional')}
+            sx={{ minWidth: 'auto', padding: 'var(--dq-tab-padding-y) var(--dq-tab-padding-x)' }}
+          >
+            条件判断
+          </Button>
+          <Button
+            variant="text"
+            disableRipple
+            className={`dq-tab ${activeTab === 'binning' ? 'dq-tab--active' : ''}`}
+            onClick={() => setActiveTab('binning')}
+            sx={{ minWidth: 'auto', padding: 'var(--dq-tab-padding-y) var(--dq-tab-padding-x)' }}
+          >
+            数据分组
+          </Button>
+        </div>
       </div>
 
       {/* Existing conditional fields */}
       {conditionalFields.length > 0 && (
         <div className="mb-4">
-          <h4 className="text-sm font-medium mb-2 text-gray-700">已创建的条件字段</h4>
+          <h4 className="text-sm font-medium mb-2 dq-text-secondary">已创建的条件字段</h4>
           <div className="space-y-2">
             {conditionalFields.map((field) => (
               <div key={field.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                 <div className="flex-1">
-                  <span className="font-medium text-gray-800">{field.name}</span>
-                  <div className="text-sm text-gray-600 mt-1 font-mono">
+                  <span className="font-medium dq-text-primary">{field.name}</span>
+                  <div className="text-sm dq-text-tertiary mt-1 font-mono">
                     {field.type === 'conditional' 
                       ? generateCaseWhenPreview(field)
                       : generateBinningPreview(field)
@@ -196,10 +202,10 @@ const ConditionalLogicControls = ({
                   </div>
                 </div>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="outlined"
+                  size="small"
+                  color="error"
                   onClick={() => removeConditionalField(field.id)}
-                  className="text-red-600 hover:text-red-700"
                 >
                   删除
                 </Button>
@@ -213,7 +219,7 @@ const ConditionalLogicControls = ({
       {activeTab === 'conditional' && (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium dq-text-secondary mb-1">
               条件字段名称
             </label>
             <Input
@@ -225,22 +231,22 @@ const ConditionalLogicControls = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium dq-text-secondary mb-2">
               条件设置
             </label>
             <div className="space-y-3">
               {newCondition.conditions.map((condition, index) => (
                 <div key={index} className="p-3 border rounded-lg bg-gray-50">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium dq-text-secondary">
                       条件 {index + 1}
                     </span>
                     {newCondition.conditions.length > 1 && (
                       <Button
-                        variant="outline"
-                        size="sm"
+                        variant="outlined"
+                        size="small"
+                        color="error"
                         onClick={() => removeCondition(index)}
-                        className="text-red-600 hover:text-red-700"
                       >
                         删除
                       </Button>
@@ -249,7 +255,7 @@ const ConditionalLogicControls = ({
                   
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <div>
-                      <label className="block text-sm text-gray-600 mb-1">列名</label>
+                      <label className="block text-sm dq-text-tertiary mb-1">列名</label>
                       <select
                         value={condition.column}
                         onChange={(e) => updateCondition(index, 'column', e.target.value)}
@@ -263,7 +269,7 @@ const ConditionalLogicControls = ({
                     </div>
                     
                     <div>
-                      <label className="block text-sm text-gray-600 mb-1">操作符</label>
+                      <label className="block text-sm dq-text-tertiary mb-1">操作符</label>
                       <select
                         value={condition.operator}
                         onChange={(e) => updateCondition(index, 'operator', e.target.value)}
@@ -276,7 +282,7 @@ const ConditionalLogicControls = ({
                     </div>
                     
                     <div>
-                      <label className="block text-sm text-gray-600 mb-1">比较值</label>
+                      <label className="block text-sm dq-text-tertiary mb-1">比较值</label>
                       <Input
                         value={condition.value}
                         onChange={(e) => updateCondition(index, 'value', e.target.value)}
@@ -287,7 +293,7 @@ const ConditionalLogicControls = ({
                     </div>
                     
                     <div>
-                      <label className="block text-sm text-gray-600 mb-1">返回值</label>
+                      <label className="block text-sm dq-text-tertiary mb-1">返回值</label>
                       <Input
                         value={condition.result}
                         onChange={(e) => updateCondition(index, 'result', e.target.value)}
@@ -301,17 +307,17 @@ const ConditionalLogicControls = ({
             </div>
             
             <Button
-              variant="outline"
-              size="sm"
+              variant="outlined"
+              size="small"
               onClick={addCondition}
-              className="mt-2"
+              sx={{ mt: 2 }}
             >
               添加条件
             </Button>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium dq-text-secondary mb-1">
               默认值
             </label>
             <Input
@@ -323,9 +329,10 @@ const ConditionalLogicControls = ({
           </div>
 
           <Button
+            variant="contained"
             onClick={addConditionalField}
             disabled={!newCondition.name.trim()}
-            className="w-full"
+            sx={{ width: '100%' }}
           >
             添加条件字段
           </Button>
@@ -336,7 +343,7 @@ const ConditionalLogicControls = ({
       {activeTab === 'binning' && (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium dq-text-secondary mb-1">
               分组字段名称
             </label>
             <Input
@@ -348,7 +355,7 @@ const ConditionalLogicControls = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium dq-text-secondary mb-1">
               选择列
             </label>
             <select
@@ -364,21 +371,21 @@ const ConditionalLogicControls = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium dq-text-secondary mb-2">
               分组类型
             </label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {binningTypes.map((type) => (
                 <Button
                   key={type.value}
-                  variant={newBinning.type === type.value ? 'default' : 'outline'}
-                  size="sm"
+                  variant={newBinning.type === type.value ? 'contained' : 'outlined'}
+                  size="small"
                   onClick={() => setNewBinning({ ...newBinning, type: type.value })}
-                  className="text-left justify-start"
+                  sx={{ justifyContent: 'flex-start', textAlign: 'left' }}
                 >
                   <div>
                     <div className="font-medium">{type.label}</div>
-                    <div className="text-sm text-gray-500">{type.description}</div>
+                    <div className="text-sm dq-text-tertiary">{type.description}</div>
                   </div>
                 </Button>
               ))}
@@ -386,7 +393,7 @@ const ConditionalLogicControls = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium dq-text-secondary mb-1">
               分组数量
             </label>
             <Input
@@ -397,15 +404,17 @@ const ConditionalLogicControls = ({
               max="20"
               className="w-full"
             />
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm dq-text-tertiary mt-1">
               将数据分为 {newBinning.bins} 个区间
             </p>
           </div>
 
           <Button
+            variant="contained"
+            size="small"
             onClick={addBinningField}
             disabled={!newBinning.name.trim() || !newBinning.column}
-            className="w-full"
+            sx={{ width: '100%' }}
           >
             添加分组字段
           </Button>

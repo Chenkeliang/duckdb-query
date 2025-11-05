@@ -118,6 +118,8 @@ async def get_available_tables():
         table_info = []
         for _, row in tables_df.iterrows():
             table_name = row["name"]
+            if table_name.lower().startswith("systerm_"):
+                continue
             try:
                 # 获取表结构
                 schema_df = con.execute(f'DESCRIBE "{table_name}"').fetchdf()

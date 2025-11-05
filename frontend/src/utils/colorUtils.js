@@ -77,11 +77,14 @@ const resolveColorValue = (value) => {
 };
 
 export const withOpacity = (colorValue, opacity, fallbackColor = '#2563eb') => {
-  const resolved = resolveColorValue(colorValue) || fallbackColor;
+  const fallbackResolved = resolveColorValue(fallbackColor) || fallbackColor;
+  const resolved = resolveColorValue(colorValue) || fallbackResolved;
   const parsedRgb = parseRgb(resolved);
   const parsedHex = parsedRgb ? null : hexToRgb(resolved);
 
-  const color = parsedRgb || parsedHex || hexToRgb(fallbackColor) || parseRgb(fallbackColor);
+  const fallbackParsed = parseRgb(fallbackResolved) || hexToRgb(fallbackResolved);
+
+  const color = parsedRgb || parsedHex || fallbackParsed || hexToRgb('#2563eb') || parseRgb('#2563eb');
 
   if (!color) {
     return fallbackColor;

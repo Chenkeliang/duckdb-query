@@ -229,7 +229,15 @@ const PostgreSQLManager = () => {
   };
 
   return (
-    <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
+    <Paper
+      sx={{
+        p: 3,
+        borderRadius: 'var(--dq-radius-card)',
+        backgroundColor: 'var(--dq-surface)',
+        border: '1px solid var(--dq-border-subtle)',
+        boxShadow: 'var(--dq-shadow-soft)'
+      }}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <DatabaseIcon color="primary" />

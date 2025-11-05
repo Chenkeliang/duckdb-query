@@ -155,7 +155,20 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange, databaseType 
     if (totalIssues === 0 && sqlQuery.trim()) {
         return (
             <Box sx={{ mt: 2 }}>
-                <Alert severity="success" icon={<CheckCircleIcon />}>
+                <Alert
+                    severity="success"
+                    icon={<CheckCircleIcon />}
+                    sx={{
+                        backgroundColor: 'var(--dq-status-success-bg)',
+                        color: 'var(--dq-status-success-fg)',
+                        border: '1px solid color-mix(in oklab, var(--dq-status-success-fg) 42%, transparent)',
+                        boxShadow: 'none',
+                        alignItems: 'center',
+                        '& .MuiAlert-icon': {
+                            color: 'var(--dq-status-success-fg)'
+                        }
+                    }}
+                >
                     <Typography variant="body2">
                         SQL 语法检查通过
                     </Typography>

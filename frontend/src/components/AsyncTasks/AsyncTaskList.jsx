@@ -354,8 +354,15 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
 
   return (
     <Box>
-      <Card>
-        <CardContent>
+      <Card
+        sx={{
+          backgroundColor: 'var(--dq-surface-card)',
+          border: '1px solid var(--dq-border-subtle)',
+          boxShadow: 'var(--dq-shadow-soft)',
+          borderRadius: 3
+        }}
+      >
+        <CardContent sx={{ backgroundColor: 'transparent' }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Typography variant="h5" component="h2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <ClipboardList size={24} />
@@ -393,8 +400,33 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
           )}
 
           {tasks.length > 0 && (
-            <TableContainer component={Paper}>
-              <Table>
+            <TableContainer
+              component={Paper}
+              sx={{
+                backgroundColor: 'var(--dq-surface)',
+                border: '1px solid var(--dq-border-subtle)',
+                boxShadow: 'none'
+              }}
+            >
+              <Table
+                sx={{
+                  backgroundColor: 'var(--dq-surface)',
+                  '& th': {
+                    backgroundColor: 'var(--dq-surface)',
+                    color: 'var(--dq-text-secondary)'
+                  },
+                  '& td': {
+                    borderColor: 'var(--dq-border-subtle)'
+                  },
+                  '& tbody tr': {
+                    backgroundColor: 'var(--dq-surface)',
+                    transition: 'background-color 0.2s ease'
+                  },
+                  '& tbody tr:hover': {
+                    backgroundColor: 'var(--dq-surface-hover)'
+                  }
+                }}
+              >
                 <TableHead>
                   <TableRow>
                     <TableCell>任务ID</TableCell>

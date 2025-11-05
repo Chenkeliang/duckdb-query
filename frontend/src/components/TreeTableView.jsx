@@ -61,40 +61,33 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
     const groupedTables = useMemo(() => {
         const groups = {
             recent: [],
-            async_results: [],
-            data_tables: [],
-            temp_tables: [],
-            system_tables: []
+            query_results: [],
+            data_tables: []
         };
 
         tables.forEach(table => {
             if (!table || typeof table !== 'string') return;
             const tableLower = table.toLowerCase();
 
-            // 1. 异步任务结果表
-            if (tableLower.startsWith('async_result_') || tableLower.startsWith('task_')) {
-                groups.async_results.push(table);
+            // 内部系统表一律跳过
+            if (tableLower.startsWith('systerm_')) {
+                return;
             }
-            // 2. 临时表
-            else if (tableLower.includes('temp') || tableLower.includes('临时')) {
-                groups.temp_tables.push(table);
-            }
-            // 3. 数据表（用户自定义表名，不包含系统前缀）
-            else if (!tableLower.startsWith('async_result_') &&
-                !tableLower.startsWith('task_') &&
-                !tableLower.startsWith('query_result_') &&
-                !tableLower.includes('temp') &&
-                !tableLower.includes('临时')) {
+
+            if (
+                tableLower.startsWith('async_result_') ||
+                tableLower.startsWith('query_result_') ||
+                tableLower.startsWith('task_')
+            ) {
+                groups.query_results.push(table);
+            } else {
                 groups.data_tables.push(table);
-            }
-            // 4. 系统表（兼容旧数据）
-            else {
-                groups.system_tables.push(table);
             }
         });
 
-        // 最近的表格（最新的5个）
-        groups.recent = tables.slice(0, 5);
+        groups.recent = tables
+            .filter(table => typeof table === 'string' && !table.toLowerCase().startsWith('systerm_'))
+            .slice(0, 5);
 
         return groups;
     }, [tables]);
@@ -130,14 +123,14 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
     const getTableIcon = (tableName) => {
         const defaultColor = isDarkMode ? 'var(--dq-text-secondary)' : 'var(--dq-text-tertiary)';
         const asyncColor = isDarkMode ? 'var(--dq-status-warning-fg)' : 'var(--dq-status-warning-fg)';
-        const queryColor = isDarkMode ? 'var(--dq-status-success-fg)' : 'var(--dq-status-success-fg)';
         const uploadColor = isDarkMode ? 'color-mix(in oklab, var(--dq-accent-primary) 70%, white 30%)' : 'var(--dq-accent-primary)';
         if (!tableName || typeof tableName !== 'string') {
             return <ViewList sx={{ fontSize: 16, color: defaultColor }} />;
         }
         const lower = tableName.toLowerCase();
-        if (lower.startsWith('async_result_')) return <QueryStats sx={{ fontSize: 16, color: asyncColor }} />;
-        if (lower.startsWith('query_result_')) return <TableChart sx={{ fontSize: 16, color: queryColor }} />;
+        if (lower.startsWith('async_result_') || lower.startsWith('query_result_') || lower.startsWith('task_')) {
+            return <QueryStats sx={{ fontSize: 16, color: asyncColor }} />;
+        }
         if (lower.includes('upload') || lower.includes('粘贴')) return <CloudUpload sx={{ fontSize: 16, color: uploadColor }} />;
         return <ViewList sx={{ fontSize: 16, color: defaultColor }} />;
     };
@@ -151,12 +144,12 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                 lightBg: 'var(--dq-surface-card-active)',
                 description: '最新的5个表'
             },
-            async_results: {
-                label: '异步查询结果',
+            query_results: {
+                label: '查询结果表',
                 icon: QueryStats,
                 color: 'var(--dq-accent-100)',
                 lightBg: 'color-mix(in oklab, var(--dq-status-warning-bg) 100%, transparent)',
-                description: `${groupedTables.async_results.length} 个表`
+                description: `${groupedTables.query_results.length} 个表`
             },
             data_tables: {
                 label: '数据表',
@@ -164,23 +157,9 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                 color: 'var(--dq-accent-primary-soft)',
                 lightBg: 'var(--dq-surface-card-active)',
                 description: `${groupedTables.data_tables.length} 个表`
-            },
-            temp_tables: {
-                label: '临时表',
-                icon: History,
-                color: 'var(--dq-status-warning-fg)',
-                lightBg: 'var(--dq-status-warning-bg)',
-                description: `${groupedTables.temp_tables.length} 个表`
-            },
-            system_tables: {
-                label: '系统表',
-                icon: TableChart,
-                color: 'var(--dq-text-tertiary)',
-                lightBg: 'var(--dq-surface-alt)',
-                description: `${groupedTables.system_tables.length} 个表`
             }
         };
-        return configs[groupKey] || configs.system_tables;
+        return configs[groupKey] || configs.data_tables;
     };
 
     const renderTableGroup = (groupKey, tables) => {
@@ -191,16 +170,15 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
         const IconComponent = groupInfo.icon;
         const accentColor = groupInfo.color;
         const accentResolved =
-            resolveColor(accentColor, isDarkMode ? '#f07335' : '#2563eb') ||
-            (isDarkMode ? '#f07335' : '#2563eb');
+            resolveColor(accentColor, isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)') ||
+            (isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)');
         const accentOverlay = (amount) => withOpacity(accentColor, amount, accentResolved);
-        const gradientBase = groupInfo.lightBg || 'var(--dq-surface)';
         const baseSurface = isDarkMode ? 'var(--dq-surface-alt)' : 'var(--dq-surface)';
         const headerBackground = baseSurface;
-        const headerHoverBackground = isDarkMode ? 'var(--dq-surface-active)' : 'var(--dq-surface-muted)';
+        const headerHoverBackground = isDarkMode ? 'var(--dq-surface-active)' : 'var(--dq-surface-hover)';
         const iconBackground = accentOverlay(isDarkMode ? 0.16 : 0.12);
         const chipBackground = isDarkMode ? accentOverlay(0.24) : accentResolved;
-        const chipTextColor = isDarkMode ? 'var(--dq-background)' : 'white';
+        const chipTextColor = 'var(--dq-text-on-primary)';
         const collapseBackground = isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface)';
         const listHoverBackground = accentOverlay(isDarkMode ? 0.16 : 0.08);
         const copyButtonBackground = accentOverlay(isDarkMode ? 0.16 : 0.05);
@@ -212,7 +190,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                     elevation={0}
                     sx={{
                         border: '1px solid',
-                        borderColor: isDarkMode ? 'var(--dq-border)' : 'divider',
+                        borderColor: isDarkMode ? 'var(--dq-border)' : 'var(--dq-border-subtle)',
                         borderRadius: 2,
                         backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface)',
                         overflow: 'hidden',
@@ -236,7 +214,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                 backgroundColor: headerBackground,
                                 borderBottom: isDarkMode ? '1px solid var(--dq-border-subtle)' : 'none',
                                 transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
-                                boxShadow: isDarkMode ? 'none' : 'inset 0 1px 0 rgba(255,255,255,0.6)',
+                                boxShadow: isDarkMode ? 'none' : 'inset 0 1px 0 color-mix(in oklab, var(--dq-background) 60%, transparent)',
                                 '&::before': {
                                     content: "''",
                                     position: 'absolute',
@@ -252,7 +230,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                     backgroundColor: headerHoverBackground,
                                     boxShadow: isDarkMode
                                         ? `0 10px 24px -16px ${accentOverlay(0.45)}`
-                                        : 'inset 0 1px 0 rgba(255,255,255,0.7)'
+                                        : 'inset 0 1px 0 color-mix(in oklab, var(--dq-background) 70%, transparent)'
                                 }
                             }}
                         >
@@ -406,11 +384,11 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                 elevation={0}
                 sx={{
                     border: '1px dashed',
-                    borderColor: 'divider',
+                    borderColor: 'var(--dq-border-subtle)',
                     borderRadius: 2,
                     p: 4,
                     textAlign: 'center',
-                    backgroundColor: 'rgba(0, 0, 0, 0.02)'
+                    backgroundColor: 'var(--dq-surface)'
                 }}
             >
                 <ViewList sx={{ fontSize: 48, color: 'var(--dq-text-tertiary)', mb: 2 }} />
@@ -427,10 +405,8 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
     return (
         <Box sx={{ width: '100%', p: 2 }}>
             {renderTableGroup('recent', groupedTables.recent)}
-            {renderTableGroup('async_results', groupedTables.async_results)}
+            {renderTableGroup('query_results', groupedTables.query_results)}
             {renderTableGroup('data_tables', groupedTables.data_tables)}
-            {renderTableGroup('temp_tables', groupedTables.temp_tables)}
-            {renderTableGroup('system_tables', groupedTables.system_tables)}
         </Box>
     );
 };

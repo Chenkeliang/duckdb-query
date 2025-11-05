@@ -1,6 +1,6 @@
 import { Lightbulb } from 'lucide-react';
 import React, { useState } from 'react';
-import { Button } from '../../ui/Button';
+import { Button } from '@mui/material';
 import { Card } from '../../ui/Card';
 
 const HelpSystem = ({
@@ -158,8 +158,24 @@ const HelpSystem = ({
       <div className={`fixed bottom-4 right-4 z-40 ${className}`}>
         <Tooltip content="显示帮助" id="help-toggle">
           <Button
+            variant="outlined"
             onClick={() => setIsVisible(true)}
-            className="rounded-full w-12 h-12 bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
+            sx={{
+              width: 48,
+              height: 48,
+              minWidth: 48,
+              borderRadius: '50%',
+              fontSize: '1.1rem',
+              border: '1.5px solid var(--dq-accent-primary)',
+              color: 'var(--dq-accent-primary)',
+              backgroundColor: 'var(--dq-surface)',
+              boxShadow: '0 6px 20px color-mix(in oklab, var(--dq-text-primary) 20%, transparent)',
+              '&:hover': {
+                backgroundColor: 'var(--dq-accent-primary)',
+                color: 'var(--dq-text-on-primary)',
+                borderColor: 'var(--dq-accent-primary)'
+              }
+            }}
           >
             ?
           </Button>
@@ -178,8 +194,8 @@ const HelpSystem = ({
             📚 使用帮助
           </h3>
           <Button
-            variant="outline"
-            size="sm"
+            variant="outlined"
+            size="small"
             onClick={() => setIsVisible(false)}
           >
             ✕
@@ -188,16 +204,16 @@ const HelpSystem = ({
 
         {/* Current Step Help */}
         <div className="mb-4">
-          <h4 className="font-medium text-gray-800 mb-2">
+          <h4 className="font-medium dq-text-primary mb-2">
             {currentHelp.title}
           </h4>
-          <p className="text-sm text-gray-600 mb-3">
+          <p className="text-sm dq-text-tertiary mb-3">
             {currentHelp.description}
           </p>
 
           <div className="space-y-2">
-            <h5 className="text-sm font-medium text-gray-700">使用技巧:</h5>
-            <ul className="text-sm text-gray-600 space-y-1">
+            <h5 className="text-sm font-medium dq-text-secondary">使用技巧:</h5>
+            <ul className="text-sm dq-text-tertiary space-y-1">
               {currentHelp.tips.map((tip, index) => (
                 <li key={index} className="flex items-start space-x-2">
                   <span className="text-blue-500 mt-0.5">•</span>
@@ -209,7 +225,7 @@ const HelpSystem = ({
 
           {currentHelp.shortcuts.length > 0 && (
             <div className="mt-3">
-              <h5 className="text-sm font-medium text-gray-700 mb-1">快捷键:</h5>
+              <h5 className="text-sm font-medium dq-text-secondary mb-1">快捷键:</h5>
               <div className="space-y-1">
                 {currentHelp.shortcuts.map((shortcut, index) => (
                   <div key={index} className="text-sm bg-gray-100 px-2 py-1 rounded font-mono">
@@ -224,14 +240,14 @@ const HelpSystem = ({
         {/* Examples Section */}
         {currentStep === 'aggregations' && (
           <div className="mb-4">
-            <h5 className="text-sm font-medium text-gray-700 mb-2">常用示例:</h5>
+            <h5 className="text-sm font-medium dq-text-secondary mb-2">常用示例:</h5>
             <div className="space-y-2">
               {aggregationExamples.map((example, index) => (
                 <div key={index} className="bg-gray-50 p-2 rounded text-sm">
                   <div className="font-mono text-blue-600 mb-1">
                     {example.example}
                   </div>
-                  <div className="text-gray-600">
+                  <div className="dq-text-tertiary">
                     {example.description}
                   </div>
                 </div>
@@ -242,14 +258,14 @@ const HelpSystem = ({
 
         {currentStep === 'filters' && (
           <div className="mb-4">
-            <h5 className="text-sm font-medium text-gray-700 mb-2">筛选示例:</h5>
+            <h5 className="text-sm font-medium dq-text-secondary mb-2">筛选示例:</h5>
             <div className="space-y-2">
               {filterExamples.map((example, index) => (
                 <div key={index} className="bg-gray-50 p-2 rounded text-sm">
                   <div className="font-mono text-blue-600 mb-1">
                     {example.example}
                   </div>
-                  <div className="text-gray-600">
+                  <div className="dq-text-tertiary">
                     {example.description}
                   </div>
                 </div>
@@ -260,19 +276,19 @@ const HelpSystem = ({
 
         {/* Step Navigation */}
         <div className="border-t pt-3">
-          <h5 className="text-sm font-medium text-gray-700 mb-2">功能导航:</h5>
+          <h5 className="text-sm font-medium dq-text-secondary mb-2">功能导航:</h5>
           <div className="grid grid-cols-2 gap-1">
             {helpSteps.map((step) => (
               <Button
                 key={step.id}
-                variant={currentStep === step.id ? 'default' : 'outline'}
-                size="sm"
+                variant={currentStep === step.id ? 'contained' : 'outlined'}
+                size="small"
                 onClick={() => {
                   if (onStepChange) {
                     onStepChange(step.id);
                   }
                 }}
-                className="text-sm justify-start"
+                sx={{ justifyContent: 'flex-start', textAlign: 'left' }}
               >
                 {step.title}
               </Button>

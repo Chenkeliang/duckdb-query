@@ -172,8 +172,8 @@ const AggregationControls = ({
 
   if (columns.length === 0) {
     return (
-      <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'grey.50' }}>
-        <Typography variant="body2" color="text.secondary">
+      <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'var(--dq-surface)', borderRadius: 3, border: '1px solid var(--dq-border-subtle)', color: 'var(--dq-text-secondary)' }}>
+        <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>
           没有可用的列进行聚合
         </Typography>
       </Paper>
@@ -183,10 +183,11 @@ const AggregationControls = ({
   return (
     <Box sx={{
       width: '100%',
-      bgcolor: 'white',
+      bgcolor: 'var(--dq-surface)',
       borderRadius: 4,
       border: '1px solid var(--dq-border-subtle)',
-      p: 2
+      p: 2,
+      color: 'var(--dq-text-primary)'
     }}>
       {/* 标题和控制 - 统一蓝色风格 */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, px: 0.5 }}>
@@ -223,8 +224,8 @@ const AggregationControls = ({
 
       <Collapse in={isExpanded}>
         {/* 添加新聚合函数表单 */}
-        <Box sx={{ bgcolor: 'white', borderRadius: 4, border: '1px solid var(--dq-border-subtle)', p: 2, mb: 2 }}>
-          <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
+        <Box sx={{ bgcolor: 'var(--dq-surface)', borderRadius: 4, border: '1px solid var(--dq-border-subtle)', p: 2, mb: 2 }}>
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 500, color: 'var(--dq-text-primary)' }}>
             添加聚合函数
           </Typography>
 
@@ -358,7 +359,7 @@ const AggregationControls = ({
               <Box
                 key={aggregation.id}
                 sx={{
-                  bgcolor: 'white',
+                  bgcolor: 'var(--dq-surface)',
                   borderRadius: 4,
                   border: '1px solid var(--dq-border-subtle)',
                   p: 2
@@ -370,7 +371,7 @@ const AggregationControls = ({
                     size="small"
                     sx={{
                       bgcolor: 'var(--dq-accent-primary)',
-                      color: 'white',
+                      color: 'var(--dq-text-on-primary)',
                       fontWeight: 600,
                       fontSize: '1rem',
                       height: 24,
@@ -411,7 +412,7 @@ const AggregationControls = ({
                       disabled={disabled}
                       sx={{
                         width: '100%',
-                        bgcolor: 'white',
+                        bgcolor: 'var(--dq-surface)',
                         borderRadius: 3,
                         '& .MuiOutlinedInput-notchedOutline': {
                           borderColor: 'var(--dq-border-subtle)'
@@ -470,7 +471,7 @@ const AggregationControls = ({
                       sx={{
                         width: '100%',
                         '& .MuiOutlinedInput-root': {
-                          bgcolor: 'white',
+                          bgcolor: 'var(--dq-surface)',
                           borderRadius: 3,
                           '& fieldset': {
                             borderColor: 'var(--dq-border-subtle)'

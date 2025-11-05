@@ -2148,6 +2148,10 @@ async def list_duckdb_tables():
         tables_info = []
         for _, row in tables_df.iterrows():
             table_name = row["name"]
+            if table_name.lower().startswith("systerm_"):
+                continue
+            if table_name.lower().startswith("systerm_"):
+                continue
             # 获取表的基本信息
             try:
                 # 对表名进行引号包围以处理特殊字符

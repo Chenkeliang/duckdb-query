@@ -142,7 +142,7 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
                           size="small"
                           sx={{
                             backgroundColor: db.status === 'active'
-                              ? 'rgba(34,197,94,0.15)'
+                              ? 'color-mix(in oklab, var(--dq-status-success-fg) 20%, transparent)'
                               : 'var(--dq-surface-alt)',
                             color: db.status === 'active'
                               ? 'var(--dq-status-success-fg)'
@@ -162,7 +162,7 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
                             disabled={refreshingId === db.id}
                             sx={{
                               color: 'var(--dq-accent-primary)',
-                              '&:hover': { backgroundColor: 'rgba(37, 99, 235, 0.1)' }
+                              '&:hover': { backgroundColor: 'var(--dq-surface-hover)' }
                             }}
                           >
                             {refreshingId === db.id ? (
@@ -180,7 +180,7 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
                             size="small"
                             sx={{
                               color: 'var(--dq-status-error-fg)',
-                              '&:hover': { backgroundColor: 'rgba(239,68,68,0.08)' }
+                              '&:hover': { backgroundColor: 'var(--dq-status-error-bg)' }
                             }}
                           >
                             <DeleteIcon fontSize="small" />

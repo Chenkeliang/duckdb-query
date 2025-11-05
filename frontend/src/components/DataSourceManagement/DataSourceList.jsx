@@ -40,7 +40,16 @@ const DataSourceList = ({ duckdbTables = [], onRefresh, showNotification }) => {
   }
 
   return (
-    <Paper sx={{ maxHeight: 300, overflow: 'auto' }}>
+    <Paper
+      sx={{
+        maxHeight: 300,
+        overflow: 'auto',
+        borderRadius: 'var(--dq-radius-card)',
+        backgroundColor: 'var(--dq-surface)',
+        border: '1px solid var(--dq-border-subtle)',
+        boxShadow: 'var(--dq-shadow-soft)'
+      }}
+    >
       {duckdbTables.map((table) => (
         <Box
           key={table}
@@ -49,9 +58,12 @@ const DataSourceList = ({ duckdbTables = [], onRefresh, showNotification }) => {
             justifyContent: 'space-between',
             alignItems: 'center',
             p: 2,
-            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            borderBottom: '1px solid var(--dq-border-subtle)',
             '&:last-child': {
               borderBottom: 'none'
+            },
+            '&:hover': {
+              backgroundColor: 'var(--dq-surface-hover)'
             }
           }}
         >

@@ -1,7 +1,9 @@
 import {
   Alert,
   Collapse,
-  Fade
+  Fade,
+  IconButton,
+  Button
 } from '@mui/material';
 import { ChevronDown, LineChart } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -783,21 +785,36 @@ const VisualAnalysisPanel = ({
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              className="toggle-chip visual-analysis-panel__toggle flex items-center justify-center flex-shrink-0"
+            <IconButton
+              className="flex-shrink-0"
+              size="small"
+              disableRipple
               onClick={(event) => {
                 event.stopPropagation();
                 setIsExpanded(prev => !prev);
               }}
               aria-label={isExpanded ? '收起分析面板' : '展开分析面板'}
+              sx={{
+                width: '1.9rem',
+                height: '1.9rem',
+                borderRadius: '999px',
+                border: '1px solid var(--dq-border-subtle)',
+                backgroundColor: 'var(--dq-surface-alt)',
+                color: 'var(--dq-text-secondary)',
+                transition: 'background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease',
+                '&:hover': {
+                  backgroundColor: 'var(--dq-surface-hover)',
+                  borderColor: 'var(--dq-border-card)',
+                  color: 'var(--dq-accent-100)'
+                }
+              }}
             >
               <ChevronDown
                 size={16}
                 strokeWidth={2.5}
                 style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
               />
-            </button>
+            </IconButton>
           </div>
 
           {/* Panel Content */}
@@ -811,7 +828,7 @@ const VisualAnalysisPanel = ({
                   sx={{
                     mb: 3,
                     borderRadius: 2,
-                    border: '1px solid rgba(211, 47, 47, 0.1)'
+                    border: '1px solid color-mix(in oklab, var(--dq-status-error-fg) 25%, transparent)'
                   }}
                   onClose={() => setError('')}
                 >
@@ -821,31 +838,33 @@ const VisualAnalysisPanel = ({
 
               {/* 模式切换 */}
               <div className="flex items-center gap-2 mb-4">
-                <div className="text-sm text-gray-600 visual-analysis-panel__mode-label">分析模式</div>
-                <div
-                  className="inline-flex rounded-full overflow-hidden visual-analysis-panel__mode-switch"
-                >
-                  <button
-                    type="button"
-                    className={`px-3 py-1 text-sm visual-analysis-panel__mode-button ${activeMode === 'regular' ? 'is-active' : ''}`}
-                    onClick={() => setActiveMode('regular')}
+                <div className="text-sm text-[color:var(--dq-text-secondary)] visual-analysis-panel__mode-label">分析模式</div>
+                <div className="dq-tab-group">
+                  <Button
+                    disableRipple
+                    variant="text"
+                    className={`dq-tab ${activeMode === 'regular' ? 'dq-tab--active' : ''}`}
+                    onClick={() => !isLoading && setActiveMode('regular')}
+                    sx={{ minWidth: 'auto', padding: 'var(--dq-tab-padding-y) var(--dq-tab-padding-x)' }}
                     disabled={isLoading}
                   >
                     常规
-                  </button>
+                  </Button>
                   {features?.enable_pivot_tables && (
-                    <button
-                      type="button"
-                      className={`px-3 py-1 text-sm visual-analysis-panel__mode-button ${activeMode === 'pivot' ? 'is-active' : ''}`}
-                      onClick={() => setActiveMode('pivot')}
+                    <Button
+                      disableRipple
+                      variant="text"
+                      className={`dq-tab ${activeMode === 'pivot' ? 'dq-tab--active' : ''}`}
+                      onClick={() => !isLoading && setActiveMode('pivot')}
+                      sx={{ minWidth: 'auto', padding: 'var(--dq-tab-padding-y) var(--dq-tab-padding-x)' }}
                       disabled={isLoading}
                     >
                       透视
-                    </button>
+                    </Button>
                   )}
                 </div>
                 {!features?.enable_pivot_tables && (
-                  <span className="text-sm text-gray-500">透视功能已在系统中关闭</span>
+                  <span className="text-sm text-[color:var(--dq-text-tertiary)]">透视功能已在系统中关闭</span>
                 )}
               </div>
 
@@ -914,7 +933,7 @@ const VisualAnalysisPanel = ({
               {/* 透视配置，仅在 pivot 模式显示 */}
               {activeMode === 'pivot' && features?.enable_pivot_tables && (
                 <div className="mb-6 visual-analysis-section-card visual-analysis-section-card--pivot">
-                  <div className="mb-2 text-sm text-gray-600 visual-analysis-panel__pivot-tip">
+                  <div className="mb-2 text-sm text-[color:var(--dq-text-secondary)] visual-analysis-panel__pivot-tip">
                     小提示：勾选行/列字段并选择指标，即可生成透视表，无需拖拽。
                   </div>
                   {pivotNotice && (

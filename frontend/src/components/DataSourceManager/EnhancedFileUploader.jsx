@@ -162,7 +162,7 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
         </Typography>
 
         {/* 上传方式选择 - 在文件选择之前 */}
-        <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+        <Box sx={{ mb: 3, p: 2, bgcolor: 'var(--dq-surface-alt)', borderRadius: 1 }}>
           <FormControlLabel
             control={
               <Switch
@@ -199,23 +199,23 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
               sx={{
-                border: `2px dashed ${isDragOver ? 'var(--dq-accent-primary)' : '#ccc'}`,
+                border: `2px dashed ${isDragOver ? 'var(--dq-accent-primary)' : 'var(--dq-border-subtle)'}`,
                 borderRadius: 2,
                 p: 4,
                 textAlign: 'center',
-                backgroundColor: isDragOver ? 'rgba(25, 118, 210, 0.04)' : 'transparent',
+                backgroundColor: isDragOver ? 'color-mix(in oklab, var(--dq-accent-primary) 12%, transparent)' : 'var(--dq-surface)',
                 transition: 'all 0.3s ease',
                 cursor: 'pointer',
                 '&:hover': {
                   borderColor: 'var(--dq-accent-primary)',
-                  backgroundColor: 'rgba(25, 118, 210, 0.04)',
+                  backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 12%, transparent)',
                 }
               }}
             >
               <Upload
                 sx={{
                   fontSize: 48,
-                  color: isDragOver ? 'var(--dq-accent-primary)' : '#999',
+                  color: isDragOver ? 'var(--dq-accent-primary)' : 'var(--dq-text-tertiary)',
                   mb: 2
                 }}
               />

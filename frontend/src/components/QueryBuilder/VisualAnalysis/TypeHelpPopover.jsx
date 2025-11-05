@@ -22,7 +22,7 @@ const TypeHelpPopover = () => {
         onClick={handleOpen}
         aria-label="数据类型说明"
         sx={{
-          color: 'rgba(148, 163, 184, 0.9)',
+          color: 'var(--dq-text-secondary)',
           '&:hover': {
             color: 'var(--dq-chart-7)',
           },
@@ -38,11 +38,11 @@ const TypeHelpPopover = () => {
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         PaperProps={{
           sx: {
-            backgroundColor: 'var(--dq-text-primary)',
-            color: 'var(--dq-border-subtle)',
-            borderRadius: 2,
-            boxShadow: '0 18px 40px rgba(15, 23, 42, 0.35)',
-            border: '1px solid rgba(148, 163, 184, 0.2)',
+            backgroundColor: 'var(--dq-surface-card)',
+            color: 'var(--dq-text-primary)',
+            borderRadius: 'var(--dq-radius-card)',
+            boxShadow: 'var(--dq-shadow-soft)',
+            border: '1px solid var(--dq-border-card)',
             maxWidth: 360,
             p: 2,
           },
@@ -52,7 +52,7 @@ const TypeHelpPopover = () => {
           <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
             类型提示
           </Typography>
-          <Typography variant="body2" sx={{ mb: 1.5, color: 'rgba(226, 232, 240, 0.85)' }}>
+          <Typography variant="body2" sx={{ mb: 1.5, color: 'var(--dq-text-secondary)' }}>
             当聚合或关联列的类型不一致时，可以通过 TRY_CAST 将其转换为兼容类型。
           </Typography>
           <List dense disablePadding>
@@ -64,7 +64,7 @@ const TypeHelpPopover = () => {
                   </Typography>
                 }
                 secondary={
-                  <Typography variant="caption" sx={{ color: 'rgba(226, 232, 240, 0.65)' }}>
+                  <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>
                     精确小数，适用于金额、比率等需要保留精度的场景
                   </Typography>
                 }
@@ -78,7 +78,7 @@ const TypeHelpPopover = () => {
                   </Typography>
                 }
                 secondary={
-                  <Typography variant="caption" sx={{ color: 'rgba(226, 232, 240, 0.65)' }}>
+                  <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>
                     浮点数，适用于统计分析及允许轻微误差的场景
                   </Typography>
                 }
@@ -92,14 +92,14 @@ const TypeHelpPopover = () => {
                   </Typography>
                 }
                 secondary={
-                  <Typography variant="caption" sx={{ color: 'rgba(226, 232, 240, 0.65)' }}>
+                  <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>
                     文本类型，常用于兼容异常值或作为保底选项
                   </Typography>
                 }
               />
             </ListItem>
           </List>
-          <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: 'rgba(148, 163, 184, 0.9)' }}>
+          <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: 'var(--dq-text-secondary)' }}>
             提示：TRY_CAST 在转换失败时会返回 NULL，不会中断查询。
           </Typography>
         </Box>

@@ -344,10 +344,33 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
       <Tabs
         value={activeTab}
         onChange={(e, newValue) => setActiveTab(newValue)}
-        sx={{ mb: 2 }}
+        sx={{
+          mb: 2,
+          '& .MuiTabs-indicator': {
+            backgroundColor: 'var(--dq-accent-primary)',
+            height: 2,
+            borderRadius: 999
+          },
+          '& .MuiTab-root': {
+            fontSize: 'var(--dq-tab-font-size-secondary)',
+            fontWeight: 'var(--dq-tab-font-weight-secondary)',
+            textTransform: 'none',
+            minHeight: 48,
+            color: 'var(--dq-text-tertiary)',
+            backgroundColor: 'transparent',
+            '&.Mui-selected': {
+              color: 'var(--dq-tab-active-color)',
+              backgroundColor: 'transparent'
+            },
+            '&:hover': {
+              color: 'var(--dq-text-primary)',
+              backgroundColor: 'transparent'
+            }
+          }
+        }}
       >
-        <Tab label="本地文件上传" sx={{ fontSize: '16px', fontWeight: 600, textTransform: 'none' }} />
-        <Tab label="远程文件导入" sx={{ fontSize: '16px', fontWeight: 600, textTransform: 'none' }} />
+        <Tab label="本地文件上传" sx={{ mr: 2 }} />
+        <Tab label="远程文件导入" />
       </Tabs>
 
       {/* 本地文件上传 */}

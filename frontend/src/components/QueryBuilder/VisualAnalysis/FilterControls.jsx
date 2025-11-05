@@ -187,7 +187,9 @@ const FilterControls = ({
               borderRadius: 2,
               backgroundColor: 'var(--dq-surface)',
               '&:hover': {
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                boxShadow: 'var(--dq-shadow-soft)',
+                backgroundColor: 'var(--dq-accent-primary-soft)',
+                borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 30%, var(--dq-border-card))'
               }
             }}
           >
@@ -291,13 +293,7 @@ const FilterControls = ({
           size="small"
           onClick={handleAddFilter}
           sx={{ 
-            alignSelf: 'flex-start',
-            borderColor: 'var(--dq-border-subtle)',
-            color: 'var(--dq-text-tertiary)',
-            '&:hover': {
-              borderColor: 'var(--dq-border-muted)',
-              backgroundColor: 'var(--dq-surface)'
-            }
+            alignSelf: 'flex-start'
           }}
         >
           添加筛选条件
