@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Button,
   Dialog,
   DialogActions,
   DialogContent,
@@ -19,6 +18,7 @@ import {
 } from '@mui/material';
 import { AlertTriangle } from 'lucide-react';
 import TypeHelpPopover from './TypeHelpPopover';
+import { RoundedButton } from '../../common';
 
 const DEFAULT_CAST_OPTIONS = ['DECIMAL(18,4)', 'DOUBLE', 'BIGINT', 'VARCHAR'];
 
@@ -149,6 +149,8 @@ const TypeConflictDialog = ({
           <TableBody>
             {Array.from(conflictMap.entries()).map(([column, rows]) => {
               const firstConflict = rows[0];
+              const displayName =
+                firstConflict?.display_column || column;
               const currentType = firstConflict?.left?.duckdb_type || firstConflict?.left?.type || firstConflict?.left?.raw_type;
               const normalized = firstConflict?.left?.normalized_type || currentType;
               const func = firstConflict?.function;
@@ -167,7 +169,7 @@ const TypeConflictDialog = ({
                   <TableCell>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Typography sx={{ fontWeight: 600, color: 'var(--dq-text-secondary)' }}>
-                        {column}
+                        {displayName}
                       </Typography>
                       {func && (
                         <Chip
@@ -240,26 +242,37 @@ const TypeConflictDialog = ({
         </Table>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={handleClose} disabled={isSubmitting} sx={{ color: 'var(--dq-text-secondary)' }}>
+        <RoundedButton
+          variant="outlined"
+          onClick={handleClose}
+          disabled={isSubmitting}
+          sx={{
+            color: 'var(--dq-text-secondary)',
+            borderColor: 'var(--dq-border-subtle)',
+            '&:hover': {
+              borderColor: 'var(--dq-border-card)',
+              backgroundColor: 'var(--dq-surface-hover)',
+            },
+          }}
+        >
           取消
-        </Button>
-        <Button
-          variant="contained"
+        </RoundedButton>
+        <RoundedButton
+          variant="outlined"
           onClick={handleSubmit}
           disabled={isSubmitting}
           sx={{
-            borderRadius: 2,
-            px: 3,
-            fontWeight: 600,
-            background: 'linear-gradient(135deg, var(--dq-chart-7), var(--dq-status-info-fg))',
-            boxShadow: '0 12px 30px -14px color-mix(in oklab, var(--dq-status-info-fg) 45%, transparent)',
+            color: 'var(--dq-accent-primary)',
+            borderColor: 'var(--dq-accent-primary)',
+            backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 12%, transparent)',
             '&:hover': {
-              background: 'linear-gradient(135deg, color-mix(in oklab, var(--dq-status-info-fg) 80%, transparent), var(--dq-chart-7))',
+              borderColor: 'var(--dq-accent-primary)',
+              backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 20%, transparent)',
             },
           }}
         >
           {isSubmitting ? '应用中...' : '应用转换并继续'}
-        </Button>
+        </RoundedButton>
       </DialogActions>
     </Dialog>
   );

@@ -6,16 +6,127 @@
 // 导入escapeIdentifier函数
 import { escapeIdentifier } from './visualQueryGenerator';
 
+const SQL_IDENTIFIER_REGEX = /"([^"]+)"|([\p{L}\p{N}_][\p{L}\p{N}_\.]*)/gu;
+const RESERVED_SQL_IDENTIFIERS = new Set([
+  'AND',
+  'OR',
+  'NOT',
+  'CASE',
+  'WHEN',
+  'THEN',
+  'ELSE',
+  'END',
+  'NULL',
+  'TRUE',
+  'FALSE',
+  'TRY_CAST',
+  'CAST',
+  'DATE',
+  'TIME',
+  'TIMESTAMP',
+  'COALESCE',
+  'IF',
+  'IFNULL',
+  'IN',
+  'EXISTS',
+  'BETWEEN',
+  'LIKE',
+  'ILIKE',
+  'SIMILAR',
+  'AS',
+  'IS',
+  'SUM',
+  'AVG',
+  'COUNT',
+  'MIN',
+  'MAX',
+  'MEDIAN',
+  'MODE',
+  'ROUND',
+  'ABS',
+  'UPPER',
+  'LOWER',
+  'LEFT',
+  'RIGHT',
+  'SUBSTRING',
+  'TRIM',
+  'LENGTH',
+  'POWER',
+  'LOG',
+  'EXP',
+  'RANK',
+  'DENSE_RANK',
+  'ROW_NUMBER',
+  'OVER',
+  'PARTITION',
+]);
+
+const resolveCastForIdentifier = (castsMap = {}, identifier = '') => {
+  if (!identifier) {
+    return null;
+  }
+  const normalized = identifier.toLowerCase();
+  if (castsMap[normalized]) {
+    return castsMap[normalized];
+  }
+  if (normalized.includes('.')) {
+    const segments = normalized.split('.');
+    const last = segments[segments.length - 1];
+    if (last && castsMap[last]) {
+      return castsMap[last];
+    }
+  }
+  return null;
+};
+
+const applyResolvedCastsToExpression = (expression, castsMap = {}) => {
+  if (
+    !expression ||
+    !castsMap ||
+    Object.keys(castsMap || {}).length === 0
+  ) {
+    return expression;
+  }
+
+  return expression.replace(
+    SQL_IDENTIFIER_REGEX,
+    (match, quoted, bare, offset, fullExpression) => {
+      const identifier = quoted ?? bare;
+      if (!identifier) {
+        return match;
+      }
+      const upper = identifier.toUpperCase();
+      if (RESERVED_SQL_IDENTIFIERS.has(upper)) {
+        return match;
+      }
+      const cast =
+        resolveCastForIdentifier(castsMap, identifier) ??
+        resolveCastForIdentifier(castsMap, identifier.replace(/"/g, ''));
+      if (!cast) {
+        return match;
+      }
+      const preceding = fullExpression.slice(0, offset);
+      if (/TRY_CAST\s*\([^)]*$/i.test(preceding)) {
+        return match;
+      }
+      const safeIdentifier = quoted ? `"${identifier}"` : identifier;
+      return `TRY_CAST(${safeIdentifier} AS ${cast})`;
+    },
+  );
+};
+
 // 创建默认配置
 export const createDefaultConfig = (tableName = "") => ({
   tableName: tableName,
   selectedColumns: [],
   aggregations: [],
   filters: [],
+  having: [],
   orderBy: [],
   groupBy: [],
   calculatedFields: [],
   conditionalFields: [],
+  windowFunctions: [],
   limit: null,
   isDistinct: false,
 });
@@ -94,18 +205,145 @@ const sanitizeAggregation = (aggregation) => {
   };
 };
 
-const sanitizeFilter = (filter) => {
-  if (!filter || !filter.column || !filter.operator) {
+const numericTypeTokens = ['int', 'integer', 'bigint', 'smallint', 'tinyint', 'decimal', 'numeric', 'double', 'float', 'real'];
+const dateTypeTokens = ['date', 'timestamp', 'datetime', 'time'];
+
+const normalizeFilterDataType = (rawType) => {
+  if (!rawType) {
+    return null;
+  }
+  const token = rawType.toString().toLowerCase();
+  if (numericTypeTokens.some((item) => token.includes(item))) {
+    return 'number';
+  }
+  if (dateTypeTokens.some((item) => token.includes(item))) {
+    return 'date';
+  }
+  if (token.includes('bool')) {
+    return 'boolean';
+  }
+  return 'string';
+};
+
+const coerceFilterValue = (rawValue, dataType) => {
+  if (rawValue === null || rawValue === undefined) {
     return null;
   }
 
-  return {
-    column: filter.column,
+  if (typeof rawValue === 'string') {
+    const trimmed = rawValue.trim();
+    if (trimmed === '') {
+      return null;
+    }
+    rawValue = trimmed;
+  }
+
+  switch (dataType) {
+    case 'number': {
+      const num = Number(rawValue);
+      return Number.isFinite(num) ? num : rawValue;
+    }
+    case 'boolean': {
+      if (typeof rawValue === 'boolean') {
+        return rawValue;
+      }
+      const lowered = rawValue.toString().toLowerCase();
+      if (['true', '1', 'yes', 'y', 't'].includes(lowered)) {
+        return true;
+      }
+      if (['false', '0', 'no', 'n', 'f'].includes(lowered)) {
+        return false;
+      }
+      return rawValue;
+    }
+    case 'date': {
+      // 保留字符串形式，后端会按 DuckDB 解析
+      return rawValue.toString();
+    }
+    default:
+      return rawValue;
+  }
+};
+
+export const sanitizeFilter = (filter) => {
+  if (!filter || !filter.operator) {
+    return null;
+  }
+
+  const valueType = filter.valueType || filter.value_type || FilterValueType.CONSTANT;
+  const columnType = normalizeFilterDataType(filter.columnType || filter.column_type);
+  const rightColumnType = normalizeFilterDataType(filter.rightColumnType || filter.right_column_type);
+  const rawCast =
+    filter.cast ||
+    filter.tryCast ||
+    filter.castTarget ||
+    filter.expressionCast ||
+    filter.expression_cast ||
+    null;
+
+  let columnName = filter.column ?? filter.column_name ?? null;
+  if (typeof columnName === 'string') {
+    columnName = columnName.trim();
+    if (columnName === '') {
+      columnName = null;
+    }
+  }
+
+  const sanitized = {
+    column: columnName,
     operator: filter.operator,
     value: filter.value !== undefined ? filter.value : null,
     value2: filter.value2 !== undefined ? filter.value2 : null,
-    logic_operator: filter.logicOperator || filter.logic_operator || LogicOperator.AND,
+    logic_operator: (filter.logicOperator || filter.logic_operator || LogicOperator.AND).toString().toUpperCase(),
+    value_type: valueType,
   };
+
+  if (valueType === FilterValueType.EXPRESSION) {
+    const expression = filter.expression;
+    if (expression && expression.trim()) {
+      sanitized.expression = expression.trim();
+    } else {
+      return null;
+    }
+    if (rawCast && typeof rawCast === 'string' && rawCast.trim()) {
+      sanitized.cast = rawCast.trim().toUpperCase();
+    }
+    sanitized.value = null;
+    sanitized.value2 = null;
+    if (columnType) {
+      sanitized.column_type = columnType;
+    }
+    if (rightColumnType) {
+      sanitized.right_column_type = rightColumnType;
+    }
+    return sanitized;
+  }
+
+  if (!columnName) {
+    return null;
+  }
+
+  if (columnType) {
+    sanitized.column_type = columnType;
+  }
+
+  if (valueType === FilterValueType.COLUMN) {
+    const rawRight = filter.rightColumn || filter.right_column;
+    const rightColumn = rawRight && rawRight.trim ? rawRight.trim() : rawRight;
+    if (rightColumn) {
+      sanitized.right_column = rightColumn;
+      if (rightColumnType) {
+        sanitized.right_column_type = rightColumnType;
+      }
+    }
+    sanitized.value = null;
+    sanitized.value2 = null;
+  } else {
+    sanitized.value = coerceFilterValue(sanitized.value, columnType);
+    sanitized.value2 = coerceFilterValue(sanitized.value2, columnType);
+  }
+
+  return sanitized;
 };
 
 const sanitizeSort = (sort, index = 0) => {
@@ -184,6 +422,10 @@ export const transformVisualConfigForApi = (config, tableName) => {
     .map(sanitizeFilter)
     .filter(Boolean);
 
+  const having = (config.having || [])
+    .map(sanitizeFilter)
+    .filter(Boolean);
+
   const orderBy = (config.orderBy || config.order_by || [])
     .map(sanitizeSort)
     .filter(Boolean);
@@ -203,6 +445,7 @@ export const transformVisualConfigForApi = (config, tableName) => {
     calculated_fields: calculatedFields,
     conditional_fields: conditionalFields,
     filters,
+    having,
     group_by: (config.groupBy || config.group_by || []).filter(Boolean),
     order_by: orderBy,
     limit: (() => {
@@ -241,6 +484,12 @@ export const FilterOperator = {
   BETWEEN: "BETWEEN",
   IN: "IN",
   NOT_IN: "NOT IN",
+};
+
+export const FilterValueType = {
+  CONSTANT: "constant",
+  COLUMN: "column",
+  EXPRESSION: "expression",
 };
 
 // 排序方向
@@ -648,6 +897,20 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
       {},
     );
 
+    const applyColumnCast = (rawName, formattedExpression) => {
+      if (!rawName || !formattedExpression) {
+        return formattedExpression;
+      }
+      const cast = resolveCastForIdentifier(resolvedCastsMap, rawName);
+      if (!cast) {
+        return formattedExpression;
+      }
+      return `TRY_CAST(${formattedExpression} AS ${cast})`;
+    };
+
+    const applyExpressionCasts = (expr) =>
+      applyResolvedCastsToExpression(expr, resolvedCastsMap);
+
     // SELECT 子句
     const selectItems = [];
 
@@ -675,7 +938,6 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
             const aggStr = generateAggregationSQL(
               agg,
               columnTypeInfo.type,
-              columnTypeInfo.name,
               resolvedCast,
             );
             selectItems.push(aggStr);
@@ -694,8 +956,9 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
     // 添加计算字段
     if (config.calculatedFields && config.calculatedFields.length > 0) {
       config.calculatedFields.forEach((calc) => {
-        if (calc.expression && calc.alias) {
-          selectItems.push(`${calc.expression} AS ${calc.alias}`);
+        const alias = calc.alias || calc.name;
+        if (calc.expression && alias) {
+          selectItems.push(`${calc.expression} AS ${escapeIdentifier(alias)}`);
         }
       });
     }
@@ -710,88 +973,186 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
     // FROM 子句 - 使用escapeIdentifier函数来正确处理表名
     sql += `\nFROM ${escapeIdentifier(tableName)}`;
 
+    const formatColumnExpression = (column, { isHaving = false } = {}) => {
+      if (!column) {
+        return '';
+      }
+      if (typeof column !== 'string') {
+        return column;
+      }
+      const trimmed = column.trim();
+      if (isHaving && (trimmed.includes('(') || trimmed.includes(')'))) {
+        return trimmed;
+      }
+      if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+        return trimmed;
+      }
+      if (trimmed.includes('.') && trimmed.includes('"')) {
+        return trimmed;
+      }
+      if (trimmed.includes('.')) {
+        return trimmed
+          .split('.')
+          .map((part) => (part.includes('"') ? part : escapeIdentifier(part)))
+          .join('.');
+      }
+      return trimmed.includes('"') ? trimmed : escapeIdentifier(trimmed);
+    };
+
+    const buildCondition = (filter, { isHaving = false } = {}) => {
+      if (!filter || !filter.operator) {
+        return '';
+      }
+
+      const valueType =
+        (filter.valueType || filter.value_type || FilterValueType.CONSTANT).toLowerCase();
+
+      const columnName =
+        typeof filter.column === 'string' ? filter.column.trim() : '';
+      const hasColumn = columnName.length > 0;
+      let columnExpression = hasColumn
+        ? formatColumnExpression(columnName, { isHaving })
+        : '';
+      if (hasColumn) {
+        columnExpression = applyColumnCast(columnName, columnExpression);
+      }
+
+      const columnInfo =
+        (hasColumn && resolveColumnInfo(columnTypeMap, columnName)) ||
+        (() => {
+          const fallback = (filter.columnType || filter.column_type || '').toString().toLowerCase();
+          switch (fallback) {
+            case 'number':
+              return { normalizedType: 'number' };
+            case 'boolean':
+              return { normalizedType: 'boolean' };
+            case 'date':
+              return { normalizedType: 'datetime' };
+            default:
+              return { normalizedType: 'string' };
+          }
+        })();
+
+      const applyCast = (expr) => {
+        const cast = filter.cast || filter.expression_cast || null;
+        if (!cast || !cast.trim()) {
+          return expr;
+        }
+        return `TRY_CAST(${expr} AS ${cast.trim().toUpperCase()})`;
+      };
+
+      if (valueType === FilterValueType.COLUMN) {
+        if (!hasColumn) {
+          return '';
+        }
+        const rightColumn = filter.rightColumn || filter.right_column;
+        if (rightColumn) {
+          const rightExpression = formatColumnExpression(rightColumn, { isHaving });
+          const castedRight = applyColumnCast(rightColumn, rightExpression);
+          return `${columnExpression} ${filter.operator} ${castedRight}`;
+        }
+        return '';
+      }
+
+      if (valueType === FilterValueType.EXPRESSION) {
+        const expression = (filter.expression || filter.expression_value || '').toString().trim();
+        if (!expression) {
+          return '';
+        }
+        const expressionWithCasts = applyExpressionCasts(expression);
+        const wrapped =
+          expressionWithCasts.startsWith('(') ||
+          expressionWithCasts.toLowerCase().startsWith('case')
+            ? expressionWithCasts
+            : `(${expressionWithCasts})`;
+        const casted = applyCast(wrapped);
+
+        if (hasColumn) {
+          return `${columnExpression} ${filter.operator} ${casted}`;
+        }
+
+        // 纯表达式模式：表达式本身即为筛选条件
+        return casted;
+      }
+
+      if (!hasColumn) {
+        return '';
+      }
+
+      let condition = '';
+      switch (filter.operator) {
+        case FilterOperator.IS_NULL:
+          condition = `${columnExpression} IS NULL`;
+          break;
+        case FilterOperator.IS_NOT_NULL:
+          condition = `${columnExpression} IS NOT NULL`;
+          break;
+        case FilterOperator.BETWEEN: {
+          const start = formatValueForColumn(filter.value, columnInfo);
+          const end = formatValueForColumn(filter.value2, columnInfo);
+          if (!start.isNull && !end.isNull && start.literal && end.literal) {
+            condition = `${columnExpression} BETWEEN ${start.literal} AND ${end.literal}`;
+          }
+          break;
+        }
+        case FilterOperator.IN: {
+          const clause = buildInCondition(
+            columnExpression,
+            filter,
+            columnInfo,
+            FilterOperator.IN,
+          );
+          if (clause) {
+            condition = clause;
+          }
+          break;
+        }
+        case FilterOperator.NOT_IN: {
+          const clause = buildInCondition(
+            columnExpression,
+            filter,
+            columnInfo,
+            FilterOperator.NOT_IN,
+          );
+          if (clause) {
+            condition = clause;
+          }
+          break;
+        }
+        case FilterOperator.LIKE:
+        case 'NOT LIKE':
+        case 'ILIKE': {
+          if (filter.value !== undefined && filter.value !== null) {
+            let likeValue = String(filter.value);
+            if (!/%|_/.test(likeValue)) {
+              likeValue = `%${likeValue}%`;
+            }
+            condition = `${columnExpression} ${filter.operator} ${escapeSqlLiteral(likeValue)}`;
+          }
+          break;
+        }
+        default: {
+          const { literal, isNull } = formatValueForColumn(filter.value, columnInfo);
+          if (isNull) {
+            if (filter.operator === FilterOperator.NOT_EQUAL) {
+              condition = `${columnExpression} IS NOT NULL`;
+            } else if (filter.operator === FilterOperator.EQUAL) {
+              condition = `${columnExpression} IS NULL`;
+            }
+          } else if (literal !== null) {
+            condition = `${columnExpression} ${filter.operator} ${literal}`;
+          }
+        }
+      }
+
+      return condition;
+    };
+
     // WHERE 子句
     if (config.filters && config.filters.length > 0) {
-      const whereConditions = [];
-
-      config.filters.forEach((filter) => {
-        if (!filter.column || !filter.operator) {
-          return;
-        }
-
-        const columnInfo = resolveColumnInfo(columnTypeMap, filter.column);
-        const columnExpression = filter.column;
-        let condition = "";
-
-        switch (filter.operator) {
-          case FilterOperator.IS_NULL:
-            condition = `${columnExpression} IS NULL`;
-            break;
-          case FilterOperator.IS_NOT_NULL:
-            condition = `${columnExpression} IS NOT NULL`;
-            break;
-          case FilterOperator.BETWEEN: {
-            const start = formatValueForColumn(filter.value, columnInfo);
-            const end = formatValueForColumn(filter.value2, columnInfo);
-            if (!start.isNull && !end.isNull && start.literal && end.literal) {
-              condition = `${columnExpression} BETWEEN ${start.literal} AND ${end.literal}`;
-            }
-            break;
-          }
-          case FilterOperator.IN: {
-            const clause = buildInCondition(
-              columnExpression,
-              filter,
-              columnInfo,
-              FilterOperator.IN
-            );
-            if (clause) {
-              condition = clause;
-            }
-            break;
-          }
-          case FilterOperator.NOT_IN: {
-            const clause = buildInCondition(
-              columnExpression,
-              filter,
-              columnInfo,
-              FilterOperator.NOT_IN
-            );
-            if (clause) {
-              condition = clause;
-            }
-            break;
-          }
-          case FilterOperator.LIKE:
-          case "NOT LIKE":
-          case "ILIKE": {
-            if (filter.value !== undefined && filter.value !== null) {
-              let likeValue = String(filter.value);
-              if (!/%|_/.test(likeValue)) {
-                likeValue = `%${likeValue}%`;
-              }
-              condition = `${columnExpression} ${filter.operator} ${escapeSqlLiteral(likeValue)}`;
-            }
-            break;
-          }
-          default: {
-            const { literal, isNull } = formatValueForColumn(filter.value, columnInfo);
-            if (isNull) {
-              if (filter.operator === FilterOperator.NOT_EQUAL) {
-                condition = `${columnExpression} IS NOT NULL`;
-              } else if (filter.operator === FilterOperator.EQUAL) {
-                condition = `${columnExpression} IS NULL`;
-              }
-            } else if (literal !== null) {
-              condition = `${columnExpression} ${filter.operator} ${literal}`;
-            }
-          }
-        }
-
-        if (condition) {
-          whereConditions.push(condition);
-        }
-      });
+      const whereConditions = config.filters
+        .map((filter) => buildCondition(filter, { isHaving: false }))
+        .filter(Boolean);
 
       if (whereConditions.length > 0) {
         sql += `\nWHERE ${whereConditions.join(" AND ")}`;
@@ -835,6 +1196,17 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
 
     if (groupByColumns.length > 0) {
       sql += `\nGROUP BY ${groupByColumns.join(", ")}`;
+    }
+
+    // HAVING 子句
+    if (config.having && config.having.length > 0) {
+      const havingConditions = config.having
+        .map((filter) => buildCondition(filter, { isHaving: true }))
+        .filter(Boolean);
+
+      if (havingConditions.length > 0) {
+        sql += `\nHAVING ${havingConditions.join(" AND ")}`;
+      }
     }
 
     // ORDER BY 子句
@@ -971,6 +1343,36 @@ export const formatSQL = (sql) => {
 
 // 获取列的建议聚合函数
 export const getSuggestedAggregations = (columnType) => {
+  const normalized = columnType ? columnType.toLowerCase() : "";
+
+  const numericAggregations = [
+    AggregationFunction.SUM,
+    AggregationFunction.AVG,
+    AggregationFunction.MIN,
+    AggregationFunction.MAX,
+    AggregationFunction.COUNT,
+    AggregationFunction.COUNT_DISTINCT,
+  ];
+
+  const dateAggregations = [
+    AggregationFunction.MIN,
+    AggregationFunction.MAX,
+    AggregationFunction.COUNT,
+    AggregationFunction.COUNT_DISTINCT,
+  ];
+
+  if (
+    ["integer", "decimal", "bigint", "double", "float", "numeric"].includes(
+      normalized,
+    )
+  ) {
+    return numericAggregations;
+  }
+
+  if (["date", "time", "timestamp", "datetime"].includes(normalized)) {
+    return dateAggregations;
+  }
+
   // 默认返回所有聚合函数
   return Object.values(AggregationFunction);
 };
@@ -1020,7 +1422,6 @@ export const getSuggestedOperators = (columnType) => {
 export const isAggregationCompatible = (
   aggregationFunction,
   columnType,
-  columnName = "",
 ) => {
   // 数据类型检查
   const isNumericType = [
@@ -1057,12 +1458,12 @@ export const isAggregationCompatible = (
 };
 
 // 生成带类型转换的聚合函数SQL
-export const generateAggregationSQL = (aggregation, columnType, columnName, resolvedCast) => {
+export const generateAggregationSQL = (aggregation, columnType, resolvedCast) => {
   const { function: func, column, alias } = aggregation;
   const funcKey = typeof func === "string" ? func.toUpperCase() : func;
 
   // 检查兼容性
-  if (!resolvedCast && !isAggregationCompatible(func, columnType, column)) {
+  if (!resolvedCast && !isAggregationCompatible(func, columnType)) {
     throw new Error(
       `聚合函数 ${func} 不兼容列 ${column} 的数据类型 ${columnType}`,
     );

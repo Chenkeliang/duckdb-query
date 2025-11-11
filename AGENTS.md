@@ -41,3 +41,4 @@ Secrets and connection details live in `config/` (for example `datasources.json`
 - Avoid introducing `!important` in new CSS. If a legacy rule forces it, prefer refactoring the base styles instead of relying on `!important`.
 - CSS must reuse existing design tokens (`--dq-*`) whenever they fit the need. If no suitable token exists, create a reusable token (and register it in the theme/docs) before using it; never hard-code one-off values.
 - When implementing UI, prefer the official shared component first. Only fall back to a custom build if no existing component fits, then check for design tokens before adding new styles.
+- Never trigger native `alert`/`confirm`/`prompt` dialogs in the product UI; use the shared dialog component and existing design tokens for any modal or confirmation flow.

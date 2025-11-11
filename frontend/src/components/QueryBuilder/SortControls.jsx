@@ -6,9 +6,11 @@ import {
   HelpOutline as HelpOutlineIcon
 } from "@mui/icons-material";
 import {
+  Autocomplete,
   Box,
   Button,
   Chip,
+  Checkbox,
   Collapse,
   Divider,
   FormControl,
@@ -20,10 +22,11 @@ import {
   ListItemText,
   MenuItem,
   Select,
+  TextField,
   Tooltip,
   Typography
 } from "@mui/material";
-import React, { useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { SortDirection } from "../../utils/visualQueryUtils";
 
 /**
@@ -35,6 +38,9 @@ const SortControls = ({
   orderBy = [],
   onOrderByChange,
   disabled = false,
+  groupBy = [],
+  onGroupByChange,
+  showHeader = true,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [newSort, setNewSort] = useState({
@@ -42,6 +48,69 @@ const SortControls = ({
     direction: SortDirection.ASC,
     cast: "auto",
   });
+  const normalizedColumns = useMemo(() => {
+    return (columns || [])
+      .map((column) => {
+        if (!column) {
+          return null;
+        }
+        if (typeof column === "string") {
+          return {
+            name: column,
+            label: column,
+            dataType: "TEXT",
+          };
+        }
+        const name =
+          column.name ||
+          column.column ||
+          column.column_name ||
+          column.id ||
+          "";
+        if (!name) {
+          return null;
+        }
+        return {
+          name,
+          label: column.label || column.displayName || name,
+          dataType: (
+            column.dataType ||
+            column.type ||
+            column.normalizedType ||
+            column.normalized_type ||
+            "TEXT"
+          ).toString(),
+        };
+      })
+      .filter(Boolean);
+  }, [columns]);
+
+  const selectedGroupOptions = useMemo(() => {
+    const optionMap = new Map(
+      normalizedColumns.map((item) => [item.name, item])
+    );
+    return (groupBy || []).map((name) => {
+      if (optionMap.has(name)) {
+        return optionMap.get(name);
+      }
+      return {
+        name,
+        label: name,
+        dataType: "TEXT",
+      };
+    });
+  }, [groupBy, normalizedColumns]);
+
+  const handleGroupBySelection = useCallback(
+    (_event, values) => {
+      if (!onGroupByChange) {
+        return;
+      }
+      const names = values.map((option) => option.name);
+      onGroupByChange(names);
+    },
+    [onGroupByChange]
+  );
 
   // 添加排序条件
   const handleAddSort = () => {
@@ -128,42 +197,110 @@ const SortControls = ({
       p: 2,
       color: 'var(--dq-text-primary)'
     }}>
-      {/* 标题和控制 - 统一蓝色风格 */}
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2, px: 0.5 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <Box sx={{ width: 8, height: 8, bgcolor: "var(--dq-accent-primary)", borderRadius: "50%" }} />
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--dq-text-primary)' }}>
-            排序 (ORDER BY)
-          </Typography>
-          <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
-            {orderBy.length}个规则
+      {showHeader && (
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2, px: 0.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Box sx={{ width: 8, height: 8, bgcolor: "var(--dq-accent-primary)", borderRadius: "50%" }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--dq-text-primary)' }}>
+              排序 (ORDER BY)
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
+              {groupBy?.length || 0} 个分组 · {orderBy.length} 个排序
+            </Typography>
+          </Box>
+          <Typography
+            variant="caption"
+            onClick={handleAddSort}
+            disabled={disabled || !newSort.column}
+            sx={{
+              color: "var(--dq-accent-primary)",
+              fontWeight: 600,
+              cursor: disabled || !newSort.column ? "not-allowed" : "pointer",
+              opacity: disabled || !newSort.column ? 0.5 : 1,
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              "&:hover": {
+                color: "var(--dq-accent-primary)"
+              }
+            }}
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            添加
           </Typography>
         </Box>
-        <Typography
-          variant="caption"
-          onClick={handleAddSort}
-          disabled={disabled || !newSort.column}
-          sx={{
-            color: "var(--dq-accent-primary)",
-            fontWeight: 600,
-            cursor: disabled || !newSort.column ? "not-allowed" : "pointer",
-            opacity: disabled || !newSort.column ? 0.5 : 1,
-            display: "flex",
-            alignItems: "center",
-            gap: 0.5,
-            "&:hover": {
-              color: "var(--dq-accent-primary)"
-            }
-          }}
-        >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
-          </svg>
-          添加
-        </Typography>
-      </Box>
+      )}
 
       <Collapse in={isExpanded}>
+        <Box
+          sx={{
+            bgcolor: 'var(--dq-surface)',
+            borderRadius: 4,
+            border: "1px solid var(--dq-border-subtle)",
+            p: 2,
+            mb: 2
+          }}
+        >
+          <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 500, color: 'var(--dq-text-primary)' }}>
+            分组字段 (GROUP BY)
+          </Typography>
+          <Autocomplete
+            multiple
+            size="small"
+            options={normalizedColumns}
+            disableCloseOnSelect
+            value={selectedGroupOptions}
+            onChange={handleGroupBySelection}
+            getOptionLabel={(option) => option?.label || option?.name || ""}
+            isOptionEqualToValue={(option, value) => option.name === value.name}
+            disabled={disabled || normalizedColumns.length === 0}
+            renderOption={(props, option, { selected }) => (
+              <li {...props} key={option.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Checkbox
+                  checked={selected}
+                  size="small"
+                  sx={{ mr: 1 }}
+                />
+                <Typography variant="body2" sx={{ flex: 1 }}>
+                  {option.label}
+                </Typography>
+                {option.dataType && (
+                  <Chip
+                    label={option.dataType.toString().toLowerCase()}
+                    size="small"
+                    variant="outlined"
+                    sx={{ height: 18, fontSize: '0.75rem', textTransform: 'uppercase' }}
+                  />
+                )}
+              </li>
+            )}
+            renderTags={(value, getTagProps) =>
+              value.map((option, index) => (
+                <Chip
+                  {...getTagProps({ index })}
+                  key={option.name}
+                  label={option.label}
+                  size="small"
+                  sx={{ borderRadius: 999 }}
+                />
+              ))
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                placeholder={
+                  normalizedColumns.length === 0
+                    ? "请先选择列"
+                    : "选择需要手动分组的列"
+                }
+                helperText="如不选择，则自动根据维度列补齐 GROUP BY"
+              />
+            )}
+          />
+        </Box>
+
         {/* 排序列表 - 柔和圆润风格 */}
         <Box sx={{ bgcolor: 'var(--dq-surface)', borderRadius: 4, border: "1px solid var(--dq-border-subtle)", p: 2 }}>
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 500, color: 'var(--dq-text-primary)' }}>

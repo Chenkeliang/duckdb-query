@@ -119,6 +119,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
   const [pendingJoinAction, setPendingJoinAction] = useState(null);
   const [activeJoinConflicts, setActiveJoinConflicts] = useState([]);
   const [isVisualQueryReady, setIsVisualQueryReady] = useState(false);
+  const [isVisualQueryBlocked, setIsVisualQueryBlocked] = useState(false);
   const resolvedJoinSelectionMap = useMemo(() => {
     return Object.entries(resolvedJoinCasts).reduce((acc, [key, value]) => {
       if (value?.targetType) {
@@ -410,11 +411,13 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     setVisualQuerySQL(sql);
     setVisualQueryConfig(config || null);
     setIsVisualQueryReady(true);
+    setIsVisualQueryBlocked(false);
   }, []);
 
-  const handleVisualQueryInvalid = useCallback(() => {
+  const handleVisualQueryInvalid = useCallback((payload = {}) => {
     setVisualQueryConfig(null);
     setIsVisualQueryReady(false);
+    setIsVisualQueryBlocked(Boolean(payload?.hasVisualConfig));
   }, []);
 
   const handleExecuteQuery = async () => {
@@ -951,7 +954,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
           <Button
             variant="contained"
             onClick={handleExecuteQuery}
-            disabled={isLoading}
+            disabled={isLoading || (selectedSources.length === 1 && isVisualQueryBlocked)}
             sx={{
               borderRadius: 20,
               px: 4,

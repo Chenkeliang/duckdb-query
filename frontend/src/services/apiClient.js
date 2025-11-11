@@ -110,22 +110,31 @@ const handleApiError = (error, defaultMessage = '操作失败') => {
   switch (status) {
     case 400:
       throwWithMessage('请求参数错误');
+      break;
     case 401:
       throwWithMessage('认证失败，请重新登录');
+      break;
     case 403:
       throwWithMessage('权限不足，无法执行此操作');
+      break;
     case 404:
       throwWithMessage('请求的资源不存在');
+      break;
     case 413:
       throwWithMessage('文件太大，请选择较小的文件');
+      break;
     case 422:
       throwWithMessage('数据验证失败');
+      break;
     case 500:
       throwWithMessage('服务器内部错误，请稍后重试');
+      break;
     case 502:
       throwWithMessage('服务器网关错误，请稍后重试');
+      break;
     case 503:
       throwWithMessage('服务暂时不可用，请稍后重试');
+      break;
     default:
       throwWithMessage(defaultMessage);
   }

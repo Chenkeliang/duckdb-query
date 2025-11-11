@@ -17,7 +17,6 @@ import {
   IconButton,
   InputAdornment,
   Stack,
-  Switch,
   Table,
   TableBody,
   TableCell,
@@ -32,6 +31,7 @@ import { importExcelSheets, inspectExcelSheets } from '../../services/apiClient'
 import {
   CardSurface,
   RoundedButton,
+  RoundedSwitch,
   RoundedTextField,
   SectionHeader
 } from '../common';
@@ -437,11 +437,12 @@ const ExcelSheetSelector = ({
                         <Grid item xs={12}>
                           <FormControlLabel
                             control={
-                              <Switch
+                              <RoundedSwitch
                                 checked={sheet.fillMerged}
                                 onChange={(_, checked) =>
                                   handleSheetFieldChange(sheet.name, 'fillMerged', checked)
                                 }
+                                size="small"
                               />
                             }
                             label="填充合并单元格内容（向下填充空白单元格）"

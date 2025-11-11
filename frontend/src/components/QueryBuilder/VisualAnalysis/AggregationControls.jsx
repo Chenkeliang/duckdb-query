@@ -29,6 +29,7 @@ import {
   getAggregationDisplayName,
   getAggregationFunctionsForDataType
 } from '../../../types/visualQuery';
+import ColumnSelect from './ColumnSelect';
 
 /**
  * AggregationControls Component
@@ -49,7 +50,8 @@ const AggregationControls = ({
   aggregations = [],
   onAggregationsChange,
   disabled = false,
-  maxHeight = 200
+  maxHeight = 200,
+  showHeader = true
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [selectedFunction, setSelectedFunction] = useState('COUNT');
@@ -314,7 +316,9 @@ const AggregationControls = ({
   if (!selectedTable) {
     return (
       <div className="space-y-2">
-        <label className="text-sm font-medium dq-text-secondary">聚合统计</label>
+        {showHeader && (
+          <label className="text-sm font-medium dq-text-secondary">聚合统计</label>
+        )}
         <Box
           sx={{
             p: 4,
@@ -335,7 +339,9 @@ const AggregationControls = ({
   if (availableColumns.length === 0) {
     return (
       <div className="space-y-2">
-        <label className="text-sm font-medium dq-text-secondary">聚合统计</label>
+        {showHeader && (
+          <label className="text-sm font-medium dq-text-secondary">聚合统计</label>
+        )}
         <Alert severity="warning" sx={{ borderRadius: 2 }}>
           <Typography variant="body2">
             所选表没有可用的列信息
@@ -348,36 +354,38 @@ const AggregationControls = ({
   return (
     <div className="space-y-2">
       {/* Header with expand/collapse controls */}
-      <div className="flex items-center justify-between">
-        <label className="text-sm font-medium dq-text-secondary">
-          聚合统计
-        </label>
-        <div className="flex items-center space-x-1">
-          <Tooltip title="聚合函数用于对数据进行统计计算">
-            <InfoIcon
-              sx={{
-                fontSize: '1rem',
-                color: 'var(--dq-text-secondary)',
-                cursor: 'help'
-              }}
-            />
-          </Tooltip>
-          <Tooltip title={isExpanded ? '收起' : '展开'}>
-            <IconButton
-              size="small"
-              onClick={() => setIsExpanded(!isExpanded)}
-              sx={{
-                color: 'var(--dq-text-secondary)',
-                '&:hover': {
-                  backgroundColor: 'var(--dq-accent-primary-soft)'
-                }
-              }}
-            >
-              {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+      {showHeader && (
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium dq-text-secondary">
+            聚合统计
+          </label>
+          <div className="flex items-center space-x-1">
+            <Tooltip title="聚合函数用于对数据进行统计计算">
+              <InfoIcon
+                sx={{
+                  fontSize: '1rem',
+                  color: 'var(--dq-text-secondary)',
+                  cursor: 'help'
+                }}
+              />
+            </Tooltip>
+            <Tooltip title={isExpanded ? '收起' : '展开'}>
+              <IconButton
+                size="small"
+                onClick={() => setIsExpanded(!isExpanded)}
+                sx={{
+                  color: 'var(--dq-text-secondary)',
+                  '&:hover': {
+                    backgroundColor: 'var(--dq-accent-primary-soft)'
+                  }
+                }}
+              >
+                {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Aggregation Summary */}
       <Box
@@ -434,43 +442,13 @@ const AggregationControls = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Column Selection */}
-              <FormControl size="small" fullWidth disabled={disabled}>
-                <InputLabel>选择列</InputLabel>
-                <Select
-                  value={selectedColumn}
-                  onChange={(e) => setSelectedColumn(e.target.value)}
-                  label="选择列"
-                >
-                  {availableColumns
-                    .filter(column => {
-                      const name = getColumnName(column);
-                      // 过滤掉聚合函数名称，只保留正常的列名
-                      const aggregationNames = ['计数', '去重计数', '求和', '平均值', '最小值', '最大值'];
-                      return !aggregationNames.includes(name);
-                    })
-                    .map((column, index) => {
-                      const columnName = getColumnName(column);
-                      const dataType = getColumnDataType(column);
-                      return (
-                        <MenuItem key={`${columnName}-${index}`} value={columnName}>
-                          <div className="flex items-center space-x-2">
-                            <span>{columnName}</span>
-                            <Chip
-                              label={dataType}
-                              size="small"
-                              variant="outlined"
-                              sx={{
-                                height: 16,
-                                fontSize: '1rem',
-                                '& .MuiChip-label': { padding: '0 4px' }
-                              }}
-                            />
-                          </div>
-                        </MenuItem>
-                      );
-                    })}
-                </Select>
-              </FormControl>
+              <ColumnSelect
+                columns={availableColumns}
+                value={selectedColumn}
+                onChange={(columnName) => setSelectedColumn(columnName)}
+                label="选择列"
+                disabled={disabled}
+              />
 
               {/* Category Selection */}
               <FormControl size="small" fullWidth disabled={disabled}>

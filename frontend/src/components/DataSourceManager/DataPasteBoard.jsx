@@ -14,7 +14,6 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  Switch,
   Table,
   TableBody,
   TableCell,
@@ -26,7 +25,7 @@ import {
 import { ClipboardList, Save } from 'lucide-react';
 import React, { useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import { CardSurface, RoundedButton, RoundedTextField, SectionHeader } from '../common';
+import { CardSurface, RoundedButton, RoundedSwitch, RoundedTextField, SectionHeader } from '../common';
 
 const DataPasteBoard = ({ onDataSourceSaved }) => {
   const { showSuccess, showError } = useToast();
@@ -445,10 +444,10 @@ const DataPasteBoard = ({ onDataSourceSaved }) => {
           <Box sx={{ mb: 2 }}>
             <FormControlLabel
               control={
-                <Switch
+                <RoundedSwitch
                   checked={unifyAsString}
                   onChange={handleUnifyAsStringChange}
-                  color="primary"
+                  size="small"
                 />
               }
               label={

@@ -70,6 +70,14 @@ class LogicOperator(str, Enum):
     OR = "OR"
 
 
+class FilterValueType(str, Enum):
+    """Types of filter value comparisons"""
+
+    CONSTANT = "constant"
+    COLUMN = "column"
+    EXPRESSION = "expression"
+
+
 class SortDirection(str, Enum):
     """Sort directions"""
 
@@ -126,7 +134,7 @@ class AggregationConfig(BaseModel):
 class FilterConfig(BaseModel):
     """Configuration for filter conditions"""
 
-    column: str = Field(..., description="Column name to filter")
+    column: Optional[str] = Field(None, description="Column name to filter")
     operator: FilterOperator = Field(..., description="Filter operator")
     value: Optional[Union[str, int, float]] = Field(None, description="Filter value")
     value2: Optional[Union[str, int, float]] = Field(
@@ -135,13 +143,44 @@ class FilterConfig(BaseModel):
     logic_operator: LogicOperator = Field(
         LogicOperator.AND, description="Logic operator for combining with other filters"
     )
+    value_type: FilterValueType = Field(
+        FilterValueType.CONSTANT,
+        description="类型：常量、列或者表达式",
+    )
+    right_column: Optional[str] = Field(
+        None, description="The column name used when comparing column vs column"
+    )
+    expression: Optional[str] = Field(
+        None, description="Expression used when value_type == expression"
+    )
+    expression_result_type: Optional[
+        Literal["number", "string", "boolean", "date"]
+    ] = Field(
+        None,
+        description="Optional result type hint for expression value_type",
+    )
+    cast: Optional[str] = Field(
+        None,
+        description="TRY_CAST target applied to the filter expression or column",
+    )
 
     @field_validator("column")
     @classmethod
     def validate_column(cls, v):
-        if not v or not v.strip():
+        if v is None:
+            return None
+        if not v.strip():
             raise ValueError("Column name cannot be empty")
         return v.strip()
+    @field_validator("cast")
+    @classmethod
+    def validate_cast(cls, v):
+        if v is None:
+            return None
+        cleaned = v.strip()
+        if not cleaned:
+            return None
+        return cleaned.upper()
 
     @model_validator(mode="after")
     def validate_filter_values(self):
@@ -157,8 +196,40 @@ class FilterConfig(BaseModel):
             if value is None or value2 is None:
                 raise ValueError("BETWEEN operator requires both value and value2")
         else:
-            if value is None:
+            if (
+                self.value_type == FilterValueType.CONSTANT
+                and value is None
+                and not (self.value_type == FilterValueType.EXPRESSION and self.expression)
+            ):
                 raise ValueError(f"Operator {operator} requires a value")
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_value_type(self):
+        value_type = self.value_type
+
+        if value_type == FilterValueType.COLUMN:
+            if not self.right_column or not str(self.right_column).strip():
+                raise ValueError("Column comparison requires right_column")
+            if self.operator in {FilterOperator.BETWEEN, FilterOperator.LIKE, FilterOperator.ILIKE}:
+                raise ValueError(
+                    f"Operator {self.operator.value} 不支持列对列比较"
+                )
+            if not self.column or not str(self.column).strip():
+                raise ValueError("Column comparison requires column")
+        elif value_type == FilterValueType.EXPRESSION:
+            if not self.expression or not str(self.expression).strip():
+                raise ValueError("Expression comparison requires expression text")
+            if self.operator in {FilterOperator.IS_NULL, FilterOperator.IS_NOT_NULL}:
+                raise ValueError("IS NULL / IS NOT NULL 不支持表达式类型")
+            if self.operator == FilterOperator.BETWEEN:
+                raise ValueError("BETWEEN 不支持表达式比较")
+            # 表达式可以在没有 column 的情况下直接使用
+        else:
+            # CONSTANT
+            if not self.column or not str(self.column).strip():
+                raise ValueError("Constant comparison requires column name")
 
         return self
 
@@ -480,6 +551,9 @@ class VisualQueryConfig(BaseModel):
     )
     filters: List[FilterConfig] = Field(
         default_factory=list, description="List of filter configurations"
+    )
+    having: List[FilterConfig] = Field(
+        default_factory=list, description="List of HAVING filter configurations"
     )
     group_by: List[str] = Field(
         default_factory=list, description="List of columns to group by"

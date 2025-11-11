@@ -1,6 +1,6 @@
-import React, { Suspense, useEffect, useMemo, useState } from "react";
-import { Moon, Sun } from "lucide-react";
 import { Button, IconButton, Tab, Tabs } from "@mui/material";
+import { Moon, Sun } from "lucide-react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 
 // 导入Toast上下文
 import { ToastProvider, useToast } from "./contexts/ToastContext";
@@ -38,6 +38,8 @@ const LazyFallback = () => (
 
 // 导入样式
 import "./styles/modern.css";
+import duckLogoLight from "./assets/Duckquerylogo.svg";
+import duckLogoDark from "./assets/duckquery-dark.svg";
 
 const THEME_STORAGE_KEY = "duck-query-theme";
 
@@ -907,21 +909,30 @@ const ShadcnApp = () => {
     <div className={`${themeClassName} dq-page min-h-screen`}>
       {/* 顶部导航 */}
       <header className="dq-topbar">
-        <div className="w-full px-6 py-4">
+        <div className="w-full px-6 py-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div
-                className="dq-header-brand w-10 h-10 rounded-xl flex items-center justify-center transition"
-              >
-                <span
-                  className="dq-header-brand__text font-semibold text-sm tracking-[0.18em]"
-                >
-                  DQ
-                </span>
-              </div>
-              <h1 className="text-xl font-semibold" style={{ color: 'var(--dq-text-primary)' }}>Duck Query</h1>
-            </div>
-            <div className="flex items-center space-x-3">
+          <div
+            className="dq-header-brand flex items-center gap-3"
+            style={{
+              minHeight: 72,
+              padding: '0.35rem 1.25rem',
+              marginLeft: '-40px'
+            }}
+          >
+            <img
+              src={isDarkMode ? duckLogoDark : duckLogoLight}
+              alt="Duck Query"
+              className="select-none"
+              draggable={false}
+              style={{
+                width: 175,
+                height: 60,
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
+          </div>
+            <div className="flex items-center gap-3">
               <IconButton
                 size="small"
                 disableRipple
@@ -983,54 +994,55 @@ const ShadcnApp = () => {
       {/* 主要内容 */}
       <main className="w-full px-6 py-8">
         <div className="dq-shell mb-6">
-            <div className="mantine-tabs">
-              <Tabs
-                value={currentTab}
-                onChange={(_, value) => setCurrentTab(value)}
-                variant="scrollable"
-                scrollButtons={false}
-                aria-label="主功能切换"
-                sx={{
+          <div className="mantine-tabs">
+            <Tabs
+              value={currentTab}
+              onChange={(_, value) => setCurrentTab(value)}
+              variant="scrollable"
+              scrollButtons={false}
+              aria-label="主功能切换"
+              sx={{
+                minHeight: 0,
+                px: 2.5,
+                pt: 1.5,
+                pb: 1,
+                borderBottom: '1px solid var(--dq-border-subtle)',
+                backgroundColor: 'var(--dq-surface)',
+                '& .MuiTabs-indicator': {
+                  backgroundColor: 'var(--dq-tab-indicator)',
+                  height: 'var(--dq-tab-indicator-height)',
+                  borderRadius: 999
+                },
+                '& .MuiTabs-flexContainer': {
+                  gap: 'calc(var(--dq-tab-gap) + 4px)'
+                },
+                '& .MuiTab-root': {
                   minHeight: 0,
-                  px: 2.5,
-                  pt: 1.5,
-                  pb: 1,
-                  borderBottom: '1px solid var(--dq-border-subtle)',
-                  backgroundColor: 'var(--dq-surface)',
-                  '& .MuiTabs-indicator': {
-                    backgroundColor: 'var(--dq-tab-indicator)',
-                    height: 'var(--dq-tab-indicator-height)',
-                    borderRadius: 999
-                  },
-                  '& .MuiTabs-flexContainer': {
-                    gap: 'calc(var(--dq-tab-gap) + 4px)'
-                  },
-                  '& .MuiTab-root': {
-                    minHeight: 0,
-                    minWidth: 'auto',
-                    padding: 'calc(var(--dq-tab-padding-y) + 4px) calc(var(--dq-tab-padding-x) + 6px)',
-                    color: 'var(--dq-tab-text)',
-                    fontSize: 'var(--dq-tab-font-size-primary)',
-                    fontWeight: 'var(--dq-tab-font-weight-primary)',
-                    textTransform: 'none',
-                    letterSpacing: '-0.01em',
-                    borderRadius: 0,
-                    lineHeight: 1.6,
-                    '&:hover': {
-                      color: 'var(--dq-tab-text-active)'
-                    }
-                  },
-                  '& .MuiTab-root.Mui-selected': {
-                    color: 'var(--dq-tab-active-color)'
+                  minWidth: 'auto',
+                  padding: 'calc(var(--dq-tab-padding-y) + 4px) calc(var(--dq-tab-padding-x) + 6px)',
+                  color: 'var(--dq-tab-text)',
+                  fontSize: 'var(--dq-tab-font-size-primary)',
+                  fontWeight: 'var(--dq-tab-font-weight-primary-inactive)',
+                  textTransform: 'none',
+                  letterSpacing: '-0.01em',
+                  borderRadius: 0,
+                  lineHeight: 1.6,
+                  '&:hover': {
+                    color: 'var(--dq-tab-text-active)'
                   }
-                }}
-              >
-                <Tab disableRipple value="datasource" label="数据源" />
-                <Tab disableRipple value="unifiedquery" label="统一查询" />
-                <Tab disableRipple value="tablemanagement" label="数据表管理" />
-                <Tab disableRipple value="asynctasks" label="异步任务" />
-              </Tabs>
-            </div>
+                },
+                '& .MuiTab-root.Mui-selected': {
+                  color: 'var(--dq-tab-active-color)',
+                  fontWeight: 'var(--dq-tab-font-weight-primary)'
+                }
+              }}
+            >
+              <Tab disableRipple value="datasource" label="数据源" />
+              <Tab disableRipple value="unifiedquery" label="统一查询" />
+              <Tab disableRipple value="tablemanagement" label="数据表管理" />
+              <Tab disableRipple value="asynctasks" label="异步任务" />
+            </Tabs>
+          </div>
 
           {currentTab === "datasource" && (
             <div className="p-6">
@@ -1231,7 +1243,7 @@ const ShadcnApp = () => {
                       padding: 'calc(var(--dq-tab-padding-y)) calc(var(--dq-tab-padding-x) + 4px)',
                       color: 'var(--dq-tab-text)',
                       fontSize: 'var(--dq-tab-font-size-secondary)',
-                      fontWeight: 'var(--dq-tab-font-weight-secondary)',
+                      fontWeight: 'var(--dq-tab-font-weight-secondary-inactive)',
                       textTransform: 'none',
                       letterSpacing: '-0.01em',
                       borderRadius: 0,
@@ -1240,7 +1252,8 @@ const ShadcnApp = () => {
                       }
                     },
                     '& .MuiTab-root.Mui-selected': {
-                      color: 'var(--dq-tab-active-color)'
+                      color: 'var(--dq-tab-active-color)',
+                      fontWeight: 'var(--dq-tab-font-weight-secondary)'
                     }
                   }}
                 >

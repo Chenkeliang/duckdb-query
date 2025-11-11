@@ -3,12 +3,12 @@ import {
   Collapse,
   FormControlLabel,
   Slider,
-  Switch,
   TextField,
   Typography
 } from "@mui/material";
 import { Lightbulb } from 'lucide-react';
 import React, { useState } from "react";
+import { RoundedSwitch } from '../common';
 
 /**
  * LimitControls - 限制结果数量控制组件
@@ -18,6 +18,7 @@ const LimitControls = ({
   limit,
   onLimitChange,
   disabled = false,
+  showHeader = true,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [limitEnabled, setLimitEnabled] = useState(!!limit);
@@ -49,23 +50,24 @@ const LimitControls = ({
       p: 2,
       color: 'var(--dq-text-primary)'
     }}>
-      {/* 标题和控制 - 统一蓝色风格 */}
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2, px: 0.5 }}>
-        <Box sx={{ width: 8, height: 8, bgcolor: "var(--dq-accent-primary)", borderRadius: "50%" }} />
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--dq-text-primary)' }}>
-          限制行数 (LIMIT)
-        </Typography>
-      </Box>
+      {showHeader && (
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2, px: 0.5 }}>
+          <Box sx={{ width: 8, height: 8, bgcolor: "var(--dq-accent-primary)", borderRadius: "50%" }} />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--dq-text-primary)' }}>
+            限制行数 (LIMIT)
+          </Typography>
+        </Box>
+      )}
 
       <Collapse in={isExpanded}>
         <Box sx={{ bgcolor: 'var(--dq-surface)', borderRadius: 4, border: "1px solid var(--dq-border-subtle)", p: 2 }}>
           <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-            <Typography variant="body2" sx={{ fontWeight: 500, flex: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: 500, flex: 1, color: 'var(--dq-text-primary)' }}>
               启用结果数量限制
             </Typography>
             <FormControlLabel
               control={
-                <Switch
+                <RoundedSwitch
                   checked={limitEnabled}
                   onChange={(e) => handleLimitToggle(e.target.checked)}
                   disabled={disabled}
@@ -73,6 +75,7 @@ const LimitControls = ({
                 />
               }
               label=""
+              sx={{ ml: 1 }}
             />
           </Box>
 

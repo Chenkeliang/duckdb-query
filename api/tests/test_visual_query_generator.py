@@ -26,6 +26,7 @@ from models.visual_query_models import (
     AggregationFunction,
     FilterOperator,
     SortDirection,
+    FilterValueType,
     ColumnStatistics,
     TableMetadata,
     VisualQueryMode,
@@ -146,6 +147,98 @@ class TestSQLGeneration:
         assert "WHERE \"status\" = 'active'" in sql
         assert 'AND "age" > 18' in sql
         assert "AND \"name\" LIKE 'John%'" in sql
+
+    def test_filter_column_vs_column(self):
+        """Ensure column vs column comparisons are generated correctly"""
+        config = VisualQueryConfig(
+            table_name="orders",
+            selected_columns=["refund_amount"],
+            aggregations=[],
+            filters=[
+                FilterConfig(
+                    column="refund_amount",
+                    operator=FilterOperator.GREATER_THAN,
+                    value_type=FilterValueType.COLUMN,
+                    right_column="sales_amount",
+                )
+            ],
+            order_by=[],
+        )
+
+        sql = generate_sql_from_config(config)
+        assert 'WHERE "refund_amount" > "sales_amount"' in sql
+
+    def test_expression_filter_with_column(self):
+        """Expression filter should compare column with expression and apply cast when provided"""
+        config = VisualQueryConfig(
+            table_name="orders",
+            selected_columns=["序号"],
+            filters=[
+                FilterConfig(
+                    column="差额",
+                    operator=FilterOperator.GREATER_THAN,
+                    value_type=FilterValueType.EXPRESSION,
+                    expression='"卖家应退金额" + "实际应退金额"',
+                    cast="DECIMAL(18,2)",
+                )
+            ],
+            order_by=[],
+        )
+
+        sql = generate_sql_from_config(config)
+        assert (
+            'WHERE "差额" > TRY_CAST(("卖家应退金额" + "实际应退金额") AS DECIMAL(18,2))'
+            in sql
+        )
+
+    def test_expression_filter_without_column(self):
+        """Expression filters without column should emit raw predicate"""
+        config = VisualQueryConfig(
+            table_name="orders",
+            selected_columns=["序号"],
+            filters=[
+                FilterConfig(
+                    column=None,
+                    operator=FilterOperator.GREATER_THAN,
+                    value_type=FilterValueType.EXPRESSION,
+                    expression='("卖家应退金额" + "实际应退金额") > 99',
+                )
+            ],
+            order_by=[],
+        )
+
+        sql = generate_sql_from_config(config)
+        assert (
+            'WHERE ("卖家应退金额" + "实际应退金额") > 99'
+            in sql
+        )
+
+    def test_having_clause_generation(self):
+        """Ensure HAVING clause is appended after GROUP BY"""
+        config = VisualQueryConfig(
+            table_name="orders",
+            selected_columns=["渠道"],
+            aggregations=[
+                AggregationConfig(
+                    column="order_id",
+                    function=AggregationFunction.COUNT,
+                    alias="order_count",
+                )
+            ],
+            filters=[],
+            group_by=["渠道"],
+            having=[
+                FilterConfig(
+                    column="order_count",
+                    operator=FilterOperator.GREATER_THAN,
+                    value=100,
+                )
+            ],
+            order_by=[],
+        )
+
+        sql = generate_sql_from_config(config)
+        assert 'HAVING "order_count" > 100' in sql
 
     def test_sorting_and_limit(self):
         """Test ORDER BY and LIMIT clauses"""

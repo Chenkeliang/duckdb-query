@@ -404,7 +404,15 @@ const PostgreSQLConnector = ({ onConnect }) => {
             placeholder="例如: 生产环境PostgreSQL"
           />
 
-          <Box sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 2,
+              flexWrap: "wrap"
+            }}
+          >
             <RoundedButton
               variant="outlined"
               startIcon={testingConnection ? <CircularProgress size={16} /> : null}
@@ -415,22 +423,21 @@ const PostgreSQLConnector = ({ onConnect }) => {
               {testingConnection ? "测试中..." : "测试连接"}
             </RoundedButton>
 
-          <RoundedButton
-            startIcon={loading ? <CircularProgress size={16} /> : null}
-            onClick={handleConnect}
-            disabled={loading}
-            sx={{ minWidth: 120 }}
-          >
-            {loading ? "连接中..." : "连接数据库"}
-          </RoundedButton>
-          </Box>
+            <RoundedButton
+              startIcon={loading ? <CircularProgress size={16} /> : null}
+              onClick={handleConnect}
+              disabled={loading}
+              sx={{ minWidth: 120 }}
+            >
+              {loading ? "连接中..." : "连接数据库"}
+            </RoundedButton>
 
-          <Box sx={{ mt: 2, display: "flex", justifyContent: "center" }}>
             <RoundedButton
               variant="outlined"
               startIcon={<SaveIcon />}
               onClick={() => setShowSaveConfig(true)}
               size="small"
+              sx={{ minWidth: 120 }}
             >
               保存此配置
             </RoundedButton>

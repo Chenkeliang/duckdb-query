@@ -38,6 +38,11 @@ const SQLPreview = ({
             fontFamily: '"Monaco", "Menlo", "Ubuntu Mono", monospace',
             fontSize: '13px'
           },
+          '.cm-editor': {
+            backgroundColor: isDarkMode ? 'var(--dq-surface-card)' : 'var(--dq-surface)',
+            color: 'var(--dq-text-primary)',
+            borderRadius: '12px'
+          },
           '.cm-content': {
             padding: '12px'
           },
@@ -46,7 +51,9 @@ const SQLPreview = ({
             minHeight: resolvedHeight
           },
           '.cm-gutters': {
-            padding: '0 8px'
+            padding: '0 8px',
+            backgroundColor: 'transparent',
+            color: 'var(--dq-text-tertiary)'
           }
         },
         { dark: isDarkMode }
@@ -180,8 +187,9 @@ const SQLPreview = ({
           width: '100%',
           borderRadius: '12px',
           overflow: 'hidden',
-          border: isDarkMode ? '1px solid var(--dq-border-card)' : '1px solid var(--dq-border-subtle)',
-          boxShadow: isDarkMode ? 'var(--dq-accent-shadow)' : 'var(--dq-shadow-soft)'
+          border: isDarkMode ? '1px solid var(--dq-border-card)' : '1px solid var(--dq-border)',
+          boxShadow: isDarkMode ? '0 16px 32px -20px color-mix(in oklab, var(--dq-accent-primary) 35%, transparent)' : 'var(--dq-shadow-soft)',
+          backgroundColor: isDarkMode ? 'var(--dq-surface-card)' : 'var(--dq-surface)'
         }}
       />
     </Box>

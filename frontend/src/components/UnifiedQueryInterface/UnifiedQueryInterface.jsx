@@ -54,7 +54,7 @@ const UnifiedQueryInterface = ({
             '& .MuiTab-root': {
               color: 'var(--dq-text-tertiary)',
               fontSize: 'var(--dq-tab-font-size-secondary)',
-              fontWeight: 'var(--dq-tab-font-weight-secondary)',
+              fontWeight: 'var(--dq-tab-font-weight-secondary-inactive)',
               textTransform: 'none',
               minHeight: 52,
               minWidth: 'auto',
@@ -65,7 +65,8 @@ const UnifiedQueryInterface = ({
             },
             '& .MuiTab-root.Mui-selected': {
               color: 'var(--dq-tab-active-color)',
-              backgroundColor: 'transparent'
+              backgroundColor: 'transparent',
+              fontWeight: 'var(--dq-tab-font-weight-secondary)'
             }
           }}
         >

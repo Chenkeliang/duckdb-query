@@ -45,7 +45,7 @@ jest.mock('../AggregationControls', () => {
   };
 });
 
-jest.mock('../FilterControls', () => {
+jest.mock('../VisualAnalysis/FilterControls', () => {
   return function MockFilterControls({ onFiltersChange, filters }) {
     return (
       <div data-testid="filter-controls">

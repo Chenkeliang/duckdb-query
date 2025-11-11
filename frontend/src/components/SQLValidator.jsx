@@ -1,5 +1,4 @@
 import {
-    CheckCircle as CheckCircleIcon,
     Error as ErrorIcon,
     ExpandLess as ExpandLessIcon,
     ExpandMore as ExpandMoreIcon,
@@ -150,32 +149,6 @@ const SQLValidator = ({ sqlQuery, tables = [], onValidationChange, databaseType 
     };
 
     const totalIssues = errors.length + warnings.length + suggestions.length;
-
-    // 只有在用户输入了SQL查询且没有语法错误时才显示成功提示
-    if (totalIssues === 0 && sqlQuery.trim()) {
-        return (
-            <Box sx={{ mt: 2 }}>
-                <Alert
-                    severity="success"
-                    icon={<CheckCircleIcon />}
-                    sx={{
-                        backgroundColor: 'var(--dq-status-success-bg)',
-                        color: 'var(--dq-status-success-fg)',
-                        border: '1px solid color-mix(in oklab, var(--dq-status-success-fg) 42%, transparent)',
-                        boxShadow: 'none',
-                        alignItems: 'center',
-                        '& .MuiAlert-icon': {
-                            color: 'var(--dq-status-success-fg)'
-                        }
-                    }}
-                >
-                    <Typography variant="body2">
-                        SQL 语法检查通过
-                    </Typography>
-                </Alert>
-            </Box>
-        );
-    }
 
     // 如果没有输入内容或没有问题，不显示任何内容
     if (!sqlQuery.trim() || totalIssues === 0) {

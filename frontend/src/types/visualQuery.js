@@ -289,6 +289,12 @@ export const FILTER_OPTIONS = [
   { value: 'BETWEEN', displayName: '介于...之间', description: '值在指定范围内', requiresValue: true, requiresSecondValue: true }
 ];
 
+const FILTER_VALUE_TYPES = {
+  CONSTANT: 'constant',
+  COLUMN: 'column',
+  EXPRESSION: 'expression'
+};
+
 // ===== Validation Utilities =====
 
 /**
@@ -389,10 +395,25 @@ export function validateConfig(config) {
     if (!filterOption) {
       errors.push(`筛选条件 ${index + 1} 使用了无效的操作符: ${filter.operator}`);
     } else {
-      if (filterOption.requiresValue && (filter.value === undefined || filter.value === null || filter.value === '')) {
+      const rawValueType = (filter.valueType || filter.value_type || FILTER_VALUE_TYPES.CONSTANT).toString().toLowerCase();
+      if (rawValueType === FILTER_VALUE_TYPES.COLUMN) {
+        const comparisonColumn = (filter.rightColumn || filter.right_column || '').toString().trim();
+        if (!comparisonColumn) {
+          errors.push(`筛选条件 ${index + 1} 缺少比较列`);
+        }
+      } else if (rawValueType === FILTER_VALUE_TYPES.EXPRESSION) {
+        const expression = (filter.expression || '').toString().trim();
+        if (!expression) {
+          errors.push(`筛选条件 ${index + 1} 缺少表达式`);
+        }
+      } else if (filterOption.requiresValue && (filter.value === undefined || filter.value === null || filter.value === '')) {
         errors.push(`筛选条件 ${index + 1} 缺少筛选值`);
       }
-      if (filterOption.requiresSecondValue && (filter.value2 === undefined || filter.value2 === null || filter.value2 === '')) {
+      if (
+        rawValueType === FILTER_VALUE_TYPES.CONSTANT &&
+        filterOption.requiresSecondValue &&
+        (filter.value2 === undefined || filter.value2 === null || filter.value2 === '')
+      ) {
         errors.push(`筛选条件 ${index + 1} 缺少第二个筛选值`);
       }
     }

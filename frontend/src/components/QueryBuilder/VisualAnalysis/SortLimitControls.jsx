@@ -23,6 +23,7 @@ import {
   ArrowUpward as ArrowUpIcon,
   ArrowDownward as ArrowDownIcon
 } from '@mui/icons-material';
+import ColumnSelect from './ColumnSelect';
 
 const SortLimitControls = ({
   columns = [],
@@ -203,25 +204,15 @@ const SortLimitControls = ({
                   </Box>
 
                   {/* Column Selection */}
-                  <FormControl size="small" sx={{ minWidth: 150 }}>
-                    <InputLabel>排序列</InputLabel>
-                    <Select
+                  <Box sx={{ minWidth: 150, flex: 1 }}>
+                    <ColumnSelect
+                      columns={columns}
                       value={sort.column}
+                      onChange={(columnName) => handleSortChange(sort.id, 'column', columnName)}
                       label="排序列"
-                      onChange={(e) => handleSortChange(sort.id, 'column', e.target.value)}
-                    >
-                      {columns.map(col => (
-                        <MenuItem key={col.name} value={col.name}>
-                          <Box>
-                            <Typography variant="body2">{col.name}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {col.dataType}
-                            </Typography>
-                          </Box>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                      disabled={columns.length === 0}
+                    />
+                  </Box>
 
                   {/* Direction Selection */}
                   <FormControl component="fieldset">

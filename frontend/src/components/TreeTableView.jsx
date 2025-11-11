@@ -10,7 +10,6 @@ import {
 } from '@mui/icons-material';
 import {
     Box,
-    Card,
     Chip,
     Collapse,
     IconButton,
@@ -25,6 +24,7 @@ import {
 } from '@mui/material';
 import React, { useEffect, useMemo, useState } from 'react';
 import { resolveColor, withOpacity } from '../utils/colorUtils';
+import CardSurface from './common/CardSurface';
 
 const detectDarkMode = () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 
@@ -172,34 +172,33 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
         const accentResolved =
             resolveColor(accentColor, isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)') ||
             (isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)');
-        const accentOverlay = (amount) => withOpacity(accentColor, amount, accentResolved);
-        const baseSurface = isDarkMode ? 'var(--dq-surface-alt)' : 'var(--dq-surface)';
-        const headerBackground = baseSurface;
+        const accentOverlay = (amount) => withOpacity(accentResolved, amount, accentResolved);
+        const cardBackground = isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface-card)';
+        const borderColor = isDarkMode ? 'var(--dq-border)' : 'var(--dq-border)';
+        const headerBackground = cardBackground;
         const headerHoverBackground = isDarkMode ? 'var(--dq-surface-active)' : 'var(--dq-surface-hover)';
-        const iconBackground = accentOverlay(isDarkMode ? 0.16 : 0.12);
-        const chipBackground = isDarkMode ? accentOverlay(0.24) : accentResolved;
+        const iconBackground = accentOverlay(isDarkMode ? 0.18 : 0.12);
+        const chipBackground = isDarkMode ? accentOverlay(0.3) : accentResolved;
         const chipTextColor = 'var(--dq-text-on-primary)';
-        const collapseBackground = isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface)';
-        const listHoverBackground = accentOverlay(isDarkMode ? 0.16 : 0.08);
+        const collapseBackground = cardBackground;
+        const listHoverBackground = accentOverlay(isDarkMode ? 0.2 : 0.08);
         const copyButtonBackground = accentOverlay(isDarkMode ? 0.16 : 0.05);
-        const copyButtonHoverBackground = accentOverlay(isDarkMode ? 0.25 : 0.1);
+        const copyButtonHoverBackground = accentOverlay(isDarkMode ? 0.3 : 0.14);
 
         return (
             <Box key={groupKey} sx={{ mb: 1 }}>
-                <Card
-                    elevation={0}
+                <CardSurface
+                    padding={0}
                     sx={{
-                        border: '1px solid',
-                        borderColor: isDarkMode ? 'var(--dq-border)' : 'var(--dq-border-subtle)',
-                        borderRadius: 2,
-                        backgroundColor: isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface)',
+                        borderColor,
+                        backgroundColor: cardBackground,
                         overflow: 'hidden',
                         transition: 'all 0.2s ease-in-out',
                         '&:hover': {
-                            borderColor: accentColor,
+                            borderColor: accentResolved,
                             boxShadow: isDarkMode
-                                ? `0 12px 32px -20px ${accentOverlay(0.6)}`
-                                : `0 2px 8px ${accentOverlay(0.15)}`
+                                ? `0 18px 36px -22px ${accentOverlay(0.4)}`
+                                : `0 6px 18px -6px ${accentOverlay(0.18)}`
                         }
                     }}
                 >
@@ -212,9 +211,9 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                 pr: 2,
                                 position: 'relative',
                                 backgroundColor: headerBackground,
-                                borderBottom: isDarkMode ? '1px solid var(--dq-border-subtle)' : 'none',
+                                borderBottom: '1px solid var(--dq-border-subtle)',
                                 transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
-                                boxShadow: isDarkMode ? 'none' : 'inset 0 1px 0 color-mix(in oklab, var(--dq-background) 60%, transparent)',
+                                boxShadow: 'none',
                                 '&::before': {
                                     content: "''",
                                     position: 'absolute',
@@ -240,8 +239,8 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
-                                        width: 28,
-                                        height: 28,
+                                        width: 30,
+                                        height: 30,
                                         borderRadius: '50%',
                                         backgroundColor: iconBackground,
                                         transition: 'all 0.2s ease-in-out'
@@ -320,13 +319,14 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                     >
                                         <ListItemButton
                                             sx={{
-                                                pl: 3,
+                                                pl: 3.5,
+                                                pr: 7,
                                                 py: 1,
-                                                pr: 7, // 为复制按钮留出空间
                                                 minHeight: 44,
+                                                backgroundColor: collapseBackground,
                                                 '&:hover': {
                                                     backgroundColor: listHoverBackground,
-                                                    transform: 'translateX(4px)'
+                                                    transform: 'translateX(6px)'
                                                 },
                                                 transition: 'all 0.2s ease-in-out'
                                             }}
@@ -373,20 +373,18 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                             </List>
                         </Box>
                     </Collapse>
-                </Card>
+                </CardSurface>
             </Box>
         );
     };
 
     if (tables.length === 0) {
         return (
-            <Card
-                elevation={0}
+            <CardSurface
+                padding={4}
                 sx={{
-                    border: '1px dashed',
+                    borderStyle: 'dashed',
                     borderColor: 'var(--dq-border-subtle)',
-                    borderRadius: 2,
-                    p: 4,
                     textAlign: 'center',
                     backgroundColor: 'var(--dq-surface)'
                 }}
@@ -398,7 +396,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                 <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
                     上传文件或执行查询后，表格将显示在这里
                 </Typography>
-            </Card>
+            </CardSurface>
         );
     }
 

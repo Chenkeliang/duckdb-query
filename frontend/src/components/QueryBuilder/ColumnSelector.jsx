@@ -24,7 +24,8 @@ const ColumnSelector = ({
   maxHeight = 200,
   showMetadata = false,
   disabled = false,
-  resolvedCasts = {}
+  resolvedCasts = {},
+  showHeader = true,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isExpanded, setIsExpanded] = useState(true);
@@ -202,34 +203,35 @@ const ColumnSelector = ({
       p: 2,
       color: 'var(--dq-text-primary)'
     }}>
-      {/* 标题和控制 - 统一蓝色风格 */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, px: 0.5 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box sx={{ width: 8, height: 8, bgcolor: 'var(--dq-accent-primary)', borderRadius: '50%' }} />
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--dq-text-primary)' }}>
-            选择列 (SELECT)
-          </Typography>
-          <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
-            已选 {selectedColumns.length}/{columns.length}
+      {showHeader && (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, px: 0.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ width: 8, height: 8, bgcolor: 'var(--dq-accent-primary)', borderRadius: '50%' }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--dq-text-primary)' }}>
+              选择列 (SELECT)
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
+              已选 {selectedColumns.length}/{columns.length}
+            </Typography>
+          </Box>
+          <Typography
+            variant="caption"
+            onClick={handleSelectAll}
+            disabled={disabled || filteredColumns.length === 0}
+            sx={{
+              color: 'var(--dq-accent-primary)',
+              fontWeight: 600,
+              cursor: disabled || filteredColumns.length === 0 ? 'not-allowed' : 'pointer',
+              opacity: disabled || filteredColumns.length === 0 ? 0.5 : 1,
+              '&:hover': {
+                color: 'var(--dq-accent-primary)'
+              }
+            }}
+          >
+            全选
           </Typography>
         </Box>
-        <Typography
-          variant="caption"
-          onClick={handleSelectAll}
-          disabled={disabled || filteredColumns.length === 0}
-          sx={{
-            color: 'var(--dq-accent-primary)',
-            fontWeight: 600,
-            cursor: disabled || filteredColumns.length === 0 ? 'not-allowed' : 'pointer',
-            opacity: disabled || filteredColumns.length === 0 ? 0.5 : 1,
-            '&:hover': {
-              color: 'var(--dq-accent-primary)'
-            }
-          }}
-        >
-          全选
-        </Typography>
-      </Box>
+      )}
 
       <Collapse in={isExpanded}>
         {/* 列列表 - 柔和圆润风格 */}

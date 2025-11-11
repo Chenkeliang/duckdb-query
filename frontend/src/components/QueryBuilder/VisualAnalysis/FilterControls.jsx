@@ -1,209 +1,605 @@
-import React, { useState, useCallback } from 'react';
-import { 
-  Stack, 
-  Paper, 
-  Grid, 
-  Select, 
-  MenuItem, 
-  TextField, 
-  IconButton, 
+import React, { useCallback, useMemo, useState } from 'react';
+import {
+  Box,
   Button,
   FormControl,
+  FormHelperText,
+  Grid,
+  IconButton,
   InputLabel,
-  Box,
+  MenuItem,
+  Select,
+  Stack,
+  TextField,
   Typography
 } from '@mui/material';
 import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import {
+  FilterValueType,
+  LogicOperator
+} from '../../../utils/visualQueryUtils';
+import ColumnSelect from './ColumnSelect';
 
-const FilterControls = ({ 
-  columns = [], 
-  filters = [], 
-  onFiltersChange,
-  className = ""
-}) => {
-  // Filter operators with Chinese labels
-  const filterOperators = [
-    { value: '=', label: '等于', supportedTypes: ['string', 'number', 'date'] },
-    { value: '!=', label: '不等于', supportedTypes: ['string', 'number', 'date'] },
-    { value: '>', label: '大于', supportedTypes: ['number', 'date'] },
-    { value: '<', label: '小于', supportedTypes: ['number', 'date'] },
-    { value: '>=', label: '大于等于', supportedTypes: ['number', 'date'] },
-    { value: '<=', label: '小于等于', supportedTypes: ['number', 'date'] },
-    { value: 'LIKE', label: '包含', supportedTypes: ['string'] },
-    { value: 'NOT LIKE', label: '不包含', supportedTypes: ['string'] },
-    { value: 'ILIKE', label: '包含(忽略大小写)', supportedTypes: ['string'] },
-    { value: 'IS NULL', label: '为空', supportedTypes: ['string', 'number', 'date'] },
-    { value: 'IS NOT NULL', label: '不为空', supportedTypes: ['string', 'number', 'date'] },
-    { value: 'BETWEEN', label: '介于...之间', supportedTypes: ['number', 'date'] }
-  ];
+const filterOperators = [
+  { value: '=', label: '等于', supportedTypes: ['string', 'number', 'date', 'boolean'] },
+  { value: '!=', label: '不等于', supportedTypes: ['string', 'number', 'date', 'boolean'] },
+  { value: '>', label: '大于', supportedTypes: ['number', 'date'] },
+  { value: '<', label: '小于', supportedTypes: ['number', 'date'] },
+  { value: '>=', label: '大于等于', supportedTypes: ['number', 'date'] },
+  { value: '<=', label: '小于等于', supportedTypes: ['number', 'date'] },
+  { value: 'LIKE', label: '包含', supportedTypes: ['string'] },
+  { value: 'NOT LIKE', label: '不包含', supportedTypes: ['string'] },
+  { value: 'ILIKE', label: '包含(忽略大小写)', supportedTypes: ['string'] },
+  { value: 'IS NULL', label: '为空', supportedTypes: ['string', 'number', 'date', 'boolean'] },
+  { value: 'IS NOT NULL', label: '不为空', supportedTypes: ['string', 'number', 'date', 'boolean'] },
+  { value: 'BETWEEN', label: '介于...之间', supportedTypes: ['number', 'date'] }
+];
 
-  // Logic operators
-  const logicOperators = [
-    { value: 'AND', label: '且' },
-    { value: 'OR', label: '或' }
-  ];
+const logicOperators = [
+  { value: LogicOperator.AND, label: '且' },
+  { value: LogicOperator.OR, label: '或' }
+];
 
-  // Get column data type for operator filtering
-  const getColumnType = useCallback((columnName) => {
-    const column = columns.find(col => col.name === columnName);
-    if (!column) return 'string';
-    
-    const type = column.dataType?.toLowerCase() || 'string';
-    if (type.includes('int') || type.includes('float') || type.includes('double') || type.includes('decimal')) {
-      return 'number';
-    }
-    if (type.includes('date') || type.includes('time')) {
-      return 'date';
-    }
+const valueTypeOptions = [
+  { value: FilterValueType.CONSTANT, label: '常量值' },
+  { value: FilterValueType.COLUMN, label: '列对列' },
+  { value: FilterValueType.EXPRESSION, label: '表达式' }
+];
+
+const isComparisonOperator = (operator) => ['>', '<', '>=', '<='].includes(operator);
+const isStringOperator = (operator) => ['LIKE', 'ILIKE', 'NOT LIKE'].includes(operator);
+
+const getColumnMetadata = (column) => {
+  if (!column) {
+    return { name: '', label: '', dataType: 'string' };
+  }
+
+  if (typeof column === 'string') {
+    return {
+      name: column,
+      label: column,
+      dataType: 'string'
+    };
+  }
+
+  const name = column.name || column.column_name || '';
+  return {
+    name,
+    label: column.displayName || column.label || name,
+    dataType: (column.dataType || column.type || 'string').toLowerCase()
+  };
+};
+
+const deriveColumnType = (dataType) => {
+  if (!dataType) {
     return 'string';
+  }
+  const normalized = dataType.toLowerCase();
+  if (/int|float|double|decimal|numeric|real|number/.test(normalized)) {
+    return 'number';
+  }
+  if (/date|time/.test(normalized)) {
+    return 'date';
+  }
+  if (/bool/.test(normalized)) {
+    return 'boolean';
+  }
+  return 'string';
+};
+
+const FilterControls = ({
+  columns = [],
+  filters = [],
+  onFiltersChange,
+  disabled = false,
+  className = '',
+  title: titleProp,
+  subtitle: subtitleProp,
+  emptyMessage: emptyMessageProp,
+  allowLogicOperator = true,
+  mode = 'where',
+  noColumnsMessage,
+  showHeader = true
+}) => {
+  const normalizedColumns = useMemo(() => {
+    return columns
+      .map(getColumnMetadata)
+      .filter((item) => item?.name);
   }, [columns]);
 
-  // Get available operators for a column
-  const getAvailableOperators = useCallback((columnName) => {
-    const columnType = getColumnType(columnName);
-    return filterOperators.filter(op => op.supportedTypes.includes(columnType));
+  const findColumnMeta = useCallback((columnName) => {
+    if (!columnName) {
+      return null;
+    }
+    return normalizedColumns.find((col) => col.name === columnName) || null;
+  }, [normalizedColumns]);
+
+  const isHavingMode = mode === 'having';
+  const columnInputLabel = isHavingMode ? '聚合字段' : '列名';
+  const resolvedTitle = titleProp ?? (isHavingMode ? '聚合筛选 (HAVING)' : '筛选条件 (WHERE)');
+  const resolvedSubtitle = subtitleProp ?? (isHavingMode ? '对聚合结果添加筛选条件' : '添加条件来筛选数据行');
+  const resolvedEmptyMessage =
+    emptyMessageProp ??
+    (isHavingMode
+      ? '点击“添加聚合筛选条件”定义 HAVING 规则'
+      : '点击"添加筛选条件"开始配置数据筛选');
+
+  const [preferredValueType, setPreferredValueType] = useState(FilterValueType.CONSTANT);
+
+  const hasColumns = normalizedColumns.length > 0;
+
+  const getColumnType = useCallback((columnName) => {
+    const target = findColumnMeta(columnName);
+    if (!target) {
+      return 'string';
+    }
+    return deriveColumnType(target.dataType);
+  }, [findColumnMeta]);
+
+  const getAvailableOperators = useCallback((columnName, valueType) => {
+    const baseType = getColumnType(columnName);
+    const baseOps = filterOperators.filter((op) => op.supportedTypes.includes(baseType));
+
+    if (valueType === FilterValueType.COLUMN) {
+      return baseOps.filter((op) => !['BETWEEN', 'LIKE', 'ILIKE', 'NOT LIKE', 'IS NULL', 'IS NOT NULL'].includes(op.value));
+    }
+
+    if (valueType === FilterValueType.EXPRESSION) {
+      return baseOps.filter((op) => !['BETWEEN', 'IS NULL', 'IS NOT NULL'].includes(op.value));
+    }
+
+    return baseOps;
   }, [getColumnType]);
 
-  // Add new filter
-  const handleAddFilter = useCallback(() => {
-    const newFilter = {
-      id: Date.now(),
-      column: columns.length > 0 ? columns[0].name : '',
-      operator: '=',
-      value: '',
-      value2: '', // For BETWEEN operator
-      logicOperator: 'AND'
-    };
-    
-    const updatedFilters = [...filters, newFilter];
-    onFiltersChange?.(updatedFilters);
-  }, [filters, columns, onFiltersChange]);
+  const ensureValidOperator = useCallback((columnName, valueType, operator) => {
+    const options = getAvailableOperators(columnName, valueType);
+    if (options.length === 0) {
+      return operator;
+    }
+    const match = options.find((item) => item.value === operator);
+    return match ? operator : options[0].value;
+  }, [getAvailableOperators]);
 
-  // Remove filter
-  const handleRemoveFilter = useCallback((filterId) => {
-    const updatedFilters = filters.filter(filter => filter.id !== filterId);
-    onFiltersChange?.(updatedFilters);
-  }, [filters, onFiltersChange]);
+  const firstAlternativeColumn = useCallback((excludeName) => {
+    const candidate = normalizedColumns.find((col) => col.name !== excludeName);
+    return candidate ? candidate.name : normalizedColumns[0]?.name || '';
+  }, [normalizedColumns]);
 
-  // Update filter property
-  const handleFilterChange = useCallback((filterId, property, value) => {
-    const updatedFilters = filters.map(filter => {
-      if (filter.id === filterId) {
-        const updatedFilter = { ...filter, [property]: value };
-        
-        // Reset operator if column type changed
-        if (property === 'column') {
-          const availableOps = getAvailableOperators(value);
-          if (availableOps.length > 0 && !availableOps.find(op => op.value === filter.operator)) {
-            updatedFilter.operator = availableOps[0].value;
-          }
-          // Reset values when column changes
-          updatedFilter.value = '';
-          updatedFilter.value2 = '';
-        }
-        
-        // Reset value2 if operator is not BETWEEN
-        if (property === 'operator' && value !== 'BETWEEN') {
-          updatedFilter.value2 = '';
-        }
-        
-        // Reset values for NULL operators
-        if (property === 'operator' && (value === 'IS NULL' || value === 'IS NOT NULL')) {
-          updatedFilter.value = '';
-          updatedFilter.value2 = '';
-        }
-        
-        return updatedFilter;
-      }
+  const enrichFilterMeta = useCallback((filter) => {
+    if (!filter) {
       return filter;
-    });
-    
-    onFiltersChange?.(updatedFilters);
-  }, [filters, onFiltersChange, getAvailableOperators]);
+    }
+    const columnType = getColumnType(filter.column);
+    const rightColumnName = filter.rightColumn || filter.right_column || '';
+    const rightColumnType = rightColumnName ? getColumnType(rightColumnName) : undefined;
+    return {
+      ...filter,
+      columnType,
+      rightColumnType,
+    };
+  }, [getColumnType]);
 
-  // Render value input based on operator and column type
-  const renderValueInput = useCallback((filter, isSecondValue = false) => {
-    const { operator, column } = filter;
-    const columnType = getColumnType(column);
-    const value = isSecondValue ? filter.value2 : filter.value;
-    const placeholder = isSecondValue ? '结束值' : 
-      operator === 'LIKE' || operator === 'NOT LIKE' || operator === 'ILIKE' ? '搜索文本' :
-      columnType === 'number' ? '数值' :
-      columnType === 'date' ? 'YYYY-MM-DD' :
-      '筛选值';
+  const handleFiltersUpdate = useCallback((updater) => {
+    const updated = typeof updater === 'function' ? updater(filters) : updater;
+    const normalizedList = (updated || []).map((filter) => enrichFilterMeta(filter));
+    onFiltersChange?.(normalizedList);
+  }, [enrichFilterMeta, filters, onFiltersChange]);
 
-    // Don't show input for NULL operators
-    if (operator === 'IS NULL' || operator === 'IS NOT NULL') {
+  const createEmptyFilter = useCallback((valueType = FilterValueType.CONSTANT) => {
+    if (!hasColumns) {
       return null;
     }
 
-    const inputType = columnType === 'number' ? 'number' : 
-                     columnType === 'date' ? 'date' : 'text';
+    let effectiveValueType = valueType;
+    if (valueType === FilterValueType.COLUMN && normalizedColumns.length < 2) {
+      effectiveValueType = FilterValueType.CONSTANT;
+    }
 
-    return (
+    const defaultColumn = normalizedColumns[0];
+    const defaultOperator = ensureValidOperator(defaultColumn.name, effectiveValueType, '=');
+    const base = {
+      id: Date.now(),
+      column: effectiveValueType === FilterValueType.EXPRESSION ? '' : defaultColumn.name,
+      columnType:
+        effectiveValueType === FilterValueType.EXPRESSION ? undefined : getColumnType(defaultColumn.name),
+      operator: defaultOperator,
+      value: '',
+      value2: '',
+      logicOperator: LogicOperator.AND,
+      valueType: effectiveValueType,
+      cast: null,
+    };
+
+    if (effectiveValueType === FilterValueType.COLUMN) {
+      base.rightColumn = '';
+      base.rightColumnType = undefined;
+    }
+
+    if (effectiveValueType === FilterValueType.EXPRESSION) {
+      base.expression = '';
+    }
+
+    return base;
+  }, [ensureValidOperator, firstAlternativeColumn, getColumnType, hasColumns, normalizedColumns]);
+
+  const handleAddFilter = useCallback(() => {
+    const newFilter = createEmptyFilter(preferredValueType);
+    if (!newFilter) {
+      return;
+    }
+    handleFiltersUpdate([...(filters || []), newFilter]);
+  }, [createEmptyFilter, filters, handleFiltersUpdate, preferredValueType]);
+
+  const handleRemoveFilter = useCallback((filterId) => {
+    handleFiltersUpdate((prev) => prev.filter((filter) => filter.id !== filterId));
+  }, [handleFiltersUpdate]);
+
+  const handleValueTypeChange = useCallback((filterId, valueType) => {
+    setPreferredValueType(valueType);
+
+    handleFiltersUpdate((prev) => prev.map((filter) => {
+      if (filter.id !== filterId) {
+        return filter;
+      }
+      const nextValueType = valueType;
+      const currentColumn = filter.column;
+      const nextOperator = ensureValidOperator(currentColumn, nextValueType, filter.operator);
+      const updated = {
+        ...filter,
+        valueType: nextValueType,
+        operator: nextOperator,
+        value: '',
+        value2: '',
+        expression: nextValueType === FilterValueType.EXPRESSION ? (filter.expression || '') : '',
+        rightColumn: filter.rightColumn,
+      };
+
+      if (nextValueType === FilterValueType.COLUMN) {
+        updated.rightColumn = '';
+        updated.rightColumnType = undefined;
+      } else {
+        updated.rightColumn = undefined;
+        updated.rightColumnType = undefined;
+      }
+
+      if (nextValueType !== FilterValueType.EXPRESSION) {
+        updated.expression = '';
+        updated.cast = null;
+      } else {
+        if (!updated.column) {
+          updated.columnType = undefined;
+        }
+        updated.cast = filter.cast || null;
+      }
+
+      return updated;
+    }));
+  }, [ensureValidOperator, firstAlternativeColumn, getColumnType, handleFiltersUpdate]);
+
+  const handleColumnChange = useCallback((filterId, columnName) => {
+    handleFiltersUpdate((prev) => prev.map((filter) => {
+      if (filter.id !== filterId) {
+        return filter;
+      }
+
+      const valueType = filter.valueType || filter.value_type || FilterValueType.CONSTANT;
+      const normalizedColumn = columnName || '';
+      const nextOperator = ensureValidOperator(normalizedColumn, valueType, filter.operator);
+      let nextRightColumn = filter.rightColumn || filter.right_column;
+      if (valueType === FilterValueType.COLUMN) {
+        nextRightColumn = '';
+      } else {
+        nextRightColumn = undefined;
+      }
+
+      const updated = {
+        ...filter,
+        column: normalizedColumn,
+        columnType: normalizedColumn ? getColumnType(normalizedColumn) : undefined,
+        operator: nextOperator,
+        value: '',
+        value2: '',
+        rightColumn: nextRightColumn,
+        right_column: nextRightColumn,
+        rightColumnType: nextRightColumn ? getColumnType(nextRightColumn) : undefined,
+      };
+
+      return updated;
+    }));
+  }, [ensureValidOperator, getColumnType, handleFiltersUpdate, normalizedColumns]);
+
+  const handleOperatorChange = useCallback((filterId, operator) => {
+    handleFiltersUpdate((prev) => prev.map((filter) => {
+      if (filter.id !== filterId) {
+        return filter;
+      }
+      const updated = {
+        ...filter,
+        operator,
+      };
+
+      if (operator !== 'BETWEEN') {
+        updated.value2 = '';
+      }
+
+      if (operator === 'IS NULL' || operator === 'IS NOT NULL') {
+        updated.value = '';
+        updated.value2 = '';
+      }
+
+      return updated;
+    }));
+  }, [handleFiltersUpdate]);
+
+  const handleLogicOperatorChange = useCallback((filterId, logicOperatorValue) => {
+    handleFiltersUpdate((prev) => prev.map((filter) => (
+      filter.id === filterId
+        ? { ...filter, logicOperator: logicOperatorValue }
+        : filter
+    )));
+  }, [handleFiltersUpdate]);
+
+  const handleValueChange = useCallback((filterId, field, rawValue) => {
+    handleFiltersUpdate((prev) => prev.map((filter) => {
+      if (filter.id !== filterId) {
+        return filter;
+      }
+
+      const updated = { ...filter };
+      if (field === 'rightColumn' || field === 'right_column') {
+        updated.rightColumn = rawValue;
+        updated.right_column = rawValue;
+        updated.rightColumnType = rawValue ? getColumnType(rawValue) : undefined;
+      } else if (field === 'expression') {
+        updated.expression = rawValue;
+      } else if (field === 'value' || field === 'value2') {
+        updated[field] = rawValue;
+      } else {
+        updated[field] = rawValue;
+      }
+
+      return updated;
+    }));
+  }, [getColumnType, handleFiltersUpdate]);
+
+  const getComparisonWarning = useCallback((filter) => {
+    const valueType = filter.valueType || filter.value_type || FilterValueType.CONSTANT;
+    if (valueType !== FilterValueType.COLUMN) {
+      return null;
+    }
+
+    const operator = filter.operator;
+    const leftType = getColumnType(filter.column);
+    const rightColumnName = filter.rightColumn || filter.right_column;
+    if (!rightColumnName) {
+      return '请选择用于比较的列';
+    }
+    const rightType = getColumnType(rightColumnName);
+
+    if (isComparisonOperator(operator)) {
+      const numericTypes = ['number', 'date'];
+      if (!numericTypes.includes(leftType) || !numericTypes.includes(rightType) || leftType !== rightType) {
+        return '该比较仅支持数值或日期列，并且两列类型需一致';
+      }
+    }
+
+    if (isStringOperator(operator)) {
+      if (leftType !== 'string' || rightType !== 'string') {
+        return '包含/不包含操作仅支持文本列';
+      }
+    }
+
+    return null;
+  }, [getColumnType]);
+
+  const renderValueInput = useCallback((filter) => {
+    const valueType = filter.valueType || filter.value_type || FilterValueType.CONSTANT;
+
+    if (valueType === FilterValueType.COLUMN) {
+      const candidateColumns = normalizedColumns.filter((col) => col.name !== filter.column);
+      const selected = filter.rightColumn || filter.right_column || '';
+
+      return (
+        <Stack spacing={0.5}>
+          <ColumnSelect
+            columns={candidateColumns}
+            value={selected}
+            onChange={(columnName) => handleValueChange(filter.id, 'rightColumn', columnName)}
+            label="比较列"
+            placeholder="请选择比较列"
+            disabled={disabled}
+            allowClear
+          />
+        </Stack>
+      );
+    }
+
+    if (valueType === FilterValueType.EXPRESSION) {
+      return (
+        <Stack spacing={1.5}>
+          <TextField
+            size="small"
+            fullWidth
+            multiline
+            minRows={3}
+            placeholder="输入完整的 SQL 表达式，例如 (列A + 列B) / 2"
+            value={filter.expression || ''}
+            onChange={(event) => handleValueChange(filter.id, 'expression', event.target.value)}
+            disabled={disabled}
+          />
+        </Stack>
+      );
+    }
+
+    const columnType = getColumnType(filter.column);
+    const isNumber = columnType === 'number';
+    const isDate = columnType === 'date';
+    const isBoolean = columnType === 'boolean';
+
+    const placeholder = (() => {
+      if (filter.operator === 'BETWEEN') {
+        return isDate ? '开始日期' : isNumber ? '起始数值' : '起始值';
+      }
+      if (isBoolean) {
+        return 'true / false';
+      }
+      if (isDate) {
+        return 'YYYY-MM-DD';
+      }
+      if (isNumber) {
+        return '数值';
+      }
+      if (isStringOperator(filter.operator)) {
+        return '文本（支持模糊匹配）';
+      }
+      return '筛选值';
+    })();
+
+    const inputType = isNumber ? 'number' : isDate ? 'date' : 'text';
+
+    const inputs = [
       <TextField
+        key="primary"
         size="small"
         type={inputType}
         placeholder={placeholder}
-        value={value}
-        onChange={(e) => handleFilterChange(
-          filter.id, 
-          isSecondValue ? 'value2' : 'value', 
-          e.target.value
-        )}
-        sx={{ minWidth: 120 }}
+        value={filter.value ?? ''}
+        onChange={(event) => handleValueChange(filter.id, 'value', event.target.value)}
+        disabled={disabled || filter.operator === 'IS NULL' || filter.operator === 'IS NOT NULL'}
+        sx={{ minWidth: 140 }}
       />
-    );
-  }, [getColumnType, handleFilterChange]);
+    ];
 
-  if (columns.length === 0) {
+    if (filter.operator === 'BETWEEN') {
+      inputs.push(
+        <Typography key="spacer" variant="body2" color="text.secondary">
+          至
+        </Typography>
+      );
+      inputs.push(
+        <TextField
+          key="secondary"
+          size="small"
+          type={inputType}
+          placeholder={isDate ? '结束日期' : isNumber ? '结束数值' : '结束值'}
+          value={filter.value2 ?? ''}
+          onChange={(event) => handleValueChange(filter.id, 'value2', event.target.value)}
+          disabled={disabled}
+          sx={{ minWidth: 140 }}
+        />
+      );
+    }
+
+    return (
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+        {inputs}
+      </Box>
+    );
+  }, [disabled, getColumnType, handleValueChange, normalizedColumns]);
+
+  const emptyColumnsMessage = noColumnsMessage
+    ? noColumnsMessage
+    : mode === 'having'
+      ? '请先配置聚合或计算字段，以便添加聚合筛选条件'
+      : '请先选择数据表以配置筛选条件';
+
+  if (!hasColumns) {
     return (
       <Box className={className}>
         <Typography variant="body2" color="text.secondary">
-          请先选择数据表以配置筛选条件
+          {emptyColumnsMessage}
         </Typography>
       </Box>
     );
   }
 
-  return (
-    <Box className={className}>
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-          筛选条件
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          添加条件来筛选数据行
-        </Typography>
-      </Box>
+  const rootClassName = ['space-y-2', className].filter(Boolean).join(' ');
 
-      <Stack spacing={2}>
-        {filters.map((filter, index) => (
-          <Paper 
-            key={filter.id}
-            sx={{ 
-              p: 2, 
-              border: '1px solid var(--dq-border-subtle)',
-              borderRadius: 2,
-              backgroundColor: 'var(--dq-surface)',
-              '&:hover': {
-                boxShadow: 'var(--dq-shadow-soft)',
-                backgroundColor: 'var(--dq-accent-primary-soft)',
-                borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 30%, var(--dq-border-card))'
-              }
-            }}
-          >
-            <Grid container spacing={2} alignItems="center">
-              {/* Logic Operator (show for filters after the first) */}
-              {index > 0 && (
-                <Grid item xs={12} sm={1}>
-                  <FormControl size="small" fullWidth>
+  return (
+    <Box className={rootClassName}>
+      {showHeader && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 600, color: 'var(--dq-text-primary)' }}>
+            {resolvedTitle}
+          </Typography>
+          {resolvedSubtitle && (
+            <Typography variant="caption" color="text.secondary">
+              {resolvedSubtitle}
+            </Typography>
+          )}
+        </Box>
+      )}
+
+      <Box className="space-y-2">
+        {(filters || []).map((filter, index) => {
+          const valueType = filter.valueType || filter.value_type || FilterValueType.CONSTANT;
+          const availableOperators = getAvailableOperators(filter.column, valueType);
+          const comparisonWarning = getComparisonWarning(filter);
+
+          return (
+            <Box
+              key={filter.id}
+              sx={{
+                p: 3,
+                borderRadius: 2,
+                border: '1px solid var(--dq-border-subtle)',
+                backgroundColor: 'var(--dq-surface)',
+                transition: 'border-color 0.18s ease, box-shadow 0.18s ease',
+                '&:hover': {
+                  borderColor: 'var(--dq-border-card)',
+                  boxShadow: '0 10px 24px -18px color-mix(in oklab, var(--dq-text-primary) 28%, transparent)'
+                }
+              }}
+            >
+              <Grid container spacing={2} alignItems="center">
+                {allowLogicOperator && index > 0 && (
+                  <Grid item xs={12} lg={1.5}>
+                    <FormControl size="small" fullWidth disabled={disabled}>
+                      <InputLabel>逻辑</InputLabel>
+                      <Select
+                        label="逻辑"
+                        value={filter.logicOperator || filter.logic_operator || LogicOperator.AND}
+                        onChange={(event) => handleLogicOperatorChange(filter.id, event.target.value)}
+                      >
+                        {logicOperators.map((op) => (
+                          <MenuItem key={op.value} value={op.value}>
+                            {op.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                )}
+
+                <Grid item xs={12} lg={allowLogicOperator && index > 0 ? 3.5 : 4}>
+                  <ColumnSelect
+                    columns={normalizedColumns}
+                    value={filter.column || ''}
+                    onChange={(columnName) => handleColumnChange(filter.id, columnName)}
+                    label={valueType === FilterValueType.EXPRESSION ? '比较列（可选）' : columnInputLabel}
+                    placeholder={valueType === FilterValueType.EXPRESSION ? '留空表示直接使用表达式' : ''}
+                    disabled={disabled}
+                    allowClear={valueType === FilterValueType.EXPRESSION}
+                  />
+                </Grid>
+
+                <Grid item xs={12} lg={2.5}>
+                  <FormControl
+                    size="small"
+                    fullWidth
+                    disabled={
+                      disabled ||
+                      availableOperators.length === 0 ||
+                      (valueType === FilterValueType.EXPRESSION && !filter.column)
+                    }
+                  >
+                    <InputLabel>操作符</InputLabel>
                     <Select
-                      value={filter.logicOperator}
-                      onChange={(e) => handleFilterChange(filter.id, 'logicOperator', e.target.value)}
-                      sx={{ minWidth: 60 }}
+                      label="操作符"
+                      value={filter.operator}
+                      onChange={(event) => handleOperatorChange(filter.id, event.target.value)}
                     >
-                      {logicOperators.map(op => (
+                      {availableOperators.map((op) => (
                         <MenuItem key={op.value} value={op.value}>
                           {op.label}
                         </MenuItem>
@@ -211,109 +607,98 @@ const FilterControls = ({
                     </Select>
                   </FormControl>
                 </Grid>
-              )}
 
-              {/* Column Selection */}
-              <Grid item xs={12} sm={index > 0 ? 3 : 3}>
-                <FormControl size="small" fullWidth>
-                  <InputLabel>列名</InputLabel>
-                  <Select
-                    value={filter.column}
-                    label="列名"
-                    onChange={(e) => handleFilterChange(filter.id, 'column', e.target.value)}
-                  >
-                    {columns.map(col => (
-                      <MenuItem key={col.name} value={col.name}>
-                        <Box>
-                          <Typography variant="body2">{col.name}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {col.dataType}
-                          </Typography>
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* Operator Selection */}
-              <Grid item xs={12} sm={index > 0 ? 2 : 2}>
-                <FormControl size="small" fullWidth>
-                  <InputLabel>操作符</InputLabel>
-                  <Select
-                    value={filter.operator}
-                    label="操作符"
-                    onChange={(e) => handleFilterChange(filter.id, 'operator', e.target.value)}
-                  >
-                    {getAvailableOperators(filter.column).map(op => (
-                      <MenuItem key={op.value} value={op.value}>
-                        {op.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* Value Input */}
-              <Grid item xs={12} sm={index > 0 ? 4 : 5}>
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <Grid item xs={12} lg={4}>
                   {renderValueInput(filter)}
-                  {filter.operator === 'BETWEEN' && (
-                    <>
-                      <Typography variant="body2" color="text.secondary">至</Typography>
-                      {renderValueInput(filter, true)}
-                    </>
+                  {comparisonWarning && (
+                    <FormHelperText sx={{ color: 'var(--dq-status-warning-text)', mt: 1 }}>
+                      {comparisonWarning}
+                    </FormHelperText>
                   )}
-                </Box>
+                </Grid>
+
+                <Grid item xs={12} lg={allowLogicOperator && index > 0 ? 0.5 : 1}>
+                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                    <IconButton
+                      size="small"
+                      onClick={() => handleRemoveFilter(filter.id)}
+                      disabled={disabled}
+                      sx={{
+                        color: 'var(--dq-status-error-text)',
+                        '&:hover': {
+                          backgroundColor: 'var(--dq-status-error-bg)'
+                        }
+                      }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                </Grid>
               </Grid>
 
-              {/* Remove Button */}
-              <Grid item xs={12} sm={1}>
-                    <IconButton 
-                  size="small" 
-                  color="error"
-                  onClick={() => handleRemoveFilter(filter.id)}
-                  sx={{ 
-                    '&:hover': { 
-                      backgroundColor: 'var(--dq-status-error-bg)' 
-                    } 
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  匹配模式
+                </Typography>
+                <Box
+                  className="dq-tab-group"
+                  sx={{
+                    display: 'inline-flex',
+                    flexWrap: 'nowrap',
+                    gap: 1,
+                    overflowX: 'auto'
                   }}
                 >
-                  <DeleteIcon />
-                </IconButton>
-              </Grid>
-            </Grid>
-          </Paper>
-        ))}
+                  {valueTypeOptions.map((option) => (
+                    <Button
+                      key={option.value}
+                      disableRipple
+                      variant="text"
+                      className={`dq-tab ${valueType === option.value ? 'dq-tab--active' : ''}`}
+                      sx={{
+                        minWidth: 'auto',
+                        padding: 'var(--dq-tab-padding-y) var(--dq-tab-padding-x)',
+                        whiteSpace: 'nowrap'
+                      }}
+                      onClick={() => handleValueTypeChange(filter.id, option.value)}
+                      disabled={disabled || (option.value === FilterValueType.COLUMN && normalizedColumns.length < 2)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </Box>
+              </Box>
+            </Box>
+          );
+        })}
 
-        {/* Add Filter Button */}
-        <Button 
-          startIcon={<AddIcon />} 
-          variant="outlined" 
+        <Button
+          startIcon={<AddIcon />}
+          variant="outlined"
           size="small"
           onClick={handleAddFilter}
-          sx={{ 
-            alignSelf: 'flex-start'
-          }}
+          disabled={disabled || !hasColumns}
+          sx={{ alignSelf: 'flex-start' }}
         >
-          添加筛选条件
+          添加{mode === 'having' ? '聚合' : ''}筛选条件
         </Button>
 
-        {/* Help Text */}
-        {filters.length === 0 && (
-          <Box sx={{ 
-            p: 3, 
-            textAlign: 'center', 
-            backgroundColor: 'var(--dq-surface)',
-            borderRadius: 2,
-            border: '1px dashed var(--dq-border-muted)'
-          }}>
+        {(!filters || filters.length === 0) && (
+          <Box
+            sx={{
+              p: 3,
+              textAlign: 'center',
+              backgroundColor: 'var(--dq-surface-card)',
+              borderRadius: 3,
+              border: '1px dashed var(--dq-border-muted)'
+            }}
+          >
             <Typography variant="body2" color="text.secondary">
-              点击"添加筛选条件"开始配置数据筛选
+              {resolvedEmptyMessage}
             </Typography>
           </Box>
         )}
-      </Stack>
+      </Box>
     </Box>
   );
 };

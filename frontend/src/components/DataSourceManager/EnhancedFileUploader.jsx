@@ -13,7 +13,6 @@ import {
   Divider,
   FormControlLabel,
   IconButton,
-  Switch,
   Tooltip,
   Typography
 } from '@mui/material';
@@ -21,6 +20,7 @@ import { Lightbulb, Upload } from 'lucide-react';
 import React, { useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import ChunkedUploader from '../ChunkedUpload/ChunkedUploader';
+import { RoundedSwitch } from '../common';
 
 const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
   const { showSuccess, showError } = useToast();
@@ -165,10 +165,10 @@ const EnhancedFileUploader = ({ onUpload, onUploadComplete }) => {
         <Box sx={{ mb: 3, p: 2, bgcolor: 'var(--dq-surface-alt)', borderRadius: 1 }}>
           <FormControlLabel
             control={
-              <Switch
+              <RoundedSwitch
                 checked={useChunkedUpload}
                 onChange={handleUploadModeChange}
-                color="primary"
+                size="small"
               />
             }
             label="使用分块上传"

@@ -10,10 +10,10 @@ import {
     MenuItem,
     Paper,
     Select,
-    Switch,
     Typography
 } from '@mui/material';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RoundedSwitch } from '../common';
 
 const SetOperationBuilder = ({
     onOperationChange,
@@ -314,10 +314,11 @@ const SetOperationBuilder = ({
             {/* BY NAME模式切换 */}
             <FormControlLabel
                 control={
-                    <Switch
+                    <RoundedSwitch
                         checked={config.use_by_name}
                         onChange={handleByNameToggle}
                         disabled={!['UNION', 'UNION ALL'].includes(config.operation_type)}
+                        size="small"
                     />
                 }
                 label="使用BY NAME模式（按列名匹配）"

@@ -61,13 +61,7 @@ const EnhancedSQLExecutor = ({
   const [validationResult, setValidationResult] = useState(null);
   const sqlEditorRef = useRef(null); // Create a ref for the editor component
 
-  const accentPrimary = 'var(--dq-accent-primary)';
-  const accentSoftBg = 'var(--dq-accent-soft-bg)';
-  const accentStrongBg = 'var(--dq-accent-strong-bg)';
-  const accentShadow = 'var(--dq-accent-shadow)';
   const neutralShadowStrong = 'var(--dq-neutral-shadow-strong)';
-  const accentGradientBase = `linear-gradient(135deg, color-mix(in oklab, ${accentPrimary} 95%, transparent) 0%, color-mix(in oklab, ${accentPrimary} 80%, transparent) 100%)`;
-  const accentGradientHover = `linear-gradient(135deg, color-mix(in oklab, ${accentPrimary} 100%, transparent) 0%, color-mix(in oklab, ${accentPrimary} 90%, transparent) 100%)`;
 
   // 收藏相关状态
   const [addFavoriteDialogOpen, setAddFavoriteDialogOpen] = useState(false);
@@ -384,7 +378,7 @@ const EnhancedSQLExecutor = ({
                   sx={{
                     '& .MuiTab-root': {
                       textTransform: 'none',
-                      fontWeight: 'var(--dq-tab-font-weight-secondary)',
+                      fontWeight: 'var(--dq-tab-font-weight-secondary-inactive)',
                       fontSize: 'var(--dq-tab-font-size-secondary)',
                       minHeight: 44,
                       minWidth: 'auto',
@@ -398,7 +392,8 @@ const EnhancedSQLExecutor = ({
                       },
                       '&.Mui-selected': {
                         color: 'var(--dq-tab-active-color)',
-                        backgroundColor: 'transparent'
+                        backgroundColor: 'transparent',
+                        fontWeight: 'var(--dq-tab-font-weight-secondary)'
                       }
                     },
                     '& .MuiTabs-indicator': {
@@ -636,16 +631,19 @@ const EnhancedSQLExecutor = ({
 
                   {/* 执行按钮 */}
                   <Grid item xs={12} md={4}>
-                    <Box sx={{
-                      display: 'flex',
-                      flexDirection: 'row',
-                      gap: 2,
-                      height: '100%',
-                      justifyContent: 'center',
-                      alignItems: 'center'
-                    }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        gap: 2,
+                        height: '100%',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                      }}
+                    >
                       <Button
                         variant="contained"
+                        color="primary"
                         onClick={() => executeSQL()}
                         disabled={loading || !sqlQuery || !sqlQuery.trim() || (validationResult && validationResult.hasErrors)}
                         startIcon={
@@ -653,52 +651,28 @@ const EnhancedSQLExecutor = ({
                         }
                         fullWidth
                         sx={{
-                          height: '48px',
+                          height: 48,
                           textTransform: 'none',
                           fontWeight: 600,
                           fontSize: '1rem',
-                          borderRadius: 2,
-                      background: accentGradientBase,
-                      boxShadow: accentShadow,
-                      '&:hover': {
-                        background: accentGradientHover,
-                        boxShadow: accentShadow
-                      },
-                      '&:disabled': {
-                        background: 'var(--dq-surface-muted)',
-                        color: 'var(--dq-text-tertiary)',
-                        boxShadow: 'none'
-                      }
-                    }}
+                          borderRadius: 2
+                        }}
                       >
                         {loading ? '执行中...' : '执行预览'}
                       </Button>
                       <Button
                         variant="outlined"
+                        color="primary"
                         onClick={executeAsyncSQL}
                         disabled={loading || !sqlQuery || !sqlQuery.trim() || (validationResult && validationResult.hasErrors)}
                         startIcon={<Play size={16} />}
                         fullWidth
                         sx={{
-                          height: '48px',
+                          height: 48,
                           textTransform: 'none',
                           fontWeight: 600,
                           fontSize: '1rem',
-                          borderRadius: 2,
-                          borderColor: isDarkMode ? 'var(--dq-border)' : 'var(--dq-accent-primary)',
-                          color: isDarkMode ? 'var(--dq-text-secondary)' : 'var(--dq-accent-primary)',
-                          borderWidth: 2,
-                          backgroundColor: 'var(--dq-surface)',
-                          '&:hover': {
-                            borderWidth: 2,
-                            borderColor: 'var(--dq-accent-100)',
-                            color: 'var(--dq-accent-100)',
-                            backgroundColor: accentSoftBg
-                          },
-                          '&:disabled': {
-                            borderColor: 'var(--dq-border-subtle)',
-                            color: 'var(--dq-text-tertiary)'
-                          }
+                          borderRadius: 2
                         }}
                       >
                         异步任务运行
@@ -760,15 +734,10 @@ const EnhancedSQLExecutor = ({
           <Button
             onClick={() => setTableManagerOpen(false)}
             variant="contained"
+            color="primary"
             sx={{
               borderRadius: 2,
-              textTransform: 'none',
-              background: accentGradientBase,
-              boxShadow: accentShadow,
-              '&:hover': {
-                background: accentGradientHover,
-                boxShadow: accentShadow
-              }
+              textTransform: 'none'
             }}
           >
             关闭

@@ -1,34 +1,34 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Alert,
-  Fade,
-  CircularProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Divider,
-  Tooltip,
-  Tabs,
-  Tab
-} from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import ListIcon from '@mui/icons-material/List';
 import SaveIcon from '@mui/icons-material/Save';
-import DeleteIcon from '@mui/icons-material/Delete';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import { getMySQLConfigs, saveMySQLConfig, deleteMySQLConfig, getPostgreSQLConfigs, savePostgreSQLConfig, deletePostgreSQLConfig } from '../../services/apiClient';
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Alert,
+  Box,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Fade,
+  IconButton,
+  List,
+  ListItem,
+  ListItemSecondaryAction,
+  ListItemText,
+  Tab,
+  Tabs,
+  Tooltip,
+  Typography
+} from '@mui/material';
+import React, { useEffect, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
+import { deleteMySQLConfig, getMySQLConfigs, saveMySQLConfig } from '../../services/apiClient';
 import PostgreSQLConnector from '../PostgreSQLManager/PostgreSQLConnector';
 import { CardSurface, RoundedButton, RoundedTextField } from '../common';
 
@@ -56,14 +56,15 @@ const DatabaseConnector = ({ onConnect }) => {
           },
           '& .MuiTab-root': {
             fontSize: 'var(--dq-tab-font-size-secondary)',
-            fontWeight: 'var(--dq-tab-font-weight-secondary)',
+            fontWeight: 'var(--dq-tab-font-weight-secondary-inactive)',
             textTransform: 'none',
             minHeight: 48,
             color: 'var(--dq-text-tertiary)',
             backgroundColor: 'transparent',
             '&.Mui-selected': {
               color: 'var(--dq-tab-active-color)',
-              backgroundColor: 'transparent'
+              backgroundColor: 'transparent',
+              fontWeight: 'var(--dq-tab-font-weight-secondary)'
             },
             '&:hover': {
               color: 'var(--dq-text-primary)',
@@ -131,9 +132,9 @@ const MySQLConnector = ({ onConnect }) => {
   // 保存MySQL配置
   const handleSaveMySQLConfig = async () => {
     if (!validateForm()) return;
-    
+
     setSavingConfig(true);
-    
+
     try {
       const configToSave = {
         id: configName || `mysql-${host}-${database}`,
@@ -147,7 +148,7 @@ const MySQLConnector = ({ onConnect }) => {
           database
         }
       };
-      
+
       await saveMySQLConfig(configToSave);
       await loadMySQLConfigs();
 
@@ -298,7 +299,7 @@ const MySQLConnector = ({ onConnect }) => {
       };
 
       const result = await onConnect(connectionParams);
-      
+
       if (result && result.success) {
         setSuccess(true);
         setTimeout(() => setSuccess(false), 3000);
@@ -318,8 +319,8 @@ const MySQLConnector = ({ onConnect }) => {
     <Box>
       {error && (
         <Fade in={!!error}>
-          <Alert 
-            severity="error" 
+          <Alert
+            severity="error"
             sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}
             onClose={() => setError('')}
           >
@@ -330,8 +331,8 @@ const MySQLConnector = ({ onConnect }) => {
 
       {success && (
         <Fade in={success}>
-          <Alert 
-            severity="success" 
+          <Alert
+            severity="success"
             sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}
           >
             数据库连接成功
@@ -341,8 +342,8 @@ const MySQLConnector = ({ onConnect }) => {
 
       {connectionTestResult && (
         <Fade in={!!connectionTestResult}>
-          <Alert 
-            severity={connectionTestResult.success ? "success" : "error"} 
+          <Alert
+            severity={connectionTestResult.success ? "success" : "error"}
             sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}
             onClose={() => setConnectionTestResult(null)}
           >
@@ -351,12 +352,12 @@ const MySQLConnector = ({ onConnect }) => {
         </Fade>
       )}
 
-      <Accordion 
+      <Accordion
         expanded={expanded}
         onChange={() => setExpanded(!expanded)}
         disableGutters
         elevation={0}
-        sx={{ 
+        sx={{
           border: '1px solid var(--dq-border-card)',
           borderRadius: 'var(--dq-radius-card)',
           backgroundColor: 'var(--dq-surface)',
@@ -367,9 +368,9 @@ const MySQLConnector = ({ onConnect }) => {
           transition: 'box-shadow 0.2s ease, border-color 0.2s ease'
         }}
       >
-        <AccordionSummary 
+        <AccordionSummary
           expandIcon={<ExpandMoreIcon />}
-          sx={{ 
+          sx={{
             backgroundColor: 'var(--dq-surface)',
             borderBottom: expanded ? '1px solid var(--dq-border-subtle)' : 'none',
             minHeight: '48px',
@@ -383,7 +384,7 @@ const MySQLConnector = ({ onConnect }) => {
             </Typography>
           </Box>
         </AccordionSummary>
-        
+
         <AccordionDetails sx={{ p: 3, backgroundColor: 'var(--dq-surface)' }}>
           <RoundedTextField
             label="主机地址"
@@ -393,7 +394,7 @@ const MySQLConnector = ({ onConnect }) => {
             sx={{ mb: 1.5 }}
             placeholder="localhost"
           />
-          
+
           <RoundedTextField
             label="端口"
             type="number"
@@ -403,7 +404,7 @@ const MySQLConnector = ({ onConnect }) => {
             sx={{ mb: 1.5 }}
             placeholder="3306"
           />
-          
+
           <RoundedTextField
             label="用户名"
             value={username}
@@ -412,7 +413,7 @@ const MySQLConnector = ({ onConnect }) => {
             sx={{ mb: 1.5 }}
             placeholder="root"
           />
-          
+
           <RoundedTextField
             label="密码"
             type="password"
@@ -421,7 +422,7 @@ const MySQLConnector = ({ onConnect }) => {
             fullWidth
             sx={{ mb: 1.5 }}
           />
-          
+
           <RoundedTextField
             label="数据库名称"
             value={database}
@@ -430,7 +431,7 @@ const MySQLConnector = ({ onConnect }) => {
             sx={{ mb: 1.5 }}
             placeholder="your_database"
           />
-          
+
           <RoundedTextField
             label="连接别名（可选）"
             value={alias}
@@ -440,7 +441,15 @@ const MySQLConnector = ({ onConnect }) => {
             placeholder="例如: 生产环境MySQL"
           />
 
-          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: 2,
+              flexWrap: 'wrap'
+            }}
+          >
             <RoundedButton
               variant="outlined"
               startIcon={testingConnection ? <CircularProgress size={16} /> : null}
@@ -459,14 +468,13 @@ const MySQLConnector = ({ onConnect }) => {
             >
               {loading ? '连接中...' : '连接数据库'}
             </RoundedButton>
-          </Box>
 
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
             <RoundedButton
               variant="outlined"
               startIcon={<SaveIcon />}
               onClick={() => setShowSaveConfig(true)}
               size="small"
+              sx={{ minWidth: 120 }}
             >
               保存此配置
             </RoundedButton>
@@ -482,13 +490,13 @@ const MySQLConnector = ({ onConnect }) => {
             已保存的MySQL配置
           </Typography>
         </Box>
-        
+
         <List sx={{ p: 0, maxHeight: 220, overflow: 'auto' }}>
           {mySQLConfigs.length > 0 ? (
             mySQLConfigs.map((config) => (
               <React.Fragment key={config.id}>
-                <ListItem 
-                  sx={{ 
+                <ListItem
+                  sx={{
                     py: 1,
                     '&:hover': {
                       backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 8%, transparent)'
@@ -509,8 +517,8 @@ const MySQLConnector = ({ onConnect }) => {
                   />
                   <ListItemSecondaryAction>
                     <Tooltip title="使用此配置">
-                      <IconButton 
-                        edge="end" 
+                      <IconButton
+                        edge="end"
                         size="small"
                         onClick={() => handleUseMySQLConfig(config)}
                       >
@@ -518,8 +526,8 @@ const MySQLConnector = ({ onConnect }) => {
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="删除配置">
-                      <IconButton 
-                        edge="end" 
+                      <IconButton
+                        edge="end"
                         size="small"
                         color="error"
                         onClick={() => handleDeleteMySQLConfig(config.id)}
@@ -534,7 +542,7 @@ const MySQLConnector = ({ onConnect }) => {
             ))
           ) : (
             <ListItem>
-              <ListItemText 
+              <ListItemText
                 primary={
                   <Typography variant="body2" sx={{ color: 'var(--dq-text-tertiary)' }} align="center">
                     暂无保存的配置

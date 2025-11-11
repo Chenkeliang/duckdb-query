@@ -224,6 +224,11 @@ const ModernDataDisplay = ({
       backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 28%, transparent)'
     }
   };
+  const iconButtonWrapperSx = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  };
 
   const toggleButtonBaseSx = {
     color: 'var(--dq-text-secondary)',
@@ -1209,43 +1214,61 @@ const ModernDataDisplay = ({
               </Box>
             </Box>
 
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} alignItems="center">
               <Tooltip title={renderMode === 'agGrid' ? '切换到虚拟滚动模式（适合大数据量）' : '切换到标准表格模式（适合小数据量）'}>
-                <IconButton
-                  onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
-                  color={renderMode === 'virtual' ? 'primary' : 'default'}
-                  sx={renderMode === 'virtual' ? activeIconButtonSx : defaultIconButtonSx}
-                >
-                  {renderMode === 'agGrid' ? <Scroll size={20} /> : <List size={20} />}
-                </IconButton>
+                <Box component="span" sx={iconButtonWrapperSx}>
+                  <IconButton
+                    onClick={() => setRenderMode(renderMode === 'agGrid' ? 'virtual' : 'agGrid')}
+                    color={renderMode === 'virtual' ? 'primary' : 'default'}
+                    sx={{
+                      ...(renderMode === 'virtual' ? activeIconButtonSx : defaultIconButtonSx),
+                      width: 40,
+                      height: 40
+                    }}
+                  >
+                    {renderMode === 'agGrid' ? <Scroll size={20} /> : <List size={20} />}
+                  </IconButton>
+                </Box>
               </Tooltip>
 
               <Tooltip title="列筛选（生成条件查询）">
-                <span>
+                <Box component="span" sx={iconButtonWrapperSx}>
                   <IconButton
                     onClick={() => setFilterDialogOpen(true)}
                     color={activeFilters && activeFilters.length > 0 ? 'primary' : 'default'}
                     disabled={!hasFilterSupport || loading}
-                    sx={activeFilters && activeFilters.length > 0 ? activeIconButtonSx : defaultIconButtonSx}
+                    sx={{
+                      ...(activeFilters && activeFilters.length > 0 ? activeIconButtonSx : defaultIconButtonSx),
+                      width: 40,
+                      height: 40
+                    }}
                   >
                     <Filter size={20} />
                   </IconButton>
-                </span>
+                </Box>
               </Tooltip>
 
               <Tooltip title="列显示/隐藏">
-                <IconButton
-                  onClick={handleColumnMenuOpen}
-                  sx={defaultIconButtonSx}
-                >
-                  <SlidersHorizontal size={20} />
-                </IconButton>
+                <Box component="span" sx={iconButtonWrapperSx}>
+                  <IconButton
+                    onClick={handleColumnMenuOpen}
+                    sx={{ ...defaultIconButtonSx, width: 40, height: 40 }}
+                  >
+                    <SlidersHorizontal size={20} />
+                  </IconButton>
+                </Box>
               </Tooltip>
 
               <Tooltip title="刷新数据">
-                <IconButton onClick={onRefresh} disabled={loading} sx={defaultIconButtonSx}>
-                  <RefreshCw size={20} />
-                </IconButton>
+                <Box component="span" sx={iconButtonWrapperSx}>
+                  <IconButton
+                    onClick={onRefresh}
+                    disabled={loading}
+                    sx={{ ...defaultIconButtonSx, width: 40, height: 40 }}
+                  >
+                    <RefreshCw size={20} />
+                  </IconButton>
+                </Box>
               </Tooltip>
 
               <Button

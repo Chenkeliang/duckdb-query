@@ -12,7 +12,9 @@ import {
 
 import {
   generateAggregationSQL,
-  getColumnTypeInfo
+  getColumnTypeInfo,
+  FilterValueType,
+  LogicOperator
 } from './visualQueryUtils';
 
 /**
@@ -39,6 +41,7 @@ export function generateSQL(config, tableName) {
       config.selectedColumns.length > 0 ||
       config.aggregations.length > 0 ||
       config.filters.length > 0 ||
+      (config.having && config.having.length > 0) ||
       config.groupBy.length > 0 ||
       config.orderBy.length > 0 ||
       config.limit !== null ||
@@ -58,6 +61,7 @@ export function generateSQL(config, tableName) {
     const selectClause = buildSelectClause(config);
     const fromClause = buildFromClause(tableName);
     const whereClause = buildWhereClause(config.filters);
+    const havingClause = buildHavingClause(config.having);
     const groupByClause = buildGroupByClause(config, selectClause.needsGroupBy);
     const orderByClause = buildOrderByClause(config.orderBy);
     const limitClause = buildLimitClause(config.limit);
@@ -71,6 +75,10 @@ export function generateSQL(config, tableName) {
 
     if (groupByClause) {
       sql += groupByClause;
+    }
+
+    if (havingClause) {
+      sql += havingClause;
     }
 
     if (orderByClause) {
@@ -226,81 +234,165 @@ function buildFromClause(tableName) {
  * @returns {string|null} WHERE clause or null if no filters
  */
 function buildWhereClause(filters) {
+  return buildFilterClause(filters, 'WHERE', { isHaving: false });
+}
+
+function buildHavingClause(filters) {
+  return buildFilterClause(filters, 'HAVING', { isHaving: true });
+}
+
+function buildFilterClause(filters, keyword, { isHaving = false } = {}) {
   if (!filters || filters.length === 0) {
     return null;
   }
 
   const conditions = [];
 
-  for (let i = 0; i < filters.length; i++) {
-    const filter = filters[i];
-
-    if (!filter.column || !filter.operator) {
-      continue; // Skip invalid filters
-    }
-
-    const column = escapeIdentifier(filter.column);
-    const operator = filter.operator;
-    let condition = '';
-
+  filters.forEach((filter) => {
     try {
-      switch (operator) {
-        case '=':
-        case '!=':
-        case '>':
-        case '<':
-        case '>=':
-        case '<=':
-          condition = `${column} ${operator} ${formatSQLValue(filter.value)}`;
-          break;
-
-        case 'LIKE':
-        case 'NOT LIKE':
-        case 'ILIKE':
-          // Add wildcards for LIKE operations if not already present
-          let likeValue = filter.value;
-          if (likeValue && !likeValue.includes('%')) {
-            likeValue = `%${likeValue}%`;
-          }
-          condition = `${column} ${operator} ${escapeStringLiteral(likeValue)}`;
-          break;
-
-        case 'IS NULL':
-          condition = `${column} IS NULL`;
-          break;
-
-        case 'IS NOT NULL':
-          condition = `${column} IS NOT NULL`;
-          break;
-
-        case 'BETWEEN':
-          if (filter.value !== undefined && filter.value2 !== undefined) {
-            condition = `${column} BETWEEN ${formatSQLValue(filter.value)} AND ${formatSQLValue(filter.value2)}`;
-          }
-          break;
-
-        default:
-          continue;
+      const condition = buildFilterCondition(filter, { isHaving });
+      if (!condition) {
+        return;
       }
 
-      if (condition) {
-        // Add logic operator for filters after the first one
-        if (i > 0 && filter.logicOperator) {
-          conditions.push(`${filter.logicOperator} ${condition}`);
-        } else {
-          conditions.push(condition);
-        }
+      if (conditions.length === 0) {
+        conditions.push(condition);
+      } else {
+        const logicOperator =
+          (filter.logicOperator || filter.logic_operator || LogicOperator.AND || 'AND').toString().toUpperCase();
+        conditions.push(`${logicOperator} ${condition}`);
       }
     } catch (error) {
-      continue;
+      // Skip invalid condition
     }
-  }
+  });
 
   if (conditions.length === 0) {
     return null;
   }
 
-  return ` WHERE ${conditions.join(' ')}`;
+  return ` ${keyword} ${conditions.join(' ')}`;
+}
+
+function mapFilterDataTypeToSQL(dataType) {
+  if (!dataType) {
+    return 'TEXT';
+  }
+  const token = dataType.toString().toLowerCase();
+  if (token === 'number') {
+    return 'NUMERIC';
+  }
+  if (token === 'boolean') {
+    return 'BOOLEAN';
+  }
+  if (token === 'date') {
+    return 'DATE';
+  }
+  return 'TEXT';
+}
+
+function buildFilterCondition(filter, { isHaving = false } = {}) {
+  if (!filter || !filter.column || !filter.operator) {
+    return null;
+  }
+
+  const operator = filter.operator.toString().toUpperCase();
+  const columnExpr = formatFilterColumn(filter.column, { isHaving });
+  const valueType =
+    (filter.valueType || filter.value_type || FilterValueType.CONSTANT).toString().toLowerCase();
+  const columnType = filter.columnType || filter.column_type;
+  const sqlDataType = mapFilterDataTypeToSQL(columnType);
+  const rightColumnRaw = filter.rightColumn || filter.right_column;
+  const hasRightColumn =
+    typeof rightColumnRaw === 'string' && rightColumnRaw.trim().length > 0;
+
+  if (!columnExpr) {
+    return null;
+  }
+
+  switch (operator) {
+    case 'IS NULL':
+    case 'IS NOT NULL':
+      return `${columnExpr} ${operator}`;
+
+    case 'BETWEEN': {
+      if (filter.value === undefined || filter.value === null ||
+        filter.value2 === undefined || filter.value2 === null) {
+        return null;
+      }
+      const startValue = formatSQLValue(filter.value, sqlDataType);
+      const endValue = formatSQLValue(filter.value2, sqlDataType);
+      return `${columnExpr} BETWEEN ${startValue} AND ${endValue}`;
+    }
+
+    case 'LIKE':
+    case 'NOT LIKE':
+    case 'ILIKE': {
+      let likeValue = filter.value;
+      if (typeof likeValue === 'string' && !likeValue.includes('%')) {
+        likeValue = `%${likeValue}%`;
+      }
+      return `${columnExpr} ${operator} ${escapeStringLiteral(likeValue ?? '')}`;
+    }
+
+    default:
+      break;
+  }
+
+  const shouldTreatAsColumnCompare =
+    valueType === FilterValueType.COLUMN ||
+    (hasRightColumn &&
+      valueType === FilterValueType.CONSTANT &&
+      (filter.value === undefined || filter.value === null || filter.value === ''));
+
+  if (shouldTreatAsColumnCompare) {
+    if (!hasRightColumn) {
+      return null;
+    }
+    const rightExpr = formatFilterColumn(rightColumnRaw.trim(), { isHaving });
+    return `${columnExpr} ${operator} ${rightExpr}`;
+  }
+
+  if (valueType === FilterValueType.EXPRESSION) {
+    let expression = filter.expression || '';
+    if (!expression.trim()) {
+      return null;
+    }
+    expression = expression.trim();
+    if (!expression.startsWith('(') && !expression.toLowerCase().startsWith('case')) {
+      expression = `(${expression})`;
+    }
+    return `${columnExpr} ${operator} ${expression}`;
+  }
+
+  // Default constant comparison
+  return `${columnExpr} ${operator} ${formatSQLValue(filter.value, sqlDataType)}`;
+}
+
+function formatFilterColumn(column, { isHaving = false } = {}) {
+  if (!column && column !== 0) {
+    return null;
+  }
+  const columnStr = column.toString().trim();
+  if (!columnStr) {
+    return null;
+  }
+
+  // For HAVING, allow raw expressions (e.g. SUM(...) or aliases)
+  if (isHaving) {
+    if (columnStr.startsWith('(') || columnStr.includes('(') || columnStr.includes(')')) {
+      return columnStr;
+    }
+    // Allow users to pass raw expressions enclosed in quotes already
+    if ((columnStr.startsWith('"') && columnStr.endsWith('"')) ||
+      columnStr.includes('.') || columnStr.includes(' ')) {
+      return columnStr.startsWith('"') && columnStr.endsWith('"')
+        ? columnStr
+        : escapeIdentifier(columnStr);
+    }
+  }
+
+  return escapeIdentifier(columnStr);
 }
 
 /**
@@ -717,6 +809,7 @@ export function generateSQLPreview(config, tableName) {
       hasColumns: config.selectedColumns && config.selectedColumns.length > 0,
       hasAggregations: config.aggregations && config.aggregations.length > 0,
       hasFilters: config.filters && config.filters.length > 0,
+      hasHaving: config.having && config.having.length > 0,
       hasGroupBy: config.groupBy && config.groupBy.length > 0,
       hasOrderBy: config.orderBy && config.orderBy.length > 0,
       hasLimit: config.limit && config.limit > 0,
