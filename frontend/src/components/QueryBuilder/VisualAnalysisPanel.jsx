@@ -28,6 +28,7 @@ import SortControls from './SortControls';
 import SQLPreview from './SQLPreview';
 import TypeConflictDialog from './VisualAnalysis/TypeConflictDialog';
 import CalculatedFieldsControls from './VisualAnalysis/CalculatedFieldsControls';
+import JsonTableConfigurator from './VisualAnalysis/JsonTableConfigurator';
 
 const VISUAL_PANEL_EXPANDED_STORAGE_KEY = 'dq-visual-panel-expanded';
 const EXPRESSION_FILTER_CAST_PREFIX = '__expr_filter_';
@@ -36,6 +37,7 @@ const SECTION_STORAGE_KEYS = {
   columns: 'dq-visual-section-columns',
   aggregations: 'dq-visual-section-aggregations',
   calculated: 'dq-visual-section-calculated',
+  json: 'dq-visual-section-json',
   filters: 'dq-visual-section-filters',
   having: 'dq-visual-section-having',
   sort: 'dq-visual-section-sort',
@@ -218,9 +220,19 @@ const VisualAnalysisPanel = ({
 
   const tableName = selectedTable?.name || selectedTable?.id || '';
 
+  const resolvedJsonTables = useMemo(() => {
+    if (Array.isArray(analysisConfig?.jsonTables)) {
+      return analysisConfig.jsonTables;
+    }
+    if (Array.isArray(analysisConfig?.json_tables)) {
+      return analysisConfig.json_tables;
+    }
+    return [];
+  }, [analysisConfig?.jsonTables, analysisConfig?.json_tables]);
+
   const tableColumns = useMemo(() => {
     const rawColumns = selectedTable?.columns || [];
-    return rawColumns
+    const baseColumns = rawColumns
       .map((column) => {
         if (!column) {
           return null;
@@ -229,7 +241,7 @@ const VisualAnalysisPanel = ({
           return {
             name: column,
             label: column,
-            dataType: 'TEXT'
+            dataType: 'TEXT',
           };
         }
         const name = column.name || column.column_name || '';
@@ -240,11 +252,37 @@ const VisualAnalysisPanel = ({
         return {
           name,
           label: column.displayName || column.label || column.column_label || name,
-          dataType
+          dataType,
         };
       })
       .filter(Boolean);
-  }, [selectedTable?.columns]);
+
+    const derivedColumns = resolvedJsonTables.flatMap((jsonTable, jsonIndex) => {
+      if (!jsonTable || !Array.isArray(jsonTable.columns)) {
+        return [];
+      }
+      const alias = jsonTable.alias || jsonTable.sourceColumn || `json_${jsonIndex + 1}`;
+      return jsonTable.columns
+        .map((column) => {
+          const columnName = column?.name || column?.alias;
+          if (!columnName || !String(columnName).trim()) {
+            return null;
+          }
+          const dataType = (column.dataType || column.data_type || 'TEXT')
+            .toString()
+            .toUpperCase();
+          return {
+            name: String(columnName).trim(),
+            label: `${alias}.${columnName}`,
+            dataType,
+            isJsonDerived: true,
+          };
+        })
+        .filter(Boolean);
+    });
+
+    return [...baseColumns, ...derivedColumns];
+  }, [selectedTable?.columns, resolvedJsonTables]);
 
   const hasVisualConfig = useMemo(() => {
     const config = analysisConfig || {};
@@ -296,6 +334,8 @@ const VisualAnalysisPanel = ({
     }
     return summaryParts.length ? summaryParts.join(' · ') : '未配置查询条件';
   }, [analysisConfig]);
+
+  const jsonTableCount = resolvedJsonTables.length;
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1394,6 +1434,10 @@ const VisualAnalysisPanel = ({
     updateAnalysisConfig({ limit });
   };
 
+  const handleJsonTablesChange = useCallback((nextJsonTables) => {
+    updateAnalysisConfig({ jsonTables: nextJsonTables });
+  }, []);
+
   // Get configuration summary for collapsed state
   const getConfigSummary = (config) => {
     const parts = [];
@@ -1579,6 +1623,20 @@ const VisualAnalysisPanel = ({
                       resolvedCasts={resolvedCasts}
                       disabled={isLoading}
                       showHeader={false}
+                    />
+                  </CollapsibleSection>
+
+                  <CollapsibleSection
+                    title="JSON 展开 (JSON_TABLE)"
+                    description={jsonTableCount > 0 ? `已配置 ${jsonTableCount} 个展开` : '将嵌套 JSON/STRUCT 展开为列'}
+                    storageKey={SECTION_STORAGE_KEYS.json}
+                    className="visual-analysis-section-card--full"
+                  >
+                    <JsonTableConfigurator
+                      columns={selectedTable?.columns || []}
+                      jsonTables={analysisConfig.jsonTables || analysisConfig.json_tables || []}
+                      onChange={handleJsonTablesChange}
+                      disabled={isLoading}
                     />
                   </CollapsibleSection>
 

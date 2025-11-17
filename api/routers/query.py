@@ -57,6 +57,8 @@ from core.file_datasource_manager import (
     file_datasource_manager,
     build_table_metadata_snapshot,
 )
+from core.file_utils import load_file_to_duckdb
+from core.utils import normalize_dataframe_output
 import pandas as pd
 import numpy as np
 import io
@@ -64,11 +66,9 @@ import os
 import time
 import traceback
 import logging
-import math
 import re
 import uuid
 from datetime import datetime, date, time, timedelta
-from decimal import Decimal
 from typing import List, Optional, Dict, Any, Union, Tuple
 from pydantic import BaseModel, Field, ValidationError
 import duckdb
@@ -160,47 +160,6 @@ def _map_frontend_profiles(
         for profile in profiles or []
         if profile.name and profile.name.strip()
     }
-
-
-def _sanitize_dataframe_for_json(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert dataframe to JSON-friendly object types and drop NaN/Inf."""
-    if df is None:
-        return pd.DataFrame()
-
-    if df.empty:
-        return df.copy()
-
-    sanitized = df.copy()
-    sanitized.replace([np.inf, -np.inf], np.nan, inplace=True)
-    sanitized = sanitized.astype(object)
-    sanitized = sanitized.where(pd.notnull(sanitized), None)
-
-    def _convert_value(value: Any):
-        if value is None:
-            return None
-        if isinstance(value, float) and math.isnan(value):
-            return None
-        if isinstance(value, (np.floating,)):
-            coerced = float(value)
-            return None if math.isnan(coerced) else coerced
-        if isinstance(value, (np.integer,)):
-            return int(value)
-        if isinstance(value, np.bool_):
-            return bool(value)
-        if isinstance(value, Decimal):
-            return float(value)
-        if isinstance(value, pd.Timestamp):
-            return value.isoformat()
-        if isinstance(value, pd.Timedelta):
-            return value.isoformat() if hasattr(value, "isoformat") else str(value)
-        if isinstance(value, (datetime, date, time, timedelta)):
-            return value.isoformat()
-        return value
-
-    sanitized = sanitized.apply(lambda col: col.map(_convert_value))
-    sanitized = sanitized.astype(object)
-    sanitized = sanitized.where(pd.notnull(sanitized), None)
-    return sanitized
 
 
 def _load_backend_column_profiles(table_name: str) -> Dict[str, Dict[str, Any]]:
@@ -1216,13 +1175,13 @@ async def perform_query(query_request: QueryRequest):
                         con.execute("INSTALL excel;")
                         con.execute("LOAD excel;")
                         duckdb_query = (
-                            f"SELECT * FROM EXCEL_SCAN('{file_path}') LIMIT 1"
+                            f"SELECT * FROM read_xlsx('{file_path}') LIMIT 1"
                         )
                         con.execute(duckdb_query).fetchdf()
                         # 先创建临时表
                         temp_table = f"temp_{source.id}_{int(time.time())}"
                         con.execute(
-                            f"CREATE TABLE \"{temp_table}\" AS SELECT * FROM EXCEL_SCAN('{file_path}')"
+                            f"CREATE TABLE \"{temp_table}\" AS SELECT * FROM read_xlsx('{file_path}')"
                         )
 
                         # 获取列信息并转换为VARCHAR
@@ -1245,10 +1204,10 @@ async def perform_query(query_request: QueryRequest):
 
                         # 删除临时表
                         con.execute(f'DROP TABLE "{temp_table}"')
-                        logger.info(f"使用duckdb EXCEL_SCAN 注册Excel表: {source.id}")
+                        logger.info(f"使用DuckDB read_xlsx 注册Excel表: {source.id}")
                     except Exception as duckdb_exc:
                         logger.warning(
-                            f"duckdb EXCEL_SCAN 读取失败，降级为pandas: {duckdb_exc}"
+                            f"DuckDB read_xlsx 读取失败，降级为pandas: {duckdb_exc}"
                         )
                         df = pd.read_excel(file_path, dtype=str)
                         con.register(source.id, df)
@@ -1256,62 +1215,37 @@ async def perform_query(query_request: QueryRequest):
                             f"已用pandas.read_excel注册表: {source.id}, shape: {df.shape}"
                         )
 
-                elif file_extension == "csv":
-                    # CSV文件处理，优先使用DuckDB原生功能
+                elif file_extension in {"csv", "json", "jsonl", "parquet", "pq"}:
                     try:
-                        # 使用DuckDB读取CSV，然后转换所有列为VARCHAR
-                        temp_table = f"temp_{source.id}_{int(time.time())}"
-
-                        # 先用DuckDB读取到临时表
-                        con.execute(
-                            f"CREATE TABLE \"{temp_table}\" AS SELECT * FROM read_csv_auto('{file_path}')"
+                        normalized_ext = (
+                            "parquet" if file_extension == "pq" else file_extension
                         )
-
-                        # 获取列信息并转换为VARCHAR
-                        columns_info = con.execute(
-                            f'DESCRIBE "{temp_table}"'
-                        ).fetchall()
-                        cast_columns = []
-                        for col_name, col_type, *_ in columns_info:
-                            cast_columns.append(
-                                f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"'
-                            )
-
-                        cast_sql = ", ".join(cast_columns)
-
-                        # 创建最终表，所有列都是VARCHAR
-                        con.execute(f'DROP TABLE IF EXISTS "{source.id}"')
-                        con.execute(
-                            f'CREATE TABLE "{source.id}" AS SELECT {cast_sql} FROM "{temp_table}"'
+                        load_file_to_duckdb(
+                            con,
+                            source.id,
+                            file_path,
+                            normalized_ext,
                         )
-
-                        # 删除临时表
-                        con.execute(f'DROP TABLE "{temp_table}"')
-
                         logger.info(
-                            f"使用DuckDB read_csv_auto创建VARCHAR表: {source.id}"
+                            "已通过DuckDB原生加载文件 %s -> 表 %s",
+                            file_path,
+                            source.id,
                         )
-
-                    except Exception as duckdb_exc:
-                        logger.warning(f"DuckDB读取CSV失败，降级为pandas: {duckdb_exc}")
-                        # 降级为pandas方案
+                    except Exception as load_error:
+                        logger.error(
+                            "文件 %s 加载失败: %s", file_path, load_error, exc_info=True
+                        )
+                        raise
+                else:
+                    logger.warning(f"未知文件类型: {file_extension}，尝试pandas读取")
+                    try:
                         df = pd.read_csv(file_path, dtype=str)
                         create_varchar_table_from_dataframe(source.id, df, con)
                         logger.info(
                             f"已用pandas.read_csv创建持久化表: {source.id}, shape: {df.shape}"
                         )
-
-                else:
-                    # 其他文件类型，尝试pandas通用读取
-                    logger.warning(f"未知文件类型: {file_extension}，尝试pandas读取")
-                    try:
-                        df = pd.read_csv(file_path, dtype=str)  # 默认尝试CSV
-                        create_varchar_table_from_dataframe(source.id, df, con)
-                        logger.info(
-                            f"已用pandas.read_csv创建持久化表: {source.id}, shape: {df.shape}"
-                        )
                     except Exception:
-                        df = pd.read_excel(file_path, dtype=str)  # 再尝试Excel
+                        df = pd.read_excel(file_path, dtype=str)
                         create_varchar_table_from_dataframe(source.id, df, con)
                         logger.info(
                             f"已用pandas.read_excel注册表: {source.id}, shape: {df.shape}"
@@ -1503,19 +1437,12 @@ async def perform_query(query_request: QueryRequest):
         result_df = execute_query(query, con)
         logger.info(f"查询完成，结果形状: {result_df.shape}")
 
-        # Replace NaN/inf with None, which is JSON serializable to null
-        result_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-        # 更彻底地将所有NaN转为None，防止JSON序列化报错
-        result_df = result_df.astype(object).where(pd.notnull(result_df), None)
-
-        # Convert non-serializable types to strings
-        for col in result_df.columns:
-            if result_df[col].dtype == "object":
-                result_df[col] = result_df[col].astype(str)
+        data_records = normalize_dataframe_output(result_df)
+        columns_list = [str(col) for col in result_df.columns.tolist()]
 
         result = {
-            "data": result_df.to_dict(orient="records"),
-            "columns": result_df.columns.tolist(),
+            "data": data_records,
+            "columns": columns_list,
             "index": result_df.index.tolist(),
             "sql": query,  # 返回完整SQL
         }
@@ -1624,14 +1551,15 @@ async def execute_sql(request: dict = Body(...)):
             if not os.path.exists(file_path):
                 raise ValueError(f"文件不存在: {file_path}")
 
-            # 读取文件并注册到 DuckDB
-            if file_path.endswith(".csv"):
-                df = pd.read_csv(file_path)
-            elif file_path.endswith((".xls", ".xlsx")):
-                df = pd.read_excel(file_path)
-            else:
-                raise ValueError("不支持的文件类型")
-            con.register(table_id, df)
+            normalized_ext = file_path.split(".")[-1].lower()
+            if normalized_ext == "pq":
+                normalized_ext = "parquet"
+            load_file_to_duckdb(
+                con,
+                table_id,
+                file_path,
+                normalized_ext,
+            )
 
         # 如果是数据库类型的数据源，需要先执行SQL获取数据，然后可选择保存到DuckDB
         elif isinstance(datasource, dict) and datasource.get("type") in [
@@ -1714,10 +1642,6 @@ async def execute_sql(request: dict = Body(...)):
                 result_df = db_manager.execute_query(datasource_id, sql_query)
                 logger.info(f"数据库查询执行完成，结果形状: {result_df.shape}")
 
-                # 处理数据类型和编码问题
-                result_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-                result_df = result_df.astype(object).where(pd.notnull(result_df), None)
-
                 # 处理编码问题：安全地转换为字符串
                 for col in result_df.columns:
                     if result_df[col].dtype == "object":
@@ -1747,7 +1671,7 @@ async def execute_sql(request: dict = Body(...)):
 
                         result_df[col] = result_df[col].apply(safe_str_convert)
 
-                data_records = result_df.to_dict(orient="records")
+                data_records = normalize_dataframe_output(result_df)
                 columns_list = [str(col) for col in result_df.columns.tolist()]
 
                 logger.info(f"准备返回数据库查询结果，行数: {len(result_df)}")
@@ -1774,20 +1698,7 @@ async def execute_sql(request: dict = Body(...)):
             result_df = execute_query(sql_query, con)
             logger.info(f"SQL查询执行完成，结果形状: {result_df.shape}")
 
-            # Replace NaN/inf with None, which is JSON serializable to null
-            result_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-            # 更彻底地将所有NaN转为None，防止JSON序列化报错
-            result_df = result_df.astype(object).where(pd.notnull(result_df), None)
-
-            # 将所有不可序列化的数据类型转换为字符串
-            for col in result_df.columns:
-                # 检查是否有不可序列化的对象类型列
-                if result_df[col].dtype == "object":
-                    # 将可能不可序列化的对象转换为字符串
-                    result_df[col] = result_df[col].astype(str)
-
-            # 使用to_dict方法，确保所有数据都是可JSON序列化的
-            data_records = result_df.to_dict(orient="records")
+            data_records = normalize_dataframe_output(result_df)
 
             # 确保所有列名是字符串类型
             columns_list = [str(col) for col in result_df.columns.tolist()]
@@ -2379,8 +2290,7 @@ async def preview_set_operation(request: SetOperationRequest):
         con = get_db_connection()
         result_df = con.execute(preview_sql).fetchdf()
 
-        # 转换为字典列表
-        preview_data = _sanitize_dataframe_for_json(result_df).to_dict("records")
+        preview_data = normalize_dataframe_output(result_df)
 
         # 获取总行数估算
         estimated_rows = estimate_set_operation_rows(config, con)
@@ -2531,7 +2441,7 @@ async def execute_set_operation(request: SetOperationRequest):
                 {"name": col, "type": str(result_df[col].dtype)}
                 for col in result_df.columns
             ]
-            data = _sanitize_dataframe_for_json(result_df).to_dict("records")
+            data = normalize_dataframe_output(result_df)
 
             return {
                 "success": True,
@@ -2617,7 +2527,7 @@ async def execute_set_operation(request: SetOperationRequest):
                 {"name": col, "type": str(result_df[col].dtype)}
                 for col in result_df.columns
             ]
-            data = _sanitize_dataframe_for_json(result_df).to_dict("records")
+            data = normalize_dataframe_output(result_df)
 
             return {
                 "success": True,

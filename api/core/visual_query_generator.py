@@ -9,7 +9,6 @@ import logging
 import re
 from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
-import pandas as pd
 import duckdb
 
 from models.visual_query_models import (
@@ -32,7 +31,13 @@ from models.visual_query_models import (
     PivotConfig,
     PivotValueAxis,
     PivotValueConfig,
+    JSONTableConfig,
 )
+
+try:  # pragma: no cover - optional during tests
+    from core.config_manager import config_manager  # type: ignore
+except Exception:  # pragma: no cover - fallback when config manager unavailable
+    config_manager = None
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +187,7 @@ def generate_sql_from_config(
         select_clause = _build_select_clause(config, resolved_casts)
 
         # Build FROM clause
-        from_clause = f'FROM "{config.table_name}"'
+        from_clause = _build_from_clause(config)
 
         # Build WHERE clause
         where_clause = _build_where_clause(config.filters, resolved_casts)
@@ -242,10 +247,8 @@ def generate_visual_query_sql(
         if pivot_config is None:
             raise ValueError("Pivot配置不能为空")
 
-        if app_config is None:
+        if app_config is None and config_manager is not None:
             try:
-                from core.config_manager import config_manager  # Lazy import
-
                 app_config = config_manager.get_app_config()
             except Exception as exc:  # pragma: no cover - fallback
                 logger.warning("无法从配置管理器加载AppConfig，使用默认设置: %s", exc)
@@ -315,6 +318,86 @@ def _quote_identifier(identifier: str) -> str:
     return f'"{safe}"'
 
 
+def _maybe_quote_identifier(identifier: str) -> str:
+    trimmed = (identifier or "").strip()
+    if not trimmed:
+        return trimmed
+    if trimmed.startswith('"') and trimmed.endswith('"'):
+        return trimmed
+    return _quote_identifier(trimmed)
+
+
+def _format_column_reference(identifier: str) -> str:
+    trimmed = (identifier or "").strip()
+    if not trimmed:
+        raise ValueError("Column reference cannot be empty for JSON_TABLE")
+
+    expression_tokens = (" ", "(", ")", "+", "-", "*", "/", "::")
+    if any(token in trimmed for token in expression_tokens):
+        return trimmed
+
+    parts = [part for part in trimmed.split(".") if part]
+    if not parts:
+        return trimmed
+
+    quoted_parts: List[str] = []
+    for part in parts:
+        stripped = part.strip()
+        if not stripped:
+            continue
+        if stripped.startswith('"') and stripped.endswith('"'):
+            quoted_parts.append(stripped)
+        else:
+            quoted_parts.append(_quote_identifier(stripped))
+
+    return ".".join(quoted_parts) if quoted_parts else trimmed
+
+
+def _build_json_table_join_clause(
+    json_config: JSONTableConfig,
+    index: int,
+) -> str:
+    if not json_config.columns:
+        raise ValueError("JSON_TABLE 配置需要至少一个列定义")
+
+    alias = json_config.alias or f"json_table_{index + 1}"
+    alias_sql = _quote_identifier(alias)
+    source_expr = _format_column_reference(json_config.source_column)
+
+    column_fragments: List[str] = []
+    for column in json_config.columns:
+        column_name = _quote_identifier(column.name)
+        if column.ordinal:
+            column_fragments.append(f"{column_name} FOR ORDINALITY")
+            continue
+
+        path_literal = _format_literal(column.path or "$")
+        data_type = (column.data_type or "VARCHAR").upper()
+        clause = f"{column_name} {data_type} PATH {path_literal}"
+        if column.default is not None:
+            clause += f" DEFAULT {_format_literal(column.default)}"
+        clause += " NULL ON EMPTY"
+        clause += " NULL ON ERROR"
+        column_fragments.append(clause)
+
+    columns_sql = ",\n        ".join(column_fragments)
+    root_literal = _format_literal(json_config.root_path or "$")
+    json_table_sql = (
+        f"JSON_TABLE({source_expr}, {root_literal}\n"
+        f"    COLUMNS (\n        {columns_sql}\n    )\n)"
+    )
+
+    join_keyword = "LEFT JOIN LATERAL" if json_config.outer_join else "JOIN LATERAL"
+    return f" {join_keyword} {json_table_sql} AS {alias_sql} ON TRUE"
+
+
+def _build_from_clause(config: VisualQueryConfig) -> str:
+    clause = f'FROM {_quote_identifier(config.table_name)}'
+    for idx, json_cfg in enumerate(getattr(config, "json_tables", []) or []):
+        clause += _build_json_table_join_clause(json_cfg, idx)
+    return clause
+
+
 def _deduplicate_preserve_order(items: List[str]) -> List[str]:
     seen = set()
     ordered: List[str] = []
@@ -374,7 +457,7 @@ def _generate_pivot_base_sql(
 
     sql_parts = [
         f"SELECT {select_clause}",
-        f"FROM {_quote_identifier(config.table_name)}",
+        _build_from_clause(config),
     ]
 
     where_clause = _build_where_clause(config.filters, casts_map)
@@ -497,8 +580,11 @@ def _generate_pivot_transformation_sql(
         return native_candidate
 
     # 如果原生PIVOT失败，尝试自动采样
-    if getattr(pivot_config, "column_value_limit", None):
-        sampled = _autosample_native_in_values(int(pivot_config.column_value_limit))
+    sample_cap = getattr(pivot_config, "column_value_limit", None)
+    if sample_cap is None:
+        sample_cap = 12
+    if sample_cap and sample_cap > 0:
+        sampled = _autosample_native_in_values(int(sample_cap))
         if sampled:
             # 构造临时配置，使用采样的列值
             try:

@@ -32,6 +32,21 @@
     "json",
     "parquet"
   ],
+  "duckdb_remote_settings": {},
+  "server_data_mounts": [
+    {
+      "label": "Local Server Data",
+      "path": "/app/server_mounts"
+    },
+    {
+      "label": "macOS Downloads",
+      "path": "/app/host_downloads"
+    },
+    {
+      "label": "macOS Documents",
+      "path": "/app/host_documents"
+    }
+  ],
   "duckdb_debug_logging": false,
   "duckdb_auto_explain_threshold_ms": 0,
   "exports_dir": null,

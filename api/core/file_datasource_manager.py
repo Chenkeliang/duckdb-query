@@ -20,6 +20,7 @@ import duckdb
 
 from core.duckdb_engine import with_duckdb_connection
 from core.config_manager import config_manager
+from core.file_utils import detect_file_type, load_file_to_duckdb
 
 logger = logging.getLogger(__name__)
 
@@ -448,45 +449,22 @@ def create_table_from_file_path_typed(
     table_name: str,
     file_path: str,
     file_type: str,
+    reader_options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     从文件路径创建带类型的 DuckDB 持久化表。
     """
     _configure_duckdb_for_ingestion(duckdb_con)
     normalized_type = (file_type or "").lower()
+    if not normalized_type or normalized_type == "unknown":
+        normalized_type = detect_file_type(file_path)
 
     try:
-        if normalized_type in {"csv"}:
-            try:
-                duckdb_con.execute("INSTALL encodings")
-                duckdb_con.execute("LOAD encodings")
-            except Exception:
-                logger.debug("encodings 扩展不可用，继续使用默认编码处理")
-
-            strict_sql = (
-                "SELECT * FROM read_csv_auto(?, AUTO_DETECT=1, SAMPLE_SIZE=-1, "
-                "IGNORE_ERRORS=TRUE)"
-            )
-            try:
-                _create_table_atomically(
-                    duckdb_con, table_name, strict_sql, [file_path]
-                )
-            except Exception as exc:
-                logger.warning(
-                    "严格小数推断失败，回退普通CSV读取: %s", getattr(exc, "message", exc)
-                )
-                fallback_sql = (
-                    "SELECT * FROM read_csv_auto(?, AUTO_DETECT=1, SAMPLE_SIZE=-1, "
-                    "IGNORE_ERRORS=TRUE)"
-                )
-                _create_table_atomically(
-                    duckdb_con, table_name, fallback_sql, [file_path]
-                )
-        elif normalized_type in {"xlsx", "xls", "excel"}:
+        if normalized_type in {"xlsx", "xls", "excel"}:
             try:
                 duckdb_con.execute("INSTALL excel")
                 duckdb_con.execute("LOAD excel")
-                select_sql = "SELECT * FROM EXCEL_SCAN(?)"
+                select_sql = "SELECT * FROM read_xlsx(?)"
                 _create_table_atomically(
                     duckdb_con, table_name, select_sql, [file_path]
                 )
@@ -494,30 +472,14 @@ def create_table_from_file_path_typed(
                 logger.warning("DuckDB Excel 扩展失败，回退至 pandas: %s", excel_exc)
                 df = pd.read_excel(file_path)
                 return create_typed_table_from_dataframe(duckdb_con, table_name, df)
-        elif normalized_type in {"json"}:
-            select_sql = "SELECT * FROM read_json_auto(?)"
-            _create_table_atomically(
-                duckdb_con, table_name, select_sql, [file_path]
-            )
-        elif normalized_type in {"jsonl"}:
-            try:
-                select_sql = (
-                    "SELECT * FROM read_json_auto(?, format='newline_delimited')"
-                )
-                _create_table_atomically(
-                    duckdb_con, table_name, select_sql, [file_path]
-                )
-            except Exception as jsonl_exc:
-                logger.warning("DuckDB JSONL 读取失败，回退至 pandas: %s", jsonl_exc)
-                df = pd.read_json(file_path, lines=True)
-                return create_typed_table_from_dataframe(duckdb_con, table_name, df)
-        elif normalized_type in {"parquet", "pq"}:
-            select_sql = "SELECT * FROM read_parquet(?)"
-            _create_table_atomically(
-                duckdb_con, table_name, select_sql, [file_path]
-            )
         else:
-            raise ValueError(f"不支持的文件类型: {file_type}")
+            load_file_to_duckdb(
+                duckdb_con,
+                table_name,
+                file_path,
+                normalized_type,
+                reader_options=reader_options,
+            )
     except Exception as exc:
         logger.error("从文件创建表失败 %s: %s", table_name, exc)
         raise
@@ -533,7 +495,11 @@ def create_table_from_file_path_typed(
 
 
 def create_table_from_dataframe(
-    duckdb_con, table_name: str, file_path_or_df, file_type: Optional[str] = None
+    duckdb_con,
+    table_name: str,
+    file_path_or_df,
+    file_type: Optional[str] = None,
+    reader_options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     统一入口：支持直接传入文件路径或 DataFrame。
@@ -541,7 +507,11 @@ def create_table_from_dataframe(
     """
     if isinstance(file_path_or_df, str):
         metadata = create_table_from_file_path_typed(
-            duckdb_con, table_name, file_path_or_df, file_type or ""
+            duckdb_con,
+            table_name,
+            file_path_or_df,
+            file_type or "",
+            reader_options=reader_options,
         )
     else:
         metadata = create_typed_table_from_dataframe(

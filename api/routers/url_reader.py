@@ -1,15 +1,18 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, HttpUrl
-import pandas as pd
 import requests
 import tempfile
 import os
+import time
+import logging
 from typing import Optional
 from core.duckdb_engine import get_db_connection
 from core.file_datasource_manager import (
     file_datasource_manager,
     create_table_from_dataframe,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -76,133 +79,43 @@ async def read_from_url(request: URLReadRequest):
             temp_file_path = temp_file.name
 
         try:
-            # 根据文件类型读取数据
-            if file_type == "csv":
-                df = pd.read_csv(
-                    temp_file_path,
-                    encoding=request.encoding,
-                    delimiter=request.delimiter,
-                    header=0 if request.header else None,
-                )
-            elif file_type == "json":
-                df = pd.read_json(temp_file_path)
-            elif file_type == "parquet":
-                df = pd.read_parquet(temp_file_path)
-            elif file_type == "excel":
-                df = pd.read_excel(temp_file_path)
-            else:
-                raise HTTPException(
-                    status_code=400, detail=f"不支持的文件类型: {file_type}"
-                )
-
-            # 检查数据是否为空
-            if df.empty:
-                raise HTTPException(status_code=400, detail="文件中没有数据")
-
-            # 清理列名（移除特殊字符）
-            df.columns = [
-                str(col).strip().replace(" ", "_").replace("-", "_")
-                for col in df.columns
-            ]
-
-            # 处理复杂数据类型列（保留原始格式）
-            import json
-
-            for col in df.columns:
-                if df[col].dtype == "object":
-                    # 检查是否包含复杂数据类型
-                    sample_value = df[col].iloc[0] if len(df) > 0 else None
-                    print(
-                        f"DEBUG: 列 {col} 的样本值类型: {type(sample_value)}, 值: {sample_value}"
-                    )
-
-                    if isinstance(sample_value, (bytes, bytearray)):
-                        # 将字节数组直接解码为可读字符串
-                        def bytes_to_string(x):
-                            if isinstance(x, (bytes, bytearray)):
-                                try:
-                                    # 尝试UTF-8解码
-                                    return x.decode("utf-8", errors="ignore")
-                                except:
-                                    # 如果解码失败，返回字符串表示
-                                    return str(x)
-                            elif x is not None:
-                                return str(x)
-                            else:
-                                return None
-
-                        df[col] = df[col].apply(bytes_to_string)
-                        print(f"DEBUG: 列 {col} 转换为可读字符串格式")
-                    elif isinstance(sample_value, dict):
-                        # 如果是字典（JSON对象），转换为JSON字符串
-                        def safe_json_dumps(x):
-                            if isinstance(x, dict):
-                                try:
-                                    # 处理包含numpy数组的字典
-                                    def convert_numpy(obj):
-                                        if hasattr(obj, "tolist"):  # numpy数组
-                                            return obj.tolist()
-                                        elif isinstance(obj, dict):
-                                            return {
-                                                k: convert_numpy(v)
-                                                for k, v in obj.items()
-                                            }
-                                        elif isinstance(obj, list):
-                                            return [convert_numpy(item) for item in obj]
-                                        else:
-                                            return obj
-
-                                    converted_dict = convert_numpy(x)
-                                    return json.dumps(
-                                        converted_dict, ensure_ascii=False
-                                    )
-                                except Exception as e:
-                                    print(f"DEBUG: JSON序列化失败: {e}")
-                                    return str(x)
-                            elif x is not None:
-                                return str(x)
-                            else:
-                                return None
-
-                        df[col] = df[col].apply(safe_json_dumps)
-                        print(f"DEBUG: 列 {col} 转换为JSON字符串")
-                    elif hasattr(sample_value, "__iter__") and not isinstance(
-                        sample_value, str
-                    ):
-                        # 对于其他可迭代对象，直接转换为字符串
-                        df[col] = df[col].apply(
-                            lambda x: str(x) if x is not None else None
-                        )
-                        print(f"DEBUG: 列 {col} 转换为字符串")
-
-            # 获取DuckDB连接
             conn = get_db_connection()
 
-            # 检查表名是否已存在，如果存在则添加时间后缀
             table_name = request.table_alias
             original_table_name = table_name
 
             while True:
                 try:
-                    # 检查表是否存在
                     result = conn.execute(
-                        f'SELECT name FROM sqlite_master WHERE type="table" AND name="{table_name}"'
+                        "SELECT table_name FROM information_schema.tables WHERE lower(table_name) = lower(?)",
+                        [table_name],
                     ).fetchone()
                     if result is None:
-                        # 表不存在，可以使用这个名称
                         break
-                    else:
-                        # 表已存在，添加时间后缀
-                        import time
-
-                        timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
-                        table_name = f"{original_table_name}_{timestamp}"
-                        break
+                    timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
+                    table_name = f"{original_table_name}_{timestamp}"
+                    break
                 except Exception as e:
-                    print(f"DEBUG: 检查表名时出错: {e}")
+                    logger.debug("检查表名时出错: %s", e)
                     break
 
-            metadata = create_table_from_dataframe(conn, table_name, df)
+            reader_options = None
+            if file_type == "csv":
+                reader_options = {
+                    "HEADER": bool(request.header),
+                    "DELIM": request.delimiter or ",",
+                    "SAMPLE_SIZE": -1,
+                }
+                if request.encoding:
+                    reader_options["ENCODING"] = request.encoding
+
+            metadata = create_table_from_dataframe(
+                conn,
+                table_name,
+                temp_file_path,
+                file_type,
+                reader_options=reader_options,
+            )
 
             from core.timezone_utils import get_current_time_iso
 

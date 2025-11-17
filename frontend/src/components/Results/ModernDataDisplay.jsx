@@ -32,7 +32,19 @@ import {
   useTheme,
 } from '@mui/material';
 import { Eye, EyeOff, Filter, List, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X, SlidersHorizontal, Plus, Trash2 } from 'lucide-react';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { useToast } from '../../contexts/ToastContext';
 import StableTable from '../StableTable';
 import VirtualTable from '../VirtualTable/VirtualTable';
@@ -161,6 +173,7 @@ const ModernDataDisplay = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [columnMenuAnchor, setColumnMenuAnchor] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState(new Set());
+  const [columnLayouts, setColumnLayouts] = useState([]);
   const [renderMode, setRenderMode] = useState('agGrid'); // 'agGrid' 或 'virtual'
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [draftFilters, setDraftFilters] = useState([]);
@@ -310,11 +323,69 @@ const ModernDataDisplay = ({
   }
 
   // 当columns变化时，更新visibleColumns
-  React.useEffect(() => {
-    if (normalizedColumns.length > 0) {
-      setVisibleColumns(new Set(normalizedColumns.map(col => col.field)));
+  useEffect(() => {
+    if (normalizedColumns.length === 0) {
+      setVisibleColumns(new Set());
+      setColumnLayouts([]);
+      return;
     }
+
+    const newVisibleColumns = new Set(normalizedColumns.map(col => col.field));
+    setVisibleColumns(newVisibleColumns);
+
+    setColumnLayouts(prevLayouts => {
+      const prevMap = prevLayouts.reduce((acc, layout) => {
+        acc[layout.field] = layout;
+        return acc;
+      }, {});
+
+      return normalizedColumns.map((col, index) => {
+        const existing = prevMap[col.field];
+        return {
+          field: col.field,
+          headerName: col.headerName,
+          width: existing?.width || col.width || 200,
+          order: existing?.order ?? index,
+          minWidth: col.minWidth || 120,
+          maxWidth: col.maxWidth || 800,
+        };
+      });
+    });
   }, [normalizedColumns]);
+
+  const handleColumnWidthChange = useCallback((field, width) => {
+    setColumnLayouts(prev =>
+      prev.map(layout =>
+        layout.field === field
+          ? {
+              ...layout,
+              width: Math.min(
+                Math.max(width, layout.minWidth || 80),
+                layout.maxWidth || 800
+              ),
+            }
+          : layout
+      )
+    );
+  }, []);
+
+  const handleColumnOrderChange = useCallback((sourceField, targetField) => {
+    setColumnLayouts(prev => {
+      const sourceIndex = prev.findIndex(layout => layout.field === sourceField);
+      const targetIndex = prev.findIndex(layout => layout.field === targetField);
+      if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
+        return prev;
+      }
+      const reordered = arrayMove(prev, sourceIndex, targetIndex);
+      return reordered.map((layout, index) => ({ ...layout, order: index }));
+    });
+  }, []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    })
+  );
 
   React.useEffect(() => {
     if (filterDialogOpen) {
@@ -673,6 +744,40 @@ const ModernDataDisplay = ({
   const columnDefs = useMemo(() => {
     return normalizedColumns
       .filter(col => visibleColumns.has(col.field))
+      .map(col => {
+        const layout = columnLayouts.find(layoutItem => layoutItem.field === col.field) || {};
+        const isJoinResultColumn =
+          col.field && typeof col.field === 'string' && col.field.startsWith('join_result_');
+        const width = layout.width || (isJoinResultColumn ? 120 : 150);
+
+        return {
+          ...col,
+          sortable: true,
+          filter: true,
+          resizable: true,
+          width,
+          minWidth: layout.minWidth || (isJoinResultColumn ? 100 : 80),
+          headerClass: isJoinResultColumn ? 'join-result-header' : 'modern-header',
+          order: layout.order ?? 0,
+          cellRenderer: isJoinResultColumn ? JoinResultCellRenderer : undefined,
+          cellStyle: isJoinResultColumn
+            ? {
+                fontSize: '1rem',
+                padding: '4px 8px',
+                textAlign: 'center',
+                backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 8%, transparent)',
+              }
+            : {
+                fontSize: '1rem',
+                padding: '8px 12px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              },
+        };
+      })
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+  }, [normalizedColumns, visibleColumns, columnLayouts]);
       .map(col => {
         // 检查是否是关联结果列
         const isJoinResultColumn = col.field && typeof col.field === 'string' && col.field.startsWith('join_result_');
@@ -1473,6 +1578,9 @@ const ModernDataDisplay = ({
               columnValueFilters={columnValueFilters}
               onOpenColumnFilterMenu={handleOpenColumnFilterMenu}
               onCopyColumnName={handleCopyColumnName}
+              columnLayouts={columnLayouts}
+              onColumnWidthChange={handleColumnWidthChange}
+              onColumnOrderChange={handleColumnOrderChange}
             />
           ) : (
             <StableTable
@@ -1484,6 +1592,9 @@ const ModernDataDisplay = ({
               columnValueFilters={columnValueFilters}
               onOpenColumnFilterMenu={handleOpenColumnFilterMenu}
               onCopyColumnName={handleCopyColumnName}
+              columnLayouts={columnLayouts}
+              onColumnWidthChange={handleColumnWidthChange}
+              onColumnOrderChange={handleColumnOrderChange}
             />
           )}
         </Box>

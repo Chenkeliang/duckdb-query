@@ -30,6 +30,17 @@
         "json",
         "parquet"
     ],
+    "duckdb_remote_settings": {
+        "s3_region": "'cn-hangzhou'",
+        "s3_endpoint": "'oss-cn-hangzhou.aliyuncs.com'",
+        "s3_url_style": "'path'",
+        "s3_use_ssl": "true"
+    },
+    "server_data_mounts": [
+        { "label": "Shared Data", "path": "/app/server_mounts" },
+        { "label": "macOS Downloads", "path": "/app/host_downloads" },
+        { "label": "macOS Documents", "path": "/app/host_documents" }
+    ],
     "pool_min_connections": 2,
     "pool_max_connections": 10,
     "pool_connection_timeout": 30,

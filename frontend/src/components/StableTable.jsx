@@ -13,9 +13,22 @@ import {
   TableSortLabel,
   Tooltip,
   Typography,
-  useTheme
+  useTheme,
 } from '@mui/material';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  horizontalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Copy, Filter } from 'lucide-react';
 
 const StableTable = ({
@@ -26,7 +39,10 @@ const StableTable = ({
   originalDatasource = null,
   columnValueFilters = {},
   onOpenColumnFilterMenu,
-  onCopyColumnName = null
+  onCopyColumnName = null,
+  columnLayouts = [],
+  onColumnWidthChange,
+  onColumnOrderChange,
 }) => {
   const theme = useTheme();
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -154,6 +170,184 @@ const StableTable = ({
     }
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    })
+  );
+
+  const columnLayoutMap = useMemo(() => {
+    return columnLayouts.reduce((acc, layout) => {
+      acc[layout.field] = layout;
+      return acc;
+    }, {});
+  }, [columnLayouts]);
+
+  const sortedColumns = useMemo(() => {
+    if (!columns || columns.length === 0) {
+      return [];
+    }
+    return [...columns].sort((a, b) => {
+      const orderA = columnLayoutMap[a.field]?.order ?? 0;
+      const orderB = columnLayoutMap[b.field]?.order ?? 0;
+      return orderA - orderB;
+    });
+  }, [columns, columnLayoutMap]);
+
+
+  const handleResizeStart = (event, field) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const startX = event.clientX;
+    const currentWidth = columnLayoutMap[field]?.width || 200;
+
+    const handleMouseMove = (moveEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const nextWidth = currentWidth + delta;
+      onColumnWidthChange?.(field, nextWidth);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    if (!active || !over || active.id === over.id) {
+      return;
+    }
+    onColumnOrderChange?.(String(active.id), String(over.id));
+  };
+
+  const HeaderCell = ({ column }) => {
+    const hasActiveFilter = Boolean(columnValueFilters?.[column.field]);
+    const layout = columnLayoutMap[column.field] || {};
+    const width = layout.width || column.width || layout.minWidth || 200;
+
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+      id: column.field,
+    });
+
+    return (
+      <TableCell
+        ref={setNodeRef}
+        key={column.field}
+        {...attributes}
+        {...listeners}
+        sx={{
+          backgroundColor: hasActiveFilter ? 'var(--dq-surface-card-active)' : 'var(--dq-surface)',
+          fontWeight: 600,
+          fontSize: '1rem',
+          borderBottom: `2px solid ${theme.palette.divider}`,
+          minWidth: width,
+          maxWidth: width,
+          width,
+          userSelect: 'text',
+          color: 'var(--dq-text-primary)',
+          writingMode: 'horizontal-tb',
+          textOrientation: 'mixed',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          height: '40px',
+          lineHeight: '40px',
+          verticalAlign: 'middle',
+          paddingTop: '0px',
+          paddingBottom: '0px',
+          paddingLeft: '8px',
+          paddingRight: '4px',
+          opacity: isDragging ? 0.7 : 1,
+          position: 'relative',
+        }}
+        style={{
+          transform: CSS.Transform.toString(transform),
+          transition,
+        }}
+      >
+        <Box
+          sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}
+        >
+          <TableSortLabel
+            active={sortConfig.key === column.field}
+            direction={sortConfig.key === column.field ? sortConfig.direction : 'asc'}
+            onClick={() => handleSort(column.field)}
+            sx={{
+              '& .MuiTableSortLabel-icon': {
+                fontSize: '1rem',
+              }
+            }}
+          >
+            <span
+              title={column.headerName || column.field}
+              style={{
+                display: 'inline-block',
+                maxWidth: '100%',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                verticalAlign: 'middle',
+                userSelect: 'text',
+                cursor: 'text'
+              }}
+            >
+              {column.headerName || column.field}
+            </span>
+          </TableSortLabel>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Tooltip title="复制列名">
+              <IconButton
+                size="small"
+                aria-label={`复制列名 ${column.headerName || column.field}`}
+                sx={headerActionBaseSx}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleCopyColumnLabel(column.headerName || column.field);
+                }}
+              >
+                <Copy size={16} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="列筛选">
+              <IconButton
+                size="small"
+                aria-label={`列筛选 ${column.headerName || column.field}`}
+                sx={{
+                  ...headerActionBaseSx,
+                  ...(hasActiveFilter ? headerActionActiveSx : {})
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenColumnFilterMenu?.(column.field, event.currentTarget);
+                }}
+              >
+                <Filter size={16} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Box>
+        <Box
+          onMouseDown={(event) => handleResizeStart(event, column.field)}
+          sx={{
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: '6px',
+            cursor: 'col-resize',
+            zIndex: 2,
+          }}
+        />
+      </TableCell>
+    );
+  };
+
   return (
     <Box>
       {/* 滚动提示 */}
@@ -187,103 +381,23 @@ const StableTable = ({
           },
         }}
       >
-        <Table stickyHeader>
-          <TableHead>
-            <TableRow>
-              {columns.map((column) => {
-                const hasActiveFilter = Boolean(columnValueFilters?.[column.field]);
-                return (
-                  <TableCell
-                    key={column.field}
-                    sx={{
-                      backgroundColor: hasActiveFilter ? 'var(--dq-surface-card-active)' : 'var(--dq-surface)',
-                      fontWeight: 600,
-                      fontSize: '1rem',
-                      borderBottom: `2px solid ${theme.palette.divider}`,
-                      minWidth: column.minWidth || 120,
-                      userSelect: 'text',
-                      color: 'var(--dq-text-primary)',
-                      writingMode: 'horizontal-tb',
-                      textOrientation: 'mixed',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      height: '40px',
-                      lineHeight: '40px',
-                      verticalAlign: 'middle',
-                      paddingTop: '0px',
-                      paddingBottom: '0px',
-                      paddingLeft: '8px',
-                      paddingRight: '4px',
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-                      <TableSortLabel
-                        active={sortConfig.key === column.field}
-                        direction={sortConfig.key === column.field ? sortConfig.direction : 'asc'}
-                        onClick={() => handleSort(column.field)}
-                        sx={{
-                          '& .MuiTableSortLabel-icon': {
-                            fontSize: '1rem',
-                          }
-                        }}
-                      >
-                        <span
-                          title={column.headerName || column.field}
-                          style={{
-                            display: 'inline-block',
-                            maxWidth: '100%',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            verticalAlign: 'middle',
-                            userSelect: 'text',
-                            cursor: 'text'
-                          }}
-                        >
-                          {column.headerName || column.field}
-                        </span>
-                      </TableSortLabel>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Tooltip title="复制列名">
-                          <IconButton
-                            size="small"
-                            aria-label={`复制列名 ${column.headerName || column.field}`}
-                            sx={headerActionBaseSx}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleCopyColumnLabel(column.headerName || column.field);
-                            }}
-                          >
-                            <Copy size={16} />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="列筛选">
-                          <IconButton
-                            size="small"
-                            aria-label={`列筛选 ${column.headerName || column.field}`}
-                            sx={{
-                              ...headerActionBaseSx,
-                              ...(hasActiveFilter ? headerActionActiveSx : {})
-                            }}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onOpenColumnFilterMenu?.(column.field, event.currentTarget);
-                            }}
-                          >
-                            <Filter size={16} />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </Box>
-                  </TableCell>
-                );
-              })}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {paginatedData.map((row, index) => (
-              <TableRow
-                key={index}
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
+          <SortableContext
+            items={sortedColumns.map(column => column.field)}
+            strategy={horizontalListSortingStrategy}
+          >
+            <Table stickyHeader>
+              <TableHead>
+                <TableRow>
+                  {sortedColumns.map((column) => (
+                    <HeaderCell key={column.field} column={column} />
+                  ))}
+                </TableRow>
+              </TableHead>
+            <TableBody>
+                {paginatedData.map((row, index) => (
+                  <TableRow
+                    key={index}
                 sx={{
                   '&:nth-of-type(odd)': {
                     backgroundColor: 'var(--dq-surface-card-active)',
@@ -293,9 +407,9 @@ const StableTable = ({
                   },
                 }}
               >
-                {columns.map((column) => (
-                  <TableCell
-                    key={column.field}
+                {sortedColumns.map((column) => (
+                    <TableCell
+                      key={column.field}
                     sx={{
                       fontSize: '1rem',
                       padding: '8px 16px',

@@ -29,13 +29,15 @@ RUN pip install --no-cache-dir /wheels/*
 # Copy the application code
 COPY api .
 
-# Create necessary directories and set ownership
-RUN mkdir -p temp_files exports data logs /app/data/duckdb /app/data/uploads /config && \
+# Create necessary directories (包括容器内的共享挂载目录) and set ownership
+RUN mkdir -p temp_files exports data logs /app/data/duckdb /app/data/uploads /app/server_mounts /config && \
     chown -R app:app /app /config
 
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+# 默认挂载目录（可在 docker-compose 中覆盖）Default server-mounted data directory
+ENV SERVER_DATA_ROOT=/app/server_mounts
 
 # Switch to the non-privileged user
 USER app

@@ -506,6 +506,35 @@ export const readFromUrl = async (url, tableAlias, options = {}) => {
   }
 };
 
+export const getServerMounts = async () => {
+  try {
+    const response = await apiClient.get('/api/server_files/mounts');
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const browseServerDirectory = async (path) => {
+  try {
+    const response = await apiClient.get('/api/server_files', {
+      params: { path }
+    });
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const importServerFile = async (payload) => {
+  try {
+    const response = await apiClient.post('/api/server_files/import', payload);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
 // 获取URL文件信息
 export const getUrlInfo = async (url) => {
   try {

@@ -226,6 +226,27 @@ cd duckdb-query
    - 或通过URL直接读取远程文件
    - 直接粘贴CSV、TSV格式以及任意粘贴板数据，系统都可自动识别并成表
 
+### 服务器目录导入
+
+如果部署在 Docker/K8s 环境，可以把宿主机上的大文件通过挂载目录直接交给 DuckDB 读取，无需经过浏览器上传：
+
+1. 在 `docker-compose.yml` 或 K8s manifest 中，为 `backend` 容器增加需要的挂载目录，例如（可选把 mac 的 Downloads/Documents 映射进来）：
+   ```yaml
+   volumes:
+     - ./server_data:/app/server_mounts
+     - ~/Downloads:/app/host_downloads
+     - ~/Documents:/app/host_documents
+   ```
+2. 在 `config/app-config.json` 中的 `server_data_mounts` 写入可用目录（支持多条），同时可以通过 `duckdb_remote_settings` 配置 httpfs/S3。示例：
+   ```json
+   "server_data_mounts": [
+     { "label": "Shared Data", "path": "/app/server_mounts" }
+   ]
+   ```
+3. 重启容器后，前端的“服务器目录”页签会自动展示这些目录，用户即可浏览子目录并一键导入 CSV/Excel/Parquet/JSON 文件。界面会提示挂载要求，并在导入完成后同步刷新 DuckDB 表。 
+
+> 📝 提示：挂载路径不在白名单中将不会出现在页面上；确保生产环境针对这些目录做好只读/权限控制。
+
 2. **连接数据库**
    - 配置MySQL/PostgreSQL连接信息
    - 测试连接并同步表结构

@@ -155,6 +155,33 @@ describe('Visual Query Generator', () => {
       expect(result.sql).toContain('LIMIT 100');
     });
 
+    it('appends JSON_TABLE lateral joins when jsonTables config is provided', () => {
+      const config = {
+        tableName: 'orders',
+        selectedColumns: ['order_id', 'item_name'],
+        aggregations: [],
+        filters: [],
+        jsonTables: [
+          {
+            sourceColumn: 'items_json',
+            alias: 'items_flat',
+            rootPath: '$.items[*]',
+            columns: [
+              { name: 'item_name', path: '$.name', dataType: 'varchar' },
+              { name: 'row_num', ordinal: true },
+            ],
+          },
+        ],
+      };
+
+      const result = generateSQLPreview(config, 'orders');
+
+      expect(result.success).toBe(true);
+      expect(result.sql).toContain('LEFT JOIN LATERAL JSON_TABLE');
+      expect(result.sql).toContain('"item_name" VARCHAR PATH');
+      expect(result.sql).toContain('"row_num" FOR ORDINALITY');
+    });
+
     it('handles errors gracefully', () => {
       const config = null; // Invalid config
       

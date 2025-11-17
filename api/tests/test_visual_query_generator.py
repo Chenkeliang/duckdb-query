@@ -32,6 +32,8 @@ from models.visual_query_models import (
     VisualQueryMode,
     PivotConfig,
     PivotValueConfig,
+    JSONTableConfig,
+    JSONTableColumnConfig,
 )
 
 
@@ -82,6 +84,37 @@ class TestSQLGeneration:
         sql = generate_sql_from_config(config)
         expected = 'SELECT DISTINCT "col1", "col2" FROM "test_table"'
         assert sql == expected
+
+    def test_select_with_json_table_expansion(self):
+        """JSON_TABLE configuration should inject lateral joins."""
+        config = VisualQueryConfig(
+            table_name="orders",
+            selected_columns=["order_id", "item_name"],
+            json_tables=[
+                JSONTableConfig(
+                    source_column="items_payload",
+                    alias="items_expanded",
+                    root_path="$.items[*]",
+                    columns=[
+                        JSONTableColumnConfig(
+                            name="item_name", path="$.name", data_type="VARCHAR"
+                        ),
+                        JSONTableColumnConfig(
+                            name="quantity", path="$.qty", data_type="INTEGER"
+                        ),
+                        JSONTableColumnConfig(name="row_num", ordinal=True),
+                    ],
+                )
+            ],
+        )
+
+        sql = generate_sql_from_config(config)
+
+        assert 'FROM "orders" LEFT JOIN LATERAL JSON_TABLE' in sql
+        assert '"items_payload"' in sql
+        assert '"items_expanded"' in sql
+        assert "\"item_name\" VARCHAR PATH '$.name'" in sql
+        assert '"row_num" FOR ORDINALITY' in sql
 
     def test_aggregation_functions(self):
         """Test various aggregation functions"""
@@ -209,7 +242,7 @@ class TestSQLGeneration:
 
         sql = generate_sql_from_config(config)
         assert (
-            'WHERE ("卖家应退金额" + "实际应退金额") > 99'
+            'WHERE (("卖家应退金额" + "实际应退金额") > 99)'
             in sql
         )
 
@@ -351,6 +384,7 @@ class TestVisualQueryModeGeneration:
                     alias="total_revenue",
                 )
             ],
+            manual_column_values=["2022", "2023"],
         )
 
         with patch("core.visual_query_generator.config_manager") as mock_manager:
@@ -367,8 +401,9 @@ class TestVisualQueryModeGeneration:
 
         assert result.mode == VisualQueryMode.PIVOT
         assert "WITH base AS" in result.final_sql
-        assert "pivot_table(" in result.final_sql
-        assert "COUNT(" not in result.final_sql  # ensure aggregator respected alias
+        assert "PIVOT(" in result.final_sql or (result.pivot_sql and "PIVOT(" in result.pivot_sql)
+        assert result.metadata.get("strategy") == "native"
+        assert result.metadata.get("uses_pivot_extension") is False
         assert result.pivot_sql is not None
 
     def test_generate_visual_query_sql_pivot_native_strategy(self):
@@ -484,11 +519,16 @@ class TestVisualQueryModeGeneration:
             column_value_limit=5,
         )
 
-        with patch("core.visual_query_generator.config_manager") as mock_manager:
+        mock_execute = Mock()
+        mock_execute.fetchdf.return_value = pd.DataFrame({"v": ["2022", "2023"]})
+
+        with patch("core.visual_query_generator.config_manager") as mock_manager, \
+            patch("core.duckdb_engine.get_db_connection") as mock_conn:
             mock_manager.get_app_config.return_value = Mock(
                 enable_pivot_tables=True,
                 pivot_table_extension="pivot_table",
             )
+            mock_conn.return_value.execute.return_value = mock_execute
 
             result = generate_visual_query_sql(
                 config,
@@ -497,10 +537,9 @@ class TestVisualQueryModeGeneration:
             )
 
         assert result.mode == VisualQueryMode.PIVOT
-        assert result.metadata.get("strategy") == "extension"
-        assert result.metadata.get("uses_pivot_extension") is True
-        # 扩展调用中应包含 max_columns 参数
-        assert "max_columns:=5" in (result.pivot_sql or "")
+        assert result.metadata.get("strategy") == "native:auto_sampled"
+        assert result.metadata.get("uses_pivot_extension") is False
+        assert result.metadata.get("auto_sampled_values") == ["2022", "2023"]
 
     def test_generate_visual_query_sql_pivot_mode_disabled(self):
         config = VisualQueryConfig(
@@ -566,7 +605,7 @@ class TestValidation:
 
     def test_empty_table_name(self):
         """Test validation with empty table name"""
-        config = VisualQueryConfig(
+        config = VisualQueryConfig.model_construct(
             table_name="",
             selected_columns=["col1"],
             aggregations=[],
@@ -581,11 +620,13 @@ class TestValidation:
 
     def test_invalid_aggregation(self):
         """Test validation with invalid aggregation"""
-        config = VisualQueryConfig(
+        config = VisualQueryConfig.model_construct(
             table_name="test_table",
             selected_columns=["col1"],
             aggregations=[
-                AggregationConfig(column="", function=AggregationFunction.SUM)
+                AggregationConfig.model_construct(
+                    column="", function=AggregationFunction.SUM
+                )
             ],
             filters=[],
             order_by=[],
@@ -598,12 +639,14 @@ class TestValidation:
 
     def test_invalid_filter(self):
         """Test validation with invalid filter"""
-        config = VisualQueryConfig(
+        config = VisualQueryConfig.model_construct(
             table_name="test_table",
             selected_columns=["col1"],
             aggregations=[],
             filters=[
-                FilterConfig(column="status", operator=FilterOperator.EQUAL, value=None)
+                FilterConfig.model_construct(
+                    column="status", operator=FilterOperator.EQUAL, value=None
+                )
             ],
             order_by=[],
         )
@@ -615,12 +658,12 @@ class TestValidation:
 
     def test_between_filter_validation(self):
         """Test validation of BETWEEN filter"""
-        config = VisualQueryConfig(
+        config = VisualQueryConfig.model_construct(
             table_name="test_table",
             selected_columns=["col1"],
             aggregations=[],
             filters=[
-                FilterConfig(
+                FilterConfig.model_construct(
                     column="age", operator=FilterOperator.BETWEEN, value=18, value2=None
                 )
             ],

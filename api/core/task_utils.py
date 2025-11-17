@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 
 from core.task_manager import AsyncTask, TaskStatus
+from core.timezone_utils import get_storage_time
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,7 @@ class TaskUtils:
         task = AsyncTask(
             task_id=task_id,
             status=TaskStatus.SUCCESS,
-            created_at=datetime.now(),
+            created_at=get_storage_time(),
             query=f"SELECT * FROM {table_name}",
             result_file_path=file_path,
             result_info=result_info,

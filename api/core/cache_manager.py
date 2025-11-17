@@ -12,6 +12,7 @@ from threading import Lock
 import os
 
 from core.timezone_utils import get_current_time  # 导入时区工具
+from core.utils import normalize_dataframe_output
 
 
 logger = logging.getLogger(__name__)
@@ -299,7 +300,7 @@ class QueryCache:
 
             # 将DataFrame转换为可序列化的格式
             cached_data = {
-                "data": result_df.to_dict(orient="records"),
+                "data": normalize_dataframe_output(result_df),
                 "columns": result_df.columns.tolist(),
                 "row_count": len(result_df),
                 "cached_at": get_current_time(),  # 使用统一的时区配置

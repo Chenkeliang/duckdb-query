@@ -4,7 +4,7 @@
 
 - 背景
   - 需求指明 Excel 上传缺乏多工作表处理能力，当前 `api/core/file_datasource_manager.py:294-330` 仅读取首个 sheet。
-  - 实际代码中 `create_table_from_file_path_typed()` 的 Excel 分支直接执行 `EXCEL_SCAN(?)`，上传路由（标准上传 `api/routers/data_sources.py:320`、分块上传 `api/routers/chunked_upload.py:302`）在文件落盘后即刻建表，没有“检查→选择”流程。
+  - 实际代码中 `create_table_from_file_path_typed()` 的 Excel 分支直接执行 `read_xlsx(?)`（旧版本的 `EXCEL_SCAN`），上传路由（标准上传 `api/routers/data_sources.py:320`、分块上传 `api/routers/chunked_upload.py:302`）在文件落盘后即刻建表，没有“检查→选择”流程。
   - 合并单元格与多行表头沿用 DuckDB / pandas 默认行为：除左上角外的合并值被读为 `NULL`，多表头除首行外记为数据行，当前没有修正策略。
   - 用户需要在导入阶段选择 Sheet、命名生成的表，并保留各 Sheet 原始类型。
   - 透视/可视化等功能依赖明确的表命名与元数据，现状不支持。
@@ -36,7 +36,7 @@
   - 新增 API：
     1. `POST /api/data-sources/excel/inspect`：传入 `file_id`，返回所有 sheet 元数据、列推断及风险提示。
     2. `POST /api/data-sources/excel/import`：传入 `file_id` 与 `sheets: [{name, target_table, mode, header_rows, fill_merged}]`，在单事务中逐张建表，任意 sheet 失败则回滚。
-  - 导入阶段根据用户配置生成 `EXCEL_SCAN(file, sheet='...')` 或 `pd.read_excel(sheet_name=..., header=header_rows-1, merge_cells=fill_merged)` 结果，再调用 `create_typed_table_from_dataframe()` 写入 DuckDB。
+  - 导入阶段根据用户配置生成 `read_xlsx(file, sheet='...')` 或 `pd.read_excel(sheet_name=..., header=header_rows-1, merge_cells=fill_merged)` 结果，再调用 `create_typed_table_from_dataframe()` 写入 DuckDB。
   - 保存配置时记录 `source_file`, `sheet_name`, `target_table`, `ingest_mode`, `header_rows`, `header_row_index`, `fill_merged` 等字段，保持 `column_profiles` 输出兼容。
 
 - 前端改动

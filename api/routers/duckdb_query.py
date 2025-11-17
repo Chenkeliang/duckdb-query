@@ -17,10 +17,9 @@ from pydantic import BaseModel
 from core.config_manager import config_manager
 from core.duckdb_engine import (
     get_db_connection,
-    handle_non_serializable_data,
     create_persistent_table,
 )
-from core.utils import jsonable_encoder
+from core.utils import normalize_dataframe_output
 from core.resource_manager import save_upload_file
 from core.file_datasource_manager import file_datasource_manager
 from datetime import datetime
@@ -332,11 +331,6 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
 
         execution_time = (time.time() - start_time) * 1000
 
-        # 处理数据类型转换
-        for col in result_df.columns:
-            if result_df[col].dtype == "object":
-                result_df[col] = result_df[col].astype(str)
-
         # 可选：保存查询结果为新表
         saved_table = None
         if request.save_as_table:
@@ -355,7 +349,7 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
         response = DuckDBQueryResponse(
             success=True,
             columns=result_df.columns.tolist(),
-            data=result_df.to_dict(orient="records"),
+            data=normalize_dataframe_output(result_df),
             row_count=len(result_df),
             execution_time_ms=execution_time,
             sql_executed=sql_query,

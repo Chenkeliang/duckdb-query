@@ -7,7 +7,10 @@ import pandas as pd
 import numpy as np
 import logging
 import os
-from typing import Dict, Any
+import time
+from typing import Dict, Any, Optional
+
+from core.utils import normalize_dataframe_output
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +140,7 @@ def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
             "total_rows": total_rows,
             "columns": processed_df.columns.tolist(),
             "column_types": processed_df.dtypes.astype(str).to_dict(),
-            "preview_data": processed_df.head(rows).to_dict(orient="records"),
+            "preview_data": normalize_dataframe_output(processed_df.head(rows)),
             "sample_values": {
                 col: processed_df[col].dropna().head(3).tolist()
                 for col in processed_df.columns
@@ -147,3 +150,112 @@ def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"获取文件预览失败 {file_path}: {str(e)}")
         raise
+
+
+def _quote_identifier(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _format_reader_option_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if value is None:
+        return "NULL"
+    text = str(value).replace("'", "''")
+    return f"'{text}'"
+
+
+def _build_reader_invocation(function_name: str, options: Optional[Dict[str, Any]]) -> str:
+    option_pairs = []
+    if options:
+        option_pairs = [
+            f"{key}={_format_reader_option_value(val)}" for key, val in options.items()
+        ]
+    args = ["?"] + option_pairs
+    return f"{function_name}({', '.join(args)})"
+
+
+def load_file_to_duckdb(
+    connection,
+    table_name: str,
+    file_path: str,
+    file_type: Optional[str] = None,
+    reader_options: Optional[Dict[str, Any]] = None,
+    drop_existing: bool = True,
+) -> Dict[str, Any]:
+    """使用DuckDB原生read_*系列加载文件，必要时回退到pandas。
+
+    Args:
+        connection: DuckDB连接实例
+        table_name: 目标表名
+        file_path: 本地文件路径
+        file_type: 可选文件类型；缺省时自动根据扩展名推断
+        reader_options: 传递给read_*函数的额外参数
+        drop_existing: 是否在创建前删除旧表
+    Returns:
+        包含是否触发pandas回退的结果字典
+    """
+
+    if connection is None:
+        raise ValueError("load_file_to_duckdb 需要有效的DuckDB连接")
+
+    normalized_type = (file_type or detect_file_type(file_path) or "").lower()
+
+    native_readers = {
+        "csv": ("read_csv_auto", {"HEADER": True, "SAMPLE_SIZE": -1}),
+        "json": (
+            "read_json_auto",
+            {"format": "auto", "maximum_depth": 10},
+        ),
+        "jsonl": (
+            "read_json_auto",
+            {"format": "newline_delimited", "maximum_depth": 10},
+        ),
+        "parquet": ("read_parquet", {}),
+        "pq": ("read_parquet", {}),
+    }
+
+    if normalized_type not in native_readers:
+        raise ValueError(f"不支持的文件类型: {normalized_type}")
+
+    function_name, defaults = native_readers[normalized_type]
+    merged_options = defaults.copy()
+    if reader_options:
+        merged_options.update(reader_options)
+
+    quoted_table = _quote_identifier(table_name)
+    invocation = _build_reader_invocation(function_name, merged_options)
+    load_sql = f"CREATE TABLE {quoted_table} AS SELECT * FROM {invocation}"
+
+    if drop_existing:
+        connection.execute(f"DROP TABLE IF EXISTS {quoted_table}")
+
+    try:
+        connection.execute(load_sql, [file_path])
+        logger.info("使用DuckDB %s 加载文件 %s", function_name, file_path)
+        return {"fallback_used": False, "engine": "duckdb"}
+    except Exception as native_error:
+        logger.warning(
+            "DuckDB原生读取 %s 失败，回退pandas: %s", file_path, native_error
+        )
+
+    # pandas fallback
+    df = read_file_by_type(file_path, normalized_type)
+    temp_view = f"tmp_{table_name}_{int(time.time())}"
+    try:
+        connection.register(temp_view, df)
+        if drop_existing:
+            connection.execute(f"DROP TABLE IF EXISTS {quoted_table}")
+        source_ref = _quote_identifier(temp_view)
+        connection.execute(
+            f"CREATE TABLE {quoted_table} AS SELECT * FROM {source_ref}"
+        )
+        logger.info("已通过pandas回退创建表 %s", table_name)
+        return {"fallback_used": True, "engine": "pandas"}
+    finally:
+        try:
+            connection.unregister(temp_view)
+        except Exception:
+            pass

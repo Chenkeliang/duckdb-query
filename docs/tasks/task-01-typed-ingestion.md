@@ -28,7 +28,7 @@
 - 数据流 & 模块改动  
   - `file_datasource_manager`  
     - 新增 `create_table_from_file_path_typed(...)`：去除 `ALL_VARCHAR`，使用 DuckDB 原生读取（`read_csv_auto` 默认类型）或 pandas dtype 推断。  
-    - 对于 Excel，通过 `EXCEL_SCAN` 直接读取 typed 结果；若回退到 pandas，使用 pandas dtype -> DuckDB 类型映射。  
+    - 对于 Excel，通过 `read_xlsx`（原 `EXCEL_SCAN`）直接读取 typed 结果；若回退到 pandas，使用 pandas dtype -> DuckDB 类型映射。
     - 引入 `ColumnProfile` 数据类（字段：`name`, `duckdb_type`, `nullable`, `precision`, `scale`, `sample`, `null_count`, `distinct_count`, `min`, `max`）并保存到统一元数据存储（参考 Task 04）。  
     - 上传任务中在 `duckdb_con` 层启用高精度推断：`SET decimal_infer_max_length=38; SET decimal_infer_max_scale=18;`；CSV 路径增加 `read_csv_auto(..., decimal_handling_mode='strict')`。  
     - 增加事务式写入：采用临时文件 + 原子 rename，避免并发覆盖。  

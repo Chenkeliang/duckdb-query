@@ -11,14 +11,21 @@ import {
   Divider,
   FormControlLabel,
   IconButton,
+  MenuItem,
   Tab,
   Tabs,
   Tooltip,
   Typography
 } from '@mui/material';
-import { Lightbulb, Upload } from 'lucide-react';
-import React, { useRef, useState } from 'react';
-import { readFromUrl, uploadFile } from '../../services/apiClient';
+import { FileText, FolderOpen, HardDrive, Lightbulb, RefreshCw, Upload } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  browseServerDirectory,
+  getServerMounts,
+  importServerFile,
+  readFromUrl,
+  uploadFile
+} from '../../services/apiClient';
 import ChunkedUploader from '../ChunkedUpload/ChunkedUploader';
 import {
   CardSurface,
@@ -47,6 +54,27 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState('');
 
+  // 服务器目录导入状态
+  const [serverMounts, setServerMounts] = useState([]);
+  const [serverMountLoading, setServerMountLoading] = useState(false);
+  const [selectedServerMount, setSelectedServerMount] = useState('');
+  const [serverEntries, setServerEntries] = useState([]);
+  const [serverBreadcrumbs, setServerBreadcrumbs] = useState([]);
+  const [serverCurrentPath, setServerCurrentPath] = useState('');
+  const [serverSelectedFile, setServerSelectedFile] = useState(null);
+  const [serverAlias, setServerAlias] = useState('');
+  const [serverBrowseError, setServerBrowseError] = useState('');
+  const [serverBrowseLoading, setServerBrowseLoading] = useState(false);
+  const [serverImportLoading, setServerImportLoading] = useState(false);
+
+  const filteredServerEntries = useMemo(
+    () =>
+      serverEntries.filter(
+        (entry) => entry.type === 'directory' || entry.supported
+      ),
+    [serverEntries]
+  );
+
   // 添加成功消息状态管理
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [pendingExcel, setPendingExcel] = useState(null);
@@ -62,6 +90,15 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const formatModifiedTime = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp * 1000);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+    return date.toLocaleString();
   };
 
   // 处理文件选择
@@ -134,6 +171,110 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
       });
     });
     handleExcelSelectorClose();
+  };
+
+  const handleServerMountChange = async (newPath) => {
+    setSelectedServerMount(newPath);
+    await loadServerDirectory(newPath);
+  };
+
+  const handleServerEntryClick = async (entry) => {
+    if (entry.type === 'directory') {
+      await loadServerDirectory(entry.path);
+      return;
+    }
+    if (!entry.supported) {
+      showNotification?.('该文件类型暂不支持，请选择 CSV/Excel/Parquet/JSON 文件', 'warning');
+      return;
+    }
+    setServerSelectedFile(entry);
+    setServerAlias(entry.suggested_table_name || entry.name.replace(/\.[^/.]+$/, ''));
+  };
+
+  const handleServerBreadcrumbClick = async (crumb) => {
+    if (!crumb?.path) return;
+    await loadServerDirectory(crumb.path);
+  };
+
+  const loadServerDirectory = useCallback(async (targetPath) => {
+    if (!targetPath) return;
+    setServerBrowseLoading(true);
+    setServerBrowseError('');
+    setServerSelectedFile(null);
+    setServerAlias('');
+    try {
+      const response = await browseServerDirectory(targetPath);
+      setServerEntries(response.entries || []);
+      setServerBreadcrumbs(response.breadcrumbs || []);
+      setServerCurrentPath(response.path || targetPath);
+    } catch (err) {
+      setServerBrowseError(err?.response?.data?.detail || err.message || '无法读取目录');
+    } finally {
+      setServerBrowseLoading(false);
+    }
+  }, []);
+
+  const loadServerMounts = useCallback(async () => {
+    setServerMountLoading(true);
+    setServerBrowseError('');
+    try {
+      const response = await getServerMounts();
+      const mounts = response?.mounts || [];
+      setServerMounts(mounts);
+      if (mounts.length > 0) {
+        const firstMount = mounts[0];
+        setSelectedServerMount(firstMount.path);
+        await loadServerDirectory(firstMount.path);
+      } else {
+        setServerEntries([]);
+      }
+    } catch (err) {
+      setServerBrowseError(err?.response?.data?.detail || err.message || '无法获取服务器目录');
+    } finally {
+      setServerMountLoading(false);
+    }
+  }, [loadServerDirectory]);
+
+  useEffect(() => {
+    if (activeTab === 2 && serverMounts.length === 0 && !serverMountLoading) {
+      loadServerMounts();
+    }
+  }, [activeTab, serverMounts.length, serverMountLoading, loadServerMounts]);
+
+  const handleServerImport = async () => {
+    if (!serverSelectedFile) {
+      showNotification?.('请先选择一个文件', 'warning');
+      return;
+    }
+    const alias = (serverAlias || serverSelectedFile.suggested_table_name || '').trim();
+    if (!alias) {
+      showNotification?.('请输入表别名', 'warning');
+      return;
+    }
+
+    setServerImportLoading(true);
+    try {
+      const response = await importServerFile({
+        path: serverSelectedFile.path,
+        table_alias: alias,
+      });
+
+      showNotification?.(response.message || '导入成功', 'success');
+      onDataSourceSaved?.({
+        id: response.table_name,
+        type: 'duckdb',
+        name: `DuckDB表: ${response.table_name}`,
+        row_count: response.row_count,
+        columns: response.columns || [],
+      });
+
+      setServerSelectedFile(null);
+      setServerAlias('');
+    } catch (err) {
+      showNotification?.(err?.response?.data?.detail || err.message || '导入失败', 'error');
+    } finally {
+      setServerImportLoading(false);
+    }
   };
 
   // 处理标准上传
@@ -372,6 +513,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
       >
         <Tab label="本地文件上传" sx={{ mr: 2 }} />
         <Tab label="远程文件导入" />
+        <Tab label="服务器目录" sx={{ ml: 2 }} />
       </Tabs>
 
       {/* 本地文件上传 */}
@@ -657,6 +799,175 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
               • 导入的文件将直接创建为DuckDB表
             </Typography>
           </Box>
+        </CardSurface>
+      )}
+
+      {/* 服务器目录导入 */}
+      {activeTab === 2 && (
+        <CardSurface padding={3} elevation sx={{ borderColor: 'var(--dq-border-card)', borderRadius: 'var(--dq-radius-card)' }}>
+          <SectionHeader
+            title="服务器目录导入"
+            subtitle="直接从容器挂载目录读取 CSV / Excel / Parquet / JSON 文件"
+            icon={<HardDrive size={18} color="var(--dq-accent-primary)" />}
+          />
+
+          <Alert severity="info" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
+            <Typography variant="body2">
+              请运维在 docker-compose / K8s 中挂载目录并更新 <code>server_data_mounts</code> 配置，重启后即可在此处浏览文件。
+              <br />
+              仅能访问配置文件中允许的目录，其他路径不会显示。
+            </Typography>
+          </Alert>
+
+          {serverMountLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+              <CircularProgress size={32} />
+            </Box>
+          ) : serverMounts.length === 0 ? (
+            <Alert severity="warning" sx={{ borderRadius: 'var(--dq-radius-card)' }}>
+              未检测到可用的挂载目录。请在配置文件 <code>server_data_mounts</code> 中添加条目并重启服务。
+            </Alert>
+          ) : (
+            <>
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
+                <RoundedTextField
+                  select
+                  label="选择挂载目录"
+                  value={selectedServerMount}
+                  onChange={(e) => handleServerMountChange(e.target.value)}
+                  sx={{ flex: 1 }}
+                >
+                  {serverMounts.map((mount) => (
+                    <MenuItem key={mount.path} value={mount.path}>
+                      {mount.label} {mount.exists === false ? '(目录不存在)' : ''}
+                    </MenuItem>
+                  ))}
+                </RoundedTextField>
+                <IconButton
+                  aria-label="refresh-directory"
+                  onClick={() => loadServerDirectory(selectedServerMount || serverMounts[0]?.path)}
+                  sx={{ border: '1px solid var(--dq-border-subtle)', borderRadius: 'var(--dq-radius-card)' }}
+                >
+                  <RefreshCw size={18} />
+                </IconButton>
+              </Box>
+
+              {serverBreadcrumbs.length > 0 && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
+                  {serverBreadcrumbs.map((crumb, index) => (
+                    <React.Fragment key={crumb.path}>
+                      <Chip
+                        label={crumb.name}
+                        icon={crumb.is_root ? <HardDrive size={14} /> : <FolderOpen size={14} />}
+                        onClick={() => handleServerBreadcrumbClick(crumb)}
+                        sx={{ cursor: 'pointer' }}
+                      />
+                      {index < serverBreadcrumbs.length - 1 && (
+                        <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>/</Typography>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </Box>
+              )}
+
+              {serverBrowseError && (
+                <Alert severity="error" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
+                  {serverBrowseError}
+                </Alert>
+              )}
+
+              <Box
+                sx={{
+                  border: '1px solid var(--dq-border-subtle)',
+                  borderRadius: 'var(--dq-radius-card)',
+                  mb: 3,
+                  maxHeight: 320,
+                  overflowY: 'auto',
+                  backgroundColor: 'var(--dq-surface)'
+                }}
+              >
+                {serverBrowseLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                    <CircularProgress size={28} />
+                  </Box>
+                ) : filteredServerEntries.length === 0 ? (
+                  <Typography variant="body2" sx={{ p: 3, color: 'var(--dq-text-tertiary)' }}>
+                    当前目录暂无可导入的文件
+                  </Typography>
+                ) : (
+                  filteredServerEntries.map((entry) => {
+                    const isSelected = serverSelectedFile?.path === entry.path;
+                    return (
+                      <Box
+                        key={entry.path}
+                        onClick={() => handleServerEntryClick(entry)}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 2,
+                          p: 1.5,
+                          borderBottom: '1px solid var(--dq-border-subtle)',
+                          cursor: 'pointer',
+                          backgroundColor: isSelected ? 'color-mix(in oklab, var(--dq-accent-primary) 12%, transparent)' : 'transparent',
+                          '&:hover': { backgroundColor: 'var(--dq-surface-hover)' }
+                        }}
+                      >
+                        {entry.type === 'directory' ? (
+                          <FolderOpen size={20} color="var(--dq-text-secondary)" />
+                        ) : (
+                          <FileText size={20} color={entry.supported ? 'var(--dq-accent-primary)' : 'var(--dq-text-tertiary)'} />
+                        )}
+                        <Box sx={{ flexGrow: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: entry.type === 'directory' ? 600 : 500 }}>
+                            {entry.name}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>
+                            {entry.type === 'directory'
+                              ? '文件夹'
+                              : `${(entry.extension || '').toUpperCase()} · ${formatFileSize(entry.size || 0)}`} · {formatModifiedTime(entry.modified)}
+                          </Typography>
+                        </Box>
+                        {entry.type === 'file' && (
+                          <Chip
+                            size="small"
+                            label={entry.supported ? '可导入' : '不支持'}
+                            color={entry.supported ? 'success' : 'default'}
+                          />
+                        )}
+                      </Box>
+                    );
+                  })
+                )}
+              </Box>
+
+              {serverSelectedFile && (
+                <Alert severity="success" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
+                  已选择文件：{serverSelectedFile.name}（{formatFileSize(serverSelectedFile.size || 0)}）
+                </Alert>
+              )}
+
+              <RoundedTextField
+                label="表别名"
+                value={serverAlias}
+                onChange={(e) => setServerAlias(e.target.value)}
+                fullWidth
+                sx={{ mb: 2 }}
+                placeholder="例如: server_data"
+                helperText="导入后会在DuckDB中创建此名称的表"
+                disabled={!serverSelectedFile || serverImportLoading}
+              />
+
+              <RoundedButton
+                fullWidth
+                startIcon={!serverImportLoading && <Upload size={18} />}
+                disabled={!serverSelectedFile || serverImportLoading}
+                onClick={handleServerImport}
+                sx={{ py: 1.5 }}
+              >
+                {serverImportLoading ? <CircularProgress size={22} color="inherit" /> : '导入到 DuckDB'}
+              </RoundedButton>
+            </>
+          )}
         </CardSurface>
       )}
 

@@ -485,6 +485,96 @@ class PivotConfig(BaseModel):
         return self
 
 
+class JSONTableColumnConfig(BaseModel):
+    """Definition of a column emitted by JSON_TABLE."""
+
+    name: str = Field(..., description="Result column alias exposed to the query")
+    path: Optional[str] = Field(
+        None, description="JSON path used to extract this column's value"
+    )
+    data_type: str = Field(
+        "VARCHAR", description="DuckDB data type assigned to the extracted column"
+    )
+    default: Optional[str] = Field(
+        None, description="Optional default literal when the JSON path is absent"
+    )
+    ordinal: bool = Field(
+        False,
+        description="Emit FOR ORDINALITY column instead of extracting from a path",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("JSON_TABLE column name cannot be empty")
+        return value.strip()
+
+    @field_validator("data_type")
+    @classmethod
+    def normalize_type(cls, value: str) -> str:
+        if not value or not value.strip():
+            return "VARCHAR"
+        return value.strip().upper()
+
+    @field_validator("path")
+    @classmethod
+    def normalize_path(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class JSONTableConfig(BaseModel):
+    """Configuration describing a JSON_TABLE lateral join."""
+
+    source_column: str = Field(
+        ..., description="Column/expression containing the JSON payload"
+    )
+    alias: Optional[str] = Field(
+        None, description="Alias assigned to the expanded JSON_TABLE"
+    )
+    root_path: Optional[str] = Field(
+        "$", description="Root JSON path enumerated into rows"
+    )
+    outer_join: bool = Field(
+        True, description="LEFT JOIN (True) or INNER JOIN (False) the JSON table"
+    )
+    columns: List[JSONTableColumnConfig] = Field(
+        default_factory=list, description="Column definitions emitted from JSON_TABLE"
+    )
+
+    @field_validator("source_column")
+    @classmethod
+    def validate_source_column(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("JSON_TABLE source column cannot be empty")
+        return value.strip()
+
+    @field_validator("alias")
+    @classmethod
+    def normalize_alias(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    @field_validator("root_path")
+    @classmethod
+    def normalize_root_path(cls, value: Optional[str]) -> str:
+        if value is None:
+            return "$"
+        cleaned = value.strip()
+        return cleaned or "$"
+
+    @model_validator(mode="after")
+    def validate_columns(self):
+        if not self.columns:
+            raise ValueError("JSON_TABLE 配置必须至少包含一个列定义")
+        return self
+
+
 class ColumnProfilePayload(BaseModel):
     """前端回传的列类型信息"""
 
@@ -563,6 +653,10 @@ class VisualQueryConfig(BaseModel):
     )
     limit: Optional[int] = Field(None, description="Maximum number of rows to return")
     is_distinct: bool = Field(False, description="Whether to return distinct rows only")
+    json_tables: List[JSONTableConfig] = Field(
+        default_factory=list,
+        description="Optional JSON_TABLE expansions applied before aggregation",
+    )
 
     @field_validator("table_name")
     @classmethod

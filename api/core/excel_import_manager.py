@@ -1,5 +1,4 @@
 import json
-import math
 import os
 import re
 import shutil
@@ -12,6 +11,7 @@ import pandas as pd
 from openpyxl import load_workbook
 
 from core.timezone_utils import get_current_time_iso
+from core.utils import normalize_dataframe_output
 
 
 PENDING_BASE_DIR = Path(__file__).resolve().parent.parent / "temp_files" / "excel_pending"
@@ -128,18 +128,6 @@ def _map_pandas_dtype_to_duckdb(dtype: Any) -> str:
     return "VARCHAR"
 
 
-def _normalize_preview_record(record: Dict[str, Any]) -> Dict[str, Any]:
-    normalized: Dict[str, Any] = {}
-    for key, value in record.items():
-        if isinstance(value, float) and math.isnan(value):
-            normalized[key] = None
-        elif isinstance(value, (pd.Timestamp,)):
-            normalized[key] = value.isoformat()
-        else:
-            normalized[key] = value
-    return normalized
-
-
 def inspect_excel_sheets(file_path: str, preview_rows: int = 20) -> List[Dict[str, Any]]:
     workbook = load_workbook(filename=file_path, read_only=True, data_only=True)
     try:
@@ -195,10 +183,7 @@ def inspect_excel_sheets(file_path: str, preview_rows: int = 20) -> List[Dict[st
                     }
                     for col, dtype in preview_df.dtypes.items()
                 ]
-                preview_records = [
-                    _normalize_preview_record(record)
-                    for record in preview_df.to_dict(orient="records")
-                ]
+                preview_records = normalize_dataframe_output(preview_df)
             except Exception:
                 columns = []
                 preview_records = []

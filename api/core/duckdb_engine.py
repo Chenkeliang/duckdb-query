@@ -112,7 +112,9 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
 
         # 获取所有以duckdb_开头的配置项
         config_items = {
-            k: v for k, v in app_config.__dict__.items() if k.startswith("duckdb_")
+            k: v
+            for k, v in app_config.__dict__.items()
+            if k.startswith("duckdb_")
         }
 
         logger.info(f"发现 {len(config_items)} 个DuckDB配置项")
@@ -181,6 +183,19 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
             logger.info(
                 f"DuckDB进度条设置为: {config_items['duckdb_enable_progress_bar']}"
             )
+
+        remote_settings = config_items.get("duckdb_remote_settings") or {}
+        if isinstance(remote_settings, dict):
+            for setting_key, setting_value in remote_settings.items():
+                if not setting_key:
+                    continue
+                try:
+                    connection.execute(f"SET {setting_key}={setting_value}")
+                    logger.info("已应用远程配置: %s=%s", setting_key, setting_value)
+                except Exception as remote_error:
+                    logger.warning(
+                        "应用远程配置 %s 失败: %s", setting_key, remote_error
+                    )
 
         # 设置目录配置
         if config_items.get("duckdb_home_directory"):

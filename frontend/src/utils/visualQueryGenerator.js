@@ -59,7 +59,12 @@ export function generateSQL(config, tableName) {
 
     // Build SQL components
     const selectClause = buildSelectClause(config);
-    const fromClause = buildFromClause(tableName);
+    const jsonTables = Array.isArray(config.jsonTables)
+      ? config.jsonTables
+      : Array.isArray(config.json_tables)
+        ? config.json_tables
+        : [];
+    const fromClause = buildFromClause(tableName, jsonTables);
     const whereClause = buildWhereClause(config.filters);
     const havingClause = buildHavingClause(config.having);
     const groupByClause = buildGroupByClause(config, selectClause.needsGroupBy);
@@ -220,12 +225,114 @@ function buildSelectClause(config) {
  * @param {string} tableName - Table name
  * @returns {string} FROM clause
  */
-function buildFromClause(tableName) {
+function buildFromClause(tableName, jsonTables = []) {
   if (!tableName || tableName.trim() === '') {
     throw new Error('表名不能为空');
   }
 
-  return ` FROM ${escapeIdentifier(tableName)}`;
+  const normalizeJsonTables = Array.isArray(jsonTables) ? jsonTables : [];
+  let clause = ` FROM ${escapeIdentifier(tableName)}`;
+
+  normalizeJsonTables.forEach((tableConfig, index) => {
+    const joinSql = buildJsonTableClause(tableConfig, index);
+    if (joinSql) {
+      clause += joinSql;
+    }
+  });
+
+  return clause;
+}
+
+function buildJsonTableClause(tableConfig = {}, index = 0) {
+  if (!tableConfig) {
+    return '';
+  }
+
+  const sourceColumn = tableConfig.sourceColumn || tableConfig.source_column;
+  if (!sourceColumn || !String(sourceColumn).trim()) {
+    return '';
+  }
+
+  const rawColumns = Array.isArray(tableConfig.columns) ? tableConfig.columns : [];
+  const normalizedColumns = rawColumns
+    .map((column) => {
+      if (!column) {
+        return null;
+      }
+      const columnName = column.name || column.alias || column.outputName;
+      if (!columnName || !String(columnName).trim()) {
+        return null;
+      }
+      const ordinal = Boolean(column.ordinal || column.isOrdinal || column.forOrdinality);
+      const rawType = (column.dataType || column.data_type || 'VARCHAR').toString().trim();
+      const dataType = rawType ? rawType.toUpperCase() : 'VARCHAR';
+      const pathValue = column.path || column.jsonPath || column.path_expression || '$';
+      const defaultValue = column.defaultValue ?? column.default ?? column.fallbackValue;
+      const hasDefault = defaultValue !== undefined && defaultValue !== null && `${defaultValue}`.length > 0;
+
+      return {
+        name: String(columnName).trim(),
+        ordinal,
+        dataType,
+        path: ordinal ? undefined : String(pathValue).trim() || '$',
+        defaultValue: ordinal ? undefined : hasDefault ? defaultValue : undefined,
+      };
+    })
+    .filter(Boolean);
+
+  if (normalizedColumns.length === 0) {
+    return '';
+  }
+
+  const alias = tableConfig.alias || tableConfig.tableAlias || `json_table_${index + 1}`;
+  const joinType = (tableConfig.joinType || tableConfig.join_type || (tableConfig.outer_join === false ? 'inner' : 'left'))
+    .toString()
+    .toLowerCase();
+  const joinKeyword = joinType === 'inner' ? ' JOIN LATERAL' : ' LEFT JOIN LATERAL';
+  const columnClauses = normalizedColumns.map((column) => {
+    const columnIdentifier = escapeIdentifier(column.name);
+    if (column.ordinal) {
+      return `${columnIdentifier} FOR ORDINALITY`;
+    }
+    let clause = `${columnIdentifier} ${column.dataType} PATH ${escapeStringLiteral(column.path || '$')}`;
+    if (column.defaultValue !== undefined) {
+      clause += ` DEFAULT ${escapeStringLiteral(column.defaultValue)}`;
+    }
+    clause += ' NULL ON EMPTY NULL ON ERROR';
+    return clause;
+  });
+
+  if (columnClauses.length === 0) {
+    return '';
+  }
+
+  const columnsSql = columnClauses.join(',\n        ');
+  const rootPath = tableConfig.rootPath || tableConfig.root_path || '$';
+  const sourceExpr = formatJsonColumnReference(String(sourceColumn).trim());
+  const jsonTableSql = `JSON_TABLE(${sourceExpr}, ${escapeStringLiteral(rootPath)}\n    COLUMNS (\n        ${columnsSql}\n    )\n  )`;
+
+  return `${joinKeyword} ${jsonTableSql} AS ${escapeIdentifier(alias)} ON TRUE`;
+}
+
+function formatJsonColumnReference(identifier) {
+  if (!identifier) {
+    return '';
+  }
+  const trimmed = identifier.trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (/[\s()+\-*/]/.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.includes('.')) {
+    return trimmed
+      .split('.')
+      .filter(Boolean)
+      .map((part) => (part.includes('"') ? part : escapeIdentifier(part)))
+      .join('.');
+  }
+  return trimmed.includes('"') ? trimmed : escapeIdentifier(trimmed);
 }
 
 /**

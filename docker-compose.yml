@@ -26,6 +26,9 @@ services:
       - ./config:/app/config
       - ./temp_files:/app/temp_files
       - ./exports:/app/exports
+      - ./server_data:/app/server_mounts # 服务器挂载目录 / server-mounted data directory
+      - ~/Downloads:/app/host_downloads # macOS Downloads 目录 (可选)
+      - ~/Documents:/app/host_documents # macOS Documents 目录 (可选)
     networks:
       - dataquery-network
     restart: unless-stopped
@@ -34,12 +37,16 @@ services:
       resources:
         limits:
           memory: 8G
-          cpus: '4.0'
+          cpus: "4.0"
         reservations:
           memory: 4G
-          cpus: '2.0'
+          cpus: "2.0"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/health'); print('ok')\" || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          'python -c "import urllib.request,sys; urllib.request.urlopen(''http://localhost:8000/health''); print(''ok'')" || exit 1',
+        ]
       interval: 30s
       timeout: 10s
       retries: 3

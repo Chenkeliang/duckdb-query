@@ -23,7 +23,7 @@
 | `max_tables` | number | `200` | 最大表数量 |
 | `enable_caching` | boolean | `true` | 启用缓存 |
 | `cache_ttl` | number | `3600` | 缓存生存时间(秒) |
-| `timezone` | string | `"Asia/Shanghai"` | 时区设置 |
+| `timezone` | string | `"UTC"` | 时区设置（可根据部署地区调整，如 `"Asia/Shanghai"`） |
 
 ### DuckDB 配置
 
@@ -40,7 +40,9 @@
 | `duckdb_enable_object_cache` | boolean | `true` | 启用对象缓存 |
 | `duckdb_preserve_insertion_order` | boolean | `false` | 保持插入顺序 |
 | `duckdb_enable_progress_bar` | boolean | `false` | 启用进度条 |
-| `duckdb_extensions` | array | `["excel", "json", "parquet"]` | 启用的扩展 |
+| `duckdb_extensions` | array | `["excel", "json", "parquet"]` | 自动安装/加载的 DuckDB 扩展 |
+| `duckdb_remote_settings` | object | `{}` | 启动时自动执行的 `SET` 语句（如 `s3_region` 等） |
+| `server_data_mounts` | array | `[]` | 允许直接读取文件的服务器挂载目录列表 |
 
 ### 连接池配置
 

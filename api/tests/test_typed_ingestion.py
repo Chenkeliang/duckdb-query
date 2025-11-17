@@ -19,7 +19,7 @@ def test_dataframe_ingestion_preserves_types():
 
     df = pd.DataFrame(
         {
-            "amount": pd.Series([1.25, 9.8], dtype="float64"),
+            "amount": pd.Series([1.25, 9.8, 2.5], dtype="float64"),
             "quantity": pd.Series([1, 2, 3], dtype="int64"),
             "code": ["A", "B", "C"],
         }
@@ -42,7 +42,7 @@ def test_dataframe_ingestion_preserves_types():
     assert amount_profile["duckdb_type"].upper().startswith("DOUBLE")
     assert amount_profile["statistics"]["null_count"] == 0
 
-    con.execute(f"DROP TABLE IF EXISTS '{table_name}'")
+    con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
 
 
 def test_csv_ingestion_preserves_types(tmp_path):
@@ -76,6 +76,6 @@ def test_csv_ingestion_preserves_types(tmp_path):
     assert qty_profile["duckdb_type"].upper().startswith("BIGINT")
 
     # 清理生成的文件
-    con.execute(f"DROP TABLE IF EXISTS '{table_name}'")
+    con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
     if Path(csv_path).exists():
         os.remove(csv_path)

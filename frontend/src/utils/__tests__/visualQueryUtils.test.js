@@ -74,6 +74,41 @@ describe('visualQueryUtils', () => {
       expect(expressionHaving.expression).toBe('"threshold_discount"');
       expect(expressionHaving.column_type).toBe('number');
     });
+
+    it('serializes json table configuration into snake_case payload', () => {
+      const config = {
+        tableName: 'events',
+        jsonTables: [
+          {
+            sourceColumn: 'attributes',
+            alias: 'attr_items',
+            rootPath: '$.items[*]',
+            joinType: 'left',
+            columns: [
+              { name: 'item_id', path: '$.id', dataType: 'varchar' },
+              { name: 'seq', ordinal: true },
+            ],
+          },
+        ],
+      };
+
+      const result = transformVisualConfigForApi(config, config.tableName);
+      expect(result.json_tables).toHaveLength(1);
+      const jsonConfig = result.json_tables[0];
+      expect(jsonConfig.source_column).toBe('attributes');
+      expect(jsonConfig.alias).toBe('attr_items');
+      expect(jsonConfig.root_path).toBe('$.items[*]');
+      expect(jsonConfig.outer_join).toBe(true);
+      expect(jsonConfig.columns).toHaveLength(2);
+      expect(jsonConfig.columns[0]).toEqual({
+        name: 'item_id',
+        data_type: 'VARCHAR',
+        path: '$.id',
+        default: undefined,
+        ordinal: false,
+      });
+      expect(jsonConfig.columns[1].ordinal).toBe(true);
+    });
   });
 
   describe('generateSQLPreview (utils)', () => {
@@ -171,6 +206,32 @@ describe('visualQueryUtils', () => {
       const result = generateSQLPreview(config, 'metrics', columns);
       expect(result.success).toBe(true);
       expect(result.sql).toContain('"score" = (A + B)');
+    });
+
+    it('includes JSON_TABLE lateral joins in preview SQL', () => {
+      const config = {
+        tableName: 'orders',
+        selectedColumns: ['order_id', 'item_name'],
+        aggregations: [],
+        filters: [],
+        jsonTables: [
+          {
+            sourceColumn: 'items_json',
+            alias: 'items_expanded',
+            rootPath: '$.items[*]',
+            columns: [
+              { name: 'item_name', path: '$.name', dataType: 'varchar' },
+              { name: 'position', ordinal: true },
+            ],
+          },
+        ],
+      };
+
+      const result = generateSQLPreview(config, 'orders', [{ name: 'order_id', dataType: 'INTEGER' }]);
+      expect(result.success).toBe(true);
+      expect(result.sql).toContain('LEFT JOIN LATERAL JSON_TABLE');
+      expect(result.sql).toContain('"item_name" VARCHAR PATH');
+      expect(result.sql).toContain('"position" FOR ORDINALITY');
     });
   });
 });

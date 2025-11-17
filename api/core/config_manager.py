@@ -75,7 +75,7 @@ class AppConfig:
     cache_ttl: int = 3600  # 1小时
     """缓存生存时间，单位为秒"""
 
-    timezone: str = "Asia/Shanghai"
+    timezone: str = "UTC"
     """应用时区设置，影响时间相关的数据处理"""
 
     enable_pivot_tables: bool = True
@@ -128,6 +128,15 @@ class AppConfig:
 
     duckdb_extensions: List[str] = None
     """要自动安装和加载的DuckDB扩展列表"""
+
+    duckdb_remote_settings: Dict[str, Any] = None
+    """DuckDB初始化时自动执行的SET语句（可配置S3/OSS参数）"""
+
+    server_data_mounts: List[Dict[str, Any]] = None
+    """服务器挂载目录列表，供容器内直接读取文件"""
+
+    duckdb_remote_settings: Dict[str, str] = None
+    """DuckDB初始化时需要执行的SET语句，如S3/OSS参数"""
 
     duckdb_debug_logging: bool = False
     """是否启用DuckDB调试日志（SHOW TABLES / EXPLAIN等）"""
@@ -199,6 +208,15 @@ class AppConfig:
         # 设置默认DuckDB扩展
         if self.duckdb_extensions is None:
             self.duckdb_extensions = ["excel", "json", "parquet"]
+
+        if self.duckdb_remote_settings is None:
+            self.duckdb_remote_settings = {}
+
+        if self.server_data_mounts is None:
+            self.server_data_mounts = []
+
+        if self.duckdb_remote_settings is None:
+            self.duckdb_remote_settings = {}
 
 
 class ConfigManager:

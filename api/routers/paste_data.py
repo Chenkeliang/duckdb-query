@@ -1,18 +1,18 @@
 import logging
-import json
-import traceback
-import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
+from typing import Any, Dict, List, Optional, Tuple
+from uuid import uuid4
+
 import pandas as pd
-import numpy as np
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from core.duckdb_engine import get_db_connection, create_persistent_table
-from core.file_datasource_manager import file_datasource_manager
-from core.timezone_utils import get_current_time  # 导入时区工具
+from core.duckdb_engine import with_duckdb_connection
+from core.file_datasource_manager import (
+    build_table_metadata_snapshot,
+    file_datasource_manager,
+)
+from core.timezone_utils import get_current_time_iso  # 导入时区工具
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,6 +25,108 @@ class PasteDataRequest(BaseModel):
     data_rows: List[List[str]]
     delimiter: str = ","
     has_header: bool = False
+
+
+BOOL_TRUE_VALUES = {"true", "t", "1", "yes", "y"}
+BOOL_FALSE_VALUES = {"false", "f", "0", "no", "n"}
+
+
+def _clean_cell_value(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    if text.lower() == "null":
+        return None
+
+    if len(text) >= 2 and ((text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'"))):
+        text = text[1:-1].strip()
+
+    return text or None
+
+
+def _sanitize_table_name(table_name: str) -> str:
+    filtered = "".join(c for c in table_name if c.isalnum() or c in ("_", "-")).strip()
+    if filtered:
+        return filtered
+    return f"pasted_table_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+
+
+def _quote_identifier(identifier: str) -> str:
+    escaped = identifier.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def _build_column_expression(source_alias: str, column_name: str, column_type: str) -> str:
+    safe_alias = _quote_identifier(column_name)
+    source_column = f"{source_alias}.{_quote_identifier(column_name)}"
+    source_text = f"CAST({source_column} AS VARCHAR)"
+    trimmed = f"NULLIF(TRIM({source_text}), '')"
+    normalized_type = (column_type or "VARCHAR").upper()
+
+    if normalized_type == "INTEGER":
+        return f"COALESCE(TRY_CAST({trimmed} AS BIGINT), 0) AS {safe_alias}"
+    if normalized_type == "DOUBLE":
+        return f"COALESCE(TRY_CAST({trimmed} AS DOUBLE), 0.0) AS {safe_alias}"
+    if normalized_type == "DATE":
+        return f"TRY_CAST({trimmed} AS TIMESTAMP) AS {safe_alias}"
+    if normalized_type == "BOOLEAN":
+        normalized = f"LOWER({trimmed})"
+        true_values = ", ".join(f"'{value}'" for value in sorted(BOOL_TRUE_VALUES))
+        false_values = ", ".join(f"'{value}'" for value in sorted(BOOL_FALSE_VALUES))
+        return (
+            "CASE "
+            f"WHEN {normalized} IN ({true_values}) THEN TRUE "
+            f"WHEN {normalized} IN ({false_values}) THEN FALSE "
+            f"WHEN {normalized} IS NULL THEN FALSE "
+            "ELSE FALSE END AS "
+            f"{safe_alias}"
+        )
+
+    # 默认作为字符串处理，保持兼容行为
+    return f"COALESCE(TRIM({source_text}), '') AS {safe_alias}"
+
+
+def _persist_pasted_dataframe(
+    connection,
+    table_name: str,
+    dataframe: pd.DataFrame,
+    column_definitions: List[Tuple[str, str]],
+) -> Dict[str, Any]:
+    temp_view = f"paste_input_{uuid4().hex[:8]}"
+    source_alias = "src"
+    connection.register(temp_view, dataframe)
+
+    quoted_temp_view = _quote_identifier(temp_view)
+    select_list = [
+        _build_column_expression(source_alias, name, col_type)
+        for name, col_type in column_definitions
+    ]
+    select_sql = ", ".join(select_list)
+    quoted_table = _quote_identifier(table_name)
+    create_sql = (
+        f"CREATE TABLE {quoted_table} AS "
+        f"SELECT {select_sql} FROM {quoted_temp_view} AS {source_alias}"
+    )
+
+    connection.execute("BEGIN TRANSACTION")
+    try:
+        connection.execute(f"DROP TABLE IF EXISTS {quoted_table}")
+        connection.execute(create_sql)
+        connection.execute("COMMIT")
+    except Exception:
+        connection.execute("ROLLBACK")
+        raise
+    finally:
+        try:
+            connection.unregister(temp_view)
+        except Exception as exc:
+            logger.debug("释放粘贴数据临时视图失败: %s (%s)", temp_view, exc)
+
+    return build_table_metadata_snapshot(connection, table_name)
 
 
 @router.post("/api/paste-data", tags=["Data Sources"])
@@ -57,150 +159,47 @@ async def save_paste_data(request: PasteDataRequest):
                     detail=f"第 {i+1} 行数据列数 ({len(row)}) 与预期列数 ({expected_columns}) 不匹配",
                 )
 
-        # 创建DataFrame
-        df = pd.DataFrame(request.data_rows, columns=request.column_names)
+        cleaned_rows = [
+            [_clean_cell_value(value) for value in row]
+            for row in request.data_rows
+        ]
+        df = pd.DataFrame(cleaned_rows, columns=request.column_names)
 
-        # 高级数据清理函数
-        def clean_cell_data(series):
-            """清理单元格数据，去除引号和多余空格"""
-            # 转换为字符串并去除首尾空格
-            cleaned = series.astype(str).str.strip()
-
-            # 去除引号包裹（双引号和单引号）
-            cleaned = cleaned.str.replace(r'^"(.*)"$', r"\1", regex=True)  # 去除双引号
-            cleaned = cleaned.str.replace(r"^'(.*)'$", r"\1", regex=True)  # 去除单引号
-
-            # 再次去除可能的首尾空格
-            cleaned = cleaned.str.strip()
-
-            # 处理空字符串和None值
-            cleaned = cleaned.replace("", None)
-            cleaned = cleaned.replace("null", None)
-            cleaned = cleaned.replace("NULL", None)
-
-            return cleaned
-
-        # 数据类型转换
-        for i, (col_name, col_type) in enumerate(
+        clean_table_name = _sanitize_table_name(request.table_name)
+        column_definitions: List[Tuple[str, str]] = list(
             zip(request.column_names, request.column_types)
-        ):
-            try:
-                if col_type == "INTEGER":
-                    # 先清理数据
-                    df[col_name] = clean_cell_data(df[col_name])
-                    # 处理空值并转换为整数
-                    df[col_name] = (
-                        pd.to_numeric(df[col_name], errors="coerce")
-                        .fillna(0)
-                        .astype(int)
-                    )
-                elif col_type == "DOUBLE":
-                    # 先清理数据
-                    df[col_name] = clean_cell_data(df[col_name])
-                    # 转换为浮点数
-                    df[col_name] = pd.to_numeric(df[col_name], errors="coerce").fillna(
-                        0.0
-                    )
-                elif col_type == "DATE":
-                    # 先清理数据
-                    df[col_name] = clean_cell_data(df[col_name])
-                    # 转换为日期
-                    df[col_name] = pd.to_datetime(df[col_name], errors="coerce")
-                elif col_type == "BOOLEAN":
-                    # 先清理数据并转换为小写
-                    df[col_name] = clean_cell_data(df[col_name]).str.lower()
-                    # 布尔值映射
-                    df[col_name] = (
-                        df[col_name]
-                        .map(
-                            {
-                                "true": True,
-                                "false": False,
-                                "1": True,
-                                "0": False,
-                                "yes": True,
-                                "no": False,
-                                "t": True,
-                                "f": False,
-                            }
-                        )
-                        .fillna(False)
-                    )
-                else:  # VARCHAR
-                    # 清理数据但保持为字符串
-                    df[col_name] = clean_cell_data(df[col_name])
-                    # 将None值转换为空字符串
-                    df[col_name] = df[col_name].fillna("")
-
-            except Exception as e:
-                logger.warning(f"列 {col_name} 类型转换失败，使用字符串类型: {str(e)}")
-                df[col_name] = df[col_name].astype(str).str.strip()
-
-        # 清理表名（移除特殊字符，确保符合SQL标准）
-        clean_table_name = "".join(
-            c for c in request.table_name if c.isalnum() or c in ("_", "-")
-        ).strip()
-        if not clean_table_name:
-            clean_table_name = (
-                f"pasted_table_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
-            )
-
-        # 保存到DuckDB
-        con = get_db_connection()
-        success = create_persistent_table(clean_table_name, df, con)
-
-        if not success:
-            raise HTTPException(status_code=500, detail="保存数据到DuckDB失败")
-
-        # 验证保存结果
-        try:
-            result = con.execute(
-                f'SELECT COUNT(*) as count FROM "{clean_table_name}"'
-            ).fetchone()
-            saved_rows = result[0] if result else 0
-
-            if saved_rows != len(df):
-                logger.warning(
-                    f"保存的行数 ({saved_rows}) 与预期行数 ({len(df)}) 不匹配"
-                )
-        except Exception as e:
-            logger.warning(f"验证保存结果失败: {str(e)}")
-            saved_rows = len(df)
-
-        logger.info(
-            f"成功保存粘贴数据到表: {clean_table_name}, 行数: {saved_rows}, 列数: {len(request.column_names)}"
         )
 
-        # 使用统一的时区配置
-        try:
-            from core.timezone_utils import get_current_time_iso
+        if not column_definitions:
+            raise HTTPException(status_code=400, detail="列配置不能为空")
 
-            createdAt = get_current_time_iso()
-        except ImportError:
-            from datetime import datetime
+        with with_duckdb_connection() as connection:
+            metadata = _persist_pasted_dataframe(
+                connection, clean_table_name, df, column_definitions
+            )
 
-            createdAt = get_current_time().isoformat()
+        saved_rows = metadata.get("row_count", len(df))
+        logger.info(
+            "成功保存粘贴数据到表: %s, 行数: %s, 列数: %s",
+            clean_table_name,
+            saved_rows,
+            len(request.column_names),
+        )
 
-        # 更新元数据，保留列画像
-        existing_metadata = file_datasource_manager.get_file_datasource(
-            clean_table_name
-        ) or {}
+        created_at_value = get_current_time_iso()
+
         metadata_payload = {
             "source_id": clean_table_name,
             "filename": f"{clean_table_name}.pasted",
             "file_path": "pasted_data",
             "file_type": "pasted",
             "row_count": saved_rows,
-            "column_count": len(request.column_names),
-            "columns": request.column_names,
-            "created_at": createdAt,
+            "column_count": metadata.get("column_count", len(request.column_names)),
+            "columns": metadata.get("columns", request.column_names),
+            "column_profiles": metadata.get("column_profiles"),
+            "schema_version": metadata.get("schema_version", 2),
+            "created_at": created_at_value,
         }
-        if existing_metadata.get("column_profiles") is not None:
-            metadata_payload["column_profiles"] = existing_metadata["column_profiles"]
-        if existing_metadata.get("schema_version") is not None:
-            metadata_payload["schema_version"] = existing_metadata["schema_version"]
-        else:
-            metadata_payload["schema_version"] = 2
 
         try:
             file_datasource_manager.save_file_datasource(metadata_payload)
@@ -213,12 +212,13 @@ async def save_paste_data(request: PasteDataRequest):
             "message": f"数据已成功保存到表: {clean_table_name}",
             "table_name": clean_table_name,
             "rows_saved": saved_rows,
-            "columns_count": len(request.column_names),
+            "columns_count": metadata.get("column_count", len(request.column_names)),
             "column_info": [
                 {"name": name, "type": type_}
-                for name, type_ in zip(request.column_names, request.column_types)
+                for name, type_ in column_definitions
             ],
-            "created_at": createdAt,  # 使用标准的 created_at 字段
+            "created_at": created_at_value,
+            "createdAt": created_at_value,
         }
 
     except HTTPException:

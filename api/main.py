@@ -19,6 +19,7 @@ from routers import (
     duckdb_query,
     chunked_upload,
     url_reader,
+    server_files,
     async_tasks,  # 异步任务路由
     database_tables,  # 数据库表管理路由
     sql_favorites,  # SQL收藏路由
@@ -96,6 +97,7 @@ app.include_router(paste_data.router)  # 数据粘贴板路由
 app.include_router(duckdb_query.router)  # DuckDB自定义SQL查询路由
 app.include_router(chunked_upload.router)  # 分块文件上传路由
 app.include_router(url_reader.router)  # URL文件读取路由
+app.include_router(server_files.router)  # 服务器目录读取/导入路由
 app.include_router(async_tasks.router)  # 异步任务路由
 app.include_router(database_tables.router)  # 数据库表管理路由
 app.include_router(sql_favorites.router)  # SQL收藏路由

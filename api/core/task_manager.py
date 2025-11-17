@@ -7,7 +7,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, asdict
-from datetime import datetime, date, timezone
+from datetime import datetime, date
 from enum import Enum
 from pathlib import Path
 from threading import Lock
@@ -15,7 +15,11 @@ from typing import Any, Dict, List, Optional
 
 from core.config_manager import config_manager
 from core.duckdb_engine import with_duckdb_connection
-from core.timezone_utils import get_current_time
+from core.timezone_utils import (
+    get_storage_time,
+    normalize_to_storage_timezone,
+    format_storage_time_for_response,
+)
 
 ASYNC_TASKS_TABLE = "systerm_async_tasks"
 TASK_EXPORTS_TABLE = "systerm_task_exports"
@@ -58,7 +62,7 @@ class AsyncTask:
         result["status"] = self.status.value
         for key in ["created_at", "started_at", "completed_at"]:
             if result.get(key):
-                result[key] = result[key].isoformat()
+                result[key] = format_storage_time_for_response(result[key])
         return result
 
 
@@ -209,11 +213,7 @@ class TaskManager:
     @staticmethod
     def _normalize_datetime(value: Optional[datetime]) -> Optional[datetime]:
         """确保写入数据库的时间为 naive，避免 tz 混淆"""
-        if value is None:
-            return None
-        if value.tzinfo is not None:
-            return value.astimezone(timezone.utc).replace(tzinfo=None)
-        return value
+        return normalize_to_storage_timezone(value)
 
     def _row_to_async_task(self, row: Any) -> AsyncTask:
         (
@@ -235,7 +235,7 @@ class TaskManager:
         return AsyncTask(
             task_id=task_id,
             status=self._coerce_status(status),
-            created_at=created_at or get_current_time(),
+            created_at=created_at or get_storage_time(),
             query=query or "",
             task_type=task_type or "query",
             datasource=self._deserialize_json(datasource),
@@ -316,7 +316,7 @@ class TaskManager:
     ) -> str:
         """创建新任务"""
         task_id = str(uuid.uuid4())
-        created_at = self._normalize_datetime(get_current_time())
+        created_at = get_storage_time()
 
         self._upsert_task(
             task_id=task_id,
@@ -347,7 +347,7 @@ class TaskManager:
         task_type = info.pop("type", info.pop("task_type", "async"))
         datasource = info.pop("datasource", None)
         created_at = (
-            self._parse_datetime(info.pop("created_at", None)) or get_current_time()
+            self._parse_datetime(info.pop("created_at", None)) or get_storage_time()
         )
         result_file_path = info.get("file_path") or info.get("result_file_path")
         error_message = info.get("error") or info.get("error_message")
@@ -373,7 +373,7 @@ class TaskManager:
     def start_task(self, task_id: str) -> bool:
         """标记任务为运行中"""
         with self._lock:
-            started_at = self._normalize_datetime(get_current_time())
+            started_at = get_storage_time()
             with with_duckdb_connection() as connection:
                 rows = connection.execute(
                     f"""
@@ -400,7 +400,7 @@ class TaskManager:
     def complete_task(self, task_id: str, result_info: Dict[str, Any]) -> bool:
         """标记任务为成功"""
         with self._lock:
-            completed_at = self._normalize_datetime(get_current_time())
+            completed_at = get_storage_time()
             with with_duckdb_connection() as connection:
                 started_row = connection.execute(
                     f'SELECT started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
@@ -452,7 +452,7 @@ class TaskManager:
     def fail_task(self, task_id: str, error_message: str) -> bool:
         """标记任务为失败"""
         with self._lock:
-            completed_at = self._normalize_datetime(get_current_time())
+            completed_at = get_storage_time()
             with with_duckdb_connection() as connection:
                 started_row = connection.execute(
                     f'SELECT started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
@@ -491,7 +491,7 @@ class TaskManager:
     ) -> bool:
         """无论当前状态，强制将任务标记为失败（手动取消等场景）"""
         with self._lock:
-            completed_at = self._normalize_datetime(get_current_time())
+            completed_at = get_storage_time()
             with with_duckdb_connection() as connection:
                 started_row = connection.execute(
                     f'SELECT started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
@@ -635,7 +635,7 @@ class TaskManager:
     ) -> str:
         """记录导出文件信息"""
         export_id = str(uuid.uuid4())
-        created_at = get_current_time()
+        created_at = get_storage_time()
         with with_duckdb_connection() as connection:
             connection.execute(
                 f"""
@@ -662,7 +662,7 @@ class TaskManager:
         self, expire_before: Optional[datetime] = None
     ) -> int:
         """清理过期的导出文件并更新记录"""
-        cutoff = expire_before or get_current_time()
+        cutoff = normalize_to_storage_timezone(expire_before) or get_storage_time()
         exports_dir = Path(config_manager.get_exports_dir())
         removed = 0
 

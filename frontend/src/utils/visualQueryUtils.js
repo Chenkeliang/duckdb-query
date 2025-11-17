@@ -129,6 +129,7 @@ export const createDefaultConfig = (tableName = "") => ({
   windowFunctions: [],
   limit: null,
   isDistinct: false,
+  jsonTables: [],
 });
 
 export const PivotValueAxis = {
@@ -407,6 +408,68 @@ const sanitizeConditionalField = (field) => {
   };
 };
 
+const sanitizeJsonTableColumn = (column) => {
+  if (!column) {
+    return null;
+  }
+
+  const rawName = column.name || column.alias || column.outputName;
+  if (!rawName || !String(rawName).trim()) {
+    return null;
+  }
+
+  const ordinal = Boolean(
+    column.ordinal || column.isOrdinal || column.forOrdinality,
+  );
+  const rawType = (column.dataType || column.data_type || 'VARCHAR').toString().trim();
+  const resolvedType = rawType ? rawType.toUpperCase() : 'VARCHAR';
+  const rawPath = column.path || column.jsonPath || column.path_expression;
+  const cleanedPath = rawPath && String(rawPath).trim();
+  const defaultValue = column.defaultValue ?? column.default ?? column.fallbackValue;
+  const hasDefault = defaultValue !== undefined && defaultValue !== null && `${defaultValue}`.length > 0;
+
+  return {
+    name: String(rawName).trim(),
+    data_type: resolvedType,
+    path: ordinal ? undefined : cleanedPath || '$',
+    default: ordinal ? undefined : hasDefault ? defaultValue : undefined,
+    ordinal,
+  };
+};
+
+const sanitizeJsonTableConfig = (table) => {
+  if (!table) {
+    return null;
+  }
+
+  const sourceColumn = table.sourceColumn || table.source_column;
+  if (!sourceColumn || !String(sourceColumn).trim()) {
+    return null;
+  }
+
+  const columns = Array.isArray(table.columns)
+    ? table.columns.map(sanitizeJsonTableColumn).filter(Boolean)
+    : [];
+
+  if (columns.length === 0) {
+    return null;
+  }
+
+  const alias = table.alias || table.tableAlias;
+  const rootPath = table.rootPath || table.root_path || '$';
+  const joinType = (table.joinType || table.join_type || (table.outer_join === false ? 'inner' : 'left'))
+    .toString()
+    .toLowerCase();
+
+  return {
+    source_column: String(sourceColumn).trim(),
+    alias: alias && String(alias).trim() ? String(alias).trim() : undefined,
+    root_path: rootPath && String(rootPath).trim() ? String(rootPath).trim() : '$',
+    outer_join: joinType !== 'inner',
+    columns,
+  };
+};
+
 export const transformVisualConfigForApi = (config, tableName) => {
   if (!config) {
     return null;
@@ -438,7 +501,11 @@ export const transformVisualConfigForApi = (config, tableName) => {
     .map(sanitizeConditionalField)
     .filter(Boolean);
 
-  return {
+  const jsonTables = (config.jsonTables || config.json_tables || [])
+    .map(sanitizeJsonTableConfig)
+    .filter(Boolean);
+
+  const payload = {
     table_name: safeTableName,
     selected_columns: (config.selectedColumns || config.selected_columns || []).filter(Boolean),
     aggregations,
@@ -458,6 +525,12 @@ export const transformVisualConfigForApi = (config, tableName) => {
     })(),
     is_distinct: Boolean(config.isDistinct || config.is_distinct),
   };
+
+  if (jsonTables.length > 0) {
+    payload.json_tables = jsonTables;
+  }
+
+  return payload;
 };
 
 // 聚合函数类型
@@ -970,8 +1043,119 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
 
     sql += `SELECT ${config.isDistinct ? "DISTINCT " : ""}${selectItems.join(", ")}`;
 
-    // FROM 子句 - 使用escapeIdentifier函数来正确处理表名
-    sql += `\nFROM ${escapeIdentifier(tableName)}`;
+    const normalizeJsonTables = () => {
+      if (Array.isArray(config.jsonTables)) {
+        return config.jsonTables;
+      }
+      if (Array.isArray(config.json_tables)) {
+        return config.json_tables;
+      }
+      return [];
+    };
+
+    const formatJsonColumnReference = (identifier) => {
+      if (!identifier) {
+        return '';
+      }
+      const trimmed = identifier.trim();
+      if (!trimmed) {
+        return '';
+      }
+      if (/[\s()+\-*/]/.test(trimmed)) {
+        return trimmed;
+      }
+      if (trimmed.includes('.')) {
+        return trimmed
+          .split('.')
+          .filter(Boolean)
+          .map((part) => (part.includes('"') ? part : escapeIdentifier(part)))
+          .join('.');
+      }
+      return trimmed.includes('"') ? trimmed : escapeIdentifier(trimmed);
+    };
+
+    const buildJsonTableClause = (tableConfig = {}, index = 0) => {
+      const sourceColumn = tableConfig.sourceColumn || tableConfig.source_column;
+      if (!sourceColumn || !String(sourceColumn).trim()) {
+        return '';
+      }
+
+      const rawColumns = Array.isArray(tableConfig.columns) ? tableConfig.columns : [];
+      const normalizedColumns = rawColumns
+        .map((column) => {
+          if (!column) {
+            return null;
+          }
+          const columnName = column.name || column.alias || column.outputName;
+          if (!columnName || !String(columnName).trim()) {
+            return null;
+          }
+          const ordinal = Boolean(
+            column.ordinal || column.isOrdinal || column.forOrdinality,
+          );
+          const dataType = (column.dataType || column.data_type || 'VARCHAR')
+            .toString()
+            .trim()
+            .toUpperCase();
+          const pathValue = column.path || column.jsonPath || column.path_expression || '$';
+          const defaultValue = column.defaultValue ?? column.default ?? column.fallbackValue;
+          const hasDefault =
+            defaultValue !== undefined && defaultValue !== null && `${defaultValue}`.length > 0;
+
+          return {
+            name: String(columnName).trim(),
+            ordinal,
+            dataType,
+            path: ordinal ? undefined : String(pathValue).trim() || '$',
+            defaultValue: ordinal ? undefined : hasDefault ? defaultValue : undefined,
+          };
+        })
+        .filter(Boolean);
+
+      if (normalizedColumns.length === 0) {
+        return '';
+      }
+
+      const alias = tableConfig.alias || tableConfig.tableAlias || `json_table_${index + 1}`;
+      const joinType = (tableConfig.joinType || tableConfig.join_type || (tableConfig.outer_join === false ? 'inner' : 'left'))
+        .toString()
+        .toLowerCase();
+      const joinKeyword = joinType === 'inner' ? 'JOIN LATERAL' : 'LEFT JOIN LATERAL';
+      const columnClauses = normalizedColumns.map((column) => {
+        const columnIdentifier = escapeIdentifier(column.name);
+        if (column.ordinal) {
+          return `${columnIdentifier} FOR ORDINALITY`;
+        }
+        let clause = `${columnIdentifier} ${column.dataType} PATH ${escapeSqlLiteral(column.path || '$')}`;
+        if (column.defaultValue !== undefined) {
+          clause += ` DEFAULT ${escapeSqlLiteral(column.defaultValue)}`;
+        }
+        clause += ' NULL ON EMPTY NULL ON ERROR';
+        return clause;
+      });
+
+      if (columnClauses.length === 0) {
+        return '';
+      }
+
+      const columnsSql = columnClauses.join(',\n        ');
+      const rootPath = tableConfig.rootPath || tableConfig.root_path || '$';
+      const jsonTableSql = `JSON_TABLE(${formatJsonColumnReference(String(sourceColumn).trim())}, ${escapeSqlLiteral(rootPath)}\n    COLUMNS (\n        ${columnsSql}\n    )\n  )`;
+      return `\n${joinKeyword} ${jsonTableSql} AS ${escapeIdentifier(alias)} ON TRUE`;
+    };
+
+    const buildFromClause = () => {
+      let clause = `\nFROM ${escapeIdentifier(tableName)}`;
+      normalizeJsonTables().forEach((tableConfig, idx) => {
+        const joinSql = buildJsonTableClause(tableConfig, idx);
+        if (joinSql) {
+          clause += joinSql;
+        }
+      });
+      return clause;
+    };
+
+    sql += buildFromClause();
 
     const formatColumnExpression = (column, { isHaving = false } = {}) => {
       if (!column) {
