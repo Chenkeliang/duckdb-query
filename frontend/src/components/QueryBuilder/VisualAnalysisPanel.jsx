@@ -1,10 +1,18 @@
 import {
   Alert,
+  Box,
+  Button,
+  Checkbox,
   Collapse,
   Fade,
   IconButton,
-  Button
+  Tooltip,
+  Typography
 } from '@mui/material';
+import {
+  CheckBoxOutlineBlank as DeselectAllIcon,
+  CheckBox as SelectAllIcon
+} from '@mui/icons-material';
 import { ChevronDown, LineChart } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getAppFeatures, previewVisualQuery, getTableMetadata, validateVisualQueryConfig } from '../../services/apiClient';
@@ -20,7 +28,7 @@ import {
 } from '../../utils/visualQueryUtils';
 import { escapeIdentifier } from '../../utils/visualQueryGenerator';
 import AggregationControls from './AggregationControls';
-import ColumnSelector from './ColumnSelector';
+import ColumnSelector from './VisualAnalysis/ColumnSelector';
 import FilterControls from './VisualAnalysis/FilterControls';
 import LimitControls from './LimitControls';
 import PivotConfigurator from './PivotConfigurator';
@@ -69,6 +77,7 @@ const CollapsibleSection = ({
   storageKey,
   defaultExpanded = false,
   className = '',
+  actions = null,
 }) => {
   const [isOpen, setIsOpen] = useState(() => {
     if (!storageKey || typeof window === 'undefined') {
@@ -101,17 +110,21 @@ const CollapsibleSection = ({
 
   return (
     <div className={`visual-analysis-section-card ${className}`}>
-      <div
-        className="visual-analysis-section-card__header"
-        onClick={toggle}
-      >
-        <div className="visual-analysis-section-card__header-text">
+      <div className="visual-analysis-section-card__header">
+        <div
+          className="visual-analysis-section-card__header-text"
+          onClick={toggle}
+        >
           <div className="visual-analysis-section-card__title">{title}</div>
           {description && (
             <div className="visual-analysis-section-card__subtitle">{description}</div>
           )}
         </div>
-        <IconButton
+        <div className="visual-analysis-section-card__header-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          {actions && (
+            <div onClick={(event) => event.stopPropagation()}>{actions}</div>
+          )}
+          <IconButton
           size="small"
           aria-label={isOpen ? '收起' : '展开'}
           onClick={(event) => {
@@ -139,6 +152,7 @@ const CollapsibleSection = ({
             style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
           />
         </IconButton>
+        </div>
       </div>
       <Collapse in={isOpen}>
         <div className="visual-analysis-section-card__body">
@@ -230,9 +244,9 @@ const VisualAnalysisPanel = ({
     return [];
   }, [analysisConfig?.jsonTables, analysisConfig?.json_tables]);
 
-  const tableColumns = useMemo(() => {
+  const baseColumns = useMemo(() => {
     const rawColumns = selectedTable?.columns || [];
-    const baseColumns = rawColumns
+    return rawColumns
       .map((column) => {
         if (!column) {
           return null;
@@ -256,7 +270,9 @@ const VisualAnalysisPanel = ({
         };
       })
       .filter(Boolean);
+  }, [selectedTable?.columns]);
 
+  const tableColumns = useMemo(() => {
     const derivedColumns = resolvedJsonTables.flatMap((jsonTable, jsonIndex) => {
       if (!jsonTable || !Array.isArray(jsonTable.columns)) {
         return [];
@@ -282,7 +298,33 @@ const VisualAnalysisPanel = ({
     });
 
     return [...baseColumns, ...derivedColumns];
-  }, [selectedTable?.columns, resolvedJsonTables]);
+  }, [baseColumns, resolvedJsonTables]);
+
+  const baseColumnNames = useMemo(() => baseColumns.map((col) => col?.name).filter(Boolean), [baseColumns]);
+  const baseColumnKeySet = useMemo(() => new Set(baseColumnNames.map((name) => name.toLowerCase())), [baseColumnNames]);
+  const selectedBaseCount = useMemo(() => {
+    if (!analysisConfig?.selectedColumns || analysisConfig.selectedColumns.length === 0) {
+      return 0;
+    }
+    return analysisConfig.selectedColumns.filter((col) => {
+      if (!col) return false;
+      return baseColumnKeySet.has(String(col).toLowerCase());
+    }).length;
+  }, [analysisConfig?.selectedColumns, baseColumnKeySet]);
+  const totalSelectableColumns = baseColumnNames.length;
+  const selectedColumnCount = analysisConfig.selectedColumns?.length || 0;
+  const selectAllState = useMemo(() => {
+    if (totalSelectableColumns === 0) {
+      return 'none';
+    }
+    if (selectedBaseCount === 0) {
+      return 'none';
+    }
+    if (selectedBaseCount === totalSelectableColumns) {
+      return 'all';
+    }
+    return 'some';
+  }, [totalSelectableColumns, selectedBaseCount]);
 
   const hasVisualConfig = useMemo(() => {
     const config = analysisConfig || {};
@@ -1406,6 +1448,18 @@ const VisualAnalysisPanel = ({
     updateAnalysisConfig({ selectedColumns });
   };
 
+  const handleSelectAllColumns = useCallback(() => {
+    if (!tableColumns.length) {
+      return;
+    }
+    if (selectAllState === 'all') {
+      handleColumnSelectionChange([]);
+      return;
+    }
+    const allColumnNames = baseColumnNames.filter(Boolean);
+    handleColumnSelectionChange(allColumnNames);
+  }, [baseColumnNames, tableColumns.length, selectAllState, handleColumnSelectionChange]);
+
   // Handle aggregation changes
   const handleAggregationsChange = (aggregations) => {
     updateAnalysisConfig({ aggregations });
@@ -1611,8 +1665,32 @@ const VisualAnalysisPanel = ({
                   {/* Column Selection */}
                   <CollapsibleSection
                     title="选择列 (SELECT)"
-                    description={`已选 ${analysisConfig.selectedColumns?.length || 0}/${tableColumns.length || 0} 列`}
+                    description={`已选 ${analysisConfig.selectedColumns?.length || 0}/${totalSelectableColumns || 0} 列${jsonTableCount > 0 ? ` · JSON 展开 ${jsonTableCount}` : ''}`}
                     storageKey={SECTION_STORAGE_KEYS.columns}
+                    actions={
+                      <Tooltip title={selectAllState === 'all' ? '取消全选' : '全选'}>
+                        <Checkbox
+                          size="small"
+                          indeterminate={selectAllState === 'some'}
+                          checked={selectAllState === 'all'}
+                          disabled={isLoading || tableColumns.length === 0}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => {
+                            event.stopPropagation();
+                            handleSelectAllColumns();
+                          }}
+                          sx={{
+                            color: 'var(--dq-text-secondary)',
+                            '&.Mui-checked': {
+                              color: 'var(--dq-accent-primary)'
+                            },
+                            '&.MuiCheckbox-indeterminate': {
+                              color: 'var(--dq-accent-primary)'
+                            }
+                          }}
+                        />
+                      </Tooltip>
+                    }
                   >
                     <ColumnSelector
                       selectedTable={selectedTable}
@@ -1620,24 +1698,12 @@ const VisualAnalysisPanel = ({
                       onColumnSelectionChange={handleColumnSelectionChange}
                       maxHeight={200}
                       showMetadata={true}
-                      resolvedCasts={resolvedCasts}
                       disabled={isLoading}
-                      showHeader={false}
-                    />
-                  </CollapsibleSection>
-
-                  <CollapsibleSection
-                    title="JSON 展开 (JSON_TABLE)"
-                    description={jsonTableCount > 0 ? `已配置 ${jsonTableCount} 个展开` : '将嵌套 JSON/STRUCT 展开为列'}
-                    storageKey={SECTION_STORAGE_KEYS.json}
-                    className="visual-analysis-section-card--full"
-                  >
-                    <JsonTableConfigurator
-                      columns={selectedTable?.columns || []}
                       jsonTables={analysisConfig.jsonTables || analysisConfig.json_tables || []}
-                      onChange={handleJsonTablesChange}
-                      disabled={isLoading}
+                      onJsonTablesChange={handleJsonTablesChange}
+                      columnProfiles={columnProfiles}
                     />
+
                   </CollapsibleSection>
 
                   {/* Aggregation Controls */}

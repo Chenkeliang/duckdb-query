@@ -289,29 +289,52 @@ function buildJsonTableClause(tableConfig = {}, index = 0) {
     .toString()
     .toLowerCase();
   const joinKeyword = joinType === 'inner' ? ' JOIN LATERAL' : ' LEFT JOIN LATERAL';
-  const columnClauses = normalizedColumns.map((column) => {
-    const columnIdentifier = escapeIdentifier(column.name);
-    if (column.ordinal) {
-      return `${columnIdentifier} FOR ORDINALITY`;
-    }
-    let clause = `${columnIdentifier} ${column.dataType} PATH ${escapeStringLiteral(column.path || '$')}`;
-    if (column.defaultValue !== undefined) {
-      clause += ` DEFAULT ${escapeStringLiteral(column.defaultValue)}`;
-    }
-    clause += ' NULL ON EMPTY NULL ON ERROR';
-    return clause;
-  });
+  const iteratorAlias = `json_each_${index + 1}`;
+  const sourceExpr = formatJsonColumnReference(String(sourceColumn).trim());
+  const rootPath = tableConfig.rootPath || tableConfig.root_path || '$';
+
+  const columnClauses = normalizedColumns
+    .map((column) => buildJsonEachProjection(column, iteratorAlias))
+    .filter(Boolean);
 
   if (columnClauses.length === 0) {
     return '';
   }
 
   const columnsSql = columnClauses.join(',\n        ');
-  const rootPath = tableConfig.rootPath || tableConfig.root_path || '$';
-  const sourceExpr = formatJsonColumnReference(String(sourceColumn).trim());
-  const jsonTableSql = `JSON_TABLE(${sourceExpr}, ${escapeStringLiteral(rootPath)}\n    COLUMNS (\n        ${columnsSql}\n    )\n  )`;
+  const { jsonSource, pathLiteral } = resolveJsonEachSource(sourceExpr, rootPath);
+  const rowSource = pathLiteral
+    ? `json_each(${jsonSource}, ${pathLiteral}) AS ${iteratorAlias}`
+    : `json_each(${jsonSource}) AS ${iteratorAlias}`;
+  const lateralSubquery = `(\n    SELECT\n        ${columnsSql}\n    FROM ${rowSource}\n  )`;
 
-  return `${joinKeyword} ${jsonTableSql} AS ${escapeIdentifier(alias)} ON TRUE`;
+  return `${joinKeyword} ${lateralSubquery} AS ${escapeIdentifier(alias)} ON TRUE`;
+}
+
+function buildJsonEachProjection(column, iteratorAlias) {
+  const columnIdentifier = formatJsonTableColumnAlias(column.name);
+  if (!columnIdentifier) {
+    return '';
+  }
+
+  if (column.ordinal) {
+    return `COALESCE(${iteratorAlias}.rowid, 0) + 1 AS ${columnIdentifier}`;
+  }
+
+  const dataType = column.dataType || 'VARCHAR';
+  const normalizedType = dataType.toUpperCase();
+  const pathLiteral = escapeStringLiteral(column.path || '$');
+  const extractor = isTextualJsonType(normalizedType) ? 'json_extract_string' : 'json_extract';
+  const extraction = `${extractor}(${iteratorAlias}.value, ${pathLiteral})`;
+  let projection = `TRY_CAST(${extraction} AS ${normalizedType})`;
+
+  if (column.defaultValue !== undefined) {
+    const defaultLiteral = formatSQLValue(column.defaultValue, normalizedType);
+    const typedDefault = `TRY_CAST(${defaultLiteral} AS ${normalizedType})`;
+    projection = `COALESCE(${projection}, ${typedDefault})`;
+  }
+
+  return `${projection} AS ${columnIdentifier}`;
 }
 
 function formatJsonColumnReference(identifier) {
@@ -618,6 +641,35 @@ function escapeStringLiteral(value) {
   // Escape single quotes by doubling them
   const escaped = value.replace(/'/g, "''");
   return `'${escaped}'`;
+}
+
+function formatJsonTableColumnAlias(name) {
+  if (!name || !String(name).trim()) {
+    return escapeIdentifier('column');
+  }
+  return escapeIdentifier(String(name).trim());
+}
+
+function resolveJsonEachSource(sourceExpr, rootPath) {
+  const normalizedPath = (rootPath || '$').trim() || '$';
+  const hasWildcard = /[\*\?]/.test(normalizedPath);
+  if (normalizedPath === '$') {
+    return { jsonSource: sourceExpr, pathLiteral: null };
+  }
+  if (hasWildcard) {
+    const literal = escapeStringLiteral(normalizedPath);
+    const extracted = `json_extract(${sourceExpr}, ${literal})`;
+    return { jsonSource: `json(${extracted})`, pathLiteral: null };
+  }
+  return { jsonSource: sourceExpr, pathLiteral: escapeStringLiteral(normalizedPath) };
+}
+
+function isTextualJsonType(dataType) {
+  if (!dataType) {
+    return true;
+  }
+  const markers = ['CHAR', 'TEXT', 'STRING', 'VARCHAR'];
+  return markers.some((marker) => dataType.includes(marker));
 }
 
 /**

@@ -1,3 +1,5 @@
+/* eslint-disable react/prop-types */
+
 import {
   Alert,
   Box,
@@ -29,24 +31,13 @@ import {
   ToggleButtonGroup,
   Tooltip,
   Typography,
-  useTheme,
 } from '@mui/material';
-import { Eye, EyeOff, Filter, List, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X, SlidersHorizontal, Plus, Trash2 } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
+import { Eye, EyeOff, Filter, List, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X, SlidersHorizontal, Plus, Trash2, Copy, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AgGridReact } from 'ag-grid-react';
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { useToast } from '../../contexts/ToastContext';
-import StableTable from '../StableTable';
 import VirtualTable from '../VirtualTable/VirtualTable';
 import { CardSurface } from '../common';
 
@@ -54,6 +45,153 @@ const DISTINCT_SAMPLE_LIMIT = 10000;
 const MAX_DISTINCT_PREVIEW = 1000;
 
 const NULL_KEY = '__NULL__';
+
+const AgColumnHeader = ({
+  displayName,
+  column,
+  api,
+  onCopyColumnName,
+  onOpenColumnFilterMenu,
+  getHasActiveFilter,
+}) => {
+  const field = column.getColDef().field;
+  const hasActiveFilter = getHasActiveFilter ? getHasActiveFilter(field) : false;
+  const [sortState, setSortState] = useState(() => column.getSort());
+
+  useEffect(() => {
+    if (!column) return undefined;
+    const handleSortChange = () => {
+      setSortState(column.getSort());
+    };
+    column.addEventListener('sortChanged', handleSortChange);
+    return () => {
+      column.removeEventListener('sortChanged', handleSortChange);
+    };
+  }, [column]);
+
+  const resolveSortIcon = () => {
+    if (sortState === 'asc') return <ArrowUp size={14} />;
+    if (sortState === 'desc') return <ArrowDown size={14} />;
+    return <ArrowUpDown size={14} />;
+  };
+
+  const resolveSortTooltip = () => {
+    if (sortState === 'asc') return '升序 (点击切换降序)';
+    if (sortState === 'desc') return '降序 (点击恢复默认)';
+    return '排序 (点击切换升序)';
+  };
+
+  const handleSortToggle = (event) => {
+    event.stopPropagation();
+    const current = column.getSort();
+    let next = 'asc';
+    if (current === 'asc') {
+      next = 'desc';
+    } else if (current === 'desc') {
+      next = null;
+    }
+    if (api) {
+      api.applyColumnState({
+        state: [
+          {
+            colId: field,
+            sort: next || undefined,
+          },
+        ],
+        defaultState: { sort: null },
+      });
+    }
+    setSortState(next);
+  };
+
+  const handleCopy = (event) => {
+    event.stopPropagation();
+    onCopyColumnName?.(displayName || field);
+  };
+
+  const handleFilter = (event) => {
+    event.stopPropagation();
+    onOpenColumnFilterMenu?.(field, event.currentTarget);
+  };
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 0.5,
+        width: '100%',
+      }}
+    >
+      <span
+        title={displayName}
+        style={{
+          fontWeight: 600,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {displayName}
+      </span>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+        <Tooltip title={resolveSortTooltip()}>
+          <IconButton
+            size="small"
+            onClick={handleSortToggle}
+            sx={{
+              width: 26,
+              height: 26,
+              color: sortState ? 'var(--dq-accent-primary)' : 'var(--dq-text-tertiary)',
+              '&:hover': {
+                color: 'var(--dq-accent-primary)',
+                backgroundColor: 'var(--dq-surface-hover)',
+              },
+            }}
+          >
+            {resolveSortIcon()}
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="复制列名">
+          <IconButton
+            size="small"
+            onClick={handleCopy}
+            sx={{
+              width: 26,
+              height: 26,
+              color: 'var(--dq-text-tertiary)',
+              '&:hover': {
+                color: 'var(--dq-text-primary)',
+                backgroundColor: 'var(--dq-surface-hover)',
+              },
+            }}
+          >
+            <Copy size={14} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="列筛选">
+          <IconButton
+            size="small"
+            onClick={handleFilter}
+            sx={{
+              width: 26,
+              height: 26,
+              color: hasActiveFilter ? 'var(--dq-accent-primary)' : 'var(--dq-text-tertiary)',
+              '&:hover': {
+                color: 'var(--dq-accent-primary)',
+                backgroundColor: 'var(--dq-surface-hover)',
+              },
+            }}
+          >
+            <Filter size={14} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+    </Box>
+  );
+};
+
 
 const makeValueKey = (value) => {
   if (value === null || value === undefined) {
@@ -149,7 +287,6 @@ const ModernDataDisplay = ({
   data = [],
   columns = [],
   loading = false,
-  onExport,
   onRefresh,
   title = '查询结果',
   sqlQuery = '',
@@ -161,19 +298,14 @@ const ModernDataDisplay = ({
   isVisualQuery = false,
   visualConfig = null,
   generatedSQL = '',
-  // Set operation specific props
-  isSetOperation = false,
-  setOperationConfig = null,
 }) => {
 
-  const theme = useTheme();
   const { showSuccess, showError } = useToast();
   const [searchText, setSearchText] = useState('');
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
   const [columnMenuAnchor, setColumnMenuAnchor] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState(new Set());
-  const [columnLayouts, setColumnLayouts] = useState([]);
   const [renderMode, setRenderMode] = useState('agGrid'); // 'agGrid' 或 'virtual'
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [draftFilters, setDraftFilters] = useState([]);
@@ -185,6 +317,13 @@ const ModernDataDisplay = ({
   const [columnFilterIncludeMode, setColumnFilterIncludeMode] = useState('include');
   const [columnFilterSelectedKeys, setColumnFilterSelectedKeys] = useState([]);
   const [columnFilterHasCustomSelection, setColumnFilterHasCustomSelection] = useState(false);
+  const gridApiRef = useRef(null);
+  const gridColumnApiRef = useRef(null);
+
+  const handleOpenColumnFilterMenu = useCallback((field, anchorEl) => {
+    setColumnFilterField(field);
+    setColumnFilterAnchorEl(anchorEl);
+  }, []);
 
   // 保存到表相关状态
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -318,74 +457,15 @@ const ModernDataDisplay = ({
     });
   }, [columns]);
 
-  // 调试 normalizedColumns
-  if (process.env.NODE_ENV === 'development') {
-  }
-
   // 当columns变化时，更新visibleColumns
   useEffect(() => {
     if (normalizedColumns.length === 0) {
       setVisibleColumns(new Set());
-      setColumnLayouts([]);
       return;
     }
 
-    const newVisibleColumns = new Set(normalizedColumns.map(col => col.field));
-    setVisibleColumns(newVisibleColumns);
-
-    setColumnLayouts(prevLayouts => {
-      const prevMap = prevLayouts.reduce((acc, layout) => {
-        acc[layout.field] = layout;
-        return acc;
-      }, {});
-
-      return normalizedColumns.map((col, index) => {
-        const existing = prevMap[col.field];
-        return {
-          field: col.field,
-          headerName: col.headerName,
-          width: existing?.width || col.width || 200,
-          order: existing?.order ?? index,
-          minWidth: col.minWidth || 120,
-          maxWidth: col.maxWidth || 800,
-        };
-      });
-    });
+    setVisibleColumns(new Set(normalizedColumns.map(col => col.field)));
   }, [normalizedColumns]);
-
-  const handleColumnWidthChange = useCallback((field, width) => {
-    setColumnLayouts(prev =>
-      prev.map(layout =>
-        layout.field === field
-          ? {
-              ...layout,
-              width: Math.min(
-                Math.max(width, layout.minWidth || 80),
-                layout.maxWidth || 800
-              ),
-            }
-          : layout
-      )
-    );
-  }, []);
-
-  const handleColumnOrderChange = useCallback((sourceField, targetField) => {
-    setColumnLayouts(prev => {
-      const sourceIndex = prev.findIndex(layout => layout.field === sourceField);
-      const targetIndex = prev.findIndex(layout => layout.field === targetField);
-      if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
-        return prev;
-      }
-      const reordered = arrayMove(prev, sourceIndex, targetIndex);
-      return reordered.map((layout, index) => ({ ...layout, order: index }));
-    });
-  }, []);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    })
-  );
 
   React.useEffect(() => {
     if (filterDialogOpen) {
@@ -527,7 +607,6 @@ const ModernDataDisplay = ({
       return;
     }
 
-    const info = distinctValueMap[columnFilterField];
     const existing = columnValueFilters[columnFilterField];
 
     if (existing) {
@@ -658,15 +737,14 @@ const ModernDataDisplay = ({
     handleCloseColumnFilterMenu();
   };
 
-  const columnFilterOptions = activeColumnFilterInfo ? activeColumnFilterInfo.options : [];
-
   const filteredColumnFilterOptions = React.useMemo(() => {
+    const options = activeColumnFilterInfo ? activeColumnFilterInfo.options : [];
     if (!columnFilterSearch) {
-      return columnFilterOptions;
+      return options;
     }
     const lower = columnFilterSearch.toLowerCase();
-    return columnFilterOptions.filter(option => option.label.toLowerCase().includes(lower));
-  }, [columnFilterOptions, columnFilterSearch]);
+    return options.filter(option => option.label.toLowerCase().includes(lower));
+  }, [activeColumnFilterInfo, columnFilterSearch]);
 
   const columnFilterSelectionSet = React.useMemo(() => new Set(columnFilterSelectedKeys), [columnFilterSelectedKeys]);
   const activeColumnLabel = columnFilterField
@@ -682,7 +760,7 @@ const ModernDataDisplay = ({
   // 关联结果列的单元格渲染器
   const JoinResultCellRenderer = (params) => {
     const value = params.value;
-    if (!value) return '';
+    if (!value) return null;
 
     const getDisplayInfo = (joinResult) => {
       switch (joinResult) {
@@ -715,108 +793,113 @@ const ModernDataDisplay = ({
 
     const displayInfo = getDisplayInfo(value);
 
-    // 创建DOM元素并返回
-    const container = document.createElement('div');
-    container.style.cssText = 'display: flex; justify-content: center; align-items: center; height: 100%; width: 100%;';
-
-    const chip = document.createElement('span');
-    chip.style.cssText = `
-      background-color: ${displayInfo.backgroundColor};
-      color: ${displayInfo.color};
-      padding: 4px 8px;
-      border-radius: 12px;
-      font-size: 1rem;
-      font-weight: 500;
-      text-align: center;
-      min-width: 60px;
-      display: inline-block;
-      white-space: nowrap;
-    `;
-    chip.textContent = displayInfo.label;
-
-    // 移除事件防护，避免React错误
-
-    container.appendChild(chip);
-    return container;
+    return (
+      <Chip
+        size="small"
+        label={displayInfo.label}
+        sx={{
+          backgroundColor: displayInfo.backgroundColor,
+          color: displayInfo.color,
+          fontWeight: 600,
+          borderRadius: '999px',
+          minWidth: 72,
+          px: 1.5,
+        }}
+      />
+    );
   };
 
-  // AG-Grid列定义
-  const columnDefs = useMemo(() => {
-    return normalizedColumns
-      .filter(col => visibleColumns.has(col.field))
-      .map(col => {
-        const layout = columnLayouts.find(layoutItem => layoutItem.field === col.field) || {};
-        const isJoinResultColumn =
-          col.field && typeof col.field === 'string' && col.field.startsWith('join_result_');
-        const width = layout.width || (isJoinResultColumn ? 120 : 150);
+  const getHasActiveColumnFilter = useCallback(
+    (field) => Boolean(columnValueFilters[field]),
+    [columnValueFilters]
+  );
 
-        return {
-          ...col,
-          sortable: true,
-          filter: true,
-          resizable: true,
-          width,
-          minWidth: layout.minWidth || (isJoinResultColumn ? 100 : 80),
-          headerClass: isJoinResultColumn ? 'join-result-header' : 'modern-header',
-          order: layout.order ?? 0,
-          cellRenderer: isJoinResultColumn ? JoinResultCellRenderer : undefined,
-          cellStyle: isJoinResultColumn
-            ? {
-                fontSize: '1rem',
-                padding: '4px 8px',
-                textAlign: 'center',
-                backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 8%, transparent)',
-              }
-            : {
-                fontSize: '1rem',
-                padding: '8px 12px',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              },
-        };
-      })
-      .sort((a, b) => (a.order || 0) - (b.order || 0));
-  }, [normalizedColumns, visibleColumns, columnLayouts]);
-      .map(col => {
-        // 检查是否是关联结果列
-        const isJoinResultColumn = col.field && typeof col.field === 'string' && col.field.startsWith('join_result_');
+  const agDefaultColDef = useMemo(
+    () => ({
+      sortable: true,
+      filter: true,
+      resizable: true,
+      suppressMenu: true,
+      flex: 1,
+      minWidth: 140,
+      headerComponent: AgColumnHeader,
+      headerComponentParams: {
+        onCopyColumnName: handleCopyColumnName,
+        onOpenColumnFilterMenu: handleOpenColumnFilterMenu,
+        getHasActiveFilter: getHasActiveColumnFilter,
+      },
+      cellStyle: {
+        fontSize: '1rem',
+        padding: '8px 12px',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+      },
+    }),
+    [handleCopyColumnName, handleOpenColumnFilterMenu, getHasActiveColumnFilter]
+  );
 
-        const baseConfig = {
-          ...col,
-          sortable: true,
-          filter: true,
-          resizable: true,
-          width: isJoinResultColumn ? 120 : 150, // 关联结果列稍窄
-          minWidth: isJoinResultColumn ? 100 : 80,
-          headerClass: isJoinResultColumn ? 'join-result-header' : 'modern-header',
-        };
+  const agGridColumnDefs = useMemo(() => {
+    return normalizedColumns.map((col) => {
+      const isJoinResultColumn =
+        col.field && typeof col.field === 'string' && col.field.startsWith('join_result_');
 
-        if (isJoinResultColumn) {
-          return {
-            ...baseConfig,
-            cellRenderer: JoinResultCellRenderer,
-            cellStyle: {
-              fontSize: '1rem',
-              padding: '4px 8px',
-              textAlign: 'center',
-              backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 8%, transparent)',
-            },
-            headerName: col.headerName || col.field.replace('join_result_', '关联结果_'),
-          };
-        } else {
-          return {
-            ...baseConfig,
-            cellStyle: {
-              fontSize: '1rem',
-              padding: '8px 12px',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            },
-          };
-        }
+      return {
+        field: col.field,
+        headerName: col.headerName || col.field,
+        hide: !visibleColumns.has(col.field),
+        minWidth: isJoinResultColumn ? 120 : 160,
+        cellRenderer: isJoinResultColumn ? JoinResultCellRenderer : undefined,
+        valueFormatter: (params) => {
+          const value = params.value;
+          if (value === null || value === undefined) {
+            return '';
+          }
+          if (value instanceof Date) {
+            return value.toISOString();
+          }
+          if (typeof value === 'object') {
+            try {
+              return JSON.stringify(value);
+            } catch (error) {
+              return String(value);
+            }
+          }
+          return String(value);
+        },
+      };
+    });
+  }, [normalizedColumns, visibleColumns]);
+
+  const handleGridReady = useCallback(
+    (params) => {
+      gridApiRef.current = params.api;
+      gridColumnApiRef.current = params.columnApi;
+      params.api.setDomLayout('normal');
+      params.columnApi.applyColumnState({
+        state: normalizedColumns.map((col, index) => ({
+          colId: col.field,
+          hide: !visibleColumns.has(col.field),
+          order: index,
+        })),
+        applyOrder: true,
       });
+    },
+    [normalizedColumns, visibleColumns]
+  );
+
+  useEffect(() => {
+    if (!gridColumnApiRef.current || !normalizedColumns.length) {
+      return;
+    }
+    gridColumnApiRef.current.applyColumnState({
+      state: normalizedColumns.map((col, index) => ({
+        colId: col.field,
+        hide: !visibleColumns.has(col.field),
+        order: index,
+      })),
+      applyOrder: true,
+    });
   }, [normalizedColumns, visibleColumns]);
 
   // 统计信息
@@ -838,11 +921,6 @@ const ModernDataDisplay = ({
     setColumnMenuAnchor(null);
   };
 
-  const handleOpenColumnFilterMenu = (field, anchorEl) => {
-    setColumnFilterField(field);
-    setColumnFilterAnchorEl(anchorEl);
-  };
-
   const handleCloseColumnFilterMenu = () => {
     setColumnFilterAnchorEl(null);
     setColumnFilterField(null);
@@ -853,13 +931,19 @@ const ModernDataDisplay = ({
 
 
   const handleColumnToggle = (columnField) => {
-    const newVisibleColumns = new Set(visibleColumns);
-    if (newVisibleColumns.has(columnField)) {
-      newVisibleColumns.delete(columnField);
-    } else {
-      newVisibleColumns.add(columnField);
-    }
-    setVisibleColumns(newVisibleColumns);
+    setVisibleColumns(prev => {
+      const next = new Set(prev);
+      const shouldShow = !next.has(columnField);
+      if (shouldShow) {
+        next.add(columnField);
+      } else {
+        next.delete(columnField);
+      }
+      if (gridColumnApiRef.current) {
+        gridColumnApiRef.current.setColumnVisible(columnField, shouldShow);
+      }
+      return next;
+    });
   };
 
   const handleClearSearch = () => {
@@ -903,7 +987,7 @@ const ModernDataDisplay = ({
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit'
-    }).replace(/[\/\s:]/g, '');
+    }).replace(/[/\s:]/g, '');
     setDatasourceName(`查询结果_${timestamp}`);
     setTableAlias(`query_result_${timestamp}`);
   };
@@ -1578,24 +1662,37 @@ const ModernDataDisplay = ({
               columnValueFilters={columnValueFilters}
               onOpenColumnFilterMenu={handleOpenColumnFilterMenu}
               onCopyColumnName={handleCopyColumnName}
-              columnLayouts={columnLayouts}
-              onColumnWidthChange={handleColumnWidthChange}
-              onColumnOrderChange={handleColumnOrderChange}
             />
           ) : (
-            <StableTable
-              data={paginatedData}
-              columns={columnDefs}
-              pageSize={pageSize}
-              height={600}
-              originalDatasource={originalDatasource}
-              columnValueFilters={columnValueFilters}
-              onOpenColumnFilterMenu={handleOpenColumnFilterMenu}
-              onCopyColumnName={handleCopyColumnName}
-              columnLayouts={columnLayouts}
-              onColumnWidthChange={handleColumnWidthChange}
-              onColumnOrderChange={handleColumnOrderChange}
-            />
+            <Box
+              className="ag-theme-alpine dq-ag-grid"
+              sx={{
+                height: 600,
+                width: '100%',
+                '& .ag-root-wrapper': {
+                  borderRadius: 'var(--dq-radius-card)',
+                  border: 'none',
+                },
+                '& .ag-ltr .ag-cell': {
+                  borderRightColor: 'var(--dq-border-subtle)',
+                },
+              }}
+            >
+              <AgGridReact
+                rowData={paginatedData}
+                columnDefs={agGridColumnDefs}
+                defaultColDef={agDefaultColDef}
+                animateRows
+                rowHeight={48}
+                headerHeight={48}
+                enableCellTextSelection
+                suppressDragLeaveHidesColumns
+                suppressRowClickSelection
+                domLayout="normal"
+                reactUi
+                onGridReady={handleGridReady}
+              />
+            </Box>
           )}
         </Box>
 

@@ -154,7 +154,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
             data_tables: {
                 label: '数据表',
                 icon: ViewList,
-                color: 'var(--dq-accent-primary-soft)',
+                color: 'var(--dq-accent-primary)',
                 lightBg: 'var(--dq-surface-card-active)',
                 description: `${groupedTables.data_tables.length} 个表`
             }
@@ -174,12 +174,13 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
             (isDarkMode ? 'var(--dq-accent-100)' : 'var(--dq-accent-primary)');
         const accentOverlay = (amount) => withOpacity(accentResolved, amount, accentResolved);
         const cardBackground = isDarkMode ? 'var(--dq-surface)' : 'var(--dq-surface-card)';
-        const borderColor = isDarkMode ? 'var(--dq-border)' : 'var(--dq-border)';
+        const borderColor = 'var(--dq-border)';
         const headerBackground = cardBackground;
         const headerHoverBackground = isDarkMode ? 'var(--dq-surface-active)' : 'var(--dq-surface-hover)';
-        const iconBackground = accentOverlay(isDarkMode ? 0.18 : 0.12);
-        const chipBackground = isDarkMode ? accentOverlay(0.3) : accentResolved;
-        const chipTextColor = 'var(--dq-text-on-primary)';
+        const iconBackground = 'color-mix(in oklab, var(--dq-surface-card) 85%, var(--dq-background) 15%)';
+        const iconBorderColor = 'color-mix(in oklab, var(--dq-border-card) 70%, transparent)';
+        const chipBackground = isDarkMode ? accentOverlay(0.32) : accentOverlay(0.12);
+        const chipTextColor = isDarkMode ? 'var(--dq-text-on-primary)' : accentResolved;
         const collapseBackground = cardBackground;
         const listHoverBackground = accentOverlay(isDarkMode ? 0.2 : 0.08);
         const copyButtonBackground = accentOverlay(isDarkMode ? 0.16 : 0.05);
@@ -243,6 +244,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
                                         height: 30,
                                         borderRadius: '50%',
                                         backgroundColor: iconBackground,
+                                        border: `1px solid ${iconBorderColor}`,
                                         transition: 'all 0.2s ease-in-out'
                                     }}
                                 >

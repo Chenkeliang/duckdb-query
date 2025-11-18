@@ -110,11 +110,17 @@ class TestSQLGeneration:
 
         sql = generate_sql_from_config(config)
 
-        assert 'FROM "orders" LEFT JOIN LATERAL JSON_TABLE' in sql
-        assert '"items_payload"' in sql
+        assert 'FROM "orders" LEFT JOIN LATERAL (\n    SELECT' in sql
+        assert (
+            'FROM json_each(json(json_extract("items_payload", \'$.items[*]\'))) AS json_each_1'
+            in sql
+        )
         assert '"items_expanded"' in sql
-        assert "\"item_name\" VARCHAR PATH '$.name'" in sql
-        assert '"row_num" FOR ORDINALITY' in sql
+        assert (
+            "TRY_CAST(json_extract_string(json_each_1.value, '$.name') AS VARCHAR) AS \"item_name\""
+            in sql
+        )
+        assert "COALESCE(json_each_1.rowid, 0) + 1 AS \"row_num\"" in sql
 
     def test_aggregation_functions(self):
         """Test various aggregation functions"""

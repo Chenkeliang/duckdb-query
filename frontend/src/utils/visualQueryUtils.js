@@ -710,6 +710,87 @@ function escapeSqlLiteral(value) {
   return `'${stringValue.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
 }
 
+function formatJsonTableColumnAlias(name) {
+  if (!name || !String(name).trim()) {
+    return escapeIdentifier("column");
+  }
+  return escapeIdentifier(String(name).trim());
+}
+
+function buildJsonEachProjection(column, iteratorAlias) {
+  const columnIdentifier = formatJsonTableColumnAlias(column.name);
+  if (!columnIdentifier) {
+    return "";
+  }
+
+  if (column.ordinal) {
+    return `COALESCE(${iteratorAlias}.rowid, 0) + 1 AS ${columnIdentifier}`;
+  }
+
+  const normalizedType = (column.dataType || "VARCHAR").toUpperCase();
+  const pathLiteral = escapeSqlLiteral(column.path || "$");
+  const extractor = isTextualJsonType(normalizedType) ? "json_extract_string" : "json_extract";
+  const extraction = `${extractor}(${iteratorAlias}.value, ${pathLiteral})`;
+  let projection = `TRY_CAST(${extraction} AS ${normalizedType})`;
+
+  if (column.defaultValue !== undefined) {
+    const defaultLiteral = formatJsonDefaultLiteral(column.defaultValue, normalizedType);
+    const typedDefault = `TRY_CAST(${defaultLiteral} AS ${normalizedType})`;
+    projection = `COALESCE(${projection}, ${typedDefault})`;
+  }
+
+  return `${projection} AS ${columnIdentifier}`;
+}
+
+function formatJsonDefaultLiteral(value, dataType = "VARCHAR") {
+  if (value === null || value === undefined) {
+    return "NULL";
+  }
+
+  const upperType = dataType.toUpperCase();
+
+  if (upperType.includes("INT") || upperType.includes("NUMERIC") || upperType.includes("DECIMAL") ||
+    upperType.includes("FLOAT") || upperType.includes("DOUBLE") || upperType.includes("REAL")) {
+    const numValue = Number(value);
+    if (Number.isNaN(numValue)) {
+      throw new Error(`无效的数值: ${value}`);
+    }
+    return String(numValue);
+  }
+
+  if (upperType.includes("BOOL")) {
+    return value ? "TRUE" : "FALSE";
+  }
+
+  if (upperType.includes("DATE") || upperType.includes("TIME") || upperType.includes("TIMESTAMP")) {
+    return escapeSqlLiteral(value);
+  }
+
+  return escapeSqlLiteral(value);
+}
+
+function resolveJsonEachSource(sourceExpr, rootPath) {
+  const normalizedPath = (rootPath || "$").trim() || "$";
+  const hasWildcard = /[\*\?]/.test(normalizedPath);
+  if (normalizedPath === "$") {
+    return { jsonSource: sourceExpr, pathLiteral: null };
+  }
+  if (hasWildcard) {
+    const literal = escapeSqlLiteral(normalizedPath);
+    const extracted = `json_extract(${sourceExpr}, ${literal})`;
+    return { jsonSource: `json(${extracted})`, pathLiteral: null };
+  }
+  return { jsonSource: sourceExpr, pathLiteral: escapeSqlLiteral(normalizedPath) };
+}
+
+function isTextualJsonType(dataType) {
+  if (!dataType) {
+    return true;
+  }
+  const markers = ["CHAR", "TEXT", "STRING", "VARCHAR"];
+  return markers.some((marker) => dataType.includes(marker));
+}
+
 function normalizeColumnTypeName(rawType, sampleValues = []) {
   if (rawType && typeof rawType === "string") {
     const type = rawType.toLowerCase();
@@ -1121,27 +1202,25 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
         .toString()
         .toLowerCase();
       const joinKeyword = joinType === 'inner' ? 'JOIN LATERAL' : 'LEFT JOIN LATERAL';
-      const columnClauses = normalizedColumns.map((column) => {
-        const columnIdentifier = escapeIdentifier(column.name);
-        if (column.ordinal) {
-          return `${columnIdentifier} FOR ORDINALITY`;
-        }
-        let clause = `${columnIdentifier} ${column.dataType} PATH ${escapeSqlLiteral(column.path || '$')}`;
-        if (column.defaultValue !== undefined) {
-          clause += ` DEFAULT ${escapeSqlLiteral(column.defaultValue)}`;
-        }
-        clause += ' NULL ON EMPTY NULL ON ERROR';
-        return clause;
-      });
+      const iteratorAlias = `json_each_${index + 1}`;
+      const sourceExpr = formatJsonColumnReference(String(sourceColumn).trim());
+      const rootPath = tableConfig.rootPath || tableConfig.root_path || '$';
+
+      const columnClauses = normalizedColumns
+        .map((column) => buildJsonEachProjection(column, iteratorAlias))
+        .filter(Boolean);
 
       if (columnClauses.length === 0) {
         return '';
       }
 
       const columnsSql = columnClauses.join(',\n        ');
-      const rootPath = tableConfig.rootPath || tableConfig.root_path || '$';
-      const jsonTableSql = `JSON_TABLE(${formatJsonColumnReference(String(sourceColumn).trim())}, ${escapeSqlLiteral(rootPath)}\n    COLUMNS (\n        ${columnsSql}\n    )\n  )`;
-      return `\n${joinKeyword} ${jsonTableSql} AS ${escapeIdentifier(alias)} ON TRUE`;
+      const { jsonSource, pathLiteral } = resolveJsonEachSource(sourceExpr, rootPath);
+      const rowSource = pathLiteral
+        ? `json_each(${jsonSource}, ${pathLiteral}) AS ${iteratorAlias}`
+        : `json_each(${jsonSource}) AS ${iteratorAlias}`;
+      const lateralSubquery = `(\n    SELECT\n        ${columnsSql}\n    FROM ${rowSource}\n  )`;
+      return `\n${joinKeyword} ${lateralSubquery} AS ${escapeIdentifier(alias)} ON TRUE`;
     };
 
     const buildFromClause = () => {

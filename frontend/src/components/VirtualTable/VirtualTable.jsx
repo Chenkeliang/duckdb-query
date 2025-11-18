@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FixedSizeList as List } from 'react-window';
-import { Copy, Filter } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Copy, Filter } from 'lucide-react';
 
 const VirtualTable = ({
   data = [],
@@ -31,6 +31,7 @@ const VirtualTable = ({
   const theme = useTheme();
   const containerRef = useRef(null);
   const [containerWidth, setContainerWidth] = useState(1200);
+  const [sortState, setSortState] = useState({ field: null, direction: null });
 
   // 检测容器宽度
   useEffect(() => {
@@ -70,6 +71,46 @@ const VirtualTable = ({
       backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 26%, transparent)'
     }
   };
+
+  const handleSortToggle = useCallback((field) => {
+    setSortState((prev) => {
+      if (prev.field !== field) {
+        return { field, direction: 'asc' };
+      }
+
+      if (prev.direction === 'asc') {
+        return { field, direction: 'desc' };
+      }
+
+      return { field: null, direction: null };
+    });
+  }, []);
+
+  const resolveSortIcon = useCallback((field) => {
+    if (sortState.field !== field) {
+      return <ArrowUpDown size={16} />;
+    }
+
+    if (sortState.direction === 'asc') {
+      return <ArrowUp size={16} />;
+    }
+
+    if (sortState.direction === 'desc') {
+      return <ArrowDown size={16} />;
+    }
+
+    return <ArrowUpDown size={16} />;
+  }, [sortState]);
+
+  const getSortTooltip = useCallback((field) => {
+    if (sortState.field !== field || !sortState.direction) {
+      return '排序 (点击切换升序)';
+    }
+    if (sortState.direction === 'asc') {
+      return '升序 (点击切换降序)';
+    }
+    return '降序 (点击恢复默认)';
+  }, [sortState]);
 
   const handleCopyColumnLabel = (label) => {
     const resolved = label || '';
@@ -152,13 +193,52 @@ const VirtualTable = ({
   // 使用铺满容器的宽度设置
   const { columnWidths: finalColumnWidths, totalWidth } = calculateTableWidth();
 
+  const sortedData = useMemo(() => {
+    if (!sortState.field || !sortState.direction) {
+      return data;
+    }
+
+    const directionFactor = sortState.direction === 'asc' ? 1 : -1;
+    const field = sortState.field;
+    const sorted = [...data];
+
+    sorted.sort((a, b) => {
+      const aValue = a?.[field];
+      const bValue = b?.[field];
+      const aNullish = aValue === null || aValue === undefined;
+      const bNullish = bValue === null || bValue === undefined;
+
+      if (aNullish && bNullish) return 0;
+      if (aNullish) return 1 * directionFactor;
+      if (bNullish) return -1 * directionFactor;
+
+      const aNumber = Number(aValue);
+      const bNumber = Number(bValue);
+      const bothNumbers = !Number.isNaN(aNumber) && !Number.isNaN(bNumber);
+      if (bothNumbers) {
+        if (aNumber === bNumber) return 0;
+        return aNumber > bNumber ? directionFactor : -directionFactor;
+      }
+
+      const comparison = String(aValue).localeCompare(String(bValue), undefined, {
+        numeric: true,
+        sensitivity: 'base'
+      });
+      return comparison * directionFactor;
+    });
+
+    return sorted;
+  }, [data, sortState]);
+
+  const displayedData = sortedData;
+
   // 计算动态行高
   const dynamicRowHeight = useMemo(() => {
-    if (!autoRowHeight || !data.length) return rowHeight;
+    if (!autoRowHeight || !displayedData.length) return rowHeight;
 
     // 计算每行内容的最大高度
     const maxContentHeight = Math.max(
-      ...data.slice(0, 50).map(row => { // 只检查前50行以提高性能
+      ...displayedData.slice(0, 50).map(row => { // 只检查前50行以提高性能
         const maxCellHeight = Math.max(
           ...columns.map(col => {
             const content = String(row[col.field] || '');
@@ -172,7 +252,7 @@ const VirtualTable = ({
     );
 
     return Math.max(maxContentHeight, rowHeight);
-  }, [data, columns, rowHeight, autoRowHeight]);
+  }, [displayedData, columns, rowHeight, autoRowHeight]);
 
   // 格式化单元格值 - 改进显示逻辑
   const formatCellValue = useCallback((value, type) => {
@@ -214,7 +294,7 @@ const VirtualTable = ({
 
   // 渲染行组件
   const Row = useCallback(({ index, style }) => {
-    const row = data[index];
+    const row = displayedData[index];
     if (!row) return null;
 
     return (
@@ -257,7 +337,7 @@ const VirtualTable = ({
         </TableRow>
       </div>
     );
-  }, [data, columns, finalColumnWidths, onRowClick, totalWidth, formatCellValue]);
+  }, [displayedData, columns, finalColumnWidths, onRowClick, totalWidth, formatCellValue]);
 
   if (loading) {
     return (
@@ -267,7 +347,7 @@ const VirtualTable = ({
     );
   }
 
-  if (!data.length) {
+  if (!displayedData.length) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
         <Typography color="text.secondary">暂无数据</Typography>
@@ -353,6 +433,24 @@ const VirtualTable = ({
                     )}
                   </Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Tooltip title={getSortTooltip(column.field)}>
+                      <IconButton
+                        size="small"
+                        aria-label={`排序 ${column.headerName || column.field}`}
+                        sx={{
+                          ...headerActionBaseSx,
+                          ...(sortState.field === column.field && sortState.direction
+                            ? headerActionActiveSx
+                            : {})
+                        }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleSortToggle(column.field);
+                        }}
+                      >
+                        {resolveSortIcon(column.field)}
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="复制列名">
                       <IconButton
                         size="small"
@@ -393,7 +491,7 @@ const VirtualTable = ({
       <Box sx={{ width: totalWidth }}>
         <List
           height={height - 56} // 减去表头高度
-          itemCount={data.length}
+          itemCount={displayedData.length}
           itemSize={dynamicRowHeight}
           width={totalWidth}
         >

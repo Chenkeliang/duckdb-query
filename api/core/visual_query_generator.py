@@ -32,6 +32,7 @@ from models.visual_query_models import (
     PivotValueAxis,
     PivotValueConfig,
     JSONTableConfig,
+    JSONTableColumnConfig,
 )
 
 try:  # pragma: no cover - optional during tests
@@ -363,32 +364,77 @@ def _build_json_table_join_clause(
     alias = json_config.alias or f"json_table_{index + 1}"
     alias_sql = _quote_identifier(alias)
     source_expr = _format_column_reference(json_config.source_column)
+    iterator_alias = f"json_each_{index + 1}"
 
-    column_fragments: List[str] = []
-    for column in json_config.columns:
-        column_name = _quote_identifier(column.name)
-        if column.ordinal:
-            column_fragments.append(f"{column_name} FOR ORDINALITY")
-            continue
+    root_path = json_config.root_path or "$"
 
-        path_literal = _format_literal(column.path or "$")
-        data_type = (column.data_type or "VARCHAR").upper()
-        clause = f"{column_name} {data_type} PATH {path_literal}"
-        if column.default is not None:
-            clause += f" DEFAULT {_format_literal(column.default)}"
-        clause += " NULL ON EMPTY"
-        clause += " NULL ON ERROR"
-        column_fragments.append(clause)
+    column_expressions = [
+        _build_json_each_projection(column, iterator_alias)
+        for column in json_config.columns
+    ]
+    columns_sql = ",\n        ".join(column_expressions)
 
-    columns_sql = ",\n        ".join(column_fragments)
-    root_literal = _format_literal(json_config.root_path or "$")
-    json_table_sql = (
-        f"JSON_TABLE({source_expr}, {root_literal}\n"
-        f"    COLUMNS (\n        {columns_sql}\n    )\n)"
+    json_source_expr, path_literal = _resolve_json_each_source(source_expr, root_path)
+    if path_literal:
+        row_source = f"json_each({json_source_expr}, {path_literal}) AS {iterator_alias}"
+    else:
+        row_source = f"json_each({json_source_expr}) AS {iterator_alias}"
+    lateral_subquery = (
+        "(\n"
+        "    SELECT\n"
+        f"        {columns_sql}\n"
+        f"    FROM {row_source}\n"
+        ")"
     )
 
     join_keyword = "LEFT JOIN LATERAL" if json_config.outer_join else "JOIN LATERAL"
-    return f" {join_keyword} {json_table_sql} AS {alias_sql} ON TRUE"
+    return f" {join_keyword} {lateral_subquery} AS {alias_sql} ON TRUE"
+
+
+def _build_json_each_projection(
+    column: JSONTableColumnConfig, iterator_alias: str
+) -> str:
+    column_name = _quote_identifier(column.name)
+    if column.ordinal:
+        ordinal_expr = f"COALESCE({iterator_alias}.rowid, 0) + 1"
+        return f"{ordinal_expr} AS {column_name}"
+
+    data_type = (column.data_type or "VARCHAR").upper()
+    path_literal = _format_literal(column.path or "$")
+    value_reference = f"{iterator_alias}.value"
+    extractor = (
+        "json_extract_string" if _is_textual_json_type(data_type) else "json_extract"
+    )
+    extraction_expr = f"{extractor}({value_reference}, {path_literal})"
+
+    projected_expr = f"TRY_CAST({extraction_expr} AS {data_type})"
+
+    if column.default is not None:
+        default_literal = _format_literal(column.default)
+        typed_default = f"TRY_CAST({default_literal} AS {data_type})"
+        projected_expr = f"COALESCE({projected_expr}, {typed_default})"
+
+    return f"{projected_expr} AS {column_name}"
+
+
+def _resolve_json_each_source(
+    source_expr: str, root_path: str
+) -> tuple[str, Optional[str]]:
+    cleaned_path = (root_path or "$").strip() or "$"
+    has_wildcard = "*" in cleaned_path or "?" in cleaned_path
+    if cleaned_path == "$":
+        return source_expr, None
+    if has_wildcard:
+        extracted = f"json_extract({source_expr}, {_format_literal(cleaned_path)})"
+        return f"json({extracted})", None
+    return source_expr, _format_literal(cleaned_path)
+
+
+def _is_textual_json_type(data_type: str) -> bool:
+    if not data_type:
+        return True
+    text_markers = ("CHAR", "TEXT", "STRING", "VARCHAR")
+    return any(marker in data_type for marker in text_markers)
 
 
 def _build_from_clause(config: VisualQueryConfig) -> str:

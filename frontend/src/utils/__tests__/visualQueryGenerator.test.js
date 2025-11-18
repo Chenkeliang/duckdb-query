@@ -177,9 +177,10 @@ describe('Visual Query Generator', () => {
       const result = generateSQLPreview(config, 'orders');
 
       expect(result.success).toBe(true);
-      expect(result.sql).toContain('LEFT JOIN LATERAL JSON_TABLE');
-      expect(result.sql).toContain('"item_name" VARCHAR PATH');
-      expect(result.sql).toContain('"row_num" FOR ORDINALITY');
+      expect(result.sql).toContain('LEFT JOIN LATERAL (\n    SELECT');
+      expect(result.sql).toContain('FROM json_each(json(json_extract("items_json", \'$.items[*]\'))) AS json_each_1');
+      expect(result.sql).toContain('TRY_CAST(json_extract_string(json_each_1.value, \'$.name\') AS VARCHAR) AS "item_name"');
+      expect(result.sql).toContain('COALESCE(json_each_1.rowid, 0) + 1 AS "row_num"');
     });
 
     it('handles errors gracefully', () => {

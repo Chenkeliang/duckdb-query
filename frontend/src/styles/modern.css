@@ -414,6 +414,59 @@ body,
   background-color: color-mix(in oklab, var(--dq-accent-100) 16%, transparent) !important;
 }
 
+.dq-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+  text-transform: uppercase;
+  background-color: var(--dq-surface-alt);
+  color: var(--dq-text-secondary);
+}
+
+.dq-tag-type {
+  background-color: var(--dq-surface-card);
+  border-color: var(--dq-border-card);
+  color: var(--dq-text-secondary);
+}
+
+.dq-tag-status {
+  background-color: var(--dq-surface-alt);
+  color: var(--dq-text-secondary);
+}
+
+.dq-tag-status-success {
+  background-color: var(--dq-status-success-bg);
+  color: var(--dq-status-success-fg);
+}
+
+.dq-tag-status-info {
+  background-color: var(--dq-status-info-bg);
+  color: var(--dq-status-info-fg);
+}
+
+.dq-tag-status-warning {
+  background-color: var(--dq-status-warning-bg);
+  color: var(--dq-status-warning-fg);
+}
+
+.dq-tag-status-error {
+  background-color: var(--dq-status-error-bg);
+  color: var(--dq-status-error-fg);
+}
+
+.dq-tag-status-neutral {
+  background-color: var(--dq-surface-alt);
+  border-color: var(--dq-border-subtle);
+  color: var(--dq-text-tertiary);
+}
+
 .dq-theme .MuiAlert-standardSuccess {
   background-color: var(--dq-status-success-bg);
   color: var(--dq-status-success-fg);
@@ -697,6 +750,54 @@ body,
 .dq-theme .ag-theme-alpine .ag-cell,
 .dq-theme .ag-theme-alpine-dark .ag-cell {
   font-feature-settings: "tnum";
+}
+
+.dq-ag-grid {
+  --ag-borders: 1px solid var(--dq-border-subtle);
+  --ag-border-color: var(--dq-border-subtle);
+  --ag-background-color: var(--dq-surface);
+  --ag-odd-row-background-color: var(--dq-surface);
+  --ag-even-row-background-color: var(--dq-surface-card);
+  --ag-header-background-color: var(--dq-surface-card);
+  --ag-header-foreground-color: var(--dq-text-secondary);
+  --ag-row-hover-color: var(--dq-surface-hover);
+  --ag-row-selected-color: color-mix(in oklab, var(--dq-accent-primary) 12%, var(--dq-surface-card));
+  --ag-font-family: 'Inter', 'PingFang SC', sans-serif;
+  --ag-foreground-color: var(--dq-text-primary);
+  --ag-secondary-foreground-color: var(--dq-text-secondary);
+  --ag-header-column-separator-color: var(--dq-border-subtle);
+  --ag-data-color: var(--dq-text-primary);
+  --ag-row-border-color: var(--dq-border-subtle);
+}
+
+.dq-ag-grid .ag-root-wrapper {
+  border: 1px solid var(--dq-border-card);
+  border-radius: var(--dq-radius-card);
+}
+
+.dq-ag-grid .ag-header-cell,
+.dq-ag-grid .ag-cell {
+  border-right: 1px solid var(--dq-border-subtle);
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.dq-ag-grid .ag-header-cell-label {
+  font-weight: 600;
+  text-transform: none;
+}
+
+.dq-ag-grid .ag-row-even .ag-cell {
+  background-color: var(--dq-surface);
+}
+
+.dq-ag-grid .ag-row-odd .ag-cell {
+  background-color: var(--dq-surface-card);
+}
+
+.dq-ag-grid .ag-paging-panel {
+  border-top: 1px solid var(--dq-border-subtle);
+  padding: 12px 16px;
 }
 
 :where(.dark .dq-theme, .dq-theme.dq-theme--dark) .ag-theme-alpine .ag-icon {

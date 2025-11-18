@@ -345,16 +345,16 @@ const SQLFavoritesManager = ({ onSelectFavorite, compact = false, filterType = n
                     variant="caption"
                     component="div"
                     sx={{
-                        fontFamily: 'monospace',
-                        backgroundColor: isDarkMode ? neutralOverlay(0.12) : 'var(--dq-surface)',
-                        border: isDarkMode ? `1px solid ${neutralOverlay(0.26)}` : '1px solid var(--dq-border-subtle)',
-                        padding: '6px 10px',
-                        borderRadius: 1,
+                        fontFamily: 'var(--dq-font-mono)',
+                        backgroundColor: 'var(--dq-surface-card-active)',
+                        border: '1px solid var(--dq-border-card)',
+                        padding: '10px 12px',
+                        borderRadius: 2,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                         fontSize: '1rem',
-                        color: isDarkMode ? 'var(--dq-text-secondary)' : 'var(--dq-text-secondary)',
+                        color: 'var(--dq-text-primary)',
                         mb: 1
                     }}
                 >

@@ -24,6 +24,18 @@ import { useToast } from '../../contexts/ToastContext';
 import { deleteDatabaseConnection, refreshDatabaseConnection } from '../../services/apiClient';
 import { CardSurface, RoundedButton, SectionHeader } from '../common';
 
+const STATUS_STYLE_CLASS = {
+  active: 'dq-tag-status-success',
+  ready: 'dq-tag-status-success',
+  connected: 'dq-tag-status-success',
+  syncing: 'dq-tag-status-info',
+  running: 'dq-tag-status-info',
+  pending: 'dq-tag-status-warning',
+  warning: 'dq-tag-status-warning',
+  error: 'dq-tag-status-error',
+  failed: 'dq-tag-status-error'
+};
+
 const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh }) => {
   const { showSuccess, showError } = useToast();
   const [loading, setLoading] = useState(false);
@@ -129,25 +141,14 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
                     secondary={
                       <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
                         <Chip
-                          label={(db.type || '').toUpperCase()}
+                          label={(db.type || 'unknown').toUpperCase()}
                           size="small"
-                          sx={{
-                            backgroundColor: 'var(--dq-surface-card-active)',
-                            color: 'var(--dq-accent-primary)',
-                            fontWeight: 600
-                          }}
+                          className="dq-tag dq-tag-type"
                         />
                         <Chip
-                          label={db.status || 'unknown'}
+                          label={(db.status || 'unknown').toUpperCase()}
                           size="small"
-                          sx={{
-                            backgroundColor: db.status === 'active'
-                              ? 'color-mix(in oklab, var(--dq-status-success-fg) 20%, transparent)'
-                              : 'var(--dq-surface-alt)',
-                            color: db.status === 'active'
-                              ? 'var(--dq-status-success-fg)'
-                              : 'var(--dq-text-tertiary)'
-                          }}
+                          className={`dq-tag dq-tag-status ${STATUS_STYLE_CLASS[(db.status || '').toLowerCase()] || 'dq-tag-status-neutral'}`}
                         />
                       </Box>
                     }

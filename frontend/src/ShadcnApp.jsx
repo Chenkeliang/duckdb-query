@@ -1,5 +1,5 @@
-import { Button, IconButton, Tab, Tabs } from "@mui/material";
-import { Moon, Sun } from "lucide-react";
+import { Button, IconButton, Tab, Tabs, Chip } from "@mui/material";
+import { Github, Info, Moon, Star, Sun } from "lucide-react";
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 
 // 导入Toast上下文
@@ -70,6 +70,7 @@ const getInitialTheme = () => {
 const ShadcnApp = () => {
   // 获取Toast功能
   const { showSuccess, showError, showWarning, showInfo } = useToast();
+  const [githubStars, setGithubStars] = useState(null);
 
   // 检查是否应该显示欢迎页面（7天内不再显示）
   const shouldShowWelcome = () => {
@@ -163,6 +164,21 @@ const ShadcnApp = () => {
   // 初始数据加载
   useEffect(() => {
     loadInitialData(true); // 初始加载，强制执行
+  }, []);
+
+  useEffect(() => {
+    const fetchStars = async () => {
+      try {
+        const response = await fetch('https://api.github.com/repos/chenkeliang/duckdb-query');
+        if (response.ok) {
+          const data = await response.json();
+          setGithubStars(data.stargazers_count || null);
+        }
+      } catch (error) {
+        console.warn('获取 GitHub Star 数失败', error);
+      }
+    };
+    fetchStars();
   }, []);
 
   // 响应刷新触发（使用防抖）
@@ -940,8 +956,8 @@ const ShadcnApp = () => {
                 aria-label={isDarkMode ? "切换为浅色模式" : "切换为暗色模式"}
                 title={isDarkMode ? "切换为浅色模式" : "切换为暗色模式"}
                 sx={{
-                  width: 40,
-                  height: 40,
+                  width: 42,
+                  height: 42,
                   borderRadius: '12px',
                   border: '1.5px solid var(--dq-accent-primary)',
                   backgroundColor: 'var(--dq-surface)',
@@ -956,26 +972,19 @@ const ShadcnApp = () => {
               >
                 {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </IconButton>
-              <Button
-                variant="outlined"
+              <IconButton
                 size="small"
-                disableRipple
-                onClick={() => {
-                  setShowWelcome(true);
-                  const welcomeShownKey = 'duck-query-welcome-shown';
-                  localStorage.setItem(welcomeShownKey, new Date().toISOString());
-                }}
+                component="a"
+                href="https://github.com/chenkeliang/duckdb-query"
+                target="_blank"
+                rel="noopener noreferrer"
                 sx={{
-                  borderRadius: '8px',
+                  width: 42,
+                  height: 42,
+                  borderRadius: '12px',
                   border: '1.5px solid var(--dq-accent-primary)',
-                  px: 2.5,
-                  py: 0.75,
-                  textTransform: 'none',
-                  fontWeight: 500,
-                  fontSize: '0.95rem',
-                  letterSpacing: '-0.01em',
-                  color: 'var(--dq-accent-primary)',
                   backgroundColor: 'var(--dq-surface)',
+                  color: 'var(--dq-accent-primary)',
                   transition: 'background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease',
                   '&:hover': {
                     backgroundColor: 'var(--dq-accent-primary)',
@@ -984,8 +993,33 @@ const ShadcnApp = () => {
                   }
                 }}
               >
-                产品介绍
-              </Button>
+                <Github className="h-5 w-5" />
+              </IconButton>
+              <IconButton
+                size="small"
+                disableRipple
+                onClick={() => {
+                  setShowWelcome(true);
+                  const welcomeShownKey = 'duck-query-welcome-shown';
+                  localStorage.setItem(welcomeShownKey, new Date().toISOString());
+                }}
+                sx={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: '12px',
+                  border: '1.5px solid var(--dq-accent-primary)',
+                  backgroundColor: 'var(--dq-surface)',
+                  color: 'var(--dq-accent-primary)',
+                  transition: 'background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease',
+                  '&:hover': {
+                    backgroundColor: 'var(--dq-accent-primary)',
+                    color: 'var(--dq-text-on-primary)',
+                    borderColor: 'var(--dq-accent-primary)'
+                  }
+                }}
+              >
+                <Info className="h-5 w-5" />
+              </IconButton>
             </div>
           </div>
         </div>

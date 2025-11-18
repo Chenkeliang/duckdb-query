@@ -9,7 +9,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import VisualAnalysisPanel from '../VisualAnalysisPanel';
 
 // Mock the sub-components
-jest.mock('../ColumnSelector', () => {
+jest.mock('../VisualAnalysis/ColumnSelector', () => {
   return function MockColumnSelector({ onColumnSelectionChange, selectedColumns }) {
     return (
       <div data-testid="column-selector">

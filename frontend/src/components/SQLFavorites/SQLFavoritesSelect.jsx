@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import {
     Alert,
     Box,
@@ -245,7 +246,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                     variant="caption"
                     sx={{
                         fontFamily: 'monospace',
-                        backgroundColor: isDarkMode ? 'var(--dq-surface-alt)' : 'var(--dq-surface)',
+                        backgroundColor: isDarkMode ? 'var(--dq-surface-card)' : 'var(--dq-surface)',
                         padding: '2px 6px',
                         borderRadius: 1,
                         display: 'block',
@@ -254,7 +255,7 @@ const SQLFavoritesSelect = ({ onSelectFavorite, placeholder = "选择收藏的SQ
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                         fontSize: '1rem',
-                        color: isDarkMode ? 'var(--dq-text-secondary)' : undefined
+                        color: isDarkMode ? 'var(--dq-text-secondary)' : 'var(--dq-text-primary)'
                     }}
                 >
                     {favorite.sql}

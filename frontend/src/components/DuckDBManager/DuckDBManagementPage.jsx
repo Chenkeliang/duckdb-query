@@ -1,9 +1,9 @@
+/* eslint-disable react/prop-types */
 import {
   ContentCopy as ContentCopyIcon,
   Delete as DeleteIcon,
   ExpandLess,
   ExpandMore,
-  History,
   Info as InfoIcon,
   QueryStats,
   TableChart as TableIcon,
@@ -163,10 +163,10 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
     label,
     IconComponent,
     accent: accentVar,
-    iconBackground: `color-mix(in oklab, ${accentVar} 20%, transparent)`,
-    headerBackground: `color-mix(in oklab, ${accentVar} 6%, transparent)`,
-    hoverBackground: `color-mix(in oklab, ${accentVar} 12%, transparent)`,
-    chipBackground: `color-mix(in oklab, ${accentVar} 18%, transparent)`
+    iconBackground: 'var(--dq-surface-card-active)',
+    headerBackground: 'var(--dq-surface-card)',
+    hoverBackground: 'var(--dq-surface-hover)',
+    chipBackground: 'var(--dq-surface-card-active)',
   });
 
   // 获取表类型信息 - 重新设计的分类逻辑

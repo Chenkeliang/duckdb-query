@@ -555,7 +555,6 @@ def execute_async_query(
 
             # 内存清理
             try:
-                con.execute("PRAGMA memory_limit='1GB'")
                 con.execute("PRAGMA force_external")
                 import gc
 
