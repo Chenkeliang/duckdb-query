@@ -30,7 +30,8 @@
   "duckdb_extensions": [
     "excel",
     "json",
-    "parquet"
+    "parquet",
+    "httpfs"
   ],
   "duckdb_remote_settings": {},
   "server_data_mounts": [

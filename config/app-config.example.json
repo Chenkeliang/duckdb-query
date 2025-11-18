@@ -28,7 +28,8 @@
     "duckdb_extensions": [
         "excel",
         "json",
-        "parquet"
+        "parquet",
+        "httpfs"
     ],
     "duckdb_remote_settings": {
         "s3_region": "'cn-hangzhou'",

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, HttpUrl
 import requests
 import tempfile
@@ -6,6 +6,7 @@ import os
 import time
 import logging
 from typing import Optional
+from core.config_manager import config_manager
 from core.duckdb_engine import get_db_connection
 from core.file_datasource_manager import (
     file_datasource_manager,
@@ -17,6 +18,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# DuckDB 原生 read_* 能直接通过 httpfs 读取的文件类型
+NATIVE_REMOTE_TYPES = {"csv", "json", "jsonl", "parquet", "pq"}
+
+
 class URLReadRequest(BaseModel):
     url: HttpUrl
     table_alias: str
@@ -26,8 +31,8 @@ class URLReadRequest(BaseModel):
     header: Optional[bool] = True
 
 
-def convert_github_url(url: str) -> str:
-    """将GitHub blob URL转换为raw URL"""
+def normalize_remote_url(url: str) -> str:
+    """对常见远程地址做规范化（当前仅处理 GitHub blob→raw）"""
     url_str = str(url)
 
     # 检查是否是GitHub blob URL
@@ -42,21 +47,12 @@ def convert_github_url(url: str) -> str:
 @router.post("/api/read_from_url")
 async def read_from_url(request: URLReadRequest):
     """从URL读取文件并创建DuckDB表"""
+    temp_file_path = None
     try:
-        # 转换GitHub URL
-        converted_url = convert_github_url(str(request.url))
-
-        # 获取配置的超时时间
-        from core.config_manager import config_manager
-
+        converted_url = normalize_remote_url(str(request.url))
         app_config = config_manager.get_app_config()
 
-        # 下载文件
-        response = requests.get(converted_url, timeout=app_config.url_reader_timeout)
-        response.raise_for_status()
-
-        # 检测文件类型
-        url_str = str(request.url).lower()
+        url_str = converted_url.lower()
         if request.file_type:
             file_type = request.file_type.lower()
         elif url_str.endswith(".csv"):
@@ -70,44 +66,70 @@ async def read_from_url(request: URLReadRequest):
         else:
             # 默认尝试CSV
             file_type = "csv"
+        conn = get_db_connection()
 
-        # 创建临时文件
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=f".{file_type}"
-        ) as temp_file:
-            temp_file.write(response.content)
-            temp_file_path = temp_file.name
+        table_name = request.table_alias
+        original_table_name = table_name
 
-        try:
-            conn = get_db_connection()
-
-            table_name = request.table_alias
-            original_table_name = table_name
-
-            while True:
-                try:
-                    result = conn.execute(
-                        "SELECT table_name FROM information_schema.tables WHERE lower(table_name) = lower(?)",
-                        [table_name],
-                    ).fetchone()
-                    if result is None:
-                        break
-                    timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
-                    table_name = f"{original_table_name}_{timestamp}"
+        while True:
+            try:
+                result = conn.execute(
+                    "SELECT table_name FROM information_schema.tables WHERE lower(table_name) = lower(?)",
+                    [table_name],
+                ).fetchone()
+                if result is None:
                     break
-                except Exception as e:
-                    logger.debug("检查表名时出错: %s", e)
-                    break
+                timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
+                table_name = f"{original_table_name}_{timestamp}"
+                break
+            except Exception as e:
+                logger.debug("检查表名时出错: %s", e)
+                break
 
-            reader_options = None
-            if file_type == "csv":
-                reader_options = {
-                    "HEADER": bool(request.header),
-                    "DELIM": request.delimiter or ",",
-                    "SAMPLE_SIZE": -1,
-                }
-                if request.encoding:
-                    reader_options["ENCODING"] = request.encoding
+        reader_options = None
+        if file_type == "csv":
+            reader_options = {
+                "HEADER": bool(request.header),
+                "DELIM": request.delimiter or ",",
+                "SAMPLE_SIZE": -1,
+            }
+            if request.encoding:
+                reader_options["ENCODING"] = request.encoding
+
+        metadata = None
+        native_attempted = file_type in NATIVE_REMOTE_TYPES
+        if native_attempted:
+            try:
+                metadata = create_table_from_dataframe(
+                    conn,
+                    table_name,
+                    converted_url,
+                    file_type,
+                    reader_options=reader_options,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "DuckDB/httpfs 读取失败，准备回退: url=%s, err=%s",
+                    converted_url,
+                    exc,
+                )
+
+        if metadata is None:
+            try:
+                response = requests.get(
+                    converted_url, timeout=app_config.url_reader_timeout
+                )
+                response.raise_for_status()
+            except requests.RequestException as download_error:
+                raise HTTPException(
+                    status_code=400, detail=f"无法下载文件: {str(download_error)}"
+                )
+
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=f".{file_type}"
+            ) as temp_file:
+                temp_file.write(response.content)
+                temp_file_path = temp_file.name
 
             metadata = create_table_from_dataframe(
                 conn,
@@ -117,57 +139,51 @@ async def read_from_url(request: URLReadRequest):
                 reader_options=reader_options,
             )
 
-            from core.timezone_utils import get_current_time_iso
+        from core.timezone_utils import get_current_time_iso
 
-            table_metadata = {
-                "source_id": table_name,
-                "filename": f"url_{table_name}",
-                "file_path": f"url://{converted_url}",
-                "file_type": file_type,
-                "row_count": metadata.get("row_count", 0),
-                "column_count": metadata.get("column_count", 0),
-                "columns": metadata.get("columns", []),
-                "column_profiles": metadata.get("column_profiles", []),
-                "schema_version": 2,
-                "created_at": get_current_time_iso(),
-                "source_url": converted_url,
-            }
+        table_metadata = {
+            "source_id": table_name,
+            "filename": f"url_{table_name}",
+            "file_path": f"url://{converted_url}",
+            "file_type": file_type,
+            "row_count": metadata.get("row_count", 0),
+            "column_count": metadata.get("column_count", 0),
+            "columns": metadata.get("columns", []),
+            "column_profiles": metadata.get("column_profiles", []),
+            "schema_version": 2,
+            "created_at": get_current_time_iso(),
+            "source_url": converted_url,
+        }
 
-            file_datasource_manager.save_file_datasource(table_metadata)
-            print(f"DEBUG: 成功保存表元数据: {table_name}")
+        file_datasource_manager.save_file_datasource(table_metadata)
+        logger.debug("成功保存URL表元数据: %s", table_name)
 
-            return {
-                "success": True,
-                "message": f"成功从URL读取文件并创建表: {table_name}",
-                "table_name": table_name,
-                "row_count": metadata.get("row_count", 0),
-                "column_count": metadata.get("column_count", 0),
-                "columns": metadata.get("columns", []),
-                "file_type": file_type,
-                "url": converted_url,
-                "original_url": str(request.url),
-            }
+        return {
+            "success": True,
+            "message": f"成功从URL读取文件并创建表: {table_name}",
+            "table_name": table_name,
+            "row_count": metadata.get("row_count", 0),
+            "column_count": metadata.get("column_count", 0),
+            "columns": metadata.get("columns", []),
+            "file_type": file_type,
+            "url": converted_url,
+            "original_url": str(request.url),
+        }
 
-        finally:
-            # 清理临时文件
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
-
-    except requests.RequestException as e:
-        raise HTTPException(status_code=400, detail=f"无法下载文件: {str(e)}")
-    except pd.errors.EmptyDataError:
-        raise HTTPException(status_code=400, detail="文件为空或格式不正确")
-    except pd.errors.ParserError as e:
-        raise HTTPException(status_code=400, detail=f"文件解析错误: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"处理文件时发生错误: {str(e)}")
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
 
 
 @router.get("/api/url_info")
 async def get_url_info(url: str):
     """获取URL文件信息（不下载完整文件）"""
     try:
-        # 发送HEAD请求获取文件信息
+        app_config = config_manager.get_app_config()
         response = requests.head(url, timeout=app_config.url_reader_head_timeout)
         response.raise_for_status()
 
