@@ -176,7 +176,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
     }
     const lower = tableName.toLowerCase();
 
-    if (lower.startsWith('systerm_')) {
+    if (lower.startsWith('system_')) {
       return buildTypeInfo('系统表', TableIcon, 'var(--dq-text-secondary)');
     }
 
@@ -221,7 +221,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
   const filteredTables = (Array.isArray(tables) ? tables : []).filter(table => {
     if (!table || !table.table_name) return false;
     const lower = table.table_name.toLowerCase();
-    if (lower.startsWith('systerm_')) {
+    if (lower.startsWith('system_')) {
       return false;
     }
     return lower.includes(searchTerm.toLowerCase());

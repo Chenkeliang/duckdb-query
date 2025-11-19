@@ -9,6 +9,8 @@ import logging
 import traceback
 import asyncio
 import time
+import threading
+import shutil
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from pydantic import BaseModel
@@ -25,6 +27,10 @@ from core.timezone_utils import get_current_time_iso  # 统一时间
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+STREAMABLE_FILE_TYPES = {"csv", "json", "jsonl"}
+STREAM_CHUNK_SIZE = 1024 * 1024  # 1MB 内部流式写入块
 
 
 class ChunkUploadRequest(BaseModel):
@@ -56,6 +62,102 @@ class UploadStatus(BaseModel):
 upload_sessions: Dict[str, Dict[str, Any]] = {}
 
 
+def _is_streaming_supported(file_extension: str) -> bool:
+    return hasattr(os, "mkfifo") and file_extension.lower() in STREAMABLE_FILE_TYPES
+
+
+def _build_chunk_path(session: Dict[str, Any], chunk_number: int) -> str:
+    return os.path.join(session["chunks_dir"], f"chunk_{chunk_number:06d}")
+
+
+class ChunkStreamWriter:
+    """将分块数据同时写入最终文件并流向FIFO供DuckDB读取"""
+
+    def __init__(self, session: Dict[str, Any], fifo_path: str, final_file_path: str):
+        self.session = session
+        self.fifo_path = fifo_path
+        self.final_file_path = final_file_path
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._run, name=f"ChunkStream-{session['upload_id']}")
+        self.error: Optional[Exception] = None
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+
+    def wait(self):
+        if self._thread.is_alive():
+            self._thread.join()
+
+    def _run(self):
+        try:
+            os.makedirs(os.path.dirname(self.final_file_path), exist_ok=True)
+            if os.path.exists(self.final_file_path):
+                os.unlink(self.final_file_path)
+            with open(self.final_file_path, "wb") as final_file:
+                with open(self.fifo_path, "wb") as fifo:
+                    for chunk_num in range(self.session["total_chunks"]):
+                        if self._stop_event.is_set():
+                            break
+                        chunk_path = _build_chunk_path(self.session, chunk_num)
+                        if not os.path.exists(chunk_path):
+                            raise FileNotFoundError(f"缺少分块文件: {chunk_path}")
+
+                        with open(chunk_path, "rb") as chunk_file:
+                            while True:
+                                data = chunk_file.read(STREAM_CHUNK_SIZE)
+                                if not data:
+                                    break
+                                final_file.write(data)
+                                fifo.write(data)
+
+                        try:
+                            os.unlink(chunk_path)
+                        except FileNotFoundError:
+                            pass
+
+                # FIFO读取完成后由DuckDB关闭，我们负责回收文件
+        except BrokenPipeError as exc:
+            self.error = exc
+        except Exception as exc:
+            self.error = exc
+        finally:
+            try:
+                os.unlink(self.fifo_path)
+            except FileNotFoundError:
+                pass
+
+
+def _generate_unique_table_name(con, desired_name: Optional[str]) -> str:
+    base_name = desired_name if desired_name else ""
+    if not base_name:
+        base_name = "table"
+
+    sanitized = sanitize_identifier(base_name, allow_leading_digit=False, prefix="table")
+    if not sanitized:
+        sanitized = f"table_{int(time.time())}"
+
+    original = sanitized
+    while True:
+        try:
+            result = con.execute(
+                "SELECT 1 FROM information_schema.tables WHERE lower(table_name) = lower(?)",
+                [sanitized],
+            ).fetchone()
+            if result is None:
+                break
+            timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
+            sanitized = f"{original}_{timestamp}"
+            break
+        except Exception as exc:
+            logger.debug("检查表名冲突失败: %s", exc)
+            break
+
+    return sanitized
+
+
 def get_upload_dir() -> str:
     """获取上传目录"""
     upload_dir = os.path.join(
@@ -63,6 +165,12 @@ def get_upload_dir() -> str:
     )
     os.makedirs(upload_dir, exist_ok=True)
     return upload_dir
+
+
+def _get_final_file_path(file_name: str) -> str:
+    base_dir = os.path.dirname(get_upload_dir())
+    os.makedirs(base_dir, exist_ok=True)
+    return os.path.join(base_dir, file_name)
 
 
 def get_chunks_dir(upload_id: str) -> str:
@@ -79,6 +187,89 @@ def calculate_file_hash(file_path: str) -> str:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
+
+async def process_streaming_upload(
+    session: Dict[str, Any],
+):
+    """通过FIFO流式写入DuckDB，适用于CSV/JSON/JSONL"""
+    fifo_path = os.path.join(session["chunks_dir"], f"stream_{session['upload_id']}.fifo")
+    try:
+        if os.path.exists(fifo_path):
+            os.unlink(fifo_path)
+        os.mkfifo(fifo_path)
+    except Exception as exc:
+        logger.error(f"创建FIFO失败: {exc}")
+        raise HTTPException(status_code=500, detail="无法创建流式上传通道")
+
+    final_file_path = _get_final_file_path(session["file_name"])
+    writer = ChunkStreamWriter(session, fifo_path, final_file_path)
+    writer.start()
+
+    try:
+        file_info = _load_stream_into_duckdb(session, fifo_path, final_file_path)
+    except Exception:
+        writer.stop()
+        writer.wait()
+        raise
+
+    writer.wait()
+    if writer.error:
+        raise HTTPException(status_code=500, detail=f"流式写入失败: {writer.error}")
+
+    if session.get("file_hash"):
+        actual_hash = calculate_file_hash(final_file_path)
+        if actual_hash != session["file_hash"]:
+            raise HTTPException(status_code=400, detail="文件哈希验证失败，文件可能已损坏")
+
+    try:
+        file_size = os.path.getsize(final_file_path)
+    except OSError:
+        file_size = session.get("file_size", 0)
+
+    file_info["file_size"] = file_size
+    file_info["cleanup_path"] = final_file_path
+    return file_info
+
+
+def _load_stream_into_duckdb(session: Dict[str, Any], fifo_path: str, final_file_path: str) -> Dict[str, Any]:
+    file_extension = session.get("file_extension") or session["file_name"].lower().split(".")[-1]
+    con = get_db_connection()
+    desired_name = session.get("table_alias") or session["file_name"].split(".")[0]
+    source_id = _generate_unique_table_name(con, desired_name)
+
+    metadata = create_table_from_dataframe(
+        con,
+        source_id,
+        fifo_path,
+        file_extension,
+    )
+
+    table_metadata = {
+        "source_id": source_id,
+        "filename": session["file_name"],
+        "file_path": final_file_path,
+        "file_type": file_extension,
+        "row_count": metadata.get("row_count", 0),
+        "column_count": metadata.get("column_count", 0),
+        "columns": metadata.get("columns", []),
+        "column_profiles": metadata.get("column_profiles", []),
+        "schema_version": 2,
+        "created_at": get_current_time_iso(),
+    }
+
+    file_datasource_manager.save_file_datasource(table_metadata)
+    logger.info("流式文件数据源保存成功: %s", source_id)
+
+    return {
+        "source_id": source_id,
+        "filename": session["file_name"],
+        "file_size": 0,
+        "row_count": metadata.get("row_count", 0),
+        "column_count": metadata.get("column_count", 0),
+        "columns": metadata.get("columns", []),
+        "preview_data": [{"提示": "预览数据已禁用以提高性能"}],
+    }
 
 
 @router.post("/api/upload/init", tags=["Chunked Upload"])
@@ -141,6 +332,7 @@ async def init_upload(
             "file_hash": file_hash,
             "table_alias": table_alias,  # 保存表别名
             "chunks_dir": get_chunks_dir(upload_id),
+            "file_extension": file_extension,
         }
 
         logger.info(
@@ -206,7 +398,7 @@ async def upload_chunk(
             }
 
         # 保存分块
-        chunk_path = os.path.join(session["chunks_dir"], f"chunk_{chunk_number:06d}")
+        chunk_path = _build_chunk_path(session, chunk_number)
         chunk_content = await chunk.read()
 
         with open(chunk_path, "wb") as f:
@@ -262,52 +454,46 @@ async def complete_upload(
                 detail=f"上传未完成，已上传: {session['uploaded_chunks']}/{session['total_chunks']}",
             )
 
-        # 更新状态为处理中
         session["status"] = "processing"
 
-        # 合并文件
-        temp_upload_path = os.path.join(get_upload_dir(), session["file_name"])
+        file_extension = session.get("file_extension") or session["file_name"].lower().split(".")[-1]
+        streaming_supported = _is_streaming_supported(file_extension)
 
-        with open(temp_upload_path, "wb") as final_file:
-            for chunk_num in range(session["total_chunks"]):
-                chunk_path = os.path.join(
-                    session["chunks_dir"], f"chunk_{chunk_num:06d}"
-                )
-                if os.path.exists(chunk_path):
-                    with open(chunk_path, "rb") as chunk_file:
-                        final_file.write(chunk_file.read())
-                else:
+        if streaming_supported:
+            file_info = await process_streaming_upload(session)
+            final_file_path = file_info.get("cleanup_path")
+        else:
+            temp_upload_path = os.path.join(get_upload_dir(), session["file_name"])
+
+            with open(temp_upload_path, "wb") as final_file:
+                for chunk_num in range(session["total_chunks"]):
+                    chunk_path = _build_chunk_path(session, chunk_num)
+                    if os.path.exists(chunk_path):
+                        with open(chunk_path, "rb") as chunk_file:
+                            final_file.write(chunk_file.read())
+                    else:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"分块文件缺失: chunk_{chunk_num:06d}",
+                        )
+
+            final_file_path = _get_final_file_path(session["file_name"])
+            shutil.move(temp_upload_path, final_file_path)
+            logger.info(f"文件已移动到: {final_file_path}")
+
+            if session.get("file_hash"):
+                actual_hash = calculate_file_hash(final_file_path)
+                if actual_hash != session["file_hash"]:
                     raise HTTPException(
-                        status_code=500, detail=f"分块文件缺失: chunk_{chunk_num:06d}"
+                        status_code=400, detail="文件哈希验证失败，文件可能已损坏"
                     )
 
-        # 将合并后的文件移动到主临时目录
-        import shutil
-
-        final_file_path = os.path.join(
-            os.path.dirname(get_upload_dir()), session["file_name"]
-        )
-        shutil.move(temp_upload_path, final_file_path)
-        logger.info(f"文件已移动到: {final_file_path}")
-
-        # 验证文件哈希（如果提供）
-        if session.get("file_hash"):
-            actual_hash = calculate_file_hash(final_file_path)
-            if actual_hash != session["file_hash"]:
-                raise HTTPException(
-                    status_code=400, detail="文件哈希验证失败，文件可能已损坏"
-                )
-
-        # 处理文件并加载到DuckDB
-        file_info = await process_uploaded_file(
-            final_file_path,
-            session["file_name"],
-            session.get("table_alias"),
-            background_tasks=background_tasks,
-        )
-
-        # 清理分块文件
-        import shutil
+            file_info = await process_uploaded_file(
+                final_file_path,
+                session["file_name"],
+                session.get("table_alias"),
+                background_tasks=background_tasks,
+            )
 
         if os.path.exists(session["chunks_dir"]):
             shutil.rmtree(session["chunks_dir"])
@@ -316,10 +502,13 @@ async def complete_upload(
             cleanup_target = file_info.pop("cleanup_path", None)
             if cleanup_target:
                 schedule_cleanup(cleanup_target, background_tasks)
-            elif not file_info.get("pending_excel") and os.path.exists(final_file_path):
+            elif (
+                not file_info.get("pending_excel")
+                and final_file_path
+                and os.path.exists(final_file_path)
+            ):
                 schedule_cleanup(final_file_path, background_tasks)
 
-        # 更新会话状态
         session["status"] = "completed"
         session["file_info"] = file_info
 
@@ -383,29 +572,9 @@ async def process_uploaded_file(
                 "cleanup_path": None,
             }
 
-        source_id = table_alias if table_alias else file_name.split(".")[0]
-        source_id = sanitize_identifier(source_id, allow_leading_digit=False, prefix="table")
-        if not source_id:
-            source_id = f"table_{int(time.time())}"
-
         con = get_db_connection()
-        original_source_id = source_id
-
-        while True:
-            try:
-                result = con.execute(
-                    "SELECT 1 FROM information_schema.tables WHERE lower(table_name) = lower(?)",
-                    [source_id],
-                ).fetchone()
-                if result is None:
-                    break
-                timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
-                source_id = f"{original_source_id}_{timestamp}"
-                break
-            except Exception as e:
-                logger.warning(f"检查表名时出错: {e}")
-                break
-
+        desired_name = table_alias if table_alias else file_name.split(".")[0]
+        source_id = _generate_unique_table_name(con, desired_name)
         logger.info(f"生成的表名: {source_id}")
 
         table_info = None

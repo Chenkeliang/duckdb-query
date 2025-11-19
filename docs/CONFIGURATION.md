@@ -2,11 +2,16 @@
 
 本文档详细说明 Duck Query 的所有配置选项。
 
-## 配置文件位置
+## 配置位置与系统表
 
-- **应用配置**: `config/app-config.json`
-- **数据源配置**: `config/datasources.json`
-- **示例文件**: `config/app-config.example.json`, `config/datasources.example.json`
+- **应用配置**: `config/app-config.json`。
+- **系统表存储**（DuckDB 内部）：
+  - `system_datasources`: 保存所有 MySQL/PostgreSQL/SQLite 等数据库连接定义。
+  - `system_sql_favorites`: 保存 SQL 收藏列表。
+  - `system_file_sources`: 保存文件数据源（上传/URL/服务器目录/粘贴/异步任务结果）的元数据。
+- **示例文件**: `config/app-config.example.json`（仅用于初始化 `app-config.json`）。
+
+> 说明：早期版本使用 `config/datasources.json`、`config/file-datasources.json`、`config/sql-favorites.json` 写入配置。现在这些信息全部保存在 DuckDB 的系统表中。若需备份或迁移，只需复制 DuckDB 数据库文件（默认 `data/duckdb/duckquery.duckdb`）或导出上述系统表内容即可。
 
 ## 应用配置 (app-config.json)
 
@@ -73,24 +78,37 @@
 | `url_reader_head_timeout` | number | `10` | URL HEAD请求超时(秒) |
 | `sqlite_timeout` | number | `10` | SQLite超时(秒) |
 
-## 数据源配置 (datasources.json)
+## 系统表（DuckDB 内部）
 
-```json
-{
-  "database_sources": [
-    {
-      "id": "unique_id",
-      "name": "显示名称",
-      "type": "mysql|postgresql",
-      "host": "数据库主机",
-      "port": 3306,
-      "database": "数据库名",
-      "username": "用户名",
-      "password": "加密后的密码"
-    }
-  ]
-}
-```
+以下表位于 DuckDB 数据库文件中，只要备份 `data/duckdb/duckquery.duckdb` 即可保留对应配置。
+
+### `system_datasources`
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | 唯一标识 |
+| `name` | 显示名称 |
+| `type` | `mysql` / `postgresql` / `sqlite` 等 |
+| `params` | 连接参数（JSON，含 host/port/database 等） |
+| `created_at` / `updated_at` | 时间戳 |
+
+前端/后端通过 `/api/data-sources` 读写该表，无需再编辑 `config/datasources.json`。
+
+### `system_sql_favorites`
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | 唯一标识 |
+| `name` | 收藏名称 |
+| `sql` | SQL 内容 |
+| `type` | `duckdb` / `mysql` 等 |
+| `description` / `tags` | 描述与标签 |
+| `usage_count` | 使用次数 |
+| `created_at` / `updated_at` | 时间戳 |
+
+### `system_file_sources`
+
+保存上传/URL/粘贴/异步任务等文件表的元数据（与旧版 `file-datasources.json` 字段一致），可用于恢复表列表、统计等。
 
 ## 配置建议
 

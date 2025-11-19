@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
-import pandas as pd
 import numpy as np
 from pydantic import BaseModel  # 补充 BaseModel 导入
 
@@ -39,5 +38,4 @@ class Join(BaseModel):
 class QueryRequest(BaseModel):
     sources: List[DataSource]
     joins: List[Join]
-
 

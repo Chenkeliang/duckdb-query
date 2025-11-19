@@ -21,7 +21,7 @@
 - 成功标准  
   - 主要查询路径（同步/异步/可视化）均使用连接池上下文，不再直接访问全局 `_global_duckdb_connection`。  
   - DEBUG 日志可通过配置开关控制，默认关闭 `EXPLAIN ANALYZE`。  
-  - `config/file-datasources.json` 等文件写入具备原子性，压测下不会出现损坏。  
+  - 文件/收藏/数据库连接等元数据统一存储在 DuckDB 系统表（如 `system_file_sources`），备份时只需复制 DuckDB 数据库文件即可。  
   - 所有路径均支持通过 `AppConfig` 配置数据目录，避免硬编码 `/app`.
 
 ## 2. Design

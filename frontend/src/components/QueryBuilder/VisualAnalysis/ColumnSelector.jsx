@@ -238,6 +238,26 @@ const ColumnSelector = ({
     closeQuickConfigurator();
   };
 
+  const handleQuickRemove = () => {
+    if (!quickConfigColumn || !onJsonTablesChange) {
+      closeQuickConfigurator();
+      return;
+    }
+    const currentMappings = Array.isArray(quickConfigColumn.existingMappings)
+      ? quickConfigColumn.existingMappings
+      : [];
+    const ids = currentMappings.map((item) => item.id).filter(Boolean);
+    const columnLower = (quickConfigColumn.name || '').toLowerCase();
+    const filtered = normalizedJsonTables.filter((item) => {
+      if (ids.length > 0) {
+        return !ids.includes(item.id);
+      }
+      return (item?.sourceColumn || '').toLowerCase() !== columnLower;
+    });
+    onJsonTablesChange(filtered);
+    closeQuickConfigurator();
+  };
+
   if (!selectedTable) {
     return (
       <div className="space-y-2">
@@ -504,6 +524,7 @@ const ColumnSelector = ({
         column={quickConfigColumn}
         onClose={closeQuickConfigurator}
         onSave={handleQuickSave}
+        onRemove={handleQuickRemove}
       />
     </div>
   );

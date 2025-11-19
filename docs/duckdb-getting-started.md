@@ -1,5 +1,7 @@
 # DuckQuery × DuckDB 快速上手指南
 
+> 新功能发布后请优先查阅 [Changelog](./CHANGELOG.md) 了解最新变更与注意事项。
+
 > 面向首次使用 DuckQuery 的 DuckDB 用户，帮助你在 5 分钟内完成部署、导入数据并执行第一条查询。
 
 ## 1. 环境准备

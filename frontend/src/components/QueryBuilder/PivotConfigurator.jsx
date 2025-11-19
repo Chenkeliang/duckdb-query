@@ -118,6 +118,7 @@ const PivotConfigurator = ({
           return {
             name: col,
             label: col,
+            value: col,
             dataType: 'text',
           };
         }
@@ -125,10 +126,12 @@ const PivotConfigurator = ({
         if (!label) {
           return null;
         }
+        const value = col.name || col.column || col.id || label;
         const dataType = (col.dataType || col.type || col.column_type || 'text').toString().toLowerCase();
         return {
-          name: label,
+          name: value,
           label,
+          value,
           dataType,
         };
       })

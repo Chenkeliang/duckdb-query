@@ -13,6 +13,7 @@ import {
   MenuItem,
   Paper,
   Select,
+  Stack,
   TextField,
   Tooltip,
   Typography
@@ -395,10 +396,16 @@ const AggregationControls = ({
                   </Tooltip>
                 </Box>
 
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                  {/* 选择列 - 这里显示选择的列但不可编辑 */}
-                  <Box>
-                    <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}>
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1.5}
+                  alignItems="flex-start"
+                >
+                  <Box sx={{ flex: 1 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}
+                    >
                       选择列
                     </Typography>
                     <Select
@@ -425,6 +432,7 @@ const AggregationControls = ({
                           borderWidth: 2
                         }
                       }}
+                      fullWidth
                     >
                       {columns.map(column => {
                         const columnName = typeof column === 'string' ? column : column.name;
@@ -441,8 +449,11 @@ const AggregationControls = ({
                     </Select>
                   </Box>
 
-                  <Box>
-                    <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}>
+                  <Box sx={{ minWidth: 180 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}
+                    >
                       当前类型
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'var(--dq-accent-primary)', fontWeight: 600 }}>
@@ -453,9 +464,11 @@ const AggregationControls = ({
                     </Typography>
                   </Box>
 
-                  {/* 别名 */}
-                  <Box>
-                    <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}
+                    >
                       别名 (可选)
                     </Typography>
                     <TextField
@@ -485,9 +498,10 @@ const AggregationControls = ({
                           }
                         }
                       }}
+                      fullWidth
                     />
                   </Box>
-                </Box>
+                </Stack>
               </Box>
             ))}
           </Box>

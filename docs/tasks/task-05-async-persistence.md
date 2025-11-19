@@ -26,9 +26,9 @@
 
 - 数据持久化  
   - 选用 SQLite 或 DuckDB 内部表（建议 DuckDB，减少依赖）。  
-  - 创建 `systerm_async_tasks` 表结构：  
+  - 创建 `system_async_tasks` 表结构：  
     ```sql
-    CREATE TABLE systerm_async_tasks (
+    CREATE TABLE system_async_tasks (
       task_id TEXT PRIMARY KEY,
       status TEXT,
       query TEXT,
@@ -43,7 +43,7 @@
       metadata JSON
     );
     ```
-  - 创建 `systerm_task_exports` 表记录导出文件（文件名、大小、expires_at、task_id）。
+  - 创建 `system_task_exports` 表记录导出文件（文件名、大小、expires_at、task_id）。
 
 - TaskManager 改造  
   - 将 `TaskManager` 方法改为读写上述表：  
@@ -55,7 +55,7 @@
 - API 变化  
   - `GET /api/async_tasks?status=running&limit=50&offset=0` 分页返回。  
   - `GET /api/async_tasks/{task_id}` 直接从持久化表查询。  
-  - 新增 `cleanup_expired_exports()`，定期扫描 `systerm_task_exports`，删除过期文件并更新状态。  
+  - 新增 `cleanup_expired_exports()`，定期扫描 `system_task_exports`，删除过期文件并更新状态。  
   - 在返回数据中增加 `export_status`: `"available" | "expired" | "not_applicable"`.  
   - 后端在启动时初始化数据库表，如不存在则创建。
 

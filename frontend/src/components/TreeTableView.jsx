@@ -70,7 +70,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
             const tableLower = table.toLowerCase();
 
             // 内部系统表一律跳过
-            if (tableLower.startsWith('systerm_')) {
+            if (tableLower.startsWith('system_')) {
                 return;
             }
 
@@ -86,7 +86,7 @@ const TreeTableView = ({ tables = [], onTableSelect }) => {
         });
 
         groups.recent = tables
-            .filter(table => typeof table === 'string' && !table.toLowerCase().startsWith('systerm_'))
+            .filter(table => typeof table === 'string' && !table.toLowerCase().startsWith('system_'))
             .slice(0, 5);
 
         return groups;

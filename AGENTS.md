@@ -23,6 +23,12 @@ Backend tests rely on Pytest and FastAPI’s `TestClient`; add coverage under `a
 ## Commit & Pull Request Guidelines
 History mixes Conventional Commit prefixes (`feat:`, `fix:`) with concise Chinese summaries; continue using a lowercase prefix plus a present-tense description (for example, `feat: add parquet preview caching`). Exclude generated assets, keep commits logically scoped, and document problem, solution, and verification (`pytest`, `npm run lint`, manual checks) in each PR alongside linked issues. Attach UI captures when frontend layouts shift and flag new config keys or volume changes so reviewers can sync environments.
 
+- Every PR that changes behavior must append an entry to `docs/CHANGELOG.md`; only refresh the other docs when that change affects their scope:
+  - `README.md` highlights top-level features, positioning, and install commands—touch it when product messaging or capability headlines change.
+  - `docs/duckdb-getting-started.md` is the onboarding walkthrough—update it when the quick-start flow, setup steps, or first-use UX shifts.
+  - `docs/duckdb-integration-guide.md` covers hand-offs to BI/automation tooling—update it when integration APIs, exports, or cross-tool workflows change.
+  - Pure bugfixes and internal refactors normally only need the changelog entry.
+
 ## Security & Configuration Tips
 Secrets and connection details live in `config/` (for example `datasources.json`, `secret.key`); commit only sanitized `.example` variants. Clear sensitive artifacts from `temp_files/` before pushing. Document new DuckDB exports and confirm matching volume mounts inside `docker-compose.yml`.
 

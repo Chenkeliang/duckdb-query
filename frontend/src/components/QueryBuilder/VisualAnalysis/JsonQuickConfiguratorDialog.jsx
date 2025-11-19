@@ -160,7 +160,7 @@ const buildDefaultFields = (existingColumns, suggestions) => {
   ];
 };
 
-const JsonQuickConfiguratorDialog = ({ open, column, onClose, onSave }) => {
+const JsonQuickConfiguratorDialog = ({ open, column, onClose, onSave, onRemove }) => {
   const sampleValues = useMemo(() => column?.sampleValues || [], [column]);
   const parsedSample = useMemo(() => tryParseSample(sampleValues), [sampleValues]);
   const defaultRowPath = useMemo(
@@ -451,6 +451,11 @@ const JsonQuickConfiguratorDialog = ({ open, column, onClose, onSave }) => {
         </Stack>
       </DialogContent>
       <DialogActions>
+        {Array.isArray(column?.existingMappings) && column.existingMappings.length > 0 && (
+          <Button onClick={() => onRemove?.(column)} sx={{ mr: 'auto' }}>
+            取消展开
+          </Button>
+        )}
         <Button onClick={onClose}>取消</Button>
         <Button onClick={handleSave} variant="contained">
           保存

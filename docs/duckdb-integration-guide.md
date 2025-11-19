@@ -1,5 +1,7 @@
 # DuckQuery × DuckDB 集成手册
 
+> 发布后如需了解最新兼容性/能力，请同步参考 [Changelog](./CHANGELOG.md)。
+
 本指南汇总了 DuckQuery 与 DuckDB 生态中常用工具、工作流的集成方式，帮助你在现有团队流程中快速引入 DuckQuery。
 
 ---
@@ -41,13 +43,34 @@ df = conn.execute("SELECT * FROM upload_orders LIMIT 100").fetchdf()
 
 ### 2.2 数据落地
 
-- 使用 DuckQuery 将远程数据库数据导入 DuckDB 后，可通过 DuckDB 命令将结果导出：
+- DuckQuery 的导出/缓存任务全部复用 DuckDB `COPY ... TO`，你也可以在 CLI、Notebook 或脚本中直接运行：
 
 ```sql
 COPY (
   SELECT * FROM mysql_orders WHERE order_date >= '2024-01-01'
 ) TO 'exports/mysql_orders_2024.parquet' (FORMAT PARQUET);
 ```
+
+- 若需要写入 CSV，只需改动 `FORMAT CSV, HEADER` 即可；生成的文件会保存在 `exports/` 目录，方便同步到对象存储或下游仓库。
+- 反向导入大文件时，可以将文件挂载到容器内部，再执行 `COPY staging_upload FROM '/app/server_mounts/bulk.csv' (FORMAT CSV, HEADER);`。DuckQuery 的分块上传 API 也是通过 `COPY ... FROM STDIN (FORMAT CSV)` 完成流式写入，无需额外的中间层。
+
+### 2.3 远程文件与 httpfs
+
+- 在 `config/app-config.json` 中配置 `duckdb_remote_settings`（例如 `s3_endpoint`、`s3_access_key_id`、`s3_secret_access_key`、`http_proxy` 等），即可启用 DuckDB 的 httpfs / S3 / OSS 原生访问能力。
+- 配置完成后，可以直接在 DuckDB 中读取远程文件或挂载目录：
+
+```sql
+CREATE TABLE http_orders AS
+SELECT * FROM read_csv_auto('https://files.example.com/orders.csv');
+
+CREATE TABLE s3_inventory AS
+SELECT * FROM read_parquet('s3://analytics-bucket/monthly/inventory.parquet');
+
+CREATE TABLE excel_report AS
+SELECT * FROM read_xlsx('/app/server_mounts/finance/report.xlsx');
+```
+
+- 后端的 URL 上传、服务器目录页签与上述 SQL 共用同一机制，所有文件都会在进入 DuckQuery 后即时注册到 DuckDB 数据库中。
 
 ---
 

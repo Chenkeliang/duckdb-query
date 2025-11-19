@@ -5,7 +5,6 @@ DuckDB自定义SQL查询路由
 
 import logging
 import traceback
-import pandas as pd
 import os
 import time
 import re
@@ -117,7 +116,7 @@ async def get_available_tables():
         table_info = []
         for _, row in tables_df.iterrows():
             table_name = row["name"]
-            if table_name.lower().startswith("systerm_"):
+            if table_name.lower().startswith("system_"):
                 continue
             try:
                 # 获取表结构

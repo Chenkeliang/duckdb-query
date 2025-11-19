@@ -21,10 +21,8 @@ from core.timezone_utils import (
     format_storage_time_for_response,
 )
 
-ASYNC_TASKS_TABLE = "systerm_async_tasks"
-TASK_EXPORTS_TABLE = "systerm_task_exports"
-LEGACY_ASYNC_TASKS_TABLE = "async_tasks"
-LEGACY_TASK_EXPORTS_TABLE = "task_exports"
+ASYNC_TASKS_TABLE = "system_async_tasks"
+TASK_EXPORTS_TABLE = "system_task_exports"
 
 logger = logging.getLogger(__name__)
 
@@ -125,40 +123,9 @@ class TaskManager:
     def _migrate_legacy_tables(self, connection) -> None:
         """迁移旧版本的系统表名称"""
         try:
-            tables = {
-                row[0]
-                for row in connection.execute(
-                    "SELECT table_name FROM duckdb_tables()"
-                ).fetchall()
-            }
-
-            if (
-                LEGACY_ASYNC_TASKS_TABLE in tables
-                and ASYNC_TASKS_TABLE not in tables
-            ):
-                logger.info(
-                    "检测到旧版 async_tasks 表，正在迁移到 %s",
-                    ASYNC_TASKS_TABLE,
-                )
-                connection.execute("DROP INDEX IF EXISTS idx_async_tasks_status")
-                connection.execute(
-                    f'ALTER TABLE "{LEGACY_ASYNC_TASKS_TABLE}" RENAME TO "{ASYNC_TASKS_TABLE}"'
-                )
-
-            if (
-                LEGACY_TASK_EXPORTS_TABLE in tables
-                and TASK_EXPORTS_TABLE not in tables
-            ):
-                logger.info(
-                    "检测到旧版 task_exports 表，正在迁移到 %s",
-                    TASK_EXPORTS_TABLE,
-                )
-                connection.execute(
-                    f'ALTER TABLE "{LEGACY_TASK_EXPORTS_TABLE}" RENAME TO "{TASK_EXPORTS_TABLE}"'
-                )
-
+            pass
         except Exception as exc:
-            logger.warning("迁移旧版系统表失败: %s", exc)
+            logger.warning("检查旧版系统表失败: %s", exc)
 
     @staticmethod
     def _json_default(value: Any) -> Any:

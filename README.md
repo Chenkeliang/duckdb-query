@@ -1,304 +1,211 @@
-# 🦆 Duck Query - DuckDB驱动的交互式数据分析平台
+# Duck Query - DuckDB 驱动的交互式数据分析平台
 
 <div align="center">
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
-[![DuckDB](https://img.shields.io/badge/DuckDB-Visual%20Analytics-FFBF00.svg?logo=duckdb&logoColor=white)](https://duckdb.org)
-[![Docker](https://img.shields.io/badge/Docker-Supported-2496ED.svg)](https://docker.com)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Backend-05998b.svg)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-Frontend-61dafb.svg?logo=react&logoColor=black)](https://react.dev/)
+[![DuckDB](https://img.shields.io/badge/DuckDB-native%20IO-FFBF00.svg?logo=duckdb&logoColor=white)](https://duckdb.org/)
+[![Docker](https://img.shields.io/badge/Docker-supported-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 [![Docs](https://img.shields.io/badge/Docs-DuckQuery%20Pages-3b82f6.svg)](https://chenkeliang.github.io/duckdb-query/)
-[![Discussions](https://img.shields.io/badge/Discussions-Welcome-22c55e.svg)](https://github.com/Chenkeliang/duckdb-query/discussions)
 
-**基于 DuckDB 的现代数据分析平台 • 简化跨源数据关联 • 无需建库无需 ETL**
+**DuckDB-first • 可视化构建 + SQL 编辑 • 本地私有部署**
 
-[🚀 快速开始](#-快速开始) • [📖 功能特性](#-功能特性) • [⚙️ 配置说明](#️-配置说明) • [🤝 贡献指南](#-贡献指南)
+[快速开始](#-快速开始) • [功能特性](#-功能特性) • [配置要点](#-配置要点) • [常用工作流](#-常用工作流) • [开发与测试](#-开发与测试) • [贡献指南](#-贡献指南)
 
 </div>
- 
+
 ---
 
 ## TL;DR (EN)
 
-- **DuckDB-first analytics**: import Excel/CSV/Parquet, connect MySQL/PostgreSQL, and materialise into DuckDB tables in seconds.  
-- **Dual-mode experience**: visual builder with type-conflict guards + full DuckDB SQL editor (window functions, JSON, PIVOT, etc.).  
-- **Local & secure**: deploy via Docker or source, keep all DuckDB workloads on your own infrastructure.  
-- **Docs & demo**: explore the [DuckQuery product page](https://chenkeliang.github.io/duckdb-query/) and follow the [DuckDB getting started guide](docs/duckdb-getting-started.md).
+- **DuckDB-native ingestion** – every upload/URL/server/clipboard file goes through `read_*` + httpfs，chunked uploads写入 FIFO 供 DuckDB 直接加载。
+- **Visual + SQL workspace** – pivot builder, expression filters, history/favorites, and a full DuckDB editor share the same tables.
+- **Local & secure** – FastAPI backend + React frontend run anywhere via Docker, all data stays on your infra.
+- **Docs & samples** – see the [product site](https://chenkeliang.github.io/duckdb-query/) and the [getting-started guide](docs/duckdb-getting-started.md).
 
-> 想快速了解？访问 [DuckQuery · DuckDB 可视化分析平台](https://chenkeliang.github.io/duckdb-query/) 浏览单页介绍与应用场景。
+> 访问 [DuckQuery · DuckDB 可视化分析平台](https://chenkeliang.github.io/duckdb-query/) 获取全量截图与应用场景。
 
-## 🎯 项目简介
+## 项目简介
 
-Duck Query 是基于 **DuckDB** 构建的现代化数据分析平台，专为简化跨源数据分析而设计。
-告别复杂的ETL流程，通过简单的复制粘贴即可将任意数据快速转换为可分析的数据表，简化数据分析流程。
+Duck Query 是面向内部数据团队的 **DuckDB 原生工作台**。上传文件、连接数据库或浏览服务器目录即可生成 DuckDB 表，并在同一个界面中完成图形化分析与 SQL 查询。它适用于“不想搭建复杂数仓”的轻量场景：几分钟内就能导入数据、搭建透视看板、跑窗口/JSON SQL，并把结果安全落地。
 
-### 🔍 针对 DuckDB 用户的亮点
+### 面向 DuckDB 用户的核心优势
 
-- **DuckDB 即插即用**：内置 DuckDB 运行时、扩展加载与资源限制配置，开箱即用。  
-- **跨格式建表**：自动生成列统计与类型画像，便于 DuckDB SQL 进一步建模。  
-- **智能类型守护**：JOIN/透视时自动建议 `TRY_CAST`，减少 DuckDB 报错。  
-- **DuckDB 原生导出**：结果表可落地为 DuckDB 表或导出 Parquet/CSV，方便重用。
+- **即装即用**：内置 DuckDB 扩展、内存/线程限制、httpfs/S3 设置与导出目录。
+- **图形化 Builder**：JSON解析、Pivot透视、表达式过滤、冲突类型转换，可视化生成SQL。
+- **SQL 工作区**：CodeMirror 编辑器，支持DuckDB原生语法。
+- **全链路 DuckDB**：`read_*` + httpfs + 流式写入/导出（`COPY ... TO`），xls回退 pandas 读取。
 
-## 🆚 Duck Query vs 传统方案
+## 功能特性
 
-### 1. vs 文件导入分析
-- **Excel**：50MB文件就卡顿，难以处理大数据
-- **Duck Query**：支持GB级文件导入，查询计算速度快，完整数据可导出
+### 1. 数据接入与预处理
 
-### 2. vs 多源数据关联
-- **Excel**：需要手动VLOOKUP，操作繁琐
-- **Duck Query**：图形化选择关联条件，跨源JOIN，简化数据整合
+- **多格式文件**：CSV/TSV、JSON/JSONL、Parquet、Excel（含多 Sheet）以及剪贴板文本。
+- **URL / HTTPFS / S3 / OSS**：配置 `duckdb_remote_settings` 后，可直接 `read_*('https://...')` / `read_*('s3://...')` 建表，无需落地。
+- **服务器目录**：Docker/K8s 挂载后在前端浏览并导入宿主机大文件。
 
-### 3. vs 数据处理能力
-- **Excel**：需要熟悉各种函数，学习成本高
-- **Duck Query**：会SQL就可以分析数据，支持窗口函数、JSON处理
+### 2. 查询体验
 
-### 4. vs 环境搭建
-- **传统数据库**：安装配置数据库繁琐
-- **Duck Query**：Docker一键部署3分钟
+- **图形化查询**：字段、聚合、排序、筛选、表达式、HAVING、指标模板一站配置。
+- **Pivot / 多指标**：指标支持基础类型转换（如 DECIMAL/DOUBLE/INTEGER）、聚合格式、JSON 展开。
+- **SQL 编辑器**：CodeMirror 语法高亮，支持自动补全、结果分页与 JSON/表格切换。
+- **表管理**：查询结果或异步任务可直接物化为 DuckDB 表复用。
 
-### 5. vs 数据安全
-- **云服务**：数据要上传有安全风险
-- **Duck Query**：数据完全本地处理
+### 3. 自动化与协作
 
-### 6. vs 数据仓库建设
-- **传统方案**：需要建库建表加载数据源等预处理
-- **Duck Query**：直接导入分析，任意数据都可速成表，无需复杂预处理
+- **异步任务**：任意查询可提交异步任务，完成后在“任务中心”下载 Parquet/CSV，并会自动生成DuckDB表用于新的分析。
+- **导出与缓存**：所有导出都走 DuckDB `COPY ... TO exports/...`，缓存自动清理、可重复下载。
+- **数据源管理**：管理 MySQL/PostgreSQL 连接，支持保存配置与刷新。
 
-**核心价值**：
-- 📥 **数据接入** - 文件、粘贴数据、直连数据库，快速导入
-- 🔗 **数据分析** - 跨源关联查询，复杂场景支持自定义SQL
-- ⚡ **性能保障** - DuckDB列式引擎，大数据查询性能优异
-- 🎨 **用户体验** - 现代化Web界面，CodeMirror SQL编辑器与可视化并重
+### 4. 安全与部署
 
-## ✨ 功能特性
+- **完全自部署**：所有文件、DuckDB 数据库、导出缓存都留在本地或私有云。
+- **密钥与配置隔离**：`config/` 目录存放应用配置/秘钥。
+- **监控与限流**：可配置 `duckdb_memory_limit`、`query_timeout`、最大表数量、最大上传文件等参数。
+- **容器化**：Docker Compose / quick-start 脚本包含前后端、DuckDB 数据目录、日志、server_data 挂载。
 
-### 🗃️ 多数据源支持
+## 架构总览
 
-**文件格式**
-- 📄 CSV, Excel (xls/xlsx)
-- 📊 Parquet
-- 📋 JSON, JSONL
-- 🌐 URL远程文件直读
-- 📋 剪贴板数据
-
-**数据库连接**
-- 🐬 MySQL - 支持自定义SQL查询，结果自动加载到DuckDB
-- 🐘 PostgreSQL - 支持自定义SQL查询，结果自动加载到DuckDB
-
-**DuckDB特性**
-- ⚡ 上传文件自动建表，无需手动导入
-- 🔄 任意SQL查询结果可一键保存为新表
-- 💡 利用DuckDB数据处理能力快速成表
-
-### 🔄 跨源JOIN能力
-
-Duck Query 的核心特性 - 在同一个SQL查询中关联不同数据源：
-
-```sql
--- 示例：关联不同数据源
-SELECT 
-    u.user_name,
-    s.amount,
-    p.product_name
-FROM mysql_users u
-JOIN uploaded_sales s ON u.id = s.user_id
-JOIN read_parquet('products.parquet') p ON s.product_id = p.id
-WHERE s.date >= '2024-01-01';
+```
+[React SPA]  ── REST ──>  [FastAPI Backend] ── DuckDB 引擎 ──> data/duckdb/duckquery.duckdb
+      │                 │
+      │                 ├─ File DataSource Manager / Typed ingestion / httpfs
+      │                 ├─ Chunked upload streaming / Async tasks / Query cache
+      │                 └─ Server files / SQL favorites / Config API
 ```
 
-### 🚀 强大的DuckDB SQL
+| 目录 | 说明 |
+| --- | --- |
+| `api/` | FastAPI 应用，核心路由：`routers/query.py`（可视化 + SQL）、`routers/duckdb_query.py`（标准 SQL）、`routers/async_tasks.py`、`routers/chunked_upload.py`、`routers/url_reader.py`。 |
+| `api/core/` | DuckDB 引擎封装、文件数据源管理、typed ingestion、工具函数、配置管理。 |
+| `frontend/` | React + Vite 项目，包含 Query Builder、Pivot Configurator、Server Files 等模块。 |
+| `config/` | `app-config.json`、`datasources.json` 等应用配置（提供 `.example` 模板）。 |
+| `data/` | DuckDB 数据文件和日志。 |
+| `temp_files/`、`exports/` | 上传缓冲区与导出目录。 |
+| `docs/` | 深入指南与任务记录，例如 `duckdb-getting-started.md`、`duckdb-integration-guide.md`、Task 规范等。 |
 
-**现代SQL特性**
-```sql
--- 窗口函数
-SELECT *, ROW_NUMBER() OVER (ORDER BY sales DESC) as rank 
-FROM sales_data;
+## 快速开始
 
--- JSON处理
-SELECT json_extract(data, '$.name') as name
-FROM json_table;
-```
-
-**性能优势**
-- 🏛️ 列式存储引擎，OLAP查询优化
-- 📊 支持复杂分析函数和聚合
-- ⚡  内存中处理，查询性能优异
-- 📈 自动查询优化和向量化执行
-
-### 💻 Web界面特性
-
-- 📝 **CodeMirror Editor** - 专业的SQL编辑体验
-- 📊 **结果展示** - 表格和图表可视化
-- 💾 **数据导出** - 支持CSV、Parquet格式
-- 🌐 **产品页** - [DuckQuery · DuckDB Visual Analytics](https://chenkeliang.github.io/duckdb-query/) 提供演示截图与常见问答
-
-## 🚀 快速开始
-
-### 环境要求
-
-- 🐳 Docker 20.10+
-- 🔧 Docker Compose 2.0+
-- 🐍 Python 3.8+
-- 📦 Node.js 18+
-
-### 🐳 Docker配置
-
-**使用统一的 `docker-compose.yml` 配置文件：**
+### 1. Docker 一键启动（推荐）
 
 ```bash
-# 启动服务
-docker-compose up -d
-
-# 重新构建并启动
-docker-compose up -d --build
-
-# 停止服务
-docker-compose down
-```
-
-### 🚀 新用户一键启动（推荐）
-
-```bash
-# 1. 克隆项目
 git clone https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
-
-# 2. 一键启动（自动配置+启动）
 ./quick-start.sh
 ```
 
-**💡 提示：** 首次启动前，建议检查 `docker-compose.yml` 中的端口、内存、CPU等配置是否符合你的环境。
+脚本会检查 Docker 环境、复制配置模板、启动 `duckquery-backend` + `duckquery-frontend`。默认端口：
 
-> 📘 面向 DuckDB 用户的更详细流程，请阅读 [DuckDB 快速上手指南](docs/duckdb-getting-started.md) 与 [DuckDB 集成手册](docs/duckdb-integration-guide.md)。
+- 前端：http://localhost:3000
+- 后端 API：http://localhost:8000
+- Swagger 文档：http://localhost:8000/docs
 
-**配置调整要点：**
-- **端口冲突**：如果8000或3000端口被占用，修改 `docker-compose.yml` 中的端口映射
-- **资源限制**：根据服务器配置调整内存和CPU限制
-- **目录权限**：确保数据目录有正确的读写权限
+若偏好手动：
 
-## ⚙️ 配置说明
+```bash
+docker-compose up -d --build
+```
 
-### 应用配置
+### 2. 本地开发模式
 
-创建 `config/app-config.json`：
+Backend（FastAPI）：
+
+```bash
+cd api
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m uvicorn main:app --reload
+```
+
+Frontend（React + Vite）：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+其他常用命令：
+
+- `python -m pytest api/tests -q`
+- `npm run lint` / `npm run build`
+- `./quick-start.sh reset`（清理容器与数据）
+
+### 3. 部署提示
+
+- 调整 `docker-compose.yml` 中的端口、CPU/内存限制、卷挂载。
+- 将 `server_data`、`exports`、`logs` 等目录映射到稳定的持久化路径。
+- 若需 K8s，参考 `docker-compose.yml` 中的环境变量与卷配置自行转写。
+
+## 配置要点
+
+创建或复制 `config/app-config.json`（见 `config/app-config.example.json`）：
 
 ```json
 {
-  "debug": false,                    // 调试模式开关
-  "cors_origins": [                  // 跨域请求允许的源
-    "http://localhost:3000",
-    "http://localhost:5173"
+  "debug": false,
+  "max_file_size": 53687091200,
+  "query_timeout": 300,
+  "max_query_rows": 20000,
+  "duckdb_memory_limit": "8GB",
+  "duckdb_threads": 8,
+  "duckdb_extensions": ["excel", "json", "parquet"],
+  "server_data_mounts": [
+    { "label": "Shared Data", "path": "/app/server_mounts" }
   ],
-  "max_file_size": 53687091200,      // 最大文件大小(50GB)
-  "query_timeout": 300,              // 查询超时时间(秒)
-  "download_timeout": 600,           // 下载超时时间(秒)
-  "max_query_rows": 10000,           // 查询结果最大行数
-  "max_tables": 200,                 // 最大表数量
-  "enable_caching": true,            // 启用缓存
-  "cache_ttl": 3600,                 // 缓存生存时间(秒)
-  "timezone": "Asia/Shanghai",       // 时区设置
-  
-  "duckdb_memory_limit": "8GB",      // DuckDB内存限制
-  "duckdb_threads": 8,               // DuckDB线程数
-  "duckdb_extensions": [             // DuckDB扩展
-    "excel", "json", "parquet"
-  ],
-  
-  "pool_min_connections": 2,         // 连接池最小连接数
-  "pool_max_connections": 10,        // 连接池最大连接数
-  "db_connect_timeout": 10,          // 数据库连接超时(秒)
-  "db_read_timeout": 30,             // 数据库读取超时(秒)
-  "db_write_timeout": 30             // 数据库写入超时(秒)
+  "duckdb_remote_settings": {
+    "s3_endpoint": "https://s3.your-cloud.com",
+    "s3_access_key_id": "AKIA...",
+    "s3_secret_access_key": "YOUR_SECRET",
+    "http_proxy": "",
+    "use_credentials_from_env": false
+  }
 }
 ```
 
-**💡 提示：** 新用户可以直接复制 `config/app-config.example.json` 作为起点，然后根据需要调整配置。
+额外配置：
 
-📖 **详细配置说明**: 查看 [配置文档](docs/CONFIGURATION.md) 了解所有配置项的作用和推荐值。
+- `datasources.json`：预置数据库连接。
+- `secret.key`：前端数据库口令/加密使用。
+- `duckdb_remote_settings`：开启 httpfs / S3 / OSS 读取。
+- `server_data_mounts`：控制哪些宿主目录可在前端浏览器中显示Duckdb读取。
 
+所有配置项在 [docs/CONFIGURATION.md](docs/CONFIGURATION.md) 中详解。
 
-## 📖 使用指南
+## 文档索引
 
-### 基本使用流程
+- [docs/CHANGELOG.md](docs/CHANGELOG.md)：功能更新日志（每次新增功能必须在此记录）。
+- [docs/duckdb-getting-started.md](docs/duckdb-getting-started.md)：5 分钟上手指南。
+- [docs/duckdb-integration-guide.md](docs/duckdb-integration-guide.md)：如何与 Notebook、BI、CI/CD 协作。
+- [docs/tasks/](docs/tasks/)：功能演进与设计任务说明，包含 typed ingestion、Excel 多 Sheet、Pivot 类型转换、DuckDB 原生 IO 等专题。
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md)：配置项解释、部署建议。
 
-1. **上传数据文件**
-   - 拖拽CSV、Excel、Parquet文件到上传区域
-   - 或通过URL直接读取远程文件
-   - 直接粘贴CSV、TSV格式以及任意粘贴板数据，系统都可自动识别并成表
+## 贡献指南
 
-### 服务器目录导入
+- 阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解代码规范、PR 模板与分支策略。
+- 在提交 PR 前执行 `python -m pytest api/tests -q` 与 `npm run lint`，保证零警告。
+- 通过 [Issues](https://github.com/Chenkeliang/duckdb-query/issues/new/choose) 或 [Discussions](https://github.com/Chenkeliang/duckdb-query/discussions) 反馈问题、提交想法。
+- 若新增配置/环境变量，请在文档中同步说明；前端 UI 变更建议附上截图或录屏。
 
-如果部署在 Docker/K8s 环境，可以把宿主机上的大文件通过挂载目录直接交给 DuckDB 读取，无需经过浏览器上传：
+## 许可证
 
-1. 在 `docker-compose.yml` 或 K8s manifest 中，为 `backend` 容器增加需要的挂载目录，例如（可选把 mac 的 Downloads/Documents 映射进来）：
-   ```yaml
-   volumes:
-     - ./server_data:/app/server_mounts
-     - ~/Downloads:/app/host_downloads
-     - ~/Documents:/app/host_documents
-   ```
-2. 在 `config/app-config.json` 中的 `server_data_mounts` 写入可用目录（支持多条），同时可以通过 `duckdb_remote_settings` 配置 httpfs/S3。示例：
-   ```json
-   "server_data_mounts": [
-     { "label": "Shared Data", "path": "/app/server_mounts" }
-   ]
-   ```
-3. 重启容器后，前端的“服务器目录”页签会自动展示这些目录，用户即可浏览子目录并一键导入 CSV/Excel/Parquet/JSON 文件。界面会提示挂载要求，并在导入完成后同步刷新 DuckDB 表。 
+[MIT License](LICENSE) — 欢迎在企业/个人项目中使用，保留版权声明即可。
 
-> 📝 提示：挂载路径不在白名单中将不会出现在页面上；确保生产环境针对这些目录做好只读/权限控制。
+## 致谢
 
-2. **连接数据库**
-   - 配置MySQL/PostgreSQL连接信息
-   - 测试连接并同步表结构
+特别感谢：
 
-3. **编写SQL查询**
-   - 使用CodeMirror编辑器编写查询
-   - 享受语法高亮和智能补全
-   - 跨源JOIN不同数据源的表
-
-4. **查看结果**
-   - 表格形式展示查询结果
-   - 自动生成数据可视化图表
-   - 导出结果为各种格式
-
-## 🔒 安全特性
-
-- 🛡️ SQL注入防护
-- 🔐 数据库密码加密存储
-- 📝 文件类型和大小验证
-- 🌐 CORS安全配置
-
-
-## 🤝 贡献指南
-
-欢迎通过以下方式参与：
-
-- 阅读并遵循 [CONTRIBUTING.md](CONTRIBUTING.md)；
-- 使用 Issue 模板反馈 [Bug](https://github.com/Chenkeliang/duckdb-query/issues/new?template=bug_report.md) / [Feature 请求](https://github.com/Chenkeliang/duckdb-query/issues/new?template=feature_request.md)，记得附上 DuckDB 版本；
-- 发起 Pull Request 前，执行 `pytest` / `npm run lint` 并填好 [PR 模板](.github/PULL_REQUEST_TEMPLATE.md)；
-- 任何想法都可以在 [Discussions](https://github.com/Chenkeliang/duckdb-query/discussions) 中交流。
-
-我们期待更多 DuckDB 场景的反馈与实现。
-
-
-## 📄 许可证
-
-本项目采用 [MIT 许可证](LICENSE)。
-
-## 🙏 致谢
-
-特别感谢以下开源项目：
-
-- [DuckDB](https://duckdb.org) - 高性能嵌入式分析数据库
-- [FastAPI](https://fastapi.tiangolo.com) - 现代化Python API框架
-- [React](https://reactjs.org) - 用户界面构建库
-
----
+- [DuckDB](https://duckdb.org/) — 高性能嵌入式分析数据库；
+- [FastAPI](https://fastapi.tiangolo.com/) — 现代 Python API 框架；
+- [React](https://react.dev/) — 前端 UI；
+- 以及所有贡献者与社区伙伴。
 
 <div align="center">
 
-**基于DuckDB，让数据分析更简单**
+**基于 DuckDB，让数据分析更简单**
 
-[⭐ Star](https://github.com/Chenkeliang/duckdb-query) • [🍴 Fork](https://github.com/Chenkeliang/duckdb-query/fork) • [📥 Download](https://github.com/Chenkeliang/duckdb-query/releases)
+[Star](https://github.com/Chenkeliang/duckdb-query) • [Fork](https://github.com/Chenkeliang/duckdb-query/fork) • [Download](https://github.com/Chenkeliang/duckdb-query/releases)
 
 </div>

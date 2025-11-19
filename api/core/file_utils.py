@@ -8,9 +8,11 @@ import numpy as np
 import logging
 import os
 import time
+from uuid import uuid4
 from typing import Dict, Any, Optional
 
-from core.utils import normalize_dataframe_output
+from core.utils import normalize_dataframe_output, handle_non_serializable_data
+from core.duckdb_engine import with_duckdb_connection
 
 logger = logging.getLogger(__name__)
 
@@ -95,61 +97,129 @@ def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
     """获取文件预览信息"""
     try:
         file_type = detect_file_type(file_path)
-        df = read_file_by_type(file_path, file_type, nrows=rows)
-
-        # 获取文件大小
-        file_size = os.path.getsize(file_path)
-
-        # 获取全量数据行数（读取完整文件来获取准确行数）
-        try:
-            if file_type == "jsonl":
-                # 对于JSONL文件，通过计算行数来获取总行数，避免pandas的"Trailing data"问题
-                with open(file_path, "r", encoding="utf-8") as f:
-                    total_rows = sum(1 for line in f if line.strip())
-            else:
-                full_df = read_file_by_type(file_path, file_type)
-                total_rows = len(full_df)
-        except Exception:
-            # 如果读取完整文件失败，估算行数
-            total_rows = len(df)
-
-        # 处理非序列化数据类型
-        processed_df = df.copy()
-        for col in processed_df.columns:
-            if processed_df[col].dtype == "object":
-                # 处理复杂对象类型
-                processed_df[col] = processed_df[col].apply(
-                    lambda x: (
-                        str(x)
-                        if not (
-                            isinstance(
-                                x, (str, int, float, bool, type(None), list, dict)
-                            )
-                            or x is None
-                        )
-                        else x
-                    )
+        normalized_type = "parquet" if file_type == "pq" else file_type
+        duckdb_preview_types = {"csv", "json", "jsonl", "parquet"}
+        if normalized_type in duckdb_preview_types:
+            try:
+                return _get_duckdb_file_preview(
+                    file_path, normalized_type, rows
                 )
-            else:
-                # 处理NaN值
-                processed_df[col] = processed_df[col].replace({pd.isna: None})
+            except Exception as preview_error:
+                logger.warning(
+                    "DuckDB预览失败，回退pandas: %s", preview_error
+                )
 
-        return {
-            "file_type": file_type,
-            "file_size": file_size,
-            "total_rows": total_rows,
-            "columns": processed_df.columns.tolist(),
-            "column_types": processed_df.dtypes.astype(str).to_dict(),
-            "preview_data": normalize_dataframe_output(processed_df.head(rows)),
-            "sample_values": {
-                col: processed_df[col].dropna().head(3).tolist()
-                for col in processed_df.columns
-            },
-        }
+        return _get_pandas_file_preview(file_path, file_type, rows)
 
     except Exception as e:
         logger.error(f"获取文件预览失败 {file_path}: {str(e)}")
         raise
+
+
+def _get_duckdb_file_preview(file_path: str, file_type: str, rows: int) -> Dict[str, Any]:
+    temp_table = f"__preview_{uuid4().hex}"
+    quoted_table = _quote_identifier(temp_table)
+    with with_duckdb_connection() as con:
+        try:
+            load_file_to_duckdb(
+                con,
+                temp_table,
+                file_path,
+                file_type,
+                drop_existing=True,
+            )
+
+            columns_info = con.execute(f"PRAGMA table_info({quoted_table})").fetchall()
+            columns = [info[1] for info in columns_info]
+            column_types = {info[1]: info[2] for info in columns_info}
+
+            total_rows = con.execute(
+                f"SELECT COUNT(*) FROM {quoted_table}"
+            ).fetchone()[0]
+
+            preview_rows = con.execute(
+                f"SELECT * FROM {quoted_table} LIMIT ?", [rows]
+            ).fetchall()
+
+            preview_data = []
+            for row in preview_rows:
+                row_dict = {
+                    col: handle_non_serializable_data(value)
+                    for col, value in zip(columns, row)
+                }
+                preview_data.append(row_dict)
+
+            sample_values = {}
+            for col in columns:
+                quoted_col = _quote_identifier(col)
+                values = con.execute(
+                    f"SELECT DISTINCT {quoted_col} FROM {quoted_table} "
+                    f"WHERE {quoted_col} IS NOT NULL LIMIT 3"
+                ).fetchall()
+                sample_values[col] = [
+                    handle_non_serializable_data(value[0]) for value in values
+                ]
+
+        finally:
+            try:
+                con.execute(f"DROP TABLE IF EXISTS {quoted_table}")
+            except Exception:
+                pass
+
+    return {
+        "file_type": file_type,
+        "file_size": os.path.getsize(file_path),
+        "total_rows": int(total_rows),
+        "columns": columns,
+        "column_types": column_types,
+        "preview_data": preview_data,
+        "sample_values": sample_values,
+    }
+
+
+def _get_pandas_file_preview(file_path: str, file_type: str, rows: int) -> Dict[str, Any]:
+    df = read_file_by_type(file_path, file_type, nrows=rows)
+
+    file_size = os.path.getsize(file_path)
+
+    try:
+        if file_type == "jsonl":
+            with open(file_path, "r", encoding="utf-8") as f:
+                total_rows = sum(1 for line in f if line.strip())
+        else:
+            full_df = read_file_by_type(file_path, file_type)
+            total_rows = len(full_df)
+    except Exception:
+        total_rows = len(df)
+
+    processed_df = df.copy()
+    for col in processed_df.columns:
+        if processed_df[col].dtype == "object":
+            processed_df[col] = processed_df[col].apply(
+                lambda x: (
+                    str(x)
+                    if not (
+                        isinstance(x, (str, int, float, bool, type(None), list, dict))
+                        or x is None
+                    )
+                    else x
+                )
+            )
+        else:
+            processed_df[col] = processed_df[col].replace({pd.isna: None})
+
+    return {
+        "file_type": file_type,
+        "file_size": file_size,
+        "total_rows": total_rows,
+        "columns": processed_df.columns.tolist(),
+        "column_types": processed_df.dtypes.astype(str).to_dict(),
+        "preview_data": normalize_dataframe_output(processed_df.head(rows)),
+        "sample_values": {
+            col: processed_df[col].dropna().head(3).tolist()
+            for col in processed_df.columns
+        },
+    }
 
 
 def _quote_identifier(name: str) -> str:
