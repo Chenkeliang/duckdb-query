@@ -16,7 +16,6 @@ from models.visual_query_models import (
     PreviewRequest,
     PreviewResponse,
     ColumnStatistics,
-    TableMetadata,
     VisualQueryConfig,
     SetOperationRequest,
     SetOperationResponse,
@@ -45,7 +44,6 @@ from core.duckdb_engine import (
 from core.visual_query_generator import (
     validate_query_config,
     get_column_statistics,
-    get_table_metadata,
     estimate_query_performance,
     generate_set_operation_sql,
     estimate_set_operation_rows,
@@ -545,71 +543,6 @@ async def preview_visual_query(request: PreviewRequest) -> PreviewResponse:
         )
 
 
-@router.get("/api/visual-query/table-metadata/{table_name}", tags=["Visual Query"])
-async def get_visual_query_table_metadata(table_name: str):
-    try:
-        con = get_db_connection()
-        available_tables = con.execute("SHOW TABLES").fetchdf()
-        available_names = (
-            available_tables["name"].tolist() if not available_tables.empty else []
-        )
-
-        if table_name not in available_names:
-            raise HTTPException(status_code=404, detail=f"数据表 {table_name} 不存在")
-
-        metadata = get_table_metadata(table_name, con)
-        metadata_dict = (
-            metadata.model_dump()
-            if hasattr(metadata, "model_dump")
-            else metadata.dict()
-        )
-
-        return {
-            "success": True,
-            "metadata": metadata_dict,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("获取表元数据失败: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取表元数据失败: {str(exc)}")
-
-
-@router.post(
-    "/api/visual-query/table-metadata/{table_name}/refresh", tags=["Visual Query"]
-)
-async def refresh_visual_query_table_metadata(table_name: str):
-    try:
-        con = get_db_connection()
-        available_tables = con.execute("SHOW TABLES").fetchdf()
-        available_names = (
-            available_tables["name"].tolist() if not available_tables.empty else []
-        )
-
-        if table_name not in available_names:
-            raise HTTPException(status_code=404, detail=f"数据表 {table_name} 不存在")
-
-        metadata = get_table_metadata(table_name, con, use_cache=False)
-        metadata_dict = (
-            metadata.model_dump()
-            if hasattr(metadata, "model_dump")
-            else metadata.dict()
-        )
-
-        return {
-            "success": True,
-            "metadata": metadata_dict,
-            "refreshed": True,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("刷新表元数据失败: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"刷新表元数据失败: {str(exc)}")
-
-
 @router.post("/api/visual-query/distinct-values", tags=["Visual Query"])
 async def get_distinct_values(req: DistinctValuesRequest):
     """返回指定列的 Top-N 不同值，可按频次或指标聚合排序。
@@ -723,7 +656,7 @@ async def get_visual_query_column_stats(table_name: str, column_name: str):
         if table_name not in available_names:
             raise HTTPException(status_code=404, detail=f"数据表 {table_name} 不存在")
 
-        stats = get_column_statistics(con, table_name, column_name)
+        stats = get_column_statistics(table_name, column_name, con)
         stats_dict = (
             stats.model_dump() if hasattr(stats, "model_dump") else stats.dict()
         )

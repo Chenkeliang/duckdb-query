@@ -35,7 +35,7 @@ import {
 } from '@mui/material';
 import { BarChart3, ClipboardList, Code, Database, Eye, RotateCcw, Search } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
-import { refreshTableMetadataCache } from '../../services/apiClient';
+import { refreshDuckDBTableMetadata } from '../../services/apiClient';
 
 const DatabaseTableManager = ({ databaseConnections = [] }) => {
   const [selectedConnection, setSelectedConnection] = useState(null);
@@ -179,7 +179,7 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
     setTableRefreshing(tableName, true);
 
     try {
-      const response = await refreshTableMetadataCache(tableName);
+      const response = await refreshDuckDBTableMetadata(tableName);
       if (!response?.success) {
         throw new Error(response?.detail || '未知错误');
       }

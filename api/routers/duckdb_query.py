@@ -21,6 +21,7 @@ from core.duckdb_engine import (
 from core.utils import normalize_dataframe_output
 from core.resource_manager import save_upload_file
 from core.file_datasource_manager import file_datasource_manager
+from core.visual_query_generator import get_table_metadata
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -96,8 +97,8 @@ class DuckDBQueryResponse(BaseModel):
 
 
 @router.get("/api/duckdb/tables", tags=["DuckDB Query"])
-async def get_available_tables():
-    """获取DuckDB中所有可用的表"""
+async def list_duckdb_tables_summary():
+    """获取DuckDB中所有可用表的概要信息"""
     try:
         con = get_db_connection()
 
@@ -112,64 +113,32 @@ async def get_available_tables():
                 "message": "当前DuckDB中没有可用的表，请先上传文件或连接数据库",
             }
 
-        # 获取每个表的详细信息
+        # 获取每个表的概要信息
         table_info = []
         for _, row in tables_df.iterrows():
             table_name = row["name"]
             if table_name.lower().startswith("system_"):
                 continue
             try:
-                # 获取表结构
+                # 获取列数量
                 schema_df = con.execute(f'DESCRIBE "{table_name}"').fetchdf()
+                column_count = len(schema_df) if not schema_df.empty else 0
+
                 # 获取行数
                 count_result = con.execute(
                     f'SELECT COUNT(*) as count FROM "{table_name}"'
                 ).fetchone()
-                row_count = count_result[0] if count_result else 0
+                row_count = int(count_result[0]) if count_result else 0
 
                 metadata = file_datasource_manager.get_file_datasource(table_name)
-                logger.info(f"Metadata for table {table_name}: {metadata}")
-                createdAt = metadata.get("created_at") if metadata else None
-                column_profiles = metadata.get("column_profiles", []) if metadata else []
-
-                columns = []
-                if column_profiles:
-                    for profile in column_profiles:
-                        name = profile.get("name")
-                        duckdb_type = profile.get("duckdb_type") or profile.get("type")
-                        columns.append(
-                            {
-                                "name": name,
-                                "type": duckdb_type,
-                                "dataType": duckdb_type,
-                                "rawType": profile.get("raw_type"),
-                                "normalizedType": profile.get("normalized_type"),
-                                "precision": profile.get("precision"),
-                                "scale": profile.get("scale"),
-                                "nullable": profile.get("nullable"),
-                                "statistics": profile.get("statistics"),
-                                "sampleValues": profile.get("sample_values"),
-                            }
-                        )
-                else:
-                    for _, row in schema_df.iterrows():
-                        columns.append(
-                            {
-                                "name": row["column_name"],
-                                "type": row["column_type"],
-                                "dataType": row["column_type"],
-                                "sampleValues": None,
-                            }
-                        )
+                created_at = metadata.get("created_at") if metadata else None
 
                 table_info.append(
                     {
                         "table_name": table_name,
-                        "columns": columns,
-                        "column_count": len(columns),
+                        "column_count": column_count,
                         "row_count": row_count,
-                        "created_at": createdAt,  # 使用标准的 created_at 字段
-                        "column_profiles": column_profiles,
+                        "created_at": created_at,
                     }
                 )
             except Exception as table_error:
@@ -177,40 +146,7 @@ async def get_available_tables():
 
                 # 尝试从元数据获取列信息
                 metadata = file_datasource_manager.get_file_datasource(table_name)
-                createdAt = metadata.get("created_at") if metadata else None
-
-                # 处理元数据中的列信息
-                columns = []
-                fallback_profiles = metadata.get("column_profiles") if metadata else []
-                if fallback_profiles:
-                    for profile in fallback_profiles:
-                        name = profile.get("name")
-                        duckdb_type = profile.get("duckdb_type") or profile.get("type")
-                        if name:
-                            columns.append(
-                                {
-                                    "name": name,
-                                    "type": duckdb_type or "UNKNOWN",
-                                    "dataType": duckdb_type or "UNKNOWN",
-                                    "rawType": profile.get("raw_type"),
-                                    "normalizedType": profile.get("normalized_type"),
-                                    "precision": profile.get("precision"),
-                                    "scale": profile.get("scale"),
-                                    "nullable": profile.get("nullable"),
-                                    "statistics": profile.get("statistics"),
-                                    "sampleValues": profile.get("sample_values"),
-                                }
-                            )
-                elif metadata and metadata.get("columns"):
-                    metadata_columns = metadata["columns"]
-                    if isinstance(metadata_columns, list) and len(metadata_columns) > 0:
-                        if isinstance(metadata_columns[0], str):
-                            columns = [
-                                {"name": col, "type": "VARCHAR", "dataType": "VARCHAR", "sampleValues": None}
-                                for col in metadata_columns
-                            ]
-                        elif isinstance(metadata_columns[0], dict):
-                            columns = metadata_columns
+                created_at = metadata.get("created_at") if metadata else None
 
                 # 尝试获取行数
                 row_count = 0
@@ -220,10 +156,9 @@ async def get_available_tables():
                 table_info.append(
                     {
                         "table_name": table_name,
-                        "columns": columns,
-                        "column_count": len(columns),
+                        "column_count": metadata.get("column_count") if metadata else 0,
                         "row_count": row_count,
-                        "created_at": createdAt,
+                        "created_at": created_at,
                         "error": str(table_error),
                     }
                 )
@@ -242,6 +177,60 @@ async def get_available_tables():
     except Exception as e:
         logger.error(f"获取DuckDB表信息失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取表信息失败: {str(e)}")
+
+
+def _ensure_table_exists(con, table_name: str) -> None:
+    tables_df = con.execute("SHOW TABLES").fetchdf()
+    available_tables = tables_df["name"].tolist() if not tables_df.empty else []
+    if table_name not in available_tables:
+        raise HTTPException(status_code=404, detail=f"数据表 {table_name} 不存在")
+
+
+@router.get("/api/duckdb/tables/detail/{table_name}", tags=["DuckDB Query"])
+async def get_duckdb_table_detail(table_name: str):
+    """获取指定表的列级详细信息"""
+    try:
+        con = get_db_connection()
+        _ensure_table_exists(con, table_name)
+        metadata = get_table_metadata(table_name, con)
+        metadata_dict = (
+            metadata.model_dump()
+            if hasattr(metadata, "model_dump")
+            else metadata.dict()
+        )
+        return {
+            "success": True,
+            "table": metadata_dict,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("获取表元数据失败: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取表元数据失败: {str(exc)}")
+
+
+@router.post("/api/duckdb/table/{table_name}/refresh", tags=["DuckDB Query"])
+async def refresh_duckdb_table_metadata(table_name: str):
+    """刷新指定表的元数据缓存并返回最新详细信息"""
+    try:
+        con = get_db_connection()
+        _ensure_table_exists(con, table_name)
+        metadata = get_table_metadata(table_name, con, use_cache=False)
+        metadata_dict = (
+            metadata.model_dump()
+            if hasattr(metadata, "model_dump")
+            else metadata.dict()
+        )
+        return {
+            "success": True,
+            "table": metadata_dict,
+            "refreshed": True,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("刷新表元数据失败: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"刷新表元数据失败: {str(exc)}")
 
 
 async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryResponse:

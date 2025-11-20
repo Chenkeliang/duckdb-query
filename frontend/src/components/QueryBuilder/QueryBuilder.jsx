@@ -13,7 +13,7 @@ import {
 import { Play } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import { executeDuckDBSQL, performQuery, previewVisualQuery } from '../../services/apiClient';
+import { executeDuckDBSQL, performQuery, previewVisualQuery, getDuckDBTableDetail } from '../../services/apiClient';
 import { transformVisualConfigForApi, transformPivotConfigForApi } from '../../utils/visualQueryUtils';
 import JoinCondition from './JoinCondition';
 import SetOperationBuilder from './SetOperationBuilder';
@@ -65,6 +65,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
   const [joins, setJoins] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [detailCache, setDetailCache] = useState({});
 
   // 错误信息翻译函数
   const translateError = (errorMessage) => {
@@ -319,12 +320,60 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
   // 当前操作模式：根据用户选择决定
   const [currentOperationMode, setCurrentOperationMode] = useState(null); // 'join' or 'set_operation'
 
-  // 选中/移除数据源全部用props
-  const handleSourceSelect = (source) => {
-    if (!selectedSources.some(s => s.id === source.id)) {
-      setSelectedSources([...selectedSources, source]);
-    }
+  const resolveMetadataPayload = (payload) => {
+    if (!payload) return null;
+    if (payload.table) return payload.table;
+    if (payload.metadata) return payload.metadata;
+    return payload;
   };
+
+  const isDuckSource = (source) => {
+    if (!source) return false;
+    const type = (source.type || '').toLowerCase();
+    const sourceType = (source.sourceType || '').toLowerCase();
+    return type === 'table' || type === 'duckdb' || sourceType === 'duckdb';
+  };
+
+  // 选中/移除数据源全部用props
+  const handleSourceSelect = useCallback(
+    async (source) => {
+      if (!source || selectedSources.some((s) => s.id === source.id)) {
+        return;
+      }
+
+      let enrichedSource = source;
+      if (isDuckSource(source)) {
+        const cached = detailCache[source.id];
+        if (cached) {
+          enrichedSource = {
+            ...source,
+            columns: cached.columns || [],
+            column_count: cached.column_count ?? source.column_count,
+            row_count: cached.row_count ?? source.row_count,
+          };
+        } else {
+          try {
+            const resp = await getDuckDBTableDetail(source.id);
+            const metadata = resolveMetadataPayload(resp);
+            if (metadata) {
+              setDetailCache((prev) => ({ ...prev, [source.id]: metadata }));
+              enrichedSource = {
+                ...source,
+                columns: metadata.columns || [],
+                column_count: metadata.column_count ?? source.column_count,
+                row_count: metadata.row_count ?? source.row_count,
+              };
+            }
+          } catch (fetchErr) {
+            showError?.(fetchErr?.message || '获取表元数据失败');
+          }
+        }
+      }
+
+      setSelectedSources((prev) => [...prev, enrichedSource]);
+    },
+    [detailCache, selectedSources, setSelectedSources, showError]
+  );
   const handleSourceRemove = (sourceId) => {
     setSelectedSources(selectedSources.filter(s => s.id !== sourceId));
     setJoins(joins.filter(j => j.left_source_id !== sourceId && j.right_source_id !== sourceId));

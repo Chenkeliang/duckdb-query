@@ -44,6 +44,7 @@ const ColumnSelector = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [quickConfigColumn, setQuickConfigColumn] = useState(null);
+  const resolvedTableName = selectedTable?.table_name || selectedTable?.name || '';
 
   const columnProfilesMap = columnProfiles || {};
   const normalizedJsonTables = Array.isArray(jsonTables) ? jsonTables : [];
@@ -543,6 +544,7 @@ const ColumnSelector = ({
       <JsonQuickConfiguratorDialog
         open={Boolean(quickConfigColumn)}
         column={quickConfigColumn}
+        tableName={resolvedTableName}
         onClose={closeQuickConfigurator}
         onSave={handleQuickSave}
         onRemove={handleQuickRemove}

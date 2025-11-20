@@ -44,6 +44,32 @@ except Exception:  # pragma: no cover - fallback when config manager unavailable
 logger = logging.getLogger(__name__)
 
 
+def _normalize_json_like_string(raw: str) -> Optional[str]:
+    """Attempt to normalize a JSON-like string to valid JSON; return None if it fails."""
+    if raw is None:
+        return None
+    try:
+        import json
+
+        return json.dumps(json.loads(raw), ensure_ascii=False)
+    except Exception:
+        pass
+    try:
+        normalized = (
+            raw.replace("'", '"')
+            .replace("\u2018", '"')
+            .replace("\u2019", '"')
+            .replace("True", "true")
+            .replace("False", "false")
+            .replace("None", "null")
+        )
+        import json
+
+        return json.dumps(json.loads(normalized), ensure_ascii=False)
+    except Exception:
+        return None
+
+
 @dataclass
 class ValidationResult:
     """Result of query configuration validation"""
@@ -365,44 +391,61 @@ def _build_json_table_join_clause(
     alias = json_config.alias or f"json_table_{index + 1}"
     alias_sql = _quote_identifier(alias)
     source_expr = _format_column_reference(json_config.source_column)
+    root_path = json_config.root_path or "$"
     iterator_alias = f"json_each_{index + 1}"
 
-    root_path = json_config.root_path or "$"
-
-    column_expressions = [
-        _build_json_each_projection(column, iterator_alias)
-        for column in json_config.columns
-    ]
-    columns_sql = ",\n        ".join(column_expressions)
-
-    json_source_expr, path_literal = _resolve_json_each_source(source_expr, root_path)
-    if path_literal:
-        row_source = f"json_each({json_source_expr}, {path_literal}) AS {iterator_alias}"
-    else:
-        row_source = f"json_each({json_source_expr}) AS {iterator_alias}"
-    lateral_subquery = (
-        "(\n"
-        "    SELECT\n"
-        f"        {columns_sql}\n"
-        f"    FROM {row_source}\n"
-        ")"
+    json_source_expr, path_literal, needs_iteration = _resolve_json_each_source(
+        source_expr, root_path
     )
+
+    if needs_iteration:
+        column_expressions = [
+            _build_json_projection(
+                column, f"{iterator_alias}.value", allow_rowid=True, rowid_alias=iterator_alias
+            )
+            for column in json_config.columns
+        ]
+        columns_sql = ",\n        ".join(column_expressions)
+        row_source = (
+            f"json_each({json_source_expr}, {path_literal}) AS {iterator_alias}"
+            if path_literal
+            else f"json_each({json_source_expr}) AS {iterator_alias}"
+        )
+        lateral_subquery = (
+            "(\n"
+            "    SELECT\n"
+            f"        {columns_sql}\n"
+            f"    FROM {row_source}\n"
+            ")"
+        )
+    else:
+        column_expressions = [
+            _build_json_projection(column, json_source_expr) for column in json_config.columns
+        ]
+        columns_sql = ",\n        ".join(column_expressions)
+        lateral_subquery = "(\n" "    SELECT\n" f"        {columns_sql}\n" ")"
 
     join_keyword = "LEFT JOIN LATERAL" if json_config.outer_join else "JOIN LATERAL"
     return f" {join_keyword} {lateral_subquery} AS {alias_sql} ON TRUE"
 
 
-def _build_json_each_projection(
-    column: JSONTableColumnConfig, iterator_alias: str
+def _build_json_projection(
+    column: JSONTableColumnConfig,
+    value_reference: str,
+    allow_rowid: bool = False,
+    rowid_alias: str = "",
 ) -> str:
     column_name = _quote_identifier(column.name)
+
     if column.ordinal:
-        ordinal_expr = f"COALESCE({iterator_alias}.rowid, 0) + 1"
+        if allow_rowid and rowid_alias:
+            ordinal_expr = f"COALESCE({rowid_alias}.rowid, 0) + 1"
+        else:
+            ordinal_expr = "1"
         return f"{ordinal_expr} AS {column_name}"
 
     data_type = (column.data_type or "VARCHAR").upper()
     path_literal = _format_literal(column.path or "$")
-    value_reference = f"{iterator_alias}.value"
     extractor = (
         "json_extract_string" if _is_textual_json_type(data_type) else "json_extract"
     )
@@ -420,15 +463,15 @@ def _build_json_each_projection(
 
 def _resolve_json_each_source(
     source_expr: str, root_path: str
-) -> tuple[str, Optional[str]]:
+) -> tuple[str, Optional[str], bool]:
     cleaned_path = (root_path or "$").strip() or "$"
     has_wildcard = "*" in cleaned_path or "?" in cleaned_path
     if cleaned_path == "$":
-        return source_expr, None
+        return source_expr, None, False
     if has_wildcard:
         extracted = f"json_extract({source_expr}, {_format_literal(cleaned_path)})"
-        return f"json({extracted})", None
-    return source_expr, _format_literal(cleaned_path)
+        return f"json({extracted})", None, True
+    return source_expr, _format_literal(cleaned_path), True
 
 
 def _is_textual_json_type(data_type: str) -> bool:
@@ -1397,14 +1440,33 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
                 avg_value = minmax_row["avg_val"]
 
         # Get sample values
+        column_ref = f'"{column_name}"'
+        is_complex_type = any(
+            marker in str(data_type).upper()
+            for marker in ["STRUCT", "MAP", "LIST", "ARRAY", "JSON"]
+        )
+        sample_expr = f"to_json({column_ref})" if is_complex_type else column_ref
         sample_sql = f"""
-        SELECT DISTINCT "{column_name}"
+        SELECT DISTINCT {sample_expr} AS sample_value
         FROM "{table_name}"
         WHERE "{column_name}" IS NOT NULL
         LIMIT 10
         """
         sample_df = con.execute(sample_sql).fetchdf()
-        sample_values = [str(val) for val in sample_df[column_name].tolist()]
+        sample_values = []
+        for val in sample_df["sample_value"].tolist():
+            try:
+                if isinstance(val, str):
+                    normalized = _normalize_json_like_string(val)
+                    sample_values.append(normalized if normalized is not None else val)
+                elif isinstance(val, (dict, list)):
+                    import json
+
+                    sample_values.append(json.dumps(val, ensure_ascii=False))
+                else:
+                    sample_values.append(str(val))
+            except Exception:
+                sample_values.append(str(val))
 
         return ColumnStatistics(
             column_name=column_name,

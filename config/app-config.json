@@ -42,6 +42,10 @@
     {
       "label": "macOS Documents",
       "path": "/app/host_documents"
+    },
+    {
+      "label": "Local Downloads (macOS)",
+      "path": "/Users/keliang/Downloads"
     }
   ],
   "duckdb_remote_settings": {},

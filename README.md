@@ -157,7 +157,7 @@ npm run dev
 - `datasources.json`：预置数据库连接。
 - `secret.key`：前端数据库口令/加密使用。
 - `duckdb_remote_settings`：开启 httpfs / S3 / OSS 读取。
-- `server_data_mounts`：控制哪些宿主目录可在前端浏览器中显示Duckdb读取。
+- `server_data_mounts`：控制哪些宿主目录可在前端浏览器中显示Duckdb读取。若不通过 Docker/容器启动，请把 `path` 换成本机真实目录（如 `/Users/<you>/Downloads` 或项目内的 `./server_data`），否则前端会提示“路径不存在”。
 
 所有配置项在 [docs/CONFIGURATION.md](docs/CONFIGURATION.md) 中详解。
 

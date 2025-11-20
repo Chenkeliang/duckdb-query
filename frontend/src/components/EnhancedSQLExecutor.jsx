@@ -29,7 +29,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   deleteDuckDBTableEnhanced,
   executeDuckDBSQL,
-  getDuckDBTablesEnhanced,
+  fetchDuckDBTableSummaries,
   submitAsyncQuery,
 } from "../services/apiClient";
 import DuckDBManagementPage from "./DuckDBManager/DuckDBManagementPage";
@@ -105,19 +105,13 @@ const EnhancedSQLExecutor = ({
 
   const fetchDuckDBTables = async () => {
     try {
-      const response = await getDuckDBTablesEnhanced();
-      let tableNames = response.tables
+      const response = await fetchDuckDBTableSummaries();
+      let tableNames = Array.isArray(response?.tables)
         ? response.tables.map((table) => table.table_name)
         : [];
-      const tableInfoMap = {};
-      if (response.tables) {
-        response.tables.forEach((table) => {
-          tableInfoMap[table.table_name] = table;
-        });
-      }
       tableNames.sort((a, b) => {
-        const tableA = tableInfoMap[a];
-        const tableB = tableInfoMap[b];
+        const tableA = response.tables?.find((t) => t.table_name === a);
+        const tableB = response.tables?.find((t) => t.table_name === b);
         const timeA =
           tableA && tableA.created_at
             ? new Date(tableA.created_at)

@@ -1,5 +1,5 @@
-import { Button, IconButton, Tab, Tabs, Chip } from "@mui/material";
-import { Github, Info, Moon, Star, Sun } from "lucide-react";
+import { IconButton, Tab, Tabs } from "@mui/material";
+import { Github, Info, Moon, Sun } from "lucide-react";
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 
 // 导入Toast上下文
@@ -19,7 +19,8 @@ import {
   createDatabaseConnection,
   executeDuckDBSQL,
   executeSQL,
-  getDuckDBTablesEnhanced,
+  fetchDuckDBTableSummaries,
+  getDuckDBTableDetail,
   getMySQLDataSources,
   listDatabaseConnections,
   testDatabaseConnection
@@ -37,9 +38,9 @@ const LazyFallback = () => (
 );
 
 // 导入样式
-import "./styles/modern.css";
-import duckLogoLight from "./assets/Duckquerylogo.svg";
 import duckLogoDark from "./assets/duckquery-dark.svg";
+import duckLogoLight from "./assets/Duckquerylogo.svg";
+import "./styles/modern.css";
 
 const THEME_STORAGE_KEY = "duck-query-theme";
 
@@ -217,11 +218,11 @@ const ShadcnApp = () => {
 
     try {
 
-      const [dataSourcesRes, connectionsRes, duckdbTablesRes] =
+      const [dataSourcesRes, connectionsRes, duckdbSummaryRes] =
         await Promise.all([
           getMySQLDataSources(),
           listDatabaseConnections(),
-          getDuckDBTablesEnhanced(force), // 传递force参数
+          fetchDuckDBTableSummaries(),
         ]);
 
 
@@ -232,48 +233,29 @@ const ShadcnApp = () => {
         allDataSources = [...allDataSources, ...mysqlSources];
       }
 
-      if (duckdbTablesRes.success) {
-        const duckdbTables =
-          duckdbTablesRes.tables || duckdbTablesRes.data || [];
-        const duckdbSources = duckdbTables.map((table) => {
-          const tableName =
-            typeof table === "string"
-              ? table
-              : table.table_name || table.name || String(table);
-          const columnProfiles = Array.isArray(table.column_profiles)
-            ? table.column_profiles
-            : [];
-          const mappedProfileColumns = columnProfiles.map((profile) => ({
-            name: profile.name || profile.column,
-            type: profile.duckdb_type || profile.type,
-            dataType: profile.duckdb_type || profile.type,
-            rawType: profile.rawType || profile.raw_type,
-            normalizedType: profile.normalizedType || profile.normalized_type,
-            nullable: profile.nullable,
-            precision: profile.precision,
-            scale: profile.scale,
-            sampleValues: profile.sampleValues || profile.sample_values || [],
-            statistics: profile.statistics,
-          }));
-          const columns = mappedProfileColumns.length > 0
-            ? mappedProfileColumns
-            : (typeof table === "object" ? table.columns || [] : []);
-          const columnCount =
-            typeof table === "object"
-              ? table.column_count || columns.length
-              : 0;
-          // 添加创建时间字段，如果有的话
-          const createdAt =
-            typeof table === "object" ? table.created_at || null : null;
+      const duckdbSummaries = Array.isArray(duckdbSummaryRes?.tables)
+        ? duckdbSummaryRes.tables
+        : [];
+
+      if (duckdbSummaries.length > 0) {
+        const duckdbSources = duckdbSummaries.map((summary) => {
+          const tableName = summary.table_name || summary.name;
+          // 仅使用汇总信息，不在初始化阶段预取详情，避免刷新时对所有表发起请求。
+          // 详细列信息在用户点击表或进入可视化查询时再按需加载。
+          const columns = transformMetadataColumns(null);
+          const columnCount = summary.column_count || columns.length;
+          const createdAt = summary.created_at || null;
+          const rowCount = summary.row_count || 0;
 
           return {
             id: tableName,
             name: tableName,
             sourceType: "duckdb",
             type: "table",
-            columns: columns,
-            columnCount: columnCount,
-            createdAt: createdAt,
+            columns,
+            columnCount,
+            row_count: rowCount,
+            createdAt,
           };
         });
         // 按创建时间倒序排序
@@ -446,6 +428,40 @@ const ShadcnApp = () => {
     }
 
     return "unknown";
+  }
+
+  function resolveMetadataPayload(payload) {
+    if (!payload) return null;
+    if (payload.table) return payload.table;
+    if (payload.metadata) return payload.metadata;
+    return payload;
+  }
+
+  function transformMetadataColumns(metadata) {
+    if (!metadata || !Array.isArray(metadata.columns)) {
+      return [];
+    }
+
+    return metadata.columns.map((column) => {
+      const rawType = column.data_type || column.type || column.rawType;
+      const normalizedType = normalizeColumnType(rawType);
+      return {
+        name: column.column_name || column.name,
+        type: rawType,
+        dataType: rawType,
+        rawType,
+        normalizedType,
+        nullable: column.null_count === undefined ? undefined : column.null_count > 0,
+        sampleValues: column.sample_values || [],
+        statistics: {
+          null_count: column.null_count,
+          distinct_count: column.distinct_count,
+          min: column.min_value,
+          max: column.max_value,
+          avg: column.avg_value,
+        },
+      };
+    });
   }
 
   function buildColumnTypeMap(columns = []) {
@@ -927,27 +943,27 @@ const ShadcnApp = () => {
       <header className="dq-topbar">
         <div className="w-full px-6 py-2">
           <div className="flex items-center justify-between">
-          <div
-            className="dq-header-brand flex items-center gap-3"
-            style={{
-              minHeight: 72,
-              padding: '0.35rem 1.25rem',
-              marginLeft: '-40px'
-            }}
-          >
-            <img
-              src={isDarkMode ? duckLogoDark : duckLogoLight}
-              alt="Duck Query"
-              className="select-none"
-              draggable={false}
+            <div
+              className="dq-header-brand flex items-center gap-3"
               style={{
-                width: 175,
-                height: 60,
-                objectFit: 'contain',
-                display: 'block',
+                minHeight: 72,
+                padding: '0.35rem 1.25rem',
+                marginLeft: '-40px'
               }}
-            />
-          </div>
+            >
+              <img
+                src={isDarkMode ? duckLogoDark : duckLogoLight}
+                alt="Duck Query"
+                className="select-none"
+                draggable={false}
+                style={{
+                  width: 175,
+                  height: 60,
+                  objectFit: 'contain',
+                  display: 'block',
+                }}
+              />
+            </div>
             <div className="flex items-center gap-3">
               <IconButton
                 size="small"

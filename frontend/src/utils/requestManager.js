@@ -139,14 +139,6 @@ class RequestManager {
 
 
 
-  /**
-   * 专门用于DuckDB表请求的方法
-   */
-  async getDuckDBTables() {
-    return this.executeRequest('/api/duckdb/tables', {}, 2000); // 2秒防抖
-  }
-
-
 }
 
 // 创建全局实例

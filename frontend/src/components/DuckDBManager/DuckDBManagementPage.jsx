@@ -41,10 +41,11 @@ import {
 } from '@mui/material';
 import { Database, RotateCcw, Search } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { deleteDuckDBTableEnhanced, getDuckDBTablesEnhanced, refreshTableMetadataCache } from '../../services/apiClient';
+import { deleteDuckDBTableEnhanced, fetchDuckDBTableSummaries, getDuckDBTableDetail, refreshDuckDBTableMetadata } from '../../services/apiClient';
 
 const DuckDBManagementPage = ({ onDataSourceChange }) => {
   const [tables, setTables] = useState([]);
+  const [tableDetails, setTableDetails] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedTable, setSelectedTable] = useState(null);
@@ -65,6 +66,32 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
     '查询结果表': true,
     '数据表': true
   });
+
+  const resolveMetadataPayload = (payload) => {
+    if (!payload) return null;
+    if (payload.table) return payload.table;
+    if (payload.metadata) return payload.metadata;
+    return payload;
+  };
+
+  const buildColumnsFromMetadata = (metadata) => {
+    if (!metadata || !Array.isArray(metadata.columns)) {
+      return [];
+    }
+    return metadata.columns.map((column) => {
+      if (typeof column === 'string') {
+        return { name: column, type: 'VARCHAR', dataType: 'VARCHAR' };
+      }
+      const columnName = column.column_name || column.name;
+      const dataType = column.data_type || column.type || 'VARCHAR';
+      return {
+        name: columnName,
+        type: dataType,
+        dataType: dataType,
+        sampleValues: column.sample_values || [],
+      };
+    });
+  };
 
   useEffect(() => {
     loadTables();
@@ -94,20 +121,8 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
     setLoading(true);
     setError('');
     try {
-      const data = await getDuckDBTablesEnhanced();
-
-      // 处理 /api/duckdb_tables 返回的数据格式: { success: true, tables: [...], total_tables: number }
-      let tablesArray = [];
-      if (data && data.success && Array.isArray(data.tables)) {
-        tablesArray = data.tables;
-      } else if (Array.isArray(data)) {
-        // 如果直接返回数组
-        tablesArray = data;
-      } else if (data && Array.isArray(data.tables)) {
-        // 其他格式的 tables 字段
-        tablesArray = data.tables;
-      }
-
+      const data = await fetchDuckDBTableSummaries();
+      const tablesArray = Array.isArray(data?.tables) ? data.tables : [];
       setTables(tablesArray);
     } catch (err) {
       setError(`加载表列表失败: ${err.message}`);
@@ -115,11 +130,6 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleShowInfo = (table) => {
-    setSelectedTable(table);
-    setInfoDialogOpen(true);
   };
 
   const handleDeleteTable = (table) => {
@@ -139,6 +149,56 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
     });
   };
 
+  const ensureTableDetail = async (tableName, { force = false } = {}) => {
+    if (!force && tableDetails[tableName]) {
+      return tableDetails[tableName];
+    }
+    try {
+      const response = force
+        ? await refreshDuckDBTableMetadata(tableName)
+        : await getDuckDBTableDetail(tableName);
+      const metadata = resolveMetadataPayload(response);
+      if (metadata) {
+        setTableDetails(prev => ({ ...prev, [tableName]: metadata }));
+        setTables(prev =>
+          prev.map(table =>
+            table.table_name === tableName
+              ? {
+                  ...table,
+                  columns: buildColumnsFromMetadata(metadata),
+                  column_count: metadata.column_count ?? table.column_count,
+                  row_count: metadata.row_count ?? table.row_count,
+                }
+              : table
+          )
+        );
+      }
+      return metadata;
+    } catch (error) {
+      setError(error.message || '获取表元数据失败');
+      return null;
+    }
+  };
+
+  const handleShowInfo = async (table) => {
+    setSelectedTable(table);
+    setInfoDialogOpen(true);
+    const metadata = await ensureTableDetail(table.table_name);
+    if (metadata) {
+      setSelectedTable(prev => {
+        if (!prev || prev.table_name !== table.table_name) {
+          return prev;
+        }
+        return {
+          ...prev,
+          columns: buildColumnsFromMetadata(metadata),
+          column_count: metadata.column_count ?? prev.column_count,
+          row_count: metadata.row_count ?? prev.row_count,
+        };
+      });
+    }
+  };
+
   const handleRefreshMetadata = async (tableName) => {
     if (!tableName) return;
 
@@ -146,9 +206,9 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
     setTableRefreshing(tableName, true);
 
     try {
-      const response = await refreshTableMetadataCache(tableName);
-      if (!response?.success) {
-        throw new Error(response?.detail || '未知错误');
+      const metadata = await ensureTableDetail(tableName, { force: true });
+      if (!metadata) {
+        throw new Error('刷新表元数据失败');
       }
       setSuccessMessage(`表 "${tableName}" 的缓存已刷新`);
     } catch (err) {

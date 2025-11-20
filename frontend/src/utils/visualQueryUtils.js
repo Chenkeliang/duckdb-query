@@ -717,20 +717,23 @@ function formatJsonTableColumnAlias(name) {
   return escapeIdentifier(String(name).trim());
 }
 
-function buildJsonEachProjection(column, iteratorAlias) {
+function buildJsonProjection(column, valueReference, allowRowId = false, rowIdAlias = "") {
   const columnIdentifier = formatJsonTableColumnAlias(column.name);
   if (!columnIdentifier) {
     return "";
   }
 
   if (column.ordinal) {
-    return `COALESCE(${iteratorAlias}.rowid, 0) + 1 AS ${columnIdentifier}`;
+    if (allowRowId && rowIdAlias) {
+      return `COALESCE(${rowIdAlias}.rowid, 0) + 1 AS ${columnIdentifier}`;
+    }
+    return `1 AS ${columnIdentifier}`;
   }
 
   const normalizedType = (column.dataType || "VARCHAR").toUpperCase();
   const pathLiteral = escapeSqlLiteral(column.path || "$");
   const extractor = isTextualJsonType(normalizedType) ? "json_extract_string" : "json_extract";
-  const extraction = `${extractor}(${iteratorAlias}.value, ${pathLiteral})`;
+  const extraction = `${extractor}(${valueReference}, ${pathLiteral})`;
   let projection = `TRY_CAST(${extraction} AS ${normalizedType})`;
 
   if (column.defaultValue !== undefined) {
@@ -773,14 +776,18 @@ function resolveJsonEachSource(sourceExpr, rootPath) {
   const normalizedPath = (rootPath || "$").trim() || "$";
   const hasWildcard = /[\*\?]/.test(normalizedPath);
   if (normalizedPath === "$") {
-    return { jsonSource: sourceExpr, pathLiteral: null };
+    return { jsonSource: sourceExpr, pathLiteral: null, needsIteration: false };
   }
   if (hasWildcard) {
     const literal = escapeSqlLiteral(normalizedPath);
     const extracted = `json_extract(${sourceExpr}, ${literal})`;
-    return { jsonSource: `json(${extracted})`, pathLiteral: null };
+    return { jsonSource: `json(${extracted})`, pathLiteral: null, needsIteration: true };
   }
-  return { jsonSource: sourceExpr, pathLiteral: escapeSqlLiteral(normalizedPath) };
+  return {
+    jsonSource: sourceExpr,
+    pathLiteral: escapeSqlLiteral(normalizedPath),
+    needsIteration: true,
+  };
 }
 
 function isTextualJsonType(dataType) {
@@ -1254,12 +1261,20 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
         .toString()
         .toLowerCase();
       const joinKeyword = joinType === 'inner' ? 'JOIN LATERAL' : 'LEFT JOIN LATERAL';
-      const iteratorAlias = `json_each_${index + 1}`;
       const sourceExpr = formatJsonColumnReference(String(sourceColumn).trim());
       const rootPath = tableConfig.rootPath || tableConfig.root_path || '$';
+      const iteratorAlias = `json_each_${index + 1}`;
+      const { jsonSource, pathLiteral, needsIteration } = resolveJsonEachSource(sourceExpr, rootPath);
 
       const columnClauses = normalizedColumns
-        .map((column) => buildJsonEachProjection(column, iteratorAlias))
+        .map((column) =>
+          buildJsonProjection(
+            column,
+            needsIteration ? `${iteratorAlias}.value` : jsonSource,
+            needsIteration,
+            iteratorAlias
+          )
+        )
         .filter(Boolean);
 
       if (columnClauses.length === 0) {
@@ -1267,11 +1282,11 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
       }
 
       const columnsSql = columnClauses.join(',\n        ');
-      const { jsonSource, pathLiteral } = resolveJsonEachSource(sourceExpr, rootPath);
-      const rowSource = pathLiteral
-        ? `json_each(${jsonSource}, ${pathLiteral}) AS ${iteratorAlias}`
-        : `json_each(${jsonSource}) AS ${iteratorAlias}`;
-      const lateralSubquery = `(\n    SELECT\n        ${columnsSql}\n    FROM ${rowSource}\n  )`;
+      const lateralSubquery = needsIteration
+        ? `(\n    SELECT\n        ${columnsSql}\n    FROM ${
+            pathLiteral ? `json_each(${jsonSource}, ${pathLiteral})` : `json_each(${jsonSource})`
+          } AS ${iteratorAlias}\n  )`
+        : `(\n    SELECT\n        ${columnsSql}\n  )`;
       return `\n${joinKeyword} ${lateralSubquery} AS ${escapeIdentifier(alias)} ON TRUE`;
     };
 

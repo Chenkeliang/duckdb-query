@@ -15,7 +15,7 @@ import {
 } from '@mui/icons-material';
 import { ChevronDown, LineChart } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getAppFeatures, previewVisualQuery, getTableMetadata, validateVisualQueryConfig } from '../../services/apiClient';
+import { getAppFeatures, previewVisualQuery, getDuckDBTableDetail, validateVisualQueryConfig } from '../../services/apiClient';
 import {
   createDefaultConfig,
   createDefaultPivotConfig,
@@ -52,6 +52,13 @@ const SECTION_STORAGE_KEYS = {
   limit: 'dq-visual-section-limit',
   pivot: 'dq-visual-section-pivot',
   regularPanel: 'dq-visual-section-regular-panel',
+};
+
+const resolveMetadataPayload = (payload) => {
+  if (!payload) return null;
+  if (payload.table) return payload.table;
+  if (payload.metadata) return payload.metadata;
+  return payload;
 };
 import useTypeConflictCheck from '../../hooks/useTypeConflictCheck';
 import { useToast } from '../../contexts/ToastContext';
@@ -671,10 +678,10 @@ const VisualAnalysisPanel = ({
     setSuggestedCasts({});
     setIsMetadataReady(false);
 
-    getTableMetadata(tableName)
+    getDuckDBTableDetail(tableName)
       .then((resp) => {
         if (cancelled) return;
-        const metadata = resp?.metadata;
+        const metadata = resolveMetadataPayload(resp);
         if (!metadata || !Array.isArray(metadata.columns)) {
           setColumnProfiles(buildFallbackProfiles());
           setIsMetadataReady(true);

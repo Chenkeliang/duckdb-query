@@ -183,6 +183,33 @@ describe('Visual Query Generator', () => {
       expect(result.sql).toContain('COALESCE(json_each_1.rowid, 0) + 1 AS "row_num"');
     });
 
+    it('does not iterate json_each when rootPath is object root', () => {
+      const config = {
+        tableName: 'events',
+        selectedColumns: ['meta'],
+        aggregations: [],
+        filters: [],
+        jsonTables: [
+          {
+            sourceColumn: 'meta',
+            alias: 'meta_items',
+            rootPath: '$',
+            columns: [
+              { name: 'template_creds_setup_completed', path: '$.templateCredsSetupCompleted', dataType: 'BOOLEAN' },
+              { name: 'instance_id', path: '$.instanceId', dataType: 'VARCHAR' },
+            ],
+          },
+        ],
+      };
+
+      const result = generateSQLPreview(config, 'events');
+
+      expect(result.success).toBe(true);
+      expect(result.sql).not.toContain('json_each(');
+      expect(result.sql).toContain('json_extract("meta", \'$.templateCredsSetupCompleted\') AS "template_creds_setup_completed"');
+      expect(result.sql).toContain('json_extract_string("meta", \'$.instanceId\') AS "instance_id"');
+    });
+
     it('keeps JSON expanded columns in SELECT when base columns are explicitly chosen', () => {
       const config = {
         tableName: 'orders',

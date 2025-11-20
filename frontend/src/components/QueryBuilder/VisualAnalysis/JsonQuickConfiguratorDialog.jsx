@@ -20,7 +20,8 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { ChevronDown, ChevronUp, Info, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, Info, Plus, Trash2 } from 'lucide-react';
+import { getColumnStatistics } from '../../../services/apiClient';
 
 const DATA_TYPE_OPTIONS = ['VARCHAR', 'INTEGER', 'BIGINT', 'DOUBLE', 'BOOLEAN', 'TIMESTAMP'];
 
@@ -60,7 +61,17 @@ const tryParseSample = (samples) => {
       try {
         return JSON.parse(raw);
       } catch (error) {
-        continue;
+        // 尝试宽松解析：处理单引号/True/False
+        try {
+          const normalized = raw
+            .replace(/'/g, '"')
+            .replace(/\bTrue\b/g, 'true')
+            .replace(/\bFalse\b/g, 'false')
+            .replace(/\bNone\b/g, 'null');
+          return JSON.parse(normalized);
+        } catch (err) {
+          continue;
+        }
       }
     }
   }
@@ -160,16 +171,32 @@ const buildDefaultFields = (existingColumns, suggestions) => {
   ];
 };
 
-const JsonQuickConfiguratorDialog = ({ open, column, onClose, onSave, onRemove }) => {
-  const sampleValues = useMemo(() => column?.sampleValues || [], [column]);
+const JsonQuickConfiguratorDialog = ({ open, column, tableName, onClose, onSave, onRemove }) => {
+  const [fetchedSamples, setFetchedSamples] = useState([]);
+  const [fetchingSample, setFetchingSample] = useState(false);
+  const [fetchError, setFetchError] = useState('');
+  const [showFullSample, setShowFullSample] = useState(false);
+  const [isRowPathUserSet, setIsRowPathUserSet] = useState(false);
+  const baseSamples = useMemo(() => column?.sampleValues || [], [column]);
+  const sampleValues = useMemo(
+    () => (fetchedSamples.length > 0 ? fetchedSamples : baseSamples),
+    [baseSamples, fetchedSamples],
+  );
+
+  const samplesAvailable = useMemo(
+    () => Array.isArray(sampleValues) && sampleValues.length > 0,
+    [sampleValues],
+  );
+
   const parsedSample = useMemo(() => tryParseSample(sampleValues), [sampleValues]);
   const defaultRowPath = useMemo(
     () => guessRowPath(parsedSample, column?.name || column?.metadata?.name),
     [parsedSample, column?.name, column?.metadata?.name],
   );
+  const [rowPath, setRowPath] = useState(defaultRowPath);
   const rowSample = useMemo(
-    () => getRowSampleByPath(parsedSample, defaultRowPath),
-    [parsedSample, defaultRowPath],
+    () => getRowSampleByPath(parsedSample, rowPath),
+    [parsedSample, rowPath],
   );
   const suggestions = useMemo(
     () => buildFieldSuggestions(rowSample),
@@ -177,10 +204,140 @@ const JsonQuickConfiguratorDialog = ({ open, column, onClose, onSave, onRemove }
   );
 
   const [alias, setAlias] = useState('');
-  const [rowPath, setRowPath] = useState(defaultRowPath);
   const [joinType, setJoinType] = useState('left');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [fields, setFields] = useState(suggestions);
+
+  const rowPathPresets = useMemo(() => {
+    const presets = [
+      { label: '根对象', value: '$' },
+      { label: '根数组元素', value: '$[*]' },
+    ];
+    if (parsedSample && typeof parsedSample === 'object' && !Array.isArray(parsedSample)) {
+      const arrayEntry = Object.entries(parsedSample).find(([, value]) => Array.isArray(value));
+      if (arrayEntry) {
+        presets.unshift({
+          label: `${arrayEntry[0]} 数组`,
+          value: `$${quoteJsonKey(arrayEntry[0])}[*]`,
+        });
+      }
+    }
+    return presets;
+  }, [parsedSample]);
+
+  const structureHint = useMemo(() => {
+    if (!parsedSample) return '未检测到示例，路径默认使用根节点 $';
+    if (Array.isArray(parsedSample)) return '检测到顶层数组，建议使用 $[*] 作为行路径';
+    if (typeof parsedSample === 'object') return '检测到对象，可直接使用 $ 或选择其中的数组键';
+    return '示例为标量值，可直接使用 $ 提取';
+  }, [parsedSample]);
+
+  const handleRowPathChange = (value, { isUser = false, rebuild = false } = {}) => {
+    setRowPath(value);
+    if (isUser) {
+      setIsRowPathUserSet(true);
+    }
+    if (rebuild) {
+      setFields(buildFieldSuggestions(getRowSampleByPath(parsedSample, value)));
+    }
+  };
+
+  const samplePreviewInfo = useMemo(() => {
+    if (!rowSample && !samplesAvailable) {
+      return { text: '', isJson: false, parseError: '', raw: '' };
+    }
+    const rawInput =
+      rowSample && typeof rowSample === 'object'
+        ? rowSample
+        : samplesAvailable
+          ? sampleValues[0]
+          : '';
+    if (typeof rawInput === 'object' && rawInput !== null) {
+      try {
+        return {
+          text: JSON.stringify(rawInput, null, 2),
+          isJson: true,
+          parseError: '',
+          raw: JSON.stringify(rawInput),
+        };
+      } catch (error) {
+        return { text: String(rawInput), isJson: false, parseError: error?.message, raw: String(rawInput) };
+      }
+    }
+    if (typeof rawInput === 'string') {
+      try {
+        const parsed = JSON.parse(rawInput);
+        return {
+          text: JSON.stringify(parsed, null, 2),
+          isJson: true,
+          parseError: '',
+          raw: rawInput,
+        };
+      } catch (error) {
+        try {
+          const normalized = rawInput
+            .replace(/'/g, '"')
+            .replace(/\bTrue\b/g, 'true')
+            .replace(/\bFalse\b/g, 'false')
+            .replace(/\bNone\b/g, 'null');
+          const parsed = JSON.parse(normalized);
+          return {
+            text: JSON.stringify(parsed, null, 2),
+            isJson: true,
+            parseError: '示例经过兼容处理后解析为 JSON',
+            raw: rawInput,
+          };
+        } catch (err) {
+          return { text: rawInput, isJson: false, parseError: '示例不是合法 JSON，按文本展示', raw: rawInput };
+        }
+      }
+    }
+    return { text: String(rawInput), isJson: false, parseError: '', raw: String(rawInput) };
+  }, [rowSample, samplesAvailable, sampleValues]);
+
+  const truncatedSample = useMemo(() => {
+    const MAX_CHARS = 1200;
+    if (!samplePreviewInfo.text) return '';
+    if (showFullSample || samplePreviewInfo.text.length <= MAX_CHARS) {
+      return samplePreviewInfo.text;
+    }
+    return `${samplePreviewInfo.text.slice(0, MAX_CHARS)}\n...（已截断，点击展开查看全部）`;
+  }, [samplePreviewInfo.text, showFullSample]);
+
+  const handleFetchSample = async () => {
+    if (!tableName || !column?.name) return;
+    setShowFullSample(false);
+    setFetchingSample(true);
+    setFetchError('');
+    try {
+      const resp = await getColumnStatistics(tableName, column.name);
+      const samples = resp?.statistics?.sample_values || [];
+      if (samples.length === 0) {
+        setFetchError('未能获取样例数据，请稍后重试或先运行一次查询。');
+      }
+      setFetchedSamples(samples);
+    } catch (error) {
+      setFetchError(error?.message || '获取示例失败');
+    } finally {
+      setFetchingSample(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open && (!sampleValues || sampleValues.length === 0) && tableName && column?.name) {
+      handleFetchSample();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, tableName, column?.name]);
+
+  useEffect(() => {
+    if (!open) return;
+    setFetchedSamples([]);
+    setFetchError('');
+    setFetchingSample(false);
+    setShowFullSample(false);
+    setIsRowPathUserSet(false);
+  }, [open, column]);
 
   useEffect(() => {
     if (!open || !column) return;
@@ -189,10 +346,16 @@ const JsonQuickConfiguratorDialog = ({ open, column, onClose, onSave, onRemove }
       existing?.alias ||
       `${column.name || column?.metadata?.name || column?.metadata?.column_name || 'json'}_items`;
     setAlias(defaultAlias);
-    setRowPath(existing?.rootPath || defaultRowPath || '$');
+    const resolvedRootPath = existing?.rootPath || defaultRowPath || '$';
+    if (!isRowPathUserSet) {
+      setRowPath(resolvedRootPath);
+    }
     setJoinType(existing?.joinType || 'left');
     setFields(buildDefaultFields(existing?.columns, buildFieldSuggestions(rowSample)));
-  }, [open, column, defaultRowPath, rowSample]);
+    if (!isRowPathUserSet) {
+      setIsRowPathUserSet(Boolean(existing?.rootPath));
+    }
+  }, [open, column, defaultRowPath, isRowPathUserSet, rowSample]);
 
   const handleFieldChange = (fieldId, patch) => {
     setFields((prev) =>
@@ -254,7 +417,16 @@ const JsonQuickConfiguratorDialog = ({ open, column, onClose, onSave, onRemove }
     );
   };
 
-  const samplesAvailable = Array.isArray(sampleValues) && sampleValues.length > 0;
+  const handleCopySample = async () => {
+    try {
+      const text = samplePreviewInfo.raw || samplePreviewInfo.text || '';
+      if (text) {
+        await navigator.clipboard.writeText(text);
+      }
+    } catch (error) {
+      // ignore copy failures
+    }
+  };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -264,6 +436,141 @@ const JsonQuickConfiguratorDialog = ({ open, column, onClose, onSave, onRemove }
           <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>
             选择 JSON 字段并配置路径，系统会自动生成 `JSON_TABLE` 查询。
           </Typography>
+
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1.5,
+              p: 2,
+              border: '1px solid var(--dq-border-subtle)',
+              borderRadius: 'var(--dq-radius-card)',
+              backgroundColor: 'var(--dq-surface)',
+            }}
+          >
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  示例 JSON
+                </Typography>
+                {fetchingSample && (
+                  <Typography variant="caption" color="text.secondary">
+                    获取中…
+                  </Typography>
+                )}
+              </Stack>
+              <Stack direction="row" spacing={1}>
+                <Button size="small" variant="outlined" onClick={handleCopySample} startIcon={<Copy size={14} />}>
+                  复制
+                </Button>
+                <Button size="small" variant="text" onClick={handleFetchSample}>
+                  重新获取
+                </Button>
+              </Stack>
+            </Stack>
+
+            {truncatedSample ? (
+              <Box
+                component="pre"
+                sx={{
+                  p: 1.5,
+                  borderRadius: 'var(--dq-radius-card)',
+                  backgroundColor: 'color-mix(in oklab, var(--dq-surface-card) 92%, var(--dq-accent-primary) 8%)',
+                  maxHeight: 260,
+                  minHeight: 120,
+                  overflow: 'auto',
+                  fontSize: '0.9rem',
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  border: '1px solid var(--dq-border-subtle)',
+                }}
+              >
+                {truncatedSample}
+              </Box>
+            ) : (
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 'var(--dq-radius-card)',
+                  border: '1px dashed var(--dq-border-subtle)',
+                  color: 'var(--dq-text-tertiary)',
+                  fontSize: '0.9rem',
+                }}
+              >
+                {fetchingSample ? '正在获取示例…' : '暂无示例数据，可点击重新获取或先运行一次查询。'}
+              </Box>
+            )}
+            <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
+              {samplePreviewInfo.text && samplePreviewInfo.text.length > 1200 && (
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => setShowFullSample((prev) => !prev)}
+                  sx={{ textTransform: 'none' }}
+                >
+                  {showFullSample ? '收起示例' : '展开全部'}
+                </Button>
+              )}
+              {samplePreviewInfo.parseError && (
+                <Typography variant="caption" color="error">
+                  {samplePreviewInfo.parseError}
+                </Typography>
+              )}
+              {fetchError && (
+                <Typography variant="caption" color="error">
+                  {fetchError}
+                </Typography>
+              )}
+            </Stack>
+          </Box>
+
+          <Box
+            sx={{
+              p: 1.5,
+              border: '1px solid var(--dq-border-subtle)',
+              borderRadius: 'var(--dq-radius-card)',
+              backgroundColor: 'var(--dq-surface-card)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1,
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              结构与行路径
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'var(--dq-text-secondary)' }}>
+              {structureHint}
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {rowPathPresets.map((preset) => (
+                <Button
+                  key={preset.value}
+                  variant={rowPath === preset.value ? 'contained' : 'outlined'}
+                  size="small"
+                  onClick={() => setRowPath(preset.value)}
+                  sx={{ textTransform: 'none' }}
+                >
+                  {preset.label} {preset.value}
+                </Button>
+              ))}
+            </Stack>
+            <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>
+              当前行路径: {rowPath || '$'}
+            </Typography>
+            {samplesAvailable && (
+              <Button
+                size="small"
+                variant="text"
+                startIcon={<Plus size={14} />}
+                onClick={() => setFields(buildFieldSuggestions(rowSample))}
+                sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+              >
+                基于示例重建字段
+              </Button>
+            )}
+          </Box>
+
           <TextField
             label="目标列别名"
             value={alias}
@@ -275,20 +582,20 @@ const JsonQuickConfiguratorDialog = ({ open, column, onClose, onSave, onRemove }
             <TextField
               label="行路径 (Row Path)"
               value={rowPath}
-              onChange={(event) => setRowPath(event.target.value)}
+              onChange={(event) => handleRowPathChange(event.target.value, { isUser: true })}
               fullWidth
               helperText="默认使用检测到的数组路径，可自行调整"
             />
             <Stack spacing={0.5}>
-              {['$[*]', '$.items[*]', '$'].map((preset) => (
+              {rowPathPresets.map((preset) => (
                 <Button
-                  key={preset}
+                  key={preset.value}
                   variant="outlined"
                   size="small"
-                  onClick={() => setRowPath(preset)}
+                  onClick={() => handleRowPathChange(preset.value, { isUser: true, rebuild: true })}
                   sx={{ textTransform: 'none' }}
                 >
-                  {preset}
+                  {preset.value}
                 </Button>
               ))}
             </Stack>

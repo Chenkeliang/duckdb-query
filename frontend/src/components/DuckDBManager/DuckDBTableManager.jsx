@@ -26,10 +26,11 @@ import {
 } from '@mui/material';
 import { Database } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { deleteDuckDBTableEnhanced, getDuckDBTablesEnhanced } from '../../services/apiClient';
+import { deleteDuckDBTableEnhanced, fetchDuckDBTableSummaries, getDuckDBTableDetail } from '../../services/apiClient';
 
 const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
   const [tables, setTables] = useState([]);
+  const [tableDetails, setTableDetails] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedTable, setSelectedTable] = useState(null);
@@ -44,28 +45,78 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
     return document.documentElement.classList.contains('dark');
   });
 
+  const resolveMetadataPayload = (payload) => {
+    if (!payload) return null;
+    if (payload.table) return payload.table;
+    if (payload.metadata) return payload.metadata;
+    return payload;
+  };
+
+  const buildColumnsFromMetadata = (metadata) => {
+    if (!metadata || !Array.isArray(metadata.columns)) {
+      return [];
+    }
+    return metadata.columns.map((column) => {
+      if (typeof column === 'string') {
+        return { name: column, type: 'VARCHAR', dataType: 'VARCHAR' };
+      }
+      const columnName = column.column_name || column.name;
+      const dataType = column.data_type || column.type || 'VARCHAR';
+      return {
+        name: columnName,
+        type: dataType,
+        dataType: dataType,
+        sampleValues: column.sample_values || [],
+      };
+    });
+  };
+
   // 加载DuckDB表列表
   const loadTables = async () => {
     setLoading(true);
     setError('');
 
     try {
-      const response = await getDuckDBTablesEnhanced();
-      if (response.success) {
-        // 按创建时间倒序排序
-        const sortedTables = (response.tables || []).sort((a, b) => {
-          const timeA = a.created_at ? new Date(a.created_at) : new Date(0);
-          const timeB = b.created_at ? new Date(b.created_at) : new Date(0);
-          return timeB - timeA;
-        });
-        setTables(sortedTables);
-      } else {
-        setError('获取表列表失败');
-      }
+      const response = await fetchDuckDBTableSummaries();
+      const sortedTables = (response?.tables || []).sort((a, b) => {
+        const timeA = a.created_at ? new Date(a.created_at) : new Date(0);
+        const timeB = b.created_at ? new Date(b.created_at) : new Date(0);
+        return timeB - timeA;
+      });
+      setTables(sortedTables);
     } catch (err) {
       setError(`加载失败: ${err.message || '未知错误'}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const ensureTableDetail = async (tableName) => {
+    if (tableDetails[tableName]) {
+      return tableDetails[tableName];
+    }
+    try {
+      const response = await getDuckDBTableDetail(tableName);
+      const metadata = resolveMetadataPayload(response);
+      if (metadata) {
+        setTableDetails(prev => ({ ...prev, [tableName]: metadata }));
+        setTables(prev =>
+          prev.map(table =>
+            table.table_name === tableName
+              ? {
+                  ...table,
+                  columns: buildColumnsFromMetadata(metadata),
+                  column_count: metadata.column_count ?? table.column_count,
+                  row_count: metadata.row_count ?? table.row_count,
+                }
+              : table
+          )
+        );
+      }
+      return metadata;
+    } catch (error) {
+      setError(error.message || '获取表详情失败');
+      return null;
     }
   };
 
@@ -95,14 +146,30 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
   }, []);
 
   // 显示表详细信息
-  const handleShowInfo = (table) => {
+  const handleShowInfo = async (table) => {
     setSelectedTable(table);
     setInfoDialogOpen(true);
+    const metadata = await ensureTableDetail(table.table_name);
+    if (metadata) {
+      setSelectedTable(prev => {
+        if (!prev || prev.table_name !== table.table_name) {
+          return prev;
+        }
+        return {
+          ...prev,
+          columns: buildColumnsFromMetadata(metadata),
+          column_count: metadata.column_count ?? prev.column_count,
+          row_count: metadata.row_count ?? prev.row_count,
+        };
+      });
+    }
   };
 
   // 选择表作为数据源
-  const handleSelectTable = (table) => {
+  const handleSelectTable = async (table) => {
     if (onTableSelect) {
+      const metadata = await ensureTableDetail(table.table_name);
+      const columns = metadata ? buildColumnsFromMetadata(metadata) : table.columns || [];
       onTableSelect({
         id: table.table_name,
         type: 'duckdb',
@@ -110,8 +177,8 @@ const DuckDBTableManager = ({ onTableSelect, onDataSourceChange }) => {
         params: {
           table_name: table.table_name
         },
-        row_count: table.row_count,
-        columns: table.columns
+        row_count: (metadata && metadata.row_count) || table.row_count,
+        columns
       });
     }
   };

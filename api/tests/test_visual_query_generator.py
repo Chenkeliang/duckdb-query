@@ -123,6 +123,44 @@ class TestSQLGeneration:
         )
         assert "COALESCE(json_each_1.rowid, 0) + 1 AS \"row_num\"" in sql
 
+    def test_json_object_extraction_without_iteration(self):
+        """When row path is root object, generator should not iterate json_each over keys."""
+        config = VisualQueryConfig(
+            table_name="events",
+            selected_columns=["meta"],
+            json_tables=[
+                JSONTableConfig(
+                    source_column="meta",
+                    alias="meta_items",
+                    root_path="$",
+                    columns=[
+                        JSONTableColumnConfig(
+                            name="template_creds_setup_completed",
+                            path="$.templateCredsSetupCompleted",
+                            data_type="BOOLEAN",
+                        ),
+                        JSONTableColumnConfig(
+                            name="instance_id",
+                            path="$.instanceId",
+                            data_type="VARCHAR",
+                        ),
+                    ],
+                )
+            ],
+        )
+
+        sql = generate_sql_from_config(config)
+
+        assert "json_each" not in sql
+        assert (
+            'json_extract("meta", \'$.templateCredsSetupCompleted\') AS "template_creds_setup_completed"'
+            in sql
+        )
+        assert (
+            'json_extract_string("meta", \'$.instanceId\') AS "instance_id"'
+            in sql
+        )
+
     def test_aggregation_functions(self):
         """Test various aggregation functions"""
         config = VisualQueryConfig(

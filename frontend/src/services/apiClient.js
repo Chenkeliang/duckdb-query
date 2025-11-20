@@ -448,24 +448,12 @@ export const uploadFileToDuckDB = async (file, tableAlias) => {
   }
 };
 
-export const getDuckDBTablesEnhanced = async (force = false) => {
+export const fetchDuckDBTableSummaries = async () => {
   try {
-
-    if (force) {
-      // 强制刷新时，直接调用API，绕过防抖和缓存
-      const response = await fetch('/api/duckdb/tables');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const data = await response.json();
-      return data;
-    } else {
-      // 使用请求管理器防止重复请求
-      const data = await requestManager.getDuckDBTables();
-      return data;
-    }
+    const response = await apiClient.get('/api/duckdb/tables');
+    return response.data;
   } catch (error) {
-    throw error;
+    handleApiError(error, '获取表列表失败');
   }
 };
 
@@ -478,22 +466,23 @@ export const deleteDuckDBTableEnhanced = async (tableName) => {
   }
 };
 
-export const getDuckDBTableInfo = async (tableName) => {
+export const getDuckDBTableDetail = async (tableName) => {
   try {
-    const response = await apiClient.get(`/api/duckdb/table/${tableName}/info`);
+    const encodedName = encodeURIComponent(tableName);
+    const response = await apiClient.get(`/api/duckdb/tables/detail/${encodedName}`);
     return response.data;
   } catch (error) {
-    throw error;
+    handleApiError(error, '获取表元数据失败');
   }
 };
 
-export const refreshTableMetadataCache = async (tableName) => {
+export const refreshDuckDBTableMetadata = async (tableName) => {
   try {
     const encodedName = encodeURIComponent(tableName);
-    const response = await apiClient.post(`/api/visual-query/table-metadata/${encodedName}/refresh`);
+    const response = await apiClient.post(`/api/duckdb/table/${encodedName}/refresh`);
     return response.data;
   } catch (error) {
-    handleApiError(error, '刷新表元数据缓存失败');
+    handleApiError(error, '刷新表元数据失败');
   }
 };
 
@@ -802,15 +791,6 @@ export const getColumnStatistics = async (tableName, columnName) => {
     return response.data;
   } catch (error) {
     handleApiError(error, '获取列统计信息失败');
-  }
-};
-
-export const getTableMetadata = async (tableName) => {
-  try {
-    const response = await apiClient.get(`/api/visual-query/table-metadata/${tableName}`);
-    return response.data;
-  } catch (error) {
-    handleApiError(error, '获取表元数据失败');
   }
 };
 

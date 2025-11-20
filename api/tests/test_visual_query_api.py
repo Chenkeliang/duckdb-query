@@ -352,8 +352,8 @@ class TestTableMetadata:
     
     def test_get_table_metadata_success(self):
         """Test successful table metadata retrieval"""
-        with patch('routers.query.get_db_connection') as mock_db, \
-             patch('routers.query.get_table_metadata') as mock_metadata:
+        with patch('routers.duckdb_query.get_db_connection') as mock_db, \
+             patch('routers.duckdb_query.get_table_metadata') as mock_metadata:
             
             # Mock database connection
             mock_con = Mock()
@@ -399,19 +399,19 @@ class TestTableMetadata:
                 ]
             )
             
-            response = client.get("/api/visual-query/table-metadata/test_table")
+            response = client.get("/api/duckdb/tables/detail/test_table")
             
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
-            assert data["metadata"]["table_name"] == "test_table"
-            assert data["metadata"]["row_count"] == 1000
-            assert data["metadata"]["column_count"] == 3
-            assert len(data["metadata"]["columns"]) == 3
+            assert data["table"]["table_name"] == "test_table"
+            assert data["table"]["row_count"] == 1000
+            assert data["table"]["column_count"] == 3
+            assert len(data["table"]["columns"]) == 3
     
     def test_get_table_metadata_table_not_found(self):
         """Test table metadata for non-existent table"""
-        with patch('routers.query.get_db_connection') as mock_db:
+        with patch('routers.duckdb_query.get_db_connection') as mock_db:
             # Mock database connection
             mock_con = Mock()
             mock_db.return_value = mock_con
@@ -422,15 +422,15 @@ class TestTableMetadata:
                 'name': []
             })
             
-            response = client.get("/api/visual-query/table-metadata/nonexistent_table")
+            response = client.get("/api/duckdb/tables/detail/nonexistent_table")
             
             assert response.status_code == 404
             assert "不存在" in response.json()["detail"]
 
     def test_refresh_table_metadata_success(self):
         """Refreshing metadata should bypass cache."""
-        with patch('routers.query.get_db_connection') as mock_db, \
-             patch('routers.query.get_table_metadata') as mock_metadata:
+        with patch('routers.duckdb_query.get_db_connection') as mock_db, \
+             patch('routers.duckdb_query.get_table_metadata') as mock_metadata:
 
             mock_con = Mock()
             mock_db.return_value = mock_con
@@ -456,7 +456,7 @@ class TestTableMetadata:
                 ]
             )
 
-            response = client.post("/api/visual-query/table-metadata/test_table/refresh")
+            response = client.post("/api/duckdb/table/test_table/refresh")
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -465,7 +465,7 @@ class TestTableMetadata:
 
     def test_refresh_table_metadata_table_not_found(self):
         """Refreshing metadata should 404 when table does not exist."""
-        with patch('routers.query.get_db_connection') as mock_db:
+        with patch('routers.duckdb_query.get_db_connection') as mock_db:
             mock_con = Mock()
             mock_db.return_value = mock_con
 
@@ -474,7 +474,7 @@ class TestTableMetadata:
                 'name': []
             })
 
-            response = client.post("/api/visual-query/table-metadata/missing_table/refresh")
+            response = client.post("/api/duckdb/table/missing_table/refresh")
             assert response.status_code == 404
 
 

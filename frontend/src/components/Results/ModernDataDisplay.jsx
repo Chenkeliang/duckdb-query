@@ -1606,12 +1606,6 @@ const ModernDataDisplay = ({
                 title={`调试信息: data.length=${data.length}, sqlQuery="${sqlQuery}", loading=${loading}, 禁用条件: ${data.length === 0 ? '数据为空' : !sqlQuery ? 'SQL查询为空' : loading ? '正在加载' : '无'}`}
               >
                 提交异步任务
-                {/* 临时调试信息 */}
-                {process.env.NODE_ENV === 'development' && (
-                  <Typography variant="caption" sx={{ ml: 1, fontSize: '10px', opacity: 0.7 }}>
-                    [D:{data.length} S:{sqlQuery ? '✓' : '✗'} L:{loading ? '✓' : '✗'}]
-                  </Typography>
-                )}
               </Button>
 
             </Stack>

@@ -211,13 +211,13 @@ class TestEndToEndWorkflows:
             # Repeat for other columns...
         ]
         
-        response = client.get("/api/visual-query/table-metadata/test_employees")
+        response = client.get("/api/duckdb/tables/detail/test_employees")
         assert response.status_code == 200
         
         metadata_response = response.json()
         assert metadata_response["success"] is True
-        assert metadata_response["metadata"]["table_name"] == "test_employees"
-        assert metadata_response["metadata"]["row_count"] == 1000
+        assert metadata_response["table"]["table_name"] == "test_employees"
+        assert metadata_response["table"]["row_count"] == 1000
         
         # Step 2: Get specific column statistics
         response = client.get("/api/visual-query/column-stats/test_employees/salary")

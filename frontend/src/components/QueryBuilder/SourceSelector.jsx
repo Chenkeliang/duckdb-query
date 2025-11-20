@@ -220,17 +220,19 @@ const SourceSelector = ({
                             >
                               {source.name || source.id}
                             </Typography>
-                            <Chip
-                              label={`${source.columns?.length || 0}列`}
-                              size="small"
-                              sx={{
-                                height: 18,
-                                fontSize: '1rem',
-                                bgcolor: 'color-mix(in oklab, var(--dq-accent-primary) 14%, transparent)',
-                                color: 'var(--dq-accent-primary)',
-                                fontWeight: 600
-                              }}
-                            />
+                            {!!source.columns && source.columns.length > 0 && (
+                              <Chip
+                                label={`${source.columns.length}列`}
+                                size="small"
+                                sx={{
+                                  height: 18,
+                                  fontSize: '1rem',
+                                  bgcolor: 'color-mix(in oklab, var(--dq-accent-primary) 14%, transparent)',
+                                  color: 'var(--dq-accent-primary)',
+                                  fontWeight: 600
+                                }}
+                              />
+                            )}
                           </Box>
                         }
                         secondary={

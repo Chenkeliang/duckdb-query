@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import { Database, FolderOpen } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { getDuckDBTablesEnhanced } from '../../services/apiClient';
+import { fetchDuckDBTableSummaries } from '../../services/apiClient';
 import DataSourceList from './DataSourceList';
 import DataUploadSection from './DataUploadSection';
 
@@ -19,8 +19,10 @@ const DataSourceManagement = ({ onDataSaved }) => {
   // 获取DuckDB中的表列表
   const fetchDuckDBTables = async () => {
     try {
-      const response = await getDuckDBTablesEnhanced();
-      const tableNames = response.tables ? response.tables.map(table => table.table_name) : [];
+      const response = await fetchDuckDBTableSummaries();
+      const tableNames = Array.isArray(response?.tables)
+        ? response.tables.map(table => table.table_name)
+        : [];
       setDuckdbTables(tableNames);
     } catch (err) {
       showNotification('获取数据源列表失败', 'error');
