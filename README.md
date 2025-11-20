@@ -159,6 +159,13 @@ npm run dev
 - `duckdb_remote_settings`：开启 httpfs / S3 / OSS 读取。
 - `server_data_mounts`：控制哪些宿主目录可在前端浏览器中显示Duckdb读取。若不通过 Docker/容器启动，请把 `path` 换成本机真实目录（如 `/Users/<you>/Downloads` 或项目内的 `./server_data`），否则前端会提示“路径不存在”。
 
+### 端口调整说明
+
+- 后端（FastAPI / Uvicorn）：可通过启动参数修改端口，例如 `python -m uvicorn main:app --reload --port 9000 --host 0.0.0.0`。docker-compose 模式请调整端口映射。
+- 前端（Vite）：默认跑在 5173。若需修改 API 代理目标，设置环境变量 `VITE_API_PROXY_TARGET=http://localhost:<后端端口>` 再 `npm run dev`；若还需改前端自身端口，可运行 `npm run dev -- --port <新端口> --host`。
+- CORS：后端允许的前端来源在 `config/app-config.json` 的 `cors_origins` 中配置，前端端口/域名变化时记得同步添加（如 `http://localhost:5173`、`http://localhost:3001` 等）。
+- 容器模式：调整 `docker-compose.yml` 中的端口映射，保持前端代理指向容器内的后端服务名/端口。
+
 所有配置项在 [docs/CONFIGURATION.md](docs/CONFIGURATION.md) 中详解。
 
 ## 文档索引
