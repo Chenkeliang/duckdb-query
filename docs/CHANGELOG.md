@@ -9,3 +9,7 @@ This document records every functional update. All new features **must** append 
 ## 2025-11-19
 
 - fix: PivotConfigurator now passes the actual column name as the select value so 行/列字段可正常写入配置，不再触发“未选择字段”或“列字段过多”的误报。
+
+## 2025-11-20
+
+- feat: Added DuckDB 表元数据缓存（默认 24 小时，可通过 `table_metadata_cache_ttl_hours` 配置），提供刷新 API 与“数据表管理 / DuckDB 管理”界面可触发的“刷新缓存”按钮，避免 visual-query 请求频繁扫全表造成的卡顿。

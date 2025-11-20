@@ -34,6 +34,7 @@ from models.visual_query_models import (
     JSONTableConfig,
     JSONTableColumnConfig,
 )
+from core.table_metadata_cache import table_metadata_cache
 
 try:  # pragma: no cover - optional during tests
     from core.config_manager import config_manager  # type: ignore
@@ -1421,18 +1422,19 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         raise ValueError(f"获取列统计信息失败: {str(e)}")
 
 
-def get_table_metadata(table_name: str, con) -> TableMetadata:
+def get_table_metadata(table_name: str, con, use_cache: bool = True) -> TableMetadata:
     """
     Get metadata for a table including all column statistics
 
     Args:
         table_name: Name of the table
         con: DuckDB connection
+        use_cache: Whether to reuse cached metadata when available
 
     Returns:
         TableMetadata object with complete table information
     """
-    try:
+    def _load_metadata() -> TableMetadata:
         # Get table row count
         count_sql = f'SELECT COUNT(*) as row_count FROM "{table_name}"'
         row_count = con.execute(count_sql).fetchdf().iloc[0]["row_count"]
@@ -1469,6 +1471,12 @@ def get_table_metadata(table_name: str, con) -> TableMetadata:
             columns=column_stats,
         )
 
+    try:
+        if use_cache:
+            return table_metadata_cache.get_or_load(table_name, _load_metadata)
+        return table_metadata_cache.get_or_load(
+            table_name, _load_metadata, force_refresh=True
+        )
     except Exception as e:
         logger.error(f"Failed to get table metadata: {str(e)}")
         raise ValueError(f"获取表元数据失败: {str(e)}")

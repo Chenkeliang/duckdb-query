@@ -15,11 +15,6 @@ services:
       - PYTHONUNBUFFERED=1
       - ENV=development
       - CONFIG_DIR=/app/config
-      # DuckDB 配置环境变量（可选，会覆盖配置文件）
-      - DUCK_QUERY_DEBUG=false
-      - DUCK_QUERY_MAX_QUERY_ROWS=10000
-      - DUCK_QUERY_DUCKDB_MEMORY_LIMIT=8GB
-      - DUCK_QUERY_DUCKDB_THREADS=8
     volumes:
       - ./api:/app
       - ./data:/app/data

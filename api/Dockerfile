@@ -1,5 +1,5 @@
 # Stage 1: Build stage - where we install dependencies
-FROM python:3.11-bookworm AS builder
+FROM python:3.12-bookworm AS builder
 
 # Install build tools needed for some python packages
 RUN apt-get update && apt-get install -y gcc g++ 
@@ -14,7 +14,7 @@ RUN pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
 
 
 # Stage 2: Production stage - a lean final image
-FROM python:3.11-bookworm
+FROM python:3.12-bookworm
 
 WORKDIR /app
 

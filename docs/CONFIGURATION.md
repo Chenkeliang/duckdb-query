@@ -22,12 +22,8 @@
 | `debug` | boolean | `false` | 调试模式开关 |
 | `cors_origins` | array | `["http://localhost:3000"]` | 跨域请求允许的源 |
 | `max_file_size` | number | `53687091200` | 最大文件大小(字节，默认50GB) |
-| `query_timeout` | number | `300` | 查询超时时间(秒) |
-| `download_timeout` | number | `600` | 下载超时时间(秒) |
 | `max_query_rows` | number | `10000` | 查询结果最大行数 |
 | `max_tables` | number | `200` | 最大表数量 |
-| `enable_caching` | boolean | `true` | 启用缓存 |
-| `cache_ttl` | number | `3600` | 缓存生存时间(秒) |
 | `timezone` | string | `"UTC"` | 时区设置（可根据部署地区调整，如 `"Asia/Shanghai"`） |
 
 ### DuckDB 配置
@@ -73,7 +69,7 @@
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `query_proxy_timeout` | number | `300` | 查询代理超时(秒) |
+| `table_metadata_cache_ttl_hours` | number | `24` | 表元数据缓存有效期(小时)，小于等于 0 则禁用缓存 |
 | `url_reader_timeout` | number | `30` | URL读取超时(秒) |
 | `url_reader_head_timeout` | number | `10` | URL HEAD请求超时(秒) |
 | `sqlite_timeout` | number | `10` | SQLite超时(秒) |
@@ -137,7 +133,6 @@
 ```json
 {
   "max_file_size": 107374182400,
-  "query_timeout": 1800,
   "duckdb_memory_limit": "32GB",
   "duckdb_threads": 32
 }

@@ -63,28 +63,8 @@ Duck Query 是面向内部数据团队的 **DuckDB 原生工作台**。上传文
 
 - **完全自部署**：所有文件、DuckDB 数据库、导出缓存都留在本地或私有云。
 - **密钥与配置隔离**：`config/` 目录存放应用配置/秘钥。
-- **监控与限流**：可配置 `duckdb_memory_limit`、`query_timeout`、最大表数量、最大上传文件等参数。
+- **监控与限流**：可配置 `duckdb_memory_limit`、最大表数量、最大上传文件等参数。
 - **容器化**：Docker Compose / quick-start 脚本包含前后端、DuckDB 数据目录、日志、server_data 挂载。
-
-## 架构总览
-
-```
-[React SPA]  ── REST ──>  [FastAPI Backend] ── DuckDB 引擎 ──> data/duckdb/duckquery.duckdb
-      │                 │
-      │                 ├─ File DataSource Manager / Typed ingestion / httpfs
-      │                 ├─ Chunked upload streaming / Async tasks / Query cache
-      │                 └─ Server files / SQL favorites / Config API
-```
-
-| 目录 | 说明 |
-| --- | --- |
-| `api/` | FastAPI 应用，核心路由：`routers/query.py`（可视化 + SQL）、`routers/duckdb_query.py`（标准 SQL）、`routers/async_tasks.py`、`routers/chunked_upload.py`、`routers/url_reader.py`。 |
-| `api/core/` | DuckDB 引擎封装、文件数据源管理、typed ingestion、工具函数、配置管理。 |
-| `frontend/` | React + Vite 项目，包含 Query Builder、Pivot Configurator、Server Files 等模块。 |
-| `config/` | `app-config.json`、`datasources.json` 等应用配置（提供 `.example` 模板）。 |
-| `data/` | DuckDB 数据文件和日志。 |
-| `temp_files/`、`exports/` | 上传缓冲区与导出目录。 |
-| `docs/` | 深入指南与任务记录，例如 `duckdb-getting-started.md`、`duckdb-integration-guide.md`、Task 规范等。 |
 
 ## 快速开始
 
@@ -107,6 +87,14 @@ cd duckdb-query
 ```bash
 docker-compose up -d --build
 ```
+
+> **Docker Hub 拉取失败？**  
+> 可将 Dockerfile 中的 `FROM python:3.12-bookworm`、`FROM node:22-alpine`、`FROM nginx:stable-alpine`  
+> 直接替换为  
+> `FROM crpi-pfgvhes8xk1g26q3.cn-beijing.personal.cr.aliyuncs.com/grayliang/dq:python-3.12-bookworm`  
+> `FROM crpi-pfgvhes8xk1g26q3.cn-beijing.personal.cr.aliyuncs.com/grayliang/dq:node-22-alpine`  
+> `FROM crpi-pfgvhes8xk1g26q3.cn-beijing.personal.cr.aliyuncs.com/grayliang/dq:nginx-stable-alpine`  
+> 即可使用公开的阿里云镜像重新构建。
 
 ### 2. 本地开发模式
 
@@ -147,7 +135,6 @@ npm run dev
 {
   "debug": false,
   "max_file_size": 53687091200,
-  "query_timeout": 300,
   "max_query_rows": 20000,
   "duckdb_memory_limit": "8GB",
   "duckdb_threads": 8,

@@ -57,26 +57,17 @@ class AppConfig:
     max_file_size: int = 50 * 1024 * 1024 * 1024  # 50GB
     """最大文件上传大小限制，单位为字节"""
 
-    query_timeout: int = 300  # 5分钟
-    """SQL查询超时时间，单位为秒"""
-
-    download_timeout: int = 600  # 10分钟
-    """文件下载超时时间，单位为秒"""
-
     max_query_rows: int = 10000
     """页面查询结果最大行数，更大数据量使用异步任务"""
 
     max_tables: int = 200
     """数据库表预览最大数量限制"""
 
-    enable_caching: bool = True
-    """是否启用查询结果缓存"""
-
-    cache_ttl: int = 3600  # 1小时
-    """缓存生存时间，单位为秒"""
-
     timezone: str = "UTC"
     """应用时区设置，影响时间相关的数据处理"""
+
+    table_metadata_cache_ttl_hours: int = 24
+    """表元数据缓存有效期（小时），<=0 时禁用缓存"""
 
     enable_pivot_tables: bool = True
     """是否启用透视表功能，关闭后前端隐藏相关入口并跳过扩展加载"""
@@ -129,13 +120,10 @@ class AppConfig:
     duckdb_extensions: List[str] = None
     """要自动安装和加载的DuckDB扩展列表"""
 
-    duckdb_remote_settings: Dict[str, Any] = None
-    """DuckDB初始化时自动执行的SET语句（可配置S3/OSS参数）"""
-
     server_data_mounts: List[Dict[str, Any]] = None
     """服务器挂载目录列表，供容器内直接读取文件"""
 
-    duckdb_remote_settings: Dict[str, str] = None
+    duckdb_remote_settings: Dict[str, Any] = None
     """DuckDB初始化时需要执行的SET语句，如S3/OSS参数"""
 
     duckdb_debug_logging: bool = False
@@ -146,9 +134,6 @@ class AppConfig:
 
     exports_dir: str = None
     """导出文件目录，默认在运行根目录的exports"""
-
-    temp_files_dir: str = None
-    """临时文件目录，默认在运行根目录的temp_files"""
 
     # ==================== 连接池配置 ====================
     # 这些参数控制DuckDB连接池的行为和性能
@@ -186,9 +171,6 @@ class AppConfig:
     # ==================== 其他超时配置 ====================
     # 这些参数控制各种操作的超时行为
 
-    query_proxy_timeout: int = 300
-    """查询代理超时时间，单位为秒"""
-
     url_reader_timeout: int = 30
     """URL读取超时时间，单位为秒"""
 
@@ -208,9 +190,6 @@ class AppConfig:
         # 设置默认DuckDB扩展
         if self.duckdb_extensions is None:
             self.duckdb_extensions = ["excel", "json", "parquet"]
-
-        if self.duckdb_remote_settings is None:
-            self.duckdb_remote_settings = {}
 
         if self.server_data_mounts is None:
             self.server_data_mounts = []
@@ -409,18 +388,6 @@ class ConfigManager:
             exports_dir.mkdir(parents=True, exist_ok=True)
         return exports_dir
 
-    def get_temp_files_dir(self, ensure_dir: bool = True) -> Path:
-        """获取临时文件目录"""
-        app_config = self.get_app_config()
-        temp_dir = (
-            Path(app_config.temp_files_dir)
-            if app_config.temp_files_dir
-            else self._project_root / "temp_files"
-        )
-        if ensure_dir:
-            temp_dir.mkdir(parents=True, exist_ok=True)
-        return temp_dir
-
     def atomic_write_json(self, file_path: Path, data: Any):
         """原子写入JSON配置"""
         tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
@@ -526,22 +493,10 @@ class ConfigManager:
                             config_data.get("max_file_size", 100 * 1024 * 1024),
                         )
                     ),
-                    "query_timeout": int(
-                        os.getenv(
-                            "QUERY_TIMEOUT", config_data.get("query_timeout", 300)
-                        )
-                    ),
                     "max_query_rows": int(
                         os.getenv(
                             "MAX_QUERY_ROWS", config_data.get("max_query_rows", 10000)
                         )
-                    ),
-                    "enable_caching": os.getenv(
-                        "ENABLE_CACHING", str(config_data.get("enable_caching", True))
-                    ).lower()
-                    == "true",
-                    "cache_ttl": int(
-                        os.getenv("CACHE_TTL", config_data.get("cache_ttl", 3600))
                     ),
                     "enable_pivot_tables": os.getenv(
                         "ENABLE_PIVOT_TABLES",
@@ -559,11 +514,6 @@ class ConfigManager:
                     "duckdb_database_path": os.getenv(
                         "DUCKDB_DATABASE_PATH",
                         config_data.get("duckdb_database_path"),
-                    )
-                    or None,
-                    "duckdb_temp_directory": os.getenv(
-                        "DUCKDB_TEMP_DIRECTORY",
-                        config_data.get("duckdb_temp_directory"),
                     )
                     or None,
                     "duckdb_home_directory": os.getenv(
@@ -590,10 +540,6 @@ class ConfigManager:
                     ),
                     "exports_dir": os.getenv(
                         "EXPORTS_DIR", config_data.get("exports_dir")
-                    )
-                    or None,
-                    "temp_files_dir": os.getenv(
-                        "TEMP_FILES_DIR", config_data.get("temp_files_dir")
                     )
                     or None,
                     # 数据库超时配置
@@ -655,12 +601,6 @@ class ConfigManager:
                         )
                     ),
                     # 其他超时配置
-                    "query_proxy_timeout": int(
-                        os.getenv(
-                            "QUERY_PROXY_TIMEOUT",
-                            config_data.get("query_proxy_timeout", 300),
-                        )
-                    ),
                     "url_reader_timeout": int(
                         os.getenv(
                             "URL_READER_TIMEOUT",

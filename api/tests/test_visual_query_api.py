@@ -427,6 +427,56 @@ class TestTableMetadata:
             assert response.status_code == 404
             assert "不存在" in response.json()["detail"]
 
+    def test_refresh_table_metadata_success(self):
+        """Refreshing metadata should bypass cache."""
+        with patch('routers.query.get_db_connection') as mock_db, \
+             patch('routers.query.get_table_metadata') as mock_metadata:
+
+            mock_con = Mock()
+            mock_db.return_value = mock_con
+
+            import pandas as pd
+            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({
+                'name': ['test_table']
+            })
+
+            from models.visual_query_models import TableMetadata, ColumnStatistics
+            mock_metadata.return_value = TableMetadata(
+                table_name="test_table",
+                row_count=10,
+                column_count=1,
+                columns=[
+                    ColumnStatistics(
+                        column_name="col",
+                        data_type="INTEGER",
+                        null_count=0,
+                        distinct_count=2,
+                        sample_values=["1", "2"]
+                    )
+                ]
+            )
+
+            response = client.post("/api/visual-query/table-metadata/test_table/refresh")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["refreshed"] is True
+            mock_metadata.assert_called_once_with("test_table", mock_con, use_cache=False)
+
+    def test_refresh_table_metadata_table_not_found(self):
+        """Refreshing metadata should 404 when table does not exist."""
+        with patch('routers.query.get_db_connection') as mock_db:
+            mock_con = Mock()
+            mock_db.return_value = mock_con
+
+            import pandas as pd
+            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({
+                'name': []
+            })
+
+            response = client.post("/api/visual-query/table-metadata/missing_table/refresh")
+            assert response.status_code == 404
+
 
 class TestVisualQueryValidation:
     """Test visual query validation endpoint"""

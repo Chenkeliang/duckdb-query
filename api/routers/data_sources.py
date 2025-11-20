@@ -16,7 +16,7 @@ import traceback
 from pathlib import Path
 from typing import List, Any, Optional, Dict
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from core.duckdb_engine import with_duckdb_connection
 from core.encryption import password_encryptor
 from models.query_models import (
@@ -76,40 +76,39 @@ class ExcelImportSheet(BaseModel):
     header_row_index: Optional[int] = Field(default=1, description="表头起始行(1-based)")
     fill_merged: bool = Field(default=False, description="是否填充合并单元格")
 
-    @validator("mode")
+    @field_validator("mode", mode="before")
     def _validate_mode(cls, mode: str) -> str:
-        normalized = mode.lower()
+        normalized = (mode or "").lower()
         if normalized not in VALID_EXCEL_IMPORT_MODES:
             raise ValueError(f"不支持的导入模式: {mode}")
         return normalized
 
-    @validator("header_rows")
+    @field_validator("header_rows")
     def _validate_header_rows(cls, value: int) -> int:
         if value < 0:
             raise ValueError("表头行数不能为负数")
         return value
 
-    @validator("header_row_index")
-    def _validate_header_row_index(cls, value: Optional[int], values: Dict[str, Any]) -> Optional[int]:
-        header_rows = values.get("header_rows", 1)
-        if header_rows == 0:
-            return None
-        if value is None or value <= 0:
-            return 1
-        return value
-
-    @validator("target_table")
+    @field_validator("target_table")
     def _validate_target_table(cls, value: str) -> str:
         if not value or not value.strip():
             raise ValueError("目标表名不能为空")
         return value
+
+    @model_validator(mode="after")
+    def _normalize_header_row_index(self):
+        if self.header_rows == 0:
+            self.header_row_index = None
+        elif self.header_row_index is None or self.header_row_index <= 0:
+            self.header_row_index = 1
+        return self
 
 
 class ExcelImportRequest(BaseModel):
     file_id: str = Field(..., description="上传后的Excel文件标识")
     sheets: List[ExcelImportSheet]
 
-    @validator("sheets")
+    @field_validator("sheets")
     def _validate_sheets(cls, sheets: List[ExcelImportSheet]) -> List[ExcelImportSheet]:
         if not sheets:
             raise ValueError("至少需要选择一个工作表进行导入")

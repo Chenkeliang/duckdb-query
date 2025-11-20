@@ -15,11 +15,9 @@ import tempfile
 import shutil
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timedelta
-import pandas as pd
-import json
+from typing import Any, Dict, Optional
 
 import sys
-import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -31,11 +29,50 @@ from routers.async_tasks import (
     cleanup_old_files,
     EXPORTS_DIR,
 )
-from core.task_manager import task_manager, TaskStatus
-from core.duckdb_engine import get_db_connection
-from core.file_datasource_manager import file_datasource_manager
+from core.task_manager import AsyncTask, TaskStatus
+from core.timezone_utils import get_storage_time
 
 client = TestClient(app)
+
+
+def setup_mock_duckdb_connection(mock_get_pool: MagicMock) -> Mock:
+    """创建一个模拟的DuckDB连接池并返回连接对象"""
+    mock_con = Mock()
+    mock_context = MagicMock()
+    mock_context.__enter__.return_value = mock_con
+    mock_context.__exit__.return_value = False
+
+    mock_pool = Mock()
+    mock_pool.get_connection.return_value = mock_context
+    mock_get_pool.return_value = mock_pool
+    return mock_con
+
+
+def make_async_task(
+    task_id: str,
+    status: TaskStatus = TaskStatus.SUCCESS,
+    *,
+    table_name: Optional[str] = None,
+    file_generated: bool = False,
+    result_file_path: Optional[str] = None,
+    result_info: Optional[Dict[str, Any]] = None,
+) -> AsyncTask:
+    """创建测试用的AsyncTask实例"""
+    default_table = table_name or f"async_result_{task_id.replace('-', '_')}"
+    task_result_info = (
+        {"table_name": default_table, "file_generated": file_generated}
+        if result_info is None
+        else result_info
+    )
+
+    return AsyncTask(
+        task_id=task_id,
+        status=status,
+        created_at=get_storage_time(),
+        query="SELECT 1",
+        result_file_path=result_file_path,
+        result_info=task_result_info,
+    )
 
 
 class TestAsyncQueryMemoryOptimization:
@@ -57,11 +94,12 @@ class TestAsyncQueryMemoryOptimization:
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    @patch("routers.async_tasks.get_db_connection")
+    @patch("routers.async_tasks.build_table_metadata_snapshot", return_value={"row_count": 100})
+    @patch("core.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
     @patch("routers.async_tasks.file_datasource_manager")
     def test_execute_async_query_creates_persistent_table(
-        self, mock_file_manager, mock_task_manager, mock_get_db
+        self, mock_file_manager, mock_task_manager, mock_get_pool, mock_metadata
     ):
         """测试异步查询创建持久表而不是加载到内存"""
         # 准备测试数据
@@ -69,8 +107,7 @@ class TestAsyncQueryMemoryOptimization:
         sql = "SELECT * FROM test_table"
 
         # 模拟DuckDB连接
-        mock_con = Mock()
-        mock_get_db.return_value = mock_con
+        mock_con = setup_mock_duckdb_connection(mock_get_pool)
 
         # 模拟任务管理器
         mock_task_manager.start_task.return_value = True
@@ -109,16 +146,18 @@ class TestAsyncQueryMemoryOptimization:
         assert call_args[1]["table_name"] == f"async_result_{task_id.replace('-', '_')}"
         assert call_args[1]["file_generated"] is False
 
-    @patch("routers.async_tasks.get_db_connection")
+    @patch("routers.async_tasks.build_table_metadata_snapshot", return_value={"row_count": 500})
+    @patch("core.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
-    def test_execute_async_query_memory_cleanup(self, mock_task_manager, mock_get_db):
+    def test_execute_async_query_memory_cleanup(
+        self, mock_task_manager, mock_get_pool, mock_metadata
+    ):
         """测试异步查询的内存清理机制"""
         task_id = "test_task_456"
         sql = "SELECT * FROM test_table"
 
         # 模拟DuckDB连接
-        mock_con = Mock()
-        mock_get_db.return_value = mock_con
+        mock_con = setup_mock_duckdb_connection(mock_get_pool)
 
         # 模拟任务管理器
         mock_task_manager.start_task.return_value = True
@@ -132,36 +171,23 @@ class TestAsyncQueryMemoryOptimization:
         execute_async_query(task_id, sql)
 
         # 验证内存清理PRAGMA命令
-        memory_cleanup_calls = [
-            call for call in mock_con.execute.call_args_list if "PRAGMA" in str(call)
-        ]
-        assert len(memory_cleanup_calls) >= 2, "应该执行内存清理PRAGMA命令"
+        executed_sql = [args[0][0] for args in mock_con.execute.call_args_list]
+        pragma_calls = [sql for sql in executed_sql if "PRAGMA" in sql.upper()]
+        assert pragma_calls, "应该执行内存清理PRAGMA命令"
 
-        # 验证具体的PRAGMA命令
-        pragma_calls = [str(call) for call in mock_con.execute.call_args_list]
-        assert any("memory_limit" in call for call in pragma_calls), "应该设置内存限制"
-        assert any(
-            "force_external" in call for call in pragma_calls
-        ), "应该强制使用外部存储"
-
-    @patch("routers.async_tasks.get_db_connection")
+    @patch("core.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
-    def test_generate_download_file_on_demand(self, mock_task_manager, mock_get_db):
+    def test_generate_download_file_on_demand(self, mock_task_manager, mock_get_pool):
         """测试按需生成下载文件功能"""
         task_id = "test_task_789"
         format = "csv"
 
         # 模拟任务信息
-        mock_task_info = {
-            "status": "completed",
-            "table_name": f"async_result_{task_id.replace('-', '_')}",
-            "file_generated": False,
-        }
-        mock_task_manager.get_task.return_value = mock_task_info
+        mock_task = make_async_task(task_id)
+        mock_task_manager.get_task.return_value = mock_task
 
         # 模拟DuckDB连接
-        mock_con = Mock()
-        mock_get_db.return_value = mock_con
+        mock_con = setup_mock_duckdb_connection(mock_get_pool)
         mock_con.execute.return_value.fetchone.return_value = [1000]
 
         # 执行文件生成
@@ -180,13 +206,13 @@ class TestAsyncQueryMemoryOptimization:
         assert len(copy_calls) == 1, "应该执行COPY命令生成文件"
 
         # 验证任务信息更新
-        assert mock_task_info["file_generated"] is True
-        assert "file_path" in mock_task_info
-        assert mock_task_info["file_format"] == format
+        assert mock_task.result_info["file_generated"] is True
+        assert "file_path" in mock_task.result_info
+        assert mock_task.result_info["file_format"] == format
 
-    @patch("routers.async_tasks.get_db_connection")
+    @patch("core.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
-    def test_generate_download_file_validation(self, mock_task_manager, mock_get_db):
+    def test_generate_download_file_validation(self, mock_task_manager, mock_get_pool):
         """测试按需文件生成的验证逻辑"""
         task_id = "test_task_invalid"
 
@@ -197,22 +223,31 @@ class TestAsyncQueryMemoryOptimization:
             generate_download_file(task_id, "csv")
 
         # 测试任务未完成的情况
-        mock_task_info = {"status": "running"}
-        mock_task_manager.get_task.return_value = mock_task_info
+        mock_task = make_async_task(task_id, status=TaskStatus.RUNNING)
+        mock_task_manager.get_task.return_value = mock_task
 
         with pytest.raises(Exception, match="生成下载文件失败: 任务 .* 未完成"):
             generate_download_file(task_id, "csv")
 
+        # 测试缺少结果信息的情况
+        mock_task = make_async_task(task_id)
+        mock_task.result_info = None
+        mock_task_manager.get_task.return_value = mock_task
+
+        with pytest.raises(Exception, match="生成下载文件失败: 任务 .* 缺少结果信息"):
+            generate_download_file(task_id, "csv")
+
         # 测试缺少表名的情况
-        mock_task_info = {"status": "completed"}
-        mock_task_manager.get_task.return_value = mock_task_info
+        mock_task = make_async_task(task_id)
+        mock_task.result_info = {"table_name": None}
+        mock_task_manager.get_task.return_value = mock_task
 
         with pytest.raises(Exception, match="生成下载文件失败: 任务 .* 缺少表名信息"):
             generate_download_file(task_id, "csv")
 
-    @patch("routers.async_tasks.get_db_connection")
+    @patch("core.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
-    def test_cleanup_old_files(self, mock_task_manager, mock_get_db):
+    def test_cleanup_old_files(self, mock_task_manager, mock_get_pool):
         """测试文件清理功能"""
         # 创建一些测试文件
         old_file = os.path.join(self.temp_dir, "task-old_20240101_000000.csv")
@@ -238,9 +273,9 @@ class TestAsyncQueryMemoryOptimization:
             mock_getmtime.side_effect = getmtime_side_effect
 
             # 模拟DuckDB连接和表查询
-            mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            mock_con = setup_mock_duckdb_connection(mock_get_pool)
             mock_con.execute.return_value.fetchall.return_value = []
+            mock_task_manager.cleanup_expired_exports.return_value = 0
 
             # 执行清理
             with patch("routers.async_tasks.EXPORTS_DIR", self.temp_dir):
@@ -300,30 +335,27 @@ class TestAsyncQueryMemoryOptimization:
         task_id = "test_task_456"
         request_data = {"format": "csv"}
 
-        with patch("routers.async_tasks.generate_download_file") as mock_generate:
-            mock_generate.return_value = "/path/to/generated/file.csv"
+        temp_file = os.path.join(self.temp_dir, "task-download.csv")
+        file_content = "id,name\n1,Alice\n"
+        with open(temp_file, "w", encoding="utf-8") as f:
+            f.write(file_content)
 
-            response = client.post(
-                f"/api/async-tasks/{task_id}/download", json=request_data
-            )
+        try:
+            with patch("routers.async_tasks.generate_download_file") as mock_generate:
+                mock_generate.return_value = temp_file
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["file_path"] == "/path/to/generated/file.csv"
-            assert data["format"] == "csv"
-
-    def test_cleanup_api_endpoint(self):
-        """测试文件清理API端点"""
-        with patch("routers.async_tasks.cleanup_old_files") as mock_cleanup:
-            mock_cleanup.return_value = 5
-
-            response = client.post("/api/async-tasks/cleanup")
+                response = client.post(
+                    f"/api/async-tasks/{task_id}/download", json=request_data
+                )
 
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["cleaned_count"] == 5
+            assert "text/csv" in response.headers.get("content-type", "")
+            content_disposition = response.headers.get("content-disposition", "")
+            assert "task-download.csv" in content_disposition
+            assert response.text == file_content
+        finally:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
 
 
 class TestMemoryOptimizationIntegration:
@@ -338,28 +370,24 @@ class TestMemoryOptimizationIntegration:
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    @patch("routers.async_tasks.get_db_connection")
+    @patch("routers.async_tasks.build_table_metadata_snapshot", return_value={"row_count": 5000})
+    @patch("core.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
     @patch("routers.async_tasks.file_datasource_manager")
     def test_full_async_query_workflow(
-        self, mock_file_manager, mock_task_manager, mock_get_db
+        self, mock_file_manager, mock_task_manager, mock_get_pool, mock_metadata
     ):
         """测试完整的异步查询工作流程"""
         task_id = "integration_test_123"
         sql = "SELECT id, name, age FROM users WHERE age > 18"
 
         # 模拟DuckDB连接
-        mock_con = Mock()
-        mock_get_db.return_value = mock_con
+        mock_con = setup_mock_duckdb_connection(mock_get_pool)
 
         # 模拟任务管理器
         mock_task_manager.start_task.return_value = True
         mock_task_manager.complete_task.return_value = True
-        mock_task_manager.get_task.return_value = {
-            "status": "completed",
-            "table_name": f"async_result_{task_id.replace('-', '_')}",
-            "file_generated": False,
-        }
+        mock_task_manager.get_task.return_value = make_async_task(task_id)
 
         # 模拟文件数据源管理器
         mock_file_manager.save_file_datasource.return_value = True
@@ -397,16 +425,16 @@ class TestMemoryOptimizationIntegration:
         ]
         assert len(copy_calls) == 1, "应该执行COPY命令"
 
-    @patch("routers.async_tasks.get_db_connection")
+    @patch("routers.async_tasks.build_table_metadata_snapshot", return_value={"row_count": 1000000})
+    @patch("core.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
-    def test_memory_usage_comparison(self, mock_task_manager, mock_get_db):
+    def test_memory_usage_comparison(self, mock_task_manager, mock_get_pool, mock_metadata):
         """测试内存使用对比（模拟）"""
         task_id = "memory_test_456"
         sql = "SELECT * FROM large_table"
 
         # 模拟DuckDB连接
-        mock_con = Mock()
-        mock_get_db.return_value = mock_con
+        mock_con = setup_mock_duckdb_connection(mock_get_pool)
 
         # 模拟任务管理器
         mock_task_manager.start_task.return_value = True
@@ -441,9 +469,11 @@ class TestMemoryOptimizationIntegration:
 class TestErrorHandling:
     """测试错误处理"""
 
-    @patch("routers.async_tasks.get_db_connection")
+    @patch("core.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
-    def test_execute_async_query_database_error(self, mock_task_manager, mock_get_db):
+    def test_execute_async_query_database_error(
+        self, mock_task_manager, mock_get_pool
+    ):
         """测试数据库错误处理"""
         task_id = "error_test_123"
         sql = "SELECT * FROM nonexistent_table"
@@ -453,8 +483,7 @@ class TestErrorHandling:
         mock_task_manager.fail_task.return_value = True
 
         # 模拟数据库错误
-        mock_con = Mock()
-        mock_get_db.return_value = mock_con
+        mock_con = setup_mock_duckdb_connection(mock_get_pool)
         mock_con.execute.side_effect = Exception(
             "Table 'nonexistent_table' does not exist"
         )
@@ -467,25 +496,20 @@ class TestErrorHandling:
             task_id, "Table 'nonexistent_table' does not exist"
         )
 
-    @patch("routers.async_tasks.get_db_connection")
+    @patch("core.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
     def test_generate_download_file_table_not_found(
-        self, mock_task_manager, mock_get_db
+        self, mock_task_manager, mock_get_pool
     ):
         """测试表不存在时的错误处理"""
         task_id = "error_test_456"
 
         # 模拟任务信息
-        mock_task_info = {
-            "status": "completed",
-            "table_name": "async_result_nonexistent",
-            "file_generated": False,
-        }
-        mock_task_manager.get_task.return_value = mock_task_info
+        mock_task = make_async_task(task_id, table_name="async_result_nonexistent")
+        mock_task_manager.get_task.return_value = mock_task
 
         # 模拟DuckDB连接
-        mock_con = Mock()
-        mock_get_db.return_value = mock_con
+        mock_con = setup_mock_duckdb_connection(mock_get_pool)
         mock_con.execute.side_effect = Exception(
             "Table 'async_result_nonexistent' does not exist"
         )

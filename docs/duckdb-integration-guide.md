@@ -157,7 +157,7 @@ curl -X POST http://localhost:8000/api/async-tasks/submit \
 
 - **版本控制**：将 `config/*.json` 纳入 git（敏感信息除外），方便团队同步设置；
 - **命名规范**：上传文件后立即在“数据表管理”中重命名 DuckDB 表，保持表名语义化；
-- **资源限制**：生产环境建议开启 `duckdb_memory_limit` 与 `query_timeout`，防止单个任务占满资源；
+- **资源限制**：生产环境建议开启 `duckdb_memory_limit` 等限制，防止单个任务占满资源；
 - **监控**：利用 `/api/system/monitor` 或自定义日志，追踪 DuckDB 查询耗时、异步任务状态；
 - **安全**：在部署时开启 HTTPS 反向代理，限制 API 访问来源。
 

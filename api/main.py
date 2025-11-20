@@ -7,6 +7,7 @@ import traceback
 import base64
 from datetime import datetime
 from cryptography.fernet import Fernet
+from contextlib import asynccontextmanager
 from core.security import security_validator
 from core.config_manager import config_manager
 from core.exceptions import setup_exception_handlers
@@ -49,7 +50,7 @@ from core.duckdb_engine import (
     create_varchar_table_from_dataframe,
     ensure_all_tables_varchar,
 )
-from core.cleanup_scheduler import start_cleanup_scheduler
+from core.cleanup_scheduler import start_cleanup_scheduler, stop_cleanup_scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +66,43 @@ def load_file_datasources_on_startup():
         logger.error(f"重新加载文件数据源时出错: {str(e)}")
 
 
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    """统一管理应用生命周期，替代 on_event 钩子"""
+    logger.info("应用正在启动...")
+    try:
+        logger.info("开始加载数据库连接配置...")
+        db_manager._load_connections_from_config()
+        connections = db_manager.list_connections()
+        logger.info(f"数据库连接配置加载完成，共 {len(connections)} 个连接")
+        logger.info("所有数据源加载完成")
+    except Exception as e:
+        logger.error(f"启动时加载数据源失败: {str(e)}")
+
+    try:
+        from routers.async_tasks import cleanup_old_files
+
+        start_cleanup_scheduler(cleanup_old_files)
+        logger.info("文件清理调度器启动成功")
+    except Exception as e:
+        logger.error(f"启动文件清理调度器失败: {str(e)}")
+
+    try:
+        yield
+    finally:
+        logger.info("应用关闭中...")
+        try:
+            stop_cleanup_scheduler()
+            logger.info("文件清理调度器已停止")
+        except Exception as e:
+            logger.error(f"停止文件清理调度器失败: {str(e)}")
+
+
 app = FastAPI(
     title="DuckQuery · DuckDB Visual Analytics API",
     description="Interactive API for DuckDB-powered data ingestion, cross-source joins, and analytics with native DuckDB extensions.",
     version="2.1.0",
+    lifespan=app_lifespan,
 )
 
 # 设置统一异常处理
@@ -109,26 +143,6 @@ if enhanced_data_sources_available:
 
 if query_proxy_available:
     app.include_router(query_proxy.router)  # 查询代理路由
-
-
-# 应用启动事件
-@app.on_event("startup")
-async def startup_event():
-    """应用启动事件"""
-    logger.info("应用正在启动...")
-
-    try:
-        # 预加载数据库连接配置
-        logger.info("开始加载数据库连接配置...")
-        db_manager._load_connections_from_config()
-        connections = db_manager.list_connections()
-        logger.info(f"数据库连接配置加载完成，共 {len(connections)} 个连接")
-
-        # 跳过启动时文件数据源加载，提升启动速度
-        # load_file_datasources_on_startup()
-        logger.info("所有数据源加载完成")
-    except Exception as e:
-        logger.error(f"启动时加载数据源失败: {str(e)}")
 
 
 @app.get("/", tags=["Default"])
@@ -196,32 +210,3 @@ def initialize_encryption_key():
 async def health_check():
     return {"status": "healthy", "timestamp": "2025-01-18"}
 
-
-@app.on_event("startup")
-async def startup_event():
-    """应用启动时的初始化"""
-    logger.info("应用启动中...")
-
-    # 启动文件清理调度器
-    try:
-        from routers.async_tasks import cleanup_old_files
-
-        start_cleanup_scheduler(cleanup_old_files)
-        logger.info("文件清理调度器启动成功")
-    except Exception as e:
-        logger.error(f"启动文件清理调度器失败: {str(e)}")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """应用关闭时的清理"""
-    logger.info("应用关闭中...")
-
-    # 停止文件清理调度器
-    try:
-        from core.cleanup_scheduler import stop_cleanup_scheduler
-
-        stop_cleanup_scheduler()
-        logger.info("文件清理调度器已停止")
-    except Exception as e:
-        logger.error(f"停止文件清理调度器失败: {str(e)}")

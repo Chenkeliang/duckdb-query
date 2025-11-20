@@ -576,6 +576,40 @@ async def get_visual_query_table_metadata(table_name: str):
         raise HTTPException(status_code=500, detail=f"获取表元数据失败: {str(exc)}")
 
 
+@router.post(
+    "/api/visual-query/table-metadata/{table_name}/refresh", tags=["Visual Query"]
+)
+async def refresh_visual_query_table_metadata(table_name: str):
+    try:
+        con = get_db_connection()
+        available_tables = con.execute("SHOW TABLES").fetchdf()
+        available_names = (
+            available_tables["name"].tolist() if not available_tables.empty else []
+        )
+
+        if table_name not in available_names:
+            raise HTTPException(status_code=404, detail=f"数据表 {table_name} 不存在")
+
+        metadata = get_table_metadata(table_name, con, use_cache=False)
+        metadata_dict = (
+            metadata.model_dump()
+            if hasattr(metadata, "model_dump")
+            else metadata.dict()
+        )
+
+        return {
+            "success": True,
+            "metadata": metadata_dict,
+            "refreshed": True,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("刷新表元数据失败: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"刷新表元数据失败: {str(exc)}")
+
+
 @router.post("/api/visual-query/distinct-values", tags=["Visual Query"])
 async def get_distinct_values(req: DistinctValuesRequest):
     """返回指定列的 Top-N 不同值，可按频次或指标聚合排序。

@@ -5,13 +5,10 @@
     "http://localhost:5173"
   ],
   "max_file_size": 53687091200,
-  "query_timeout": 300,
-  "download_timeout": 600,
   "max_query_rows": 10000,
   "max_tables": 1000,
-  "enable_caching": true,
-  "cache_ttl": 3600,
   "timezone": "Asia/Shanghai",
+  "table_metadata_cache_ttl_hours": 24,
   "enable_pivot_tables": true,
   "pivot_table_extension": "pivot_table",
   "duckdb_memory_limit": "8GB",
@@ -33,7 +30,6 @@
     "parquet",
     "httpfs"
   ],
-  "duckdb_remote_settings": {},
   "server_data_mounts": [
     {
       "label": "Local Server Data",
@@ -48,10 +44,10 @@
       "path": "/app/host_documents"
     }
   ],
+  "duckdb_remote_settings": {},
   "duckdb_debug_logging": false,
   "duckdb_auto_explain_threshold_ms": 0,
   "exports_dir": null,
-  "temp_files_dir": null,
   "pool_min_connections": 2,
   "pool_max_connections": 10,
   "pool_connection_timeout": 30,
@@ -61,7 +57,6 @@
   "db_read_timeout": 30,
   "db_write_timeout": 30,
   "db_ping_timeout": 2,
-  "query_proxy_timeout": 300,
   "url_reader_timeout": 30,
   "url_reader_head_timeout": 10,
   "sqlite_timeout": 10,

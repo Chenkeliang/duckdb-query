@@ -35,6 +35,7 @@ from models.visual_query_models import (
     JSONTableConfig,
     JSONTableColumnConfig,
 )
+from core.table_metadata_cache import table_metadata_cache
 
 
 class TestSQLGeneration:
@@ -803,6 +804,37 @@ class TestTableMetadata:
         assert len(result.columns) == 2
         assert result.columns[0].column_name == "col1"
         assert result.columns[1].column_name == "col2"
+
+    @patch("core.visual_query_generator.get_column_statistics")
+    def test_get_table_metadata_uses_cache(self, mock_get_column_stats):
+        """Calling get_table_metadata twice should hit DuckDB once when cache enabled."""
+        table_metadata_cache.invalidate()
+        mock_con = Mock()
+
+        mock_con.execute.return_value.fetchdf.side_effect = [
+            pd.DataFrame({"row_count": [50]}),
+            pd.DataFrame(
+                {
+                    "column_name": ["col1"],
+                    "column_type": ["INTEGER"],
+                }
+            ),
+        ]
+
+        mock_get_column_stats.return_value = ColumnStatistics(
+            column_name="col1",
+            data_type="INTEGER",
+            null_count=0,
+            distinct_count=5,
+            sample_values=["1", "2"],
+        )
+
+        result_one = get_table_metadata("cached_table", mock_con)
+        result_two = get_table_metadata("cached_table", mock_con)
+
+        assert result_one is result_two
+        assert mock_con.execute.call_count == 2
+        table_metadata_cache.invalidate("cached_table")
 
 
 class TestPerformanceEstimation:
