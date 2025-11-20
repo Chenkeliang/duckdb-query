@@ -16,6 +16,7 @@ import {
   Card,
   Chip,
   Collapse,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -40,7 +41,7 @@ import {
 } from '@mui/material';
 import { Database, RotateCcw, Search } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { deleteDuckDBTableEnhanced, getDuckDBTablesEnhanced } from '../../services/apiClient';
+import { deleteDuckDBTableEnhanced, getDuckDBTablesEnhanced, refreshTableMetadataCache } from '../../services/apiClient';
 
 const DuckDBManagementPage = ({ onDataSourceChange }) => {
   const [tables, setTables] = useState([]);
@@ -52,6 +53,7 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
   const [tableToDelete, setTableToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [refreshingTables, setRefreshingTables] = useState(new Set());
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof document === 'undefined') {
       return false;
@@ -123,6 +125,37 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
   const handleDeleteTable = (table) => {
     setTableToDelete(table);
     setDeleteDialogOpen(true);
+  };
+
+  const setTableRefreshing = (tableName, isActive) => {
+    setRefreshingTables(prev => {
+      const updated = new Set(prev);
+      if (isActive) {
+        updated.add(tableName);
+      } else {
+        updated.delete(tableName);
+      }
+      return updated;
+    });
+  };
+
+  const handleRefreshMetadata = async (tableName) => {
+    if (!tableName) return;
+
+    setError('');
+    setTableRefreshing(tableName, true);
+
+    try {
+      const response = await refreshTableMetadataCache(tableName);
+      if (!response?.success) {
+        throw new Error(response?.detail || '未知错误');
+      }
+      setSuccessMessage(`表 "${tableName}" 的缓存已刷新`);
+    } catch (err) {
+      setError(`刷新缓存失败: ${err.message || '未知错误'}`);
+    } finally {
+      setTableRefreshing(tableName, false);
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -408,84 +441,113 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                   {/* 折叠的表列表 */}
                   <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                     <List component="div" disablePadding>
-                      {groupTables.map((table, tableIndex) => (
-                        <ListItem
-                          key={table.table_name}
-                          disablePadding
-                          sx={{
-                            borderBottom: tableIndex < groupTables.length - 1 ? '1px solid' : 'none',
-                            borderColor: 'var(--dq-border-subtle)'
-                          }}
-                          secondaryAction={
-                            <Box sx={{ display: 'flex', gap: 0.5 }}>
-                              <Tooltip title="复制表名">
-                                <IconButton
-                                  edge="end"
-                                  size="small"
-                                  onClick={(e) => handleCopyTableName(table.table_name, e)}
-                                  sx={{
-                                    width: 24,
-                                    height: 24,
-                                    backgroundColor: typeInfo.iconBackground,
-                                    '&:hover': {
-                                      backgroundColor: typeInfo.hoverBackground
-                                    },
-                                    '& svg': {
-                                      color: typeInfo.accent
-                                    }
-                                  }}
-                                >
-                                  <ContentCopyIcon sx={{ fontSize: 12 }} />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="查看详细信息">
-                                <IconButton
-                                  edge="end"
-                                  size="small"
-                                  onClick={() => handleShowInfo(table)}
-                                  sx={{
-                                    width: 24,
-                                    height: 24,
-                                    backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 20%, transparent)',
-                                    '&:hover': {
-                                      backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 30%, transparent)'
-                                    },
-                                    '& svg': {
-                                      color: 'var(--dq-accent-primary)'
-                                    }
-                                  }}
-                                >
-                                  <InfoIcon sx={{ fontSize: 12 }} />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="删除表">
-                                <IconButton
-                                  edge="end"
-                                  size="small"
-                                  onClick={() => handleDeleteTable(table)}
-                                  sx={{
-                                    width: 24,
-                                    height: 24,
-                                    backgroundColor: 'color-mix(in oklab, var(--dq-status-error-fg) 22%, transparent)',
-                                    '&:hover': {
-                                      backgroundColor: 'color-mix(in oklab, var(--dq-status-error-fg) 32%, transparent)'
-                                    },
-                                    '& svg': {
-                                      color: 'var(--dq-status-error-fg)'
-                                    }
-                                  }}
-                                >
-                                  <DeleteIcon sx={{ fontSize: 12 }} />
-                                </IconButton>
-                              </Tooltip>
-                            </Box>
-                          }
-                        >
-                          <ListItemButton
+                      {groupTables.map((table, tableIndex) => {
+                        const isRefreshing = refreshingTables.has(table.table_name);
+                        return (
+                          <ListItem
+                            key={table.table_name}
+                            disablePadding
                             sx={{
-                              pl: 4,
-                              pr: 12, // 为操作按钮留出空间
-                              py: 1,
+                              borderBottom: tableIndex < groupTables.length - 1 ? '1px solid' : 'none',
+                              borderColor: 'var(--dq-border-subtle)'
+                            }}
+                            secondaryAction={
+                              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                <Tooltip title="复制表名">
+                                  <IconButton
+                                    edge="end"
+                                    size="small"
+                                    onClick={(e) => handleCopyTableName(table.table_name, e)}
+                                    sx={{
+                                      width: 24,
+                                      height: 24,
+                                      backgroundColor: typeInfo.iconBackground,
+                                      '&:hover': {
+                                        backgroundColor: typeInfo.hoverBackground
+                                      },
+                                      '& svg': {
+                                        color: typeInfo.accent
+                                      }
+                                    }}
+                                  >
+                                    <ContentCopyIcon sx={{ fontSize: 12 }} />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="查看详细信息">
+                                  <IconButton
+                                    edge="end"
+                                    size="small"
+                                    onClick={() => handleShowInfo(table)}
+                                    sx={{
+                                      width: 24,
+                                      height: 24,
+                                      backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 20%, transparent)',
+                                      '&:hover': {
+                                        backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 30%, transparent)'
+                                      },
+                                      '& svg': {
+                                        color: 'var(--dq-accent-primary)'
+                                      }
+                                    }}
+                                  >
+                                    <InfoIcon sx={{ fontSize: 12 }} />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title={isRefreshing ? '刷新中...' : '刷新缓存'}>
+                                  <span>
+                                    <IconButton
+                                      edge="end"
+                                      size="small"
+                                      disabled={isRefreshing}
+                                      onClick={() => handleRefreshMetadata(table.table_name)}
+                                      sx={{
+                                        width: 24,
+                                        height: 24,
+                                        backgroundColor: 'color-mix(in oklab, var(--dq-accent-100) 18%, transparent)',
+                                        '&:hover': {
+                                          backgroundColor: 'color-mix(in oklab, var(--dq-accent-100) 28%, transparent)'
+                                        },
+                                        '& svg': {
+                                          color: 'var(--dq-accent-100)'
+                                        }
+                                      }}
+                                    >
+                                      {isRefreshing ? (
+                                        <CircularProgress size={12} />
+                                      ) : (
+                                        <RotateCcw size={12} />
+                                      )}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                                <Tooltip title="删除表">
+                                  <IconButton
+                                    edge="end"
+                                    size="small"
+                                    onClick={() => handleDeleteTable(table)}
+                                    sx={{
+                                      width: 24,
+                                      height: 24,
+                                      backgroundColor: 'color-mix(in oklab, var(--dq-status-error-fg) 22%, transparent)',
+                                      '&:hover': {
+                                        backgroundColor: 'color-mix(in oklab, var(--dq-status-error-fg) 32%, transparent)'
+                                      },
+                                      '& svg': {
+                                        color: 'var(--dq-status-error-fg)'
+                                      }
+                                    }}
+                                  >
+                                    <DeleteIcon sx={{ fontSize: 12 }} />
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
+                            }
+                          >
+                            <ListItemButton
+                              sx={{
+                                pl: 4,
+                                pr: 12, // 为操作按钮留出空间
+                                py: 1,
                               '&:hover': {
                                 backgroundColor: typeInfo.hoverBackground
                               }
@@ -517,7 +579,8 @@ const DuckDBManagementPage = ({ onDataSourceChange }) => {
                             />
                           </ListItemButton>
                         </ListItem>
-                      ))}
+                        );
+                      })}
                     </List>
                   </Collapse>
                 </React.Fragment>

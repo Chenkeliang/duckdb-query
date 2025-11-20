@@ -487,6 +487,16 @@ export const getDuckDBTableInfo = async (tableName) => {
   }
 };
 
+export const refreshTableMetadataCache = async (tableName) => {
+  try {
+    const encodedName = encodeURIComponent(tableName);
+    const response = await apiClient.post(`/api/visual-query/table-metadata/${encodedName}/refresh`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, '刷新表元数据缓存失败');
+  }
+};
+
 // URL文件读取
 export const readFromUrl = async (url, tableAlias, options = {}) => {
   try {

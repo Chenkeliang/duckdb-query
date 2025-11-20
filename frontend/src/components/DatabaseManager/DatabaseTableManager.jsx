@@ -35,6 +35,7 @@ import {
 } from '@mui/material';
 import { BarChart3, ClipboardList, Code, Database, Eye, RotateCcw, Search } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
+import { refreshTableMetadataCache } from '../../services/apiClient';
 
 const DatabaseTableManager = ({ databaseConnections = [] }) => {
   const [selectedConnection, setSelectedConnection] = useState(null);
@@ -50,6 +51,8 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
   const [pageSize] = useState(50); // 每页显示50个表
   const [searchTerm, setSearchTerm] = useState('');
   const [showAllColumns, setShowAllColumns] = useState(new Set()); // 记录哪些表显示所有字段
+  const [refreshingTables, setRefreshingTables] = useState(new Set());
+  const [actionMessage, setActionMessage] = useState('');
 
 
   // 创建带超时和重试的fetch函数
@@ -154,6 +157,38 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
       newShowAll.add(tableName);
     }
     setShowAllColumns(newShowAll);
+  };
+
+  const setTableRefreshing = (tableName, isActive) => {
+    setRefreshingTables(prev => {
+      const updated = new Set(prev);
+      if (isActive) {
+        updated.add(tableName);
+      } else {
+        updated.delete(tableName);
+      }
+      return updated;
+    });
+  };
+
+  const handleRefreshMetadata = async (tableName) => {
+    if (!tableName) return;
+
+    setError('');
+    setActionMessage('');
+    setTableRefreshing(tableName, true);
+
+    try {
+      const response = await refreshTableMetadataCache(tableName);
+      if (!response?.success) {
+        throw new Error(response?.detail || '未知错误');
+      }
+      setActionMessage(`已刷新 ${tableName} 的缓存`);
+    } catch (err) {
+      setError(`刷新 ${tableName} 缓存失败: ${err.message || '未知错误'}`);
+    } finally {
+      setTableRefreshing(tableName, false);
+    }
   };
 
   // 生成SQL查询示例
@@ -325,6 +360,12 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
         </Alert>
       )}
 
+      {actionMessage && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setActionMessage('')}>
+          {actionMessage}
+        </Alert>
+      )}
+
       {!selectedConnection && (
         <Alert severity="info" sx={{ mb: 2 }}>
           请选择要查看的数据库连接。
@@ -405,50 +446,75 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
               </Typography>
             </Box>
 
-            {filteredAndPaginatedTables.tables.map((table) => (
-              <Accordion
-                key={table.table_name}
-                expanded={expandedTables.has(table.table_name)}
-                onChange={() => toggleTableExpanded(table.table_name)}
-                sx={{ mb: 1, border: '1px solid var(--dq-border-subtle)', borderRadius: 1 }}
-              >
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                    <BarChart3 size={20} style={{ marginRight: '16px', color: 'var(--dq-accent-primary)' }} />
-                    <Box sx={{ flexGrow: 1 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                        {table.table_name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {table.column_count} 列
-                      </Typography>
+            {filteredAndPaginatedTables.tables.map((table) => {
+              const isRefreshing = refreshingTables.has(table.table_name);
+              return (
+                <Accordion
+                  key={table.table_name}
+                  expanded={expandedTables.has(table.table_name)}
+                  onChange={() => toggleTableExpanded(table.table_name)}
+                  sx={{ mb: 1, border: '1px solid var(--dq-border-subtle)', borderRadius: 1 }}
+                >
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                      <BarChart3 size={20} style={{ marginRight: '16px', color: 'var(--dq-accent-primary)' }} />
+                      <Box sx={{ flexGrow: 1 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                          {table.table_name}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {table.column_count} 列
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1, mr: 2 }}>
+                        <Chip
+                          label={`${table.column_count} 列`}
+                          size="small"
+                          color="secondary"
+                          variant="outlined"
+                        />
+                      </Box>
+                      <Tooltip title={isRefreshing ? '刷新中...' : '刷新缓存'}>
+                        <span>
+                          <IconButton
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRefreshMetadata(table.table_name);
+                            }}
+                            size="small"
+                            disabled={isRefreshing}
+                            sx={{
+                              '& svg': {
+                                color: 'var(--dq-accent-primary)'
+                              }
+                            }}
+                          >
+                            {isRefreshing ? (
+                              <CircularProgress size={16} />
+                            ) : (
+                              <RotateCcw size={18} />
+                            )}
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title="查看详细信息">
+                        <IconButton
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fetchTableDetails(selectedConnection, table.table_name);
+                          }}
+                          disabled={detailsLoading}
+                          size="small"
+                        >
+                          <Eye size={20} />
+                        </IconButton>
+                      </Tooltip>
                     </Box>
-                    <Box sx={{ display: 'flex', gap: 1, mr: 2 }}>
-                      <Chip
-                        label={`${table.column_count} 列`}
-                        size="small"
-                        color="secondary"
-                        variant="outlined"
-                      />
-                    </Box>
-                    <Tooltip title="查看详细信息">
-                      <IconButton
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          fetchTableDetails(selectedConnection, table.table_name);
-                        }}
-                        disabled={detailsLoading}
-                        size="small"
-                      >
-                        <Eye size={20} />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </AccordionSummary>
-                <AccordionDetails>
-                  {/* 只在真正展开时才渲染内容，提升性能 */}
-                  {expandedTables.has(table.table_name) && (
-                    <Box>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    {/* 只在真正展开时才渲染内容，提升性能 */}
+                    {expandedTables.has(table.table_name) && (
+                      <Box>
                       <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
                         字段信息 ({table.column_count} 个字段)
                       </Typography>
@@ -578,9 +644,10 @@ const DatabaseTableManager = ({ databaseConnections = [] }) => {
                       </Typography>
                     </Box>
                   )}
-                </AccordionDetails>
-              </Accordion>
-            ))}
+                  </AccordionDetails>
+                </Accordion>
+              );
+            })}
 
             {/* 分页组件 */}
             {filteredAndPaginatedTables.totalPages > 1 && (

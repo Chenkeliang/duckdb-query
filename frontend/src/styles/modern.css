@@ -108,6 +108,12 @@
   --dq-gradient-welcome-start: #667eea;
   --dq-gradient-welcome-end: #764ba2;
   --dq-highlight-indigo: #5a67d8;
+  --dq-field-meta-width: 150px;
+  --dq-field-meta-gap: 12px;
+  --dq-json-flag-size: 22px;
+  --dq-json-flag-radius: 8px;
+  --dq-json-flag-border: color-mix(in oklab, var(--dq-accent-primary) 35%, transparent);
+  --dq-json-flag-bg: color-mix(in oklab, var(--dq-accent-primary) 12%, transparent);
 }
 
 
@@ -231,6 +237,12 @@ body,
   --dq-status-error-bg: color-mix(in oklab, #ef4444 28%, transparent);
   --dq-status-error-fg: #ef4444;
   --dq-status-error-fg: color-mix(in oklab, #ef4444 90%, transparent);
+  --dq-field-meta-width: 150px;
+  --dq-field-meta-gap: 12px;
+  --dq-json-flag-size: 22px;
+  --dq-json-flag-radius: 8px;
+  --dq-json-flag-border: color-mix(in oklab, var(--dq-accent-primary) 45%, transparent);
+  --dq-json-flag-bg: color-mix(in oklab, var(--dq-accent-primary) 20%, transparent);
 }
 
 

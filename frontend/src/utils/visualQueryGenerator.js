@@ -57,13 +57,14 @@ export function generateSQL(config, tableName) {
       };
     }
 
-    // Build SQL components
-    const selectClause = buildSelectClause(config);
+    // Normalize JSON 表展开配置，方便 SELECT/FROM 共同复用
     const jsonTables = Array.isArray(config.jsonTables)
       ? config.jsonTables
       : Array.isArray(config.json_tables)
         ? config.json_tables
         : [];
+    // Build SQL components
+    const selectClause = buildSelectClause(config, jsonTables);
     const fromClause = buildFromClause(tableName, jsonTables);
     const whereClause = buildWhereClause(config.filters);
     const havingClause = buildHavingClause(config.having);
@@ -114,9 +115,10 @@ export function generateSQL(config, tableName) {
 /**
  * Build SELECT clause with columns, aggregations, and calculated fields
  * @param {Object} config - Visual query configuration
+ * @param {Array} jsonTables - Normalized json table configs
  * @returns {Object} SELECT clause info
  */
-function buildSelectClause(config) {
+function buildSelectClause(config, jsonTables = []) {
   const selectItems = [];
   let needsGroupBy = false;
 
@@ -209,6 +211,22 @@ function buildSelectClause(config) {
     selectItems.push(...aggregationItems);
   }
 
+  const hasExplicitNonAggregationSelect =
+    (config.selectedColumns && config.selectedColumns.length > 0) ||
+    (config.calculatedFields && config.calculatedFields.length > 0) ||
+    (config.conditionalFields && config.conditionalFields.length > 0);
+
+  if (hasExplicitNonAggregationSelect) {
+    const jsonSelectItems = buildJsonSelectReferences(jsonTables);
+    if (jsonSelectItems.length > 0) {
+      jsonSelectItems.forEach((item) => {
+        if (!selectItems.includes(item)) {
+          selectItems.push(item);
+        }
+      });
+    }
+  }
+
   // If no items specified and no aggregations, select all
   if (selectItems.length === 0) {
     selectItems.push('*');
@@ -218,6 +236,40 @@ function buildSelectClause(config) {
     sql: `${selectKeyword} ${selectItems.join(', ')}`,
     needsGroupBy
   };
+}
+
+function buildJsonSelectReferences(jsonTables = []) {
+  const selectRefs = [];
+  const seen = new Set();
+
+  (Array.isArray(jsonTables) ? jsonTables : []).forEach((tableConfig, index) => {
+    if (!tableConfig || tableConfig.disabled) {
+      return;
+    }
+    const alias =
+      (tableConfig.alias || tableConfig.tableAlias || `json_table_${index + 1}`).toString().trim();
+    if (!alias) {
+      return;
+    }
+    const escapedAlias = escapeIdentifier(alias);
+    const columns = Array.isArray(tableConfig.columns) ? tableConfig.columns : [];
+    columns.forEach((column) => {
+      if (!column || column.disabled) {
+        return;
+      }
+      const columnName = column.alias || column.name || column.outputName;
+      if (!columnName || !String(columnName).trim()) {
+        return;
+      }
+      const reference = `${escapedAlias}.${formatJsonTableColumnAlias(columnName)}`;
+      if (!seen.has(reference)) {
+        seen.add(reference);
+        selectRefs.push(reference);
+      }
+    });
+  });
+
+  return selectRefs;
 }
 
 /**

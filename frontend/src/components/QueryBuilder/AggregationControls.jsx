@@ -13,7 +13,6 @@ import {
   MenuItem,
   Paper,
   Select,
-  Stack,
   TextField,
   Tooltip,
   Typography
@@ -396,12 +395,18 @@ const AggregationControls = ({
                   </Tooltip>
                 </Box>
 
-                <Stack
-                  direction={{ xs: 'column', md: 'row' }}
-                  spacing={1.5}
-                  alignItems="flex-start"
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gap: 1.5,
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      sm: '1fr',
+                      md: 'minmax(0, 1.3fr) minmax(0, 1fr)'
+                    }
+                  }}
                 >
-                  <Box sx={{ flex: 1 }}>
+                  <Box sx={{ minWidth: 200 }}>
                     <Typography
                       variant="caption"
                       sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}
@@ -449,22 +454,7 @@ const AggregationControls = ({
                     </Select>
                   </Box>
 
-                  <Box sx={{ minWidth: 180 }}>
-                    <Typography
-                      variant="caption"
-                      sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}
-                    >
-                      当前类型
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: 'var(--dq-accent-primary)', fontWeight: 600 }}>
-                      {(() => {
-                        const column = columns.find(col => (typeof col === 'string' ? col : col.name) === aggregation.column);
-                        return getMetadataType(column) || detectColumnType(aggregation.column, column?.sampleValues || []);
-                      })()}
-                    </Typography>
-                  </Box>
-
-                  <Box sx={{ flex: 1 }}>
+                  <Box sx={{ minWidth: 0 }}>
                     <Typography
                       variant="caption"
                       sx={{ color: 'var(--dq-text-secondary)', fontWeight: 600, display: 'block', mb: 0.75 }}
@@ -501,7 +491,7 @@ const AggregationControls = ({
                       fullWidth
                     />
                   </Box>
-                </Stack>
+                </Box>
               </Box>
             ))}
           </Box>

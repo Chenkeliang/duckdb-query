@@ -13,8 +13,62 @@ import {
   useTheme
 } from '@mui/material';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FixedSizeList as List } from 'react-window';
+import { List } from 'react-window';
 import { ArrowDown, ArrowUp, ArrowUpDown, Copy, Filter } from 'lucide-react';
+
+const VirtualizedRow = ({
+  index,
+  style,
+  displayedData,
+  columns,
+  finalColumnWidths,
+  onRowClick,
+  totalWidth,
+  formatCellValue
+}) => {
+  const row = displayedData[index];
+  if (!row) return null;
+
+  return (
+    <div style={style}>
+      <TableRow
+        hover
+        onClick={() => onRowClick?.(row, index)}
+        sx={{
+          cursor: onRowClick ? 'pointer' : 'default',
+          '&:hover': {
+            backgroundColor: 'var(--dq-surface-hover)'
+          },
+          display: 'flex',
+          width: totalWidth
+        }}
+      >
+        {columns.map((column, colIndex) => (
+          <TableCell
+            key={column.field}
+            sx={{
+              width: finalColumnWidths[colIndex],
+              minWidth: finalColumnWidths[colIndex],
+              maxWidth: finalColumnWidths[colIndex],
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              borderBottom: '1px solid var(--dq-border-subtle)',
+              flex: '0 0 auto',
+              padding: '8px 12px',
+              verticalAlign: 'top',
+              '&:hover': {
+                backgroundColor: 'var(--dq-surface-hover)'
+              }
+            }}
+          >
+            {formatCellValue(row[column.field], column.type || 'string')}
+          </TableCell>
+        ))}
+      </TableRow>
+    </div>
+  );
+};
 
 const VirtualTable = ({
   data = [],
@@ -254,6 +308,23 @@ const VirtualTable = ({
     return Math.max(maxContentHeight, rowHeight);
   }, [displayedData, columns, rowHeight, autoRowHeight]);
 
+  const listRowProps = useMemo(
+    () => ({
+      displayedData,
+      columns,
+      finalColumnWidths,
+      onRowClick,
+      totalWidth,
+      formatCellValue,
+    }),
+    [displayedData, columns, finalColumnWidths, onRowClick, totalWidth, formatCellValue]
+  );
+
+  const listBodyHeight = useMemo(
+    () => Math.max(height - 56, dynamicRowHeight, rowHeight),
+    [height, dynamicRowHeight, rowHeight]
+  );
+
   // 格式化单元格值 - 改进显示逻辑
   const formatCellValue = useCallback((value, type) => {
     if (value === null || value === undefined) {
@@ -293,52 +364,6 @@ const VirtualTable = ({
   }, []);
 
   // 渲染行组件
-  const Row = useCallback(({ index, style }) => {
-    const row = displayedData[index];
-    if (!row) return null;
-
-    return (
-      <div style={style}>
-        <TableRow
-          hover
-          onClick={() => onRowClick?.(row, index)}
-          sx={{
-            cursor: onRowClick ? 'pointer' : 'default',
-            '&:hover': {
-              backgroundColor: 'var(--dq-surface-hover)'
-            },
-            display: 'flex',
-            width: totalWidth
-          }}
-        >
-          {columns.map((column, colIndex) => (
-            <TableCell
-              key={column.field}
-              sx={{
-                width: finalColumnWidths[colIndex],
-                minWidth: finalColumnWidths[colIndex],
-                maxWidth: finalColumnWidths[colIndex],
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                borderBottom: '1px solid var(--dq-border-subtle)',
-                flex: '0 0 auto',
-                padding: '8px 12px',
-                verticalAlign: 'top',
-                // 改进内容显示
-                '&:hover': {
-                  backgroundColor: 'var(--dq-surface-hover)',
-                }
-              }}
-            >
-              {formatCellValue(row[column.field], column.type || 'string')}
-            </TableCell>
-          ))}
-        </TableRow>
-      </div>
-    );
-  }, [displayedData, columns, finalColumnWidths, onRowClick, totalWidth, formatCellValue]);
-
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -490,13 +515,13 @@ const VirtualTable = ({
 
       <Box sx={{ width: totalWidth }}>
         <List
-          height={height - 56} // 减去表头高度
-          itemCount={displayedData.length}
-          itemSize={dynamicRowHeight}
-          width={totalWidth}
-        >
-          {Row}
-        </List>
+          style={{ height: listBodyHeight, width: totalWidth }}
+          rowCount={displayedData.length}
+          rowHeight={dynamicRowHeight}
+          rowComponent={VirtualizedRow}
+          rowProps={listRowProps}
+          overscanCount={4}
+        />
       </Box>
     </TableContainer>
   );

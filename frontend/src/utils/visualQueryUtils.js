@@ -1065,6 +1065,52 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
     const applyExpressionCasts = (expr) =>
       applyResolvedCastsToExpression(expr, resolvedCastsMap);
 
+    const normalizeJsonTables = () => {
+      if (Array.isArray(config.jsonTables)) {
+        return config.jsonTables;
+      }
+      if (Array.isArray(config.json_tables)) {
+        return config.json_tables;
+      }
+      return [];
+    };
+
+    const jsonTableConfigs = normalizeJsonTables();
+
+    const buildJsonSelectReferences = (tables = []) => {
+      const refs = [];
+      const seen = new Set();
+
+      (Array.isArray(tables) ? tables : []).forEach((tableConfig, index) => {
+        if (!tableConfig || tableConfig.disabled) {
+          return;
+        }
+        const alias =
+          (tableConfig.alias || tableConfig.tableAlias || `json_table_${index + 1}`).toString().trim();
+        if (!alias) {
+          return;
+        }
+        const escapedAlias = escapeIdentifier(alias);
+        const columns = Array.isArray(tableConfig.columns) ? tableConfig.columns : [];
+        columns.forEach((column) => {
+          if (!column || column.disabled) {
+            return;
+          }
+          const columnName = column.alias || column.name || column.outputName;
+          if (!columnName || !String(columnName).trim()) {
+            return;
+          }
+          const reference = `${escapedAlias}.${formatJsonTableColumnAlias(columnName)}`;
+          if (!seen.has(reference)) {
+            seen.add(reference);
+            refs.push(reference);
+          }
+        });
+      });
+
+      return refs;
+    };
+
     // SELECT 子句
     const selectItems = [];
 
@@ -1117,22 +1163,28 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
       });
     }
 
+    const hasExplicitNonAggregationSelect =
+      (config.selectedColumns && config.selectedColumns.length > 0) ||
+      (config.calculatedFields && config.calculatedFields.length > 0) ||
+      (config.conditionalFields && config.conditionalFields.length > 0);
+
+    if (hasExplicitNonAggregationSelect) {
+      const jsonSelectRefs = buildJsonSelectReferences(jsonTableConfigs);
+      if (jsonSelectRefs.length > 0) {
+        jsonSelectRefs.forEach((ref) => {
+          if (!selectItems.includes(ref)) {
+            selectItems.push(ref);
+          }
+        });
+      }
+    }
+
     // 如果没有任何选择项，默认选择所有
     if (selectItems.length === 0) {
       selectItems.push("*");
     }
 
     sql += `SELECT ${config.isDistinct ? "DISTINCT " : ""}${selectItems.join(", ")}`;
-
-    const normalizeJsonTables = () => {
-      if (Array.isArray(config.jsonTables)) {
-        return config.jsonTables;
-      }
-      if (Array.isArray(config.json_tables)) {
-        return config.json_tables;
-      }
-      return [];
-    };
 
     const formatJsonColumnReference = (identifier) => {
       if (!identifier) {
@@ -1225,7 +1277,7 @@ export const generateSQLPreview = (config, tableName, columns = [], options = {}
 
     const buildFromClause = () => {
       let clause = `\nFROM ${escapeIdentifier(tableName)}`;
-      normalizeJsonTables().forEach((tableConfig, idx) => {
+      jsonTableConfigs.forEach((tableConfig, idx) => {
         const joinSql = buildJsonTableClause(tableConfig, idx);
         if (joinSql) {
           clause += joinSql;

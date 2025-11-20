@@ -734,6 +734,32 @@ const VisualAnalysisPanel = ({
   }, [analysisConfig, resolvedCasts, activeMode, tableName]);
 
   useEffect(() => {
+    if (
+      !isMetadataReady ||
+      !shouldShowPanel ||
+      isConflictDialogOpen ||
+      isValidatingTypes
+    ) {
+      return;
+    }
+    const localConflicts = computeLocalConflicts();
+    if (localConflicts.length === 0) {
+      return;
+    }
+    const modeKey = activeMode === 'pivot' ? 'pivot' : 'regular';
+    openConflictDialog(localConflicts, {}, modeKey);
+  }, [
+    analysisConfig,
+    computeLocalConflicts,
+    isMetadataReady,
+    shouldShowPanel,
+    isConflictDialogOpen,
+    isValidatingTypes,
+    activeMode,
+    openConflictDialog,
+  ]);
+
+  useEffect(() => {
     if (activeMode !== 'pivot' || !shouldShowPanel) {
       setPivotNotice(null);
       pivotWarningShownRef.current = false;

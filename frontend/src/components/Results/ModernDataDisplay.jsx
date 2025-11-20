@@ -35,16 +35,130 @@ import {
 import { Eye, EyeOff, Filter, List, RefreshCw, Save, Scroll, Search, Table, TrendingUp, X, SlidersHorizontal, Plus, Trash2, Copy, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
+import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { useToast } from '../../contexts/ToastContext';
 import VirtualTable from '../VirtualTable/VirtualTable';
 import { CardSurface } from '../common';
 
+ModuleRegistry.registerModules([AllCommunityModule]);
+
 const DISTINCT_SAMPLE_LIMIT = 10000;
 const MAX_DISTINCT_PREVIEW = 1000;
 
 const NULL_KEY = '__NULL__';
+const NUMERIC_TYPE_HINTS = ['int', 'integer', 'bigint', 'smallint', 'tinyint', 'decimal', 'numeric', 'float', 'double', 'real', 'number'];
+const DATE_TYPE_HINTS = ['date', 'time', 'timestamp'];
+const BOOLEAN_TYPE_HINTS = ['bool', 'boolean'];
+
+const normalizeNumberLike = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? null : value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.replace(/,/g, '').trim();
+    if (!normalized) return null;
+    const parsed = Number(normalized);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+};
+
+const normalizeDateLike = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isNaN(time) ? null : time;
+  }
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const time = Date.parse(value);
+    return Number.isNaN(time) ? null : time;
+  }
+  return null;
+};
+
+const detectSortType = (column, sampleRows) => {
+  const typeHint = (
+    column?.dataType ||
+    column?.data_type ||
+    column?.sqlType ||
+    column?.column_type ||
+    column?.type ||
+    column?.valueType ||
+    ''
+  )
+    .toString()
+    .toLowerCase();
+
+  if (typeHint) {
+    if (NUMERIC_TYPE_HINTS.some((hint) => typeHint.includes(hint))) {
+      return 'numeric';
+    }
+    if (DATE_TYPE_HINTS.some((hint) => typeHint.includes(hint))) {
+      return 'date';
+    }
+    if (BOOLEAN_TYPE_HINTS.some((hint) => typeHint.includes(hint))) {
+      return 'boolean';
+    }
+  }
+
+  for (const row of sampleRows) {
+    const value = row?.[column?.field];
+    if (value === null || value === undefined) {
+      continue;
+    }
+    if (typeof value === 'number') return 'numeric';
+    if (typeof value === 'boolean') return 'boolean';
+    if (value instanceof Date) return 'date';
+    if (typeof value === 'string') {
+      if (normalizeNumberLike(value) !== null) return 'numeric';
+      if (normalizeDateLike(value) !== null) return 'date';
+    }
+    break;
+  }
+
+  return 'string';
+};
+
+const getComparatorForType = (type) => {
+  switch (type) {
+    case 'numeric':
+      return (valueA, valueB) => {
+        const numA = normalizeNumberLike(valueA);
+        const numB = normalizeNumberLike(valueB);
+        if (numA === null && numB === null) return 0;
+        if (numA === null) return -1;
+        if (numB === null) return 1;
+        return numA - numB;
+      };
+    case 'date':
+      return (valueA, valueB) => {
+        const timeA = normalizeDateLike(valueA);
+        const timeB = normalizeDateLike(valueB);
+        if (timeA === null && timeB === null) return 0;
+        if (timeA === null) return -1;
+        if (timeB === null) return 1;
+        return timeA - timeB;
+      };
+    case 'boolean':
+      return (valueA, valueB) => {
+        const boolA = Boolean(valueA);
+        const boolB = Boolean(valueB);
+        return Number(boolA) - Number(boolB);
+      };
+    default:
+      return (valueA, valueB) => {
+        const strA = valueA === null || valueA === undefined ? '' : String(valueA);
+        const strB = valueB === null || valueB === undefined ? '' : String(valueB);
+        return strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
+      };
+  }
+};
 
 const AgColumnHeader = ({
   displayName,
@@ -751,6 +865,8 @@ const ModernDataDisplay = ({
     ? (normalizedColumns.find(col => col.field === columnFilterField)?.headerName || columnFilterField)
     : '';
 
+  const sampleRows = useMemo(() => data.slice(0, 200), [data]);
+
   // 分页数据
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
@@ -839,10 +955,23 @@ const ModernDataDisplay = ({
     [handleCopyColumnName, handleOpenColumnFilterMenu, getHasActiveColumnFilter]
   );
 
+  const columnSortMetadata = useMemo(() => {
+    if (!normalizedColumns.length) return {};
+    return normalizedColumns.reduce((acc, col) => {
+      const sortType = detectSortType(col, sampleRows);
+      acc[col.field] = {
+        sortType,
+        comparator: getComparatorForType(sortType),
+      };
+      return acc;
+    }, {});
+  }, [normalizedColumns, sampleRows]);
+
   const agGridColumnDefs = useMemo(() => {
     return normalizedColumns.map((col) => {
       const isJoinResultColumn =
         col.field && typeof col.field === 'string' && col.field.startsWith('join_result_');
+      const sortMeta = columnSortMetadata[col.field] || {};
 
       return {
         field: col.field,
@@ -850,6 +979,7 @@ const ModernDataDisplay = ({
         hide: !visibleColumns.has(col.field),
         minWidth: isJoinResultColumn ? 120 : 160,
         cellRenderer: isJoinResultColumn ? JoinResultCellRenderer : undefined,
+        comparator: sortMeta.comparator,
         valueFormatter: (params) => {
           const value = params.value;
           if (value === null || value === undefined) {
@@ -869,14 +999,14 @@ const ModernDataDisplay = ({
         },
       };
     });
-  }, [normalizedColumns, visibleColumns]);
+  }, [normalizedColumns, visibleColumns, JoinResultCellRenderer, columnSortMetadata]);
 
   const handleGridReady = useCallback(
     (params) => {
       gridApiRef.current = params.api;
       gridColumnApiRef.current = params.columnApi;
-      params.api.setDomLayout('normal');
-      params.columnApi.applyColumnState({
+      params.api?.setDomLayout?.('normal');
+      params.columnApi?.applyColumnState?.({
         state: normalizedColumns.map((col, index) => ({
           colId: col.field,
           hide: !visibleColumns.has(col.field),
@@ -1682,6 +1812,7 @@ const ModernDataDisplay = ({
                 rowData={paginatedData}
                 columnDefs={agGridColumnDefs}
                 defaultColDef={agDefaultColDef}
+                theme="legacy"
                 animateRows
                 rowHeight={48}
                 headerHeight={48}

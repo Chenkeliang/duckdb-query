@@ -7,16 +7,18 @@ import {
   Chip,
   Divider,
   IconButton,
+  InputAdornment,
   List,
   ListItem,
   ListItemSecondaryAction,
   ListItemText,
   Paper,
+  TextField,
   Tooltip,
   Typography
 } from '@mui/material';
-import { BarChart3, Database } from 'lucide-react';
-import React from 'react';
+import { BarChart3, Database, Search } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
 
 const SourceSelector = ({
   availableSources,
@@ -25,6 +27,28 @@ const SourceSelector = ({
   onSourceRemove,
   onRefresh
 }) => {
+  const [sourceSearchTerm, setSourceSearchTerm] = useState('');
+
+  const normalizedSourceSearch = sourceSearchTerm.trim().toLowerCase();
+
+  // 基于名称 / 类型的轻量本地过滤，避免大列表难以定位
+  const filteredAvailableSources = useMemo(() => {
+    if (!Array.isArray(availableSources)) {
+      return [];
+    }
+    const unselectedSources = availableSources.filter(
+      (source) => !selectedSources.some((s) => s.id === source.id)
+    );
+    if (!normalizedSourceSearch) {
+      return unselectedSources;
+    }
+    return unselectedSources.filter((source) => {
+      const name = (source.name || source.id || '').toLowerCase();
+      const type = (source.type || '').toLowerCase();
+      return name.includes(normalizedSourceSearch) || type.includes(normalizedSourceSearch);
+    });
+  }, [availableSources, selectedSources, normalizedSourceSearch]);
+
   return (
     <Box sx={{
       display: 'flex',
@@ -45,16 +69,20 @@ const SourceSelector = ({
         display: 'flex',
         flexDirection: 'column'
       }}>
-        <Box sx={{
-          p: 1.5,
-          pb: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid var(--dq-border-subtle)',
-          bgcolor: 'var(--dq-surface)'
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Box
+          sx={{
+            p: 1.5,
+            pb: 1,
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 1,
+            justifyContent: 'space-between',
+            borderBottom: '1px solid var(--dq-border-subtle)',
+            bgcolor: 'var(--dq-surface)'
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
             <Database
               sx={{
                 color: 'var(--dq-accent-primary)',
@@ -72,7 +100,47 @@ const SourceSelector = ({
               可用数据源
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.75,
+              flex: 1,
+              justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+              flexWrap: 'wrap'
+            }}
+          >
+            <TextField
+              size="small"
+              value={sourceSearchTerm}
+              onChange={(event) => setSourceSearchTerm(event.target.value)}
+              placeholder="搜索数据源或类型"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search size={16} color="var(--dq-text-tertiary)" />
+                  </InputAdornment>
+                )
+              }}
+              sx={{
+                width: { xs: '100%', sm: 220 },
+                flexShrink: 0,
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2,
+                  backgroundColor: 'var(--dq-surface)',
+                  fontSize: '1rem',
+                  '& fieldset': {
+                    borderColor: 'var(--dq-border-subtle)'
+                  },
+                  '&:hover fieldset': {
+                    borderColor: 'var(--dq-border-card)'
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: 'var(--dq-accent-primary)'
+                  }
+                }
+              }}
+            />
             {onRefresh && (
               <Tooltip title="刷新数据源列表">
                 <IconButton
@@ -107,9 +175,9 @@ const SourceSelector = ({
 
         <Box sx={{ overflow: 'auto', flexGrow: 1 }}>
           {availableSources.length > 0 ? (
-            <List disablePadding>
-              {[...availableSources]
-                .filter(source => !selectedSources.some(s => s.id === source.id))
+            filteredAvailableSources.length > 0 ? (
+              <List disablePadding>
+                {[...filteredAvailableSources]
                 .sort((a, b) => {
                   // 按创建时间倒序排序（最新的在上面）
                   // 如果createdAt为null，将其放在最后
@@ -209,7 +277,28 @@ const SourceSelector = ({
                     )}
                   </React.Fragment>
                 ))}
-            </List>
+              </List>
+            ) : (
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '100%',
+                  p: 3,
+                  textAlign: 'center',
+                  color: 'var(--dq-text-secondary)'
+                }}
+              >
+                <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500 }}>
+                  未找到匹配的数据源
+                </Typography>
+                <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                  调整搜索关键词或清空搜索框
+                </Typography>
+              </Box>
+            )
           ) : (
             <Box sx={{
               display: 'flex',

@@ -183,6 +183,30 @@ describe('Visual Query Generator', () => {
       expect(result.sql).toContain('COALESCE(json_each_1.rowid, 0) + 1 AS "row_num"');
     });
 
+    it('keeps JSON expanded columns in SELECT when base columns are explicitly chosen', () => {
+      const config = {
+        tableName: 'orders',
+        selectedColumns: ['order_id'],
+        aggregations: [],
+        filters: [],
+        jsonTables: [
+          {
+            sourceColumn: 'items_json',
+            alias: 'items_flat',
+            rootPath: '$.items[*]',
+            columns: [
+              { name: 'item_name', path: '$.name', dataType: 'varchar' },
+            ],
+          },
+        ],
+      };
+
+      const result = generateSQLPreview(config, 'orders');
+
+      expect(result.success).toBe(true);
+      expect(result.sql).toContain('SELECT "order_id", "items_flat"."item_name"');
+    });
+
     it('handles errors gracefully', () => {
       const config = null; // Invalid config
       

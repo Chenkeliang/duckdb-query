@@ -13,7 +13,7 @@ import {
   Tooltip,
   Typography
 } from '@mui/material';
-import { Sparkles, Calendar, FileText, Hash, HelpCircle, Search } from 'lucide-react';
+import { Sparkles, Search } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import JsonQuickConfiguratorDialog from './JsonQuickConfiguratorDialog';
 
@@ -45,79 +45,32 @@ const ColumnSelector = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [quickConfigColumn, setQuickConfigColumn] = useState(null);
 
-  // Get columns from the selected table
-  const availableColumns = useMemo(
-    () => (Array.isArray(selectedTable?.columns) ? selectedTable.columns : []),
-    [selectedTable],
-  );
-  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const columnProfilesMap = columnProfiles || {};
+  const normalizedJsonTables = Array.isArray(jsonTables) ? jsonTables : [];
 
-  const filteredColumns = useMemo(() => {
-    if (!normalizedSearch) {
-      return availableColumns;
-    }
-    return availableColumns.filter((column) => {
-      const columnName = getColumnName(column).toLowerCase();
-      const dataType = getColumnDataType(column).toLowerCase();
-      return (
-        columnName.includes(normalizedSearch) ||
-        dataType.includes(normalizedSearch)
-      );
-    });
-  }, [availableColumns, normalizedSearch]);
-
-  // Handle individual column toggle
-  const handleColumnToggle = (columnName) => {
-    if (disabled) return;
-
-    const isCurrentlySelected = selectedColumns.includes(columnName);
-    let newSelection;
-
-    if (isCurrentlySelected) {
-      newSelection = selectedColumns.filter(col => col !== columnName);
-    } else {
-      newSelection = [...selectedColumns, columnName];
-    }
-
-    onColumnSelectionChange?.(newSelection);
-  };
-
-  // Get column data type for display
   const getColumnDataType = (column) => {
     if (typeof column === 'string') return 'TEXT';
     return column.dataType || column.type || 'UNKNOWN';
   };
 
-  // Get column name for display
   const getColumnName = (column) => {
     if (typeof column === 'string') return column;
     return column.name || column.column_name || 'Unknown';
   };
 
-  // Check if column data type is numeric
   const isNumericDataType = (dataType) => {
     const numericTypes = ['INTEGER', 'BIGINT', 'DOUBLE', 'REAL', 'DECIMAL', 'NUMERIC', 'FLOAT', 'INT', 'NUMBER'];
-    return numericTypes.some(type => dataType.toUpperCase().includes(type));
+    return numericTypes.some((type) => dataType.toUpperCase().includes(type));
   };
 
-  // Check if column data type is text
   const isTextDataType = (dataType) => {
     const textTypes = ['VARCHAR', 'TEXT', 'STRING', 'CHAR'];
-    return textTypes.some(type => dataType.toUpperCase().includes(type));
+    return textTypes.some((type) => dataType.toUpperCase().includes(type));
   };
 
-  // Check if column data type is date/time
   const isDateTimeDataType = (dataType) => {
     const dateTimeTypes = ['DATE', 'TIME', 'TIMESTAMP', 'DATETIME'];
-    return dateTimeTypes.some(type => dataType.toUpperCase().includes(type));
-  };
-
-  // Get data type color
-  const getDataTypeColor = (dataType) => {
-    if (isNumericDataType(dataType)) return 'primary';
-    if (isTextDataType(dataType)) return 'secondary';
-    if (isDateTimeDataType(dataType)) return 'warning';
-    return 'default';
+    return dateTimeTypes.some((type) => dataType.toUpperCase().includes(type));
   };
 
   const formatDataTypeLabel = (dataType) => {
@@ -126,28 +79,18 @@ const ColumnSelector = ({
     }
     const raw = dataType.toString();
     const upper = raw.toUpperCase();
-    if (upper.startsWith('STRUCT')) {
-      return { label: 'STRUCT', tooltip: raw };
-    }
-    if (upper.includes('JSON')) {
-      return { label: 'JSON', tooltip: raw };
-    }
-    if (upper.startsWith('MAP')) {
-      return { label: 'MAP', tooltip: raw };
-    }
-    return { label: raw, tooltip: raw };
-  };
 
-  // Get data type icon
-  const getDataTypeIcon = (dataType) => {
-    if (isNumericDataType(dataType)) return <Hash size={16} />;
-    if (isTextDataType(dataType)) return <FileText size={16} />;
-    if (isDateTimeDataType(dataType)) return <Calendar size={16} />;
-    return <HelpCircle size={16} />;
+    if (isNumericDataType(upper)) {
+      return { label: 'number', tooltip: raw };
+    }
+    if (isTextDataType(upper)) {
+      return { label: 'text', tooltip: raw };
+    }
+    if (isDateTimeDataType(upper)) {
+      return { label: 'date', tooltip: raw };
+    }
+    return { label: upper.slice(0, 6), tooltip: raw };
   };
-
-  const columnProfilesMap = columnProfiles || {};
-  const normalizedJsonTables = Array.isArray(jsonTables) ? jsonTables : [];
 
   const getColumnProfile = (name) => {
     if (!name) return null;
@@ -212,6 +155,43 @@ const ColumnSelector = ({
     return normalizedJsonTables.filter(
       (mapping) => (mapping?.sourceColumn || '').toLowerCase() === lowered,
     );
+  };
+
+  // Get columns from the selected table
+  const availableColumns = useMemo(
+    () => (Array.isArray(selectedTable?.columns) ? selectedTable.columns : []),
+    [selectedTable],
+  );
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+
+  const filteredColumns = useMemo(() => {
+    if (!normalizedSearch) {
+      return availableColumns;
+    }
+    return availableColumns.filter((column) => {
+      const columnName = getColumnName(column).toLowerCase();
+      const dataType = getColumnDataType(column).toLowerCase();
+      return (
+        columnName.includes(normalizedSearch) ||
+        dataType.includes(normalizedSearch)
+      );
+    });
+  }, [availableColumns, normalizedSearch]);
+
+  // Handle individual column toggle
+  const handleColumnToggle = (columnName) => {
+    if (disabled) return;
+
+    const isCurrentlySelected = selectedColumns.includes(columnName);
+    let newSelection;
+
+    if (isCurrentlySelected) {
+      newSelection = selectedColumns.filter(col => col !== columnName);
+    } else {
+      newSelection = [...selectedColumns, columnName];
+    }
+
+    onColumnSelectionChange?.(newSelection);
   };
 
   const openQuickConfigurator = (column) => {
@@ -320,15 +300,13 @@ const ColumnSelector = ({
         className="rounded-md p-3 visual-analysis-card-inner"
         sx={{
           border: '1px solid var(--dq-border-subtle)',
-          backgroundColor: 'transparent',
+          backgroundColor: 'var(--dq-surface-card)',
           maxHeight: `${maxHeight}px`,
           overflowY: 'auto',
           transition: 'background-color 0.18s ease, border-color 0.18s ease'
         }}
-        style={{ backgroundColor: 'var(--dq-surface-card)' }}
       >
-        {/* Responsive Grid Layout */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 gap-2">
             {filteredColumns.map((column, index) => {
               const columnName = getColumnName(column);
               const dataType = getColumnDataType(column);
@@ -336,144 +314,187 @@ const ColumnSelector = ({
               const jsonMappings = getJsonMappingsForColumn(columnName);
               const hasJsonMappings = jsonMappings.length > 0;
               const isJson = isJsonColumn(column);
+              const { label: formattedTypeLabel, tooltip: tooltipValue } = formatDataTypeLabel(dataType);
+              const normalizedTypeLabel = (formattedTypeLabel || dataType || 'UNKNOWN').toString();
+              const rawTypeTooltip = tooltipValue ? tooltipValue.toString() : '';
+              const typeLabelNode = (
+                <Typography
+                  component="span"
+                  variant="caption"
+                  sx={{
+                    fontWeight: 700,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    color: 'var(--dq-text-secondary)',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {normalizedTypeLabel}
+                </Typography>
+              );
+              const shouldShowTypeTooltip =
+                rawTypeTooltip && rawTypeTooltip.toUpperCase() !== normalizedTypeLabel.toUpperCase();
+              const typeLabelWithTooltip = shouldShowTypeTooltip ? (
+                <Tooltip title={<pre style={{ margin: 0 }}>{rawTypeTooltip}</pre>} arrow>
+                  <span>{typeLabelNode}</span>
+                </Tooltip>
+              ) : (
+                typeLabelNode
+              );
 
               return (
-                <Box
-                  key={`${columnName}-${index}`}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1.5,
-                    px: 1.5,
-                    py: 1,
-                    borderRadius: 2,
-                    border: `1px solid ${isSelected ? 'var(--dq-accent-primary)' : 'var(--dq-border-subtle)'}`,
-                    backgroundColor: isSelected ? 'var(--dq-accent-primary-soft)' : 'var(--dq-surface)',
-                    cursor: disabled ? 'not-allowed' : 'pointer',
-                    opacity: disabled ? 0.55 : 1,
-                    pointerEvents: disabled ? 'none' : 'auto',
-                    transition: 'border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease',
-                    '&:hover': {
-                      backgroundColor: isSelected
-                        ? 'var(--dq-accent-primary-soft)'
-                        : 'var(--dq-accent-primary-soft)',
-                      borderColor: isSelected
-                        ? 'var(--dq-accent-primary)'
-                        : 'color-mix(in oklab, var(--dq-accent-primary) 30%, var(--dq-border-card))',
-                      transform: disabled ? 'none' : 'translateY(-1px)'
-                    }
-                  }}
-                  onClick={() => handleColumnToggle(columnName)}
-                >
-                  <Checkbox
-                    checked={isSelected}
-                    onChange={() => handleColumnToggle(columnName)}
-                    disabled={disabled}
-                    size="small"
+                <div className="col-span-1" key={`${columnName}-${index}`}>
+                  <Box
                     sx={{
-                      p: 0,
-                      flexShrink: 0,
-                      '&.Mui-checked': {
-                        color: 'var(--dq-accent-primary)'
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 0.5,
+                      px: 1.5,
+                      py: 1.4,
+                      minHeight: 64,
+                      width: '100%',
+                      borderRadius: 2,
+                      border: `1px solid ${isSelected ? 'var(--dq-accent-primary)' : 'var(--dq-border-subtle)'}`,
+                      backgroundColor: isSelected ? 'var(--dq-accent-primary-soft)' : 'var(--dq-surface)',
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      opacity: disabled ? 0.55 : 1,
+                      pointerEvents: disabled ? 'none' : 'auto',
+                      transition: 'border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease',
+                      '&:hover': {
+                        backgroundColor: 'var(--dq-accent-primary-soft)',
+                        borderColor: isSelected
+                          ? 'var(--dq-accent-primary)'
+                          : 'color-mix(in oklab, var(--dq-accent-primary) 30%, var(--dq-border-card))',
+                        transform: disabled ? 'none' : 'translateY(-1px)'
                       }
                     }}
-                  />
-
-                  <Box className="flex-1 min-w-0">
-                    {/* Column Name */}
-                    <div className="flex items-center space-x-1">
-                      <Typography
-                        variant="body2"
+                    onClick={() => handleColumnToggle(columnName)}
+                  >
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--dq-field-meta-gap)',
+                        width: '100%',
+                      }}
+                    >
+                      <Box
                         sx={{
-                          fontWeight: isSelected ? 600 : 500,
-                          fontSize: '1rem',
-                          color: isSelected ? 'var(--dq-accent-primary)' : 'var(--dq-text-secondary)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          flex: 1,
+                          minWidth: 0,
                         }}
-                        title={columnName}
                       >
-                        {columnName}
-                      </Typography>
+                        <Checkbox
+                          checked={isSelected}
+                          onChange={() => handleColumnToggle(columnName)}
+                          disabled={disabled}
+                          size="small"
+                          sx={{
+                            p: 0,
+                            flexShrink: 0,
+                            '&.Mui-checked': {
+                              color: 'var(--dq-accent-primary)'
+                            }
+                          }}
+                        />
 
-                      <span className="text-sm">{getDataTypeIcon(dataType)}</span>
-                      {(() => {
-                        const { label, tooltip } = formatDataTypeLabel(dataType);
-                        const chip = (
-                          <Chip
-                            label={label}
-                            size="small"
-                            color={getDataTypeColor(dataType)}
-                            variant="outlined"
-                            sx={{
-                              height: 16,
-                              fontSize: '1rem',
-                              fontWeight: 500,
-                              '& .MuiChip-label': {
-                                padding: '0 4px'
-                              }
-                            }}
-                          />
-                        );
-                        if (tooltip && tooltip !== label) {
-                          return (
-                            <Tooltip title={<pre style={{ margin: 0 }}>{tooltip}</pre>} arrow>
-                              <span>{chip}</span>
-                            </Tooltip>
-                          );
-                        }
-                        return chip;
-                      })()}
-
-                      {isJson && (
-                        <Tooltip title={hasJsonMappings ? '编辑 JSON 展开' : '展开 JSON/STRUCT 列'}>
-                          <IconButton
-                            size="small"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openQuickConfigurator({
-                                name: columnName,
-                                dataType,
-                                metadata: column,
-                                sampleValues: getColumnProfile(columnName)?.sample_values || column?.sample_values || column?.sampleValues || [],
-                                existingMappings: jsonMappings,
-                              });
-                            }}
-                            sx={{
-                              ml: 0.5,
-                              color: hasJsonMappings ? 'var(--dq-accent-primary)' : 'var(--dq-text-secondary)',
-                              '&:hover': { color: 'var(--dq-accent-primary)' },
-                            }}
-                          >
-                            <Sparkles size={16} />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-
-                      {showMetadata && (
-                        <Tooltip
-                          title={
-                            <div>
-                              <div><strong>列名:</strong> {columnName}</div>
-                              <div><strong>数据类型:</strong> {dataType}</div>
-                              {typeof column === 'object' && column.nullable !== undefined && (
-                                <div><strong>可为空:</strong> {column.nullable ? '是' : '否'}</div>
-                              )}
-                            </div>
-                          }
-                          arrow
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            flexShrink: 1,
+                            fontWeight: isSelected ? 600 : 500,
+                            fontSize: '1rem',
+                            color: isSelected ? 'var(--dq-accent-primary)' : 'var(--dq-text-secondary)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            minWidth: 0,
+                          }}
+                          title={columnName}
                         >
-                          <InfoIcon
-                            sx={{
-                              fontSize: '1rem',
-                              color: 'var(--dq-text-secondary)',
-                              cursor: 'help'
-                            }}
-                          />
-                        </Tooltip>
-                      )}
-                    </div>
+                          {columnName}
+                        </Typography>
+                      </Box>
+
+                      {/* 右侧元数据区：JSON 展开按钮 / 类型 / Info 图标 */}
+                      <Box
+                        sx={{
+                          marginLeft: 'auto',
+                          flex: '0 0 var(--dq-field-meta-width)',
+                          minWidth: 'var(--dq-field-meta-width)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'flex-end',
+                          gap: 'var(--dq-field-meta-gap)',
+                          textAlign: 'right',
+                        }}
+                      >
+                        {isJson && (
+                          <Tooltip title={hasJsonMappings ? '编辑 JSON 展开' : '展开 JSON/STRUCT 列'}>
+                            <IconButton
+                              size="small"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openQuickConfigurator({
+                                  name: columnName,
+                                  dataType,
+                                  metadata: column,
+                                  sampleValues: getColumnProfile(columnName)?.sample_values || column?.sample_values || column?.sampleValues || [],
+                                  existingMappings: jsonMappings,
+                                });
+                              }}
+                              sx={{
+                                width: 'var(--dq-json-flag-size)',
+                                height: 'var(--dq-json-flag-size)',
+                                minWidth: 'var(--dq-json-flag-size)',
+                                borderRadius: 'var(--dq-json-flag-radius)',
+                                border: '1px dashed var(--dq-json-flag-border)',
+                                backgroundColor: 'var(--dq-json-flag-bg)',
+                                color: hasJsonMappings ? 'var(--dq-accent-primary)' : 'var(--dq-text-secondary)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                '&:hover': {
+                                  backgroundColor: 'color-mix(in oklab, var(--dq-accent-primary) 14%, transparent)',
+                                  borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 45%, transparent)',
+                                  color: 'var(--dq-accent-primary)'
+                                }
+                              }}
+                            >
+                              <Sparkles size={14} strokeWidth={2} />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+
+                        {typeLabelWithTooltip}
+
+                        {showMetadata && (
+                          <Tooltip
+                            title={
+                              <div>
+                                <div><strong>列名:</strong> {columnName}</div>
+                                <div><strong>数据类型:</strong> {dataType}</div>
+                                {typeof column === 'object' && column.nullable !== undefined && (
+                                  <div><strong>可为空:</strong> {column.nullable ? '是' : '否'}</div>
+                                )}
+                              </div>
+                            }
+                            arrow
+                          >
+                            <InfoIcon
+                              sx={{
+                                fontSize: '1rem',
+                                color: 'var(--dq-text-secondary)',
+                                cursor: 'help'
+                              }}
+                            />
+                          </Tooltip>
+                        )}
+                      </Box>
+                    </Box>
 
                     {isJson && (
                       <Typography
@@ -504,20 +525,20 @@ const ColumnSelector = ({
                       </Box>
                     )}
                   </Box>
-                </Box>
+              </div>
               );
             })}
-          </div>
+        </div>
 
-          {/* Empty State */}
-          {filteredColumns.length === 0 && (
-            <div className="text-center py-4">
-              <Typography variant="body2" color="text.secondary">
-                {normalizedSearch ? '没有匹配的列，请调整搜索关键字' : '没有可用的列'}
-              </Typography>
-            </div>
-          )}
-        </Box>
+        {/* Empty State */}
+        {filteredColumns.length === 0 && (
+          <div className="text-center py-4">
+            <Typography variant="body2" color="text.secondary">
+              {normalizedSearch ? '没有匹配的列，请调整搜索关键字' : '没有可用的列'}
+            </Typography>
+          </div>
+        )}
+      </Box>
 
       <JsonQuickConfiguratorDialog
         open={Boolean(quickConfigColumn)}

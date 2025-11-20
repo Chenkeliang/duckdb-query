@@ -234,5 +234,27 @@ describe('visualQueryUtils', () => {
       expect(result.sql).toContain('TRY_CAST(json_extract_string(json_each_1.value, \'$.name\') AS VARCHAR) AS "item_name"');
       expect(result.sql).toContain('COALESCE(json_each_1.rowid, 0) + 1 AS "position"');
     });
+
+    it('在仅勾选原始列时也保留 JSON 展开列', () => {
+      const config = {
+        tableName: 'orders',
+        selectedColumns: ['order_id'],
+        aggregations: [],
+        filters: [],
+        jsonTables: [
+          {
+            sourceColumn: 'items_json',
+            alias: 'items_expanded',
+            columns: [
+              { name: 'item_name', path: '$.name', dataType: 'varchar' },
+            ],
+          },
+        ],
+      };
+
+      const result = generateSQLPreview(config, 'orders', [{ name: 'order_id', dataType: 'INTEGER' }]);
+      expect(result.success).toBe(true);
+      expect(result.sql).toContain('SELECT "order_id", "items_expanded"."item_name"');
+    });
   });
 });
