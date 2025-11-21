@@ -14,7 +14,11 @@ import { Play } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { executeDuckDBSQL, performQuery, previewVisualQuery, getDuckDBTableDetail } from '../../services/apiClient';
-import { transformVisualConfigForApi, transformPivotConfigForApi } from '../../utils/visualQueryUtils';
+import {
+  transformVisualConfigForApi,
+  transformPivotConfigForApi,
+  normalizeColumnTypeName
+} from '../../utils/visualQueryUtils';
 import JoinCondition from './JoinCondition';
 import SetOperationBuilder from './SetOperationBuilder';
 import SourceSelector from './SourceSelector';
@@ -334,6 +338,55 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
     return type === 'table' || type === 'duckdb' || sourceType === 'duckdb';
   };
 
+  const computeNormalizedType = (rawType) => {
+    if (!rawType) return 'other';
+    const upper = rawType.toString().toUpperCase();
+    if (upper.includes('STRUCT') || upper.includes('MAP') || upper.includes('ARRAY') || upper.includes('LIST') || upper.includes('JSON')) {
+      return 'json';
+    }
+    if (upper.includes('INT') || upper.includes('DECIMAL') || upper.includes('NUMERIC') || upper.includes('DOUBLE') || upper.includes('FLOAT') || upper.includes('REAL') || upper.includes('NUMBER')) {
+      return 'number';
+    }
+    if (upper.includes('CHAR') || upper.includes('VARCHAR') || upper.includes('TEXT') || upper.includes('STRING')) {
+      return 'text';
+    }
+    if (upper.includes('DATE') || upper.includes('TIME') || upper.includes('TIMESTAMP') || upper.includes('DATETIME')) {
+      return 'datetime';
+    }
+    return 'other';
+  };
+
+  const normalizeColumns = (metadataColumns = []) =>
+    (metadataColumns || []).map((col) => {
+      if (!col) return null;
+      const name = col.name || col.column_name;
+      if (!name) return null;
+      const rawType = col.data_type || col.type || col.rawType || col.dataType;
+      const normalizedType =
+        col.normalized_type ||
+        col.normalizedType ||
+        computeNormalizedType(rawType) ||
+        normalizeColumnTypeName(rawType, col.sample_values || []);
+      const dataTypeDisplay = normalizedType || 'text';
+      return {
+        name,
+        label: col.displayName || col.label || name,
+        dataType: dataTypeDisplay,
+        rawType: rawType || '',
+        normalizedType: normalizedType || dataTypeDisplay,
+        normalized_type: normalizedType || dataTypeDisplay,
+        nullable: col.null_count === undefined ? undefined : col.null_count > 0,
+        sampleValues: col.sample_values || col.sampleValues || [],
+        statistics: col.statistics || {
+          null_count: col.null_count,
+          distinct_count: col.distinct_count,
+          min: col.min_value,
+          max: col.max_value,
+          avg: col.avg_value,
+        },
+      };
+    }).filter(Boolean);
+
   // 选中/移除数据源全部用props
   const handleSourceSelect = useCallback(
     async (source) => {
@@ -347,7 +400,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
         if (cached) {
           enrichedSource = {
             ...source,
-            columns: cached.columns || [],
+            columns: normalizeColumns(cached.columns),
             column_count: cached.column_count ?? source.column_count,
             row_count: cached.row_count ?? source.row_count,
           };
@@ -359,7 +412,7 @@ const QueryBuilder = ({ dataSources = [], selectedSources = [], setSelectedSourc
               setDetailCache((prev) => ({ ...prev, [source.id]: metadata }));
               enrichedSource = {
                 ...source,
-                columns: metadata.columns || [],
+                columns: normalizeColumns(metadata.columns),
                 column_count: metadata.column_count ?? source.column_count,
                 row_count: metadata.row_count ?? source.row_count,
               };

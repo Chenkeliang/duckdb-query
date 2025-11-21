@@ -133,13 +133,14 @@ const DataSourceList = ({ dataSources = [], databaseConnections = [], onRefresh 
                   }}
                 >
                   <ListItemText
+                    disableTypography
                     primary={
-                      <Typography variant="body1" sx={{ fontWeight: 600, color: 'var(--dq-text-primary)' }}>
+                      <Typography component="div" variant="body1" sx={{ fontWeight: 600, color: 'var(--dq-text-primary)' }}>
                         {db.name || `${db.type} 连接`}
                       </Typography>
                     }
                     secondary={
-                      <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                      <Box component="div" sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
                         <Chip
                           label={(db.type || 'unknown').toUpperCase()}
                           size="small"

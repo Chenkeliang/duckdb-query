@@ -35,7 +35,7 @@ const ColumnSelector = ({
   selectedTable = null,
   selectedColumns = [],
   onColumnSelectionChange,
-  maxHeight = 200,
+  maxHeight = undefined,
   showMetadata = true,
   disabled = false,
   jsonTables = [],
@@ -51,7 +51,7 @@ const ColumnSelector = ({
 
   const getColumnDataType = (column) => {
     if (typeof column === 'string') return 'TEXT';
-    return column.dataType || column.type || 'UNKNOWN';
+    return column.normalizedType || column.normalized_type || column.dataType || column.type || 'UNKNOWN';
   };
 
   const getColumnName = (column) => {
@@ -74,7 +74,7 @@ const ColumnSelector = ({
     return dateTimeTypes.some((type) => dataType.toUpperCase().includes(type));
   };
 
-  const formatDataTypeLabel = (dataType) => {
+  const formatDataTypeLabel = (dataType, rawType) => {
     if (!dataType) {
       return { label: '未知', tooltip: '' };
     }
@@ -82,15 +82,18 @@ const ColumnSelector = ({
     const upper = raw.toUpperCase();
 
     if (isNumericDataType(upper)) {
-      return { label: 'number', tooltip: raw };
+      return { label: 'number', tooltip: rawType || raw };
     }
     if (isTextDataType(upper)) {
-      return { label: 'text', tooltip: raw };
+      return { label: 'text', tooltip: rawType || raw };
+    }
+    if (upper.includes('JSON') || upper.includes('STRUCT') || upper.includes('MAP') || upper.includes('ARRAY') || upper.includes('LIST')) {
+      return { label: 'json/struct', tooltip: rawType || raw };
     }
     if (isDateTimeDataType(upper)) {
-      return { label: 'date', tooltip: raw };
+      return { label: 'date', tooltip: rawType || raw };
     }
-    return { label: upper.slice(0, 6), tooltip: raw };
+    return { label: upper.slice(0, 6), tooltip: rawType || raw };
   };
 
   const getColumnProfile = (name) => {
@@ -269,9 +272,14 @@ const ColumnSelector = ({
     );
   }
 
+  const resolvedMaxHeight = (() => {
+    if (typeof maxHeight === 'number' && maxHeight > 0) return `${maxHeight}px`;
+    if (typeof maxHeight === 'string' && maxHeight.trim()) return maxHeight.trim();
+    return null;
+  })();
+
   return (
     <div className="space-y-2">
-
       {/* Search Field */}
       <TextField
         size="small"
@@ -302,8 +310,8 @@ const ColumnSelector = ({
         sx={{
           border: '1px solid var(--dq-border-subtle)',
           backgroundColor: 'var(--dq-surface-card)',
-          maxHeight: `${maxHeight}px`,
-          overflowY: 'auto',
+          maxHeight: resolvedMaxHeight || 'none',
+          overflowY: resolvedMaxHeight ? 'auto' : 'visible',
           transition: 'background-color 0.18s ease, border-color 0.18s ease'
         }}
       >
@@ -315,7 +323,8 @@ const ColumnSelector = ({
               const jsonMappings = getJsonMappingsForColumn(columnName);
               const hasJsonMappings = jsonMappings.length > 0;
               const isJson = isJsonColumn(column);
-              const { label: formattedTypeLabel, tooltip: tooltipValue } = formatDataTypeLabel(dataType);
+              const rawType = typeof column === 'string' ? '' : column.rawType || column.dataType || column.type || '';
+              const { label: formattedTypeLabel, tooltip: tooltipValue } = formatDataTypeLabel(dataType, rawType);
               const normalizedTypeLabel = (formattedTypeLabel || dataType || 'UNKNOWN').toString();
               const rawTypeTooltip = tooltipValue ? tooltipValue.toString() : '';
               const typeLabelNode = (

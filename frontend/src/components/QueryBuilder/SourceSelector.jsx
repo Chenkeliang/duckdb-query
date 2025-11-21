@@ -12,6 +12,7 @@ import {
   ListItem,
   ListItemSecondaryAction,
   ListItemText,
+  ListItemButton,
   Paper,
   TextField,
   Tooltip,
@@ -191,76 +192,80 @@ const SourceSelector = ({
                 .map((source, index, array) => (
                   <React.Fragment key={source.id}>
                     <ListItem
-                      button
-                      onClick={() => onSourceSelect(source)}
+                      disableGutters
                       sx={{
-                        py: 1,
-                        px: 2,
+                        p: 0,
                         transition: 'background-color 0.2s ease, border-color 0.2s ease',
                         borderRadius: 1.5,
                         border: '1px solid transparent',
-                        backgroundColor: 'var(--dq-surface)',
                         '&:hover': {
                           bgcolor: 'var(--dq-accent-primary-soft)',
                           borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 30%, var(--dq-border-card))'
                         }
                       }}
                     >
-                      <ListItemText
-                        disableTypography
-                        primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <ListItemButton
+                        onClick={() => onSourceSelect(source)}
+                        sx={{ py: 1, px: 2, borderRadius: 1.5 }}
+                      >
+                        <ListItemText
+                          disableTypography
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  fontWeight: 500,
+                                  fontSize: '1rem',
+                                  color: 'var(--dq-text-primary)'
+                                }}
+                              >
+                                {source.name || source.id}
+                              </Typography>
+                              {!!source.columns && source.columns.length > 0 && (
+                                <Chip
+                                  label={`${source.columns.length}列`}
+                                  size="small"
+                                  sx={{
+                                    height: 18,
+                                    fontSize: '1rem',
+                                    bgcolor: 'color-mix(in oklab, var(--dq-accent-primary) 14%, transparent)',
+                                    color: 'var(--dq-accent-primary)',
+                                    fontWeight: 600
+                                  }}
+                                />
+                              )}
+                            </Box>
+                          }
+                          secondary={
                             <Typography
-                              variant="body2"
+                              variant="caption"
+                              component="span"
                               sx={{
-                                fontWeight: 500,
+                                color: 'var(--dq-text-secondary)',
+                                mt: 0.5,
                                 fontSize: '1rem',
-                                color: 'var(--dq-text-primary)'
+                                display: 'block'
                               }}
                             >
-                              {source.name || source.id}
+                              {(source.type || '').toUpperCase()}
                             </Typography>
-                            {!!source.columns && source.columns.length > 0 && (
-                              <Chip
-                                label={`${source.columns.length}列`}
-                                size="small"
-                                sx={{
-                                  height: 18,
-                                  fontSize: '1rem',
-                                  bgcolor: 'color-mix(in oklab, var(--dq-accent-primary) 14%, transparent)',
-                                  color: 'var(--dq-accent-primary)',
-                                  fontWeight: 600
-                                }}
-                              />
-                            )}
-                          </Box>
-                        }
-                        secondary={
-                  <Typography
-                    variant="caption"
-                    component="span"
-                    sx={{
-                      color: 'var(--dq-text-secondary)',
-                      mt: 0.5,
-                      fontSize: '1rem',
-                      display: 'block'
-                    }}
-                  >
-                    {(source.type || '').toUpperCase()}
-                  </Typography>
-                        }
-                      />
-                    <Tooltip title="添加到查询">
-                      <IconButton
-                        edge="end"
-                        size="small"
-                        sx={{
-                          color: 'var(--dq-accent-primary)',
-                          opacity: 0.75,
-                          '&:hover': {
-                            opacity: 1,
-                            bgcolor: 'var(--dq-accent-primary-soft)'
                           }
+                        />
+                      </ListItemButton>
+                      <Tooltip title="添加到查询">
+                        <IconButton
+                          edge="end"
+                          size="small"
+                          onClick={() => onSourceSelect(source)}
+                          sx={{
+                            color: 'var(--dq-accent-primary)',
+                            opacity: 0.75,
+                            mr: 1,
+                            '&:hover': {
+                              opacity: 1,
+                              bgcolor: 'var(--dq-accent-primary-soft)'
+                            }
                           }}
                         >
                           <AddCircleOutlineIcon fontSize="small" />
@@ -395,19 +400,43 @@ const SourceSelector = ({
             <List disablePadding>
               {selectedSources.map((source, index, array) => (
                 <React.Fragment key={source.id}>
-                    <ListItem
-                      sx={{
-                        py: 1,
-                        px: 2,
-                        borderRadius: 1.5,
-                        transition: 'background-color 0.2s ease, border-color 0.2s ease',
-                        backgroundColor: 'var(--dq-surface)',
-                        border: '1px solid var(--dq-border-subtle)',
-                        '&:hover': {
-                          backgroundColor: 'var(--dq-accent-primary-soft)',
-                          borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 30%, var(--dq-border-card))'
-                        }
-                      }}
+                  <ListItem
+                    disableGutters
+                    sx={{
+                      py: 0,
+                      px: 0,
+                      borderRadius: 1.5,
+                      transition: 'background-color 0.2s ease, border-color 0.2s ease',
+                      backgroundColor: 'var(--dq-surface)',
+                      border: '1px solid var(--dq-border-subtle)',
+                      '&:hover': {
+                        backgroundColor: 'var(--dq-accent-primary-soft)',
+                        borderColor: 'color-mix(in oklab, var(--dq-accent-primary) 30%, var(--dq-border-card))'
+                      }
+                    }}
+                    secondaryAction={
+                      <Tooltip title="从查询中移除">
+                        <IconButton
+                          edge="end"
+                          size="small"
+                          onClick={() => onSourceRemove(source.id)}
+                          sx={{
+                            color: 'var(--dq-status-error-fg)',
+                            opacity: 0.75,
+                            '&:hover': {
+                              opacity: 1,
+                              backgroundColor: 'var(--dq-status-error-bg)'
+                            }
+                          }}
+                        >
+                          <DeleteIcon sx={{ fontSize: '1rem' }} />
+                        </IconButton>
+                      </Tooltip>
+                    }
+                  >
+                    <ListItemButton
+                      onClick={() => onSourceSelect(source)}
+                      sx={{ py: 1, px: 2, borderRadius: 1.5 }}
                     >
                     <ListItemText
                       disableTypography
@@ -437,7 +466,7 @@ const SourceSelector = ({
                         </Box>
                       }
                       secondary={
-                <Typography
+                        <Typography
                   variant="caption"
                   component="span"
                   sx={{
@@ -451,27 +480,7 @@ const SourceSelector = ({
                 </Typography>
                       }
                     />
-                    <ListItemSecondaryAction>
-                      <Tooltip title="从查询中移除">
-                        <IconButton
-                        edge="end"
-                        size="small"
-                        onClick={() => onSourceRemove(source.id)}
-                        sx={{
-                          color: 'var(--dq-accent-100)',
-                          opacity: 0.75,
-                          '&:hover': {
-                            opacity: 1,
-                            bgcolor: 'var(--dq-accent-primary-soft)'
-                          }
-                          }}
-                        >
-                          <DeleteIcon
-                            sx={{ fontSize: '1rem' }}
-                          />
-                        </IconButton>
-                      </Tooltip>
-                    </ListItemSecondaryAction>
+                    </ListItemButton>
                   </ListItem>
                   {index < array.length - 1 && (
                     <Divider

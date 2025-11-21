@@ -797,6 +797,18 @@ const VisualAnalysisPanel = ({
 
   const generateSQLRegular = useCallback(async () => {
     if (!selectedTable || !tableName || !isMetadataReady) return;
+
+    const hasSelectedColumns = Array.isArray(analysisConfig.selectedColumns) && analysisConfig.selectedColumns.length > 0;
+    const hasAggregations = Array.isArray(analysisConfig.aggregations) && analysisConfig.aggregations.length > 0;
+    const hasFilters = Array.isArray(analysisConfig.filters) && analysisConfig.filters.length > 0;
+    const hasHaving = Array.isArray(analysisConfig.having) && analysisConfig.having.length > 0;
+    const hasCalculated = Array.isArray(analysisConfig.calculatedFields) && analysisConfig.calculatedFields.length > 0;
+    const hasGroupOrOrder = (Array.isArray(analysisConfig.groupBy) && analysisConfig.groupBy.length > 0) ||
+      (Array.isArray(analysisConfig.orderBy) && analysisConfig.orderBy.length > 0);
+
+    if (!hasSelectedColumns && !hasAggregations && !hasFilters && !hasHaving && !hasCalculated && !hasGroupOrOrder) {
+      return;
+    }
     if (hasVisualConfig) {
       onVisualQueryInvalid({
         reason: 'generating',
@@ -1387,6 +1399,17 @@ const VisualAnalysisPanel = ({
   // 根据模式生成/预览 SQL
   useEffect(() => {
     if (!isMetadataReady || !shouldShowPanel || !selectedTable || isConflictDialogOpen) return;
+    const hasVisualConfig =
+      (analysisConfig.selectedColumns?.length || 0) > 0 ||
+      (analysisConfig.aggregations?.length || 0) > 0 ||
+      (analysisConfig.filters?.length || 0) > 0 ||
+      (analysisConfig.having?.length || 0) > 0 ||
+      (analysisConfig.calculatedFields?.length || 0) > 0 ||
+      (analysisConfig.groupBy?.length || 0) > 0 ||
+      (analysisConfig.orderBy?.length || 0) > 0;
+
+    if (!hasVisualConfig) return;
+
     if (activeMode === 'regular') {
       generateSQLRegular();
     } else {
@@ -1492,6 +1515,13 @@ const VisualAnalysisPanel = ({
     const allColumnNames = baseColumnNames.filter(Boolean);
     handleColumnSelectionChange(allColumnNames);
   }, [baseColumnNames, tableColumns.length, selectAllState, handleColumnSelectionChange]);
+
+  // 自动清理错误提示，避免长期堆叠
+  useEffect(() => {
+    if (!error) return undefined;
+    const timer = setTimeout(() => setError(''), 4000);
+    return () => clearTimeout(timer);
+  }, [error]);
 
   // Handle aggregation changes
   const handleAggregationsChange = (aggregations) => {
@@ -1729,7 +1759,7 @@ const VisualAnalysisPanel = ({
                       selectedTable={selectedTable}
                       selectedColumns={analysisConfig.selectedColumns}
                       onColumnSelectionChange={handleColumnSelectionChange}
-                      maxHeight={200}
+                      maxHeight={selectedTable?.columns?.length > 12 ? 'min(340px, 45vh)' : null}
                       showMetadata={true}
                       disabled={isLoading}
                       jsonTables={analysisConfig.jsonTables || analysisConfig.json_tables || []}
@@ -1750,7 +1780,7 @@ const VisualAnalysisPanel = ({
                       aggregations={analysisConfig.aggregations}
                       onAggregationsChange={handleAggregationsChange}
                       disabled={isLoading}
-                      maxHeight={200}
+                      maxHeight={(analysisConfig.aggregations?.length || 0) > 3 ? 'min(300px, 40vh)' : null}
                       resolvedCasts={resolvedCasts}
                       showHeader={false}
                     />

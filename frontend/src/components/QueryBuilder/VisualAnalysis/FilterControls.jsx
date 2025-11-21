@@ -4,7 +4,6 @@ import {
   Button,
   FormControl,
   FormHelperText,
-  Grid,
   IconButton,
   InputLabel,
   MenuItem,
@@ -125,7 +124,7 @@ const FilterControls = ({
       : '点击"添加筛选条件"开始配置数据筛选');
 
   const [preferredValueType, setPreferredValueType] = useState(FilterValueType.CONSTANT);
-
+  const menuPaperSx = useMemo(() => ({ maxHeight: 320, minWidth: 240 }), []);
   const hasColumns = normalizedColumns.length > 0;
 
   const getColumnType = useCallback((columnName) => {
@@ -551,9 +550,16 @@ const FilterControls = ({
                 }
               }}
             >
-              <Grid container spacing={2} alignItems="center">
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 2,
+                  alignItems: 'center'
+                }}
+              >
                 {allowLogicOperator && index > 0 && (
-                  <Grid item xs={12} lg={1.5}>
+                  <Box sx={{ flex: '0 0 120px', minWidth: 120 }}>
                     <FormControl size="small" fullWidth disabled={disabled}>
                       <InputLabel>逻辑</InputLabel>
                       <Select
@@ -568,10 +574,10 @@ const FilterControls = ({
                         ))}
                       </Select>
                     </FormControl>
-                  </Grid>
+                  </Box>
                 )}
 
-                <Grid item xs={12} lg={allowLogicOperator && index > 0 ? 3.5 : 4}>
+                <Box sx={{ flex: '1 1 240px', minWidth: 200 }}>
                   <ColumnSelect
                     columns={normalizedColumns}
                     value={filter.column || ''}
@@ -580,45 +586,49 @@ const FilterControls = ({
                     placeholder={valueType === FilterValueType.EXPRESSION ? '留空表示直接使用表达式' : ''}
                     disabled={disabled}
                     allowClear={valueType === FilterValueType.EXPRESSION}
+                    fullWidth
                   />
-                </Grid>
+                </Box>
 
-                <Grid item xs={12} lg={2.5}>
+                <Box sx={{ flex: '0 0 180px', minWidth: 160 }}>
                   <FormControl
                     size="small"
                     fullWidth
                     disabled={
                       disabled ||
-                      availableOperators.length === 0 ||
-                      (valueType === FilterValueType.EXPRESSION && !filter.column)
-                    }
-                  >
-                    <InputLabel>操作符</InputLabel>
-                    <Select
-                      label="操作符"
-                      value={filter.operator}
+                        availableOperators.length === 0 ||
+                        (valueType === FilterValueType.EXPRESSION && !filter.column)
+                      }
+                    >
+                      <InputLabel>操作符</InputLabel>
+                      <Select
+                        label="操作符"
+                        value={filter.operator}
                       onChange={(event) => handleOperatorChange(filter.id, event.target.value)}
+                      MenuProps={{
+                        PaperProps: { sx: menuPaperSx }
+                      }}
                     >
                       {availableOperators.map((op) => (
                         <MenuItem key={op.value} value={op.value}>
                           {op.label}
                         </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
 
-                <Grid item xs={12} lg={4}>
+                <Box sx={{ flex: '1 1 220px', minWidth: 200 }}>
                   {renderValueInput(filter)}
                   {comparisonWarning && (
                     <FormHelperText sx={{ color: 'var(--dq-status-warning-text)', mt: 1 }}>
                       {comparisonWarning}
                     </FormHelperText>
                   )}
-                </Grid>
+                </Box>
 
-                <Grid item xs={12} lg={allowLogicOperator && index > 0 ? 0.5 : 1}>
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                <Box sx={{ flex: '0 0 48px', display: 'flex', justifyContent: 'flex-end' }}>
+                  <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ width: '100%' }}>
                     <IconButton
                       size="small"
                       onClick={() => handleRemoveFilter(filter.id)}
@@ -633,8 +643,8 @@ const FilterControls = ({
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Stack>
-                </Grid>
-              </Grid>
+                </Box>
+              </Box>
 
               <Box sx={{ mt: 2 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>

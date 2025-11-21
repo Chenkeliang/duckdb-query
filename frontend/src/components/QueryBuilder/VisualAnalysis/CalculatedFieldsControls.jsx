@@ -885,7 +885,10 @@ const CalculatedFieldsControls = ({
                   backgroundColor: 'var(--dq-surface)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 1.5
+                  gap: 1.5,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  overflow: 'hidden'
                 }}
               >
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>

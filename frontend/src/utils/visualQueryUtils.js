@@ -798,7 +798,7 @@ function isTextualJsonType(dataType) {
   return markers.some((marker) => dataType.includes(marker));
 }
 
-function normalizeColumnTypeName(rawType, sampleValues = []) {
+export function normalizeColumnTypeName(rawType, sampleValues = []) {
   if (rawType && typeof rawType === "string") {
     const type = rawType.toLowerCase();
 

@@ -29,7 +29,9 @@
 
 ## 项目简介
 
-Duck Query 是面向内部数据团队的 **DuckDB 原生工作台**。上传文件、连接数据库或浏览服务器目录即可生成 DuckDB 表，并在同一个界面中完成图形化分析与 SQL 查询。它适用于“不想搭建复杂数仓”的轻量场景：几分钟内就能导入数据、搭建透视看板、跑窗口/JSON SQL，并把结果安全落地。
+Duck Query 快速帮你打破数据孤岛，剪切板\csv\excel\parquet\json\远程文件\数据库，都能作为数据源在同一个界面中完成图形化分析与 SQL 查询。
+不用ETL 不用写脚本，几秒钟内就能导入数据，将你的多个不同的数据源快速的关联查询。
+
 
 ### 面向 DuckDB 用户的核心优势
 
@@ -55,9 +57,9 @@ Duck Query 是面向内部数据团队的 **DuckDB 原生工作台**。上传文
 
 ### 3. 自动化与协作
 
-- **异步任务**：任意查询可提交异步任务，完成后在“任务中心”下载 Parquet/CSV，并会自动生成DuckDB表用于新的分析。
+- **异步任务**：任意查询可提交异步任务，完成后在“任务中心”下载 Parquet/CSV，并会自动生成DuckDB表用于新的分析查询。
 - **导出与缓存**：所有导出都走 DuckDB `COPY ... TO exports/...`，缓存自动清理、可重复下载。
-- **数据源管理**：管理 MySQL/PostgreSQL 连接，支持保存配置与刷新。
+- **数据源管理**：管理 MySQL/PostgreSQL 连接。
 
 ### 4. 安全与部署
 
@@ -165,8 +167,6 @@ npm run dev
 - 前端（Vite）：默认跑在 5173。若需修改 API 代理目标，设置环境变量 `VITE_API_PROXY_TARGET=http://localhost:<后端端口>` 再 `npm run dev`；若还需改前端自身端口，可运行 `npm run dev -- --port <新端口> --host`。
 - CORS：后端允许的前端来源在 `config/app-config.json` 的 `cors_origins` 中配置，前端端口/域名变化时记得同步添加（如 `http://localhost:5173`、`http://localhost:3001` 等）。
 - 容器模式：调整 `docker-compose.yml` 中的端口映射，保持前端代理指向容器内的后端服务名/端口。
-
-所有配置项在 [docs/CONFIGURATION.md](docs/CONFIGURATION.md) 中详解。
 
 ## 文档索引
 

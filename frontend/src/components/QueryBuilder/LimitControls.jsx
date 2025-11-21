@@ -44,10 +44,10 @@ const LimitControls = ({
   return (
     <Box sx={{
       width: "100%",
-      bgcolor: 'var(--dq-surface)',
-      borderRadius: 4,
-      border: '1px solid var(--dq-border-subtle)',
-      p: 2,
+      bgcolor: 'transparent',
+      borderRadius: 0,
+      border: 'none',
+      p: 0,
       color: 'var(--dq-text-primary)'
     }}>
       {showHeader && (
@@ -60,7 +60,7 @@ const LimitControls = ({
       )}
 
       <Collapse in={isExpanded}>
-        <Box sx={{ bgcolor: 'var(--dq-surface)', borderRadius: 4, border: "1px solid var(--dq-border-subtle)", p: 2 }}>
+        <Box sx={{ bgcolor: 'var(--dq-surface-card)', borderRadius: 3, border: "1px solid var(--dq-border-subtle)", p: 2 }}>
           <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
             <Typography variant="body2" sx={{ fontWeight: 500, flex: 1, color: 'var(--dq-text-primary)' }}>
               启用结果数量限制

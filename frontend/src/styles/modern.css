@@ -1759,21 +1759,22 @@ body {
   color: var(--dq-text-secondary);
 }
 
+/* 默认自适应分栏，保留在特定断点强制列数的能力 */
 .visual-analysis-panel__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 1.5rem;
 }
 
-@media (min-width: 768px) {
-  .visual-analysis-panel__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (min-width: 1280px) {
+  .visual-analysis-panel__grid.visual-analysis-panel__grid--fixed-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (min-width: 1180px) {
-  .visual-analysis-panel__grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .visual-analysis-panel__grid.visual-analysis-panel__grid--fixed-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1781,7 +1782,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  height: 100%;
+  height: auto;
+  align-self: flex-start;
 }
 
 .visual-analysis-section-card--full {

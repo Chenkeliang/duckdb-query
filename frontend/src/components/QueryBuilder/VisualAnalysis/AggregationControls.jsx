@@ -21,7 +21,7 @@ import {
   Typography
 } from '@mui/material';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BarChart3, Circle, Flag, Hash, Hash as HashIcon, Hash as HashIcon2, Lightbulb, Medal, Minus, Plus, Sigma, Tilde, TrendingUp, Trophy } from 'lucide-react';
-import { default as React, default as React, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AGGREGATION_CATEGORIES,
   AGGREGATION_OPTIONS,
@@ -351,6 +351,12 @@ const AggregationControls = ({
     );
   }
 
+  const resolvedMaxHeight = (() => {
+    if (typeof maxHeight === 'number' && maxHeight > 0) return `${maxHeight}px`;
+    if (typeof maxHeight === 'string' && maxHeight.trim()) return maxHeight.trim();
+    return null;
+  })();
+
   return (
     <div className="space-y-2">
       {/* Header with expand/collapse controls */}
@@ -415,14 +421,14 @@ const AggregationControls = ({
       <Collapse in={isExpanded}>
         <Box
           className="rounded-md p-3 space-y-3"
-          sx={{
-            border: '1px solid var(--dq-border-subtle)',
-            backgroundColor: 'var(--dq-surface-card)',
-            maxHeight: `${maxHeight}px`,
-            overflowY: 'auto',
-            transition: 'background-color 0.18s ease, border-color 0.18s ease'
-          }}
-        >
+            sx={{
+              border: '1px solid var(--dq-border-subtle)',
+              backgroundColor: 'var(--dq-surface-card)',
+              maxHeight: resolvedMaxHeight || 'none',
+              overflowY: resolvedMaxHeight ? 'auto' : 'visible',
+              transition: 'background-color 0.18s ease, border-color 0.18s ease'
+            }}
+          >
           {/* Add New Aggregation Section */}
           <Box
             className="rounded-md space-y-3"
@@ -440,18 +446,26 @@ const AggregationControls = ({
               </Typography>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="flex flex-wrap gap-3">
               {/* Column Selection */}
-              <ColumnSelect
-                columns={availableColumns}
-                value={selectedColumn}
-                onChange={(columnName) => setSelectedColumn(columnName)}
-                label="选择列"
-                disabled={disabled}
-              />
+              <Box sx={{ flex: 1, minWidth: 240 }}>
+                <ColumnSelect
+                  columns={availableColumns}
+                  value={selectedColumn}
+                  onChange={(columnName) => setSelectedColumn(columnName)}
+                  label="选择列"
+                  disabled={disabled}
+                  fullWidth
+                />
+              </Box>
 
               {/* Category Selection */}
-              <FormControl size="small" fullWidth disabled={disabled}>
+              <FormControl
+                size="small"
+                fullWidth
+                disabled={disabled}
+                sx={{ flex: 1, minWidth: 200 }}
+              >
                 <InputLabel>函数类别</InputLabel>
                 <Select
                   value={selectedCategory}
@@ -464,6 +478,9 @@ const AggregationControls = ({
                     }
                   }}
                   label="函数类别"
+                  MenuProps={{
+                    PaperProps: { sx: { maxHeight: 320, minWidth: 240 } }
+                  }}
                 >
                   {Object.entries(AGGREGATION_CATEGORIES).map(([key, label]) => {
                     const categoryFunctions = getAvailableFunctions(selectedColumn, key);
@@ -489,7 +506,12 @@ const AggregationControls = ({
               </FormControl>
 
               {/* Function Selection */}
-              <FormControl size="small" fullWidth disabled={disabled}>
+              <FormControl
+                size="small"
+                fullWidth
+                disabled={disabled}
+                sx={{ flex: 1, minWidth: 220 }}
+              >
                 <InputLabel>聚合函数</InputLabel>
                 <Select
                   value={selectedFunction}
@@ -500,6 +522,11 @@ const AggregationControls = ({
                     const options = getAvailableFunctions(selectedColumn, selectedCategory);
                   }}
                   label="聚合函数"
+                  MenuProps={{
+                    PaperProps: {
+                      sx: { maxHeight: 320, minWidth: 240 }
+                    }
+                  }}
                 >
                   {(() => {
                     // 强制返回所有基础聚合函数选项（添加功能修复方案）

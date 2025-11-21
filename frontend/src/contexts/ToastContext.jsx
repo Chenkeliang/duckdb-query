@@ -103,6 +103,7 @@ export const ToastProvider = ({ children }) => {
             open={toast.open}
             onClose={() => hideToast(toast.id)}
             TransitionComponent={SlideTransition}
+            autoHideDuration={toast.duration || 4000}
             anchorOrigin={{
               vertical: 'top',
               horizontal: 'center'
@@ -112,8 +113,6 @@ export const ToastProvider = ({ children }) => {
               zIndex: 9999 + index,
               position: 'fixed'
             }}
-            // 强制显示，忽略aria-hidden
-            disablePortal={false}
             // 添加调试属性
             data-toast-id={toast.id}
             data-toast-index={index}

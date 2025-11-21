@@ -23,7 +23,8 @@ const normalizeOption = (column) => {
   return {
     key: name,
     label: column.label || column.displayName || name,
-    dataType: (column.dataType || column.type || column.normalized_type || 'text').toString(),
+    dataType: (column.normalizedType || column.normalized_type || column.dataType || column.type || 'text').toString(),
+    rawType: column.rawType || column.dataType || column.type || '',
   };
 };
 
@@ -36,6 +37,7 @@ const ColumnSelect = ({
   placeholder = '',
   size = 'small',
   allowClear = false,
+  fullWidth = false,
 }) => {
   const options = useMemo(() => {
     return columns
@@ -55,6 +57,7 @@ const ColumnSelect = ({
       onChange={(_, newValue) => onChange?.(newValue ? newValue.key : '')}
       size={size}
       disabled={disabled || options.length === 0}
+      fullWidth={fullWidth}
       autoHighlight
       blurOnSelect
       clearOnBlur={false}
@@ -91,7 +94,7 @@ const ColumnSelect = ({
             <Typography variant="body2" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {option.label}
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'lowercase' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'lowercase' }} title={option.rawType || option.dataType}>
               {(option.dataType || 'text').toLowerCase()}
             </Typography>
           </Box>
