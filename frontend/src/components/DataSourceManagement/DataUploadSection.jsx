@@ -2,7 +2,7 @@ import {
   Cancel as CancelIcon,
   Info as InfoIcon,
   Link as LinkIcon
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 import {
   Alert,
   Box,
@@ -16,61 +16,76 @@ import {
   Tabs,
   Tooltip,
   Typography
-} from '@mui/material';
-import { FileText, FolderOpen, HardDrive, Lightbulb, RefreshCw, Upload } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+} from "@mui/material";
+import {
+  FileText,
+  FolderOpen,
+  HardDrive,
+  Lightbulb,
+  RefreshCw,
+  Upload
+} from "lucide-react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import {
   browseServerDirectory,
   getServerMounts,
   importServerFile,
   readFromUrl,
   uploadFile
-} from '../../services/apiClient';
-import ChunkedUploader from '../ChunkedUpload/ChunkedUploader';
+} from "../../services/apiClient";
+import ChunkedUploader from "../ChunkedUpload/ChunkedUploader";
 import {
   CardSurface,
   RoundedButton,
   RoundedSwitch,
   RoundedTextField,
   SectionHeader
-} from '../common';
-import ExcelSheetSelector from './ExcelSheetSelector';
+} from "../common";
+import ExcelSheetSelector from "./ExcelSheetSelector";
+import { useTranslation } from "react-i18next";
 
 const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
+  const { t } = useTranslation("common");
   const [activeTab, setActiveTab] = useState(0);
   // 本地文件上传状态
   const [selectedFile, setSelectedFile] = useState(null);
   const [useChunkedUpload, setUseChunkedUpload] = useState(false);
   const [autoDetectSize, setAutoDetectSize] = useState(true);
-  const [uploadMode, setUploadMode] = useState('auto'); // 'auto', 'standard', 'chunked'
+  const [uploadMode, setUploadMode] = useState("auto"); // 'auto', 'standard', 'chunked'
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
   // 表别名和其他状态
-  const [tableAlias, setTableAlias] = useState('');
-  const [fileUrl, setFileUrl] = useState('');
+  const [tableAlias, setTableAlias] = useState("");
+  const [fileUrl, setFileUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   // 服务器目录导入状态
   const [serverMounts, setServerMounts] = useState([]);
   const [serverMountLoading, setServerMountLoading] = useState(false);
-  const [selectedServerMount, setSelectedServerMount] = useState('');
+  const [selectedServerMount, setSelectedServerMount] = useState("");
   const [serverEntries, setServerEntries] = useState([]);
   const [serverBreadcrumbs, setServerBreadcrumbs] = useState([]);
-  const [serverCurrentPath, setServerCurrentPath] = useState('');
+  const [serverCurrentPath, setServerCurrentPath] = useState("");
   const [serverSelectedFile, setServerSelectedFile] = useState(null);
-  const [serverAlias, setServerAlias] = useState('');
-  const [serverBrowseError, setServerBrowseError] = useState('');
+  const [serverAlias, setServerAlias] = useState("");
+  const [serverBrowseError, setServerBrowseError] = useState("");
   const [serverBrowseLoading, setServerBrowseLoading] = useState(false);
   const [serverImportLoading, setServerImportLoading] = useState(false);
 
   const filteredServerEntries = useMemo(
     () =>
       serverEntries.filter(
-        (entry) => entry.type === 'directory' || entry.supported
+        entry => entry.type === "directory" || entry.supported
       ),
     [serverEntries]
   );
@@ -84,32 +99,32 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024;
 
   // 格式化文件大小
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
+  const formatFileSize = bytes => {
+    if (bytes === 0) return "0 Bytes";
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
-  const formatModifiedTime = (timestamp) => {
-    if (!timestamp) return '';
+  const formatModifiedTime = timestamp => {
+    if (!timestamp) return "";
     const date = new Date(timestamp * 1000);
     if (Number.isNaN(date.getTime())) {
-      return '';
+      return "";
     }
     return date.toLocaleString();
   };
 
   // 处理文件选择
-  const handleFileSelect = (event) => {
+  const handleFileSelect = event => {
     const file = event.target.files[0];
     if (!file) return;
     processSelectedFile(file);
   };
 
   // 处理选中的文件（通用函数）
-  const processSelectedFile = (file) => {
+  const processSelectedFile = file => {
     if (!file) return;
 
     setSelectedFile(file);
@@ -121,34 +136,34 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
     // 自动检测上传方式
     if (autoDetectSize) {
       if (file.size > LARGE_FILE_THRESHOLD) {
-        setUploadMode('chunked');
+        setUploadMode("chunked");
         setUseChunkedUpload(true);
       } else {
-        setUploadMode('standard');
+        setUploadMode("standard");
         setUseChunkedUpload(false);
       }
     }
   };
 
   // 手动切换上传方式
-  const handleUploadModeChange = (event) => {
+  const handleUploadModeChange = event => {
     setUseChunkedUpload(event.target.checked);
-    setUploadMode(event.target.checked ? 'chunked' : 'standard');
+    setUploadMode(event.target.checked ? "chunked" : "standard");
     setAutoDetectSize(false);
   };
 
   // 重置文件选择
   const handleReset = () => {
     setSelectedFile(null);
-    setUploadMode('auto');
+    setUploadMode("auto");
     setAutoDetectSize(true);
     setUseChunkedUpload(false);
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = "";
     }
   };
 
-  const handleExcelPending = (pending) => {
+  const handleExcelPending = pending => {
     if (!pending) return;
     setPendingExcel(pending);
     setExcelDialogOpen(true);
@@ -159,13 +174,13 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
     setPendingExcel(null);
   };
 
-  const handleExcelImportComplete = (result) => {
+  const handleExcelImportComplete = result => {
     const items = result?.results || [];
     items.forEach(item => {
       onDataSourceSaved?.({
         id: item.target_table,
-        type: 'duckdb',
-        name: `DuckDB表: ${item.target_table}`,
+        type: "duckdb",
+        name: t("page.datasource.duckdbTable", { table: item.target_table }),
         row_count: item.row_count,
         columns: item.columns || []
       });
@@ -173,42 +188,48 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
     handleExcelSelectorClose();
   };
 
-  const handleServerMountChange = async (newPath) => {
+  const handleServerMountChange = async newPath => {
     setSelectedServerMount(newPath);
     await loadServerDirectory(newPath);
   };
 
-  const handleServerEntryClick = async (entry) => {
-    if (entry.type === 'directory') {
+  const handleServerEntryClick = async entry => {
+    if (entry.type === "directory") {
       await loadServerDirectory(entry.path);
       return;
     }
     if (!entry.supported) {
-      showNotification?.('该文件类型暂不支持，请选择 CSV/Excel/Parquet/JSON 文件', 'warning');
+      showNotification?.(t("page.datasource.unsupportedType"), "warning");
       return;
     }
     setServerSelectedFile(entry);
-    setServerAlias(entry.suggested_table_name || entry.name.replace(/\.[^/.]+$/, ''));
+    setServerAlias(
+      entry.suggested_table_name || entry.name.replace(/\.[^/.]+$/, "")
+    );
   };
 
-  const handleServerBreadcrumbClick = async (crumb) => {
+  const handleServerBreadcrumbClick = async crumb => {
     if (!crumb?.path) return;
     await loadServerDirectory(crumb.path);
   };
 
-  const loadServerDirectory = useCallback(async (targetPath) => {
+  const loadServerDirectory = useCallback(async targetPath => {
     if (!targetPath) return;
     setServerBrowseLoading(true);
-    setServerBrowseError('');
+    setServerBrowseError("");
     setServerSelectedFile(null);
-    setServerAlias('');
+    setServerAlias("");
     try {
       const response = await browseServerDirectory(targetPath);
       setServerEntries(response.entries || []);
       setServerBreadcrumbs(response.breadcrumbs || []);
       setServerCurrentPath(response.path || targetPath);
     } catch (err) {
-      setServerBrowseError(err?.response?.data?.detail || err.message || '无法读取目录');
+      setServerBrowseError(
+        err?.response?.data?.detail ||
+          err.message ||
+          t("page.datasource.serverBrowseFail")
+      );
     } finally {
       setServerBrowseLoading(false);
     }
@@ -216,7 +237,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
   const loadServerMounts = useCallback(async () => {
     setServerMountLoading(true);
-    setServerBrowseError('');
+    setServerBrowseError("");
     try {
       const response = await getServerMounts();
       const mounts = response?.mounts || [];
@@ -229,7 +250,11 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
         setServerEntries([]);
       }
     } catch (err) {
-      setServerBrowseError(err?.response?.data?.detail || err.message || '无法获取服务器目录');
+      setServerBrowseError(
+        err?.response?.data?.detail ||
+          err.message ||
+          t("page.datasource.serverBrowseFail")
+      );
     } finally {
       setServerMountLoading(false);
     }
@@ -243,12 +268,16 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
   const handleServerImport = async () => {
     if (!serverSelectedFile) {
-      showNotification?.('请先选择一个文件', 'warning');
+      showNotification?.(t("page.datasource.pickFileFirst"), "warning");
       return;
     }
-    const alias = (serverAlias || serverSelectedFile.suggested_table_name || '').trim();
+    const alias = (
+      serverAlias ||
+      serverSelectedFile.suggested_table_name ||
+      ""
+    ).trim();
     if (!alias) {
-      showNotification?.('请输入表别名', 'warning');
+      showNotification?.(t("page.datasource.enterAlias"), "warning");
       return;
     }
 
@@ -256,22 +285,30 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
     try {
       const response = await importServerFile({
         path: serverSelectedFile.path,
-        table_alias: alias,
+        table_alias: alias
       });
 
-      showNotification?.(response.message || '导入成功', 'success');
+      showNotification?.(
+        response.message || t("page.datasource.importSuccess"),
+        "success"
+      );
       onDataSourceSaved?.({
         id: response.table_name,
-        type: 'duckdb',
-        name: `DuckDB表: ${response.table_name}`,
+        type: "duckdb",
+        name: t("page.datasource.duckdbTable", { table: response.table_name }),
         row_count: response.row_count,
-        columns: response.columns || [],
+        columns: response.columns || []
       });
 
       setServerSelectedFile(null);
-      setServerAlias('');
+      setServerAlias("");
     } catch (err) {
-      showNotification?.(err?.response?.data?.detail || err.message || '导入失败', 'error');
+      showNotification?.(
+        err?.response?.data?.detail ||
+          err.message ||
+          t("page.datasource.importFail"),
+        "error"
+      );
     } finally {
       setServerImportLoading(false);
     }
@@ -280,7 +317,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   // 处理标准上传
   const handleStandardUpload = async () => {
     if (!selectedFile) {
-      setError('请选择文件');
+      setError(t("page.datasource.pickFileFirst"));
       return;
     }
 
@@ -288,19 +325,23 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
     // 前端文件大小校验
     if (selectedFile.size > LARGE_FILE_THRESHOLD) {
-      setError(`文件大小超过 ${formatFileSize(LARGE_FILE_THRESHOLD)}，请切换使用分块上传。`);
+      setError(
+        t("page.datasource.fileTooLarge", {
+          size: formatFileSize(LARGE_FILE_THRESHOLD)
+        })
+      );
       return;
     }
 
     setIsUploading(true);
-    setError('');
+    setError("");
     setUploadProgress(0);
 
     try {
       const response = await uploadFile(selectedFile, tableAlias);
 
       if (response?.pending_excel) {
-        showNotification('Excel 文件上传成功，请选择需要导入的工作表', 'info');
+        showNotification(t("page.datasource.excelUploadSuccess"), "info");
         handleExcelPending({
           ...response.pending_excel,
           file_id: response.pending_excel.file_id
@@ -310,14 +351,17 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
       }
 
       if (response.success) {
-        showNotification(`文件上传成功，已创建表: ${response.file_id}`, 'success');
+        showNotification(
+          t("page.datasource.uploadSuccessTable", { table: response.file_id }),
+          "success"
+        );
 
         // 通知父组件数据源已保存
         if (onDataSourceSaved) {
           onDataSourceSaved({
             id: response.file_id,
-            type: 'duckdb',
-            name: `DuckDB表: ${response.file_id}`,
+            type: "duckdb",
+            name: t("page.datasource.duckdbTable", { table: response.file_id }),
             row_count: response.row_count,
             columns: response.columns
           });
@@ -326,12 +370,15 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
         // 清空输入
         handleReset();
       } else {
-        setError(response.message || '文件上传失败');
-        showNotification(response.message || '文件上传失败', 'error');
+        setError(response.message || t("page.datasource.uploadFail"));
+        showNotification(
+          response.message || t("page.datasource.uploadFail"),
+          "error"
+        );
       }
     } catch (err) {
-      setError(err.message || '文件上传失败');
-      showNotification(err.message || '文件上传失败', 'error');
+      setError(err.message || t("page.datasource.uploadFail"));
+      showNotification(err.message || t("page.datasource.uploadFail"), "error");
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -339,24 +386,24 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   };
 
   // 拖拽事件处理
-  const handleDragEnter = (e) => {
+  const handleDragEnter = e => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(true);
   };
 
-  const handleDragLeave = (e) => {
+  const handleDragLeave = e => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
   };
 
-  const handleDragOver = (e) => {
+  const handleDragOver = e => {
     e.preventDefault();
     e.stopPropagation();
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = e => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
@@ -371,60 +418,77 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
   // 处理URL读取
   const handleUrlRead = async () => {
     if (!fileUrl.trim()) {
-      setError('请输入文件URL');
+      setError(t("page.datasource.enterUrl"));
       return;
     }
 
     if (!tableAlias.trim()) {
-      setError('请输入表别名');
+      setError(t("page.datasource.enterAlias"));
       return;
     }
 
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
       const result = await readFromUrl(fileUrl, tableAlias);
 
       if (result.success) {
-        showNotification(`成功从URL读取文件并创建表: ${result.table_name}`, 'success');
+        showNotification(
+          t("page.datasource.urlReadSuccess", { table: result.table_name }),
+          "success"
+        );
 
         // 通知父组件数据源已保存0
         if (onDataSourceSaved) {
           onDataSourceSaved({
             id: result.table_name,
-            type: 'duckdb',
-            name: `DuckDB表: ${result.table_name}`,
+            type: "duckdb",
+            name: t("page.datasource.duckdbTable", {
+              table: result.table_name
+            }),
             row_count: result.row_count,
             columns: result.columns
           });
         }
 
         // 清空输入
-        setFileUrl('');
-        setTableAlias('');
+        setFileUrl("");
+        setTableAlias("");
       } else {
-        setError(result.message || 'URL读取失败');
-        showNotification(result.message || 'URL读取失败', 'error');
+        setError(result.message || t("page.datasource.urlReadFail"));
+        showNotification(
+          result.message || t("page.datasource.urlReadFail"),
+          "error"
+        );
       }
     } catch (err) {
-      setError(`URL读取失败: ${err.message || '未知错误'}`);
-      showNotification(`URL读取失败: ${err.message || '未知错误'}`, 'error');
+      setError(
+        t("page.datasource.urlReadFailDetail", {
+          message: err.message || t("common.unknown")
+        })
+      );
+      showNotification(
+        t("page.datasource.urlReadFailDetail", {
+          message: err.message || t("common.unknown")
+        }),
+        "error"
+      );
     } finally {
       setLoading(false);
     }
   };
 
   // 分块上传完成回调
-  const handleChunkedUploadComplete = async (result) => {
+  const handleChunkedUploadComplete = async result => {
     if (result?.pending_excel) {
-      showNotification('Excel 文件上传成功，请选择需要导入的工作表', 'info');
+      showNotification(t("page.datasource.excelUploadSuccess"), "info");
       handleExcelPending({
         ...result.pending_excel,
         file_id: result.pending_excel.file_id
       });
       setShowSuccessMessage(false);
-      setError('');
+      setError("");
       handleReset();
       return;
     }
@@ -435,16 +499,23 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
         // 设置成功状态，显示成功消息
         setShowSuccessMessage(true);
-        setError(''); // 清除错误状态
+        setError(""); // 清除错误状态
 
-        showNotification(`文件上传成功，已创建表: ${fileInfo.source_id}`, 'success');
+        showNotification(
+          t("page.datasource.uploadSuccessTable", {
+            table: fileInfo.source_id
+          }),
+          "success"
+        );
 
         // 通知父组件数据源已保存
         if (onDataSourceSaved) {
           onDataSourceSaved({
             id: fileInfo.source_id,
-            type: 'duckdb',
-            name: `DuckDB表: ${fileInfo.source_id}`,
+            type: "duckdb",
+            name: t("page.datasource.duckdbTable", {
+              table: fileInfo.source_id
+            }),
             row_count: fileInfo.row_count || 0,
             columns: fileInfo.columns || []
           });
@@ -456,29 +527,40 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
         setTimeout(() => {
           setShowSuccessMessage(false);
         }, 3000);
-
       } catch (err) {
-        setError('处理上传结果失败');
-        showNotification('处理上传结果失败', 'error');
+        setError(t("page.datasource.processFail"));
+        showNotification(t("page.datasource.processFail"), "error");
       }
     } else {
       // 错误情况
-      const errorMessage = result?.message || result?.error || '文件上传失败';
+      const errorMessage =
+        result?.message || result?.error || t("page.datasource.uploadFail");
       setError(errorMessage);
       setShowSuccessMessage(false);
-      showNotification(`文件上传失败: ${errorMessage}`, 'error');
+      showNotification(
+        t("page.datasource.uploadFailDetail", { message: errorMessage }),
+        "error"
+      );
     }
   };
 
   return (
     <Box>
       {error && !showSuccessMessage && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>{error}</Alert>
+        <Alert
+          severity="error"
+          sx={{ mb: 2, borderRadius: "var(--dq-radius-card)" }}
+        >
+          {error}
+        </Alert>
       )}
 
       {showSuccessMessage && (
-        <Alert severity="success" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
-          文件上传成功！
+        <Alert
+          severity="success"
+          sx={{ mb: 2, borderRadius: "var(--dq-radius-card)" }}
+        >
+          ${t("page.datasource.successToast")}
         </Alert>
       )}
 
@@ -487,46 +569,61 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
         onChange={(e, newValue) => setActiveTab(newValue)}
         sx={{
           mb: 2,
-          '& .MuiTabs-indicator': {
-            backgroundColor: 'var(--dq-accent-primary)',
+          "& .MuiTabs-indicator": {
+            backgroundColor: "var(--dq-accent-primary)",
             height: 2,
             borderRadius: 999
           },
-          '& .MuiTab-root': {
-            fontSize: 'var(--dq-tab-font-size-secondary)',
-            fontWeight: 'var(--dq-tab-font-weight-secondary-inactive)',
-            textTransform: 'none',
+          "& .MuiTab-root": {
+            fontSize: "var(--dq-tab-font-size-secondary)",
+            fontWeight: "var(--dq-tab-font-weight-secondary-inactive)",
+            textTransform: "none",
             minHeight: 48,
-            color: 'var(--dq-text-tertiary)',
-            backgroundColor: 'transparent',
-            '&.Mui-selected': {
-              color: 'var(--dq-tab-active-color)',
-              backgroundColor: 'transparent',
-              fontWeight: 'var(--dq-tab-font-weight-secondary)'
+            color: "var(--dq-text-tertiary)",
+            backgroundColor: "transparent",
+            "&.Mui-selected": {
+              color: "var(--dq-tab-active-color)",
+              backgroundColor: "transparent",
+              fontWeight: "var(--dq-tab-font-weight-secondary)"
             },
-            '&:hover': {
-              color: 'var(--dq-text-primary)',
-              backgroundColor: 'transparent'
+            "&:hover": {
+              color: "var(--dq-text-primary)",
+              backgroundColor: "transparent"
             }
           }
         }}
       >
-        <Tab label="本地文件上传" sx={{ mr: 2 }} />
-        <Tab label="远程文件导入" />
-        <Tab label="服务器目录" sx={{ ml: 2 }} />
+        <Tab label={t("page.datasource.tabLocal")} sx={{ mr: 2 }} />
+        <Tab label={t("page.datasource.tabRemote")} />
+        <Tab label={t("page.datasource.tabServer")} sx={{ ml: 2 }} />
       </Tabs>
 
       {/* 本地文件上传 */}
       {activeTab === 0 && (
-        <CardSurface padding={3} elevation sx={{ borderColor: 'var(--dq-border-card)', borderRadius: 'var(--dq-radius-card)' }}>
+        <CardSurface
+          padding={3}
+          elevation
+          sx={{
+            borderColor: "var(--dq-border-card)",
+            borderRadius: "var(--dq-radius-card)"
+          }}
+        >
           <SectionHeader
-            title="智能文件上传"
-            subtitle="支持 CSV、Excel、Parquet、JSON 文件上传，自动选择最佳上传方式"
+            title={t("page.datasource.cardLocalTitle")}
+            subtitle={t("page.datasource.cardLocalDesc")}
             icon={<Upload size={18} color="var(--dq-accent-primary)" />}
           />
 
           {/* 上传方式选择 - 在文件选择之前 */}
-          <Box sx={{ mb: 3, p: 2, backgroundColor: 'var(--dq-surface)', borderRadius: 'var(--dq-radius-card)', border: '1px solid var(--dq-border-subtle)' }}>
+          <Box
+            sx={{
+              mb: 3,
+              p: 2,
+              backgroundColor: "var(--dq-surface)",
+              borderRadius: "var(--dq-radius-card)",
+              border: "1px solid var(--dq-border-subtle)"
+            }}
+          >
             <FormControlLabel
               control={
                 <RoundedSwitch
@@ -535,11 +632,16 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                   size="small"
                 />
               }
-              label="使用分块上传"
-              sx={{ gap: 1.5, '& .MuiSwitch-root': { mr: 1 } }}
+              label={t("page.datasource.useChunked")}
+              sx={{ gap: 1.5, "& .MuiSwitch-root": { mr: 1 } }}
             />
-            <Typography variant="caption" sx={{ ml: 2, color: 'var(--dq-text-tertiary)' }}>
-              {useChunkedUpload ? "已启用分块上传（支持大文件和断点续传）" : "已启用标准上传（适合小文件）"}
+            <Typography
+              variant="caption"
+              sx={{ ml: 2, color: "var(--dq-text-tertiary)" }}
+            >
+              {useChunkedUpload
+                ? t("page.datasource.chunkedOn")
+                : t("page.datasource.chunkedOff")}
             </Typography>
           </Box>
 
@@ -552,7 +654,7 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 type="file"
                 accept=".csv,.xlsx,.xls,.json,.parquet,.pq"
                 onChange={handleFileSelect}
-                style={{ display: 'none' }}
+                style={{ display: "none" }}
                 id="file-upload"
               />
 
@@ -564,34 +666,50 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
                 sx={{
-                  border: '2px dashed',
-                  borderColor: isDragOver ? 'var(--dq-accent-primary)' : 'var(--dq-border-subtle)',
-                  borderRadius: 'var(--dq-radius-card)',
+                  border: "2px dashed",
+                  borderColor: isDragOver
+                    ? "var(--dq-accent-primary)"
+                    : "var(--dq-border-subtle)",
+                  borderRadius: "var(--dq-radius-card)",
                   p: 4,
-                  textAlign: 'center',
+                  textAlign: "center",
                   backgroundColor: isDragOver
-                    ? 'var(--dq-surface-hover)'
-                    : 'transparent',
-                  transition: 'background-color 0.2s ease, border-color 0.2s ease',
-                  cursor: 'pointer',
-                  '&:hover': {
-                    borderColor: 'var(--dq-accent-primary)',
-                    backgroundColor: 'var(--dq-surface-hover)'
+                    ? "var(--dq-surface-hover)"
+                    : "transparent",
+                  transition:
+                    "background-color 0.2s ease, border-color 0.2s ease",
+                  cursor: "pointer",
+                  "&:hover": {
+                    borderColor: "var(--dq-accent-primary)",
+                    backgroundColor: "var(--dq-surface-hover)"
                   }
                 }}
               >
                 <Upload
                   sx={{
                     fontSize: 48,
-                    color: isDragOver ? 'var(--dq-accent-primary)' : 'var(--dq-text-tertiary)',
+                    color: isDragOver
+                      ? "var(--dq-accent-primary)"
+                      : "var(--dq-text-tertiary)",
                     mb: 2
                   }}
                 />
-                <Typography variant="h6" sx={{ mb: 1, color: isDragOver ? 'var(--dq-accent-primary)' : 'var(--dq-text-primary)' }}>
-                  拖放文件到此处
+                <Typography
+                  variant="h6"
+                  sx={{
+                    mb: 1,
+                    color: isDragOver
+                      ? "var(--dq-accent-primary)"
+                      : "var(--dq-text-primary)"
+                  }}
+                >
+                  {t("page.datasource.dragHere")}
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'var(--dq-text-tertiary)' }}>
-                  或点击选择文件
+                <Typography
+                  variant="body2"
+                  sx={{ color: "var(--dq-text-tertiary)" }}
+                >
+                  {t("page.datasource.orClick")}
                 </Typography>
               </Box>
             </Box>
@@ -601,14 +719,28 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
               {selectedFile ? (
                 <>
                   {/* 文件信息显示 */}
-                  <Alert severity="info" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Alert
+                    severity="info"
+                    sx={{ mb: 2, borderRadius: "var(--dq-radius-card)" }}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between"
+                      }}
+                    >
                       <Box>
                         <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          已选择文件: {selectedFile.name}
+                          {t("page.datasource.selectedFile")}:{" "}
+                          {selectedFile.name}
                         </Typography>
-                        <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>
-                          大小: {formatFileSize(selectedFile.size)}
+                        <Typography
+                          variant="caption"
+                          sx={{ color: "var(--dq-text-tertiary)" }}
+                        >
+                          {t("page.datasource.fileSize")}:{" "}
+                          {formatFileSize(selectedFile.size)}
                         </Typography>
                       </Box>
                       <IconButton size="small" onClick={handleReset}>
@@ -619,14 +751,14 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
                   {/* 表别名输入 */}
                   <RoundedTextField
-                    label="表别名（可选）"
+                    label={t("page.datasource.aliasLabel")}
                     value={tableAlias}
-                    onChange={(e) => setTableAlias(e.target.value)}
+                    onChange={e => setTableAlias(e.target.value)}
                     fullWidth
                     sx={{ mb: 2 }}
-                    placeholder="例如: my_data（留空将使用文件名）"
+                    placeholder={t("page.datasource.aliasPlaceholder")}
                     disabled={isUploading}
-                    helperText="为DuckDB表指定一个自定义名称"
+                    helperText={t("page.datasource.aliasHelper")}
                   />
 
                   {/* 分块上传组件 */}
@@ -634,31 +766,39 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                     file={selectedFile}
                     tableAlias={tableAlias}
                     onUploadComplete={handleChunkedUploadComplete}
-                    onUploadProgress={(progress) => {
-                    }}
+                    onUploadProgress={progress => {}}
                   />
                 </>
               ) : (
-                <CardSurface padding={3} sx={{ borderColor: 'var(--dq-border-subtle)', textAlign: 'center' }}>
+                <CardSurface
+                  padding={3}
+                  sx={{
+                    borderColor: "var(--dq-border-subtle)",
+                    textAlign: "center"
+                  }}
+                >
                   <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-                    请先选择文件
+                    {t("page.datasource.pickFileFirst")}
                   </Typography>
-                  <Typography variant="body2" sx={{ color: 'var(--dq-text-tertiary)', mb: 3 }}>
-                    选择要上传的文件后即可开始分块上传
+                  <Typography
+                    variant="body2"
+                    sx={{ color: "var(--dq-text-tertiary)", mb: 3 }}
+                  >
+                    {t("page.datasource.selectFileToStart")}
                   </Typography>
                   <input
                     ref={fileInputRef}
                     type="file"
                     accept=".csv,.xlsx,.xls,.json,.parquet,.pq"
                     onChange={handleFileSelect}
-                    style={{ display: 'none' }}
+                    style={{ display: "none" }}
                     id="file-upload"
                   />
                   <RoundedButton
                     startIcon={<Upload size={20} />}
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    选择文件
+                    {t("page.datasource.btnSelectFile")}
                   </RoundedButton>
                 </CardSurface>
               )}
@@ -668,14 +808,27 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
           {/* 文件信息显示和标准上传按钮 */}
           {selectedFile && !useChunkedUpload && (
             <Box sx={{ mb: 3 }}>
-              <Alert severity="info" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Alert
+                severity="info"
+                sx={{ mb: 2, borderRadius: "var(--dq-radius-card)" }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between"
+                  }}
+                >
                   <Box>
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      已选择文件: {selectedFile.name}
+                      {t("page.datasource.selectedFile")}: {selectedFile.name}
                     </Typography>
-                    <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>
-                      大小: {formatFileSize(selectedFile.size)}
+                    <Typography
+                      variant="caption"
+                      sx={{ color: "var(--dq-text-tertiary)" }}
+                    >
+                      {t("page.datasource.fileSize")}:{" "}
+                      {formatFileSize(selectedFile.size)}
                     </Typography>
                   </Box>
                   <IconButton size="small" onClick={handleReset}>
@@ -686,26 +839,40 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
               {/* 表别名输入 */}
               <RoundedTextField
-                label="表别名（可选）"
+                label={t("page.datasource.aliasLabel")}
                 value={tableAlias}
-                onChange={(e) => setTableAlias(e.target.value)}
+                onChange={e => setTableAlias(e.target.value)}
                 fullWidth
                 sx={{ mb: 2 }}
-                placeholder="例如: my_data（留空将使用文件名）"
+                placeholder={t("page.datasource.aliasPlaceholder")}
                 disabled={isUploading}
-                helperText="为DuckDB表指定一个自定义名称"
+                helperText={t("page.datasource.aliasHelper")}
               />
 
               {/* 上传方式提示 */}
               <Box sx={{ mb: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Box sx={{ display: "flex", alignItems: "center" }}>
                   <Chip
-                    label={selectedFile.size > LARGE_FILE_THRESHOLD ? "分块上传建议" : "标准上传"}
-                    color={selectedFile.size > LARGE_FILE_THRESHOLD ? "warning" : "success"}
+                    label={
+                      selectedFile.size > LARGE_FILE_THRESHOLD
+                        ? t("page.datasource.chunkHintOn")
+                        : t("page.datasource.chunkHintOff")
+                    }
+                    color={
+                      selectedFile.size > LARGE_FILE_THRESHOLD
+                        ? "warning"
+                        : "success"
+                    }
                     variant="outlined"
                     size="small"
                   />
-                  <Tooltip title={selectedFile.size > LARGE_FILE_THRESHOLD ? "大于50MB的文件建议使用分块上传" : "小于50MB的文件建议使用标准上传"}>
+                  <Tooltip
+                    title={
+                      selectedFile.size > LARGE_FILE_THRESHOLD
+                        ? t("page.datasource.chunkTooltipLarge")
+                        : t("page.datasource.chunkTooltipSmall")
+                    }
+                  >
                     <IconButton size="small" sx={{ ml: 1 }}>
                       <InfoIcon fontSize="small" />
                     </IconButton>
@@ -722,19 +889,34 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 sx={{ py: 1.5 }}
                 disabled={isUploading || !selectedFile}
               >
-                {isUploading ? <CircularProgress size={24} color="inherit" /> : '开始上传'}
+                {isUploading ? (
+                  <CircularProgress size={24} color="inherit" />
+                ) : (
+                  t("page.datasource.btnStartUpload")
+                )}
               </RoundedButton>
             </Box>
           )}
 
           {/* 功能说明 */}
-          <Box sx={{ mt: 3, p: 2, backgroundColor: 'var(--dq-surface-alt)', borderRadius: 'var(--dq-radius-card)', border: '1px solid var(--dq-border-subtle)' }}>
-            <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
-              <Lightbulb size={16} style={{ marginRight: '8px' }} />
-              <strong>智能上传提示：</strong><br />
-              • 标准上传：适合小于50MB的小文件，上传速度快<br />
-              • 分块上传：适合大文件，支持断点续传，提高上传成功率<br />
-              • 支持格式：CSV, Excel (xls/xlsx), Parquet, JSON
+          <Box
+            sx={{
+              mt: 3,
+              p: 2,
+              backgroundColor: "var(--dq-surface-alt)",
+              borderRadius: "var(--dq-radius-card)",
+              border: "1px solid var(--dq-border-subtle)"
+            }}
+          >
+            <Typography
+              variant="caption"
+              sx={{ color: "var(--dq-text-secondary)" }}
+            >
+              <Lightbulb size={16} style={{ marginRight: "8px" }} />
+              <strong>{t("page.datasource.localTipsTitle")}</strong>
+              <br />• {t("page.datasource.localTipsStd")}
+              <br />• {t("page.datasource.localTipsChunk")}
+              <br />• {t("page.datasource.localTipsFormats")}
             </Typography>
           </Box>
         </CardSurface>
@@ -742,40 +924,59 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
       {/* 远程文件导入 */}
       {activeTab === 1 && (
-        <CardSurface padding={3} elevation sx={{ borderColor: 'var(--dq-border-card)', borderRadius: 'var(--dq-radius-card)' }}>
+        <CardSurface
+          padding={3}
+          elevation
+          sx={{
+            borderColor: "var(--dq-border-card)",
+            borderRadius: "var(--dq-radius-card)"
+          }}
+        >
           <SectionHeader
-            title="远程文件导入"
-            subtitle="支持从公共 URL 或 GitHub 仓库读取常见文件格式"
-            icon={<LinkIcon sx={{ color: 'var(--dq-accent-primary)' }} />}
+            title={t("page.datasource.cardRemoteTitle")}
+            subtitle={t("page.datasource.cardRemoteDesc")}
+            icon={<LinkIcon sx={{ color: "var(--dq-accent-primary)" }} />}
           />
 
           <RoundedTextField
-            label="文件URL"
+            label={t("page.datasource.remoteUrlLabel")}
             value={fileUrl}
-            onChange={(e) => setFileUrl(e.target.value)}
+            onChange={e => setFileUrl(e.target.value)}
             fullWidth
             sx={{ mb: 1 }}
             placeholder="https://example.com/data.csv"
+            helperText={t("page.datasource.remoteUrlHelper")}
             disabled={loading}
           />
 
-          <Box sx={{ mb: 2, p: 1.5, backgroundColor: 'var(--dq-surface)', borderRadius: 'var(--dq-radius-card)', border: '1px solid var(--dq-border-subtle)' }}>
-            <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
-              <Lightbulb size={16} style={{ marginRight: '8px' }} />
-              <strong>支持的URL格式：</strong><br />
-              • 直接文件链接：https://example.com/data.csv<br />
-              • GitHub文件：https://github.com/user/repo/blob/main/data.csv (自动转换)<br />
-              • 支持格式：CSV, Excel (xls/xlsx), Parquet, JSON
+          <Box
+            sx={{
+              mb: 2,
+              p: 1.5,
+              backgroundColor: "var(--dq-surface)",
+              borderRadius: "var(--dq-radius-card)",
+              border: "1px solid var(--dq-border-subtle)"
+            }}
+          >
+            <Typography
+              variant="caption"
+              sx={{ color: "var(--dq-text-secondary)" }}
+            >
+              <Lightbulb size={16} style={{ marginRight: "8px" }} />
+              <strong>{t("page.datasource.remoteTipsTitle")}</strong>
+              <br />• {t("page.datasource.remoteTips1")}
+              <br />• {t("page.datasource.remoteTips2")}
+              <br />• {t("page.datasource.remoteTips3")}
             </Typography>
           </Box>
 
           <RoundedTextField
-            label="表别名"
+            label={t("page.datasource.remoteAliasLabel")}
             value={tableAlias}
-            onChange={(e) => setTableAlias(e.target.value)}
+            onChange={e => setTableAlias(e.target.value)}
             fullWidth
             sx={{ mb: 2 }}
-            placeholder="例如: remote_data"
+            placeholder={t("page.datasource.remoteAliasPlaceholder")}
             disabled={loading}
           />
 
@@ -786,17 +987,32 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
             onClick={handleUrlRead}
             sx={{ py: 1.5 }}
           >
-            {loading ? <CircularProgress size={24} color="inherit" /> : '读取远程文件'}
+            {loading ? (
+              <CircularProgress size={24} color="inherit" />
+            ) : (
+              t("page.datasource.btnReadRemote")
+            )}
           </RoundedButton>
 
           {/* 功能说明 */}
-          <Box sx={{ mt: 3, p: 2, backgroundColor: 'var(--dq-surface)', borderRadius: 'var(--dq-radius-card)', border: '1px solid var(--dq-border-subtle)' }}>
-            <Typography variant="caption" sx={{ color: 'var(--dq-text-secondary)' }}>
-              <Lightbulb size={16} style={{ marginRight: '8px' }} />
-              <strong>远程文件导入提示：</strong><br />
-              • 支持从公共URL导入文件<br />
-              • 自动处理GitHub文件链接<br />
-              • 导入的文件将直接创建为DuckDB表
+          <Box
+            sx={{
+              mt: 3,
+              p: 2,
+              backgroundColor: "var(--dq-surface)",
+              borderRadius: "var(--dq-radius-card)",
+              border: "1px solid var(--dq-border-subtle)"
+            }}
+          >
+            <Typography
+              variant="caption"
+              sx={{ color: "var(--dq-text-secondary)" }}
+            >
+              <Lightbulb size={16} style={{ marginRight: "8px" }} />
+              <strong>{t("page.datasource.remoteTipsTitle")}</strong>
+              <br />• {t("page.datasource.remoteTips1")}
+              <br />• {t("page.datasource.remoteTips2")}
+              <br />• {t("page.datasource.remoteTips3")}
             </Typography>
           </Box>
         </CardSurface>
@@ -804,66 +1020,102 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
 
       {/* 服务器目录导入 */}
       {activeTab === 2 && (
-        <CardSurface padding={3} elevation sx={{ borderColor: 'var(--dq-border-card)', borderRadius: 'var(--dq-radius-card)' }}>
+        <CardSurface
+          padding={3}
+          elevation
+          sx={{
+            borderColor: "var(--dq-border-card)",
+            borderRadius: "var(--dq-radius-card)"
+          }}
+        >
           <SectionHeader
-            title="服务器目录导入"
-            subtitle="直接从容器挂载目录读取 CSV / Excel / Parquet / JSON 文件"
+            title={t("page.datasource.cardServerTitle")}
+            subtitle={t("page.datasource.cardServerDesc")}
             icon={<HardDrive size={18} color="var(--dq-accent-primary)" />}
           />
 
-          <Alert severity="info" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
+          <Alert
+            severity="info"
+            sx={{ mb: 2, borderRadius: "var(--dq-radius-card)" }}
+          >
             <Typography variant="body2">
-              请运维在 docker-compose / K8s 中挂载目录并更新 <code>server_data_mounts</code> 配置，重启后即可在此处浏览文件。
-              <br />
-              仅能访问配置文件中允许的目录，其他路径不会显示。
+              {t("page.datasource.serverMountAlert")}
             </Typography>
           </Alert>
 
           {serverMountLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+            <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
               <CircularProgress size={32} />
             </Box>
           ) : serverMounts.length === 0 ? (
-            <Alert severity="warning" sx={{ borderRadius: 'var(--dq-radius-card)' }}>
-              未检测到可用的挂载目录。请在配置文件 <code>server_data_mounts</code> 中添加条目并重启服务。
+            <Alert
+              severity="warning"
+              sx={{ borderRadius: "var(--dq-radius-card)" }}
+            >
+              {t("page.datasource.serverNoMount")}
             </Alert>
           ) : (
             <>
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
+              <Box
+                sx={{ display: "flex", gap: 2, alignItems: "center", mb: 2 }}
+              >
                 <RoundedTextField
                   select
-                  label="选择挂载目录"
+                  label={t("page.datasource.serverSelectMount")}
                   value={selectedServerMount}
-                  onChange={(e) => handleServerMountChange(e.target.value)}
+                  onChange={e => handleServerMountChange(e.target.value)}
                   sx={{ flex: 1 }}
                 >
-                  {serverMounts.map((mount) => (
+                  {serverMounts.map(mount => (
                     <MenuItem key={mount.path} value={mount.path}>
-                      {mount.label} {mount.exists === false ? '(目录不存在)' : ''}
+                      {mount.label}{" "}
+                      {mount.exists === false
+                        ? t("page.datasource.serverNotExists")
+                        : ""}
                     </MenuItem>
                   ))}
                 </RoundedTextField>
                 <IconButton
                   aria-label="refresh-directory"
-                  onClick={() => loadServerDirectory(selectedServerMount || serverMounts[0]?.path)}
-                  sx={{ border: '1px solid var(--dq-border-subtle)', borderRadius: 'var(--dq-radius-card)' }}
+                  onClick={() =>
+                    loadServerDirectory(
+                      selectedServerMount || serverMounts[0]?.path
+                    )
+                  }
+                  sx={{
+                    border: "1px solid var(--dq-border-subtle)",
+                    borderRadius: "var(--dq-radius-card)"
+                  }}
                 >
                   <RefreshCw size={18} />
                 </IconButton>
               </Box>
 
               {serverBreadcrumbs.length > 0 && (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
+                <Box
+                  sx={{ display: "flex", flexWrap: "wrap", gap: 1.5, mb: 2 }}
+                >
                   {serverBreadcrumbs.map((crumb, index) => (
                     <React.Fragment key={crumb.path}>
                       <Chip
                         label={crumb.name}
-                        icon={crumb.is_root ? <HardDrive size={14} /> : <FolderOpen size={14} />}
+                        icon={
+                          crumb.is_root ? (
+                            <HardDrive size={14} />
+                          ) : (
+                            <FolderOpen size={14} />
+                          )
+                        }
                         onClick={() => handleServerBreadcrumbClick(crumb)}
-                        sx={{ cursor: 'pointer' }}
+                        sx={{ cursor: "pointer" }}
                       />
                       {index < serverBreadcrumbs.length - 1 && (
-                        <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>/</Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{ color: "var(--dq-text-tertiary)" }}
+                        >
+                          /
+                        </Typography>
                       )}
                     </React.Fragment>
                   ))}
@@ -871,67 +1123,106 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
               )}
 
               {serverBrowseError && (
-                <Alert severity="error" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
+                <Alert
+                  severity="error"
+                  sx={{ mb: 2, borderRadius: "var(--dq-radius-card)" }}
+                >
                   {serverBrowseError}
                 </Alert>
               )}
 
               <Box
                 sx={{
-                  border: '1px solid var(--dq-border-subtle)',
-                  borderRadius: 'var(--dq-radius-card)',
+                  border: "1px solid var(--dq-border-subtle)",
+                  borderRadius: "var(--dq-radius-card)",
                   mb: 3,
                   maxHeight: 320,
-                  overflowY: 'auto',
-                  backgroundColor: 'var(--dq-surface)'
+                  overflowY: "auto",
+                  backgroundColor: "var(--dq-surface)"
                 }}
               >
                 {serverBrowseLoading ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                  <Box
+                    sx={{ display: "flex", justifyContent: "center", py: 6 }}
+                  >
                     <CircularProgress size={28} />
                   </Box>
                 ) : filteredServerEntries.length === 0 ? (
-                  <Typography variant="body2" sx={{ p: 3, color: 'var(--dq-text-tertiary)' }}>
-                    当前目录暂无可导入的文件
+                  <Typography
+                    variant="body2"
+                    sx={{ p: 3, color: "var(--dq-text-tertiary)" }}
+                  >
+                    {t("page.datasource.serverNoFiles")}
                   </Typography>
                 ) : (
-                  filteredServerEntries.map((entry) => {
+                  filteredServerEntries.map(entry => {
                     const isSelected = serverSelectedFile?.path === entry.path;
                     return (
                       <Box
                         key={entry.path}
                         onClick={() => handleServerEntryClick(entry)}
                         sx={{
-                          display: 'flex',
-                          alignItems: 'center',
+                          display: "flex",
+                          alignItems: "center",
                           gap: 2,
                           p: 1.5,
-                          borderBottom: '1px solid var(--dq-border-subtle)',
-                          cursor: 'pointer',
-                          backgroundColor: isSelected ? 'color-mix(in oklab, var(--dq-accent-primary) 12%, transparent)' : 'transparent',
-                          '&:hover': { backgroundColor: 'var(--dq-surface-hover)' }
+                          borderBottom: "1px solid var(--dq-border-subtle)",
+                          cursor: "pointer",
+                          backgroundColor: isSelected
+                            ? "color-mix(in oklab, var(--dq-accent-primary) 12%, transparent)"
+                            : "transparent",
+                          "&:hover": {
+                            backgroundColor: "var(--dq-surface-hover)"
+                          }
                         }}
                       >
-                        {entry.type === 'directory' ? (
-                          <FolderOpen size={20} color="var(--dq-text-secondary)" />
+                        {entry.type === "directory" ? (
+                          <FolderOpen
+                            size={20}
+                            color="var(--dq-text-secondary)"
+                          />
                         ) : (
-                          <FileText size={20} color={entry.supported ? 'var(--dq-accent-primary)' : 'var(--dq-text-tertiary)'} />
+                          <FileText
+                            size={20}
+                            color={
+                              entry.supported
+                                ? "var(--dq-accent-primary)"
+                                : "var(--dq-text-tertiary)"
+                            }
+                          />
                         )}
                         <Box sx={{ flexGrow: 1 }}>
-                          <Typography variant="body2" sx={{ fontWeight: entry.type === 'directory' ? 600 : 500 }}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: entry.type === "directory" ? 600 : 500
+                            }}
+                          >
                             {entry.name}
                           </Typography>
-                          <Typography variant="caption" sx={{ color: 'var(--dq-text-tertiary)' }}>
-                            {entry.type === 'directory'
-                              ? '文件夹'
-                              : `${(entry.extension || '').toUpperCase()} · ${formatFileSize(entry.size || 0)}`} · {formatModifiedTime(entry.modified)}
+                          <Typography
+                            variant="caption"
+                            sx={{ color: "var(--dq-text-tertiary)" }}
+                          >
+                            {entry.type === "directory"
+                              ? t("page.datasource.serverTypeFolder")
+                              : `${(
+                                  entry.extension || ""
+                                ).toUpperCase()} · ${formatFileSize(
+                                  entry.size || 0
+                                )}`}{" "}
+                            · {formatModifiedTime(entry.modified)}
                           </Typography>
                         </Box>
-                        {entry.type === 'file' && (
+                        {entry.type === "file" && (
                           <Chip
                             size="small"
-                            label={entry.supported ? '可导入' : '不支持'}
-                            color={entry.supported ? 'success' : 'default'}
+                            label={
+                              entry.supported
+                                ? t("page.datasource.serverTypeSupport")
+                                : t("page.datasource.serverTypeUnsupport")
+                            }
+                            color={entry.supported ? "success" : "default"}
                           />
                         )}
                       </Box>
@@ -941,19 +1232,24 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
               </Box>
 
               {serverSelectedFile && (
-                <Alert severity="success" sx={{ mb: 2, borderRadius: 'var(--dq-radius-card)' }}>
-                  已选择文件：{serverSelectedFile.name}（{formatFileSize(serverSelectedFile.size || 0)}）
+                <Alert
+                  severity="success"
+                  sx={{ mb: 2, borderRadius: "var(--dq-radius-card)" }}
+                >
+                  {t("page.datasource.serverSelected")}：
+                  {serverSelectedFile.name}（
+                  {formatFileSize(serverSelectedFile.size || 0)}）
                 </Alert>
               )}
 
               <RoundedTextField
-                label="表别名"
+                label={t("page.datasource.remoteAliasLabel")}
                 value={serverAlias}
-                onChange={(e) => setServerAlias(e.target.value)}
+                onChange={e => setServerAlias(e.target.value)}
                 fullWidth
                 sx={{ mb: 2 }}
-                placeholder="例如: server_data"
-                helperText="导入后会在DuckDB中创建此名称的表"
+                placeholder={t("page.datasource.serverAliasPlaceholder")}
+                helperText={t("page.datasource.serverAliasHelper")}
                 disabled={!serverSelectedFile || serverImportLoading}
               />
 
@@ -964,7 +1260,11 @@ const DataUploadSection = ({ onDataSourceSaved, showNotification }) => {
                 onClick={handleServerImport}
                 sx={{ py: 1.5 }}
               >
-                {serverImportLoading ? <CircularProgress size={22} color="inherit" /> : '导入到 DuckDB'}
+                {serverImportLoading ? (
+                  <CircularProgress size={22} color="inherit" />
+                ) : (
+                  t("page.datasource.btnImportServer")
+                )}
               </RoundedButton>
             </>
           )}

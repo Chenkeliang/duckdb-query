@@ -2,15 +2,12 @@ import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Tab, Tabs } from "@mui/material";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import useDuckQuery from "./hooks/useDuckQuery";
-import { I18nProvider, useI18n } from "./i18n/I18nProvider";
 import { Github, Languages, Moon, Sun } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import MainLayout from "./components/Layout/MainLayout";
 import Sidebar from "./components/Layout/Sidebar";
 import Header from "./components/Layout/Header";
-
-import "./styles/tailwind.css";
-import "./styles/modern.css";
 
 const AsyncTaskList = lazy(() =>
   import("./components/AsyncTasks/AsyncTaskList")
@@ -41,9 +38,12 @@ const DataSourceList = lazy(() =>
 );
 const WelcomePage = lazy(() => import("./components/WelcomePage"));
 
-const LazyFallback = () => (
-  <div className="p-6 dq-text-tertiary text-sm">模块加载中...</div>
-);
+const LazyFallback = () => {
+  const { t } = useTranslation("common");
+  return (
+    <div className="p-6 dq-text-tertiary text-sm">{t("actions.loading")}</div>
+  );
+};
 
 const tabTitles = {
   datasource: "nav.datasource",
@@ -55,7 +55,8 @@ const tabTitles = {
 const DuckQueryAppInner = () => {
   const { showSuccess, showError, showWarning, showInfo } = useToast();
   const { state, actions } = useDuckQuery();
-  const { t, locale, setLocale } = useI18n();
+  const { t, i18n } = useTranslation("common");
+  const locale = i18n.language || "zh";
   const [isMobile, setIsMobile] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState(true);
@@ -119,7 +120,15 @@ const DuckQueryAppInner = () => {
     }
   }, [currentTab, isMobile]);
 
-  const toggleLocale = () => setLocale(locale === "zh" ? "en" : "zh");
+  const toggleLocale = () => {
+    const next = locale.startsWith("zh") ? "en" : "zh";
+    i18n.changeLanguage(next);
+    try {
+      localStorage.setItem("dq-locale", next);
+    } catch {
+      // ignore
+    }
+  };
   const openGithub = () =>
     window.open(
       "https://github.com/chenkeliang/duckdb-query",
@@ -152,16 +161,8 @@ const DuckQueryAppInner = () => {
           <div className="page-intro">
             <div className="page-intro-content">
               <div className="page-intro-desc">
-                <div>
-                  <strong>上传文件：</strong>
-                  支持<b>剪切板/CSV/Excel/JSON/Parquet/远程文件</b>
-                  等多类型上传，自动建表用于数据分析查询，默认最大50GB，支持自定义配置
-                </div>
-                <div>
-                  <strong>支持连接远程数据库：</strong>
-                  支持<b>MySQL / PostgreSQL</b>
-                  配置之后可在查询页面查询数据加载到本地表中
-                </div>
+                <div>{t("page.datasource.intro1")}</div>
+                <div>{t("page.datasource.intro2")}</div>
               </div>
             </div>
           </div>
@@ -224,26 +225,11 @@ const DuckQueryAppInner = () => {
           <div className="page-intro">
             <div className="page-intro-content">
               <div className="page-intro-desc">
-                <div>
-                  <strong>图形化查询：</strong>
-                  像用Excel筛选+排序一样，一键选字段、加条件、排结果（无需写SQL），生成数据分析结果
-                </div>
-                <div>
-                  <strong>SQL编辑器：</strong>
-                  可通过内部数据进行查询已上传数据表以及外部数据库加载至内部数据中，支持DUCKDB完整SQL语法
-                </div>
-                <div>
-                  <strong>跨数据融合：</strong>
-                  像ExcelVLOOKUP一样，一键把上传的多种类型数据，通过共同字段（如订单号、用户ID）横向合并宽表
-                </div>
-                <div>
-                  <strong>跨数据汇总：</strong>
-                  像Excel复制粘贴多张报表一样，一键把多份相似表格(1月、2月销售数据)垂直堆叠一份信息，支持字段不同的合并
-                </div>
-                <div>
-                  <strong>数据预览导出：</strong>
-                  页面最大支持1万条数据预览，支持异步任务产出新表再分析，导出支持CSV/Parquet格式
-                </div>
+                <div>{t("page.unifiedquery.intro1")}</div>
+                <div>{t("page.unifiedquery.intro2")}</div>
+                <div>{t("page.unifiedquery.intro3")}</div>
+                <div>{t("page.unifiedquery.intro4")}</div>
+                <div>{t("page.unifiedquery.intro5")}</div>
               </div>
             </div>
           </div>
@@ -293,10 +279,10 @@ const DuckQueryAppInner = () => {
                     loading={resultsLoading}
                     title={
                       queryResults.isVisualQuery
-                        ? "可视化查询结果"
+                        ? t("page.unifiedquery.resultVisual")
                         : queryResults.isSetOperation
-                        ? "集合操作结果"
-                        : "查询结果"
+                        ? t("page.unifiedquery.resultSet")
+                        : t("page.unifiedquery.resultQuery")
                     }
                     sqlQuery={queryResults.sqlQuery || queryResults.sql || ""}
                     originalDatasource={queryResults.originalDatasource}
@@ -324,18 +310,9 @@ const DuckQueryAppInner = () => {
           <div className="page-intro">
             <div className="page-intro-content">
               <div className="page-intro-desc">
-                <div>
-                  <strong>数据管理：</strong>
-                  管理DuckDB内部表、外部数据库表
-                </div>
-                <div>
-                  <strong>表管理：</strong>
-                  查看表结构，一键复制表名，删除不需要的表
-                </div>
-                <div>
-                  <strong>分组展示：</strong>
-                  异步结果表、普通表、临时表分组清晰展示
-                </div>
+                <div>{t("page.table.intro1")}</div>
+                <div>{t("page.table.intro2")}</div>
+                <div>{t("page.table.intro3")}</div>
               </div>
             </div>
           </div>
@@ -344,7 +321,7 @@ const DuckQueryAppInner = () => {
             <Tabs
               value={tableManagementTab}
               onChange={(_, value) => setTableManagementTab(value)}
-              aria-label="数据表管理分组"
+              aria-label={t("page.table.groupAria")}
               sx={{
                 px: 2,
                 pt: 1.25,
@@ -379,8 +356,16 @@ const DuckQueryAppInner = () => {
                 }
               }}
             >
-              <Tab disableRipple value="duckdb" label="DuckDB管理" />
-              <Tab disableRipple value="external" label="外部数据库" />
+              <Tab
+                disableRipple
+                value="duckdb"
+                label={t("page.table.tabDuck")}
+              />
+              <Tab
+                disableRipple
+                value="external"
+                label={t("page.table.tabExternal")}
+              />
             </Tabs>
 
             {tableManagementTab === "duckdb" && (
@@ -411,14 +396,8 @@ const DuckQueryAppInner = () => {
           <div className="page-intro">
             <div className="page-intro-content">
               <div className="page-intro-desc">
-                <div>
-                  <strong>后台运行：</strong>
-                  异步任务长耗时查询在后台运行
-                </div>
-                <div>
-                  <strong>结果处理：</strong>
-                  自动更新进度；完成后可下载（CSV/Parquet）或保存为新表
-                </div>
+                <div>{t("page.async.intro1")}</div>
+                <div>{t("page.async.intro2")}</div>
               </div>
             </div>
           </div>
@@ -506,12 +485,16 @@ const DuckQueryAppInner = () => {
               <div className="flex items-center gap-2 lg:hidden">
                 <MobileActionButton
                   icon={isDarkMode ? Sun : Moon}
-                  label={isDarkMode ? "切换到浅色" : "切换到暗色"}
+                  label={
+                    isDarkMode
+                      ? t("actions.toggleLight")
+                      : t("actions.toggleDark")
+                  }
                   onClick={() => setIsDarkMode(prev => !prev)}
                 />
                 <MobileActionButton
                   icon={Languages}
-                  label="切换语言"
+                  label={t("actions.toggleLang")}
                   onClick={toggleLocale}
                 />
                 <MobileActionButton
@@ -537,9 +520,7 @@ const DuckQueryAppInner = () => {
 
 const DuckQueryApp = () => (
   <ToastProvider>
-    <I18nProvider>
-      <DuckQueryAppInner />
-    </I18nProvider>
+    <DuckQueryAppInner />
   </ToastProvider>
 );
 

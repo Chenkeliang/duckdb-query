@@ -1,0 +1,84 @@
+```
+{
+  "nav": {
+    "datasource": "Data Sources",
+    "unifiedquery": "Unified Query",
+    "tablemanagement": "Table Management",
+    "asynctasks": "Async Tasks",
+    "switchMain": "Main navigation"
+  },
+  "actions": {
+    "toggleDark": "Switch to dark",
+    "toggleLight": "Switch to light",
+    "toggleLang": "Switch language",
+    "loading": "Module loading...",
+    "tryNewLayout": "Try new layout",
+    "backToLegacy": "Back to legacy",
+    "cancel": "Cancel",
+    "delete": "Delete"
+  },
+  "page": {
+    "datasource": {
+      "...": "..."
+    },
+    "datasource.manage": {
+      "...": "..."
+    },
+    "datasource.list": {
+      "...": "..."
+    },
+    "datasource.paste": {
+      "title": "Data paste import",
+      "subtitle": "Supports CSV, TSV etc.; system auto-detects delimiter and data types",
+      "placeholder": "Paste your data here...\n\nSupported formats:\n• CSV: 1,ZhangSan,Tech,8000,2023-01-15\n• TSV: 1\tZhangSan\tTech\t8000\t2023-01-15\n• Quoted: \"1\",\"ZhangSan\",\"Tech\",\"8000\",\"2023-01-15\"\n\nDelimiter and types will be auto-detected",
+      "btnParse": "Smart parse",
+      "btnClear": "Clear",
+      "delimiter": "Delimiter",
+      "delimiterComma": "Comma (,)",
+      "delimiterTab": "Tab",
+      "delimiterPipe": "Pipe (|)",
+      "delimiterSemicolon": "Semicolon (;)",
+      "delimiterSpace": "Space",
+      "types": {
+        "text": "Text",
+        "int": "Integer",
+        "float": "Float",
+        "date": "Date",
+        "bool": "Boolean"
+      },
+      "tableName": "Table name",
+      "tableNamePlaceholder": "e.g. product_prices, users, orders",
+      "tableNameHelper": "Use a meaningful name for easier querying and management",
+      "previewTitle": "Preview & configure",
+      "previewSubtitle": "Confirm columns then save to DuckDB",
+      "rows": "{{count}} rows",
+      "cols": "{{count}} columns",
+      "unifyAsString": "Force all columns to text (recommended for joins)",
+      "unifyAsStringDesc": "Set all columns to text to avoid type mismatch in joins",
+      "columnConfig": "Column config",
+      "columnName": "Column {{index}} name",
+      "type": "Type",
+      "previewData": "Preview (first 5 rows)",
+      "parseSuccess": "Parsed {{rows}} rows {{cols}} columns",
+      "parseFail": "Parse failed: {{message}}",
+      "save": {
+        "saveBtn": "Save to database",
+        "saving": "Saving...",
+        "saveOk": "Saved to table: {{table}}",
+        "saveFail": "Save failed",
+        "saveFailDetail": "Save failed: {{message}}",
+        "needParse": "Please parse data and set a table name first",
+        "needColumns": "All column names are required"
+      },
+      "actions": {
+        "selectAll": "Select all",
+        "selectNone": "Select none"
+      },
+      "sheetInfo": {
+        "rows": "Rows {{rows}} · Cols {{cols}}",
+        "target": "Target: {{table}}"
+      }
+    }
+  }
+}
+```

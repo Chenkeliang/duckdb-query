@@ -129,6 +129,7 @@ graph TD
 -   **现代骨架隔离**：旧骨架与 `modern.css` 不改动；新入口 `DuckQueryApp` 使用 Tailwind/shadcn 构建布局骨架（MainLayout/Sidebar/Header），仅在容器层包裹现有业务组件。
 -   **主题映射**：在 Tailwind 主题配置中将颜色/圆角/阴影映射到 `--dq-*` 变量，通过 `data-theme="light|dark"` 或类名切换，沿用现有主题切换逻辑；未来新增主题只需要新增同名变量集，无需改组件。
 -   **样式约束**：禁止新增零散自定义 CSS；如需局部样式，用 Tailwind 原子类或 shadcn tokens，并保持 `dq-layout-*` 前缀的自定义类名仅作用于新布局容器。
+-   **样式源分离**：主题变量抽到 `frontend/src/styles/tokens.css` 作为唯一来源；新入口仅引入 `tokens.css + tailwind.css`；旧入口继续使用 `modern.css`（内部复用同一批 `--dq-*` 变量），避免 legacy 样式污染新布局。
 -   **图标一致**：新骨架中的导航/按钮仅使用 `lucide-react`，与旧区域保持资源统一。
 -   **国际化**：新入口引入 i18n Provider（复用或新增），Sidebar/Header 文案用文案 key（例如 `nav.visualQuery`），默认语言回退保持现有显示；业务组件逐步接入，不影响旧入口。
 -   **状态共享**：`useDuckQuery` 作为唯一状态来源，供旧入口和新入口共用，避免功能差异。

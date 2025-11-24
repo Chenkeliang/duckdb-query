@@ -14,8 +14,8 @@ import {
 } from "lucide-react";
 import duckLogoDark from "../../assets/duckquery-dark.svg";
 import duckLogoLight from "../../assets/Duckquerylogo.svg";
-import duckLogoDarkSmall from "../../../assets/duck-query-dark-small.svg";
-import duckLogoLightSmall from "../../../assets/duck-query-light-small.svg";
+import duckLogoDarkSmall from "../../assets/duck-query-dark-small.svg";
+import duckLogoLightSmall from "../../assets/duck-query-light-small.svg";
 
 const navItems = [
   { id: "datasource", label: "nav.datasource", icon: HardDrive },
