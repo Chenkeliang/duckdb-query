@@ -15,3 +15,8 @@ This document records every functional update. All new features **must** append 
 - feat: Added DuckDB 表元数据缓存（默认 24 小时，可通过 `table_metadata_cache_ttl_hours` 配置），提供刷新 API 与“数据表管理 / DuckDB 管理”界面可触发的“刷新缓存”按钮，避免 visual-query 请求频繁扫全表造成的卡顿。
 - fix: DuckDB 表元数据改为在选择数据源时按需加载并会话缓存，避免首页批量请求；选中后即可展示列信息，不再显示 0 列占位。
 - chore: 前端代理目标支持通过环境变量 `VITE_API_PROXY_TARGET` 覆盖，便于本地开发自定义后端端口。
+
+## 2025-11-24
+
+- feat: 新增 Tailwind + lucide 导航骨架（MainLayout/Sidebar/Header）和新入口 `DuckQueryApp`，保留旧入口同时支持 URL 参数切换；Sidebar 支持明暗 Logo 切换、移动端抽屉模式，Header 支持返回旧版与主题切换。
+- chore: 抽离共享状态到 `useDuckQuery`，为新布局接入轻量 i18n stub（zh 默认）；保留旧入口默认运行，`?layout=new` 或按钮可体验新布局。

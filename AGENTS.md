@@ -1,50 +1,47 @@
-# Repository Guidelines
+# 项目专用 AGENT 规则
 
-## Project Structure & Module Organization
-Duck Query pairs FastAPI backend in `api/` with React frontend in `frontend/`. Backend modules live under `api/core`, `api/routers`, and `api/models`; configs and secrets are kept in `config/`, while ingestion buffers and exports go to `temp_files/` and `exports/`. Python tests live in `api/tests`, the SPA in `frontend/src`, docs in `docs/`, and Docker assets rely on the root `docker-compose.yml`.
+## 目录与模块
+- 后端 FastAPI 在 `api/`（核心/路由/模型），前端 SPA 在 `frontend/src`，配置在 `config/`，临时/导出数据在 `temp_files/` 与 `exports/`，文档在 `docs/`，Docker 由根目录 `docker-compose.yml` 驱动。
+- DuckDB 辅助函数需无状态，接收可选连接参数并调用 `_use_connection()` / `with_duckdb_connection()`，避免模块级长连接。
 
-## Build, Test, and Development Commands
-- `python -m uvicorn main:app --reload` (run inside `api/`): start FastAPI service with live reload.
-- `python -m pytest api/tests -q`: execute unit and integration suites.
-- `npm install && npm run dev` (inside `frontend/`): install dependencies and launch the SPA locally.
-- `npm run build`: emit the production bundle to `frontend/dist`.
-- `npm run lint`: enforce the zero-warning ESLint policy.
-- `docker-compose up -d` or `./quick-start.sh`: boot the full stack with DuckDB volumes configured.
+## 运行与测试
+- `python -m uvicorn main:app --reload`（`api/` 内）启动后端；`python -m pytest api/tests -q` 跑后端测试。
+- 前端：`npm install && npm run dev` 开发，`npm run lint` 检查，`npm run build` 产出 `frontend/dist`。
+- 不做全局安装，避免触碰非项目文件。
 
-## Coding Style & Naming Conventions
-- DuckDB integration helpers should accept an optional connection argument and internally call `_use_connection()` / `with_duckdb_connection()`; do not keep a module-level singleton connection alive across requests.
-- Normalize timestamps to UTC (naive) before writing them back to DuckDB—`TaskManager._normalize_datetime` is the canonical reference—to avoid mixing tz-aware and naive datetimes.
+## 编码风格
+- Python 遵循 PEP 8，新增公共 API 写 docstring 和类型标注；路由/响应模型命名对齐现有模式（如 `visual-query`、`data_sources`）。
+- 前端使用 ES modules，组件 PascalCase，hooks/utils camelCase；新增文案遵循既有排版等级。
+- 写回 DuckDB 前时间统一为 UTC（naive），参考 `TaskManager._normalize_datetime`。
 
-Follow PEP 8 in Python: four-space indents, snake_case modules, descriptive docstrings, and type hints on new public APIs. Align router names and response models with existing patterns such as `visual-query` and `data_sources`. Frontend code keeps ES modules, PascalCase React components, camelCase hooks/utilities, and Tailwind utility classes; run `npm run lint -- --fix` before review to auto-resolve stylistic issues.
+## UI / CSS / 主题
+- 仅使用 `frontend/src/styles/modern.css` 的 `--dq-*` 变量（颜色/圆角/阴影）；如需新值先增 token，再消费，不要硬编码或 `!important`。
+- 新布局容器使用 `dq-layout-*` 前缀隔离；背景/hover/active/outline 等都取自 `--dq-*`。
+- 共享组件优先：`CardSurface`、`RoundedButton`、`RoundedTextField`、`SectionHeader`；自定义前先复用。
+- 禁用原生 `alert/confirm/prompt`，使用共享对话框样式 `.dq-dialog` 或现有示例。
+- 图标：新布局/导航统一用 `lucide-react`，Sidebar/Header 避免 MUI；Logo 随主题切换 `Duckquerylogo.svg` / `duckquery-dark.svg`，禁止 `invert()`。
 
-## Testing Guidelines
-Backend tests rely on Pytest and FastAPI’s `TestClient`; add coverage under `api/tests` with `test_*.py` files and reuse fixtures from suites like `test_visual_query_api.py`. Cover success and failure paths for DuckDB ingestion, async pipelines, and validation helpers, then rerun `python -m pytest api/tests`. Frontend automation is not yet in place, so accompany UI changes with lint checks, manual verification, and screenshots, and keep shared fixtures in `api/tests/config` or `api/tests/exports`.
+## 布局与主题切换
+- 新入口可用 Tailwind + shadcn，但必须映射到 `--dq-*` CSS 变量，通过 `data-theme="light|dark"` 或类名切换；不新增零散 CSS。
+- Sidebar/Header 固定，内容区滚动；确保表格/编辑器内部滚动不被裁剪。为小屏定义最小宽度与 Sidebar 折叠策略。
 
-## Commit & Pull Request Guidelines
-History mixes Conventional Commit prefixes (`feat:`, `fix:`) with concise Chinese summaries; continue using a lowercase prefix plus a present-tense description (for example, `feat: add parquet preview caching`). Exclude generated assets, keep commits logically scoped, and document problem, solution, and verification (`pytest`, `npm run lint`, manual checks) in each PR alongside linked issues. Attach UI captures when frontend layouts shift and flag new config keys or volume changes so reviewers can sync environments.
+## 状态与入口
+- 状态集中在 `useDuckQuery`，返回 `{state, actions}`，供旧 `ShadcnApp` 与新 `DuckQueryApp` 共用；不要改 `UnifiedQueryInterface` 内部，只传 props。
+- 如后续采用状态机，先在 `useDuckQuery` 内用明确的 action/事件演进，避免一次性重写。
 
-- Every PR that changes behavior must append an entry to `docs/CHANGELOG.md`; only refresh the other docs when that change affects their scope:
-  - `README.md` highlights top-level features, positioning, and install commands—touch it when product messaging or capability headlines change.
-  - `docs/duckdb-getting-started.md` is the onboarding walkthrough—update it when the quick-start flow, setup steps, or first-use UX shifts.
-  - `docs/duckdb-integration-guide.md` covers hand-offs to BI/automation tooling—update it when integration APIs, exports, or cross-tool workflows change.
-  - Pure bugfixes and internal refactors normally only need the changelog entry.
+## 多语言
+- 新布局引入/复用 i18n provider，新文案用翻译 key，设置默认回退，避免缺 key 空白。
 
-## Security & Configuration Tips
-Secrets and connection details live in `config/` (for example `datasources.json`, `secret.key`); commit only sanitized `.example` variants. Clear sensitive artifacts from `temp_files/` before pushing. Document new DuckDB exports and confirm matching volume mounts inside `docker-compose.yml`.
+## 文档与提交
+- 行为变更必须更新 `docs/CHANGELOG.md`；仅在范围变更时改 `README.md` / 入门 / 集成指南。
+- 配置示例保持脱敏（`config/*.example`），提交前清理敏感的 `temp_files/`。
+- 提交信息用小写前缀（`feat:`、`fix:` 等）+ 现在时简述，保持变更范围清晰，不回滚用户已有或无关改动。
 
-## CSS & UI Guidelines
-- Define global visual tokens in `frontend/src/styles/modern.css` and always rely on existing `--dq-*` variables (e.g. `--dq-surface-card`, `--dq-border-card`, `--dq-radius-card`, `--dq-accent-primary`) for both light and `.dark` themes.
-- Reuse the shared components in `frontend/src/components/common/` (`CardSurface`, `RoundedButton`, `RoundedTextField`, `SectionHeader`) when building new UI to avoid ad-hoc `sx` colors or border-radii.
-- For dialogs/cards that need local theming, wrap only the affected subtree with a dedicated `ThemeProvider` so the Query Builder and other screens stay untouched.
-- Validate every styling update in both light and `.dark` modes to prevent low contrast or odd shadows; extend `modern.css` tokens first before hard-coding colors.
-- On the data source views, remove the blue `SectionHeader` dot when an adjacent SVG/icon already conveys the state, preventing duplicate visual markers.
-- Typographic scale: primary module headings 20px / semi-bold, primary tabs 18px / semi-bold, secondary tabs 16px / medium, content headings 16px or 18px / 600, body text 14px, supporting text 13px. New or updated copy should follow these levels.
-- Custom dialogs must use the shared `.dq-dialog` styles (defined in `frontend/src/styles/modern.css`) or follow the Excel sheet selector example. Avoid native `alert`/`confirm`/`prompt`; ensure padding, radius, and shadows stay consistent in both light and dark themes.
-- If any requirement or context remains unclear, ask clarifying questions instead of guessing.
+## 兼容性检查清单
+- 明/暗模式对比度、残留硬编码颜色（分页/悬浮态等）需归一到 `--dq-*`。
+- 导航图标与线条在暗色下可见；按钮/输入 hover/active/disabled 态均映射到 tokens。
+- 响应式断点与滚动表现符合预期；Logo 按主题切换。
 
-## Agent Constraints
-- Do not modify repository code unless the user explicitly instructs you to do so; when the user only asks for analysis, respond with analysis and leave the code untouched.
-- Avoid introducing `!important` in new CSS. If a legacy rule forces it, prefer refactoring the base styles instead of relying on `!important`.
-- CSS must reuse existing design tokens (`--dq-*`) whenever they fit the need. If no suitable token exists, create a reusable token (and register it in the theme/docs) before using it; never hard-code one-off values.
-- When implementing UI, prefer the official shared component first. Only fall back to a custom build if no existing component fits, then check for design tokens before adding new styles.
-- Never trigger native `alert`/`confirm`/`prompt` dialogs in the product UI; use the shared dialog component and existing design tokens for any modal or confirmation flow.
+## 代理约束
+- 未经指示不修改代码；仅分析则不动代码。
+- 避免新增 `!important`，优先复用 tokens/组件；必要的新样式先问清需求。

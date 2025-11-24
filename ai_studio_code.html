@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DuckQuery - All-in-One Dark Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+      @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap");
+
+      :root {
+        --bg-app: #09090b; /* Zinc 950 */
+        --bg-surface: #18181b; /* Zinc 900 */
+        --bg-card: #09090b; /* Zinc 950 */
+        --border: #27272a; /* Zinc 800 */
+        --primary: #f97316; /* Orange 500 */
+        --primary-fg: #ffffff;
+        --muted: #a1a1aa; /* Zinc 400 */
+      }
+
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: var(--bg-app);
+        color: #fafafa;
+        overflow: hidden; /* Prevent body scroll, handle internally */
+      }
+      .font-mono {
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #3f3f46;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #52525b;
+      }
+
+      /* Utilities */
+      .glass-panel {
+        background: rgba(24, 24, 27, 0.8);
+        backdrop-filter: blur(8px);
+      }
+      .border-b-subtle {
+        border-bottom: 1px solid var(--border);
+      }
+      .border-subtle {
+        border: 1px solid var(--border);
+      }
+
+      /* Drawer Animations */
+      .drawer-overlay {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+      }
+      .drawer-overlay.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .drawer-panel {
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      .drawer-panel.open {
+        transform: translateX(0);
+      }
+
+      /* Input Focus */
+      .duck-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 1px var(--primary);
+      }
+
+      /* Tab Animations */
+      .view-section {
+        display: none;
+        animation: fadeIn 0.3s ease;
+      }
+      .view-section.active {
+        display: flex;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      /* Chart Simulation Bars */
+      .chart-bar {
+        transition: height 0.5s ease;
+      }
+      .chart-bar:hover {
+        opacity: 0.8;
+      }
+    </style>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              background: "#09090b",
+              surface: "#18181b",
+              border: "#27272a",
+              primary: "#f97316"
+            }
+          }
+        }
+      };
+    </script>
+  </head>
+  <body class="flex h-screen w-full">
+    <!-- ============================================================================== -->
+    <!-- 1. LEFT SIDEBAR (GLOBAL NAV) -->
+    <!-- ============================================================================== -->
+    <aside
+      class="w-64 bg-surface border-r border-border flex flex-col shrink-0 z-50"
+    >
+      <!-- Logo -->
+      <div class="h-14 flex items-center gap-3 px-5 border-b border-border">
+        <div
+          class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold shadow-lg shadow-orange-900/20"
+        >
+          D
+        </div>
+        <div>
+          <div class="font-bold text-sm tracking-wide text-white">
+            DuckQuery
+          </div>
+          <div class="text-[10px] text-zinc-500 font-mono">v2.0.1 PRO</div>
+        </div>
+      </div>
+
+      <!-- Nav Links -->
+      <nav class="flex-1 p-3 space-y-1">
+        <button
+          onclick="switchGlobalView('datasource')"
+          id="nav-datasource"
+          class="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg bg-white/10 text-white transition-all"
+        >
+          <i data-lucide="database" class="w-4 h-4 text-primary"></i>
+          数据源 (Data Sources)
+        </button>
+        <button
+          onclick="switchGlobalView('query')"
+          id="nav-query"
+          class="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
+        >
+          <i data-lucide="layout-grid" class="w-4 h-4"></i>
+          统一查询 (Unified Query)
+        </button>
+        <button
+          class="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
+        >
+          <i data-lucide="table-properties" class="w-4 h-4"></i>
+          数据表管理
+        </button>
+        <button
+          class="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
+        >
+          <i data-lucide="settings" class="w-4 h-4"></i>
+          系统设置
+        </button>
+      </nav>
+
+      <!-- User Profile -->
+      <div class="p-4 border-t border-border">
+        <div
+          class="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+        >
+          <img
+            src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"
+            class="w-8 h-8 rounded-full bg-zinc-700 border border-zinc-600"
+          />
+          <div class="text-xs">
+            <div class="text-white font-medium">Admin User</div>
+            <div class="text-zinc-500">meepo@duckquery.com</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============================================================================== -->
+    <!-- 2. MAIN CONTENT AREA (VIEWS) -->
+    <!-- ============================================================================== -->
+    <main
+      class="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden"
+    >
+      <!-- ########################################## -->
+      <!-- VIEW 1: DATA SOURCES (LIST + DRAWER)       -->
+      <!-- ########################################## -->
+      <div id="view-datasource" class="view-section active flex-col h-full">
+        <!-- Header -->
+        <header
+          class="h-16 border-b border-border flex items-center justify-between px-8 bg-surface/50 backdrop-blur shrink-0"
+        >
+          <h1 class="text-lg font-semibold text-white tracking-tight">
+            数据源管理
+          </h1>
+          <button
+            onclick="openDrawer()"
+            class="flex items-center gap-2 bg-white text-black hover:bg-zinc-200 px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm"
+          >
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            新建连接
+          </button>
+        </header>
+
+        <!-- Content -->
+        <div class="flex-1 overflow-auto p-8">
+          <div
+            class="rounded-xl border border-border bg-surface overflow-hidden"
+          >
+            <table class="w-full text-left text-sm">
+              <thead
+                class="bg-white/5 text-zinc-400 font-medium border-b border-border"
+              >
+                <tr>
+                  <th class="px-6 py-4 w-16">ID</th>
+                  <th class="px-6 py-4">数据源名称</th>
+                  <th class="px-6 py-4">类型</th>
+                  <th class="px-6 py-4">连接详情</th>
+                  <th class="px-6 py-4">状态</th>
+                  <th class="px-6 py-4 text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-border text-zinc-300">
+                <!-- Row 1 -->
+                <tr class="hover:bg-white/5 transition-colors group">
+                  <td class="px-6 py-4 text-zinc-500">101</td>
+                  <td class="px-6 py-4">
+                    <div class="text-white font-medium">Production DB</div>
+                  </td>
+                  <td class="px-6 py-4 flex items-center gap-2">
+                    <i data-lucide="database" class="w-4 h-4 text-blue-400"></i>
+                    MySQL
+                  </td>
+                  <td class="px-6 py-4 text-xs text-zinc-500 font-mono">
+                    rm-bp15...rds.aliyuncs.com
+                  </td>
+                  <td class="px-6 py-4">
+                    <span
+                      class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20"
+                      >● Connected</span
+                    >
+                  </td>
+                  <td class="px-6 py-4 text-right">
+                    <button
+                      onclick="openDrawer()"
+                      class="p-2 hover:bg-white/10 rounded text-zinc-400 hover:text-white"
+                    >
+                      <i data-lucide="settings-2" class="w-4 h-4"></i>
+                    </button>
+                  </td>
+                </tr>
+                <!-- Row 2 -->
+                <tr class="hover:bg-white/5 transition-colors group">
+                  <td class="px-6 py-4 text-zinc-500">102</td>
+                  <td class="px-6 py-4">
+                    <div class="text-white font-medium">Q3 Marketing Logs</div>
+                  </td>
+                  <td class="px-6 py-4 flex items-center gap-2">
+                    <i
+                      data-lucide="file-json"
+                      class="w-4 h-4 text-yellow-500"
+                    ></i>
+                    JSON
+                  </td>
+                  <td class="px-6 py-4 text-xs text-zinc-500 font-mono">
+                    marketing_q3_final.json
+                  </td>
+                  <td class="px-6 py-4">
+                    <span
+                      class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700"
+                      >Ready</span
+                    >
+                  </td>
+                  <td class="px-6 py-4 text-right">
+                    <button
+                      class="p-2 hover:bg-white/10 rounded text-zinc-400 hover:text-white"
+                    >
+                      <i data-lucide="settings-2" class="w-4 h-4"></i>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ########################################## -->
+      <!-- VIEW 2: UNIFIED QUERY (THE IDE)            -->
+      <!-- ########################################## -->
+      <div
+        id="view-query"
+        class="view-section hidden flex-col h-full bg-background"
+      >
+        <!-- QUERY HEADER (WITH SECONDARY TABS) -->
+        <header
+          class="h-14 border-b border-border bg-surface flex items-center justify-between px-4 shrink-0"
+        >
+          <div class="flex items-center gap-6">
+            <span class="font-semibold text-white">统一查询</span>
+
+            <!-- *** 二级 Tab (Segmented Control) *** -->
+            <div
+              class="flex bg-black/40 p-1 rounded-lg h-9 border border-border"
+            >
+              <button
+                onclick="switchQueryTab('builder')"
+                id="tab-builder"
+                class="px-3 text-xs font-medium rounded-[4px] bg-zinc-700 text-white shadow-sm flex items-center gap-2 transition-all"
+              >
+                <i data-lucide="layout-template" class="w-3.5 h-3.5"></i>
+                图形化构建
+              </button>
+              <button
+                onclick="switchQueryTab('sql')"
+                id="tab-sql"
+                class="px-3 text-xs font-medium text-zinc-400 hover:text-white flex items-center gap-2 transition-all rounded-[4px]"
+              >
+                <i data-lucide="code-2" class="w-3.5 h-3.5"></i> SQL 编辑器
+              </button>
+              <button
+                onclick="switchQueryTab('dashboard')"
+                id="tab-dashboard"
+                class="px-3 text-xs font-medium text-zinc-400 hover:text-white flex items-center gap-2 transition-all rounded-[4px]"
+              >
+                <i data-lucide="bar-chart-big" class="w-3.5 h-3.5"></i> 数据看板
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button
+              class="bg-primary hover:bg-orange-600 text-white text-sm px-4 py-1.5 rounded-md font-medium flex items-center gap-2 shadow-lg shadow-orange-900/20"
+            >
+              <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> 运行
+            </button>
+          </div>
+        </header>
+
+        <!-- SUB-VIEW A: GRAPHICAL BUILDER (3-COLUMN IDE) -->
+        <div id="query-content-builder" class="flex-1 flex overflow-hidden">
+          <!-- Sidebar: Tables -->
+          <aside
+            class="w-60 border-r border-border bg-surface/50 flex flex-col shrink-0"
+          >
+            <div class="p-3 border-b border-border">
+              <input
+                type="text"
+                placeholder="搜索表..."
+                class="w-full bg-black/20 border border-border rounded px-3 py-1.5 text-xs text-white focus:border-primary outline-none"
+              />
+            </div>
+            <div class="flex-1 overflow-auto p-2 space-y-1">
+              <div
+                class="px-2 py-1 text-[10px] font-bold text-zinc-500 uppercase"
+              >
+                Tables
+              </div>
+              <div
+                class="flex items-center justify-between p-2 rounded bg-primary/10 border border-primary/20 text-primary"
+              >
+                <div class="flex items-center gap-2 text-sm font-medium">
+                  <i data-lucide="table-2" class="w-4 h-4"></i> orders
+                </div>
+              </div>
+              <button
+                class="w-full text-left px-2 py-2 rounded hover:bg-white/5 text-sm text-zinc-400 flex items-center gap-2"
+              >
+                <i data-lucide="table-2" class="w-4 h-4"></i> users
+              </button>
+              <button
+                class="w-full text-left px-2 py-2 rounded hover:bg-white/5 text-sm text-zinc-400 flex items-center gap-2"
+              >
+                <i data-lucide="table-2" class="w-4 h-4"></i> products
+              </button>
+            </div>
+          </aside>
+
+          <!-- Canvas -->
+          <div class="flex-1 flex flex-col min-w-0">
+            <!-- Config Grid -->
+            <div
+              class="h-[60%] border-b border-border bg-black/20 p-6 overflow-y-auto"
+            >
+              <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 h-full">
+                <!-- Col 1: Select -->
+                <div class="flex flex-col gap-4">
+                  <div
+                    class="rounded-xl border border-border bg-surface flex flex-col flex-1"
+                  >
+                    <div
+                      class="p-3 border-b border-border flex justify-between bg-white/5"
+                    >
+                      <span class="text-xs font-bold text-zinc-400 uppercase"
+                        >选择列 (Select)</span
+                      >
+                    </div>
+                    <div class="flex-1 p-2 space-y-1 overflow-auto">
+                      <label
+                        class="flex items-center gap-2 p-2 hover:bg-white/5 rounded cursor-pointer group bg-primary/5 border border-primary/20"
+                      >
+                        <input
+                          type="checkbox"
+                          checked
+                          class="accent-primary w-3.5 h-3.5"
+                        />
+                        <span class="text-sm text-white">order_id</span>
+                      </label>
+                      <label
+                        class="flex items-center gap-2 p-2 hover:bg-white/5 rounded cursor-pointer group bg-primary/5 border border-primary/20"
+                      >
+                        <input
+                          type="checkbox"
+                          checked
+                          class="accent-primary w-3.5 h-3.5"
+                        />
+                        <span class="text-sm text-white">amount</span>
+                      </label>
+                      <label
+                        class="flex items-center gap-2 p-2 hover:bg-white/5 rounded cursor-pointer group"
+                      >
+                        <input
+                          type="checkbox"
+                          class="accent-primary w-3.5 h-3.5"
+                        />
+                        <span
+                          class="text-sm text-zinc-400 group-hover:text-white"
+                          >created_at</span
+                        >
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Col 2: Where & Agg -->
+                <div class="flex flex-col gap-4">
+                  <div
+                    class="rounded-xl border border-border bg-surface flex flex-col h-auto"
+                  >
+                    <div
+                      class="p-3 border-b border-border flex justify-between bg-white/5"
+                    >
+                      <span class="text-xs font-bold text-zinc-400 uppercase"
+                        >筛选 (Where)</span
+                      >
+                      <i
+                        data-lucide="plus"
+                        class="w-3.5 h-3.5 text-primary cursor-pointer"
+                      ></i>
+                    </div>
+                    <div class="p-3 space-y-2">
+                      <div
+                        class="flex items-center gap-2 bg-black/30 p-2 rounded border border-border"
+                      >
+                        <span class="text-[10px] bg-zinc-700 px-1 rounded"
+                          >amount</span
+                        >
+                        <span class="text-xs text-primary">></span>
+                        <span class="text-xs text-white">100</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Col 3: Output -->
+                <div class="flex flex-col gap-4">
+                  <div
+                    class="rounded-xl border border-border bg-surface flex flex-col h-auto"
+                  >
+                    <div class="p-3 border-b border-border bg-white/5">
+                      <span class="text-xs font-bold text-zinc-400 uppercase"
+                        >排序 & Limit</span
+                      >
+                    </div>
+                    <div class="p-4 space-y-4">
+                      <div>
+                        <label class="text-xs text-zinc-500 mb-1 block"
+                          >Sort By</label
+                        >
+                        <div
+                          class="flex bg-black/20 border border-border rounded p-1"
+                        >
+                          <div class="flex-1 text-xs px-2 py-1">amount</div>
+                          <i
+                            data-lucide="arrow-down"
+                            class="w-3.5 h-3.5 text-zinc-400"
+                          ></i>
+                        </div>
+                      </div>
+                      <div>
+                        <label class="text-xs text-zinc-500 mb-1 block"
+                          >Limit</label
+                        >
+                        <select
+                          class="w-full bg-black/20 border border-border rounded text-xs py-1.5 px-2 text-white"
+                        >
+                          <option>100 rows</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- SQL Preview Bar -->
+            <div
+              class="h-8 bg-black border-y border-border flex items-center px-4 shrink-0"
+            >
+              <span class="text-[10px] text-zinc-500 font-mono mr-3"
+                >PREVIEW</span
+              >
+              <code class="text-[10px] text-zinc-300 font-mono truncate flex-1">
+                <span class="text-purple-400">SELECT</span> order_id, amount
+                <span class="text-purple-400">FROM</span> orders
+                <span class="text-purple-400">WHERE</span> amount > 100
+                <span class="text-purple-400">ORDER BY</span> amount DESC
+                <span class="text-purple-400">LIMIT</span> 100
+              </code>
+            </div>
+
+            <!-- Result Table -->
+            <div class="flex-1 bg-surface overflow-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-white/5 text-zinc-400 sticky top-0">
+                  <tr>
+                    <th class="px-4 py-2 border-b border-r border-border">#</th>
+                    <th class="px-4 py-2 border-b border-r border-border">
+                      order_id
+                    </th>
+                    <th class="px-4 py-2 border-b border-r border-border">
+                      amount
+                    </th>
+                    <th class="px-4 py-2 border-b border-border">status</th>
+                  </tr>
+                </thead>
+                <tbody class="text-zinc-300 font-mono">
+                  <tr>
+                    <td class="px-4 py-2 border-r border-border text-zinc-600">
+                      1
+                    </td>
+                    <td class="px-4 py-2 border-r border-border">ORD-001</td>
+                    <td class="px-4 py-2 border-r border-border text-green-400">
+                      450.00
+                    </td>
+                    <td class="px-4 py-2 border-border">completed</td>
+                  </tr>
+                  <tr>
+                    <td class="px-4 py-2 border-r border-border text-zinc-600">
+                      2
+                    </td>
+                    <td class="px-4 py-2 border-r border-border">ORD-002</td>
+                    <td class="px-4 py-2 border-r border-border text-green-400">
+                      120.50
+                    </td>
+                    <td class="px-4 py-2 border-border">pending</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB-VIEW B: DASHBOARD (数据看板) -->
+        <div
+          id="query-content-dashboard"
+          class="flex-1 hidden overflow-y-auto p-6 bg-black/20"
+        >
+          <div class="max-w-7xl mx-auto space-y-6">
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-4 gap-4">
+              <div class="bg-surface border border-border rounded-xl p-5">
+                <div class="text-zinc-400 text-xs font-medium uppercase mb-1">
+                  Total Revenue
+                </div>
+                <div class="text-2xl font-bold text-white">$45,231.89</div>
+                <div
+                  class="text-green-500 text-xs mt-2 flex items-center gap-1"
+                >
+                  <i data-lucide="trending-up" class="w-3 h-3"></i> +20.1%
+                </div>
+              </div>
+              <div class="bg-surface border border-border rounded-xl p-5">
+                <div class="text-zinc-400 text-xs font-medium uppercase mb-1">
+                  Orders
+                </div>
+                <div class="text-2xl font-bold text-white">1,205</div>
+                <div class="text-zinc-500 text-xs mt-2">Last 30 days</div>
+              </div>
+              <div class="bg-surface border border-border rounded-xl p-5">
+                <div class="text-zinc-400 text-xs font-medium uppercase mb-1">
+                  Avg. Order Value
+                </div>
+                <div class="text-2xl font-bold text-white">$34.50</div>
+              </div>
+              <div class="bg-surface border border-border rounded-xl p-5">
+                <div class="text-zinc-400 text-xs font-medium uppercase mb-1">
+                  Active Users
+                </div>
+                <div class="text-2xl font-bold text-white">892</div>
+              </div>
+            </div>
+
+            <!-- Main Chart Area -->
+            <div class="grid grid-cols-3 gap-6">
+              <!-- Big Chart -->
+              <div
+                class="col-span-2 bg-surface border border-border rounded-xl p-6 min-h-[300px]"
+              >
+                <div class="flex items-center justify-between mb-6">
+                  <h3 class="font-semibold text-white text-sm">
+                    Revenue Trend
+                  </h3>
+                  <div class="flex gap-2">
+                    <button
+                      class="text-xs bg-white/10 text-white px-2 py-1 rounded"
+                    >
+                      7D
+                    </button>
+                    <button
+                      class="text-xs text-zinc-500 hover:text-white px-2 py-1"
+                    >
+                      30D
+                    </button>
+                  </div>
+                </div>
+                <!-- CSS Chart Simulation -->
+                <div
+                  class="flex items-end justify-between h-[200px] gap-2 px-2 pb-2 border-b border-white/5"
+                >
+                  <div
+                    class="w-full bg-primary/20 rounded-t h-[40%] relative group cursor-pointer hover:bg-primary/40 transition-all"
+                  ></div>
+                  <div
+                    class="w-full bg-primary/20 rounded-t h-[60%] relative group cursor-pointer hover:bg-primary/40 transition-all"
+                  ></div>
+                  <div
+                    class="w-full bg-primary/20 rounded-t h-[45%] relative group cursor-pointer hover:bg-primary/40 transition-all"
+                  ></div>
+                  <div
+                    class="w-full bg-primary/20 rounded-t h-[80%] relative group cursor-pointer hover:bg-primary/40 transition-all"
+                  ></div>
+                  <div
+                    class="w-full bg-primary/20 rounded-t h-[55%] relative group cursor-pointer hover:bg-primary/40 transition-all"
+                  ></div>
+                  <div
+                    class="w-full bg-primary/20 rounded-t h-[70%] relative group cursor-pointer hover:bg-primary/40 transition-all"
+                  ></div>
+                  <div
+                    class="w-full bg-primary rounded-t h-[90%] relative group cursor-pointer shadow-[0_0_15px_rgba(249,115,22,0.5)]"
+                  ></div>
+                </div>
+                <div
+                  class="flex justify-between mt-2 text-[10px] text-zinc-500 font-mono"
+                >
+                  <span>Mon</span><span>Tue</span><span>Wed</span
+                  ><span>Thu</span><span>Fri</span><span>Sat</span
+                  ><span>Sun</span>
+                </div>
+              </div>
+
+              <!-- Pie Chart / List -->
+              <div
+                class="col-span-1 bg-surface border border-border rounded-xl p-6"
+              >
+                <h3 class="font-semibold text-white text-sm mb-4">
+                  Top Products
+                </h3>
+                <div class="space-y-4">
+                  <div class="flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                      <div class="w-2 h-2 rounded-full bg-blue-500"></div>
+                      <span class="text-zinc-300">Pro License</span>
+                    </div>
+                    <span class="text-white font-mono">45%</span>
+                  </div>
+                  <div class="w-full bg-white/5 rounded-full h-1.5">
+                    <div
+                      class="bg-blue-500 h-1.5 rounded-full"
+                      style="width: 45%"
+                    ></div>
+                  </div>
+
+                  <div class="flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                      <div class="w-2 h-2 rounded-full bg-purple-500"></div>
+                      <span class="text-zinc-300">Team Plan</span>
+                    </div>
+                    <span class="text-white font-mono">30%</span>
+                  </div>
+                  <div class="w-full bg-white/5 rounded-full h-1.5">
+                    <div
+                      class="bg-purple-500 h-1.5 rounded-full"
+                      style="width: 30%"
+                    ></div>
+                  </div>
+
+                  <div class="flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                      <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                      <span class="text-zinc-300">Enterprise</span>
+                    </div>
+                    <span class="text-white font-mono">25%</span>
+                  </div>
+                  <div class="w-full bg-white/5 rounded-full h-1.5">
+                    <div
+                      class="bg-green-500 h-1.5 rounded-full"
+                      style="width: 25%"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============================================================================== -->
+    <!-- 3. GLOBAL DRAWER (FOR DATA SOURCE) -->
+    <!-- ============================================================================== -->
+    <div
+      id="drawer-overlay"
+      onclick="closeDrawer()"
+      class="drawer-overlay fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
+    ></div>
+    <div
+      id="drawer-panel"
+      class="drawer-panel fixed inset-y-0 right-0 z-[70] w-full sm:w-[600px] bg-surface border-l border-border shadow-2xl flex flex-col"
+    >
+      <!-- Drawer Header -->
+      <div
+        class="px-6 py-5 border-b border-border flex items-center justify-between bg-surface"
+      >
+        <h2 class="text-lg font-semibold text-white">Add Data Source</h2>
+        <button onclick="closeDrawer()" class="text-zinc-500 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <!-- Drawer Content -->
+      <div class="flex-1 overflow-y-auto p-6">
+        <!-- Level 1 Tabs -->
+        <div class="bg-black/40 p-1 rounded-lg flex mb-8 border border-border">
+          <button
+            onclick="setDrawerTab('file')"
+            id="btn-file"
+            class="flex-1 py-2 text-sm font-medium rounded-md text-white bg-surface shadow-sm border border-border/50 transition-all"
+          >
+            File Upload
+          </button>
+          <button
+            onclick="setDrawerTab('db')"
+            id="btn-db"
+            class="flex-1 py-2 text-sm font-medium rounded-md text-zinc-500 hover:text-white transition-all"
+          >
+            Database
+          </button>
+        </div>
+        <!-- File Panel -->
+        <div id="panel-file" class="block space-y-6">
+          <!-- Level 2 Tabs -->
+          <div class="border-b border-border flex gap-6 mb-6">
+            <button
+              class="pb-2 text-sm font-medium text-primary border-b-2 border-primary"
+            >
+              Local File
+            </button>
+            <button
+              class="pb-2 text-sm font-medium text-zinc-500 hover:text-white border-b-2 border-transparent"
+            >
+              Remote URL
+            </button>
+          </div>
+          <div
+            class="border border-dashed border-zinc-700 rounded-xl bg-white/5 p-12 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-white/10 hover:border-zinc-500 transition-all"
+          >
+            <i
+              data-lucide="upload-cloud"
+              class="w-8 h-8 text-zinc-500 mb-4"
+            ></i>
+            <p class="text-white font-medium">Drag & Drop files here</p>
+            <p class="text-xs text-zinc-500 mt-2">
+              CSV, JSON, Parquet (Max 500MB)
+            </p>
+          </div>
+        </div>
+        <!-- DB Panel (Hidden) -->
+        <div id="panel-db" class="hidden space-y-6">
+          <!-- Level 2 Tabs -->
+          <div class="border-b border-border flex gap-6 mb-6">
+            <button
+              class="pb-2 text-sm font-medium text-primary border-b-2 border-primary"
+            >
+              MySQL
+            </button>
+            <button
+              class="pb-2 text-sm font-medium text-zinc-500 hover:text-white border-b-2 border-transparent"
+            >
+              PostgreSQL
+            </button>
+          </div>
+          <div class="space-y-4">
+            <div class="space-y-1">
+              <label class="text-xs uppercase text-zinc-500 font-bold"
+                >Host</label
+              ><input
+                type="text"
+                value="localhost"
+                class="duck-input w-full bg-background border border-border rounded px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs uppercase text-zinc-500 font-bold"
+                >User</label
+              ><input
+                type="text"
+                value="root"
+                class="duck-input w-full bg-background border border-border rounded px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs uppercase text-zinc-500 font-bold"
+                >Password</label
+              ><input
+                type="password"
+                value="••••••"
+                class="duck-input w-full bg-background border border-border rounded px-3 py-2 text-sm text-white"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Drawer Footer -->
+      <div class="p-6 border-t border-border flex justify-end gap-3 bg-surface">
+        <button
+          onclick="closeDrawer()"
+          class="px-4 py-2 rounded-md text-sm text-zinc-400 hover:text-white hover:bg-white/5"
+        >
+          Cancel
+        </button>
+        <button
+          class="px-6 py-2 rounded-md text-sm font-medium bg-primary text-white hover:bg-orange-600 shadow-lg shadow-orange-900/20"
+        >
+          Connect
+        </button>
+      </div>
+    </div>
+
+    <!-- ============================================================================== -->
+    <!-- LOGIC SCRIPTS -->
+    <!-- ============================================================================== -->
+    <script>
+      lucide.createIcons();
+
+      // 1. Global View Switcher (Sidebar)
+      function switchGlobalView(viewName) {
+        // Hide all views
+        document.querySelectorAll(".view-section").forEach(el => {
+          el.classList.remove("active");
+          el.classList.add("hidden");
+        });
+        // Show target view
+        const target = document.getElementById("view-" + viewName);
+        target.classList.remove("hidden");
+        // Little timeout to trigger flex display before opacity animation
+        setTimeout(() => target.classList.add("active"), 10);
+
+        // Update Sidebar Active State
+        const navData = document.getElementById("nav-datasource");
+        const navQuery = document.getElementById("nav-query");
+
+        if (viewName === "datasource") {
+          navData.classList.replace("text-zinc-400", "text-white");
+          navData.classList.add("bg-white/10");
+          navQuery.classList.replace("text-white", "text-zinc-400");
+          navQuery.classList.remove("bg-white/10");
+        } else {
+          navQuery.classList.replace("text-zinc-400", "text-white");
+          navQuery.classList.add("bg-white/10");
+          navData.classList.replace("text-white", "text-zinc-400");
+          navData.classList.remove("bg-white/10");
+        }
+      }
+
+      // 2. Query Tab Switcher (Builder vs Dashboard)
+      function switchQueryTab(tabName) {
+        const contentBuilder = document.getElementById("query-content-builder");
+        const contentDashboard = document.getElementById(
+          "query-content-dashboard"
+        );
+        const tabBuilder = document.getElementById("tab-builder");
+        const tabDashboard = document.getElementById("tab-dashboard");
+        const tabSql = document.getElementById("tab-sql");
+
+        // Reset styles
+        [tabBuilder, tabDashboard, tabSql].forEach(btn => {
+          btn.classList.remove("bg-zinc-700", "text-white", "shadow-sm");
+          btn.classList.add("text-zinc-400");
+        });
+
+        // Hide Contents
+        contentBuilder.classList.add("hidden");
+        contentDashboard.classList.add("hidden");
+
+        // Apply Active
+        const activeBtn = document.getElementById("tab-" + tabName);
+        activeBtn.classList.add("bg-zinc-700", "text-white", "shadow-sm");
+        activeBtn.classList.remove("text-zinc-400");
+
+        if (tabName === "builder" || tabName === "sql") {
+          // SQL shares builder layout for demo
+          contentBuilder.classList.remove("hidden");
+        } else {
+          contentDashboard.classList.remove("hidden");
+        }
+      }
+
+      // 3. Drawer Logic
+      function openDrawer() {
+        document.getElementById("drawer-overlay").classList.add("open");
+        document.getElementById("drawer-panel").classList.add("open");
+      }
+      function closeDrawer() {
+        document.getElementById("drawer-overlay").classList.remove("open");
+        document.getElementById("drawer-panel").classList.remove("open");
+      }
+      function setDrawerTab(type) {
+        const pFile = document.getElementById("panel-file");
+        const pDb = document.getElementById("panel-db");
+        const bFile = document.getElementById("btn-file");
+        const bDb = document.getElementById("btn-db");
+
+        if (type === "file") {
+          pFile.classList.remove("hidden");
+          pDb.classList.add("hidden");
+          bFile.classList.add(
+            "bg-surface",
+            "text-white",
+            "shadow-sm",
+            "border",
+            "border-border/50"
+          );
+          bFile.classList.remove("text-zinc-500");
+          bDb.classList.remove(
+            "bg-surface",
+            "text-white",
+            "shadow-sm",
+            "border",
+            "border-border/50"
+          );
+          bDb.classList.add("text-zinc-500");
+        } else {
+          pDb.classList.remove("hidden");
+          pFile.classList.add("hidden");
+          bDb.classList.add(
+            "bg-surface",
+            "text-white",
+            "shadow-sm",
+            "border",
+            "border-border/50"
+          );
+          bDb.classList.remove("text-zinc-500");
+          bFile.classList.remove(
+            "bg-surface",
+            "text-white",
+            "shadow-sm",
+            "border",
+            "border-border/50"
+          );
+          bFile.classList.add("text-zinc-500");
+        }
+      }
+    </script>
+  </body>
+</html>

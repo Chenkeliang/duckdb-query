@@ -10,6 +10,7 @@
 -   **容器隔离 (Container Isolation)**：新布局作为容器，不侵入现有业务组件内部。
 -   **样式复用 (Style Reuse)**：严格使用 `modern.css` 中定义的 CSS 变量（如 `--dq-background`, `--dq-accent-primary`），禁止硬编码颜色。
 -   **渐进式迁移 (Progressive Migration)**：先通过布局组件包裹现有逻辑，后续再逐步拆分路由。
+-   **主题规范化 (Theming Discipline)**：暗/亮模式和未来主题只通过 CSS 变量切换，不再引入任何硬编码颜色或一次性覆盖。
 
 ## 3. 视觉设计规范 (Visual Design System)
 
@@ -117,13 +118,29 @@ graph TD
 2.  **路由/Tab 处理**:
     -   **一级导航 (Sidebar)**: 对应 `currentTab` 状态 (Visual Query, SQL Editor, Data Sources)。
     -   **二级导航 (In-Page)**: `UnifiedQueryInterface` 内部的 Tabs 保持不变，由组件内部管理。
+    -   **UI 技术栈**: 新入口的骨架层使用 Tailwind + shadcn 组合实现，组件样式依然消费 `modern.css` 的 `--dq-*` 变量（通过 Tailwind 主题映射），避免新增自定义 CSS；业务组件保持不变。
 
 ### 阶段三：切换与清理 (Switch & Cleanup)
 1.  **切换入口**: 修改 `frontend/src/main.jsx`，将渲染组件从 `ShadcnApp` 改为 `DuckQueryApp`。
 2.  **灰度测试**: 在本地和测试环境验证 V2 版本。
 3.  **清理**: 确认 V2 稳定后，删除 `ShadcnApp.jsx`。
 
+## 5. 技术栈迁移与项目约束 (Tailwind + shadcn 兼容 modern.css)
+-   **现代骨架隔离**：旧骨架与 `modern.css` 不改动；新入口 `DuckQueryApp` 使用 Tailwind/shadcn 构建布局骨架（MainLayout/Sidebar/Header），仅在容器层包裹现有业务组件。
+-   **主题映射**：在 Tailwind 主题配置中将颜色/圆角/阴影映射到 `--dq-*` 变量，通过 `data-theme="light|dark"` 或类名切换，沿用现有主题切换逻辑；未来新增主题只需要新增同名变量集，无需改组件。
+-   **样式约束**：禁止新增零散自定义 CSS；如需局部样式，用 Tailwind 原子类或 shadcn tokens，并保持 `dq-layout-*` 前缀的自定义类名仅作用于新布局容器。
+-   **图标一致**：新骨架中的导航/按钮仅使用 `lucide-react`，与旧区域保持资源统一。
+-   **国际化**：新入口引入 i18n Provider（复用或新增），Sidebar/Header 文案用文案 key（例如 `nav.visualQuery`），默认语言回退保持现有显示；业务组件逐步接入，不影响旧入口。
+-   **状态共享**：`useDuckQuery` 作为唯一状态来源，供旧入口和新入口共用，避免功能差异。
+
 ## 6. 风险控制 (Risk Control)
 -   **样式冲突**: 新布局组件使用 `dq-layout-*` 前缀，不与 `modern.css` 全局样式冲突。
 -   **状态丢失**: 通过 `useDuckQuery` 统一管理状态，确保 V1 和 V2 共享同一套状态逻辑，切换视图不会导致数据逻辑改变。
 -   **组件黑盒**: 严禁修改 `UnifiedQueryInterface` 等复杂业务组件的内部代码，只通过 Props 传递数据。
+-   **主题一致性**: 确认 Tailwind/shadcn 的 `data-theme` 与现有主题切换一致；补齐残留硬编码颜色（分页/悬浮态等）到 `--dq-*`，避免暗/亮模式分叉。
+-   **滚动/溢出**: Sidebar/Header 固定，内容区滚动；校验表格/编辑器内部滚动不被父容器裁剪。
+-   **响应式**: 为新骨架定义断点（最小宽度、Sidebar 折叠）以避免小屏冲突。
+-   **图标统一**: 新骨架替换任何 MUI 图标为 `lucide-react`，并校验暗色模式线条对比度。
+-   **控件态**: 按钮/输入的 hover/active/disabled 态均映射 `--dq-*`，清理内联硬编码颜色。
+-   **i18n 兜底**: Header/Sidebar 文案使用翻译 key，设置默认回退，避免缺失 key 出现空白。
+-   **品牌资源**: Logo 按 `isDarkMode` 切换，禁止使用 `invert()` 等变通方案。
