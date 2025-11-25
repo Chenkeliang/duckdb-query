@@ -77,7 +77,7 @@ const DataSourceList = ({
       const response = await deleteDatabaseConnection(connectionId);
 
       if (response.success) {
-        showSuccess(t("datasource.list.deleteSuccess"));
+        showSuccess(t("page.datasource.list.deleteSuccess"));
         // 关闭对话框
         setDeleteDialog({ open: false, item: null, type: null });
         // 刷新数据
@@ -86,11 +86,11 @@ const DataSourceList = ({
         }
       } else {
         showError(
-          t("datasource.list.deleteFail", { message: response.message })
+          t("page.datasource.list.deleteFail", { message: response.message })
         );
       }
     } catch (err) {
-      showError(t("datasource.list.deleteFail", { message: err.message }));
+      showError(t("page.datasource.list.deleteFail", { message: err.message }));
     } finally {
       setLoading(false);
     }
@@ -108,9 +108,9 @@ const DataSourceList = ({
       setRefreshingId(connection.id);
       const response = await refreshDatabaseConnection(connection.id);
       if (response?.success) {
-        showSuccess(response?.message || t("datasource.list.testSuccess"));
+        showSuccess(response?.message || t("page.datasource.list.testSuccess"));
       } else {
-        showError(response?.message || t("datasource.list.testFail"));
+        showError(response?.message || t("page.datasource.list.testFail"));
       }
       if (onRefresh) {
         onRefresh();
@@ -119,7 +119,7 @@ const DataSourceList = ({
       const message =
         err?.response?.data?.detail?.message ||
         err?.message ||
-        t("datasource.list.testFail");
+        t("page.datasource.list.testFail");
       showError(message);
     } finally {
       setRefreshingId(null);
@@ -134,8 +134,8 @@ const DataSourceList = ({
         sx={{ borderColor: "var(--dq-border-card)", mb: 3 }}
       >
         <SectionHeader
-          title={t("datasource.list.title")}
-          subtitle={t("datasource.list.subtitle", {
+          title={t("page.datasource.list.title")}
+          subtitle={t("page.datasource.list.subtitle", {
             count: effectiveDatabases.length
           })}
         />
@@ -152,7 +152,7 @@ const DataSourceList = ({
                 color: "var(--dq-text-tertiary)"
               }}
             >
-              {t("datasource.list.empty")}
+              {t("page.datasource.list.empty")}
             </Box>
           ) : (
             <List sx={{ p: 0 }}>
@@ -180,7 +180,7 @@ const DataSourceList = ({
                         }}
                       >
                         {db.name ||
-                          t("datasource.list.defaultName", { type: db.type })}
+                          t("page.datasource.list.defaultName", { type: db.type })}
                       </Typography>
                     }
                     secondary={
@@ -205,7 +205,7 @@ const DataSourceList = ({
                   />
                   <ListItemSecondaryAction>
                     <Box sx={{ display: "flex", gap: 0.5 }}>
-                      <Tooltip title={t("datasource.list.retry")}>
+                      <Tooltip title={t("page.datasource.list.retry")}>
                         <span>
                           <IconButton
                             onClick={() => handleRefresh(db)}
@@ -226,7 +226,7 @@ const DataSourceList = ({
                           </IconButton>
                         </span>
                       </Tooltip>
-                      <Tooltip title={t("datasource.list.delete")}>
+                      <Tooltip title={t("page.datasource.list.delete")}>
                         <span>
                           <IconButton
                             onClick={() => handleDelete(db, "database")}
@@ -255,12 +255,12 @@ const DataSourceList = ({
         open={deleteDialog.open}
         onClose={() => setDeleteDialog({ open: false, item: null, type: null })}
       >
-        <DialogTitle>{t("datasource.list.deleteConfirmTitle")}</DialogTitle>
+        <DialogTitle>{t("page.datasource.list.deleteConfirmTitle")}</DialogTitle>
         <DialogContent>
-          {t("datasource.list.deleteConfirmDesc")}
+          {t("page.datasource.list.deleteConfirmDesc")}
           <br />
           <strong>
-            {deleteDialog.item?.name || t("datasource.list.unnamed")}
+            {deleteDialog.item?.name || t("page.datasource.list.unnamed")}
           </strong>
         </DialogContent>
         <DialogActions>

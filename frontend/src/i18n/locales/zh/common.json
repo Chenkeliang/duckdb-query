@@ -88,80 +88,112 @@
       "uploadFailDetail": "文件上传失败: {{message}}",
       "unsupportedType": "该文件类型暂不支持，请选择 CSV/Excel/Parquet/JSON 文件",
       "successToast": "文件上传成功！",
-      "serverNotExists": "(目录不存在)"
-    },
-    "datasource.paste": {
-      "title": "数据粘贴导入",
-      "subtitle": "支持 CSV、TSV 等格式数据，系统将自动识别分隔符和数据类型",
-      "placeholder": "在此粘贴您的数据...\n\n支持格式：\n• CSV: 1,张三,技术部,8000,2023-01-15\n• TSV: 1\t张三\t技术部\t8000\t2023-01-15\n• 带引号: \"1\",\"张三\",\"技术部\",\"8000\",\"2023-01-15\"\n\n系统将自动识别分隔符和数据类型",
-      "btnParse": "智能解析",
-      "btnClear": "清空",
-      "delimiter": "分隔符",
-      "delimiterComma": "逗号 (,)",
-      "delimiterTab": "制表符 (Tab)",
-      "delimiterPipe": "竖线 (|)",
-      "delimiterSemicolon": "分号 (;)",
-      "delimiterSpace": "空格",
-      "types": {
-        "text": "文本",
-        "int": "整数",
-        "float": "小数",
-        "date": "日期",
-        "bool": "布尔值"
+      "paste": {
+        "title": "数据粘贴导入",
+        "subtitle": "支持 CSV、TSV 等格式数据，系统将自动识别分隔符和数据类型",
+        "placeholder": "在此粘贴您的数据...\n\n支持格式：\n• CSV: 1,张三,技术部,8000,2023-01-15\n• TSV: 1\t张三\t技术部\t8000\t2023-01-15\n• 带引号: \"1\",\"张三\",\"技术部\",\"8000\",\"2023-01-15\"\n\n系统将自动识别分隔符和数据类型",
+        "btnParse": "智能解析",
+        "btnClear": "清空",
+        "delimiter": "分隔符",
+        "delimiterComma": "逗号 (,)",
+        "delimiterTab": "制表符 (Tab)",
+        "delimiterPipe": "竖线 (|)",
+        "delimiterSemicolon": "分号 (;)",
+        "delimiterSpace": "空格",
+        "types": {
+          "text": "文本",
+          "int": "整数",
+          "float": "小数",
+          "date": "日期",
+          "bool": "布尔值"
+        },
+        "tableName": "表名",
+        "tableNamePlaceholder": "例如：产品价格表、用户数据、订单信息等",
+        "tableNameHelper": "建议使用有意义的中文名称，便于后续查询和管理",
+        "previewTitle": "数据预览和配置",
+        "previewSubtitle": "确认列信息后保存至 DuckDB",
+        "rows": "{{count}} 行",
+        "cols": "{{count}} 列",
+        "unifyAsString": "统一为文本类型（推荐用于关联查询）",
+        "unifyAsStringDesc": "将所有列设置为文本类型，避免数据类型不匹配导致的关联查询问题",
+        "columnConfig": "列配置",
+        "columnName": "列 {{index}} 名称",
+        "type": "类型",
+        "previewData": "数据预览（前 5 行）",
+        "parseSuccess": "成功解析 {{rows}} 行 {{cols}} 列数据",
+        "parseFail": "数据解析失败: {{message}}",
+        "defaultName": "粘贴数据_{{timestamp}}",
+        "error": {
+          "noData": "请粘贴数据内容",
+          "noValid": "没有检测到有效数据",
+          "noConsistent": "没有找到格式一致的数据行"
+        },
+        "save": {
+          "saveBtn": "保存到数据库",
+          "saving": "保存中...",
+          "saveOk": "数据已成功保存到表: {{table}}",
+          "saveFail": "数据保存失败",
+          "saveFailDetail": "数据保存失败: {{message}}",
+          "needParse": "请先解析数据并设置表名",
+          "needColumns": "所有列名都必须填写"
+        },
+        "actions": {
+          "selectAll": "全选",
+          "selectNone": "全不选"
+        },
+        "sheetInfo": {
+          "rows": "行数 {{rows}} · 列数 {{cols}}",
+          "target": "目标：{{table}}"
+        }
       },
-      "tableName": "表名",
-      "tableNamePlaceholder": "例如：产品价格表、用户数据、订单信息等",
-      "tableNameHelper": "建议使用有意义的中文名称，便于后续查询和管理",
-      "previewTitle": "数据预览和配置",
-      "previewSubtitle": "确认列信息后保存至 DuckDB",
-      "rows": "{{count}} 行",
-      "cols": "{{count}} 列",
-      "unifyAsString": "统一为文本类型（推荐用于关联查询）",
-      "unifyAsStringDesc": "将所有列设置为文本类型，避免数据类型不匹配导致的关联查询问题",
-      "columnConfig": "列配置",
-      "columnName": "列 {{index}} 名称",
-      "type": "类型",
-      "previewData": "数据预览（前 5 行）",
-      "parseSuccess": "成功解析 {{rows}} 行 {{cols}} 列数据",
-      "parseFail": "数据解析失败: {{message}}",
-      "save": {
-        "saveBtn": "保存到数据库",
+      "connection": {
+        "title": "添加数据库连接",
+        "type": "数据库类型",
+        "name": "连接名称",
+        "namePlaceholder": "例如: 生产环境MySQL",
+        "host": "主机地址",
+        "port": "端口",
+        "database": "数据库名称",
+        "sqlitePath": "数据库文件路径",
+        "databasePlaceholder": "database_name",
+        "sqlitePlaceholder": "/path/to/database.db",
+        "username": "用户名",
+        "password": "密码",
+        "test": "测试连接",
+        "testing": "测试中...",
+        "save": "保存连接",
         "saving": "保存中...",
-        "saveOk": "数据已成功保存到表: {{table}}",
-        "saveFail": "数据保存失败",
-        "saveFailDetail": "数据保存失败: {{message}}",
-        "needParse": "请先解析数据并设置表名",
-        "needColumns": "所有列名都必须填写"
+        "errorTest": "连接测试失败: {{message}}",
+        "errorName": "请输入连接名称",
+        "errorSave": "保存连接失败: {{message}}",
+        "errorUnknown": "未知错误",
+        "dbTypes": {
+          "mysql": "MySQL",
+          "postgresql": "PostgreSQL",
+          "sqlite": "SQLite"
+        }
       },
-      "actions": {
-        "selectAll": "全选",
-        "selectNone": "全不选"
+      "manage": {
+        "title": "数据源管理",
+        "uploadedTitle": "已上传数据源",
+        "fetchFail": "获取数据源列表失败",
+        "saveSuccess": "数据源保存成功"
       },
-      "sheetInfo": {
-        "rows": "行数 {{rows}} · 列数 {{cols}}",
-        "target": "目标：{{table}}"
+      "list": {
+        "title": "数据源列表",
+        "subtitle": "数据库连接（{{count}}）",
+        "empty": "暂无数据库连接",
+        "retry": "重新测试连接",
+        "delete": "删除连接",
+        "deleteSuccess": "数据库连接删除成功",
+        "deleteFail": "删除失败: {{message}}",
+        "testSuccess": "连接测试成功",
+        "testFail": "连接测试失败",
+        "deleteConfirmTitle": "确认删除",
+        "deleteConfirmDesc": "确定要删除这个数据库连接吗？",
+        "unnamed": "未命名连接",
+        "defaultName": "{{type}} 连接"
       }
-    },
-    "datasource.manage": {
-      "title": "数据源管理",
-      "uploadedTitle": "已上传数据源",
-      "fetchFail": "获取数据源列表失败",
-      "saveSuccess": "数据源保存成功"
-    },
-    "datasource.list": {
-      "title": "数据源列表",
-      "subtitle": "数据库连接（{{count}}）",
-      "empty": "暂无数据库连接",
-      "retry": "重新测试连接",
-      "delete": "删除连接",
-      "deleteSuccess": "数据库连接删除成功",
-      "deleteFail": "删除失败: {{message}}",
-      "testSuccess": "连接测试成功",
-      "testFail": "连接测试失败",
-      "deleteConfirmTitle": "确认删除",
-      "deleteConfirmDesc": "确定要删除这个数据库连接吗？",
-      "unnamed": "未命名连接",
-      "defaultName": "{{type}} 连接"
     },
     "unifiedquery": {
       "intro1": "图形化查询：像用Excel筛选+排序一样，一键选字段、加条件、排结果（无需写SQL），生成数据分析结果",

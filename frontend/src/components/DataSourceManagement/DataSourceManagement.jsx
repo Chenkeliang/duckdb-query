@@ -31,7 +31,7 @@ const DataSourceManagement = ({ onDataSaved }) => {
         : [];
       setDuckdbTables(tableNames);
     } catch (err) {
-      showNotification(t("datasource.manage.fetchFail"), "error");
+      showNotification(t("page.datasource.manage.fetchFail"), "error");
     }
   };
 
@@ -52,7 +52,7 @@ const DataSourceManagement = ({ onDataSaved }) => {
     if (onDataSaved) {
       onDataSaved(newSource);
     }
-    showNotification(t("datasource.manage.saveSuccess"), "success");
+    showNotification(t("page.datasource.manage.saveSuccess"), "success");
   };
 
   return (
@@ -61,7 +61,7 @@ const DataSourceManagement = ({ onDataSaved }) => {
         <CardContent>
           <Typography variant="h6" gutterBottom>
             <FolderOpen size={20} style={{ marginRight: "8px" }} />
-            {t("datasource.manage.title")}
+            {t("page.datasource.manage.title")}
           </Typography>
 
           <DataUploadSection
@@ -75,7 +75,7 @@ const DataSourceManagement = ({ onDataSaved }) => {
         <CardContent>
           <Typography variant="h6" gutterBottom>
             <Database size={20} style={{ marginRight: "8px" }} />
-            {t("datasource.manage.uploadedTitle")}
+            {t("page.datasource.manage.uploadedTitle")}
           </Typography>
           <DataSourceList
             duckdbTables={duckdbTables}

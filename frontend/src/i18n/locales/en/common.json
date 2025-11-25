@@ -87,28 +87,112 @@
       "uploadFailDetail": "Upload failed: {{message}}",
       "unsupportedType": "Unsupported file type, please choose CSV/Excel/Parquet/JSON",
       "successToast": "File uploaded successfully!",
-      "serverNotExists": "(Not found)"
-    },
-    "datasource.manage": {
-      "title": "Data Sources",
-      "uploadedTitle": "Uploaded sources",
-      "fetchFail": "Failed to fetch data sources",
-      "saveSuccess": "Data source saved"
-    },
-    "datasource.list": {
-      "title": "Data source list",
-      "subtitle": "DB connections ({{count}})",
-      "empty": "No database connections",
-      "retry": "Retest connection",
-      "delete": "Delete connection",
-      "deleteSuccess": "Connection deleted",
-      "deleteFail": "Delete failed: {{message}}",
-      "testSuccess": "Connection test passed",
-      "testFail": "Connection test failed",
-      "deleteConfirmTitle": "Confirm delete",
-      "deleteConfirmDesc": "Are you sure you want to delete this DB connection?",
-      "unnamed": "Unnamed connection",
-      "defaultName": "{{type}} connection"
+      "paste": {
+        "title": "Paste data import",
+        "subtitle": "Supports CSV, TSV and similar data; auto-detect delimiter and data types",
+        "placeholder": "Paste your data here...\n\nFormats:\n• CSV: 1,John,Tech,8000,2023-01-15\n• TSV: 1\tJohn\tTech\t8000\t2023-01-15\n• Quoted: \"1\",\"John\",\"Tech\",\"8000\",\"2023-01-15\"\n\nThe system will auto-detect delimiter and data types",
+        "btnParse": "Smart parse",
+        "btnClear": "Clear",
+        "delimiter": "Delimiter",
+        "delimiterComma": "Comma (,)",
+        "delimiterTab": "Tab",
+        "delimiterPipe": "Pipe (|)",
+        "delimiterSemicolon": "Semicolon (;)",
+        "delimiterSpace": "Space",
+        "types": {
+          "text": "Text",
+          "int": "Integer",
+          "float": "Decimal",
+          "date": "Date",
+          "bool": "Boolean"
+        },
+        "tableName": "Table name",
+        "tableNamePlaceholder": "e.g. product_prices, user_data, order_info",
+        "tableNameHelper": "Use a meaningful name to make queries easier later",
+        "previewTitle": "Data preview & setup",
+        "previewSubtitle": "Confirm columns before saving to DuckDB",
+        "rows": "{{count}} rows",
+        "cols": "{{count}} cols",
+        "unifyAsString": "Force text type (recommended for joins)",
+        "unifyAsStringDesc": "Set all columns to text to avoid type mismatch when joining",
+        "columnConfig": "Column config",
+        "columnName": "Column {{index}} name",
+        "type": "Type",
+        "previewData": "Data preview (first 5 rows)",
+        "parseSuccess": "Parsed {{rows}} rows and {{cols}} columns",
+        "parseFail": "Parse failed: {{message}}",
+        "defaultName": "pasted_data_{{timestamp}}",
+        "error": {
+          "noData": "Please paste data",
+          "noValid": "No valid data detected",
+          "noConsistent": "No rows with consistent column count found"
+        },
+        "save": {
+          "saveBtn": "Save to database",
+          "saving": "Saving...",
+          "saveOk": "Saved to table: {{table}}",
+          "saveFail": "Save failed",
+          "saveFailDetail": "Save failed: {{message}}",
+          "needParse": "Please parse data and set table name first",
+          "needColumns": "All column names are required"
+        },
+        "actions": {
+          "selectAll": "Select all",
+          "selectNone": "Select none"
+        },
+        "sheetInfo": {
+          "rows": "Rows {{rows}} · Cols {{cols}}",
+          "target": "Target: {{table}}"
+        }
+      },
+      "connection": {
+        "title": "Add database connection",
+        "type": "Database type",
+        "name": "Connection name",
+        "namePlaceholder": "e.g. Production MySQL",
+        "host": "Host",
+        "port": "Port",
+        "database": "Database name",
+        "sqlitePath": "Database file path",
+        "databasePlaceholder": "database_name",
+        "sqlitePlaceholder": "/path/to/database.db",
+        "username": "Username",
+        "password": "Password",
+        "test": "Test connection",
+        "testing": "Testing...",
+        "save": "Save connection",
+        "saving": "Saving...",
+        "errorTest": "Connection test failed: {{message}}",
+        "errorName": "Please enter a connection name",
+        "errorSave": "Failed to save connection: {{message}}",
+        "errorUnknown": "Unknown error",
+        "dbTypes": {
+          "mysql": "MySQL",
+          "postgresql": "PostgreSQL",
+          "sqlite": "SQLite"
+        }
+      },
+      "manage": {
+        "title": "Data Sources",
+        "uploadedTitle": "Uploaded sources",
+        "fetchFail": "Failed to fetch data sources",
+        "saveSuccess": "Data source saved"
+      },
+      "list": {
+        "title": "Data source list",
+        "subtitle": "DB connections ({{count}})",
+        "empty": "No database connections",
+        "retry": "Retest connection",
+        "delete": "Delete connection",
+        "deleteSuccess": "Connection deleted",
+        "deleteFail": "Delete failed: {{message}}",
+        "testSuccess": "Connection test passed",
+        "testFail": "Connection test failed",
+        "deleteConfirmTitle": "Confirm delete",
+        "deleteConfirmDesc": "Are you sure you want to delete this DB connection?",
+        "unnamed": "Unnamed connection",
+        "defaultName": "{{type}} connection"
+      }
     },
     "unifiedquery": {
       "intro1": "Visual query: Excel-like filter/sort without SQL, pick fields/conditions to get results.",

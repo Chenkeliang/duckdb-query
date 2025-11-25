@@ -20,10 +20,13 @@
 - 共享组件优先：`CardSurface`、`RoundedButton`、`RoundedTextField`、`SectionHeader`；自定义前先复用。
 - 禁用原生 `alert/confirm/prompt`，使用共享对话框样式 `.dq-dialog` 或现有示例。
 - 图标：新布局/导航统一用 `lucide-react`，Sidebar/Header 避免 MUI；Logo 随主题切换 `Duckquerylogo.svg` / `duckquery-dark.svg`，禁止 `invert()`。
+- 若使用 shadcn + Tailwind：Tailwind 主题必须映射到 `--dq-*`，禁止硬编码色值；shadcn 组件需通过 className 覆盖到 tokens，保持视觉不变（含 hover/active/disabled/阴影/圆角/行高）。
+- 弹窗/抽屉/Popover 等对话交互统一用 shadcn Dialog/Drawer，保留 ESC/遮罩关闭与焦点循环，遮罩透明度/边框/阴影依旧引用 tokens。
 
 ## 布局与主题切换
 - 新入口可用 Tailwind + shadcn，但必须映射到 `--dq-*` CSS 变量，通过 `data-theme="light|dark"` 或类名切换；不新增零散 CSS。
 - Sidebar/Header 固定，内容区滚动；确保表格/编辑器内部滚动不被裁剪。为小屏定义最小宽度与 Sidebar 折叠策略。
+- Sidebar 与主区域需有 1px 分隔线（token 颜色），保持暗/亮模式对比。
 
 ## 状态与入口
 - 状态集中在 `useDuckQuery`，返回 `{state, actions}`，供旧 `ShadcnApp` 与新 `DuckQueryApp` 共用；不要改 `UnifiedQueryInterface` 内部，只传 props。
@@ -45,3 +48,8 @@
 ## 代理约束
 - 未经指示不修改代码；仅分析则不动代码。
 - 避免新增 `!important`，优先复用 tokens/组件；必要的新样式先问清需求。
+
+## 目录整理与清理
+- 布局组件集中在 `frontend/src/components/Layout/`；DataSource 相关子视图集中到 `frontend/src/components/DataSource/`（List/Upload/Paste/Database/Dialogs/common）。
+- 资源（含小号 logo）放 `frontend/src/assets/`；tokens 统一在 `styles/tokens.css` 供 Tailwind & 组件引用。
+- 清理未用样式/组件前先用 `rg` 查引用，确认无用再删，避免影响业务逻辑。

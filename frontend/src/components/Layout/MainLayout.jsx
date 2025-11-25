@@ -13,13 +13,17 @@ const MainLayout = ({
   return (
     <div className="dq-layout-root flex h-screen min-w-[320px] overflow-hidden bg-[var(--dq-background)] text-[var(--dq-text-primary)]">
       <aside
-        className={`dq-layout-sidebar hidden shrink-0 border-r border-[var(--dq-border-subtle)] bg-[var(--dq-surface-alt)] transition-all duration-200 lg:flex ${
+        className={`dq-layout-sidebar relative hidden shrink-0 bg-[var(--dq-surface-alt)] transition-all duration-200 lg:flex ${
           isSidebarExpanded ? "w-[260px]" : "w-[72px]"
         }`}
         onMouseEnter={onSidebarEnter}
         onMouseLeave={onSidebarLeave}
       >
         {sidebar}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-px bg-[var(--dq-border-card)]"
+        />
       </aside>
       <div className="dq-layout-main flex min-w-0 flex-1 flex-col bg-[var(--dq-background)]">
         <div className="dq-layout-header shrink-0 border-b border-[var(--dq-border-subtle)] bg-[var(--dq-background)]">
@@ -36,8 +40,12 @@ const MainLayout = ({
             onClick={onCloseSidebar}
             role="presentation"
           />
-          <div className="absolute left-0 top-0 h-full w-[240px] border-r border-[var(--dq-border-subtle)] bg-[var(--dq-surface-alt)] shadow-lg">
+          <div className="dq-layout-sidebar-drawer-panel absolute left-0 top-0 h-full w-[240px] bg-[var(--dq-surface-alt)] shadow-lg">
             {sidebar}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 right-0 w-px bg-[var(--dq-border-card)]"
+            />
           </div>
         </div>
       ) : null}
