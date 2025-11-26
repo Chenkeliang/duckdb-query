@@ -1,7 +1,7 @@
 {
   "nav": {
-    "datasource": "数据源",
-    "unifiedquery": "统一查询",
+    "datasource": "数据源 (Data Sources)",
+    "unifiedquery": "统一查询 (Unified Query)",
     "tablemanagement": "数据表管理",
     "asynctasks": "异步任务",
     "switchMain": "主功能切换"
@@ -14,12 +14,16 @@
     "tryNewLayout": "试用新布局",
     "backToLegacy": "回到旧版",
     "cancel": "取消",
-    "delete": "删除"
+    "delete": "删除",
+    "refresh": "刷新"
   },
   "page": {
     "datasource": {
       "intro1": "上传文件：支持剪切板/CSV/Excel/JSON/Parquet/远程文件等多类型上传，自动建表用于数据分析查询，默认最大50GB，支持自定义配置",
       "intro2": "支持连接远程数据库：支持 MySQL / PostgreSQL 配置之后可在查询页面查询数据加载到本地表中",
+      "tabUpload": "文件上传",
+      "tabDb": "数据库管理",
+      "tabPaste": "数据粘贴板",
       "tabLocal": "本地文件上传",
       "tabRemote": "远程文件导入",
       "tabServer": "服务器目录",
@@ -44,6 +48,10 @@
       "localTipsStd": "标准上传：适合小于50MB的小文件，上传速度快",
       "localTipsChunk": "分块上传：适合大文件，支持断点续传，提高上传成功率",
       "localTipsFormats": "支持格式：CSV, Excel (xls/xlsx), Parquet, JSON",
+      "maxSize": "最大 500MB · 自动识别分隔符",
+      "uploadModeLabel": "上传方式",
+      "uploadModeAuto": "自动选择",
+      "uploadModeChunked": "分片上传",
       "cardRemoteTitle": "远程文件导入",
       "cardRemoteDesc": "支持从公共 URL 或 GitHub 仓库读取常见文件格式",
       "remoteUrlLabel": "文件URL",
@@ -100,6 +108,10 @@
         "delimiterPipe": "竖线 (|)",
         "delimiterSemicolon": "分号 (;)",
         "delimiterSpace": "空格",
+        "format": "格式",
+        "formatAuto": "自动检测",
+        "formatCsv": "CSV",
+        "formatJson": "JSON",
         "types": {
           "text": "文本",
           "int": "整数",
@@ -180,7 +192,7 @@
         "saveSuccess": "数据源保存成功"
       },
       "list": {
-        "title": "数据源列表",
+        "title": "已保存的连接",
         "subtitle": "数据库连接（{{count}}）",
         "empty": "暂无数据库连接",
         "retry": "重新测试连接",
@@ -193,6 +205,13 @@
         "deleteConfirmDesc": "确定要删除这个数据库连接吗？",
         "unnamed": "未命名连接",
         "defaultName": "{{type}} 连接"
+      },
+      "status": {
+        "active": "活跃",
+        "ready": "就绪",
+        "idle": "空闲",
+        "error": "异常",
+        "unknown": "未知"
       }
     },
     "unifiedquery": {

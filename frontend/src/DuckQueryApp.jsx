@@ -2,12 +2,29 @@ import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Tab, Tabs } from "@mui/material";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import useDuckQuery from "./hooks/useDuckQuery";
-import { Github, Languages, Moon, Sun } from "lucide-react";
+import {
+  Github,
+  Languages,
+  Moon,
+  Sun,
+  Database,
+  LayoutGrid,
+  Table,
+  ListTodo,
+  Server,
+  Upload,
+  ClipboardEdit,
+  Settings
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import MainLayout from "./components/Layout/MainLayout";
-import Sidebar from "./components/Layout/Sidebar";
-import Header from "./components/Layout/Header";
+import PageShell from "./new/PageShell";
+import Sidebar from "./new/Sidebar";
+import Header from "./new/Header";
+import DataSourcePage from "./new/DataSourcePage";
+import DatabaseForm from "./new/DatabaseForm";
+import UploadPanel from "./new/UploadPanel";
+import DataSourceTabs from "./new/DataSourceTabs";
 
 const AsyncTaskList = lazy(() =>
   import("./components/AsyncTasks/AsyncTaskList")
@@ -27,15 +44,10 @@ const UnifiedQueryInterface = lazy(() =>
 const DataUploadSection = lazy(() =>
   import("./components/DataSourceManagement/DataUploadSection")
 );
-const DatabaseConnector = lazy(() =>
-  import("./components/DataSourceManager/DatabaseConnector")
-);
-const DataPasteBoard = lazy(() =>
-  import("./components/DataSourceManager/DataPasteBoard")
-);
-const DataSourceList = lazy(() =>
-  import("./components/DataSourceManager/DataSourceList")
-);
+import DataPasteCard from "./new/DataPasteCard";
+import SavedConnectionsList from "./new/SavedConnectionsList";
+import LogoLight from "./assets/Duckquerylogo.svg";
+import LogoDark from "./assets/duckquery-dark.svg";
 const WelcomePage = lazy(() => import("./components/WelcomePage"));
 
 const LazyFallback = () => {
@@ -58,9 +70,9 @@ const DuckQueryAppInner = () => {
   const { t, i18n } = useTranslation("common");
   const locale = i18n.language || "zh";
   const [isMobile, setIsMobile] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isSidebarPinned, setIsSidebarPinned] = useState(true);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+  const [dataSourceTab, setDataSourceTab] = useState("upload");
+  const [savingDb, setSavingDb] = useState(false);
+  const [testingDb, setTestingDb] = useState(false);
 
   const {
     showWelcome,
@@ -114,12 +126,6 @@ const DuckQueryAppInner = () => {
     return () => media.removeEventListener("change", update);
   }, []);
 
-  useEffect(() => {
-    if (isMobile) {
-      setIsSidebarOpen(false);
-    }
-  }, [currentTab, isMobile]);
-
   const toggleLocale = () => {
     const next = locale.startsWith("zh") ? "en" : "zh";
     i18n.changeLanguage(next);
@@ -135,87 +141,176 @@ const DuckQueryAppInner = () => {
       "_blank",
       "noopener,noreferrer"
     );
-
-  const effectiveSidebarExpanded = isMobile ? true : isSidebarExpanded;
-
-  const handleSidebarEnter = () => {};
-
-  const handleSidebarLeave = () => {};
-
-  const handleSidebarPinToggle = () => {
-    setIsSidebarPinned(prev => {
-      const next = !prev;
-      setIsSidebarExpanded(next);
-      return next;
-    });
-  };
-
   if (showWelcome) {
     return <WelcomePage onStartUsing={handleCloseWelcome} />;
   }
 
   const renderContent = () => {
     if (currentTab === "datasource") {
-      return (
-        <div className="p-6">
-          <div className="page-intro">
-            <div className="page-intro-content">
-              <div className="page-intro-desc">
-                <div>{t("page.datasource.intro1")}</div>
-                <div>{t("page.datasource.intro2")}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <div className="dq-shell p-6">
-              <Suspense fallback={<LazyFallback />}>
-                <DataUploadSection
-                  onDataSourceSaved={triggerRefresh}
-                  showNotification={(message, severity) => {
-                    switch (severity) {
-                      case "success":
-                        showSuccess(message);
-                        break;
-                      case "error":
-                        showError(message);
-                        break;
-                      case "warning":
-                        showWarning(message);
-                        break;
-                      case "info":
-                      default:
-                        showInfo(message);
-                        break;
-                    }
-                  }}
-                />
-              </Suspense>
-            </div>
-
-            <div className="dq-shell p-6">
-              <Suspense fallback={<LazyFallback />}>
-                <DatabaseConnector onConnect={handleDatabaseConnect} />
-              </Suspense>
-            </div>
-
-            <div className="dq-shell p-6">
-              <Suspense fallback={<LazyFallback />}>
-                <DataPasteBoard onDataSourceSaved={triggerRefresh} />
-              </Suspense>
-            </div>
-
-            <div className="dq-shell p-6">
-              <Suspense fallback={<LazyFallback />}>
-                <DataSourceList
-                  dataSources={dataSources}
-                  databaseConnections={databaseConnections}
-                  onRefresh={triggerRefresh}
-                />
-              </Suspense>
-            </div>
+      const dataSourceTabs = [
+        { id: "database", label: t("page.datasource.tabDb"), icon: Server },
+        { id: "upload", label: t("page.datasource.tabUpload"), icon: Upload },
+        {
+          id: "paste",
+          label: t("page.datasource.tabPaste"),
+          icon: ClipboardEdit
+        }
+      ];
+      const uploadPanel = (
+        <div className="rounded-xl border border-[var(--dq-border)] bg-[var(--dq-surface)] p-0">
+          <div className="p-4">
+            <UploadPanel
+              onDataSourceSaved={triggerRefresh}
+              showNotification={(message, severity) => {
+                switch (severity) {
+                  case "success":
+                    showSuccess(message);
+                    break;
+                  case "error":
+                    showError(message);
+                    break;
+                  case "warning":
+                    showWarning(message);
+                    break;
+                  case "info":
+                  default:
+                    showInfo(message);
+                    break;
+                }
+              }}
+            />
           </div>
         </div>
+      );
+
+      const handleTestConnection = async params => {
+        try {
+          setTestingDb(true);
+          const { testDatabaseConnection } = await import(
+            "./services/apiClient"
+          );
+          const result = await testDatabaseConnection({
+            type: params.type,
+            params: params.params
+          });
+          if (result?.success) {
+            showSuccess(
+              result?.message || t("page.datasource.list.testSuccess")
+            );
+          } else {
+            showError(result?.message || t("page.datasource.list.testFail"));
+          }
+        } catch (err) {
+          showError(err?.message || t("page.datasource.list.testFail"));
+        } finally {
+          setTestingDb(false);
+        }
+      };
+
+      const handleSaveConnection = async params => {
+        try {
+          setSavingDb(true);
+          const response = await handleDatabaseConnect(params);
+          if (response?.success) {
+            showSuccess(
+              response?.message || t("page.datasource.manage.saveSuccess")
+            );
+          } else {
+            showError(
+              response?.message || t("page.datasource.list.errorUnknown")
+            );
+          }
+        } catch (err) {
+          showError(err?.message || t("page.datasource.list.errorUnknown"));
+        } finally {
+          setSavingDb(false);
+        }
+      };
+
+      const databasePanel = (
+        <div className="rounded-xl border border-[var(--dq-border)] bg-[var(--dq-surface)] p-0">
+          <div className="p-4">
+            <DatabaseForm
+              onTest={handleTestConnection}
+              onSave={handleSaveConnection}
+              loading={savingDb}
+              testing={testingDb}
+            />
+          </div>
+        </div>
+      );
+
+      const pastePanel = (
+        <div className="rounded-xl border border-[var(--dq-border)] bg-[var(--dq-surface)] p-0">
+          <div className="p-4">
+            <DataPasteCard onDataSourceSaved={triggerRefresh} />
+          </div>
+        </div>
+      );
+
+      const savedConnectionsPanel = (
+        <Suspense fallback={<LazyFallback />}>
+          <SavedConnectionsList
+            title={t("page.datasource.list.title")}
+            items={(databaseConnections || []).map(conn => {
+              const statusRaw = (conn.status || conn.state || "ready")
+                .toString()
+                .toLowerCase();
+              const statusLabel = t(`page.datasource.status.${statusRaw}`, {
+                defaultValue: (conn.status || conn.state || "READY").toString()
+              });
+              const typeLabel = (
+                conn.type ||
+                conn.db_type ||
+                conn.database_type ||
+                conn.engine ||
+                "DB"
+              )
+                .toString()
+                .toUpperCase();
+              const detailParts = [
+                conn.host
+                  ? `${conn.host}${conn.port ? `:${conn.port}` : ""}`
+                  : "",
+                conn.database || conn.schema || conn.db
+              ].filter(Boolean);
+              return {
+                id: conn.id || conn.name || `${typeLabel}-${statusRaw}`,
+                name:
+                  conn.name ||
+                  t("page.datasource.list.defaultName", { type: typeLabel }),
+                type: typeLabel,
+                detail: detailParts.join(" · "),
+                status: statusRaw,
+                statusLabel
+              };
+            })}
+            onRefresh={triggerRefresh}
+          />
+        </Suspense>
+      );
+
+      return (
+        <DataSourcePage
+          activeTab={dataSourceTab}
+          headerTitle={t("nav.datasource")}
+          topIntro={
+            <div className="mb-4 text-sm text-[var(--dq-text-secondary)] space-y-1">
+              <div>{t("page.datasource.intro1")}</div>
+              <div>{t("page.datasource.intro2")}</div>
+            </div>
+          }
+          tabs={[
+            { id: "upload", label: t("page.datasource.tabUpload") },
+            { id: "database", label: t("page.datasource.tabDb") },
+            { id: "paste", label: t("page.datasource.tabPaste") }
+          ]}
+          uploadPanel={uploadPanel}
+          databasePanel={databasePanel}
+          pastePanel={pastePanel}
+          savedConnectionsPanel={savedConnectionsPanel}
+          savedConnectionsTabs={["database"]}
+        />
       );
     }
 
@@ -255,25 +350,25 @@ const DuckQueryAppInner = () => {
                     columns={
                       queryResults.columns
                         ? queryResults.columns.map((col, index) => {
-                            const fieldValue =
-                              typeof col === "string"
-                                ? col
-                                : col.name || col.field || `column_${index}`;
-                            const headerValue =
-                              typeof col === "string"
-                                ? col
-                                : col.headerName ||
-                                  col.name ||
-                                  col.field ||
-                                  `column_${index}`;
-                            return {
-                              field: fieldValue,
-                              headerName: headerValue,
-                              sortable: true,
-                              filter: true,
-                              resizable: true
-                            };
-                          })
+                          const fieldValue =
+                            typeof col === "string"
+                              ? col
+                              : col.name || col.field || `column_${index}`;
+                          const headerValue =
+                            typeof col === "string"
+                              ? col
+                              : col.headerName ||
+                              col.name ||
+                              col.field ||
+                              `column_${index}`;
+                          return {
+                            field: fieldValue,
+                            headerName: headerValue,
+                            sortable: true,
+                            filter: true,
+                            resizable: true
+                          };
+                        })
                         : []
                     }
                     loading={resultsLoading}
@@ -281,8 +376,8 @@ const DuckQueryAppInner = () => {
                       queryResults.isVisualQuery
                         ? t("page.unifiedquery.resultVisual")
                         : queryResults.isSetOperation
-                        ? t("page.unifiedquery.resultSet")
-                        : t("page.unifiedquery.resultQuery")
+                          ? t("page.unifiedquery.resultSet")
+                          : t("page.unifiedquery.resultQuery")
                     }
                     sqlQuery={queryResults.sqlQuery || queryResults.sql || ""}
                     originalDatasource={queryResults.originalDatasource}
@@ -449,21 +544,87 @@ const DuckQueryAppInner = () => {
     );
   };
 
+  const dataSourceHeaderTabs = [
+    { id: "database", label: t("page.datasource.tabDb"), icon: Server },
+    { id: "upload", label: t("page.datasource.tabUpload"), icon: Upload },
+    { id: "paste", label: t("page.datasource.tabPaste"), icon: ClipboardEdit }
+  ];
+
+  const headerNode =
+    currentTab === "datasource" ? (
+      <Header
+        titleNode={
+          <div className="flex items-center gap-6">
+            <h1 className="text-lg font-semibold text-[var(--dq-text-primary)] tracking-tight">
+              {t("page.datasource.manage.title")}
+            </h1>
+            <DataSourceTabs
+              value={dataSourceTab}
+              onChange={setDataSourceTab}
+              tabs={dataSourceHeaderTabs}
+            />
+          </div>
+        }
+      >
+        <button
+          type="button"
+          onClick={() => setIsDarkMode(prev => !prev)}
+          className="hidden lg:inline-flex p-2 rounded-md text-[var(--dq-text-tertiary)] hover:bg-[var(--dq-surface-hover)]"
+        >
+          <Sun className="h-4 w-4" />
+        </button>
+      </Header>
+    ) : (
+      <Header title={t(tabTitles[currentTab]) || "Duck Query"}>
+        <div className="flex items-center gap-2 lg:hidden">
+          <MobileActionButton
+            icon={isDarkMode ? Sun : Moon}
+            label={
+              isDarkMode ? t("actions.toggleLight") : t("actions.toggleDark")
+            }
+            onClick={() => setIsDarkMode(prev => !prev)}
+          />
+          <MobileActionButton
+            icon={Languages}
+            label={t("actions.toggleLang")}
+            onClick={toggleLocale}
+          />
+          <MobileActionButton
+            icon={Github}
+            label="GitHub"
+            onClick={openGithub}
+          />
+        </div>
+      </Header>
+    );
+
   return (
     <div className="dq-new-theme min-h-screen">
-      <MainLayout
+      <PageShell
         sidebar={
           <Sidebar
-            currentTab={currentTab}
-            onTabChange={setCurrentTab}
+            navItems={[
+              { id: "datasource", label: t("nav.datasource"), icon: Database },
+              {
+                id: "unifiedquery",
+                label: t("nav.unifiedquery"),
+                icon: LayoutGrid
+              },
+              {
+                id: "tablemanagement",
+                label: t("nav.tablemanagement"),
+                icon: Table
+              },
+              { id: "asynctasks", label: t("nav.asynctasks"), icon: ListTodo },
+              { id: "settings", label: t("nav.settings"), icon: Settings }
+            ]}
+            activeId={currentTab}
+            onSelect={setCurrentTab}
             isDarkMode={isDarkMode}
-            isExpanded={effectiveSidebarExpanded}
-            isPinned={isSidebarPinned}
+            onToggleTheme={() => setIsDarkMode(prev => !prev)}
             locale={locale}
             onLocaleChange={toggleLocale}
-            onToggleTheme={() => setIsDarkMode(prev => !prev)}
             onOpenGithub={openGithub}
-            githubStars={githubStars}
             onShowWelcome={() => {
               setShowWelcome(true);
               const welcomeShownKey = "duck-query-welcome-shown";
@@ -473,47 +634,14 @@ const DuckQueryAppInner = () => {
               localStorage.removeItem("dq-use-new-layout");
               window.location.href = window.location.pathname;
             }}
-            onTogglePin={handleSidebarPinToggle}
-            t={t}
+            logoLight={LogoLight}
+            logoDark={LogoDark}
           />
         }
-        header={
-          <Header
-            title={t(tabTitles[currentTab]) || "Duck Query"}
-            onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
-            rightContent={
-              <div className="flex items-center gap-2 lg:hidden">
-                <MobileActionButton
-                  icon={isDarkMode ? Sun : Moon}
-                  label={
-                    isDarkMode
-                      ? t("actions.toggleLight")
-                      : t("actions.toggleDark")
-                  }
-                  onClick={() => setIsDarkMode(prev => !prev)}
-                />
-                <MobileActionButton
-                  icon={Languages}
-                  label={t("actions.toggleLang")}
-                  onClick={toggleLocale}
-                />
-                <MobileActionButton
-                  icon={Github}
-                  label="GitHub"
-                  onClick={openGithub}
-                />
-              </div>
-            }
-          />
-        }
-        isSidebarOpen={isSidebarOpen}
-        onCloseSidebar={() => setIsSidebarOpen(false)}
-        isSidebarExpanded={effectiveSidebarExpanded}
-        onSidebarEnter={handleSidebarEnter}
-        onSidebarLeave={handleSidebarLeave}
+        header={headerNode}
       >
         {renderContent()}
-      </MainLayout>
+      </PageShell>
     </div>
   );
 };

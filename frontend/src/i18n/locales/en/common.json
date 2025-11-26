@@ -14,12 +14,16 @@
     "tryNewLayout": "Try new layout",
     "backToLegacy": "Back to legacy",
     "cancel": "Cancel",
-    "delete": "Delete"
+    "delete": "Delete",
+    "refresh": "Refresh"
   },
   "page": {
     "datasource": {
       "intro1": "Upload files: clipboard / CSV / Excel / JSON / Parquet / remote files, auto create tables for analysis (default max 50GB, configurable).",
       "intro2": "Connect remote DB: MySQL / PostgreSQL, then query and load into local tables.",
+      "tabUpload": "File upload",
+      "tabDb": "Database",
+      "tabPaste": "Data paste",
       "tabLocal": "Local upload",
       "tabRemote": "Remote import",
       "tabServer": "Server directory",
@@ -44,6 +48,10 @@
       "localTipsStd": "Standard: for small files (<50MB), faster upload",
       "localTipsChunk": "Chunked: for large files, resumable, more reliable",
       "localTipsFormats": "Formats: CSV, Excel (xls/xlsx), Parquet, JSON",
+      "maxSize": "Max 500MB · Auto detect delimiter",
+      "uploadModeLabel": "Upload mode",
+      "uploadModeAuto": "Auto select",
+      "uploadModeChunked": "Chunked upload",
       "cardRemoteTitle": "Remote file import",
       "cardRemoteDesc": "Read common file formats from public URL or GitHub",
       "remoteUrlLabel": "File URL",
@@ -99,6 +107,10 @@
         "delimiterPipe": "Pipe (|)",
         "delimiterSemicolon": "Semicolon (;)",
         "delimiterSpace": "Space",
+        "format": "Format",
+        "formatAuto": "Auto detect",
+        "formatCsv": "CSV",
+        "formatJson": "JSON",
         "types": {
           "text": "Text",
           "int": "Integer",
@@ -179,7 +191,7 @@
         "saveSuccess": "Data source saved"
       },
       "list": {
-        "title": "Data source list",
+        "title": "Saved connections",
         "subtitle": "DB connections ({{count}})",
         "empty": "No database connections",
         "retry": "Retest connection",
@@ -192,6 +204,13 @@
         "deleteConfirmDesc": "Are you sure you want to delete this DB connection?",
         "unnamed": "Unnamed connection",
         "defaultName": "{{type}} connection"
+      },
+      "status": {
+        "active": "Active",
+        "ready": "Ready",
+        "idle": "Idle",
+        "error": "Error",
+        "unknown": "Unknown"
       }
     },
     "unifiedquery": {

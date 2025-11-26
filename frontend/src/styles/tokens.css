@@ -185,9 +185,22 @@
     var(--dq-accent-primary) 12%,
     transparent
   );
+  --dq-nav-active-bg: #eff6ff;
+  --dq-nav-active-border: #dbeafe;
+  --dq-nav-active-fg: var(--dq-accent-primary, #2563eb);
+  --dq-input-bg: var(--dq-surface, #ffffff);
+  --dq-overlay-strong: rgba(15, 23, 42, 0.4);
 }
 
 :is(.dark, .dq-theme.dq-theme--dark) :focus-visible {
   outline: 2px solid color-mix(in oklab, var(--dq-accent-100) 45%, transparent);
   outline-offset: 2px;
+}
+
+.dq-theme--dark {
+  --dq-nav-active-bg: rgba(249, 115, 22, 0.12);
+  --dq-nav-active-border: rgba(249, 115, 22, 0.24);
+  --dq-nav-active-fg: #f97316;
+  --dq-input-bg: #0f1116;
+  --dq-overlay-strong: rgba(0, 0, 0, 0.5);
 }
