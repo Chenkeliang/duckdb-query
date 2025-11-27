@@ -906,6 +906,35 @@ const useDuckQuery = () => {
     }
   };
 
+  const handleDatabaseSaveConfig = async connectionParams => {
+    try {
+      if (connectionParams.type === "mysql") {
+        const connectionData = {
+          id: connectionParams.id,
+          name: connectionParams.id,
+          type: connectionParams.type,
+          params: connectionParams.params
+        };
+
+        const createResult = await createDatabaseConnection(connectionData);
+
+        if (createResult.success) {
+          triggerRefresh();
+          return {
+            success: true,
+            message: "数据库配置已保存",
+            connection: createResult.connection
+          };
+        }
+        throw new Error(createResult.message || "数据库配置保存失败");
+      }
+      triggerRefresh();
+      return { success: true, message: "数据库配置已保存" };
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const handleCloseWelcome = () => {
     const welcomeShownKey = "duck-query-welcome-shown";
     if (typeof window !== "undefined") {
@@ -945,6 +974,7 @@ const useDuckQuery = () => {
       handleResultsReceived,
       handleApplyResultFilters,
       handleDatabaseConnect,
+      handleDatabaseSaveConfig,
       handleFileUpload,
       handleCloseWelcome,
       setQueryResults,

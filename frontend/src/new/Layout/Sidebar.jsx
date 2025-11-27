@@ -72,14 +72,6 @@ const Sidebar = ({
             D
           </div>
         )}
-        <div>
-          <div className="font-bold text-sm tracking-wide text-foreground">
-            DuckQuery
-          </div>
-          <div className="text-[10px] text-muted-foreground font-mono">
-            v2.0.1 PRO
-          </div>
-        </div>
       </div>
 
       {/* 导航 */}

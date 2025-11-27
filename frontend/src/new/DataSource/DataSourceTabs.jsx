@@ -20,7 +20,7 @@ const DataSourceTabs = ({ value = "upload", onChange, tabs }) => {
             onClick={() => onChange?.(tab.id)}
             className={`px-3 text-xs font-medium rounded-[6px] flex items-center gap-2 transition-all ${active
                 ? "bg-surface text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-fg hover:text-foreground"
               }`}
           >
             {Icon ? <Icon className="w-3.5 h-3.5" /> : null}

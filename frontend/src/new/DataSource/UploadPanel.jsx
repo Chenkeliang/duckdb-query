@@ -7,7 +7,7 @@ import {
   getServerMounts,
   browseServerDirectory,
   importServerFile
-} from "../services/apiClient";
+} from "../../services/apiClient";
 
 /**
  * 数据源视图 A：智能文件上传（本地文件 + URL + 服务器目录）。
@@ -19,7 +19,6 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
 
   const [alias, setAlias] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
-  const [uploadMode, setUploadMode] = useState("auto"); // auto | chunked
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -237,14 +236,14 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
       <div className="bg-surface border border-border rounded-xl p-6 space-y-5 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-fg">
               {t("page.datasource.tabLocal")}
             </p>
             <h3 className="text-lg font-semibold text-foreground">
               {t("page.datasource.cardLocalTitle")}
             </h3>
           </div>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-muted-fg">
             {t("page.datasource.localTipsFormats")}
           </span>
         </div>
@@ -257,10 +256,11 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`cursor-pointer rounded-xl border border-dashed px-6 py-10 text-center transition-colors flex flex-col items-center justify-center gap-2 ${dragOver
+          className={`cursor-pointer rounded-xl border border-dashed px-6 py-10 text-center transition-colors flex flex-col items-center justify-center gap-2 ${
+            dragOver
               ? "border-primary bg-surface-hover"
               : "border-border bg-surface hover:border-primary"
-            }`}
+          }`}
         >
           <input
             ref={fileInputRef}
@@ -269,49 +269,30 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
             onChange={handleFileChange}
             accept=".csv,.xlsx,.xls,.json,.parquet,.pq"
           />
-          <Upload className="h-8 w-8 text-muted-foreground" />
+          <Upload className="h-8 w-8 text-muted-fg" />
           <p className="text-foreground font-medium text-sm">
             {t("page.datasource.dragHere")}
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-fg">
             {t("page.datasource.maxSize")}
           </p>
           {selectedFile ? (
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-muted-fg">
               {t("page.datasource.selectedFile")}: {selectedFile.name}
             </p>
           ) : null}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">
-              {t("page.datasource.aliasLabel")}
-            </label>
-            <input
-              className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              value={alias}
-              onChange={e => setAlias(e.target.value)}
-              placeholder={t("page.datasource.aliasPlaceholder")}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">
-              {t("page.datasource.uploadModeLabel")}
-            </label>
-            <select
-              className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              value={uploadMode}
-              onChange={e => setUploadMode(e.target.value)}
-            >
-              <option value="auto">
-                {t("page.datasource.uploadModeAuto")}
-              </option>
-              <option value="chunked">
-                {t("page.datasource.uploadModeChunked")}
-              </option>
-            </select>
-          </div>
+        <div className="space-y-2">
+          <label className="text-xs text-muted-fg">
+            {t("page.datasource.aliasLabel")}
+          </label>
+          <input
+            className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary"
+            value={alias}
+            onChange={e => setAlias(e.target.value)}
+            placeholder={t("page.datasource.aliasPlaceholder")}
+          />
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -331,7 +312,7 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
               setSelectedFile(null);
               setAlias("");
             }}
-            className="px-4 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
+            className="px-4 py-2 rounded-md text-sm text-muted-fg hover:text-foreground hover:bg-muted"
           >
             {t("page.datasource.paste.btnClear")}
           </button>
@@ -343,7 +324,7 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
         {/* URL 拉取 */}
         <div className="bg-surface border border-border rounded-xl p-6 space-y-4 shadow-sm">
           <div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-fg">
               {t("page.datasource.cardRemoteTitle")}
             </p>
             <h3 className="text-lg font-semibold text-foreground">
@@ -352,28 +333,28 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs text-muted-foreground flex items-center gap-2">
-              <Link2 className="h-4 w-4 text-muted-foreground" />
+            <label className="text-xs text-muted-fg flex items-center gap-2">
+              <Link2 className="h-4 w-4 text-muted-fg" />
               {t("page.datasource.remoteUrlLabel")}
             </label>
             <input
-              className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary"
               value={url}
               onChange={e => setUrl(e.target.value)}
               placeholder="https://example.com/data.csv"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted-fg">
               {t("page.datasource.remoteUrlHelper")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs text-muted-foreground flex items-center gap-2">
-              <FileType className="h-4 w-4 text-muted-foreground" />
+            <label className="text-xs text-muted-fg flex items-center gap-2">
+              <FileType className="h-4 w-4 text-muted-fg" />
               {t("page.datasource.remoteAliasLabel")}
             </label>
             <input
-              className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary"
               value={alias}
               onChange={e => setAlias(e.target.value)}
               placeholder={t("page.datasource.remoteAliasPlaceholder")}
@@ -397,7 +378,7 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
         {/* 服务器目录导入 */}
         <div className="bg-surface border border-border rounded-xl p-6 space-y-4 shadow-sm">
           <div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-fg">
               {t("page.datasource.cardServerTitle")}
             </p>
             <h3 className="text-lg font-semibold text-foreground">
@@ -406,16 +387,16 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs text-muted-foreground flex items-center gap-2">
-              <HardDrive className="h-4 w-4 text-muted-foreground" />
+            <label className="text-xs text-muted-fg flex items-center gap-2">
+              <HardDrive className="h-4 w-4 text-muted-fg" />
               {t("page.datasource.serverSelectMount")}
             </label>
             {serverMountLoading ? (
-              <div className="text-xs text-muted-foreground">
+              <div className="text-xs text-muted-fg">
                 {t("actions.loading")}
               </div>
             ) : serverMounts.length === 0 ? (
-              <div className="space-y-2 text-xs text-muted-foreground">
+              <div className="space-y-2 text-xs text-muted-fg">
                 <div>{t("page.datasource.serverNoMount")}</div>
                 <div>{t("page.datasource.serverMountAlert")}</div>
               </div>
@@ -437,19 +418,17 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
               </select>
             )}
             {serverError ? (
-              <div className="text-xs text-red-500">
-                {serverError}
-              </div>
+              <div className="text-xs text-error">{serverError}</div>
             ) : null}
           </div>
 
           <div className="rounded-lg border border-border bg-surface max-h-48 overflow-auto space-y-1 text-sm">
             {serverLoading ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground">
+              <div className="px-3 py-2 text-xs text-muted-fg">
                 {t("actions.loading")}
               </div>
             ) : serverEntries.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground">
+              <div className="px-3 py-2 text-xs text-muted-fg">
                 {t("page.datasource.serverNoFiles")}
               </div>
             ) : (
@@ -465,16 +444,15 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
                         ? loadServerDirectory(entry.path)
                         : setServerSelectedFile(entry)
                     }
-                    className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left ${selected
-                        ? "bg-surface-hover"
-                        : "hover:bg-surface-hover"
-                      }`}
+                    className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left ${
+                      selected ? "bg-surface-hover" : "hover:bg-surface-hover"
+                    }`}
                   >
                     <span className="flex items-center gap-2 text-xs text-foreground">
-                      <Server className="h-3 w-3 text-muted-foreground" />
+                      <Server className="h-3 w-3 text-muted-fg" />
                       {entry.name}
                     </span>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-[10px] text-muted-fg">
                       {isDir
                         ? t("page.datasource.serverTypeFolder")
                         : (entry.extension || "").toUpperCase()}
@@ -486,12 +464,12 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs text-muted-foreground flex items-center gap-2">
-              <FileType className="h-4 w-4 text-muted-foreground" />
+            <label className="text-xs text-muted-fg flex items-center gap-2">
+              <FileType className="h-4 w-4 text-muted-fg" />
               {t("page.datasource.serverAliasLabel")}
             </label>
             <input
-              className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary"
               value={serverAlias}
               onChange={e => setServerAlias(e.target.value)}
               placeholder={t("page.datasource.serverAliasPlaceholder")}

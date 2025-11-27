@@ -18,13 +18,14 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import PageShell from "./new/PageShell";
-import Sidebar from "./new/Sidebar";
-import Header from "./new/Header";
-import DataSourcePage from "./new/DataSourcePage";
-import DatabaseForm from "./new/DatabaseForm";
-import UploadPanel from "./new/UploadPanel";
-import DataSourceTabs from "./new/DataSourceTabs";
+import PageShell from "./new/Layout/PageShell";
+import Sidebar from "./new/Layout/Sidebar";
+import Header from "./new/Layout/Header";
+import DataSourcePage from "./new/DataSource/DataSourcePage";
+import DatabaseForm from "./new/DataSource/DatabaseForm";
+import UploadPanel from "./new/DataSource/UploadPanel";
+import DataSourceTabs from "./new/DataSource/DataSourceTabs";
+import SavedConnectionsList from "./new/DataSource/SavedConnectionsList";
 
 const AsyncTaskList = lazy(() =>
   import("./components/AsyncTasks/AsyncTaskList")
@@ -44,8 +45,8 @@ const UnifiedQueryInterface = lazy(() =>
 const DataUploadSection = lazy(() =>
   import("./components/DataSourceManagement/DataUploadSection")
 );
-import DataPasteCard from "./new/DataPasteCard";
-import SavedConnectionsList from "./new/SavedConnectionsList";
+import DataPasteCard from "./new/DataSource/DataPasteCard";
+
 import LogoLight from "./assets/Duckquerylogo.svg";
 import LogoDark from "./assets/duckquery-dark.svg";
 const WelcomePage = lazy(() => import("./components/WelcomePage"));
@@ -56,6 +57,44 @@ const LazyFallback = () => {
     <div className="p-6 dq-text-tertiary text-sm">{t("actions.loading")}</div>
   );
 };
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 text-center">
+          <div className="text-red-500 font-bold mb-2">
+            Something went wrong
+          </div>
+          <div className="text-sm text-gray-500">
+            {this.state.error?.message}
+          </div>
+          <button
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            onClick={() => window.location.reload()}
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const tabTitles = {
   datasource: "nav.datasource",
@@ -72,6 +111,8 @@ const DuckQueryAppInner = () => {
   const [isMobile, setIsMobile] = useState(false);
   const [dataSourceTab, setDataSourceTab] = useState("upload");
   const [savingDb, setSavingDb] = useState(false);
+  const [selectedConfig, setSelectedConfig] = useState(null);
+  const [refreshConfigs, setRefreshConfigs] = useState(0);
   const [testingDb, setTestingDb] = useState(false);
 
   const {
@@ -99,6 +140,7 @@ const DuckQueryAppInner = () => {
     handleResultsReceived,
     handleApplyResultFilters,
     handleDatabaseConnect,
+    handleDatabaseSaveConfig,
     handleCloseWelcome
   } = actions;
 
@@ -157,30 +199,26 @@ const DuckQueryAppInner = () => {
         }
       ];
       const uploadPanel = (
-        <div className="rounded-xl border border-[var(--dq-border)] bg-[var(--dq-surface)] p-0">
-          <div className="p-4">
-            <UploadPanel
-              onDataSourceSaved={triggerRefresh}
-              showNotification={(message, severity) => {
-                switch (severity) {
-                  case "success":
-                    showSuccess(message);
-                    break;
-                  case "error":
-                    showError(message);
-                    break;
-                  case "warning":
-                    showWarning(message);
-                    break;
-                  case "info":
-                  default:
-                    showInfo(message);
-                    break;
-                }
-              }}
-            />
-          </div>
-        </div>
+        <UploadPanel
+          onDataSourceSaved={triggerRefresh}
+          showNotification={(message, severity) => {
+            switch (severity) {
+              case "success":
+                showSuccess(message);
+                break;
+              case "error":
+                showError(message);
+                break;
+              case "warning":
+                showWarning(message);
+                break;
+              case "info":
+              default:
+                showInfo(message);
+                break;
+            }
+          }}
+        />
       );
 
       const handleTestConnection = async params => {
@@ -215,6 +253,28 @@ const DuckQueryAppInner = () => {
             showSuccess(
               response?.message || t("page.datasource.manage.saveSuccess")
             );
+            setRefreshConfigs(prev => prev + 1);
+          } else {
+            showError(
+              response?.message || t("page.datasource.list.errorUnknown")
+            );
+          }
+        } catch (err) {
+          showError(err?.message || t("page.datasource.list.errorUnknown"));
+        } finally {
+          setSavingDb(false);
+        }
+      };
+
+      const handleSaveConfig = async params => {
+        try {
+          setSavingDb(true);
+          const response = await handleDatabaseSaveConfig(params);
+          if (response?.success) {
+            showSuccess(
+              response?.message || t("page.datasource.manage.saveSuccess")
+            );
+            setRefreshConfigs(prev => prev + 1);
           } else {
             showError(
               response?.message || t("page.datasource.list.errorUnknown")
@@ -228,74 +288,31 @@ const DuckQueryAppInner = () => {
       };
 
       const databasePanel = (
-        <div className="rounded-xl border border-[var(--dq-border)] bg-[var(--dq-surface)] p-0">
-          <div className="p-4">
-            <DatabaseForm
-              onTest={handleTestConnection}
-              onSave={handleSaveConnection}
-              loading={savingDb}
-              testing={testingDb}
-            />
-          </div>
-        </div>
-      );
-
-      const pastePanel = (
-        <div className="rounded-xl border border-[var(--dq-border)] bg-[var(--dq-surface)] p-0">
-          <div className="p-4">
-            <DataPasteCard onDataSourceSaved={triggerRefresh} />
-          </div>
-        </div>
+        <DatabaseForm
+          onTest={handleTestConnection}
+          onSave={handleSaveConnection}
+          onSaveConfig={handleSaveConfig}
+          loading={savingDb}
+          testing={testingDb}
+          configToLoad={selectedConfig}
+        />
       );
 
       const savedConnectionsPanel = (
-        <Suspense fallback={<LazyFallback />}>
-          <SavedConnectionsList
-            title={t("page.datasource.list.title")}
-            items={(databaseConnections || []).map(conn => {
-              const statusRaw = (conn.status || conn.state || "ready")
-                .toString()
-                .toLowerCase();
-              const statusLabel = t(`page.datasource.status.${statusRaw}`, {
-                defaultValue: (conn.status || conn.state || "READY").toString()
-              });
-              const typeLabel = (
-                conn.type ||
-                conn.db_type ||
-                conn.database_type ||
-                conn.engine ||
-                "DB"
-              )
-                .toString()
-                .toUpperCase();
-              const detailParts = [
-                conn.host
-                  ? `${conn.host}${conn.port ? `:${conn.port}` : ""}`
-                  : "",
-                conn.database || conn.schema || conn.db
-              ].filter(Boolean);
-              return {
-                id: conn.id || conn.name || `${typeLabel}-${statusRaw}`,
-                name:
-                  conn.name ||
-                  t("page.datasource.list.defaultName", { type: typeLabel }),
-                type: typeLabel,
-                detail: detailParts.join(" · "),
-                status: statusRaw,
-                statusLabel
-              };
-            })}
-            onRefresh={triggerRefresh}
-          />
-        </Suspense>
+        <SavedConnectionsList
+          onSelect={config => setSelectedConfig(config)}
+          onRefresh={refreshConfigs}
+        />
       );
+
+      const pastePanel = <DataPasteCard onDataSourceSaved={triggerRefresh} />;
 
       return (
         <DataSourcePage
           activeTab={dataSourceTab}
           headerTitle={t("nav.datasource")}
           topIntro={
-            <div className="mb-4 text-sm text-[var(--dq-text-secondary)] space-y-1">
+            <div className="mb-4 text-sm text-muted-foreground space-y-1">
               <div>{t("page.datasource.intro1")}</div>
               <div>{t("page.datasource.intro2")}</div>
             </div>
@@ -307,8 +324,8 @@ const DuckQueryAppInner = () => {
           ]}
           uploadPanel={uploadPanel}
           databasePanel={databasePanel}
-          pastePanel={pastePanel}
           savedConnectionsPanel={savedConnectionsPanel}
+          pastePanel={pastePanel}
           savedConnectionsTabs={["database"]}
         />
       );
@@ -316,10 +333,13 @@ const DuckQueryAppInner = () => {
 
     if (currentTab === "unifiedquery") {
       return (
-        <div className="p-6">
-          <div className="page-intro">
-            <div className="page-intro-content">
-              <div className="page-intro-desc">
+        <div className="p-6 space-y-6">
+          <div className="bg-surface border border-border rounded-xl p-5 shadow-sm">
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold text-foreground">
+                {t("nav.unifiedquery")}
+              </h2>
+              <div className="text-sm text-muted-foreground space-y-1">
                 <div>{t("page.unifiedquery.intro1")}</div>
                 <div>{t("page.unifiedquery.intro2")}</div>
                 <div>{t("page.unifiedquery.intro3")}</div>
@@ -330,45 +350,47 @@ const DuckQueryAppInner = () => {
           </div>
 
           <div className="space-y-6">
-            <Suspense fallback={<LazyFallback />}>
-              <UnifiedQueryInterface
-                dataSources={visualQuerySources}
-                databaseConnections={databaseConnections}
-                selectedSources={selectedSources}
-                setSelectedSources={setSelectedSources}
-                onResultsReceived={handleResultsReceived}
-                onDataSourceSaved={triggerRefresh}
-                onRefresh={triggerRefresh}
-              />
-            </Suspense>
+            <div className="bg-surface border border-border rounded-xl p-5 shadow-sm">
+              <Suspense fallback={<LazyFallback />}>
+                <UnifiedQueryInterface
+                  dataSources={visualQuerySources}
+                  databaseConnections={databaseConnections}
+                  selectedSources={selectedSources}
+                  setSelectedSources={setSelectedSources}
+                  onResultsReceived={handleResultsReceived}
+                  onDataSourceSaved={triggerRefresh}
+                  onRefresh={triggerRefresh}
+                />
+              </Suspense>
+            </div>
 
             {queryResults.data && (
-              <div className="dq-shell p-6">
+              <div className="bg-surface border border-border rounded-xl p-5 shadow-sm">
                 <Suspense fallback={<LazyFallback />}>
                   <ModernDataDisplay
                     data={queryResults.data || []}
                     columns={
                       queryResults.columns
                         ? queryResults.columns.map((col, index) => {
-                          const fieldValue =
-                            typeof col === "string"
-                              ? col
-                              : col.name || col.field || `column_${index}`;
-                          const headerValue =
-                            typeof col === "string"
-                              ? col
-                              : col.headerName ||
-                              col.name ||
-                              col.field ||
-                              `column_${index}`;
-                          return {
-                            field: fieldValue,
-                            headerName: headerValue,
-                            sortable: true,
-                            filter: true,
-                            resizable: true
-                          };
-                        })
+                            const fieldValue =
+                              typeof col === "string"
+                                ? col
+                                : col.name || col.field || `column_${index}`;
+                            const headerValue =
+                              typeof col === "string"
+                                ? col
+                                : col.headerName ||
+                                  col.name ||
+                                  col.field ||
+                                  `column_${index}`;
+                            return {
+                              field: fieldValue,
+                              headerName: headerValue,
+                              sortable: true,
+                              filter: true,
+                              resizable: true
+                            };
+                          })
                         : []
                     }
                     loading={resultsLoading}
@@ -376,8 +398,8 @@ const DuckQueryAppInner = () => {
                       queryResults.isVisualQuery
                         ? t("page.unifiedquery.resultVisual")
                         : queryResults.isSetOperation
-                          ? t("page.unifiedquery.resultSet")
-                          : t("page.unifiedquery.resultQuery")
+                        ? t("page.unifiedquery.resultSet")
+                        : t("page.unifiedquery.resultQuery")
                     }
                     sqlQuery={queryResults.sqlQuery || queryResults.sql || ""}
                     originalDatasource={queryResults.originalDatasource}
@@ -555,7 +577,7 @@ const DuckQueryAppInner = () => {
       <Header
         titleNode={
           <div className="flex items-center gap-6">
-            <h1 className="text-lg font-semibold text-[var(--dq-text-primary)] tracking-tight">
+            <h1 className="text-lg font-semibold text-foreground tracking-tight">
               {t("page.datasource.manage.title")}
             </h1>
             <DataSourceTabs
@@ -569,7 +591,7 @@ const DuckQueryAppInner = () => {
         <button
           type="button"
           onClick={() => setIsDarkMode(prev => !prev)}
-          className="hidden lg:inline-flex p-2 rounded-md text-[var(--dq-text-tertiary)] hover:bg-[var(--dq-surface-hover)]"
+          className="hidden lg:inline-flex p-2 rounded-md text-muted-foreground hover:bg-muted transition-colors"
         >
           <Sun className="h-4 w-4" />
         </button>
@@ -648,7 +670,9 @@ const DuckQueryAppInner = () => {
 
 const DuckQueryApp = () => (
   <ToastProvider>
-    <DuckQueryAppInner />
+    <ErrorBoundary>
+      <DuckQueryAppInner />
+    </ErrorBoundary>
   </ToastProvider>
 );
 

@@ -1,7 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import DuckQueryApp from "./DuckQueryApp.jsx";
-import "./styles/tokens.css";
 import "./styles/tailwind.css";
 import "@fontsource/inter/300.css";
 import "@fontsource/inter/400.css";

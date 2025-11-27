@@ -1,8 +1,8 @@
-import { Box, Tab, Tabs, Typography } from '@mui/material';
-import React, { useCallback, useState } from 'react';
-import SqlExecutor from '../DataSourceManager/SqlExecutor';
-import EnhancedSQLExecutor from '../EnhancedSQLExecutor';
-import QueryBuilder from '../QueryBuilder/QueryBuilder';
+import { Box, Tab, Tabs, Typography } from "@mui/material";
+import React, { useCallback, useState } from "react";
+import SqlExecutor from "../DataSourceManager/SqlExecutor";
+import EnhancedSQLExecutor from "../EnhancedSQLExecutor";
+import QueryBuilder from "../QueryBuilder/QueryBuilder";
 
 const UnifiedQueryInterface = ({
   dataSources = [],
@@ -13,7 +13,7 @@ const UnifiedQueryInterface = ({
   onDataSourceSaved,
   onRefresh
 }) => {
-  const [activeTab, setActiveTab] = useState('visual');
+  const [activeTab, setActiveTab] = useState("visual");
   const [queryBuilderResults, setQueryBuilderResults] = useState(null);
   const [sqlExecutorResults, setSqlExecutorResults] = useState(null);
 
@@ -22,20 +22,26 @@ const UnifiedQueryInterface = ({
   };
 
   // 处理查询构建器结果 - 使用useCallback稳定引用
-  const handleQueryBuilderResults = useCallback((results) => {
-    setQueryBuilderResults(results);
-    if (onResultsReceived) {
-      onResultsReceived(results);
-    }
-  }, [onResultsReceived]);
+  const handleQueryBuilderResults = useCallback(
+    results => {
+      setQueryBuilderResults(results);
+      if (onResultsReceived) {
+        onResultsReceived(results);
+      }
+    },
+    [onResultsReceived]
+  );
 
   // 处理SQL执行器结果 - 使用useCallback稳定引用
-  const handleSqlExecutorResults = useCallback((results) => {
-    setSqlExecutorResults(results);
-    if (onResultsReceived) {
-      onResultsReceived(results);
-    }
-  }, [onResultsReceived]);
+  const handleSqlExecutorResults = useCallback(
+    results => {
+      setSqlExecutorResults(results);
+      if (onResultsReceived) {
+        onResultsReceived(results);
+      }
+    },
+    [onResultsReceived]
+  );
 
   return (
     <div className="unified-query-shell">
@@ -47,15 +53,15 @@ const UnifiedQueryInterface = ({
           sx={{
             px: 3,
             pt: 2,
-            '& .MuiTabs-indicator': {
-              backgroundColor: 'var(--dq-accent-primary)',
+            "& .MuiTabs-indicator": {
+              backgroundColor: "var(--dq-accent-primary)",
               height: 2
             },
             '& .MuiTab-root': {
               color: 'var(--dq-text-tertiary)',
               fontSize: 'var(--dq-tab-font-size-secondary)',
               fontWeight: 'var(--dq-tab-font-weight-secondary-inactive)',
-              textTransform: 'none',
+              textTransform: "none",
               minHeight: 52,
               minWidth: 'auto',
               backgroundColor: 'transparent',
@@ -63,9 +69,9 @@ const UnifiedQueryInterface = ({
                 color: 'var(--dq-text-primary)'
               }
             },
-            '& .MuiTab-root.Mui-selected': {
-              color: 'var(--dq-tab-active-color)',
-              backgroundColor: 'transparent',
+            "& .MuiTab-root.Mui-selected": {
+              color: "var(--dq-tab-active-color)",
+              backgroundColor: "transparent",
               fontWeight: 'var(--dq-tab-font-weight-secondary)'
             }
           }}
@@ -78,17 +84,19 @@ const UnifiedQueryInterface = ({
 
       {/* 查询构建区域 */}
       <div className="unified-query-shell__content">
-        {activeTab === 'visual' && (
+        {activeTab === "visual" && (
           <QueryBuilder
-            dataSources={[...dataSources].filter(ds => ds.type === 'duckdb' || ds.sourceType === 'duckdb').sort((a, b) => {
-              const timeA = a.createdAt ? new Date(a.createdAt) : new Date(0);
-              const timeB = b.createdAt ? new Date(b.createdAt) : new Date(0);
-              // 如果createdAt为null，将其放在最后
-              if (!a.createdAt && !b.createdAt) return 0;
-              if (!a.createdAt) return 1;
-              if (!b.createdAt) return -1;
-              return timeB - timeA;
-            })}
+            dataSources={[...dataSources]
+              .filter(ds => ds.type === "duckdb" || ds.sourceType === "duckdb")
+              .sort((a, b) => {
+                const timeA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+                const timeB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+                // 如果createdAt为null，将其放在最后
+                if (!a.createdAt && !b.createdAt) return 0;
+                if (!a.createdAt) return 1;
+                if (!b.createdAt) return -1;
+                return timeB - timeA;
+              })}
             selectedSources={selectedSources}
             setSelectedSources={setSelectedSources}
             onResultsReceived={handleQueryBuilderResults}
@@ -96,7 +104,7 @@ const UnifiedQueryInterface = ({
           />
         )}
 
-        {activeTab === 'duckdb' && (
+        {activeTab === "duckdb" && (
           <Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               查询已上传的文件和保存的查询结果（DuckDB 内部数据）
@@ -108,7 +116,7 @@ const UnifiedQueryInterface = ({
           </Box>
         )}
 
-        {activeTab === 'external' && (
+        {activeTab === "external" && (
           <Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               查询您连接的外部数据库（当前支持 MySQL）

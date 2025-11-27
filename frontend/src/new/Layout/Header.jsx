@@ -8,13 +8,11 @@ const Header = ({ title, titleNode, children }) => {
   const renderedTitle =
     titleNode ||
     (title ? (
-      <h1 className="text-lg font-semibold text-foreground">
-        {title}
-      </h1>
+      <h1 className="text-lg font-semibold text-foreground">{title}</h1>
     ) : null);
 
   return (
-    <div className="dq-layout-header-inner flex h-14 items-center justify-between px-6 bg-surface border-b border-border">
+    <div className="dq-layout-header-inner flex h-14 items-center justify-between px-4 bg-surface border-b border-border">
       <div className="flex items-center gap-6">{renderedTitle}</div>
       <div className="flex items-center gap-2">{children}</div>
     </div>

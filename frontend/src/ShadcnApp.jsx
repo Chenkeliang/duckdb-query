@@ -1,6 +1,6 @@
 import { IconButton, Tab, Tabs } from "@mui/material";
 import { Github, Info, Moon, Sun } from "lucide-react";
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import DataUploadSection from "./components/DataSourceManagement/DataUploadSection";
 import DatabaseConnector from "./components/DataSourceManager/DatabaseConnector";
@@ -11,7 +11,6 @@ import { ToastProvider, useToast } from "./contexts/ToastContext";
 import useDuckQuery from "./hooks/useDuckQuery";
 import duckLogoDark from "./assets/duckquery-dark.svg";
 import duckLogoLight from "./assets/Duckquerylogo.svg";
-import "./styles/modern.css";
 
 const AsyncTaskList = lazy(() =>
   import("./components/AsyncTasks/AsyncTaskList")
@@ -68,13 +67,26 @@ const ShadcnApp = () => {
     handleCloseWelcome
   } = actions;
 
+  // Dynamically load modern.css only for this component
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/src/styles/modern.css';
+    link.id = 'modern-css-legacy';
+    document.head.appendChild(link);
+
+    return () => {
+      // Clean up when component unmounts
+      document.getElementById('modern-css-legacy')?.remove();
+    };
+  }, []);
+
   if (showWelcome) {
     return <WelcomePage onStartUsing={handleCloseWelcome} />;
   }
 
-  const themeClassName = `dq-theme ${
-    isDarkMode ? "dq-theme--dark" : "dq-theme--light"
-  }`;
+  const themeClassName = `dq-theme ${isDarkMode ? "dq-theme--dark" : "dq-theme--light"
+    }`;
 
   const switchToNewLayout = () => {
     localStorage.setItem("dq-use-new-layout", "1");
@@ -384,27 +396,27 @@ const ShadcnApp = () => {
                         columns={
                           queryResults.columns
                             ? queryResults.columns.map((col, index) => {
-                                const fieldValue =
-                                  typeof col === "string"
-                                    ? col
-                                    : col.name ||
-                                      col.field ||
-                                      `column_${index}`;
-                                const headerValue =
-                                  typeof col === "string"
-                                    ? col
-                                    : col.headerName ||
-                                      col.name ||
-                                      col.field ||
-                                      `column_${index}`;
-                                return {
-                                  field: fieldValue,
-                                  headerName: headerValue,
-                                  sortable: true,
-                                  filter: true,
-                                  resizable: true
-                                };
-                              })
+                              const fieldValue =
+                                typeof col === "string"
+                                  ? col
+                                  : col.name ||
+                                  col.field ||
+                                  `column_${index}`;
+                              const headerValue =
+                                typeof col === "string"
+                                  ? col
+                                  : col.headerName ||
+                                  col.name ||
+                                  col.field ||
+                                  `column_${index}`;
+                              return {
+                                field: fieldValue,
+                                headerName: headerValue,
+                                sortable: true,
+                                filter: true,
+                                resizable: true
+                              };
+                            })
                             : []
                         }
                         loading={resultsLoading}
@@ -412,8 +424,8 @@ const ShadcnApp = () => {
                           queryResults.isVisualQuery
                             ? t("page.unifiedquery.resultVisual")
                             : queryResults.isSetOperation
-                            ? t("page.unifiedquery.resultSet")
-                            : t("page.unifiedquery.resultQuery")
+                              ? t("page.unifiedquery.resultSet")
+                              : t("page.unifiedquery.resultQuery")
                         }
                         sqlQuery={
                           queryResults.sqlQuery || queryResults.sql || ""

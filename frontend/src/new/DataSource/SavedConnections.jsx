@@ -2,30 +2,26 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 
 const statusStyles = {
-  active:
-    "text-[var(--dq-status-success-fg)] border-[var(--dq-status-success-fg)]/30 bg-[var(--dq-status-success-bg)]",
-  ready:
-    "text-[var(--dq-status-success-fg)] border-[var(--dq-status-success-fg)]/30 bg-[var(--dq-status-success-bg)]",
-  idle:
-    "text-[var(--dq-text-tertiary)] border-[var(--dq-border)] bg-[var(--dq-surface)]",
-  error:
-    "text-[var(--dq-status-error-fg)] border-[var(--dq-status-error-fg)]/30 bg-[var(--dq-status-error-bg)]"
+  active: "text-success border-success-border bg-success-bg",
+  ready: "text-success border-success-border bg-success-bg",
+  idle: "text-muted-foreground border-border bg-surface",
+  error: "text-error border-error-border bg-error-bg"
 };
 
 const SavedConnections = ({ items = [], onRefresh }) => {
   const { t } = useTranslation("common");
 
   return (
-    <div className="rounded-xl border border-[var(--dq-border)] bg-[var(--dq-surface)] p-4 space-y-3">
+    <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-[var(--dq-text-primary)]">
+        <div className="text-sm font-semibold text-foreground">
           {t("page.datasource.list.title")}
         </div>
         {onRefresh ? (
           <button
             type="button"
             onClick={onRefresh}
-            className="text-xs text-[var(--dq-text-tertiary)] hover:text-[var(--dq-text-primary)]"
+            className="text-xs text-muted-foreground hover:text-foreground"
           >
             {t("actions.refresh")}
           </button>
@@ -34,7 +30,7 @@ const SavedConnections = ({ items = [], onRefresh }) => {
 
       <div className="space-y-2">
         {items.length === 0 ? (
-          <div className="text-xs text-[var(--dq-text-tertiary)]">
+          <div className="text-xs text-muted-foreground">
             {t("page.datasource.list.empty")}
           </div>
         ) : (
@@ -42,17 +38,17 @@ const SavedConnections = ({ items = [], onRefresh }) => {
             const key = (item.status || "idle").toLowerCase();
             const badge =
               statusStyles[key] ||
-              "text-[var(--dq-text-tertiary)] border-[var(--dq-border)] bg-[var(--dq-surface)]";
+              "text-muted-foreground border-border bg-surface";
             return (
               <div
                 key={item.id || item.name}
-                className="flex items-center justify-between rounded-lg border border-[var(--dq-border)] bg-[var(--dq-surface)] px-3 py-2"
+                className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2"
               >
                 <div>
-                  <div className="text-sm font-medium text-[var(--dq-text-primary)]">
+                  <div className="text-sm font-medium text-foreground">
                     {item.name}
                   </div>
-                  <div className="text-xs text-[var(--dq-text-tertiary)]">
+                  <div className="text-xs text-muted-foreground">
                     {item.host}
                   </div>
                 </div>

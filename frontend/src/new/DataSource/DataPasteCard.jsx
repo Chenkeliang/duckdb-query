@@ -194,8 +194,8 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
           headerRow && headerRow.length === colCount
             ? headerRow
             : Array.from({ length: colCount }, (_, i) =>
-              t("page.datasource.paste.columnName", { index: i + 1 })
-            );
+                t("page.datasource.paste.columnName", { index: i + 1 })
+              );
       }
 
       const inferredTypes = Array.from({ length: colCount }, (_, colIdx) =>
@@ -265,8 +265,8 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
       } else {
         setError(
           result.error ||
-          result.message ||
-          t("page.datasource.paste.save.saveFail")
+            result.message ||
+            t("page.datasource.paste.save.saveFail")
         );
       }
     } catch (err) {
@@ -329,12 +329,12 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
         </div>
 
         {error ? (
-          <div className="mt-3 rounded-lg border border-[var(--dq-status-error-fg)]/40 bg-[var(--dq-status-error-bg)] px-3 py-2 text-sm text-[var(--dq-status-error-fg)]">
+          <div className="mt-3 rounded-lg border border-error-border bg-error-bg px-3 py-2 text-sm text-error">
             {error}
           </div>
         ) : null}
         {success ? (
-          <div className="mt-3 rounded-lg border border-[var(--dq-status-success-fg)]/40 bg-[var(--dq-status-success-bg)] px-3 py-2 text-sm text-[var(--dq-status-success-fg)]">
+          <div className="mt-3 rounded-lg border border-success-border bg-success-bg px-3 py-2 text-sm text-success">
             {success}
           </div>
         ) : null}
@@ -416,52 +416,52 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
       </div>
 
       {parsedData ? (
-        <div className="rounded-xl border border-[var(--dq-border)] bg-[var(--dq-surface)] p-4 shadow-[var(--dq-shadow-soft)] space-y-4">
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-dq-soft space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="md:col-span-2 space-y-2">
-              <label className="text-xs text-[var(--dq-text-tertiary)]">
+              <label className="text-xs text-muted-foreground">
                 {t("page.datasource.paste.tableName")}
               </label>
               <input
-                className="h-10 w-full rounded-md border border-[var(--dq-border)] bg-[var(--dq-input-bg)] px-3 text-sm text-[var(--dq-text-primary)] placeholder:text-[var(--dq-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--dq-primary)]"
+                className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 value={tableName}
                 onChange={e => setTableName(e.target.value)}
                 placeholder={t("page.datasource.paste.tableNamePlaceholder")}
               />
-              <p className="text-[11px] text-[var(--dq-text-tertiary)]">
+              <p className="text-[11px] text-muted-foreground">
                 {t("page.datasource.paste.tableNameHelper")}
               </p>
             </div>
             <div className="space-y-2">
-              <label className="inline-flex items-center gap-2 text-xs text-[var(--dq-text-tertiary)]">
+              <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                 <input
                   type="checkbox"
-                  className="accent-[var(--dq-primary)]"
+                  className="accent-primary"
                   checked={unifyAsString}
                   onChange={e => toggleUnify(e.target.checked)}
                 />
                 {t("page.datasource.paste.unifyAsString")}
               </label>
-              <p className="text-[11px] text-[var(--dq-text-tertiary)]">
+              <p className="text-[11px] text-muted-foreground">
                 {t("page.datasource.paste.unifyAsStringDesc")}
               </p>
             </div>
           </div>
 
-          <div className="overflow-auto rounded-lg border border-[var(--dq-border-subtle)]">
+          <div className="overflow-auto rounded-lg border border-border-subtle">
             <table className="min-w-full text-sm">
-              <thead className="bg-[var(--dq-surface-hover)] text-[var(--dq-text-secondary)]">
+              <thead className="bg-surface-hover text-foreground">
                 <tr>
                   {columnNames.map((name, idx) => (
                     <th key={idx} className="px-3 py-2 text-left">
                       <div className="space-y-1">
                         <input
-                          className="w-full rounded-md border border-[var(--dq-border)] bg-[var(--dq-input-bg)] px-2 py-1 text-xs text-[var(--dq-text-primary)] placeholder:text-[var(--dq-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--dq-primary)]"
+                          className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                           value={name}
                           onChange={e => updateColumnName(idx, e.target.value)}
                         />
                         <select
-                          className="w-full rounded-md border border-[var(--dq-border)] bg-[var(--dq-input-bg)] px-2 py-1 text-xs text-[var(--dq-text-primary)]"
+                          className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground"
                           value={columnTypes[idx] || "VARCHAR"}
                           onChange={e => updateColumnType(idx, e.target.value)}
                         >
@@ -476,16 +476,13 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
                   ))}
                 </tr>
               </thead>
-              <tbody className="text-[var(--dq-text-primary)]">
+              <tbody className="text-foreground">
                 {parsedData.preview.map((row, rIdx) => (
-                  <tr
-                    key={rIdx}
-                    className="border-t border-[var(--dq-border-subtle)]"
-                  >
+                  <tr key={rIdx} className="border-t border-border-subtle">
                     {row.map((cell, cIdx) => (
                       <td
                         key={cIdx}
-                        className="px-3 py-2 text-[var(--dq-text-secondary)]"
+                        className="px-3 py-2 text-muted-foreground"
                       >
                         {cell}
                       </td>

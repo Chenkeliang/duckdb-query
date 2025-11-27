@@ -26,79 +26,51 @@
   --dq-border-subtle: rgba(15, 23, 42, 0.06);
   --dq-border-card: rgba(15, 23, 42, 0.1);
   --dq-border-muted: color-mix(in oklab, var(--dq-border) 65%, transparent);
-  --dq-surface-muted: color-mix(
-    in oklab,
-    var(--dq-text-primary) 4%,
-    transparent
-  );
+  --dq-surface-muted: color-mix(in oklab,
+      var(--dq-text-primary) 4%,
+      transparent);
   --dq-border-strong: rgba(15, 23, 42, 0.16);
-  --dq-surface-card-active: color-mix(
-    in oklab,
-    var(--dq-text-primary) 10%,
-    var(--dq-surface-card)
-  );
-  --dq-surface-hover: color-mix(
-    in oklab,
-    var(--dq-text-primary) 8%,
-    transparent
-  );
-  --dq-surface-active: color-mix(
-    in oklab,
-    var(--dq-text-primary) 12%,
-    var(--dq-surface)
-  );
-  --dq-surface-elevated: color-mix(
-    in oklab,
-    var(--dq-text-primary) 6%,
-    var(--dq-background)
-  );
-  --dq-overlay-strong: color-mix(
-    in oklab,
-    var(--dq-text-primary) 12%,
-    rgba(15, 23, 42, 0.65)
-  );
-  --dq-border-hover: color-mix(
-    in oklab,
-    var(--dq-border-card) 80%,
-    transparent
-  );
+  --dq-surface-card-active: color-mix(in oklab,
+      var(--dq-text-primary) 10%,
+      var(--dq-surface-card));
+  --dq-surface-hover: color-mix(in oklab,
+      var(--dq-text-primary) 8%,
+      transparent);
+  --dq-surface-active: color-mix(in oklab,
+      var(--dq-text-primary) 12%,
+      var(--dq-surface));
+  --dq-surface-elevated: color-mix(in oklab,
+      var(--dq-text-primary) 6%,
+      var(--dq-background));
+  --dq-overlay-strong: color-mix(in oklab,
+      var(--dq-text-primary) 12%,
+      rgba(15, 23, 42, 0.65));
+  --dq-border-hover: color-mix(in oklab,
+      var(--dq-border-card) 80%,
+      transparent);
   --dq-editor-light-bg: #f6f8fa;
   --dq-editor-light-border: #d0d7de;
   --dq-editor-light-text: #24292f;
-  --dq-editor-light-active: color-mix(
-    in oklab,
-    var(--dq-text-primary) 12%,
-    transparent
-  );
-  --dq-editor-light-selection: color-mix(
-    in oklab,
-    var(--dq-text-primary) 18%,
-    transparent
-  );
+  --dq-editor-light-active: color-mix(in oklab,
+      var(--dq-text-primary) 12%,
+      transparent);
+  --dq-editor-light-selection: color-mix(in oklab,
+      var(--dq-text-primary) 18%,
+      transparent);
   --dq-editor-dark-bg: #1e1f2a;
   --dq-editor-dark-border: #2f3545;
   --dq-editor-dark-text: #e6ecff;
   --dq-editor-dark-selection: color-mix(in oklab, #3f8cff 36%, transparent);
   --dq-text-muted-strong: #57606a;
   --dq-text-on-primary: #ffffff;
-  --dq-accent-soft-bg: color-mix(
-    in oklab,
-    var(--dq-accent-primary) 12%,
-    transparent
-  );
-  --dq-accent-strong-bg: color-mix(
-    in oklab,
-    var(--dq-accent-primary) 24%,
-    transparent
-  );
-  --dq-accent-shadow: 0 18px 36px -24px color-mix(in oklab, var(
-          --dq-text-primary
-        )
-        12%, transparent);
-  --dq-neutral-shadow-strong: 0 16px 32px -24px color-mix(in oklab, var(
-          --dq-text-primary
-        )
-        14%, transparent);
+  --dq-accent-soft-bg: color-mix(in oklab,
+      var(--dq-accent-primary) 12%,
+      transparent);
+  --dq-accent-strong-bg: color-mix(in oklab,
+      var(--dq-accent-primary) 24%,
+      transparent);
+  --dq-accent-shadow: 0 18px 36px -24px color-mix(in oklab, var(--dq-text-primary) 12%, transparent);
+  --dq-neutral-shadow-strong: 0 16px 32px -24px color-mix(in oklab, var(--dq-text-primary) 14%, transparent);
   --dq-text-primary: #0f172a;
   --dq-text-secondary: #1f2937;
   --dq-text-tertiary: #4b5563;
@@ -117,32 +89,24 @@
   --dq-tab-font-weight-secondary: 600;
   --dq-tab-font-weight-secondary-inactive: 500;
   --dq-surface-control: #ffffff;
-  --dq-surface-control-active: color-mix(
-    in oklab,
-    var(--dq-accent-primary) 10%,
-    #ffffff
-  );
-  --dq-border-control: color-mix(
-    in oklab,
-    var(--dq-accent-primary) 30%,
-    transparent
-  );
+  --dq-surface-control-active: color-mix(in oklab,
+      var(--dq-accent-primary) 10%,
+      #ffffff);
+  --dq-border-control: color-mix(in oklab,
+      var(--dq-accent-primary) 30%,
+      transparent);
   --dq-switch-track-bg: color-mix(in oklab, #94a3b8 28%, #ffffff);
   --dq-switch-track-border: color-mix(in oklab, #94a3b8 40%, transparent);
   --dq-accent-100: #2563eb;
   --dq-accent-200: #1d4ed8;
   --dq-accent-300: #60a5fa;
   --dq-accent-primary: #2563eb;
-  --dq-accent-primary-soft: color-mix(
-    in oklab,
-    var(--dq-accent-primary) 18%,
-    transparent
-  );
-  --dq-accent-primary-strong: color-mix(
-    in oklab,
-    var(--dq-accent-primary) 82%,
-    #0f172a 18%
-  );
+  --dq-accent-primary-soft: color-mix(in oklab,
+      var(--dq-accent-primary) 18%,
+      transparent);
+  --dq-accent-primary-strong: color-mix(in oklab,
+      var(--dq-accent-primary) 82%,
+      #0f172a 18%);
   --dq-highlight-blue: #007aff;
   --dq-highlight-purple: #5856d6;
   --dq-highlight-orange: #ff9500;
@@ -175,21 +139,24 @@
   --dq-field-meta-gap: 12px;
   --dq-json-flag-size: 22px;
   --dq-json-flag-radius: 8px;
-  --dq-json-flag-border: color-mix(
-    in oklab,
-    var(--dq-accent-primary) 35%,
-    transparent
-  );
-  --dq-json-flag-bg: color-mix(
-    in oklab,
-    var(--dq-accent-primary) 12%,
-    transparent
-  );
+  --dq-json-flag-border: color-mix(in oklab,
+      var(--dq-accent-primary) 35%,
+      transparent);
+  --dq-json-flag-bg: color-mix(in oklab,
+      var(--dq-accent-primary) 12%,
+      transparent);
   --dq-nav-active-bg: #eff6ff;
   --dq-nav-active-border: #dbeafe;
   --dq-nav-active-fg: var(--dq-accent-primary, #2563eb);
   --dq-input-bg: var(--dq-surface, #ffffff);
   --dq-overlay-strong: rgba(15, 23, 42, 0.4);
+}
+
+:root,
+html,
+body {
+  margin: 0;
+  padding: 0;
 }
 
 :is(.dark, .dq-theme.dq-theme--dark) :focus-visible {
