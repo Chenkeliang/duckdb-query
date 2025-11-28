@@ -1,0 +1,50 @@
+<div class="flex-1 flex-col overflow-hidden bg-surface" style="display: flex;">
+  <!-- 查询构建器 -->
+  <div class="bg-surface flex flex-col overflow-hidden" style="flex: 1; min-height: 0;">
+    <!-- 数据源选择行 -->
+    <div class="h-12 px-6 border-b border-border shrink-0 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2 text-sm flex-1 min-w-0">
+        <i data-lucide="table" class="w-4 h-4 text-primary"></i>
+        <span class="text-muted-fg">数据源:</span>
+        <span class="font-semibold" id="selected-table-name">sales_data</span>
+        <span class="text-xs text-muted-fg px-2 py-0.5 bg-muted rounded ml-2">双击左侧切换</span>
+      </div>
+      <div class="flex gap-2 shrink-0">
+        <button
+          class="px-4 h-9 bg-primary text-primary-fg rounded-md text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-1.5"
+          title="执行查询"
+        >
+          <i data-lucide="play" class="w-4 h-4"></i>
+          执行
+        </button>
+        <button
+          class="px-4 h-9 border border-border rounded-md text-sm font-medium hover:bg-surface-hover transition-colors flex items-center gap-1.5"
+          title="保存为表"
+        >
+          <i data-lucide="save" class="w-4 h-4"></i>
+          保存
+        </button>
+      </div>
+    </div>
+
+    <!-- 查询构建器内容 -->
+    <div class="flex-1 overflow-auto p-6">
+      <div class="max-w-4xl mx-auto space-y-6">
+        <div class="bg-muted/30 border border-border rounded-xl p-6">
+          <h3 class="text-base font-semibold mb-4 flex items-center gap-2">
+            <i data-lucide="columns" class="w-5 h-5 text-primary"></i>
+            字段选择
+          </h3>
+          <p class="text-sm text-muted-fg">
+            可视化查询构建器开发中...
+          </p>
+          <div class="mt-4 code-block">
+            <span class="text-purple-400">SELECT</span> *<br />
+            <span class="text-purple-400">FROM</span> sales_data<br />
+            <span class="text-purple-400">LIMIT</span> 100
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

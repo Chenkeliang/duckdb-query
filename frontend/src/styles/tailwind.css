@@ -1,5 +1,71 @@
 @tailwind base;
 @tailwind components;
+
+/* IDE table, result toolbar, code block and popover component styles */
+@layer components {
+  /* Result toolbar */
+  .result-toolbar {
+    @apply flex items-center gap-2 px-3 h-8 bg-muted border-b border-border text-xs text-muted-foreground;
+  }
+  .result-toolbar .font-medium {
+    @apply text-foreground;
+  }
+
+  /* IDE-like table */
+  table.ide-table {
+    @apply w-full border-collapse text-[13px] font-mono;
+  }
+  table.ide-table thead th {
+    @apply h-9 px-3 text-left border-b border-border text-muted-foreground bg-muted/20;
+  }
+  table.ide-table tbody td {
+    @apply h-8 px-3 border-b border-border-subtle text-foreground bg-surface;
+  }
+  table.ide-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  table.ide-table thead th:last-child,
+  table.ide-table tbody td:last-child {
+    @apply border-r-0;
+  }
+
+  /* Code block */
+  .code-block {
+    @apply bg-muted border border-border rounded-lg p-4 font-mono text-sm leading-6 overflow-x-auto text-foreground;
+  }
+
+  /* Popover (tooltip/popover surface) */
+  .dq-popover {
+    @apply bg-surface-elevated border border-border rounded-lg shadow-2xl p-3 text-sm text-foreground;
+  }
+  .dq-popover-header {
+    @apply flex items-center justify-between mb-2;
+  }
+  .dq-popover-actions {
+    @apply flex gap-2 mt-2;
+  }
+
+  /* Split container (vertical panes) */
+  .split-container {
+    @apply flex flex-col h-full relative bg-surface;
+  }
+
+  /* Resizer (between top and bottom panes) */
+  .resizer {
+    @apply h-1 bg-border cursor-ns-resize relative transition-colors duration-normal;
+  }
+  .resizer:hover {
+    @apply bg-primary;
+  }
+
+  /* Collapse button inside resizer */
+  .collapse-btn {
+    @apply absolute left-1/2 -translate-x-1/2 -top-3 px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-xs border border-border shadow-xs;
+  }
+  .collapse-btn:hover {
+    @apply bg-surface-hover text-foreground;
+  }
+}
 @tailwind utilities;
 
 /* Basic global reset needed for full-bleed layout (no white frame) */

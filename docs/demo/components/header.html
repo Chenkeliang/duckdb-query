@@ -1,0 +1,36 @@
+<div class="flex items-center gap-6">
+  <h1 class="text-lg font-semibold">数据查询</h1>
+  <div
+    class="flex bg-muted/50 p-1 rounded-lg h-9 border border-border gap-1"
+  >
+    <button
+      class="tab-btn active text-xs"
+      onclick="switchSecondaryTab('query')"
+    >
+      <i data-lucide="search" class="w-3 h-3"></i>
+      查询模式
+    </button>
+    <button
+      class="tab-btn text-xs"
+      onclick="switchSecondaryTab('tasks')"
+    >
+      <i data-lucide="clock" class="w-3 h-3"></i>
+      异步任务
+    </button>
+  </div>
+</div>
+
+<div class="flex items-center gap-2">
+  <button
+    class="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-surface-hover"
+  >
+    <i data-lucide="save" class="w-4 h-4 inline mr-1"></i>
+    保存查询
+  </button>
+  <button
+    class="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-surface-hover"
+  >
+    <i data-lucide="download" class="w-4 h-4 inline mr-1"></i>
+    导出
+  </button>
+</div>

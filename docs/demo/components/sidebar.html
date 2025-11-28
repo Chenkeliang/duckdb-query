@@ -1,0 +1,50 @@
+<!-- Logo -->
+<div class="h-14 flex items-center gap-3 px-5 border-b border-border">
+  <div
+    class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold shadow-lg"
+  >
+    D
+  </div>
+  <div class="sidebar-text">
+    <div class="font-bold text-sm tracking-wide text-foreground">
+      DuckQuery
+    </div>
+    <div class="text-[10px] text-muted-fg font-mono">v2.0 Preview</div>
+  </div>
+</div>
+
+<!-- 导航菜单 -->
+<nav class="flex-1 p-3 space-y-1 overflow-hidden">
+  <button
+    class="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all border border-transparent text-muted-fg hover:text-foreground hover:bg-surface-hover"
+    title="数据源管理"
+  >
+    <i data-lucide="database" class="w-4 h-4 shrink-0"></i>
+    <span class="sidebar-text truncate">数据源管理</span>
+  </button>
+  <button
+    class="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg nav-active transition-all border"
+    title="数据查询"
+  >
+    <i data-lucide="search" class="w-4 h-4 shrink-0"></i>
+    <span class="sidebar-text truncate">数据查询</span>
+  </button>
+</nav>
+
+<!-- 底部操作 -->
+<div class="p-3 border-t border-border space-y-2">
+  <div class="grid grid-cols-2 gap-2">
+    <button
+      class="flex items-center justify-center rounded-lg border border-border bg-surface px-2 py-2 text-xs text-muted-fg hover:bg-surface-hover"
+      title="切换主题"
+    >
+      <i data-lucide="sun" class="w-4 h-4"></i>
+    </button>
+    <button
+      class="flex items-center justify-center rounded-lg border border-border bg-surface px-2 py-2 text-xs text-muted-fg hover:bg-surface-hover"
+      title="切换语言"
+    >
+      <i data-lucide="languages" class="w-4 h-4"></i>
+    </button>
+  </div>
+</div>

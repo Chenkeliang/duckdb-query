@@ -1,0 +1,220 @@
+<!-- 顶部：标题 + 折叠按钮 -->
+<div
+  class="h-12 flex items-center justify-between px-6 border-b border-border shrink-0"
+>
+  <h2 class="text-sm font-semibold text-foreground datasource-title">
+    数据源
+  </h2>
+  <button
+    onclick="toggleDataSourcePanel()"
+    class="p-1.5 rounded-lg hover:bg-surface-hover transition-colors"
+    title="折叠/展开数据源面板"
+    id="datasource-toggle-btn"
+  >
+    <i
+      data-lucide="panel-left-close"
+      class="w-4 h-4 text-muted-fg"
+    ></i>
+  </button>
+</div>
+
+<!-- 搜索框 -->
+<div
+  class="h-12 px-6 border-b border-border shrink-0 flex items-center"
+>
+  <div class="relative w-full">
+    <i
+      data-lucide="search"
+      class="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-fg"
+    ></i>
+    <input
+      type="text"
+      placeholder="搜索表名或字段..."
+      class="duck-input pl-9 text-sm h-9 w-full"
+    />
+  </div>
+</div>
+
+<!-- 数据源树 -->
+<div class="flex-1 overflow-auto px-6 py-2" id="datasource-tree">
+  <!-- DuckDB 表 -->
+  <div class="mb-4">
+    <div
+      class="flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-muted-fg"
+    >
+      <i data-lucide="chevron-down" class="w-3 h-3"></i>
+      <span>DuckDB 表</span>
+    </div>
+    <div class="mt-1 space-y-0.5">
+      <div
+        class="tree-item selected"
+        ondblclick="selectTable('sales_data', event)"
+      >
+        <i
+          data-lucide="table"
+          class="w-4 h-4 text-primary shrink-0"
+        ></i>
+        <span class="item-name">sales_data</span>
+      </div>
+      <div
+        class="tree-item"
+        ondblclick="selectTable('customer_info', event)"
+      >
+        <i
+          data-lucide="table"
+          class="w-4 h-4 text-muted-fg shrink-0"
+        ></i>
+        <span class="item-name">customer_info</span>
+      </div>
+      <div
+        class="tree-item"
+        ondblclick="selectTable('product_catalog', event)"
+      >
+        <i
+          data-lucide="table"
+          class="w-4 h-4 text-muted-fg shrink-0"
+        ></i>
+        <span class="item-name">product_catalog</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 外部数据库 -->
+  <div class="mb-4">
+    <div
+      class="flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-muted-fg cursor-pointer hover:text-foreground transition-colors"
+      onclick="toggleExternalDb()"
+    >
+      <i
+        data-lucide="chevron-down"
+        class="w-3 h-3"
+        id="external-db-chevron"
+      ></i>
+      <span>外部数据库</span>
+    </div>
+    <div class="mt-1 space-y-0.5" id="external-db-list">
+      <!-- MySQL 连接 -->
+      <div class="space-y-0.5">
+        <div
+          class="tree-item cursor-pointer"
+          onclick="toggleMysqlTables(event)"
+        >
+          <i
+            data-lucide="chevron-down"
+            class="w-3 h-3 text-muted-fg shrink-0"
+            id="mysql-chevron"
+          ></i>
+          <i
+            data-lucide="database"
+            class="w-4 h-4 text-muted-fg shrink-0"
+          ></i>
+          <span class="item-name">MySQL - 生产库</span>
+          <span
+            class="w-2 h-2 rounded-full bg-success shrink-0"
+          ></span>
+        </div>
+
+        <!-- MySQL 下的表 -->
+        <div class="ml-6 space-y-0.5" id="mysql-tables">
+          <div
+            class="tree-item"
+            ondblclick="selectTable('orders', event)"
+          >
+            <i
+              data-lucide="table"
+              class="w-4 h-4 text-muted-fg shrink-0"
+            ></i>
+            <span class="item-name">orders</span>
+          </div>
+          <div
+            class="tree-item"
+            ondblclick="selectTable('users', event)"
+          >
+            <i
+              data-lucide="table"
+              class="w-4 h-4 text-muted-fg shrink-0"
+            ></i>
+            <span class="item-name">users</span>
+          </div>
+          <div
+            class="tree-item"
+            ondblclick="selectTable('products', event)"
+          >
+            <i
+              data-lucide="table"
+              class="w-4 h-4 text-muted-fg shrink-0"
+            ></i>
+            <span class="item-name">products</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PostgreSQL 连接 -->
+      <div class="space-y-0.5">
+        <div
+          class="tree-item cursor-pointer"
+          onclick="togglePostgresTables(event)"
+        >
+          <i
+            data-lucide="chevron-right"
+            class="w-3 h-3 text-muted-fg shrink-0"
+            id="postgres-chevron"
+          ></i>
+          <i
+            data-lucide="database"
+            class="w-4 h-4 text-muted-fg shrink-0"
+          ></i>
+          <span class="item-name">PostgreSQL - 分析库</span>
+          <span
+            class="w-2 h-2 rounded-full bg-muted-fg shrink-0"
+          ></span>
+        </div>
+
+        <!-- PostgreSQL 下的表（默认折叠） -->
+        <div class="ml-6 space-y-0.5 hidden" id="postgres-tables">
+          <div
+            class="tree-item"
+            ondblclick="selectTable('analytics_events', event)"
+          >
+            <i
+              data-lucide="table"
+              class="w-4 h-4 text-muted-fg shrink-0"
+            ></i>
+            <span class="item-name">analytics_events</span>
+          </div>
+          <div
+            class="tree-item"
+            ondblclick="selectTable('user_sessions', event)"
+          >
+            <i
+              data-lucide="table"
+              class="w-4 h-4 text-muted-fg shrink-0"
+            ></i>
+            <span class="item-name">user_sessions</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 快速操作 -->
+<div
+  class="px-6 py-3 border-t border-border flex gap-2 shrink-0 datasource-footer"
+>
+  <button
+    class="flex-1 px-3 py-2 text-xs rounded-md border border-border hover:bg-surface-hover transition-colors"
+  >
+    <i data-lucide="refresh-cw" class="w-3 h-3 inline mr-1"></i>
+    刷新
+  </button>
+  <button
+    class="flex-1 px-3 py-2 text-xs rounded-md border border-border hover:bg-surface-hover transition-colors"
+  >
+    <i data-lucide="plus" class="w-3 h-3 inline mr-1"></i>
+    添加
+  </button>
+</div>
+
+<!-- 横向拖拽边框 -->
+<div class="border-r border-border"></div>

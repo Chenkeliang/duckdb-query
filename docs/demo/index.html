@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>数据查询工作台 - DuckQuery Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="styles/main.css" />
+  </head>
+
+  <body class="bg-background h-screen w-full overflow-hidden flex">
+    <!-- ========== Templates ========== -->
+    <template id="sidebar-template">
+      <div id="sidebar-content"></div>
+    </template>
+
+    <template id="header-template">
+      <div id="header-content"></div>
+    </template>
+
+    <template id="datasource-template">
+      <div id="datasource-content"></div>
+    </template>
+
+    <template id="visual-query-template">
+      <div id="visual-query-content"></div>
+    </template>
+
+    <template id="sql-query-template">
+      <div id="sql-query-content"></div>
+    </template>
+
+    <template id="join-query-template">
+      <div id="join-query-content"></div>
+    </template>
+
+    <template id="set-operations-template">
+      <div id="set-operations-content"></div>
+    </template>
+
+    <template id="pivot-table-template">
+      <div id="pivot-table-content"></div>
+    </template>
+
+    <!-- ========== Main Layout ========== -->
+    <!-- Sidebar -->
+    <aside
+      id="sidebar"
+      class="w-64 bg-surface border-r border-border flex flex-col shrink-0 transition-width"
+    ></aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col bg-background overflow-hidden">
+      <!-- Header -->
+      <header
+        id="header"
+        class="h-14 bg-surface border-b border-border flex items-center justify-between px-6 shrink-0"
+      ></header>
+
+      <!-- Content Area -->
+      <div class="flex-1 flex overflow-hidden">
+        <!-- Datasource Panel -->
+        <div
+          id="datasource-panel"
+          class="bg-surface flex flex-col shrink-0"
+          style="width: 256px;"
+        ></div>
+
+        <!-- Horizontal Resizer -->
+        <div class="horizontal-resizer" id="horizontal-resizer"></div>
+
+        <!-- Expand Datasource Button -->
+        <button
+          id="expand-datasource-btn"
+          onclick="toggleDataSourcePanel()"
+          class="hidden w-12 bg-surface border-r border-border hover:bg-surface-hover transition-colors flex-col items-center justify-center shrink-0 py-6 gap-3"
+          title="展开数据源面板"
+        >
+          <i data-lucide="panel-left-open" class="w-4 h-4"></i>
+          <span class="text-xs text-muted-fg" style="writing-mode: vertical-rl;">数据源</span>
+        </button>
+
+        <!-- Main Query Area -->
+        <div class="flex-1 flex flex-col bg-background overflow-hidden">
+          <!-- Query Mode Content -->
+          <div id="query-mode" class="flex-1 flex flex-col overflow-hidden">
+            <!-- Third Level Tab -->
+            <div
+              class="h-12 border-b border-border flex items-center px-4 bg-muted/30 shrink-0"
+            >
+              <div class="flex gap-1 bg-muted p-1 rounded-lg h-9">
+                <button
+                  class="tab-btn active text-xs"
+                  onclick="switchThirdTab('visual')"
+                >
+                  <i data-lucide="layout-grid" class="w-3 h-3 inline mr-1"></i>
+                  可视化查询
+                </button>
+                <button class="tab-btn text-xs" onclick="switchThirdTab('sql')">
+                  <i data-lucide="code" class="w-3 h-3 inline mr-1"></i>
+                  SQL 查询
+                </button>
+                <button
+                  class="tab-btn text-xs"
+                  onclick="switchThirdTab('join')"
+                >
+                  <i data-lucide="git-merge" class="w-3 h-3 inline mr-1"></i>
+                  关联查询
+                </button>
+                <button class="tab-btn text-xs" onclick="switchThirdTab('set')">
+                  <i data-lucide="layers" class="w-3 h-3 inline mr-1"></i>
+                  集合操作
+                </button>
+                <button
+                  class="tab-btn text-xs"
+                  onclick="switchThirdTab('pivot')"
+                >
+                  <i data-lucide="table-2" class="w-3 h-3 inline mr-1"></i>
+                  透视表
+                </button>
+              </div>
+            </div>
+
+            <!-- Tab Content Container -->
+            <div id="tab-content-container" class="flex-1 flex flex-col overflow-hidden"></div>
+
+            <!-- Unified Result Panel Resizer -->
+            <div class="resizer" id="unified-resizer">
+              <button
+                class="collapse-btn"
+                onclick="toggleUnifiedResultPane(event)"
+                title="折叠/展开结果面板"
+              >
+                <i
+                  data-lucide="chevron-down"
+                  class="w-3 h-3"
+                  id="unified-collapse-icon"
+                ></i>
+              </button>
+            </div>
+
+            <!-- Unified Result Panel -->
+            <div
+              id="unified-result-panel"
+              class="flex flex-col border-t border-border"
+              style="height: 400px; flex-shrink: 0;"
+            ></div>
+          </div>
+          <!-- Query Mode End -->
+
+          <!-- Async Tasks Mode -->
+          <div id="tasks-content" class="flex-1 flex flex-col hidden">
+            <div class="flex-1 overflow-auto p-6">
+              <h3 class="text-lg font-semibold mb-4">异步任务列表</h3>
+              <p class="text-muted-fg">异步任务功能开发中...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Load Templates -->
+    <script src="components/templates.js"></script>
+    <script src="scripts/main.js"></script>
+  </body>
+</html>
