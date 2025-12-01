@@ -1,79 +1,361 @@
-# shadcn/ui 集成设计文档
+# shadcn/ui 集成设计文档（包含 TypeScript + TanStack Query + CMDK）
+
+## 🎯 核心设计原则
+
+**先打地基，再建房子**：在创建任何组件前，先配置好所有基础设施，避免后续返工。
+
+### 实施顺序（严格遵守）
+1. **Day 1**: 配置 TypeScript（地基）
+2. **Day 2**: 配置 shadcn/ui（框架）
+3. **Day 3**: 配置 TanStack Query（数据层）
+4. **Day 4-5**: 创建基础组件（TSX + Query）
+5. **Week 2**: 迁移现有组件（TSX + Query）
+6. **Week 6**: 集成 CMDK（命令面板）
 
 ## 一、架构设计
 
-### 1.1 整体架构
+### 1.1 整体架构（优化后）
 
 ```
 frontend/src/
 ├── lib/
-│   └── utils.js                    # cn() 工具函数
+│   └── utils.ts                    # cn() 工具函数（TypeScript 版本）
 │
-├── components/ui/                  # shadcn/ui 组件库
-│   ├── button.jsx                  # Button 组件
-│   ├── card.jsx                    # Card 组件
-│   ├── input.jsx                   # Input, Label, Textarea
-│   ├── tabs.jsx                    # Tabs 组件（Radix UI）
-│   ├── dialog.jsx                  # Dialog 组件（Radix UI）
-│   ├── select.jsx                  # Select 组件（Radix UI）
-│   ├── dropdown-menu.jsx           # DropdownMenu 组件（Radix UI）
-│   └── progress.jsx                # Progress 组件
-│
-├── new/                            # 新布局（使用 shadcn/ui）
-│   ├── Layout/
-│   │   ├── Sidebar.jsx             # ✅ 使用 Button
-│   │   ├── Header.jsx              # ✅ 使用 Button
-│   │   └── PageShell.jsx           # ✅ 保持不变
+├── new/                            # 新布局（TypeScript + shadcn/ui + TanStack Query）
+│   ├── providers/
+│   │   └── QueryProvider.tsx       # TanStack Query 配置
 │   │
-│   └── DataSource/
-│       ├── DatabaseForm.jsx        # ✅ 使用 Card, Input, Label, Tabs, Button, Select
-│       ├── UploadPanel.jsx         # ✅ 使用 Card, Button, Progress
-│       ├── DataPasteCard.jsx       # ✅ 使用 Card, Textarea, Select, Button
-│       ├── SavedConnectionsList.jsx # ✅ 使用 Card, Button, Dialog
-│       ├── DataSourcePage.jsx      # ✅ 使用 Card
-│       └── DataSourceTabs.jsx      # ✅ 使用 Tabs
+│   ├── components/
+│   │   └── ui/                     # shadcn/ui 组件库（TypeScript 版本）
+│   │       ├── button.tsx          # Button 组件（TSX）
+│   │       ├── card.tsx            # Card 组件（TSX）
+│   │       ├── input.tsx           # Input, Label, Textarea（TSX）
+│   │       ├── tabs.tsx            # Tabs 组件（Radix UI + TSX）
+│   │       ├── dialog.tsx          # Dialog 组件（Radix UI + TSX）
+│   │       ├── select.tsx          # Select 组件（Radix UI + TSX）
+│   │       ├── dropdown-menu.tsx   # DropdownMenu 组件（Radix UI + TSX）
+│   │       ├── form.tsx            # Form 组件（react-hook-form 封装 + TSX）
+│   │       ├── badge.tsx           # Badge 组件（TSX）
+│   │       ├── tooltip.tsx         # Tooltip 组件（TSX）
+│   │       ├── skeleton.tsx        # Skeleton 组件（TSX）
+│   │       ├── popover.tsx         # Popover 组件（TSX）
+│   │       ├── separator.tsx       # Separator 组件（TSX）
+│   │       ├── progress.tsx        # Progress 组件（TSX）
+│   │       └── command.tsx         # Command 组件（CMDK + TSX）
+│   │
+│   ├── Layout/
+│   │   ├── Sidebar.tsx             # ✅ TypeScript + useQuery
+│   │   ├── Header.tsx              # ✅ TypeScript + useQuery
+│   │   └── PageShell.tsx           # ✅ 包含 QueryProvider
+│   │
+│   ├── DataSource/
+│   │   ├── DatabaseForm.tsx        # ✅ TypeScript + useMutation
+│   │   ├── UploadPanel.tsx         # ✅ TypeScript + useMutation
+│   │   ├── DataPasteCard.tsx       # ✅ TypeScript + useMutation
+│   │   ├── SavedConnectionsList.tsx # ✅ TypeScript + useQuery
+│   │   ├── DataSourcePage.tsx      # ✅ TypeScript + useQuery
+│   │   └── DataSourceTabs.tsx      # ✅ TypeScript
+│   │
+│   └── CommandPalette.tsx          # ✅ CMDK 命令面板（Week 6）
 │
-└── components/                     # 旧布局（保持不变）
+└── components/                     # 旧布局（保持不变，使用 MUI + JS）
+    ├── QueryBuilder/
+    ├── Results/
     └── ...
 ```
 
-### 1.2 依赖关系
+**关键改进**：
+1. ✅ 所有新组件使用 `.tsx` 扩展名（TypeScript）
+2. ✅ 所有数据获取使用 TanStack Query（`useQuery/useMutation`）
+3. ✅ shadcn/ui 组件放在 `new/components/ui/` 下，**仅新布局使用**
+4. ✅ 旧布局 `components/` 保持不变，继续使用 MUI + JS
+5. ✅ `lib/utils.ts` 全局共享（TypeScript 版本）
+6. ✅ 新旧布局完全隔离，不会混淆
+7. ✅ 添加 `QueryProvider.tsx` 统一管理数据层
+8. ✅ 添加 `CommandPalette.tsx` 命令面板
+
+**关键改进**：
+1. ✅ shadcn/ui 组件放在 `new/components/ui/` 下，**仅新布局使用**
+2. ✅ 旧布局 `components/` 保持不变，继续使用 MUI
+3. ✅ `lib/utils.js` 全局共享（新旧布局都可以用）
+4. ✅ 新旧布局完全隔离，不会混淆
+
+### 1.2 依赖关系（优化后）
 
 ```mermaid
 graph TD
-    A[new/Layout/Sidebar.jsx] --> B[components/ui/button.jsx]
-    C[new/DataSource/DatabaseForm.jsx] --> B
-    C --> D[components/ui/card.jsx]
-    C --> E[components/ui/input.jsx]
-    C --> F[components/ui/tabs.jsx]
-    C --> G[components/ui/select.jsx]
+    subgraph "基础设施层（Day 1-3）"
+        TS[TypeScript 配置]
+        TQ[TanStack Query]
+        SC[shadcn/ui 配置]
+    end
     
-    B --> H[lib/utils.js]
-    D --> H
-    E --> H
-    F --> H
-    F --> I[@radix-ui/react-tabs]
-    G --> J[@radix-ui/react-select]
+    subgraph "新布局（TypeScript + Query）"
+        A[Sidebar.tsx] --> B[button.tsx]
+        A --> TQ
+        C[DatabaseForm.tsx] --> B
+        C --> D[card.tsx]
+        C --> E[input.tsx]
+        C --> F[tabs.tsx]
+        C --> G[select.tsx]
+        C --> TQ
+        
+        B --> H[lib/utils.ts]
+        D --> H
+        E --> H
+        F --> H
+        F --> I[@radix-ui/react-tabs]
+        G --> J[@radix-ui/react-select]
+        
+        CMD[CommandPalette.tsx] --> K[command.tsx]
+        CMD --> TQ
+    end
+    
+    subgraph "旧布局（JavaScript + MUI）"
+        L[QueryBuilder.jsx] -.不依赖.-> B
+        L -.使用 MUI.-> M[@mui/material]
+    end
+    
+    TS --> A
+    TS --> C
+    TS --> CMD
+    SC --> B
+    SC --> D
 ```
 
-## 二、组件设计
+**说明**：
+- **基础设施层**：TypeScript + TanStack Query + shadcn/ui（Day 1-3 配置）
+- **新布局组件**：`.tsx` + `useQuery/useMutation` + `new/components/ui/*`
+- **旧布局组件**：`.jsx` + `@mui/material`（不依赖 shadcn/ui）
+- **完全隔离**：新旧布局互不影响
 
-### 2.1 Button 组件
+### 1.3 TypeScript 配置设计
+
+**tsconfig.json 配置**：
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    
+    /* 渐进式迁移 */
+    "allowJs": true,  // ← 允许 JS 和 TS 共存
+    "checkJs": false, // ← 不检查 JS 文件
+    
+    /* Path mapping */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/new/*": ["./src/new/*"]
+    }
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
+```
+
+**关键配置**：
+- `allowJs: true` - 允许 JS 和 TS 文件共存（渐进式迁移）
+- `checkJs: false` - 不检查旧的 JS 文件
+- `strict: true` - 新的 TS 文件使用严格模式
+- `paths` - 路径别名支持
+
+### 1.4 TanStack Query 配置设计
+
+**QueryProvider.tsx**：
+```typescript
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { ReactNode } from 'react';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 分钟
+      cacheTime: 1000 * 60 * 30, // 30 分钟
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
+
+interface QueryProviderProps {
+  children: ReactNode;
+}
+
+export function QueryProvider({ children }: QueryProviderProps) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
+    </QueryClientProvider>
+  );
+}
+```
+
+**集成到 PageShell.tsx**：
+```typescript
+import { QueryProvider } from '@/new/providers/QueryProvider';
+
+export function PageShell({ children }: PageShellProps) {
+  return (
+    <QueryProvider>
+      <div className="dq-new-theme">
+        {/* ... */}
+      </div>
+    </QueryProvider>
+  );
+}
+```
+
+## 二、组件设计（TypeScript 版本）
+
+### 2.0 统一的组件模式
+
+**所有新组件必须遵循以下模式**：
+
+```typescript
+// ✅ 正确：TypeScript + TanStack Query 模式
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/new/components/ui/button';
+import { Card } from '@/new/components/ui/card';
+
+interface ComponentProps {
+  id: string;
+  onSuccess?: () => void;
+}
+
+export const Component: React.FC<ComponentProps> = ({ id, onSuccess }) => {
+  const queryClient = useQueryClient();
+  
+  // 数据获取
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['resource', id],
+    queryFn: () => fetchResource(id),
+  });
+  
+  // 数据修改
+  const mutation = useMutation({
+    mutationFn: updateResource,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['resource']);
+      onSuccess?.();
+    },
+  });
+  
+  if (isLoading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+  
+  return (
+    <Card>
+      <Button onClick={() => mutation.mutate(data)}>
+        {mutation.isLoading ? 'Saving...' : 'Save'}
+      </Button>
+    </Card>
+  );
+};
+```
+
+```typescript
+// ❌ 错误：旧的 useState + useEffect 模式
+const Component = ({ id }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  
+  useEffect(() => {
+    setLoading(true);
+    fetchResource(id)
+      .then(setData)
+      .finally(() => setLoading(false));
+  }, [id]);
+  
+  // ...
+};
+```
+
+### 2.1 Button 组件（TypeScript 版本）
 
 **设计原则**：
 - 基于 `class-variance-authority` 管理变体
 - 支持 `asChild` 模式（使用 Radix Slot）
 - 支持 loading 状态
 - 支持 icon 变体
+- **完整的 TypeScript 类型定义**
 
-**变体定义**：
+**类型定义**：
 ```typescript
-variant: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
-size: 'default' | 'sm' | 'lg' | 'icon'
+import { ButtonHTMLAttributes, forwardRef } from 'react';
+import { VariantProps } from 'class-variance-authority';
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:opacity-90",
+        destructive: "bg-error text-primary-foreground hover:opacity-90",
+        outline: "border border-border bg-surface hover:bg-surface-hover",
+        secondary: "bg-muted text-foreground hover:bg-muted/80",
+        ghost: "hover:bg-surface-hover",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        sm: "h-9 rounded-md px-3",
+        lg: "h-11 rounded-md px-8",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+);
+
+export interface ButtonProps
+  extends ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean;
+}
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const Comp = asChild ? Slot : "button";
+    return (
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        {...props}
+      />
+    );
+  }
+);
+Button.displayName = "Button";
 ```
 
 **使用示例**：
-```jsx
+```typescript
 // 主按钮
 <Button>保存</Button>
 
@@ -220,9 +502,56 @@ size: 'default' | 'sm' | 'lg' | 'icon'
 </Select>
 ```
 
-## 三、迁移策略
+## 三、可调整大小面板系统
 
-### 3.1 迁移顺序
+### 3.1 使用 react-resizable-panels
+
+**为什么选择 react-resizable-panels**：
+
+1. **shadcn/ui 生态推荐** - shadcn/ui 官方推荐的面板布局库
+2. **声明式 API** - 简洁的 React 组件 API，无需手写拖拽逻辑
+3. **性能优化** - 使用 ResizeObserver，避免频繁重绘
+4. **可访问性** - 内置键盘导航和 ARIA 属性
+5. **功能完整** - 支持折叠、展开、持久化、嵌套布局
+
+**安装**：
+```bash
+npm install react-resizable-panels
+```
+
+**基本用法**：
+```jsx
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+
+const Layout = () => {
+  return (
+    <PanelGroup direction="horizontal">
+      {/* 侧边栏 */}
+      <Panel defaultSize={20} minSize={15} maxSize={30} collapsible>
+        <Sidebar />
+      </Panel>
+      
+      {/* 调整手柄 */}
+      <PanelResizeHandle className="w-1 bg-border hover:bg-primary transition-colors" />
+      
+      {/* 主内容区 */}
+      <Panel minSize={50}>
+        <MainContent />
+      </Panel>
+    </PanelGroup>
+  );
+};
+```
+
+**应用场景**：
+- 数据源面板的水平调整和折叠
+- 结果面板的垂直调整和折叠
+- 查询工作台的三栏布局
+- 任何需要可调整大小的面板布局
+
+## 四、迁移策略
+
+### 4.1 迁移顺序
 
 **阶段 1：基础设施（1 天）**
 1. 安装依赖
@@ -240,8 +569,9 @@ size: 'default' | 'sm' | 'lg' | 'icon'
 7. Progress 组件
 
 **阶段 3：迁移 Layout 组件（1 天）**
-1. Sidebar.jsx
-2. Header.jsx
+1. 安装 react-resizable-panels
+2. Sidebar.jsx（使用 react-resizable-panels 实现可折叠布局）
+3. Header.jsx
 
 **阶段 4：迁移 DataSource 组件（2 天）**
 1. DatabaseForm.jsx
@@ -547,11 +877,11 @@ const buttonClasses = useMemo(
 
 **示例**：
 ```jsx
-// ✅ 推荐
-import { Button } from '@/components/ui/button';
+// ✅ 推荐（新布局）
+import { Button } from '@/new/components/ui/button';
 
 // ❌ 不推荐
-import * as UI from '@/components/ui';
+import * as UI from '@/new/components/ui';
 ```
 
 ## 七、测试策略
@@ -703,7 +1033,7 @@ npm install @radix-ui/react-slot @radix-ui/react-tabs @radix-ui/react-dialog
 ## 使用
 
 \`\`\`jsx
-import { Button } from '@/components/ui/button';
+import { Button } from '@/new/components/ui/button';
 
 function App() {
   return <Button>Click me</Button>;

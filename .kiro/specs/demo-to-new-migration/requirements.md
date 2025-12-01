@@ -6,14 +6,41 @@
 
 ## Key Technical Decisions
 
+### 0. 技术栈前置条件
+
+**本 spec 依赖 `shadcn-integration` 已完成**，包括：
+- ✅ TypeScript 已配置（支持 `.tsx` 文件）
+- ✅ TanStack Query 已配置（统一数据管理）
+- ✅ shadcn/ui 组件已创建（所有基础 UI 组件）
+- ✅ 所有新组件必须使用 TypeScript（`.tsx`）
+- ✅ 所有数据获取必须使用 TanStack Query（`useQuery/useMutation`）
+
 ### 1. shadcn/ui 的作用
 
 shadcn/ui 在本项目中的作用是**设计系统参考**，而非直接使用其组件库：
 
 - **设计理念采用**: 采用 shadcn/ui 的设计理念（CSS 变量 + Tailwind 语义化类名）
 - **组件模式参考**: 参考 shadcn/ui 的组件结构和交互模式
-- **不直接安装**: 不安装 @shadcn/ui 包，而是手写符合其风格的组件
-- **原因**: 项目已有完整的设计系统（tailwind.css + tailwind.config.js），直接使用会造成样式冲突
+- **直接使用**: 使用 `shadcn-integration` 中创建的 shadcn/ui 组件（`.tsx` 格式）
+- **原因**: 项目已有完整的设计系统（tailwind.css + tailwind.config.js），统一使用 shadcn/ui 组件
+
+### 1.1 可调整大小面板的实现
+
+**使用 react-resizable-panels 库**：
+
+项目使用 `react-resizable-panels` 实现可调整大小的面板布局，而非手写拖拽逻辑：
+
+- **库选择**: react-resizable-panels (shadcn/ui 生态推荐)
+- **优势**: 
+  - 声明式 API，易于使用
+  - 自动处理拖拽、折叠、展开逻辑
+  - 支持键盘导航和可访问性
+  - 性能优化（使用 ResizeObserver）
+  - 支持持久化面板大小
+- **应用场景**:
+  - 数据源面板的水平调整大小和折叠
+  - 结果面板的垂直调整大小和折叠
+  - 查询工作台的三栏布局
 
 **实际应用方式**:
 ```jsx
@@ -382,15 +409,48 @@ const useQueryWorkbench = () => {
 
 ### Requirement 9: Unified Result Panel 组件
 
-**User Story:** As a user, I want to see query results in a unified panel, so that I can view and analyze data regardless of query mode.
+**User Story:** As a user, I want to see query results in a unified panel with advanced filtering and sorting capabilities, so that I can analyze data effectively regardless of query mode.
 
-#### Acceptance Criteria
+**⚠️ 重要说明**：
+现有的 `ModernDataDisplay.jsx` 是一个 **2400+ 行**的复杂组件，包含了很多高级功能。新的 Result Panel 必须保留这些功能，不能简化。详细迁移方案请参考：[RESULT_PANEL_MIGRATION.md](./RESULT_PANEL_MIGRATION.md)
+
+#### Acceptance Criteria - 基础功能
 
 1. WHEN a query executes successfully THEN the System SHALL display results in an IDE-style table with sticky headers
 2. WHEN the result panel renders THEN the System SHALL display a toolbar showing row count, column count, and execution time
 3. WHEN a user drags the vertical resizer THEN the System SHALL adjust the result panel height in real-time
 4. WHEN a user clicks the collapse button THEN the System SHALL collapse the result panel to a minimal height
 5. WHEN the result panel is collapsed THEN the System SHALL show an expand button to restore the panel
+
+#### Acceptance Criteria - Excel 风格列筛选（必须保留）
+
+6. WHEN a user clicks a column filter button THEN the System SHALL display an Excel-style filter menu with distinct values
+7. WHEN the filter menu renders THEN the System SHALL show up to 1000 distinct values sorted by occurrence count
+8. WHEN the filter menu renders THEN the System SHALL display the occurrence count for each distinct value
+9. WHEN a user types in the filter search box THEN the System SHALL filter the distinct values list in real-time
+10. WHEN a user clicks "全选" THEN the System SHALL select all distinct values in the current filter
+11. WHEN a user clicks "反选" THEN the System SHALL deselect all currently selected values
+12. WHEN a user clicks "重复项" THEN the System SHALL select only values that appear more than once
+13. WHEN a user clicks "唯一项" THEN the System SHALL select only values that appear exactly once
+14. WHEN a user toggles between "包含" and "排除" modes THEN the System SHALL update the filter logic accordingly
+15. WHEN a user applies a column filter THEN the System SHALL filter the data and display only matching rows
+16. WHEN multiple column filters are active THEN the System SHALL apply all filters with AND logic
+
+#### Acceptance Criteria - 自动类型检测和智能排序（必须保留）
+
+17. WHEN the System detects a column contains numeric values THEN the System SHALL sort that column numerically (not as strings)
+18. WHEN the System detects a column contains date values THEN the System SHALL sort that column chronologically
+19. WHEN the System detects a column contains boolean values THEN the System SHALL sort that column with false before true
+20. WHEN a numeric column contains comma-separated numbers (e.g., "1,234.56") THEN the System SHALL normalize and sort them correctly
+21. WHEN a date column contains various date formats THEN the System SHALL parse and sort them correctly
+22. WHEN a column type cannot be auto-detected THEN the System SHALL fall back to string sorting
+
+#### Acceptance Criteria - 性能优化（必须保留）
+
+23. WHEN calculating distinct values THEN the System SHALL sample up to 10,000 rows to optimize performance
+24. WHEN displaying distinct values THEN the System SHALL limit the preview to 1,000 items
+25. WHEN filtering data THEN the System SHALL use memoization to avoid unnecessary recalculations
+26. WHEN sorting data THEN the System SHALL use the appropriate comparator based on detected column type
 
 ### Requirement 10: State Management Integration
 

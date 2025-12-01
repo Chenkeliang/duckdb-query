@@ -1205,39 +1205,161 @@ const ResultToolbar = ({ rowCount, colCount, execTime, onExport, onSaveAsTable, 
 ### 4.2 数据表格
 **组件**: `DataTable.jsx`
 
-**实现方案 A - 使用 AG-Grid**:
+**⚠️ 重要说明**：
+现有的 `ModernDataDisplay.jsx` 是一个 **2400+ 行**的复杂组件，包含了很多高级功能：
+- Excel 风格的列筛选菜单（支持搜索、全选/反选、去重值预览）
+- 复杂的自动类型检测和排序逻辑
+- VirtualTable 和 AG Grid 的双重渲染模式
+
+**详细迁移方案请参考**：[RESULT_PANEL_MIGRATION.md](./RESULT_PANEL_MIGRATION.md)
+
+**实现方案 A - 使用 AG-Grid + Excel 风格筛选（推荐）**:
 ```jsx
 const DataTable = ({ data, columns }) => {
   const gridRef = useRef(null);
+  const [columnFilterAnchorEl, setColumnFilterAnchorEl] = useState(null);
+  const [columnFilterField, setColumnFilterField] = useState(null);
+  const [columnValueFilters, setColumnValueFilters] = useState({});
+  
+  // 使用自定义 Hooks 提取核心逻辑
+  const distinctValueMap = useDistinctValues(data, columns);
+  const columnTypes = useColumnTypeDetection(columns, data);
+  
+  // 自定义列头组件（包含筛选按钮）
+  const CustomHeaderComponent = ({ column, onOpenFilterMenu, hasActiveFilter }) => {
+    return (
+      <div className="flex items-center justify-between w-full">
+        <span>{column.headerName}</span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenFilterMenu(column.field);
+          }}
+          className={`ml-2 p-1 rounded hover:bg-surface-hover ${
+            hasActiveFilter ? 'text-primary' : 'text-muted-foreground'
+          }`}
+        >
+          <Filter className="w-3 h-3" />
+        </button>
+      </div>
+    );
+  };
   
   const columnDefs = columns.map(col => ({
     field: col.field,
     headerName: col.headerName,
+    headerComponent: CustomHeaderComponent,
+    headerComponentParams: {
+      onOpenFilterMenu: handleOpenColumnFilterMenu,
+      hasActiveFilter: !!columnValueFilters[col.field]
+    },
     sortable: true,
-    filter: true,
-    resizable: true
+    filter: false, // 使用自定义筛选
+    resizable: true,
+    // 智能排序（根据类型）
+    comparator: (valueA, valueB) => {
+      const type = columnTypes[col.field];
+      
+      if (type === 'numeric') {
+        const a = normalizeNumberLike(valueA);
+        const b = normalizeNumberLike(valueB);
+        if (a === null && b === null) return 0;
+        if (a === null) return 1;
+        if (b === null) return -1;
+        return a - b;
+      }
+      
+      if (type === 'date') {
+        const a = normalizeDateLike(valueA);
+        const b = normalizeDateLike(valueB);
+        if (a === null && b === null) return 0;
+        if (a === null) return 1;
+        if (b === null) return -1;
+        return a - b;
+      }
+      
+      // 文本排序
+      const a = String(valueA || '');
+      const b = String(valueB || '');
+      return a.localeCompare(b);
+    }
   }));
   
+  // 筛选数据
+  const filteredData = useMemo(() => {
+    if (Object.keys(columnValueFilters).length === 0) {
+      return data;
+    }
+
+    return data.filter(row => {
+      return Object.entries(columnValueFilters).every(([field, filter]) => {
+        const value = row[field];
+        const key = makeValueKey(value);
+        const isSelected = filter.selectedKeys.includes(key);
+        
+        return filter.includeMode === 'include' ? isSelected : !isSelected;
+      });
+    });
+  }, [data, columnValueFilters]);
+  
   return (
-    <div className="ag-theme-duckquery h-full">
-      <AgGridReact
-        ref={gridRef}
-        rowData={data}
-        columnDefs={columnDefs}
-        defaultColDef={{
-          sortable: true,
-          filter: true,
-          resizable: true
-        }}
-        pagination={true}
-        paginationPageSize={100}
-      />
-    </div>
+    <>
+      <div className="ag-theme-duckquery h-full">
+        <AgGridReact
+          ref={gridRef}
+          rowData={filteredData}
+          columnDefs={columnDefs}
+          defaultColDef={{
+            sortable: true,
+            resizable: true,
+            minWidth: 100
+          }}
+          pagination={true}
+          paginationPageSize={100}
+        />
+      </div>
+      
+      {/* Excel 风格筛选菜单 */}
+      {columnFilterField && (
+        <ColumnFilterMenu
+          column={columns.find(col => col.field === columnFilterField)}
+          distinctInfo={distinctValueMap[columnFilterField]}
+          currentFilter={columnValueFilters[columnFilterField]}
+          onApply={handleApplyFilter}
+          onClear={handleClearFilter}
+          open={!!columnFilterAnchorEl}
+          onOpenChange={(open) => {
+            if (!open) {
+              setColumnFilterAnchorEl(null);
+              setColumnFilterField(null);
+            }
+          }}
+        />
+      )}
+    </>
   );
 };
 ```
 
-**实现方案 B - 使用 IDE Table 样式**:
+**Excel 风格筛选菜单功能**：
+- ✅ 显示去重值列表（最多 1000 项）
+- ✅ 显示每个值的出现次数
+- ✅ 搜索去重值
+- ✅ 全选/反选
+- ✅ 选择重复项（出现次数 > 1）
+- ✅ 选择唯一项（出现次数 = 1）
+- ✅ 包含/排除模式切换
+- ✅ 实时预览筛选结果
+
+**自动类型检测和智能排序**：
+- ✅ 自动检测数字类型（支持逗号分隔的数字，如 "1,234.56"）
+- ✅ 自动检测日期类型（支持多种日期格式）
+- ✅ 自动检测布尔类型
+- ✅ 数字列按数值排序（而非字符串排序）
+- ✅ 日期列按时间排序
+- ✅ 文本列按字母排序
+
+**实现方案 B - 使用 IDE Table 样式（简化版）**:
 ```jsx
 const DataTable = ({ data, columns }) => {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
