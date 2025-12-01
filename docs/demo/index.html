@@ -92,29 +92,29 @@
               <div class="flex gap-1 bg-muted p-1 rounded-lg h-9">
                 <button
                   class="tab-btn active text-xs"
-                  onclick="switchThirdTab('visual')"
+                  onclick="switchThirdTab('visual', event)"
                 >
                   <i data-lucide="layout-grid" class="w-3 h-3 inline mr-1"></i>
                   可视化查询
                 </button>
-                <button class="tab-btn text-xs" onclick="switchThirdTab('sql')">
+                <button class="tab-btn text-xs" onclick="switchThirdTab('sql', event)">
                   <i data-lucide="code" class="w-3 h-3 inline mr-1"></i>
                   SQL 查询
                 </button>
                 <button
                   class="tab-btn text-xs"
-                  onclick="switchThirdTab('join')"
+                  onclick="switchThirdTab('join', event)"
                 >
                   <i data-lucide="git-merge" class="w-3 h-3 inline mr-1"></i>
                   关联查询
                 </button>
-                <button class="tab-btn text-xs" onclick="switchThirdTab('set')">
+                <button class="tab-btn text-xs" onclick="switchThirdTab('set', event)">
                   <i data-lucide="layers" class="w-3 h-3 inline mr-1"></i>
                   集合操作
                 </button>
                 <button
                   class="tab-btn text-xs"
-                  onclick="switchThirdTab('pivot')"
+                  onclick="switchThirdTab('pivot', event)"
                 >
                   <i data-lucide="table-2" class="w-3 h-3 inline mr-1"></i>
                   透视表

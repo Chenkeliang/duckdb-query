@@ -1,120 +1,267 @@
-# DuckQuery Demo - 模块化版本（Template方案）
+# DuckQuery Demo - 数据查询工作台
 
-## ✅ 已完成
+## 📖 简介
 
-- ✅ 基于Template的模块化架构
-- ✅ 统一结果面板（所有Tab共享）
-- ✅ 可视化查询Tab（基础版）
-- ✅ Sidebar、Header、数据源面板
-- ✅ 查询模式切换功能
-- ✅ 结果面板折叠/展开功能
+这是 DuckQuery 数据查询工作台的演示版本，展示了完整的数据查询功能界面，包括：
 
-## 📁 文件结构
+- ✅ **可视化查询** - 通过图形界面构建查询
+- ✅ **SQL 查询** - 直接编写 SQL 语句
+- ✅ **关联查询** - 多表 JOIN 操作
+- ✅ **集合操作** - UNION/INTERSECT/EXCEPT
+- ✅ **透视表** - 数据透视分析
+
+## 🚀 快速开始
+
+### 方式 1：使用启动脚本（推荐）
+
+```bash
+# 在项目根目录运行
+./docs/demo/start-demo.sh
+```
+
+### 方式 2：手动启动
+
+```bash
+# 在项目根目录运行
+python3 -m http.server 8000
+
+# 然后在浏览器中访问
+# http://localhost:8000/docs/demo/index.html
+```
+
+## 📁 项目结构
 
 ```
 docs/demo/
-├── index.html                      # 主入口文件
-├── styles/
-│   └── main.css                   # 所有CSS样式
+├── index.html              # 主入口文件
+├── components/
+│   └── templates.js        # 所有 UI 模板
 ├── scripts/
-│   ├── loader.js                  # 组件加载器
-│   └── main.js                    # 主要JavaScript逻辑
-└── components/
-    ├── sidebar.html               # 侧边栏导航
-    ├── header.html                # 顶部Header
-    ├── datasource-panel.html      # 数据源面板
-    └── tabs/
-        ├── visual-query.html      # 可视化查询Tab
-        ├── sql-query.html         # SQL查询Tab
-        ├── join-query.html        # 关联查询Tab
-        ├── set-operations.html    # 集合操作Tab
-        └── pivot-table.html       # 透视表Tab
+│   └── main.js            # 交互逻辑
+├── styles/
+│   └── main.css           # 样式定义
+├── TESTING.md             # 测试文档
+├── MIGRATION_SUMMARY.md   # 迁移总结
+├── README.md              # 本文档
+└── start-demo.sh          # 启动脚本
 ```
 
-## 🚀 使用方法
+## 🎯 功能特性
 
-### 本地开发
+### 1. 数据源管理
+- 数据源树形列表
+- 搜索功能
+- 折叠/展开
+- 横向拖拽调整宽度
 
-由于使用了`fetch` API加载组件，需要通过HTTP服务器访问：
+### 2. 多 TAB 查询界面
 
-```bash
-# 方法1: 使用Python
-cd docs/demo
-python -m http.server 8000
+#### 可视化查询
+- 字段选择
+- 筛选条件
+- 分组聚合
+- 排序
+- 限制结果数
+- SQL 预览
 
-# 方法2: 使用Node.js (需要安装http-server)
-cd docs/demo
-npx http-server -p 8000
+#### SQL 查询
+- SQL 编辑器
+- 语法提示
+- 查询历史
+- 格式化工具
 
-# 方法3: 使用VS Code Live Server插件
-# 右键index.html -> Open with Live Server
-```
+#### 关联查询
+- 横向卡片布局
+- 多表 JOIN 配置
+- SQL 预览
 
-然后访问: `http://localhost:8000`
+#### 集合操作
+- UNION / UNION ALL
+- INTERSECT
+- EXCEPT
+- BY NAME 选项
 
-## ✨ 特性
+#### 透视表
+- 行维度配置
+- 列维度配置
+- 聚合指标配置
+- SQL 预览
 
-### 模块化设计
-- **组件分离**: 每个UI组件独立为单独的HTML文件
-- **样式集中**: 所有CSS集中在`styles/main.css`
-- **逻辑分离**: JavaScript分为加载器和业务逻辑
+### 3. 结果展示
+- 统一结果面板
+- IDE 风格表格
+- 纵向拖拽调整高度
+- 折叠/展开功能
 
-### 动态加载
-- 使用`fetch` API动态加载组件
-- 按需加载Tab内容，提升性能
-- 自动初始化Lucide图标
+### 4. 交互功能
+- 平滑的 TAB 切换
+- 拖拽调整布局
+- 折叠/展开动画
+- 响应式设计
 
-### 易于维护
-- 修改某个Tab不影响其他部分
-- 清晰的文件结构
-- 便于团队协作
+## 🎨 设计系统
 
-## 🔧 开发指南
+### 颜色主题
+- 支持浅色/深色模式
+- 统一的 CSS 变量
+- 语义化颜色命名
 
-### 添加新Tab
+### 组件样式
+- 数据源卡片
+- IDE 风格表格
+- 代码块
+- 查询模式卡片
 
-1. 在`components/tabs/`创建新的HTML文件
-2. 在`scripts/main.js`的`tabFiles`对象中添加映射
-3. 在`index.html`的三级Tab导航中添加按钮
+### 动画效果
+- fadeIn - 淡入动画
+- slideIn - 滑入动画
+- 平滑过渡效果
 
-### 修改样式
+## 🔧 技术栈
 
-所有样式集中在`styles/main.css`，使用CSS变量系统：
+- **HTML5** - 语义化标签
+- **CSS3** - CSS 变量 + Flexbox
+- **JavaScript (ES6+)** - 模块化设计
+- **Tailwind CSS** - 工具类样式
+- **Lucide Icons** - 图标库
 
-```css
-/* 修改主题色 */
-:root {
-  --dq-primary: 221.2 83.2% 53.3%;  /* 蓝色 */
-}
+## 📝 开发说明
 
-.dark {
-  --dq-primary: 24.6 95% 53.1%;     /* 橙色 */
-}
-```
+### 代码组织
+
+1. **模板系统** (`components/templates.js`)
+   - 所有 UI 组件的 HTML 模板
+   - 使用模板字符串
+   - 易于维护和扩展
+
+2. **交互逻辑** (`scripts/main.js`)
+   - 全局状态管理
+   - 事件处理
+   - 拖拽功能
+   - TAB 切换
+
+3. **样式定义** (`styles/main.css`)
+   - CSS 变量
+   - 组件样式
+   - 工具类
+   - 动画效果
 
 ### 添加新功能
 
-在`scripts/main.js`中添加全局函数，组件HTML中可以直接调用。
+1. 在 `templates.js` 中添加新模板
+2. 在 `main.js` 中添加交互逻辑
+3. 在 `main.css` 中添加样式（如需要）
+4. 更新 `TESTING.md` 测试清单
 
-## 📝 注意事项
+## 🧪 测试
 
-1. **必须通过HTTP服务器访问**，直接打开HTML文件会因为CORS限制无法加载组件
-2. **图标初始化**: 组件加载后需要调用`lucide.createIcons()`重新初始化图标
-3. **状态管理**: 当前使用简单的全局状态对象`AppState`，后续可以升级为更复杂的状态管理方案
+详细的测试清单请查看 [TESTING.md](./TESTING.md)
 
-## 🎯 下一步计划
+### 基础测试
+```bash
+# 1. 启动服务器
+./start-demo.sh
 
-- [ ] 完善各个Tab的功能实现
-- [ ] 添加统一的结果面板组件
-- [ ] 实现数据源面板的拖拽调整
-- [ ] 添加更多交互功能
-- [ ] 优化加载性能
+# 2. 在浏览器中打开
+# http://localhost:8000/docs/demo/index.html
+
+# 3. 测试以下功能：
+# - TAB 切换
+# - 数据源面板折叠/展开
+# - 横向拖拽
+# - 纵向拖拽
+# - 查询模式切换
+```
+
+## 📚 文档
+
+- [TESTING.md](./TESTING.md) - 测试文档
+- [MIGRATION_SUMMARY.md](./MIGRATION_SUMMARY.md) - 迁移总结
 
 ## 🐛 已知问题
 
-- 首次加载时图标可能需要短暂延迟才能正确显示
-- 组件加载顺序可能影响某些交互功能
+目前无已知问题。
 
-## 📄 License
+## 🔮 后续计划
 
-MIT
+### 待实现功能
+- [ ] 实际的 SQL 查询执行
+- [ ] 关联查询的表卡片动态添加
+- [ ] 集合操作的表卡片动态添加
+- [ ] 透视表的动态配置
+- [ ] 异步任务的实时状态更新
+- [ ] 数据源的实际加载
+
+### 可选优化
+- [ ] 添加更多查询模式
+- [ ] 增强 SQL 编辑器（语法高亮）
+- [ ] 添加查询结果导出功能
+- [ ] 添加查询历史管理
+- [ ] 添加查询模板库
+
+## 📄 许可证
+
+本项目遵循 MIT 许可证。
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 📧 联系方式
+
+如有问题，请通过 Issue 联系我们。
+
+---
+
+**注意**：这是一个演示版本，部分功能需要后端支持才能完整运行。
+
+
+## 最新更新 (2024)
+
+### 功能修复
+
+✅ **双击选表功能**
+- 修复了双击数据源表名无法触发选择的问题
+- 添加了详细的调试日志
+- 优化了事件处理机制
+
+✅ **示例卡片补充**
+- 关联查询 Tab：添加了完整的示例卡片（sales_data + customer_info）
+- 集合操作 Tab：添加了完整的示例卡片（sales_2023 + sales_2024）
+- 透视表 Tab：验证了配置卡片的完整性
+
+✅ **图标初始化优化**
+- 优化了 Lucide 图标的初始化时机
+- 确保动态加载内容的图标正确显示
+- 添加了图标渲染验证
+
+✅ **事件处理器验证**
+- 添加了自动验证功能
+- 确保所有事件处理器正常工作
+- 提供详细的验证报告
+
+### 新增文档
+
+- **TEST_GUIDE.md**：详细的测试指南和测试清单
+- **FIX_SUMMARY.md**：完整的修复总结和技术细节
+
+### 如何测试
+
+1. 在浏览器中打开 `index.html`
+2. 打开开发者工具（F12）查看控制台
+3. 按照 `TEST_GUIDE.md` 中的步骤进行测试
+4. 验证所有功能是否正常工作
+
+### 相关文档
+
+- [测试指南](./TEST_GUIDE.md) - 详细的测试步骤和预期结果
+- [修复总结](./FIX_SUMMARY.md) - 完整的修复内容和技术细节
+- [迁移总结](./MIGRATION_SUMMARY.md) - 从 testquery.html 的迁移记录
+
+### ✨ 功能特性
+
+- ✅ **双击选表**：在左侧数据源面板双击表名即可选择
+- ✅ **动态卡片**：在关联查询和集合操作中，双击表名会动态添加卡片
+- ✅ **删除功能**：点击卡片上的 ❌ 按钮可以移除表
+- ✅ **多表选择**：关联查询和集合操作支持选择多个表
+- ✅ **单表选择**：可视化查询和透视表只能选择一个表

@@ -3,16 +3,72 @@ const AppState = {
   currentTab: 'visual',
   currentMode: 'query',
   selectedTables: {
-    visual: [],
+    visual: ['sales_data'],  // 默认选中
     sql: [],
     join: [],
     set: [],
-    pivot: []
+    pivot: ['sales_data']
+  }
+};
+
+// 表结构定义（用于生成卡片）
+const tableSchemas = {
+  'sales_data': {
+    source: 'DuckDB 表',
+    columns: [
+      { name: 'id', type: 'INTEGER' },
+      { name: 'customer_id', type: 'INTEGER' },
+      { name: 'amount', type: 'DOUBLE' },
+      { name: 'date', type: 'DATE' }
+    ]
+  },
+  'customer_info': {
+    source: 'DuckDB 表',
+    columns: [
+      { name: 'id', type: 'INTEGER' },
+      { name: 'name', type: 'VARCHAR' },
+      { name: 'email', type: 'VARCHAR' },
+      { name: 'city', type: 'VARCHAR' }
+    ]
+  },
+  'product_catalog': {
+    source: 'DuckDB 表',
+    columns: [
+      { name: 'id', type: 'INTEGER' },
+      { name: 'name', type: 'VARCHAR' },
+      { name: 'price', type: 'DOUBLE' },
+      { name: 'category', type: 'VARCHAR' }
+    ]
+  },
+  'orders': {
+    source: 'MySQL - 生产库',
+    columns: [
+      { name: 'id', type: 'INTEGER' },
+      { name: 'user_id', type: 'INTEGER' },
+      { name: 'total', type: 'DOUBLE' },
+      { name: 'status', type: 'VARCHAR' }
+    ]
+  },
+  'users': {
+    source: 'MySQL - 生产库',
+    columns: [
+      { name: 'id', type: 'INTEGER' },
+      { name: 'username', type: 'VARCHAR' },
+      { name: 'email', type: 'VARCHAR' }
+    ]
+  },
+  'products': {
+    source: 'MySQL - 生产库',
+    columns: [
+      { name: 'id', type: 'INTEGER' },
+      { name: 'name', type: 'VARCHAR' },
+      { name: 'price', type: 'DOUBLE' }
+    ]
   }
 };
 
 // 切换二级Tab（查询模式/异步任务）
-function switchSecondaryTab(mode) {
+function switchSecondaryTab(mode, evt) {
   AppState.currentMode = mode;
   
   const queryMode = document.getElementById('query-mode');
@@ -32,7 +88,9 @@ function switchSecondaryTab(mode) {
   document.querySelectorAll('.tab-btn[onclick^="switchSecondaryTab"]').forEach(btn => {
     btn.classList.remove('active');
   });
-  event.currentTarget.classList.add('active');
+  if (evt && evt.currentTarget) {
+    evt.currentTarget.classList.add('active');
+  }
   
   if (typeof lucide !== 'undefined') {
     lucide.createIcons();
@@ -40,15 +98,16 @@ function switchSecondaryTab(mode) {
 }
 
 // 切换三级Tab（可视化/SQL/JOIN/SET/PIVOT）
-function switchThirdTab(tab) {
+function switchThirdTab(tab, evt) {
+  console.log('Switching to tab:', tab);
   AppState.currentTab = tab;
   
   // 更新Tab按钮状态
   document.querySelectorAll('.tab-btn[onclick^="switchThirdTab"]').forEach(btn => {
     btn.classList.remove('active');
   });
-  if (event && event.currentTarget) {
-    event.currentTarget.classList.add('active');
+  if (evt && evt.currentTarget) {
+    evt.currentTarget.classList.add('active');
   }
   
   // 加载对应的Tab模板
@@ -62,13 +121,25 @@ function switchThirdTab(tab) {
   
   const templateKey = tabTemplates[tab];
   if (templateKey && typeof TemplateLoader !== 'undefined') {
+    console.log('Loading template:', templateKey);
     TemplateLoader.loadTemplate(templateKey, 'tab-content-container');
+    
+    // 更新左侧树的选中状态
+    setTimeout(() => {
+      updateTreeSelection();
+    }, 50);
+    
+    // 更新内容区（对于 join 和 set 需要动态生成卡片）
+    setTimeout(() => {
+      updateContentArea();
+    }, 100);
     
     // 重新初始化图标
     if (typeof lucide !== 'undefined') {
       setTimeout(() => {
+        console.log('Reinitializing Lucide icons');
         lucide.createIcons();
-      }, 50);
+      }, 150);
     }
   }
 }
@@ -103,27 +174,98 @@ function toggleDataSourcePanel() {
   }
 }
 
-// 数据表选择
-function selectTable(tableName, event) {
-  if (event) {
-    event.stopPropagation();
+// 数据表选择（双击）
+function selectTable(tableName, evt) {
+  console.log('selectTable called:', tableName, evt);
+  
+  if (evt) {
+    evt.stopPropagation();
   }
   
   const currentTab = AppState.currentTab;
+  const isMultiSelect = currentTab === 'join' || currentTab === 'set';
   const tables = AppState.selectedTables[currentTab];
+  const tableIndex = tables.indexOf(tableName);
   
-  // 切换选中状态
-  const index = tables.indexOf(tableName);
-  if (index > -1) {
-    tables.splice(index, 1);
+  if (isMultiSelect) {
+    // 多表模式：切换选择状态
+    if (tableIndex > -1) {
+      // 已选中，取消选择
+      tables.splice(tableIndex, 1);
+      console.log(`Removed table: ${tableName}`);
+    } else {
+      // 未选中，添加
+      tables.push(tableName);
+      console.log(`Added table: ${tableName}`);
+    }
   } else {
-    tables.push(tableName);
+    // 单表模式：替换选择
+    AppState.selectedTables[currentTab] = [tableName];
+    console.log(`Selected single table: ${tableName}`);
   }
   
-  // 更新UI
+  // 更新左侧树的选中状态
   updateTreeSelection();
   
-  console.log(`Selected tables for ${currentTab}:`, tables);
+  // 更新右侧内容区
+  updateContentArea();
+  
+  // 重新初始化图标
+  if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+  }
+  
+  console.log(`✓ Selected table: ${tableName}`, AppState.selectedTables);
+}
+
+// 更新左侧树的选中状态
+function updateTreeSelection() {
+  const tables = AppState.selectedTables[AppState.currentTab];
+  const allTreeItems = document.querySelectorAll('.tree-item');
+  
+  allTreeItems.forEach(item => {
+    const nameSpan = item.querySelector('.item-name');
+    if (!nameSpan) return;
+    
+    const tableName = nameSpan.textContent.trim();
+    const icon = item.querySelector('i[data-lucide="table"]');
+    
+    if (tables.includes(tableName)) {
+      item.classList.add('selected');
+      if (icon) {
+        icon.classList.remove('text-muted-fg');
+        icon.classList.add('text-primary');
+      }
+    } else {
+      item.classList.remove('selected');
+      if (icon) {
+        icon.classList.remove('text-primary');
+        icon.classList.add('text-muted-fg');
+      }
+    }
+  });
+}
+
+// 更新右侧内容区
+function updateContentArea() {
+  const currentTab = AppState.currentTab;
+  
+  if (currentTab === 'join') {
+    updateJoinContent();
+  } else if (currentTab === 'set') {
+    updateSetContent();
+  } else if (currentTab === 'visual') {
+    // 更新可视化查询的表名显示
+    const tables = AppState.selectedTables.visual;
+    const nameEl = document.getElementById('selected-table-name');
+    if (nameEl && tables.length > 0) {
+      nameEl.textContent = tables[0];
+    }
+  } else if (currentTab === 'pivot') {
+    // 更新透视表的表名显示
+    const tables = AppState.selectedTables.pivot;
+    // 可以扩展：更新透视表的数据源显示
+  }
 }
 
 // 更新树形列表选中状态
@@ -471,3 +613,248 @@ document.addEventListener('DOMContentLoaded', function() {
     initHorizontalResizer();
   }, 500);
 });
+
+
+// ========== 事件处理器验证函数 ==========
+
+// 验证所有关键事件处理器是否正常工作
+function verifyEventHandlers() {
+  console.log('=== Verifying Event Handlers ===');
+  
+  // 验证 selectTable 函数
+  if (typeof selectTable === 'function') {
+    console.log('✓ selectTable function is defined');
+  } else {
+    console.error('✗ selectTable function is NOT defined');
+  }
+  
+  // 验证 switchThirdTab 函数
+  if (typeof switchThirdTab === 'function') {
+    console.log('✓ switchThirdTab function is defined');
+  } else {
+    console.error('✗ switchThirdTab function is NOT defined');
+  }
+  
+  // 验证 switchSecondaryTab 函数
+  if (typeof switchSecondaryTab === 'function') {
+    console.log('✓ switchSecondaryTab function is defined');
+  } else {
+    console.error('✗ switchSecondaryTab function is NOT defined');
+  }
+  
+  // 验证双击事件绑定
+  const treeItems = document.querySelectorAll('.tree-item[ondblclick]');
+  console.log(`✓ Found ${treeItems.length} tree items with ondblclick events`);
+  
+  // 验证 Lucide 图标
+  const lucideIcons = document.querySelectorAll('[data-lucide]');
+  const renderedIcons = document.querySelectorAll('[data-lucide] svg');
+  console.log(`✓ Found ${lucideIcons.length} Lucide icon elements`);
+  console.log(`✓ ${renderedIcons.length} icons have been rendered`);
+  
+  if (renderedIcons.length < lucideIcons.length) {
+    console.warn(`⚠ ${lucideIcons.length - renderedIcons.length} icons not yet rendered`);
+  }
+  
+  console.log('=== Verification Complete ===');
+}
+
+// 在页面加载完成后自动验证
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(verifyEventHandlers, 1000);
+});
+
+
+// ========== 动态卡片生成函数 ==========
+
+// 创建表卡片
+function createTableCard(tableName, isPrimary, type) {
+  const schema = tableSchemas[tableName] || { source: 'Unknown', columns: [] };
+  const div = document.createElement('div');
+  div.className = `datasource-card ${isPrimary ? 'primary' : ''} shrink-0`;
+  div.style.cssText = 'min-width: 260px; max-width: 280px;';
+  
+  const columnsHtml = schema.columns.slice(0, 6).map(col => `
+    <label class="flex items-center gap-2 text-xs px-2 py-1 rounded hover:bg-muted/50 cursor-pointer">
+      <input type="checkbox" class="accent-primary w-3 h-3" checked />
+      <span class="flex-1 truncate">${col.name}</span>
+      <span class="text-muted-fg text-[10px]">${col.type}</span>
+    </label>
+  `).join('');
+  
+  const moreColumns = schema.columns.length > 6 ? 
+    `<div class="text-xs text-muted-fg text-center py-1">+${schema.columns.length - 6} 更多字段</div>` : '';
+  
+  div.innerHTML = `
+    <div class="p-3 border-b border-border flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <i data-lucide="table" class="w-4 h-4 ${isPrimary ? 'text-primary' : 'text-muted-fg'}"></i>
+        <span class="font-medium text-sm">${tableName}</span>
+        ${isPrimary ? '<span class="text-[10px] px-1.5 py-0.5 bg-primary/20 text-primary rounded">主表</span>' : ''}
+      </div>
+      <button onclick="removeTableFromSelection('${tableName}', '${type}')" class="text-muted-fg hover:text-error p-1 rounded hover:bg-error/10" title="移除">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="p-3">
+      <div class="text-xs text-muted-fg mb-2 flex items-center gap-1">
+        <i data-lucide="database" class="w-3 h-3"></i>
+        ${schema.source}
+      </div>
+      <div class="space-y-0.5 max-h-40 overflow-auto">
+        ${columnsHtml}
+        ${moreColumns}
+      </div>
+    </div>
+  `;
+  
+  return div;
+}
+
+// 创建 JOIN 连接器
+function createJoinConnector(leftTable, rightTable, index) {
+  const div = document.createElement('div');
+  div.className = 'join-connector shrink-0';
+  div.innerHTML = `
+    <div class="flex flex-col items-center gap-2 px-2">
+      <select class="duck-input text-xs w-28 text-center">
+        <option value="INNER JOIN">INNER JOIN</option>
+        <option value="LEFT JOIN" selected>LEFT JOIN</option>
+        <option value="RIGHT JOIN">RIGHT JOIN</option>
+        <option value="FULL JOIN">FULL JOIN</option>
+      </select>
+      <div class="w-16 h-0.5 bg-primary/50"></div>
+      <div class="text-[10px] text-muted-fg">ON</div>
+      <div class="flex items-center gap-1 text-xs">
+        <select class="duck-input text-xs py-1 px-2" style="width: 80px;">
+          ${getColumnOptions(leftTable)}
+        </select>
+        <span>=</span>
+        <select class="duck-input text-xs py-1 px-2" style="width: 80px;">
+          ${getColumnOptions(rightTable)}
+        </select>
+      </div>
+    </div>
+  `;
+  return div;
+}
+
+// 创建集合操作连接器
+function createSetConnector() {
+  const div = document.createElement('div');
+  div.className = 'set-connector shrink-0 flex items-center justify-center px-4';
+  div.innerHTML = `
+    <div class="px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-full">
+      UNION
+    </div>
+  `;
+  return div;
+}
+
+// 获取列选项
+function getColumnOptions(tableName) {
+  const schema = tableSchemas[tableName];
+  if (!schema) return '<option>-</option>';
+  return schema.columns.map(col => `<option value="${col.name}">${col.name}</option>`).join('');
+}
+
+// 从选择中移除表
+function removeTableFromSelection(tableName, type) {
+  const tables = AppState.selectedTables[type];
+  const index = tables.indexOf(tableName);
+  if (index > -1) {
+    tables.splice(index, 1);
+    console.log(`Removed ${tableName} from ${type}`);
+  }
+  updateTreeSelection();
+  updateContentArea();
+}
+
+// 更新关联查询内容
+function updateJoinContent() {
+  const container = document.getElementById('tab-content-container');
+  if (!container) return;
+  
+  const tables = AppState.selectedTables.join;
+  
+  // 重新加载模板
+  if (typeof TemplateLoader !== 'undefined') {
+    TemplateLoader.loadTemplate('joinQuery', 'tab-content-container');
+  }
+  
+  // 等待模板加载完成后更新内容
+  setTimeout(() => {
+    const tablesContainer = container.querySelector('.flex.items-start.gap-4');
+    if (!tablesContainer) return;
+    
+    if (tables.length === 0) {
+      // 显示空状态（模板中已有）
+      return;
+    }
+    
+    // 清空容器
+    tablesContainer.innerHTML = '';
+    
+    // 添加表卡片和连接器
+    tables.forEach((tableName, index) => {
+      const isPrimary = index === 0;
+      const card = createTableCard(tableName, isPrimary, 'join');
+      tablesContainer.appendChild(card);
+      
+      // 添加连接器（除了最后一个表）
+      if (index < tables.length - 1) {
+        const connector = createJoinConnector(tableName, tables[index + 1], index);
+        tablesContainer.appendChild(connector);
+      }
+    });
+    
+    // 重新初始化图标
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  }, 100);
+}
+
+// 更新集合操作内容
+function updateSetContent() {
+  const container = document.getElementById('tab-content-container');
+  if (!container) return;
+  
+  const tables = AppState.selectedTables.set;
+  
+  // 重新加载模板
+  if (typeof TemplateLoader !== 'undefined') {
+    TemplateLoader.loadTemplate('setOperations', 'tab-content-container');
+  }
+  
+  // 等待模板加载完成后更新内容
+  setTimeout(() => {
+    const tablesContainer = container.querySelector('.flex.items-start.gap-4');
+    if (!tablesContainer) return;
+    
+    if (tables.length === 0) {
+      // 显示空状态（模板中已有）
+      return;
+    }
+    
+    // 清空容器
+    tablesContainer.innerHTML = '';
+    
+    // 添加表卡片和连接器
+    tables.forEach((tableName, index) => {
+      const card = createTableCard(tableName, false, 'set');
+      tablesContainer.appendChild(card);
+      
+      // 添加连接器（除了最后一个表）
+      if (index < tables.length - 1) {
+        const connector = createSetConnector();
+        tablesContainer.appendChild(connector);
+      }
+    });
+    
+    // 重新初始化图标
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  }, 100);
+}
