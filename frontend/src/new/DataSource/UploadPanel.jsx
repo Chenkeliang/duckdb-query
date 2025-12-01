@@ -8,10 +8,20 @@ import {
   browseServerDirectory,
   importServerFile
 } from "../../services/apiClient";
+import { Card, CardContent } from "@/new/components/ui/card";
+import { Button } from "@/new/components/ui/button";
+import { Input } from "@/new/components/ui/input";
+import { Label } from "@/new/components/ui/label";
 
 /**
  * 数据源视图 A：智能文件上传（本地文件 + URL + 服务器目录）。
  * 视觉与布局参考 docs/datasource_preview.html 的 #view-file。
+ * 
+ * Now using shadcn/ui components:
+ * - Card for containers
+ * - Button for all actions
+ * - Input for form fields
+ * - Label for field labels
  */
 const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
   const { t } = useTranslation("common");
@@ -233,7 +243,8 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
       {/* 左侧：智能文件上传主卡片 */}
-      <div className="bg-surface border border-border rounded-xl p-6 space-y-5 shadow-sm">
+      <Card className="shadow-sm">
+        <CardContent className="p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-fg">
@@ -283,46 +294,45 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
           ) : null}
         </div>
 
-        <div className="space-y-2">
-          <label className="text-xs text-muted-fg">
-            {t("page.datasource.aliasLabel")}
-          </label>
-          <input
-            className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary"
-            value={alias}
-            onChange={e => setAlias(e.target.value)}
-            placeholder={t("page.datasource.aliasPlaceholder")}
-          />
-        </div>
+          <div className="space-y-2">
+            <Label htmlFor="upload-alias">
+              {t("page.datasource.aliasLabel")}
+            </Label>
+            <Input
+              id="upload-alias"
+              value={alias}
+              onChange={e => setAlias(e.target.value)}
+              placeholder={t("page.datasource.aliasPlaceholder")}
+            />
+          </div>
 
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={uploading || !selectedFile}
-            className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-60 shadow-sm"
-          >
-            {uploading
-              ? t("page.datasource.connection.saving")
-              : t("page.datasource.btnStartUpload")}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedFile(null);
-              setAlias("");
-            }}
-            className="px-4 py-2 rounded-md text-sm text-muted-fg hover:text-foreground hover:bg-muted"
-          >
-            {t("page.datasource.paste.btnClear")}
-          </button>
-        </div>
-      </div>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={handleUpload}
+              disabled={uploading || !selectedFile}
+            >
+              {uploading
+                ? t("page.datasource.connection.saving")
+                : t("page.datasource.btnStartUpload")}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSelectedFile(null);
+                setAlias("");
+              }}
+            >
+              {t("page.datasource.paste.btnClear")}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* 右侧：URL 拉取 + 服务器目录导入卡片 */}
       <div className="flex flex-col gap-6">
         {/* URL 拉取 */}
-        <div className="bg-surface border border-border rounded-xl p-6 space-y-4 shadow-sm">
+        <Card className="shadow-sm">
+          <CardContent className="p-6 space-y-4">
           <div>
             <p className="text-sm text-muted-fg">
               {t("page.datasource.cardRemoteTitle")}
@@ -332,51 +342,51 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
             </h3>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-xs text-muted-fg flex items-center gap-2">
-              <Link2 className="h-4 w-4 text-muted-fg" />
-              {t("page.datasource.remoteUrlLabel")}
-            </label>
-            <input
-              className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              placeholder="https://example.com/data.csv"
-            />
-            <p className="text-[11px] text-muted-fg">
-              {t("page.datasource.remoteUrlHelper")}
-            </p>
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="remote-url" className="flex items-center gap-2">
+                <Link2 className="h-4 w-4" />
+                {t("page.datasource.remoteUrlLabel")}
+              </Label>
+              <Input
+                id="remote-url"
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                placeholder="https://example.com/data.csv"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {t("page.datasource.remoteUrlHelper")}
+              </p>
+            </div>
 
-          <div className="space-y-2">
-            <label className="text-xs text-muted-fg flex items-center gap-2">
-              <FileType className="h-4 w-4 text-muted-fg" />
-              {t("page.datasource.remoteAliasLabel")}
-            </label>
-            <input
-              className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary"
-              value={alias}
-              onChange={e => setAlias(e.target.value)}
-              placeholder={t("page.datasource.remoteAliasPlaceholder")}
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="remote-alias" className="flex items-center gap-2">
+                <FileType className="h-4 w-4" />
+                {t("page.datasource.remoteAliasLabel")}
+              </Label>
+              <Input
+                id="remote-alias"
+                value={alias}
+                onChange={e => setAlias(e.target.value)}
+                placeholder={t("page.datasource.remoteAliasPlaceholder")}
+              />
+            </div>
 
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={handleUrlImport}
-              disabled={urlLoading || !url.trim()}
-              className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-60"
-            >
-              {urlLoading
-                ? t("page.datasource.connection.testing")
-                : t("page.datasource.btnReadRemote")}
-            </button>
-          </div>
-        </div>
+            <div className="flex gap-3">
+              <Button
+                onClick={handleUrlImport}
+                disabled={urlLoading || !url.trim()}
+              >
+                {urlLoading
+                  ? t("page.datasource.connection.testing")
+                  : t("page.datasource.btnReadRemote")}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* 服务器目录导入 */}
-        <div className="bg-surface border border-border rounded-xl p-6 space-y-4 shadow-sm">
+        <Card className="shadow-sm">
+          <CardContent className="p-6 space-y-4">
           <div>
             <p className="text-sm text-muted-fg">
               {t("page.datasource.cardServerTitle")}
@@ -463,32 +473,31 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
             )}
           </div>
 
-          <div className="space-y-2">
-            <label className="text-xs text-muted-fg flex items-center gap-2">
-              <FileType className="h-4 w-4 text-muted-fg" />
-              {t("page.datasource.serverAliasLabel")}
-            </label>
-            <input
-              className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-primary"
-              value={serverAlias}
-              onChange={e => setServerAlias(e.target.value)}
-              placeholder={t("page.datasource.serverAliasPlaceholder")}
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="server-alias" className="flex items-center gap-2">
+                <FileType className="h-4 w-4" />
+                {t("page.datasource.serverAliasLabel")}
+              </Label>
+              <Input
+                id="server-alias"
+                value={serverAlias}
+                onChange={e => setServerAlias(e.target.value)}
+                placeholder={t("page.datasource.serverAliasPlaceholder")}
+              />
+            </div>
 
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={handleServerImport}
-              disabled={serverImporting || !serverSelectedFile}
-              className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-60"
-            >
-              {serverImporting
-                ? t("page.datasource.connection.saving")
-                : t("page.datasource.btnImportServer")}
-            </button>
-          </div>
-        </div>
+            <div className="flex gap-3">
+              <Button
+                onClick={handleServerImport}
+                disabled={serverImporting || !serverSelectedFile}
+              >
+                {serverImporting
+                  ? t("page.datasource.connection.saving")
+                  : t("page.datasource.btnImportServer")}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

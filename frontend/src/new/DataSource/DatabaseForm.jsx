@@ -2,10 +2,22 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getServerMounts, browseServerDirectory } from "../../services/apiClient";
 import { Server } from "lucide-react";
+import { Card, CardContent } from "@/new/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/new/components/ui/tabs";
+import { Button } from "@/new/components/ui/button";
+import { Input } from "@/new/components/ui/input";
+import { Label } from "@/new/components/ui/label";
 
 /**
- * New database form using tokens + tailwind styles.
+ * New database form using shadcn/ui components.
  * Emits normalized params for test/save, without touching legacy components.
+ * 
+ * Now using:
+ * - Card for container
+ * - Tabs for database type switching
+ * - Button for all actions
+ * - Input for form fields
+ * - Label for field labels
  */
 const DatabaseForm = ({
   defaultType = "mysql",
@@ -157,11 +169,6 @@ const DatabaseForm = ({
     }
   };
 
-  const inputBase =
-    "w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors";
-
-  const labelBase = "text-xs text-muted-foreground";
-
   const dbTabs = [
     { id: "mysql", label: t("page.datasource.connection.dbTypes.mysql") },
     {
@@ -172,96 +179,85 @@ const DatabaseForm = ({
   ];
 
   return (
-    <div className="bg-surface border border-border rounded-xl p-8 space-y-6 shadow-sm">
-      {/* 顶部数据库类型切换 Tabs */}
-      <div className="border-b border-border flex gap-6 text-sm font-medium">
-        {dbTabs.map(tab => {
-          const active = tab.id === type;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setType(tab.id)}
-              className={`pb-2 flex items-center gap-2 border-b-2 transition-colors ${active
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-            >
-              {active && (
-                <span className="w-2 h-2 rounded-full bg-success"></span>
-              )}
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+    <Card className="shadow-sm">
+      <CardContent className="p-8 space-y-6">
+        {/* 顶部数据库类型切换 Tabs */}
+        <Tabs value={type} onValueChange={setType}>
+          <TabsList className="grid w-full grid-cols-3">
+            {dbTabs.map(tab => (
+              <TabsTrigger key={tab.id} value={tab.id}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-6">
-        <div className="space-y-2 md:col-span-2">
-          <label className={labelBase}>
-            {t("page.datasource.connection.name")}
-          </label>
-          <input
-            className={inputBase}
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder={t("page.datasource.connection.namePlaceholder")}
-          />
-        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-6">
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="connection-name">
+              {t("page.datasource.connection.name")}
+            </Label>
+            <Input
+              id="connection-name"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder={t("page.datasource.connection.namePlaceholder")}
+            />
+          </div>
 
         {!isSqlite ? (
           <>
             <div className="space-y-2">
-              <label className={labelBase}>
+              <Label htmlFor="host">
                 {t("page.datasource.connection.host")}
-              </label>
-              <input
-                className={inputBase}
+              </Label>
+              <Input
+                id="host"
                 value={host}
                 onChange={e => setHost(e.target.value)}
                 placeholder="localhost"
               />
             </div>
             <div className="space-y-2">
-              <label className={labelBase}>
+              <Label htmlFor="port">
                 {t("page.datasource.connection.port")}
-              </label>
-              <input
-                className={inputBase}
+              </Label>
+              <Input
+                id="port"
                 value={port}
                 onChange={e => setPort(e.target.value)}
                 placeholder="3306"
               />
             </div>
             <div className="space-y-2">
-              <label className={labelBase}>
+              <Label htmlFor="username">
                 {t("page.datasource.connection.username")}
-              </label>
-              <input
-                className={inputBase}
+              </Label>
+              <Input
+                id="username"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
                 placeholder="root"
               />
             </div>
             <div className="space-y-2">
-              <label className={labelBase}>
+              <Label htmlFor="password">
                 {t("page.datasource.connection.password")}
-              </label>
-              <input
+              </Label>
+              <Input
+                id="password"
                 type="password"
-                className={inputBase}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••"
               />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className={labelBase}>
+              <Label htmlFor="database">
                 {t("page.datasource.connection.database")}
-              </label>
-              <input
-                className={inputBase}
+              </Label>
+              <Input
+                id="database"
                 value={database}
                 onChange={e => setDatabase(e.target.value)}
                 placeholder={t(
@@ -271,16 +267,16 @@ const DatabaseForm = ({
             </div>
             {isPostgreSQL && (
               <div className="space-y-2 md:col-span-2">
-                <label className={labelBase}>
+                <Label htmlFor="schema">
                   {t("page.datasource.connection.schema")}
-                </label>
-                <input
-                  className={inputBase}
+                </Label>
+                <Input
+                  id="schema"
                   value={schema}
                   onChange={e => setSchema(e.target.value)}
                   placeholder="public"
                 />
-                <p className="text-[11px] text-muted-fg">
+                <p className="text-[11px] text-muted-foreground">
                   {t("page.datasource.connection.schemaHelper")}
                 </p>
               </div>
@@ -289,11 +285,11 @@ const DatabaseForm = ({
         ) : (
           <>
             <div className="space-y-2 md:col-span-2">
-              <label className={labelBase}>
+              <Label htmlFor="sqlite-path">
                 {t("page.datasource.connection.sqlitePath")}
-              </label>
-              <input
-                className={inputBase}
+              </Label>
+              <Input
+                id="sqlite-path"
                 value={sqlitePath}
                 onChange={e => setSqlitePath(e.target.value)}
                 placeholder={t("page.datasource.connection.sqlitePlaceholder")}
@@ -388,45 +384,42 @@ const DatabaseForm = ({
         )}
       </div>
 
-      {error ? <div className="text-xs text-error">{error}</div> : null}
+        {error ? <div className="text-xs text-error">{error}</div> : null}
 
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={handleTest}
-          disabled={testing || loading}
-          className="px-4 py-2 rounded-md border border-border bg-surface text-sm font-medium text-foreground hover:bg-surface-hover disabled:opacity-60"
-        >
-          {testing
-            ? t("page.datasource.connection.testing")
-            : t("page.datasource.connection.test")}
-        </button>
-        <button
-          type="button"
-          onClick={handleConnect}
-          disabled={loading}
-          className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-60"
-        >
-          {loading
-            ? t("page.datasource.connection.connecting", {
-              defaultValue: t("page.datasource.connection.saving")
-            })
-            : t("page.datasource.connection.connect", {
-              defaultValue: t("page.datasource.connection.save")
-            })}
-        </button>
-        {onSaveConfig ? (
-          <button
-            type="button"
-            onClick={handleSaveConfigClick}
-            disabled={loading}
-            className="px-4 py-2 rounded-md border border-border bg-surface text-sm font-medium text-foreground hover:bg-surface-hover disabled:opacity-60"
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="outline"
+            onClick={handleTest}
+            disabled={testing || loading}
           >
-            {t("page.datasource.connection.save")}
-          </button>
-        ) : null}
-      </div>
-    </div >
+            {testing
+              ? t("page.datasource.connection.testing")
+              : t("page.datasource.connection.test")}
+          </Button>
+          <Button
+            onClick={handleConnect}
+            disabled={loading}
+          >
+            {loading
+              ? t("page.datasource.connection.connecting", {
+                defaultValue: t("page.datasource.connection.saving")
+              })
+              : t("page.datasource.connection.connect", {
+                defaultValue: t("page.datasource.connection.save")
+              })}
+          </Button>
+          {onSaveConfig ? (
+            <Button
+              variant="outline"
+              onClick={handleSaveConfigClick}
+              disabled={loading}
+            >
+              {t("page.datasource.connection.save")}
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 

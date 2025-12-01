@@ -7,12 +7,25 @@ import {
   deletePostgreSQLConfig
 } from "../../services/apiClient";
 import { Database, Trash2, Play, RefreshCw } from "lucide-react";
+import { Card, CardContent } from "@/new/components/ui/card";
+import { Button } from "@/new/components/ui/button";
+import { Badge } from "@/new/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/new/components/ui/dialog";
 
 const SavedConnectionsList = ({ onSelect, onRefresh }) => {
   const { t } = useTranslation("common");
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [configToDelete, setConfigToDelete] = useState(null);
 
   const loadConfigs = async () => {
     setLoading(true);
@@ -47,16 +60,23 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
     loadConfigs();
   }, [onRefresh]);
 
-  const handleDelete = async (id, type) => {
-    if (!window.confirm(t("page.datasource.list.deleteConfirmDesc"))) return;
+  const handleDeleteClick = (config) => {
+    setConfigToDelete(config);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!configToDelete) return;
 
     try {
-      if (type === "mysql") {
-        await deleteMySQLConfig(id);
-      } else if (type === "postgresql") {
-        await deletePostgreSQLConfig(id);
+      if (configToDelete.type === "mysql") {
+        await deleteMySQLConfig(configToDelete.id);
+      } else if (configToDelete.type === "postgresql") {
+        await deletePostgreSQLConfig(configToDelete.id);
       }
       loadConfigs();
+      setDeleteDialogOpen(false);
+      setConfigToDelete(null);
     } catch (err) {
       alert(t("page.datasource.list.deleteFail", { message: err.message }));
     }
@@ -71,66 +91,92 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
   }
 
   return (
-    <div className="bg-surface border border-border rounded-xl p-6 space-y-4 shadow-sm mt-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-          <Database className="h-5 w-5 text-primary" />
-          {t("page.datasource.list.title")}
-        </h3>
-        <button
-          onClick={loadConfigs}
-          className="p-1 hover:bg-surface-hover rounded-md text-muted-fg hover:text-foreground transition-colors"
-          title={t("actions.refresh")}
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {configs.map(config => (
-          <div
-            key={`${config.type}-${config.id}`}
-            className="group border border-border rounded-lg p-4 hover:border-primary/50 hover:shadow-sm transition-all bg-surface"
-          >
-            <div className="flex justify-between items-start mb-2">
-              <div className="flex items-center gap-2">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase ${config.type === 'mysql' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' :
-                  'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
-                  }`}>
-                  {config.type === 'mysql' ? 'MySQL' : 'PG'}
-                </span>
-              </div>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={() => handleDelete(config.id, config.type)}
-                  className="p-1.5 text-muted-fg hover:text-error hover:bg-error/10 rounded-md transition-colors"
-                  title={t("actions.delete")}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            <h4 className="font-medium text-foreground truncate mb-1" title={config.name}>
-              {config.name || config.id}
-            </h4>
-
-            <div className="text-xs text-muted-fg truncate mb-4">
-              {config.params.host}:{config.params.port}/{config.params.database}
-              {config.params.schema && config.params.schema !== 'public' && ` (${config.params.schema})`}
-            </div>
-
-            <button
-              onClick={() => onSelect(config)}
-              className="w-full flex items-center justify-center gap-2 py-2 rounded-md bg-surface-hover hover:bg-primary/10 text-sm font-medium text-foreground hover:text-primary transition-colors border border-border hover:border-primary/30"
+    <>
+      <Card className="shadow-sm mt-6">
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <Database className="h-5 w-5 text-primary" />
+              {t("page.datasource.list.title")}
+            </h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadConfigs}
+              title={t("actions.refresh")}
             >
-              <Play className="h-3.5 w-3.5" />
-              {t("page.datasource.connection.connect")}
-            </button>
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </Button>
           </div>
-        ))}
-      </div>
-    </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {configs.map(config => (
+              <Card
+                key={`${config.type}-${config.id}`}
+                className="group hover:border-primary/50 hover:shadow-sm transition-all"
+              >
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <Badge variant={config.type === 'mysql' ? 'default' : 'outline'}>
+                      {config.type === 'mysql' ? 'MySQL' : 'PG'}
+                    </Badge>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteClick(config)}
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-error"
+                        title={t("actions.delete")}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <h4 className="font-medium text-foreground truncate mb-1" title={config.name}>
+                    {config.name || config.id}
+                  </h4>
+
+                  <div className="text-xs text-muted-foreground truncate mb-4">
+                    {config.params.host}:{config.params.port}/{config.params.database}
+                    {config.params.schema && config.params.schema !== 'public' && ` (${config.params.schema})`}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onSelect(config)}
+                    className="w-full"
+                  >
+                    <Play className="h-3.5 w-3.5 mr-2" />
+                    {t("page.datasource.connection.connect")}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("actions.delete")}</DialogTitle>
+            <DialogDescription>
+              {t("page.datasource.list.deleteConfirmDesc")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              {t("actions.cancel")}
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              {t("actions.delete")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

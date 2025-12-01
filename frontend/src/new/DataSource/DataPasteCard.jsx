@@ -1,9 +1,27 @@
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Card, CardContent } from "@/new/components/ui/card";
+import { Button } from "@/new/components/ui/button";
+import { Input } from "@/new/components/ui/input";
+import { Label } from "@/new/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/new/components/ui/select";
 
 /**
- * Paste-data import with tokenized UI (no legacy deps).
+ * Paste-data import with shadcn/ui components.
  * Reuses旧逻辑：智能分隔符检测、类型检测、预览、保存到 /api/paste-data。
+ * 
+ * Now using:
+ * - Card for containers
+ * - Button for actions
+ * - Input for text fields
+ * - Select for dropdowns
+ * - Label for field labels
  */
 const DataPasteCard = ({ onDataSourceSaved }) => {
   const { t } = useTranslation("common");
@@ -318,135 +336,139 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
 
   return (
     <div className="space-y-4">
-      <div className="bg-surface border border-border rounded-xl p-4 shadow-sm">
-        <div className="space-y-2">
-          <h3 className="text-base font-semibold text-foreground">
-            {t("page.datasource.paste.title")}
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            {t("page.datasource.paste.subtitle")}
-          </p>
-        </div>
-
-        {error ? (
-          <div className="mt-3 rounded-lg border border-error-border bg-error-bg px-3 py-2 text-sm text-error">
-            {error}
+      <Card className="shadow-sm">
+        <CardContent className="p-4 space-y-4">
+          <div className="space-y-2">
+            <h3 className="text-base font-semibold text-foreground">
+              {t("page.datasource.paste.title")}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {t("page.datasource.paste.subtitle")}
+            </p>
           </div>
-        ) : null}
-        {success ? (
-          <div className="mt-3 rounded-lg border border-success-border bg-success-bg px-3 py-2 text-sm text-success">
-            {success}
+
+          {error ? (
+            <div className="rounded-lg border border-error-border bg-error-bg px-3 py-2 text-sm text-error">
+              {error}
+            </div>
+          ) : null}
+          {success ? (
+            <div className="rounded-lg border border-success-border bg-success-bg px-3 py-2 text-sm text-success">
+              {success}
+            </div>
+          ) : null}
+
+          <textarea
+            className="min-h-[180px] w-full rounded-xl border-2 border-dashed border-border-subtle bg-surface px-3 py-3 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none"
+            value={pastedData}
+            onChange={e => setPastedData(e.target.value)}
+            placeholder={t("page.datasource.paste.placeholder")}
+          />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              onClick={parseData}
+              disabled={!pastedData.trim()}
+            >
+              {t("page.datasource.paste.btnParse")}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={clearForm}
+            >
+              {t("page.datasource.paste.btnClear")}
+            </Button>
+            <Label className="ml-2">
+              {t("page.datasource.paste.format")}
+            </Label>
+            <Select value={format} onValueChange={setFormat}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">
+                  {t("page.datasource.paste.formatAuto")}
+                </SelectItem>
+                <SelectItem value="csv">
+                  {t("page.datasource.paste.formatCsv")}
+                </SelectItem>
+                <SelectItem value="json">
+                  {t("page.datasource.paste.formatJson")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <Label className="ml-2">
+              {t("page.datasource.paste.delimiter")}
+            </Label>
+            <Select value={delimiter} onValueChange={setDelimiter}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value=",">
+                  {t("page.datasource.paste.delimiterComma")}
+                </SelectItem>
+                <SelectItem value="\t">
+                  {t("page.datasource.paste.delimiterTab")}
+                </SelectItem>
+                <SelectItem value="|">
+                  {t("page.datasource.paste.delimiterPipe")}
+                </SelectItem>
+                <SelectItem value=";">
+                  {t("page.datasource.paste.delimiterSemicolon")}
+                </SelectItem>
+                <SelectItem value=" ">
+                  {t("page.datasource.paste.delimiterSpace")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={hasHeader}
+                onChange={e => setHasHeader(e.target.checked)}
+                className="accent-primary"
+              />
+              {t("page.datasource.paste.sheetInfo.target", { table: "" }) ||
+                t("page.datasource.tabPaste")}
+            </label>
           </div>
-        ) : null}
-
-        <textarea
-          className="mt-4 min-h-[180px] w-full rounded-xl border-2 border-dashed border-border-subtle bg-surface px-3 py-3 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none"
-          value={pastedData}
-          onChange={e => setPastedData(e.target.value)}
-          placeholder={t("page.datasource.paste.placeholder")}
-        />
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={parseData}
-            disabled={!pastedData.trim()}
-            className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-60 shadow-sm"
-          >
-            {t("page.datasource.paste.btnParse")}
-          </button>
-          <button
-            type="button"
-            onClick={clearForm}
-            className="px-3 py-2 rounded-md border border-border bg-surface text-sm text-foreground hover:bg-surface-hover"
-          >
-            {t("page.datasource.paste.btnClear")}
-          </button>
-          <label className="text-xs text-muted-foreground ml-2">
-            {t("page.datasource.paste.format")}
-          </label>
-          <select
-            value={format}
-            onChange={e => setFormat(e.target.value)}
-            className="h-9 rounded-md border border-border bg-input px-2 text-sm text-foreground"
-          >
-            <option value="auto">
-              {t("page.datasource.paste.formatAuto")}
-            </option>
-            <option value="csv">{t("page.datasource.paste.formatCsv")}</option>
-            <option value="json">
-              {t("page.datasource.paste.formatJson")}
-            </option>
-          </select>
-          <label className="text-xs text-muted-foreground ml-2">
-            {t("page.datasource.paste.delimiter")}
-          </label>
-          <select
-            value={delimiter}
-            onChange={e => setDelimiter(e.target.value)}
-            className="h-9 rounded-md border border-border bg-input px-2 text-sm text-foreground"
-          >
-            <option value=",">
-              {t("page.datasource.paste.delimiterComma")}
-            </option>
-            <option value="\t">
-              {t("page.datasource.paste.delimiterTab")}
-            </option>
-            <option value="|">
-              {t("page.datasource.paste.delimiterPipe")}
-            </option>
-            <option value=";">
-              {t("page.datasource.paste.delimiterSemicolon")}
-            </option>
-            <option value=" ">
-              {t("page.datasource.paste.delimiterSpace")}
-            </option>
-          </select>
-          <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={hasHeader}
-              onChange={e => setHasHeader(e.target.checked)}
-              className="accent-primary"
-            />
-            {t("page.datasource.paste.sheetInfo.target", { table: "" }) ||
-              t("page.datasource.tabPaste")}
-          </label>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {parsedData ? (
-        <div className="rounded-xl border border-border bg-surface p-4 shadow-dq-soft space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="md:col-span-2 space-y-2">
-              <label className="text-xs text-muted-foreground">
-                {t("page.datasource.paste.tableName")}
-              </label>
-              <input
-                className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                value={tableName}
-                onChange={e => setTableName(e.target.value)}
-                placeholder={t("page.datasource.paste.tableNamePlaceholder")}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                {t("page.datasource.paste.tableNameHelper")}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  className="accent-primary"
-                  checked={unifyAsString}
-                  onChange={e => toggleUnify(e.target.checked)}
+        <Card className="shadow-sm">
+          <CardContent className="p-4 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-2 space-y-2">
+                <Label htmlFor="table-name">
+                  {t("page.datasource.paste.tableName")}
+                </Label>
+                <Input
+                  id="table-name"
+                  value={tableName}
+                  onChange={e => setTableName(e.target.value)}
+                  placeholder={t("page.datasource.paste.tableNamePlaceholder")}
                 />
-                {t("page.datasource.paste.unifyAsString")}
-              </label>
-              <p className="text-[11px] text-muted-foreground">
-                {t("page.datasource.paste.unifyAsStringDesc")}
-              </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {t("page.datasource.paste.tableNameHelper")}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="accent-primary"
+                    checked={unifyAsString}
+                    onChange={e => toggleUnify(e.target.checked)}
+                  />
+                  {t("page.datasource.paste.unifyAsString")}
+                </label>
+                <p className="text-[11px] text-muted-foreground">
+                  {t("page.datasource.paste.unifyAsStringDesc")}
+                </p>
+              </div>
             </div>
-          </div>
 
           <div className="overflow-auto rounded-lg border border-border-subtle">
             <table className="min-w-full text-sm">
@@ -493,19 +515,18 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
             </table>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={saveToDatabase}
-              disabled={loading}
-              className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-60 shadow-sm"
-            >
-              {loading
-                ? t("page.datasource.paste.save.saving")
-                : t("page.datasource.paste.save.saveBtn")}
-            </button>
-          </div>
-        </div>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                onClick={saveToDatabase}
+                disabled={loading}
+              >
+                {loading
+                  ? t("page.datasource.paste.save.saving")
+                  : t("page.datasource.paste.save.saveBtn")}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   );

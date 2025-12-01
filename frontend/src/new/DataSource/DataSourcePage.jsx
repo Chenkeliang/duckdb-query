@@ -7,6 +7,8 @@ import DrawerAddSource from "./DrawerAddSource";
  * - 视图 B: 数据库管理（左表单 / 右已保存列表）
  * - 视图 C: 数据粘贴板（单列）
  * Header 上的 Tab 由上层 DuckQueryApp + DataSourceTabs 控制。
+ * 
+ * Note: This is a layout container. Child components use shadcn/ui components.
  */
 const DataSourcePage = ({
   activeTab = "upload",

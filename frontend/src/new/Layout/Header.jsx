@@ -3,6 +3,9 @@ import React from "react";
 /**
  * Simple header bar for new layout.
  * Left: page title（或自定义节点）；Right: 页面级操作（Tabs / 按钮等）。
+ * 
+ * Note: This component is a container. Child components should use shadcn/ui Button
+ * components when needed. The Header itself doesn't render buttons directly.
  */
 const Header = ({ title, titleNode, children }) => {
   const renderedTitle =
