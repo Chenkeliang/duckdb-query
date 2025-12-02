@@ -75,313 +75,152 @@ body {
   padding: 0;
 }
 
-/* Global Variables - Moved to :root for maximum compatibility */
-:root {
-  /* Light mode tokens aligned with datasource_preview.html */
-  /* Using comma-separated HSL for broader compatibility */
-  --dq-background: hsl(0, 0%, 100%);
-  --dq-surface: hsl(0, 0%, 100%);
-  --dq-surface-card: hsl(0, 0%, 100%);
-  --dq-surface-alt: hsl(0, 0%, 100%);
+/* Global Variables - Standard Tailwind CSS format */
+@layer base {
+  :root {
+    /* Base colors - HSL values only (no hsl() wrapper) */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
 
-  /* Muted surfaces & text */
-  --dq-muted: hsl(240, 5.9%, 90%);
-  --dq-muted-fg: hsl(240, 3.8%, 40%);
+    /* Surface colors */
+    --surface: 0 0% 100%;
+    --surface-hover: 240 5.9% 96%;
+    --surface-active: 240 4.8% 94%;
+    --surface-elevated: 0 0% 100%;
 
-  /* Borders */
-  --dq-border: hsl(240, 5.9%, 85%);
-  --dq-border-subtle: hsl(240, 5.9%, 90%);
-  --dq-border-card: hsl(240, 5.9%, 90%);
-  --dq-border-hover: hsl(214, 80%, 88%);
-  --dq-border-strong: hsl(240, 3.7%, 15.9%);
+    /* Muted */
+    --muted: 240 5.9% 90%;
+    --muted-foreground: 240 3.8% 40%;
 
-  /* Typography */
-  --dq-foreground: hsl(240, 10%, 3.9%);
-  --dq-text-primary: var(--dq-foreground);
-  --dq-text-secondary: hsl(240, 3.8%, 46.1%);
-  --dq-text-tertiary: var(--dq-muted-fg);
+    /* Primary */
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 0 0% 100%;
 
-  /* Brand / primary */
-  --dq-primary: hsl(221.2, 83.2%, 53.3%);
-  --dq-primary-fg: hsl(0, 0%, 100%);
-  --dq-accent-primary: var(--dq-primary);
-  --dq-text-on-primary: var(--dq-primary-fg);
+    /* Border */
+    --border: 240 5.9% 85%;
+    --border-subtle: 240 5.9% 90%;
+    --border-strong: 240 3.7% 15.9%;
 
-  /* Surfaces for hover/active states (derived) */
-  --dq-surface-hover: hsl(240, 5.9%, 96%);
-  --dq-surface-active: hsl(240, 4.8%, 94%);
-  --dq-surface-elevated: hsl(0, 0%, 100%);
+    /* Input */
+    --input: 0 0% 100%;
 
-  /* Radius & shadows */
-  --dq-radius-card: 0.75rem;
-  --dq-radius-cta: 0.75rem;
-  --dq-shadow-soft: 0 18px 36px -24px rgba(15, 23, 42, 0.18);
-  --dq-shadow-logo: 0 10px 15px -3px rgba(124, 45, 18, 0.2),
-    0 4px 6px -4px rgba(124, 45, 18, 0.2);
+    /* State colors */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --success-bg: 142 76% 96%;
+    --success-border: 142 76% 86%;
 
-  /* Inputs */
-  --dq-input-bg: hsl(0, 0%, 100%);
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --warning-bg: 38 92% 96%;
+    --warning-border: 38 92% 86%;
 
-  /* Navigation active state (light) */
-  --dq-nav-active-bg: hsl(214, 95%, 93%);
-  --dq-nav-active-border: hsl(214, 80%, 88%);
-  --dq-nav-active-fg: hsl(221.2, 83.2%, 53.3%);
+    --error: 0 72% 51%;
+    --error-foreground: 0 0% 100%;
+    --error-bg: 0 72% 96%;
+    --error-border: 0 72% 86%;
 
-  /* State Colors */
-  --dq-success: hsl(142, 76%, 36%);
-  --dq-success-fg: hsl(0, 0%, 100%);
-  --dq-success-bg: hsl(142, 76%, 96%);
-  --dq-success-border: hsl(142, 76%, 86%);
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    --info-bg: 199 89% 96%;
+    --info-border: 199 89% 86%;
 
-  --dq-warning: hsl(38, 92%, 50%);
-  --dq-warning-fg: hsl(0, 0%, 100%);
-  --dq-warning-bg: hsl(38, 92%, 96%);
-  --dq-warning-border: hsl(38, 92%, 86%);
+    /* Shadcn aliases */
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --secondary: 0 0% 100%;
+    --secondary-foreground: 240 10% 3.9%;
+    --accent: 240 4.8% 94%;
+    --accent-foreground: 240 10% 3.9%;
+    --ring: 221.2 83.2% 53.3%;
 
-  --dq-error: hsl(0, 72%, 51%);
-  --dq-error-fg: hsl(0, 0%, 100%);
-  --dq-error-bg: hsl(0, 72%, 96%);
-  --dq-error-border: hsl(0, 72%, 86%);
+    /* Radius */
+    --radius: 0.5rem;
 
-  --dq-info: hsl(199, 89%, 48%);
-  --dq-info-fg: hsl(0, 0%, 100%);
-  --dq-info-bg: hsl(199, 89%, 96%);
-  --dq-info-border: hsl(199, 89%, 86%);
+    /* Shadows */
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
 
-  /* Radius System */
-  --dq-radius-none: 0;
-  --dq-radius-sm: 0.25rem;
-  /* 4px */
-  --dq-radius-md: 0.375rem;
-  /* 6px - inputs/buttons */
-  --dq-radius-lg: 0.5rem;
-  /* 8px - tabs */
-  --dq-radius-xl: 0.75rem;
-  /* 12px - cards */
-  --dq-radius-2xl: 1rem;
-  /* 16px - large cards */
-  --dq-radius-full: 9999px;
-  /* circles */
-
-  /* Shadow System */
-  --dq-shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --dq-shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  --dq-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  --dq-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-  --dq-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-  --dq-shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  --dq-shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
-
-  /* Z-Index */
-  --dq-z-base: 0;
-  --dq-z-dropdown: 1000;
-  --dq-z-sticky: 1020;
-  --dq-z-fixed: 1030;
-  --dq-z-modal-backdrop: 1040;
-  --dq-z-modal: 1050;
-  --dq-z-popover: 1060;
-  --dq-z-tooltip: 1070;
-  --dq-z-notification: 1080;
-
-  /* Typography Scale */
-  --dq-text-xs: 0.75rem;
-  /* 12px */
-  --dq-text-sm: 0.875rem;
-  /* 14px */
-  --dq-text-base: 1rem;
-  /* 16px */
-  --dq-text-lg: 1.125rem;
-  /* 18px */
-  --dq-text-xl: 1.25rem;
-  /* 20px */
-  --dq-text-2xl: 1.5rem;
-  /* 24px */
-  --dq-text-3xl: 1.875rem;
-  /* 30px */
-
-  /* Line heights */
-  --dq-leading-tight: 1.25;
-  --dq-leading-normal: 1.5;
-  --dq-leading-relaxed: 1.75;
-
-  /* Font weights */
-  --dq-font-normal: 400;
-  --dq-font-medium: 500;
-  --dq-font-semibold: 600;
-  --dq-font-bold: 700;
-
-  /* Typography system */
-  --dq-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "Helvetica Neue", Arial, sans-serif;
-  --dq-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
-    Consolas, "Liberation Mono", "Courier New", monospace;
-
-  /* Component Tokens */
-  /* Dialog/Modal */
-  --dq-dialog-bg: var(--dq-surface-elevated);
-  --dq-dialog-border: var(--dq-border);
-  --dq-dialog-shadow: var(--dq-shadow-2xl);
-  --dq-dialog-radius: var(--dq-radius-xl);
-  --dq-dialog-padding: 1.5rem;
-
-  /* Backdrop */
-  --dq-backdrop-bg: var(--dq-overlay-strong);
-  --dq-backdrop-blur: blur(4px);
-
-  /* Toast/Notification */
-  --dq-toast-bg: var(--dq-surface-elevated);
-  --dq-toast-border: var(--dq-border);
-  --dq-toast-shadow: var(--dq-shadow-lg);
-  --dq-toast-radius: var(--dq-radius-lg);
-
-  /* Tooltip */
-  --dq-tooltip-bg: hsl(240, 10%, 10%);
-  --dq-tooltip-fg: hsl(0, 0%, 98%);
-  --dq-tooltip-shadow: var(--dq-shadow-md);
-  --dq-tooltip-radius: var(--dq-radius-md);
-  --dq-tooltip-padding-x: 0.5rem;
-  --dq-tooltip-padding-y: 0.25rem;
-
-  /* Interaction */
-  /* Focus */
-  --dq-focus-ring-width: 2px;
-  --dq-focus-ring-color: var(--dq-primary);
-  --dq-focus-ring-offset: 2px;
-  --dq-focus-ring-offset-color: var(--dq-background);
-
-  /* Disabled */
-  --dq-disabled-opacity: 0.5;
-  --dq-disabled-cursor: not-allowed;
-  --dq-disabled-bg: var(--dq-muted);
-  --dq-disabled-text: var(--dq-muted-fg);
-
-  /* Loading */
-  --dq-loading-spinner-color: var(--dq-primary);
-  --dq-loading-skeleton-bg: var(--dq-muted);
-
-  /* Animation */
-  /* ANIMATION DURATIONS */
-  --dq-duration-fast: 150ms;
-  --dq-duration-normal: 200ms;
-  --dq-duration-slow: 300ms;
-  --dq-duration-slower: 500ms;
-
-  --dq-ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --dq-ease-out: cubic-bezier(0, 0, 0.2, 1);
-  --dq-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-
-  --dq-overlay-strong: rgba(15, 23, 42, 0.4);
+    /* Typography */
+    --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+      "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+      Consolas, "Liberation Mono", "Courier New", monospace;
+  }
 }
 
 /* Scoped preflight removed - using standard Tailwind preflight instead */
 
-/* Dark mode overrides */
-.dark {
-  /* Dark mode tokens aligned with datasource_preview.html */
-  --dq-background: hsl(240, 10%, 3.9%);
-  --dq-surface: hsl(240, 10%, 3.9%);
-  --dq-surface-card: hsl(240, 10%, 3.9%);
-  --dq-surface-alt: hsl(240, 10%, 3.9%);
+@layer base {
+  .dark {
+    /* Dark mode - HSL values only */
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
 
-  /* Muted surfaces & text */
-  --dq-muted: hsl(240, 3.7%, 15.9%);
-  --dq-muted-fg: hsl(240, 5%, 64.9%);
+    /* Surface colors */
+    --surface: 240 10% 3.9%;
+    --surface-hover: 240 3.7% 15.9%;
+    --surface-active: 240 3.7% 18%;
+    --surface-elevated: 240 10% 6%;
 
-  /* Borders */
-  --dq-border: hsl(240, 5%, 21%);
-  --dq-border-subtle: hsl(240, 5%, 21%);
-  --dq-border-card: hsl(240, 5%, 21%);
-  --dq-border-hover: hsla(24.6, 95%, 53.1%, 0.24);
-  --dq-border-strong: hsla(0, 0%, 100%, 0.16);
+    /* Muted */
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
 
-  /* Typography */
-  --dq-foreground: hsl(0, 0%, 98%);
-  --dq-text-primary: var(--dq-foreground);
-  --dq-text-secondary: hsl(240, 5%, 84%);
-  --dq-text-tertiary: var(--dq-muted-fg);
+    /* Primary */
+    --primary: 24.6 95% 53.1%;
+    --primary-foreground: 0 0% 100%;
 
-  /* Brand / primary */
-  --dq-primary: hsl(24.6, 95%, 53.1%);
-  --dq-primary-fg: hsl(0, 0%, 100%);
-  --dq-accent-primary: var(--dq-primary);
-  --dq-text-on-primary: var(--dq-primary-fg);
+    /* Border */
+    --border: 240 5% 21%;
+    --border-subtle: 240 5% 21%;
+    --border-strong: 0 0% 100% / 0.16;
 
-  /* Surfaces for hover/active states (derived) */
-  --dq-surface-hover: hsl(240, 3.7%, 15.9%);
-  --dq-surface-active: hsl(240, 3.7%, 18%);
-  --dq-surface-elevated: hsl(240, 10%, 6%);
+    /* Input */
+    --input: 240 10% 3.9%;
 
-  /* Inputs */
-  --dq-input-bg: hsl(240, 10%, 3.9%);
+    /* State colors */
+    --success: 142 76% 46%;
+    --success-foreground: 0 0% 100%;
+    --success-bg: 142 76% 10%;
+    --success-border: 142 76% 20%;
 
-  /* Navigation active state (dark) */
-  --dq-nav-active-bg: hsla(24.6, 95%, 53.1%, 0.1);
-  --dq-nav-active-border: hsla(24.6, 95%, 53.1%, 0.2);
-  --dq-nav-active-fg: hsl(24.6, 95%, 53.1%);
+    --warning: 38 92% 60%;
+    --warning-foreground: 0 0% 100%;
+    --warning-bg: 38 92% 10%;
+    --warning-border: 38 92% 20%;
 
-  /* State Colors */
-  --dq-success: hsl(142, 76%, 46%);
-  --dq-success-fg: hsl(0, 0%, 100%);
-  --dq-success-bg: hsl(142, 76%, 10%);
-  --dq-success-border: hsl(142, 76%, 20%);
+    --error: 0 72% 61%;
+    --error-foreground: 0 0% 100%;
+    --error-bg: 0 72% 10%;
+    --error-border: 0 72% 20%;
 
-  /* Warning (Orange) */
-  --dq-warning: hsl(38, 92%, 60%);
-  --dq-warning-fg: hsl(0, 0%, 100%);
-  --dq-warning-bg: hsl(38, 92%, 10%);
-  --dq-warning-border: hsl(38, 92%, 20%);
+    --info: 199 89% 58%;
+    --info-foreground: 0 0% 100%;
+    --info-bg: 199 89% 10%;
+    --info-border: 199 89% 20%;
 
-  /* Error (Red) */
-  --dq-error: hsl(0, 72%, 61%);
-  --dq-error-fg: hsl(0, 0%, 100%);
-  --dq-error-bg: hsl(0, 72%, 10%);
-  --dq-error-border: hsl(0, 72%, 20%);
+    /* Shadcn aliases */
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --secondary: 240 10% 3.9%;
+    --secondary-foreground: 0 0% 98%;
+    --accent: 240 3.7% 18%;
+    --accent-foreground: 0 0% 98%;
+    --ring: 24.6 95% 53.1%;
 
-  /* Info (Blue) */
-  --dq-info: hsl(199, 89%, 58%);
-  --dq-info-fg: hsl(0, 0%, 100%);
-  --dq-info-bg: hsl(199, 89%, 10%);
-  --dq-info-border: hsl(199, 89%, 20%);
-
-  /* Shadows */
-  --dq-shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --dq-shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
-  --dq-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --dq-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-  --dq-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
-  --dq-shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
-  --dq-shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.3);
-
-  /* Radius & shadows */
-  --dq-radius-card: 0.75rem;
-  --dq-radius-cta: 0.75rem;
-  --dq-shadow-soft: 0 18px 36px -24px rgba(0, 0, 0, 0.7);
-  --dq-shadow-logo: 0 10px 15px -3px rgba(124, 45, 18, 0.2),
-    0 4px 6px -4px rgba(124, 45, 18, 0.2);
-
-  /* Typography system */
-  --dq-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "Helvetica Neue", Arial, sans-serif;
-  --dq-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
-    Consolas, "Liberation Mono", "Courier New", monospace;
-  --dq-overlay-strong: rgba(0, 0, 0, 0.5);
-}
-
-/* Active navigation pill (sidebar & header tabs) */
-.nav-active,
-.dq-nav-active,
-.dq-new-theme .nav-active,
-.dq-new-theme .dq-nav-active {
-  background-color: var(--dq-nav-active-bg);
-  color: var(--dq-nav-active-fg);
-  border-color: var(--dq-nav-active-border);
-}
-
-/* Dark mode overrides for nav active state opacity */
-.dark .nav-active,
-.dark .dq-nav-active,
-.dq-theme--dark .nav-active,
-.dq-theme--dark .dq-nav-active {
-  background-color: var(--dq-nav-active-bg);
-  border-color: var(--dq-nav-active-border);
+    /* Shadows */
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.3);
+  }
 }

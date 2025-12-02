@@ -1,10 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 
-const dqVar = token => `var(--${token})`;
-
 export default {
   content: ["./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
-  darkMode: "class", // 使用 .dark 类切换暗色模式
+  darkMode: "class",
   corePlugins: {
     preflight: true
   },
@@ -12,129 +10,138 @@ export default {
     extend: {
       colors: {
         // ========== 基础色彩 ==========
-        // 用法：bg-background, text-foreground
-        background: dqVar("dq-background"),
-        foreground: dqVar("dq-foreground"),
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
 
         // ========== 表面色彩 ==========
-        // 用法：bg-surface, bg-surface-hover, bg-surface-elevated
-        surface: dqVar("dq-surface"),
-        "surface-hover": dqVar("dq-surface-hover"),
-        "surface-active": dqVar("dq-surface-active"),
-        "surface-elevated": dqVar("dq-surface-elevated"),
+        surface: 'hsl(var(--surface))',
+        "surface-hover": 'hsl(var(--surface-hover))',
+        "surface-active": 'hsl(var(--surface-active))',
+        "surface-elevated": 'hsl(var(--surface-elevated))',
 
         // ========== 弱化色彩 ==========
-        // 用法：bg-muted, text-muted-foreground
-        muted: dqVar("dq-muted"),
-        "muted-foreground": dqVar("dq-muted-fg"),
+        muted: {
+          DEFAULT: 'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
+        },
 
         // ========== 主色调 ==========
-        // 用法：bg-primary, text-primary-foreground
-        primary: dqVar("dq-primary"),
-        "primary-foreground": dqVar("dq-primary-fg"),
+        primary: {
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
+        },
 
         // ========== 边框 ==========
-        // 用法：border-border, border-border-subtle
-        border: dqVar("dq-border"),
-        "border-subtle": dqVar("dq-border-subtle"),
-        "border-strong": dqVar("dq-border-strong"),
+        border: 'hsl(var(--border))',
+        "border-subtle": 'hsl(var(--border-subtle))',
+        "border-strong": 'hsl(var(--border-strong))',
 
         // ========== 输入框 ==========
-        // 用法：bg-input
-        input: dqVar("dq-input-bg"),
+        input: 'hsl(var(--input))',
 
         // ========== 状态色彩 ==========
-        // Success
-        success: dqVar("dq-success"),
-        "success-foreground": dqVar("dq-success-fg"),
-        "success-bg": dqVar("dq-success-bg"),
-        "success-border": dqVar("dq-success-border"),
-
-        // Warning
-        warning: dqVar("dq-warning"),
-        "warning-foreground": dqVar("dq-warning-fg"),
-        "warning-bg": dqVar("dq-warning-bg"),
-        "warning-border": dqVar("dq-warning-border"),
-
-        // Error
-        error: dqVar("dq-error"),
-        "error-foreground": dqVar("dq-error-fg"),
-        "error-bg": dqVar("dq-error-bg"),
-        "error-border": dqVar("dq-error-border"),
-
-        // Info
-        info: dqVar("dq-info"),
-        "info-foreground": dqVar("dq-info-fg"),
-        "info-bg": dqVar("dq-info-bg"),
-        "info-border": dqVar("dq-info-border"),
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+          bg: 'hsl(var(--success-bg))',
+          border: 'hsl(var(--success-border))',
+        },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--warning-foreground))',
+          bg: 'hsl(var(--warning-bg))',
+          border: 'hsl(var(--warning-border))',
+        },
+        error: {
+          DEFAULT: 'hsl(var(--error))',
+          foreground: 'hsl(var(--error-foreground))',
+          bg: 'hsl(var(--error-bg))',
+          border: 'hsl(var(--error-border))',
+        },
+        info: {
+          DEFAULT: 'hsl(var(--info))',
+          foreground: 'hsl(var(--info-foreground))',
+          bg: 'hsl(var(--info-bg))',
+          border: 'hsl(var(--info-border))',
+        },
 
         // ========== Shadcn 兼容性别名 ==========
-        card: dqVar("dq-surface-card"),
-        "card-foreground": dqVar("dq-foreground"),
-        secondary: dqVar("dq-surface-alt"),
-        "secondary-foreground": dqVar("dq-foreground"),
-        accent: dqVar("dq-surface-active"),
-        "accent-foreground": dqVar("dq-foreground"),
-        ring: dqVar("dq-primary"),
-
-        // ========== 旧版兼容性别名（仅用于过渡期）==========
-        // 新代码请使用无前缀的语义化类名（如 bg-surface 而非 bg-dq-surface）
-        "dq-background": dqVar("dq-background"),
-        "dq-surface": dqVar("dq-surface"),
-        "dq-surface-hover": dqVar("dq-surface-hover"),
-        "dq-border": dqVar("dq-border-subtle"),
-        "dq-text": dqVar("dq-text-primary"),
-        "dq-text-secondary": dqVar("dq-text-tertiary")
+        card: {
+          DEFAULT: 'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
+        },
+        secondary: {
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))',
+        },
+        accent: {
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
+        },
+        ring: 'hsl(var(--ring))',
       },
 
       borderRadius: {
-        none: "0",
-        sm: dqVar("dq-radius-sm"), // 4px - 小元素
-        DEFAULT: dqVar("dq-radius-md"),
-        md: dqVar("dq-radius-md"), // 6px - 输入框/按钮
-        lg: dqVar("dq-radius-lg"), // 8px - 标签页
-        xl: dqVar("dq-radius-xl"), // 12px - 卡片
-        "2xl": dqVar("dq-radius-2xl"), // 16px - 大卡片
-        full: "9999px" // 圆形
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)',
       },
 
       boxShadow: {
-        xs: dqVar("dq-shadow-xs"),
-        sm: dqVar("dq-shadow-sm"), // 卡片阴影（标准）
-        DEFAULT: dqVar("dq-shadow-sm"),
-        md: dqVar("dq-shadow-md"),
-        lg: dqVar("dq-shadow-lg"), // Toast 阴影
-        xl: dqVar("dq-shadow-xl"),
-        "2xl": dqVar("dq-shadow-2xl"), // 对话框阴影
-        inner: dqVar("dq-shadow-inner"),
-        "dq-soft": dqVar("dq-shadow-soft")
+        xs: 'var(--shadow-xs)',
+        sm: 'var(--shadow-sm)',
+        DEFAULT: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
+        xl: 'var(--shadow-xl)',
+        '2xl': 'var(--shadow-2xl)',
+        inner: 'var(--shadow-inner)',
       },
 
       fontFamily: {
-        sans: dqVar("dq-font-sans"),
-        mono: dqVar("dq-font-mono")
+        sans: 'var(--font-sans)',
+        mono: 'var(--font-mono)',
       },
 
-      // ========== 动画时长 ==========
-      // 用法：duration-fast, duration-normal, duration-slow
       transitionDuration: {
-        fast: dqVar("dq-duration-fast"), // 150ms - 悬停效果
-        normal: dqVar("dq-duration-normal"), // 200ms - 标准过渡
-        slow: dqVar("dq-duration-slow"), // 300ms - 展开/收起
-        slower: dqVar("dq-duration-slower") // 500ms - 页面切换
+        fast: '150ms',
+        normal: '200ms',
+        slow: '300ms',
+        slower: '500ms',
       },
 
-      // ========== Z-Index 层级 ==========
-      // 用法：z-dropdown, z-modal, z-tooltip
       zIndex: {
-        dropdown: dqVar("dq-z-dropdown"), // 1000
-        sticky: dqVar("dq-z-sticky"), // 1020
-        fixed: dqVar("dq-z-fixed"), // 1030
-        "modal-backdrop": dqVar("dq-z-modal-backdrop"), // 1040
-        modal: dqVar("dq-z-modal"), // 1050
-        popover: dqVar("dq-z-popover"), // 1060
-        tooltip: dqVar("dq-z-tooltip"), // 1070
-        notification: dqVar("dq-z-notification") // 1080
+        dropdown: '1000',
+        sticky: '1020',
+        fixed: '1030',
+        "modal-backdrop": '1040',
+        modal: '1050',
+        popover: '1060',
+        tooltip: '1070',
+        notification: '1080',
+      },
+
+      keyframes: {
+        'accordion-down': {
+          from: {
+            height: '0'
+          },
+          to: {
+            height: 'var(--radix-accordion-content-height)'
+          }
+        },
+        'accordion-up': {
+          from: {
+            height: 'var(--radix-accordion-content-height)'
+          },
+          to: {
+            height: '0'
+          }
+        }
+      },
+      animation: {
+        'accordion-down': 'accordion-down 0.2s ease-out',
+        'accordion-up': 'accordion-up 0.2s ease-out'
       }
     }
   },
