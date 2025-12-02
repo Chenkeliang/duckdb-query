@@ -8,7 +8,7 @@ import {
   browseServerDirectory,
   importServerFile
 } from "../../services/apiClient";
-import ExcelSheetSelector from "../../components/DataSourceManagement/ExcelSheetSelector";
+import ExcelSheetSelector from "./ExcelSheetSelector";
 import { Card, CardContent } from "@/new/components/ui/card";
 import { Button } from "@/new/components/ui/button";
 import { Input } from "@/new/components/ui/input";
