@@ -1080,6 +1080,47 @@ def build_multi_table_join_query(query_request: QueryRequest) -> str:
     return query
 
 
+def _build_column_expression(
+    table_name: str, column_expr: str, available_columns: Optional[List[str]] = None
+) -> str:
+    """
+    根据列表达式构建带表名前缀的列引用。
+
+    - 对简单列名: 生成 "table_name"."column"
+    - 对包含函数/复杂表达式的情况: 只为表达式中出现的 "列名" 添加表名前缀，
+      避免把函数名一起包进双引号导致语法错误。
+    """
+    column_expr = (column_expr or "").strip()
+
+    if not column_expr:
+        raise ValueError("JOIN 条件中的列名不能为空")
+
+    columns_set = set(available_columns or [])
+
+    # 先判断是否是“简单列名”（不包含括号/空格等），如果是则直接按列名处理
+    simple_name: Optional[str] = None
+
+    m = re.fullmatch(r'"([^"]+)"', column_expr)
+    if m:
+        simple_name = m.group(1)
+    elif "(" not in column_expr and " " not in column_expr and "." not in column_expr:
+        simple_name = column_expr
+
+    if simple_name is not None and (not columns_set or simple_name in columns_set):
+        return f'"{table_name}"."{simple_name}"'
+
+    # 否则视为表达式：只为表达式内部的 "列名" 添加表名前缀（仅限已知列名）
+    def _qualify_identifier(match: re.Match) -> str:
+        identifier = match.group(1)
+        if not columns_set or identifier in columns_set:
+            return f'"{table_name}"."{identifier}"'
+        return f'"{identifier}"'
+
+    # 例如: substr("单据编号", 6) => substr("table"."单据编号", 6)
+    qualified_expr = re.sub(r'"([^"]+)"', _qualify_identifier, column_expr)
+    return qualified_expr
+
+
 def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
     """
     构建JOIN链，支持多表连接和多字段关联
@@ -1152,11 +1193,11 @@ def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
                 right_source = source_map[right_id]
                 left_table_name = get_actual_table_name(left_source)
                 right_table_name = get_actual_table_name(right_source)
-                base_left_col = (
-                    f'"{left_table_name}"."{condition.left_column}"'
+                base_left_col = _build_column_expression(
+                    left_table_name, condition.left_column, getattr(left_source, "columns", None)
                 )
-                base_right_col = (
-                    f'"{right_table_name}"."{condition.right_column}"'
+                base_right_col = _build_column_expression(
+                    right_table_name, condition.right_column, getattr(right_source, "columns", None)
                 )
                 left_col = base_left_col
                 right_col = base_right_col

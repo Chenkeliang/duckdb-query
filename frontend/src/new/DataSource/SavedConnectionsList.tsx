@@ -6,7 +6,7 @@ import {
   getPostgreSQLConfigs,
   deletePostgreSQLConfig
 } from "../../services/apiClient";
-import { Database, Trash2, Play, RefreshCw } from "lucide-react";
+import { Database, Trash2, Play, RefreshCw, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/new/components/ui/card";
 import { Button } from "@/new/components/ui/button";
 import { Badge } from "@/new/components/ui/badge";
@@ -19,13 +19,20 @@ import {
   DialogTitle,
 } from "@/new/components/ui/dialog";
 
-const SavedConnectionsList = ({ onSelect, onRefresh }) => {
+const SavedConnectionsList = ({ onSelect, onRefresh, showNotification }) => {
   const { t } = useTranslation("common");
+
+  // Toast 通知函数
+  const notify = (message, severity = "info") => {
+    if (!message) return;
+    showNotification?.(message, severity);
+  };
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [configToDelete, setConfigToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadConfigs = async () => {
     setLoading(true);
@@ -50,7 +57,9 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
       setConfigs(allConfigs);
     } catch (err) {
       console.error("Error in loadConfigs:", err);
-      setError(t("page.datasource.manage.fetchFail"));
+      const errorMsg = t("page.datasource.manage.fetchFail");
+      setError(errorMsg);
+      notify(errorMsg, "error");
     } finally {
       setLoading(false);
     }
@@ -68,17 +77,23 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
   const handleDeleteConfirm = async () => {
     if (!configToDelete) return;
 
+    setIsDeleting(true);
     try {
       if (configToDelete.type === "mysql") {
         await deleteMySQLConfig(configToDelete.id);
       } else if (configToDelete.type === "postgresql") {
         await deletePostgreSQLConfig(configToDelete.id);
       }
+      const successMsg = t("page.datasource.list.deleteSuccess", { name: configToDelete.name || configToDelete.id });
+      notify(successMsg, "success");
       loadConfigs();
       setDeleteDialogOpen(false);
       setConfigToDelete(null);
     } catch (err) {
-      alert(t("page.datasource.list.deleteFail", { message: err.message }));
+      const errorMsg = t("page.datasource.list.deleteFail", { message: err.message });
+      notify(errorMsg, "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -167,11 +182,26 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+            <Button 
+              variant="outline" 
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
               {t("actions.cancel")}
             </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
-              {t("actions.delete")}
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  {t("actions.deleting", { defaultValue: t("actions.delete") })}
+                </>
+              ) : (
+                t("actions.delete")
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

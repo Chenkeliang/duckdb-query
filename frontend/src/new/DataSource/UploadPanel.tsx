@@ -8,10 +8,17 @@ import {
   browseServerDirectory,
   importServerFile
 } from "../../services/apiClient";
+import ExcelSheetSelector from "../../components/DataSourceManagement/ExcelSheetSelector";
 import { Card, CardContent } from "@/new/components/ui/card";
 import { Button } from "@/new/components/ui/button";
 import { Input } from "@/new/components/ui/input";
 import { Label } from "@/new/components/ui/label";
+
+// 类型定义
+interface PendingExcel {
+  file_id: string;
+  original_filename: string;
+}
 
 /**
  * 数据源视图 A：智能文件上传（本地文件 + URL + 服务器目录）。
@@ -34,6 +41,9 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
 
   const [url, setUrl] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
+
+  // Excel 工作表选择状态
+  const [pendingExcel, setPendingExcel] = useState<PendingExcel | null>(null);
 
   // 服务器目录状态
   const [serverMounts, setServerMounts] = useState([]);
@@ -79,31 +89,48 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
       notify(t("page.datasource.pickFileFirst"), "warning");
       return;
     }
+    
+    // 清除之前的 pendingExcel 状态（支持多次上传）
+    setPendingExcel(null);
+    
     setUploading(true);
     try {
       const response = await uploadFile(selectedFile, alias || null);
-      if (response?.success) {
-        notify(
-          t("page.datasource.uploadSuccessTable", {
-            table: response.file_id
-          }),
-          "success"
-        );
-        onDataSourceSaved?.({
-          id: response.file_id,
-          type: "duckdb",
-          name: t("page.datasource.duckdbTable", {
-            table: response.file_id
-          }),
-          row_count: response.row_count,
-          columns: response.columns || []
-        });
-        setSelectedFile(null);
-        setAlias("");
-      } else {
+      
+      if (!response?.success) {
         notify(response?.message || t("page.datasource.uploadFail"), "error");
+        return;
       }
+      
+      // 检查是否需要工作表选择
+      if (response.requires_sheet_selection && response.pending_excel) {
+        setPendingExcel(response.pending_excel);
+        notify(response.message || t("page.datasource.uploadSuccess"), "info");
+        return;
+      }
+      
+      // 直接导入成功
+      notify(
+        t("page.datasource.uploadSuccessTable", {
+          table: response.file_id
+        }),
+        "success"
+      );
+      
+      onDataSourceSaved?.({
+        id: response.file_id,
+        type: "duckdb",
+        name: t("page.datasource.duckdbTable", {
+          table: response.file_id
+        }),
+        row_count: response.row_count,
+        columns: response.columns || []
+      });
+      
+      setSelectedFile(null);
+      setAlias("");
     } catch (err) {
+      console.error("Upload failed:", err);
       notify(err?.message || t("page.datasource.uploadFail"), "error");
     } finally {
       setUploading(false);
@@ -187,6 +214,54 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
     }
   };
 
+  const handleExcelImported = (result) => {
+    try {
+      if (!result?.success) {
+        console.error("Excel import failed:", result);
+        notify(result?.message || t("page.datasource.importFail"), "error");
+        // 保持 pendingExcel 状态，允许用户重试
+        return;
+      }
+      
+      // 清除 pending 状态
+      setPendingExcel(null);
+      
+      // 调用成功回调
+      onDataSourceSaved?.({
+        id: result.table_name,
+        type: "duckdb",
+        name: t("page.datasource.duckdbTable", {
+          table: result.table_name
+        }),
+        row_count: result.row_count,
+        columns: result.columns || []
+      });
+      
+      // 显示成功通知
+      notify(
+        result.message || t("page.datasource.importSuccess"),
+        "success"
+      );
+      
+      // 重置上传状态
+      setSelectedFile(null);
+      setAlias("");
+    } catch (err) {
+      console.error("Import handling failed:", err);
+      notify(err?.message || t("page.datasource.importFail"), "error");
+    }
+  };
+
+  const handleExcelClose = () => {
+    try {
+      setPendingExcel(null);
+    } catch (err) {
+      console.error("Close handling failed:", err);
+      // 即使出错也要尝试清理状态
+      setPendingExcel(null);
+    }
+  };
+
   const handleServerImport = async () => {
     if (!serverSelectedFile) {
       notify(t("page.datasource.pickFileFirst"), "warning");
@@ -241,6 +316,7 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
   }, []);
 
   return (
+    <>
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
       {/* 左侧：智能文件上传主卡片 */}
       <Card className="shadow-sm">
@@ -449,12 +525,18 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
                   <button
                     key={entry.path}
                     type="button"
-                    onClick={() =>
-                      isDir
-                        ? loadServerDirectory(entry.path)
-                        : setServerSelectedFile(entry)
-                    }
-                    className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left ${
+                    onClick={() => {
+                      console.log("File clicked:", entry.name, "isDir:", isDir);
+                      if (isDir) {
+                        loadServerDirectory(entry.path);
+                      } else {
+                        setServerSelectedFile(entry);
+                        if (!serverAlias) {
+                          setServerAlias(entry.name.replace(/\.[^/.]+$/, ""));
+                        }
+                      }
+                    }}
+                    className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left cursor-pointer ${
                       selected ? "bg-surface-hover" : "hover:bg-surface-hover"
                     }`}
                   >
@@ -472,6 +554,21 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
               })
             )}
           </div>
+
+            {/* 显示选中的文件 */}
+            {serverSelectedFile && (
+              <div className="rounded-lg border border-primary/50 bg-primary/5 p-3">
+                <div className="text-xs font-medium text-foreground mb-1">
+                  {t("page.datasource.selectedFile", "已选择文件")}:
+                </div>
+                <div className="text-sm text-foreground font-medium">
+                  {serverSelectedFile.name}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {(serverSelectedFile.extension || "").toUpperCase()}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="server-alias" className="flex items-center gap-2">
@@ -500,6 +597,18 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
         </Card>
       </div>
     </div>
+
+    {/* Excel 工作表选择器 */}
+    {pendingExcel && (
+      <ExcelSheetSelector
+        open={true}
+        pendingInfo={pendingExcel}
+        onClose={handleExcelClose}
+        onImported={handleExcelImported}
+        showNotification={showNotification}
+      />
+    )}
+    </>
   );
 };
 

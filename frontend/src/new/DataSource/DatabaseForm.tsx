@@ -1,12 +1,23 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getServerMounts, browseServerDirectory } from "../../services/apiClient";
-import { Server } from "lucide-react";
+import { Server, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/new/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/new/components/ui/tabs";
 import { Button } from "@/new/components/ui/button";
 import { Input } from "@/new/components/ui/input";
 import { Label } from "@/new/components/ui/label";
+
+interface DatabaseFormProps {
+  defaultType?: string;
+  configToLoad?: any;
+  onTest?: (params: any) => void;
+  onSave?: (params: any) => void;
+  onSaveConfig?: (params: any) => void;
+  loading?: boolean;
+  testing?: boolean;
+  showNotification?: (message: string, severity?: string) => void;
+}
 
 /**
  * New database form using shadcn/ui components.
@@ -26,9 +37,16 @@ const DatabaseForm = ({
   onSave,
   onSaveConfig,
   loading = false,
-  testing = false
-}) => {
+  testing = false,
+  showNotification
+}: DatabaseFormProps) => {
   const { t } = useTranslation("common");
+
+  // Toast 通知函数
+  const notify = (message: string, severity: string = "info") => {
+    if (!message) return;
+    showNotification?.(message, severity);
+  };
   const [type, setType] = useState(defaultType);
   const [name, setName] = useState("");
   const [host, setHost] = useState("localhost");
@@ -57,9 +75,10 @@ const DatabaseForm = ({
   }, [configToLoad]);
 
   // SQLite server browsing states
-  const [serverMounts, setServerMounts] = useState([]);
+  const [serverMounts, setServerMounts] = useState<any[]>([]);
+  const [serverMountLoading, setServerMountLoading] = useState(false);
   const [selectedMount, setSelectedMount] = useState("");
-  const [serverEntries, setServerEntries] = useState([]);
+  const [serverEntries, setServerEntries] = useState<any[]>([]);
   const [serverLoading, setServerLoading] = useState(false);
   const [serverError, setServerError] = useState("");
 
@@ -92,16 +111,22 @@ const DatabaseForm = ({
 
   const validate = () => {
     if (!normalizedParams.id) {
-      setError(t("page.datasource.connection.errorName"));
+      const errorMsg = t("page.datasource.connection.errorName");
+      setError(errorMsg);
+      notify(errorMsg, "warning");
       return false;
     }
     if (!isSqlite) {
       if (!host.trim() || !database.trim()) {
-        setError(t("page.datasource.connection.errorSave", { message: "" }));
+        const errorMsg = t("page.datasource.connection.errorSave", { message: "" });
+        setError(errorMsg);
+        notify(errorMsg, "warning");
         return false;
       }
     } else if (!sqlitePath.trim()) {
-      setError(t("page.datasource.connection.errorSave", { message: "" }));
+      const errorMsg = t("page.datasource.connection.errorSave", { message: "" });
+      setError(errorMsg);
+      notify(errorMsg, "warning");
       return false;
     }
     setError("");
@@ -131,7 +156,7 @@ const DatabaseForm = ({
   }, [isSqlite]);
 
   const loadServerMounts = async () => {
-    setServerLoading(true);
+    setServerMountLoading(true);
     setServerError("");
     try {
       const data = await getServerMounts();
@@ -142,27 +167,29 @@ const DatabaseForm = ({
         setSelectedMount(first.path);
         await loadServerDirectory(first.path);
       }
-    } catch (err) {
-      setServerError(err?.message || t("page.datasource.serverBrowseFail"));
+    } catch (err: any) {
+      // 静默处理错误 - 如果服务器没有配置挂载点，不显示错误
+      console.debug("Server mounts not configured:", err?.message);
+      setServerMounts([]); // 确保设置为空数组
     } finally {
-      setServerLoading(false);
+      setServerMountLoading(false);
     }
   };
 
-  const loadServerDirectory = async (path) => {
+  const loadServerDirectory = async (path: string) => {
     if (!path) return;
     setServerLoading(true);
     setServerError("");
     try {
       const data = await browseServerDirectory(path);
       // Filter for .db, .sqlite, .sqlite3 files
-      const entries = (data?.entries || []).filter(entry => {
+      const entries = (data?.entries || []).filter((entry: any) => {
         if (entry.type === "directory") return true;
         const ext = entry.extension?.toLowerCase();
         return ext === "db" || ext === "sqlite" || ext === "sqlite3";
       });
       setServerEntries(entries);
-    } catch (err) {
+    } catch (err: any) {
       setServerError(err?.message || t("page.datasource.serverBrowseFail"));
     } finally {
       setServerLoading(false);
@@ -192,7 +219,8 @@ const DatabaseForm = ({
           </TabsList>
         </Tabs>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-6">
+        <form onSubmit={(e) => { e.preventDefault(); handleTest(); }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-6">
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="connection-name">
               {t("page.datasource.connection.name")}
@@ -296,20 +324,21 @@ const DatabaseForm = ({
               />
             </div>
 
-            {/* SQLite Server Browser */}
-            <div className="space-y-2 md:col-span-2 border border-border rounded-lg p-4 bg-surface-hover/30">
-              <label className="text-xs font-medium text-foreground flex items-center gap-2">
-                <Server className="h-4 w-4 text-muted-fg" />
-                {t("page.datasource.cardServerTitle")}
-              </label>
+            {/* SQLite Server Browser - 只在有挂载点或正在加载时显示 */}
+            {(serverMountLoading || serverMounts.length > 0) && (
+              <div className="space-y-2 md:col-span-2 border border-border rounded-lg p-4 bg-surface-hover/30">
+                <label className="text-xs font-medium text-foreground flex items-center gap-2">
+                  <Server className="h-4 w-4 text-muted-fg" />
+                  {t("page.datasource.cardServerTitle")}
+                </label>
 
-              {serverMountLoading ? (
-                <div className="text-xs text-muted-fg">{t("actions.loading")}</div>
-              ) : serverMounts.length === 0 ? (
-                <div className="text-xs text-muted-fg">
-                  {t("page.datasource.serverNoMount")}
-                </div>
-              ) : (
+                {serverMountLoading ? (
+                  <div className="text-xs text-muted-fg">{t("actions.loading")}</div>
+                ) : serverMounts.length === 0 ? (
+                  <div className="text-xs text-muted-fg">
+                    {t("page.datasource.serverNoMount")}
+                  </div>
+                ) : (
                 <div className="space-y-3">
                   <select
                     className="h-9 w-full rounded-md border border-border bg-input px-2 text-sm text-foreground"
@@ -377,7 +406,8 @@ const DatabaseForm = ({
                   )}
                 </div>
               )}
-            </div>
+              </div>
+            )}
 
 
           </>
@@ -386,38 +416,58 @@ const DatabaseForm = ({
 
         {error ? <div className="text-xs text-error">{error}</div> : null}
 
-        <div className="flex flex-wrap gap-3">
-          <Button
-            variant="outline"
-            onClick={handleTest}
-            disabled={testing || loading}
-          >
-            {testing
-              ? t("page.datasource.connection.testing")
-              : t("page.datasource.connection.test")}
-          </Button>
-          <Button
-            onClick={handleConnect}
-            disabled={loading}
-          >
-            {loading
-              ? t("page.datasource.connection.connecting", {
-                defaultValue: t("page.datasource.connection.saving")
-              })
-              : t("page.datasource.connection.connect", {
-                defaultValue: t("page.datasource.connection.save")
-              })}
-          </Button>
-          {onSaveConfig ? (
+          <div className="flex flex-wrap gap-3 pt-4">
             <Button
+              type="submit"
               variant="outline"
-              onClick={handleSaveConfigClick}
+              disabled={testing || loading}
+            >
+              {testing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  {t("page.datasource.connection.testing")}
+                </>
+              ) : (
+                t("page.datasource.connection.test")
+              )}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConnect}
               disabled={loading}
             >
-              {t("page.datasource.connection.save")}
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  {t("page.datasource.connection.connecting", {
+                    defaultValue: t("page.datasource.connection.saving")
+                  })}
+                </>
+              ) : (
+                t("page.datasource.connection.connect", {
+                  defaultValue: t("page.datasource.connection.save")
+                })
+              )}
             </Button>
-          ) : null}
-        </div>
+            {onSaveConfig ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleSaveConfigClick}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    {t("page.datasource.connection.save")}
+                  </>
+                ) : (
+                  t("page.datasource.connection.save")
+                )}
+              </Button>
+            ) : null}
+          </div>
+        </form>
       </CardContent>
     </Card>
   );

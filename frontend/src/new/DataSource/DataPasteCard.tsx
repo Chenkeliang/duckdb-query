@@ -23,7 +23,7 @@ import {
  * - Select for dropdowns
  * - Label for field labels
  */
-const DataPasteCard = ({ onDataSourceSaved }) => {
+const DataPasteCard = ({ onDataSourceSaved, showNotification }) => {
   const { t } = useTranslation("common");
   const [pastedData, setPastedData] = useState("");
   const [parsedData, setParsedData] = useState(null);
@@ -37,6 +37,11 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const notify = (message, severity = "info") => {
+    if (!message) return;
+    showNotification?.(message, severity);
+  };
 
   const dataTypes = useMemo(
     () => [
@@ -109,7 +114,9 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
 
   const parseData = () => {
     if (!pastedData.trim()) {
-      setError(t("page.datasource.paste.error.noData"));
+      const errorMsg = t("page.datasource.paste.error.noData");
+      setError(errorMsg);
+      notify(errorMsg, "warning");
       return;
     }
     try {
@@ -129,9 +136,9 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
           // 尝试解析 JSON（数组或对象）
           json = JSON.parse(raw);
         } catch (err) {
-          setError(
-            t("page.datasource.paste.parseFail", { message: err.message })
-          );
+          const errorMsg = t("page.datasource.paste.parseFail", { message: err.message });
+          setError(errorMsg);
+          notify(errorMsg, "error");
           return;
         }
 
@@ -231,14 +238,16 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
         const ts = Date.now();
         setTableName(t("page.datasource.paste.defaultName", { timestamp: ts }));
       }
-      setSuccess(
-        t("page.datasource.paste.parseSuccess", {
-          rows: bodyRows.length,
-          cols: colCount
-        })
-      );
+      const successMsg = t("page.datasource.paste.parseSuccess", {
+        rows: bodyRows.length,
+        cols: colCount
+      });
+      setSuccess(successMsg);
+      notify(successMsg, "success");
     } catch (err) {
-      setError(t("page.datasource.paste.parseFail", { message: err.message }));
+      const errorMsg = t("page.datasource.paste.parseFail", { message: err.message });
+      setError(errorMsg);
+      notify(errorMsg, "error");
     }
   };
 
@@ -268,9 +277,9 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
       });
       const result = await res.json();
       if (result.success) {
-        setSuccess(
-          t("page.datasource.paste.save.saveOk", { table: tableName.trim() })
-        );
+        const successMsg = t("page.datasource.paste.save.saveOk", { table: tableName.trim() });
+        setSuccess(successMsg);
+        notify(successMsg, "success");
         onDataSourceSaved?.({
           id: tableName.trim(),
           name: tableName.trim(),
@@ -281,18 +290,18 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
         });
         clearForm();
       } else {
-        setError(
-          result.error ||
+        const errorMsg = result.error ||
             result.message ||
-            t("page.datasource.paste.save.saveFail")
-        );
+            t("page.datasource.paste.save.saveFail");
+        setError(errorMsg);
+        notify(errorMsg, "error");
       }
     } catch (err) {
-      setError(
-        t("page.datasource.paste.save.saveFailDetail", {
-          message: err.message || ""
-        })
-      );
+      const errorMsg = t("page.datasource.paste.save.saveFailDetail", {
+        message: err.message || ""
+      });
+      setError(errorMsg);
+      notify(errorMsg, "error");
     } finally {
       setLoading(false);
     }

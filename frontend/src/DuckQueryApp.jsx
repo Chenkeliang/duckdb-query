@@ -295,6 +295,23 @@ const DuckQueryAppInner = () => {
           loading={savingDb}
           testing={testingDb}
           configToLoad={selectedConfig}
+          showNotification={(message, severity) => {
+            switch (severity) {
+              case "success":
+                showSuccess(message);
+                break;
+              case "error":
+                showError(message);
+                break;
+              case "warning":
+                showWarning(message);
+                break;
+              case "info":
+              default:
+                showInfo(message);
+                break;
+            }
+          }}
         />
       );
 
@@ -302,10 +319,48 @@ const DuckQueryAppInner = () => {
         <SavedConnectionsList
           onSelect={config => setSelectedConfig(config)}
           onRefresh={refreshConfigs}
+          showNotification={(message, severity) => {
+            switch (severity) {
+              case "success":
+                showSuccess(message);
+                break;
+              case "error":
+                showError(message);
+                break;
+              case "warning":
+                showWarning(message);
+                break;
+              case "info":
+              default:
+                showInfo(message);
+                break;
+            }
+          }}
         />
       );
 
-      const pastePanel = <DataPasteCard onDataSourceSaved={triggerRefresh} />;
+      const pastePanel = (
+        <DataPasteCard
+          onDataSourceSaved={triggerRefresh}
+          showNotification={(message, severity) => {
+            switch (severity) {
+              case "success":
+                showSuccess(message);
+                break;
+              case "error":
+                showError(message);
+                break;
+              case "warning":
+                showWarning(message);
+                break;
+              case "info":
+              default:
+                showInfo(message);
+                break;
+            }
+          }}
+        />
+      );
 
       return (
         <DataSourcePage
