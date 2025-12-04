@@ -69,12 +69,6 @@ class AppConfig:
     table_metadata_cache_ttl_hours: int = 24
     """表元数据缓存有效期（小时），<=0 时禁用缓存"""
 
-    enable_pivot_tables: bool = True
-    """是否启用透视表功能，关闭后前端隐藏相关入口并跳过扩展加载"""
-
-    pivot_table_extension: str = "pivot_table"
-    """透视表功能使用的DuckDB扩展名称"""
-
     # ==================== DuckDB引擎配置 ====================
     # 这些参数控制DuckDB查询引擎的行为和性能
 
@@ -99,8 +93,8 @@ class AppConfig:
     duckdb_database_path: str = None
     """DuckDB数据库文件路径，为空时在数据目录下创建 main.db"""
 
-    duckdb_enable_profiling: bool = True
-    """是否启用DuckDB查询性能分析，有助于性能调优"""
+    duckdb_enable_profiling: str = "query_tree"
+    """DuckDB查询性能分析格式：json, query_tree, query_tree_optimizer, no_output"""
 
     duckdb_profiling_output: str = None
     """性能分析输出文件路径，None时使用系统默认"""
@@ -216,15 +210,11 @@ class ConfigManager:
         self.config_dir.mkdir(exist_ok=True)
 
         # 配置文件路径
-        self.mysql_config_file = self.config_dir / "mysql-configs.json"
         self.app_config_file = self.config_dir / "app-config.json"
-        self.datasources_config_file = self.config_dir / "datasources.json"
         self.sql_favorites_file = self.config_dir / "sql-favorites.json"
 
         # 配置缓存
-        self._mysql_configs: Dict[str, DatabaseConfig] = {}
         self._app_config: Optional[AppConfig] = None
-        self._datasources_config: Dict[str, Any] = {}
 
         # 初始化配置
         self._initialize_configs()
@@ -239,12 +229,6 @@ class ConfigManager:
 
     def _create_default_configs(self):
         """创建默认配置文件"""
-        # MySQL配置模板
-        if not self.mysql_config_file.exists():
-            default_mysql_config = []
-            self._save_json(self.mysql_config_file, default_mysql_config)
-            logger.info(f"创建默认MySQL配置文件: {self.mysql_config_file}")
-
         # 应用配置模板
         if not self.app_config_file.exists():
             default_app_config = asdict(AppConfig())
@@ -253,12 +237,6 @@ class ConfigManager:
         else:
             # 更新现有配置文件，确保包含所有新字段
             self._update_existing_app_config()
-
-        # 数据源配置模板
-        if not self.datasources_config_file.exists():
-            default_datasources_config = {"file_sources": [], "database_sources": []}
-            self._save_json(self.datasources_config_file, default_datasources_config)
-            logger.info(f"创建默认数据源配置文件: {self.datasources_config_file}")
 
         # SQL收藏配置模板
         if not self.sql_favorites_file.exists():
@@ -308,11 +286,7 @@ class ConfigManager:
 
     def load_all_configs(self):
         """加载所有配置"""
-        self.load_mysql_configs()
         self.load_app_config()
-        self.load_datasources_config()
-        # 同步数据库管理器的配置
-        self._sync_database_manager_configs()
 
     def _resolve_project_root(self) -> Path:
         """确定项目运行根目录"""
@@ -406,71 +380,7 @@ class ConfigManager:
                     logger.debug("移除临时文件失败: %s", tmp_path)
             raise
 
-    def load_mysql_configs(self) -> Dict[str, DatabaseConfig]:
-        """加载MySQL配置 - 优先从datasources.json加载，兼容mysql-configs.json"""
-        try:
-            self._mysql_configs = {}
 
-            # 首先尝试从datasources.json加载
-            datasources_data = self._load_json(self.datasources_config_file)
-            if datasources_data and "database_sources" in datasources_data:
-                for config_data in datasources_data["database_sources"]:
-                    if (
-                        config_data.get("type") == "mysql"
-                        and "id" in config_data
-                        and "params" in config_data
-                    ):
-                        # 解密配置中的密码
-                        decrypted_config_data = decrypt_config_passwords(config_data)
-
-                        config = DatabaseConfig(
-                            id=decrypted_config_data["id"],
-                            name=decrypted_config_data.get(
-                                "name", decrypted_config_data["id"]
-                            ),
-                            type=decrypted_config_data.get("type", "mysql"),
-                            params=decrypted_config_data["params"],
-                            enabled=decrypted_config_data.get("enabled", True),
-                            description=decrypted_config_data.get("description"),
-                        )
-                        self._mysql_configs[config.id] = config
-
-                logger.info(
-                    f"从datasources.json加载了 {len(self._mysql_configs)} 个MySQL配置"
-                )
-                return self._mysql_configs
-
-            # 如果datasources.json没有数据，尝试从mysql-configs.json加载（向后兼容）
-            configs_data = self._load_json(self.mysql_config_file)
-            if isinstance(configs_data, list):
-                for config_data in configs_data:
-                    if "id" in config_data and "params" in config_data:
-                        # 解密配置中的密码
-                        decrypted_config_data = decrypt_config_passwords(config_data)
-
-                        config = DatabaseConfig(
-                            id=decrypted_config_data["id"],
-                            name=decrypted_config_data.get(
-                                "name", decrypted_config_data["id"]
-                            ),
-                            type=decrypted_config_data.get("type", "mysql"),
-                            params=decrypted_config_data["params"],
-                            enabled=decrypted_config_data.get("enabled", True),
-                            description=decrypted_config_data.get("description"),
-                        )
-                        self._mysql_configs[config.id] = config
-
-                logger.info(
-                    f"从mysql-configs.json加载了 {len(self._mysql_configs)} 个MySQL配置"
-                )
-                return self._mysql_configs
-
-            logger.info(f"没有找到MySQL配置")
-            return self._mysql_configs
-
-        except Exception as e:
-            logger.error(f"加载MySQL配置失败: {str(e)}")
-            return {}
 
     def load_app_config(self) -> AppConfig:
         """加载应用配置"""
@@ -497,15 +407,6 @@ class ConfigManager:
                         os.getenv(
                             "MAX_QUERY_ROWS", config_data.get("max_query_rows", 10000)
                         )
-                    ),
-                    "enable_pivot_tables": os.getenv(
-                        "ENABLE_PIVOT_TABLES",
-                        str(config_data.get("enable_pivot_tables", True)),
-                    ).lower()
-                    == "true",
-                    "pivot_table_extension": os.getenv(
-                        "PIVOT_TABLE_EXTENSION",
-                        config_data.get("pivot_table_extension", "pivot_table"),
                     ),
                     "duckdb_data_dir": os.getenv(
                         "DUCKDB_DATA_DIR", config_data.get("duckdb_data_dir")
@@ -636,24 +537,7 @@ class ConfigManager:
             self._app_config = AppConfig()
             return self._app_config
 
-    def load_datasources_config(self) -> Dict[str, Any]:
-        """加载数据源配置"""
-        try:
-            self._datasources_config = self._load_json(self.datasources_config_file)
-            logger.info("数据源配置加载成功")
-            return self._datasources_config
 
-        except Exception as e:
-            logger.error(f"加载数据源配置失败: {str(e)}")
-            return {}
-
-    def get_mysql_config(self, config_id: str) -> Optional[DatabaseConfig]:
-        """获取MySQL配置"""
-        return self._mysql_configs.get(config_id)
-
-    def get_all_mysql_configs(self) -> Dict[str, DatabaseConfig]:
-        """获取所有MySQL配置"""
-        return self._mysql_configs.copy()
 
     def get_app_config(self) -> AppConfig:
         """获取应用配置"""
@@ -661,92 +545,7 @@ class ConfigManager:
             self.load_app_config()
         return self._app_config
 
-    def get_datasources_config(self) -> Dict[str, Any]:
-        """获取数据源配置"""
-        return self._datasources_config.copy()
 
-    def get_all_database_sources(self) -> List[Dict[str, Any]]:
-        """获取所有数据库数据源配置"""
-        try:
-            datasources_data = self._load_json(self.datasources_config_file)
-            if datasources_data and "database_sources" in datasources_data:
-                return datasources_data["database_sources"]
-            return []
-        except Exception as e:
-            logger.error(f"获取数据库数据源配置失败: {str(e)}")
-            return []
-
-    def _sync_database_manager_configs(self):
-        """同步数据库管理器的配置到MySQL配置中"""
-        try:
-            # 获取所有数据库数据源
-            database_sources = self.get_all_database_sources()
-
-            # 将MySQL类型的配置同步到_mysql_configs
-            for source in database_sources:
-                if (
-                    source.get("type") == "mysql"
-                    and "id" in source
-                    and "params" in source
-                ):
-                    # 检查是否已经存在
-                    if source["id"] not in self._mysql_configs:
-                        # 解密配置中的密码
-                        decrypted_config_data = decrypt_config_passwords(source)
-
-                        config = DatabaseConfig(
-                            id=decrypted_config_data["id"],
-                            name=decrypted_config_data.get(
-                                "name", decrypted_config_data["id"]
-                            ),
-                            type=decrypted_config_data.get("type", "mysql"),
-                            params=decrypted_config_data["params"],
-                            enabled=decrypted_config_data.get("enabled", True),
-                            description=decrypted_config_data.get("description"),
-                        )
-                        self._mysql_configs[config.id] = config
-                        logger.info(f"同步MySQL配置: {config.id}")
-
-            logger.info(f"同步完成，当前共有 {len(self._mysql_configs)} 个MySQL配置")
-
-        except Exception as e:
-            logger.error(f"同步数据库管理器配置失败: {str(e)}")
-
-    def add_mysql_config(self, config: DatabaseConfig) -> bool:
-        """添加MySQL配置"""
-        try:
-            self._mysql_configs[config.id] = config
-
-            # 保存到文件
-            configs_list = [asdict(cfg) for cfg in self._mysql_configs.values()]
-            self._save_json(self.mysql_config_file, configs_list)
-
-            logger.info(f"添加MySQL配置成功: {config.id}")
-            return True
-
-        except Exception as e:
-            logger.error(f"添加MySQL配置失败: {str(e)}")
-            return False
-
-    def remove_mysql_config(self, config_id: str) -> bool:
-        """删除MySQL配置"""
-        try:
-            if config_id in self._mysql_configs:
-                del self._mysql_configs[config_id]
-
-                # 保存到文件
-                configs_list = [asdict(cfg) for cfg in self._mysql_configs.values()]
-                self._save_json(self.mysql_config_file, configs_list)
-
-                logger.info(f"删除MySQL配置成功: {config_id}")
-                return True
-            else:
-                logger.warning(f"MySQL配置不存在: {config_id}")
-                return False
-
-        except Exception as e:
-            logger.error(f"删除MySQL配置失败: {str(e)}")
-            return False
 
     def update_app_config(self, **kwargs) -> bool:
         """更新应用配置"""

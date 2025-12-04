@@ -13,7 +13,7 @@ from core.file_datasource_manager import (
     file_datasource_manager,
 )
 from core.file_utils import detect_file_type
-from core.timezone_utils import get_current_time_iso
+from core.timezone_utils import get_storage_time
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -186,6 +186,9 @@ async def import_server_file(payload: ServerFileImportRequest):
         logger.error("导入服务器文件失败: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"导入失败: {str(exc)}")
 
+    # 使用 UTC naive 时间用于数据库存储
+    current_time = get_storage_time()
+    
     table_metadata = {
         "source_id": table_name,
         "filename": os.path.basename(real_path),
@@ -195,12 +198,19 @@ async def import_server_file(payload: ServerFileImportRequest):
         "column_count": metadata.get("column_count", 0),
         "columns": metadata.get("columns", []),
         "column_profiles": metadata.get("column_profiles", []),
-        "schema_version": 2,
-        "created_at": get_current_time_iso(),
-        "mount_label": mount["label"],
-        "source_type": "server_directory",
+        "upload_time": current_time,
+        "created_at": current_time,
+        "updated_at": current_time,
+        "metadata": {
+            "schema_version": 2,
+            "mount_label": mount["label"],
+            "source_type": "server_directory",
+        }
     }
-    file_datasource_manager.save_file_datasource(table_metadata)
+    try:
+        file_datasource_manager.save_file_datasource(table_metadata)
+    except Exception as exc:
+        logger.warning("保存文件数据源元数据失败（已忽略）: %s", exc, exc_info=True)
 
     return {
         "success": True,

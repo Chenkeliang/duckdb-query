@@ -27,6 +27,7 @@ from models.query_models import (
     DatabaseConnection,
 )
 from core.encryption import password_encryptor
+from core.metadata_manager import metadata_manager
 
 logger = logging.getLogger(__name__)
 
@@ -42,66 +43,56 @@ class DatabaseManager:
         # 延迟加载配置，避免初始化顺序问题
 
     def _load_connections_from_config(self):
-        config_dir = os.getenv("CONFIG_DIR")
-        if config_dir:
-            config_path = (
-                Path(config_dir) / "datasources.json"
-            )  # 恢复为datasources.json
-        else:
-            config_path = (
-                Path(__file__).parent.parent.parent
-                / "config"
-                / "datasources.json"  # 恢复为datasources.json
-            )
-
-        if not os.path.exists(config_path):
-            logger.warning(f"Configuration file not found: {config_path}")
-            return
-
+        """从 DuckDB 元数据表加载连接配置"""
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-
-            for conn_data in config.get("database_sources", []):
-                conn_type_str = conn_data.get("type")
-                conn_type = DataSourceType(conn_type_str) if conn_type_str else None
-
-                if not conn_type:
-                    logger.warning(
-                        f"Skipping connection with missing or invalid type: {conn_data.get('id')}"
-                    )
-                    continue
-
-                status_str = conn_data.get("status")
+            # 从 DuckDB 加载
+            connections_data = metadata_manager.list_database_connections()
+            
+            logger.info(f"从 DuckDB 加载 {len(connections_data)} 个数据库连接")
+            for conn_data in connections_data:
                 try:
-                    saved_status = (
-                        ConnectionStatus(status_str)
-                        if status_str
-                        else ConnectionStatus.INACTIVE
-                    )
-                except ValueError:
-                    saved_status = ConnectionStatus.INACTIVE
+                    conn_type_str = conn_data.get("type")
+                    conn_type = DataSourceType(conn_type_str) if conn_type_str else None
 
-                connection = DatabaseConnection(
-                    id=conn_data["id"],
-                    name=conn_data.get("name", conn_data["id"]),
-                    type=conn_type,
-                    params=conn_data.get("params", {}),
-                    status=saved_status,
-                    created_at=conn_data.get("created_at"),
-                    updated_at=conn_data.get("updated_at"),
-                    last_tested=conn_data.get("last_tested"),
-                )
-                # 加载配置时不测试连接，提升启动速度
-                self.add_connection(connection, test_connection=False)
+                    if not conn_type:
+                        logger.warning(
+                            f"跳过类型无效的连接: {conn_data.get('id')}"
+                        )
+                        continue
+
+                    status_str = conn_data.get("status")
+                    try:
+                        saved_status = (
+                            ConnectionStatus(status_str)
+                            if status_str
+                            else ConnectionStatus.INACTIVE
+                        )
+                    except ValueError:
+                        saved_status = ConnectionStatus.INACTIVE
+
+                    connection = DatabaseConnection(
+                        id=conn_data["id"],
+                        name=conn_data.get("name", conn_data["id"]),
+                        type=conn_type,
+                        params=conn_data.get("params", {}),
+                        status=saved_status,
+                        created_at=conn_data.get("created_at"),
+                        updated_at=conn_data.get("updated_at"),
+                        last_tested=conn_data.get("last_tested"),
+                    )
+                    # 加载配置时不测试连接，提升启动速度
+                    self.add_connection(connection, test_connection=False, save_to_metadata=False)
+                except Exception as e:
+                    logger.error(f"加载连接配置失败 {conn_data.get('id')}: {e}")
+
         except Exception as e:
-            logger.error(f"Error loading connections from config: {e}")
+            logger.error(f"从 DuckDB 加载连接配置失败: {e}")
 
         # 标记配置已加载
         self._config_loaded = True
 
     def add_connection(
-        self, connection: DatabaseConnection, test_connection: bool = True
+        self, connection: DatabaseConnection, test_connection: bool = True, save_to_metadata: bool = True
     ) -> bool:
         """添加数据库连接配置"""
         try:
@@ -130,6 +121,26 @@ class DatabaseManager:
 
             # 无论测试是否成功，都添加到连接列表
             self.connections[connection.id] = connection
+            
+            # 保存到 DuckDB 元数据表
+            if save_to_metadata:
+                from datetime import datetime
+                conn_data = {
+                    "id": connection.id,
+                    "name": connection.name,
+                    "type": connection.type.value,
+                    "params": connection.params,
+                    "status": connection.status.value,
+                    "created_at": connection.created_at or datetime.now(),
+                    "updated_at": connection.updated_at or datetime.now(),
+                    "last_tested": connection.last_tested,
+                }
+                success = metadata_manager.save_database_connection(conn_data)
+                if success:
+                    logger.info(f"连接配置已保存到 DuckDB: {connection.id}")
+                else:
+                    logger.error(f"保存连接配置到 DuckDB 失败: {connection.id}")
+            
             return True
 
         except Exception as e:
@@ -150,7 +161,13 @@ class DatabaseManager:
             if connection_id in self.connection_pools:
                 del self.connection_pools[connection_id]
 
-            logger.info(f"成功移除数据库连接: {connection_id}")
+            # 从 DuckDB 元数据表删除
+            success = metadata_manager.delete_database_connection(connection_id)
+            if success:
+                logger.info(f"成功移除数据库连接（包括元数据）: {connection_id}")
+            else:
+                logger.warning(f"从元数据表删除连接失败: {connection_id}")
+            
             return True
 
         except Exception as e:

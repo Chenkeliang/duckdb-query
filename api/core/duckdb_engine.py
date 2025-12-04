@@ -68,7 +68,7 @@ def _use_connection(connection=None):
 
 
 def _resolve_duckdb_extensions(app_config, override_extensions: Optional[List[str]] = None) -> List[str]:
-    """根据配置和开关生成最终需要加载的DuckDB扩展列表"""
+    """根据配置生成最终需要加载的DuckDB扩展列表"""
     base_extensions = []
     source_extensions = override_extensions if override_extensions is not None else app_config.duckdb_extensions
 
@@ -76,13 +76,6 @@ def _resolve_duckdb_extensions(app_config, override_extensions: Optional[List[st
         for ext in source_extensions:
             if ext:
                 base_extensions.append(ext)
-
-    pivot_extension = (app_config.pivot_table_extension or "pivot_table").strip()
-    if pivot_extension:
-        # 先移除重复的透视扩展，避免列表中存在旧值
-        base_extensions = [ext for ext in base_extensions if ext != pivot_extension]
-        if app_config.enable_pivot_tables:
-            base_extensions.append(pivot_extension)
 
     # 去重但保持顺序（忽略大小写）
     seen = set()

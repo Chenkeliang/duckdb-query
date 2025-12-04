@@ -239,19 +239,16 @@ class FileDatasourceManager:
 
     def __init__(self):
         """初始化文件数据源管理器"""
+        from core.metadata_manager import metadata_manager
+        
+        self.metadata_manager = metadata_manager
         self.config_dir = config_manager.config_dir
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        self.config_file = self.config_dir / "file-datasources.json"
 
         self.data_dir = (
             Path(__file__).resolve().parent.parent / "data" / "file_sources"
         )
         self.data_dir.mkdir(parents=True, exist_ok=True)
-
-        # 确保配置文件存在
-        if not self.config_file.exists():
-            with self.config_file.open("w", encoding="utf-8") as f:
-                json.dump([], f, ensure_ascii=False, indent=2)
 
     def _get_file_hash(self, file_path: str) -> str:
         """计算文件的MD5哈希值"""
@@ -262,89 +259,55 @@ class FileDatasourceManager:
         return hash_md5.hexdigest()
 
     def save_file_datasource(self, file_info: Dict[str, Any]):
-        """保存文件数据源配置"""
+        """保存文件数据源配置到 DuckDB 元数据表"""
         try:
-            # 读取现有配置
-            configs = []
-            if self.config_file.exists():
-                with self.config_file.open("r", encoding="utf-8") as f:
-                    configs = json.load(f)
-
-            # 查找是否已存在相同source_id的配置
-            existing_index = None
-            for i, config in enumerate(configs):
-                if config.get("source_id") == file_info["source_id"]:
-                    existing_index = i
-                    break
-
-            # 更新或添加配置
-            if existing_index is not None:
-                configs[existing_index] = file_info
+            logger.info(f"准备保存文件数据源: {file_info['source_id']}")
+            logger.debug(f"文件数据源数据: {file_info}")
+            
+            # 保存到 DuckDB 元数据表
+            success = self.metadata_manager.save_file_datasource(file_info)
+            
+            if success:
+                logger.info(f"文件数据源配置已保存到 DuckDB: {file_info['source_id']}")
+                return True
             else:
-                configs.append(file_info)
-
-            # 保存配置
-            config_manager.atomic_write_json(self.config_file, configs)
-
-            logger.info(f"文件数据源配置已保存: {file_info['source_id']}")
-            return True
+                logger.error(f"保存文件数据源配置到 DuckDB 失败: {file_info['source_id']}")
+                logger.error(f"失败的数据: {file_info}")
+                raise Exception(f"保存到 DuckDB 失败: source_id={file_info['source_id']}")
 
         except Exception as e:
-            logger.error(f"保存文件数据源配置失败: {str(e)}")
+            logger.error(f"保存文件数据源配置失败: {str(e)}", exc_info=True)
             raise
 
     def get_file_datasource(self, source_id: str) -> Optional[Dict[str, Any]]:
-        """获取文件数据源配置"""
+        """从 DuckDB 元数据表获取文件数据源配置"""
         try:
-            if not self.config_file.exists():
-                return None
-
-            with self.config_file.open("r", encoding="utf-8") as f:
-                configs = json.load(f)
-
-            for config in configs:
-                if config.get("source_id") == source_id:
-                    return config
-
-            return None
+            return self.metadata_manager.get_file_datasource(source_id)
         except Exception as e:
             logger.error(f"获取文件数据源配置失败: {str(e)}")
             return None
 
     def list_file_datasources(self) -> List[Dict[str, Any]]:
-        """列出所有文件数据源"""
+        """从 DuckDB 元数据表列出所有文件数据源"""
         try:
-            if not self.config_file.exists():
-                return []
-
-            with self.config_file.open("r", encoding="utf-8") as f:
-                return json.load(f)
+            return self.metadata_manager.list_file_datasources()
         except Exception as e:
             logger.error(f"列出文件数据源失败: {str(e)}")
             return []
 
     def delete_file_datasource(self, source_id: str) -> bool:
-        """删除文件数据源"""
+        """从 DuckDB 元数据表删除文件数据源"""
         try:
-            if not self.config_file.exists():
-                return False
-
-            with self.config_file.open("r", encoding="utf-8") as f:
-                configs = json.load(f)
-
-            # 查找并删除配置
-            new_configs = [
-                config for config in configs if config.get("source_id") != source_id
-            ]
-
-            # 如果配置有变化，则保存
-            if len(new_configs) != len(configs):
-                config_manager.atomic_write_json(self.config_file, new_configs)
-
-                logger.info(f"文件数据源配置已删除: {source_id}")
+            # 从 DuckDB 删除
+            success = self.metadata_manager.delete_file_datasource(source_id)
+            
+            if success:
+                logger.info(f"文件数据源配置已从 DuckDB 删除: {source_id}")
                 return True
-
-            return False
+            else:
+                logger.warning(f"文件数据源配置不存在: {source_id}")
+                return False
+                
         except Exception as e:
             logger.error(f"删除文件数据源配置失败: {str(e)}")
             return False

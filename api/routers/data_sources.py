@@ -7,6 +7,7 @@ from fastapi import (
     Form,
     BackgroundTasks,
     Request,
+    Response,
 )
 import logging
 import os
@@ -156,9 +157,30 @@ def _save_connections_to_config():
         raise
 
 
-@router.post("/api/database_connections/test", tags=["Database Management"])
-async def test_database_connection(request: ConnectionTestRequest):
-    """测试数据库连接"""
+@router.post(
+    "/api/database_connections/test", 
+    tags=["Database Management"],
+    deprecated=True,
+    summary="测试数据库连接（已废弃）",
+    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases/test"
+)
+async def test_database_connection(request: ConnectionTestRequest, response: Response):
+    """
+    测试数据库连接（已废弃）
+    ⚠️ 此端点将在 2025-06-01 移除，请迁移到新端点：
+    - 新端点: POST /api/datasources/databases/test
+    """
+    # 添加废弃响应头
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-New-Endpoint"] = "/api/datasources/databases/test"
+    response.headers["X-Sunset-Date"] = "2025-06-01"
+    
+    # 记录废弃警告日志
+    logger.warning(
+        "使用了废弃的端点: /api/database_connections/test, "
+        "请迁移到 /api/datasources/databases/test"
+    )
+    
     try:
         result = db_manager.test_connection(request)
         return result
@@ -188,9 +210,27 @@ async def test_database_connection(request: ConnectionTestRequest):
 @router.post(
     "/api/database_connections/{connection_id}/refresh",
     tags=["Database Management"],
+    deprecated=True,
+    summary="刷新数据库连接（已废弃）",
+    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases/{connection_id}/refresh"
 )
-async def refresh_database_connection(connection_id: str):
-    """重新测试数据库连接并更新状态"""
+async def refresh_database_connection(connection_id: str, response: Response):
+    """
+    刷新数据库连接（已废弃）
+    ⚠️ 此端点将在 2025-06-01 移除，请迁移到新端点：
+    - 新端点: POST /api/datasources/databases/{connection_id}/refresh
+    """
+    # 添加废弃响应头
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-New-Endpoint"] = f"/api/datasources/databases/{connection_id}/refresh"
+    response.headers["X-Sunset-Date"] = "2025-06-01"
+    
+    # 记录废弃警告日志
+    logger.warning(
+        f"使用了废弃的端点: POST /api/database_connections/{connection_id}/refresh, "
+        f"请迁移到 POST /api/datasources/databases/{connection_id}/refresh"
+    )
+    
     connection = db_manager.get_connection(connection_id)
     if not connection:
         raise HTTPException(status_code=404, detail="未找到数据库连接")
@@ -330,9 +370,30 @@ async def test_connection_simple(request: dict = Body(...)):
         return {"success": False, "message": f"连接测试失败: {str(e)}"}
 
 
-@router.post("/api/database_connections", tags=["Database Management"])
-async def create_database_connection(connection: DatabaseConnection):
-    """创建数据库连接"""
+@router.post(
+    "/api/database_connections", 
+    tags=["Database Management"],
+    deprecated=True,
+    summary="创建数据库连接（已废弃）",
+    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases"
+)
+async def create_database_connection(connection: DatabaseConnection, response: Response):
+    """
+    创建数据库连接（已废弃）
+    ⚠️ 此端点将在 2025-06-01 移除，请迁移到新端点：
+    - 新端点: POST /api/datasources/databases
+    """
+    # 添加废弃响应头
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-New-Endpoint"] = "/api/datasources/databases"
+    response.headers["X-Sunset-Date"] = "2025-06-01"
+    
+    # 记录废弃警告日志
+    logger.warning(
+        "使用了废弃的端点: /api/database_connections, "
+        "请迁移到 /api/datasources/databases"
+    )
+    
     try:
         # 设置创建时间
         connection.created_at = get_current_time()
@@ -355,10 +416,31 @@ async def create_database_connection(connection: DatabaseConnection):
         raise HTTPException(status_code=500, detail=f"创建数据库连接失败: {str(e)}")
 
 
-@router.get("/api/database_connections", tags=["Database Management"])
-async def list_database_connections(request: Request):
-    """列出所有数据库连接"""
+@router.get(
+    "/api/database_connections", 
+    tags=["Database Management"],
+    deprecated=True,
+    summary="列出所有数据库连接（已废弃）",
+    description="⚠️ 此端点已废弃，请使用 GET /api/datasources?type=database"
+)
+async def list_database_connections(request: Request, response: Response):
+    """
+    列出所有数据库连接（已废弃）
+    ⚠️ 此端点将在 2025-06-01 移除，请迁移到新端点：
+    - 新端点: GET /api/datasources?type=database
+    """
     import time
+    
+    # 添加废弃响应头
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-New-Endpoint"] = "/api/datasources?type=database"
+    response.headers["X-Sunset-Date"] = "2025-06-01"
+    
+    # 记录废弃警告日志
+    logger.warning(
+        "使用了废弃的端点: /api/database_connections, "
+        "请迁移到 /api/datasources?type=database"
+    )
 
     # 记录详细的请求信息
     client_ip = request.client.host if request.client else "unknown"
@@ -831,9 +913,30 @@ async def import_excel(request: ExcelImportRequest):
     }
 
 
-@router.get("/api/database_connections/{connection_id}", tags=["Database Management"])
-async def get_database_connection(connection_id: str):
-    """获取指定数据库连接"""
+@router.get(
+    "/api/database_connections/{connection_id}", 
+    tags=["Database Management"],
+    deprecated=True,
+    summary="获取指定数据库连接（已废弃）",
+    description="⚠️ 此端点已废弃，请使用 GET /api/datasources/db_{connection_id}"
+)
+async def get_database_connection(connection_id: str, response: Response):
+    """
+    获取指定数据库连接（已废弃）
+    ⚠️ 此端点将在 2025-06-01 移除，请迁移到新端点：
+    - 新端点: GET /api/datasources/db_{connection_id}
+    """
+    # 添加废弃响应头
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-New-Endpoint"] = f"/api/datasources/db_{connection_id}"
+    response.headers["X-Sunset-Date"] = "2025-06-01"
+    
+    # 记录废弃警告日志
+    logger.warning(
+        f"使用了废弃的端点: /api/database_connections/{connection_id}, "
+        f"请迁移到 /api/datasources/db_{connection_id}"
+    )
+    
     try:
         connection = db_manager.get_connection(connection_id)
         if connection:
@@ -847,11 +950,32 @@ async def get_database_connection(connection_id: str):
         raise HTTPException(status_code=500, detail=f"获取数据库连接失败: {str(e)}")
 
 
-@router.put("/api/database_connections/{connection_id}", tags=["Database Management"])
+@router.put(
+    "/api/database_connections/{connection_id}", 
+    tags=["Database Management"],
+    deprecated=True,
+    summary="更新数据库连接（已废弃）",
+    description="⚠️ 此端点已废弃，请使用 PUT /api/datasources/databases/{connection_id}"
+)
 async def update_database_connection(
-    connection_id: str, connection: DatabaseConnection
+    connection_id: str, connection: DatabaseConnection, response: Response
 ):
-    """更新数据库连接"""
+    """
+    更新数据库连接（已废弃）
+    ⚠️ 此端点将在 2025-06-01 移除，请迁移到新端点：
+    - 新端点: PUT /api/datasources/databases/{connection_id}
+    """
+    # 添加废弃响应头
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-New-Endpoint"] = f"/api/datasources/databases/{connection_id}"
+    response.headers["X-Sunset-Date"] = "2025-06-01"
+    
+    # 记录废弃警告日志
+    logger.warning(
+        f"使用了废弃的端点: /api/database_connections/{connection_id}, "
+        f"请迁移到 /api/datasources/databases/{connection_id}"
+    )
+    
     try:
         # 设置更新时间
         connection.updated_at = get_current_time()
@@ -878,10 +1002,29 @@ async def update_database_connection(
 
 
 @router.delete(
-    "/api/database_connections/{connection_id}", tags=["Database Management"]
+    "/api/database_connections/{connection_id}", 
+    tags=["Database Management"],
+    deprecated=True,
+    summary="删除数据库连接（已废弃）",
+    description="⚠️ 此端点已废弃，请使用 DELETE /api/datasources/db_{connection_id}"
 )
-async def delete_database_connection(connection_id: str):
-    """删除数据库连接"""
+async def delete_database_connection(connection_id: str, response: Response):
+    """
+    删除数据库连接（已废弃）
+    ⚠️ 此端点将在 2025-06-01 移除，请迁移到新端点：
+    - 新端点: DELETE /api/datasources/db_{connection_id}
+    """
+    # 添加废弃响应头
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-New-Endpoint"] = f"/api/datasources/db_{connection_id}"
+    response.headers["X-Sunset-Date"] = "2025-06-01"
+    
+    # 记录废弃警告日志
+    logger.warning(
+        f"使用了废弃的端点: DELETE /api/database_connections/{connection_id}, "
+        f"请迁移到 DELETE /api/datasources/db_{connection_id}"
+    )
+    
     try:
         # 从内存中删除连接
         success = db_manager.remove_connection(connection_id)

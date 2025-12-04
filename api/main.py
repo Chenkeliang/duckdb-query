@@ -24,6 +24,7 @@ from routers import (
     async_tasks,  # 异步任务路由
     database_tables,  # 数据库表管理路由
     sql_favorites,  # SQL收藏路由
+    datasources,  # 统一数据源管理路由
 )
 from routers import config_api  # 配置暴露路由
 
@@ -70,6 +71,8 @@ def load_file_datasources_on_startup():
 async def app_lifespan(app: FastAPI):
     """统一管理应用生命周期，替代 on_event 钩子"""
     logger.info("应用正在启动...")
+    
+    # 加载数据库连接配置
     try:
         logger.info("开始加载数据库连接配置...")
         db_manager._load_connections_from_config()
@@ -125,6 +128,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(datasources.router)  # 统一数据源管理路由（新）
 app.include_router(data_sources.router)
 app.include_router(query.router)
 app.include_router(paste_data.router)  # 数据粘贴板路由

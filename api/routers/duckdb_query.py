@@ -19,6 +19,7 @@ from core.duckdb_engine import (
     create_persistent_table,
 )
 from core.utils import normalize_dataframe_output
+from core.timezone_utils import format_storage_time_for_response
 from core.resource_manager import save_upload_file
 from core.file_datasource_manager import file_datasource_manager
 from core.visual_query_generator import get_table_metadata
@@ -131,7 +132,13 @@ async def list_duckdb_tables_summary():
                 row_count = int(count_result[0]) if count_result else 0
 
                 metadata = file_datasource_manager.get_file_datasource(table_name)
-                created_at = metadata.get("created_at") if metadata else None
+                raw_created_at = metadata.get("created_at") if metadata else None
+                if isinstance(raw_created_at, datetime):
+                    created_at = raw_created_at.isoformat()
+                elif raw_created_at is not None:
+                    created_at = str(raw_created_at)
+                else:
+                    created_at = None
 
                 table_info.append(
                     {
@@ -146,7 +153,13 @@ async def list_duckdb_tables_summary():
 
                 # 尝试从元数据获取列信息
                 metadata = file_datasource_manager.get_file_datasource(table_name)
-                created_at = metadata.get("created_at") if metadata else None
+                raw_created_at = metadata.get("created_at") if metadata else None
+                if isinstance(raw_created_at, datetime):
+                    created_at = raw_created_at.isoformat()
+                elif raw_created_at is not None:
+                    created_at = str(raw_created_at)
+                else:
+                    created_at = None
 
                 # 尝试获取行数
                 row_count = 0
@@ -168,7 +181,7 @@ async def list_duckdb_tables_summary():
             created_at = table.get("created_at")
             if created_at is None:
                 return "1970-01-01T00:00:00"  # 没有创建时间的排在最后
-            return created_at
+            return str(created_at)
 
         table_info.sort(key=sort_key, reverse=True)  # 降序排列，最新的在前
 
