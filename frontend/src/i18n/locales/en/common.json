@@ -2,6 +2,7 @@
   "nav": {
     "datasource": "Data Sources",
     "unifiedquery": "Unified Query",
+    "queryworkbench": "Query Workbench",
     "tablemanagement": "Table Management",
     "asynctasks": "Async Tasks",
     "switchMain": "Main navigation"
@@ -16,6 +17,14 @@
     "cancel": "Cancel",
     "delete": "Delete",
     "refresh": "Refresh"
+  },
+  "workspace": {
+    "expandDataSource": "Expand data source panel",
+    "collapseDataSource": "Collapse data source panel",
+    "expandResult": "Expand result panel",
+    "collapseResult": "Collapse result panel",
+    "queryMode": "Query Mode",
+    "asyncTasksPending": "Async task list (pending)"
   },
   "page": {
     "datasource": {

@@ -10,6 +10,14 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Web Worker 支持
+  worker: {
+    format: "es",
+  },
+  // Monaco Editor 优化
+  optimizeDeps: {
+    include: ["@monaco-editor/react", "monaco-editor"],
+  },
   build: {
     rollupOptions: {
       output: {
@@ -20,6 +28,9 @@ export default defineConfig({
             }
             if (id.includes("ag-grid")) {
               return "ag-grid";
+            }
+            if (id.includes("monaco-editor")) {
+              return "monaco-editor";
             }
             if (id.includes("@mui") || id.includes("@emotion")) {
               return "mui";

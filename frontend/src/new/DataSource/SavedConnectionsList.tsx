@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import {
-  getMySQLConfigs,
-  deleteMySQLConfig,
-  getPostgreSQLConfigs,
-  deletePostgreSQLConfig
+  listDatabaseConnections,
+  deleteDatabaseConnection
 } from "../../services/apiClient";
 import { Database, Trash2, Play, RefreshCw, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/new/components/ui/card";
@@ -19,14 +18,8 @@ import {
   DialogTitle,
 } from "@/new/components/ui/dialog";
 
-const SavedConnectionsList = ({ onSelect, onRefresh, showNotification }) => {
+const SavedConnectionsList = ({ onSelect, onRefresh }) => {
   const { t } = useTranslation("common");
-
-  // Toast 通知函数
-  const notify = (message, severity = "info") => {
-    if (!message) return;
-    showNotification?.(message, severity);
-  };
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -38,28 +31,55 @@ const SavedConnectionsList = ({ onSelect, onRefresh, showNotification }) => {
     setLoading(true);
     setError("");
     try {
-      const [mysqlData, pgData] = await Promise.all([
-        getMySQLConfigs().catch(err => {
-          console.error("Failed to load MySQL configs:", err);
-          return [];
-        }),
-        getPostgreSQLConfigs().catch(err => {
-          console.error("Failed to load PostgreSQL configs:", err);
-          return [];
-        })
-      ]);
-
-      const allConfigs = [
-        ...(Array.isArray(mysqlData) ? mysqlData : []).map(c => ({ ...c, type: "mysql" })),
-        ...(Array.isArray(pgData) ? pgData : []).map(c => ({ ...c, type: "postgresql" }))
-      ];
+      // 使用新的统一 API 获取所有数据库连接
+      const response = await listDatabaseConnections();
+      
+      // 处理新的响应格式
+      let allConfigs = [];
+      if (response && response.success && response.data && Array.isArray(response.data.items)) {
+        // 新格式：{ success: true, data: { items: [...] } }
+        allConfigs = response.data.items.map(item => {
+          const host = item.metadata?.host || item.connection_info?.host;
+          const port = item.metadata?.port || item.connection_info?.port;
+          const database = item.metadata?.database || item.connection_info?.database;
+          const user = item.connection_info?.user;
+          const schema = item.metadata?.schema;
+          
+          return {
+            id: item.id.replace('db_', ''), // 移除 db_ 前缀
+            name: item.name,
+            type: item.subtype, // mysql, postgresql, sqlite
+            host,
+            port,
+            database,
+            user,
+            schema,
+            status: item.status,
+            created_at: item.created_at,
+            updated_at: item.updated_at,
+            // 添加 params 字段以兼容 DatabaseForm 的期望格式
+            params: {
+              host,
+              port,
+              database,
+              user,
+              schema,
+              password: '***ENCRYPTED***', // 密码标记，表示已有密码
+              path: item.metadata?.path || '' // SQLite 路径
+            }
+          };
+        });
+      } else if (Array.isArray(response)) {
+        // 旧格式：直接是数组
+        allConfigs = response;
+      }
 
       setConfigs(allConfigs);
     } catch (err) {
       console.error("Error in loadConfigs:", err);
       const errorMsg = t("page.datasource.manage.fetchFail");
       setError(errorMsg);
-      notify(errorMsg, "error");
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -79,19 +99,17 @@ const SavedConnectionsList = ({ onSelect, onRefresh, showNotification }) => {
 
     setIsDeleting(true);
     try {
-      if (configToDelete.type === "mysql") {
-        await deleteMySQLConfig(configToDelete.id);
-      } else if (configToDelete.type === "postgresql") {
-        await deletePostgreSQLConfig(configToDelete.id);
-      }
+      // 使用新的统一 API 删除数据库连接
+      await deleteDatabaseConnection(configToDelete.id);
+      
       const successMsg = t("page.datasource.list.deleteSuccess", { name: configToDelete.name || configToDelete.id });
-      notify(successMsg, "success");
+      toast.success(successMsg);
       loadConfigs();
       setDeleteDialogOpen(false);
       setConfigToDelete(null);
     } catch (err) {
       const errorMsg = t("page.datasource.list.deleteFail", { message: err.message });
-      notify(errorMsg, "error");
+      toast.error(errorMsg);
     } finally {
       setIsDeleting(false);
     }
@@ -153,8 +171,8 @@ const SavedConnectionsList = ({ onSelect, onRefresh, showNotification }) => {
                   </h4>
 
                   <div className="text-xs text-muted-foreground truncate mb-4">
-                    {config.params.host}:{config.params.port}/{config.params.database}
-                    {config.params.schema && config.params.schema !== 'public' && ` (${config.params.schema})`}
+                    {config.host}:{config.port}/{config.database}
+                    {config.schema && config.schema !== 'public' && ` (${config.schema})`}
                   </div>
 
                   <Button

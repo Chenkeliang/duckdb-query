@@ -2013,15 +2013,25 @@ async def list_duckdb_tables():
 
         # 获取文件数据源管理器实例
         from core.file_datasource_manager import file_datasource_manager
+        from core.database_manager import db_manager
 
         file_datasources = file_datasource_manager.list_file_datasources()
-        # 创建source_id到上传时间的映射（统一使用 created_at 字段）
+        # 创建source_id到创建时间的映射
         datasource_timestamps = {}
         for datasource in file_datasources:
             source_id = datasource.get("source_id")
-            created_at = datasource.get("created_at")  # 只使用标准的 created_at 字段
+            created_at = datasource.get("created_at")
             if source_id and created_at:
                 datasource_timestamps[source_id] = created_at
+        
+        # 获取所有数据库连接的ID，用于标识数据库连接的表
+        db_connection_ids = set()
+        try:
+            db_connections = db_manager.list_connections()
+            for db_conn in db_connections:
+                db_connection_ids.add(db_conn.id)
+        except Exception as e:
+            logger.warning(f"获取数据库连接列表失败: {str(e)}")
 
         tables_info = []
         for _, row in tables_df.iterrows():
@@ -2040,8 +2050,18 @@ async def list_duckdb_tables():
                 columns_result = con.execute(f"DESCRIBE {quoted_table_name}").fetchdf()
                 columns = columns_result["column_name"].tolist()
 
-                # 获取创建时间（如果有的话）
+                # 判断表的来源类型
+                # 1. 如果表名在 file_datasources 中，使用文件数据源的创建时间
+                # 2. 如果表名匹配数据库连接ID，标记为 database 类型
+                # 3. 否则默认为 file 类型
                 created_at = datasource_timestamps.get(table_name)
+                source_type = "file"  # 默认为文件类型
+                
+                # 检查是否是数据库连接的表（表名通常包含连接ID）
+                for db_conn_id in db_connection_ids:
+                    if table_name.startswith(f"{db_conn_id}_") or table_name == db_conn_id:
+                        source_type = "database"
+                        break
 
                 tables_info.append(
                     {
@@ -2050,6 +2070,7 @@ async def list_duckdb_tables():
                         "columns": columns,
                         "column_count": len(columns),
                         "created_at": created_at,
+                        "source_type": source_type,
                     }
                 )
             except Exception as e:
@@ -2065,9 +2086,22 @@ async def list_duckdb_tables():
                 )
 
         # 按创建时间倒序排序，没有创建时间的表排在最后
-        tables_info.sort(
-            key=lambda x: x.get("created_at") or "1900-01-01", reverse=True
-        )
+        from datetime import datetime
+        
+        def get_sort_key(table):
+            created_at = table.get("created_at")
+            if not created_at:
+                return datetime(1900, 1, 1)
+            # 如果是字符串，转换为 datetime
+            if isinstance(created_at, str):
+                try:
+                    return datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                except:
+                    return datetime(1900, 1, 1)
+            # 如果已经是 datetime，直接返回
+            return created_at
+        
+        tables_info.sort(key=get_sort_key, reverse=True)
 
         return {
             "success": True,

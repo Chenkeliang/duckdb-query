@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { getServerMounts, browseServerDirectory } from "../../services/apiClient";
 import { Server, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/new/components/ui/card";
@@ -16,7 +17,6 @@ interface DatabaseFormProps {
   onSaveConfig?: (params: any) => void;
   loading?: boolean;
   testing?: boolean;
-  showNotification?: (message: string, severity?: string) => void;
 }
 
 /**
@@ -38,15 +38,8 @@ const DatabaseForm = ({
   onSaveConfig,
   loading = false,
   testing = false,
-  showNotification
 }: DatabaseFormProps) => {
   const { t } = useTranslation("common");
-
-  // Toast 通知函数
-  const notify = (message: string, severity: string = "info") => {
-    if (!message) return;
-    showNotification?.(message, severity);
-  };
   const [type, setType] = useState(defaultType);
   const [name, setName] = useState("");
   const [host, setHost] = useState("localhost");
@@ -110,25 +103,65 @@ const DatabaseForm = ({
   }, [type, name, host, port, username, password, database, sqlitePath, schema, isPostgreSQL]);
 
   const validate = () => {
-    if (!normalizedParams.id) {
-      const errorMsg = t("page.datasource.connection.errorName");
+    // 检查连接名称
+    if (!name.trim()) {
+      const errorMsg = "请填写连接名称";
       setError(errorMsg);
-      notify(errorMsg, "warning");
+      toast.warning(errorMsg);
       return false;
     }
+
     if (!isSqlite) {
-      if (!host.trim() || !database.trim()) {
-        const errorMsg = t("page.datasource.connection.errorSave", { message: "" });
+      // 检查主机地址
+      if (!host.trim()) {
+        const errorMsg = "请填写主机地址";
         setError(errorMsg);
-        notify(errorMsg, "warning");
+        toast.warning(errorMsg);
         return false;
       }
-    } else if (!sqlitePath.trim()) {
-      const errorMsg = t("page.datasource.connection.errorSave", { message: "" });
-      setError(errorMsg);
-      notify(errorMsg, "warning");
-      return false;
+
+      // 检查端口
+      if (!port.trim()) {
+        const errorMsg = "请填写端口号";
+        setError(errorMsg);
+        toast.warning(errorMsg);
+        return false;
+      }
+
+      // 检查用户名
+      if (!username.trim()) {
+        const errorMsg = "请填写用户名";
+        setError(errorMsg);
+        toast.warning(errorMsg);
+        return false;
+      }
+
+      // 检查数据库名
+      if (!database.trim()) {
+        const errorMsg = "请填写数据库名称";
+        setError(errorMsg);
+        toast.warning(errorMsg);
+        return false;
+      }
+
+      // 验证端口号是否为有效数字
+      const portNum = Number(port);
+      if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+        const errorMsg = "端口号必须在 1-65535 之间";
+        setError(errorMsg);
+        toast.warning(errorMsg);
+        return false;
+      }
+    } else {
+      // SQLite 检查路径
+      if (!sqlitePath.trim()) {
+        const errorMsg = "请填写 SQLite 数据库文件路径";
+        setError(errorMsg);
+        toast.warning(errorMsg);
+        return false;
+      }
     }
+
     setError("");
     return true;
   };
@@ -277,8 +310,13 @@ const DatabaseForm = ({
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="••••••"
+                placeholder={password === "***ENCRYPTED***" ? "••••••（已保存，留空保持不变）" : "••••••"}
               />
+              {password === "***ENCRYPTED***" && (
+                <p className="text-[11px] text-muted-foreground">
+                  密码已保存，留空则保持原密码不变
+                </p>
+              )}
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="database">

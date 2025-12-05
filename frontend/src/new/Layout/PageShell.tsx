@@ -11,6 +11,8 @@ interface PageShellProps {
  * Minimal page shell for the new layout.
  * Provides sidebar + header slots with tokenized background/border.
  * Includes QueryProvider for TanStack Query support.
+ * 
+ * Note: Toaster is rendered globally in main.jsx
  */
 const PageShell: React.FC<PageShellProps> = ({ sidebar, header, children }) => {
   return (

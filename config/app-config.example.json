@@ -6,8 +6,6 @@
   "max_tables": 200,
   "timezone": "Asia/Shanghai",
   "table_metadata_cache_ttl_hours": 24,
-  "enable_pivot_tables": true,
-  "pivot_table_extension": "pivot_table",
   "duckdb_memory_limit": "8GB",
   "duckdb_threads": 8,
   "duckdb_temp_directory": null,

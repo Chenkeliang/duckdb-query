@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { Upload, FileType, Link2, Server, HardDrive } from "lucide-react";
 import {
   uploadFile,
@@ -30,7 +31,7 @@ interface PendingExcel {
  * - Input for form fields
  * - Label for field labels
  */
-const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
+const UploadPanel = ({ onDataSourceSaved }) => {
   const { t } = useTranslation("common");
   const fileInputRef = useRef(null);
 
@@ -56,10 +57,6 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
   const [serverAlias, setServerAlias] = useState("");
   const [serverImporting, setServerImporting] = useState(false);
 
-  const notify = (message, severity = "info") => {
-    if (!message) return;
-    showNotification?.(message, severity);
-  };
 
   const handleDrop = e => {
     e.preventDefault();
@@ -86,7 +83,7 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
 
   const handleUpload = async () => {
     if (!selectedFile) {
-      notify(t("page.datasource.pickFileFirst"), "warning");
+      toast.warning(t("page.datasource.pickFileFirst"));
       return;
     }
     
@@ -98,23 +95,22 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
       const response = await uploadFile(selectedFile, alias || null);
       
       if (!response?.success) {
-        notify(response?.message || t("page.datasource.uploadFail"), "error");
+        toast.error(response?.message || t("page.datasource.uploadFail"));
         return;
       }
       
       // 检查是否需要工作表选择
       if (response.requires_sheet_selection && response.pending_excel) {
         setPendingExcel(response.pending_excel);
-        notify(response.message || t("page.datasource.uploadSuccess"), "info");
+        toast.info(response.message || t("page.datasource.uploadSuccess"));
         return;
       }
       
       // 直接导入成功
-      notify(
+      toast.success(
         t("page.datasource.uploadSuccessTable", {
           table: response.file_id
-        }),
-        "success"
+        })
       );
       
       onDataSourceSaved?.({
@@ -131,7 +127,7 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
       setAlias("");
     } catch (err) {
       console.error("Upload failed:", err);
-      notify(err?.message || t("page.datasource.uploadFail"), "error");
+      toast.error(err?.message || t("page.datasource.uploadFail"));
     } finally {
       setUploading(false);
     }
@@ -139,20 +135,19 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
 
   const handleUrlImport = async () => {
     if (!url.trim()) {
-      notify(t("page.datasource.enterUrl"), "warning");
+      toast.warning(t("page.datasource.enterUrl"));
       return;
     }
     if (!alias.trim()) {
-      notify(t("page.datasource.enterAlias"), "warning");
+      toast.warning(t("page.datasource.enterAlias"));
       return;
     }
     setUrlLoading(true);
     try {
       const result = await readFromUrl(url.trim(), alias.trim());
       if (result?.success) {
-        notify(
-          t("page.datasource.urlReadSuccess", { table: result.table_name }),
-          "success"
+        toast.success(
+          t("page.datasource.urlReadSuccess", { table: result.table_name })
         );
         onDataSourceSaved?.({
           id: result.table_name,
@@ -165,14 +160,13 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
         });
         setUrl("");
       } else {
-        notify(result?.message || t("page.datasource.urlReadFail"), "error");
+        toast.error(result?.message || t("page.datasource.urlReadFail"));
       }
     } catch (err) {
-      notify(
+      toast.error(
         t("page.datasource.urlReadFailDetail", {
           message: err?.message || t("common.unknown")
-        }),
-        "error"
+        })
       );
     } finally {
       setUrlLoading(false);
@@ -218,7 +212,7 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
     try {
       if (!result?.success) {
         console.error("Excel import failed:", result);
-        notify(result?.message || t("page.datasource.importFail"), "error");
+        toast.error(result?.message || t("page.datasource.importFail"));
         // 保持 pendingExcel 状态，允许用户重试
         return;
       }
@@ -238,9 +232,8 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
       });
       
       // 显示成功通知
-      notify(
-        result.message || t("page.datasource.importSuccess"),
-        "success"
+      toast.success(
+        result.message || t("page.datasource.importSuccess")
       );
       
       // 重置上传状态
@@ -248,7 +241,7 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
       setAlias("");
     } catch (err) {
       console.error("Import handling failed:", err);
-      notify(err?.message || t("page.datasource.importFail"), "error");
+      toast.error(err?.message || t("page.datasource.importFail"));
     }
   };
 
@@ -264,7 +257,7 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
 
   const handleServerImport = async () => {
     if (!serverSelectedFile) {
-      notify(t("page.datasource.pickFileFirst"), "warning");
+      toast.warning(t("page.datasource.pickFileFirst"));
       return;
     }
     const aliasValue =
@@ -273,7 +266,7 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
       serverSelectedFile.name?.replace(/\.[^/.]+$/, "") ||
       "";
     if (!aliasValue) {
-      notify(t("page.datasource.enterAlias"), "warning");
+      toast.warning(t("page.datasource.enterAlias"));
       return;
     }
     setServerImporting(true);
@@ -283,9 +276,8 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
         table_alias: aliasValue
       });
       if (result?.success) {
-        notify(
-          result?.message || t("page.datasource.importSuccess"),
-          "success"
+        toast.success(
+          result?.message || t("page.datasource.importSuccess")
         );
         onDataSourceSaved?.({
           id: result.table_name,
@@ -299,10 +291,10 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
         setServerSelectedFile(null);
         setServerAlias("");
       } else {
-        notify(result?.message || t("page.datasource.importFail"), "error");
+        toast.error(result?.message || t("page.datasource.importFail"));
       }
     } catch (err) {
-      notify(err?.message || t("page.datasource.importFail"), "error");
+      toast.error(err?.message || t("page.datasource.importFail"));
     } finally {
       setServerImporting(false);
     }
@@ -605,7 +597,6 @@ const UploadPanel = ({ onDataSourceSaved, showNotification }) => {
         pendingInfo={pendingExcel}
         onClose={handleExcelClose}
         onImported={handleExcelImported}
-        showNotification={showNotification}
       />
     )}
     </>

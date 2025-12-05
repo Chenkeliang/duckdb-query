@@ -131,9 +131,25 @@ class RequestManager {
 
   /**
    * 专门用于数据库连接请求的方法
+   * 使用新的统一接口
    */
   async getDatabaseConnections() {
-    const result = await this.executeRequest('/api/database_connections', {}, 2000); // 2秒防抖
+    const result = await this.executeRequest('/api/datasources?type=database', {}, 2000); // 2秒防抖
+    return result;
+  }
+
+  /**
+   * 获取所有数据源（新接口）
+   */
+  async getAllDataSources(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.type) params.append('type', filters.type);
+    if (filters.subtype) params.append('subtype', filters.subtype);
+    if (filters.status) params.append('status', filters.status);
+    if (filters.search) params.append('search', filters.search);
+    
+    const url = `/api/datasources${params.toString() ? '?' + params.toString() : ''}`;
+    const result = await this.executeRequest(url, {}, 2000);
     return result;
   }
 

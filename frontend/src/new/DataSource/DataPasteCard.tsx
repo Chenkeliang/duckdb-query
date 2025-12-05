@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/new/components/ui/card";
 import { Button } from "@/new/components/ui/button";
 import { Input } from "@/new/components/ui/input";
@@ -23,7 +24,7 @@ import {
  * - Select for dropdowns
  * - Label for field labels
  */
-const DataPasteCard = ({ onDataSourceSaved, showNotification }) => {
+const DataPasteCard = ({ onDataSourceSaved }) => {
   const { t } = useTranslation("common");
   const [pastedData, setPastedData] = useState("");
   const [parsedData, setParsedData] = useState(null);
@@ -37,11 +38,6 @@ const DataPasteCard = ({ onDataSourceSaved, showNotification }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
-  const notify = (message, severity = "info") => {
-    if (!message) return;
-    showNotification?.(message, severity);
-  };
 
   const dataTypes = useMemo(
     () => [
@@ -116,7 +112,7 @@ const DataPasteCard = ({ onDataSourceSaved, showNotification }) => {
     if (!pastedData.trim()) {
       const errorMsg = t("page.datasource.paste.error.noData");
       setError(errorMsg);
-      notify(errorMsg, "warning");
+      toast.warning(errorMsg);
       return;
     }
     try {
@@ -138,7 +134,7 @@ const DataPasteCard = ({ onDataSourceSaved, showNotification }) => {
         } catch (err) {
           const errorMsg = t("page.datasource.paste.parseFail", { message: err.message });
           setError(errorMsg);
-          notify(errorMsg, "error");
+          toast.error(errorMsg);
           return;
         }
 
@@ -243,11 +239,11 @@ const DataPasteCard = ({ onDataSourceSaved, showNotification }) => {
         cols: colCount
       });
       setSuccess(successMsg);
-      notify(successMsg, "success");
+      toast.success(successMsg);
     } catch (err) {
       const errorMsg = t("page.datasource.paste.parseFail", { message: err.message });
       setError(errorMsg);
-      notify(errorMsg, "error");
+      toast.error(errorMsg);
     }
   };
 
@@ -279,7 +275,7 @@ const DataPasteCard = ({ onDataSourceSaved, showNotification }) => {
       if (result.success) {
         const successMsg = t("page.datasource.paste.save.saveOk", { table: tableName.trim() });
         setSuccess(successMsg);
-        notify(successMsg, "success");
+        toast.success(successMsg);
         onDataSourceSaved?.({
           id: tableName.trim(),
           name: tableName.trim(),
@@ -294,14 +290,14 @@ const DataPasteCard = ({ onDataSourceSaved, showNotification }) => {
             result.message ||
             t("page.datasource.paste.save.saveFail");
         setError(errorMsg);
-        notify(errorMsg, "error");
+        toast.error(errorMsg);
       }
     } catch (err) {
       const errorMsg = t("page.datasource.paste.save.saveFailDetail", {
         message: err.message || ""
       });
       setError(errorMsg);
-      notify(errorMsg, "error");
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }

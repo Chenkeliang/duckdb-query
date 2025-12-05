@@ -72,7 +72,6 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
         const newTasks = response.tasks;
 
         // 检测任务状态变化，通知父组件
-
         if (previousTasks.length > 0 && onTaskCompleted) {
           newTasks.forEach(newTask => {
             const oldTask = previousTasks.find(old => old.task_id === newTask.task_id);
@@ -80,15 +79,11 @@ const AsyncTaskList = ({ onPreviewResult, onTaskCompleted }) => {
               // 任务状态发生变化
               if (newTask.status === 'success' && oldTask.status !== 'success') {
                 // 任务完成，通知父组件刷新数据源
-                onTaskCompleted(newTask);
+                // 使用防抖避免重复刷新
+                setTimeout(() => {
+                  onTaskCompleted(newTask);
+                }, 500);
               }
-            }
-          });
-        } else if (previousTasks.length === 0 && onTaskCompleted) {
-          // 第一次加载时，检查是否有已完成的任务
-          newTasks.forEach(newTask => {
-            if (newTask.status === 'success') {
-              // 第一次加载时发现已完成的任务
             }
           });
         }

@@ -2,6 +2,7 @@
   "nav": {
     "datasource": "数据源 (Data Sources)",
     "unifiedquery": "统一查询 (Unified Query)",
+    "queryworkbench": "查询工作台 (Query Workbench)",
     "tablemanagement": "数据表管理",
     "asynctasks": "异步任务",
     "switchMain": "主功能切换"
@@ -16,6 +17,14 @@
     "cancel": "取消",
     "delete": "删除",
     "refresh": "刷新"
+  },
+  "workspace": {
+    "expandDataSource": "展开数据源面板",
+    "collapseDataSource": "折叠数据源面板",
+    "expandResult": "展开结果面板",
+    "collapseResult": "折叠结果面板",
+    "queryMode": "查询模式",
+    "asyncTasksPending": "异步任务列表（待实现）"
   },
   "page": {
     "datasource": {

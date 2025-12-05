@@ -266,9 +266,11 @@ export const getFilePreview = async (filename, rows = 10) => {
 
 
 // 数据库连接管理API
+// ==================== 新统一接口（已迁移） ====================
+
 export const testDatabaseConnection = async (connectionData) => {
   try {
-    const response = await apiClient.post('/api/database_connections/test', connectionData);
+    const response = await apiClient.post('/api/datasources/databases/test', connectionData);
     return response.data;
   } catch (error) {
     throw error;
@@ -277,8 +279,10 @@ export const testDatabaseConnection = async (connectionData) => {
 
 export const createDatabaseConnection = async (connectionData) => {
   try {
-    const response = await apiClient.post('/api/database_connections', connectionData);
-    requestManager.clearCache('/api/database_connections', 'GET');
+    const response = await apiClient.post('/api/datasources/databases', connectionData);
+    // 清理相关缓存
+    requestManager.clearCache('/api/datasources', 'GET');
+    requestManager.clearCache('/api/database_connections', 'GET'); // 兼容旧缓存
     return response.data;
   } catch (error) {
     throw error;
@@ -297,7 +301,9 @@ export const listDatabaseConnections = async () => {
 
 export const getDatabaseConnection = async (connectionId) => {
   try {
-    const response = await apiClient.get(`/api/database_connections/${connectionId}`);
+    // 确保 ID 有 db_ 前缀
+    const id = connectionId.startsWith('db_') ? connectionId : `db_${connectionId}`;
+    const response = await apiClient.get(`/api/datasources/${id}`);
     return response.data;
   } catch (error) {
     throw error;
@@ -306,8 +312,10 @@ export const getDatabaseConnection = async (connectionId) => {
 
 export const updateDatabaseConnection = async (connectionId, connectionData) => {
   try {
-    const response = await apiClient.put(`/api/database_connections/${connectionId}`, connectionData);
-    requestManager.clearCache('/api/database_connections', 'GET');
+    const response = await apiClient.put(`/api/datasources/databases/${connectionId}`, connectionData);
+    // 清理相关缓存
+    requestManager.clearCache('/api/datasources', 'GET');
+    requestManager.clearCache('/api/database_connections', 'GET'); // 兼容旧缓存
     return response.data;
   } catch (error) {
     throw error;
@@ -316,8 +324,12 @@ export const updateDatabaseConnection = async (connectionId, connectionData) => 
 
 export const deleteDatabaseConnection = async (connectionId) => {
   try {
-    const response = await apiClient.delete(`/api/database_connections/${connectionId}`);
-    requestManager.clearCache('/api/database_connections', 'GET');
+    // 确保 ID 有 db_ 前缀
+    const id = connectionId.startsWith('db_') ? connectionId : `db_${connectionId}`;
+    const response = await apiClient.delete(`/api/datasources/${id}`);
+    // 清理相关缓存
+    requestManager.clearCache('/api/datasources', 'GET');
+    requestManager.clearCache('/api/database_connections', 'GET'); // 兼容旧缓存
     return response.data;
   } catch (error) {
     throw error;
@@ -326,8 +338,56 @@ export const deleteDatabaseConnection = async (connectionId) => {
 
 export const refreshDatabaseConnection = async (connectionId) => {
   try {
-    const response = await apiClient.post(`/api/database_connections/${connectionId}/refresh`);
-    requestManager.clearCache('/api/database_connections', 'GET');
+    const response = await apiClient.post(`/api/datasources/databases/${connectionId}/refresh`);
+    // 清理相关缓存
+    requestManager.clearCache('/api/datasources', 'GET');
+    requestManager.clearCache('/api/database_connections', 'GET'); // 兼容旧缓存
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// ==================== 新增：统一数据源列表接口 ====================
+
+export const listAllDataSources = async (filters = {}) => {
+  try {
+    const params = new URLSearchParams();
+    if (filters.type) params.append('type', filters.type);
+    if (filters.subtype) params.append('subtype', filters.subtype);
+    if (filters.status) params.append('status', filters.status);
+    if (filters.search) params.append('search', filters.search);
+    
+    const url = `/api/datasources${params.toString() ? '?' + params.toString() : ''}`;
+    const response = await apiClient.get(url);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const listDatabaseDataSources = async (filters = {}) => {
+  try {
+    const params = new URLSearchParams();
+    if (filters.subtype) params.append('subtype', filters.subtype);
+    if (filters.status) params.append('status', filters.status);
+    
+    const url = `/api/datasources/databases/list${params.toString() ? '?' + params.toString() : ''}`;
+    const response = await apiClient.get(url);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const listFileDataSources = async (filters = {}) => {
+  try {
+    const params = new URLSearchParams();
+    if (filters.subtype) params.append('subtype', filters.subtype);
+    if (filters.status) params.append('status', filters.status);
+    
+    const url = `/api/datasources/files/list${params.toString() ? '?' + params.toString() : ''}`;
+    const response = await apiClient.get(url);
     return response.data;
   } catch (error) {
     throw error;
@@ -386,7 +446,18 @@ export const saveQueryToDuckDB = async (sql, datasource, tableAlias, queryData =
 export const getDuckDBTables = async () => {
   try {
     const response = await apiClient.get('/api/duckdb_tables');
-    return response.data;
+    // 后端返回格式: { success: true, tables: [...], total_tables: 10 }
+    // 提取 tables 数组并转换字段名
+    const data = response.data;
+    if (data && data.tables) {
+      return data.tables.map(table => ({
+        name: table.table_name,
+        type: 'TABLE',
+        row_count: table.row_count,
+        source_type: table.source_type || 'file',
+      }));
+    }
+    return [];
   } catch (error) {
     throw error;
   }

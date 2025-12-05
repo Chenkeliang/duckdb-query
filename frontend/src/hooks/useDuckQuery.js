@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useToast } from "../contexts/ToastContext";
+import { toast } from "sonner";
 import { globalDebounce } from "./useDebounce";
 import {
   createDatabaseConnection,
@@ -516,7 +516,6 @@ const extractBaseSql = results => {
 };
 
 const useDuckQuery = () => {
-  const { showError, showWarning } = useToast();
   const [githubStars, setGithubStars] = useState(null);
   const [showWelcome, setShowWelcome] = useState(shouldShowWelcome);
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme);
@@ -781,7 +780,7 @@ const useDuckQuery = () => {
       if (filters.length === 0) {
         setActiveFilters([]);
       } else {
-        showWarning("当前结果集不支持筛选");
+        toast.warning("当前结果集不支持筛选");
       }
       return;
     }
@@ -840,7 +839,7 @@ const useDuckQuery = () => {
       setActiveFilters(filters);
     } catch (error) {
       const message = error?.message || "筛选失败";
-      showError(message);
+      toast.error(message);
     } finally {
       setResultsLoading(false);
     }

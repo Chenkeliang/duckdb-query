@@ -296,9 +296,30 @@ async def refresh_database_connection(connection_id: str, response: Response):
     }
 
 
-@router.post("/api/test_connection_simple", tags=["Database Management"])
-async def test_connection_simple(request: dict = Body(...)):
-    """简化的数据库连接测试"""
+@router.post(
+    "/api/test_connection_simple", 
+    tags=["Database Management"],
+    deprecated=True,
+    summary="简化的数据库连接测试（已废弃）",
+    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases/test"
+)
+async def test_connection_simple(request: dict = Body(...), response: Response = None):
+    """
+    简化的数据库连接测试（已废弃）
+    ⚠️ 此端点将在 2025-06-01 移除，请迁移到新端点：
+    - 新端点: POST /api/datasources/databases/test
+    """
+    # 添加废弃响应头
+    if response:
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-New-Endpoint"] = "/api/datasources/databases/test"
+        response.headers["X-Sunset-Date"] = "2025-06-01"
+    
+    # 记录废弃警告日志
+    logger.warning(
+        "使用了废弃的端点: /api/test_connection_simple, "
+        "请迁移到 /api/datasources/databases/test"
+    )
     try:
         db_type = request.get("type")
 
@@ -1070,9 +1091,31 @@ async def delete_database_connection(connection_id: str, response: Response):
 
 
 # 新增数据库连接接口
-@router.post("/api/database/connect", tags=["Database Management"])
-async def connect_database(connection: DatabaseConnection):
-    """连接数据库并返回表信息"""
+@router.post(
+    "/api/database/connect", 
+    tags=["Database Management"],
+    deprecated=True,
+    summary="连接数据库并返回表信息（已废弃）",
+    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases + GET /databases/{id}/schemas"
+)
+async def connect_database(connection: DatabaseConnection, response: Response = None):
+    """
+    连接数据库并返回表信息（已废弃）
+    ⚠️ 此端点将在 2025-06-01 移除，请迁移到新端点：
+    - 创建连接: POST /api/datasources/databases
+    - 获取表列表: GET /databases/{id}/schemas (PostgreSQL) 或 GET /api/database_tables/{id} (MySQL)
+    """
+    # 添加废弃响应头
+    if response:
+        response.headers["X-Deprecated"] = "true"
+        response.headers["X-New-Endpoint"] = "/api/datasources/databases"
+        response.headers["X-Sunset-Date"] = "2025-06-01"
+    
+    # 记录废弃警告日志
+    logger.warning(
+        "使用了废弃的端点: /api/database/connect, "
+        "请迁移到 /api/datasources/databases"
+    )
     try:
         # 测试连接
         test_result = await test_database_connection(connection)

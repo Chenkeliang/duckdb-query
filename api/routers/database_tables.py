@@ -336,6 +336,200 @@ async def get_database_tables(connection_id: str):
         )
 
 
+@router.get("/api/databases/{connection_id}/schemas", tags=["Database Management"])
+async def list_connection_schemas(connection_id: str):
+    """获取指定数据库连接下的所有 schemas（仅 PostgreSQL）
+    
+    对于 MySQL/SQLite，返回空列表（这些数据库没有 schema 概念）
+    """
+    try:
+        # 获取应用配置
+        from core.config_manager import config_manager
+        app_config = config_manager.get_app_config()
+
+        # 获取数据库连接配置
+        connection = db_manager.get_connection(connection_id)
+        if not connection:
+            raise HTTPException(
+                status_code=404, detail=f"数据库连接 {connection_id} 不存在"
+            )
+
+        db_type = (
+            connection.type.value
+            if hasattr(connection.type, "value")
+            else str(connection.type)
+        )
+
+        # MySQL 和 SQLite 不支持 schema，返回空列表
+        if db_type in ["mysql", "sqlite"]:
+            return {
+                "success": True,
+                "connection_id": connection_id,
+                "schemas": [],
+                "total_schemas": 0,
+            }
+
+        # PostgreSQL: 查询所有 schemas
+        if db_type == "postgresql":
+            import psycopg2
+
+            db_config = connection.params
+            username = db_config.get("user") or db_config.get("username")
+            if not username:
+                raise HTTPException(
+                    status_code=400, detail="缺少用户名参数 (user 或 username)"
+                )
+
+            password = db_config.get("password", "")
+            if password_encryptor.is_encrypted(password):
+                password = password_encryptor.decrypt_password(password)
+
+            conn = psycopg2.connect(
+                host=db_config.get("host", "localhost"),
+                port=int(db_config.get("port", 5432)),
+                user=username,
+                password=password,
+                database=db_config["database"],
+                connect_timeout=app_config.db_connect_timeout,
+            )
+
+            try:
+                with conn.cursor() as cursor:
+                    # 查询所有用户 schemas（排除系统 schemas）
+                    cursor.execute(
+                        """
+                        SELECT 
+                            schema_name,
+                            (SELECT COUNT(*) 
+                             FROM information_schema.tables 
+                             WHERE table_schema = schema_name 
+                             AND table_type = 'BASE TABLE') as table_count
+                        FROM information_schema.schemata
+                        WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                        ORDER BY schema_name
+                    """
+                    )
+
+                    schemas = []
+                    for row in cursor.fetchall():
+                        schemas.append({"name": row[0], "table_count": row[1]})
+
+                    return {
+                        "success": True,
+                        "connection_id": connection_id,
+                        "schemas": schemas,
+                        "total_schemas": len(schemas),
+                    }
+            finally:
+                conn.close()
+
+        else:
+            raise HTTPException(
+                status_code=400, detail=f"不支持的数据库类型: {db_type}"
+            )
+
+    except Exception as e:
+        logger.error(f"获取 schemas 失败: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"获取 schemas 失败: {str(e)}"
+        )
+
+
+@router.get(
+    "/api/databases/{connection_id}/schemas/{schema}/tables",
+    tags=["Database Management"],
+)
+async def list_schema_tables(connection_id: str, schema: str):
+    """获取指定 schema 下的所有表（仅 PostgreSQL）
+    
+    对于 MySQL/SQLite，此端点不适用
+    """
+    try:
+        # 获取应用配置
+        from core.config_manager import config_manager
+        app_config = config_manager.get_app_config()
+
+        # 获取数据库连接配置
+        connection = db_manager.get_connection(connection_id)
+        if not connection:
+            raise HTTPException(
+                status_code=404, detail=f"数据库连接 {connection_id} 不存在"
+            )
+
+        db_type = (
+            connection.type.value
+            if hasattr(connection.type, "value")
+            else str(connection.type)
+        )
+
+        # 只支持 PostgreSQL
+        if db_type != "postgresql":
+            raise HTTPException(
+                status_code=400,
+                detail=f"此端点仅支持 PostgreSQL，当前类型: {db_type}",
+            )
+
+        # PostgreSQL: 查询指定 schema 下的表
+        import psycopg2
+
+        db_config = connection.params
+        username = db_config.get("user") or db_config.get("username")
+        if not username:
+            raise HTTPException(
+                status_code=400, detail="缺少用户名参数 (user 或 username)"
+            )
+
+        password = db_config.get("password", "")
+        if password_encryptor.is_encrypted(password):
+            password = password_encryptor.decrypt_password(password)
+
+        conn = psycopg2.connect(
+            host=db_config.get("host", "localhost"),
+            port=int(db_config.get("port", 5432)),
+            user=username,
+            password=password,
+            database=db_config["database"],
+            connect_timeout=app_config.db_connect_timeout,
+        )
+
+        try:
+            with conn.cursor() as cursor:
+                # 查询指定 schema 下的所有表
+                cursor.execute(
+                    """
+                    SELECT 
+                        table_name,
+                        table_type
+                    FROM information_schema.tables 
+                    WHERE table_schema = %s AND table_type = 'BASE TABLE'
+                    ORDER BY table_name
+                """,
+                    (schema,),
+                )
+
+                tables = []
+                for row in cursor.fetchall():
+                    tables.append({
+                        "name": row[0],
+                        "type": "TABLE",
+                        "row_count": 0,  # 不统计行数，提升性能
+                    })
+
+                return {
+                    "success": True,
+                    "connection_id": connection_id,
+                    "schema": schema,
+                    "tables": tables,
+                    "total_tables": len(tables),
+                }
+        finally:
+            conn.close()
+
+    except Exception as e:
+        logger.error(f"获取表列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取表列表失败: {str(e)}")
+
+
 @router.get(
     "/api/database_table_details/{connection_id}/{table_name}",
     tags=["Database Management"],

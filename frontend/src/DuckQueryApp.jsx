@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Tab, Tabs } from "@mui/material";
-import { ToastProvider, useToast } from "./contexts/ToastContext";
+import { toast } from "sonner";
 import useDuckQuery from "./hooks/useDuckQuery";
 import {
   Github,
@@ -14,7 +14,10 @@ import {
   Server,
   Upload,
   ClipboardEdit,
-  Settings
+  Settings,
+  Code2,
+  Search,
+  Clock
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -46,6 +49,7 @@ const DataUploadSection = lazy(() =>
   import("./components/DataSourceManagement/DataUploadSection")
 );
 import DataPasteCard from "./new/DataSource/DataPasteCard";
+import QueryWorkbenchPage from "./new/QueryWorkbenchPage";
 
 import LogoLight from "./assets/Duckquerylogo.svg";
 import LogoDark from "./assets/duckquery-dark.svg";
@@ -99,17 +103,18 @@ class ErrorBoundary extends React.Component {
 const tabTitles = {
   datasource: "nav.datasource",
   unifiedquery: "nav.unifiedquery",
+  queryworkbench: "nav.queryworkbench",
   tablemanagement: "nav.tablemanagement",
   asynctasks: "nav.asynctasks"
 };
 
 const DuckQueryAppInner = () => {
-  const { showSuccess, showError, showWarning, showInfo } = useToast();
   const { state, actions } = useDuckQuery();
   const { t, i18n } = useTranslation("common");
   const locale = i18n.language || "zh";
   const [isMobile, setIsMobile] = useState(false);
   const [dataSourceTab, setDataSourceTab] = useState("upload");
+  const [queryWorkbenchTab, setQueryWorkbenchTab] = useState("query");
   const [savingDb, setSavingDb] = useState(false);
   const [selectedConfig, setSelectedConfig] = useState(null);
   const [refreshConfigs, setRefreshConfigs] = useState(0);
@@ -201,23 +206,6 @@ const DuckQueryAppInner = () => {
       const uploadPanel = (
         <UploadPanel
           onDataSourceSaved={triggerRefresh}
-          showNotification={(message, severity) => {
-            switch (severity) {
-              case "success":
-                showSuccess(message);
-                break;
-              case "error":
-                showError(message);
-                break;
-              case "warning":
-                showWarning(message);
-                break;
-              case "info":
-              default:
-                showInfo(message);
-                break;
-            }
-          }}
         />
       );
 
@@ -232,14 +220,14 @@ const DuckQueryAppInner = () => {
             params: params.params
           });
           if (result?.success) {
-            showSuccess(
+            toast.success(
               result?.message || t("page.datasource.list.testSuccess")
             );
           } else {
-            showError(result?.message || t("page.datasource.list.testFail"));
+            toast.error(result?.message || t("page.datasource.list.testFail"));
           }
         } catch (err) {
-          showError(err?.message || t("page.datasource.list.testFail"));
+          toast.error(err?.message || t("page.datasource.list.testFail"));
         } finally {
           setTestingDb(false);
         }
@@ -250,17 +238,17 @@ const DuckQueryAppInner = () => {
           setSavingDb(true);
           const response = await handleDatabaseConnect(params);
           if (response?.success) {
-            showSuccess(
+            toast.success(
               response?.message || t("page.datasource.manage.saveSuccess")
             );
             setRefreshConfigs(prev => prev + 1);
           } else {
-            showError(
+            toast.error(
               response?.message || t("page.datasource.list.errorUnknown")
             );
           }
         } catch (err) {
-          showError(err?.message || t("page.datasource.list.errorUnknown"));
+          toast.error(err?.message || t("page.datasource.list.errorUnknown"));
         } finally {
           setSavingDb(false);
         }
@@ -271,17 +259,17 @@ const DuckQueryAppInner = () => {
           setSavingDb(true);
           const response = await handleDatabaseSaveConfig(params);
           if (response?.success) {
-            showSuccess(
+            toast.success(
               response?.message || t("page.datasource.manage.saveSuccess")
             );
             setRefreshConfigs(prev => prev + 1);
           } else {
-            showError(
+            toast.error(
               response?.message || t("page.datasource.list.errorUnknown")
             );
           }
         } catch (err) {
-          showError(err?.message || t("page.datasource.list.errorUnknown"));
+          toast.error(err?.message || t("page.datasource.list.errorUnknown"));
         } finally {
           setSavingDb(false);
         }
@@ -295,23 +283,6 @@ const DuckQueryAppInner = () => {
           loading={savingDb}
           testing={testingDb}
           configToLoad={selectedConfig}
-          showNotification={(message, severity) => {
-            switch (severity) {
-              case "success":
-                showSuccess(message);
-                break;
-              case "error":
-                showError(message);
-                break;
-              case "warning":
-                showWarning(message);
-                break;
-              case "info":
-              default:
-                showInfo(message);
-                break;
-            }
-          }}
         />
       );
 
@@ -319,46 +290,12 @@ const DuckQueryAppInner = () => {
         <SavedConnectionsList
           onSelect={config => setSelectedConfig(config)}
           onRefresh={refreshConfigs}
-          showNotification={(message, severity) => {
-            switch (severity) {
-              case "success":
-                showSuccess(message);
-                break;
-              case "error":
-                showError(message);
-                break;
-              case "warning":
-                showWarning(message);
-                break;
-              case "info":
-              default:
-                showInfo(message);
-                break;
-            }
-          }}
         />
       );
 
       const pastePanel = (
         <DataPasteCard
           onDataSourceSaved={triggerRefresh}
-          showNotification={(message, severity) => {
-            switch (severity) {
-              case "success":
-                showSuccess(message);
-                break;
-              case "error":
-                showError(message);
-                break;
-              case "warning":
-                showWarning(message);
-                break;
-              case "info":
-              default:
-                showInfo(message);
-                break;
-            }
-          }}
         />
       );
 
@@ -473,6 +410,15 @@ const DuckQueryAppInner = () => {
             )}
           </div>
         </div>
+      );
+    }
+
+    if (currentTab === "queryworkbench") {
+      return (
+        <QueryWorkbenchPage
+          activeTab={queryWorkbenchTab}
+          onTabChange={setQueryWorkbenchTab}
+        />
       );
     }
 
@@ -651,6 +597,32 @@ const DuckQueryAppInner = () => {
           <Sun className="h-4 w-4" />
         </button>
       </Header>
+    ) : currentTab === "queryworkbench" ? (
+      <Header
+        titleNode={
+          <div className="flex items-center gap-6">
+            <h1 className="text-lg font-semibold text-foreground tracking-tight">
+              {t("nav.queryworkbench")}
+            </h1>
+            <DataSourceTabs
+              value={queryWorkbenchTab}
+              onChange={setQueryWorkbenchTab}
+              tabs={[
+                { id: "query", label: t("workspace.queryMode"), icon: Search },
+                { id: "tasks", label: t("nav.asynctasks"), icon: Clock }
+              ]}
+            />
+          </div>
+        }
+      >
+        <button
+          type="button"
+          onClick={() => setIsDarkMode(prev => !prev)}
+          className="hidden lg:inline-flex p-2 rounded-md text-muted-foreground hover:bg-muted transition-colors"
+        >
+          <Sun className="h-4 w-4" />
+        </button>
+      </Header>
     ) : (
       <Header title={t(tabTitles[currentTab]) || "Duck Query"}>
         <div className="flex items-center gap-2 lg:hidden">
@@ -686,6 +658,11 @@ const DuckQueryAppInner = () => {
                 id: "unifiedquery",
                 label: t("nav.unifiedquery"),
                 icon: LayoutGrid
+              },
+              {
+                id: "queryworkbench",
+                label: t("nav.queryworkbench"),
+                icon: Code2
               },
               {
                 id: "tablemanagement",
@@ -724,11 +701,9 @@ const DuckQueryAppInner = () => {
 };
 
 const DuckQueryApp = () => (
-  <ToastProvider>
-    <ErrorBoundary>
-      <DuckQueryAppInner />
-    </ErrorBoundary>
-  </ToastProvider>
+  <ErrorBoundary>
+    <DuckQueryAppInner />
+  </ErrorBoundary>
 );
 
 export default DuckQueryApp;

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Info, Loader2 } from "lucide-react";
 import { inspectExcelSheets, importExcelSheets } from "../../services/apiClient";
 import { Button } from "@/new/components/ui/button";
@@ -64,7 +65,6 @@ interface ExcelSheetSelectorProps {
   pendingInfo: PendingInfo | null;
   onClose: () => void;
   onImported: (result: any) => void;
-  showNotification?: (message: string, severity: string) => void;
 }
 
 const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
@@ -72,7 +72,6 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
   pendingInfo,
   onClose,
   onImported,
-  showNotification,
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -174,7 +173,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
   const handleImport = async () => {
     const selected = sheetConfigs.filter((sheet) => sheet.selected);
     if (selected.length === 0) {
-      showNotification?.("请至少选择一个工作表进行导入", "warning");
+      toast.warning("请至少选择一个工作表进行导入");
       return;
     }
 
@@ -205,7 +204,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
     } catch (err: any) {
       const message = err?.message || "导入失败";
       setError(message);
-      showNotification?.(message, "error");
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -280,13 +279,19 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                   >
                     <AccordionTrigger className="px-4 hover:no-underline">
                       <div className="flex items-center gap-3 flex-1">
-                        <Checkbox
-                          checked={sheet.selected}
-                          onCheckedChange={(checked: boolean) =>
-                            handleSheetToggle(sheet.name, checked)
-                          }
-                          onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                        />
+                        <div
+                          onClick={(e: React.MouseEvent) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                          }}
+                        >
+                          <Checkbox
+                            checked={sheet.selected}
+                            onCheckedChange={(checked: boolean) =>
+                              handleSheetToggle(sheet.name, checked)
+                            }
+                          />
+                        </div>
                         <div className="flex-1 text-left">
                           <div className="font-medium text-foreground">{sheet.name}</div>
                           <div className="text-xs text-muted-foreground">
