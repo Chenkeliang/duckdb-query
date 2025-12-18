@@ -1,8 +1,10 @@
 import * as React from 'react';
 import { Folder, Loader2 } from 'lucide-react';
 import { TreeNode } from './TreeNode';
-import { TableItem, type TableSource } from './TableItem';
+import { TableItem } from './TableItem';
 import { useSchemaTables } from '@/new/hooks/useSchemaTables';
+import type { DatabaseType, SelectedTable } from '@/new/types/SelectedTable';
+import { createExternalTable, isTableSelected } from '@/new/utils/tableUtils';
 
 /**
  * Schema 类型
@@ -14,24 +16,30 @@ export interface Schema {
 
 interface SchemaNodeProps {
   connectionId: string;
+  connectionName?: string;
+  databaseType?: DatabaseType;
   schema: Schema;
   level: number;
-  selectedTables: string[];
-  onTableSelect: (tableName: string, source: TableSource) => void;
+  selectedTables: SelectedTable[];
+  onTableSelect: (table: SelectedTable) => void;
   selectionMode?: 'single' | 'multiple';
-  onPreview?: (tableName: string, source: TableSource) => void;
+  onPreview?: (table: SelectedTable) => void;
+  onImport?: (table: SelectedTable) => void;
   searchQuery?: string;
   forceExpanded?: boolean;
 }
 
 export const SchemaNode: React.FC<SchemaNodeProps> = ({
   connectionId,
+  connectionName,
+  databaseType,
   schema,
   level,
   selectedTables,
   onTableSelect,
   selectionMode = 'single',
   onPreview,
+  onImport,
   searchQuery = '',
   forceExpanded = false,
 }) => {
@@ -62,24 +70,6 @@ export const SchemaNode: React.FC<SchemaNodeProps> = ({
     setIsExpanded(!isExpanded);
   };
 
-  const handleTableSelect = (tableName: string) => {
-    onTableSelect(tableName, {
-      type: 'external',
-      connectionId,
-      schema: schema.name,
-    });
-  };
-
-  const handleTablePreview = (tableName: string) => {
-    if (onPreview) {
-      onPreview(tableName, {
-        type: 'external',
-        connectionId,
-        schema: schema.name,
-      });
-    }
-  };
-
   return (
     <TreeNode
       id={`schema-${connectionId}-${schema.name}`}
@@ -99,23 +89,31 @@ export const SchemaNode: React.FC<SchemaNodeProps> = ({
       )}
 
       {!isLoading &&
-        filteredTables.map((table) => (
-          <TableItem
-            key={table.name}
-            name={table.name}
-            rowCount={table.row_count}
-            isSelected={selectedTables.includes(table.name)}
-            selectionMode={selectionMode}
-            source={{
-              type: 'external',
-              connectionId,
-              schema: schema.name,
-            }}
-            onSelect={handleTableSelect}
-            onPreview={handleTablePreview}
-            searchQuery={searchQuery}
-          />
-        ))}
+        filteredTables.map((table) => {
+          const tableObj = createExternalTable(
+            table.name,
+            {
+              id: connectionId,
+              name: connectionName || connectionId,
+              type: databaseType || 'postgresql',
+            },
+            schema.name,
+          );
+
+          return (
+            <TableItem
+              key={`${connectionId}:${schema.name}:${table.name}`}
+              table={tableObj}
+              rowCount={table.row_count}
+              isSelected={isTableSelected(tableObj, selectedTables)}
+              selectionMode={selectionMode}
+              onSelect={onTableSelect}
+              onPreview={onPreview}
+              onImport={databaseType === 'mysql' ? onImport : undefined}
+              searchQuery={searchQuery}
+            />
+          );
+        })}
 
       {!isLoading && filteredTables.length === 0 && isExpanded && (
         <div className="pl-10 py-2 text-sm text-muted-foreground">

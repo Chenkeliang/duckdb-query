@@ -1,0 +1,117 @@
+# Implementation Plan
+
+- [x] 1. Backend: Create shortcuts API and DuckDB table
+  - [x] 1.1 Create `system_keyboard_shortcuts` table schema and initialization
+    - Add table creation SQL to DuckDB initialization
+    - Define columns: `action_id` (PRIMARY KEY), `shortcut`, `updated_at`
+    - _Requirements: 4.1, 4.4_
+  - [x] 1.2 Implement GET /api/settings/shortcuts endpoint
+    - Query all shortcuts from table
+    - Return merged result with defaults
+    - _Requirements: 4.2_
+  - [x] 1.3 Implement PUT /api/settings/shortcuts/{action_id} endpoint
+    - Validate action_id exists in defaults
+    - Upsert shortcut to table
+    - _Requirements: 2.4, 4.3_
+  - [x] 1.4 Implement POST /api/settings/shortcuts/reset endpoint
+    - Support single action reset (delete row)
+    - Support reset all (truncate table)
+    - _Requirements: 3.1, 3.2, 3.3_
+  - [x] 1.5 Write property test for persistence round-trip
+    - **Property 4: Persistence Round-Trip**
+    - **Validates: Requirements 2.4, 4.2, 4.3**
+
+- [x] 2. Frontend: Create ShortcutContext and useKeyboardShortcuts hook
+  - [x] 2.1 Define default shortcuts configuration
+    - Create `defaultShortcuts.ts` with all action definitions
+    - Include actionId, shortcut, defaultShortcut, label, category
+    - _Requirements: 1.2_
+  - [x] 2.2 Implement ShortcutContext provider
+    - Load shortcuts from API on mount
+    - Merge with defaults
+    - Provide updateShortcut, resetShortcut, resetAllShortcuts methods
+    - _Requirements: 4.2, 5.2_
+  - [x] 2.3 Implement useKeyboardShortcuts hook
+    - Register global keydown listener
+    - Match pressed keys against current shortcuts
+    - Call corresponding handler
+    - _Requirements: 5.1_
+  - [x] 2.4 Write property test for immediate effect
+    - **Property 6: Immediate Effect**
+    - **Validates: Requirements 5.1**
+
+- [x] 3. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 4. Frontend: Create ShortcutRecorder component
+  - [x] 4.1 Implement key capture logic
+    - Enter recording mode on click
+    - Capture modifier keys + main key
+    - Format as readable string (e.g., "Cmd+Shift+K")
+    - _Requirements: 2.1, 2.2_
+  - [x] 4.2 Implement conflict detection
+    - Check new shortcut against existing shortcuts
+    - Display warning if conflict detected
+    - Prevent save on conflict
+    - _Requirements: 2.3_
+  - [x] 4.3 Implement cancel on Escape
+    - Exit recording mode without saving
+    - Restore original shortcut display
+    - _Requirements: 2.5_
+  - [x] 4.4 Write property test for conflict detection
+    - **Property 3: Conflict Detection**
+    - **Validates: Requirements 2.3**
+
+- [x] 5. Frontend: Create ShortcutSettings component
+  - [x] 5.1 Implement shortcuts list UI
+    - Group shortcuts by category
+    - Display action name, current shortcut, default shortcut
+    - _Requirements: 1.1, 1.2_
+  - [x] 5.2 Implement customization indicator
+    - Show visual indicator when current !== default
+    - _Requirements: 1.3_
+  - [x] 5.3 Implement reset buttons
+    - Single shortcut reset button
+    - Reset all to defaults button
+    - _Requirements: 3.1, 3.2_
+  - [x] 5.4 Write property test for display completeness
+    - **Property 1: Shortcut Display Completeness**
+    - **Validates: Requirements 1.2**
+  - [x] 5.5 Write property test for customization indicator
+    - **Property 2: Customization Indicator Consistency**
+    - **Validates: Requirements 1.3**
+  - [x] 5.6 Write property test for reset restores defaults
+    - **Property 5: Reset Restores Defaults**
+    - **Validates: Requirements 3.1, 3.2**
+
+- [x] 6. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 7. Integration: Connect to existing app
+  - [x] 7.1 Wrap DuckQueryApp with ShortcutContext provider
+    - Add provider at app root
+    - _Requirements: 5.2_
+  - [x] 7.2 Refactor DuckQueryApp to use useKeyboardShortcuts
+    - Replace hardcoded shortcuts with context-based shortcuts
+    - _Requirements: 5.1_
+  - [x] 7.3 Add ShortcutSettings to Settings page
+    - Create new section in SettingsPage
+    - _Requirements: 1.1_
+  - [x] 7.4 Update CommandPalette to show current shortcuts
+    - Read shortcuts from context
+    - Display in action items
+    - _Requirements: 6.2_
+  - [x] 7.5 Write property test for UI hint consistency
+    - **Property 7: UI Hint Consistency**
+    - **Validates: Requirements 6.1, 6.2**
+
+- [x] 8. i18n: Add translations
+  - [x] 8.1 Add Chinese translations for shortcuts
+    - Add keys to `zh/common.json`
+    - _Requirements: 1.2_
+  - [x] 8.2 Add English translations for shortcuts
+    - Add keys to `en/common.json`
+    - _Requirements: 1.2_
+
+- [x] 9. Final Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.

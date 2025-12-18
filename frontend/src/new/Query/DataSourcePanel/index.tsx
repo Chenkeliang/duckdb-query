@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search, RefreshCw, Plus, ChevronLeft, Database } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -7,8 +8,10 @@ import { Button } from '@/new/components/ui/button';
 import { useDuckDBTables, type Table } from '@/new/hooks/useDuckDBTables';
 import { useDatabaseConnections } from '@/new/hooks/useDatabaseConnections';
 import { invalidateAllDataCaches, invalidateAfterTableDelete } from '@/new/utils/cacheInvalidation';
+import { createDuckDBTable, isTableSelected } from '@/new/utils/tableUtils';
+import type { SelectedTable } from '@/new/types/SelectedTable';
 import { TreeSection } from './TreeSection';
-import { TableItem, type TableSource } from './TableItem';
+import { TableItem } from './TableItem';
 import { DatabaseConnectionNode } from './DatabaseConnectionNode';
 
 /**
@@ -23,13 +26,14 @@ import { DatabaseConnectionNode } from './DatabaseConnectionNode';
  */
 
 interface DataSourcePanelProps {
-  selectedTables: string[];
-  onTableSelect: (tableName: string, source?: TableSource) => void;
+  selectedTables: SelectedTable[];
+  onTableSelect: (table: SelectedTable) => void;
   onRefresh?: () => void;
   onCollapse?: () => void;
   selectionMode?: 'single' | 'multiple';
-  onPreview?: (tableName: string, source?: TableSource) => void;
-  onDelete?: (tableName: string) => void;
+  onPreview?: (table: SelectedTable) => void;
+  onDelete?: (tableName: string) => Promise<void> | void;
+  onImport?: (table: SelectedTable) => void;
 }
 
 export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
@@ -40,7 +44,9 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
   selectionMode = 'single',
   onPreview,
   onDelete,
+  onImport,
 }) => {
+  const { t } = useTranslation('common');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [debouncedSearch, setDebouncedSearch] = React.useState('');
 
@@ -71,10 +77,10 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       }
       // 删除成功后才刷新缓存
       await invalidateAfterTableDelete(queryClient);
-      toast.success('表已删除，数据源列表已刷新');
+      toast.success(t('dataSource.tableDeletedRefreshed'));
     } catch (error) {
       // 删除失败时显示错误，不触发缓存失效
-      toast.error('删除失败：' + (error as Error).message);
+      toast.error(t('dataSource.deleteFailed', { error: (error as Error).message }));
     }
   };
 
@@ -115,26 +121,26 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       // 使用统一的缓存失效工具刷新所有数据缓存
       await invalidateAllDataCaches(queryClient);
       onRefresh?.();
-      toast.success('数据源列表已刷新');
+      toast.success(t('dataSource.refreshed'));
     } catch (error) {
-      toast.error('刷新失败：' + (error as Error).message);
+      toast.error(t('dataSource.refreshFailed', { error: (error as Error).message }));
     }
   };
 
   const handleAddDataSource = () => {
     // TODO: 导航到数据源管理页面
-    toast.info('请前往数据源管理页面添加新数据源');
+    toast.info(t('dataSource.goToManagePage'));
   };
 
   return (
-    <div className="h-full flex flex-col bg-surface border-r border-border">
+    <div className="h-full flex flex-col bg-card border-r border-border">
       {/* 搜索栏 - 与右侧标签页高度对齐 */}
       <div className="h-12 border-b border-border flex items-center px-4 shrink-0">
         <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="搜索表..."
+            placeholder={t('dataSource.searchTables')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9 h-9"
@@ -148,7 +154,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
           /* Task 9.4: 加载状态样式 */
           <div className="flex flex-col items-center justify-center p-8 space-y-3">
             <div className="animate-spin rounded-full h-8 w-8 border-2 border-muted border-t-primary"></div>
-            <p className="text-sm text-muted-foreground">加载数据源...</p>
+            <p className="text-sm text-muted-foreground">{t('dataSource.loadingDataSources')}</p>
           </div>
         ) : (
           <div className="p-2 space-y-2">
@@ -156,7 +162,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
             {connections.length > 0 && (
               <TreeSection
                 id="database-connections"
-                title="数据库连接"
+                title={t('dataSource.databaseConnections')}
                 count={connections.length}
                 defaultExpanded={true}
               >
@@ -168,6 +174,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                     onTableSelect={onTableSelect}
                     selectionMode={selectionMode}
                     onPreview={onPreview}
+                    onImport={onImport}
                     searchQuery={debouncedSearch}
                     forceExpanded={!!debouncedSearch}
                   />
@@ -183,8 +190,8 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                   <Database className="w-6 h-6 text-muted-foreground" />
                 </div>
                 <div className="text-center space-y-1">
-                  <p className="text-sm font-medium text-foreground">暂无数据表</p>
-                  <p className="text-xs text-muted-foreground">上传文件或连接数据库以开始</p>
+                  <p className="text-sm font-medium text-foreground">{t('dataSource.noTables')}</p>
+                  <p className="text-xs text-muted-foreground">{t('dataSource.uploadOrConnect')}</p>
                 </div>
               </div>
             ) : filteredTables.length === 0 && searchQuery ? (
@@ -194,8 +201,8 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                   <Search className="w-6 h-6 text-muted-foreground" />
                 </div>
                 <div className="text-center space-y-1">
-                  <p className="text-sm font-medium text-foreground">未找到匹配的表</p>
-                  <p className="text-xs text-muted-foreground">尝试使用不同的关键词搜索</p>
+                  <p className="text-sm font-medium text-foreground">{t('dataSource.noMatchingTables')}</p>
+                  <p className="text-xs text-muted-foreground">{t('dataSource.tryDifferentKeyword')}</p>
                 </div>
               </div>
             ) : (
@@ -204,51 +211,55 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                 {groupedTables.normal.length > 0 && (
                   <TreeSection
                     id="normal-tables"
-                    title="DuckDB 表"
+                    title={t('dataSource.duckdbTables', 'DuckDB 表')}
                     count={groupedTables.normal.length}
                     defaultExpanded={true}
-                  >
-                    {groupedTables.normal.map((table: Table) => (
-                      <TableItem
-                        key={table.name}
-                        name={table.name}
-                        rowCount={table.row_count}
-                        isSelected={selectedTables.includes(table.name)}
-                        selectionMode={selectionMode}
-                        source={{ type: 'duckdb' }}
-                        onSelect={onTableSelect}
-                        onPreview={onPreview}
-                        onDelete={handleDelete}
-                        searchQuery={debouncedSearch}
-                      />
-                    ))}
-                  </TreeSection>
-                )}
+	                  >
+	                    {groupedTables.normal.map((table: Table) => {
+	                      const tableObj = createDuckDBTable(table.name);
+	                      return (
+	                        <TableItem
+	                          key={table.name}
+	                          table={tableObj}
+	                          rowCount={table.row_count}
+	                          isSelected={isTableSelected(tableObj, selectedTables)}
+	                          selectionMode={selectionMode}
+	                          onSelect={onTableSelect}
+	                          onPreview={onPreview}
+	                          onDelete={handleDelete}
+	                          searchQuery={debouncedSearch}
+	                        />
+	                      );
+	                    })}
+	                  </TreeSection>
+	                )}
 
                 {/* 系统表 */}
                 {groupedTables.system.length > 0 && (
                   <TreeSection
                     id="system-tables"
-                    title="系统表"
+                    title={t('dataSource.systemTables')}
                     count={groupedTables.system.length}
                     defaultExpanded={false}
-                  >
-                    {groupedTables.system.map((table: Table) => (
-                      <TableItem
-                        key={table.name}
-                        name={table.name}
-                        rowCount={table.row_count}
-                        isSelected={selectedTables.includes(table.name)}
-                        selectionMode={selectionMode}
-                        source={{ type: 'duckdb' }}
-                        onSelect={onTableSelect}
-                        onPreview={onPreview}
-                        onDelete={handleDelete}
-                        searchQuery={debouncedSearch}
-                      />
-                    ))}
-                  </TreeSection>
-                )}
+	                  >
+	                    {groupedTables.system.map((table: Table) => {
+	                      const tableObj = createDuckDBTable(table.name);
+	                      return (
+	                        <TableItem
+	                          key={table.name}
+	                          table={tableObj}
+	                          rowCount={table.row_count}
+	                          isSelected={isTableSelected(tableObj, selectedTables)}
+	                          selectionMode={selectionMode}
+	                          onSelect={onTableSelect}
+	                          onPreview={onPreview}
+	                          onDelete={handleDelete}
+	                          searchQuery={debouncedSearch}
+	                        />
+	                      );
+	                    })}
+	                  </TreeSection>
+	                )}
               </>
             )}
           </div>
@@ -265,7 +276,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
           className="flex-1"
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${(isFetching || isFetchingConnections) ? 'animate-spin' : ''}`} />
-          刷新
+          {t('common.refresh')}
         </Button>
         <Button
           variant="outline"
@@ -274,14 +285,14 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
           className="flex-1"
         >
           <Plus className="h-4 w-4 mr-2" />
-          添加
+          {t('common.add')}
         </Button>
         {onCollapse && (
           <Button
             variant="outline"
             size="sm"
             onClick={onCollapse}
-            aria-label="折叠数据源面板"
+            aria-label={t('dataSource.collapsePanel')}
             className="flex-shrink-0"
           >
             <ChevronLeft className="h-4 w-4" />

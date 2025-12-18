@@ -1,20 +1,21 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getDuckDBTables } from '@/services/apiClient';
+import { getCacheConfig } from '../utils/cacheConfig';
 
 /**
  * DuckDB 表列表查询 Hook
- * 
+ *
  * 特性：
  * - 自动请求去重（相同 queryKey 的请求会被合并）
- * - 智能缓存（5 分钟内不会重复请求）
+ * - 智能缓存（使用可配置的缓存时间，默认 30 分钟）
  * - 优先使用缓存（refetchOnMount: false）
  * - 提供手动刷新方法
  * - 支持异步任务完成后自动刷新
- * 
+ *
  * 使用示例：
  * ```tsx
  * const { tables, isLoading, refresh } = useDuckDBTables();
- * 
+ *
  * // 异步任务完成后刷新
  * onTaskCompleted={() => {
  *   const queryClient = useQueryClient();
@@ -34,12 +35,13 @@ export const DUCKDB_TABLES_QUERY_KEY = ['duckdb-tables'] as const;
 
 export const useDuckDBTables = () => {
   const queryClient = useQueryClient();
+  const cacheConfig = getCacheConfig();
 
   const query = useQuery({
     queryKey: DUCKDB_TABLES_QUERY_KEY,
     queryFn: getDuckDBTables,
-    staleTime: 5 * 60 * 1000, // 5 分钟内认为数据是新鲜的
-    gcTime: 10 * 60 * 1000, // 10 分钟后清理缓存（原 cacheTime）
+    staleTime: cacheConfig.staleTime, // 使用可配置的缓存时间
+    gcTime: cacheConfig.gcTime, // 使用可配置的缓存时间
     refetchOnWindowFocus: false, // 禁用窗口聚焦时自动刷新（避免重复请求）
     refetchOnMount: false, // 组件挂载时不自动刷新（优先使用缓存）
     refetchOnReconnect: false, // 网络重连时不自动刷新

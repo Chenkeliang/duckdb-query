@@ -386,8 +386,14 @@ class DatabaseManager:
 
     def execute_query(self, connection_id: str, query: str) -> pd.DataFrame:
         """执行数据库查询"""
+        # 如果连接配置存在但尚未创建引擎（例如仅从配置加载、未进行过测试/刷新），
+        # 这里按需创建引擎，避免外部查询/导入直接失败。
         if connection_id not in self.engines:
-            raise ValueError(f"连接不存在: {connection_id}")
+            connection = self.connections.get(connection_id)
+            if not connection:
+                raise ValueError(f"连接不存在: {connection_id}")
+            engine = self._create_engine(connection.type, connection.params)
+            self.engines[connection_id] = engine
 
         engine = self.engines[connection_id]
 

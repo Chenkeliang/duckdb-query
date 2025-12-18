@@ -1,8 +1,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Search, Clock } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/new/components/ui/tabs";
 import { QueryWorkspace } from "./Query/QueryWorkspace";
+import { AsyncTaskPanel } from "./Query/AsyncTasks";
 
 /**
  * 查询工作台页面
@@ -15,24 +14,32 @@ import { QueryWorkspace } from "./Query/QueryWorkspace";
 interface QueryWorkbenchPageProps {
   activeTab?: string;
   onTabChange?: (tab: string) => void;
+  /** 预览 SQL（来自异步任务等） */
+  previewSQL?: string;
+  /** 从任务列表预览某个结果 */
+  onPreviewSQL?: (sql: string) => void;
 }
 
 export const QueryWorkbenchPage: React.FC<QueryWorkbenchPageProps> = ({
   activeTab = "query",
   onTabChange,
+  previewSQL,
+  onPreviewSQL,
 }) => {
   const { t } = useTranslation("common");
 
   return (
     <div className="h-full w-full">
       {activeTab === "query" ? (
-        <QueryWorkspace />
+        <QueryWorkspace previewSQL={previewSQL} />
       ) : (
-        <div className="p-6">
-          <div className="text-sm text-muted-foreground">
-            {t("workspace.asyncTasksPending")}
-          </div>
-        </div>
+        <AsyncTaskPanel
+          className="h-full"
+          onPreviewSQL={(sql) => {
+            onPreviewSQL?.(sql);
+            onTabChange?.("query");
+          }}
+        />
       )}
     </div>
   );

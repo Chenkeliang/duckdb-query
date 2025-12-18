@@ -8,7 +8,7 @@
   - 导入 `ExcelSheetSelector` 组件
   - _Requirements: 1.1, 1.3, 6.1_
 
-- [ ] 2. 修改 handleUpload 函数处理工作表选择
+- [x] 2. 修改 handleUpload 函数处理工作表选择
   - [x] 2.1 添加 requires_sheet_selection 检查逻辑
     - 在成功响应后检查 `response.requires_sheet_selection`
     - 如果为 `true`，调用 `setPendingExcel(response.pending_excel)`

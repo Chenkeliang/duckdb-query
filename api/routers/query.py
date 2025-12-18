@@ -346,13 +346,57 @@ def get_join_type_sql(join_type):
 
 
 def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
-    """确保SQL查询有LIMIT子句，防止返回过多数据。"""
+    """确保SQL查询有LIMIT子句，防止返回过多数据。
+    
+    注意：以下类型的语句不应该添加 LIMIT：
+    - DESCRIBE / DESC 语句
+    - SHOW 语句
+    - EXPLAIN 语句
+    - PRAGMA 语句
+    - SET 语句
+    - CREATE / ALTER / DROP 等 DDL 语句
+    """
+    # 去除前后空白并转大写用于匹配
+    query_stripped = query.strip()
+    query_upper = query_stripped.upper()
+    
+    # 不应该添加 LIMIT 的语句类型（使用正则表达式更精确匹配）
+    # 匹配以这些关键字开头的语句（忽略大小写）
+    no_limit_patterns = [
+        r'^DESCRIBE\b',      # DESCRIBE 语句
+        r'^DESC\b',          # DESC 语句（DESCRIBE 的简写）
+        r'^SHOW\b',          # SHOW 语句
+        r'^EXPLAIN\b',       # EXPLAIN 语句
+        r'^PRAGMA\b',        # PRAGMA 语句
+        r'^SET\b',           # SET 语句
+        r'^CREATE\b',        # CREATE 语句
+        r'^ALTER\b',         # ALTER 语句
+        r'^DROP\b',          # DROP 语句
+        r'^TRUNCATE\b',      # TRUNCATE 语句
+        r'^INSERT\b',        # INSERT 语句
+        r'^UPDATE\b',        # UPDATE 语句
+        r'^DELETE\b',        # DELETE 语句
+        r'^GRANT\b',         # GRANT 语句
+        r'^REVOKE\b',        # REVOKE 语句
+        r'^CALL\b',          # CALL 语句
+        r'^EXECUTE\b',       # EXECUTE 语句
+        r'^USE\b',           # USE 语句
+        r'^BEGIN\b',         # BEGIN 语句
+        r'^COMMIT\b',        # COMMIT 语句
+        r'^ROLLBACK\b',      # ROLLBACK 语句
+    ]
+    
+    # 检查是否是不应该添加 LIMIT 的语句
+    for pattern in no_limit_patterns:
+        if re.match(pattern, query_upper):
+            return query
+    
     # 使用正则表达式检查LIMIT子句，更稳健
     if not re.search(r"\sLIMIT\s+\d+\s*($|;)", query, re.IGNORECASE):
-        if query.strip().endswith(";"):
-            return f"{query[:-1]} LIMIT {default_limit};"
+        if query_stripped.endswith(";"):
+            return f"{query_stripped[:-1]} LIMIT {default_limit};"
         else:
-            return f"{query} LIMIT {default_limit}"
+            return f"{query_stripped} LIMIT {default_limit}"
     return query
 
 

@@ -13,7 +13,7 @@ const DrawerAddSource = ({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-modal-backdrop bg-black/50 backdrop-blur-sm">
-      <div className="fixed inset-0 z-[1050] flex justify-end">
+      <div className="fixed inset-0 z-modal flex justify-end">
         <div className="w-full sm:w-[640px] h-full bg-surface-elevated border-l border-border shadow-2xl flex flex-col">
           <div className="px-6 py-5 border-b border-border flex items-center justify-between">
             <h3 className="text-lg font-semibold text-foreground">{title}</h3>

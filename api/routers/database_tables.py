@@ -12,6 +12,10 @@ app_config = config_manager.get_app_config()
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+def _quote_mysql_identifier(identifier: str) -> str:
+    escaped = identifier.replace("`", "``")
+    return f"`{escaped}`"
+
 
 @router.get("/api/database_tables/{connection_id}", tags=["Database Management"])
 async def get_database_tables(connection_id: str):
@@ -78,7 +82,7 @@ async def get_database_tables(connection_id: str):
                     for table_name in tables_to_process:
                         try:
                             # 获取表结构信息
-                            cursor.execute(f"DESCRIBE `{table_name}`")
+                            cursor.execute(f"DESCRIBE {_quote_mysql_identifier(table_name)}")
                             columns = []
                             for col_row in cursor.fetchall():
                                 columns.append(
@@ -534,7 +538,7 @@ async def list_schema_tables(connection_id: str, schema: str):
     "/api/database_table_details/{connection_id}/{table_name}",
     tags=["Database Management"],
 )
-async def get_table_details(connection_id: str, table_name: str):
+async def get_table_details(connection_id: str, table_name: str, schema: str | None = None):
     """获取指定表的详细信息，包括字段详情和示例数据"""
     try:
         # 获取应用配置
@@ -587,7 +591,7 @@ async def get_table_details(connection_id: str, table_name: str):
             try:
                 with conn.cursor() as cursor:
                     # 获取表结构详细信息
-                    cursor.execute(f"DESCRIBE `{table_name}`")
+                    cursor.execute(f"DESCRIBE {_quote_mysql_identifier(table_name)}")
                     columns = []
                     for col_row in cursor.fetchall():
                         columns.append(
@@ -605,7 +609,7 @@ async def get_table_details(connection_id: str, table_name: str):
                     row_count = 0  # 返回0避免前端错误
 
                     # 获取示例数据（前5行）
-                    cursor.execute(f"SELECT * FROM `{table_name}` LIMIT 5")
+                    cursor.execute(f"SELECT * FROM {_quote_mysql_identifier(table_name)} LIMIT 5")
                     sample_data = []
                     for row in cursor.fetchall():
                         sample_data.append(list(row))
@@ -625,6 +629,7 @@ async def get_table_details(connection_id: str, table_name: str):
         elif db_type == "postgresql":
             # PostgreSQL连接
             import psycopg2
+            from psycopg2 import sql as pg_sql
 
             # 支持 user 和 username 两种参数名称
             username = db_config.get("user") or db_config.get("username")
@@ -649,7 +654,7 @@ async def get_table_details(connection_id: str, table_name: str):
             try:
                 with conn.cursor() as cursor:
                     # 获取schema参数，默认为public
-                    schema = db_config.get("schema", "public")
+                    schema = schema or db_config.get("schema", "public")
 
                     # 获取表结构详细信息
                     cursor.execute(
@@ -684,7 +689,12 @@ async def get_table_details(connection_id: str, table_name: str):
                     row_count = 0  # 返回0避免前端错误
 
                     # 获取示例数据（前5行）
-                    cursor.execute(f'SELECT * FROM "{table_name}" LIMIT 5')
+                    cursor.execute(
+                        pg_sql.SQL("SELECT * FROM {}.{} LIMIT 5").format(
+                            pg_sql.Identifier(schema),
+                            pg_sql.Identifier(table_name),
+                        )
+                    )
                     sample_data = []
                     for row in cursor.fetchall():
                         sample_data.append(list(row))

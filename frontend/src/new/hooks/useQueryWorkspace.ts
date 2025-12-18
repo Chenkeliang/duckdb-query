@@ -1,7 +1,14 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
-import { executeDuckDBSQL } from "@/services/apiClient";
+import { executeDuckDBSQL, executeExternalSQL } from "@/services/apiClient";
 import { toast } from "sonner";
+import type { 
+  SelectedTable, 
+  SelectedTableObject,
+  DatabaseType 
+} from '../types/SelectedTable';
+import { normalizeSelectedTable } from '../utils/tableUtils';
 
 /**
  * 查询工作台状态管理 Hook
@@ -13,38 +20,84 @@ import { toast } from "sonner";
  * - 提供表选择、Tab 切换、查询执行等操作
  */
 
+/**
+ * 表数据源信息（用于查询执行和导入）
+ */
 export interface TableSource {
   type: 'duckdb' | 'external';
   connectionId?: string;
+  connectionName?: string;
+  databaseType?: DatabaseType;
   schema?: string;
 }
 
-export interface SelectedTable {
-  name: string;
+/**
+ * 最后执行的查询信息（用于导入功能）
+ */
+export interface LastQuery {
+  sql: string;
   source: TableSource;
 }
 
 export interface QueryResult {
-  data: any[][] | null;
+  /** 转换后的对象数组数据 */
+  data: Record<string, unknown>[] | null;
+  /** 列名列表 */
   columns: string[] | null;
+  /** 是否正在加载 */
   loading: boolean;
+  /** 错误信息 */
   error: Error | null;
+  /** 行数 */
   rowCount?: number;
+  /** 执行时间（毫秒） */
   execTime?: number;
 }
 
 export interface UseQueryWorkspaceReturn {
-  selectedTables: Record<string, string[]>;
+  /** 每个 Tab 的选中表（使用 SelectedTable 对象） */
+  selectedTables: Record<string, SelectedTable[]>;
+  /** 当前 Tab */
   currentTab: string;
+  /** 查询结果 */
   queryResults: QueryResult | null;
-  handleTableSelect: (table: string, source?: TableSource) => void;
+  /** 最后执行的查询信息（用于导入） */
+  lastQuery: LastQuery | null;
+  /** 选择表 */
+  handleTableSelect: (table: SelectedTable) => void;
+  /** 移除表 */
+  handleRemoveTable: (table: SelectedTable) => void;
+  /** 切换 Tab */
   handleTabChange: (tab: string) => void;
-  handleQueryExecute: (sql: string) => Promise<void>;
+  /** 执行查询 */
+  handleQueryExecute: (sql: string, source?: TableSource) => Promise<void>;
 }
 
+/**
+ * 比较两个 SelectedTable 是否相同
+ */
+const isSameTable = (a: SelectedTable, b: SelectedTable): boolean => {
+  const normalizedA = normalizeSelectedTable(a);
+  const normalizedB = normalizeSelectedTable(b);
+  
+  if (normalizedA.source !== normalizedB.source) return false;
+  if (normalizedA.name !== normalizedB.name) return false;
+  
+  if (normalizedA.source === 'external' && normalizedB.source === 'external') {
+    return (
+      normalizedA.connection?.id === normalizedB.connection?.id &&
+      normalizedA.schema === normalizedB.schema
+    );
+  }
+  
+  return true;
+};
+
 export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
-  // 每个查询模式的选中表
-  const [selectedTables, setSelectedTables] = useState<Record<string, string[]>>({
+  const { t } = useTranslation('common');
+  
+  // 每个查询模式的选中表（使用 SelectedTable 对象）
+  const [selectedTables, setSelectedTables] = useState<Record<string, SelectedTable[]>>({
     sql: [],
     join: [],
     set: [],
@@ -57,57 +110,59 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   // 查询结果
   const [queryResults, setQueryResults] = useState<QueryResult | null>(null);
+  
+  // 最后执行的查询信息（用于导入功能）
+  const [lastQuery, setLastQuery] = useState<LastQuery | null>(null);
 
-  // 查询执行 mutation
-  const queryMutation = useMutation({
+  // DuckDB 查询执行 mutation
+  const duckdbMutation = useMutation({
     mutationFn: async (sql: string) => {
       const startTime = Date.now();
       const response = await executeDuckDBSQL(sql);
       const execTime = Date.now() - startTime;
       return { ...response, execTime };
     },
-    onMutate: () => {
-      setQueryResults({
-        data: null,
-        columns: null,
-        loading: true,
-        error: null,
-      });
-    },
-    onSuccess: (data) => {
-      setQueryResults({
-        data: data.data || [],
-        columns: data.columns || [],
-        loading: false,
-        error: null,
-        rowCount: data.data?.length || 0,
-        execTime: data.execTime,
-      });
-      toast.success(`查询成功，返回 ${data.data?.length || 0} 行数据`);
-    },
-    onError: (error: Error) => {
-      setQueryResults({
-        data: null,
-        columns: null,
-        loading: false,
-        error,
-      });
-      toast.error(`查询失败: ${error.message}`);
-    },
   });
+
+  // 处理查询结果
+  const processQueryResult = useCallback((
+    response: { data?: unknown[]; columns?: string[]; execTime?: number; execution_time_ms?: number }
+  ) => {
+    const columns = response.columns || [];
+    const rawData = response.data || [];
+    
+    // 检测数据格式：如果第一行是对象，则已经是对象数组；否则是二维数组
+    let objectData: Record<string, unknown>[];
+    
+    if (rawData.length > 0 && typeof rawData[0] === 'object' && !Array.isArray(rawData[0])) {
+      objectData = rawData as Record<string, unknown>[];
+    } else {
+      objectData = (rawData as unknown[][]).map((row) => {
+        const obj: Record<string, unknown> = {};
+        columns.forEach((col: string, index: number) => {
+          obj[col] = row[index];
+        });
+        return obj;
+      });
+    }
+
+    const resultData: QueryResult = {
+      data: objectData,
+      columns: columns,
+      loading: false,
+      error: null,
+      rowCount: rawData.length,
+      execTime: response.execTime || response.execution_time_ms,
+    };
+    
+    setQueryResults(resultData);
+    toast.success(t('query.success', { count: rawData.length }));
+  }, [t]);
 
   // 表选择处理
   const handleTableSelect = useCallback(
-    (table: string, source?: TableSource) => {
-      // 如果没有提供 source，默认为 DuckDB 表
-      const tableSource = source || { type: 'duckdb' };
-      
-      // 生成完整的表标识符
-      // 外部表格式: connectionId.schema.table 或 connectionId.table
-      // DuckDB 表格式: table
-      const tableIdentifier = tableSource.type === 'external'
-        ? `${tableSource.connectionId}.${tableSource.schema ? tableSource.schema + '.' : ''}${table}`
-        : table;
+    (table: SelectedTable) => {
+      const normalized = normalizeSelectedTable(table);
 
       setSelectedTables((prev) => {
         const currentTables = prev[currentTab] || [];
@@ -116,24 +171,40 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         if (currentTab === "sql" || currentTab === "pivot" || currentTab === "visual") {
           return {
             ...prev,
-            [currentTab]: [tableIdentifier],
+            [currentTab]: [normalized],
           };
         }
 
         // 多选模式（join, set）
-        if (currentTables.includes(tableIdentifier)) {
+        const existingIndex = currentTables.findIndex(t => isSameTable(t, normalized));
+        
+        if (existingIndex >= 0) {
           // 取消选择
           return {
             ...prev,
-            [currentTab]: currentTables.filter((t) => t !== tableIdentifier),
+            [currentTab]: currentTables.filter((_, i) => i !== existingIndex),
           };
         } else {
           // 添加选择
           return {
             ...prev,
-            [currentTab]: [...currentTables, tableIdentifier],
+            [currentTab]: [...currentTables, normalized],
           };
         }
+      });
+    },
+    [currentTab]
+  );
+
+  // 移除表处理
+  const handleRemoveTable = useCallback(
+    (table: SelectedTable) => {
+      setSelectedTables((prev) => {
+        const currentTables = prev[currentTab] || [];
+        return {
+          ...prev,
+          [currentTab]: currentTables.filter((t) => !isSameTable(t, table)),
+        };
       });
     },
     [currentTab]
@@ -146,18 +217,71 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   // 查询执行处理
   const handleQueryExecute = useCallback(
-    async (sql: string) => {
-      await queryMutation.mutateAsync(sql);
+    async (sql: string, source?: TableSource) => {
+      // 默认为 DuckDB 数据源
+      const querySource: TableSource = source || { type: 'duckdb' };
+      
+      // 设置加载状态
+      setQueryResults({
+        data: null,
+        columns: null,
+        loading: true,
+        error: null,
+      });
+
+      try {
+        let response: { data?: unknown[]; columns?: string[]; execTime?: number; execution_time_ms?: number };
+        
+        if (querySource.type === 'external') {
+          // 外部数据库查询
+          if (!querySource.connectionId) {
+            throw new Error('External query requires a connection ID');
+          }
+          const startTime = Date.now();
+          const result = await executeExternalSQL(sql, {
+            id: querySource.connectionId,
+            type: querySource.databaseType || 'mysql',
+          });
+          const execTime = Date.now() - startTime;
+          response = {
+            data: result.data || [],
+            columns: result.columns || [],
+            execTime,
+          };
+        } else {
+          // DuckDB 查询
+          response = await duckdbMutation.mutateAsync(sql);
+        }
+        
+        // 保存最后执行的查询信息（用于导入）
+        setLastQuery({ sql, source: querySource });
+        
+        // 处理结果
+        processQueryResult(response);
+      } catch (error) {
+        setQueryResults({
+          data: null,
+          columns: null,
+          loading: false,
+          error: error as Error,
+        });
+        toast.error(t('query.error', { message: (error as Error).message }));
+      }
     },
-    [queryMutation]
+    [duckdbMutation, processQueryResult, t]
   );
 
   return {
     selectedTables,
     currentTab,
     queryResults,
+    lastQuery,
     handleTableSelect,
+    handleRemoveTable,
     handleTabChange,
     handleQueryExecute,
   };
 };
+
+// 重新导出类型以便其他组件使用
+export type { SelectedTable, SelectedTableObject, DatabaseType };

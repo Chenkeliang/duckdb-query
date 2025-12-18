@@ -5,20 +5,26 @@ interface PageShellProps {
   sidebar?: ReactNode;
   header?: ReactNode;
   children: ReactNode;
+  sidebarCollapsed?: boolean;
 }
 
 /**
  * Minimal page shell for the new layout.
  * Provides sidebar + header slots with tokenized background/border.
  * Includes QueryProvider for TanStack Query support.
+ * Supports collapsible sidebar.
  * 
  * Note: Toaster is rendered globally in main.jsx
  */
-const PageShell: React.FC<PageShellProps> = ({ sidebar, header, children }) => {
+const PageShell: React.FC<PageShellProps> = ({ sidebar, header, children, sidebarCollapsed = false }) => {
   return (
     <QueryProvider>
       <div className="dq-layout-shell flex min-h-screen bg-background text-foreground">
-        <aside className="w-64 bg-surface border-r border-border flex flex-col shrink-0 z-50">
+        <aside 
+          className={`bg-surface border-r border-border flex flex-col shrink-0 z-50 transition-all duration-200 ${
+            sidebarCollapsed ? 'w-14' : 'w-64'
+          }`}
+        >
           {sidebar}
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">

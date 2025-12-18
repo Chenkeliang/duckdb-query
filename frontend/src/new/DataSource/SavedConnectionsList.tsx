@@ -31,50 +31,12 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
     setLoading(true);
     setError("");
     try {
-      // 使用新的统一 API 获取所有数据库连接
       const response = await listDatabaseConnections();
-      
-      // 处理新的响应格式
-      let allConfigs = [];
-      if (response && response.success && response.data && Array.isArray(response.data.items)) {
-        // 新格式：{ success: true, data: { items: [...] } }
-        allConfigs = response.data.items.map(item => {
-          const host = item.metadata?.host || item.connection_info?.host;
-          const port = item.metadata?.port || item.connection_info?.port;
-          const database = item.metadata?.database || item.connection_info?.database;
-          const user = item.connection_info?.user;
-          const schema = item.metadata?.schema;
-          
-          return {
-            id: item.id.replace('db_', ''), // 移除 db_ 前缀
-            name: item.name,
-            type: item.subtype, // mysql, postgresql, sqlite
-            host,
-            port,
-            database,
-            user,
-            schema,
-            status: item.status,
-            created_at: item.created_at,
-            updated_at: item.updated_at,
-            // 添加 params 字段以兼容 DatabaseForm 的期望格式
-            params: {
-              host,
-              port,
-              database,
-              user,
-              schema,
-              password: '***ENCRYPTED***', // 密码标记，表示已有密码
-              path: item.metadata?.path || '' // SQLite 路径
-            }
-          };
-        });
-      } else if (Array.isArray(response)) {
-        // 旧格式：直接是数组
-        allConfigs = response;
+      if (response?.success && Array.isArray(response.connections)) {
+        setConfigs(response.connections);
+      } else {
+        setConfigs([]);
       }
-
-      setConfigs(allConfigs);
     } catch (err) {
       console.error("Error in loadConfigs:", err);
       const errorMsg = t("page.datasource.manage.fetchFail");
@@ -171,8 +133,8 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
                   </h4>
 
                   <div className="text-xs text-muted-foreground truncate mb-4">
-                    {config.host}:{config.port}/{config.database}
-                    {config.schema && config.schema !== 'public' && ` (${config.schema})`}
+                    {config.params?.host}:{config.params?.port}/{config.params?.database}
+                    {config.params?.schema && config.params?.schema !== 'public' && ` (${config.params?.schema})`}
                   </div>
 
                   <Button

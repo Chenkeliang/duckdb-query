@@ -12,6 +12,9 @@ from enum import Enum
 class MessageCode(str, Enum):
     """消息代码枚举（用于国际化）"""
     
+    # 通用成功
+    OPERATION_SUCCESS = "OPERATION_SUCCESS"
+    
     # 连接相关
     CONNECTION_TEST_SUCCESS = "CONNECTION_TEST_SUCCESS"
     CONNECTION_TEST_FAILED = "CONNECTION_TEST_FAILED"
@@ -39,6 +42,9 @@ class MessageCode(str, Enum):
 
 # 默认消息文本映射（中文）
 DEFAULT_MESSAGES = {
+    # 通用
+    MessageCode.OPERATION_SUCCESS: "操作成功",
+    
     # 连接相关
     MessageCode.CONNECTION_TEST_SUCCESS: "连接测试完成",
     MessageCode.CONNECTION_TEST_FAILED: "连接测试失败",

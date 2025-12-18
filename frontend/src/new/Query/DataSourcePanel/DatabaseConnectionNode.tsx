@@ -4,9 +4,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { TreeNode } from './TreeNode';
 import { SchemaNode } from '@/new/Query/DataSourcePanel/SchemaNode';
-import { TableItem, type TableSource } from './TableItem';
+import { TableItem } from './TableItem';
 import { useSchemas } from '@/new/hooks/useSchemas';
 import { useSchemaTables } from '@/new/hooks/useSchemaTables';
+import type { DatabaseConnection } from '@/new/hooks/useDatabaseConnections';
+import type { SelectedTable } from '@/new/types/SelectedTable';
+import { createExternalTable, isTableSelected } from '@/new/utils/tableUtils';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -14,25 +17,13 @@ import {
   ContextMenuTrigger,
 } from '@/new/components/ui/context-menu';
 
-/**
- * 数据库连接类型
- */
-export interface DatabaseConnection {
-  id: string;
-  name: string;
-  type: 'postgresql' | 'mysql' | 'sqlite' | 'sqlserver';
-  status: 'active' | 'inactive' | 'error';
-  host?: string;
-  port?: number;
-  database?: string;
-}
-
 interface DatabaseConnectionNodeProps {
   connection: DatabaseConnection;
-  selectedTables: string[];
-  onTableSelect: (tableName: string, source: TableSource) => void;
+  selectedTables: SelectedTable[];
+  onTableSelect: (table: SelectedTable) => void;
   selectionMode?: 'single' | 'multiple';
-  onPreview?: (tableName: string, source: TableSource) => void;
+  onPreview?: (table: SelectedTable) => void;
+  onImport?: (table: SelectedTable) => void;
   searchQuery?: string;
   forceExpanded?: boolean;
 }
@@ -43,10 +34,10 @@ interface DatabaseConnectionNodeProps {
  */
 const getDatabaseIconColor = (type: string): string => {
   const colorMap: Record<string, string> = {
-    postgresql: 'text-primary',        // 主色调（蓝色系）
-    mysql: 'text-warning',             // 警告色（橙色系）
-    sqlite: 'text-muted-foreground',   // 次要文本色（灰色系）
-    sqlserver: 'text-error',           // 错误色（红色系）
+    postgresql: 'text-primary',
+    mysql: 'text-foreground',
+    sqlite: 'text-muted-foreground',
+    sqlserver: 'text-destructive',
   };
   return colorMap[type] || 'text-muted-foreground';
 };
@@ -71,6 +62,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
   onTableSelect,
   selectionMode = 'single',
   onPreview,
+  onImport,
   searchQuery = '',
   forceExpanded = false,
 }) => {
@@ -120,22 +112,6 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
     }
   };
 
-  const handleTableSelect = (tableName: string) => {
-    onTableSelect(tableName, {
-      type: 'external',
-      connectionId: connection.id,
-    });
-  };
-
-  const handleTablePreview = (tableName: string) => {
-    if (onPreview) {
-      onPreview(tableName, {
-        type: 'external',
-        connectionId: connection.id,
-      });
-    }
-  };
-
   const isLoading = schemasLoading || tablesLoading;
 
   // PostgreSQL: 显示 schemas
@@ -148,9 +124,8 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div>
-          <TreeNode
+      <ContextMenuTrigger>
+        <TreeNode
             id={`db-${connection.id}`}
             label={connection.name}
             icon={<Database className={`h-4 w-4 ${getDatabaseIconColor(connection.type)}`} />}
@@ -173,12 +148,15 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
           <SchemaNode
             key={schema.name}
             connectionId={connection.id}
+            connectionName={connection.name}
+            databaseType={connection.type}
             schema={schema}
             level={level + 1}
             selectedTables={selectedTables}
             onTableSelect={onTableSelect}
             selectionMode={selectionMode}
             onPreview={onPreview}
+            onImport={onImport}
             searchQuery={searchQuery}
             forceExpanded={forceExpanded}
           />
@@ -186,21 +164,26 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
 
       {/* MySQL/SQLite: 直接显示表 */}
       {hasTables &&
-        tables.map((table) => (
-          <TableItem
-            key={table.name}
-            name={table.name}
-            rowCount={table.row_count}
-            isSelected={selectedTables.includes(table.name)}
-            selectionMode={selectionMode}
-            source={{
-              type: 'external',
-              connectionId: connection.id,
-            }}
-            onSelect={handleTableSelect}
-            onPreview={handleTablePreview}
-          />
-        ))}
+        tables.map((table) => {
+          const tableObj = createExternalTable(
+            table.name,
+            { id: connection.id, name: connection.name, type: connection.type },
+          );
+
+          return (
+            <TableItem
+              key={`${connection.id}:${table.name}`}
+              table={tableObj}
+              rowCount={table.row_count}
+              isSelected={isTableSelected(tableObj, selectedTables)}
+              selectionMode={selectionMode}
+              onSelect={onTableSelect}
+              onPreview={onPreview}
+              onImport={connection.type === 'mysql' ? onImport : undefined}
+              searchQuery={searchQuery}
+            />
+          );
+        })}
 
       {/* 空状态 */}
       {!isLoading && !hasSchemas && !hasTables && isExpanded && (
@@ -209,7 +192,6 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
         </div>
       )}
           </TreeNode>
-        </div>
       </ContextMenuTrigger>
       
       {/* Task 7.2: 右键菜单 - 局部刷新 */}

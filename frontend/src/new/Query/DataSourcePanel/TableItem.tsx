@@ -1,7 +1,10 @@
 import * as React from 'react';
-import { Database } from 'lucide-react';
+import { forwardRef } from 'react';
+import { Database, Table2 } from 'lucide-react';
 import { Checkbox } from '@/new/components/ui/checkbox';
+import { Badge } from '@/new/components/ui/badge';
 import { TableContextMenu } from './ContextMenu';
+import type { SelectedTableObject } from '@/new/types/SelectedTable';
 
 /**
  * TableItem 组件
@@ -15,37 +18,99 @@ import { TableContextMenu } from './ContextMenu';
  * - 显示行数信息
  * - 右键菜单支持
  * - 支持 DuckDB 表和外部数据库表
+ * - 外部表显示数据库类型图标
  */
 
-export interface TableSource {
-  type: 'duckdb' | 'external';
-  connectionId?: string;
-  schema?: string;
-}
+/**
+ * 数据库类型配置
+ */
+const DATABASE_TYPE_LABEL: Record<string, string> = {
+  mysql: 'MySQL',
+  postgresql: 'PostgreSQL',
+  sqlite: 'SQLite',
+  sqlserver: 'SQL Server',
+};
+
+/**
+ * 获取表图标和标签
+ */
+const getTableIconAndBadge = (table: SelectedTableObject): { icon: React.ReactNode; badge?: React.ReactNode } => {
+  if (table.source === 'external' && table.connection?.type) {
+    const label = DATABASE_TYPE_LABEL[table.connection.type] || table.connection.type.toUpperCase();
+    return {
+      icon: <Database className="h-4 w-4 text-muted-foreground flex-shrink-0" />,
+      badge: (
+        <Badge variant="outline" className="ml-1 h-4 px-1 py-0 text-xs font-medium">
+          {label}
+        </Badge>
+      ),
+    };
+  }
+  return {
+    icon: <Table2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />,
+    badge: undefined,
+  };
+};
 
 interface TableItemProps {
-  name: string;
+  table: SelectedTableObject;
   rowCount?: number;
   isSelected: boolean;
   selectionMode?: 'single' | 'multiple';
-  source?: TableSource;
-  onSelect: (name: string, source?: TableSource) => void;
-  onPreview?: (name: string, source?: TableSource) => void;
-  onDelete?: (name: string) => void;
+  onSelect: (table: SelectedTableObject) => void;
+  onPreview?: (table: SelectedTableObject) => void;
+  onDelete?: (tableName: string) => void;
+  onImport?: (table: SelectedTableObject) => void;
   searchQuery?: string;
+  disabled?: boolean;
 }
 
+/**
+ * 内部按钮组件 - 使用 forwardRef 以支持 Radix UI 的 asChild
+ */
+const TableItemButton = forwardRef<
+  HTMLDivElement,
+  {
+    isSelected: boolean;
+    disabled: boolean;
+    onClick: (e: React.MouseEvent) => void;
+    onKeyDown: (e: React.KeyboardEvent) => void;
+    children: React.ReactNode;
+  }
+>(({ isSelected, disabled, onClick, onKeyDown, children, ...props }, ref) => (
+  <div
+    ref={ref}
+    role="button"
+    tabIndex={disabled ? -1 : 0}
+    onClick={onClick}
+    onKeyDown={onKeyDown}
+    className={[
+      'w-full rounded-lg px-3 py-2 text-left text-sm transition-colors',
+      'hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+      isSelected ? 'border-l-2 border-primary bg-primary/10' : 'border-l-2 border-transparent',
+      disabled ? 'cursor-not-allowed opacity-50 hover:bg-transparent' : 'cursor-pointer',
+    ].join(' ')}
+    {...props}
+  >
+    {children}
+  </div>
+));
+TableItemButton.displayName = 'TableItemButton';
+
 export const TableItem: React.FC<TableItemProps> = ({
-  name,
+  table,
   rowCount,
   isSelected,
   selectionMode = 'single',
-  source = { type: 'duckdb' },
   onSelect,
   onPreview,
   onDelete,
+  onImport,
   searchQuery = '',
+  disabled = false,
 }) => {
+  const iconAndBadge = React.useMemo(() => getTableIconAndBadge(table), [table]);
+
   // 高亮搜索匹配的文本
   const highlightText = (text: string, query: string) => {
     if (!query) return text;
@@ -59,7 +124,7 @@ export const TableItem: React.FC<TableItemProps> = ({
         <>
           {parts.map((part, i) =>
             part.toLowerCase() === query.toLowerCase() ? (
-              <mark key={i} className="bg-warning/30 text-foreground rounded px-0.5">
+              <mark key={i} className="rounded bg-accent px-0.5 text-foreground">
                 {part}
               </mark>
             ) : (
@@ -73,69 +138,86 @@ export const TableItem: React.FC<TableItemProps> = ({
       return text;
     }
   };
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = React.useCallback((e: React.MouseEvent) => {
+    if (disabled) return;
     // 如果是多选模式且点击的是 checkbox，不处理（让 checkbox 自己处理）
     if (selectionMode === 'multiple' && (e.target as HTMLElement).closest('[role="checkbox"]')) {
       return;
     }
-    onSelect(name, source);
-  };
+    onSelect(table);
+  }, [disabled, selectionMode, onSelect, table]);
 
-  const handlePreview = () => {
+  const handlePreview = React.useCallback(() => {
     if (onPreview) {
-      onPreview(name, source);
+      onPreview(table);
     }
-  };
+  }, [onPreview, table]);
 
   // 外部表不能删除（只能删除 DuckDB 表）
-  const canDelete = source.type === 'duckdb';
+  const canDelete = table.source === 'duckdb';
+
+  // 处理键盘事件（支持 Enter 和 Space 键选择）
+  const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+    if (disabled) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect(table);
+    }
+  }, [disabled, onSelect, table]);
+
+  // Checkbox 回调 - 使用 useCallback 避免每次渲染创建新函数
+  const handleCheckboxChange = React.useCallback(() => {
+    onSelect(table);
+  }, [onSelect, table]);
+
+  const handleCheckboxClick = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
 
   return (
     <TableContextMenu
-      tableName={name}
+      table={table}
       canDelete={canDelete}
       onPreview={handlePreview}
       onDelete={onDelete}
+      onImport={onImport}
     >
-      <button
+      {/* 使用 forwardRef 的内部组件，支持 Radix UI 的 asChild ref 传递 */}
+      <TableItemButton
+        isSelected={isSelected}
+        disabled={disabled}
         onClick={handleClick}
-        className={`
-          w-full px-3 py-2 rounded-lg text-left text-sm
-          transition-colors duration-fast
-          hover:bg-surface-hover
-          ${
-            isSelected
-              ? 'bg-primary/10 border-l-2 border-primary'
-              : 'border-l-2 border-transparent'
-          }
-        `}
+        onKeyDown={handleKeyDown}
       >
         <div className="flex items-center gap-2">
           {/* 多选模式：显示 checkbox */}
           {selectionMode === 'multiple' && (
             <Checkbox
               checked={isSelected}
-              onCheckedChange={() => onSelect(name, source)}
-              onClick={(e) => e.stopPropagation()}
+              onCheckedChange={handleCheckboxChange}
+              onClick={handleCheckboxClick}
+              disabled={disabled}
             />
           )}
 
-          {/* 表图标 */}
-          <Database className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          {/* 表图标 - 根据数据源类型显示不同图标 */}
+          {iconAndBadge.icon}
 
           {/* 表信息 */}
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-foreground truncate">
-              {highlightText(name, searchQuery)}
+            <div className="flex items-center font-medium text-foreground">
+              <span className="truncate">{highlightText(table.name, searchQuery)}</span>
+              {iconAndBadge.badge}
             </div>
-            {rowCount !== undefined && (
+            {/* 外部表不显示行数（无法准确获取） */}
+            {rowCount !== undefined && table.source !== 'external' && (
               <div className="text-xs text-muted-foreground mt-0.5">
                 {rowCount.toLocaleString()} 行
               </div>
             )}
           </div>
         </div>
-      </button>
+      </TableItemButton>
     </TableContextMenu>
   );
 };

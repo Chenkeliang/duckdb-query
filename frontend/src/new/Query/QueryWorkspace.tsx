@@ -6,27 +6,109 @@ import {
   ImperativePanelHandle,
 } from "react-resizable-panels";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/new/components/ui/button";
 import { useQueryWorkspace } from "@/new/hooks/useQueryWorkspace";
 import { DataSourcePanel } from "./DataSourcePanel";
 import { QueryTabs } from "./QueryTabs";
 import { ResultPanel } from "./ResultPanel";
+import { deleteDuckDBTableEnhanced } from "@/services/apiClient";
+import { invalidateAfterTableDelete } from "@/new/utils/cacheInvalidation";
+import type { SelectedTable } from "@/new/types/SelectedTable";
+import { normalizeSelectedTable } from "@/new/utils/tableUtils";
+import { getDialectFromSource, getSourceFromSelectedTable, quoteQualifiedTable } from "@/new/utils/sqlUtils";
 
 interface QueryWorkspaceProps {
   defaultLayout?: number[];
+  /** 预览 SQL（来自异步任务等） */
+  previewSQL?: string;
 }
 
-export const QueryWorkspace: React.FC<QueryWorkspaceProps> = () => {
+export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) => {
   const { t } = useTranslation("common");
+  const queryClient = useQueryClient();
+  const [autoOpenImportDialog, setAutoOpenImportDialog] = React.useState(false);
   const {
     selectedTables,
     currentTab,
     queryResults,
+    lastQuery,
     handleTableSelect,
+    handleRemoveTable,
     handleTabChange,
     handleQueryExecute,
   } = useQueryWorkspace();
+
+  // 预览表数据
+  const handlePreview = React.useCallback(
+    async (table: SelectedTable) => {
+      const source = getSourceFromSelectedTable(table);
+      const dialect = getDialectFromSource(source);
+      const normalized = normalizeSelectedTable(table);
+
+      const sql = `SELECT * FROM ${quoteQualifiedTable(
+        { name: normalized.name, schema: normalized.schema },
+        dialect
+      )}`;
+      try {
+        await handleQueryExecute(sql, source);
+      } catch (error) {
+        toast.error(t('query.previewFailed', { message: (error as Error).message }));
+      }
+    },
+    [handleQueryExecute, t]
+  );
+
+  const handleImport = React.useCallback(
+    async (table: SelectedTable) => {
+      const source = getSourceFromSelectedTable(table);
+      if (source.type !== "external") return;
+
+      if (!source.connectionId) {
+        toast.error(t("query.import.missingConnection", "缺少外部数据库连接信息"));
+        return;
+      }
+
+      if (source.databaseType !== "mysql") {
+        toast.error(t("query.import.mysqlOnly", "目前仅支持从 MySQL 导入到 DuckDB"));
+        return;
+      }
+
+      const dialect = getDialectFromSource(source);
+      const normalized = normalizeSelectedTable(table);
+      const sql = `SELECT * FROM ${quoteQualifiedTable(
+        { name: normalized.name, schema: normalized.schema },
+        dialect
+      )}`;
+
+      try {
+        await handleQueryExecute(sql, source);
+        setAutoOpenImportDialog(true);
+      } catch (error) {
+        toast.error(
+          t("query.import.error", `导入失败: ${(error as Error).message}`)
+        );
+      }
+    },
+    [handleQueryExecute, t]
+  );
+
+  // 删除表
+  const handleDelete = React.useCallback(
+    async (tableName: string) => {
+      try {
+        await deleteDuckDBTableEnhanced(tableName);
+        await invalidateAfterTableDelete(queryClient);
+        toast.success(t('query.tableDeleted', { table: tableName }));
+      } catch (error) {
+        toast.error(t('query.deleteFailed', { message: (error as Error).message }));
+        throw error; // 重新抛出以便调用方知道失败了
+      }
+    },
+    [queryClient, t]
+  );
 
   // Panel refs
   const dataSourcePanelRef = React.useRef<ImperativePanelHandle>(null);
@@ -75,7 +157,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = () => {
           onExpand={() => setIsDataSourceCollapsed(false)}
         >
           {isDataSourceCollapsed ? (
-            <div className="h-full w-full bg-surface border-r border-border flex items-center justify-center">
+            <div className="h-full w-full bg-card border-r border-border flex items-center justify-center">
               <Button
                 variant="ghost"
                 size="icon"
@@ -92,6 +174,9 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = () => {
               onTableSelect={handleTableSelect}
               onCollapse={toggleDataSourcePanel}
               selectionMode={currentTab === "join" || currentTab === "set" ? "multiple" : "single"}
+              onPreview={handlePreview}
+              onImport={handleImport}
+              onDelete={handleDelete}
             />
           )}
         </Panel>
@@ -109,6 +194,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = () => {
                 onTabChange={handleTabChange}
                 selectedTables={selectedTables[currentTab] || []}
                 onExecute={handleQueryExecute}
+                onRemoveTable={handleRemoveTable}
+                previewSQL={previewSQL}
               />
             </Panel>
 
@@ -121,7 +208,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = () => {
                 onClick={(e) => { e.stopPropagation(); toggleResultPanel(); }}
                 onMouseDown={(e) => e.stopPropagation()}
                 aria-label={isResultCollapsed ? t("workspace.expandResult") : t("workspace.collapseResult")}
-                className={`h-4 w-4 bg-surface border border-border rounded shadow-sm transition-opacity relative z-10 ${
+                className={`h-4 w-4 bg-card border border-border rounded shadow-sm transition-opacity relative z-10 ${
                   isResultCollapsed ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                 }`}
               >
@@ -144,7 +231,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = () => {
               onExpand={() => setIsResultCollapsed(false)}
             >
               {isResultCollapsed ? (
-                <div className="h-full bg-surface" />
+                <div className="h-full bg-card" />
               ) : (
                 <ResultPanel
                   data={queryResults?.data ?? null}
@@ -153,6 +240,10 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = () => {
                   error={queryResults?.error ?? null}
                   rowCount={queryResults?.rowCount}
                   execTime={queryResults?.execTime}
+                  source={lastQuery?.source}
+                  currentSQL={lastQuery?.sql}
+                  autoOpenImportDialog={autoOpenImportDialog}
+                  onAutoOpenImportDialogConsumed={() => setAutoOpenImportDialog(false)}
                 />
               )}
             </Panel>

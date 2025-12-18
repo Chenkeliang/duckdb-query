@@ -8,6 +8,7 @@ import {
   fetchDuckDBTableSummaries,
   getMySQLDataSources,
   listDatabaseConnections,
+  refreshDatabaseConnection,
   testDatabaseConnection
 } from "../services/apiClient";
 import requestManager from "../utils/requestManager";
@@ -674,12 +675,26 @@ const useDuckQuery = () => {
         setSelectedSources(validSelectedSources);
       }
 
+      // 修复：正确解析统一 API 返回格式 { success, data: { items: [...] } }
       let connections = [];
       if (connectionsRes.success) {
-        connections =
-          connectionsRes.connections ||
-          connectionsRes.databaseConnectionsData ||
-          [];
+        const items = connectionsRes.data?.items ?? [];
+        // 映射为旧组件可用的连接对象格式
+        connections = items.map(item => ({
+          id: item.id?.replace(/^db_/, "") || item.id,
+          name: item.name,
+          type: item.subtype, // mysql/postgresql/sqlite
+          status: item.status,
+          params: {
+            host: item.connection_info?.host,
+            port: item.connection_info?.port,
+            database: item.connection_info?.database,
+            username: item.connection_info?.username,
+            // 不暴露加密密码占位符
+            password: item.connection_info?.password === "***ENCRYPTED***" ? "" : item.connection_info?.password,
+            ...item.metadata
+          }
+        }));
       }
       setDatabaseConnections(connections);
     } catch {
@@ -870,9 +885,23 @@ const useDuckQuery = () => {
   const handleDatabaseConnect = async connectionParams => {
     try {
       if (connectionParams.type === "mysql") {
+        // 已保存连接且未输入新密码：使用 refresh（后端用存量密码测试并创建引擎）
+        if (connectionParams.useStoredPassword && connectionParams.id) {
+          const refreshResult = await refreshDatabaseConnection(connectionParams.id);
+          if (!refreshResult.success) {
+            throw new Error(refreshResult.message || "数据库连接测试失败");
+          }
+          triggerRefresh();
+          return {
+            success: true,
+            message: refreshResult.message || "数据库连接成功",
+            connection: refreshResult.connection
+          };
+        }
+
         const connectionData = {
           id: connectionParams.id,
-          name: connectionParams.id,
+          name: connectionParams.name || connectionParams.id,
           type: connectionParams.type,
           params: connectionParams.params
         };
@@ -910,7 +939,7 @@ const useDuckQuery = () => {
       if (connectionParams.type === "mysql") {
         const connectionData = {
           id: connectionParams.id,
-          name: connectionParams.id,
+          name: connectionParams.name || connectionParams.id,
           type: connectionParams.type,
           params: connectionParams.params
         };

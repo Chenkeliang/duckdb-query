@@ -319,10 +319,12 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
                         detail=f"不允许执行 {keyword} 操作，仅支持查询操作",
                     )
 
-        # 自动添加LIMIT限制（如果SQL中没有LIMIT）
-        limit = getattr(request, "limit", 10000)  # 默认限制10000行
-        if "LIMIT" not in sql_upper_clean and limit > 0:
+        # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式）
+        if request.is_preview and "LIMIT" not in sql_upper_clean:
+            from core.config_manager import config_manager
+            limit = config_manager.get_app_config().max_query_rows
             sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
+            logger.info(f"预览模式，已应用LIMIT {limit}")
 
         logger.info(f"执行DuckDB查询: {sql_query}")
         logger.info(f"可用表: {available_tables}")

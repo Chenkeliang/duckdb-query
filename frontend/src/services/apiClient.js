@@ -250,6 +250,34 @@ export const executeSQL = async (sql, datasource, is_preview = true) => {
   }
 };
 
+/**
+ * 执行外部数据库 SQL 查询
+ * @param {string} sql - SQL 查询语句
+ * @param {Object} datasource - 数据源信息
+ * @param {string} datasource.id - 数据源 ID（会自动去除 db_ 前缀）
+ * @param {string} datasource.type - 数据库类型（mysql/postgresql/sqlite）
+ * @param {boolean} is_preview - 是否为预览模式
+ * @returns {Promise<{data: Array, columns: Array}>}
+ */
+export const executeExternalSQL = async (sql, datasource, is_preview = true) => {
+  try {
+    // 确保 ID 不带 db_ 前缀
+    const normalizedDatasource = {
+      ...datasource,
+      id: datasource.id?.replace(/^db_/, '') || datasource.id,
+    };
+    
+    const response = await apiClient.post('/api/execute_sql', { 
+      sql, 
+      datasource: normalizedDatasource, 
+      is_preview 
+    });
+    return response.data;
+  } catch (error) {
+    handleApiError(error, '外部数据库查询执行失败');
+  }
+};
+
 
 // 文件管理增强API
 export const getFilePreview = async (filename, rows = 10) => {
@@ -268,12 +296,123 @@ export const getFilePreview = async (filename, rows = 10) => {
 // 数据库连接管理API
 // ==================== 新统一接口（已迁移） ====================
 
+const stripDbPrefix = (id) => {
+  if (typeof id !== "string") return id;
+  return id.replace(/^db_/, "");
+};
+
+const mapDatasourceItemToConnection = (item) => {
+  if (!item) return null;
+
+  const connectionInfo = item.connection_info || {};
+  const metadata = item.metadata || {};
+  const password = connectionInfo.password;
+  const requiresPassword = password === "***ENCRYPTED***";
+
+  const username =
+    connectionInfo.username ??
+    connectionInfo.user ??
+    metadata.username ??
+    metadata.user;
+
+  return {
+    id: stripDbPrefix(item.id),
+    name: item.name,
+    type: item.subtype,
+    status: item.status,
+    created_at: item.created_at,
+    updated_at: item.updated_at,
+    requiresPassword,
+    params: {
+      ...metadata,
+      ...connectionInfo,
+      username,
+      user: username,
+      // 不把加密占位符当作真实密码回填
+      ...(requiresPassword ? { password: "" } : {}),
+    },
+  };
+};
+
 export const testDatabaseConnection = async (connectionData) => {
   try {
     const response = await apiClient.post('/api/datasources/databases/test', connectionData);
-    return response.data;
+    const envelope = response.data;
+    const payload = envelope?.data || {};
+    const connectionTest = payload?.connection_test || envelope?.connection_test;
+    const message = connectionTest?.message || envelope?.message;
+    const latencyMs =
+      typeof connectionTest?.latency_ms === "number"
+        ? connectionTest.latency_ms
+        : typeof connectionTest?.details?.latency_ms === "number"
+          ? connectionTest.details.latency_ms
+          : undefined;
+
+    return {
+      ...envelope,
+      data: payload,
+      connection_test: connectionTest,
+      success: connectionTest?.success === true,
+      message,
+      latency_ms: latencyMs,
+      raw: envelope,
+    };
   } catch (error) {
     throw error;
+  }
+};
+
+/**
+ * 测试数据库连接（统一入口）
+ * 
+ * 根据是否有 connectionId 决定调用哪个 API：
+ * - 新连接（无 ID）：调用 POST /api/datasources/databases/test
+ * - 已保存连接（有 ID）：调用 POST /api/datasources/databases/{id}/refresh
+ * 
+ * @param {Object} connectionData - 连接数据
+ * @param {string} connectionData.id - 可选的连接 ID（已保存的连接）
+ * @returns {Promise<{success: boolean, message?: string}>}
+ */
+export const testConnection = async (connectionData) => {
+  try {
+    let response;
+    
+    if (connectionData.id) {
+      // 已保存的连接：使用 refresh API
+      const connectionId = connectionData.id.replace(/^db_/, '');
+      response = await apiClient.post(`/api/datasources/databases/${connectionId}/refresh`);
+    } else {
+      // 新连接：使用 test API
+      response = await apiClient.post('/api/datasources/databases/test', connectionData);
+    }
+    
+    const data = response.data;
+    
+    // 解析响应，支持多种格式
+    // 格式 1: { success: true, data: { connection_test: { success: true } } }
+    // 格式 2: { success: true, connection_test: { success: true } }
+    // 格式 3: { success: true }
+    const connectionTest = data?.data?.connection_test || data?.connection_test;
+    
+    if (connectionTest) {
+      return {
+        success: connectionTest.success === true,
+        message: connectionTest.message || (connectionTest.success ? '连接成功' : '连接失败'),
+        details: connectionTest,
+      };
+    }
+    
+    return {
+      success: data?.success === true,
+      message: data?.message || (data?.success ? '连接成功' : '连接失败'),
+      details: data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || '连接测试失败',
+      error,
+    };
   }
 };
 
@@ -282,8 +421,13 @@ export const createDatabaseConnection = async (connectionData) => {
     const response = await apiClient.post('/api/datasources/databases', connectionData);
     // 清理相关缓存
     requestManager.clearCache('/api/datasources', 'GET');
+    requestManager.clearCache('/api/datasources?type=database', 'GET');
     requestManager.clearCache('/api/database_connections', 'GET'); // 兼容旧缓存
-    return response.data;
+    const envelope = response.data;
+    return {
+      ...envelope,
+      connection: envelope?.data?.connection,
+    };
   } catch (error) {
     throw error;
   }
@@ -292,8 +436,15 @@ export const createDatabaseConnection = async (connectionData) => {
 export const listDatabaseConnections = async () => {
   try {
     // 使用请求管理器防止重复请求
-    const data = await requestManager.getDatabaseConnections();
-    return data;
+    const envelope = await requestManager.getDatabaseConnections();
+    const items = envelope?.data?.items ?? [];
+    const connections = Array.isArray(items)
+      ? items.map(mapDatasourceItemToConnection).filter(Boolean)
+      : [];
+    return {
+      ...envelope,
+      connections,
+    };
   } catch (error) {
     throw error;
   }
@@ -315,8 +466,13 @@ export const updateDatabaseConnection = async (connectionId, connectionData) => 
     const response = await apiClient.put(`/api/datasources/databases/${connectionId}`, connectionData);
     // 清理相关缓存
     requestManager.clearCache('/api/datasources', 'GET');
+    requestManager.clearCache('/api/datasources?type=database', 'GET');
     requestManager.clearCache('/api/database_connections', 'GET'); // 兼容旧缓存
-    return response.data;
+    const envelope = response.data;
+    return {
+      ...envelope,
+      connection: envelope?.data?.connection,
+    };
   } catch (error) {
     throw error;
   }
@@ -329,6 +485,7 @@ export const deleteDatabaseConnection = async (connectionId) => {
     const response = await apiClient.delete(`/api/datasources/${id}`);
     // 清理相关缓存
     requestManager.clearCache('/api/datasources', 'GET');
+    requestManager.clearCache('/api/datasources?type=database', 'GET');
     requestManager.clearCache('/api/database_connections', 'GET'); // 兼容旧缓存
     return response.data;
   } catch (error) {
@@ -341,8 +498,27 @@ export const refreshDatabaseConnection = async (connectionId) => {
     const response = await apiClient.post(`/api/datasources/databases/${connectionId}/refresh`);
     // 清理相关缓存
     requestManager.clearCache('/api/datasources', 'GET');
+    requestManager.clearCache('/api/datasources?type=database', 'GET');
     requestManager.clearCache('/api/database_connections', 'GET'); // 兼容旧缓存
-    return response.data;
+    const envelope = response.data;
+    const payload = envelope?.data || {};
+
+    // 刷新接口的实际结果在 data.refresh_success / data.test_result 中
+    const refreshSuccess =
+      typeof payload?.refresh_success === 'boolean'
+        ? payload.refresh_success
+        : payload?.test_result?.success === true;
+
+    return {
+      ...envelope,
+      data: payload,
+      success: refreshSuccess === true,
+      message: envelope?.message || payload?.test_result?.message,
+      connection: payload?.connection,
+      test_result: payload?.test_result,
+      refresh_success: payload?.refresh_success,
+      raw: envelope,
+    };
   } catch (error) {
     throw error;
   }
@@ -478,9 +654,14 @@ export const deleteDuckDBTable = async (tableName) => {
 // 获取MySQL数据源列表
 export const getMySQLDataSources = async () => {
   try {
-    // 使用请求管理器防止重复请求
-    const data = await requestManager.getDatabaseConnections();
-    return data;
+    const response = await listDatabaseConnections();
+    const connections = Array.isArray(response?.connections)
+      ? response.connections.filter((c) => c.type === "mysql")
+      : [];
+    return {
+      ...response,
+      connections,
+    };
   } catch (error) {
     throw error;
   }
@@ -544,6 +725,27 @@ export const getDuckDBTableDetail = async (tableName) => {
     return response.data;
   } catch (error) {
     handleApiError(error, '获取表元数据失败');
+  }
+};
+
+/**
+ * 获取外部数据库表的详细信息（列信息、示例数据等）
+ * @param {string} connectionId - 数据库连接ID
+ * @param {string} tableName - 表名
+ * @param {string} [schema] - 可选的 schema 名称
+ * @returns {Promise<{success: boolean, table_name: string, columns: Array, column_count: number, row_count: number, sample_data: Array}>}
+ */
+export const getExternalTableDetail = async (connectionId, tableName, schema) => {
+  try {
+    const encodedTable = encodeURIComponent(tableName);
+    let url = `/api/database_table_details/${connectionId}/${encodedTable}`;
+    if (schema) {
+      url += `?schema=${encodeURIComponent(schema)}`;
+    }
+    const response = await apiClient.get(url);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, '获取外部表详情失败');
   }
 };
 

@@ -40,6 +40,7 @@ const DatabaseForm = ({
   testing = false,
 }: DatabaseFormProps) => {
   const { t } = useTranslation("common");
+  const [connectionId, setConnectionId] = useState<string>("");
   const [type, setType] = useState(defaultType);
   const [name, setName] = useState("");
   const [host, setHost] = useState("localhost");
@@ -47,23 +48,31 @@ const DatabaseForm = ({
   const [database, setDatabase] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [hasStoredPassword, setHasStoredPassword] = useState(false);
   const [sqlitePath, setSqlitePath] = useState("");
   const [schema, setSchema] = useState("public"); // PostgreSQL schema
 
   // Load config when configToLoad changes
   useEffect(() => {
     if (configToLoad) {
+      const loadedId = configToLoad.id || "";
+      setConnectionId(loadedId);
       setType(configToLoad.type || "mysql");
       setName(configToLoad.name || configToLoad.id || "");
       if (configToLoad.params) {
         setHost(configToLoad.params.host || "localhost");
         setPort(configToLoad.params.port?.toString() || (configToLoad.type === "postgresql" ? "5432" : "3306"));
         setDatabase(configToLoad.params.database || "");
-        setUsername(configToLoad.params.user || "");
-        setPassword(configToLoad.params.password || "");
+        setUsername(configToLoad.params.user || configToLoad.params.username || "");
+        const stored = configToLoad.requiresPassword === true || configToLoad.params.password === "***ENCRYPTED***";
+        setHasStoredPassword(stored);
+        setPassword(stored ? "" : (configToLoad.params.password || ""));
         setSchema(configToLoad.params.schema || "public");
         setSqlitePath(configToLoad.params.path || "");
       }
+    } else {
+      setConnectionId("");
+      setHasStoredPassword(false);
     }
   }, [configToLoad]);
 
@@ -81,6 +90,11 @@ const DatabaseForm = ({
   const isPostgreSQL = type === "postgresql";
 
   const normalizedParams = useMemo(() => {
+    const resolvedId =
+      connectionId ||
+      name.trim() ||
+      `${type}-${host || "localhost"}${port ? `:${port}` : ""}`;
+
     const params =
       type === "sqlite"
         ? { path: sqlitePath }
@@ -88,19 +102,21 @@ const DatabaseForm = ({
           host: host.trim(),
           port: Number(port) || null,
           user: username.trim(),
-          password: password,
+          ...(password ? { password } : {}),
           database: database.trim(),
           ...(isPostgreSQL && { schema: schema.trim() || "public" })
         };
 
     return {
       type,
-      id:
-        name.trim() ||
-        `${type}-${host || "localhost"}${port ? `:${port}` : ""}`,
+      id: resolvedId,
+      name: name.trim() || resolvedId,
+      isSavedConnection: !!connectionId,
+      hasStoredPassword,
+      useStoredPassword: !!connectionId && hasStoredPassword && !password,
       params
     };
-  }, [type, name, host, port, username, password, database, sqlitePath, schema, isPostgreSQL]);
+  }, [type, connectionId, name, host, port, username, password, database, sqlitePath, schema, isPostgreSQL, hasStoredPassword]);
 
   const validate = () => {
     // 检查连接名称
@@ -310,11 +326,11 @@ const DatabaseForm = ({
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder={password === "***ENCRYPTED***" ? "••••••（已保存，留空保持不变）" : "••••••"}
+                placeholder={hasStoredPassword ? "••••••（已保存，留空使用已保存密码）" : "••••••"}
               />
-              {password === "***ENCRYPTED***" && (
+              {hasStoredPassword && !password && (
                 <p className="text-[11px] text-muted-foreground">
-                  密码已保存，留空则保持原密码不变
+                  密码已保存；留空会使用已保存密码测试/连接。如需修改，请输入新密码。
                 </p>
               )}
             </div>
