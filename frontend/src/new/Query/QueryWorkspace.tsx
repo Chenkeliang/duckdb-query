@@ -143,7 +143,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
   }, [isResultCollapsed]);
 
   return (
-    <div className="h-full w-full bg-background">
+    <div className="h-full w-full bg-background overflow-hidden">
       <PanelGroup direction="horizontal" autoSaveId="query-workspace-h">
         {/* 数据源面板 */}
         <Panel

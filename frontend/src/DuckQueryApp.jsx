@@ -445,7 +445,7 @@ const DuckQueryAppInner = () => {
     );
 
   return (
-    <div className="dq-new-theme min-h-screen">
+    <div className="dq-new-theme h-screen overflow-hidden">
       <PageShell
         sidebarCollapsed={sidebarCollapsed}
         sidebar={

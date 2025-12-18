@@ -13,6 +13,7 @@ import { SQLToolbar } from './SQLToolbar';
 import { SQLHistory } from './SQLHistory';
 import { useSQLEditor } from './hooks/useSQLEditor';
 import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
+import { useSchemaTables } from '@/new/hooks/useSchemaTables';
 import { useAppConfig } from '@/new/hooks/useAppConfig';
 import { getDuckDBTableDetail } from '@/services/apiClient';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
@@ -106,17 +107,35 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     };
   }, [selectedTables]);
 
+  // 获取外部数据库连接的所有表（用于自动补全）
+  const externalConnectionId = tableSourceInfo.isExternal 
+    ? tableSourceInfo.currentSource?.connectionId 
+    : undefined;
+  const externalSchema = tableSourceInfo.isExternal 
+    ? tableSourceInfo.currentSource?.schema || '' 
+    : '';
+  
+  const { tables: externalSchemaTables } = useSchemaTables(
+    externalConnectionId || '',
+    externalSchema,
+    tableSourceInfo.isExternal && !!externalConnectionId
+  );
+
   // 根据数据源类型决定自动补全的表名列表
   // DuckDB 模式：提示所有 DuckDB 表
-  // 外部数据库模式：只提示选中的外部表（同一连接下的表）
+  // 外部数据库模式：提示该连接下的所有表
   const autocompleteTables = useMemo(() => {
     if (tableSourceInfo.isExternal) {
-      // 外部数据源：只提示选中的外部表名
+      // 外部数据源：提示该连接下的所有表
+      if (externalSchemaTables.length > 0) {
+        return externalSchemaTables.map(t => t.name);
+      }
+      // 如果还没加载完成，先显示选中的表
       return tableSourceInfo.externalTables.map(t => t.name);
     }
     // DuckDB：提示所有 DuckDB 表
     return duckdbTables.map(t => t.name);
-  }, [tableSourceInfo.isExternal, tableSourceInfo.externalTables, duckdbTables]);
+  }, [tableSourceInfo.isExternal, tableSourceInfo.externalTables, duckdbTables, externalSchemaTables]);
 
   // 获取选中 DuckDB 表的列信息（用于自动补全）
   const currentDuckDBTable = useMemo(() => {

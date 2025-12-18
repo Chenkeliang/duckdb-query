@@ -139,8 +139,8 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
         </TabsList>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <TabsContent value="sql" className="h-full m-0 p-0">
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <TabsContent value="sql" className="h-full m-0 p-0 overflow-auto">
           <SQLQueryPanel
             selectedTables={selectedTables}
             onExecute={onExecute}
@@ -150,7 +150,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
           />
         </TabsContent>
 
-        <TabsContent value="join" className="h-full m-0 p-0">
+        <TabsContent value="join" className="h-full m-0 p-0 overflow-auto">
           <JoinQueryPanel
             selectedTables={selectedTables}
             onExecute={onExecute}
@@ -158,7 +158,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
           />
         </TabsContent>
 
-        <TabsContent value="set" className="h-full m-0 p-0">
+        <TabsContent value="set" className="h-full m-0 p-0 overflow-auto">
           <SetOperationsPanel
             selectedTables={selectedTables}
             onExecute={onExecute}
@@ -166,14 +166,14 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
           />
         </TabsContent>
 
-        <TabsContent value="pivot" className="h-full m-0 p-0">
+        <TabsContent value="pivot" className="h-full m-0 p-0 overflow-auto">
           <PivotTablePanel 
             selectedTables={selectedTables}
             onExecute={onExecute} 
           />
         </TabsContent>
 
-        <TabsContent value="visual" className="h-full m-0 p-0">
+        <TabsContent value="visual" className="h-full m-0 p-0 overflow-auto">
           <QueryBuilder
             selectedTable={selectedTables.length > 0 ? selectedTables[0] : null}
             onExecute={handleVisualQueryExecute}

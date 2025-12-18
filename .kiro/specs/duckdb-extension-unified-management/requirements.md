@@ -1,0 +1,68 @@
+# Requirements Document
+
+## Introduction
+
+统一管理 DuckDB 扩展的安装、加载和配置，支持跨数据库联邦查询功能。将扩展管理收拢到配置系统中，在启动时自动安装和加载，简化运行时逻辑。
+
+## Glossary
+
+- **DuckDB Extension**: DuckDB 的扩展模块，提供额外功能如连接外部数据库、处理特定文件格式等
+- **Federated Query**: 联邦查询，在单个 SQL 中查询多个不同数据库的数据
+- **ATTACH**: DuckDB 命令，用于连接外部数据库并将其作为虚拟数据库使用
+- **Extension Manager**: 扩展管理器，负责扩展的安装、加载和状态管理
+- **Connection Pool**: 连接池，管理 DuckDB 连接的复用和生命周期
+
+## Requirements
+
+### Requirement 1
+
+**User Story:** As a system administrator, I want DuckDB extensions to be automatically installed and loaded at startup, so that I don't need to manually manage extensions.
+
+#### Acceptance Criteria
+
+1. WHEN the application starts THEN the Extension_Manager SHALL install and load all configured extensions from the duckdb_extensions list
+2. WHEN an extension installation fails THEN the Extension_Manager SHALL log a warning and continue with other extensions
+3. WHEN the duckdb_extensions configuration is updated THEN the Extension_Manager SHALL apply the new extension list on next connection creation
+4. THE Extension_Manager SHALL support the following default extensions: excel, json, parquet, mysql, postgres
+
+### Requirement 2
+
+**User Story:** As a data analyst, I want to execute federated queries across multiple databases, so that I can join data from different sources in a single query.
+
+#### Acceptance Criteria
+
+1. WHEN a query request includes attach_databases parameter THEN the Query_API SHALL ATTACH each specified database before executing the query
+2. WHEN building ATTACH SQL for MySQL THEN the Query_API SHALL use the format: ATTACH 'host=X user=X password=X database=X port=X' AS alias (TYPE mysql)
+3. WHEN building ATTACH SQL for PostgreSQL THEN the Query_API SHALL use the format: ATTACH 'host=X dbname=X user=X password=X port=X' AS alias (TYPE postgres)
+4. WHEN building ATTACH SQL for SQLite THEN the Query_API SHALL use the format: ATTACH 'filepath' AS alias (TYPE sqlite)
+5. WHEN a database connection_id is not found THEN the Query_API SHALL return a 404 error with clear message
+
+### Requirement 3
+
+**User Story:** As a developer, I want to query extension status via API, so that I can diagnose extension-related issues.
+
+#### Acceptance Criteria
+
+1. WHEN a user requests GET /api/duckdb/extensions THEN the Extension_API SHALL return the list of all extensions with their installed and loaded status
+2. WHEN a user requests POST /api/duckdb/extensions/{name}/install THEN the Extension_API SHALL install and load the specified extension
+3. THE Extension_API SHALL include federated_query_support boolean indicating if mysql and postgres extensions are loaded
+
+### Requirement 4
+
+**User Story:** As a DevOps engineer, I want extensions to be pre-downloaded during Docker build, so that container startup is faster.
+
+#### Acceptance Criteria
+
+1. WHEN building the Docker image THEN the Dockerfile SHALL pre-install default extensions using a setup script
+2. THE setup script SHALL verify extension installation and report any failures
+3. WHEN the container starts THEN the Extension_Manager SHALL load pre-installed extensions without network access
+
+### Requirement 5
+
+**User Story:** As a user, I want to configure which extensions to load, so that I can customize the system for my needs.
+
+#### Acceptance Criteria
+
+1. THE Configuration_System SHALL support duckdb_extensions as a list of extension names in app-config.json
+2. WHEN duckdb_extensions is not specified THEN the Configuration_System SHALL use default extensions: excel, json, parquet, mysql, postgres
+3. THE Configuration_System SHALL support environment variable DUCKDB_EXTENSIONS to override the extension list
