@@ -14,7 +14,7 @@ import {
 } from '@/new/components/ui/select';
 import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
 import { useDataSources } from '@/new/hooks/useDataSources';
-import { getDuckDBTableDetail } from '@/services/apiClient';
+import { useTableColumns } from '@/new/hooks/useTableColumns';
 import type { SelectedTable, SelectedTableObject } from '@/new/types/SelectedTable';
 import {
   normalizeSelectedTable,
@@ -218,23 +218,11 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
   // 值字段
   const [valueFields, setValueFields] = React.useState<ValueField[]>([]);
 
-  // 获取表的列信息
+  // 获取表的列信息 - 使用统一的 useTableColumns Hook
   const tableName = sourceTable ? getTableName(sourceTable) : '';
-  const { data: tableDetail } = useQuery({
-    queryKey: ['duckdb-table-detail', tableName, isExternal ? tableSource?.connectionId : 'duckdb'],
-    queryFn: async () => {
-      // TODO: 对于外部表，需要调用不同的 API 获取列信息
-      if (isExternal) {
-        // 外部表暂时返回空列表，需要后端支持
-        return { table: { columns: [] } };
-      }
-      return getDuckDBTableDetail(tableName);
-    },
-    enabled: !!tableName,
-    staleTime: 5 * 60 * 1000,
-  });
+  const { columns: tableColumns, isLoading: isLoadingColumns, isError: hasColumnError, isEmpty: hasEmptyColumns } = useTableColumns(sourceTable || null);
 
-  const columns = tableDetail?.table?.columns || [];
+  const columns = tableColumns || [];
 
   // 获取列字段的 distinct 值（用于透视）
   const MAX_PIVOT_VALUES = 20;
@@ -411,7 +399,7 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
 
   // 可用于行/列字段的列（排除已选择的）
   const availableColumns = columns.filter(
-    (col: { column_name: string }) => !rowFields.includes(col.column_name) && col.column_name !== columnField
+    (col) => !rowFields.includes(col.name) && col.name !== columnField
   );
 
   return (
@@ -516,9 +504,9 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
                     <SelectValue placeholder={t('query.pivot.addRowField', '添加行字段')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableColumns.map((col: { column_name: string; data_type: string }) => (
-                      <SelectItem key={col.column_name} value={col.column_name}>
-                        {col.column_name} ({col.data_type})
+                    {availableColumns.map((col) => (
+                      <SelectItem key={col.name} value={col.name}>
+                        {col.name} ({col.type})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -544,9 +532,9 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
                     <SelectItem value="">
                       {t('query.pivot.noColumnField', '不使用透视列')}
                     </SelectItem>
-                    {availableColumns.map((col: { column_name: string; data_type: string }) => (
-                      <SelectItem key={col.column_name} value={col.column_name}>
-                        {col.column_name} ({col.data_type})
+                    {availableColumns.map((col) => (
+                      <SelectItem key={col.name} value={col.name}>
+                        {col.name} ({col.type})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -636,9 +624,9 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
                             <SelectValue placeholder={t('query.pivot.selectColumn', '选择列')} />
                           </SelectTrigger>
                           <SelectContent>
-                            {columns.map((col: { column_name: string; data_type: string }) => (
-                              <SelectItem key={col.column_name} value={col.column_name}>
-                                {col.column_name}
+                            {columns.map((col) => (
+                              <SelectItem key={col.name} value={col.name}>
+                                {col.name}
                               </SelectItem>
                             ))}
                           </SelectContent>

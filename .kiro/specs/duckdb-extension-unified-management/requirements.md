@@ -11,6 +11,8 @@
 - **ATTACH**: DuckDB 命令，用于连接外部数据库并将其作为虚拟数据库使用
 - **Extension Manager**: 扩展管理器，负责扩展的安装、加载和状态管理
 - **Connection Pool**: 连接池，管理 DuckDB 连接的复用和生命周期
+- **quick-start.sh**: 快速启动脚本，用于初始化配置和启动 Docker 服务
+- **app-config.json**: 应用配置文件，包含 DuckDB 扩展列表等配置
 
 ## Requirements
 
@@ -39,25 +41,15 @@
 
 ### Requirement 3
 
-**User Story:** As a developer, I want to query extension status via API, so that I can diagnose extension-related issues.
-
-#### Acceptance Criteria
-
-1. WHEN a user requests GET /api/duckdb/extensions THEN the Extension_API SHALL return the list of all extensions with their installed and loaded status
-2. WHEN a user requests POST /api/duckdb/extensions/{name}/install THEN the Extension_API SHALL install and load the specified extension
-3. THE Extension_API SHALL include federated_query_support boolean indicating if mysql and postgres extensions are loaded
-
-### Requirement 4
-
 **User Story:** As a DevOps engineer, I want extensions to be pre-downloaded during Docker build, so that container startup is faster.
 
 #### Acceptance Criteria
 
-1. WHEN building the Docker image THEN the Dockerfile SHALL pre-install default extensions using a setup script
-2. THE setup script SHALL verify extension installation and report any failures
-3. WHEN the container starts THEN the Extension_Manager SHALL load pre-installed extensions without network access
+1. WHEN building the Docker image THEN the Dockerfile SHALL run a setup script to pre-install default extensions
+2. THE Dockerfile SHALL add a RUN step after pip install to execute: python -c "import duckdb; c=duckdb.connect(); c.execute('INSTALL mysql'); c.execute('INSTALL postgres'); c.execute('INSTALL excel'); c.execute('INSTALL json'); c.execute('INSTALL parquet')"
+3. WHEN the container starts THEN the Extension_Manager SHALL load pre-installed extensions without additional network access
 
-### Requirement 5
+### Requirement 4
 
 **User Story:** As a user, I want to configure which extensions to load, so that I can customize the system for my needs.
 
@@ -66,3 +58,13 @@
 1. THE Configuration_System SHALL support duckdb_extensions as a list of extension names in app-config.json
 2. WHEN duckdb_extensions is not specified THEN the Configuration_System SHALL use default extensions: excel, json, parquet, mysql, postgres
 3. THE Configuration_System SHALL support environment variable DUCKDB_EXTENSIONS to override the extension list
+
+### Requirement 5
+
+**User Story:** As a DevOps engineer, I want the quick-start.sh script to include mysql and postgres extensions in the default configuration, so that federated query is enabled out of the box.
+
+#### Acceptance Criteria
+
+1. WHEN quick-start.sh creates a new app-config.json THEN the script SHALL include mysql and postgres in the duckdb_extensions list
+2. THE quick-start.sh default duckdb_extensions SHALL be: ["excel", "json", "parquet", "mysql", "postgres"]
+3. WHEN the configuration file already exists THEN quick-start.sh SHALL preserve the existing duckdb_extensions configuration

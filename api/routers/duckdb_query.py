@@ -17,12 +17,16 @@ from core.config_manager import config_manager
 from core.duckdb_engine import (
     get_db_connection,
     create_persistent_table,
+    build_attach_sql,
 )
 from core.utils import normalize_dataframe_output
 from core.timezone_utils import format_storage_time_for_response
 from core.resource_manager import save_upload_file
 from core.file_datasource_manager import file_datasource_manager
 from core.visual_query_generator import get_table_metadata
+from core.database_manager import db_manager
+from core.encryption import password_encryptor
+from models.query_models import FederatedQueryRequest, FederatedQueryResponse
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -494,7 +498,137 @@ async def clear_old_errors(days: int = 30):
         logger.error(f"清理错误记录失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/api/duckdb/federated-query", tags=["DuckDB Query"])
+async def execute_federated_query(request: FederatedQueryRequest) -> FederatedQueryResponse:
+    """
+    执行联邦查询，支持跨数据库 ATTACH
+    
+    流程：
+    1. 验证请求参数
+    2. 获取外部数据库连接配置
+    3. 执行 ATTACH 语句
+    4. 执行用户 SQL
+    5. 执行 DETACH 清理
+    6. 返回结果
+    
+    Args:
+        request: 联邦查询请求，包含 SQL 和需要 ATTACH 的数据库列表
+        
+    Returns:
+        FederatedQueryResponse: 查询结果
+        
+    Raises:
+        HTTPException: 当连接不存在、ATTACH 失败或查询执行失败时
+    """
+    start_time = time.time()
+    con = get_db_connection()
+    attached_aliases = []
+    warnings = []
+    
+    try:
+        # 1. ATTACH 外部数据库
+        if request.attach_databases:
+            for attach_db in request.attach_databases:
+                # 获取连接配置
+                connection = db_manager.get_connection(attach_db.connection_id)
+                if not connection:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"数据库连接 '{attach_db.connection_id}' 不存在"
+                    )
+                
+                # 构建数据库配置，解密密码
+                db_config = connection.params.copy()
+                
+                # 解密密码
+                password = db_config.get('password', '')
+                if password and password_encryptor.is_encrypted(password):
+                    db_config['password'] = password_encryptor.decrypt_password(password)
+                    logger.info(f"已解密连接 {attach_db.connection_id} 的密码")
+                
+                # 添加数据库类型
+                db_config['type'] = connection.type.value if hasattr(connection.type, 'value') else str(connection.type)
+                
+                # 生成并执行 ATTACH SQL
+                try:
+                    attach_sql = build_attach_sql(attach_db.alias, db_config)
+                    logger.info(f"执行 ATTACH: {attach_db.alias} (connection_id: {attach_db.connection_id})")
+                    con.execute(attach_sql)
+                    attached_aliases.append(attach_db.alias)
+                    logger.info(f"成功 ATTACH 数据库: {attach_db.alias}")
+                except Exception as attach_error:
+                    logger.error(f"ATTACH 数据库 {attach_db.alias} 失败: {attach_error}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"连接外部数据库 '{attach_db.alias}' 失败: {str(attach_error)}"
+                    )
+        
+        # 2. 处理 SQL 查询
+        sql_query = request.sql.strip()
+        sql_upper = sql_query.upper()
+        
+        # 自动添加 LIMIT 限制（如果是预览模式且 SQL 中没有 LIMIT）
+        if request.is_preview and "LIMIT" not in sql_upper:
+            limit = config_manager.get_app_config().max_query_rows
+            sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
+            logger.info(f"预览模式，已应用 LIMIT {limit}")
+        
+        logger.info(f"执行联邦查询: {sql_query}")
+        logger.info(f"已 ATTACH 的数据库: {attached_aliases}")
+        
+        # 3. 执行用户 SQL
+        result_df = con.execute(sql_query).fetchdf()
+        
+        execution_time = (time.time() - start_time) * 1000
+        
+        # 4. 可选：保存查询结果为新表
+        if request.save_as_table:
+            table_name = request.save_as_table.strip()
+            if table_name:
+                try:
+                    # 移除 LIMIT 子句后创建表
+                    save_sql = request.sql.strip().rstrip(';')
+                    create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
+                    con.execute(create_sql)
+                    logger.info(f"查询结果已保存为表: {table_name}")
+                except Exception as save_error:
+                    logger.warning(f"保存查询结果为表失败: {str(save_error)}")
+                    warnings.append(f"保存结果为表失败: {str(save_error)}")
+        
+        # 5. 构建响应
+        response = FederatedQueryResponse(
+            success=True,
+            columns=result_df.columns.tolist(),
+            data=normalize_dataframe_output(result_df),
+            row_count=len(result_df),
+            execution_time_ms=execution_time,
+            attached_databases=attached_aliases,
+            message=f"联邦查询成功，返回 {len(result_df)} 行数据",
+            sql_query=sql_query,
+            warnings=warnings if warnings else None,
+        )
+        
+        # 性能日志
+        if execution_time > 1000:
+            logger.warning(f"慢查询检测: 联邦查询耗时 {execution_time:.2f}ms")
+        else:
+            logger.info(f"联邦查询执行完成，耗时: {execution_time:.2f}ms")
+        
+        return response
+        
+    except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"删除DuckDB表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"删除表失败: {str(e)}")
+        logger.error(f"联邦查询执行失败: {str(e)}")
+        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"联邦查询执行失败: {str(e)}")
+        
+    finally:
+        # 6. DETACH 清理
+        for alias in attached_aliases:
+            try:
+                con.execute(f"DETACH {alias}")
+                logger.info(f"成功 DETACH 数据库: {alias}")
+            except Exception as detach_error:
+                logger.warning(f"DETACH {alias} 失败: {detach_error}")

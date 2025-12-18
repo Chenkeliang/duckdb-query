@@ -181,9 +181,9 @@ class AppConfig:
         if self.cors_origins is None:
             self.cors_origins = ["http://localhost:3000", "http://localhost:5173"]
 
-        # 设置默认DuckDB扩展
+        # 设置默认DuckDB扩展（包含联邦查询扩展）
         if self.duckdb_extensions is None:
-            self.duckdb_extensions = ["excel", "json", "parquet"]
+            self.duckdb_extensions = ["excel", "json", "parquet", "mysql", "postgres"]
 
         if self.server_data_mounts is None:
             self.server_data_mounts = []

@@ -26,6 +26,9 @@ COPY --from=builder /app/wheels /wheels
 COPY --from=builder /app/requirements.txt .
 RUN pip install --no-cache-dir /wheels/*
 
+# Pre-install DuckDB extensions for faster startup (联邦查询扩展预安装)
+RUN python -c "import duckdb; c=duckdb.connect(); c.execute('INSTALL mysql'); c.execute('INSTALL postgres'); c.execute('INSTALL excel'); c.execute('INSTALL json'); c.execute('INSTALL parquet'); print('DuckDB extensions pre-installed successfully')"
+
 # Copy the application code
 COPY api .
 

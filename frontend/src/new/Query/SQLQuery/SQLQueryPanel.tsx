@@ -6,7 +6,6 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import { SQLToolbar } from './SQLToolbar';
@@ -15,7 +14,7 @@ import { useSQLEditor } from './hooks/useSQLEditor';
 import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
 import { useSchemaTables } from '@/new/hooks/useSchemaTables';
 import { useAppConfig } from '@/new/hooks/useAppConfig';
-import { getDuckDBTableDetail } from '@/services/apiClient';
+import { useTableColumns } from '@/new/hooks/useTableColumns';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
 import { cn } from '@/lib/utils';
 import type { TableSource } from '@/new/hooks/useQueryWorkspace';
@@ -148,30 +147,29 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     return null;
   }, [tableSourceInfo.isExternal, selectedTables]);
 
-  // 获取 DuckDB 表的列信息
-  const { data: duckdbTableDetail } = useQuery({
-    queryKey: ['table-columns', currentDuckDBTable, 'duckdb'],
-    queryFn: () => getDuckDBTableDetail(currentDuckDBTable!),
-    enabled: !!currentDuckDBTable,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-  });
+  // 获取当前选中表的列信息 - 使用统一的 useTableColumns Hook
+  // 支持 DuckDB 表和外部表
+  const tableForColumns = useMemo(() => {
+    if (selectedTables.length === 0) return null;
+    return selectedTables[0]; // 使用第一个选中的表
+  }, [selectedTables]);
+  
+  const { columns: tableColumns } = useTableColumns(tableForColumns);
 
   // 构建列信息映射（表名 -> 列名列表）
   const autocompleteColumns = useMemo(() => {
-    const result: Record<string, string[]> = {};
+    const columnMap: Record<string, string[]> = {};
     
-    if (duckdbTableDetail?.table?.columns) {
-      const tableName = currentDuckDBTable;
+    if (tableColumns && tableColumns.length > 0) {
+      const tableName = currentDuckDBTable || (tableForColumns ? 
+        (typeof tableForColumns === 'string' ? tableForColumns : tableForColumns.name) : null);
       if (tableName) {
-        result[tableName] = duckdbTableDetail.table.columns.map(
-          (col: { column_name?: string; name?: string }) => col.column_name || col.name || ''
-        ).filter(Boolean);
+        columnMap[tableName] = tableColumns.map((col) => col.name).filter(Boolean);
       }
     }
     
-    return result;
-  }, [duckdbTableDetail, currentDuckDBTable]);
+    return columnMap;
+  }, [tableColumns, currentDuckDBTable, tableForColumns]);
 
   // SQL 编辑器状态
   const {

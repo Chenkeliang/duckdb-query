@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
-import { executeDuckDBSQL, executeExternalSQL } from "@/services/apiClient";
+import { executeDuckDBSQL, executeExternalSQL, executeFederatedQuery } from "@/services/apiClient";
 import { toast } from "sonner";
 import type { 
   SelectedTable, 
@@ -21,14 +21,24 @@ import { normalizeSelectedTable } from '../utils/tableUtils';
  */
 
 /**
+ * 附加数据库信息（用于联邦查询）
+ */
+export interface AttachDatabase {
+  connectionId: string;
+  alias: string;
+}
+
+/**
  * 表数据源信息（用于查询执行和导入）
  */
 export interface TableSource {
-  type: 'duckdb' | 'external';
+  type: 'duckdb' | 'external' | 'federated';
   connectionId?: string;
   connectionName?: string;
   databaseType?: DatabaseType;
   schema?: string;
+  /** 联邦查询需要附加的数据库列表 */
+  attachDatabases?: AttachDatabase[];
 }
 
 /**
@@ -232,7 +242,24 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       try {
         let response: { data?: unknown[]; columns?: string[]; execTime?: number; execution_time_ms?: number };
         
-        if (querySource.type === 'external') {
+        if (querySource.type === 'federated') {
+          // 联邦查询（混合 DuckDB 和外部数据库）
+          if (!querySource.attachDatabases || querySource.attachDatabases.length === 0) {
+            throw new Error('Federated query requires attach databases');
+          }
+          const startTime = Date.now();
+          const result = await executeFederatedQuery({
+            sql,
+            attachDatabases: querySource.attachDatabases,
+            isPreview: false,
+          }) as { data?: unknown[]; columns?: string[] };
+          const execTime = Date.now() - startTime;
+          response = {
+            data: result.data || [],
+            columns: result.columns || [],
+            execTime,
+          };
+        } else if (querySource.type === 'external') {
           // 外部数据库查询
           if (!querySource.connectionId) {
             throw new Error('External query requires a connection ID');

@@ -4,8 +4,7 @@ import { Layers, Play, X, Database, Table, Trash2, AlertTriangle } from 'lucide-
 import { Button } from '@/new/components/ui/button';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
 import { Badge } from '@/new/components/ui/badge';
-import { useQueries } from '@tanstack/react-query';
-import { getDuckDBTableDetail } from '@/services/apiClient';
+import { useTableColumns } from '@/new/hooks/useTableColumns';
 import type { SelectedTable } from '@/new/types/SelectedTable';
 import { 
   normalizeSelectedTable, 
@@ -59,6 +58,8 @@ interface TableCardProps {
   onColumnToggle: (column: string) => void;
   onRemove: () => void;
   isLoading?: boolean;
+  isError?: boolean;
+  isEmpty?: boolean;
 }
 
 const TableCard: React.FC<TableCardProps> = ({
@@ -68,6 +69,8 @@ const TableCard: React.FC<TableCardProps> = ({
   onColumnToggle,
   onRemove,
   isLoading,
+  isError,
+  isEmpty,
 }) => {
   const { t } = useTranslation('common');
   const displayColumns = columns.slice(0, 6);
@@ -119,6 +122,16 @@ const TableCard: React.FC<TableCardProps> = ({
         {isLoading ? (
           <div className="text-xs text-muted-foreground py-4 text-center">
             {t('common.loading', '加载中...')}
+          </div>
+        ) : isError ? (
+          <div className="text-xs text-error py-4 text-center">
+            <AlertTriangle className="w-4 h-4 mx-auto mb-1" />
+            {t('query.set.columnLoadError', '无法获取列信息')}
+          </div>
+        ) : isEmpty || columns.length === 0 ? (
+          <div className="text-xs text-warning py-4 text-center">
+            <AlertTriangle className="w-4 h-4 mx-auto mb-1" />
+            {t('query.set.noColumns', '无可用列')}
           </div>
         ) : (
           <div className="space-y-0.5 max-h-40 overflow-auto">
@@ -284,48 +297,50 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
     return true;
   }, [activeTables.length, sourceAnalysis, columnValidation.isValid]);
 
-  // 获取每个表的列信息 - 使用 useQueries 避免违反 Rules of Hooks
-  const tableColumnsQueries = useQueries({
-    queries: activeTables.map((table) => {
-      const tableName = getTableName(table);
-      const normalized = normalizeSelectedTable(table);
-      const isExternal = normalized.source === 'external';
-      
-      return {
-        queryKey: ['table-columns', tableName, isExternal ? normalized.connection?.id : 'duckdb'],
-        queryFn: async () => {
-          // TODO: 对于外部表，需要调用不同的 API 获取列信息
-          if (isExternal) {
-            return { name: tableName, columns: [] as TableColumn[] };
-          }
-          
-          const response = await getDuckDBTableDetail(tableName);
-          const tableData = response?.table || response;
-          const rawColumns = tableData?.columns || [];
-          const columns: TableColumn[] = rawColumns.map((col: any) => ({
-            name: col.column_name || col.name,
-            type: col.data_type || col.type,
-          }));
-          return { name: tableName, columns };
-        },
-        enabled: !!tableName,
-        staleTime: 5 * 60 * 1000,
-      };
-    }),
-  });
+  // 获取每个表的列信息 - 使用 useTableColumns Hook
+  // 为每个表单独调用 Hook（最多支持 10 个表）
+  const table0Columns = useTableColumns(activeTables[0] || null);
+  const table1Columns = useTableColumns(activeTables[1] || null);
+  const table2Columns = useTableColumns(activeTables[2] || null);
+  const table3Columns = useTableColumns(activeTables[3] || null);
+  const table4Columns = useTableColumns(activeTables[4] || null);
+  const table5Columns = useTableColumns(activeTables[5] || null);
+  const table6Columns = useTableColumns(activeTables[6] || null);
+  const table7Columns = useTableColumns(activeTables[7] || null);
+  const table8Columns = useTableColumns(activeTables[8] || null);
+  const table9Columns = useTableColumns(activeTables[9] || null);
+  
+  // 组合所有结果
+  const tableColumnsResults = [
+    table0Columns,
+    table1Columns,
+    table2Columns,
+    table3Columns,
+    table4Columns,
+    table5Columns,
+    table6Columns,
+    table7Columns,
+    table8Columns,
+    table9Columns,
+  ].slice(0, activeTables.length);
+
+  // 计算加载和错误状态
+  const isLoadingColumns = tableColumnsResults.some((result) => result.isLoading);
+  const hasColumnErrors = tableColumnsResults.some((result) => result.isError);
 
   // 构建表列映射 - 使用稳定的 key 来避免无限循环
-  const tableColumnsMapKey = tableColumnsQueries
-    .map((q) => q.data?.name || '')
+  const tableColumnsMapKey = tableColumnsResults
+    .map((r, i) => activeTables[i] ? `${getTableName(activeTables[i])}:${r.columns.length}` : '')
     .filter(Boolean)
-    .sort()
     .join(',');
   
   const tableColumnsMap = React.useMemo(() => {
     const map: Record<string, TableColumn[]> = {};
-    tableColumnsQueries.forEach((query) => {
-      if (query.data) {
-        map[query.data.name] = query.data.columns;
+    activeTables.forEach((table, index) => {
+      const tableName = getTableName(table);
+      const result = tableColumnsResults[index];
+      if (tableName && result?.columns) {
+        map[tableName] = result.columns;
       }
     });
     return map;
@@ -576,7 +591,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
           ) : (
             activeTables.map((table, index) => {
               const tableName = getTableName(table);
-              const query = tableColumnsQueries[index];
+              const columnResult = tableColumnsResults[index];
               const columns = tableColumnsMap[tableName] || [];
 
               return (
@@ -587,7 +602,9 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
                     selectedColumns={selectedColumns[tableName] || []}
                     onColumnToggle={(col) => handleColumnToggle(table, col)}
                     onRemove={() => handleRemoveTable(table)}
-                    isLoading={query?.isLoading}
+                    isLoading={columnResult?.isLoading}
+                    isError={columnResult?.isError}
+                    isEmpty={columnResult?.isEmpty}
                   />
                   {/* 集合操作连接器 */}
                   {index < activeTables.length - 1 && (

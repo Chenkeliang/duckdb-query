@@ -348,7 +348,14 @@
       "emptyDescription": "Double-click a table in the data source panel on the left to add to join query. The first table added will be the primary table.",
       "clear": "Clear",
       "column": "Column",
-      "externalNotSupported": "JOIN operations are not supported for external tables. Please import the external table into DuckDB first."
+      "externalNotSupported": "JOIN operations are not supported for external tables. Please import the external table into DuckDB first.",
+      "attachedDatabases": "{{count}} external database(s)",
+      "attachedDatabasesTitle": "Databases to connect:",
+      "federatedQueryInfo": "This query will connect {{count}} external database(s) for federated query.",
+      "federatedError": "Connection to {{name}} failed: {{message}}",
+      "addCondition": "Add condition",
+      "removeCondition": "Remove condition",
+      "externalTable": "External table"
     },
     "set": {
       "title": "Set Operations",
@@ -403,6 +410,16 @@
       "set": "Set Operations",
       "pivot": "Pivot Table",
       "visual": "Visual Query"
+    },
+    "federated": {
+      "attachedDatabases": "{{count}} external database(s)",
+      "attachedDatabasesTitle": "Databases to connect:",
+      "queryInfo": "This query will connect {{count}} external database(s) for federated query.",
+      "error": "Connection to {{name}} failed: {{message}}",
+      "connectionError": "Database connection failed",
+      "authError": "Database authentication failed, please check username and password",
+      "timeoutError": "Connection timeout, please check network or database status",
+      "networkError": "Network connection failed, please check database server status"
     }
   },
   "page": {

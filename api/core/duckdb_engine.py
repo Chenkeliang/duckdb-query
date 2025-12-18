@@ -89,6 +89,60 @@ def _resolve_duckdb_extensions(app_config, override_extensions: Optional[List[st
     return resolved
 
 
+def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
+    """
+    根据数据库配置构建 ATTACH SQL 语句
+    
+    用于联邦查询，将外部数据库（MySQL、PostgreSQL、SQLite）
+    附加到 DuckDB 中进行跨数据库查询。
+    
+    Args:
+        alias: SQL 中使用的数据库别名
+        db_config: 数据库连接配置，包含 type, host, user/username, password, database, port 等字段
+        
+    Returns:
+        ATTACH SQL 语句
+        
+    Raises:
+        ValueError: 当数据库类型不支持或缺少必要参数时
+        
+    Examples:
+        >>> config = {'type': 'mysql', 'host': 'localhost', 'user': 'root', 
+        ...           'password': 'pwd', 'database': 'mydb', 'port': 3306}
+        >>> build_attach_sql('mysql_db', config)
+        "ATTACH 'host=localhost user=root password=pwd database=mydb port=3306' AS mysql_db (TYPE mysql)"
+    """
+    db_type = db_config.get('type', '').lower()
+    
+    # 支持 user 和 username 两种参数名称
+    username = db_config.get('user') or db_config.get('username')
+    
+    if db_type == 'mysql':
+        if not username:
+            raise ValueError("MySQL 连接缺少用户名参数 (user 或 username)")
+        # MySQL 连接字符串格式
+        conn_str = f"host={db_config['host']} user={username} password={db_config.get('password', '')} database={db_config['database']}"
+        if db_config.get('port'):
+            conn_str += f" port={db_config['port']}"
+        return f"ATTACH '{conn_str}' AS {alias} (TYPE mysql)"
+    
+    elif db_type in ('postgresql', 'postgres'):
+        if not username:
+            raise ValueError("PostgreSQL 连接缺少用户名参数 (user 或 username)")
+        # PostgreSQL 连接字符串格式
+        conn_str = f"host={db_config['host']} dbname={db_config['database']} user={username} password={db_config.get('password', '')}"
+        if db_config.get('port'):
+            conn_str += f" port={db_config['port']}"
+        return f"ATTACH '{conn_str}' AS {alias} (TYPE postgres)"
+    
+    elif db_type == 'sqlite':
+        # SQLite 使用文件路径
+        return f"ATTACH '{db_config['database']}' AS {alias} (TYPE sqlite)"
+    
+    else:
+        raise ValueError(f"Unsupported database type: {db_type}")
+
+
 def _apply_duckdb_configuration(connection, temp_dir: str):
     """
     自动应用所有DuckDB配置参数

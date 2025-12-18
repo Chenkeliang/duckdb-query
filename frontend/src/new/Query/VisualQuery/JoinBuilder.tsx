@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/new/components/ui/button';
@@ -11,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/new/components/ui/select';
-import { getDuckDBTableDetail } from '@/services/apiClient';
+import { useTableColumns } from '@/new/hooks/useTableColumns';
 import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
 import type { JoinConfig, JoinType } from './QueryBuilder';
 
@@ -53,15 +52,14 @@ export const JoinBuilder: React.FC<JoinBuilderProps> = ({
   // 获取所有表列表
   const { tables } = useDuckDBTables();
 
-  // 获取主表的列信息
-  const { data: mainTableDetail } = useQuery({
-    queryKey: ['duckdb-table-detail', tableName],
-    queryFn: () => getDuckDBTableDetail(tableName!),
-    enabled: !!tableName,
-    staleTime: 5 * 60 * 1000,
-  });
+  // 获取主表的列信息 - 使用统一的 useTableColumns Hook
+  const { columns: rawMainColumns } = useTableColumns(tableName || null);
 
-  const mainColumns = mainTableDetail?.table?.columns || [];
+  // 转换为组件期望的格式
+  const mainColumns = useMemo(() => 
+    (rawMainColumns || []).map(col => ({ column_name: col.name, data_type: col.type })),
+    [rawMainColumns]
+  );
 
   // 过滤掉主表，获取可用的关联表
   const availableTables = useMemo(() => {
@@ -207,15 +205,14 @@ const JoinRow: React.FC<JoinRowProps> = ({
 }) => {
   const { t } = useTranslation('common');
 
-  // 获取目标表的列信息
-  const { data: targetTableDetail } = useQuery({
-    queryKey: ['duckdb-table-detail', join.targetTable],
-    queryFn: () => getDuckDBTableDetail(join.targetTable),
-    enabled: !!join.targetTable,
-    staleTime: 5 * 60 * 1000,
-  });
+  // 获取目标表的列信息 - 使用统一的 useTableColumns Hook
+  const { columns: rawTargetColumns } = useTableColumns(join.targetTable || null);
 
-  const targetColumns = targetTableDetail?.table?.columns || [];
+  // 转换为组件期望的格式
+  const targetColumns = useMemo(() => 
+    (rawTargetColumns || []).map(col => ({ column_name: col.name, data_type: col.type })),
+    [rawTargetColumns]
+  );
 
   // 当目标表变化时，重置目标列
   const handleTargetTableChange = (newTable: string) => {

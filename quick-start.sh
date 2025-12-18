@@ -124,7 +124,7 @@ setup_config() {
   "duckdb_prefer_range_joins": false,
   "duckdb_enable_object_cache": true,
   "duckdb_preserve_insertion_order": false,
-  "duckdb_extensions": ["excel", "json", "parquet"],
+  "duckdb_extensions": ["excel", "json", "parquet", "mysql", "postgres"],
   "pool_min_connections": 2,
   "pool_max_connections": 10,
   "pool_connection_timeout": 30,

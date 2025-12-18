@@ -17,7 +17,7 @@
   "duckdb_enable_object_cache": true,
   "duckdb_preserve_insertion_order": false,
   "duckdb_enable_progress_bar": false,
-  "duckdb_extensions": ["excel", "json", "parquet", "httpfs"],
+  "duckdb_extensions": ["excel", "json", "parquet", "httpfs", "mysql", "postgres"],
   "duckdb_remote_settings": {
     "s3_region": "'cn-hangzhou'",
     "s3_endpoint": "'oss-cn-hangzhou.aliyuncs.com'",

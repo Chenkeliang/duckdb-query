@@ -7,7 +7,7 @@ import { Button } from '@/new/components/ui/button';
 import { Checkbox } from '@/new/components/ui/checkbox';
 import { Input } from '@/new/components/ui/input';
 import { Skeleton } from '@/new/components/ui/skeleton';
-import { getDuckDBTableDetail } from '@/services/apiClient';
+import { useTableColumns } from '@/new/hooks/useTableColumns';
 
 // 列信息类型
 export interface ColumnInfo {
@@ -69,15 +69,14 @@ export const ColumnSelector: React.FC<ColumnSelectorProps> = ({
   const { t } = useTranslation('common');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 获取表详情
-  const { data, isLoading, isError } = useQuery<TableDetailResponse>({
-    queryKey: ['duckdb-table-detail', tableName],
-    queryFn: () => getDuckDBTableDetail(tableName!),
-    enabled: !!tableName,
-    staleTime: 5 * 60 * 1000, // 5 分钟缓存
-  });
+  // 获取表详情 - 使用统一的 useTableColumns Hook
+  const { columns: rawColumns, isLoading, isError } = useTableColumns(tableName || null);
 
-  const columns = data?.table?.columns || [];
+  // 转换为组件期望的格式
+  const columns = useMemo(() => 
+    (rawColumns || []).map(col => ({ column_name: col.name, data_type: col.type })),
+    [rawColumns]
+  );
 
   // 过滤列
   const filteredColumns = useMemo(() => {

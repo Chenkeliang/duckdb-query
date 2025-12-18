@@ -146,6 +146,58 @@ class MultiTableJoin(BaseModel):
     limit: Optional[int] = None  # 限制行数
 
 
+class AttachDatabase(BaseModel):
+    """外部数据库连接信息，用于联邦查询"""
+    
+    alias: str = Field(..., description="SQL 中使用的数据库别名")
+    connection_id: str = Field(..., description="已保存的数据库连接 ID")
+
+
+class FederatedQueryRequest(BaseModel):
+    """联邦查询请求模型
+    
+    用于执行跨数据库的联邦查询，支持 ATTACH 外部数据库后执行 SQL。
+    """
+    
+    sql: str = Field(..., description="SQL 查询语句")
+    attach_databases: Optional[List[AttachDatabase]] = Field(
+        None, description="需要 ATTACH 的外部数据库列表"
+    )
+    is_preview: Optional[bool] = Field(
+        True, description="是否为预览模式，预览模式限制返回行数"
+    )
+    save_as_table: Optional[str] = Field(
+        None, description="将结果保存为 DuckDB 表的表名"
+    )
+    timeout: Optional[int] = Field(
+        30000, description="查询超时时间（毫秒）"
+    )
+
+    @field_validator("sql")
+    @classmethod
+    def validate_sql(cls, value: str):
+        """验证 SQL 不为空"""
+        if not value or not value.strip():
+            raise ValueError("SQL 查询语句不能为空")
+        return value.strip()
+
+
+class FederatedQueryResponse(BaseModel):
+    """联邦查询响应模型"""
+    
+    success: bool = Field(..., description="查询是否成功")
+    columns: List[str] = Field(default_factory=list, description="列名列表")
+    data: List[Dict[str, Any]] = Field(default_factory=list, description="查询结果数据")
+    row_count: int = Field(0, description="返回的行数")
+    execution_time_ms: float = Field(0, description="执行时间（毫秒）")
+    attached_databases: List[str] = Field(
+        default_factory=list, description="成功 ATTACH 的数据库别名列表"
+    )
+    message: str = Field("", description="附加消息")
+    sql_query: Optional[str] = Field(None, description="执行的 SQL 语句")
+    warnings: Optional[List[str]] = Field(None, description="警告信息列表")
+
+
 class QueryRequest(BaseModel):
     sources: List[DataSource]
     joins: List[Join]
@@ -156,6 +208,8 @@ class QueryRequest(BaseModel):
     is_preview: Optional[bool] = (
         True  # 新增字段，用于标记是否为预览查询，默认为True返回1万条
     )
+    # 联邦查询支持：需要 ATTACH 的外部数据库列表
+    attach_databases: Optional[List[AttachDatabase]] = None
 
 
 class ExportFormat(str, Enum):

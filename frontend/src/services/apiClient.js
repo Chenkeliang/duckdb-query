@@ -682,6 +682,118 @@ export const executeDuckDBSQL = async (sql, saveAsTable = null, is_preview = tru
   }
 };
 
+/**
+ * 解析联邦查询错误
+ * @param {Error} error - 错误对象
+ * @returns {{ type: string, message: string, connectionId?: string, connectionName?: string, host?: string }}
+ */
+export const parseFederatedQueryError = (error) => {
+  const detail = error.response?.data?.detail || error.response?.data?.message || error.message || '';
+  const detailStr = typeof detail === 'string' ? detail : JSON.stringify(detail);
+  
+  // 解析 ATTACH 错误
+  if (detailStr.includes('ATTACH') || detailStr.includes('attach')) {
+    const match = detailStr.match(/ATTACH.*?['"]([^'"]+)['"]/i);
+    return {
+      type: 'connection',
+      message: '数据库连接失败',
+      connectionName: match?.[1],
+    };
+  }
+  
+  // 解析认证错误
+  if (detailStr.includes('authentication') || detailStr.includes('password') || 
+      detailStr.includes('Access denied') || detailStr.includes('认证')) {
+    return {
+      type: 'authentication',
+      message: '数据库认证失败，请检查用户名和密码',
+    };
+  }
+  
+  // 解析超时错误
+  if (detailStr.includes('timeout') || detailStr.includes('超时') || 
+      error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+    // 尝试提取主机信息
+    const hostMatch = detailStr.match(/(?:host|主机)[:\s]*['"]?([^'":\s]+)/i);
+    return {
+      type: 'timeout',
+      message: '连接超时，请检查网络或数据库状态',
+      host: hostMatch?.[1],
+    };
+  }
+  
+  // 解析网络错误
+  if (detailStr.includes('ECONNREFUSED') || detailStr.includes('network') ||
+      detailStr.includes('无法连接') || error.code === 'ERR_NETWORK') {
+    return {
+      type: 'network',
+      message: '网络连接失败，请检查数据库服务是否可用',
+    };
+  }
+  
+  // 默认查询错误
+  return {
+    type: 'query',
+    message: detailStr || '查询执行失败',
+  };
+};
+
+/**
+ * 执行联邦查询（支持跨数据库 ATTACH）
+ * @param {Object} options - 查询选项
+ * @param {string} options.sql - SQL 查询语句
+ * @param {Array<{alias: string, connectionId: string}>} [options.attachDatabases] - 需要 ATTACH 的外部数据库列表
+ * @param {boolean} [options.isPreview=true] - 是否为预览模式
+ * @param {string} [options.saveAsTable] - 保存结果为表名
+ * @param {number} [options.timeout=30000] - 请求超时时间（毫秒）
+ * @returns {Promise<Object>} 查询结果
+ */
+export const executeFederatedQuery = async (options) => {
+  const { 
+    sql, 
+    attachDatabases, 
+    isPreview = true, 
+    saveAsTable = null,
+    timeout = 30000 
+  } = options;
+  
+  try {
+    const requestBody = {
+      sql,
+      is_preview: isPreview,
+    };
+    
+    // 添加 attach_databases 参数（如果有外部数据库需要连接）
+    if (attachDatabases && attachDatabases.length > 0) {
+      requestBody.attach_databases = attachDatabases.map(db => ({
+        alias: db.alias,
+        connection_id: db.connectionId,
+      }));
+    }
+    
+    // 添加保存表名（如果需要）
+    if (saveAsTable) {
+      requestBody.save_as_table = saveAsTable;
+    }
+    
+    const response = await apiClient.post('/api/duckdb/federated-query', requestBody, {
+      timeout,
+    });
+    
+    return response.data;
+  } catch (error) {
+    // 解析并增强错误信息
+    const parsedError = parseFederatedQueryError(error);
+    const enhancedError = new Error(parsedError.message);
+    enhancedError.type = parsedError.type;
+    enhancedError.connectionId = parsedError.connectionId;
+    enhancedError.connectionName = parsedError.connectionName;
+    enhancedError.host = parsedError.host;
+    enhancedError.originalError = error;
+    throw enhancedError;
+  }
+};
+
 export const uploadFileToDuckDB = async (file, tableAlias) => {
   try {
     const formData = new FormData();

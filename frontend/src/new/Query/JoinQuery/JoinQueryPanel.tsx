@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle } from 'lucide-react';
+import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2 } from 'lucide-react';
 import { Button } from '@/new/components/ui/button';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
 import { Badge } from '@/new/components/ui/badge';
@@ -11,8 +11,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/new/components/ui/select';
-import { useQueries } from '@tanstack/react-query';
-import { getDuckDBTableDetail } from '@/services/apiClient';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/new/components/ui/tooltip';
+import { executeFederatedQuery, parseFederatedQueryError } from '@/services/apiClient';
+import { useTableColumns } from '@/new/hooks/useTableColumns';
 import type { SelectedTable } from '@/new/types/SelectedTable';
 import { 
   normalizeSelectedTable, 
@@ -22,7 +28,12 @@ import {
   isSameConnection,
   DATABASE_TYPE_ICONS,
 } from '@/new/utils/tableUtils';
-import { getDialectFromSource, quoteIdent, quoteQualifiedTable } from '@/new/utils/sqlUtils';
+import { 
+  quoteIdent, 
+  extractAttachDatabases,
+  formatTableReference,
+  createTableReference,
+} from '@/new/utils/sqlUtils';
 
 
 /**
@@ -97,6 +108,8 @@ interface TableCardProps {
   onColumnToggle: (column: string) => void;
   onRemove: () => void;
   isLoading?: boolean;
+  isError?: boolean;
+  isEmpty?: boolean;
 }
 
 const TableCard: React.FC<TableCardProps> = ({
@@ -107,6 +120,8 @@ const TableCard: React.FC<TableCardProps> = ({
   onColumnToggle,
   onRemove,
   isLoading,
+  isError,
+  isEmpty,
 }) => {
   const { t } = useTranslation('common');
   const displayColumns = columns.slice(0, 6);
@@ -163,6 +178,16 @@ const TableCard: React.FC<TableCardProps> = ({
         {isLoading ? (
           <div className="text-xs text-muted-foreground py-4 text-center">
             {t('common.loading', '加载中...')}
+          </div>
+        ) : isError ? (
+          <div className="text-xs text-error py-4 text-center">
+            <AlertTriangle className="w-4 h-4 mx-auto mb-1" />
+            {t('query.join.columnLoadError', '无法获取列信息')}
+          </div>
+        ) : isEmpty || columns.length === 0 ? (
+          <div className="text-xs text-warning py-4 text-center">
+            <AlertTriangle className="w-4 h-4 mx-auto mb-1" />
+            {t('query.join.noColumns', '无可用列')}
           </div>
         ) : (
           <div className="space-y-0.5 max-h-40 overflow-auto">
@@ -457,52 +482,53 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   // JOIN 配置（表之间的连接）
   const [joinConfigs, setJoinConfigs] = React.useState<JoinConfig[]>([]);
 
-  // 获取每个表的列信息 - 使用 useQueries 避免违反 Rules of Hooks
-  const tableColumnsQueries = useQueries({
-    queries: activeTables.map((table) => {
-      const tableName = getTableName(table);
-      const normalized = normalizeSelectedTable(table);
-      const isExternal = normalized.source === 'external';
-      
-      return {
-        queryKey: ['table-columns', tableName, isExternal ? normalized.connection?.id : 'duckdb'],
-        queryFn: async () => {
-          // TODO: 对于外部表，需要调用不同的 API 获取列信息
-          // 目前只支持 DuckDB 表
-          if (isExternal) {
-            // 外部表暂时返回空列表，需要后端支持
-            return { name: tableName, columns: [] as TableColumn[] };
-          }
-          
-          const response = await getDuckDBTableDetail(tableName);
-          // API 返回格式: { success: true, table: { columns: [{ column_name, data_type }] } }
-          const tableData = response?.table || response;
-          const rawColumns = tableData?.columns || [];
-          // 转换列格式: { column_name, data_type } -> { name, type }
-          const columns: TableColumn[] = rawColumns.map((col: any) => ({
-            name: col.column_name || col.name,
-            type: col.data_type || col.type,
-          }));
-          return { name: tableName, columns };
-        },
-        enabled: !!tableName,
-        staleTime: 5 * 60 * 1000,
-      };
-    }),
-  });
+  // 获取每个表的列信息 - 使用 useTableColumns Hook
+  // 为每个表单独调用 Hook（最多支持 10 个表）
+  const table0Columns = useTableColumns(activeTables[0] || null);
+  const table1Columns = useTableColumns(activeTables[1] || null);
+  const table2Columns = useTableColumns(activeTables[2] || null);
+  const table3Columns = useTableColumns(activeTables[3] || null);
+  const table4Columns = useTableColumns(activeTables[4] || null);
+  const table5Columns = useTableColumns(activeTables[5] || null);
+  const table6Columns = useTableColumns(activeTables[6] || null);
+  const table7Columns = useTableColumns(activeTables[7] || null);
+  const table8Columns = useTableColumns(activeTables[8] || null);
+  const table9Columns = useTableColumns(activeTables[9] || null);
+  
+  // 组合所有结果
+  const tableColumnsResults = [
+    table0Columns,
+    table1Columns,
+    table2Columns,
+    table3Columns,
+    table4Columns,
+    table5Columns,
+    table6Columns,
+    table7Columns,
+    table8Columns,
+    table9Columns,
+  ].slice(0, activeTables.length);
+
+  // 计算加载和错误状态
+  const isLoadingColumns = tableColumnsResults.some((result) => result.isLoading);
+  const hasColumnErrors = tableColumnsResults.some((result) => result.isError);
+  const columnErrorMessages = tableColumnsResults
+    .filter((result) => result.isError && result.error)
+    .map((result) => result.error?.message || '未知错误');
 
   // 构建表列映射 - 使用稳定的 key 来避免无限循环
-  const tableColumnsMapKey = tableColumnsQueries
-    .map((q) => q.data?.name || '')
+  const tableColumnsMapKey = tableColumnsResults
+    .map((r, i) => activeTables[i] ? `${getTableName(activeTables[i])}:${r.columns.length}` : '')
     .filter(Boolean)
-    .sort()
     .join(',');
   
   const tableColumnsMap = React.useMemo(() => {
     const map: Record<string, TableColumn[]> = {};
-    tableColumnsQueries.forEach((query) => {
-      if (query.data) {
-        map[query.data.name] = query.data.columns;
+    activeTables.forEach((table, index) => {
+      const tableName = getTableName(table);
+      const result = tableColumnsResults[index];
+      if (tableName && result?.columns) {
+        map[tableName] = result.columns;
       }
     });
     return map;
@@ -636,28 +662,41 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     setJoinConfigs([]);
   };
 
+  // 计算 attach_databases（用于联邦查询）
+  const attachDatabases = React.useMemo(() => {
+    return extractAttachDatabases(activeTables);
+  }, [activeTables]);
+
   // 检查是否可以执行
+  // 现在支持跨数据库联邦查询
   const canExecute = React.useMemo(() => {
     if (activeTables.length < 2) return false;
-    if (sourceAnalysis.mixed) return false;
-    // Join 面板仅支持 DuckDB 表；外部表需先导入到 DuckDB
-    if (sourceAnalysis.hasExternal) return false;
+    // 移除了 mixed 和 hasExternal 的限制，现在支持联邦查询
     return true;
-  }, [activeTables.length, sourceAnalysis]);
+  }, [activeTables.length]);
 
   // 生成 SQL
   const generateSQL = (): string | null => {
     if (activeTables.length === 0) return null;
 
-    const dialect = getDialectFromSource(tableSource);
+    // 联邦查询使用 DuckDB 方言
+    const dialect = 'duckdb';
 
-    // 获取表名（支持外部表的 schema）
-    const getFullTableName = (table: SelectedTable): string => {
-      const normalized = normalizeSelectedTable(table);
-      return quoteQualifiedTable(
-        { name: normalized.name, schema: normalized.schema },
-        dialect
-      );
+    // 获取表引用（支持联邦查询的 alias.schema.table 格式）
+    const getFullTableRef = (table: SelectedTable): string => {
+      const ref = createTableReference(table, attachDatabases);
+      return formatTableReference(ref, dialect);
+    };
+
+    // 获取表别名（用于列引用）
+    const getTableAlias = (table: SelectedTable): string => {
+      const ref = createTableReference(table, attachDatabases);
+      // 对于外部表，使用数据库别名；对于 DuckDB 表，使用表名
+      if (ref.isExternal && ref.alias) {
+        // 外部表：使用 alias.table 或 alias.schema.table 的最后部分作为别名
+        return ref.name;
+      }
+      return ref.name;
     };
 
     const parts: string[] = [];
@@ -666,9 +705,10 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     const selectParts: string[] = [];
     activeTables.forEach((table) => {
       const tableName = getTableName(table);
+      const tableAlias = getTableAlias(table);
       const cols = selectedColumns[tableName] || [];
       cols.forEach((col) => {
-        selectParts.push(`${quoteIdent(tableName, dialect)}.${quoteIdent(col, dialect)}`);
+        selectParts.push(`${quoteIdent(tableAlias, dialect)}.${quoteIdent(col, dialect)}`);
       });
     });
     if (selectParts.length === 0) {
@@ -678,14 +718,18 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     }
 
     // FROM - 主表
-    parts.push(`FROM ${getFullTableName(activeTables[0])}`);
+    const firstTableRef = getFullTableRef(activeTables[0]);
+    const firstTableAlias = getTableAlias(activeTables[0]);
+    parts.push(`FROM ${firstTableRef} AS ${quoteIdent(firstTableAlias, dialect)}`);
 
     // JOIN - 其他表
     for (let i = 1; i < activeTables.length; i++) {
       const rawConfig = joinConfigs[i - 1];
       const leftTableName = getTableName(activeTables[i - 1]);
       const rightTableName = getTableName(activeTables[i]);
-      const rightFullName = getFullTableName(activeTables[i]);
+      const rightTableRef = getFullTableRef(activeTables[i]);
+      const leftTableAlias = getTableAlias(activeTables[i - 1]);
+      const rightTableAlias = getTableAlias(activeTables[i]);
       
       // 如果没有配置，使用默认的 LEFT JOIN
       const config = rawConfig ? normalizeJoinConfig(rawConfig) : {
@@ -706,14 +750,14 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         const onClause = validConditions
           .map(
             (c) =>
-              `${quoteIdent(leftTableName, dialect)}.${quoteIdent(c.leftColumn, dialect)} ${c.operator} ${quoteIdent(rightTableName, dialect)}.${quoteIdent(c.rightColumn, dialect)}`
+              `${quoteIdent(leftTableAlias, dialect)}.${quoteIdent(c.leftColumn, dialect)} ${c.operator} ${quoteIdent(rightTableAlias, dialect)}.${quoteIdent(c.rightColumn, dialect)}`
           )
           .join(' AND ');
-        parts.push(`${config.joinType} ${rightFullName} ON ${onClause}`);
+        parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${onClause}`);
       } else {
         // 即使没有有效条件，也生成 JOIN 子句（使用 CROSS JOIN 或带空条件的 JOIN）
         // 这样用户可以看到 JOIN 结构并手动选择条件
-        parts.push(`${config.joinType} ${rightFullName} ON 1=1 /* 请选择关联条件 */`);
+        parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* 请选择关联条件 */`);
       }
     }
 
@@ -721,14 +765,54 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     return parts.join('\n');
   };
 
+  // 联邦查询错误状态
+  const [federatedError, setFederatedError] = React.useState<{
+    type: string;
+    message: string;
+    connectionName?: string;
+  } | null>(null);
+
   // 执行查询
   const handleExecute = async () => {
     const sql = generateSQL();
-    if (!sql || !onExecute || !canExecute) return;
+    if (!sql || !canExecute) return;
 
     setIsExecuting(true);
+    setFederatedError(null);
+
     try {
-      await onExecute(sql, tableSource);
+      // 如果有外部表，使用联邦查询 API
+      if (attachDatabases.length > 0) {
+        const result = await executeFederatedQuery({
+          sql,
+          attachDatabases,
+          isPreview: true,
+          timeout: 30000,
+        });
+        
+        // 通过 onExecute 回调传递结果
+        if (onExecute) {
+          // 将结果转换为 SQL 执行的格式
+          await onExecute(sql, {
+            type: 'federated',
+            attachDatabases,
+            result,
+          } as any);
+        }
+      } else {
+        // 纯 DuckDB 查询，使用原有逻辑
+        if (onExecute) {
+          await onExecute(sql, tableSource);
+        }
+      }
+    } catch (error) {
+      // 解析联邦查询错误
+      const parsedError = parseFederatedQueryError(error as Error);
+      setFederatedError({
+        type: parsedError.type,
+        message: parsedError.message,
+        connectionName: parsedError.connectionName,
+      });
     } finally {
       setIsExecuting(false);
     }
@@ -746,12 +830,28 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           <span className="text-xs text-muted-foreground px-2 py-0.5 bg-muted rounded">
             {t('query.join.hint', '双击左侧数据源添加表')}
           </span>
-          {/* 外部数据库指示器 */}
-          {sourceAnalysis.hasExternal && sourceAnalysis.currentSource && (
-            <Badge variant="outline" className="text-warning border-warning/50">
-              {DATABASE_TYPE_ICONS[sourceAnalysis.currentSource.type] || '📊'}{' '}
-              {sourceAnalysis.currentSource.name}
-            </Badge>
+          {/* 附加数据库指示器 */}
+          {attachDatabases.length > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-primary border-primary/50 cursor-help">
+                    <Link2 className="w-3 h-3 mr-1" />
+                    {t('query.join.attachedDatabases', '{{count}} 个外部数据库', { count: attachDatabases.length })}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <div className="text-xs space-y-1">
+                    <div className="font-medium mb-1">{t('query.join.attachedDatabasesTitle', '将连接的数据库:')}</div>
+                    {attachDatabases.map((db) => (
+                      <div key={db.connectionId} className="flex items-center gap-2">
+                        <span className="text-muted-foreground">{db.alias}</span>
+                      </div>
+                    ))}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -779,14 +879,41 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
 
       {/* 内容区域 */}
       <div className="flex-1 overflow-auto p-6">
-        {/* 外部表不支持提示 */}
-        {sourceAnalysis.hasExternal && (
+        {/* 联邦查询错误提示 */}
+        {federatedError && (
+          <Alert className="mb-4 border-error/50 bg-error/10">
+            <AlertTriangle className="h-4 w-4 text-error" />
+            <AlertDescription className="text-error">
+              {federatedError.connectionName 
+                ? t('query.join.federatedError', '连接 {{name}} 失败: {{message}}', {
+                    name: federatedError.connectionName,
+                    message: federatedError.message,
+                  })
+                : federatedError.message
+              }
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* 列信息加载错误提示 */}
+        {hasColumnErrors && columnErrorMessages.length > 0 && (
           <Alert className="mb-4 border-warning/50 bg-warning/10">
             <AlertTriangle className="h-4 w-4 text-warning" />
             <AlertDescription className="text-warning">
+              {t('query.join.columnLoadWarning', '部分表的列信息加载失败，可能影响查询结果。')}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* 联邦查询提示 */}
+        {sourceAnalysis.hasExternal && attachDatabases.length > 0 && (
+          <Alert className="mb-4 border-primary/50 bg-primary/10">
+            <Link2 className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-primary">
               {t(
-                'query.join.externalNotSupported',
-                '外部数据库表暂不支持 Join 操作。请先将外部表导入到 DuckDB 后再进行关联查询。'
+                'query.join.federatedQueryInfo',
+                '此查询将连接 {{count}} 个外部数据库进行联邦查询。',
+                { count: attachDatabases.length }
               )}
             </AlertDescription>
           </Alert>
@@ -799,7 +926,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           ) : (
             activeTables.map((table, index) => {
               const tableName = getTableName(table);
-              const query = tableColumnsQueries[index];
+              const columnResult = tableColumnsResults[index];
               const columns = tableColumnsMap[tableName] || [];
 
               return (
@@ -811,7 +938,9 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
                     selectedColumns={selectedColumns[tableName] || []}
                     onColumnToggle={(col) => handleColumnToggle(tableName, col)}
                     onRemove={() => handleRemoveTableByName(tableName, table)}
-                    isLoading={query?.isLoading}
+                    isLoading={columnResult?.isLoading}
+                    isError={columnResult?.isError}
+                    isEmpty={columnResult?.isEmpty}
                   />
                   {/* JOIN 连接器 */}
                   {index < activeTables.length - 1 && (

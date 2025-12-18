@@ -348,7 +348,14 @@
       "emptyDescription": "双击左侧数据源面板中的表来添加到关联查询。第一个添加的表将作为主表。",
       "clear": "清空",
       "column": "列",
-      "externalNotSupported": "外部数据库表暂不支持 Join 操作。请先将外部表导入到 DuckDB 后再进行关联查询。"
+      "externalNotSupported": "外部数据库表暂不支持 Join 操作。请先将外部表导入到 DuckDB 后再进行关联查询。",
+      "attachedDatabases": "{{count}} 个外部数据库",
+      "attachedDatabasesTitle": "将连接的数据库:",
+      "federatedQueryInfo": "此查询将连接 {{count}} 个外部数据库进行联邦查询。",
+      "federatedError": "连接 {{name}} 失败: {{message}}",
+      "addCondition": "添加条件",
+      "removeCondition": "移除条件",
+      "externalTable": "外部表"
     },
     "set": {
       "title": "集合操作",
@@ -403,6 +410,16 @@
       "set": "集合操作",
       "pivot": "透视表",
       "visual": "可视化查询"
+    },
+    "federated": {
+      "attachedDatabases": "{{count}} 个外部数据库",
+      "attachedDatabasesTitle": "将连接的数据库:",
+      "queryInfo": "此查询将连接 {{count}} 个外部数据库进行联邦查询。",
+      "error": "连接 {{name}} 失败: {{message}}",
+      "connectionError": "数据库连接失败",
+      "authError": "数据库认证失败，请检查用户名和密码",
+      "timeoutError": "连接超时，请检查网络或数据库状态",
+      "networkError": "网络连接失败，请检查数据库服务器状态"
     }
   },
   "page": {
