@@ -23,6 +23,7 @@ import {
   isSameTable,
 } from '@/new/utils/tableUtils';
 import { getDialectFromSource, quoteIdent, quoteQualifiedTable } from '@/new/utils/sqlUtils';
+import { SQLHighlight } from '@/new/components/SQLHighlight';
 
 /**
  * 透视表面板
@@ -652,9 +653,7 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
           {sql && (
             <div className="bg-muted/30 border border-border rounded-xl p-6">
               <h3 className="text-base font-semibold mb-4">{t('query.sqlPreview', 'SQL 预览')}</h3>
-              <pre className="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto">
-                {sql}
-              </pre>
+              <SQLHighlight sql={sql} minHeight="120px" maxHeight="300px" />
             </div>
           )}
         </div>

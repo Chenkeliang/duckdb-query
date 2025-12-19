@@ -18,7 +18,13 @@ import { deleteDuckDBTableEnhanced } from "@/services/apiClient";
 import { invalidateAfterTableDelete } from "@/new/utils/cacheInvalidation";
 import type { SelectedTable } from "@/new/types/SelectedTable";
 import { normalizeSelectedTable } from "@/new/utils/tableUtils";
-import { getDialectFromSource, getSourceFromSelectedTable, quoteQualifiedTable } from "@/new/utils/sqlUtils";
+import { 
+  getSourceFromSelectedTable, 
+  quoteQualifiedTable, 
+  generateExternalTableReference,
+  type AttachDatabase,
+} from "@/new/utils/sqlUtils";
+import type { TableSource } from "@/new/hooks/useQueryWorkspace";
 
 interface QueryWorkspaceProps {
   defaultLayout?: number[];
@@ -42,16 +48,26 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
   } = useQueryWorkspace();
 
   // 预览表数据
+  // 统一使用 ATTACH 模式：外部表生成带别名前缀的 SQL，通过联邦查询 API 执行
   const handlePreview = React.useCallback(
     async (table: SelectedTable) => {
-      const source = getSourceFromSelectedTable(table);
-      const dialect = getDialectFromSource(source);
-      const normalized = normalizeSelectedTable(table);
-
-      const sql = `SELECT * FROM ${quoteQualifiedTable(
-        { name: normalized.name, schema: normalized.schema },
-        dialect
-      )}`;
+      const { qualifiedName, attachDatabase } = generateExternalTableReference(table);
+      
+      const sql = `SELECT * FROM ${qualifiedName} LIMIT 10000`;
+      
+      // 构建 TableSource
+      let source: TableSource;
+      if (attachDatabase) {
+        // 外部表：使用联邦查询模式
+        source = {
+          type: 'federated',
+          attachDatabases: [attachDatabase],
+        };
+      } else {
+        // DuckDB 本地表
+        source = { type: 'duckdb' };
+      }
+      
       try {
         await handleQueryExecute(sql, source);
       } catch (error) {
@@ -63,25 +79,28 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
 
   const handleImport = React.useCallback(
     async (table: SelectedTable) => {
-      const source = getSourceFromSelectedTable(table);
-      if (source.type !== "external") return;
+      const normalized = normalizeSelectedTable(table);
+      
+      // 只有外部表才能导入
+      if (normalized.source !== "external" || !normalized.connection) {
+        return;
+      }
 
-      if (!source.connectionId) {
+      const { qualifiedName, attachDatabase } = generateExternalTableReference(table);
+      
+      if (!attachDatabase) {
         toast.error(t("query.import.missingConnection", "缺少外部数据库连接信息"));
         return;
       }
 
-      if (source.databaseType !== "mysql") {
-        toast.error(t("query.import.mysqlOnly", "目前仅支持从 MySQL 导入到 DuckDB"));
-        return;
-      }
-
-      const dialect = getDialectFromSource(source);
-      const normalized = normalizeSelectedTable(table);
-      const sql = `SELECT * FROM ${quoteQualifiedTable(
-        { name: normalized.name, schema: normalized.schema },
-        dialect
-      )}`;
+      const sql = `SELECT * FROM ${qualifiedName} LIMIT 10000`;
+      
+      // 使用联邦查询模式
+      const source: TableSource = {
+        type: 'federated',
+        connectionId: attachDatabase.connectionId,
+        attachDatabases: [attachDatabase],
+      };
 
       try {
         await handleQueryExecute(sql, source);

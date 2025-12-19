@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DuckQuery High Art (V12)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #000;
+            --text: #fff;
+        }
+
+        body {
+            font-family: 'Syncopate', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .header {
+            padding: 100px 20px 60px;
+            text-align: center;
+            max-width: 800px;
+        }
+
+        h1 {
+            font-size: 4rem;
+            font-weight: 700;
+            margin: 0;
+            letter-spacing: -2px;
+            background: linear-gradient(to right, #fff, #666);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 100px;
+            width: 100%;
+            max-width: 1200px;
+            padding: 60px;
+        }
+
+        .art-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .canvas {
+            width: 250px;
+            height: 250px;
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .canvas svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+        }
+
+        .title {
+            font-weight: 700;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+
+        .desc {
+            font-family: 'Helvetica Neue', sans-serif;
+            font-size: 0.9rem;
+            color: #888;
+            max-width: 250px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>UNBOUND V12</h1>
+    </div>
+
+    <div class="grid">
+
+        <!-- Concept 46: The Interference Pattern -->
+        <div class="art-block">
+            <div class="canvas">
+                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="wave" x1="0" y1="0" x2="100" y2="100">
+                            <stop offset="0" stop-color="#fff" stop-opacity="0.8" />
+                            <stop offset="1" stop-color="#fff" stop-opacity="0.1" />
+                        </linearGradient>
+                    </defs>
+                    <!-- Moiré pattern / Wave interference -->
+                    <path d="M 10 50 Q 50 10 90 50 Q 50 90 10 50" stroke="url(#wave)" stroke-width="0.5" fill="none" />
+                    <path d="M 12 50 Q 50 12 88 50 Q 50 88 12 50" stroke="url(#wave)" stroke-width="0.5" fill="none" />
+                    <path d="M 15 50 Q 50 15 85 50 Q 50 85 15 50" stroke="url(#wave)" stroke-width="0.5" fill="none" />
+                    <path d="M 18 50 Q 50 18 82 50 Q 50 82 18 50" stroke="url(#wave)" stroke-width="0.5" fill="none" />
+                    <path d="M 21 50 Q 50 21 79 50 Q 50 79 21 50" stroke="url(#wave)" stroke-width="0.5" fill="none" />
+
+                    <!-- Vertical Interference -->
+                    <line x1="50" y1="10" x2="50" y2="90" stroke="#f59e0b" stroke-width="2" />
+                    <circle cx="50" cy="50" r="4" fill="#fff" />
+                </svg>
+            </div>
+            <div class="title">The Signal</div>
+            <div class="desc">A visualization of order emerging from chaos. The vertical line of Truth cutting through
+                the waves of Data.</div>
+        </div>
+
+        <!-- Concept 47: The Particle Cloud -->
+        <div class="art-block">
+            <div class="canvas">
+                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Random distribution of particles forming a vague Q shape -->
+                    <circle cx="40" cy="30" r="2" fill="#3b82f6" />
+                    <circle cx="60" cy="35" r="3" fill="#3b82f6" />
+                    <circle cx="30" cy="50" r="1" fill="#3b82f6" />
+                    <circle cx="70" cy="50" r="2" fill="#3b82f6" />
+                    <circle cx="50" cy="70" r="4" fill="#3b82f6" />
+                    <circle cx="45" cy="45" r="1.5" fill="#3b82f6" />
+                    <circle cx="55" cy="55" r="2" fill="#3b82f6" />
+                    <circle cx="25" cy="40" r="2" fill="#3b82f6" />
+                    <circle cx="75" cy="60" r="1" fill="#3b82f6" />
+
+                    <!-- The "Duck" Eye as the Anchor -->
+                    <circle cx="45" cy="35" r="4" fill="#fff" filter="drop-shadow(0 0 5px white)" />
+
+                    <!-- Connecting lines -->
+                    <path d="M40 30 L60 35 L70 50 L50 70 L30 50 L40 30" stroke="#3b82f6" stroke-width="0.5"
+                        opacity="0.5" />
+                </svg>
+            </div>
+            <div class="title">The Nebula</div>
+            <div class="desc">No lines, only points. The logo only exists when your brain connects them. The ultimate
+                Federated Query metaphor.</div>
+        </div>
+
+        <!-- Concept 48: The Quantum Superposition -->
+        <div class="art-block">
+            <div class="canvas">
+                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Two shapes occupying the same space -->
+                    <rect x="30" y="30" width="40" height="40" stroke="#f59e0b" stroke-width="2" fill="none"
+                        transform="rotate(45 50 50)" />
+                    <circle cx="50" cy="50" r="25" stroke="#3b82f6" stroke-width="2" fill="none" />
+
+                    <!-- Glitch effect -->
+                    <path d="M 20 50 H 80" stroke="#fff" stroke-width="4" stroke-dasharray="5,5" opacity="0.5" />
+                </svg>
+            </div>
+            <div class="title">The Superposition</div>
+            <div class="desc">Square and Circle. Orange and Blue. Duck and Machine. Existing simultaneously.</div>
+        </div>
+
+        <!-- Concept 49: The Neural Eye -->
+        <div class="art-block">
+            <div class="canvas">
+                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- An Eye made of circuitry -->
+                    <path d="M 10 50 Q 50 10 90 50 Q 50 90 10 50 Z" stroke="#333" stroke-width="1" fill="none" />
+
+                    <!-- Iris is a data radial -->
+                    <path d="M 50 50 L 50 30" stroke="#fff" stroke-width="2" />
+                    <path d="M 50 50 L 65 40" stroke="#fff" stroke-width="2" />
+                    <path d="M 50 50 L 60 65" stroke="#fff" stroke-width="2" />
+                    <path d="M 50 50 L 35 60" stroke="#fff" stroke-width="2" />
+                    <path d="M 50 50 L 35 40" stroke="#fff" stroke-width="2" />
+
+                    <circle cx="50" cy="50" r="5" fill="#f59e0b" />
+                </svg>
+            </div>
+            <div class="title">The Watcher</div>
+            <div class="desc">It's looking back at you. The "Eye" of the query engine that sees all data. Minimalist,
+                slightly unsettling, powerful.</div>
+        </div>
+
+    </div>
+</body>
+
+</html>

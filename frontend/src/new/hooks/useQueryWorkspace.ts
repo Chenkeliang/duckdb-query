@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
-import { executeDuckDBSQL, executeExternalSQL, executeFederatedQuery } from "@/services/apiClient";
+import { executeDuckDBSQL, executeFederatedQuery } from "@/services/apiClient";
 import { toast } from "sonner";
 import type { 
   SelectedTable, 
@@ -226,6 +226,9 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   }, []);
 
   // 查询执行处理
+  // 统一使用两种模式：
+  // 1. DuckDB 本地查询：直接执行
+  // 2. 联邦查询（包括外部表）：通过 ATTACH 机制执行
   const handleQueryExecute = useCallback(
     async (sql: string, source?: TableSource) => {
       // 默认为 DuckDB 数据源
@@ -242,15 +245,26 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       try {
         let response: { data?: unknown[]; columns?: string[]; execTime?: number; execution_time_ms?: number };
         
-        if (querySource.type === 'federated') {
-          // 联邦查询（混合 DuckDB 和外部数据库）
-          if (!querySource.attachDatabases || querySource.attachDatabases.length === 0) {
+        if (querySource.type === 'federated' || querySource.type === 'external') {
+          // 联邦查询（包括单外部表查询，统一使用 ATTACH 模式）
+          const attachDatabases = querySource.attachDatabases || [];
+          
+          // 如果是旧的 external 类型但没有 attachDatabases，尝试构建
+          if (attachDatabases.length === 0 && querySource.connectionId) {
+            attachDatabases.push({
+              alias: querySource.connectionName || `db_${querySource.connectionId}`,
+              connectionId: querySource.connectionId,
+            });
+          }
+          
+          if (attachDatabases.length === 0) {
             throw new Error('Federated query requires attach databases');
           }
+          
           const startTime = Date.now();
           const result = await executeFederatedQuery({
             sql,
-            attachDatabases: querySource.attachDatabases,
+            attachDatabases,
             isPreview: false,
           }) as { data?: unknown[]; columns?: string[] };
           const execTime = Date.now() - startTime;
@@ -259,24 +273,8 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
             columns: result.columns || [],
             execTime,
           };
-        } else if (querySource.type === 'external') {
-          // 外部数据库查询
-          if (!querySource.connectionId) {
-            throw new Error('External query requires a connection ID');
-          }
-          const startTime = Date.now();
-          const result = await executeExternalSQL(sql, {
-            id: querySource.connectionId,
-            type: querySource.databaseType || 'mysql',
-          });
-          const execTime = Date.now() - startTime;
-          response = {
-            data: result.data || [],
-            columns: result.columns || [],
-            execTime,
-          };
         } else {
-          // DuckDB 查询
+          // DuckDB 本地查询
           response = await duckdbMutation.mutateAsync(sql);
         }
         

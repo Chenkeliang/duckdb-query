@@ -426,7 +426,7 @@ describe('useSQLEditor', () => {
       expect(result.current.sql).toContain('WHERE');
     });
 
-    it('formatSQL 应该添加换行', () => {
+    it('formatSQL 应该正确处理关键字', () => {
       const { result } = renderHook(
         () => useSQLEditor({ initialSQL: 'select * from users where id = 1 order by name' }),
         { wrapper: createWrapper() }
@@ -436,8 +436,47 @@ describe('useSQLEditor', () => {
         result.current.formatSQL();
       });
 
-      // 应该有换行
-      expect(result.current.sql).toContain('\n');
+      // 关键字应该大写
+      expect(result.current.sql).toContain('SELECT');
+      expect(result.current.sql).toContain('FROM');
+      expect(result.current.sql).toContain('WHERE');
+      expect(result.current.sql).toContain('ORDER');
+      expect(result.current.sql).toContain('BY');
+    });
+
+    it('formatSQL 不应该格式化注释中的关键字', () => {
+      const { result } = renderHook(
+        () => useSQLEditor({ initialSQL: 'select * from users -- 在 join 查询面板中执行' }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.formatSQL();
+      });
+
+      // SQL 关键字应该大写
+      expect(result.current.sql).toContain('SELECT');
+      expect(result.current.sql).toContain('FROM');
+      // 注释中的 join 应该保持小写
+      expect(result.current.sql).toContain('-- 在 join 查询面板中执行');
+    });
+
+    it('formatSQL 不应该格式化字符串中的关键字', () => {
+      const { result } = renderHook(
+        () => useSQLEditor({ initialSQL: "select * from users where name = 'select from where'" }),
+        { wrapper: createWrapper() }
+      );
+
+      act(() => {
+        result.current.formatSQL();
+      });
+
+      // SQL 关键字应该大写
+      expect(result.current.sql).toContain('SELECT');
+      expect(result.current.sql).toContain('FROM');
+      expect(result.current.sql).toContain('WHERE');
+      // 字符串中的关键字应该保持原样
+      expect(result.current.sql).toContain("'select from where'");
     });
   });
 

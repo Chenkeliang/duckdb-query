@@ -3,7 +3,7 @@
  * 基于数据自动生成列定义
  */
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import type { ColDef, ValueFormatterParams, ICellRendererParams } from 'ag-grid-community';
 import { useColumnTypeDetection, type ColumnTypeMap, type ColumnType } from './useColumnTypeDetection';
 import { CustomHeaderComponent } from '../CustomHeaderComponent';
@@ -105,22 +105,23 @@ function dateFormatter(params: ValueFormatterParams): string {
 }
 
 /**
- * 布尔值渲染器 - 使用 AG Grid 内置类名避免硬编码颜色
+ * 布尔值渲染器 - React 组件版本
+ * 使用 AG Grid 内置类名避免硬编码颜色
  */
-function booleanRenderer(params: ICellRendererParams): string {
+const booleanRenderer = (params: ICellRendererParams): React.ReactElement => {
   if (params.value === null || params.value === undefined) {
-    return '<span class="ag-cell-null">NULL</span>';
+    return React.createElement('span', { className: 'ag-cell-null' }, 'NULL');
   }
   
   const boolValue = typeof params.value === 'boolean'
     ? params.value
     : ['true', 'yes', '1', 't', 'y', '是'].includes(String(params.value).toLowerCase());
   
-  // 使用 AG Grid 内置类名，避免 inline style 和硬编码颜色
-  return boolValue 
-    ? '<span class="ag-icon ag-icon-tick"></span>'
-    : '<span class="ag-icon ag-icon-cross"></span>';
-}
+  // 使用 AG Grid 内置图标类名
+  const iconClass = boolValue ? 'ag-icon ag-icon-tick' : 'ag-icon ag-icon-cross';
+  
+  return React.createElement('span', { className: iconClass });
+};
 
 /**
  * 数值比较器（用于排序）

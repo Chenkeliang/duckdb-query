@@ -15,6 +15,7 @@ import {
   DATABASE_TYPE_ICONS,
 } from '@/new/utils/tableUtils';
 import { getDialectFromSource, quoteIdent, quoteQualifiedTable } from '@/new/utils/sqlUtils';
+import { SQLHighlight } from '@/new/components/SQLHighlight';
 
 /**
  * 集合操作面板 - 按照 Demo 设计重构
@@ -631,9 +632,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
                 {t('common.copy', '复制')}
               </button>
             </div>
-            <pre className="bg-muted/30 border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap">
-              {sql}
-            </pre>
+            <SQLHighlight sql={sql} minHeight="120px" maxHeight="300px" />
           </div>
         )}
       </div>

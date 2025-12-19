@@ -1,9 +1,15 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2 } from 'lucide-react';
+import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns } from 'lucide-react';
 import { Button } from '@/new/components/ui/button';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
 import { Badge } from '@/new/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/new/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -17,8 +23,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/new/components/ui/tooltip';
-import { executeFederatedQuery, parseFederatedQueryError } from '@/services/apiClient';
+import { parseFederatedQueryError } from '@/services/apiClient';
 import { useTableColumns } from '@/new/hooks/useTableColumns';
+import { useAppConfig } from '@/new/hooks/useAppConfig';
+import { useTypeConflict, type ColumnPair } from '@/new/hooks/useTypeConflict';
+import { TypeConflictDialog } from '@/new/Query/components/TypeConflictDialog';
+import { SQLHighlight } from '@/new/components/SQLHighlight';
+import { generateConflictKey } from '@/new/utils/duckdbTypes';
 import type { SelectedTable } from '@/new/types/SelectedTable';
 import { 
   normalizeSelectedTable, 
@@ -124,6 +135,7 @@ const TableCard: React.FC<TableCardProps> = ({
   isEmpty,
 }) => {
   const { t } = useTranslation('common');
+  const [showAllColumnsDialog, setShowAllColumnsDialog] = React.useState(false);
   const displayColumns = columns.slice(0, 6);
   const moreCount = columns.length - 6;
   
@@ -134,87 +146,173 @@ const TableCard: React.FC<TableCardProps> = ({
     ? DATABASE_TYPE_ICONS[normalized.connection.type] || '📊'
     : null;
 
-  return (
-    <div className={`bg-surface border rounded-xl shrink-0 min-w-64 max-w-72 ${isExternal ? 'border-warning/50' : 'border-border'}`}>
-      {/* 头部 */}
-      <div className="p-3 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {isExternal ? (
-            <span className="text-sm">{dbIcon}</span>
-          ) : (
-            <Table className={`w-4 h-4 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
-          )}
-          <span className="font-medium text-sm truncate">{tableName}</span>
-          {isPrimary && (
-            <span className="text-xs px-1.5 py-0.5 bg-primary/20 text-primary rounded">
-              {t('query.join.primaryTable', '主表')}
-            </span>
-          )}
-        </div>
-        <button
-          onClick={onRemove}
-          className="text-muted-foreground hover:text-error p-1 rounded hover:bg-error/10"
-          title={t('query.join.remove', '移除')}
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
+  // 全选/取消全选
+  const handleSelectAll = () => {
+    const allSelected = columns.every((col) => selectedColumns.includes(col.name));
+    if (allSelected) {
+      // 取消全选
+      columns.forEach((col) => {
+        if (selectedColumns.includes(col.name)) {
+          onColumnToggle(col.name);
+        }
+      });
+    } else {
+      // 全选
+      columns.forEach((col) => {
+        if (!selectedColumns.includes(col.name)) {
+          onColumnToggle(col.name);
+        }
+      });
+    }
+  };
 
-      {/* 列列表 */}
-      <div className="p-3">
-        <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-          {isExternal ? (
-            <>
-              <span>{dbIcon}</span>
-              <span>{normalized.connection?.name || t('query.join.externalTable', '外部表')}</span>
-            </>
-          ) : (
-            <>
-              <Database className="w-3 h-3" />
-              {t('query.join.duckdbTable', 'DuckDB 表')}
-            </>
-          )}
-        </div>
-        {isLoading ? (
-          <div className="text-xs text-muted-foreground py-4 text-center">
-            {t('common.loading', '加载中...')}
-          </div>
-        ) : isError ? (
-          <div className="text-xs text-error py-4 text-center">
-            <AlertTriangle className="w-4 h-4 mx-auto mb-1" />
-            {t('query.join.columnLoadError', '无法获取列信息')}
-          </div>
-        ) : isEmpty || columns.length === 0 ? (
-          <div className="text-xs text-warning py-4 text-center">
-            <AlertTriangle className="w-4 h-4 mx-auto mb-1" />
-            {t('query.join.noColumns', '无可用列')}
-          </div>
-        ) : (
-          <div className="space-y-0.5 max-h-40 overflow-auto">
-            {displayColumns.map((col) => (
-              <label
-                key={col.name}
-                className="flex items-center gap-2 text-xs px-2 py-1 rounded hover:bg-muted/50 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  className="accent-primary w-3 h-3"
-                  checked={selectedColumns.includes(col.name)}
-                  onChange={() => onColumnToggle(col.name)}
-                />
-                <span className="flex-1 truncate">{col.name}</span>
-                <span className="text-muted-foreground text-xs">{col.type}</span>
-              </label>
-            ))}
-            {moreCount > 0 && (
-              <div className="text-xs text-muted-foreground text-center py-1">
-                +{moreCount} {t('query.join.moreColumns', '更多字段')}
-              </div>
+  const allSelected = columns.length > 0 && columns.every((col) => selectedColumns.includes(col.name));
+  const someSelected = columns.some((col) => selectedColumns.includes(col.name)) && !allSelected;
+
+  return (
+    <>
+      <div className={`bg-surface border rounded-xl shrink-0 min-w-64 max-w-72 ${isExternal ? 'border-warning/50' : 'border-border'}`}>
+        {/* 头部 */}
+        <div className="p-3 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {isExternal ? (
+              <span className="text-sm">{dbIcon}</span>
+            ) : (
+              <Table className={`w-4 h-4 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
+            )}
+            <span className="font-medium text-sm truncate">{tableName}</span>
+            {isPrimary && (
+              <span className="text-xs px-1.5 py-0.5 bg-primary/20 text-primary rounded">
+                {t('query.join.primaryTable', '主表')}
+              </span>
             )}
           </div>
-        )}
+          <button
+            onClick={onRemove}
+            className="text-muted-foreground hover:text-error p-1 rounded hover:bg-error/10"
+            title={t('query.join.remove', '移除')}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* 列列表 */}
+        <div className="p-3">
+          <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+            {isExternal ? (
+              <>
+                <span>{dbIcon}</span>
+                <span>{normalized.connection?.name || t('query.join.externalTable', '外部表')}</span>
+              </>
+            ) : (
+              <>
+                <Database className="w-3 h-3" />
+                {t('query.join.duckdbTable', 'DuckDB 表')}
+              </>
+            )}
+          </div>
+          {isLoading ? (
+            <div className="text-xs text-muted-foreground py-4 text-center">
+              {t('common.loading', '加载中...')}
+            </div>
+          ) : isError ? (
+            <div className="text-xs text-error py-4 text-center">
+              <AlertTriangle className="w-4 h-4 mx-auto mb-1" />
+              {t('query.join.columnLoadError', '无法获取列信息')}
+            </div>
+          ) : isEmpty || columns.length === 0 ? (
+            <div className="text-xs text-warning py-4 text-center">
+              <AlertTriangle className="w-4 h-4 mx-auto mb-1" />
+              {t('query.join.noColumns', '无可用列')}
+            </div>
+          ) : (
+            <div className="space-y-0.5 max-h-40 overflow-auto">
+              {displayColumns.map((col) => (
+                <label
+                  key={col.name}
+                  className="flex items-center gap-2 text-xs px-2 py-1 rounded hover:bg-muted/50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-primary w-3 h-3"
+                    checked={selectedColumns.includes(col.name)}
+                    onChange={() => onColumnToggle(col.name)}
+                  />
+                  <span className="flex-1 truncate">{col.name}</span>
+                  <span className="text-muted-foreground text-xs">{col.type}</span>
+                </label>
+              ))}
+              {moreCount > 0 && (
+                <button
+                  onClick={() => setShowAllColumnsDialog(true)}
+                  className="w-full text-xs text-primary hover:text-primary/80 text-center py-1 hover:bg-muted/30 rounded cursor-pointer flex items-center justify-center gap-1"
+                >
+                  <Columns className="w-3 h-3" />
+                  +{moreCount} {t('query.join.moreColumns', '更多字段')}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* 全部字段对话框 */}
+      <Dialog open={showAllColumnsDialog} onOpenChange={setShowAllColumnsDialog}>
+        <DialogContent className="max-w-md max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Columns className="w-4 h-4" />
+              {tableName} - {t('query.join.allColumns', '全部字段')}
+              <span className="text-xs text-muted-foreground font-normal">
+                ({columns.length} {t('query.join.columnsCount', '列')})
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            {/* 全选/取消全选 */}
+            <div className="border-b border-border pb-2 mb-2">
+              <label className="flex items-center gap-2 text-sm px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-primary w-3.5 h-3.5"
+                  checked={allSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someSelected;
+                  }}
+                  onChange={handleSelectAll}
+                />
+                <span className="font-medium">
+                  {allSelected
+                    ? t('query.join.deselectAll', '取消全选')
+                    : t('query.join.selectAll', '全选')}
+                </span>
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {selectedColumns.length}/{columns.length}
+                </span>
+              </label>
+            </div>
+            {/* 列列表 */}
+            <div className="space-y-0.5">
+              {columns.map((col) => (
+                <label
+                  key={col.name}
+                  className="flex items-center gap-2 text-sm px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-primary w-3.5 h-3.5"
+                    checked={selectedColumns.includes(col.name)}
+                    onChange={() => onColumnToggle(col.name)}
+                  />
+                  <span className="flex-1 truncate">{col.name}</span>
+                  <span className="text-muted-foreground text-xs">{col.type}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
@@ -442,6 +540,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   onRemoveTable,
 }) => {
   const { t } = useTranslation('common');
+  const { maxQueryRows } = useAppConfig();
   const [isExecuting, setIsExecuting] = React.useState(false);
 
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
@@ -536,7 +635,61 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   }, [tableColumnsMapKey]);
 
   // 计算活动表名的稳定 key
-  const activeTableNamesKey = activeTables.map(getTableName).sort().join(',');
+  const activeTableNamesKey = activeTables
+    .filter((t) => t != null)
+    .map(getTableName)
+    .sort()
+    .join(',');
+
+  // 构建列对用于类型冲突检测
+  const columnPairs = React.useMemo<ColumnPair[]>(() => {
+    const pairs: ColumnPair[] = [];
+    
+    for (let i = 0; i < joinConfigs.length; i++) {
+      const leftTable = activeTables[i];
+      const rightTable = activeTables[i + 1];
+      if (!leftTable || !rightTable) continue;
+      
+      const config = normalizeJoinConfig(joinConfigs[i]);
+      const leftTableName = getTableName(leftTable);
+      const rightTableName = getTableName(rightTable);
+      const leftCols = tableColumnsMap[leftTableName] || [];
+      const rightCols = tableColumnsMap[rightTableName] || [];
+      
+      for (const condition of config.conditions) {
+        if (!condition.leftColumn || !condition.rightColumn) continue;
+        
+        const leftCol = leftCols.find(c => c.name === condition.leftColumn);
+        const rightCol = rightCols.find(c => c.name === condition.rightColumn);
+        
+        pairs.push({
+          leftLabel: leftTableName,
+          leftColumn: condition.leftColumn,
+          leftType: leftCol?.type || 'UNKNOWN',
+          rightLabel: rightTableName,
+          rightColumn: condition.rightColumn,
+          rightType: rightCol?.type || 'UNKNOWN',
+        });
+      }
+    }
+    
+    return pairs;
+  }, [joinConfigs, activeTables, tableColumnsMap]);
+
+  // 类型冲突检测和管理
+  const {
+    conflicts,
+    hasConflicts,
+    allResolved,
+    unresolvedCount,
+    resolveConflict,
+    resolveAllWithRecommendations,
+    resolvedTypes,
+    getConflict,
+  } = useTypeConflict(columnPairs);
+
+  // 类型冲突对话框状态
+  const [showTypeConflictDialog, setShowTypeConflictDialog] = React.useState(false);
 
   // 初始化选中列和 JOIN 配置
   // 注意：故意不将 selectedColumns/joinConfigs 放入依赖数组
@@ -667,13 +820,33 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     return extractAttachDatabases(activeTables);
   }, [activeTables]);
 
+  // 检查是否所有 JOIN 配置都有有效的关联列
+  const hasValidJoinConditions = React.useMemo(() => {
+    if (activeTables.length < 2) return false;
+
+    // 检查每个 JOIN 配置是否至少有一个有效条件
+    for (let i = 0; i < activeTables.length - 1; i++) {
+      const config = joinConfigs[i];
+      if (!config) return false;
+
+      const normalizedConfig = normalizeJoinConfig(config);
+      const hasValidCondition = normalizedConfig.conditions.some(
+        (c) => c.leftColumn && c.rightColumn
+      );
+
+      if (!hasValidCondition) return false;
+    }
+
+    return true;
+  }, [activeTables.length, joinConfigs]);
+
   // 检查是否可以执行
-  // 现在支持跨数据库联邦查询
+  // 现在支持跨数据库联邦查询，但必须有有效的关联条件
   const canExecute = React.useMemo(() => {
     if (activeTables.length < 2) return false;
-    // 移除了 mixed 和 hasExternal 的限制，现在支持联邦查询
+    if (!hasValidJoinConditions) return false;
     return true;
-  }, [activeTables.length]);
+  }, [activeTables.length, hasValidJoinConditions]);
 
   // 生成 SQL
   const generateSQL = (): string | null => {
@@ -700,6 +873,14 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     };
 
     const parts: string[] = [];
+    
+    // 如果是联邦查询，添加注释说明
+    if (attachDatabases.length > 0) {
+      parts.push('-- 联邦查询 (Federated Query)');
+      parts.push('-- 此 SQL 包含外部数据库表，请在 JOIN 查询面板中执行');
+      parts.push(`-- 需要连接的数据库: ${attachDatabases.map(db => db.alias).join(', ')}`);
+      parts.push('');
+    }
 
     // SELECT - 收集所有选中的列
     const selectParts: string[] = [];
@@ -748,10 +929,26 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       
       if (validConditions.length > 0) {
         const onClause = validConditions
-          .map(
-            (c) =>
-              `${quoteIdent(leftTableAlias, dialect)}.${quoteIdent(c.leftColumn, dialect)} ${c.operator} ${quoteIdent(rightTableAlias, dialect)}.${quoteIdent(c.rightColumn, dialect)}`
-          )
+          .map((c) => {
+            // 检查是否有类型冲突需要 TRY_CAST
+            const conflictKey = generateConflictKey(
+              leftTableName,
+              c.leftColumn,
+              rightTableName,
+              c.rightColumn
+            );
+            const castType = resolvedTypes[conflictKey];
+            
+            const leftRef = `${quoteIdent(leftTableAlias, dialect)}.${quoteIdent(c.leftColumn, dialect)}`;
+            const rightRef = `${quoteIdent(rightTableAlias, dialect)}.${quoteIdent(c.rightColumn, dialect)}`;
+            
+            if (castType) {
+              // 使用 TRY_CAST 进行类型转换
+              return `TRY_CAST(${leftRef} AS ${castType}) ${c.operator} TRY_CAST(${rightRef} AS ${castType})`;
+            }
+            
+            return `${leftRef} ${c.operator} ${rightRef}`;
+          })
           .join(' AND ');
         parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${onClause}`);
       } else {
@@ -761,7 +958,8 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       }
     }
 
-    parts.push('LIMIT 1000');
+    // 使用配置的 max_query_rows 而不是硬编码的 1000
+    parts.push(`LIMIT ${maxQueryRows}`);
     return parts.join('\n');
   };
 
@@ -774,37 +972,31 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
 
   // 执行查询
   const handleExecute = async () => {
+    // 如果有未解决的类型冲突，打开对话框
+    if (hasConflicts && !allResolved) {
+      setShowTypeConflictDialog(true);
+      return;
+    }
+
     const sql = generateSQL();
     if (!sql || !canExecute) return;
+
+    if (!onExecute) return;
 
     setIsExecuting(true);
     setFederatedError(null);
 
     try {
-      // 如果有外部表，使用联邦查询 API
-      if (attachDatabases.length > 0) {
-        const result = await executeFederatedQuery({
-          sql,
-          attachDatabases,
-          isPreview: true,
-          timeout: 30000,
-        });
-        
-        // 通过 onExecute 回调传递结果
-        if (onExecute) {
-          // 将结果转换为 SQL 执行的格式
-          await onExecute(sql, {
+      // 构建数据源信息
+      const source: TableSource = attachDatabases.length > 0
+        ? {
             type: 'federated',
             attachDatabases,
-            result,
-          } as any);
-        }
-      } else {
-        // 纯 DuckDB 查询，使用原有逻辑
-        if (onExecute) {
-          await onExecute(sql, tableSource);
-        }
-      }
+          }
+        : tableSource || { type: 'duckdb' };
+      
+      // 通过统一的 onExecute 回调执行查询
+      await onExecute(sql, source);
     } catch (error) {
       // 解析联邦查询错误
       const parsedError = parseFederatedQueryError(error as Error);
@@ -835,10 +1027,12 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant="outline" className="text-primary border-primary/50 cursor-help">
-                    <Link2 className="w-3 h-3 mr-1" />
-                    {t('query.join.attachedDatabases', '{{count}} 个外部数据库', { count: attachDatabases.length })}
-                  </Badge>
+                  <span>
+                    <Badge variant="outline" className="text-primary border-primary/50 cursor-help">
+                      <Link2 className="w-3 h-3 mr-1" />
+                      {t('query.join.attachedDatabases', '{{count}} 个外部数据库', { count: attachDatabases.length })}
+                    </Badge>
+                  </span>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
                   <div className="text-xs space-y-1">
@@ -967,6 +1161,18 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
               <label className="text-sm font-medium flex items-center gap-2">
                 <span className="text-primary">SQL</span>
                 {t('query.sqlPreview', '预览')}
+                {/* 类型冲突指示器 */}
+                {hasConflicts && (
+                  <Badge
+                    variant={allResolved ? 'success' : 'warning'}
+                    className="text-xs cursor-pointer"
+                    onClick={() => setShowTypeConflictDialog(true)}
+                  >
+                    {allResolved
+                      ? t('query.typeConflict.allResolvedShort', '类型已转换')
+                      : `${unresolvedCount} ${t('query.typeConflict.conflicts', '个类型冲突')}`}
+                  </Badge>
+                )}
               </label>
               <button
                 className="text-xs text-primary hover:underline"
@@ -975,12 +1181,25 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
                 {t('common.copy', '复制')}
               </button>
             </div>
-            <pre className="bg-muted/30 border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap">
-              {sql}
-            </pre>
+            <SQLHighlight sql={sql} minHeight="120px" maxHeight="300px" />
           </div>
         )}
       </div>
+
+      {/* 类型冲突解决对话框 */}
+      <TypeConflictDialog
+        open={showTypeConflictDialog}
+        conflicts={conflicts}
+        onResolve={resolveConflict}
+        onResolveAll={resolveAllWithRecommendations}
+        onClose={() => setShowTypeConflictDialog(false)}
+        onConfirm={() => {
+          setShowTypeConflictDialog(false);
+          // 冲突已解决，继续执行查询
+          handleExecute();
+        }}
+        sqlPreview={sql || undefined}
+      />
     </div>
   );
 };
