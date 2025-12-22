@@ -1,0 +1,168 @@
+# Implementation Plan
+
+- [ ] 1. 扩展后端 API 模型和验证
+  - [ ] 1.1 扩展 AsyncQueryRequest 模型添加 attach_databases 参数
+    - 在 `api/routers/async_tasks.py` 中修改 AsyncQueryRequest 类
+    - 添加 `attach_databases: Optional[List[AttachDatabase]] = None` 字段
+    - 导入 `AttachDatabase` 模型从 `models.query_models`
+    - _Requirements: 1.1, 2.1_
+  - [ ] 1.2 实现 attach_databases 参数验证函数
+    - 创建 `validate_attach_databases()` 函数
+    - 验证空 alias、空 connection_id、重复别名
+    - 空数组视为普通查询（非联邦查询）
+    - 返回标准错误格式 { "detail": { "code": "VALIDATION_ERROR", "message": "...", "field": "..." } }
+    - 在 `submit_async_query` 端点中调用验证函数
+    - _Requirements: 9.1, 9.2, 9.3, 11.1, 12.1_
+  - [ ] 1.3 编写属性测试：输入验证完整性
+    - 测试文件：`api/tests/test_async_federated_query.py`
+    - **Property 4: Input Validation Completeness**
+    - **Validates: Requirements 9.1, 9.2, 9.3, 9.4**
+
+- [ ] 2. 实现联邦查询执行核心逻辑
+  - [ ] 2.1 实现 _attach_external_databases 辅助函数
+    - 在 `api/routers/async_tasks.py` 中添加函数
+    - 复用 `build_attach_sql`、`db_manager`、`password_encryptor`
+    - 实现 ATTACH 失败时的回滚逻辑
+    - _Requirements: 6.1, 6.2, 6.3, 7.1_
+  - [ ] 2.2 实现 _detach_databases 辅助函数
+    - 实现 DETACH 操作，忽略单个失败继续处理
+    - 记录 DETACH 失败的警告日志
+    - _Requirements: 4.3_
+  - [ ] 2.3 实现 execute_async_federated_query 后台执行函数
+    - 整合 ATTACH/查询执行/DETACH 流程
+    - 确保所有操作在同一连接上下文中
+    - 添加取消检查点
+    - _Requirements: 1.2, 1.3, 4.1, 4.2, 4.4, 7.2, 7.3_
+  - [ ] 2.4 编写属性测试：DETACH 清理不变量
+    - 测试文件：`api/tests/test_async_federated_query.py`
+    - **Property 2: DETACH Cleanup Invariant**
+    - **Validates: Requirements 1.3, 4.1, 4.2, 4.3, 4.4**
+  - [ ] 2.5 编写属性测试：连接上下文不变量
+    - 测试文件：`api/tests/test_async_federated_query.py`
+    - **Property 3: Connection Context Invariant**
+    - **Validates: Requirements 7.1, 7.2, 7.3**
+
+- [ ] 3. 修改 submit_async_query 端点
+  - [ ] 3.1 更新端点处理联邦查询请求
+    - 检测 attach_databases 参数
+    - 将 attach_databases 存储到任务元数据
+    - 调用 execute_async_federated_query 而非 execute_async_query
+    - _Requirements: 1.1, 2.2_
+  - [ ] 3.2 编写属性测试：元数据持久化
+    - 测试文件：`api/tests/test_async_federated_query.py`
+    - **Property 1: Attach Databases Metadata Persistence**
+    - **Validates: Requirements 1.1, 2.2**
+
+- [ ] 4. Checkpoint - 确保所有测试通过
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 5. 更新任务结果信息
+  - [ ] 5.1 在 complete_task 中添加 attached_databases 信息
+    - 修改 execute_async_federated_query 的 complete_task 调用
+    - 添加 `attached_databases` 和 `is_federated` 字段到 result_info
+    - _Requirements: 1.5, 5.3_
+  - [ ] 5.2 更新 get_async_task 端点返回联邦查询信息
+    - 确保任务详情包含 attached_databases 信息
+    - _Requirements: 5.2_
+  - [ ] 5.3 更新 list_async_tasks 端点添加联邦查询标识
+    - 在任务列表中添加 is_federated 标识
+    - _Requirements: 5.1_
+  - [ ] 5.4 编写属性测试：结果信息包含附加数据库
+    - 测试文件：`api/tests/test_async_federated_query.py`
+    - **Property 5: Result Info Contains Attached Databases**
+    - **Validates: Requirements 1.5, 5.1, 5.3**
+
+- [ ] 6. 实现重试功能支持
+  - [ ] 6.1 更新 _extract_task_payload 函数
+    - 提取 attach_databases 配置
+    - _Requirements: 2.3_
+  - [ ] 6.2 更新 retry_async_task 端点
+    - 支持保留原始 attach_databases 配置
+    - 支持 attach_databases 覆盖
+    - _Requirements: 10.1, 10.2, 10.3_
+  - [ ] 6.3 编写属性测试：重试保留原始配置
+    - 测试文件：`api/tests/test_async_federated_query.py`
+    - **Property 6: Retry Preserves Original Configuration**
+    - **Validates: Requirements 2.3, 10.1**
+
+- [ ] 7. Checkpoint - 确保所有测试通过
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 8. 实现详细错误处理
+  - [ ] 8.1 实现连接不存在错误处理
+    - 返回 HTTP 404 with { "detail": { "code": "CONNECTION_NOT_FOUND", "message": "数据库连接 '{connection_id}' 不存在", "connection_id": "..." } }
+    - _Requirements: 8.1, 12.2_
+  - [ ] 8.2 实现类型不支持错误处理
+    - 返回 "不支持的数据源类型: {type}" 错误
+    - _Requirements: 8.2_
+  - [ ] 8.3 实现 ATTACH 失败错误处理
+    - 解析认证失败、超时等错误类型
+    - 返回 HTTP 500 with { "detail": { "code": "ATTACH_FAILED", "message": "...", "alias": "...", "original_error": "..." } }
+    - _Requirements: 8.3, 8.4, 8.5, 12.3_
+  - [ ] 8.4 实现 ATTACH 超时处理
+    - 设置 30 秒 ATTACH 超时
+    - 超时返回 "ATTACH 操作超时: {alias}"
+    - _Requirements: 11.3_
+  - [ ] 8.5 实现连接池繁忙处理
+    - 实现指数退避重试（最多 3 次）
+    - 重试失败返回 "连接池繁忙，请稍后重试"
+    - _Requirements: 11.2_
+  - [ ] 8.6 编写属性测试：ATTACH 失败回滚
+    - 测试文件：`api/tests/test_async_federated_query.py`
+    - **Property 7: ATTACH Failure Rollback**
+    - **Validates: Requirements 1.4, 4.1**
+  - [ ] 8.7 更新 result_info 包含 error_code 字段
+    - 任务失败时同时包含 error_message 和 error_code
+    - _Requirements: 12.4_
+
+- [ ] 9. 前端 AsyncTaskDialog 组件修改
+  - [ ] 9.1 扩展 AsyncTaskDialogProps 接口
+    - 添加 `attachDatabases` 可选属性
+    - 定义 AttachDatabase 类型
+    - _Requirements: 3.1_
+  - [ ] 9.2 更新提交逻辑传递 attach_databases
+    - 修改 submitMutation 包含 attach_databases 参数
+    - _Requirements: 3.1_
+  - [ ] 9.3 添加附加数据库列表显示
+    - 在对话框中显示将要附加的数据库列表
+    - _Requirements: 3.2_
+  - [ ] 9.4 编写前端组件测试
+    - 测试文件：`frontend/src/new/Query/AsyncTasks/__tests__/AsyncTaskDialog.federated.test.tsx`
+    - 测试 attachDatabases prop 传递
+    - 测试数据库列表显示
+    - _Requirements: 3.1, 3.2_
+
+- [ ] 10. 前端 SQLQueryPanel 集成
+  - [ ] 10.1 更新 handleAsyncExecute 传递 attachDatabases
+    - 从 useFederatedQueryDetection 获取 attachDatabases
+    - 传递给 AsyncTaskDialog
+    - _Requirements: 3.3_
+  - [ ] 10.2 编写集成测试
+    - 测试文件：`frontend/src/new/Query/SQLQuery/__tests__/asyncFederatedIntegration.test.ts`
+    - 测试联邦查询检测到异步任务提交的数据流
+    - _Requirements: 3.3_
+
+- [ ] 11. 更新前端 API 客户端
+  - [ ] 11.1 更新 submitAsyncQuery 函数
+    - 支持 attach_databases 参数
+    - 转换 camelCase 到 snake_case
+    - _Requirements: 2.1_
+  - [ ] 11.2 编写 API 客户端测试
+    - 测试文件：`frontend/src/services/__tests__/asyncFederatedQuery.test.ts`
+    - 测试参数序列化
+    - _Requirements: 2.1_
+
+- [ ] 12. 添加 i18n 翻译
+  - [ ] 12.1 更新中文翻译文件
+    - 文件：`frontend/src/i18n/locales/zh/common.json`
+    - 添加联邦查询相关错误消息翻译
+    - 添加 AsyncTaskDialog 联邦查询相关文案
+    - _Requirements: 3.2_
+  - [ ] 12.2 更新英文翻译文件
+    - 文件：`frontend/src/i18n/locales/en/common.json`
+    - 添加对应的英文翻译
+    - _Requirements: 3.2_
+
+- [ ] 13. Final Checkpoint - 确保所有测试通过
+  - Ensure all tests pass, ask the user if questions arise.
+
