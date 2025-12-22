@@ -122,10 +122,12 @@
     "empty": "No async tasks",
     "status": "Status",
     "sql": "SQL",
+    "tableName": "Result Table",
     "time": "Time",
     "rows": "Rows",
     "actions": "Actions",
     "previewResult": "Preview result",
+    "download": "Download",
     "cancel": "Cancel",
     "cancelSuccess": "Task cancelled",
     "cancelFailed": "Cancel failed: {{message}}",
@@ -134,11 +136,33 @@
     "retryFailed": "Retry failed: {{message}}",
     "deleteSuccess": "Task deleted",
     "deleteFailed": "Delete failed: {{message}}",
+    "submitSuccess": "Async task submitted",
+    "submitFailed": "Submit failed: {{message}}",
     "status.pending": "Pending",
     "status.running": "Running",
     "status.completed": "Completed",
     "status.failed": "Failed",
-    "status.cancelled": "Cancelled"
+    "status.cancelled": "Cancelled",
+    "dialog": {
+      "title": "Submit Async Task",
+      "description": "Async task will run in background, results saved to DuckDB table",
+      "sql": "SQL Statement",
+      "tableName": "Result Table Name",
+      "tableNameOptional": "optional",
+      "tableNamePlaceholder": "Leave empty for auto-generated name",
+      "tableNameHint": "Table name can only contain letters, numbers, and underscores, cannot start with a number",
+      "externalSource": "Data from external database: {{name}} ({{type}})",
+      "submit": "Submit Task"
+    },
+    "download": {
+      "title": "Download Result",
+      "selectFormat": "Select download format",
+      "csvDescription": "Universal format, can be opened with Excel",
+      "parquetDescription": "Efficient compressed format, suitable for big data analysis",
+      "download": "Download",
+      "success": "Download successful",
+      "failed": "Download failed: {{message}}"
+    }
   },
   "query": {
     "tableSelector": {
@@ -195,6 +219,7 @@
       "rows": "rows",
       "columns": "columns",
       "selected": "selected",
+      "hidden": "hidden",
       "export": "Export",
       "exportCSV": "Export CSV",
       "exportJSON": "Export JSON",
@@ -251,6 +276,8 @@
     "sql": {
       "execute": "Execute",
       "executing": "Executing...",
+      "asyncExecute": "Async Execute",
+      "asyncExecuteHint": "Run in background, save results to table",
       "format": "Format",
       "formatTooltip": "Format SQL",
       "save": "Save",

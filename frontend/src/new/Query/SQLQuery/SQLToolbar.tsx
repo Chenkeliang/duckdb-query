@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, Loader2, Save, FileCode, History, Clock } from 'lucide-react';
+import { Play, Loader2, Save, FileCode, History, Clock, Timer } from 'lucide-react';
 import { Button } from '@/new/components/ui/button';
 import {
   Tooltip,
@@ -17,6 +17,8 @@ import { cn } from '@/lib/utils';
 export interface SQLToolbarProps {
   /** 执行回调 */
   onExecute?: () => void;
+  /** 异步执行回调 */
+  onAsyncExecute?: () => void;
   /** 格式化回调 */
   onFormat?: () => void;
   /** 保存回调 */
@@ -48,6 +50,7 @@ function formatExecutionTime(ms: number): string {
  */
 export const SQLToolbar: React.FC<SQLToolbarProps> = ({
   onExecute,
+  onAsyncExecute,
   onFormat,
   onSave,
   onHistory,
@@ -90,6 +93,32 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
               <p>Ctrl+Enter / Cmd+Enter</p>
             </TooltipContent>
           </Tooltip>
+
+          {/* 异步执行按钮 */}
+          {onAsyncExecute && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onAsyncExecute}
+                  disabled={disableExecute || isExecuting}
+                  className="gap-1.5"
+                >
+                  <Timer className="h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {t('query.sql.asyncExecute', '异步执行')}
+                  </span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Ctrl+Shift+Enter / Cmd+Shift+Enter</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t('query.sql.asyncExecuteHint', '后台执行，结果保存到表')}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          )}
 
           {/* 格式化按钮 */}
           {onFormat && (

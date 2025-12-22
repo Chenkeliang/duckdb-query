@@ -83,6 +83,7 @@
     "react-window-infinite-loader": "^2.0.0",
     "recharts": "^3.4.1",
     "sonner": "^2.0.7",
+    "sql-formatter": "^15.6.12",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
     "zod": "^4.1.13"

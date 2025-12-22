@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Eye,
   Copy,
+  EyeOff,
 } from 'lucide-react';
 import { Button } from '@/new/components/ui/button';
 import { Separator } from '@/new/components/ui/separator';
@@ -27,28 +28,34 @@ import {
 } from '@/new/components/ui/dropdown-menu';
 import type { GridStats, ColumnVisibility } from './hooks/useGridStats';
 
+/** DataGrid 列可见性信息 */
+export interface DataGridColumnInfo {
+  field: string;
+  visible: boolean;
+}
+
 export interface ResultToolbarProps {
   /** 统计信息 */
   stats: GridStats;
   /** 执行时间（毫秒） */
   executionTime?: number;
-  /** 列可见性列表 */
+  /** 列可见性列表（AG Grid） */
   columns: ColumnVisibility[];
-  /** 切换列可见性 */
+  /** 切换列可见性（AG Grid） */
   onToggleColumn: (field: string, visible: boolean) => void;
-  /** 显示所有列 */
+  /** 显示所有列（AG Grid） */
   onShowAllColumns: () => void;
-  /** 重置列 */
+  /** 重置列（AG Grid） */
   onResetColumns: () => void;
-  /** 自动调整列宽 */
+  /** 自动调整列宽（AG Grid） */
   onAutoSizeColumns: () => void;
-  /** 适应容器宽度 */
+  /** 适应容器宽度（AG Grid） */
   onSizeColumnsToFit: () => void;
   /** 刷新数据 */
   onRefresh?: () => void;
-  /** 导出数据 */
+  /** 导出数据（AG Grid） */
   onExport?: (format: 'csv' | 'json') => void;
-  /** 复制选中的行 */
+  /** 复制选中的行（AG Grid） */
   onCopySelected?: () => void;
   /** 全屏切换 */
   onToggleFullscreen?: () => void;
@@ -68,6 +75,16 @@ export interface ResultToolbarProps {
   selectedCells?: number;
   /** 切换 DataGrid 模式 */
   onToggleDataGrid?: () => void;
+  /** DataGrid 列可见性信息 */
+  dataGridColumns?: DataGridColumnInfo[];
+  /** DataGrid 切换列可见性 */
+  onDataGridToggleColumn?: (field: string) => void;
+  /** DataGrid 显示所有列 */
+  onDataGridShowAllColumns?: () => void;
+  /** DataGrid 导出 CSV */
+  onDataGridExportCSV?: () => void;
+  /** DataGrid 导出 JSON */
+  onDataGridExportJSON?: () => void;
 }
 
 /**
@@ -111,9 +128,17 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
   useNewDataGrid = false,
   selectedCells = 0,
   onToggleDataGrid,
+  dataGridColumns,
+  onDataGridToggleColumn,
+  onDataGridShowAllColumns,
+  onDataGridExportCSV,
+  onDataGridExportJSON,
 }) => {
   const { t } = useTranslation('common');
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
+
+  // 计算 DataGrid 隐藏列数量
+  const dataGridHiddenCount = dataGridColumns?.filter(c => !c.visible).length || 0;
 
   return (
     <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
@@ -198,7 +223,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           </>
         )}
 
-        {/* 列可见性控制（仅 AG Grid 模式） */}
+        {/* 列可见性控制（AG Grid 模式） */}
         {!useNewDataGrid && (
           <DropdownMenu open={columnMenuOpen} onOpenChange={setColumnMenuOpen}>
             <DropdownMenuTrigger
@@ -244,6 +269,49 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           </DropdownMenu>
         )}
 
+        {/* 列可见性控制（DataGrid 模式） */}
+        {useNewDataGrid && dataGridColumns && dataGridColumns.length > 0 && (
+          <DropdownMenu open={columnMenuOpen} onOpenChange={setColumnMenuOpen}>
+            <DropdownMenuTrigger
+              className="inline-flex items-center justify-center h-8 px-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+              disabled={disabled}
+            >
+              <Columns className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">
+                {t('query.result.columns', '列')}
+              </span>
+              {dataGridHiddenCount > 0 && (
+                <span className="ml-1 text-xs text-muted-foreground">
+                  ({dataGridHiddenCount} {t('query.result.hidden', '隐藏')})
+                </span>
+              )}
+              <ChevronDown className="h-3 w-3 ml-1" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 max-h-80 overflow-y-auto">
+              {/* 列操作 */}
+              <DropdownMenuItem onClick={onDataGridShowAllColumns}>
+                <Eye className="h-4 w-4 mr-2" />
+                {t('query.result.showAllColumns', '显示所有列')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+
+              {/* 列列表 */}
+              {dataGridColumns.map((col) => (
+                <DropdownMenuCheckboxItem
+                  key={col.field}
+                  checked={col.visible}
+                  onCheckedChange={() => onDataGridToggleColumn?.(col.field)}
+                >
+                  <span className="flex items-center gap-2">
+                    {!col.visible && <EyeOff className="h-3 w-3 text-muted-foreground" />}
+                    {col.field}
+                  </span>
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
         {/* 刷新按钮 */}
         {onRefresh && (
           <Button
@@ -274,8 +342,8 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           </>
         )}
 
-        {/* 导出按钮 */}
-        {onExport && (
+        {/* 导出按钮（AG Grid 模式） */}
+        {!useNewDataGrid && onExport && (
           <DropdownMenu>
             <DropdownMenuTrigger
               className="inline-flex items-center justify-center h-8 px-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
@@ -294,6 +362,34 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
               <DropdownMenuItem onClick={() => onExport('json')}>
                 {t('query.result.exportJSON', '导出 JSON')}
               </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        {/* 导出按钮（DataGrid 模式） */}
+        {useNewDataGrid && (onDataGridExportCSV || onDataGridExportJSON) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="inline-flex items-center justify-center h-8 px-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+              disabled={disabled || stats.totalRows === 0}
+            >
+              <Download className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">
+                {t('query.result.export', '导出')}
+              </span>
+              <ChevronDown className="h-3 w-3 ml-1" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {onDataGridExportCSV && (
+                <DropdownMenuItem onClick={onDataGridExportCSV}>
+                  {t('query.result.exportCSV', '导出 CSV')}
+                </DropdownMenuItem>
+              )}
+              {onDataGridExportJSON && (
+                <DropdownMenuItem onClick={onDataGridExportJSON}>
+                  {t('query.result.exportJSON', '导出 JSON')}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}

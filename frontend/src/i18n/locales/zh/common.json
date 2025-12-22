@@ -122,10 +122,12 @@
     "empty": "暂无异步任务",
     "status": "状态",
     "sql": "SQL",
+    "tableName": "结果表",
     "time": "时间",
     "rows": "行数",
     "actions": "操作",
     "previewResult": "预览结果",
+    "download": "下载",
     "cancel": "取消",
     "cancelSuccess": "任务已取消",
     "cancelFailed": "取消失败: {{message}}",
@@ -134,11 +136,33 @@
     "retryFailed": "重试失败: {{message}}",
     "deleteSuccess": "任务已删除",
     "deleteFailed": "删除失败: {{message}}",
+    "submitSuccess": "异步任务已提交",
+    "submitFailed": "提交失败: {{message}}",
     "status.pending": "等待中",
     "status.running": "运行中",
     "status.completed": "已完成",
     "status.failed": "失败",
-    "status.cancelled": "已取消"
+    "status.cancelled": "已取消",
+    "dialog": {
+      "title": "提交异步任务",
+      "description": "异步任务将在后台执行，结果保存到 DuckDB 表中",
+      "sql": "SQL 语句",
+      "tableName": "结果表名",
+      "tableNameOptional": "可选",
+      "tableNamePlaceholder": "留空则自动生成",
+      "tableNameHint": "表名只能包含字母、数字和下划线，不能以数字开头",
+      "externalSource": "数据来自外部数据库: {{name}} ({{type}})",
+      "submit": "提交任务"
+    },
+    "download": {
+      "title": "下载结果",
+      "selectFormat": "选择下载格式",
+      "csvDescription": "通用格式，可用 Excel 打开",
+      "parquetDescription": "高效压缩格式，适合大数据分析",
+      "download": "下载",
+      "success": "下载成功",
+      "failed": "下载失败: {{message}}"
+    }
   },
   "query": {
     "tableSelector": {
@@ -195,6 +219,7 @@
       "rows": "行",
       "columns": "列",
       "selected": "已选",
+      "hidden": "隐藏",
       "export": "导出",
       "exportCSV": "导出 CSV",
       "exportJSON": "导出 JSON",
@@ -251,6 +276,8 @@
     "sql": {
       "execute": "执行",
       "executing": "执行中...",
+      "asyncExecute": "异步执行",
+      "asyncExecuteHint": "后台执行，结果保存到表",
       "format": "格式化",
       "formatTooltip": "格式化 SQL",
       "save": "保存",

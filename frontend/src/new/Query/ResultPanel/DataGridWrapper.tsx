@@ -4,15 +4,23 @@
  * 兼容 AGGridWrapper 接口，使用新的 TanStack DataGrid 替代 AG Grid
  */
 import * as React from 'react';
-import { useMemo } from 'react';
+import { useMemo, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DataGrid } from '../DataGrid';
+import { useColumnVisibility, useGridExport } from '../DataGrid/hooks';
+import type { ColumnVisibilityState } from '../DataGrid/hooks/useColumnVisibility';
 import type { ColumnDef as DataGridColumnDef, CellSelection } from '../DataGrid/types';
 import type { ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import type { ColDef } from 'ag-grid-community';
 
 // AG Grid 列定义类型（简化版，用于兼容）
 type AGGridColumnDef = ColDef;
+
+/** DataGrid 列可见性信息 */
+export interface DataGridColumnInfo {
+  field: string;
+  visible: boolean;
+}
 
 export interface DataGridWrapperProps {
   /** 行数据 */
@@ -49,6 +57,12 @@ export interface DataGridWrapperProps {
     columnCount: number;
     visibleColumnCount: number;
   }) => void;
+  /** 列可见性变化回调 */
+  onColumnVisibilityChange?: (columns: DataGridColumnInfo[]) => void;
+  /** 导出 CSV 回调（外部触发） */
+  onExportCSV?: () => void;
+  /** 导出 JSON 回调（外部触发） */
+  onExportJSON?: () => void;
   /** 自定义类名 */
   className?: string;
 }
@@ -59,12 +73,20 @@ export interface DataGridWrapperProps {
 export interface DataGridApi {
   /** 导出为 CSV */
   exportDataAsCsv: (params?: { fileName?: string }) => void;
+  /** 导出为 JSON */
+  exportDataAsJson: (params?: { fileName?: string }) => void;
   /** 遍历筛选后的节点 */
   forEachNodeAfterFilterAndSort: (callback: (node: { data: Record<string, unknown> }) => void) => void;
   /** 获取所有数据 */
   getRowData: () => Record<string, unknown>[];
   /** 获取筛选后的数据 */
   getFilteredData: () => Record<string, unknown>[];
+  /** 获取列可见性信息 */
+  getColumnVisibility: () => DataGridColumnInfo[];
+  /** 切换列可见性 */
+  toggleColumnVisibility: (field: string) => void;
+  /** 显示所有列 */
+  showAllColumns: () => void;
 }
 
 /**
@@ -72,7 +94,7 @@ export interface DataGridApi {
  * 
  * 提供与 AGGridWrapper 兼容的接口
  */
-export const DataGridWrapper: React.FC<DataGridWrapperProps> = ({
+const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGridWrapperProps> = ({
   rowData,
   columnDefs,
   loading = false,
@@ -87,8 +109,11 @@ export const DataGridWrapper: React.FC<DataGridWrapperProps> = ({
   onFilterChange,
   onSortChange,
   onStatsChange,
+  onColumnVisibilityChange,
+  onExportCSV: _onExportCSV,
+  onExportJSON: _onExportJSON,
   className,
-}) => {
+}, ref) => {
   const { t } = useTranslation('common');
 
   // 处理空数据
@@ -101,12 +126,50 @@ export const DataGridWrapper: React.FC<DataGridWrapperProps> = ({
     return noRowsOverlayText || t('dataGrid.noData', '暂无数据');
   }, [noRowsOverlayText, t]);
 
-  // 将 AG Grid 列定义转换为 DataGrid 列定义
+  // 获取所有列名
+  const allColumns = useMemo(() => {
+    if (columnDefs) {
+      return columnDefs
+        .filter((col): col is AGGridColumnDef & { field: string } => !!col.field)
+        .map(col => col.field);
+    }
+    if (processedData.length > 0) {
+      return Object.keys(processedData[0]);
+    }
+    return [];
+  }, [columnDefs, processedData]);
+
+  // 列可见性管理
+  const {
+    visibleColumns,
+    columnVisibilityInfo,
+    toggleColumn,
+    showAllColumns,
+  } = useColumnVisibility({
+    columns: allColumns,
+    onChange: useCallback((visibility: ColumnVisibilityState) => {
+      const info = allColumns.map(field => ({
+        field,
+        visible: visibility[field] !== false,
+      }));
+      onColumnVisibilityChange?.(info);
+    }, [allColumns, onColumnVisibilityChange]),
+  });
+
+  // 导出功能
+  const { exportCSV, exportJSON } = useGridExport({
+    data: processedData,
+    columns: visibleColumns,
+  });
+
+  // 将 AG Grid 列定义转换为 DataGrid 列定义（只包含可见列）
   const convertedColumns = useMemo((): DataGridColumnDef[] | undefined => {
     if (!columnDefs) return undefined;
     
     return columnDefs
-      .filter((col): col is AGGridColumnDef & { field: string } => !!col.field)
+      .filter((col): col is AGGridColumnDef & { field: string } => 
+        !!col.field && visibleColumns.includes(col.field)
+      )
       .map((col) => ({
         field: col.field,
         headerName: col.headerName || col.field,
@@ -115,59 +178,61 @@ export const DataGridWrapper: React.FC<DataGridWrapperProps> = ({
         filterable: col.filter !== false,
         resizable: col.resizable !== false,
       }));
-  }, [columnDefs]);
+  }, [columnDefs, visibleColumns]);
 
-  // 创建兼容的 API 对象
-  const apiRef = React.useRef<DataGridApi | null>(null);
+  // 使用 ref 跟踪是否已调用 onGridReady
+  const hasCalledGridReady = useRef(false);
+  const onGridReadyRef = useRef(onGridReady);
+  onGridReadyRef.current = onGridReady;
 
-  // 当数据变化时，更新 API
-  React.useEffect(() => {
-    const api: DataGridApi = {
-      exportDataAsCsv: (params) => {
-        const fileName = params?.fileName || `export_${Date.now()}.csv`;
-        const data = processedData;
-        if (!data.length) return;
+  // 暴露 API 给父组件（使用 useImperativeHandle 确保 API 始终最新）
+  useImperativeHandle(ref, () => ({
+    exportDataAsCsv: (params) => {
+      const fileName = params?.fileName || `export_${Date.now()}.csv`;
+      exportCSV({ filename: fileName.replace('.csv', '') });
+    },
+    exportDataAsJson: (params) => {
+      const fileName = params?.fileName || `export_${Date.now()}.json`;
+      exportJSON({ filename: fileName.replace('.json', '') });
+    },
+    forEachNodeAfterFilterAndSort: (callback) => {
+      processedData.forEach(data => callback({ data }));
+    },
+    getRowData: () => processedData,
+    getFilteredData: () => processedData,
+    getColumnVisibility: () => columnVisibilityInfo,
+    toggleColumnVisibility: toggleColumn,
+    showAllColumns,
+  }), [processedData, exportCSV, exportJSON, columnVisibilityInfo, toggleColumn, showAllColumns]);
 
-        const headers = Object.keys(data[0]);
-        const csvContent = [
-          headers.join(','),
-          ...data.map(row => 
-            headers.map(h => {
-              const val = row[h];
-              if (val === null || val === undefined) return '';
-              const str = String(val);
-              // 转义包含逗号、引号或换行的值
-              if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-                return `"${str.replace(/"/g, '""')}"`;
-              }
-              return str;
-            }).join(',')
-          )
-        ].join('\n');
+  // 创建稳定的 API 对象用于 onGridReady 回调
+  const stableApi = useMemo((): DataGridApi => ({
+    exportDataAsCsv: (params) => {
+      const fileName = params?.fileName || `export_${Date.now()}.csv`;
+      exportCSV({ filename: fileName.replace('.csv', '') });
+    },
+    exportDataAsJson: (params) => {
+      const fileName = params?.fileName || `export_${Date.now()}.json`;
+      exportJSON({ filename: fileName.replace('.json', '') });
+    },
+    forEachNodeAfterFilterAndSort: (callback) => {
+      processedData.forEach(data => callback({ data }));
+    },
+    getRowData: () => processedData,
+    getFilteredData: () => processedData,
+    getColumnVisibility: () => columnVisibilityInfo,
+    toggleColumnVisibility: toggleColumn,
+    showAllColumns,
+  }), [processedData, exportCSV, exportJSON, columnVisibilityInfo, toggleColumn, showAllColumns]);
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.click();
-        URL.revokeObjectURL(url);
-      },
-      forEachNodeAfterFilterAndSort: (callback) => {
-        // TODO: 实现筛选后的数据遍历
-        processedData.forEach(data => callback({ data }));
-      },
-      getRowData: () => processedData,
-      getFilteredData: () => processedData, // TODO: 返回筛选后的数据
-    };
-
-    apiRef.current = api;
-
-    // 通知父组件 Grid 已准备就绪
-    if (onGridReady) {
-      onGridReady({ api });
-    }
-  }, [processedData, onGridReady]);
+  // 仅在首次渲染时调用 onGridReady（避免每次数据变化都重新调用）
+  if (!hasCalledGridReady.current && onGridReadyRef.current) {
+    hasCalledGridReady.current = true;
+    // 使用 setTimeout 确保在渲染完成后调用
+    setTimeout(() => {
+      onGridReadyRef.current?.({ api: stableApi });
+    }, 0);
+  }
 
   return (
     <DataGrid
@@ -187,5 +252,7 @@ export const DataGridWrapper: React.FC<DataGridWrapperProps> = ({
     />
   );
 };
+
+export const DataGridWrapper = forwardRef(DataGridWrapperInner);
 
 export { DataGridWrapper as default };

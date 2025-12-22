@@ -11,6 +11,8 @@
 - ✅ **键盘导航** - 完整的键盘快捷键支持
 - ✅ **列排序** - 点击列头排序
 - ✅ **列宽调整** - 拖拽调整列宽
+- ✅ **列可见性** - 隐藏/显示列（会话级别）
+- ✅ **数据导出** - 支持 CSV/JSON 格式导出
 
 ## 安装依赖
 
@@ -54,6 +56,61 @@ function MyComponent() {
 | `onSelectionChange` | `(selection) => void` | - | 选区变化回调 |
 | `onFilterChange` | `(filters) => void` | - | 筛选变化回调 |
 | `onSortChange` | `(sorting) => void` | - | 排序变化回调 |
+
+## 列可见性
+
+DataGrid 支持会话级别的列可见性控制。使用 `useColumnVisibility` Hook：
+
+```tsx
+import { useColumnVisibility } from '@/new/Query/DataGrid/hooks';
+
+function MyComponent() {
+  const {
+    columnVisibility,
+    toggleColumn,
+    showAllColumns,
+    getVisibleColumns,
+  } = useColumnVisibility(columns);
+
+  return (
+    <DataGrid
+      data={data}
+      columnVisibility={columnVisibility}
+      onColumnVisibilityChange={toggleColumn}
+    />
+  );
+}
+```
+
+**注意**：列可见性状态仅在当前会话中保持，不会持久化到 localStorage。这是因为查询结果的列是动态的，每次查询可能返回不同的列。
+
+## 数据导出
+
+使用 `useGridExport` Hook 导出数据：
+
+```tsx
+import { useGridExport } from '@/new/Query/DataGrid/hooks';
+
+function MyComponent() {
+  const { exportCSV, exportJSON } = useGridExport({
+    data,
+    columns,
+    filename: 'my-data',
+  });
+
+  return (
+    <>
+      <button onClick={exportCSV}>导出 CSV</button>
+      <button onClick={exportJSON}>导出 JSON</button>
+    </>
+  );
+}
+```
+
+导出功能特性：
+- CSV 导出添加 UTF-8 BOM，确保 Excel 正确识别中文
+- 正确处理特殊字符（逗号、换行、引号）
+- 支持 BigInt 和复杂类型（LIST/STRUCT）的安全序列化
 
 ## 列定义
 
@@ -134,6 +191,8 @@ const columns: ColumnDef[] = [
   - `useColumnFilter.ts` - 列筛选
   - `useKeyboardNavigation.ts` - 键盘导航
   - `useGridStats.ts` - 统计信息
+  - `useColumnVisibility.ts` - 列可见性管理
+  - `useGridExport.ts` - 数据导出（CSV/JSON）
 - `components/` - 子组件
   - `GridHeader.tsx` - 列头容器
   - `GridBody.tsx` - 表格主体

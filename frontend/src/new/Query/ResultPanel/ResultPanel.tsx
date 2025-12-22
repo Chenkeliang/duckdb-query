@@ -4,7 +4,7 @@
  * 支持外部数据库查询结果导入到 DuckDB
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Database, AlertCircle, Loader2 } from 'lucide-react';
 import type { GridApi } from 'ag-grid-community';
@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 
 import { AGGridWrapper } from './AGGridWrapper';
 import { DataGridWrapper } from './DataGridWrapper';
+import type { DataGridApi, DataGridColumnInfo } from './DataGridWrapper';
 import { ResultToolbar } from './ResultToolbar';
 import { ColumnFilterCommand } from './ColumnFilterCommand';
 import { ImportToDuckDBDialog } from './ImportToDuckDBDialog';
@@ -87,8 +88,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const [columnFilterCommandOpen, setColumnFilterCommandOpen] = useState(false);
   const [_selectedColumn, setSelectedColumn] = useState<Column | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  // 开关：是否使用新的 TanStack DataGrid（默认使用 AG Grid）
-  const [useNewDataGrid, setUseNewDataGrid] = useState(false);
+  // 开关：是否使用新的 TanStack DataGrid（默认使用 TanStack DataGrid）
+  const [useNewDataGrid, setUseNewDataGrid] = useState(true);
   const [dataGridStats, setDataGridStats] = useState<{
     totalRows: number;
     filteredRows: number;
@@ -96,6 +97,10 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     columnCount: number;
     visibleColumnCount: number;
   } | null>(null);
+  // DataGrid 列可见性信息
+  const [dataGridColumns, setDataGridColumns] = useState<DataGridColumnInfo[]>([]);
+  // DataGrid ref
+  const dataGridRef = useRef<DataGridApi>(null);
 
   // 判断是否显示导入按钮（仅当数据来自外部数据库时）
   const showImportButton = source?.type === 'external' && !!currentSQL;
@@ -222,6 +227,31 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     setImportDialogOpen(true);
   }, [currentSQL, source, t]);
 
+  // DataGrid 列可见性变化回调
+  const handleDataGridColumnVisibilityChange = useCallback((columns: DataGridColumnInfo[]) => {
+    setDataGridColumns(columns);
+  }, []);
+
+  // DataGrid 切换列可见性
+  const handleDataGridToggleColumn = useCallback((field: string) => {
+    dataGridRef.current?.toggleColumnVisibility(field);
+  }, []);
+
+  // DataGrid 显示所有列
+  const handleDataGridShowAllColumns = useCallback(() => {
+    dataGridRef.current?.showAllColumns();
+  }, []);
+
+  // DataGrid 导出 CSV
+  const handleDataGridExportCSV = useCallback(() => {
+    dataGridRef.current?.exportDataAsCsv();
+  }, []);
+
+  // DataGrid 导出 JSON
+  const handleDataGridExportJSON = useCallback(() => {
+    dataGridRef.current?.exportDataAsJson();
+  }, []);
+
   // 自动打开导入对话框（来自左侧树/快捷入口）
   useEffect(() => {
     if (!autoOpenImportDialog) return;
@@ -347,11 +377,18 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           onImportToDuckDB={handleImportClick}
           useNewDataGrid={useNewDataGrid}
           onToggleDataGrid={() => setUseNewDataGrid(!useNewDataGrid)}
+          // DataGrid 特有的 props
+          dataGridColumns={useNewDataGrid ? dataGridColumns : undefined}
+          onDataGridToggleColumn={useNewDataGrid ? handleDataGridToggleColumn : undefined}
+          onDataGridShowAllColumns={useNewDataGrid ? handleDataGridShowAllColumns : undefined}
+          onDataGridExportCSV={useNewDataGrid ? handleDataGridExportCSV : undefined}
+          onDataGridExportJSON={useNewDataGrid ? handleDataGridExportJSON : undefined}
         />
       )}
       <div className="flex-1 min-h-0">
         {useNewDataGrid ? (
           <DataGridWrapper
+            ref={dataGridRef}
             rowData={data}
             columnDefs={columnDefs}
             loading={loading}
@@ -361,6 +398,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
             enableFiltering={true}
             enableSorting={true}
             onStatsChange={setDataGridStats}
+            onColumnVisibilityChange={handleDataGridColumnVisibilityChange}
           />
         ) : (
           <AGGridWrapper

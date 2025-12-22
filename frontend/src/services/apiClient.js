@@ -986,6 +986,37 @@ export const retryAsyncTask = async (taskId, payload = {}) => {
   }
 };
 
+/**
+ * 下载异步任务结果
+ * @param {string} taskId - 任务 ID
+ * @param {Object} options - 下载选项
+ * @param {string} options.format - 下载格式 ('csv' | 'parquet')
+ * @returns {Promise<Blob>} 文件 Blob
+ */
+export const downloadAsyncResult = async (taskId, options = {}) => {
+  const { format = 'csv' } = options;
+  
+  const response = await apiClient.post(
+    `/api/async-tasks/${taskId}/download`,
+    { format },
+    { responseType: 'blob' }
+  );
+  
+  // 从响应头获取文件名
+  const contentDisposition = response.headers['content-disposition'];
+  let filename = `${taskId}.${format}`;
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (match && match[1]) {
+      filename = match[1].replace(/['"]/g, '');
+    }
+  }
+  
+  return {
+    blob: response.data,
+    filename,
+  };
+};
 
 // 新增连接池状态监控API
 export const getConnectionPoolStatus = async () => {

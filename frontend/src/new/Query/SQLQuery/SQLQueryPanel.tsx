@@ -22,6 +22,7 @@ import { Alert, AlertDescription } from '@/new/components/ui/alert';
 import { AttachedDatabasesIndicator } from '@/new/Query/components/AttachedDatabasesIndicator';
 import { UnrecognizedPrefixWarning } from '@/new/Query/components/UnrecognizedPrefixWarning';
 import { FederatedQueryStatusBar } from '@/new/Query/components/FederatedQueryStatusBar';
+import { AsyncTaskDialog } from '@/new/Query/AsyncTasks/AsyncTaskDialog';
 import { cn } from '@/lib/utils';
 import type { TableSource } from '@/new/hooks/useQueryWorkspace';
 import type { SelectedTable } from '@/new/types/SelectedTable';
@@ -71,6 +72,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   const [lastSelectedTableKey, setLastSelectedTableKey] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [dismissedWarning, setDismissedWarning] = useState(false);
+  const [asyncDialogOpen, setAsyncDialogOpen] = useState(false);
 
   // 获取 DuckDB 表列表用于自动补全
   const { tables: duckdbTables } = useDuckDBTables();
@@ -385,6 +387,31 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   // 合并执行状态
   const executing = isExecuting || internalExecuting;
 
+  // 处理异步执行按钮点击
+  const handleAsyncExecute = useCallback(() => {
+    if (!sql.trim()) return;
+    setAsyncDialogOpen(true);
+  }, [sql]);
+
+  // 异步任务提交成功回调
+  const handleAsyncTaskSuccess = useCallback((taskId: string) => {
+    console.log('Async task submitted:', taskId);
+    // 可以在这里添加额外的处理，比如切换到异步任务面板
+  }, []);
+
+  // 键盘快捷键：Ctrl+Shift+Enter 异步执行
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Enter') {
+        e.preventDefault();
+        handleAsyncExecute();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleAsyncExecute]);
+
   // 从历史加载并执行
   const handleExecuteFromHistory = useCallback(async (sqlFromHistory: string) => {
     setSQL(sqlFromHistory);
@@ -454,6 +481,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       {/* 工具栏 */}
       <SQLToolbar
         onExecute={handleExecute}
+        onAsyncExecute={handleAsyncExecute}
         onFormat={formatSQL}
         onHistory={() => setHistoryOpen(true)}
         isExecuting={executing}
@@ -508,6 +536,19 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         onExecute={handleExecuteFromHistory}
         open={historyOpen}
         onOpenChange={setHistoryOpen}
+      />
+
+      {/* 异步任务对话框 */}
+      <AsyncTaskDialog
+        open={asyncDialogOpen}
+        onOpenChange={setAsyncDialogOpen}
+        sql={sql}
+        datasource={tableSourceInfo.isExternal && tableSourceInfo.currentSource ? {
+          id: tableSourceInfo.currentSource.connectionId || '',
+          type: tableSourceInfo.currentSource.databaseType || '',
+          name: tableSourceInfo.currentSource.connectionName,
+        } : undefined}
+        onSuccess={handleAsyncTaskSuccess}
       />
     </div>
   );

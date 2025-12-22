@@ -54,10 +54,22 @@ const DATAGRIP_FORMAT_OPTIONS: FormatOptions = {
 
 /**
  * 格式化 SQL（DataGrip 风格）
+ * 包含降级策略：格式化失败或结果异常时返回原始 SQL
  */
 export function formatSQLDataGrip(sql: string): string {
+  if (!sql.trim()) return sql;
+  
   try {
-    return format(sql, DATAGRIP_FORMAT_OPTIONS);
+    const formatted = format(sql, DATAGRIP_FORMAT_OPTIONS);
+    
+    // 降级检查：格式化结果异常时返回原始 SQL
+    // 如果格式化后长度比原始短超过 50%，认为格式化异常
+    if (formatted.length < sql.length * 0.5) {
+      console.warn('SQL 格式化结果异常，返回原始 SQL');
+      return sql;
+    }
+    
+    return formatted;
   } catch (error) {
     console.error('SQL 格式化失败:', error);
     // 格式化失败时返回原始 SQL
@@ -73,17 +85,28 @@ export function formatSQLCompact(sql: string): string {
 }
 ```
 
-### 1.3 集成到 SQL 编辑器
+### 1.3 集成到 SQL 编辑器（支持选区格式化）
 
 ```typescript
 // 修改 frontend/src/new/Query/SQLQuery/hooks/useSQLEditor.ts
 
 import { formatSQLDataGrip } from '@/new/utils/sqlFormatter';
 
-// 替换现有的 formatSQL 函数
+// 替换现有的 formatSQL 函数，支持选区格式化
 const formatSQL = useCallback(() => {
-  const formatted = formatSQLDataGrip(sql);
-  setSQL(formatted);
+  // 获取编辑器选区
+  const selection = editorRef.current?.getSelection();
+  const selectedText = editorRef.current?.getSelectedText?.();
+  
+  if (selectedText && selectedText.trim()) {
+    // 有选中文本：只格式化选中部分
+    const formatted = formatSQLDataGrip(selectedText);
+    editorRef.current?.replaceSelection?.(formatted);
+  } else {
+    // 无选中文本：格式化全文
+    const formatted = formatSQLDataGrip(sql);
+    setSQL(formatted);
+  }
 }, [sql]);
 ```
 
@@ -134,10 +157,10 @@ export interface UseColumnVisibilityOptions {
   columns: string[];
   /** 初始可见性 */
   initialVisibility?: ColumnVisibilityState;
-  /** 存储 key */
-  storageKey?: string;
   /** 变化回调 */
   onChange?: (visibility: ColumnVisibilityState) => void;
+  // 注意：不持久化到 localStorage，仅会话级
+  // 原因：查询工作台的 SQL 是动态的，不同查询返回不同列结构
 }
 
 export interface UseColumnVisibilityReturn {
@@ -167,34 +190,18 @@ export interface UseColumnVisibilityReturn {
 export function useColumnVisibility({
   columns,
   initialVisibility,
-  storageKey,
   onChange,
 }: UseColumnVisibilityOptions): UseColumnVisibilityReturn {
-  // 从 localStorage 加载或使用初始值
-  const [visibility, setVisibility] = useState<ColumnVisibilityState>(() => {
-    if (storageKey) {
-      try {
-        const stored = localStorage.getItem(storageKey);
-        if (stored) {
-          return JSON.parse(stored);
-        }
-      } catch (e) {
-        console.error('Failed to load column visibility:', e);
-      }
-    }
-    return initialVisibility || {};
-  });
+  // 仅会话级状态，不持久化到 localStorage
+  // 每次执行新查询后，列可见性重置为全部显示
+  const [visibility, setVisibility] = useState<ColumnVisibilityState>(
+    initialVisibility || {}
+  );
 
-  // 保存到 localStorage
+  // 当列变化时（新查询），重置可见性
   useEffect(() => {
-    if (storageKey) {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(visibility));
-      } catch (e) {
-        console.error('Failed to save column visibility:', e);
-      }
-    }
-  }, [visibility, storageKey]);
+    setVisibility({});
+  }, [columns.join(',')]);
 
   // 通知变化
   useEffect(() => {
@@ -289,7 +296,7 @@ const {
   columnVisibilityInfo,
 } = useColumnVisibility({
   columns: allColumns,
-  storageKey: 'datagrid-column-visibility',
+  // 不传 storageKey，仅会话级
   onChange: onColumnVisibilityChange,
 });
 ```
@@ -334,18 +341,56 @@ export interface UseGridExportReturn {
 }
 
 /**
- * 转义 CSV 值
+ * 序列化单元格值（处理特殊类型）
+ * 解决 BigInt、LIST、STRUCT 等 DuckDB 特殊类型的序列化问题
  */
-function escapeCSVValue(value: unknown): string {
+function serializeCellValue(value: unknown): string {
   if (value === null || value === undefined) {
     return '';
   }
-  const str = String(value);
+  
+  // 处理 BigInt（JSON.stringify 会崩溃）
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  
+  // 处理 Date
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  
+  // 处理数组和对象（LIST、STRUCT 类型）
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  
+  return String(value);
+}
+
+/**
+ * 转义 CSV 值
+ */
+function escapeCSVValue(value: unknown): string {
+  const str = serializeCellValue(value);
   // 如果包含逗号、换行或引号，需要用引号包裹
   if (str.includes(',') || str.includes('\n') || str.includes('"')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
+}
+
+/**
+ * JSON.stringify 的 replacer，处理 BigInt
+ */
+function jsonReplacer(_key: string, value: unknown): unknown {
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  return value;
 }
 
 /**
@@ -445,7 +490,8 @@ export function useGridExport({
         return newRow;
       });
 
-      const content = JSON.stringify(filteredExportData, null, 2);
+      // 使用 jsonReplacer 处理 BigInt
+      const content = JSON.stringify(filteredExportData, jsonReplacer, 2);
       downloadFile(content, `${filename}.json`, 'application/json');
       toast.success(`已导出 ${exportData.length} 行数据`);
     },
@@ -456,11 +502,105 @@ export function useGridExport({
     exportCSV,
     exportJSON,
     canExportSelected: (selectedRows?.length || 0) > 0,
+    // 用于 UI 显示当前预览数据行数
+    previewRowCount: data.length,
   };
 }
 ```
 
-### 2.3 工具栏集成
+### 2.3 列冻结（Pinning）设计
+
+```typescript
+// frontend/src/new/Query/DataGrid/hooks/useColumnPinning.ts
+
+import { useState, useCallback, useMemo } from 'react';
+
+export interface UseColumnPinningOptions {
+  /** 所有列 */
+  columns: string[];
+  /** 列宽映射 */
+  columnWidths: Record<string, number>;
+}
+
+export interface UseColumnPinningReturn {
+  /** 冻结的列 */
+  pinnedColumns: string[];
+  /** 冻结列到左侧 */
+  pinColumn: (field: string) => void;
+  /** 取消冻结 */
+  unpinColumn: (field: string) => void;
+  /** 判断列是否冻结 */
+  isColumnPinned: (field: string) => boolean;
+  /** 获取冻结列的 left 偏移量 */
+  getPinnedColumnLeft: (field: string) => number;
+}
+
+export function useColumnPinning({
+  columns,
+  columnWidths,
+}: UseColumnPinningOptions): UseColumnPinningReturn {
+  const [pinnedColumns, setPinnedColumns] = useState<string[]>([]);
+
+  const pinColumn = useCallback((field: string) => {
+    setPinnedColumns((prev) => {
+      if (prev.includes(field)) return prev;
+      // 不能冻结所有列
+      if (prev.length >= columns.length - 1) return prev;
+      return [...prev, field];
+    });
+  }, [columns.length]);
+
+  const unpinColumn = useCallback((field: string) => {
+    setPinnedColumns((prev) => prev.filter((col) => col !== field));
+  }, []);
+
+  const isColumnPinned = useCallback(
+    (field: string) => pinnedColumns.includes(field),
+    [pinnedColumns]
+  );
+
+  // 计算冻结列的 left 偏移量
+  const getPinnedColumnLeft = useCallback(
+    (field: string): number => {
+      const index = pinnedColumns.indexOf(field);
+      if (index === -1) return 0;
+      
+      let left = 0;
+      for (let i = 0; i < index; i++) {
+        left += columnWidths[pinnedColumns[i]] || 120;
+      }
+      return left;
+    },
+    [pinnedColumns, columnWidths]
+  );
+
+  return {
+    pinnedColumns,
+    pinColumn,
+    unpinColumn,
+    isColumnPinned,
+    getPinnedColumnLeft,
+  };
+}
+```
+
+**CSS 实现（Tailwind）**：
+```tsx
+// 冻结列的样式
+<div
+  className={cn(
+    'absolute top-0 bg-background',
+    isPinned && 'sticky z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]'
+  )}
+  style={{
+    left: isPinned ? getPinnedColumnLeft(field) : undefined,
+  }}
+>
+  {/* 列内容 */}
+</div>
+```
+
+### 2.4 工具栏集成
 
 ```typescript
 // 修改 ResultToolbar.tsx，添加 DataGrid 模式的支持
@@ -468,8 +608,44 @@ export function useGridExport({
 // 当 useNewDataGrid = true 时：
 // - 显示列可见性控制（使用 columnVisibilityInfo）
 // - 显示导出按钮（调用 exportCSV/exportJSON）
+// - 导出菜单显示"仅导出当前预览数据"提示
+// - 导出菜单提供"全量导出 (异步任务)"入口
 // - 显示选中单元格数而非选中行数
 ```
+
+### 2.5 虚拟滚动与面板调整大小兼容性
+
+```typescript
+// 在 DataGrid 组件中添加 ResizeObserver 监听
+
+import { useEffect, useRef } from 'react';
+
+// 在组件内部
+const containerRef = useRef<HTMLDivElement>(null);
+
+// 监听容器大小变化，触发虚拟滚动重新计算
+useEffect(() => {
+  if (!containerRef.current) return;
+  
+  const resizeObserver = new ResizeObserver(() => {
+    // 触发虚拟滚动重新计算
+    // TanStack Virtual 的 virtualizer.measure() 或类似方法
+    virtualizer?.measure?.();
+  });
+  
+  resizeObserver.observe(containerRef.current);
+  return () => resizeObserver.disconnect();
+}, [virtualizer]);
+
+// JSX
+<div ref={containerRef} className="h-full overflow-auto">
+  {/* 虚拟滚动内容 */}
+</div>
+```
+
+**注意事项**：
+- 当用户拖拽 ResizablePanel 调整大小时，必须触发虚拟滚动重新计算
+- 否则会出现列表底部空白或滚动条错乱的问题
 
 ---
 
@@ -531,6 +707,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
 
   const [customTableName, setCustomTableName] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [overwriteIfExists, setOverwriteIfExists] = useState(false);
   const [tableNameError, setTableNameError] = useState<string | null>(null);
 
   // 校验表名
@@ -557,16 +734,21 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
         sql,
         custom_table_name: customTableName || undefined,
         display_name: displayName || undefined,
+        overwrite_if_exists: overwriteIfExists,
       });
     },
     onSuccess: (data) => {
       toast.success(t('async.submitSuccess', '异步任务已提交'));
+      // 刷新任务列表
       queryClient.invalidateQueries({ queryKey: ['async-tasks'] });
+      // 重要：刷新 DuckDB 表列表，确保新表立即出现在侧边栏
+      queryClient.invalidateQueries({ queryKey: ['duckdb-tables'] });
       onSuccess?.(data.task_id);
       onOpenChange(false);
       // 重置表单
       setCustomTableName('');
       setDisplayName('');
+      setOverwriteIfExists(false);
       setTableNameError(null);
     },
     onError: (error: Error) => {
@@ -787,10 +969,12 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
 
 | 文件路径 | 说明 |
 |----------|------|
-| `frontend/src/new/utils/sqlFormatter.ts` | SQL 格式化工具（封装 sql-formatter） |
-| `frontend/src/new/Query/DataGrid/hooks/useColumnVisibility.ts` | 列可见性 Hook |
-| `frontend/src/new/Query/DataGrid/hooks/useGridExport.ts` | 导出功能 Hook |
-| `frontend/src/new/Query/AsyncTasks/AsyncTaskDialog.tsx` | 异步任务发起对话框 |
+| `frontend/src/new/utils/sqlFormatter.ts` | SQL 格式化工具（封装 sql-formatter，含降级策略） |
+| `frontend/src/new/Query/DataGrid/hooks/useColumnVisibility.ts` | 列可见性 Hook（仅会话级） |
+| `frontend/src/new/Query/DataGrid/hooks/useColumnPinning.ts` | 列冻结 Hook |
+| `frontend/src/new/Query/DataGrid/hooks/useGridExport.ts` | 导出功能 Hook（含类型序列化） |
+| `frontend/src/new/Query/DataGrid/utils/serializeCellValue.ts` | 单元格值序列化工具 |
+| `frontend/src/new/Query/AsyncTasks/AsyncTaskDialog.tsx` | 异步任务发起对话框（含覆盖选项） |
 | `frontend/src/new/Query/AsyncTasks/DownloadResultDialog.tsx` | 下载结果对话框 |
 
 ### 修改文件
@@ -845,12 +1029,16 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
 
 | 风险 | 影响 | 概率 | 缓解措施 |
 |------|------|------|----------|
-| sql-formatter 不支持 DuckDB 特有语法 | 中 | 低 | 使用 PostgreSQL 方言，格式化失败返回原始 SQL |
+| sql-formatter 不支持 DuckDB 特有语法 | 中 | 中 | 使用 PostgreSQL 方言，格式化失败/异常返回原始 SQL |
 | DataGrid 性能问题 | 中 | 低 | 已有虚拟滚动，大数据量已验证 |
+| 虚拟滚动与面板调整冲突 | 中 | 中 | 使用 ResizeObserver 监听容器变化 |
 | 异步任务 API 变更 | 低 | 低 | 后端 API 已稳定 |
 | 用户习惯 AG Grid | 中 | 中 | 保留切换选项，渐进式迁移 |
-| 导出大文件内存溢出 | 高 | 中 | 限制前端导出行数，大文件使用异步任务 |
-| 表名冲突 | 中 | 低 | 后端校验，前端显示错误提示 |
+| 导出大文件内存溢出 | 高 | 中 | 限制前端导出 5 万行，大文件使用异步任务 |
+| BigInt/复杂类型导出崩溃 | 高 | 中 | 实现 serializeCellValue 统一处理 |
+| 表名冲突 | 中 | 中 | 添加"覆盖"选项，后端校验 |
+| 前端/后端导出概念混淆 | 中 | 高 | 导出菜单明确提示，提供异步任务入口 |
+| 侧边栏不刷新 | 中 | 中 | 任务成功后同时刷新 duckdb-tables |
 
 ---
 
@@ -867,6 +1055,9 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
 | 语法错误 | `select from` | 返回原始 SQL |
 | 空输入 | `` | 返回空字符串 |
 | 中文标识符 | `select "订单号" from t` | 正确处理 |
+| DuckDB EXCLUDE | `select * exclude (col) from t` | 返回原始 SQL（不支持） |
+| DuckDB PIVOT | `pivot ... on ...` | 返回原始 SQL（不支持） |
+| 选区格式化 | 选中部分 SQL | 只格式化选中部分 |
 
 ### DataGrid 导出测试
 
@@ -875,11 +1066,16 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
 | 导出空数据 | 禁用按钮，显示提示 |
 | 导出 100 行 | < 100ms 完成 |
 | 导出 10000 行 | < 1s 完成 |
-| 导出 100000 行 | < 5s 完成 |
+| 导出 50000 行 | < 3s 完成 |
+| 导出 > 50000 行 | 显示警告，建议使用异步任务 |
 | 包含逗号的值 | CSV 正确转义 |
 | 包含换行的值 | CSV 正确转义 |
 | 包含引号的值 | CSV 正确转义 |
 | NULL 值 | CSV 为空，JSON 为 null |
+| BigInt 值 | 正确转为字符串，不崩溃 |
+| LIST 类型 | 序列化为 JSON 字符串 |
+| STRUCT 类型 | 序列化为 JSON 字符串 |
+| 导出菜单 | 显示"仅导出当前预览数据"提示 |
 
 ### 异步任务测试
 
@@ -888,8 +1084,28 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
 | 提交空 SQL | 禁用提交按钮 |
 | 表名包含特殊字符 | 显示校验错误 |
 | 表名过长 | 显示校验错误 |
-| 表名已存在 | 后端返回错误，前端显示提示 |
+| 表名已存在（不覆盖） | 后端返回错误，前端显示提示 |
+| 表名已存在（覆盖） | 成功覆盖，显示成功提示 |
 | 网络错误 | 显示错误提示 |
-| 提交成功 | 显示成功提示，刷新任务列表 |
+| 提交成功 | 显示成功提示，刷新任务列表和侧边栏 |
+| 任务成功后 | 新表立即出现在左侧数据源面板 |
 | 下载 CSV | 正确下载文件 |
 | 下载 Parquet | 正确下载文件 |
+
+### 列冻结测试
+
+| 测试场景 | 预期结果 |
+|----------|----------|
+| 冻结单列 | 列固定在左侧，水平滚动时不移动 |
+| 冻结多列 | 按冻结顺序从左到右排列 |
+| 取消冻结 | 列恢复正常滚动 |
+| 冻结所有列 | 禁止，至少保留一列非冻结 |
+| 调整冻结列宽度 | 其他冻结列位置自动调整 |
+
+### 虚拟滚动测试
+
+| 测试场景 | 预期结果 |
+|----------|----------|
+| 拖拽调整面板大小 | 列表正确重新渲染，无空白 |
+| 快速滚动 | 60fps，无卡顿 |
+| 10 万行数据 | 流畅滚动，内存 < 200MB |

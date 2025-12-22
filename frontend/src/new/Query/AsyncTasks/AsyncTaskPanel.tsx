@@ -3,7 +3,7 @@
  * 显示异步任务列表和状态
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -12,9 +12,10 @@ import {
   XCircle,
   Loader2,
   RefreshCw,
-  Trash2,
   Play,
   StopCircle,
+  Download,
+  Database,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/new/components/ui/button';
@@ -37,6 +38,7 @@ import {
 import { listAsyncTasks, cancelAsyncTask, retryAsyncTask } from '@/services/apiClient';
 import { invalidateAllDataCaches } from '@/new/utils/cacheInvalidation';
 import { cn } from '@/lib/utils';
+import { DownloadResultDialog } from './DownloadResultDialog';
 
 export interface AsyncTask {
   task_id: string;
@@ -50,6 +52,14 @@ export interface AsyncTask {
   result_table?: string;
   row_count?: number;
   progress?: number;
+  custom_table_name?: string;
+  display_name?: string;
+  result_info?: {
+    table_name?: string;
+    row_count?: number;
+    custom_table_name?: string;
+    display_name?: string;
+  };
 }
 
 export interface AsyncTaskPanelProps {
@@ -97,10 +107,10 @@ function StatusBadge({ status }: { status: AsyncTask['status'] }) {
   const { t } = useTranslation('common');
 
   const config = {
-    pending: { icon: Clock, variant: 'secondary' as const, label: t('async.status.pending', '等待中') },
+    pending: { icon: Clock, variant: 'outline' as const, label: t('async.status.pending', '等待中') },
     running: { icon: Loader2, variant: 'default' as const, label: t('async.status.running', '运行中') },
     completed: { icon: CheckCircle, variant: 'success' as const, label: t('async.status.completed', '已完成') },
-    failed: { icon: XCircle, variant: 'destructive' as const, label: t('async.status.failed', '失败') },
+    failed: { icon: XCircle, variant: 'error' as const, label: t('async.status.failed', '失败') },
     cancelled: { icon: StopCircle, variant: 'outline' as const, label: t('async.status.cancelled', '已取消') },
   };
 
@@ -124,6 +134,10 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
 }) => {
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
+
+  // 下载对话框状态
+  const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
+  const [selectedTaskForDownload, setSelectedTaskForDownload] = useState<AsyncTask | null>(null);
 
   // 获取任务列表
   const {
@@ -193,10 +207,33 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
 
   const handlePreview = useCallback((task: AsyncTask) => {
     if (!onPreviewSQL) return;
-    const table = task.result_table || `async_result_${task.task_id}`;
+    const table = task.result_info?.table_name || task.result_table || `async_result_${task.task_id}`;
     const sql = `SELECT * FROM ${quoteDuckDBTable(table)} LIMIT 10000`;
     onPreviewSQL(sql);
   }, [onPreviewSQL]);
+
+  // 处理下载
+  const handleDownload = useCallback((task: AsyncTask) => {
+    setSelectedTaskForDownload(task);
+    setDownloadDialogOpen(true);
+  }, []);
+
+  // 获取任务显示名称
+  const getTaskDisplayName = useCallback((task: AsyncTask): string => {
+    // 优先使用 display_name，其次是 custom_table_name，最后是 result_table
+    return task.result_info?.display_name 
+      || task.result_info?.custom_table_name 
+      || task.display_name 
+      || task.custom_table_name 
+      || task.result_info?.table_name
+      || task.result_table 
+      || '';
+  }, []);
+
+  // 获取任务行数
+  const getTaskRowCount = useCallback((task: AsyncTask): number | undefined => {
+    return task.result_info?.row_count ?? task.row_count;
+  }, []);
 
   // 截断 SQL 显示
   const truncateSQL = (sql: string, maxLength: number = 50): string => {
@@ -251,16 +288,24 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
               <TableRow>
                 <TableHead className="w-[100px]">{t('async.status', '状态')}</TableHead>
                 <TableHead>{t('async.sql', 'SQL')}</TableHead>
-                <TableHead className="w-[120px]">{t('async.time', '时间')}</TableHead>
+                <TableHead className="w-[140px]">{t('async.tableName', '结果表')}</TableHead>
+                <TableHead className="w-[100px]">{t('async.time', '时间')}</TableHead>
                 <TableHead className="w-[80px]">{t('async.rows', '行数')}</TableHead>
-                <TableHead className="w-[100px] text-right">{t('async.actions', '操作')}</TableHead>
+                <TableHead className="w-[120px] text-right">{t('async.actions', '操作')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tasks.map((task) => (
                 <TableRow key={task.task_id}>
                   <TableCell>
-                    <StatusBadge status={task.status} />
+                    <div className="flex flex-col gap-1">
+                      <StatusBadge status={task.status} />
+                      {task.task_type && task.task_type !== 'query' && (
+                        <Badge variant="outline" className="text-xs w-fit">
+                          {task.task_type}
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <TooltipProvider>
@@ -276,6 +321,27 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
                       </Tooltip>
                     </TooltipProvider>
                   </TableCell>
+                  <TableCell>
+                    {getTaskDisplayName(task) ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="font-mono text-xs flex items-center gap-1 cursor-help">
+                              <Database className="h-3 w-3 text-muted-foreground" />
+                              <span className="truncate max-w-[100px]">
+                                {getTaskDisplayName(task)}
+                              </span>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <span className="font-mono text-xs">{getTaskDisplayName(task)}</span>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {task.started_at ? (
                       formatDuration(task.started_at, task.completed_at)
@@ -284,7 +350,7 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
                     )}
                   </TableCell>
                   <TableCell className="text-xs">
-                    {task.row_count !== undefined ? task.row_count.toLocaleString() : '-'}
+                    {getTaskRowCount(task) !== undefined ? getTaskRowCount(task)!.toLocaleString() : '-'}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -304,6 +370,27 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
                             </TooltipTrigger>
                             <TooltipContent>
                               <p>{t('async.previewResult', '预览结果')}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+
+                      {/* 下载按钮（已完成） */}
+                      {task.status === 'completed' && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => handleDownload(task)}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{t('async.download', '下载')}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -360,6 +447,17 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
           </Table>
         )}
       </ScrollArea>
+
+      {/* 下载结果对话框 */}
+      {selectedTaskForDownload && (
+        <DownloadResultDialog
+          open={downloadDialogOpen}
+          onOpenChange={setDownloadDialogOpen}
+          taskId={selectedTaskForDownload.task_id}
+          tableName={getTaskDisplayName(selectedTaskForDownload)}
+          rowCount={getTaskRowCount(selectedTaskForDownload)}
+        />
+      )}
     </div>
   );
 };

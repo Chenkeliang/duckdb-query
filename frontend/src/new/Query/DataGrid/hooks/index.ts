@@ -25,3 +25,20 @@ export type { UseDataGridOptions, UseDataGridReturn } from './useDataGrid';
 
 export { useAutoScroll } from './useAutoScroll';
 export type { UseAutoScrollOptions, UseAutoScrollReturn } from './useAutoScroll';
+
+export { useColumnVisibility } from './useColumnVisibility';
+export type {
+  UseColumnVisibilityOptions,
+  UseColumnVisibilityReturn,
+  ColumnVisibilityState,
+  ColumnVisibilityInfo,
+} from './useColumnVisibility';
+
+export { useGridExport, serializeCellValue } from './useGridExport';
+export type {
+  UseGridExportOptions,
+  UseGridExportReturn,
+  ExportOptions,
+  ExportScope,
+  ExportFormat,
+} from './useGridExport';

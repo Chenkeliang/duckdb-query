@@ -115,6 +115,27 @@ interface AsyncQueryRequest {
   - 点击后在 SQL 面板生成查询语句
   - 自动执行并显示结果
 
+**⚠️ 异步任务成功后的侧边栏联动（重要）**：
+
+异步任务成功创建 `async_result_xxx` 表后，必须自动刷新左侧数据源面板：
+
+```typescript
+// onSuccess 回调中必须同时刷新：
+onSuccess: (data) => {
+  // 1. 刷新任务列表
+  queryClient.invalidateQueries({ queryKey: ['async-tasks'] });
+  
+  // 2. 刷新 DuckDB 表列表（关键！）
+  queryClient.invalidateQueries({ queryKey: ['duckdb-tables'] });
+  
+  toast.success('异步任务已完成');
+}
+```
+
+**用户体验要求**：
+- 任务成功后，新创建的表应立即出现在左侧数据源面板
+- 用户无需手动刷新页面或侧边栏
+
 ### 1.3 边界情况处理
 
 | 场景 | 处理方式 |
@@ -127,6 +148,35 @@ interface AsyncQueryRequest {
 | 任务执行超时 | 后端处理，前端显示超时状态 |
 | 下载大文件 | 显示下载进度，支持取消 |
 | 并发提交多个任务 | 允许，任务列表按时间排序 |
+
+**⚠️ 表名冲突处理（重要）**：
+
+当用户输入的自定义表名已存在时：
+
+**方案 A（推荐）**：在对话框中添加"如果存在则覆盖"复选框
+```
+┌─────────────────────────────────────────────────┐
+│ 结果表名（可选）:                               │
+│ ┌─────────────────────────────────────────────┐ │
+│ │ daily_report                                │ │
+│ └─────────────────────────────────────────────┘ │
+│ ☐ 如果表已存在则覆盖                            │
+└─────────────────────────────────────────────────┘
+```
+
+**方案 B**：收到后端 "Table Exists" 错误时，显示确认对话框
+- 提示："表 'xxx' 已存在，是否覆盖？"
+- 选项：[取消] [修改表名] [覆盖]
+
+**API 请求格式更新**：
+```typescript
+interface AsyncQueryRequest {
+  sql: string;
+  custom_table_name?: string;
+  display_name?: string;
+  overwrite_if_exists?: boolean;  // 新增：是否覆盖已存在的表
+}
+```
 
 ### 1.4 UI 设计参考
 
@@ -253,6 +303,35 @@ interface AsyncQueryRequest {
 | 排序响应时间 | < 500ms |
 | 内存占用（10 万行） | < 200MB |
 
+**⚠️ 虚拟滚动与面板调整大小的兼容性（重要）**：
+
+**问题描述**：
+- TanStack Virtual 的虚拟列表高度是计算出来的
+- 当用户拖拽 ResizablePanel 调整大小时，如果没有正确监听容器高度变化，会出现：
+  - 列表底部大片空白
+  - 滚动条错乱
+  - 必须滚动一下才能恢复
+
+**解决方案**：
+- DataGrid 容器必须绑定 `ResizeObserver` 监听高度变化
+- 高度变化时强制触发虚拟滚动的布局更新
+
+**实现要求**：
+```typescript
+// 使用 ResizeObserver 监听容器大小变化
+useEffect(() => {
+  if (!containerRef.current) return;
+  
+  const resizeObserver = new ResizeObserver((entries) => {
+    // 触发虚拟滚动重新计算
+    virtualizer.measure();
+  });
+  
+  resizeObserver.observe(containerRef.current);
+  return () => resizeObserver.disconnect();
+}, [virtualizer]);
+```
+
 ---
 
 ## 3️⃣ TanStack Table 功能增强
@@ -270,6 +349,7 @@ interface AsyncQueryRequest {
 
 **缺失功能**：
 - ❌ 列隐藏/显示
+- ❌ 列冻结（Pinning）
 - ❌ 导出 CSV/JSON 文件到本地
 - ❌ 工具栏完整集成
 
@@ -292,6 +372,8 @@ interface AsyncQueryRequest {
   - 列名对不上导致 UX 问题
 - **行为**：每次执行新查询后，列可见性重置为全部显示
 
+**注意**：这与现有 AG Grid 的行为一致（AG Grid 当前也没有持久化列可见性），不会影响现有功能。
+
 **UI 组件**：
 ```tsx
 // 使用 shadcn/ui 组件
@@ -305,11 +387,75 @@ import {
 } from '@/new/components/ui/dropdown-menu';
 ```
 
-#### 3.2.2 导出 CSV/JSON
+#### 3.2.2 列冻结（Pinning）
+
+**需求描述**：支持用户冻结列到左侧，滚动时保持可见（与 AG Grid 功能对齐）。
+
+**功能点**：
+- [ ] 支持冻结列到左侧（Pin Left）
+- [ ] 支持取消冻结（Unpin）
+- [ ] 冻结列在水平滚动时保持固定
+- [ ] 冻结列与非冻结列之间有视觉分隔线
+- [ ] 通过列头右键菜单操作冻结/取消冻结
+
+**UI 交互**：
+- 右键点击列头 → 显示上下文菜单
+- 菜单选项：
+  - "冻结到左侧" / "Pin to Left"
+  - "取消冻结" / "Unpin"（仅对已冻结列显示）
+
+**技术实现**：
+- 使用 CSS `position: sticky` + `left: 0` 实现冻结效果
+- 冻结列需要计算累积宽度设置正确的 `left` 值
+- 冻结列背景色需要不透明，避免滚动时内容穿透
+
+**边界情况**：
+| 场景 | 处理方式 |
+|------|----------|
+| 冻结多列 | 支持，按冻结顺序从左到右排列 |
+| 冻结所有列 | 禁止，至少保留一列非冻结 |
+| 列宽调整后 | 自动重新计算冻结列位置 |
+| 隐藏冻结列 | 允许，隐藏后自动调整其他冻结列位置 |
+
+---
+
+#### 3.2.3 导出 CSV/JSON
 
 **需求描述**：支持将当前数据（考虑筛选后）导出为文件。
 
+**⚠️ 前端导出 vs 后端导出的概念区分（重要）**：
+
+| 导出方式 | 位置 | 数据范围 | 适用场景 |
+|----------|------|----------|----------|
+| **前端导出** | DataGrid 工具栏 | 仅当前预览数据（内存中的数据） | 快速导出小量数据 |
+| **后端导出** | 异步任务面板 | 数据库全量数据 | 大数据量完整导出 |
+
+**用户困惑风险**：
+- 用户在 DataGrid 点"导出"，以为在导全量数据
+- 实际只导出了当前预览的数据（如前 1000 行）
+- 用户会认为是 Bug 或数据丢失
+
+**解决方案 - 导出菜单设计**：
+
+```
+┌─────────────────────────────────────────┐
+│ 导出                              [▼]   │
+├─────────────────────────────────────────┤
+│ 📄 导出为 CSV                           │
+│ 📄 导出为 JSON                          │
+├─────────────────────────────────────────┤
+│ ⚠️ 仅导出当前预览数据 (1,000 行)        │
+│    查询结果共 1,000,000 行              │
+├─────────────────────────────────────────┤
+│ 🚀 全量导出 (异步任务)                  │
+│    导出完整查询结果到 CSV/Parquet       │
+└─────────────────────────────────────────┘
+```
+
 **功能点**：
+- [ ] 导出菜单顶部显示当前预览数据行数
+- [ ] 如果查询结果被截断（如 LIMIT 1000），显示警告提示
+- [ ] 添加"全量导出 (异步任务)"选项，点击跳转到异步任务对话框
 - [ ] 导出 CSV 文件
   - 使用逗号分隔
   - 正确处理包含逗号/换行/引号的值（RFC 4180 标准）
@@ -333,6 +479,22 @@ import {
     1. "仍然导出"（警告可能卡顿）
     2. "使用异步任务"（跳转到异步任务对话框）
 
+**⚠️ 导出时的类型序列化（关键）**：
+
+DuckDB 返回的数据可能包含特殊类型，必须正确处理：
+
+| 类型 | 问题 | 解决方案 |
+|------|------|----------|
+| `BigInt` / `HUGEINT` | `JSON.stringify()` 遇到 BigInt 会抛出 `TypeError` 崩溃 | 在 `JSON.stringify` 中提供 `replacer` 函数，将 BigInt 转为字符串 |
+| `LIST` (如 `[1, 2]`) | CSV 导出可能变成 `[object Object]` | 使用 `JSON.stringify()` 序列化为字符串 |
+| `STRUCT` (如 `{'key': 'val'}`) | CSV 导出可能变成 `[object Object]` | 使用 `JSON.stringify()` 序列化为字符串 |
+| `Date` / `Timestamp` | 格式不一致 | 统一转为 ISO 8601 格式 |
+
+**实现要求**：
+- 必须实现统一的 `serializeCellValue(value: unknown): string` 函数
+- 该函数处理所有特殊类型，确保导出不会崩溃或乱码
+- CSV 和 JSON 导出都必须使用此函数
+
 **边界情况**：
 | 场景 | 处理方式 |
 |------|----------|
@@ -342,10 +504,10 @@ import {
 | 单元格包含特殊字符 | 正确转义（CSV 用引号包裹，JSON 用转义字符） |
 | 单元格包含换行符 | CSV 用引号包裹保留换行 |
 | NULL 值 | CSV 导出为空字符串，JSON 导出为 null |
-| 日期值 | 导出为 ISO 8601 格式 |
+| 日期值 | 导出为 ISO 8601 格式，时区为已配置时区 |
 | 浏览器不支持下载 | 显示错误提示 |
 
-#### 3.2.3 工具栏集成
+#### 3.2.4 工具栏集成
 
 **需求描述**：将 TanStack DataGrid 的功能集成到 ResultToolbar，使用 shadcn/ui 组件。
 
@@ -359,7 +521,7 @@ import {
 **工具栏布局**（同一行，响应式）：
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
-│ 1,234 / 10,000 行 │ 15 / 20 列 │ 已选 50 个单元格 │ 2.3s    [列 ▼] [刷新] [导出 ▼] [导入] [全屏] │
+│ 1,234 / 10,000 行 │ 15 / 20 列 │ 已选 50 个单元格 │ 2.3s    [列 ▼] [刷新] [导出 ▼] [全屏] │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -384,7 +546,6 @@ import {
     <Button variant="ghost" size="sm">列</Button>
     <Button variant="ghost" size="sm">刷新</Button>
     <Button variant="ghost" size="sm">导出</Button>
-    <Button variant="ghost" size="sm">导入</Button>
     <Button variant="ghost" size="sm">全屏</Button>
   </div>
 </div>
@@ -489,7 +650,52 @@ const formatSQLDataGrip = (sql: string): string => {
 };
 ```
 
-#### 4.2.3 边界情况处理
+#### 4.2.3 DuckDB 方言兼容性与降级策略
+
+**⚠️ 重要说明**：`sql-formatter` 库使用 PostgreSQL 方言，但 DuckDB 有一些特有语法可能无法完美支持。
+
+**DuckDB 特有语法兼容性**：
+
+| 语法 | 支持情况 | 说明 |
+|------|----------|------|
+| 标准 SELECT/JOIN/WHERE | ✅ 完全支持 | PostgreSQL 兼容 |
+| CTE (WITH 子句) | ✅ 完全支持 | PostgreSQL 兼容 |
+| 窗口函数 | ✅ 完全支持 | PostgreSQL 兼容 |
+| ATTACH DATABASE | ⚠️ 部分支持 | 可能格式化不理想 |
+| COPY TO/FROM | ⚠️ 部分支持 | 可能格式化不理想 |
+| EXCLUDE/REPLACE 列 | ❌ 不支持 | DuckDB 特有，返回原始 SQL |
+| PIVOT/UNPIVOT | ❌ 不支持 | DuckDB 特有，返回原始 SQL |
+| QUALIFY 子句 | ❌ 不支持 | DuckDB 特有，返回原始 SQL |
+| SAMPLE 子句 | ⚠️ 部分支持 | 可能格式化不理想 |
+
+**降级策略**：
+1. **格式化失败时**：返回原始 SQL，不丢失用户输入
+2. **格式化结果异常时**：如果格式化后的 SQL 长度比原始 SQL 短超过 50%，认为格式化异常，返回原始 SQL
+3. **用户提示**：格式化按钮旁可添加 tooltip 说明"使用 PostgreSQL 方言格式化，部分 DuckDB 特有语法可能不支持"
+
+**实现代码示例**：
+```typescript
+export function formatSQLDataGrip(sql: string): string {
+  if (!sql.trim()) return sql;
+  
+  try {
+    const formatted = format(sql, DATAGRIP_FORMAT_OPTIONS);
+    
+    // 降级检查：格式化结果异常时返回原始 SQL
+    if (formatted.length < sql.length * 0.5) {
+      console.warn('SQL 格式化结果异常，返回原始 SQL');
+      return sql;
+    }
+    
+    return formatted;
+  } catch (error) {
+    console.error('SQL 格式化失败:', error);
+    return sql;  // 格式化失败返回原始 SQL
+  }
+}
+```
+
+#### 4.2.4 边界情况处理
 
 | 场景 | 处理方式 |
 |------|----------|
@@ -503,7 +709,7 @@ const formatSQLDataGrip = (sql: string): string => {
 | 嵌套子查询 | 正确缩进 |
 | CTE（WITH 子句） | 正确格式化 |
 
-#### 4.2.4 性能要求
+#### 4.2.5 性能要求
 
 | SQL 长度 | 格式化时间要求 |
 |----------|----------------|
@@ -512,7 +718,7 @@ const formatSQLDataGrip = (sql: string): string => {
 | 500-1000 行 | < 500ms |
 | > 1000 行 | < 1s |
 
-#### 4.2.5 集成方式
+#### 4.2.6 集成方式
 
 修改 `frontend/src/new/Query/SQLQuery/hooks/useSQLEditor.ts`：
 
@@ -526,6 +732,39 @@ const formatSQL = useCallback(() => {
 }, [sql]);
 ```
 
+#### 4.2.7 选区格式化支持
+
+**需求描述**：用户可能在一个编辑器中写多条 SQL，只想格式化选中的部分。
+
+**功能点**：
+- [ ] 检测当前是否有选中文本
+- [ ] 如果有选中文本，只格式化选中部分并替换回原位置
+- [ ] 如果没有选中文本，格式化全文
+
+**实现逻辑**：
+```typescript
+const formatSQL = useCallback(() => {
+  // 获取编辑器选区
+  const selection = editorRef.current?.getSelection();
+  const selectedText = editorRef.current?.getSelectedText();
+  
+  if (selectedText && selectedText.trim()) {
+    // 有选中文本：只格式化选中部分
+    const formatted = formatSQLDataGrip(selectedText);
+    editorRef.current?.replaceSelection(formatted);
+  } else {
+    // 无选中文本：格式化全文
+    const formatted = formatSQLDataGrip(sql);
+    setSQL(formatted);
+  }
+}, [sql]);
+```
+
+**用户体验**：
+- 快捷键 `Ctrl+Shift+F` 触发格式化
+- 有选区时只格式化选区，无选区时格式化全文
+- 格式化后保持光标位置（尽可能）
+
 ---
 
 ## 📊 优先级排序
@@ -534,8 +773,9 @@ const formatSQL = useCallback(() => {
 |------|--------|--------|------|------|
 | SQL 格式化增强 | P0 | 小 | 无 | 低 |
 | TanStack Table 列隐藏/显示 | P1 | 中 | 无 | 低 |
-| TanStack Table 导出功能 | P1 | 中 | 无 | 低 |
-| TanStack Table 作为默认 | P1 | 小 | 上述两项 | 中（需充分测试） |
+| TanStack Table 列冻结（Pinning） | P1 | 中 | 无 | 中（CSS sticky 兼容性） |
+| TanStack Table 导出功能 | P1 | 中 | 无 | 中（类型序列化） |
+| TanStack Table 作为默认 | P1 | 小 | 上述三项 | 中（需充分测试） |
 | 异步任务发起增强 | P2 | 中 | 无 | 低 |
 | 异步任务面板完善 | P2 | 大 | 无 | 中（功能较多） |
 
@@ -565,16 +805,23 @@ const formatSQL = useCallback(() => {
 ### 异步任务
 - [ ] 可以发起异步任务并指定自定义表名
 - [ ] 自定义表名校验正确（字母/数字/下划线，不能以数字开头，最大 64 字符）
+- [ ] 支持"如果存在则覆盖"选项
 - [ ] 任务列表显示自定义表名和显示名
 - [ ] 可以下载成功任务的结果文件（CSV/Parquet）
 - [ ] 取消/重试功能正常工作
+- [ ] 任务成功后自动刷新左侧数据源面板（新表立即可见）
 - [ ] 所有对话框使用 shadcn/ui 组件
 
 ### TanStack Table
 - [ ] 默认使用 TanStack DataGrid 显示结果
 - [ ] 可以隐藏/显示列
-- [ ] 列可见性状态持久化
+- [ ] 列可见性为会话级（与 AG Grid 行为一致，不持久化）
+- [ ] 可以冻结列到左侧（Pin Left）
+- [ ] 冻结列在水平滚动时保持固定
 - [ ] 可以导出 CSV/JSON 文件
+- [ ] 导出菜单明确显示"仅导出当前预览数据"
+- [ ] 导出菜单提供"全量导出 (异步任务)"入口
+- [ ] 导出正确处理 BigInt 和复杂类型（LIST/STRUCT）
 - [ ] 导出文件格式正确（UTF-8 BOM，特殊字符转义）
 - [ ] UI 风格与 AG Grid 一致
 - [ ] 深色模式正常
@@ -587,6 +834,8 @@ const formatSQL = useCallback(() => {
 - [ ] JOIN 条件正确对齐
 - [ ] 不破坏注释和字符串字面量
 - [ ] 格式化失败时返回原始 SQL
+- [ ] 支持选区格式化（有选中文本时只格式化选中部分）
+- [ ] DuckDB 特有语法格式化失败时优雅降级
 
 ### 构建验证
 - [ ] `npm run build` 通过
