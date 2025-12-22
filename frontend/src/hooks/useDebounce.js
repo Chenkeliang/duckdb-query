@@ -51,12 +51,12 @@ class GlobalDebounceManager {
 
     // 如果距离上次调用时间不足delay，则跳过
     if (timeSinceLastCall < delay) {
-      
+
       // 如果有正在进行的调用，返回该Promise
       if (this.pendingCalls.has(key)) {
         return this.pendingCalls.get(key);
       }
-      
+
       // 否则返回一个resolved的Promise
       return Promise.resolve(null);
     }
