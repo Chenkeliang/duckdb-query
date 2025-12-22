@@ -6,9 +6,10 @@
 
 import { useRef, useCallback, useEffect } from 'react';
 import { useVirtualizer, type Virtualizer, type VirtualItem } from '@tanstack/react-virtual';
+import { DATAGRID_CONFIG } from '../types';
 
-/** 列虚拟化阈值 */
-const COLUMN_VIRTUALIZATION_THRESHOLD = 50;
+/** 使用配置中的列虚拟化阈值 */
+const { columnThreshold: COLUMN_VIRTUALIZATION_THRESHOLD } = DATAGRID_CONFIG.virtualization;
 
 export interface UseVirtualScrollOptions {
   /** 总行数 */
@@ -79,12 +80,12 @@ export function useVirtualScroll({
   // 获取列宽的函数
   const getColumnWidth = useCallback((index: number): number => {
     if (columnWidths) {
-      return columnWidths[index] || 120;
+      return columnWidths[index] || DATAGRID_CONFIG.defaultColumnWidth;
     }
     if (typeof columnWidth === 'function') {
       return columnWidth(index);
     }
-    return columnWidth || 120;
+    return columnWidth || DATAGRID_CONFIG.defaultColumnWidth;
   }, [columnWidth, columnWidths]);
 
   // 是否启用列虚拟化

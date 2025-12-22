@@ -66,6 +66,225 @@
     @apply bg-surface-hover text-foreground;
   }
 }
+
+/* ============================================
+   TanStack DataGrid Styles (AG Grid 风格)
+   ============================================ */
+
+/* DataGrid 容器 - 浅色主题 */
+.dq-data-grid {
+  --dg-background: hsl(0 0% 100%);
+  --dg-foreground: hsl(240 10% 3.9%);
+  --dg-header-background: hsl(240 5.9% 96%);
+  --dg-header-foreground: hsl(240 3.8% 46%);
+  --dg-row-odd-background: hsl(240 5.9% 98%);
+  --dg-row-hover-background: hsl(240 5.9% 96%);
+  --dg-row-selected-background: hsl(221.2 83.2% 53.3% / 0.1);
+  --dg-border-color: hsl(240 5.9% 90%);
+  --dg-cell-padding: 0 12px;
+  --dg-row-height: 32px;
+  --dg-header-height: 36px;
+  --dg-font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --dg-font-size: 13px;
+  --dg-null-color: hsl(240 5% 64%);
+  --dg-selection-border: hsl(221.2 83.2% 53.3%);
+  --dg-selection-background: hsl(221.2 83.2% 53.3% / 0.08);
+}
+
+/* DataGrid 容器 - 深色主题 */
+.dark .dq-data-grid {
+  --dg-background: hsl(240 10% 3.9%);
+  --dg-foreground: hsl(0 0% 92%);
+  --dg-header-background: hsl(240 10% 6%);
+  --dg-header-foreground: hsl(0 0% 75%);
+  --dg-row-odd-background: hsl(240 10% 5%);
+  --dg-row-hover-background: hsl(240 3.7% 12%);
+  --dg-row-selected-background: hsl(221.2 83.2% 53.3% / 0.15);
+  --dg-border-color: hsl(240 5% 21%);
+  --dg-null-color: hsl(240 5% 50%);
+  --dg-selection-border: hsl(24.6 95% 53.1%);
+  --dg-selection-background: hsl(24.6 95% 53.1% / 0.1);
+}
+
+/* DataGrid 主容器 */
+.dq-data-grid {
+  font-family: var(--dg-font-family);
+  font-size: var(--dg-font-size);
+  background: var(--dg-background);
+  color: var(--dg-foreground);
+  border: 1px solid var(--dg-border-color);
+  border-radius: 0;
+}
+
+/* DataGrid 列头容器 */
+.dq-data-grid-header {
+  background: var(--dg-header-background);
+  border-bottom: 1px solid var(--dg-border-color);
+}
+
+/* DataGrid 列头单元格 */
+.dq-data-grid-header-cell {
+  height: var(--dg-header-height);
+  padding: var(--dg-cell-padding);
+  color: var(--dg-header-foreground);
+  font-weight: 400;
+  border-right: 1px solid var(--dg-border-color);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dq-data-grid-header-cell:last-child {
+  border-right: none;
+}
+
+.dq-data-grid-header-cell:hover {
+  background: var(--dg-row-hover-background);
+}
+
+/* DataGrid 列头排序图标 */
+.dq-data-grid-sort-icon {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.dq-data-grid-sort-icon.active {
+  opacity: 1;
+  color: hsl(var(--primary));
+}
+
+/* DataGrid 列头筛选图标 */
+.dq-data-grid-filter-icon {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.dq-data-grid-filter-icon.active {
+  opacity: 1;
+  color: hsl(var(--primary));
+}
+
+/* DataGrid 列宽调整手柄 */
+.dq-data-grid-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.dq-data-grid-resize-handle:hover,
+.dq-data-grid-resize-handle:active {
+  background: hsl(var(--primary) / 0.5);
+}
+
+/* DataGrid 行 */
+.dq-data-grid-row {
+  display: flex;
+  border-bottom: 1px solid var(--dg-border-color);
+}
+
+.dq-data-grid-row:nth-child(odd) {
+  background: var(--dg-row-odd-background);
+}
+
+.dq-data-grid-row:hover {
+  background: var(--dg-row-hover-background);
+}
+
+.dq-data-grid-row.selected {
+  background: var(--dg-row-selected-background);
+}
+
+/* DataGrid 单元格 */
+.dq-data-grid-cell {
+  height: var(--dg-row-height);
+  padding: var(--dg-cell-padding);
+  border-right: 1px solid var(--dg-border-color);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dq-data-grid-cell:last-child {
+  border-right: none;
+}
+
+/* DataGrid 单元格选中状态 */
+.dq-data-grid-cell.selected {
+  background: var(--dg-selection-background);
+}
+
+.dq-data-grid-cell.selection-border-top {
+  box-shadow: inset 0 2px 0 0 var(--dg-selection-border);
+}
+
+.dq-data-grid-cell.selection-border-bottom {
+  box-shadow: inset 0 -2px 0 0 var(--dg-selection-border);
+}
+
+.dq-data-grid-cell.selection-border-left {
+  box-shadow: inset 2px 0 0 0 var(--dg-selection-border);
+}
+
+.dq-data-grid-cell.selection-border-right {
+  box-shadow: inset -2px 0 0 0 var(--dg-selection-border);
+}
+
+/* 组合边框 */
+.dq-data-grid-cell.selection-border-top.selection-border-left {
+  box-shadow: inset 0 2px 0 0 var(--dg-selection-border), inset 2px 0 0 0 var(--dg-selection-border);
+}
+
+.dq-data-grid-cell.selection-border-top.selection-border-right {
+  box-shadow: inset 0 2px 0 0 var(--dg-selection-border), inset -2px 0 0 0 var(--dg-selection-border);
+}
+
+.dq-data-grid-cell.selection-border-bottom.selection-border-left {
+  box-shadow: inset 0 -2px 0 0 var(--dg-selection-border), inset 2px 0 0 0 var(--dg-selection-border);
+}
+
+.dq-data-grid-cell.selection-border-bottom.selection-border-right {
+  box-shadow: inset 0 -2px 0 0 var(--dg-selection-border), inset -2px 0 0 0 var(--dg-selection-border);
+}
+
+/* 焦点单元格 */
+.dq-data-grid-cell.focus {
+  outline: 2px solid var(--dg-selection-border);
+  outline-offset: -2px;
+}
+
+/* NULL 值样式 */
+.dq-data-grid-cell-null {
+  color: var(--dg-null-color);
+  font-style: italic;
+}
+
+/* 数字单元格右对齐 */
+.dq-data-grid-cell-number {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+/* DataGrid 底部统计栏 */
+.dq-data-grid-footer {
+  min-height: 28px;
+  padding: 0 12px;
+  background: var(--dg-header-background);
+  border-top: 1px solid var(--dg-border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--dg-header-foreground);
+}
+
 @tailwind utilities;
 
 /* Basic global reset needed for full-bleed layout (no white frame) */

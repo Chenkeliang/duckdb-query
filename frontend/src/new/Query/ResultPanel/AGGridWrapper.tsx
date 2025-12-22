@@ -26,7 +26,6 @@ import {
 } from 'ag-grid-community';
 
 import { useGridCopy } from './hooks';
-import { CustomHeaderComponent } from './CustomHeaderComponent';
 
 // 注册 AG Grid 模块
 ModuleRegistry.registerModules([AllCommunityModule]);

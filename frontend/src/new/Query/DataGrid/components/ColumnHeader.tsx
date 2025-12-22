@@ -3,14 +3,9 @@
  */
 
 import * as React from 'react';
-import { useTranslation } from 'react-i18next';
-import { ArrowUp, ArrowDown, Copy, GripVertical } from 'lucide-react';
+import { useCallback } from 'react';
+import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/new/components/ui/tooltip';
 import { FilterMenu } from './FilterMenu';
 
 export interface ColumnHeaderProps {
@@ -44,6 +39,8 @@ export interface ColumnHeaderProps {
   onClearFilter?: (field: string) => void;
   /** 列宽调整开始回调 */
   onResizeStart?: (field: string, startX: number) => void;
+  /** 双击列边框自动调整列宽回调 */
+  onAutoFitColumn?: (field: string) => void;
   /** 自定义类名 */
   className?: string;
 }
@@ -60,13 +57,13 @@ export const ColumnHeader: React.FC<ColumnHeaderProps> = ({
   resizable = true,
   data = [],
   onSortClick,
-  onCopyColumnName,
+  onCopyColumnName: _onCopyColumnName,
   onFilterChange,
   onClearFilter,
   onResizeStart,
+  onAutoFitColumn,
   className,
 }) => {
-  const { t } = useTranslation();
   const displayName = headerName || field;
 
   const handleSortClick = (e: React.MouseEvent) => {
@@ -75,23 +72,33 @@ export const ColumnHeader: React.FC<ColumnHeaderProps> = ({
     }
   };
 
-  const handleCopyClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onCopyColumnName?.(field);
-  };
-
   const handleResizeMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     onResizeStart?.(field, e.clientX);
   };
 
+  // 双击列边框自动调整列宽
+  const handleResizeDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onAutoFitColumn?.(field);
+  }, [field, onAutoFitColumn]);
+
+  // 排序图标
+  const SortIcon = sortDirection === 'asc' ? (
+    <ArrowUp className="dq-data-grid-sort-icon active h-3 w-3 flex-shrink-0" />
+  ) : sortDirection === 'desc' ? (
+    <ArrowDown className="dq-data-grid-sort-icon active h-3 w-3 flex-shrink-0" />
+  ) : sortable ? (
+    <ArrowUpDown className="dq-data-grid-sort-icon h-3 w-3 opacity-0 group-hover:opacity-50 flex-shrink-0" />
+  ) : null;
+
   return (
     <div
       className={cn(
-        'relative flex items-center gap-1 px-2 h-8 border-r border-b border-border',
-        'bg-muted/50 font-medium text-sm select-none',
-        sortable && 'cursor-pointer hover:bg-muted',
+        'dq-data-grid-header-cell group relative',
+        sortable && 'cursor-pointer',
         className
       )}
       style={{ width, minWidth: width, maxWidth: width }}
@@ -101,31 +108,11 @@ export const ColumnHeader: React.FC<ColumnHeaderProps> = ({
       <span className="flex-1 truncate">{displayName}</span>
 
       {/* 排序图标 */}
-      {sortDirection && (
-        <span className="text-primary">
-          {sortDirection === 'asc' ? (
-            <ArrowUp className="h-3 w-3" />
-          ) : (
-            <ArrowDown className="h-3 w-3" />
-          )}
-        </span>
-      )}
+      {SortIcon}
 
-      {/* 操作按钮 */}
-      <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-        {/* 复制列名 */}
-        <Tooltip>
-          <TooltipTrigger
-            className="inline-flex h-6 w-6 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground hover:bg-accent"
-            onClick={handleCopyClick}
-          >
-            <Copy className="h-3 w-3" />
-          </TooltipTrigger>
-          <TooltipContent>{t('dataGrid.copyColumnName')}</TooltipContent>
-        </Tooltip>
-
-        {/* 筛选菜单 */}
-        {filterable && (
+      {/* 筛选图标 */}
+      {filterable && (
+        <div onClick={(e) => e.stopPropagation()}>
           <FilterMenu
             column={field}
             data={data}
@@ -134,17 +121,16 @@ export const ColumnHeader: React.FC<ColumnHeaderProps> = ({
             onFilterChange={onFilterChange}
             onClearFilter={onClearFilter}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 调整宽度手柄 */}
       {resizable && (
         <div
-          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50"
+          className="dq-data-grid-resize-handle"
           onMouseDown={handleResizeMouseDown}
-        >
-          <GripVertical className="h-full w-1 text-transparent" />
-        </div>
+          onDoubleClick={handleResizeDoubleClick}
+        />
       )}
     </div>
   );

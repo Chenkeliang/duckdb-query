@@ -19,6 +19,7 @@ from utils.response_helpers import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
+
 # ============================================================================
 # 数据模型
 # ============================================================================

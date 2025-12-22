@@ -7,6 +7,7 @@ import * as React from 'react';
 import { useMemo, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DataGrid } from '../DataGrid';
+import type { DataGridRef } from '../DataGrid/DataGrid';
 import { useColumnVisibility, useGridExport } from '../DataGrid/hooks';
 import type { ColumnVisibilityState } from '../DataGrid/hooks/useColumnVisibility';
 import type { ColumnDef as DataGridColumnDef, CellSelection } from '../DataGrid/types';
@@ -87,6 +88,12 @@ export interface DataGridApi {
   toggleColumnVisibility: (field: string) => void;
   /** 显示所有列 */
   showAllColumns: () => void;
+  /** 自动调整所有列宽 */
+  autoFitAllColumns: () => void;
+  /** 适应容器宽度 */
+  fitToWidth: () => void;
+  /** 重置列 */
+  resetColumns: () => void;
 }
 
 /**
@@ -185,6 +192,9 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
   const onGridReadyRef = useRef(onGridReady);
   onGridReadyRef.current = onGridReady;
 
+  // DataGrid 内部 ref
+  const dataGridInnerRef = useRef<DataGridRef>(null);
+
   // 暴露 API 给父组件（使用 useImperativeHandle 确保 API 始终最新）
   useImperativeHandle(ref, () => ({
     exportDataAsCsv: (params) => {
@@ -203,6 +213,9 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
     getColumnVisibility: () => columnVisibilityInfo,
     toggleColumnVisibility: toggleColumn,
     showAllColumns,
+    autoFitAllColumns: () => dataGridInnerRef.current?.autoFitAllColumns(),
+    fitToWidth: () => dataGridInnerRef.current?.fitToWidth(),
+    resetColumns: () => dataGridInnerRef.current?.resetColumns(),
   }), [processedData, exportCSV, exportJSON, columnVisibilityInfo, toggleColumn, showAllColumns]);
 
   // 创建稳定的 API 对象用于 onGridReady 回调
@@ -223,6 +236,9 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
     getColumnVisibility: () => columnVisibilityInfo,
     toggleColumnVisibility: toggleColumn,
     showAllColumns,
+    autoFitAllColumns: () => dataGridInnerRef.current?.autoFitAllColumns(),
+    fitToWidth: () => dataGridInnerRef.current?.fitToWidth(),
+    resetColumns: () => dataGridInnerRef.current?.resetColumns(),
   }), [processedData, exportCSV, exportJSON, columnVisibilityInfo, toggleColumn, showAllColumns]);
 
   // 仅在首次渲染时调用 onGridReady（避免每次数据变化都重新调用）
@@ -236,6 +252,7 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
 
   return (
     <DataGrid
+      ref={dataGridInnerRef}
       data={processedData}
       columns={convertedColumns}
       loading={loading}
@@ -248,6 +265,7 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
       onFilterChange={onFilterChange}
       onSortChange={onSortChange}
       onStatsChange={onStatsChange}
+      hideColumnMenu={true}
       className={className}
     />
   );

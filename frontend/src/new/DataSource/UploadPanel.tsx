@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/new/components/ui/card";
 import { Button } from "@/new/components/ui/button";
 import { Input } from "@/new/components/ui/input";
 import { Label } from "@/new/components/ui/label";
+import { useAppConfig } from "@/new/hooks/useAppConfig";
 
 // 类型定义
 interface PendingExcel {
@@ -34,6 +35,7 @@ interface PendingExcel {
 const UploadPanel = ({ onDataSourceSaved }) => {
   const { t } = useTranslation("common");
   const fileInputRef = useRef(null);
+  const { maxFileSizeDisplay } = useAppConfig();
 
   const [alias, setAlias] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
@@ -50,6 +52,7 @@ const UploadPanel = ({ onDataSourceSaved }) => {
   const [serverMounts, setServerMounts] = useState([]);
   const [serverMountLoading, setServerMountLoading] = useState(false);
   const [selectedMount, setSelectedMount] = useState("");
+  const [currentPath, setCurrentPath] = useState(""); // 当前浏览路径
   const [serverEntries, setServerEntries] = useState([]);
   const [serverLoading, setServerLoading] = useState(false);
   const [serverError, setServerError] = useState("");
@@ -179,6 +182,7 @@ const UploadPanel = ({ onDataSourceSaved }) => {
     setServerError("");
     setServerSelectedFile(null);
     setServerAlias("");
+    setCurrentPath(path); // 记录当前路径
     try {
       const data = await browseServerDirectory(path);
       setServerEntries(data?.entries || []);
@@ -353,7 +357,7 @@ const UploadPanel = ({ onDataSourceSaved }) => {
             {t("page.datasource.dragHere")}
           </p>
           <p className="text-xs text-muted-fg">
-            {t("page.datasource.maxSize")}
+            {t("page.datasource.maxSizeTemplate", { size: maxFileSizeDisplay })}
           </p>
           {selectedFile ? (
             <p className="mt-1 text-xs text-muted-fg">
@@ -510,40 +514,67 @@ const UploadPanel = ({ onDataSourceSaved }) => {
                 {t("page.datasource.serverNoFiles")}
               </div>
             ) : (
-              serverEntries.map(entry => {
-                const selected = serverSelectedFile?.path === entry.path;
-                const isDir = entry.type === "directory";
-                return (
+              <>
+                {/* 返回上一级按钮 */}
+                {currentPath && currentPath !== selectedMount && (
                   <button
-                    key={entry.path}
                     type="button"
                     onClick={() => {
-                      console.log("File clicked:", entry.name, "isDir:", isDir);
-                      if (isDir) {
-                        loadServerDirectory(entry.path);
-                      } else {
-                        setServerSelectedFile(entry);
-                        if (!serverAlias) {
-                          setServerAlias(entry.name.replace(/\.[^/.]+$/, ""));
-                        }
-                      }
+                      // 计算父目录路径
+                      const parentPath = currentPath.split('/').slice(0, -1).join('/') || selectedMount;
+                      loadServerDirectory(parentPath);
                     }}
-                    className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left cursor-pointer ${
-                      selected ? "bg-surface-hover" : "hover:bg-surface-hover"
-                    }`}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left cursor-pointer hover:bg-surface-hover border-b border-border"
                   >
-                    <span className="flex items-center gap-2 text-xs text-foreground">
-                      <Server className="h-3 w-3 text-muted-fg" />
-                      {entry.name}
-                    </span>
-                    <span className="text-[10px] text-muted-fg">
-                      {isDir
-                        ? t("page.datasource.serverTypeFolder")
-                        : (entry.extension || "").toUpperCase()}
-                    </span>
+                    <span className="text-xs text-primary font-medium">← {t("page.datasource.serverGoBack", "返回上一级")}</span>
                   </button>
-                );
-              })
+                )}
+                
+                {serverEntries
+                  .filter(entry => {
+                    // 显示所有目录
+                    if (entry.type === "directory") return true;
+                    // 只显示支持的文件类型
+                    // 后端返回的 extension 是映射后的类型：excel, csv, json, parquet 等
+                    const ext = (entry.extension || "").toLowerCase();
+                    const supportedTypes = ["csv", "excel", "json", "jsonl", "parquet"];
+                    return supportedTypes.includes(ext);
+                  })
+                  .map(entry => {
+                    const selected = serverSelectedFile?.path === entry.path;
+                    const isDir = entry.type === "directory";
+                    return (
+                      <button
+                        key={entry.path}
+                        type="button"
+                        onClick={() => {
+                          console.log("File clicked:", entry.name, "isDir:", isDir, "extension:", entry.extension);
+                          if (isDir) {
+                            loadServerDirectory(entry.path);
+                          } else {
+                            setServerSelectedFile(entry);
+                            if (!serverAlias) {
+                              setServerAlias(entry.name.replace(/\.[^/.]+$/, ""));
+                            }
+                          }
+                        }}
+                        className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left cursor-pointer ${
+                          selected ? "bg-surface-hover" : "hover:bg-surface-hover"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 text-xs text-foreground">
+                          <Server className="h-3 w-3 text-muted-fg" />
+                          {entry.name}
+                        </span>
+                        <span className="text-[10px] text-muted-fg">
+                          {isDir
+                            ? t("page.datasource.serverTypeFolder")
+                            : (entry.extension || "").toUpperCase()}
+                        </span>
+                      </button>
+                    );
+                  })}
+              </>
             )}
           </div>
 

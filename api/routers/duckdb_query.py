@@ -181,11 +181,23 @@ async def list_duckdb_tables_summary():
                 )
 
         # 按创建时间排序：最新的在前，没有创建时间的在最后
+        from dateutil import parser as date_parser
+        
         def sort_key(table):
             created_at = table.get("created_at")
             if created_at is None:
-                return "1970-01-01T00:00:00"  # 没有创建时间的排在最后
-            return str(created_at)
+                return datetime(1900, 1, 1)
+            # 如果是字符串，转换为 datetime
+            if isinstance(created_at, str):
+                try:
+                    parsed = date_parser.parse(created_at)
+                    return parsed.replace(tzinfo=None)
+                except Exception:
+                    return datetime(1900, 1, 1)
+            # 如果已经是 datetime，移除时区信息
+            if hasattr(created_at, 'replace'):
+                return created_at.replace(tzinfo=None) if created_at.tzinfo else created_at
+            return datetime(1900, 1, 1)
 
         table_info.sort(key=sort_key, reverse=True)  # 降序排列，最新的在前
 
@@ -470,6 +482,68 @@ async def reset_connection_pool():
     except Exception as e:
         logger.error(f"重置连接池失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/duckdb/migrate/created_at", tags=["DuckDB Management"])
+async def migrate_created_at_field():
+    """迁移 created_at 字段：为现有表填充创建时间"""
+    try:
+        from core.duckdb_engine import with_duckdb_connection
+        from datetime import datetime
+        
+        with with_duckdb_connection() as conn:
+            # 检查需要迁移的记录数
+            result = conn.execute("""
+                SELECT COUNT(*) 
+                FROM system_file_datasources 
+                WHERE created_at IS NULL
+            """).fetchone()
+            
+            count = result[0] if result else 0
+            logger.info(f"发现 {count} 条记录需要填充 created_at 字段")
+            
+            if count == 0:
+                return {
+                    "success": True,
+                    "message": "所有记录的 created_at 字段已填充，无需迁移",
+                    "migrated_count": 0
+                }
+            
+            # 使用 upload_time 填充 created_at
+            conn.execute("""
+                UPDATE system_file_datasources
+                SET created_at = COALESCE(upload_time, CURRENT_TIMESTAMP)
+                WHERE created_at IS NULL
+            """)
+            
+            # 同时填充 updated_at
+            conn.execute("""
+                UPDATE system_file_datasources
+                SET updated_at = COALESCE(upload_time, CURRENT_TIMESTAMP)
+                WHERE updated_at IS NULL
+            """)
+            
+            logger.info(f"成功迁移 {count} 条记录的 created_at 字段")
+            
+            # 验证迁移结果
+            result = conn.execute("""
+                SELECT COUNT(*) 
+                FROM system_file_datasources 
+                WHERE created_at IS NULL
+            """).fetchone()
+            
+            remaining = result[0] if result else 0
+            
+            return {
+                "success": True,
+                "message": f"成功迁移 {count} 条记录的 created_at 字段",
+                "migrated_count": count,
+                "remaining_null": remaining
+            }
+            
+    except Exception as e:
+        logger.error(f"迁移 created_at 字段失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"迁移失败: {str(e)}")
 
 
 # 新增错误统计接口

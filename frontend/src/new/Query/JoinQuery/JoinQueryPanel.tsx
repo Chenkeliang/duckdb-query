@@ -31,16 +31,16 @@ import { TypeConflictDialog } from '@/new/Query/components/TypeConflictDialog';
 import { SQLHighlight } from '@/new/components/SQLHighlight';
 import { generateConflictKey } from '@/new/utils/duckdbTypes';
 import type { SelectedTable } from '@/new/types/SelectedTable';
-import { 
-  normalizeSelectedTable, 
-  getTableName, 
+import {
+  normalizeSelectedTable,
+  getTableName,
   isExternalTable,
   hasMixedSources,
   isSameConnection,
   DATABASE_TYPE_ICONS,
 } from '@/new/utils/tableUtils';
-import { 
-  quoteIdent, 
+import {
+  quoteIdent,
   extractAttachDatabases,
   formatTableReference,
   createTableReference,
@@ -138,11 +138,11 @@ const TableCard: React.FC<TableCardProps> = ({
   const [showAllColumnsDialog, setShowAllColumnsDialog] = React.useState(false);
   const displayColumns = columns.slice(0, 6);
   const moreCount = columns.length - 6;
-  
+
   const normalized = normalizeSelectedTable(table);
   const tableName = normalized.name;
   const isExternal = normalized.source === 'external';
-  const dbIcon = isExternal && normalized.connection 
+  const dbIcon = isExternal && normalized.connection
     ? DATABASE_TYPE_ICONS[normalized.connection.type] || '📊'
     : null;
 
@@ -238,8 +238,8 @@ const TableCard: React.FC<TableCardProps> = ({
                     checked={selectedColumns.includes(col.name)}
                     onChange={() => onColumnToggle(col.name)}
                   />
-                  <span className="flex-1 truncate">{col.name}</span>
-                  <span className="text-muted-foreground text-xs">{col.type}</span>
+                  <span className="flex-1 truncate text-foreground">{col.name}</span>
+                  <span className="text-muted-foreground/70 text-xs">{col.type}</span>
                 </label>
               ))}
               {moreCount > 0 && (
@@ -304,8 +304,8 @@ const TableCard: React.FC<TableCardProps> = ({
                     checked={selectedColumns.includes(col.name)}
                     onChange={() => onColumnToggle(col.name)}
                   />
-                  <span className="flex-1 truncate">{col.name}</span>
-                  <span className="text-muted-foreground text-xs">{col.type}</span>
+                  <span className="flex-1 truncate text-foreground">{col.name}</span>
+                  <span className="text-muted-foreground/70 text-xs">{col.type}</span>
                 </label>
               ))}
             </div>
@@ -371,7 +371,7 @@ const JoinConnector: React.FC<JoinConnectorProps> = ({
 
   // 更新条件
   const handleConditionChange = (index: number, updates: Partial<JoinCondition>) => {
-    const newConditions = conditions.map((cond, i) => 
+    const newConditions = conditions.map((cond, i) =>
       i === index ? { ...cond, ...updates } : cond
     );
     onConfigChange({
@@ -552,13 +552,13 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     const mixed = hasMixedSources(activeTables);
     const sameConn = isSameConnection(activeTables);
     const hasExternal = activeTables.some(isExternalTable);
-    
+
     // 获取当前数据源信息
     const externalTables = activeTables.filter(isExternalTable);
-    const currentSource = externalTables.length > 0 
-      ? normalizeSelectedTable(externalTables[0]).connection 
+    const currentSource = externalTables.length > 0
+      ? normalizeSelectedTable(externalTables[0]).connection
       : undefined;
-    
+
     return { mixed, sameConn, hasExternal, currentSource };
   }, [activeTables]);
 
@@ -593,7 +593,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   const table7Columns = useTableColumns(activeTables[7] || null);
   const table8Columns = useTableColumns(activeTables[8] || null);
   const table9Columns = useTableColumns(activeTables[9] || null);
-  
+
   // 组合所有结果
   const tableColumnsResults = [
     table0Columns,
@@ -620,7 +620,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     .map((r, i) => activeTables[i] ? `${getTableName(activeTables[i])}:${r.columns.length}` : '')
     .filter(Boolean)
     .join(',');
-  
+
   const tableColumnsMap = React.useMemo(() => {
     const map: Record<string, TableColumn[]> = {};
     activeTables.forEach((table, index) => {
@@ -644,24 +644,24 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   // 构建列对用于类型冲突检测
   const columnPairs = React.useMemo<ColumnPair[]>(() => {
     const pairs: ColumnPair[] = [];
-    
+
     for (let i = 0; i < joinConfigs.length; i++) {
       const leftTable = activeTables[i];
       const rightTable = activeTables[i + 1];
       if (!leftTable || !rightTable) continue;
-      
+
       const config = normalizeJoinConfig(joinConfigs[i]);
       const leftTableName = getTableName(leftTable);
       const rightTableName = getTableName(rightTable);
       const leftCols = tableColumnsMap[leftTableName] || [];
       const rightCols = tableColumnsMap[rightTableName] || [];
-      
+
       for (const condition of config.conditions) {
         if (!condition.leftColumn || !condition.rightColumn) continue;
-        
+
         const leftCol = leftCols.find(c => c.name === condition.leftColumn);
         const rightCol = rightCols.find(c => c.name === condition.rightColumn);
-        
+
         pairs.push({
           leftLabel: leftTableName,
           leftColumn: condition.leftColumn,
@@ -672,7 +672,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         });
       }
     }
-    
+
     return pairs;
   }, [joinConfigs, activeTables, tableColumnsMap]);
 
@@ -703,7 +703,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     setSelectedColumns((prev) => {
       const updated: Record<string, string[]> = {};
       let hasChanges = false;
-      
+
       // 只保留当前活动表的列选择
       activeTables.forEach((table) => {
         const tableName = getTableName(table);
@@ -716,30 +716,30 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           hasChanges = true;
         }
       });
-      
+
       // 检查是否有表被移除
       const prevTableNames = Object.keys(prev);
       if (prevTableNames.some(name => !activeTableNames.has(name))) {
         hasChanges = true;
       }
-      
+
       return hasChanges || Object.keys(updated).length !== Object.keys(prev).length ? updated : prev;
     });
 
     // 初始化 JOIN 配置 - 支持扩展和收缩
     setJoinConfigs((prev) => {
       const requiredLength = Math.max(0, activeTables.length - 1);
-      
+
       // 如果表数量为 0 或 1，清空配置
       if (requiredLength === 0) {
         return prev.length === 0 ? prev : [];
       }
-      
+
       // 收缩：如果当前配置多于需要的数量，截断
       if (prev.length > requiredLength) {
         return prev.slice(0, requiredLength);
       }
-      
+
       // 扩展：如果当前配置少于需要的数量，添加新配置
       if (prev.length < requiredLength) {
         const newConfigs: JoinConfig[] = [...prev];
@@ -762,7 +762,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         }
         return newConfigs;
       }
-      
+
       // 数量相同，保持不变
       return prev;
     });
@@ -873,7 +873,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     };
 
     const parts: string[] = [];
-    
+
     // 如果是联邦查询，添加注释说明
     if (attachDatabases.length > 0) {
       parts.push('-- 联邦查询 (Federated Query)');
@@ -911,7 +911,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       const rightTableRef = getFullTableRef(activeTables[i]);
       const leftTableAlias = getTableAlias(activeTables[i - 1]);
       const rightTableAlias = getTableAlias(activeTables[i]);
-      
+
       // 如果没有配置，使用默认的 LEFT JOIN
       const config = rawConfig ? normalizeJoinConfig(rawConfig) : {
         joinType: 'LEFT JOIN' as JoinType,
@@ -921,12 +921,12 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           operator: '=' as const,
         }],
       };
-      
+
       // 生成多条件 ON 子句
       const validConditions = config.conditions.filter(
         (c) => c.leftColumn && c.rightColumn
       );
-      
+
       if (validConditions.length > 0) {
         const onClause = validConditions
           .map((c) => {
@@ -938,15 +938,15 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
               c.rightColumn
             );
             const castType = resolvedTypes[conflictKey];
-            
+
             const leftRef = `${quoteIdent(leftTableAlias, dialect)}.${quoteIdent(c.leftColumn, dialect)}`;
             const rightRef = `${quoteIdent(rightTableAlias, dialect)}.${quoteIdent(c.rightColumn, dialect)}`;
-            
+
             if (castType) {
               // 使用 TRY_CAST 进行类型转换
               return `TRY_CAST(${leftRef} AS ${castType}) ${c.operator} TRY_CAST(${rightRef} AS ${castType})`;
             }
-            
+
             return `${leftRef} ${c.operator} ${rightRef}`;
           })
           .join(' AND ');
@@ -990,11 +990,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       // 构建数据源信息
       const source: TableSource = attachDatabases.length > 0
         ? {
-            type: 'federated',
-            attachDatabases,
-          }
+          type: 'federated',
+          attachDatabases,
+        }
         : tableSource || { type: 'duckdb' };
-      
+
       // 通过统一的 onExecute 回调执行查询
       await onExecute(sql, source);
     } catch (error) {
@@ -1078,11 +1078,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           <Alert className="mb-4 border-error/50 bg-error/10">
             <AlertTriangle className="h-4 w-4 text-error" />
             <AlertDescription className="text-error">
-              {federatedError.connectionName 
+              {federatedError.connectionName
                 ? t('query.join.federatedError', '连接 {{name}} 失败: {{message}}', {
-                    name: federatedError.connectionName,
-                    message: federatedError.message,
-                  })
+                  name: federatedError.connectionName,
+                  message: federatedError.message,
+                })
                 : federatedError.message
               }
             </AlertDescription>

@@ -2131,20 +2131,35 @@ async def list_duckdb_tables():
 
         # 按创建时间倒序排序，没有创建时间的表排在最后
         from datetime import datetime
+        from dateutil import parser as date_parser
         
         def get_sort_key(table):
             created_at = table.get("created_at")
+            table_name = table.get("table_name", "")
+            
             if not created_at:
-                return datetime(1900, 1, 1)
+                # 没有创建时间的表排在最后，按表名排序
+                return (0, table_name)
+            
             # 如果是字符串，转换为 datetime
             if isinstance(created_at, str):
                 try:
-                    return datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                except:
-                    return datetime(1900, 1, 1)
-            # 如果已经是 datetime，直接返回
-            return created_at
+                    # 使用 dateutil.parser 更健壮地解析日期
+                    parsed = date_parser.parse(created_at)
+                    # 移除时区信息以便比较
+                    ts = parsed.replace(tzinfo=None).timestamp()
+                    return (1, ts)
+                except Exception:
+                    return (0, table_name)
+            
+            # 如果已经是 datetime
+            if hasattr(created_at, 'timestamp'):
+                ts = created_at.replace(tzinfo=None).timestamp() if created_at.tzinfo else created_at.timestamp()
+                return (1, ts)
+            
+            return (0, table_name)
         
+        # 先按是否有创建时间分组（有的在前），再按时间戳倒序
         tables_info.sort(key=get_sort_key, reverse=True)
 
         return {

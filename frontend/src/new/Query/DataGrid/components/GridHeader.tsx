@@ -30,6 +30,8 @@ export interface GridHeaderProps {
   onClearFilter?: (field: string) => void;
   /** 列宽调整开始回调 */
   onResizeStart?: (field: string, startX: number) => void;
+  /** 双击列边框自动调整列宽回调 */
+  onAutoFitColumn?: (field: string) => void;
   /** 容器 ref */
   containerRef?: React.RefObject<HTMLDivElement | null>;
   /** 自定义类名 */
@@ -48,6 +50,7 @@ export const GridHeader: React.FC<GridHeaderProps> = ({
   onFilterChange,
   onClearFilter,
   onResizeStart,
+  onAutoFitColumn,
   containerRef,
   className,
 }) => {
@@ -56,9 +59,9 @@ export const GridHeader: React.FC<GridHeaderProps> = ({
 
   return (
     <div
-      ref={containerRef}
+      ref={containerRef as React.RefObject<HTMLDivElement>}
       className={cn(
-        'overflow-hidden border-b border-border bg-muted/30',
+        'dq-data-grid-header overflow-hidden',
         className
       )}
     >
@@ -88,6 +91,7 @@ export const GridHeader: React.FC<GridHeaderProps> = ({
             onFilterChange={onFilterChange}
             onClearFilter={onClearFilter}
             onResizeStart={onResizeStart}
+            onAutoFitColumn={onAutoFitColumn}
           />
         ))}
       </div>

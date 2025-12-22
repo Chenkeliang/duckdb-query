@@ -40,6 +40,13 @@ export const DEFAULT_SHORTCUTS: Record<string, ShortcutConfig> = {
     label: 'shortcuts.refreshData',
     category: 'actions',
   },
+  refreshDataSources: {
+    actionId: 'refreshDataSources',
+    shortcut: 'Cmd+I',
+    defaultShortcut: 'Cmd+I',
+    label: 'shortcuts.refreshDataSources',
+    category: 'actions',
+  },
   uploadFile: {
     actionId: 'uploadFile',
     shortcut: 'Cmd+U',

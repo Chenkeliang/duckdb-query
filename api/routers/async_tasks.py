@@ -269,21 +269,14 @@ async def get_async_task(task_id: str):
 )
 async def cancel_async_task(task_id: str, request: CancelTaskRequest):
     """
-    手动取消异步任务，状态强制设为失败
+    请求取消异步任务（使用取消信号模式，避免写-写冲突）
     """
     reason = (request.reason or "用户手动取消").strip()
-    success = task_manager.force_fail_task(
-        task_id,
-        reason,
-        {
-            "manual_cancelled": True,
-            "cancel_reason": reason,
-            "cancelled_at": get_current_time_iso(),
-        },
-    )
+    # 使用 request_cancellation 设置取消标志，由后台任务检测并自行终止
+    success = task_manager.request_cancellation(task_id, reason)
     if not success:
         raise HTTPException(status_code=400, detail="任务状态不允许取消或任务不存在")
-    return {"success": True, "task_id": task_id, "message": "任务已取消"}
+    return {"success": True, "task_id": task_id, "message": "取消请求已提交"}
 
 
 def _extract_task_payload(task) -> Dict[str, Any]:
@@ -338,54 +331,63 @@ async def retry_async_task(
     """
     重试指定异步任务，可选覆盖 SQL / 数据源等参数
     """
-    task = task_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    try:
+        task = task_manager.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
 
-    payload = _extract_task_payload(task)
+        payload = _extract_task_payload(task)
+        logger.info(f"重试任务 {task_id}, 提取的 payload: {payload}")
 
-    sql = (request.override_sql or payload.get("sql") or "").strip()
-    if not sql:
-        raise HTTPException(status_code=400, detail="原任务缺少SQL，无法重试")
+        sql = (request.override_sql or payload.get("sql") or "").strip()
+        if not sql:
+            raise HTTPException(status_code=400, detail="原任务缺少SQL，无法重试")
 
-    task_type = payload.get("task_type", "query")
-    datasource = request.datasource_override or payload.get("datasource")
-    custom_table_name = request.custom_table_name or payload.get("custom_table_name")
+        task_type = payload.get("task_type", "query")
+        datasource = request.datasource_override or payload.get("datasource")
+        custom_table_name = request.custom_table_name or payload.get("custom_table_name")
 
-    retry_metadata = dict(payload)
-    retry_metadata.update(
-        {
-            "sql": sql,
-            "task_type": task_type,
-            "custom_table_name": custom_table_name,
-            "datasource": datasource,
-            "retry_of": task_id,
-        }
-    )
+        retry_metadata = dict(payload)
+        retry_metadata.update(
+            {
+                "sql": sql,
+                "task_type": task_type,
+                "custom_table_name": custom_table_name,
+                "datasource": datasource,
+                "retry_of": task_id,
+            }
+        )
 
-    new_task_id = task_manager.create_task(
-        sql,
-        task_type=task_type,
-        datasource=datasource,
-        metadata=retry_metadata,
-    )
+        new_task_id = task_manager.create_task(
+            sql,
+            task_type=task_type,
+            datasource=datasource,
+            metadata=retry_metadata,
+        )
 
-    background_tasks.add_task(
-        execute_async_query,
-        new_task_id,
-        sql,
-        custom_table_name,
-        task_type,
-        datasource,
-    )
+        background_tasks.add_task(
+            execute_async_query,
+            new_task_id,
+            sql,
+            custom_table_name,
+            task_type,
+            datasource,
+        )
 
-    task_manager.update_task(task_id, {"last_retry_id": new_task_id})
+        # 注意：移除了 update_task 调用，避免写写冲突
+        # 重试关系已通过 retry_metadata["retry_of"] 记录在新任务中
 
-    return AsyncQueryResponse(
-        success=True,
-        task_id=new_task_id,
-        message="任务已重新提交执行",
-    )
+        return AsyncQueryResponse(
+            success=True,
+            task_id=new_task_id,
+            message="任务已重新提交执行",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"重试任务失败 {task_id}: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"重试任务失败: {str(e)}")
 
 
 @router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
@@ -439,29 +441,45 @@ def execute_async_query(
     """
     执行异步查询（后台任务）- 内存优化版本
     使用DuckDB原生功能，避免Python内存加载
+    
+    关键设计：DuckDB 是单写入者数据库，多个连接同时写入会导致写写冲突。
+    因此，所有写操作（查询执行、任务状态更新、元数据保存）必须串行化，
+    不能在连接池连接持有期间使用其他连接写入。
     """
+    from core.duckdb_pool import get_connection_pool
+    pool = get_connection_pool()
+    
+    # 用于存储查询结果的临时变量
+    table_name = None
+    row_count = 0
+    columns = []
+    metadata_snapshot = {}
+    source_datasource_id = None
+    datasource_type = ""
+    query_success = False
+    start_time = time.time()
+    
     try:
-        # 标记任务为运行中
+        # 第一步：标记任务为运行中（独立事务）
         if not task_manager.start_task(task_id):
             logger.error(f"无法启动任务: {task_id}")
             return
 
+        # 取消检查点 1
+        if task_manager.is_cancellation_requested(task_id):
+            logger.info(f"任务在启动后被取消: {task_id}")
+            task_manager.fail_task(task_id, "用户取消")
+            return
+
         logger.info(f"开始执行异步查询任务: {task_id}")
-        start_time = time.time()
 
-        # 智能移除系统自动添加的LIMIT，确保异步任务获取完整数据
+        # 智能移除系统自动添加的LIMIT
         from routers.query import remove_auto_added_limit
-
         clean_sql = remove_auto_added_limit(sql)
         if clean_sql != sql.strip():
             logger.info(f"异步任务移除了系统自动添加的LIMIT: {sql} -> {clean_sql}")
         else:
             logger.info(f"异步任务使用原始SQL: {clean_sql}")
-
-        # 使用连接池获取DuckDB连接，避免阻塞其他请求
-        from core.duckdb_pool import get_connection_pool
-
-        pool = get_connection_pool()
 
         datasource_info = datasource if isinstance(datasource, dict) else None
         datasource_type = (
@@ -472,20 +490,18 @@ def execute_async_query(
         use_external_source = datasource_type in SUPPORTED_EXTERNAL_TYPES
         source_datasource_id = datasource_info.get("id") if datasource_info else None
 
+        # 确定表名
+        if custom_table_name:
+            safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
+            import re
+            safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
+            table_name = safe_table_name
+        else:
+            table_name = task_utils.task_id_to_table_name(task_id)
+        logger.info(f"创建持久表存储查询结果: {table_name}")
+
+        # 第二步：执行查询（使用连接池连接）
         with pool.get_connection() as con:
-            # 创建持久表存储查询结果（避免fetchdf()内存问题）
-            if custom_table_name:
-                # 使用自定义表名，确保表名安全
-                safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
-                # 移除特殊字符，只保留字母、数字、下划线
-                import re
-
-                safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
-                table_name = safe_table_name  # 直接使用用户提供的表名
-            else:
-                table_name = task_utils.task_id_to_table_name(task_id)
-            logger.info(f"创建持久表存储查询结果: {table_name}")
-
             if use_external_source:
                 logger.info(
                     f"异步任务将使用外部数据源 {source_datasource_id} ({datasource_type}) 执行查询"
@@ -496,11 +512,11 @@ def execute_async_query(
                     raise ValueError("外部数据源结果写入DuckDB失败")
                 logger.info(f"外部数据源查询结果已写入DuckDB表: {table_name}")
             else:
-                # 使用清理后的SQL创建持久表，确保获取完整数据
                 create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
                 con.execute(create_sql)
                 logger.info(f"持久表创建成功: {table_name}")
 
+            # 获取元数据（在同一连接中）
             metadata_snapshot = build_table_metadata_snapshot(con, table_name)
             row_count = metadata_snapshot.get("row_count", 0)
             logger.info(f"查询结果行数: {row_count}")
@@ -510,70 +526,91 @@ def execute_async_query(
             columns = [{"name": col[0], "type": col[1]} for col in columns_info]
             logger.info(f"查询结果列数: {len(columns)}")
 
-            # 保存表元数据到文件数据源管理器
-            source_id = table_name
-            table_metadata = {
-                "source_id": source_id,
-                "filename": f"async_query_{task_id}",
-                "file_path": f"duckdb://{table_name}",
-                "file_type": "duckdb_async_query",
-                "created_at": get_current_time_iso(),
-                "source_sql": sql,
-                "schema_version": 2,
-                **metadata_snapshot,
-            }
-
-            if source_datasource_id:
-                table_metadata["source_datasource"] = source_datasource_id
-                table_metadata["source_datasource_type"] = datasource_type
-
-            # 保存到文件数据源管理器
-            file_datasource_manager.save_file_datasource(table_metadata)
-            logger.info(f"表元数据保存成功: {source_id}")
-
-            # 更新任务状态为完成，但不生成文件（按需下载）
-            task_info = {
-                "status": "completed",
-                "table_name": table_name,
-                "row_count": row_count,
-                "columns": columns,
-                "file_generated": False,
-                "task_type": task_type,
-            }
-
-            if source_datasource_id:
-                task_info["source_datasource"] = source_datasource_id
-                task_info["source_datasource_type"] = datasource_type
-
-            # 如果是自定义表名，添加原始表名信息
-            if custom_table_name:
-                task_info["custom_table_name"] = custom_table_name
-                task_info["display_name"] = custom_table_name
-
-            if not task_manager.complete_task(task_id, task_info):
-                logger.error(f"无法标记任务为成功: {task_id}")
-
             # 内存清理
             try:
                 con.execute("PRAGMA force_external")
                 import gc
-
                 gc.collect()
                 logger.info("内存清理完成")
             except Exception as cleanup_error:
                 logger.warning(f"内存清理失败: {str(cleanup_error)}")
 
-            execution_time = time.time() - start_time
-            logger.info(
-                f"异步查询任务执行完成: {task_id}, 执行时间: {execution_time:.2f}秒, 内存优化版本"
-            )
+            query_success = True
+        # 连接池连接在这里释放
+
+        # 取消检查点 2: 查询完成后检查
+        if task_manager.is_cancellation_requested(task_id):
+            logger.info(f"任务在查询完成后被取消: {task_id}, 清理已创建的表")
+            # 使用新连接清理表
+            with pool.get_connection() as con:
+                try:
+                    con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+                    logger.info(f"已清理取消任务的表: {table_name}")
+                except Exception as drop_error:
+                    logger.warning(f"清理表失败: {drop_error}")
+            task_manager.fail_task(task_id, "用户取消")
+            return
+
+        # 第三步：保存元数据（连接池连接已释放，可以安全使用其他连接）
+        source_id = table_name
+        table_metadata = {
+            "source_id": source_id,
+            "filename": f"async_query_{task_id}",
+            "file_path": f"duckdb://{table_name}",
+            "file_type": "duckdb_async_query",
+            "created_at": get_current_time_iso(),
+            "source_sql": sql,
+            "schema_version": 2,
+            **metadata_snapshot,
+        }
+
+        if source_datasource_id:
+            table_metadata["source_datasource"] = source_datasource_id
+            table_metadata["source_datasource_type"] = datasource_type
+
+        try:
+            file_datasource_manager.save_file_datasource(table_metadata)
+            logger.info(f"表元数据保存成功: {source_id}")
+        except Exception as meta_error:
+            logger.warning(f"保存表元数据失败（非致命）: {str(meta_error)}")
+
+        # 第四步：更新任务状态为完成（独立事务）
+        task_info = {
+            "status": "completed",
+            "table_name": table_name,
+            "row_count": row_count,
+            "columns": columns,
+            "file_generated": False,
+            "task_type": task_type,
+        }
+
+        if source_datasource_id:
+            task_info["source_datasource"] = source_datasource_id
+            task_info["source_datasource_type"] = datasource_type
+
+        if custom_table_name:
+            task_info["custom_table_name"] = custom_table_name
+            task_info["display_name"] = custom_table_name
+
+        complete_result = task_manager.complete_task(task_id, task_info)
+        if not complete_result:
+            logger.error(f"无法标记任务为成功: {task_id}")
+
+        execution_time = time.time() - start_time
+        logger.info(
+            f"异步查询任务执行完成: {task_id}, 执行时间: {execution_time:.2f}秒"
+        )
 
     except Exception as e:
         logger.error(f"执行异步查询任务失败: {task_id}, 错误: {str(e)}")
         logger.error(traceback.format_exc())
 
-        # 标记任务为失败
-        error_message = str(e)
+        # 检查是否因取消而异常
+        if task_manager.is_cancellation_requested(task_id):
+            error_message = "用户取消"
+        else:
+            error_message = str(e)
+        
         if not task_manager.fail_task(task_id, error_message):
             logger.error(f"无法标记任务为失败: {task_id}")
 

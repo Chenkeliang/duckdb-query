@@ -42,7 +42,7 @@ import { DownloadResultDialog } from './DownloadResultDialog';
 
 export interface AsyncTask {
   task_id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'cancelling';
   task_type?: string;
   sql?: string;
   created_at: string;
@@ -112,6 +112,7 @@ function StatusBadge({ status }: { status: AsyncTask['status'] }) {
     completed: { icon: CheckCircle, variant: 'success' as const, label: t('async.status.completed', '已完成') },
     failed: { icon: XCircle, variant: 'error' as const, label: t('async.status.failed', '失败') },
     cancelled: { icon: StopCircle, variant: 'outline' as const, label: t('async.status.cancelled', '已取消') },
+    cancelling: { icon: Loader2, variant: 'outline' as const, label: t('async.status.cancelling', '取消中') },
   };
 
   const { icon: Icon, variant, label } = config[status] || config.pending;
@@ -221,12 +222,12 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
   // 获取任务显示名称
   const getTaskDisplayName = useCallback((task: AsyncTask): string => {
     // 优先使用 display_name，其次是 custom_table_name，最后是 result_table
-    return task.result_info?.display_name 
-      || task.result_info?.custom_table_name 
-      || task.display_name 
-      || task.custom_table_name 
+    return task.result_info?.display_name
+      || task.result_info?.custom_table_name
+      || task.display_name
+      || task.custom_table_name
       || task.result_info?.table_name
-      || task.result_table 
+      || task.result_table
       || '';
   }, []);
 

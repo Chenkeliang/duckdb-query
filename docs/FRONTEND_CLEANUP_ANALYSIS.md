@@ -154,15 +154,16 @@ rm frontend/src/types/visualQuery.js
 rm frontend/src/hooks/useTypeConflictCheck.js
 ```
 
-### Phase 4: WelcomePage 迁移
+### Phase 4: WelcomePage 迁移 ✅ 已完成
 
-1. 将 `WelcomePage.jsx` 迁移到 `new/` 目录
-2. 使用 shadcn/ui 重写样式
-3. 更新 `DuckQueryApp.jsx` 的 import
-4. 删除旧文件：
+1. ✅ 将 `WelcomePage.jsx` 迁移到 `new/WelcomePage/WelcomePage.tsx`
+2. ✅ 使用 shadcn/ui + Tailwind CSS 重写样式
+3. ✅ 更新 `DuckQueryApp.jsx` 的 import
+4. ✅ 删除旧文件：
 ```bash
-rm frontend/src/components/WelcomePage.jsx
-rm frontend/src/components/WelcomePage.css
+rm frontend/src/components/WelcomePage.jsx  # 已删除
+rm frontend/src/components/WelcomePage.css  # 已删除
+rmdir frontend/src/components               # 已删除（目录为空）
 ```
 
 ---
@@ -254,12 +255,12 @@ rm frontend/src/hooks/useTypeConflictCheck.js
 npm run build
 ```
 
-### Phase 4: WelcomePage 迁移后清理
+### Phase 4: WelcomePage 迁移后清理 ✅ 已完成
 
 ```bash
-rm frontend/src/components/WelcomePage.jsx
-rm frontend/src/components/WelcomePage.css
-rmdir frontend/src/components  # 如果目录为空
+rm frontend/src/components/WelcomePage.jsx   # ✅ 已删除
+rm frontend/src/components/WelcomePage.css   # ✅ 已删除
+rmdir frontend/src/components                # ✅ 已删除（目录为空）
 ```
 
 ---
@@ -452,18 +453,18 @@ rmdir frontend/src/new
 
 ## ⚡ 建议执行顺序
 
-1. **先备份** - 创建 git 分支
-2. **Phase 1** - 删除明确无用的文件
-3. **构建验证** - `npm run build && npm run lint`
-4. **Phase 2** - 删除旧组件
-5. **构建验证** - 再次验证
-6. **Phase 3** - 删除旧入口和依赖
-7. **构建验证** - 再次验证
-8. **Phase 4** - 迁移 WelcomePage
-9. **功能验证** - 完整功能测试
-10. **依赖清理** - 评估并移除不再需要的 npm 包
-11. **Phase 5** - 目录结构重组（可选，建议在稳定后执行）
-12. **最终验证** - 完整回归测试
+1. ✅ **先备份** - 创建 git 分支
+2. ✅ **Phase 1** - 删除明确无用的文件
+3. ✅ **构建验证** - `npm run build && npm run lint`
+4. ✅ **Phase 2** - 删除旧组件
+5. ✅ **构建验证** - 再次验证
+6. ✅ **Phase 3** - 删除旧入口和依赖
+7. ✅ **构建验证** - 再次验证
+8. ✅ **Phase 4** - 迁移 WelcomePage
+9. ⏳ **功能验证** - 完整功能测试
+10. ⏳ **依赖清理** - 评估并移除不再需要的 npm 包
+11. ⏳ **Phase 5** - 目录结构重组（可选，建议在稳定后执行）
+12. ⏳ **最终验证** - 完整回归测试
 
 ---
 

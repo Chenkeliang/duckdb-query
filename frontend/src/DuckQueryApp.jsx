@@ -27,9 +27,9 @@ import QueryWorkbenchPage from "./new/QueryWorkbenchPage";
 import { CommandPalette } from "./new/components/CommandPalette";
 import { ShortcutProvider, useKeyboardShortcuts } from "./new/Settings/shortcuts";
 
-import LogoLight from "./assets/Duckquerylogo.svg";
-import LogoDark from "./assets/duckquery-dark.svg";
-const WelcomePage = lazy(() => import("./components/WelcomePage"));
+import LogoLight from "./assets/duckq-logo.svg";
+import LogoDark from "./assets/duckq-logo.svg";
+const WelcomePage = lazy(() => import("./new/WelcomePage"));
 
 const LazyFallback = () => {
   const { t } = useTranslation("common");
@@ -167,6 +167,10 @@ const DuckQueryAppInner = () => {
       triggerRefresh();
       toast.success(t('actions.refreshSuccess', 'Refreshed'));
     },
+    refreshDataSources: () => {
+      triggerRefresh();
+      toast.success(t('dataSource.refreshed', 'Data sources refreshed'));
+    },
     uploadFile: () => {
       setCurrentTab('datasource');
       setDataSourceTab('upload');
@@ -239,7 +243,7 @@ const DuckQueryAppInner = () => {
           const { testDatabaseConnection, refreshDatabaseConnection } = await import(
             "./services/apiClient"
           );
-          
+
           let result;
           // 已保存连接且未输入新密码：使用 refresh 端点（后端使用存量密码测试）
           if (params?.useStoredPassword && params.id) {
@@ -250,15 +254,15 @@ const DuckQueryAppInner = () => {
               type: params.type,
               params: params.params
             });
-	          }
-	          
-	          // 统一读取测试结果（apiClient 已归一化为 { success, message }）
-	          const testSuccess = result?.success === true;
-	          const testMessage = result?.message;
-	          
-	          if (testSuccess) {
-	            toast.success(
-	              testMessage || t("page.datasource.list.testSuccess")
+          }
+
+          // 统一读取测试结果（apiClient 已归一化为 { success, message }）
+          const testSuccess = result?.success === true;
+          const testMessage = result?.message;
+
+          if (testSuccess) {
+            toast.success(
+              testMessage || t("page.datasource.list.testSuccess")
             );
           } else {
             toast.error(testMessage || t("page.datasource.list.testFail"));
@@ -438,7 +442,7 @@ const DuckQueryAppInner = () => {
         {...headerGlobalProps}
       />
     ) : (
-      <Header 
+      <Header
         title={t(tabTitles[currentTab]) || "Duck Query"}
         {...headerGlobalProps}
       />

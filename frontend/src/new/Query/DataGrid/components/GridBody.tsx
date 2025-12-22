@@ -38,7 +38,7 @@ export interface GridBodyProps {
   /** 单元格鼠标进入回调 */
   onCellMouseEnter?: (rowIndex: number, colIndex: number) => void;
   /** 滚动容器 ref */
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  scrollContainerRef: React.RefObject<HTMLDivElement>;
   /** 滚动回调 */
   onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
   /** 自定义类名 */

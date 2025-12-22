@@ -154,10 +154,16 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">{option.label}</span>
+                      <Icon className={cn(
+                        'h-4 w-4',
+                        isSelected ? 'text-primary' : 'text-foreground'
+                      )} />
+                      <span className="font-medium text-foreground">{option.label}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className={cn(
+                      'text-xs mt-1',
+                      isSelected ? 'text-foreground/80' : 'text-foreground/60'
+                    )}>
                       {option.description}
                     </p>
                   </div>

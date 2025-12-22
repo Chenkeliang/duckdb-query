@@ -61,6 +61,7 @@ class MetadataManager:
                     last_accessed TIMESTAMP,
                     file_size BIGINT,
                     file_hash VARCHAR,
+                    source_sql TEXT,
                     metadata JSON
                 )
             """)
@@ -143,6 +144,25 @@ class MetadataManager:
             except Exception as e:
                 logger.warning(f"添加字段时出现警告（可能已存在）: {e}")
 
+            # 迁移：添加 source_sql 字段（如果表已存在但缺少该字段）
+            try:
+                result = conn.execute("""
+                    SELECT COUNT(*) 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'system_file_datasources' 
+                    AND column_name = 'source_sql'
+                """).fetchone()
+
+                if result[0] == 0:
+                    logger.info("检测到缺失的 source_sql 字段，开始迁移...")
+                    conn.execute("""
+                        ALTER TABLE system_file_datasources 
+                        ADD COLUMN source_sql TEXT
+                    """)
+                    logger.info("source_sql 字段迁移完成")
+            except Exception as e:
+                logger.warning(f"添加 source_sql 字段时出现警告（可能已存在）: {e}")
+
             logger.info("元数据表初始化完成")
 
     # 统一的 CRUD 接口
@@ -182,6 +202,22 @@ class MetadataManager:
                     
                     # 加密敏感参数
                     data["params"] = encrypt_json(params)
+
+                # 获取表的实际列名，过滤掉不存在的字段
+                try:
+                    table_columns_df = conn.execute(f"DESCRIBE {table}").fetchdf()
+                    valid_columns = set(table_columns_df["column_name"].tolist())
+                except Exception as e:
+                    logger.warning(f"无法获取表 {table} 的列信息: {e}")
+                    valid_columns = None
+                
+                # 过滤数据，只保留表中存在的列
+                if valid_columns:
+                    filtered_data = {k: v for k, v in data.items() if k in valid_columns}
+                    if len(filtered_data) < len(data):
+                        removed_fields = set(data.keys()) - set(filtered_data.keys())
+                        logger.debug(f"过滤掉不存在的字段: {removed_fields}")
+                    data = filtered_data
 
                 # 构建插入语句
                 columns = list(data.keys())

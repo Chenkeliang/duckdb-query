@@ -252,6 +252,21 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     dataGridRef.current?.exportDataAsJson();
   }, []);
 
+  // DataGrid 自动列宽
+  const handleDataGridAutoFitColumns = useCallback(() => {
+    dataGridRef.current?.autoFitAllColumns();
+  }, []);
+
+  // DataGrid 适应宽度
+  const handleDataGridFitToWidth = useCallback(() => {
+    dataGridRef.current?.fitToWidth();
+  }, []);
+
+  // DataGrid 重置列
+  const handleDataGridResetColumns = useCallback(() => {
+    dataGridRef.current?.resetColumns();
+  }, []);
+
   // 自动打开导入对话框（来自左侧树/快捷入口）
   useEffect(() => {
     if (!autoOpenImportDialog) return;
@@ -383,6 +398,9 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           onDataGridShowAllColumns={useNewDataGrid ? handleDataGridShowAllColumns : undefined}
           onDataGridExportCSV={useNewDataGrid ? handleDataGridExportCSV : undefined}
           onDataGridExportJSON={useNewDataGrid ? handleDataGridExportJSON : undefined}
+          onDataGridAutoFitColumns={useNewDataGrid ? handleDataGridAutoFitColumns : undefined}
+          onDataGridFitToWidth={useNewDataGrid ? handleDataGridFitToWidth : undefined}
+          onDataGridResetColumns={useNewDataGrid ? handleDataGridResetColumns : undefined}
         />
       )}
       <div className="flex-1 min-h-0">

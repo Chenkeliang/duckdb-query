@@ -5,17 +5,15 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import type { 
-  ColumnFilterValue, 
-  ConditionFilter, 
-  ConditionFilterType,
-  UniqueValueItem 
+import type {
+  ColumnFilterValue,
+  ConditionFilter,
+  UniqueValueItem
 } from '../types';
+import { getSelectedValuesSize, toSelectedValuesSet, DATAGRID_CONFIG } from '../types';
 
-/** 高基数阈值 */
-const HIGH_CARDINALITY_THRESHOLD = 1000;
-/** Top N 显示数量 */
-const TOP_N = 100;
+/** 使用配置中的筛选阈值 */
+const { highCardinalityThreshold: HIGH_CARDINALITY_THRESHOLD, topN: TOP_N } = DATAGRID_CONFIG.filter;
 
 export interface UseColumnFilterOptions {
   /** 数据 */
@@ -69,7 +67,7 @@ export function useColumnFilter({
     for (const row of data) {
       const value = row[column];
       const key = value === null || value === undefined ? '__NULL__' : String(value);
-      
+
       const existing = countMap.get(key);
       if (existing) {
         existing.count++;
@@ -109,7 +107,7 @@ export function useColumnFilter({
   // 切换值选中状态
   const toggleValue = useCallback((value: string) => {
     setFilterValue(prev => {
-      const selectedValues = new Set(prev?.selectedValues || []);
+      const selectedValues = toSelectedValuesSet(prev?.selectedValues);
       if (selectedValues.has(value)) {
         selectedValues.delete(value);
       } else {
@@ -124,7 +122,7 @@ export function useColumnFilter({
 
   const toggleMode = useCallback(() => {
     setFilterValue(prev => {
-      const selectedValues = new Set(prev?.selectedValues || []);
+      const selectedValues = toSelectedValuesSet(prev?.selectedValues);
       const mode = prev?.mode === 'exclude' ? 'include' : 'exclude';
       return { selectedValues, mode };
     });
@@ -151,14 +149,15 @@ export function useColumnFilter({
   const invertSelection = useCallback(() => {
     setFilterValue(prev => {
       const allValues = new Set(uniqueValues.map(v => v.label));
+      const currentSelected = toSelectedValuesSet(prev?.selectedValues);
       const selectedValues = new Set<string>();
-      
+
       for (const value of allValues) {
-        if (!prev?.selectedValues.has(value)) {
+        if (!currentSelected.has(value)) {
           selectedValues.add(value);
         }
       }
-      
+
       return {
         selectedValues,
         mode: prev?.mode || 'include',
@@ -169,7 +168,7 @@ export function useColumnFilter({
   // 是否有活跃筛选
   const hasActiveFilter = useMemo(() => {
     if (conditionFilter && conditionFilter.value) return true;
-    if (filterValue && filterValue.selectedValues.size > 0) return true;
+    if (filterValue && getSelectedValuesSize(filterValue.selectedValues) > 0) return true;
     return false;
   }, [filterValue, conditionFilter]);
 

@@ -70,13 +70,12 @@ export const GridCell: React.FC<GridCellProps> = React.memo(({
       role="gridcell"
       tabIndex={isFocused ? 0 : -1}
       className={cn(
-        'flex items-center px-2 border-r border-b border-border',
+        'dq-data-grid-cell',
         'select-none cursor-default overflow-hidden',
-        'hover:bg-accent/50',
-        isSelected && 'bg-primary/10',
-        isFocused && 'ring-2 ring-primary ring-inset',
-        isNull && 'text-muted-foreground italic',
-        isNumeric && 'justify-end font-mono',
+        isSelected && 'selected',
+        isFocused && 'focus',
+        isNull && 'dq-data-grid-cell-null',
+        isNumeric && 'dq-data-grid-cell-number',
         className
       )}
       style={{

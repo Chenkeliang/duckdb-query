@@ -34,7 +34,13 @@
     "sortDesc": "降序",
     "sortNone": "取消排序",
     "sum": "求和",
-    "average": "平均值"
+    "average": "平均值",
+    "columns": "列",
+    "hidden": "隐藏",
+    "showAllColumns": "显示所有列",
+    "resetColumns": "重置列",
+    "autoFitColumns": "自动列宽",
+    "fitToWidth": "适应宽度"
   },
   "nav": {
     "datasource": "数据源 (Data Sources)",
@@ -60,7 +66,12 @@
     "delete": "删除",
     "refresh": "刷新",
     "reset": "重置",
-    "refreshSuccess": "刷新成功"
+    "refreshSuccess": "刷新成功",
+    "refreshData": "刷新查询结果和工作区",
+    "uploadFile": "上传文件",
+    "exportData": "导出数据",
+    "toggleTheme": "切换主题",
+    "toggleLanguage": "切换语言"
   },
   "common": {
     "comingSoon": "即将推出",
@@ -528,6 +539,7 @@
       "localTipsChunk": "分块上传：适合大文件，支持断点续传，提高上传成功率",
       "localTipsFormats": "支持格式：CSV, Excel (xls/xlsx), Parquet, JSON",
       "maxSize": "最大 500MB · 自动识别分隔符",
+      "maxSizeTemplate": "最大 {{size}} · 自动识别分隔符",
       "uploadModeLabel": "上传方式",
       "uploadModeAuto": "自动选择",
       "uploadModeChunked": "分片上传",
@@ -549,6 +561,7 @@
       "serverSelectMount": "选择挂载目录",
       "serverNoFiles": "当前目录暂无可导入的文件",
       "serverTypeFolder": "文件夹",
+      "serverGoBack": "返回上一级",
       "serverTypeSupport": "可导入",
       "serverTypeUnsupport": "不支持",
       "serverNotExists": "(目录不存在)",
@@ -783,7 +796,8 @@
     "openCommandPalette": "打开命令面板",
     "navigateDataSource": "跳转到数据源",
     "navigateQueryWorkbench": "跳转到查询工作台",
-    "refreshData": "刷新数据",
+    "refreshData": "刷新查询结果和工作区",
+    "refreshDataSources": "刷新数据源列表",
     "uploadFile": "上传文件",
     "toggleTheme": "切换主题",
     "toggleLanguage": "切换语言",

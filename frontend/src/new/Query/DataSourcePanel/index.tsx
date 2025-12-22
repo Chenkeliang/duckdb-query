@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, RefreshCw, Plus, ChevronLeft, Database } from 'lucide-react';
+import { Search, RefreshCw, ChevronLeft, Database } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/new/components/ui/input';
@@ -116,7 +116,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
 
 
   // Task 7.1: 全局刷新功能（使用统一的缓存失效工具）
-  const handleRefresh = async () => {
+  const handleRefresh = React.useCallback(async () => {
     try {
       // 使用统一的缓存失效工具刷新所有数据缓存
       await invalidateAllDataCaches(queryClient);
@@ -125,12 +125,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
     } catch (error) {
       toast.error(t('dataSource.refreshFailed', { error: (error as Error).message }));
     }
-  };
-
-  const handleAddDataSource = () => {
-    // TODO: 导航到数据源管理页面
-    toast.info(t('dataSource.goToManagePage'));
-  };
+  }, [queryClient, onRefresh, t]);
 
   return (
     <div className="h-full flex flex-col bg-card border-r border-border">
@@ -277,15 +272,6 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${(isFetching || isFetchingConnections) ? 'animate-spin' : ''}`} />
           {t('common.refresh')}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleAddDataSource}
-          className="flex-1"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          {t('common.add')}
         </Button>
         {onCollapse && (
           <Button

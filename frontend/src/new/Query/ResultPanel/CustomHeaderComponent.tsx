@@ -1,11 +1,11 @@
 /**
  * 自定义 AG Grid 表头组件
- * 集成列筛选功能
+ * 集成列筛选和排序功能
  */
 
-import React, { useMemo, useState } from 'react';
-import { Filter } from 'lucide-react';
-import type { IHeaderParams } from 'ag-grid-community';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Filter, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import type { IHeaderParams, SortDirection } from 'ag-grid-community';
 
 import { Button } from '@/new/components/ui/button';
 import { ColumnFilterMenu } from './ColumnFilterMenu';
@@ -17,10 +17,12 @@ export interface CustomHeaderComponentProps extends IHeaderParams {
 
 /**
  * 自定义表头组件
+ * 支持排序和筛选功能
  */
 export function CustomHeaderComponent(props: CustomHeaderComponentProps) {
-  const { column, displayName, api: gridApi, context } = props;
+  const { column, displayName, api: gridApi, context, enableSorting, setSort } = props;
   const [filterOpen, setFilterOpen] = useState(false);
+  const [sortState, setSortState] = useState<SortDirection>(null);
 
   const columnValueFilters = (context as any)?.columnValueFilters as
     | ColumnValueFilterContext
@@ -32,10 +34,66 @@ export function CustomHeaderComponent(props: CustomHeaderComponentProps) {
     return !!columnValueFilters?.getColumnValueFilter(colId);
   }, [column, columnValueFilters]);
 
+  // 监听排序变化
+  useEffect(() => {
+    const updateSortState = () => {
+      setSortState(column.getSort() ?? null);
+    };
+
+    // 初始化
+    updateSortState();
+
+    // 监听排序变化事件
+    gridApi?.addEventListener('sortChanged', updateSortState);
+
+    return () => {
+      gridApi?.removeEventListener('sortChanged', updateSortState);
+    };
+  }, [column, gridApi]);
+
+  // 处理排序点击
+  const handleSortClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!enableSorting) return;
+
+      const multiSort = e.shiftKey;
+      
+      // 循环排序状态: null -> asc -> desc -> null
+      let nextSort: SortDirection;
+      if (sortState === null) {
+        nextSort = 'asc';
+      } else if (sortState === 'asc') {
+        nextSort = 'desc';
+      } else {
+        nextSort = null;
+      }
+
+      setSort(nextSort, multiSort);
+    },
+    [enableSorting, sortState, setSort]
+  );
+
+  // 排序图标
+  const SortIcon = useMemo(() => {
+    if (sortState === 'asc') {
+      return <ArrowUp className="h-3.5 w-3.5 text-primary" />;
+    }
+    if (sortState === 'desc') {
+      return <ArrowDown className="h-3.5 w-3.5 text-primary" />;
+    }
+    return <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground opacity-50" />;
+  }, [sortState]);
+
   return (
-    <div className="flex items-center justify-between w-full h-full px-2">
-      {/* 列标题 */}
-      <span className="flex-1 truncate font-medium">{displayName}</span>
+    <div className="flex items-center justify-between w-full h-full gap-1">
+      {/* 列标题 + 排序 */}
+      <div
+        className={`flex items-center gap-1 flex-1 min-w-0 ${enableSorting ? 'cursor-pointer hover:text-foreground' : ''}`}
+        onClick={handleSortClick}
+      >
+        <span className="truncate font-medium text-sm">{displayName}</span>
+        {enableSorting && SortIcon}
+      </div>
 
       {/* 筛选按钮 */}
       <ColumnFilterMenu
@@ -48,7 +106,7 @@ export function CustomHeaderComponent(props: CustomHeaderComponentProps) {
         <Button
           variant="ghost"
           size="sm"
-          className={`h-6 w-6 p-0 ${isFiltered ? 'text-primary' : 'text-muted-foreground'}`}
+          className={`h-6 w-6 p-0 flex-shrink-0 ${isFiltered ? 'text-primary' : 'text-muted-foreground opacity-50 hover:opacity-100'}`}
           onClick={(e) => {
             e.stopPropagation();
             setFilterOpen(true);

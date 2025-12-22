@@ -43,13 +43,14 @@ export function useKeyboardShortcuts(
     // Skip if disabled or still loading
     if (!enabled || isLoading) return;
     
-    // Skip if user is typing in an input
+    // Skip if user is actively typing in an input (must be focused)
     const target = event.target as HTMLElement;
-    if (
-      target.tagName === 'INPUT' ||
-      target.tagName === 'TEXTAREA' ||
-      target.isContentEditable
-    ) {
+    const isInputFocused = (
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) &&
+      document.activeElement === target
+    );
+    
+    if (isInputFocused) {
       return;
     }
     
@@ -58,7 +59,10 @@ export function useKeyboardShortcuts(
       if (matchesShortcut(event, config.shortcut)) {
         const handler = handlersRef.current[actionId];
         if (handler) {
+          // Prevent default browser behavior (e.g., Cmd+R page reload)
           event.preventDefault();
+          // Stop propagation to prevent other handlers
+          event.stopPropagation();
           handler();
           return;
         }
@@ -69,9 +73,11 @@ export function useKeyboardShortcuts(
   useEffect(() => {
     if (!enabled) return;
     
-    document.addEventListener('keydown', handleKeyDown);
+    // Use capture phase to intercept events before they reach the target
+    // This ensures we can prevent default browser shortcuts like Cmd+R
+    document.addEventListener('keydown', handleKeyDown, true);
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [handleKeyDown, enabled]);
 }

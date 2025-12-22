@@ -23,6 +23,9 @@ export type { ColumnHeaderProps } from './ColumnHeader';
 export { FilterMenu } from './FilterMenu';
 export type { FilterMenuProps } from './FilterMenu';
 
+export { ColumnMenu } from './ColumnMenu';
+export type { ColumnMenuProps } from './ColumnMenu';
+
 export { DataGridContextMenu } from './ContextMenu';
 export type { DataGridContextMenuProps } from './ContextMenu';
 

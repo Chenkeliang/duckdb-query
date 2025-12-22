@@ -3,7 +3,7 @@
  */
 
 import { useMemo } from 'react';
-import type { CellSelection, GridStats, SelectionRange } from '../types';
+import type { CellSelection, GridStats } from '../types';
 
 export interface UseGridStatsOptions {
   /** 总行数 */

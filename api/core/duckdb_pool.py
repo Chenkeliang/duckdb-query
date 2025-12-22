@@ -162,10 +162,21 @@ class DuckDBConnectionPool:
 
         except Exception as e:
             if conn_id:
+                # 发生异常时，尝试回滚事务
+                try:
+                    self._connections[conn_id].connection.execute("ROLLBACK")
+                except Exception:
+                    pass
                 self._mark_connection_error(conn_id, str(e))
             raise
         finally:
             if conn_id:
+                # 释放前确保事务已提交（DuckDB 在某些情况下可能有未提交的隐式事务）
+                try:
+                    self._connections[conn_id].connection.execute("COMMIT")
+                except Exception:
+                    # 如果没有活动事务，COMMIT 会失败，这是正常的
+                    pass
                 self._release_connection(conn_id)
 
     def _acquire_connection(self) -> Optional[int]:

@@ -27,6 +27,7 @@ import {
 } from '@/new/components/ui/select';
 import { useColumnFilter } from '../hooks/useColumnFilter';
 import type { ConditionFilter, ConditionFilterType, ColumnFilterValue, UniqueValueItem } from '../types';
+import { getSelectedValuesSize, hasSelectedValue } from '../types';
 
 export interface FilterMenuProps {
   /** 列名 */
@@ -167,7 +168,7 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({
     // 低基数列：如果等同“不过滤”，则清除筛选（用于正确显示图标状态）
     if (!isHighCardinality && typeof next === 'object' && 'selectedValues' in next) {
       const vf = next as ColumnFilterValue;
-      const selectedSize = vf.selectedValues?.size ?? 0;
+      const selectedSize = getSelectedValuesSize(vf.selectedValues);
       const total = uniqueValues.length;
 
       const isNoOpInclude = vf.mode === 'include' && selectedSize === total;
@@ -179,7 +180,17 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({
       }
     }
 
-    onFilterChange?.(column, next);
+    // 确保 Set 被转换为数组以便序列化和状态管理
+    if (typeof next === 'object' && next !== null && 'selectedValues' in next) {
+      const vf = next as ColumnFilterValue;
+      const filterToApply = {
+        selectedValues: Array.from(vf.selectedValues),
+        mode: vf.mode,
+      };
+      onFilterChange?.(column, filterToApply);
+    } else {
+      onFilterChange?.(column, next);
+    }
     setOpen(false);
   };
 
@@ -196,16 +207,26 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={true}>
       <PopoverTrigger
         className={cn(
-          'inline-flex h-6 w-6 items-center justify-center rounded-md p-0 hover:bg-accent',
-          hasActiveFilter ? 'text-primary' : 'text-muted-foreground'
+          'dq-data-grid-filter-icon inline-flex h-6 w-6 items-center justify-center rounded-md p-0 hover:bg-accent',
+          hasActiveFilter && 'active'
         )}
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
       >
         <Filter className="h-3 w-3" />
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-0" align="start">
+      <PopoverContent
+        className="w-72 p-0"
+        align="start"
+        onOpenAutoFocus={(e) => {
+          // 阻止自动聚焦，避免触发关闭
+          e.preventDefault();
+        }}
+      >
         <div className="p-3 space-y-3">
           {/* 搜索框 */}
           <div className="relative">
@@ -281,7 +302,7 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({
                 <ValueItem
                   key={item.label}
                   item={item}
-                  checked={filterValue?.selectedValues.has(item.label) ?? false}
+                  checked={hasSelectedValue(filterValue?.selectedValues, item.label)}
                   onToggle={() => toggleValue(item.label)}
                 />
               ))}

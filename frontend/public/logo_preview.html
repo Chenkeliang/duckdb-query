@@ -4,85 +4,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DuckQuery High Art (V12)</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&display=swap" rel="stylesheet">
+    <title>DuckDB Query - Final Logo Production</title>
     <style>
-        :root {
-            --bg: #000;
-            --text: #fff;
-        }
-
         body {
-            font-family: 'Syncopate', sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: #111;
+            color: #eee;
             margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
+            padding: 40px;
         }
 
         .header {
-            padding: 100px 20px 60px;
             text-align: center;
-            max-width: 800px;
+            margin-bottom: 60px;
         }
 
         h1 {
-            font-size: 4rem;
-            font-weight: 700;
-            margin: 0;
-            letter-spacing: -2px;
-            background: linear-gradient(to right, #fff, #666);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 100px;
-            width: 100%;
-            max-width: 1200px;
-            padding: 60px;
-        }
-
-        .art-block {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-        }
-
-        .canvas {
-            width: 250px;
-            height: 250px;
-            margin-bottom: 30px;
-            position: relative;
-        }
-
-        .canvas svg {
-            width: 100%;
-            height: 100%;
-            overflow: visible;
-        }
-
-        .title {
-            font-weight: 700;
-            font-size: 1.2rem;
-            text-transform: uppercase;
+            font-weight: 300;
             letter-spacing: 2px;
             margin-bottom: 10px;
         }
 
-        .desc {
-            font-family: 'Helvetica Neue', sans-serif;
-            font-size: 0.9rem;
+        .subtitle {
             color: #888;
-            max-width: 250px;
-            line-height: 1.5;
+            font-size: 14px;
+        }
+
+        /* Section Containers */
+        .section {
+            margin-bottom: 80px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 60px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 30px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Logo Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            align-items: start;
+        }
+
+        /* Mockup Containers */
+        .mockup-row {
+            display: flex;
+            gap: 40px;
+            flex-wrap: wrap;
+            margin-bottom: 40px;
+        }
+
+        .mockup-card {
+            background: #18181b;
+            border-radius: 12px;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border: 1px solid #333;
+            min-width: 200px;
+        }
+
+        .mockup-card.light {
+            background: #ffffff;
+            color: #111;
+            border: 1px solid #e5e7eb;
+        }
+
+        .label {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        /* Sidebar Mockup Specifics */
+        .sidebar-mockup {
+            width: 260px;
+            height: 120px;
+            /* Cropped height */
+            border-right: 1px solid #333;
+            /* Sidebar border */
+            display: flex;
+            align-items: center;
+            /* Vertically center for logo placement */
+            padding-left: 20px;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        .sidebar-mockup.dark {
+            background-color: #000;
+            color: #fff;
+            border-color: #333;
+        }
+
+        .sidebar-mockup.light {
+            background-color: #fff;
+            color: #09090b;
+            /* Zinc 950 */
+            border-color: #e5e5e5;
+        }
+
+        .logo-lockup {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            /* Standard gap */
+        }
+
+        .logo-text {
+            font-weight: 600;
+            font-size: 18px;
+            /* Slightly larger for sidebar readability */
+            letter-spacing: -0.02em;
+            line-height: 1;
+        }
+
+        .logo-text span {
+            font-weight: 400;
+            color: inherit;
+            opacity: 0.7;
+        }
+
+        /* Icon Grid */
+        .icon-grid {
+            display: flex;
+            gap: 40px;
+            align-items: flex-end;
+        }
+
+        .icon-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
         }
     </style>
 </head>
@@ -90,106 +152,178 @@
 <body>
 
     <div class="header">
-        <h1>UNBOUND V12</h1>
+        <h1>PRODUCTION PREVIEW</h1>
+        <div class="subtitle">Selected Concept: The Analytic Duck (Bar Chart)</div>
     </div>
 
-    <div class="grid">
-
-        <!-- Concept 46: The Interference Pattern -->
-        <div class="art-block">
-            <div class="canvas">
-                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <defs>
-                        <linearGradient id="wave" x1="0" y1="0" x2="100" y2="100">
-                            <stop offset="0" stop-color="#fff" stop-opacity="0.8" />
-                            <stop offset="1" stop-color="#fff" stop-opacity="0.1" />
-                        </linearGradient>
-                    </defs>
-                    <!-- Moiré pattern / Wave interference -->
-                    <path d="M 10 50 Q 50 10 90 50 Q 50 90 10 50" stroke="url(#wave)" stroke-width="0.5" fill="none" />
-                    <path d="M 12 50 Q 50 12 88 50 Q 50 88 12 50" stroke="url(#wave)" stroke-width="0.5" fill="none" />
-                    <path d="M 15 50 Q 50 15 85 50 Q 50 85 15 50" stroke="url(#wave)" stroke-width="0.5" fill="none" />
-                    <path d="M 18 50 Q 50 18 82 50 Q 50 82 18 50" stroke="url(#wave)" stroke-width="0.5" fill="none" />
-                    <path d="M 21 50 Q 50 21 79 50 Q 50 79 21 50" stroke="url(#wave)" stroke-width="0.5" fill="none" />
-
-                    <!-- Vertical Interference -->
-                    <line x1="50" y1="10" x2="50" y2="90" stroke="#f59e0b" stroke-width="2" />
-                    <circle cx="50" cy="50" r="4" fill="#fff" />
+    <!-- CORE LOGO ASSET -->
+    <div class="section">
+        <div class="section-title">01. Identity Assets</div>
+        <div class="grid">
+            <!-- Full Color / Dark Mode -->
+            <!-- Using the exact design from V31 Concept 122 but refined coords -->
+            <div class="mockup-card">
+                <svg width="128" height="128" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Tail Bar -->
+                    <rect x="22" y="55" width="14" height="25" rx="3" fill="#d97706" />
+                    <!-- Body Bar -->
+                    <rect x="42" y="42" width="14" height="38" rx="3" fill="#f59e0b" />
+                    <!-- Head Bar -->
+                    <rect x="62" y="22" width="14" height="58" rx="3" fill="#fbbf24" />
+                    <!-- Beak -->
+                    <path d="M 76 32 H 86 C 88 32 89 33 89 35 V 39 C 89 41 88 42 86 42 H 76" fill="#f97316" />
+                    <!-- Eye -->
+                    <circle cx="69" cy="32" r="3" fill="#fff" />
                 </svg>
+                <div class="label">Dark Mode Primary</div>
             </div>
-            <div class="title">The Signal</div>
-            <div class="desc">A visualization of order emerging from chaos. The vertical line of Truth cutting through
-                the waves of Data.</div>
-        </div>
 
-        <!-- Concept 47: The Particle Cloud -->
-        <div class="art-block">
-            <div class="canvas">
-                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Random distribution of particles forming a vague Q shape -->
-                    <circle cx="40" cy="30" r="2" fill="#3b82f6" />
-                    <circle cx="60" cy="35" r="3" fill="#3b82f6" />
-                    <circle cx="30" cy="50" r="1" fill="#3b82f6" />
-                    <circle cx="70" cy="50" r="2" fill="#3b82f6" />
-                    <circle cx="50" cy="70" r="4" fill="#3b82f6" />
-                    <circle cx="45" cy="45" r="1.5" fill="#3b82f6" />
-                    <circle cx="55" cy="55" r="2" fill="#3b82f6" />
-                    <circle cx="25" cy="40" r="2" fill="#3b82f6" />
-                    <circle cx="75" cy="60" r="1" fill="#3b82f6" />
+            <!-- Full Color / Light Mode -->
+            <!-- Same colors work well on white, maybe slightly darken the yellow for contrast? 
+                 Actually #fbbf24 is visible on white. Let's keep consistency. -->
+            <div class="mockup-card light">
+                <svg width="128" height="128" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Tail Bar -->
+                    <rect x="22" y="55" width="14" height="25" rx="3" fill="#d97706" />
+                    <!-- Body Bar -->
+                    <rect x="42" y="42" width="14" height="38" rx="3" fill="#f59e0b" />
+                    <!-- Head Bar -->
+                    <rect x="62" y="22" width="14" height="58" rx="3" fill="#f59e0b" />
+                    <!-- Darkened Head for white bg contrast if needed, but keeping f59e0b/fbbf24 combo -->
+                    <!-- Wait, in Light mode, standard Amber-400 might be too light? Let's use standard f59e0b (Amber-500) for head too? 
+                          Let's stick to the V31 palette for now: Tail=Darker, Body=Med, Head=Lighter.
+                          Actually, for Light Mode, maybe uniformity is better? Let's keep the gradient feel. -->
+                    <rect x="62" y="22" width="14" height="58" rx="3" fill="#fbbf24" />
 
-                    <!-- The "Duck" Eye as the Anchor -->
-                    <circle cx="45" cy="35" r="4" fill="#fff" filter="drop-shadow(0 0 5px white)" />
-
-                    <!-- Connecting lines -->
-                    <path d="M40 30 L60 35 L70 50 L50 70 L30 50 L40 30" stroke="#3b82f6" stroke-width="0.5"
-                        opacity="0.5" />
+                    <!-- Beak -->
+                    <path d="M 76 32 H 86 C 88 32 89 33 89 35 V 39 C 89 41 88 42 86 42 H 76" fill="#f97316" />
+                    <!-- Eye -->
+                    <circle cx="69" cy="32" r="3" fill="#fff" />
                 </svg>
+                <div class="label">Light Mode Primary</div>
             </div>
-            <div class="title">The Nebula</div>
-            <div class="desc">No lines, only points. The logo only exists when your brain connects them. The ultimate
-                Federated Query metaphor.</div>
-        </div>
 
-        <!-- Concept 48: The Quantum Superposition -->
-        <div class="art-block">
-            <div class="canvas">
-                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Two shapes occupying the same space -->
-                    <rect x="30" y="30" width="40" height="40" stroke="#f59e0b" stroke-width="2" fill="none"
-                        transform="rotate(45 50 50)" />
-                    <circle cx="50" cy="50" r="25" stroke="#3b82f6" stroke-width="2" fill="none" />
-
-                    <!-- Glitch effect -->
-                    <path d="M 20 50 H 80" stroke="#fff" stroke-width="4" stroke-dasharray="5,5" opacity="0.5" />
+            <!-- Monotone / Silhouette -->
+            <div class="mockup-card">
+                <svg width="128" height="128" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M 22 55 H 36 V 80 H 22 V 55 Z" fill="#fff" opacity="0.5" /> <!-- Tail -->
+                    <path d="M 42 42 H 56 V 80 H 42 V 42 Z" fill="#fff" opacity="0.75" /> <!-- Body -->
+                    <path d="M 62 22 H 76 V 80 H 62 V 22 Z" fill="#fff" /> <!-- Head -->
+                    <!-- Beak attached -->
+                    <path d="M 76 32 H 89 V 42 H 76" fill="#fff" />
+                    <!-- Eye Cutout -->
+                    <circle cx="69" cy="32" r="3" fill="#000" />
                 </svg>
+                <div class="label">Monotone (White)</div>
             </div>
-            <div class="title">The Superposition</div>
-            <div class="desc">Square and Circle. Orange and Blue. Duck and Machine. Existing simultaneously.</div>
         </div>
-
-        <!-- Concept 49: The Neural Eye -->
-        <div class="art-block">
-            <div class="canvas">
-                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <!-- An Eye made of circuitry -->
-                    <path d="M 10 50 Q 50 10 90 50 Q 50 90 10 50 Z" stroke="#333" stroke-width="1" fill="none" />
-
-                    <!-- Iris is a data radial -->
-                    <path d="M 50 50 L 50 30" stroke="#fff" stroke-width="2" />
-                    <path d="M 50 50 L 65 40" stroke="#fff" stroke-width="2" />
-                    <path d="M 50 50 L 60 65" stroke="#fff" stroke-width="2" />
-                    <path d="M 50 50 L 35 60" stroke="#fff" stroke-width="2" />
-                    <path d="M 50 50 L 35 40" stroke="#fff" stroke-width="2" />
-
-                    <circle cx="50" cy="50" r="5" fill="#f59e0b" />
-                </svg>
-            </div>
-            <div class="title">The Watcher</div>
-            <div class="desc">It's looking back at you. The "Eye" of the query engine that sees all data. Minimalist,
-                slightly unsettling, powerful.</div>
-        </div>
-
     </div>
+
+    <!-- SIDEBAR MOCKUPS -->
+    <div class="section">
+        <div class="section-title">02. Sidebar Implementation</div>
+        <div class="mockup-row">
+            <!-- Dark Mode Sidebar -->
+            <div>
+                <div class="sidebar-mockup dark">
+                    <div class="logo-lockup">
+                        <!-- 32px Icon -->
+                        <svg width="32" height="32" viewBox="0 0 100 100" fill="none"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <rect x="22" y="55" width="14" height="25" rx="3" fill="#d97706" />
+                            <rect x="42" y="42" width="14" height="38" rx="3" fill="#f59e0b" />
+                            <rect x="62" y="22" width="14" height="58" rx="3" fill="#fbbf24" />
+                            <path d="M 76 32 H 86 C 88 32 89 33 89 35 V 39 C 89 41 88 42 86 42 H 76" fill="#f97316" />
+                            <circle cx="69" cy="32" r="3" fill="#fff" />
+                        </svg>
+                        <div class="logo-text">DuckQ</div>
+                    </div>
+                </div>
+                <div class="label">Dark Sidebar (32px Icon)</div>
+            </div>
+
+            <!-- Light Mode Sidebar -->
+            <div>
+                <div class="sidebar-mockup light">
+                    <div class="logo-lockup">
+                        <svg width="32" height="32" viewBox="0 0 100 100" fill="none"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <rect x="22" y="55" width="14" height="25" rx="3" fill="#d97706" />
+                            <rect x="42" y="42" width="14" height="38" rx="3" fill="#f59e0b" />
+                            <rect x="62" y="22" width="14" height="58" rx="3" fill="#fbbf24" />
+                            <path d="M 76 32 H 86 C 88 32 89 33 89 35 V 39 C 89 41 88 42 86 42 H 76" fill="#f97316" />
+                            <circle cx="69" cy="32" r="3" fill="#fff" />
+                        </svg>
+                        <div class="logo-text">DuckQ</div>
+                    </div>
+                </div>
+                <div class="label">Light Sidebar (32px Icon)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BROWSER ICONS -->
+    <div class="section">
+        <div class="section-title">03. App Icons & Favicons</div>
+        <div class="icon-grid">
+            <!-- 64px -->
+            <div class="icon-box">
+                <svg width="64" height="64" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"
+                    style="background:#111; border-radius: 12px;">
+                    <rect x="22" y="55" width="14" height="25" rx="3" fill="#d97706" />
+                    <rect x="42" y="42" width="14" height="38" rx="3" fill="#f59e0b" />
+                    <rect x="62" y="22" width="14" height="58" rx="3" fill="#fbbf24" />
+                    <path d="M 76 32 H 86 C 88 32 89 33 89 35 V 39 C 89 41 88 42 86 42 H 76" fill="#f97316" />
+                    <circle cx="69" cy="32" r="3" fill="#fff" />
+                </svg>
+                <div class="label">64px Asset</div>
+            </div>
+
+            <!-- 32px (Toolbar) -->
+            <div class="icon-box">
+                <svg width="32" height="32" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"
+                    style="background:#222; border-radius: 6px;">
+                    <rect x="22" y="55" width="14" height="25" rx="3" fill="#d97706" />
+                    <rect x="42" y="42" width="14" height="38" rx="3" fill="#f59e0b" />
+                    <rect x="62" y="22" width="14" height="58" rx="3" fill="#fbbf24" />
+                    <path d="M 76 32 H 86 C 88 32 89 33 89 35 V 39 C 89 41 88 42 86 42 H 76" fill="#f97316" />
+                    <circle cx="69" cy="32" r="3" fill="#fff" />
+                </svg>
+                <div class="label">32px Favicon</div>
+            </div>
+
+            <!-- 16px (Favicon Small) -->
+            <div class="icon-box">
+                <!-- Special optimized Svg for 16px: Thicker bars, less gap, simplified shapes -->
+                <svg width="16" height="16" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"
+                    style="background:#222; border-radius: 2px;">
+                    <rect x="18" y="55" width="20" height="25" fill="#d97706" /> <!-- Fatter columns -->
+                    <rect x="42" y="40" width="20" height="40" fill="#f59e0b" />
+                    <rect x="66" y="20" width="20" height="60" fill="#fbbf24" />
+                    <!-- Eye -->
+                    <rect x="72" y="30" width="8" height="8" fill="#fff" />
+                    <!-- Beak hint -->
+                    <rect x="86" y="30" width="10" height="10" fill="#f97316" />
+                </svg>
+                <div class="label">16px Optimized</div>
+            </div>
+
+            <!-- App Icon Container Variant -->
+            <div class="icon-box">
+                <svg width="64" height="64" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="100" height="100" rx="22" fill="#f59e0b" />
+                    <!-- White version inside orange box -->
+                    <rect x="22" y="55" width="14" height="25" rx="3" fill="#fff" />
+                    <rect x="42" y="42" width="14" height="38" rx="3" fill="#fff" />
+                    <rect x="62" y="22" width="14" height="58" rx="3" fill="#fff" />
+                    <path d="M 76 32 H 86 C 88 32 89 33 89 35 V 39 C 89 41 88 42 86 42 H 76" fill="#fff" />
+                    <circle cx="69" cy="32" r="3" fill="#f59e0b" />
+                </svg>
+                <div class="label">App Icon</div>
+            </div>
+        </div>
+    </div>
+
 </body>
 
 </html>

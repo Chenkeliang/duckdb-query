@@ -26,6 +26,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuCheckboxItem,
 } from '@/new/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/new/components/ui/popover';
+import { ScrollArea } from '@/new/components/ui/scroll-area';
+import { Check } from 'lucide-react';
 import type { GridStats, ColumnVisibility } from './hooks/useGridStats';
 
 /** DataGrid 列可见性信息 */
@@ -85,6 +92,12 @@ export interface ResultToolbarProps {
   onDataGridExportCSV?: () => void;
   /** DataGrid 导出 JSON */
   onDataGridExportJSON?: () => void;
+  /** DataGrid 自动列宽 */
+  onDataGridAutoFitColumns?: () => void;
+  /** DataGrid 适应宽度 */
+  onDataGridFitToWidth?: () => void;
+  /** DataGrid 重置列 */
+  onDataGridResetColumns?: () => void;
 }
 
 /**
@@ -133,6 +146,9 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
   onDataGridShowAllColumns,
   onDataGridExportCSV,
   onDataGridExportJSON,
+  onDataGridAutoFitColumns,
+  onDataGridFitToWidth,
+  onDataGridResetColumns,
 }) => {
   const { t } = useTranslation('common');
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
@@ -269,47 +285,130 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           </DropdownMenu>
         )}
 
-        {/* 列可见性控制（DataGrid 模式） */}
+        {/* 列可见性控制（DataGrid 模式） - 使用 Popover 避免点击关闭 */}
         {useNewDataGrid && dataGridColumns && dataGridColumns.length > 0 && (
-          <DropdownMenu open={columnMenuOpen} onOpenChange={setColumnMenuOpen}>
-            <DropdownMenuTrigger
-              className="inline-flex items-center justify-center h-8 px-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-              disabled={disabled}
-            >
-              <Columns className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">
-                {t('query.result.columns', '列')}
-              </span>
-              {dataGridHiddenCount > 0 && (
-                <span className="ml-1 text-xs text-muted-foreground">
-                  ({dataGridHiddenCount} {t('query.result.hidden', '隐藏')})
+          <Popover open={columnMenuOpen} onOpenChange={setColumnMenuOpen} modal={true}>
+            <PopoverTrigger asChild>
+              <button
+                className="inline-flex items-center justify-center h-8 px-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+                disabled={disabled}
+              >
+                <Columns className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">
+                  {t('query.result.columns', '列')}
                 </span>
-              )}
-              <ChevronDown className="h-3 w-3 ml-1" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 max-h-80 overflow-y-auto">
-              {/* 列操作 */}
-              <DropdownMenuItem onClick={onDataGridShowAllColumns}>
-                <Eye className="h-4 w-4 mr-2" />
-                {t('query.result.showAllColumns', '显示所有列')}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
+                {dataGridHiddenCount > 0 && (
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    ({dataGridHiddenCount} {t('query.result.hidden', '隐藏')})
+                  </span>
+                )}
+                <ChevronDown className="h-3 w-3 ml-1" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-56 p-0"
+              align="end"
+              onOpenAutoFocus={(e) => e.preventDefault()}
+            >
+              <div className="p-2 space-y-1">
+                {/* 显示所有列 */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start h-8 text-xs"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDataGridShowAllColumns?.();
+                  }}
+                  disabled={dataGridHiddenCount === 0}
+                >
+                  <Eye className="h-3.5 w-3.5 mr-2" />
+                  {t('query.result.showAllColumns', '显示所有列')}
+                </Button>
+
+                {/* 重置列 */}
+                {onDataGridResetColumns && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start h-8 text-xs"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onDataGridResetColumns();
+                    }}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                    {t('query.result.resetColumns', '重置列')}
+                  </Button>
+                )}
+              </div>
+
+              <Separator />
+
+              <div className="p-2 space-y-1">
+                {/* 自动列宽 */}
+                {onDataGridAutoFitColumns && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start h-8 text-xs"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onDataGridAutoFitColumns();
+                    }}
+                  >
+                    <Maximize2 className="h-3.5 w-3.5 mr-2" />
+                    {t('query.result.autoSizeColumns', '自动列宽')}
+                  </Button>
+                )}
+
+                {/* 适应宽度 */}
+                {onDataGridFitToWidth && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start h-8 text-xs"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onDataGridFitToWidth();
+                    }}
+                  >
+                    {t('query.result.fitColumns', '适应宽度')}
+                  </Button>
+                )}
+              </div>
+
+              <Separator />
 
               {/* 列列表 */}
-              {dataGridColumns.map((col) => (
-                <DropdownMenuCheckboxItem
-                  key={col.field}
-                  checked={col.visible}
-                  onCheckedChange={() => onDataGridToggleColumn?.(col.field)}
-                >
-                  <span className="flex items-center gap-2">
-                    {!col.visible && <EyeOff className="h-3 w-3 text-muted-foreground" />}
-                    {col.field}
-                  </span>
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <ScrollArea className="h-64">
+                <div className="p-2 space-y-0.5">
+                  {dataGridColumns.map((col) => (
+                    <button
+                      key={col.field}
+                      className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs text-left hover:bg-accent transition-colors"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onDataGridToggleColumn?.(col.field);
+                      }}
+                    >
+                      {col.visible ? (
+                        <Check className="h-3.5 w-3.5 text-primary" />
+                      ) : (
+                        <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                      )}
+                      <span className="truncate flex-1">{col.field}</span>
+                    </button>
+                  ))}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
         )}
 
         {/* 刷新按钮 */}

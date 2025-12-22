@@ -35,8 +35,8 @@ export const GridRow: React.FC<GridRowProps> = React.memo(({
       role="row"
       aria-rowindex={rowIndex + 1}
       className={cn(
-        'relative',
-        isHovered && 'bg-accent/30',
+        'dq-data-grid-row relative',
+        isHovered && 'hover',
         className
       )}
       style={{

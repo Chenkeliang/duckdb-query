@@ -34,7 +34,13 @@
     "sortDesc": "Descending",
     "sortNone": "Clear sort",
     "sum": "Sum",
-    "average": "Average"
+    "average": "Average",
+    "columns": "Columns",
+    "hidden": "hidden",
+    "showAllColumns": "Show all columns",
+    "resetColumns": "Reset columns",
+    "autoFitColumns": "Auto fit columns",
+    "fitToWidth": "Fit to width"
   },
   "nav": {
     "datasource": "Data Sources",
@@ -60,7 +66,12 @@
     "delete": "Delete",
     "refresh": "Refresh",
     "reset": "Reset",
-    "refreshSuccess": "Refreshed successfully"
+    "refreshSuccess": "Refreshed successfully",
+    "refreshData": "Refresh Query Results & Workspace",
+    "uploadFile": "Upload File",
+    "exportData": "Export Data",
+    "toggleTheme": "Toggle Theme",
+    "toggleLanguage": "Toggle Language"
   },
   "common": {
     "comingSoon": "Coming soon",
@@ -528,6 +539,7 @@
       "localTipsChunk": "Chunked: for large files, resumable, more reliable",
       "localTipsFormats": "Formats: CSV, Excel (xls/xlsx), Parquet, JSON",
       "maxSize": "Max 500MB · Auto detect delimiter",
+      "maxSizeTemplate": "Max {{size}} · Auto detect delimiter",
       "uploadModeLabel": "Upload mode",
       "uploadModeAuto": "Auto select",
       "uploadModeChunked": "Chunked upload",
@@ -548,6 +560,7 @@
       "serverSelectMount": "Select mount",
       "serverNoFiles": "No importable files in this directory",
       "serverTypeFolder": "Folder",
+      "serverGoBack": "Go back",
       "serverTypeSupport": "Importable",
       "serverTypeUnsupport": "Not supported",
       "serverNotExists": "(Not found)",
@@ -782,7 +795,8 @@
     "openCommandPalette": "Open Command Palette",
     "navigateDataSource": "Go to Data Source",
     "navigateQueryWorkbench": "Go to Query Workbench",
-    "refreshData": "Refresh Data",
+    "refreshData": "Refresh Query Results & Workspace",
+    "refreshDataSources": "Refresh Data Source List",
     "uploadFile": "Upload File",
     "toggleTheme": "Toggle Theme",
     "toggleLanguage": "Toggle Language",
