@@ -61,7 +61,8 @@ class TaskUtils:
         """
         生成新的文件路径
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        from core.timezone_utils import get_current_time
+        timestamp = get_current_time().strftime("%Y%m%d_%H%M%S")
         file_name = f"task-{task_id}_{timestamp}.{format}"
         return os.path.join(self.exports_dir, file_name)
 

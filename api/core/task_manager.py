@@ -97,6 +97,7 @@ class AsyncTask:
             TaskStatus.RUNNING.value: "running",
             TaskStatus.SUCCESS.value: "completed",
             TaskStatus.FAILED.value: "failed",
+            TaskStatus.CANCELLING.value: "cancelling",
         }
         result["status"] = status_mapping.get(self.status.value, self.status.value)
         # 前端期望 sql 字段，后端存储为 query
@@ -218,6 +219,8 @@ class TaskManager:
             return TaskStatus.RUNNING
         if normalized == "failed":
             return TaskStatus.FAILED
+        if normalized == "cancelling":
+            return TaskStatus.CANCELLING
         return TaskStatus.QUEUED
 
     @staticmethod

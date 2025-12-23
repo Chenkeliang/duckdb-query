@@ -24,11 +24,31 @@ from core.file_datasource_manager import (
 )
 from core.config_manager import config_manager
 from core.timezone_utils import get_current_time_iso, get_current_time
+
+# 配置详细的文件日志用于调试
+logger = logging.getLogger(__name__)
+# 移除可能存在的旧handler避免重复
+for handler in logger.handlers[:]:
+    if isinstance(handler, logging.FileHandler):
+        logger.removeHandler(handler)
+
+try:
+    # 确保 logs 目录存在
+    log_dir = os.path.join(os.getcwd(), 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    
+    file_handler = logging.FileHandler(os.path.join(log_dir, 'async_debug.log'), encoding='utf-8')
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.setLevel(logging.DEBUG)  # 设置为 DEBUG 级别
+    logger.info("异步任务调试日志已启用")
+except Exception as e:
+    print(f"无法设置文件日志: {e}")
 from core.task_utils import TaskUtils
 from models.query_models import DatabaseConnection, DataSourceType, AttachDatabase
 from core.validators import validate_pagination
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # 使用统一配置管理获取导出目录
@@ -489,12 +509,26 @@ async def cancel_async_task(task_id: str, request: CancelTaskRequest):
     """
     请求取消异步任务（使用取消信号模式，避免写-写冲突）
     """
-    reason = (request.reason or "用户手动取消").strip()
-    # 使用 request_cancellation 设置取消标志，由后台任务检测并自行终止
-    success = task_manager.request_cancellation(task_id, reason)
-    if not success:
-        raise HTTPException(status_code=400, detail="任务状态不允许取消或任务不存在")
-    return {"success": True, "task_id": task_id, "message": "取消请求已提交"}
+    try:
+        reason = (request.reason or "用户手动取消").strip()
+        # 使用 request_cancellation 设置取消标志，由后台任务检测并自行终止
+        success = task_manager.request_cancellation(task_id, reason)
+        if not success:
+            # 检查任务是否存在
+            task = task_manager.get_task(task_id)
+            if not task:
+                raise HTTPException(status_code=404, detail="任务不存在")
+            # 任务存在但状态不允许取消（已完成或已失败）
+            raise HTTPException(
+                status_code=400, 
+                detail=f"任务状态不允许取消，当前状态: {task.status.value}"
+            )
+        return {"success": True, "task_id": task_id, "message": "取消请求已提交"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"取消任务失败: {task_id}, 错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"取消任务失败: {str(e)}")
 
 
 def _extract_task_payload(task) -> Dict[str, Any]:
@@ -739,7 +773,15 @@ def execute_async_query(
             table_name = safe_table_name
         else:
             table_name = task_utils.task_id_to_table_name(task_id)
-        logger.info(f"创建持久表存储查询结果: {table_name}")
+        if custom_table_name:
+            safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
+            import re
+            safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
+            table_name = safe_table_name
+        else:
+            table_name = task_utils.task_id_to_table_name(task_id)
+        logger.info(f"[{task_id}] 创建持久表存储查询结果: {table_name}")
+        logger.debug(f"[{task_id}] 准备执行 SQL: {clean_sql[:200]}...")
 
         # 第二步：执行查询（使用连接池连接）
         with pool.get_connection() as con:
@@ -754,8 +796,9 @@ def execute_async_query(
                 logger.info(f"外部数据源查询结果已写入DuckDB表: {table_name}")
             else:
                 create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
+                logger.debug(f"[{task_id}] 开始执行 CREATE TABLE AS SELECT...")
                 con.execute(create_sql)
-                logger.info(f"持久表创建成功: {table_name}")
+                logger.info(f"[{task_id}] 持久表创建成功: {table_name}")
 
             # 获取元数据（在同一连接中）
             metadata_snapshot = build_table_metadata_snapshot(con, table_name)
@@ -765,7 +808,9 @@ def execute_async_query(
             columns_sql = f'DESCRIBE "{table_name}"'
             columns_info = con.execute(columns_sql).fetchall()
             columns = [{"name": col[0], "type": col[1]} for col in columns_info]
-            logger.info(f"查询结果列数: {len(columns)}")
+            logger.info(f"[{task_id}] 查询结果列数: {len(columns)}")
+            
+            logger.debug(f"[{task_id}] 资源释放检查点 - 即将释放连接")
 
             # 内存清理
             try:
@@ -833,9 +878,18 @@ def execute_async_query(
             task_info["custom_table_name"] = custom_table_name
             task_info["display_name"] = custom_table_name
 
+        logger.info(f"[{task_id}] 开始调用 complete_task 更新状态")
         complete_result = task_manager.complete_task(task_id, task_info)
+        logger.info(f"[{task_id}] complete_task 返回结果: {complete_result}")
         if not complete_result:
-            logger.error(f"无法标记任务为成功: {task_id}")
+            logger.warning(f"complete_task 返回 False，尝试 force_fail_task: {task_id}")
+            # 使用 force_fail_task 确保任务状态被更新
+            task_manager.force_fail_task(
+                task_id, 
+                "任务执行完成但状态更新失败，请检查结果表",
+                {"actual_result": task_info}
+            )
+            logger.error(f"无法标记任务为成功，已强制标记为失败: {task_id}")
 
         execution_time = time.time() - start_time
         logger.info(
@@ -1023,9 +1077,18 @@ def execute_async_federated_query(
             task_info["custom_table_name"] = custom_table_name
             task_info["display_name"] = custom_table_name
 
+        logger.info(f"[{task_id}] (联邦) 开始调用 complete_task 更新状态")
         complete_result = task_manager.complete_task(task_id, task_info)
+        logger.info(f"[{task_id}] (联邦) complete_task 返回结果: {complete_result}")
         if not complete_result:
-            logger.error(f"无法标记联邦查询任务为成功: {task_id}")
+            logger.warning(f"联邦查询 complete_task 返回 False，尝试 force_fail_task: {task_id}")
+            # 使用 force_fail_task 确保任务状态被更新
+            task_manager.force_fail_task(
+                task_id, 
+                "联邦查询执行完成但状态更新失败，请检查结果表",
+                {"actual_result": task_info}
+            )
+            logger.error(f"无法标记联邦查询任务为成功，已强制标记为失败: {task_id}")
 
         execution_time = time.time() - start_time
         logger.info(

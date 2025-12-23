@@ -17,6 +17,50 @@ def _quote_mysql_identifier(identifier: str) -> str:
     return f"`{escaped}`"
 
 
+def _safe_decode_value(value):
+    """
+    安全解码可能包含非 UTF-8 编码的值
+    
+    Args:
+        value: 任意类型的值，特别处理 bytes 类型
+        
+    Returns:
+        解码后的值，如果是 bytes 则尝试多种编码解码
+    """
+    if isinstance(value, bytes):
+        # 尝试多种编码解码 bytes
+        try:
+            return value.decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                # 尝试 GBK 编码（常见于中文 Windows 系统）
+                return value.decode('gbk')
+            except UnicodeDecodeError:
+                try:
+                    # 尝试 latin1 编码
+                    return value.decode('latin1')
+                except UnicodeDecodeError:
+                    # 如果都失败，返回十六进制表示
+                    hex_str = value.hex()
+                    if len(hex_str) > 40:
+                        return f"<binary:{hex_str[:40]}...>"
+                    return f"<binary:{hex_str}>"
+    return value
+
+
+def _safe_decode_row(row):
+    """
+    安全解码数据库行中的所有值
+    
+    Args:
+        row: 数据库查询返回的行（tuple 或 list）
+        
+    Returns:
+        解码后的行（list）
+    """
+    return [_safe_decode_value(value) for value in row]
+
+
 @router.get("/api/database_tables/{connection_id}", tags=["Database Management"])
 async def get_database_tables(connection_id: str):
     """获取指定数据库连接的所有表信息"""
@@ -87,12 +131,12 @@ async def get_database_tables(connection_id: str):
                             for col_row in cursor.fetchall():
                                 columns.append(
                                     {
-                                        "name": col_row[0],
-                                        "type": col_row[1],
-                                        "null": col_row[2],
-                                        "key": col_row[3],
-                                        "default": col_row[4],
-                                        "extra": col_row[5],
+                                        "name": _safe_decode_value(col_row[0]),
+                                        "type": _safe_decode_value(col_row[1]),
+                                        "null": _safe_decode_value(col_row[2]),
+                                        "key": _safe_decode_value(col_row[3]),
+                                        "default": _safe_decode_value(col_row[4]),
+                                        "extra": _safe_decode_value(col_row[5]),
                                     }
                                 )
 
@@ -596,12 +640,12 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                     for col_row in cursor.fetchall():
                         columns.append(
                             {
-                                "name": col_row[0],
-                                "type": col_row[1],
-                                "null": col_row[2],
-                                "key": col_row[3],
-                                "default": col_row[4],
-                                "extra": col_row[5],
+                                "name": _safe_decode_value(col_row[0]),
+                                "type": _safe_decode_value(col_row[1]),
+                                "null": _safe_decode_value(col_row[2]),
+                                "key": _safe_decode_value(col_row[3]),
+                                "default": _safe_decode_value(col_row[4]),
+                                "extra": _safe_decode_value(col_row[5]),
                             }
                         )
 
@@ -612,7 +656,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                     cursor.execute(f"SELECT * FROM {_quote_mysql_identifier(table_name)} LIMIT 5")
                     sample_data = []
                     for row in cursor.fetchall():
-                        sample_data.append(list(row))
+                        sample_data.append(_safe_decode_row(row))
 
                     # 获取索引详情 (MySQL)
                     indexes = []
@@ -625,8 +669,8 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                         # 聚合复合索引
                         index_map = {}
                         for idx_row in raw_indexes:
-                            key_name = idx_row[2]
-                            col_name = idx_row[4]
+                            key_name = _safe_decode_value(idx_row[2])
+                            col_name = _safe_decode_value(idx_row[4])
                             non_unique = idx_row[1]
                             seq = idx_row[3]
                             if key_name not in index_map:
@@ -763,7 +807,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                     )
                     sample_data = []
                     for row in cursor.fetchall():
-                        sample_data.append(list(row))
+                        sample_data.append(_safe_decode_row(row))
 
                     # 获取索引详情 (PostgreSQL)
                     indexes = []
