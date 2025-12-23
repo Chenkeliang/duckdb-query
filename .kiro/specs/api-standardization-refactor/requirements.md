@@ -404,6 +404,70 @@ async def download_result(task_id: str, ...):
     ...
 ```
 
+### 4.6 预览模式默认 LIMIT
+
+**设计原则**：
+- **预览模式 (is_preview=true)**: 自动添加默认 LIMIT（取自配置 `max_query_rows`）
+- **用户手动指定 LIMIT**: 使用用户指定的值
+- **异步任务**: 无 LIMIT 限制
+
+**规范（保持现有逻辑不变）**：
+```python
+# duckdb_query.py - 使用配置值
+MAX_PREVIEW_ROWS = config_manager.get("max_query_rows", 10000)
+
+if request.is_preview and 'LIMIT' not in sql.upper():
+    sql = f"{sql.rstrip(';')} LIMIT {MAX_PREVIEW_ROWS}"
+```
+
+**无需额外改动** - 当前代码已实现此功能，前端可通过 `/api/settings` 接口获取 `max_query_rows` 配置值。
+
+### 4.7 连接测试超时资源清理
+
+**当前问题**：连接测试超时后，连接可能未正确关闭
+
+**修复方案**：使用 `asyncio.wait_for()` 并确保 `finally` 块清理资源
+
+```python
+# datasources.py
+import asyncio
+
+async def test_connection_with_timeout(params: dict, timeout: int):
+    """测试数据库连接（带超时和资源清理）"""
+    connection = None
+    try:
+        # 使用 asyncio.wait_for 实现超时
+        connection = await asyncio.wait_for(
+            create_connection(params),
+            timeout=timeout
+        )
+        # 测试查询
+        await connection.execute("SELECT 1")
+        return {"success": True, "message": "连接成功"}
+    
+    except asyncio.TimeoutError:
+        raise HTTPException(408, detail={
+            "code": "CONNECTION_TIMEOUT",
+            "message": f"连接超时（{timeout}秒），请检查网络或数据库状态",
+            "field": "timeout"
+        })
+    
+    except Exception as e:
+        raise HTTPException(500, detail={
+            "code": "CONNECTION_FAILED",
+            "message": f"连接失败: {str(e)}",
+            "field": "params"
+        })
+    
+    finally:
+        # 确保连接被关闭
+        if connection:
+            try:
+                await connection.close()
+            except Exception as e:
+                logger.warning(f"关闭连接时出错: {e}")
+```
+
 ---
 
 ## 5️⃣ 返回字段修复（优先级 P3）

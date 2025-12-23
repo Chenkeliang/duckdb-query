@@ -58,9 +58,23 @@ graph TD
 **正则常量**:
 
 ```python
+# DuckDB 标识符限制（与 PostgreSQL 一致）：
+# - 最大长度: 64 字符
+# - 引号包裹后可以使用特殊字符，但我们限制为字母数字下划线
 SAFE_TABLE_NAME_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]{0,63}$')
 SAFE_ALIAS_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 SAFE_SHORTCUT_PATTERN = re.compile(r'^(Cmd|Ctrl|Alt|Shift)(\+(Cmd|Ctrl|Alt|Shift|[A-Z0-9]))+$')
+```
+
+**保护常量**:
+
+```python
+# 保护的 Schema（禁止操作）
+PROTECTED_SCHEMAS = ["information_schema", "pg_catalog", "duckdb_"]
+# 保护的表名前缀
+PROTECTED_PREFIX = "system_"
+# 直接返回最大行数（超过需使用异步任务）
+MAX_DIRECT_RETURN_ROWS = 10000
 ```
 
 ---
@@ -185,6 +199,67 @@ async def browse_directory(path: str):
     
     files = os.listdir(safe_path)
     # ...
+```
+
+#### 3.4 大数据量处理
+
+**改动点**:
+
+| 端点 | 改动 |
+|------|------|
+| `POST /api/duckdb/execute` | 添加行数限制检查 |
+| `POST /api/duckdb/federated-query` | 添加行数限制检查 |
+
+**实现**:
+
+```python
+MAX_DIRECT_RETURN_ROWS = 10000
+
+def check_result_size(row_count: int):
+    """检查结果集大小，超过限制抛出异常"""
+    if row_count > MAX_DIRECT_RETURN_ROWS:
+        raise HTTPException(400, detail={
+            "code": "DATA_TOO_LARGE",
+            "message": f"数据量过大（{row_count:,} 行），请使用异步任务",
+            "field": "sql",
+            "details": {
+                "max_rows": MAX_DIRECT_RETURN_ROWS,
+                "actual_rows": row_count,
+                "hint": "使用异步任务可以导出完整数据为 CSV/Parquet 文件"
+            }
+        })
+```
+
+#### 3.5 连接测试超时处理
+
+**改动点**:
+
+| 端点 | 改动 |
+|------|------|
+| `POST /api/datasources/databases/test` | 添加超时和资源清理 |
+
+**实现**:
+
+```python
+import asyncio
+
+async def test_connection_with_timeout(params: dict, timeout: int):
+    connection = None
+    try:
+        connection = await asyncio.wait_for(
+            create_connection(params),
+            timeout=timeout
+        )
+        await connection.execute("SELECT 1")
+        return {"success": True}
+    except asyncio.TimeoutError:
+        raise HTTPException(408, detail={
+            "code": "CONNECTION_TIMEOUT",
+            "message": f"连接超时（{timeout}秒）"
+        })
+    finally:
+        if connection:
+            await connection.close()
 ```
 
 ---
