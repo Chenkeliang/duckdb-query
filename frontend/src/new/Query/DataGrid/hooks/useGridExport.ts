@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 /** 导出范围 */
@@ -181,6 +182,8 @@ export function useGridExport({
   selectedRows,
   maxClientExportRows = DEFAULT_MAX_CLIENT_EXPORT_ROWS,
 }: UseGridExportOptions): UseGridExportReturn {
+  const { t } = useTranslation('common');
+  
   // 获取要导出的数据
   const getExportData = useCallback(
     (scope: ExportScope = 'all'): Record<string, unknown>[] => {
@@ -213,14 +216,14 @@ export function useGridExport({
 
       const exportData = getExportData(scope);
       if (exportData.length === 0) {
-        toast.error('没有数据可导出');
+        toast.error(t('query.export.noData'));
         return;
       }
 
       // 检查是否超过限制
       if (exportData.length > maxClientExportRows) {
         toast.warning(
-          `数据量较大（${exportData.length.toLocaleString()} 行），建议使用异步任务导出`
+          t('query.export.largeDataWarning', { rowCount: exportData.length.toLocaleString() })
         );
       }
 
@@ -240,13 +243,13 @@ export function useGridExport({
 
         const content = lines.join('\n');
         downloadFile(content, `${filename}.csv`, 'text/csv');
-        toast.success(`已导出 ${exportData.length.toLocaleString()} 行数据`);
+        toast.success(t('query.export.success', { rowCount: exportData.length.toLocaleString() }));
       } catch (error) {
         console.error('CSV 导出失败:', error);
-        toast.error('导出失败，请重试');
+        toast.error(t('query.export.failed'));
       }
     },
-    [columns, getExportData, maxClientExportRows]
+    [columns, getExportData, maxClientExportRows, t]
   );
 
   // 导出 JSON
@@ -256,14 +259,14 @@ export function useGridExport({
 
       const exportData = getExportData(scope);
       if (exportData.length === 0) {
-        toast.error('没有数据可导出');
+        toast.error(t('query.export.noData'));
         return;
       }
 
       // 检查是否超过限制
       if (exportData.length > maxClientExportRows) {
         toast.warning(
-          `数据量较大（${exportData.length.toLocaleString()} 行），建议使用异步任务导出`
+          t('query.export.largeDataWarning', { rowCount: exportData.length.toLocaleString() })
         );
       }
 
@@ -280,13 +283,13 @@ export function useGridExport({
         // 使用 jsonReplacer 处理 BigInt
         const content = JSON.stringify(filteredExportData, jsonReplacer, 2);
         downloadFile(content, `${filename}.json`, 'application/json');
-        toast.success(`已导出 ${exportData.length.toLocaleString()} 行数据`);
+        toast.success(t('query.export.success', { rowCount: exportData.length.toLocaleString() }));
       } catch (error) {
         console.error('JSON 导出失败:', error);
-        toast.error('导出失败，请重试');
+        toast.error(t('query.export.failed'));
       }
     },
-    [columns, getExportData, maxClientExportRows]
+    [columns, getExportData, maxClientExportRows, t]
   );
 
   // 是否可以导出选中数据

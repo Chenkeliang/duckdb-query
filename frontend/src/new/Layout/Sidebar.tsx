@@ -77,13 +77,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     <TooltipProvider delayDuration={0}>
       <div className="dq-layout-sidebar-inner flex h-full w-full flex-col bg-surface text-foreground">
         {/* Logo 区域 + 折叠按钮 */}
-        <div className={`h-14 flex items-center border-b border-border ${collapsed ? 'px-2 justify-center' : 'px-3 justify-between'}`}>
+        <div className={`h-14 flex items-center border-b border-border ${collapsed ? 'px-1 justify-start' : 'px-3 justify-between'}`}>
           {/* Logo Area */}
           <div className="flex items-center gap-2 overflow-hidden">
             {/* Logo Icon (Always visible) */}
-            <div className={`shrink-0 flex items-center justify-center ${collapsed ? "w-12" : "w-12"}`}>
+            <div className={`shrink-0 flex items-center justify-start ${collapsed ? "w-14" : "w-12"}`}>
               {logoLight ? (
-                <img src={logoLight} alt="DuckQ" className="h-12 w-12" />
+                <img src={logoLight} alt="DuckQ" className={collapsed ? "h-14 w-14" : "h-12 w-12"} />
               ) : (
                 <div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold shadow-lg shadow-orange-900/20 text-xl">D</div>
               )}

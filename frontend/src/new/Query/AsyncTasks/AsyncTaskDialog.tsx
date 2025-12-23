@@ -1,13 +1,13 @@
 /**
  * 异步任务发起对话框
  * 
- * 用于提交异步查询任务，支持自定义表名
+ * 用于提交异步查询任务，支持自定义表名和联邦查询
  */
 
 import React, { useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, AlertCircle, Info } from 'lucide-react';
+import { Loader2, AlertCircle, Info, Database } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/new/components/ui/button';
@@ -30,6 +30,13 @@ import { submitAsyncQuery } from '@/services/apiClient';
 // 异步任务查询 key
 const ASYNC_TASKS_QUERY_KEY = ['async-tasks'] as const;
 
+/** 附加数据库配置 */
+export interface AttachDatabase {
+  alias: string;
+  connectionId: string;
+  connectionName?: string;
+}
+
 export interface AsyncTaskDialogProps {
   /** 是否打开 */
   open: boolean;
@@ -43,6 +50,8 @@ export interface AsyncTaskDialogProps {
     type: string;
     name?: string;
   };
+  /** 需要附加的外部数据库列表（联邦查询） */
+  attachDatabases?: AttachDatabase[];
   /** 提交成功回调 */
   onSuccess?: (taskId: string) => void;
 }
@@ -98,6 +107,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
   onOpenChange,
   sql,
   datasource,
+  attachDatabases,
   onSuccess,
 }) => {
   const { t } = useTranslation('common');
@@ -106,6 +116,9 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
   // 表单状态
   const [customTableName, setCustomTableName] = useState('');
   const [tableNameError, setTableNameError] = useState<string | undefined>();
+
+  // 是否为联邦查询
+  const isFederatedQuery = attachDatabases && attachDatabases.length > 0;
 
   // 重置表单
   useEffect(() => {
@@ -130,6 +143,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
         custom_table_name?: string;
         task_type: string;
         datasource?: { id: string; type: string; name?: string };
+        attach_databases?: Array<{ alias: string; connection_id: string }>;
       } = {
         sql,
         task_type: 'query',
@@ -141,6 +155,14 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
 
       if (datasource) {
         payload.datasource = datasource;
+      }
+
+      // 添加联邦查询的附加数据库配置
+      if (attachDatabases && attachDatabases.length > 0) {
+        payload.attach_databases = attachDatabases.map(db => ({
+          alias: db.alias,
+          connection_id: db.connectionId,
+        }));
       }
 
       return submitAsyncQuery(payload);
@@ -203,6 +225,30 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
                 })}
               </AlertDescription>
             </Alert>
+          )}
+
+          {/* 联邦查询附加数据库列表 */}
+          {isFederatedQuery && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                {t('async.dialog.attachedDatabases', '附加的外部数据库')}
+              </Label>
+              <div className="p-3 bg-muted rounded-md space-y-1">
+                {attachDatabases!.map((db, index) => (
+                  <div key={index} className="text-sm flex items-center gap-2">
+                    <span className="font-mono text-primary">{db.alias}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="text-muted-foreground">
+                      {db.connectionName || db.connectionId}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t('async.dialog.federatedQueryHint', '这些数据库将在查询执行期间临时附加')}
+              </p>
+            </div>
           )}
 
           {/* 自定义表名 */}

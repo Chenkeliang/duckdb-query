@@ -25,7 +25,7 @@ from core.file_datasource_manager import (
 from core.config_manager import config_manager
 from core.timezone_utils import get_current_time_iso, get_current_time
 from core.task_utils import TaskUtils
-from models.query_models import DatabaseConnection, DataSourceType
+from models.query_models import DatabaseConnection, DataSourceType, AttachDatabase
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -37,6 +37,64 @@ EXPORTS_DIR = str(config_manager.get_exports_dir())
 task_utils = TaskUtils(EXPORTS_DIR)
 
 SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite"}
+
+
+def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) -> None:
+    """
+    验证 attach_databases 参数
+    
+    Args:
+        attach_databases: 需要 ATTACH 的外部数据库列表
+        
+    Raises:
+        HTTPException: 当验证失败时抛出 400 错误
+        
+    Note:
+        空数组视为普通查询（非联邦查询），不会抛出错误
+    """
+    if not attach_databases:
+        return
+    
+    # 空数组视为普通查询
+    if len(attach_databases) == 0:
+        return
+    
+    aliases = set()
+    for db in attach_databases:
+        # 验证 alias 不为空
+        if not db.alias or not db.alias.strip():
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "VALIDATION_ERROR",
+                    "message": "数据库别名不能为空",
+                    "field": "attach_databases.alias"
+                }
+            )
+        
+        # 验证 connection_id 不为空
+        if not db.connection_id or not db.connection_id.strip():
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "VALIDATION_ERROR",
+                    "message": "连接ID不能为空",
+                    "field": "attach_databases.connection_id"
+                }
+            )
+        
+        # 验证别名不重复
+        alias = db.alias.strip()
+        if alias in aliases:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "VALIDATION_ERROR",
+                    "message": f"重复的数据库别名: {alias}",
+                    "field": "attach_databases.alias"
+                }
+            )
+        aliases.add(alias)
 
 
 def _ensure_database_connection(datasource_id: str, datasource_type: str):
@@ -120,6 +178,108 @@ def _fetch_external_query_result(datasource: Dict[str, Any], sql: str) -> pd.Dat
     return result_df
 
 
+def _attach_external_databases(
+    con,
+    attach_databases: List[Dict[str, str]]
+) -> List[str]:
+    """
+    执行 ATTACH 操作，返回成功附加的别名列表
+    
+    Args:
+        con: DuckDB 连接
+        attach_databases: 需要 ATTACH 的数据库列表，每个元素包含 alias 和 connection_id
+        
+    Returns:
+        成功附加的数据库别名列表
+        
+    Raises:
+        ValueError: 当连接不存在或 ATTACH 失败时
+        
+    Note:
+        失败时会 DETACH 已附加的数据库并抛出异常
+    """
+    import re
+    from core.database_manager import db_manager
+    from core.encryption import password_encryptor
+    from core.duckdb_engine import build_attach_sql
+    
+    attached = []
+    
+    # 验证 alias 格式（防止 SQL 注入）
+    SAFE_ALIAS_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+    
+    try:
+        for db in attach_databases:
+            alias = db["alias"]
+            connection_id = db["connection_id"]
+            
+            # 验证 alias 格式安全性
+            if not SAFE_ALIAS_PATTERN.match(alias):
+                raise ValueError(f"无效的数据库别名格式: {alias}")
+            
+            # 获取连接配置
+            connection = db_manager.get_connection(connection_id)
+            if not connection:
+                raise ValueError(f"数据库连接 '{connection_id}' 不存在")
+            
+            # 验证数据库类型
+            db_type = connection.type.value if hasattr(connection.type, 'value') else str(connection.type)
+            if db_type.lower() not in SUPPORTED_EXTERNAL_TYPES:
+                raise ValueError(f"不支持的数据源类型: {db_type}")
+            
+            # 构建配置
+            db_config = connection.params.copy()
+            db_config['type'] = db_type
+            
+            # 解密密码（不记录敏感信息）
+            password = db_config.get('password', '')
+            if password and password_encryptor.is_encrypted(password):
+                db_config['password'] = password_encryptor.decrypt_password(password)
+                logger.debug(f"连接 {connection_id} 密码已处理")
+            
+            # 执行 ATTACH
+            attach_sql = build_attach_sql(alias, db_config)
+            logger.info(f"执行 ATTACH: {alias} (connection_id: {connection_id})")
+            con.execute(attach_sql)
+            attached.append(alias)
+            logger.info(f"成功 ATTACH 数据库: {alias}")
+            
+    except Exception as e:
+        # 回滚已附加的数据库
+        logger.error(f"ATTACH 失败: {e}, 回滚已附加的数据库: {attached}")
+        _detach_databases(con, attached)
+        raise
+    
+    return attached
+
+
+def _detach_databases(con, aliases: List[str]) -> None:
+    """
+    执行 DETACH 操作，忽略单个失败继续处理其他
+    
+    Args:
+        con: DuckDB 连接
+        aliases: 需要 DETACH 的数据库别名列表
+        
+    Note:
+        alias 已在 _attach_external_databases 中验证过格式安全性
+    """
+    import re
+    SAFE_ALIAS_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+    
+    for alias in aliases:
+        try:
+            # 二次验证 alias 格式（防御性编程）
+            if not SAFE_ALIAS_PATTERN.match(alias):
+                logger.warning(f"跳过无效别名格式的 DETACH: {alias}")
+                continue
+            # 使用引号包裹 alias 防止 SQL 注入
+            con.execute(f'DETACH "{alias}"')
+            logger.info(f"成功 DETACH 数据库: {alias}")
+        except Exception as e:
+            logger.warning(f"DETACH {alias} 失败: {e}")
+
+
 class AsyncQueryRequest(BaseModel):
     """异步查询请求模型"""
 
@@ -127,6 +287,8 @@ class AsyncQueryRequest(BaseModel):
     custom_table_name: Optional[str] = None  # 自定义表名（可选）
     task_type: str = "query"  # 任务类型：query, save_to_table, export
     datasource: Optional[Dict[str, Any]] = None
+    # 联邦查询支持：需要 ATTACH 的外部数据库列表
+    attach_databases: Optional[List[AttachDatabase]] = None
 
 
 class AsyncQueryResponse(BaseModel):
@@ -174,10 +336,25 @@ async def submit_async_query(
 ):
     """
     提交异步查询任务
+    
+    支持联邦查询：通过 attach_databases 参数指定需要 ATTACH 的外部数据库
     """
     try:
         if not request.sql.strip():
-            raise HTTPException(status_code=400, detail="SQL查询不能为空")
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "VALIDATION_ERROR",
+                    "message": "SQL查询不能为空",
+                    "field": "sql"
+                }
+            )
+
+        # 验证 attach_databases 参数
+        validate_attach_databases(request.attach_databases)
+
+        # 判断是否为联邦查询
+        is_federated = bool(request.attach_databases and len(request.attach_databases) > 0)
 
         # 创建任务，将信息存储在任务查询中
         task_query = {
@@ -185,6 +362,11 @@ async def submit_async_query(
             "custom_table_name": request.custom_table_name,
             "task_type": request.task_type,
             "datasource": request.datasource,
+            "attach_databases": [
+                {"alias": db.alias, "connection_id": db.connection_id}
+                for db in request.attach_databases
+            ] if request.attach_databases else None,
+            "is_federated": is_federated,
         }
 
         # 创建任务并保存元数据
@@ -195,15 +377,28 @@ async def submit_async_query(
             metadata=task_query,
         )
 
-        # 添加后台任务执行查询
-        background_tasks.add_task(
-            execute_async_query,
-            task_id,
-            request.sql,
-            request.custom_table_name,
-            request.task_type,
-            request.datasource,
-        )
+        # 根据是否为联邦查询选择执行函数
+        if is_federated:
+            # 联邦查询：使用新的执行函数
+            background_tasks.add_task(
+                execute_async_federated_query,
+                task_id,
+                request.sql,
+                request.custom_table_name,
+                request.task_type,
+                request.datasource,
+                [{"alias": db.alias, "connection_id": db.connection_id} for db in request.attach_databases],
+            )
+        else:
+            # 普通查询：使用原有执行函数
+            background_tasks.add_task(
+                execute_async_query,
+                task_id,
+                request.sql,
+                request.custom_table_name,
+                request.task_type,
+                request.datasource,
+            )
 
         return AsyncQueryResponse(
             success=True, task_id=task_id, message="任务已提交，请稍后查询任务状态"
@@ -282,6 +477,8 @@ async def cancel_async_task(task_id: str, request: CancelTaskRequest):
 def _extract_task_payload(task) -> Dict[str, Any]:
     """
     提取任务的原始执行参数
+    
+    支持提取联邦查询的 attach_databases 配置
     """
     metadata = task.metadata or {}
     payload: Dict[str, Any] = {}
@@ -310,6 +507,9 @@ def _extract_task_payload(task) -> Dict[str, Any]:
                         payload.setdefault("task_type", guess.get("task_type"))
                         payload.setdefault("custom_table_name", guess.get("custom_table_name"))
                         payload.setdefault("datasource", guess.get("datasource"))
+                        # 提取联邦查询配置
+                        payload.setdefault("attach_databases", guess.get("attach_databases"))
+                        payload.setdefault("is_federated", guess.get("is_federated", False))
                 except Exception:
                     pass
             else:
@@ -346,6 +546,10 @@ async def retry_async_task(
         task_type = payload.get("task_type", "query")
         datasource = request.datasource_override or payload.get("datasource")
         custom_table_name = request.custom_table_name or payload.get("custom_table_name")
+        
+        # 提取联邦查询配置（支持覆盖）
+        attach_databases = payload.get("attach_databases")
+        is_federated = bool(attach_databases and len(attach_databases) > 0)
 
         retry_metadata = dict(payload)
         retry_metadata.update(
@@ -354,6 +558,8 @@ async def retry_async_task(
                 "task_type": task_type,
                 "custom_table_name": custom_table_name,
                 "datasource": datasource,
+                "attach_databases": attach_databases,
+                "is_federated": is_federated,
                 "retry_of": task_id,
             }
         )
@@ -365,14 +571,26 @@ async def retry_async_task(
             metadata=retry_metadata,
         )
 
-        background_tasks.add_task(
-            execute_async_query,
-            new_task_id,
-            sql,
-            custom_table_name,
-            task_type,
-            datasource,
-        )
+        # 根据是否为联邦查询选择执行函数
+        if is_federated:
+            background_tasks.add_task(
+                execute_async_federated_query,
+                new_task_id,
+                sql,
+                custom_table_name,
+                task_type,
+                datasource,
+                attach_databases,
+            )
+        else:
+            background_tasks.add_task(
+                execute_async_query,
+                new_task_id,
+                sql,
+                custom_table_name,
+                task_type,
+                datasource,
+            )
 
         # 注意：移除了 update_task 调用，避免写写冲突
         # 重试关系已通过 retry_metadata["retry_of"] 记录在新任务中
@@ -613,6 +831,222 @@ def execute_async_query(
         
         if not task_manager.fail_task(task_id, error_message):
             logger.error(f"无法标记任务为失败: {task_id}")
+
+
+def execute_async_federated_query(
+    task_id: str,
+    sql: str,
+    custom_table_name: Optional[str] = None,
+    task_type: str = "query",
+    datasource: Optional[Dict[str, Any]] = None,
+    attach_databases: Optional[List[Dict[str, str]]] = None,
+):
+    """
+    执行异步联邦查询（后台任务）
+    
+    支持跨数据库查询，通过 ATTACH 外部数据库实现联邦查询。
+    
+    关键设计：
+    1. 所有 ATTACH/DETACH 操作必须在同一连接上下文中完成
+    2. 无论成功或失败，都必须执行 DETACH 清理
+    3. 支持任务取消检查点
+    
+    Args:
+        task_id: 任务ID
+        sql: SQL 查询语句
+        custom_table_name: 自定义结果表名
+        task_type: 任务类型
+        datasource: 数据源信息（联邦查询时通常为 None）
+        attach_databases: 需要 ATTACH 的外部数据库列表
+    """
+    from core.duckdb_pool import get_connection_pool
+    pool = get_connection_pool()
+    
+    # 用于存储查询结果的临时变量
+    table_name = None
+    row_count = 0
+    columns = []
+    metadata_snapshot = {}
+    attached_aliases = []
+    start_time = time.time()
+    
+    try:
+        # 第一步：标记任务为运行中
+        if not task_manager.start_task(task_id):
+            logger.error(f"无法启动联邦查询任务: {task_id}")
+            return
+
+        # 取消检查点 1
+        if task_manager.is_cancellation_requested(task_id):
+            logger.info(f"联邦查询任务在启动后被取消: {task_id}")
+            task_manager.fail_task(task_id, "用户取消")
+            return
+
+        logger.info(f"开始执行异步联邦查询任务: {task_id}")
+        logger.info(f"需要 ATTACH 的数据库: {attach_databases}")
+
+        # 智能移除系统自动添加的LIMIT
+        from routers.query import remove_auto_added_limit
+        clean_sql = remove_auto_added_limit(sql)
+        if clean_sql != sql.strip():
+            logger.info(f"联邦查询移除了系统自动添加的LIMIT: {sql} -> {clean_sql}")
+        else:
+            logger.info(f"联邦查询使用原始SQL: {clean_sql}")
+
+        # 确定表名
+        if custom_table_name:
+            safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
+            import re
+            safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
+            table_name = safe_table_name
+        else:
+            table_name = task_utils.task_id_to_table_name(task_id)
+        logger.info(f"联邦查询结果将存储到表: {table_name}")
+
+        # 第二步：在同一连接中执行 ATTACH、查询、DETACH
+        with pool.get_connection() as con:
+            try:
+                # 2.1 执行 ATTACH 操作
+                if attach_databases:
+                    attached_aliases = _attach_external_databases(con, attach_databases)
+                    logger.info(f"成功 ATTACH {len(attached_aliases)} 个数据库: {attached_aliases}")
+
+                # 取消检查点 2: ATTACH 完成后检查
+                if task_manager.is_cancellation_requested(task_id):
+                    logger.info(f"联邦查询任务在 ATTACH 后被取消: {task_id}")
+                    _detach_databases(con, attached_aliases)
+                    task_manager.fail_task(task_id, "用户取消")
+                    return
+
+                # 2.2 执行查询并保存结果
+                create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
+                logger.info(f"执行联邦查询: {create_sql[:200]}...")
+                con.execute(create_sql)
+                logger.info(f"联邦查询结果表创建成功: {table_name}")
+
+                # 2.3 获取元数据（在同一连接中）
+                metadata_snapshot = build_table_metadata_snapshot(con, table_name)
+                row_count = metadata_snapshot.get("row_count", 0)
+                logger.info(f"联邦查询结果行数: {row_count}")
+
+                columns_sql = f'DESCRIBE "{table_name}"'
+                columns_info = con.execute(columns_sql).fetchall()
+                columns = [{"name": col[0], "type": col[1]} for col in columns_info]
+                logger.info(f"联邦查询结果列数: {len(columns)}")
+
+                # 内存清理
+                try:
+                    con.execute("PRAGMA force_external")
+                    import gc
+                    gc.collect()
+                    logger.info("内存清理完成")
+                except Exception as cleanup_error:
+                    logger.warning(f"内存清理失败: {str(cleanup_error)}")
+
+            finally:
+                # 2.4 DETACH 清理（无论成功或失败都要执行）
+                if attached_aliases:
+                    logger.info(f"开始 DETACH 清理: {attached_aliases}")
+                    _detach_databases(con, attached_aliases)
+
+        # 连接池连接在这里释放
+
+        # 取消检查点 3: 查询完成后检查
+        if task_manager.is_cancellation_requested(task_id):
+            logger.info(f"联邦查询任务在查询完成后被取消: {task_id}, 清理已创建的表")
+            with pool.get_connection() as con:
+                try:
+                    con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+                    logger.info(f"已清理取消任务的表: {table_name}")
+                except Exception as drop_error:
+                    logger.warning(f"清理表失败: {drop_error}")
+            task_manager.fail_task(task_id, "用户取消")
+            return
+
+        # 第三步：保存元数据
+        source_id = table_name
+        table_metadata = {
+            "source_id": source_id,
+            "filename": f"federated_query_{task_id}",
+            "file_path": f"duckdb://{table_name}",
+            "file_type": "duckdb_federated_query",
+            "created_at": get_current_time_iso(),
+            "source_sql": sql,
+            "schema_version": 2,
+            "is_federated": True,
+            "attached_databases": attached_aliases,
+            **metadata_snapshot,
+        }
+
+        try:
+            file_datasource_manager.save_file_datasource(table_metadata)
+            logger.info(f"联邦查询表元数据保存成功: {source_id}")
+        except Exception as meta_error:
+            logger.warning(f"保存表元数据失败（非致命）: {str(meta_error)}")
+
+        # 第四步：更新任务状态为完成
+        task_info = {
+            "status": "completed",
+            "table_name": table_name,
+            "row_count": row_count,
+            "columns": columns,
+            "file_generated": False,
+            "task_type": task_type,
+            "is_federated": True,
+            "attached_databases": attached_aliases,
+        }
+
+        if custom_table_name:
+            task_info["custom_table_name"] = custom_table_name
+            task_info["display_name"] = custom_table_name
+
+        complete_result = task_manager.complete_task(task_id, task_info)
+        if not complete_result:
+            logger.error(f"无法标记联邦查询任务为成功: {task_id}")
+
+        execution_time = time.time() - start_time
+        logger.info(
+            f"异步联邦查询任务执行完成: {task_id}, 执行时间: {execution_time:.2f}秒, "
+            f"附加数据库: {attached_aliases}"
+        )
+
+    except Exception as e:
+        logger.error(f"执行异步联邦查询任务失败: {task_id}, 错误: {str(e)}")
+        logger.error(traceback.format_exc())
+
+        # 注意：DETACH 清理已在 finally 块中处理，无需在此重复
+        # 如果异常发生在 with pool.get_connection() 之外，attached_aliases 为空
+
+        # 检查是否因取消而异常
+        if task_manager.is_cancellation_requested(task_id):
+            error_message = "用户取消"
+            error_code = "USER_CANCELLED"
+        else:
+            error_message = str(e)
+            # 根据错误类型分类错误代码
+            error_str = str(e).lower()
+            if "不存在" in error_message or "not found" in error_str:
+                error_code = "CONNECTION_NOT_FOUND"
+            elif "不支持" in error_message or "unsupported" in error_str:
+                error_code = "UNSUPPORTED_TYPE"
+            elif "attach" in error_str:
+                error_code = "ATTACH_FAILED"
+            elif "timeout" in error_str or "超时" in error_message:
+                error_code = "TIMEOUT"
+            elif "authentication" in error_str or "认证" in error_message or "密码" in error_message:
+                error_code = "AUTH_FAILED"
+            else:
+                error_code = "FEDERATED_QUERY_FAILED"
+        
+        # 使用 force_fail_task 保存详细错误信息到元数据
+        error_metadata = {
+            "error_code": error_code,
+            "is_federated": True,
+            "attached_databases": attached_aliases,
+        }
+        
+        if not task_manager.force_fail_task(task_id, error_message, metadata_update=error_metadata):
+            logger.error(f"无法标记联邦查询任务为失败: {task_id}")
 
 
 def generate_download_file(task_id: str, format: str = "csv"):

@@ -5,6 +5,7 @@
 
 import { useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { executeDuckDBSQL } from '@/services/apiClient';
 import { invalidateAllDataCaches } from '@/new/utils/cacheInvalidation';
@@ -101,6 +102,7 @@ export const useSQLEditor = ({
   onError,
 }: UseSQLEditorOptions = {}): UseSQLEditorReturn => {
   const queryClient = useQueryClient();
+  const { t } = useTranslation('common');
   
   // SQL 内容
   const [sql, setSQL] = useState(initialSQL);
@@ -145,7 +147,7 @@ export const useSQLEditor = ({
       // 如果保存为表，刷新数据缓存
       if (variables.saveAsTable) {
         invalidateAllDataCaches(queryClient);
-        toast.success(`查询结果已保存到表: ${variables.saveAsTable}`);
+        toast.success(t('query.sql.savedToTable', { table: variables.saveAsTable }));
       }
       
       onSuccess?.(data, variables.sqlToExecute);
@@ -160,7 +162,7 @@ export const useSQLEditor = ({
         error: error.message,
       });
       
-      toast.error(`查询执行失败: ${error.message}`);
+      toast.error(t('query.sql.executionFailed', { message: error.message }));
       onError?.(error, variables.sqlToExecute);
     },
   });
@@ -169,7 +171,7 @@ export const useSQLEditor = ({
   const execute = useCallback((options?: { saveAsTable?: string; isPreview?: boolean }) => {
     const trimmedSQL = sql.trim();
     if (!trimmedSQL) {
-      toast.error('请输入 SQL 语句');
+      toast.error(t('query.sql.emptySQL'));
       return;
     }
     

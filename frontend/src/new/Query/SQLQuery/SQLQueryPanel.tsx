@@ -548,6 +548,15 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
           type: tableSourceInfo.currentSource.databaseType || '',
           name: tableSourceInfo.currentSource.connectionName,
         } : undefined}
+        attachDatabases={attachDatabases.map(db => {
+          // 查找连接名称
+          const connection = availableConnections.find(c => c.id === db.connectionId);
+          return {
+            alias: db.alias,
+            connectionId: db.connectionId,
+            connectionName: connection?.name,
+          };
+        })}
         onSuccess={handleAsyncTaskSuccess}
       />
     </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Info, Loader2 } from "lucide-react";
 import { inspectExcelSheets, importExcelSheets } from "../../services/apiClient";
@@ -73,6 +74,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
   onClose,
   onImported,
 }) => {
+  const { t } = useTranslation('common');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [sheetConfigs, setSheetConfigs] = useState<SheetConfig[]>([]);
@@ -173,7 +175,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
   const handleImport = async () => {
     const selected = sheetConfigs.filter((sheet) => sheet.selected);
     if (selected.length === 0) {
-      toast.warning("请至少选择一个工作表进行导入");
+      toast.warning(t('page.datasource.excelSelectAtLeastOne'));
       return;
     }
 

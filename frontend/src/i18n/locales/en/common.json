@@ -163,6 +163,8 @@
       "tableNamePlaceholder": "Leave empty for auto-generated name",
       "tableNameHint": "Table name can only contain letters, numbers, and underscores, cannot start with a number",
       "externalSource": "Data from external database: {{name}} ({{type}})",
+      "attachedDatabases": "Attached External Databases",
+      "federatedQueryHint": "These databases will be temporarily attached during query execution",
       "submit": "Submit Task"
     },
     "download": {
@@ -336,8 +338,10 @@
     "export": {
       "title": "Export data",
       "format": "Export format",
-      "success": "Export successful",
-      "failed": "Export failed"
+      "success": "Exported {{rowCount}} rows",
+      "failed": "Export failed, please try again",
+      "noData": "No data to export",
+      "largeDataWarning": "Large dataset ({{rowCount}} rows), consider using async task for export"
     },
     "aggregate": {
       "selectTableFirst": "Please select a table first",
@@ -577,6 +581,7 @@
       "importFail": "Import failed",
       "fileTooLarge": "File size exceeds {{size}}, please use chunked upload.",
       "excelUploadSuccess": "Excel uploaded, please choose sheets",
+      "excelSelectAtLeastOne": "Please select at least one sheet to import",
       "uploadSuccessTable": "File uploaded, table created: {{table}}",
       "uploadFail": "File upload failed",
       "enterUrl": "Please enter file URL",
@@ -735,43 +740,6 @@
   "settings": {
     "title": "Settings",
     "comingSoon": "More settings features coming soon...",
-    "database": {
-      "title": "Database Settings",
-      "description": "Manage database connections and configuration",
-      "connections": "Database Connections",
-      "connectionsDesc": "Manage MySQL, PostgreSQL, SQLite connections",
-      "manage": "Manage Connections",
-      "cache": "Query Cache",
-      "cacheDesc": "Configure query result caching strategy",
-      "configure": "Configure"
-    },
-    "ui": {
-      "title": "Interface Settings",
-      "description": "Customize interface appearance and behavior",
-      "theme": "Theme",
-      "themeDesc": "Choose light or dark theme",
-      "changeTheme": "Change Theme",
-      "layout": "Layout",
-      "layoutDesc": "Adjust panel layout and size",
-      "resetLayout": "Reset Layout"
-    },
-    "language": {
-      "title": "Language Settings",
-      "description": "Select interface language",
-      "current": "Current Language",
-      "currentDesc": "English",
-      "change": "Change Language"
-    },
-    "security": {
-      "title": "Security Settings",
-      "description": "Manage security and privacy settings",
-      "password": "Password Management",
-      "passwordDesc": "Manage saved database passwords",
-      "manage": "Manage",
-      "audit": "Audit Logs",
-      "auditDesc": "View operation logs and security events",
-      "viewLogs": "View Logs"
-    },
     "cache": {
       "title": "Cache Settings",
       "description": "Configure cache duration for query data",

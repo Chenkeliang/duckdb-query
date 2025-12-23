@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Database, Loader2, RefreshCw } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { TreeNode } from './TreeNode';
 import { SchemaNode } from '@/new/Query/DataSourcePanel/SchemaNode';
@@ -69,6 +70,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
   const level = 0; // 数据库连接节点始终在 level 0
   const [isExpanded, setIsExpanded] = React.useState(false);
   const queryClient = useQueryClient();
+  const { t } = useTranslation('common');
 
   // 搜索时自动展开
   React.useEffect(() => {
@@ -106,9 +108,9 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
           queryKey: ['schema-tables', connection.id] 
         }),
       ]);
-      toast.success(`已刷新连接 "${connection.name}"`);
+      toast.success(t('dataSource.refreshSuccess', { name: connection.name }));
     } catch (error) {
-      toast.error('刷新失败：' + (error as Error).message);
+      toast.error(t('dataSource.refreshFailed', { message: (error as Error).message }));
     }
   };
 
