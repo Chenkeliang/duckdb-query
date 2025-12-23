@@ -37,11 +37,11 @@ interface UseSmartParseReturn {
   results: ParseResult[];
   selectedIndex: number;
   currentResult: ParseResult | null;
-  
+
   // 操作
   parse: (text: string, config?: Partial<ParseConfig>) => void;
   selectResult: (index: number) => void;
-  
+
   // 状态
   isLoading: boolean;
   error: string | null;
@@ -66,7 +66,7 @@ const cleanCell = (cell: string): string => {
   let s = cell.trim();
   if (s.length >= 2) {
     if ((s.startsWith('"') && s.endsWith('"')) ||
-        (s.startsWith("'") && s.endsWith("'"))) {
+      (s.startsWith("'") && s.endsWith("'"))) {
       s = s.slice(1, -1);
     }
   }
@@ -93,7 +93,7 @@ const parseWithDelimiter = (text: string, delimiter: string, name: string): Pars
 
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
-      
+
       if (!inQuotes && (char === '"' || char === "'")) {
         inQuotes = true;
         quoteChar = char;
@@ -109,7 +109,7 @@ const parseWithDelimiter = (text: string, delimiter: string, name: string): Pars
       }
     }
     cells.push(cleanCell(current));
-    
+
     return cells;
   });
 
@@ -117,10 +117,19 @@ const parseWithDelimiter = (text: string, delimiter: string, name: string): Pars
   const colCounts = rows.map(r => r.length);
   const mostCommon = mode(colCounts);
   const consistency = colCounts.filter(c => c === mostCommon).length / colCounts.length;
-  
-  // 过滤掉列数不一致的行
-  const filteredRows = rows.filter(r => r.length === mostCommon);
-  
+
+  // 标准化所有行到相同列数（填充空字符串而非丢弃行）
+  const normalizedRows = rows.map(r => {
+    if (r.length < mostCommon) {
+      // 列数不足时填充空字符串
+      return [...r, ...Array(mostCommon - r.length).fill('')];
+    } else if (r.length > mostCommon) {
+      // 列数过多时截断
+      return r.slice(0, mostCommon);
+    }
+    return r;
+  });
+
   // 置信度 = 一致性 × 基础分 × 列数合理性
   const baseScore = delimiter === '\t' ? 100 : delimiter === ',' ? 95 : 90;
   const confidence = consistency * baseScore * (mostCommon > 1 ? 1 : 0.3);
@@ -128,9 +137,9 @@ const parseWithDelimiter = (text: string, delimiter: string, name: string): Pars
   return {
     strategy: name,
     confidence: Math.round(confidence),
-    rows: filteredRows,
+    rows: normalizedRows,
     columns: mostCommon,
-    preview: filteredRows.slice(0, 5),
+    preview: normalizedRows.slice(0, 5),
     hasHeader: false,
     delimiter,
   };
@@ -145,14 +154,14 @@ const parseWithMultiSpace = (text: string): ParseResult => {
     return { strategy: '多空格分隔', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
   }
 
-  const rows = lines.map(line => 
+  const rows = lines.map(line =>
     line.split(/\s{2,}/).map(s => s.trim()).filter(Boolean)
   );
 
   const colCounts = rows.map(r => r.length);
   const mostCommon = mode(colCounts);
   const consistency = colCounts.filter(c => c === mostCommon).length / colCounts.length;
-  
+
   const filteredRows = rows.filter(r => r.length === mostCommon);
   const confidence = consistency * 80 * (mostCommon > 1 ? 1 : 0);
 
@@ -170,10 +179,54 @@ const parseWithMultiSpace = (text: string): ParseResult => {
  * JSON 解析策略
  */
 const parseJson = (text: string): ParseResult => {
+  console.log("Starting JSON parse...", text ? text.substring(0, 50) : "empty");
   try {
     const trimmed = text.trim();
-    const json = JSON.parse(trimmed);
-    
+    let json;
+
+    // 1. 尝试标准 JSON 解析
+    try {
+      json = JSON.parse(trimmed);
+    } catch (e) {
+      console.warn("Standard JSON parse failed, attempting loose parse:", e);
+      // 2. 尝试松散解析 (处理单引号、智能引号等)
+      try {
+        const fixed = trimmed
+          .replace(/[\u2018\u2019]/g, "'") // 统一单引号
+          .replace(/[\u201c\u201d]/g, '"') // 统一双引号
+          .replace(/'/g, '"')              // 单引号转双引号
+          .replace(/([a-zA-Z0-9_]+):/g, '"$1":'); // 尝试给未加引号的 key 加上引号
+
+        json = JSON.parse(fixed);
+      } catch (e2) {
+        // 3. 尝试处理 NDJSON / 多行 JSON 对象 (例如 {"a":1}\n{"b":2})
+        try {
+          // 方案 A: 尝试把多行内容包装成数组
+          // 将换行符替换为逗号 (如果是 }{ 或 } { 这种边界)
+          // 或者简单点：如果看起来像是一堆对象，两头加 []，中间加 ,
+
+          // 先尝试按行解析
+          const lines = trimmed.split('\n').map(l => l.trim()).filter(l => l);
+          const parsedLines = lines.map(l => {
+            try { return JSON.parse(l); } catch { return null; }
+          });
+
+          if (parsedLines.length > 1 && parsedLines.every(l => l !== null && typeof l === 'object')) {
+            json = parsedLines;
+            console.log("Parsed as NDJSON/JSON Lines");
+          } else {
+            // 方案 B: 尝试自动修复连接的对象，例如 {a:1}{b:2} -> [{a:1},{b:2}]
+            const arrayified = "[" + trimmed.replace(/}\s*{/g, "},{") + "]";
+            json = JSON.parse(arrayified);
+            console.log("Parsed as concatenated JSON objects");
+          }
+        } catch (e3) {
+          console.warn("Loose JSON parse and NDJSON parse failed:", e2, e3);
+          throw e; // 抛出原始异常
+        }
+      }
+    }
+
     let arr: Record<string, unknown>[];
     if (Array.isArray(json)) {
       arr = json;
@@ -182,10 +235,12 @@ const parseJson = (text: string): ParseResult => {
     } else if (json && typeof json === 'object') {
       arr = [json];
     } else {
+      console.warn("JSON parsed but structure not supported");
       return { strategy: 'JSON', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
     }
 
     if (arr.length === 0 || typeof arr[0] !== 'object') {
+      console.warn("JSON array empty or items not objects");
       return { strategy: 'JSON', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
     }
 
@@ -199,23 +254,27 @@ const parseJson = (text: string): ParseResult => {
     const keys = Array.from(keySet);
 
     if (keys.length === 0) {
+      console.warn("No keys found in JSON objects");
       return { strategy: 'JSON', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
     }
 
     // 转换为行数据
-    const rows = arr.map(obj => 
+    const rows = arr.map(obj =>
       keys.map(k => String((obj as Record<string, unknown>)[k] ?? ''))
     );
 
+    console.log("JSON Parse Success!", { columns: keys.length, rows: rows.length });
+
     return {
       strategy: 'JSON',
-      confidence: 95,
+      confidence: 150,  // 高于所有分隔符策略
       rows: [keys, ...rows],  // 第一行是列名
       columns: keys.length,
       preview: [keys, ...rows.slice(0, 4)],
       hasHeader: true,
     };
-  } catch {
+  } catch (err) {
+    console.error("JSON Parse Final Error:", err);
     return { strategy: 'JSON', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
   }
 };
@@ -372,13 +431,13 @@ export const useSmartParse = (): UseSmartParseReturn => {
             break;
         }
       } else {
-        // 自动检测：尝试所有策略
+        // 自动检测：先尝试 JSON（因为 JSON 中包含逗号会被误识别为 CSV）
+        allResults.push(parseJson(text));
         allResults.push(parseWithDelimiter(text, '\t', 'Tab 分隔'));
         allResults.push(parseWithDelimiter(text, ',', '逗号分隔'));
         allResults.push(parseWithDelimiter(text, '|', '管道符分隔'));
         allResults.push(parseWithDelimiter(text, ';', '分号分隔'));
         allResults.push(parseWithMultiSpace(text));
-        allResults.push(parseJson(text));
         allResults.push(parseKeyValue(text));
         allResults.push(parseFixedWidth(text));
       }

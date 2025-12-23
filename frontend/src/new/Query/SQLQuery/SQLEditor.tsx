@@ -71,6 +71,12 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   const readOnlyCompartment = useRef(new Compartment());
   const sqlCompartment = useRef(new Compartment());
 
+  // 使用 ref 保存最新的 onExecute 回调，避免闭包陷阱
+  // 因为 CodeMirror 的 keymap 初始化后不会随组件 props 更新而重建
+  const onExecuteRef = useRef(onExecute);
+  useEffect(() => {
+    onExecuteRef.current = onExecute;
+  }, [onExecute]);
 
   // 检测深色模式
   const isDarkMode = useMemo(() => {
@@ -100,18 +106,29 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 
   // 创建执行快捷键
   const executeKeymap = useMemo(() => {
-    if (!onExecute) return [];
+    const run = () => {
+      if (onExecuteRef.current) {
+        onExecuteRef.current();
+        return true;
+      }
+      return false;
+    };
+
     return [
       {
-        key: 'Ctrl-Enter',
-        mac: 'Cmd-Enter',
-        run: () => {
-          onExecute();
-          return true;
-        },
+        key: 'Mod-Enter', // Mac: Cmd-Enter, Win: Ctrl-Enter
+        run,
       },
+      {
+        key: 'Ctrl-Enter', // Explicit support for Ctrl-Enter on Mac to match placeholder text
+        run,
+      },
+      {
+        key: 'F8', // Common DBeaver/Datagrip shortcut
+        run,
+      }
     ];
-  }, [onExecute]);
+  }, []);
 
   // 获取实际的 placeholder 文本
   const placeholderText = placeholder || t('query.sql.placeholder', '输入 SQL 查询语句，按 Ctrl+Enter 执行...');
@@ -133,7 +150,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
         history(),
         highlightSelectionMatches(),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        
+
         // SQL 语言支持（使用 Compartment 以便动态更新 schema）
         sqlCompartment.current.of(
           sql({
@@ -142,7 +159,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
             upperCaseKeywords: true,
           })
         ),
-        
+
         // 自动补全 - 启用输入时自动触发
         autocompletion({
           activateOnTyping: true,
@@ -151,7 +168,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
           // 降低触发阈值，输入 1 个字符就开始提示
           activateOnTypingDelay: 100,
         }),
-        
+
         // 快捷键
         keymap.of([
           ...executeKeymap,
@@ -161,23 +178,23 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
           ...lintKeymap,
           ...searchKeymap,
         ]),
-        
+
         // 占位符
         placeholderExt(placeholderText),
-        
+
         // 主题
         themeCompartment.current.of(isDarkMode ? oneDark : []),
-        
+
         // 只读模式
         readOnlyCompartment.current.of(EditorState.readOnly.of(readOnly)),
-        
+
         // 更新监听
         EditorView.updateListener.of((update) => {
           if (update.docChanged && onChange) {
             onChange(update.state.doc.toString());
           }
         }),
-        
+
         // 样式
         EditorView.theme({
           '&': {
@@ -317,11 +334,11 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
         'focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background',
         className
       )}
-      style={{ 
-      // 动态尺寸例外：高度由父组件传入，无法使用静态 Tailwind 类
-      minHeight, 
-      maxHeight 
-    }}
+      style={{
+        // 动态尺寸例外：高度由父组件传入，无法使用静态 Tailwind 类
+        minHeight,
+        maxHeight
+      }}
     />
   );
 };

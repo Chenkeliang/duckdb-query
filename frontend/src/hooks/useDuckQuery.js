@@ -453,8 +453,7 @@ function buildFilterConditions(filters, sourceType, columnTypes) {
 
           if (nonNullLiterals.length > 0) {
             clauses.push(
-              `${fieldExpr} ${
-                operator === "notIn" ? "NOT IN" : "IN"
+              `${fieldExpr} ${operator === "notIn" ? "NOT IN" : "IN"
               } (${nonNullLiterals.join(", ")})`
             );
           }
@@ -884,7 +883,8 @@ const useDuckQuery = () => {
 
   const handleDatabaseConnect = async connectionParams => {
     try {
-      if (connectionParams.type === "mysql") {
+      // 支持所有数据库类型: mysql, postgresql, sqlite
+      if (["mysql", "postgresql", "sqlite"].includes(connectionParams.type)) {
         // 已保存连接且未输入新密码：使用 refresh（后端用存量密码测试并创建引擎）
         if (connectionParams.useStoredPassword && connectionParams.id) {
           const refreshResult = await refreshDatabaseConnection(connectionParams.id);
@@ -936,7 +936,8 @@ const useDuckQuery = () => {
 
   const handleDatabaseSaveConfig = async connectionParams => {
     try {
-      if (connectionParams.type === "mysql") {
+      // 支持所有数据库类型: mysql, postgresql, sqlite
+      if (["mysql", "postgresql", "sqlite"].includes(connectionParams.type)) {
         const connectionData = {
           id: connectionParams.id,
           name: connectionParams.name || connectionParams.id,

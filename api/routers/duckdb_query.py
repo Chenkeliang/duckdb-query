@@ -619,7 +619,6 @@ async def execute_federated_query(request: FederatedQueryRequest) -> FederatedQu
                 password = db_config.get('password', '')
                 if password and password_encryptor.is_encrypted(password):
                     db_config['password'] = password_encryptor.decrypt_password(password)
-                    logger.info(f"已解密连接 {attach_db.connection_id} 的密码")
                 
                 # 添加数据库类型
                 db_config['type'] = connection.type.value if hasattr(connection.type, 'value') else str(connection.type)
@@ -702,7 +701,7 @@ async def execute_federated_query(request: FederatedQueryRequest) -> FederatedQu
         # 6. DETACH 清理
         for alias in attached_aliases:
             try:
-                con.execute(f"DETACH {alias}")
+                con.execute(f'DETACH "{alias}"')
                 logger.info(f"成功 DETACH 数据库: {alias}")
             except Exception as detach_error:
                 logger.warning(f"DETACH {alias} 失败: {detach_error}")

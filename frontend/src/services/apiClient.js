@@ -120,6 +120,9 @@ const handleApiError = (error, defaultMessage = '操作失败') => {
     case 404:
       throwWithMessage('请求的资源不存在');
       break;
+    case 408:
+      throwWithMessage('连接超时，请检查网络或数据库状态');
+      break;
     case 413:
       throwWithMessage('文件太大，请选择较小的文件');
       break;
@@ -266,11 +269,11 @@ export const executeExternalSQL = async (sql, datasource, is_preview = true) => 
       ...datasource,
       id: datasource.id?.replace(/^db_/, '') || datasource.id,
     };
-    
-    const response = await apiClient.post('/api/execute_sql', { 
-      sql, 
-      datasource: normalizedDatasource, 
-      is_preview 
+
+    const response = await apiClient.post('/api/execute_sql', {
+      sql,
+      datasource: normalizedDatasource,
+      is_preview
     });
     return response.data;
   } catch (error) {
@@ -376,7 +379,7 @@ export const testDatabaseConnection = async (connectionData) => {
 export const testConnection = async (connectionData) => {
   try {
     let response;
-    
+
     if (connectionData.id) {
       // 已保存的连接：使用 refresh API
       const connectionId = connectionData.id.replace(/^db_/, '');
@@ -385,15 +388,15 @@ export const testConnection = async (connectionData) => {
       // 新连接：使用 test API
       response = await apiClient.post('/api/datasources/databases/test', connectionData);
     }
-    
+
     const data = response.data;
-    
+
     // 解析响应，支持多种格式
     // 格式 1: { success: true, data: { connection_test: { success: true } } }
     // 格式 2: { success: true, connection_test: { success: true } }
     // 格式 3: { success: true }
     const connectionTest = data?.data?.connection_test || data?.connection_test;
-    
+
     if (connectionTest) {
       return {
         success: connectionTest.success === true,
@@ -401,7 +404,7 @@ export const testConnection = async (connectionData) => {
         details: connectionTest,
       };
     }
-    
+
     return {
       success: data?.success === true,
       message: data?.message || (data?.success ? '连接成功' : '连接失败'),
@@ -533,7 +536,7 @@ export const listAllDataSources = async (filters = {}) => {
     if (filters.subtype) params.append('subtype', filters.subtype);
     if (filters.status) params.append('status', filters.status);
     if (filters.search) params.append('search', filters.search);
-    
+
     const url = `/api/datasources${params.toString() ? '?' + params.toString() : ''}`;
     const response = await apiClient.get(url);
     return response.data;
@@ -547,7 +550,7 @@ export const listDatabaseDataSources = async (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.subtype) params.append('subtype', filters.subtype);
     if (filters.status) params.append('status', filters.status);
-    
+
     const url = `/api/datasources/databases/list${params.toString() ? '?' + params.toString() : ''}`;
     const response = await apiClient.get(url);
     return response.data;
@@ -561,7 +564,7 @@ export const listFileDataSources = async (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.subtype) params.append('subtype', filters.subtype);
     if (filters.status) params.append('status', filters.status);
-    
+
     const url = `/api/datasources/files/list${params.toString() ? '?' + params.toString() : ''}`;
     const response = await apiClient.get(url);
     return response.data;
@@ -690,7 +693,7 @@ export const executeDuckDBSQL = async (sql, saveAsTable = null, is_preview = tru
 export const parseFederatedQueryError = (error) => {
   const detail = error.response?.data?.detail || error.response?.data?.message || error.message || '';
   const detailStr = typeof detail === 'string' ? detail : JSON.stringify(detail);
-  
+
   // 解析 ATTACH 错误
   if (detailStr.includes('ATTACH') || detailStr.includes('attach')) {
     const match = detailStr.match(/ATTACH.*?['"]([^'"]+)['"]/i);
@@ -700,19 +703,19 @@ export const parseFederatedQueryError = (error) => {
       connectionName: match?.[1],
     };
   }
-  
+
   // 解析认证错误
-  if (detailStr.includes('authentication') || detailStr.includes('password') || 
-      detailStr.includes('Access denied') || detailStr.includes('认证')) {
+  if (detailStr.includes('authentication') || detailStr.includes('password') ||
+    detailStr.includes('Access denied') || detailStr.includes('认证')) {
     return {
       type: 'authentication',
       message: '数据库认证失败，请检查用户名和密码',
     };
   }
-  
+
   // 解析超时错误
-  if (detailStr.includes('timeout') || detailStr.includes('超时') || 
-      error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+  if (detailStr.includes('timeout') || detailStr.includes('超时') ||
+    error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
     // 尝试提取主机信息
     const hostMatch = detailStr.match(/(?:host|主机)[:\s]*['"]?([^'":\s]+)/i);
     return {
@@ -721,16 +724,16 @@ export const parseFederatedQueryError = (error) => {
       host: hostMatch?.[1],
     };
   }
-  
+
   // 解析网络错误
   if (detailStr.includes('ECONNREFUSED') || detailStr.includes('network') ||
-      detailStr.includes('无法连接') || error.code === 'ERR_NETWORK') {
+    detailStr.includes('无法连接') || error.code === 'ERR_NETWORK') {
     return {
       type: 'network',
       message: '网络连接失败，请检查数据库服务是否可用',
     };
   }
-  
+
   // 默认查询错误
   return {
     type: 'query',
@@ -749,20 +752,20 @@ export const parseFederatedQueryError = (error) => {
  * @returns {Promise<Object>} 查询结果
  */
 export const executeFederatedQuery = async (options) => {
-  const { 
-    sql, 
-    attachDatabases, 
-    isPreview = true, 
+  const {
+    sql,
+    attachDatabases,
+    isPreview = true,
     saveAsTable = null,
-    timeout = 30000 
+    timeout = 30000
   } = options;
-  
+
   try {
     const requestBody = {
       sql,
       is_preview: isPreview,
     };
-    
+
     // 添加 attach_databases 参数（如果有外部数据库需要连接）
     if (attachDatabases && attachDatabases.length > 0) {
       requestBody.attach_databases = attachDatabases.map(db => ({
@@ -770,16 +773,16 @@ export const executeFederatedQuery = async (options) => {
         connection_id: db.connectionId,
       }));
     }
-    
+
     // 添加保存表名（如果需要）
     if (saveAsTable) {
       requestBody.save_as_table = saveAsTable;
     }
-    
+
     const response = await apiClient.post('/api/duckdb/federated-query', requestBody, {
       timeout,
     });
-    
+
     return response.data;
   } catch (error) {
     // 解析并增强错误信息
@@ -934,9 +937,24 @@ export const getUrlInfo = async (url) => {
 
 
 // 异步任务API
-export const listAsyncTasks = async () => {
+/**
+ * 获取异步任务列表（支持分页）
+ * @param {Object} options - 可选分页参数
+ * @param {number} options.limit - 每页条数 (20, 50, 100)，默认 20
+ * @param {number} options.offset - 偏移量，默认 0
+ * @param {string} options.orderBy - 排序字段，默认 created_at
+ * @returns {Promise<{success: boolean, tasks: Array, count: number, total: number, limit: number, offset: number}>}
+ */
+export const listAsyncTasks = async (options = {}) => {
   try {
-    const response = await apiClient.get('/api/async_tasks');
+    const { limit = 20, offset = 0, orderBy = 'created_at' } = options;
+    const params = new URLSearchParams();
+    if (limit !== 20) params.append('limit', limit);
+    if (offset !== 0) params.append('offset', offset);
+    if (orderBy !== 'created_at') params.append('order_by', orderBy);
+
+    const url = params.toString() ? `/api/async_tasks?${params}` : '/api/async_tasks';
+    const response = await apiClient.get(url);
     return response.data;
   } catch (error) {
     throw error;
@@ -995,13 +1013,13 @@ export const retryAsyncTask = async (taskId, payload = {}) => {
  */
 export const downloadAsyncResult = async (taskId, options = {}) => {
   const { format = 'csv' } = options;
-  
+
   const response = await apiClient.post(
     `/api/async-tasks/${taskId}/download`,
     { format },
     { responseType: 'blob' }
   );
-  
+
   // 从响应头获取文件名
   const contentDisposition = response.headers['content-disposition'];
   let filename = `${taskId}.${format}`;
@@ -1011,7 +1029,7 @@ export const downloadAsyncResult = async (taskId, options = {}) => {
       filename = match[1].replace(/['"]/g, '');
     }
   }
-  
+
   return {
     blob: response.data,
     filename,

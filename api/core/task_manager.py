@@ -630,8 +630,25 @@ class TaskManager:
 
         return self._row_to_async_task(row) if row else None
 
-    def list_tasks(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """列出任务（按创建时间倒序）"""
+    def list_tasks(
+        self, 
+        limit: int = 100, 
+        offset: int = 0,
+        order_by: str = "created_at"
+    ) -> List[Dict[str, Any]]:
+        """
+        列出任务（支持分页和排序）
+        
+        Args:
+            limit: 返回数量限制
+            offset: 偏移量
+            order_by: 排序字段 (created_at, started_at, completed_at, status)
+        """
+        # 白名单验证排序字段
+        allowed_order_by = {"created_at", "started_at", "completed_at", "status"}
+        if order_by not in allowed_order_by:
+            order_by = "created_at"
+        
         with with_duckdb_connection() as connection:
             rows = connection.execute(
                 f"""
@@ -640,13 +657,19 @@ class TaskManager:
                        started_at, completed_at, execution_time,
                        result_info, metadata
                 FROM {ASYNC_TASKS_TABLE}
-                ORDER BY created_at DESC
-                LIMIT ?
+                ORDER BY {order_by} DESC
+                LIMIT ? OFFSET ?
                 """,
-                [limit],
+                [limit, offset],
             ).fetchall()
+            
+            # 获取总数用于分页
+            total_row = connection.execute(
+                f"SELECT COUNT(*) FROM {ASYNC_TASKS_TABLE}"
+            ).fetchone()
+            total = total_row[0] if total_row else 0
 
-        return [self._row_to_async_task(row).to_dict() for row in rows]
+        return [self._row_to_async_task(row).to_dict() for row in rows], total
 
     def get_pending_tasks(self) -> List[str]:
         """获取排队中的任务ID"""

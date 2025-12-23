@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns } from 'lucide-react';
+import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/new/components/ui/button';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
 import { Badge } from '@/new/components/ui/badge';
@@ -169,6 +169,15 @@ const TableCard: React.FC<TableCardProps> = ({
   const allSelected = columns.length > 0 && columns.every((col) => selectedColumns.includes(col.name));
   const someSelected = columns.some((col) => selectedColumns.includes(col.name)) && !allSelected;
 
+  // 引用 checkbox 以设置 indefinite 状态
+  const checkboxRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (checkboxRef.current) {
+      checkboxRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
+
   return (
     <>
       <div className={`bg-surface border rounded-xl shrink-0 min-w-64 max-w-72 ${isExternal ? 'border-warning/50' : 'border-border'}`}>
@@ -187,13 +196,15 @@ const TableCard: React.FC<TableCardProps> = ({
               </span>
             )}
           </div>
-          <button
-            onClick={onRemove}
-            className="text-muted-foreground hover:text-error p-1 rounded hover:bg-error/10"
-            title={t('query.join.remove', '移除')}
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onRemove}
+              className="text-muted-foreground hover:text-error p-1 rounded hover:bg-error/10"
+              title={t('query.join.remove', '移除')}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* 列列表 */}
@@ -227,6 +238,23 @@ const TableCard: React.FC<TableCardProps> = ({
             </div>
           ) : (
             <div className="space-y-0.5 max-h-40 overflow-auto">
+              {/* 全选行 */}
+              <label className="flex items-center gap-2 text-xs px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer border-b border-border/50 mb-1 sticky top-0 bg-surface z-10">
+                <input
+                  ref={checkboxRef}
+                  type="checkbox"
+                  className="accent-primary w-3 h-3 cursor-pointer"
+                  checked={allSelected}
+                  onChange={handleSelectAll}
+                />
+                <span className="flex-1 font-medium text-muted-foreground">
+                  {allSelected ? t('query.join.deselectAll', '取消全选') : t('query.join.selectAll', '全选')}
+                </span>
+                <span className="text-xs text-muted-foreground/70">
+                  {selectedColumns.length}/{columns.length}
+                </span>
+              </label>
+
               {displayColumns.map((col) => (
                 <label
                   key={col.name}
@@ -334,6 +362,7 @@ interface JoinConnectorProps {
   rightColumns: TableColumn[];
   config: JoinConfig;
   onConfigChange: (config: JoinConfig) => void;
+  onSwap: () => void;
 }
 
 const JoinConnector: React.FC<JoinConnectorProps> = ({
@@ -341,6 +370,7 @@ const JoinConnector: React.FC<JoinConnectorProps> = ({
   rightColumns,
   config,
   onConfigChange,
+  onSwap,
 }) => {
   const { t } = useTranslation('common');
   const normalizedConfig = normalizeJoinConfig(config);
@@ -382,6 +412,15 @@ const JoinConnector: React.FC<JoinConnectorProps> = ({
 
   return (
     <div className="flex flex-col items-center gap-2 px-2 shrink-0">
+      {/* 交换按钮 */}
+      <button
+        onClick={onSwap}
+        className="p-1 rounded-full hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
+        title={t('query.join.swapTables', '交换表顺序')}
+      >
+        <ArrowRightLeft className="w-3.5 h-3.5" />
+      </button>
+
       {/* JOIN 类型选择 */}
       <Select
         value={normalizedConfig.joinType}
@@ -485,9 +524,10 @@ const JoinConnector: React.FC<JoinConnectorProps> = ({
 };
 
 // Memoized JOIN 连接器组件 - 接受 index 作为 prop 以避免闭包问题
-interface MemoizedJoinConnectorProps extends Omit<JoinConnectorProps, 'onConfigChange'> {
+interface MemoizedJoinConnectorProps extends Omit<JoinConnectorProps, 'onConfigChange' | 'onSwap'> {
   index: number;
   onConfigChange: (index: number, config: JoinConfig) => void;
+  onSwap: (index: number) => void;
 }
 
 const MemoizedJoinConnector = React.memo<MemoizedJoinConnectorProps>(({
@@ -498,11 +538,16 @@ const MemoizedJoinConnector = React.memo<MemoizedJoinConnectorProps>(({
   rightColumns,
   config,
   onConfigChange,
+  onSwap,
 }) => {
   // 创建稳定的回调
   const handleConfigChange = React.useCallback((newConfig: JoinConfig) => {
     onConfigChange(index, newConfig);
   }, [index, onConfigChange]);
+
+  const handleSwap = React.useCallback(() => {
+    onSwap(index);
+  }, [index, onSwap]);
 
   return (
     <JoinConnector
@@ -512,6 +557,7 @@ const MemoizedJoinConnector = React.memo<MemoizedJoinConnectorProps>(({
       rightColumns={rightColumns}
       config={config}
       onConfigChange={handleConfigChange}
+      onSwap={handleSwap}
     />
   );
 });
@@ -545,7 +591,30 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
 
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
   const [internalTables, setInternalTables] = React.useState<SelectedTable[]>([]);
-  const activeTables = selectedTables.length > 0 ? selectedTables : internalTables;
+  // 表顺序状态
+  const [tableOrder, setTableOrder] = React.useState<string[]>([]);
+
+  const rawTables = selectedTables.length > 0 ? selectedTables : internalTables;
+
+  // 计算活动表（应用排序）
+  const activeTables = React.useMemo(() => {
+    if (tableOrder.length === 0) return rawTables;
+
+    return [...rawTables].sort((a, b) => {
+      const nameA = getTableName(a);
+      const nameB = getTableName(b);
+      const indexA = tableOrder.indexOf(nameA);
+      const indexB = tableOrder.indexOf(nameB);
+
+      // 如果两个都在排序列表中，按列表顺序
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      // 如果只有一个在，在列表中的排前面
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+      // 都不在，保持原相对顺序
+      return 0;
+    });
+  }, [rawTables, tableOrder]);
 
   // 分析表来源
   const sourceAnalysis = React.useMemo(() => {
@@ -802,7 +871,47 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       const { [tableName]: _, ...rest } = prev;
       return rest;
     });
+    // 从排序列表中移除
+    setTableOrder((prev) => prev.filter((t) => t !== tableName));
   }, [onRemoveTable]);
+
+  // 处理交换表
+  const handleSwapTables = React.useCallback((index: number) => {
+    setTableOrder(prevOrder => {
+      // 确保有当前的顺序列表
+      let currentOrder = prevOrder.length > 0
+        ? [...prevOrder]
+        : activeTables.map(t => getTableName(t));
+
+      // 补全可能缺失的表名
+      if (currentOrder.length < activeTables.length) {
+        const missing = activeTables.map(t => getTableName(t)).filter(n => !currentOrder.includes(n));
+        currentOrder = [...currentOrder, ...missing];
+      }
+
+      // 交换
+      if (index >= 0 && index < currentOrder.length - 1) {
+        [currentOrder[index], currentOrder[index + 1]] = [currentOrder[index + 1], currentOrder[index]];
+
+        // 重置该连接的配置
+        // 注意：这里需要通过 side effect 更新 configs，或者在这里直接 setJoinConfigs
+        // 由于 setState 是异步的，这里只返回新的 order，Config 更新放在下面
+        return currentOrder;
+      }
+      return prevOrder;
+    });
+
+    // 必须同步更新 Config，否则会导致列匹配错误
+    setJoinConfigs(prev => {
+      const newConfigs = [...prev];
+      // 重置为默认配置
+      newConfigs[index] = {
+        joinType: 'LEFT JOIN',
+        conditions: [{ leftColumn: '', rightColumn: '', operator: '=' }]
+      };
+      return newConfigs;
+    });
+  }, [activeTables]);
 
   // 处理清空
   const handleClear = () => {
@@ -874,11 +983,9 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
 
     const parts: string[] = [];
 
-    // 如果是联邦查询，添加注释说明
+    // 如果是联邦查询，添加注释说明数据库来源
     if (attachDatabases.length > 0) {
-      parts.push('-- 联邦查询 (Federated Query)');
-      parts.push('-- 此 SQL 包含外部数据库表，请在 JOIN 查询面板中执行');
-      parts.push(`-- 需要连接的数据库: ${attachDatabases.map(db => db.alias).join(', ')}`);
+      parts.push(`-- 联邦查询: ${attachDatabases.map(db => db.alias).join(', ')}`);
       parts.push('');
     }
 
@@ -1144,8 +1251,9 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
                       rightTable={getTableName(activeTables[index + 1])}
                       leftColumns={columns}
                       rightColumns={tableColumnsMap[getTableName(activeTables[index + 1])] || []}
-                      config={joinConfigs[index] || { leftColumn: '', rightColumn: '', joinType: 'LEFT JOIN' }}
+                      config={joinConfigs[index] || { joinType: 'LEFT JOIN', conditions: [] }}
                       onConfigChange={handleJoinConfigChange}
+                      onSwap={handleSwapTables}
                     />
                   )}
                 </React.Fragment>

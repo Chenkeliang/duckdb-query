@@ -63,8 +63,8 @@ class AppConfig:
     max_tables: int = 200
     """数据库表预览最大数量限制"""
 
-    timezone: str = "UTC"
-    """应用时区设置，影响时间相关的数据处理"""
+    timezone: str = "Asia/Shanghai"
+    """应用时区设置，影响时间相关的数据处理。默认使用中国时区"""
 
     table_metadata_cache_ttl_hours: int = 24
     """表元数据缓存有效期（小时），<=0 时禁用缓存"""

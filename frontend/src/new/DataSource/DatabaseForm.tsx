@@ -270,205 +270,207 @@ const DatabaseForm = ({
 
         <form onSubmit={(e) => { e.preventDefault(); handleTest(); }}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-6">
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="connection-name">
-              {t("page.datasource.connection.name")}
-            </Label>
-            <Input
-              id="connection-name"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder={t("page.datasource.connection.namePlaceholder")}
-            />
-          </div>
-
-        {!isSqlite ? (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="host">
-                {t("page.datasource.connection.host")}
-              </Label>
-              <Input
-                id="host"
-                value={host}
-                onChange={e => setHost(e.target.value)}
-                placeholder="localhost"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="port">
-                {t("page.datasource.connection.port")}
-              </Label>
-              <Input
-                id="port"
-                value={port}
-                onChange={e => setPort(e.target.value)}
-                placeholder="3306"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="username">
-                {t("page.datasource.connection.username")}
-              </Label>
-              <Input
-                id="username"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                placeholder="root"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">
-                {t("page.datasource.connection.password")}
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder={hasStoredPassword ? "••••••（已保存，留空使用已保存密码）" : "••••••"}
-              />
-              {hasStoredPassword && !password && (
-                <p className="text-[11px] text-muted-foreground">
-                  密码已保存；留空会使用已保存密码测试/连接。如需修改，请输入新密码。
-                </p>
-              )}
-            </div>
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="database">
-                {t("page.datasource.connection.database")}
+              <Label htmlFor="connection-name">
+                {t("page.datasource.connection.name")}
               </Label>
               <Input
-                id="database"
-                value={database}
-                onChange={e => setDatabase(e.target.value)}
-                placeholder={t(
-                  "page.datasource.connection.databasePlaceholder"
-                )}
-              />
-            </div>
-            {isPostgreSQL && (
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="schema">
-                  {t("page.datasource.connection.schema")}
-                </Label>
-                <Input
-                  id="schema"
-                  value={schema}
-                  onChange={e => setSchema(e.target.value)}
-                  placeholder="public"
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  {t("page.datasource.connection.schemaHelper")}
-                </p>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="sqlite-path">
-                {t("page.datasource.connection.sqlitePath")}
-              </Label>
-              <Input
-                id="sqlite-path"
-                value={sqlitePath}
-                onChange={e => setSqlitePath(e.target.value)}
-                placeholder={t("page.datasource.connection.sqlitePlaceholder")}
+                id="connection-name"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder={t("page.datasource.connection.namePlaceholder")}
               />
             </div>
 
-            {/* SQLite Server Browser - 只在有挂载点或正在加载时显示 */}
-            {(serverMountLoading || serverMounts.length > 0) && (
-              <div className="space-y-2 md:col-span-2 border border-border rounded-lg p-4 bg-surface-hover/30">
-                <label className="text-xs font-medium text-foreground flex items-center gap-2">
-                  <Server className="h-4 w-4 text-muted-fg" />
-                  {t("page.datasource.cardServerTitle")}
-                </label>
-
-                {serverMountLoading ? (
-                  <div className="text-xs text-muted-fg">{t("actions.loading")}</div>
-                ) : serverMounts.length === 0 ? (
-                  <div className="text-xs text-muted-fg">
-                    {t("page.datasource.serverNoMount")}
-                  </div>
-                ) : (
-                <div className="space-y-3">
-                  <select
-                    className="h-9 w-full rounded-md border border-border bg-input px-2 text-sm text-foreground"
-                    value={selectedMount}
-                    onChange={e => {
-                      const path = e.target.value;
-                      setSelectedMount(path);
-                      loadServerDirectory(path);
-                    }}
-                  >
-                    {serverMounts.map(m => (
-                      <option key={m.path} value={m.path}>
-                        {m.label || m.path}
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="rounded-lg border border-border bg-surface max-h-48 overflow-auto space-y-1 p-1">
-                    {serverLoading ? (
-                      <div className="px-3 py-2 text-xs text-muted-fg">
-                        {t("actions.loading")}
-                      </div>
-                    ) : serverEntries.length === 0 ? (
-                      <div className="px-3 py-2 text-xs text-muted-fg">
-                        {t("page.datasource.serverNoFiles")}
-                      </div>
-                    ) : (
-                      serverEntries.map(entry => {
-                        const isDir = entry.type === "directory";
-                        const isSelected = sqlitePath === entry.path;
-                        return (
-                          <button
-                            key={entry.path}
-                            type="button"
-                            onClick={() =>
-                              isDir
-                                ? loadServerDirectory(entry.path)
-                                : setSqlitePath(entry.path)
-                            }
-                            className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left text-sm transition-colors ${isSelected
-                              ? "bg-primary/10 text-primary"
-                              : "hover:bg-surface-hover text-foreground"
-                              }`}
-                          >
-                            <span className="flex items-center gap-2 truncate">
-                              {isDir ? (
-                                <span className="text-muted-fg">📁</span>
-                              ) : (
-                                <span className="text-muted-fg">📄</span>
-                              )}
-                              {entry.name}
-                            </span>
-                            {!isDir && (
-                              <span className="text-[10px] text-muted-fg ml-2">
-                                {(entry.extension || "").toUpperCase()}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                  {serverError && (
-                    <div className="text-xs text-error">{serverError}</div>
+            {!isSqlite ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="host">
+                    {t("page.datasource.connection.host")}
+                  </Label>
+                  <Input
+                    id="host"
+                    value={host}
+                    onChange={e => setHost(e.target.value)}
+                    placeholder="localhost"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="port">
+                    {t("page.datasource.connection.port")}
+                  </Label>
+                  <Input
+                    id="port"
+                    value={port}
+                    onChange={e => setPort(e.target.value)}
+                    placeholder="3306"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="username">
+                    {t("page.datasource.connection.username")}
+                  </Label>
+                  <Input
+                    id="username"
+                    value={username}
+                    autoComplete="username"
+                    onChange={e => setUsername(e.target.value)}
+                    placeholder="root"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">
+                    {t("page.datasource.connection.password")}
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder={hasStoredPassword ? "••••••（已保存，留空使用已保存密码）" : "••••••"}
+                  />
+                  {hasStoredPassword && !password && (
+                    <p className="text-[11px] text-muted-foreground">
+                      密码已保存；留空会使用已保存密码测试/连接。如需修改，请输入新密码。
+                    </p>
                   )}
                 </div>
-              )}
-              </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="database">
+                    {t("page.datasource.connection.database")}
+                  </Label>
+                  <Input
+                    id="database"
+                    value={database}
+                    onChange={e => setDatabase(e.target.value)}
+                    placeholder={t(
+                      "page.datasource.connection.databasePlaceholder"
+                    )}
+                  />
+                </div>
+                {isPostgreSQL && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="schema">
+                      {t("page.datasource.connection.schema")}
+                    </Label>
+                    <Input
+                      id="schema"
+                      value={schema}
+                      onChange={e => setSchema(e.target.value)}
+                      placeholder="public"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      {t("page.datasource.connection.schemaHelper")}
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="sqlite-path">
+                    {t("page.datasource.connection.sqlitePath")}
+                  </Label>
+                  <Input
+                    id="sqlite-path"
+                    value={sqlitePath}
+                    onChange={e => setSqlitePath(e.target.value)}
+                    placeholder={t("page.datasource.connection.sqlitePlaceholder")}
+                  />
+                </div>
+
+                {/* SQLite Server Browser - 只在有挂载点或正在加载时显示 */}
+                {(serverMountLoading || serverMounts.length > 0) && (
+                  <div className="space-y-2 md:col-span-2 border border-border rounded-lg p-4 bg-surface-hover/30">
+                    <label className="text-xs font-medium text-foreground flex items-center gap-2">
+                      <Server className="h-4 w-4 text-muted-fg" />
+                      {t("page.datasource.cardServerTitle")}
+                    </label>
+
+                    {serverMountLoading ? (
+                      <div className="text-xs text-muted-fg">{t("actions.loading")}</div>
+                    ) : serverMounts.length === 0 ? (
+                      <div className="text-xs text-muted-fg">
+                        {t("page.datasource.serverNoMount")}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <select
+                          className="h-9 w-full rounded-md border border-border bg-input px-2 text-sm text-foreground"
+                          value={selectedMount}
+                          onChange={e => {
+                            const path = e.target.value;
+                            setSelectedMount(path);
+                            loadServerDirectory(path);
+                          }}
+                        >
+                          {serverMounts.map(m => (
+                            <option key={m.path} value={m.path}>
+                              {m.label || m.path}
+                            </option>
+                          ))}
+                        </select>
+
+                        <div className="rounded-lg border border-border bg-surface max-h-48 overflow-auto space-y-1 p-1">
+                          {serverLoading ? (
+                            <div className="px-3 py-2 text-xs text-muted-fg">
+                              {t("actions.loading")}
+                            </div>
+                          ) : serverEntries.length === 0 ? (
+                            <div className="px-3 py-2 text-xs text-muted-fg">
+                              {t("page.datasource.serverNoFiles")}
+                            </div>
+                          ) : (
+                            serverEntries.map(entry => {
+                              const isDir = entry.type === "directory";
+                              const isSelected = sqlitePath === entry.path;
+                              return (
+                                <button
+                                  key={entry.path}
+                                  type="button"
+                                  onClick={() =>
+                                    isDir
+                                      ? loadServerDirectory(entry.path)
+                                      : setSqlitePath(entry.path)
+                                  }
+                                  className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left text-sm transition-colors ${isSelected
+                                    ? "bg-primary/10 text-primary"
+                                    : "hover:bg-surface-hover text-foreground"
+                                    }`}
+                                >
+                                  <span className="flex items-center gap-2 truncate">
+                                    {isDir ? (
+                                      <span className="text-muted-fg">📁</span>
+                                    ) : (
+                                      <span className="text-muted-fg">📄</span>
+                                    )}
+                                    {entry.name}
+                                  </span>
+                                  {!isDir && (
+                                    <span className="text-[10px] text-muted-fg ml-2">
+                                      {(entry.extension || "").toUpperCase()}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                        {serverError && (
+                          <div className="text-xs text-error">{serverError}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+
+              </>
             )}
+          </div>
 
-
-          </>
-        )}
-      </div>
-
-        {error ? <div className="text-xs text-error">{error}</div> : null}
+          {error ? <div className="text-xs text-error">{error}</div> : null}
 
           <div className="flex flex-wrap gap-3 pt-4">
             <Button

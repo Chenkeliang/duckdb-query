@@ -38,6 +38,23 @@ class MessageCode(str, Enum):
     INVALID_REQUEST = "INVALID_REQUEST"
     OPERATION_FAILED = "OPERATION_FAILED"
     BATCH_OPERATION_FAILED = "BATCH_OPERATION_FAILED"
+    
+    # 查询相关（新增）
+    QUERY_SUCCESS = "QUERY_SUCCESS"
+    TABLE_CREATED = "TABLE_CREATED"
+    TABLE_DELETED = "TABLE_DELETED"
+    EXPORT_SUCCESS = "EXPORT_SUCCESS"
+    
+    # 异步任务相关（新增）
+    TASK_SUBMITTED = "TASK_SUBMITTED"
+    TASK_CANCELLED = "TASK_CANCELLED"
+    
+    # 文件相关（新增）
+    FILE_UPLOADED = "FILE_UPLOADED"
+    
+    # 验证错误（新增）
+    VALIDATION_ERROR = "VALIDATION_ERROR"
+    CONNECTION_TIMEOUT = "CONNECTION_TIMEOUT"
 
 
 # 默认消息文本映射（中文）
@@ -68,6 +85,23 @@ DEFAULT_MESSAGES = {
     MessageCode.INVALID_REQUEST: "请求参数无效",
     MessageCode.OPERATION_FAILED: "操作失败",
     MessageCode.BATCH_OPERATION_FAILED: "批量操作失败",
+    
+    # 查询相关（新增）
+    MessageCode.QUERY_SUCCESS: "查询成功",
+    MessageCode.TABLE_CREATED: "表创建成功",
+    MessageCode.TABLE_DELETED: "表已删除",
+    MessageCode.EXPORT_SUCCESS: "导出成功",
+    
+    # 异步任务相关（新增）
+    MessageCode.TASK_SUBMITTED: "任务已提交",
+    MessageCode.TASK_CANCELLED: "任务已取消",
+    
+    # 文件相关（新增）
+    MessageCode.FILE_UPLOADED: "文件上传成功",
+    
+    # 验证错误（新增）
+    MessageCode.VALIDATION_ERROR: "参数验证失败",
+    MessageCode.CONNECTION_TIMEOUT: "连接超时",
 }
 
 

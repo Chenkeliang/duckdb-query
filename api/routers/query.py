@@ -55,6 +55,7 @@ from core.file_datasource_manager import (
     file_datasource_manager,
     build_table_metadata_snapshot,
 )
+from core.validators import validate_table_name
 from core.file_utils import load_file_to_duckdb
 from core.utils import normalize_dataframe_output
 import pandas as pd
@@ -2176,6 +2177,9 @@ async def list_duckdb_tables():
 @router.delete("/api/duckdb_tables/{table_name}", tags=["Query"])
 async def delete_duckdb_table(table_name: str):
     """删除DuckDB中的指定表，同时删除对应的源文件"""
+    # 系统表保护：禁止删除 system_ 前缀或保护 Schema 中的表
+    validate_table_name(table_name)
+    
     try:
         con = get_db_connection()
 

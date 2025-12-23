@@ -64,8 +64,30 @@ async def read_from_url(request: URLReadRequest):
         elif url_str.endswith((".xlsx", ".xls")):
             file_type = "excel"
         else:
-            # 默认尝试CSV
-            file_type = "csv"
+            # 没有明确扩展名时，尝试通过 HEAD 请求检测 Content-Type
+            try:
+                head_response = requests.head(
+                    converted_url, 
+                    timeout=app_config.url_reader_head_timeout,
+                    allow_redirects=True
+                )
+                content_type = head_response.headers.get("content-type", "").lower()
+                
+                if "json" in content_type:
+                    file_type = "json"
+                elif "csv" in content_type or "text/plain" in content_type:
+                    file_type = "csv"
+                elif "parquet" in content_type:
+                    file_type = "parquet"
+                elif "excel" in content_type or "spreadsheet" in content_type:
+                    file_type = "excel"
+                else:
+                    # 默认尝试 CSV
+                    file_type = "csv"
+                    logger.info(f"无法从 Content-Type 推断文件类型，使用默认 CSV: {content_type}")
+            except Exception as head_err:
+                logger.warning(f"HEAD 请求失败，使用默认 CSV: {head_err}")
+                file_type = "csv"
         conn = get_db_connection()
 
         table_name = request.table_alias

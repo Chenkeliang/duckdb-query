@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # 全局时区配置
 _app_timezone: Optional[ZoneInfo] = None
-DEFAULT_TIMEZONE = "UTC"
+DEFAULT_TIMEZONE = "Asia/Shanghai"
 _STORAGE_TIMEZONE = timezone.utc
 
 def load_timezone_config() -> ZoneInfo:

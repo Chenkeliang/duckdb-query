@@ -63,7 +63,7 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
     try {
       // 使用新的统一 API 删除数据库连接
       await deleteDatabaseConnection(configToDelete.id);
-      
+
       const successMsg = t("page.datasource.list.deleteSuccess", { name: configToDelete.name || configToDelete.id });
       toast.success(successMsg);
       loadConfigs();
@@ -87,7 +87,7 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
 
   return (
     <>
-      <Card className="shadow-sm mt-6">
+      <Card className="shadow-sm">
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -112,8 +112,17 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
               >
                 <CardContent className="p-4">
                   <div className="flex justify-between items-start mb-2">
-                    <Badge variant={config.type === 'mysql' ? 'default' : 'outline'}>
-                      {config.type === 'mysql' ? 'MySQL' : 'PG'}
+                    <Badge
+                      variant="default"
+                      className={
+                        config.type === 'mysql'
+                          ? 'bg-orange-500 hover:bg-orange-600'
+                          : config.type === 'postgresql'
+                            ? 'bg-blue-500 hover:bg-blue-600'
+                            : 'bg-emerald-500 hover:bg-emerald-600'
+                      }
+                    >
+                      {config.type === 'mysql' ? 'MySQL' : config.type === 'postgresql' ? 'PostgreSQL' : 'SQLite'}
                     </Badge>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button
@@ -162,15 +171,15 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
               disabled={isDeleting}
             >
               {t("actions.cancel")}
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={handleDeleteConfirm}
               disabled={isDeleting}
             >

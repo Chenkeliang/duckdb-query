@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/new/components/ui/card";
@@ -12,27 +12,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/new/components/ui/select";
+// 引用全局 Hooks
+import { useSmartParse } from "@/hooks/useSmartParse";
 
-/**
- * Paste-data import with shadcn/ui components.
- * Reuses旧逻辑：智能分隔符检测、类型检测、预览、保存到 /api/paste-data。
- * 
- * Now using:
- * - Card for containers
- * - Button for actions
- * - Input for text fields
- * - Select for dropdowns
- * - Label for field labels
- */
-const DataPasteCard = ({ onDataSourceSaved }) => {
+interface DataPasteCardProps {
+  onDataSourceSaved?: (dataSource: any) => void;
+}
+
+interface ParsedDataState {
+  rows: string[][];
+  preview: string[][];
+  columns: number;
+}
+
+const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
   const { t } = useTranslation("common");
   const [pastedData, setPastedData] = useState("");
-  const [parsedData, setParsedData] = useState(null);
+  const [parsedData, setParsedData] = useState<ParsedDataState | null>(null);
   const [tableName, setTableName] = useState("");
-  const [columnNames, setColumnNames] = useState([]);
-  const [columnTypes, setColumnTypes] = useState([]);
-  const [delimiter, setDelimiter] = useState(",");
-  const [format, setFormat] = useState("auto"); // auto | csv | json
+  const [columnNames, setColumnNames] = useState<string[]>([]);
+  const [columnTypes, setColumnTypes] = useState<string[]>([]);
+
+  // 使用新的智能解析 Hook
+  const {
+    results,
+    selectedIndex,
+    currentResult,
+    parse,
+    selectResult,
+    isLoading,
+    error: parseError,
+  } = useSmartParse();
+
+  const [delimiter, setDelimiter] = useState(","); // 仅用于手动覆盖
   const [hasHeader, setHasHeader] = useState(false);
   const [unifyAsString, setUnifyAsString] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -50,28 +62,8 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
     [t]
   );
 
-  const detectDelimiter = text => {
-    const delimiters = [",", "\t", "|", ";", " "];
-    const lines = text
-      .trim()
-      .split("\n")
-      .slice(0, 5);
-    let best = ",";
-    let maxScore = 0;
-    delimiters.forEach(delim => {
-      const counts = lines.map(line => line.split(delim).length);
-      const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
-      const score =
-        counts.filter(c => c === Math.round(avg)).length / counts.length;
-      if (score > maxScore && avg > 1) {
-        maxScore = score;
-        best = delim;
-      }
-    });
-    return best;
-  };
-
-  const detectDataType = values => {
+  // 辅助函数：推断数据类型
+  const detectDataType = (values: any[]) => {
     const nonEmpty = values.filter(v => v && v.toString().trim() !== "");
     if (nonEmpty.length === 0) return "VARCHAR";
     const isInteger = nonEmpty.every(v => /^\d+$/.test(v.toString().trim()));
@@ -94,157 +86,79 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
     return "VARCHAR";
   };
 
-  const cleanCell = cell => {
-    if (!cell) return "";
-    let s = cell.toString().trim();
-    if (s.length >= 2) {
-      if (
-        (s.startsWith('"') && s.endsWith('"')) ||
-        (s.startsWith("'") && s.endsWith("'"))
-      ) {
-        s = s.slice(1, -1);
+  // 当解析结果更新时，处理数据（提取表头、推断类型）
+  useEffect(() => {
+    if (currentResult) {
+      // 处理表头逻辑
+      // currentResult.rows 是所有行。如果 hasHeader 为 true，第一行是表头
+      const effectiveHasHeader = hasHeader || currentResult.hasHeader;
+      let bodyRows = currentResult.rows;
+      let extractedNames: string[] = [];
+
+      if (effectiveHasHeader && bodyRows.length > 0) {
+        extractedNames = bodyRows[0];
+        bodyRows = bodyRows.slice(1);
+      } else {
+        // 生成默认列名
+        extractedNames = Array.from({ length: currentResult.columns }, (_, i) =>
+          t("page.datasource.paste.columnName", { index: i + 1 })
+        );
+      }
+
+      setSuccess(t("page.datasource.paste.parseSuccess", {
+        rows: bodyRows.length,
+        cols: currentResult.columns
+      }));
+      setError("");
+
+      setColumnNames(extractedNames);
+
+      // 推断类型 (仅根据前 100 行推断以提高性能)
+      const sampleRows = bodyRows.slice(0, 100);
+      const inferTypes = Array.from({ length: currentResult.columns }, (_, colIdx) =>
+        detectDataType(sampleRows.map(r => r[colIdx]))
+      );
+      setColumnTypes(inferTypes);
+
+      setParsedData({
+        rows: bodyRows,
+        preview: bodyRows.slice(0, 5),
+        columns: currentResult.columns
+      });
+
+      if (!tableName) {
+        const ts = Date.now();
+        setTableName(t("page.datasource.paste.defaultName", { timestamp: ts }));
+      }
+
+      // 同步分隔符显示（如果是分隔符策略）
+      if (currentResult.delimiter) {
+        setDelimiter(currentResult.delimiter);
       }
     }
-    return s.trim();
-  };
+  }, [currentResult, hasHeader, t]);
 
-  const parseData = () => {
+  // 监听 Hook 的错误
+  useEffect(() => {
+    if (parseError) {
+      setError(parseError);
+      setSuccess("");
+      setParsedData(null);
+    }
+  }, [parseError]);
+
+
+  const handleParse = () => {
     if (!pastedData.trim()) {
       const errorMsg = t("page.datasource.paste.error.noData");
       setError(errorMsg);
       toast.warning(errorMsg);
       return;
     }
-    try {
-      setError("");
-      setSuccess("");
-
-      let bodyRows = [];
-      let colCount = 0;
-      let inferredNames = [];
-      let effectiveDelimiter = delimiter;
-      let effectiveHasHeader = hasHeader;
-
-      if (format === "json") {
-        const raw = pastedData.trim();
-        let json;
-        try {
-          // 尝试解析 JSON（数组或对象）
-          json = JSON.parse(raw);
-        } catch (err) {
-          const errorMsg = t("page.datasource.paste.parseFail", { message: err.message });
-          setError(errorMsg);
-          toast.error(errorMsg);
-          return;
-        }
-
-        let rowsArray;
-        if (Array.isArray(json)) {
-          rowsArray = json;
-        } else if (
-          json &&
-          typeof json === "object" &&
-          Array.isArray(json.data)
-        ) {
-          rowsArray = json.data;
-        } else {
-          rowsArray = [json];
-        }
-
-        const columnSet = new Set();
-        rowsArray.forEach(row => {
-          if (row && typeof row === "object") {
-            Object.keys(row).forEach(key => columnSet.add(key));
-          }
-        });
-        inferredNames = Array.from(columnSet);
-        if (!inferredNames.length) {
-          setError(t("page.datasource.paste.error.noValid"));
-          return;
-        }
-        bodyRows = rowsArray.map(row =>
-          inferredNames.map(name =>
-            row && Object.prototype.hasOwnProperty.call(row, name)
-              ? cleanCell(row[name])
-              : ""
-          )
-        );
-        colCount = inferredNames.length;
-        effectiveHasHeader = false;
-      } else {
-        // CSV / 自动检测
-        const raw = pastedData.trim();
-        const detected =
-          format === "csv" ? delimiter || "," : detectDelimiter(raw);
-        effectiveDelimiter = detected;
-        setDelimiter(detected);
-
-        const lines = raw.split("\n");
-        const rows = lines.map(line => {
-          const cells = line.split(detected).map(cleanCell);
-          if (cells.length > 1 && cells[cells.length - 1] === "") cells.pop();
-          return cells;
-        });
-        if (!rows.length) {
-          setError(t("page.datasource.paste.error.noValid"));
-          return;
-        }
-        const colCounts = rows.map(r => r.length);
-        const freq = {};
-        colCounts.forEach(c => {
-          freq[c] = (freq[c] || 0) + 1;
-        });
-        const standard = Number(
-          Object.keys(freq).reduce((a, b) => (freq[a] > freq[b] ? a : b))
-        );
-        const filtered = rows
-          .map(r => r.slice(0, standard))
-          .filter(r => r.length === standard);
-        if (!filtered.length || standard < 1) {
-          setError(t("page.datasource.paste.error.noConsistent"));
-          return;
-        }
-        bodyRows = filtered;
-        let headerRow = null;
-        if (effectiveHasHeader) {
-          headerRow = filtered[0];
-          bodyRows = filtered.slice(1);
-        }
-        colCount = standard;
-        inferredNames =
-          headerRow && headerRow.length === colCount
-            ? headerRow
-            : Array.from({ length: colCount }, (_, i) =>
-                t("page.datasource.paste.columnName", { index: i + 1 })
-              );
-      }
-
-      const inferredTypes = Array.from({ length: colCount }, (_, colIdx) =>
-        detectDataType(bodyRows.map(r => r[colIdx]))
-      );
-      const previewRows = bodyRows.slice(0, 5);
-      setColumnNames(inferredNames);
-      setColumnTypes(inferredTypes);
-      setParsedData({
-        rows: bodyRows,
-        preview: previewRows,
-        columns: colCount
-      });
-      if (!tableName) {
-        const ts = Date.now();
-        setTableName(t("page.datasource.paste.defaultName", { timestamp: ts }));
-      }
-      const successMsg = t("page.datasource.paste.parseSuccess", {
-        rows: bodyRows.length,
-        cols: colCount
-      });
-      setSuccess(successMsg);
-      toast.success(successMsg);
-    } catch (err) {
-      const errorMsg = t("page.datasource.paste.parseFail", { message: err.message });
-      setError(errorMsg);
-      toast.error(errorMsg);
-    }
+    setError("");
+    setSuccess("");
+    // 调用智能解析
+    parse(pastedData);
   };
 
   const saveToDatabase = async () => {
@@ -267,8 +181,8 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
           column_names: columnNames,
           column_types: columnTypes,
           data_rows: parsedData.rows,
-          delimiter,
-          has_header: hasHeader
+          delimiter: currentResult?.delimiter || delimiter,
+          has_header: hasHeader || currentResult?.hasHeader
         })
       });
       const result = await res.json();
@@ -287,12 +201,12 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
         clearForm();
       } else {
         const errorMsg = result.error ||
-            result.message ||
-            t("page.datasource.paste.save.saveFail");
+          result.message ||
+          t("page.datasource.paste.save.saveFail");
         setError(errorMsg);
         toast.error(errorMsg);
       }
-    } catch (err) {
+    } catch (err: any) {
       const errorMsg = t("page.datasource.paste.save.saveFailDetail", {
         message: err.message || ""
       });
@@ -311,32 +225,41 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
     setColumnTypes([]);
     setError("");
     setSuccess("");
+    setHasHeader(false);
   };
 
-  const updateColumnName = (idx, value) => {
+  const updateColumnName = (idx: number, value: string) => {
     const next = [...columnNames];
     next[idx] = value;
     setColumnNames(next);
   };
 
-  const updateColumnType = (idx, value) => {
+  const updateColumnType = (idx: number, value: string) => {
     const next = [...columnTypes];
     next[idx] = value;
     setColumnTypes(next);
   };
 
-  const toggleUnify = checked => {
+  const toggleUnify = (checked: boolean) => {
     setUnifyAsString(checked);
     if (checked && columnTypes.length) {
       setColumnTypes(
         Array.from({ length: columnTypes.length }, () => "VARCHAR")
       );
     } else if (!checked && parsedData) {
+      // 重新推断
+      const sampleRows = parsedData.rows.slice(0, 100);
       const inferred = Array.from({ length: columnTypes.length }, (_, colIdx) =>
-        detectDataType(parsedData.rows.map(r => r[colIdx]))
+        detectDataType(sampleRows.map(r => r[colIdx]))
       );
       setColumnTypes(inferred);
     }
+  };
+
+  // 处理格式切换（当有多个解析结果时）
+  const handleStrategyChange = (idxStr: string) => {
+    const idx = parseInt(idxStr);
+    selectResult(idx);
   };
 
   return (
@@ -372,10 +295,10 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
 
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              onClick={parseData}
-              disabled={!pastedData.trim()}
+              onClick={handleParse}
+              disabled={!pastedData.trim() || isLoading}
             >
-              {t("page.datasource.paste.btnParse")}
+              {isLoading ? "解析中..." : t("page.datasource.paste.btnParse")}
             </Button>
             <Button
               variant="outline"
@@ -383,54 +306,35 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
             >
               {t("page.datasource.paste.btnClear")}
             </Button>
-            <Label className="ml-2">
-              {t("page.datasource.paste.format")}
-            </Label>
-            <Select value={format} onValueChange={setFormat}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto">
-                  {t("page.datasource.paste.formatAuto")}
-                </SelectItem>
-                <SelectItem value="csv">
-                  {t("page.datasource.paste.formatCsv")}
-                </SelectItem>
-                <SelectItem value="json">
-                  {t("page.datasource.paste.formatJson")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <Label className="ml-2">
-              {t("page.datasource.paste.delimiter")}
-            </Label>
-            <Select value={delimiter} onValueChange={setDelimiter}>
-              <SelectTrigger className="w-[120px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value=",">
-                  {t("page.datasource.paste.delimiterComma")}
-                </SelectItem>
-                <SelectItem value="\t">
-                  {t("page.datasource.paste.delimiterTab")}
-                </SelectItem>
-                <SelectItem value="|">
-                  {t("page.datasource.paste.delimiterPipe")}
-                </SelectItem>
-                <SelectItem value=";">
-                  {t("page.datasource.paste.delimiterSemicolon")}
-                </SelectItem>
-                <SelectItem value=" ">
-                  {t("page.datasource.paste.delimiterSpace")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+
+            {/* 智能格式选择器 - 仅在解析后显示，替代原来的 "Format" 和 "Delimiter" */}
+            {results.length > 0 && (
+              <>
+                <Label className="ml-2">
+                  解析策略:
+                </Label>
+                <Select
+                  value={selectedIndex.toString()}
+                  onValueChange={handleStrategyChange}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {results.map((res, idx) => (
+                      <SelectItem key={idx} value={idx.toString()}>
+                        {res.strategy} ({res.confidence}%)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+
+            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground ml-auto">
               <input
                 type="checkbox"
-                checked={hasHeader}
+                checked={hasHeader || (currentResult?.hasHeader ?? false)}
                 onChange={e => setHasHeader(e.target.checked)}
                 className="accent-primary"
               />
@@ -475,50 +379,50 @@ const DataPasteCard = ({ onDataSourceSaved }) => {
               </div>
             </div>
 
-          <div className="overflow-auto rounded-lg border border-border-subtle">
-            <table className="min-w-full text-sm">
-              <thead className="bg-surface-hover text-foreground">
-                <tr>
-                  {columnNames.map((name, idx) => (
-                    <th key={idx} className="px-3 py-2 text-left">
-                      <div className="space-y-1">
-                        <input
-                          className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                          value={name}
-                          onChange={e => updateColumnName(idx, e.target.value)}
-                        />
-                        <select
-                          className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground"
-                          value={columnTypes[idx] || "VARCHAR"}
-                          onChange={e => updateColumnType(idx, e.target.value)}
-                        >
-                          {dataTypes.map(dt => (
-                            <option key={dt.value} value={dt.value}>
-                              {dt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="text-foreground">
-                {parsedData.preview.map((row, rIdx) => (
-                  <tr key={rIdx} className="border-t border-border-subtle">
-                    {row.map((cell, cIdx) => (
-                      <td
-                        key={cIdx}
-                        className="px-3 py-2 text-muted-foreground"
-                      >
-                        {cell}
-                      </td>
+            <div className="overflow-auto rounded-lg border border-border-subtle">
+              <table className="min-w-full text-sm">
+                <thead className="bg-surface-hover text-foreground">
+                  <tr>
+                    {columnNames.map((name, idx) => (
+                      <th key={idx} className="px-3 py-2 text-left">
+                        <div className="space-y-1">
+                          <input
+                            className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                            value={name}
+                            onChange={e => updateColumnName(idx, e.target.value)}
+                          />
+                          <select
+                            className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground"
+                            value={columnTypes[idx] || "VARCHAR"}
+                            onChange={e => updateColumnType(idx, e.target.value)}
+                          >
+                            {dataTypes.map(dt => (
+                              <option key={dt.value} value={dt.value}>
+                                {dt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="text-foreground">
+                  {parsedData.preview.map((row, rIdx) => (
+                    <tr key={rIdx} className="border-t border-border-subtle">
+                      {row.map((cell, cIdx) => (
+                        <td
+                          key={cIdx}
+                          className="px-3 py-2 text-muted-foreground"
+                        >
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             <div className="flex flex-wrap gap-3">
               <Button

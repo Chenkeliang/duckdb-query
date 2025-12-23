@@ -344,12 +344,6 @@ const DuckQueryAppInner = () => {
         <DataSourcePage
           activeTab={dataSourceTab}
           headerTitle={t("nav.datasource")}
-          topIntro={
-            <div className="mb-4 text-sm text-muted-foreground space-y-1">
-              <div>{t("page.datasource.intro1")}</div>
-              <div>{t("page.datasource.intro2")}</div>
-            </div>
-          }
           tabs={[
             { id: "upload", label: t("page.datasource.tabUpload") },
             { id: "database", label: t("page.datasource.tabDb") },

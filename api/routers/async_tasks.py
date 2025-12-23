@@ -26,6 +26,7 @@ from core.config_manager import config_manager
 from core.timezone_utils import get_current_time_iso, get_current_time
 from core.task_utils import TaskUtils
 from models.query_models import DatabaseConnection, DataSourceType, AttachDatabase
+from core.validators import validate_pagination
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -300,11 +301,14 @@ class AsyncQueryResponse(BaseModel):
 
 
 class TaskListResponse(BaseModel):
-    """任务列表响应模型"""
+    """任务列表响应模型（支持分页）"""
 
     success: bool
     tasks: list
     count: int
+    total: int = 0  # 总数据量
+    limit: int = 20
+    offset: int = 0
 
 
 class TaskDetailResponse(BaseModel):
@@ -412,13 +416,32 @@ async def submit_async_query(
 
 
 @router.get("/api/async_tasks", response_model=TaskListResponse, tags=["Async Tasks"])
-async def list_async_tasks(limit: int = 100):
+async def list_async_tasks(
+    limit: int = 20,
+    offset: int = 0,
+    order_by: str = "created_at"
+):
     """
-    获取所有异步任务列表
+    获取异步任务列表（支持分页）
+    
+    Args:
+        limit: 每页条数 (20, 50, 100)
+        offset: 偏移量
+        order_by: 排序字段 (created_at, started_at, completed_at, status)
     """
+    # 校验分页参数
+    validate_pagination(limit, offset)
+    
     try:
-        tasks = task_manager.list_tasks(limit)
-        return TaskListResponse(success=True, tasks=tasks, count=len(tasks))
+        tasks, total = task_manager.list_tasks(limit, offset, order_by)
+        return TaskListResponse(
+            success=True, 
+            tasks=tasks, 
+            count=len(tasks),
+            total=total,
+            limit=limit,
+            offset=offset
+        )
     except Exception as e:
         logger.error(f"获取异步任务列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")

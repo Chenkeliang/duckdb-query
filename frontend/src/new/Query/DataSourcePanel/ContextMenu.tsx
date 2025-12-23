@@ -1,7 +1,12 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { Eye, Info, Trash2, Download, RefreshCw } from 'lucide-react';
+import {
+  Trash2,
+  Eye,
+  Info,
+  RefreshCw
+} from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -17,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/new/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/new/components/ui/tabs';
 import { Button } from '@/new/components/ui/button';
 import { toast } from 'sonner';
 import { executeDuckDBSQL } from '@/services/apiClient';
@@ -26,9 +32,9 @@ import { invalidateDataSources } from '@/new/hooks/useDataSources';
 
 /**
  * TableContextMenu 组件
- * 
+ *
  * 表项的右键菜单
- * 
+ *
  * Features:
  * - 预览数据（SELECT * LIMIT 100）
  * - 查看结构（显示列信息对话框）- 仅 DuckDB 表
@@ -43,7 +49,6 @@ interface TableContextMenuProps {
   canDelete?: boolean; // 是否可以删除（外部表不能删除）
   onPreview?: () => void;
   onDelete?: (tableName: string) => Promise<void> | void;
-  onImport?: (table: SelectedTableObject) => void; // 导入到 DuckDB
 }
 
 export const TableContextMenu: React.FC<TableContextMenuProps> = ({
@@ -52,13 +57,13 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
   canDelete = true,
   onPreview,
   onDelete,
-  onImport,
 }) => {
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
   const [showStructure, setShowStructure] = React.useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [structureData, setStructureData] = React.useState<any[]>([]);
+  const [indexData, setIndexData] = React.useState<any[]>([]); // Added indexData state
   const [loadingStructure, setLoadingStructure] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const isExternal = table.source === 'external';
@@ -75,7 +80,9 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
   const handleViewStructure = async () => {
     setShowStructure(true);
     setLoadingStructure(true);
-    
+    setStructureData([]);
+    setIndexData([]);
+
     try {
       if (isExternal && table.connection?.id) {
         const params = new URLSearchParams();
@@ -88,12 +95,14 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         }
         const data = await resp.json();
         setStructureData(data?.columns || []);
+        setIndexData(data?.indexes || []); // Set index data
       } else {
         // DuckDB: 查询表结构 - 使用双引号包裹表名以支持特殊字符
         // 注意：DESCRIBE 语句不需要 LIMIT，所以 is_preview 设为 false
         const result = await executeDuckDBSQL(`DESCRIBE "${table.name}"`, null, false);
         if (result?.data) {
           setStructureData(result.data);
+          // DuckDB indexes fetching omitted for now or can be added similarly
         }
       }
     } catch (error) {
@@ -165,36 +174,23 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
             <span>{t('dataSource.refreshTableInfo')}</span>
           </ContextMenuItem>
 
-          {/* 外部表特有选项 */}
-          {isExternal && onImport && (
+          {/* 查看结构 - 所有表都可用 */}
+          <ContextMenuItem onClick={handleViewStructure}>
+            <Info className="mr-2 h-4 w-4" />
+            <span>{t('dataSource.viewStructure')}</span>
+          </ContextMenuItem>
+
+          {/* DuckDB 表特有选项 - 删除 */}
+          {!isExternal && canDelete && onDelete && (
             <>
               <ContextMenuSeparator />
-              <ContextMenuItem onClick={() => onImport(table)}>
-                <Download className="mr-2 h-4 w-4" />
-                <span>{t('dataSource.importToDuckDB')}</span>
+              <ContextMenuItem
+                onClick={handleDelete}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                <span>{t('dataSource.deleteTable')}</span>
               </ContextMenuItem>
-            </>
-          )}
-
-          {/* DuckDB 表特有选项 */}
-          {!isExternal && (
-            <>
-              <ContextMenuItem onClick={handleViewStructure}>
-                <Info className="mr-2 h-4 w-4" />
-                <span>{t('dataSource.viewStructure')}</span>
-              </ContextMenuItem>
-              {canDelete && onDelete && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem
-                    onClick={handleDelete}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    <span>{t('dataSource.deleteTable')}</span>
-                  </ContextMenuItem>
-                </>
-              )}
             </>
           )}
         </ContextMenuContent>
@@ -203,55 +199,130 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
       {/* 查看结构对话框 */}
       <Dialog open={showStructure} onOpenChange={setShowStructure}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{t('dataSource.tableStructure', { tableName: table.name })}</DialogTitle>
-            <DialogDescription>
-              {t('dataSource.viewColumnInfo')}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="max-h-96 overflow-auto">
-            {loadingStructure ? (
-              <div className="text-center py-8 text-muted-foreground">
-                {t('common.loading')}
-              </div>
-            ) : structureData.length > 0 ? (
-              <table className="w-full text-sm">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="px-4 py-2 text-left font-medium">{t('dataSource.columnName')}</th>
-                    <th className="px-4 py-2 text-left font-medium">{t('dataSource.columnType')}</th>
-                    <th className="px-4 py-2 text-left font-medium">{t('dataSource.nullable')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {structureData.map((row, idx) => (
-                    <tr key={idx} className="border-t border-border">
-                      <td className="px-4 py-2 font-mono text-foreground">
-                        {row.column_name || row.Field || row.name}
-                      </td>
-                      <td className="px-4 py-2 text-muted-foreground">
-                        {row.column_type || row.Type || row.type}
-                      </td>
-                      <td className="px-4 py-2 text-muted-foreground">
-                        {row.null || row.Null || 'YES'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                {t('common.noData')}
-              </div>
-            )}
-          </div>
+          <Tabs defaultValue="columns">
+            <div className="flex items-center justify-between px-6 pt-4">
+              <DialogTitle className="text-lg font-semibold">{t('dataSource.tableStructure', { tableName: table.name })}</DialogTitle>
+            </div>
+            <div className="px-6 pb-2">
+              <TabsList className="w-full justify-start border-b border-border rounded-none h-auto p-0 bg-transparent">
+                <TabsTrigger
+                  value="columns"
+                  className="rounded-none border-b-2 border-transparent px-4 py-2 hover:text-foreground data-[state=active]:border-primary data-[state=active]:text-foreground bg-transparent shadow-none"
+                >
+                  {t('dataSource.columns')}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="indexes"
+                  className="rounded-none border-b-2 border-transparent px-4 py-2 hover:text-foreground data-[state=active]:border-primary data-[state=active]:text-foreground bg-transparent shadow-none"
+                >
+                  {t('dataSource.indexes')}
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowStructure(false)}>
-              {t('common.close')}
-            </Button>
-          </DialogFooter>
+            <div className="p-6 pt-2 h-[400px]">
+              <TabsContent value="columns" className="h-full m-0">
+                <DialogDescription className="sr-only">
+                  {t('dataSource.viewColumnInfo')}
+                </DialogDescription>
+                <div className="h-full overflow-auto border rounded-md">
+                  {loadingStructure ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      {t('common.loading')}
+                    </div>
+                  ) : structureData.length > 0 ? (
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/40 sticky top-0 z-10 backdrop-blur-sm">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.columnName')}</th>
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.columnType')}</th>
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.nullable')}</th>
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.key')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {structureData.map((row, idx) => (
+                          <tr key={idx} className="border-t border-border hover:bg-muted/20">
+                            <td className="px-4 py-2 font-mono text-foreground">
+                              {row.column_name || row.Field || row.name}
+                            </td>
+                            <td className="px-4 py-2 text-muted-foreground">
+                              {row.column_type || row.Type || row.type}
+                            </td>
+                            <td className="px-4 py-2 text-muted-foreground">
+                              {row.null || row.Null || 'YES'}
+                            </td>
+                            <td className="px-4 py-2 text-muted-foreground font-mono text-xs">
+                              {row.key === 'PRI' ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20">
+                                  PRI
+                                </span>
+                              ) : row.key === 'UNI' ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                  UNI
+                                </span>
+                              ) : row.key || row.Key || ''}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      {t('common.noData')}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="indexes" className="h-full m-0">
+                <div className="h-full overflow-auto border rounded-md">
+                  {loadingStructure ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      {t('common.loading')}
+                    </div>
+                  ) : indexData.length > 0 ? (
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/40 sticky top-0 z-10 backdrop-blur-sm">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.indexName')}</th>
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.indexType')}</th>
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.indexColumns')}</th>
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.unique')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {indexData.map((idx, i) => (
+                          <tr key={i} className="border-t border-border hover:bg-muted/20">
+                            <td className="px-4 py-2 font-mono text-foreground font-medium">{idx.name}</td>
+                            <td className="px-4 py-2 text-muted-foreground">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${idx.type === 'PRIMARY' ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20' :
+                                idx.type === 'UNIQUE' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' :
+                                  'bg-muted/50 text-muted-foreground border-border'
+                                }`}>
+                                {idx.type}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-muted-foreground font-mono text-xs break-all max-w-[200px]">{idx.columns}</td>
+                            <td className="px-4 py-2 text-muted-foreground">{idx.unique ? 'YES' : 'NO'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      {t('dataSource.noIndexes')}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </div>
+            <DialogFooter className="px-6 pb-6 pt-2">
+              <Button variant="outline" onClick={() => setShowStructure(false)}>
+                {t('common.close')}
+              </Button>
+            </DialogFooter>
+          </Tabs>
         </DialogContent>
       </Dialog>
 
@@ -264,7 +335,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
               {t('dataSource.confirmDeleteTable', { tableName: table.name })}
             </DialogDescription>
           </DialogHeader>
-          
+
           <DialogFooter>
             <Button
               variant="outline"

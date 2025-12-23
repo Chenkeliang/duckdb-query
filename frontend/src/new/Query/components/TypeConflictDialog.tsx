@@ -114,8 +114,8 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
     allResolved
       ? t('query.typeConflict.allResolved', '所有类型冲突已解决')
       : t('query.typeConflict.detected', '检测到 {{count}} 个类型冲突', {
-          count: unresolvedCount,
-        })
+        count: unresolvedCount,
+      })
   );
 
   // 默认确认按钮文本
@@ -125,7 +125,7 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent
         ref={dialogRef}
-        className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col"
+        className="max-w-2xl max-h-[85vh] flex flex-col"
         onPointerDownOutside={(e) => e.preventDefault()}
       >
         <DialogHeader>
@@ -293,10 +293,10 @@ const ConflictRow: React.FC<ConflictRowProps> = ({ conflict, onResolve }) => {
           <SelectTrigger className="w-36 h-8 text-xs">
             <SelectValue placeholder={t('query.typeConflict.selectType', '选择类型')} />
           </SelectTrigger>
-          <SelectContent 
-            position="popper" 
+          <SelectContent
+            position="popper"
             sideOffset={4}
-            className="z-[100]"
+            className="z-[1000]"
           >
             {DUCKDB_CAST_TYPES.map((type) => (
               <SelectItem key={type} value={type} className="text-xs">

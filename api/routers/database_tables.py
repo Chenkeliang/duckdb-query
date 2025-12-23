@@ -614,10 +614,49 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                     for row in cursor.fetchall():
                         sample_data.append(list(row))
 
+                    # 获取索引详情 (MySQL)
+                    indexes = []
+                    try:
+                        cursor.execute(f"SHOW INDEX FROM {_quote_mysql_identifier(table_name)}")
+                        # SHOW INDEX returns: Table, Non_unique, Key_name, Seq_in_index, Column_name, ...
+                        # Non_unique: 0 = Unique, 1 = Not Unique
+                        raw_indexes = cursor.fetchall()
+                        
+                        # 聚合复合索引
+                        index_map = {}
+                        for idx_row in raw_indexes:
+                            key_name = idx_row[2]
+                            col_name = idx_row[4]
+                            non_unique = idx_row[1]
+                            seq = idx_row[3]
+                            if key_name not in index_map:
+                                index_map[key_name] = {
+                                    "name": key_name,
+                                    "unique": non_unique == 0,
+                                    "columns": []
+                                }
+                            index_map[key_name]["columns"].append((seq, col_name))
+                        
+                        # 格式化输出
+                        for k, v in index_map.items():
+                            # 按 seq 排序列
+                            v["columns"].sort(key=lambda x: x[0])
+                            cols = [c[1] for c in v["columns"]]
+                            indexes.append({
+                                "name": k,
+                                "unique": v["unique"],
+                                "columns": ", ".join(cols),
+                                "type": "PRIMARY" if k == "PRIMARY" else ("UNIQUE" if v["unique"] else "INDEX")
+                            })
+                    except Exception as e:
+                        logger.warning(f"获取MySQL索引失败: {e}")
+
+
                     return {
                         "success": True,
                         "table_name": table_name,
                         "columns": columns,
+                        "indexes": indexes,
                         "column_count": len(columns),
                         "row_count": row_count,
                         "sample_data": sample_data,
@@ -631,6 +670,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
             import psycopg2
             from psycopg2 import sql as pg_sql
 
+            # ... omit repeated connection code ...
             # 支持 user 和 username 两种参数名称
             username = db_config.get("user") or db_config.get("username")
             if not username:
@@ -672,14 +712,40 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                         (table_name, schema),
                     )
 
+                    columns_data = cursor.fetchall()
+                    
+                    # 获取主键和唯一键信息 (用于在列列表显示简略信息)
+                    cursor.execute(
+                        """
+                        SELECT kcu.column_name, tco.constraint_type
+                        FROM information_schema.table_constraints tco
+                        JOIN information_schema.key_column_usage kcu 
+                             ON kcu.constraint_name = tco.constraint_name
+                             AND kcu.table_schema = tco.table_schema
+                        WHERE kcu.table_name = %s AND kcu.table_schema = %s
+                        AND tco.constraint_type IN ('PRIMARY KEY', 'UNIQUE')
+                        """,
+                        (table_name, schema)
+                    )
+                    
+                    key_map = {}
+                    for k_row in cursor.fetchall():
+                        col_name = k_row[0]
+                        c_type = k_row[1]
+                        if c_type == 'PRIMARY KEY':
+                            key_map[col_name] = 'PRI'
+                        elif c_type == 'UNIQUE':
+                            key_map[col_name] = 'UNI'
+
                     columns = []
-                    for col_row in cursor.fetchall():
+                    for col_row in columns_data:
+                        col_name = col_row[0]
                         columns.append(
                             {
-                                "name": col_row[0],
+                                "name": col_name,
                                 "type": col_row[1],
                                 "null": col_row[2],
-                                "key": "",  # PostgreSQL的键信息需要额外查询
+                                "key": key_map.get(col_name, ""),
                                 "default": col_row[3] if col_row[3] else None,
                                 "extra": col_row[4],
                             }
@@ -699,10 +765,75 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                     for row in cursor.fetchall():
                         sample_data.append(list(row))
 
+                    # 获取索引详情 (PostgreSQL)
+                    indexes = []
+                    try:
+                        # 使用 pg_indexes 配合 pg_class 等获取更详细信息
+                        # 这里我们查询 pg_indexes 视图，它包含 indexdef (CREATE INDEX 语句)
+                        # 但为了更好的结构化数据，我们查询系统目录
+                        cursor.execute(
+                            """
+                            SELECT
+                                i.relname as index_name,
+                                a.attname as column_name,
+                                ix.indisunique as is_unique,
+                                ix.indisprimary as is_primary,
+                                array_position(ix.indkey, a.attnum) as seq
+                            FROM
+                                pg_class t,
+                                pg_class i,
+                                pg_index ix,
+                                pg_attribute a
+                            WHERE
+                                t.oid = ix.indrelid
+                                and i.oid = ix.indexrelid
+                                and a.attrelid = t.oid
+                                and a.attnum = ANY(ix.indkey)
+                                and t.relkind = 'r'
+                                and t.relname = %s
+                                and t.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = %s)
+                            ORDER BY
+                                t.relname,
+                                i.relname,
+                                array_position(ix.indkey, a.attnum)
+                            """,
+                            (table_name, schema)
+                        )
+                        
+                        raw_indexes = cursor.fetchall()
+                         # 聚合复合索引
+                        index_map = {}
+                        for idx_row in raw_indexes:
+                            idx_name = idx_row[0]
+                            col_name = idx_row[1]
+                            is_unique = idx_row[2]
+                            is_primary = idx_row[3]
+                            
+                            if idx_name not in index_map:
+                                index_map[idx_name] = {
+                                    "name": idx_name,
+                                    "unique": is_unique,
+                                    "primary": is_primary,
+                                    "columns": []
+                                }
+                            index_map[idx_name]["columns"].append(col_name)
+                        
+                        for k, v in index_map.items():
+                            indexes.append({
+                                "name": k,
+                                "unique": v["unique"],
+                                "columns": ", ".join(v["columns"]),
+                                "type": "PRIMARY" if v["primary"] else ("UNIQUE" if v["unique"] else "INDEX")
+                            })
+                    except Exception as e:
+                         logger.warning(f"获取PostgreSQL索引失败: {e}")
+
+
                     return {
                         "success": True,
                         "table_name": table_name,
                         "columns": columns,
+                        "indexes": indexes, 
                         "column_count": len(columns),
                         "row_count": row_count,
                         "sample_data": sample_data,

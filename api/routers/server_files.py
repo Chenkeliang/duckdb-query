@@ -55,6 +55,12 @@ def _resolve_path(path: str) -> tuple[str, dict]:
     for mount in mounts:
         root = mount["real_path"]
         if real_path.startswith(root):
+            # 安全检查：禁止符号链接（防止白名单目录内的符号链接指向外部）
+            if os.path.islink(path):
+                raise HTTPException(
+                    status_code=403, 
+                    detail={"code": "SYMLINK_NOT_ALLOWED", "message": "不允许访问符号链接", "field": "path"}
+                )
             return real_path, mount
 
     raise HTTPException(status_code=400, detail="路径不在允许的挂载目录内")
