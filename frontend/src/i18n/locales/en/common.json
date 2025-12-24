@@ -261,14 +261,70 @@
       }
     },
     "filter": {
+      "title": "WHERE Conditions",
       "addCondition": "Add condition",
+      "editCondition": "Edit condition",
+      "deleteCondition": "Delete condition",
       "removeCondition": "Remove condition",
+      "emptyPlaceholder": "No filter conditions",
+      "rawSqlBlock": "Raw SQL block (could not parse)",
+      "group": "Condition group",
+      "ungroupConditions": "Ungroup conditions",
       "column": "Column",
       "operator": "Operator",
       "value": "Value",
       "value2": "Value 2",
       "selectTableFirst": "Please select a table first",
       "noFilters": "No filter conditions",
+      "modes": {
+        "visual": "Visual",
+        "sql": "SQL"
+      },
+      "logic": {
+        "toggle": "Click to switch to {{logic}}"
+      },
+      "form": {
+        "table": "Table",
+        "column": "Column",
+        "operator": "Operator",
+        "value": "Value",
+        "values": "Values",
+        "placeholder": {
+          "selectTable": "Select table",
+          "selectColumn": "Select column",
+          "enterValue": "Enter value",
+          "enterValues": "Enter value, press Enter to add"
+        }
+      },
+      "action": {
+        "confirm": "Confirm",
+        "cancel": "Cancel",
+        "clearAll": "Clear all conditions",
+        "applyAndSwitch": "Apply and switch to visual",
+        "remove": "Remove"
+      },
+      "error": {
+        "required": "This field is required",
+        "tooManyConditions": "Too many conditions, consider using SQL mode",
+        "maxTagsReached": "Maximum reached",
+        "typeMismatch": "Type mismatch"
+      },
+      "sqlPlaceholder": "Enter WHERE clause, e.g.: status = 'active' AND amount > 100",
+      "operators": {
+        "eq": "Equals",
+        "neq": "Not equals",
+        "gt": "Greater than",
+        "gte": "Greater than or equal",
+        "lt": "Less than",
+        "lte": "Less than or equal",
+        "like": "Contains",
+        "notLike": "Does not contain",
+        "in": "In list",
+        "notIn": "Not in list",
+        "isNull": "Is null",
+        "isNotNull": "Is not null",
+        "between": "Between"
+      },
       "validation": {
         "selectColumn": "Please select a column",
         "enterValue": "Please enter a value",

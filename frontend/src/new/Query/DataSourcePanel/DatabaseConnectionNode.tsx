@@ -101,11 +101,11 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
     try {
       // 使缓存失效，触发重新获取
       await Promise.all([
-        queryClient.invalidateQueries({ 
-          queryKey: ['schemas', connection.id] 
+        queryClient.invalidateQueries({
+          queryKey: ['schemas', connection.id]
         }),
-        queryClient.invalidateQueries({ 
-          queryKey: ['schema-tables', connection.id] 
+        queryClient.invalidateQueries({
+          queryKey: ['schema-tables', connection.id]
         }),
       ]);
       toast.success(t('dataSource.refreshSuccess', { name: connection.name }));
@@ -128,74 +128,81 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
     <ContextMenu>
       <ContextMenuTrigger>
         <TreeNode
-            id={`db-${connection.id}`}
-            label={connection.name}
-            icon={<Database className={`h-4 w-4 ${getDatabaseIconColor(connection.type)}`} />}
-            level={level}
-            isExpandable={true}
-            isExpanded={isExpanded}
-            statusIndicator={getStatusIndicator(connection.status)}
-            onToggle={handleToggle}
-          >
-      {isLoading && (
-        <div className="flex items-center gap-2 pl-6 py-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          加载中...
-        </div>
-      )}
+          id={`db-${connection.id}`}
+          label={connection.name}
+          icon={<Database className={`h-4 w-4 ${getDatabaseIconColor(connection.type)}`} />}
+          level={level}
+          isExpandable={true}
+          isExpanded={isExpanded}
+          statusIndicator={getStatusIndicator(connection.status)}
+          onToggle={handleToggle}
+        >
+          {isLoading && (
+            <div className="flex items-center gap-2 pl-6 py-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              加载中...
+            </div>
+          )}
 
-      {/* PostgreSQL: 显示 schemas */}
-      {hasSchemas &&
-        schemas.map((schema) => (
-          <SchemaNode
-            key={schema.name}
-            connectionId={connection.id}
-            connectionName={connection.name}
-            databaseType={connection.type}
-            schema={schema}
-            level={level + 1}
-            selectedTables={selectedTables}
-            onTableSelect={onTableSelect}
-            selectionMode={selectionMode}
-            onPreview={onPreview}
-            onImport={onImport}
-            searchQuery={searchQuery}
-            forceExpanded={forceExpanded}
-          />
-        ))}
+          {/* PostgreSQL: 显示 schemas */}
+          {hasSchemas &&
+            schemas.map((schema) => (
+              <SchemaNode
+                key={schema.name}
+                connectionId={connection.id}
+                connectionName={connection.name}
+                databaseType={connection.type}
+                schema={schema}
+                level={level + 1}
+                selectedTables={selectedTables}
+                onTableSelect={onTableSelect}
+                selectionMode={selectionMode}
+                onPreview={onPreview}
+                onImport={onImport}
+                searchQuery={searchQuery}
+                forceExpanded={forceExpanded}
+              />
+            ))}
 
-      {/* MySQL/SQLite: 直接显示表 */}
-      {hasTables &&
-        tables.map((table) => {
-          const tableObj = createExternalTable(
-            table.name,
-            { id: connection.id, name: connection.name, type: connection.type },
-          );
+          {/* MySQL/SQLite: 直接显示表 */}
+          {hasTables &&
+            tables
+              .filter((table) => {
+                // 如果没有搜索词，显示所有表
+                if (!searchQuery) return true;
+                // 过滤：表名包含搜索词（不区分大小写）
+                return table.name.toLowerCase().includes(searchQuery.toLowerCase());
+              })
+              .map((table) => {
+                const tableObj = createExternalTable(
+                  table.name,
+                  { id: connection.id, name: connection.name, type: connection.type },
+                );
 
-          return (
-            <TableItem
-              key={`${connection.id}:${table.name}`}
-              table={tableObj}
-              rowCount={table.row_count}
-              isSelected={isTableSelected(tableObj, selectedTables)}
-              selectionMode={selectionMode}
-              onSelect={onTableSelect}
-              onPreview={onPreview}
-              onImport={connection.type === 'mysql' ? onImport : undefined}
-              searchQuery={searchQuery}
-            />
-          );
-        })}
+                return (
+                  <TableItem
+                    key={`${connection.id}:${table.name}`}
+                    table={tableObj}
+                    rowCount={table.row_count}
+                    isSelected={isTableSelected(tableObj, selectedTables)}
+                    selectionMode={selectionMode}
+                    onSelect={onTableSelect}
+                    onPreview={onPreview}
+                    onImport={connection.type === 'mysql' ? onImport : undefined}
+                    searchQuery={searchQuery}
+                  />
+                );
+              })}
 
-      {/* 空状态 */}
-      {!isLoading && !hasSchemas && !hasTables && isExpanded && (
-        <div className="pl-6 py-2 text-sm text-muted-foreground">
-          暂无数据
-        </div>
-      )}
-          </TreeNode>
+          {/* 空状态 */}
+          {!isLoading && !hasSchemas && !hasTables && isExpanded && (
+            <div className="pl-6 py-2 text-sm text-muted-foreground">
+              暂无数据
+            </div>
+          )}
+        </TreeNode>
       </ContextMenuTrigger>
-      
+
       {/* Task 7.2: 右键菜单 - 局部刷新 */}
       <ContextMenuContent>
         <ContextMenuItem onClick={handleRefreshConnection}>

@@ -388,6 +388,14 @@ class TaskManager:
         def _do_start() -> bool:
             with self._lock:
                 with with_duckdb_connection() as conn:
+                    # 先查询当前状态用于调试
+                    current_row = conn.execute(
+                        f'SELECT status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
+                        [task_id],
+                    ).fetchone()
+                    current_status = current_row[0] if current_row else "NOT_FOUND"
+                    logger.info("[TASK_DEBUG] start_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
+                    
                     started_at = get_storage_time()
                     rows = conn.execute(
                         f"""
@@ -404,6 +412,15 @@ class TaskManager:
                             TaskStatus.RUNNING.value,
                         ],
                     ).fetchall()
+                    
+                    # 更新后再查询确认
+                    after_row = conn.execute(
+                        f'SELECT status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
+                        [task_id],
+                    ).fetchone()
+                    after_status = after_row[0] if after_row else "NOT_FOUND"
+                    logger.info("[TASK_DEBUG] start_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d", 
+                               task_id, after_status, len(rows))
                     return bool(rows)
 
         try:
@@ -428,13 +445,15 @@ class TaskManager:
                         [task_id],
                     ).fetchone()
                     if not started_row:
-                        logger.warning("任务不存在: %s", task_id)
+                        logger.warning("[TASK_DEBUG] complete_task: 任务不存在: %s", task_id)
                         return False
 
                     current_status = started_row[1] if len(started_row) > 1 else None
+                    logger.info("[TASK_DEBUG] complete_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
+                    
                     # 如果任务已被取消，不再更新为成功
                     if current_status in (TaskStatus.FAILED.value, TaskStatus.CANCELLING.value):
-                        logger.info("任务已被取消或失败，跳过完成: %s, 状态: %s", task_id, current_status)
+                        logger.info("[TASK_DEBUG] complete_task: 任务已被取消或失败，跳过完成: %s, 状态: %s", task_id, current_status)
                         return False
 
                     started_at = started_row[0]
@@ -470,15 +489,24 @@ class TaskManager:
                         ],
                     ).fetchall()
 
+                    # 更新后再查询确认
+                    after_row = conn.execute(
+                        f'SELECT status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
+                        [task_id],
+                    ).fetchone()
+                    after_status = after_row[0] if after_row else "NOT_FOUND"
+                    
                     success = bool(rows)
                     if success:
-                        logger.info("任务执行成功: %s", task_id)
+                        logger.info("[TASK_DEBUG] complete_task 成功: task_id=%s, 更新后状态=%s", task_id, after_status)
                     else:
-                        logger.warning("任务状态不允许完成: %s", task_id)
+                        logger.warning("[TASK_DEBUG] complete_task 失败: task_id=%s, 当前状态=%s (期望 running), 更新后状态=%s, 影响行数=%d", 
+                                      task_id, current_status, after_status, len(rows))
                     return success
 
         try:
-            return retry_on_write_conflict(_do_complete)
+            # 增加重试次数和延迟以应对 DuckDB WAL checkpoint 期间的写写冲突
+            return retry_on_write_conflict(_do_complete, max_retries=5, base_delay=0.2)
         except Exception as e:
             logger.error("complete_task 最终失败: %s -> %s", task_id, e)
             return False
@@ -523,7 +551,8 @@ class TaskManager:
                     return success
 
         try:
-            return retry_on_write_conflict(_do_fail)
+            # 增加重试次数和延迟以应对 DuckDB WAL checkpoint 期间的写写冲突
+            return retry_on_write_conflict(_do_fail, max_retries=5, base_delay=0.2)
         except Exception as e:
             logger.error("fail_task 最终失败: %s -> %s", task_id, e)
             return False
@@ -532,36 +561,76 @@ class TaskManager:
         self, task_id: str, error_message: str, metadata_update: Optional[Dict[str, Any]] = None
     ) -> bool:
         """无论当前状态，强制将任务标记为失败（手动取消等场景）"""
-        with self._lock:
-            completed_at = get_storage_time()
-            with with_duckdb_connection() as connection:
-                started_row = connection.execute(
-                    f'SELECT started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
-                    [task_id],
-                ).fetchone()
-                execution_time = None
-                if started_row and isinstance(started_row[0], datetime):
-                    started_at = self._normalize_datetime(started_row[0])
-                    if started_at:
-                        execution_time = (completed_at - started_at).total_seconds()
+        def _do_force_fail():
+            with self._lock:
+                completed_at = get_storage_time()
+                with with_duckdb_connection() as connection:
+                    # 先查询当前状态用于调试
+                    current_row = connection.execute(
+                        f'SELECT status, started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
+                        [task_id],
+                    ).fetchone()
+                    current_status = current_row[0] if current_row else "NOT_FOUND"
+                    logger.info("[TASK_DEBUG] force_fail_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
+                    
+                    started_row = current_row
+                    execution_time = None
+                    if started_row and len(started_row) > 1 and isinstance(started_row[1], datetime):
+                        started_at = self._normalize_datetime(started_row[1])
+                        if started_at:
+                            execution_time = (completed_at - started_at).total_seconds()
 
-                rows = connection.execute(
-                    f"""
-                    UPDATE {ASYNC_TASKS_TABLE}
-                    SET status = ?, error_message = ?, completed_at = ?, execution_time = ?
-                    WHERE task_id = ?
-                    RETURNING task_id
-                    """,
-                    [
-                        TaskStatus.FAILED.value,
-                        error_message,
-                        completed_at,
-                        execution_time,
-                        task_id,
-                    ],
-                ).fetchall()
+                    rows = connection.execute(
+                        f"""
+                        UPDATE {ASYNC_TASKS_TABLE}
+                        SET status = ?, error_message = ?, completed_at = ?, execution_time = ?
+                        WHERE task_id = ?
+                        RETURNING task_id
+                        """,
+                        [
+                            TaskStatus.FAILED.value,
+                            error_message,
+                            completed_at,
+                            execution_time,
+                            task_id,
+                        ],
+                    ).fetchall()
+                    
+                    # 更新后再查询确认
+                    after_row = connection.execute(
+                        f'SELECT status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
+                        [task_id],
+                    ).fetchone()
+                    after_status = after_row[0] if after_row else "NOT_FOUND"
+                    logger.info("[TASK_DEBUG] force_fail_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d", 
+                               task_id, after_status, len(rows))
 
-            success = bool(rows)
+                return bool(rows)
+
+        try:
+            # 增加重试次数以应对高并发冲突
+            success = retry_on_write_conflict(_do_force_fail, max_retries=5)
+        except Exception as e:
+            # 最终确认：如果是写写冲突，检查是否任务其实已经被其他事务（如用户取消）更新了
+            error_str = str(e)
+            logger.error("[TASK_DEBUG] force_fail_task 异常: task_id=%s, error=%s", task_id, error_str)
+            if "write-write conflict" in error_str or "TransactionContext Error" in error_str:
+                current_task = self.get_task(task_id)
+                logger.info("[TASK_DEBUG] force_fail_task 冲突后查询: task_id=%s, 当前状态=%s", 
+                           task_id, current_task.status.value if current_task else "NOT_FOUND")
+                if current_task and current_task.status in (
+                    TaskStatus.CANCELLING, 
+                    TaskStatus.FAILED, 
+                    TaskStatus.SUCCESS
+                ):
+                    logger.info(
+                        "Force fail 遇到冲突但任务已处于终端状态: %s (Status: %s)，视为成功",
+                        task_id, current_task.status.value
+                    )
+                    return True
+            
+            logger.error("force_fail_task 最终失败: %s -> %s", task_id, error_str)
+            return False
 
         if success and metadata_update:
             try:

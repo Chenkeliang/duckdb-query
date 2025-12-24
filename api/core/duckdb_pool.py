@@ -157,11 +157,13 @@ class DuckDBConnectionPool:
             if conn_id is None:
                 raise RuntimeError("无法获取数据库连接")
 
+            logger.debug(f"[POOL_DEBUG] 获取连接: conn_id={conn_id}")
             connection = self._connections[conn_id].connection
             yield connection
 
         except Exception as e:
             if conn_id:
+                logger.debug(f"[POOL_DEBUG] 连接异常，尝试回滚: conn_id={conn_id}, error={e}")
                 # 发生异常时，尝试回滚事务
                 try:
                     self._connections[conn_id].connection.execute("ROLLBACK")
@@ -173,11 +175,15 @@ class DuckDBConnectionPool:
             if conn_id:
                 # 释放前确保事务已提交（DuckDB 在某些情况下可能有未提交的隐式事务）
                 try:
+                    logger.debug(f"[POOL_DEBUG] 释放连接前 COMMIT: conn_id={conn_id}")
                     self._connections[conn_id].connection.execute("COMMIT")
-                except Exception:
+                    logger.debug(f"[POOL_DEBUG] COMMIT 完成: conn_id={conn_id}")
+                except Exception as commit_error:
                     # 如果没有活动事务，COMMIT 会失败，这是正常的
+                    logger.debug(f"[POOL_DEBUG] COMMIT 失败（可能无活动事务）: conn_id={conn_id}, error={commit_error}")
                     pass
                 self._release_connection(conn_id)
+                logger.debug(f"[POOL_DEBUG] 连接已释放: conn_id={conn_id}")
 
     def _acquire_connection(self) -> Optional[int]:
         """获取可用连接"""

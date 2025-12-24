@@ -175,8 +175,10 @@ class MetadataManager:
         - 如果密码是新值，加密并保存
         - 如果密码为空，清除密码
         """
+        logger.debug(f"[METADATA_DEBUG] save_metadata 开始: table={table}, id={id}")
         try:
             with with_duckdb_connection() as conn:
+                logger.debug(f"[METADATA_DEBUG] save_metadata 获取连接成功: table={table}, id={id}")
                 # 对于数据库连接，智能处理密码字段
                 if table == "system_database_connections" and "params" in data:
                     data = data.copy()
@@ -235,16 +237,20 @@ class MetadataManager:
                     for v in data.values()
                 ]
 
+                logger.debug(f"[METADATA_DEBUG] save_metadata 执行 INSERT: table={table}, id={id}")
                 conn.execute(sql, values)
+                logger.debug(f"[METADATA_DEBUG] save_metadata INSERT 完成: table={table}, id={id}")
 
                 # 清除缓存
                 cache_key = f"{table}:{id}"
                 self._cache.pop(cache_key, None)
 
+                logger.info(f"[METADATA_DEBUG] save_metadata 成功: {table}/{id}")
                 logger.info(f"保存元数据成功: {table}/{id}")
                 return True
 
         except Exception as e:
+            logger.error(f"[METADATA_DEBUG] save_metadata 失败: {table}/{id}, 错误: {e}")
             logger.error(f"保存元数据失败: {table}/{id}, 错误: {e}", exc_info=True)
             return False
 

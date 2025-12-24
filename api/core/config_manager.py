@@ -397,6 +397,9 @@ class ConfigManager:
                     "cors_origins": os.getenv(
                         "CORS_ORIGINS", ",".join(config_data.get("cors_origins", []))
                     ).split(","),
+                    "timezone": os.getenv(
+                        "TIMEZONE", config_data.get("timezone", "Asia/Shanghai")
+                    ),
                     "max_file_size": int(
                         os.getenv(
                             "MAX_FILE_SIZE",

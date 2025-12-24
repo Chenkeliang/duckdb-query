@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft } from 'lucide-react';
+import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2 } from 'lucide-react';
+import { Input } from '@/new/components/ui/input';
 import { Button } from '@/new/components/ui/button';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
 import { Badge } from '@/new/components/ui/badge';
@@ -45,6 +46,13 @@ import {
   formatTableReference,
   createTableReference,
 } from '@/new/utils/sqlUtils';
+import {
+  FilterBar,
+  createEmptyGroup,
+  generateFilterSQL,
+  type FilterGroup,
+  type ColumnInfo,
+} from './FilterBar';
 
 
 /**
@@ -60,10 +68,17 @@ import {
 
 type JoinType = 'INNER JOIN' | 'LEFT JOIN' | 'RIGHT JOIN' | 'FULL JOIN';
 
+/** 条件侧模式 */
+type ConditionSideMode = 'column' | 'expression';
+
 /** 单个 Join 条件 */
 interface JoinCondition {
   leftColumn: string;
+  leftExpression?: string;  // 自定义表达式
+  leftMode?: ConditionSideMode;  // 默认 'column'
   rightColumn: string;
+  rightExpression?: string;
+  rightMode?: ConditionSideMode;
   operator: '=' | '!=' | '<' | '>' | '<=' | '>=';
 }
 
@@ -75,7 +90,15 @@ interface JoinConfig {
 // 向后兼容：将旧格式转换为新格式
 const normalizeJoinConfig = (config: any): JoinConfig => {
   if (config.conditions) {
-    return config as JoinConfig;
+    // 确保每个条件都有 mode 字段
+    return {
+      ...config,
+      conditions: config.conditions.map((c: JoinCondition) => ({
+        ...c,
+        leftMode: c.leftMode || 'column',
+        rightMode: c.rightMode || 'column',
+      })),
+    };
   }
   // 旧格式：{ leftColumn, rightColumn, joinType }
   return {
@@ -84,6 +107,8 @@ const normalizeJoinConfig = (config: any): JoinConfig => {
       leftColumn: config.leftColumn || '',
       rightColumn: config.rightColumn || '',
       operator: '=',
+      leftMode: 'column',
+      rightMode: 'column',
     }],
   };
 };
@@ -182,21 +207,30 @@ const TableCard: React.FC<TableCardProps> = ({
     <>
       <div className={`bg-surface border rounded-xl shrink-0 min-w-64 max-w-72 ${isExternal ? 'border-warning/50' : 'border-border'}`}>
         {/* 头部 */}
-        <div className="p-3 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="p-3 border-b border-border flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             {isExternal ? (
-              <span className="text-sm">{dbIcon}</span>
+              <span className="text-sm shrink-0">{dbIcon}</span>
             ) : (
-              <Table className={`w-4 h-4 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
+              <Table className={`w-4 h-4 shrink-0 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
             )}
-            <span className="font-medium text-sm truncate">{tableName}</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="font-medium text-sm truncate block">{tableName}</span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[400px] z-[100]">
+                  <p className="font-mono text-xs break-all">{tableName}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             {isPrimary && (
-              <span className="text-xs px-1.5 py-0.5 bg-primary/20 text-primary rounded">
+              <span className="text-xs px-1.5 py-0.5 bg-primary/20 text-primary rounded shrink-0">
                 {t('query.join.primaryTable', '主表')}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center shrink-0">
             <button
               onClick={onRemove}
               className="text-muted-foreground hover:text-error p-1 rounded hover:bg-error/10"
@@ -446,70 +480,119 @@ const JoinConnector: React.FC<JoinConnectorProps> = ({
 
       {/* 条件列表 */}
       <div className="flex flex-col gap-1">
-        {conditions.map((condition, index) => (
-          <div key={index} className="flex items-center gap-1 text-xs">
-            {index > 0 && (
-              <span className="text-muted-foreground text-xs mr-1">AND</span>
-            )}
-            <Select
-              value={condition.leftColumn}
-              onValueChange={(value) => handleConditionChange(index, { leftColumn: value })}
-            >
-              <SelectTrigger className="w-20 text-xs h-7 px-2">
-                <SelectValue placeholder={t('query.join.column', '列')} />
-              </SelectTrigger>
-              <SelectContent>
-                {leftColumns.map((col) => (
-                  <SelectItem key={col.name} value={col.name} className="text-xs">
-                    {col.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {conditions.map((condition, index) => {
+          const leftMode = condition.leftMode || 'column';
+          const rightMode = condition.rightMode || 'column';
 
-            <Select
-              value={condition.operator}
-              onValueChange={(value: JoinCondition['operator']) => handleConditionChange(index, { operator: value })}
-            >
-              <SelectTrigger className="w-12 text-xs h-7 px-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {OPERATORS.map((op) => (
-                  <SelectItem key={op.value} value={op.value} className="text-xs">
-                    {op.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          return (
+            <div key={index} className="flex items-center gap-1 text-xs">
+              {index > 0 && (
+                <span className="text-muted-foreground text-xs mr-1">AND</span>
+              )}
 
-            <Select
-              value={condition.rightColumn}
-              onValueChange={(value) => handleConditionChange(index, { rightColumn: value })}
-            >
-              <SelectTrigger className="w-20 text-xs h-7 px-2">
-                <SelectValue placeholder={t('query.join.column', '列')} />
-              </SelectTrigger>
-              <SelectContent>
-                {rightColumns.map((col) => (
-                  <SelectItem key={col.name} value={col.name} className="text-xs">
-                    {col.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              {/* 左侧条件 */}
+              <div className="flex items-center gap-0.5">
+                {leftMode === 'column' ? (
+                  <Select
+                    value={condition.leftColumn}
+                    onValueChange={(value) => handleConditionChange(index, { leftColumn: value })}
+                  >
+                    <SelectTrigger className="w-20 text-xs h-7 px-2">
+                      <SelectValue placeholder={t('query.join.column', '列')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {leftColumns.map((col) => (
+                        <SelectItem key={col.name} value={col.name} className="text-xs">
+                          {col.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={condition.leftExpression || ''}
+                    onChange={(e) => handleConditionChange(index, { leftExpression: e.target.value })}
+                    placeholder="CONCAT(...)"
+                    className="w-32 h-7 text-xs px-2 font-mono"
+                  />
+                )}
+                <button
+                  onClick={() => handleConditionChange(index, {
+                    leftMode: leftMode === 'column' ? 'expression' : 'column'
+                  })}
+                  className={`p-1 rounded hover:bg-muted ${leftMode === 'expression' ? 'text-primary' : 'text-muted-foreground'}`}
+                  title={leftMode === 'column' ? t('query.join.switchToExpression', '切换到表达式模式') : t('query.join.switchToColumn', '切换到列模式')}
+                >
+                  <Edit2 className="w-3 h-3" />
+                </button>
+              </div>
 
-            {conditions.length > 1 && (
-              <button
-                onClick={() => handleRemoveCondition(index)}
-                className="text-muted-foreground hover:text-error p-0.5 rounded hover:bg-error/10"
-                title={t('query.join.removeCondition', '移除条件')}
+              {/* 操作符 */}
+              <Select
+                value={condition.operator}
+                onValueChange={(value: JoinCondition['operator']) => handleConditionChange(index, { operator: value })}
               >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-        ))}
+                <SelectTrigger className="w-12 text-xs h-7 px-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {OPERATORS.map((op) => (
+                    <SelectItem key={op.value} value={op.value} className="text-xs">
+                      {op.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* 右侧条件 */}
+              <div className="flex items-center gap-0.5">
+                {rightMode === 'column' ? (
+                  <Select
+                    value={condition.rightColumn}
+                    onValueChange={(value) => handleConditionChange(index, { rightColumn: value })}
+                  >
+                    <SelectTrigger className="w-20 text-xs h-7 px-2">
+                      <SelectValue placeholder={t('query.join.column', '列')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rightColumns.map((col) => (
+                        <SelectItem key={col.name} value={col.name} className="text-xs">
+                          {col.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={condition.rightExpression || ''}
+                    onChange={(e) => handleConditionChange(index, { rightExpression: e.target.value })}
+                    placeholder="CONCAT(...)"
+                    className="w-32 h-7 text-xs px-2 font-mono"
+                  />
+                )}
+                <button
+                  onClick={() => handleConditionChange(index, {
+                    rightMode: rightMode === 'column' ? 'expression' : 'column'
+                  })}
+                  className={`p-1 rounded hover:bg-muted ${rightMode === 'expression' ? 'text-primary' : 'text-muted-foreground'}`}
+                  title={rightMode === 'column' ? t('query.join.switchToExpression', '切换到表达式模式') : t('query.join.switchToColumn', '切换到列模式')}
+                >
+                  <Edit2 className="w-3 h-3" />
+                </button>
+              </div>
+
+              {conditions.length > 1 && (
+                <button
+                  onClick={() => handleRemoveCondition(index)}
+                  className="text-muted-foreground hover:text-error p-0.5 rounded hover:bg-error/10"
+                  title={t('query.join.removeCondition', '移除条件')}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* 添加条件按钮 */}
@@ -650,6 +733,9 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   // JOIN 配置（表之间的连接）
   const [joinConfigs, setJoinConfigs] = React.useState<JoinConfig[]>([]);
 
+  // 筛选条件树（FilterBar）
+  const [filterTree, setFilterTree] = React.useState<FilterGroup>(() => createEmptyGroup());
+
   // 获取每个表的列信息 - 使用 useTableColumns Hook
   // 为每个表单独调用 Hook（最多支持 10 个表）
   const table0Columns = useTableColumns(activeTables[0] || null);
@@ -702,6 +788,21 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableColumnsMapKey]);
+
+  // 构建可用列信息（用于 FilterBar）
+  const availableColumns = React.useMemo((): ColumnInfo[] => {
+    const columns: ColumnInfo[] = [];
+    Object.entries(tableColumnsMap).forEach(([tableName, cols]) => {
+      cols.forEach((col) => {
+        columns.push({
+          table: tableName,
+          column: col.name,
+          type: col.type,
+        });
+      });
+    });
+    return columns;
+  }, [tableColumnsMap]);
 
   // 计算活动表名的稳定 key
   const activeTableNamesKey = activeTables
@@ -939,9 +1040,16 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       if (!config) return false;
 
       const normalizedConfig = normalizeJoinConfig(config);
-      const hasValidCondition = normalizedConfig.conditions.some(
-        (c) => c.leftColumn && c.rightColumn
-      );
+      const hasValidCondition = normalizedConfig.conditions.some((c) => {
+        // 列模式需要列名，表达式模式需要表达式
+        const leftValid = c.leftMode === 'expression'
+          ? c.leftExpression?.trim()
+          : c.leftColumn;
+        const rightValid = c.rightMode === 'expression'
+          ? c.rightExpression?.trim()
+          : c.rightColumn;
+        return leftValid && rightValid;
+      });
 
       if (!hasValidCondition) return false;
     }
@@ -1030,28 +1138,50 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       };
 
       // 生成多条件 ON 子句
-      const validConditions = config.conditions.filter(
-        (c) => c.leftColumn && c.rightColumn
-      );
+      // 验证条件：列模式需要列名，表达式模式需要表达式
+      const validConditions = config.conditions.filter((c) => {
+        const leftValid = c.leftMode === 'expression'
+          ? c.leftExpression?.trim()
+          : c.leftColumn;
+        const rightValid = c.rightMode === 'expression'
+          ? c.rightExpression?.trim()
+          : c.rightColumn;
+        return leftValid && rightValid;
+      });
 
       if (validConditions.length > 0) {
         const onClause = validConditions
           .map((c) => {
-            // 检查是否有类型冲突需要 TRY_CAST
-            const conflictKey = generateConflictKey(
-              leftTableName,
-              c.leftColumn,
-              rightTableName,
-              c.rightColumn
-            );
-            const castType = resolvedTypes[conflictKey];
+            // 生成左侧引用
+            let leftRef: string;
+            if (c.leftMode === 'expression' && c.leftExpression?.trim()) {
+              // 表达式模式：直接使用用户输入的表达式
+              leftRef = c.leftExpression.trim();
+            } else {
+              // 列模式：使用表别名.列名
+              leftRef = `${quoteIdent(leftTableAlias, dialect)}.${quoteIdent(c.leftColumn, dialect)}`;
+            }
 
-            const leftRef = `${quoteIdent(leftTableAlias, dialect)}.${quoteIdent(c.leftColumn, dialect)}`;
-            const rightRef = `${quoteIdent(rightTableAlias, dialect)}.${quoteIdent(c.rightColumn, dialect)}`;
+            // 生成右侧引用
+            let rightRef: string;
+            if (c.rightMode === 'expression' && c.rightExpression?.trim()) {
+              rightRef = c.rightExpression.trim();
+            } else {
+              rightRef = `${quoteIdent(rightTableAlias, dialect)}.${quoteIdent(c.rightColumn, dialect)}`;
+            }
 
-            if (castType) {
-              // 使用 TRY_CAST 进行类型转换
-              return `TRY_CAST(${leftRef} AS ${castType}) ${c.operator} TRY_CAST(${rightRef} AS ${castType})`;
+            // 检查是否有类型冲突需要 TRY_CAST（仅对列模式生效）
+            if (c.leftMode !== 'expression' && c.rightMode !== 'expression') {
+              const conflictKey = generateConflictKey(
+                leftTableName,
+                c.leftColumn,
+                rightTableName,
+                c.rightColumn
+              );
+              const castType = resolvedTypes[conflictKey];
+              if (castType) {
+                return `TRY_CAST(${leftRef} AS ${castType}) ${c.operator} TRY_CAST(${rightRef} AS ${castType})`;
+              }
             }
 
             return `${leftRef} ${c.operator} ${rightRef}`;
@@ -1063,6 +1193,12 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         // 这样用户可以看到 JOIN 结构并手动选择条件
         parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* 请选择关联条件 */`);
       }
+    }
+
+    // WHERE - 生成筛选条件
+    const whereClause = generateFilterSQL(filterTree);
+    if (whereClause && whereClause.trim()) {
+      parts.push(`WHERE ${whereClause}`);
     }
 
     // 使用配置的 max_query_rows 而不是硬编码的 1000
@@ -1261,6 +1397,17 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
             })
           )}
         </div>
+
+        {/* 筛选条件栏 (FilterBar) */}
+        {activeTables.length > 0 && (
+          <FilterBar
+            filterTree={filterTree}
+            onFilterChange={setFilterTree}
+            availableColumns={availableColumns}
+            disabled={isExecuting}
+            enableDragDrop
+          />
+        )}
 
         {/* SQL 预览 */}
         {sql && (

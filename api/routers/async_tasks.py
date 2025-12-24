@@ -42,7 +42,18 @@ try:
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     logger.setLevel(logging.DEBUG)  # 设置为 DEBUG 级别
-    logger.info("异步任务调试日志已启用")
+    
+    # 同时为 task_manager 添加相同的文件处理器，以便 [TASK_DEBUG] 日志也输出到此文件
+    task_manager_logger = logging.getLogger('core.task_manager')
+    task_manager_logger.addHandler(file_handler)
+    task_manager_logger.setLevel(logging.DEBUG)
+    
+    # 为 duckdb_pool 也添加，以便跟踪连接池状态
+    pool_logger = logging.getLogger('core.duckdb_pool')
+    pool_logger.addHandler(file_handler)
+    pool_logger.setLevel(logging.DEBUG)
+    
+    logger.info("异步任务调试日志已启用 (包含 task_manager 和 duckdb_pool)")
 except Exception as e:
     print(f"无法设置文件日志: {e}")
 from core.task_utils import TaskUtils
@@ -734,9 +745,13 @@ def execute_async_query(
     query_success = False
     start_time = time.time()
     
+    logger.info(f"[ASYNC_DEBUG] 异步任务开始: task_id={task_id}")
+    
     try:
         # 第一步：标记任务为运行中（独立事务）
+        logger.info(f"[ASYNC_DEBUG] [{task_id}] 步骤1: 调用 start_task")
         if not task_manager.start_task(task_id):
+            logger.error(f"[ASYNC_DEBUG] [{task_id}] start_task 返回 False，退出")
             logger.error(f"无法启动任务: {task_id}")
             return
 
@@ -746,6 +761,7 @@ def execute_async_query(
             task_manager.fail_task(task_id, "用户取消")
             return
 
+        logger.info(f"[ASYNC_DEBUG] [{task_id}] 步骤2: 开始执行查询")
         logger.info(f"开始执行异步查询任务: {task_id}")
 
         # 智能移除系统自动添加的LIMIT
@@ -814,7 +830,7 @@ def execute_async_query(
 
             # 内存清理
             try:
-                con.execute("PRAGMA force_external")
+                # 显式触发GC回收内存
                 import gc
                 gc.collect()
                 logger.info("内存清理完成")
@@ -838,6 +854,7 @@ def execute_async_query(
             return
 
         # 第三步：保存元数据（连接池连接已释放，可以安全使用其他连接）
+        logger.info(f"[ASYNC_DEBUG] [{task_id}] 步骤3: 保存元数据")
         source_id = table_name
         table_metadata = {
             "source_id": source_id,
@@ -856,11 +873,14 @@ def execute_async_query(
 
         try:
             file_datasource_manager.save_file_datasource(table_metadata)
+            logger.info(f"[ASYNC_DEBUG] [{task_id}] 元数据保存成功")
             logger.info(f"表元数据保存成功: {source_id}")
         except Exception as meta_error:
+            logger.warning(f"[ASYNC_DEBUG] [{task_id}] 元数据保存失败: {str(meta_error)}")
             logger.warning(f"保存表元数据失败（非致命）: {str(meta_error)}")
 
         # 第四步：更新任务状态为完成（独立事务）
+        logger.info(f"[ASYNC_DEBUG] [{task_id}] 步骤4: 更新任务状态为完成")
         task_info = {
             "status": "completed",
             "table_name": table_name,
@@ -879,17 +899,33 @@ def execute_async_query(
             task_info["display_name"] = custom_table_name
 
         logger.info(f"[{task_id}] 开始调用 complete_task 更新状态")
+        logger.info(f"[ASYNC_DEBUG] [{task_id}] 调用 complete_task 前，先查询当前状态")
+        
+        # 调用前先查询状态
+        pre_check_task = task_manager.get_task(task_id)
+        pre_check_status = pre_check_task.status.value if pre_check_task else "NOT_FOUND"
+        logger.info(f"[ASYNC_DEBUG] [{task_id}] complete_task 调用前状态: {pre_check_status}")
+        
         complete_result = task_manager.complete_task(task_id, task_info)
+        logger.info(f"[ASYNC_DEBUG] [{task_id}] complete_task 返回: {complete_result}")
         logger.info(f"[{task_id}] complete_task 返回结果: {complete_result}")
         if not complete_result:
-            logger.warning(f"complete_task 返回 False，尝试 force_fail_task: {task_id}")
-            # 使用 force_fail_task 确保任务状态被更新
-            task_manager.force_fail_task(
-                task_id, 
-                "任务执行完成但状态更新失败，请检查结果表",
-                {"actual_result": task_info}
-            )
-            logger.error(f"无法标记任务为成功，已强制标记为失败: {task_id}")
+            # 检查当前状态，防止覆盖已取消或已完成的状态
+            current_task = task_manager.get_task(task_id)
+            current_status = current_task.status.value if current_task else "None"
+            
+            # 使用字符串值进行比较，避免Enum身份问题
+            if current_status in ("cancelling", "failed", "success", "completed"):
+                logger.info(f"[{task_id}] 任务最终状态为 {current_status}，无需强制标记失败")
+            else:
+                logger.warning(f"[{task_id}] complete_task 失败且状态异常(status={current_status})，执行 force_fail_task")
+                # 使用 force_fail_task 确保任务状态被更新
+                task_manager.force_fail_task(
+                    task_id, 
+                    f"任务执行完成但状态更新失败(Last status: {current_status})，请检查结果表",
+                    {"actual_result": task_info}
+                )
+                logger.error(f"[{task_id}] 无法标记任务为成功，已强制标记为失败")
 
         execution_time = time.time() - start_time
         logger.info(
@@ -1013,7 +1049,7 @@ def execute_async_federated_query(
 
                 # 内存清理
                 try:
-                    con.execute("PRAGMA force_external")
+                    # 显式触发GC回收内存
                     import gc
                     gc.collect()
                     logger.info("内存清理完成")
@@ -1081,14 +1117,22 @@ def execute_async_federated_query(
         complete_result = task_manager.complete_task(task_id, task_info)
         logger.info(f"[{task_id}] (联邦) complete_task 返回结果: {complete_result}")
         if not complete_result:
-            logger.warning(f"联邦查询 complete_task 返回 False，尝试 force_fail_task: {task_id}")
-            # 使用 force_fail_task 确保任务状态被更新
-            task_manager.force_fail_task(
-                task_id, 
-                "联邦查询执行完成但状态更新失败，请检查结果表",
-                {"actual_result": task_info}
-            )
-            logger.error(f"无法标记联邦查询任务为成功，已强制标记为失败: {task_id}")
+            # 检查当前状态，防止覆盖已取消或已完成的状态
+            current_task = task_manager.get_task(task_id)
+            current_status = current_task.status.value if current_task else "None"
+            
+            # 使用字符串值进行比较，避免Enum身份问题
+            if current_status in ("cancelling", "failed", "success", "completed"):
+                logger.info(f"[{task_id}] (联邦) 任务最终状态为 {current_status}，无需强制标记失败")
+            else:
+                logger.warning(f"[{task_id}] (联邦) complete_task 失败且状态异常(status={current_status})，执行 force_fail_task")
+                # 使用 force_fail_task 确保任务状态被更新
+                task_manager.force_fail_task(
+                    task_id, 
+                    f"联邦查询执行完成但状态更新失败(Last status: {current_status})，请检查结果表",
+                    {"actual_result": task_info}
+                )
+                logger.error(f"[{task_id}] (联邦) 无法标记任务为成功，已强制标记为失败")
 
         execution_time = time.time() - start_time
         logger.info(
