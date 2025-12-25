@@ -111,6 +111,7 @@ export const FilterChip: React.FC<FilterChipProps> = ({
     // 构建完整的条件描述（用于 tooltip 和无障碍）
     const operatorSymbol = getOperatorSymbol(node.operator);
     const displayValue = formatDisplayValue(node.value, node.operator);
+    const placement = node.placement || 'where';
 
     let fullDescription = `${node.table}.${node.column} ${operatorSymbol}`;
     if (displayValue) {
@@ -119,6 +120,7 @@ export const FilterChip: React.FC<FilterChipProps> = ({
     if (node.operator === 'BETWEEN' && node.value2 !== undefined) {
         fullDescription += ` AND ${formatDisplayValue(node.value2, '=')}`;
     }
+    fullDescription += ` [${placement.toUpperCase()}]`;
 
     const ariaLabel = t('filter.editCondition', '编辑条件') + ': ' + fullDescription;
 
@@ -147,6 +149,18 @@ export const FilterChip: React.FC<FilterChipProps> = ({
                         role="button"
                         aria-label={ariaLabel}
                     >
+                        {/* Placement 标记 */}
+                        <span
+                            className={`
+                                text-[9px] font-bold uppercase px-1 py-0 rounded
+                                ${placement === 'on'
+                                    ? 'bg-accent text-accent-foreground'
+                                    : 'bg-muted text-muted-foreground'
+                                }
+                            `}
+                        >
+                            {placement}
+                        </span>
                         {/* 表名 */}
                         <span className="text-muted-foreground text-xs truncate max-w-[60px]">
                             {node.table}.

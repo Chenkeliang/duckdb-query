@@ -18,6 +18,8 @@ import type {
     FilterRaw,
     FilterOperator,
     FilterValue,
+    FilterPlacement,
+    PlacementContext,
     ValidationResult,
     ParseResult,
 } from './types';
@@ -62,8 +64,9 @@ function generateConditionSQL(cond: FilterCondition): string {
             return `${col} ${cond.operator} (${vals})`;
         case 'BETWEEN':
             const val1 = formatSingleValue(cond.value);
-            const val2 = formatSingleValue(cond.value2);
+            const val2 = formatSingleValue(cond.value2 ?? null);
             return `${col} BETWEEN ${val1} AND ${val2}`;
+
         case 'LIKE':
         case 'NOT LIKE':
             return `${col} ${cond.operator} ${formatSingleValue(cond.value)}`;
@@ -533,8 +536,9 @@ export function validateValueType(value: FilterValue, columnType: string): Valid
     }
     // 日期类型 (纯 DATE，不包含时间)
     else if (type.includes('DATE')) {
-        // 接受纯日期格式或日期时间格式
-        if (!/^\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}(:\d{2})?)?$/.test(strValue) && isNaN(Date.parse(strValue))) {
+        // 严格要求 ISO 格式：YYYY-MM-DD 或 YYYY-MM-DD HH:MM(:SS)
+        // 不使用 Date.parse() 因为它接受太多格式（如 2024/12/23）
+        if (!/^\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}(:\d{2})?)?$/.test(strValue)) {
             return { valid: false, error: 'filter.error.invalidDate', details: strValue };
         }
     }
@@ -611,13 +615,15 @@ export function createEmptyGroup(): FilterGroup {
 
 /**
  * 创建条件节点
+ * @param placement 条件应用位置，默认 'where'
  */
 export function createCondition(
     table: string,
     column: string,
     operator: FilterOperator,
     value: FilterValue,
-    value2?: FilterValue
+    value2?: FilterValue,
+    placement: FilterPlacement = 'where'
 ): FilterCondition {
     return {
         id: nanoid(),
@@ -626,6 +632,7 @@ export function createCondition(
         column,
         operator,
         value,
+        placement,
         ...(value2 !== undefined && { value2 }),
     };
 }
@@ -779,4 +786,220 @@ export function groupNodes(
         ...newTree,
         children: [...newTree.children, newGroup],
     };
+}
+
+// ============================================
+// Placement 相关函数（ON/WHERE 条件分离）
+// ============================================
+
+/**
+ * 按 placement 分离条件（平铺化，用于 ON 子句）
+ * 遍历整个树，提取所有 placement='on' 和 placement='where' 的条件
+ * 
+ * @param tree 筛选树
+ * @returns 分离后的 ON 条件和 WHERE 条件数组
+ */
+export function separateConditionsByPlacement(
+    tree: FilterGroup
+): { onConditions: FilterCondition[]; whereConditions: FilterCondition[] } {
+    const onConditions: FilterCondition[] = [];
+    const whereConditions: FilterCondition[] = [];
+
+    function traverse(node: FilterNode) {
+        if (node.type === 'condition') {
+            if (node.placement === 'on') {
+                onConditions.push(node);
+            } else {
+                // 无 placement 或 placement='where' 都归入 WHERE
+                whereConditions.push(node);
+            }
+        } else if (node.type === 'group') {
+            node.children.forEach(traverse);
+        }
+        // raw 类型不处理（保留在原始树中）
+    }
+
+    tree.children.forEach(traverse);
+    return { onConditions, whereConditions };
+}
+
+/**
+ * 递归克隆 filterTree，移除所有 placement='on' 的条件
+ * 用于生成 WHERE 子句，确保嵌套 group 内的 ON 条件也被移除
+ * 
+ * @param tree 原始筛选树
+ * @returns 移除 ON 条件后的新树
+ */
+export function cloneTreeWithoutOnConditions(tree: FilterGroup): FilterGroup {
+    function cloneNode(node: FilterNode): FilterNode | null {
+        if (node.type === 'condition') {
+            // 跳过 placement='on' 的条件
+            if (node.placement === 'on') {
+                return null;
+            }
+            return { ...node, id: nanoid() };
+        } else if (node.type === 'group') {
+            // 递归克隆子节点
+            const clonedChildren = node.children
+                .map(child => cloneNode(child))
+                .filter((child): child is FilterNode => child !== null);
+
+            // 如果 group 变空，返回 null（自动裁剪）
+            if (clonedChildren.length === 0) {
+                return null;
+            }
+
+            return {
+                ...node,
+                id: nanoid(),
+                children: clonedChildren
+            };
+        } else if (node.type === 'raw') {
+            // raw SQL 暂时保留在 WHERE
+            return { ...node, id: nanoid() };
+        }
+        return null;
+    }
+
+    const clonedChildren = tree.children
+        .map(child => cloneNode(child))
+        .filter((child): child is FilterNode => child !== null);
+
+    return {
+        ...tree,
+        id: nanoid(),
+        children: clonedChildren
+    };
+}
+
+/**
+ * 获取指定表的条件
+ * 
+ * @param conditions 条件数组
+ * @param tableName 表名
+ * @returns 属于该表的条件数组
+ */
+export function getConditionsForTable(
+    conditions: FilterCondition[],
+    tableName: string
+): FilterCondition[] {
+    return conditions.filter(c => c.table === tableName);
+}
+
+/**
+ * 生成条件数组的 SQL（用于 ON 子句附加条件）
+ * 注意：此函数会丢失 AND/OR 树结构，仅用于简单场景
+ * 如需保留 OR 逻辑，请使用 cloneTreeForTableOnConditions + generateFilterSQL
+ * 
+ * @param conditions 条件数组
+ * @returns SQL 字符串
+ * @deprecated 请使用 getOnConditionsTreeForTable + generateFilterSQL 以保留 OR 逻辑
+ */
+export function generateConditionsSQL(conditions: FilterCondition[]): string {
+    if (conditions.length === 0) return '';
+    return conditions.map(c => generateFilterSQL(c)).join(' AND ');
+}
+
+/**
+ * 克隆树，仅保留指定表的 ON 条件
+ * 保留 AND/OR 逻辑结构，以支持 OR 条件
+ * 
+ * @param tree 原始筛选树
+ * @param tableName 表名
+ * @returns 仅包含该表 ON 条件的筛选树（保留 AND/OR 结构）
+ */
+export function getOnConditionsTreeForTable(
+    tree: FilterGroup,
+    tableName: string
+): FilterGroup {
+    function cloneNode(node: FilterNode): FilterNode | null {
+        if (node.type === 'condition') {
+            // 仅保留 placement='on' 且 table 匹配的条件
+            const cond = node as FilterCondition;
+            if (cond.placement === 'on' && cond.table === tableName) {
+                return { ...cond, id: nanoid() };
+            }
+            return null;
+        } else if (node.type === 'group') {
+            // 递归克隆子节点
+            const clonedChildren = node.children
+                .map(child => cloneNode(child))
+                .filter((child): child is FilterNode => child !== null);
+
+            // 如果 group 变空，返回 null
+            if (clonedChildren.length === 0) {
+                return null;
+            }
+
+            return {
+                ...node,
+                id: nanoid(),
+                children: clonedChildren
+            };
+        } else if (node.type === 'raw') {
+            // raw SQL 不包含在 ON 条件中
+            return null;
+        }
+        return null;
+    }
+
+    const clonedChildren = tree.children
+        .map(child => cloneNode(child))
+        .filter((child): child is FilterNode => child !== null);
+
+    return {
+        ...tree,
+        id: nanoid(),
+        children: clonedChildren
+    };
+}
+
+/**
+ * 获取条件的默认 placement
+ * 根据 JOIN 类型和表位置智能推荐：
+ * - LEFT JOIN / FULL JOIN 的右表条件默认 ON（避免丢失 NULL 行）
+ * - 其他情况默认 WHERE
+ * 
+ * @param context 位置上下文
+ * @returns 推荐的 placement
+ */
+export function getDefaultPlacement(context?: PlacementContext): FilterPlacement {
+    if (!context) return 'where';
+    if (
+        context.isRightTable &&
+        (context.joinType === 'LEFT JOIN' || context.joinType === 'FULL JOIN')
+    ) {
+        return 'on';
+    }
+    return 'where';
+}
+
+/**
+ * 检查条件是否可以放入 OR 分组
+ * ON 条件不允许在 OR 分组中（语义复杂，容易误用）
+ * 
+ * @param condition 条件节点
+ * @returns 是否允许放入 OR 分组
+ */
+export function canPlaceInOrGroup(condition: FilterCondition): boolean {
+    return condition.placement !== 'on';
+}
+
+/**
+ * 检查分组是否包含 ON 条件
+ * 用于阻止将包含 ON 条件的 AND 分组切换为 OR
+ * 
+ * @param group 分组节点
+ * @returns 是否包含 ON 条件
+ */
+export function groupContainsOnConditions(group: FilterGroup): boolean {
+    function traverse(node: FilterNode): boolean {
+        if (node.type === 'condition') {
+            return node.placement === 'on';
+        } else if (node.type === 'group') {
+            return node.children.some(traverse);
+        }
+        return false;
+    }
+    return group.children.some(traverse);
 }

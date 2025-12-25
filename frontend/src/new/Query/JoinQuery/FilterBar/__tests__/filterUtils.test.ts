@@ -20,8 +20,16 @@ import {
     toggleGroupLogic,
     groupNodes,
     cloneFilterTree,
+    // Placement related functions
+    separateConditionsByPlacement,
+    cloneTreeWithoutOnConditions,
+    getConditionsForTable,
+    generateConditionsSQL,
+    getDefaultPlacement,
+    canPlaceInOrGroup,
+    groupContainsOnConditions,
 } from '../filterUtils';
-import type { FilterGroup, FilterCondition } from '../types';
+import type { FilterGroup, FilterCondition, PlacementContext } from '../types';
 
 // ============================================
 // SQL 生成测试
@@ -531,6 +539,202 @@ describe('Tree Operations', () => {
             const innerGroup = newTree.children[0] as FilterGroup;
             expect(innerGroup.logic).toBe('OR');
             expect(innerGroup.children).toHaveLength(2);
+        });
+    });
+});
+
+// ============================================
+// Placement 函数测试
+// ============================================
+
+describe('Placement Functions', () => {
+    describe('separateConditionsByPlacement', () => {
+        it('分离 ON 和 WHERE 条件', () => {
+            const onCond: FilterCondition = { ...createCondition('orders', 'status', '=', 'active'), placement: 'on' };
+            const whereCond: FilterCondition = { ...createCondition('users', 'age', '>', 18), placement: 'where' };
+            const noPlacem: FilterCondition = createCondition('users', 'name', 'LIKE', '%test%'); // 无 placement
+
+            const tree: FilterGroup = {
+                id: 'root',
+                type: 'group',
+                logic: 'AND',
+                children: [onCond, whereCond, noPlacem],
+            };
+
+            const { onConditions, whereConditions } = separateConditionsByPlacement(tree);
+            expect(onConditions).toHaveLength(1);
+            expect(onConditions[0].table).toBe('orders');
+            expect(whereConditions).toHaveLength(2); // whereCond + noPlacem (无 placement 默认 WHERE)
+        });
+
+        it('空树返回空数组', () => {
+            const emptyTree = createEmptyGroup();
+            const { onConditions, whereConditions } = separateConditionsByPlacement(emptyTree);
+            expect(onConditions).toHaveLength(0);
+            expect(whereConditions).toHaveLength(0);
+        });
+    });
+
+    describe('cloneTreeWithoutOnConditions', () => {
+        it('移除 ON 条件', () => {
+            const onCond: FilterCondition = { ...createCondition('orders', 'status', '=', 'active'), placement: 'on' };
+            const whereCond: FilterCondition = { ...createCondition('users', 'age', '>', 18), placement: 'where' };
+
+            const tree: FilterGroup = {
+                id: 'root',
+                type: 'group',
+                logic: 'AND',
+                children: [onCond, whereCond],
+            };
+
+            const cloned = cloneTreeWithoutOnConditions(tree);
+            expect(cloned.children).toHaveLength(1);
+            expect((cloned.children[0] as FilterCondition).table).toBe('users');
+        });
+
+        it('嵌套 group 中的 ON 条件也被移除', () => {
+            const onCond: FilterCondition = { ...createCondition('orders', 'id', '=', 1), placement: 'on' };
+            const whereCond: FilterCondition = { ...createCondition('users', 'name', '=', 'test'), placement: 'where' };
+
+            const innerGroup: FilterGroup = {
+                id: 'inner',
+                type: 'group',
+                logic: 'OR',
+                children: [onCond, whereCond],
+            };
+
+            const tree: FilterGroup = {
+                id: 'root',
+                type: 'group',
+                logic: 'AND',
+                children: [innerGroup],
+            };
+
+            const cloned = cloneTreeWithoutOnConditions(tree);
+            const clonedInner = cloned.children[0] as FilterGroup;
+            expect(clonedInner.children).toHaveLength(1);
+        });
+    });
+
+    describe('getConditionsForTable', () => {
+        it('按表名筛选条件', () => {
+            const cond1 = createCondition('orders', 'id', '=', 1);
+            const cond2 = createCondition('users', 'name', '=', 'test');
+            const cond3 = createCondition('orders', 'status', '=', 'active');
+
+            const result = getConditionsForTable([cond1, cond2, cond3], 'orders');
+            expect(result).toHaveLength(2);
+            expect(result.every(c => c.table === 'orders')).toBe(true);
+        });
+
+        it('未匹配表名返回空数组', () => {
+            const cond = createCondition('users', 'id', '=', 1);
+            const result = getConditionsForTable([cond], 'orders');
+            expect(result).toHaveLength(0);
+        });
+    });
+
+    describe('generateConditionsSQL', () => {
+        it('生成 AND 连接的条件 SQL', () => {
+            const cond1 = createCondition('orders', 'status', '=', 'active');
+            const cond2 = createCondition('orders', 'amount', '>', 100);
+
+            const sql = generateConditionsSQL([cond1, cond2]);
+            expect(sql).toBe('"orders"."status" = \'active\' AND "orders"."amount" > 100');
+        });
+
+        it('空条件返回空字符串', () => {
+            expect(generateConditionsSQL([])).toBe('');
+        });
+
+        it('单条件直接返回', () => {
+            const cond = createCondition('users', 'id', '=', 1);
+            expect(generateConditionsSQL([cond])).toBe('"users"."id" = 1');
+        });
+    });
+
+    describe('getDefaultPlacement', () => {
+        it('无 context 返回 where', () => {
+            expect(getDefaultPlacement()).toBe('where');
+            expect(getDefaultPlacement(undefined)).toBe('where');
+        });
+
+        it('LEFT JOIN 右表返回 on', () => {
+            const context: PlacementContext = { isRightTable: true, joinType: 'LEFT JOIN' };
+            expect(getDefaultPlacement(context)).toBe('on');
+        });
+
+        it('LEFT JOIN 左表返回 where', () => {
+            const context: PlacementContext = { isRightTable: false, joinType: 'LEFT JOIN' };
+            expect(getDefaultPlacement(context)).toBe('where');
+        });
+
+        it('INNER JOIN 右表返回 where', () => {
+            const context: PlacementContext = { isRightTable: true, joinType: 'INNER JOIN' };
+            expect(getDefaultPlacement(context)).toBe('where');
+        });
+
+        it('FULL JOIN 右表返回 on', () => {
+            const context: PlacementContext = { isRightTable: true, joinType: 'FULL JOIN' };
+            expect(getDefaultPlacement(context)).toBe('on');
+        });
+    });
+
+    describe('canPlaceInOrGroup', () => {
+        it('ON 条件不能放入 OR 分组', () => {
+            const cond: FilterCondition = { ...createCondition('orders', 'id', '=', 1), placement: 'on' };
+            expect(canPlaceInOrGroup(cond)).toBe(false);
+        });
+
+        it('WHERE 条件可以放入 OR 分组', () => {
+            const cond: FilterCondition = { ...createCondition('users', 'id', '=', 1), placement: 'where' };
+            expect(canPlaceInOrGroup(cond)).toBe(true);
+        });
+
+        it('无 placement 条件可以放入 OR 分组', () => {
+            const cond = createCondition('users', 'id', '=', 1);
+            expect(canPlaceInOrGroup(cond)).toBe(true);
+        });
+    });
+
+    describe('groupContainsOnConditions', () => {
+        it('包含 ON 条件返回 true', () => {
+            const onCond: FilterCondition = { ...createCondition('orders', 'id', '=', 1), placement: 'on' };
+            const tree: FilterGroup = {
+                id: 'root',
+                type: 'group',
+                logic: 'AND',
+                children: [onCond],
+            };
+            expect(groupContainsOnConditions(tree)).toBe(true);
+        });
+
+        it('不包含 ON 条件返回 false', () => {
+            const whereCond: FilterCondition = { ...createCondition('users', 'id', '=', 1), placement: 'where' };
+            const tree: FilterGroup = {
+                id: 'root',
+                type: 'group',
+                logic: 'AND',
+                children: [whereCond],
+            };
+            expect(groupContainsOnConditions(tree)).toBe(false);
+        });
+
+        it('嵌套 group 中包含 ON 条件返回 true', () => {
+            const onCond: FilterCondition = { ...createCondition('orders', 'id', '=', 1), placement: 'on' };
+            const innerGroup: FilterGroup = {
+                id: 'inner',
+                type: 'group',
+                logic: 'OR',
+                children: [onCond],
+            };
+            const tree: FilterGroup = {
+                id: 'root',
+                type: 'group',
+                logic: 'AND',
+                children: [innerGroup],
+            };
+            expect(groupContainsOnConditions(tree)).toBe(true);
         });
     });
 });

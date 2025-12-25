@@ -269,7 +269,7 @@
       }
     },
     "filter": {
-      "title": "WHERE 条件",
+      "title": "筛选条件",
       "addCondition": "添加条件",
       "editCondition": "编辑条件",
       "deleteCondition": "删除条件",
@@ -338,6 +338,15 @@
         "enterValue": "请输入值",
         "enterValue2": "请输入第二个值",
         "incomplete": "部分过滤条件不完整"
+      },
+      "placement": {
+        "label": "应用位置",
+        "on": "ON 子句",
+        "where": "WHERE 子句",
+        "helpText": "ON 子句条件在 JOIN 时生效，保留无匹配的行（显示为 NULL）。WHERE 子句条件在 JOIN 后生效，会过滤掉不匹配的行。",
+        "onHint": "在 JOIN 时过滤",
+        "whereHint": "在结果中过滤",
+        "recommended": "推荐"
       }
     },
     "validation": {

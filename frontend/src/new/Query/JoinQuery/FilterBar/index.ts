@@ -12,6 +12,8 @@ export type {
     FilterRaw,
     FilterNode,
     FilterValue,
+    FilterPlacement,
+    PlacementContext,
     ColumnInfo,
     ValidationResult,
     ParseResult,
@@ -56,6 +58,15 @@ export {
     addConditionToTree,
     toggleGroupLogic,
     groupNodes,
+    // Placement 相关函数 (ON/WHERE 条件分离)
+    separateConditionsByPlacement,
+    cloneTreeWithoutOnConditions,
+    getConditionsForTable,
+    generateConditionsSQL,
+    getOnConditionsTreeForTable,
+    getDefaultPlacement,
+    canPlaceInOrGroup,
+    groupContainsOnConditions,
 } from './filterUtils';
 
 // UI 组件导出
@@ -79,3 +90,5 @@ export type { FilterBarProps } from './FilterBar';
 
 export { DraggableFilterList } from './DraggableFilterList';
 export type { DraggableFilterListProps } from './DraggableFilterList';
+
+export { PlacementSelector } from './PlacementSelector';

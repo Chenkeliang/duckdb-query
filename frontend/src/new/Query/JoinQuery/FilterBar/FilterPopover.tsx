@@ -24,11 +24,14 @@ import {
     SelectValue,
 } from '@/new/components/ui/select';
 import { TagsInput } from './TagsInput';
+import { PlacementSelector } from './PlacementSelector';
 import type {
     FilterCondition,
     FilterOperator,
     ColumnInfo,
     FilterValue,
+    FilterPlacement,
+    PlacementContext,
 } from './types';
 import {
     OPERATOR_CONFIGS,
@@ -37,6 +40,7 @@ import {
 import {
     createCondition,
     validateValueType,
+    getDefaultPlacement,
 } from './filterUtils';
 
 export interface FilterPopoverProps {
@@ -62,6 +66,8 @@ export interface FilterPopoverProps {
     presetTable?: string;
     /** 预设的列名（从列图标触发时） */
     presetColumn?: string;
+    /** 条件位置上下文（用于智能推荐 ON/WHERE） */
+    placementContext?: PlacementContext;
 }
 
 export const FilterPopover: React.FC<FilterPopoverProps> = ({
@@ -76,6 +82,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
     onOpenChange,
     presetTable,
     presetColumn,
+    placementContext,
 }) => {
     const { t } = useTranslation('common');
 
@@ -105,6 +112,9 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
     );
     const [inputValue2, setInputValue2] = React.useState<string>(
         formatInitialValue(initialValue?.value2)
+    );
+    const [selectedPlacement, setSelectedPlacement] = React.useState<FilterPlacement>(
+        initialValue?.placement || getDefaultPlacement(placementContext)
     );
     const [error, setError] = React.useState<string>('');
 
@@ -140,19 +150,25 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
         setInputValue('');
         setMultiValues([]);
         setInputValue2('');
+        setSelectedPlacement(getDefaultPlacement(placementContext));
         setError('');
     };
+
+    // 用于追踪是否刚从 initialValue 同步（避免竞态条件）
+    const justSyncedFromInitialValue = React.useRef(false);
 
     // 当弹窗打开时，根据初始值重置表单
     React.useEffect(() => {
         if (open) {
             if (mode === 'edit' && initialValue) {
+                justSyncedFromInitialValue.current = true;
                 setSelectedTable(initialValue.table);
                 setSelectedColumn(initialValue.column);
                 setSelectedOperator(initialValue.operator);
                 setInputValue(formatInitialValue(initialValue.value));
                 setMultiValues(Array.isArray(initialValue.value) ? initialValue.value : []);
                 setInputValue2(formatInitialValue(initialValue.value2));
+                setSelectedPlacement(initialValue.placement || 'where');
             } else {
                 resetForm();
             }
@@ -160,9 +176,14 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
         }
     }, [open, mode, initialValue]);
 
-    // 当表变化时，重置列选择
+    // 当表变化时，重置列选择（但编辑模式下刚同步时跳过）
     React.useEffect(() => {
         if (!presetColumn) {
+            // 如果刚从 initialValue 同步，跳过重置
+            if (justSyncedFromInitialValue.current) {
+                justSyncedFromInitialValue.current = false;
+                return;
+            }
             setSelectedColumn('');
         }
     }, [selectedTable, presetColumn]);
@@ -249,7 +270,8 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
             selectedColumn,
             selectedOperator,
             value,
-            value2
+            value2,
+            selectedPlacement
         );
 
         // 编辑模式保留原 ID
@@ -285,8 +307,10 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                 {trigger || defaultTrigger}
             </PopoverTrigger>
             <PopoverContent
-                className="w-80"
+                className="w-80 max-h-[80vh] overflow-y-auto"
                 align="start"
+                sideOffset={5}
+                collisionPadding={16}
                 role="dialog"
                 aria-label={mode === 'add' ? t('filter.addCondition', '添加条件') : t('filter.editCondition', '编辑条件')}
                 aria-modal="true"
@@ -415,6 +439,13 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                             />
                         </div>
                     )}
+
+                    {/* 条件应用位置选择 */}
+                    <PlacementSelector
+                        value={selectedPlacement}
+                        onChange={setSelectedPlacement}
+                        context={placementContext}
+                    />
 
                     {/* 错误提示 */}
                     {error && (

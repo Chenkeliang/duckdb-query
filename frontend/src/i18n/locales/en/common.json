@@ -261,7 +261,7 @@
       }
     },
     "filter": {
-      "title": "WHERE Conditions",
+      "title": "Filter Conditions",
       "addCondition": "Add condition",
       "editCondition": "Edit condition",
       "deleteCondition": "Delete condition",
@@ -330,6 +330,15 @@
         "enterValue": "Please enter a value",
         "enterValue2": "Please enter the second value",
         "incomplete": "Some filter conditions are incomplete"
+      },
+      "placement": {
+        "label": "Apply To",
+        "on": "ON Clause",
+        "where": "WHERE Clause",
+        "helpText": "ON clause conditions apply during JOIN, preserving unmatched rows (as NULL). WHERE clause conditions apply after JOIN, filtering out unmatched rows.",
+        "onHint": "Filter during JOIN",
+        "whereHint": "Filter in results",
+        "recommended": "Recommended"
       }
     },
     "validation": {

@@ -41,6 +41,31 @@ interface FilterNodeBase {
     id: string;
 }
 
+// ============================================
+// 条件应用位置
+// ============================================
+
+/**
+ * 筛选条件应用位置
+ * - 'on': 应用于 JOIN ON 子句（在连接时过滤，保留 NULL 值）
+ * - 'where': 应用于 WHERE 子句（在结果集中过滤）
+ */
+export type FilterPlacement = 'on' | 'where';
+
+/**
+ * 条件位置上下文（用于智能默认）
+ * 
+ * 由 JoinQueryPanel 在构建 FilterPopover props 时注入：
+ * - isRightTable: 根据 selectedTable 与 activeTables[0] 比较
+ * - joinType: 从 joinConfigs 数组中获取
+ */
+export interface PlacementContext {
+    /** 当前表是否为右表（JOIN 的目标表） */
+    isRightTable: boolean;
+    /** JOIN 类型 */
+    joinType: 'INNER JOIN' | 'LEFT JOIN' | 'RIGHT JOIN' | 'FULL JOIN' | 'CROSS JOIN';
+}
+
 /**
  * 单个条件节点（叶子节点）
  */
@@ -56,6 +81,8 @@ export interface FilterCondition extends FilterNodeBase {
     value: FilterValue;
     /** 第二个值（用于 BETWEEN） */
     value2?: FilterValue;
+    /** 条件应用位置，默认 'where' */
+    placement?: FilterPlacement;
 }
 
 /**

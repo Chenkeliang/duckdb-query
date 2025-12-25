@@ -50,6 +50,8 @@ import {
   FilterBar,
   createEmptyGroup,
   generateFilterSQL,
+  cloneTreeWithoutOnConditions,
+  getOnConditionsTreeForTable,
   type FilterGroup,
   type ColumnInfo,
 } from './FilterBar';
@@ -1192,16 +1194,44 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           })
           .join(' AND ');
         parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${onClause}`);
+
+        // 附加用户在 FilterBar 中设置的 ON 条件（placement='on' 的筛选条件）
+        // 使用树结构保留 AND/OR 逻辑
+        const tableOnTree = getOnConditionsTreeForTable(filterTree, rightTableName);
+        if (tableOnTree.children.length > 0) {
+          const additionalOnSQL = generateFilterSQL(tableOnTree);
+          if (additionalOnSQL) {
+            // 更新最后一个 parts 条目，追加 AND 条件
+            parts[parts.length - 1] = parts[parts.length - 1] + ' AND ' + additionalOnSQL;
+            console.log('[JoinQueryPanel] generateSQL appended ON conditions for', rightTableName, ':', additionalOnSQL);
+          }
+        }
       } else {
         // 即使没有有效条件，也生成 JOIN 子句（使用 CROSS JOIN 或带空条件的 JOIN）
         // 这样用户可以看到 JOIN 结构并手动选择条件
-        parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* 请选择关联条件 */`);
+        const tableOnTree = getOnConditionsTreeForTable(filterTree, rightTableName);
+        if (tableOnTree.children.length > 0) {
+          // 有筛选器中的 ON 条件，使用它们作为 ON 子句（保留 AND/OR 逻辑）
+          const additionalOnSQL = generateFilterSQL(tableOnTree);
+          if (additionalOnSQL) {
+            parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${additionalOnSQL}`);
+          } else {
+            parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* 请选择关联条件 */`);
+          }
+        } else {
+          // 没有任何 ON 条件，使用 1=1
+          parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* 请选择关联条件 */`);
+        }
       }
     }
 
     // WHERE - 生成筛选条件
-    console.log('[JoinQueryPanel] generateSQL filterTree:', JSON.stringify(filterTree));
-    const whereClause = generateFilterSQL(filterTree);
+    // onConditions 已在 JOIN 循环前声明，这里直接使用
+
+    // 使用移除了 ON 条件的树生成 WHERE 子句
+    const whereOnlyTree = cloneTreeWithoutOnConditions(filterTree);
+    console.log('[JoinQueryPanel] generateSQL whereOnlyTree:', JSON.stringify(whereOnlyTree));
+    const whereClause = generateFilterSQL(whereOnlyTree);
     console.log('[JoinQueryPanel] generateSQL whereClause:', whereClause);
     if (whereClause && whereClause.trim()) {
       parts.push(`WHERE ${whereClause}`);
