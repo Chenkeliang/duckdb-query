@@ -355,3 +355,95 @@ def get_connection_pool() -> DuckDBConnectionPool:
             max_retries=app_config.pool_max_retries,
         )
     return _connection_pool
+
+
+# ============================================
+# 系统数据库连接管理器 (用于系统表，独立于用户数据)
+# ============================================
+
+class SystemDBConnection:
+    """系统数据库单连接管理器（线程安全）
+    
+    为什么使用单连接而不是连接池？
+    1. 系统表操作频率低，不需要连接池
+    2. 单连接避免多连接竞争导致的写写冲突
+    3. 使用 RLock 保证线程安全
+    """
+    
+    _instance = None
+    _lock = threading.RLock()
+    _connection: Optional[duckdb.DuckDBPyConnection] = None
+    
+    @classmethod
+    def get_instance(cls) -> 'SystemDBConnection':
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls()
+        return cls._instance
+    
+    def _ensure_connection(self) -> duckdb.DuckDBPyConnection:
+        """确保连接可用，如果连接断开则重新创建"""
+        with self._lock:
+            if self._connection is None:
+                paths = config_manager.get_duckdb_paths()
+                db_path = str(paths.system_database_path)
+                logger.info(f"创建系统数据库连接: {db_path}")
+                self._connection = duckdb.connect(database=db_path)
+                # 应用基本配置
+                app_config = config_manager.get_app_config()
+                if app_config.duckdb_memory_limit:
+                    try:
+                        self._connection.execute(f"SET memory_limit='{app_config.duckdb_memory_limit}'")
+                    except Exception:
+                        pass
+            return self._connection
+    
+    @contextmanager
+    def get_connection(self):
+        """获取系统数据库连接（线程安全）"""
+        with self._lock:
+            conn = self._ensure_connection()
+            try:
+                yield conn
+            except Exception as e:
+                logger.error(f"系统数据库操作异常: {e}")
+                # 发生异常时尝试回滚
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
+    
+    def close(self):
+        """关闭连接"""
+        with self._lock:
+            if self._connection:
+                try:
+                    self._connection.close()
+                    logger.info("系统数据库连接已关闭")
+                except Exception as e:
+                    logger.warning(f"关闭系统数据库连接失败: {e}")
+                finally:
+                    self._connection = None
+
+
+def get_system_connection_manager() -> SystemDBConnection:
+    """获取系统数据库连接管理器单例"""
+    return SystemDBConnection.get_instance()
+
+
+@contextmanager
+def with_system_connection():
+    """系统数据库连接上下文管理器
+    
+    用于所有系统表操作:
+    - system_async_tasks
+    - system_task_exports
+    - system_database_connections
+    - system_file_datasources
+    - system_migration_status
+    """
+    manager = get_system_connection_manager()
+    with manager.get_connection() as conn:
+        yield conn

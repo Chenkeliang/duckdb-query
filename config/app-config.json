@@ -49,5 +49,6 @@
   "url_reader_timeout": 30,
   "url_reader_head_timeout": 10,
   "sqlite_timeout": 10,
-  "pool_wait_timeout": 1.0
+  "pool_wait_timeout": 1.0,
+  "federated_query_timeout": 600
 }

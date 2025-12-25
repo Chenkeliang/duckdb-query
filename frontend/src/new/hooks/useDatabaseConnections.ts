@@ -26,6 +26,8 @@ export interface DatabaseConnection {
     schema?: string;
     username?: string;
   };
+  /** 是否需要密码（已加密存储） */
+  requiresPassword?: boolean;
   /** 创建时间 */
   createdAt?: string;
 }
@@ -76,33 +78,51 @@ const stripDbPrefix = (id: string): string => {
 /**
  * 转换 API 响应项为 DatabaseConnection
  */
-const transformApiItem = (item: ApiDataSourceItem): DatabaseConnection => ({
-  id: stripDbPrefix(item.id),
-  name: item.name,
-  type: item.subtype,  // 从 subtype 获取真实数据库类型
-  status: (item.status as DatabaseConnection['status']) || 'inactive',
-  params: {
-    host: item.connection_info?.host,
-    port: item.connection_info?.port,
-    database: item.connection_info?.database,
-    username: item.connection_info?.username,
-    ...item.metadata,
-  },
-  createdAt: item.created_at,
-});
+const transformApiItem = (item: ApiDataSourceItem): DatabaseConnection => {
+  const connectionInfo = item.connection_info || {};
+  const metadata = item.metadata || {};
+
+  // 提取用户名（兼容多种字段）
+  const username =
+    connectionInfo.username ||
+    (connectionInfo as any).user ||
+    (metadata as any).username ||
+    (metadata as any).user;
+
+  // 检查是否已存储加密密码
+  const password = connectionInfo.password;
+  const requiresPassword = password === "***ENCRYPTED***";
+
+  return {
+    id: stripDbPrefix(item.id),
+    name: item.name,
+    type: item.subtype,
+    status: (item.status as DatabaseConnection['status']) || 'inactive',
+    requiresPassword,
+    params: {
+      host: connectionInfo.host,
+      port: connectionInfo.port,
+      database: connectionInfo.database,
+      username: username,
+      schema: (connectionInfo as any).schema || (metadata as any).schema, // PostgreSQL schema
+      ...metadata,
+    },
+    createdAt: item.created_at,
+  };
+};
 
 /**
  * 获取数据库连接列表
  */
 const fetchDatabaseConnections = async (): Promise<DatabaseConnection[]> => {
   const response = await fetch('/api/datasources/databases/list');
-  
+
   if (!response.ok) {
     throw new Error('获取数据库连接列表失败');
   }
-  
+
   const data: DatabaseConnectionsResponse = await response.json();
-  
+
   // 正确读取 data.data.items 并转换
   const items = data.data?.items ?? [];
   return items.map(transformApiItem);

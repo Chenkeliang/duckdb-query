@@ -769,7 +769,8 @@
         "deleteConfirmTitle": "确认删除",
         "deleteConfirmDesc": "确定要删除这个数据库连接吗？",
         "unnamed": "未命名连接",
-        "defaultName": "{{type}} 连接"
+        "defaultName": "{{type}} 连接",
+        "connect": "连接"
       },
       "status": {
         "active": "活跃",

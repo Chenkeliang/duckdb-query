@@ -760,7 +760,8 @@
         "deleteConfirmTitle": "Confirm delete",
         "deleteConfirmDesc": "Are you sure you want to delete this DB connection?",
         "unnamed": "Unnamed connection",
-        "defaultName": "{{type}} connection"
+        "defaultName": "{{type}} connection",
+        "connect": "Connect"
       },
       "status": {
         "active": "Active",

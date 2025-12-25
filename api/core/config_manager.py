@@ -18,6 +18,7 @@ class DuckDBPaths:
     """DuckDB 数据目录集合"""
 
     database_path: Path
+    system_database_path: Path  # 系统表数据库路径（独立于用户数据）
     temp_dir: Path
     extension_dir: Path
     home_dir: Path
@@ -176,6 +177,9 @@ class AppConfig:
 
     pool_wait_timeout: float = 1.0
     """连接池等待超时时间，单位为秒"""
+
+    federated_query_timeout: int = 300
+    """联邦查询前端请求超时时间，单位为秒。默认 300秒 (5分钟)"""
 
     def __post_init__(self):
         if self.cors_origins is None:
@@ -343,8 +347,12 @@ class ConfigManager:
             ]:
                 path.mkdir(parents=True, exist_ok=True)
 
+        # 系统数据库路径（与 main.db 同目录）
+        system_database_path = database_path.parent / "system.db"
+
         return DuckDBPaths(
             database_path=database_path,
+            system_database_path=system_database_path,
             temp_dir=temp_dir,
             extension_dir=extension_dir,
             home_dir=home_dir,
@@ -520,6 +528,12 @@ class ConfigManager:
                     "sqlite_timeout": int(
                         os.getenv(
                             "SQLITE_TIMEOUT", config_data.get("sqlite_timeout", 10)
+                        )
+                    ),
+                    "federated_query_timeout": int(
+                        os.getenv(
+                            "FEDERATED_QUERY_TIMEOUT",
+                            config_data.get("federated_query_timeout", 300),
                         )
                     ),
                 }

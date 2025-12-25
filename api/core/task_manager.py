@@ -15,7 +15,7 @@ from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from core.config_manager import config_manager
-from core.duckdb_engine import with_duckdb_connection
+from core.duckdb_pool import with_system_connection
 from core.timezone_utils import (
     get_storage_time,
     normalize_to_storage_timezone,
@@ -122,7 +122,7 @@ class TaskManager:
 
     def _ensure_tables(self) -> None:
         """确保所需的DuckDB表已创建"""
-        with with_duckdb_connection() as connection:
+        with with_system_connection() as connection:
             self._migrate_legacy_tables(connection)
 
             connection.execute(
@@ -285,7 +285,7 @@ class TaskManager:
         started_at = self._normalize_datetime(started_at)
         completed_at = self._normalize_datetime(completed_at)
 
-        with with_duckdb_connection() as connection:
+        with with_system_connection() as connection:
             connection.execute(
                 f'DELETE FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?', [task_id]
             )
@@ -387,14 +387,14 @@ class TaskManager:
         """标记任务为运行中"""
         def _do_start() -> bool:
             with self._lock:
-                with with_duckdb_connection() as conn:
+                with with_system_connection() as conn:
                     # 先查询当前状态用于调试
                     current_row = conn.execute(
                         f'SELECT status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                         [task_id],
                     ).fetchone()
                     current_status = current_row[0] if current_row else "NOT_FOUND"
-                    logger.info("[TASK_DEBUG] start_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
+                    logger.debug("[TASK_DEBUG] start_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
                     
                     started_at = get_storage_time()
                     rows = conn.execute(
@@ -419,7 +419,7 @@ class TaskManager:
                         [task_id],
                     ).fetchone()
                     after_status = after_row[0] if after_row else "NOT_FOUND"
-                    logger.info("[TASK_DEBUG] start_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d", 
+                    logger.debug("[TASK_DEBUG] start_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d", 
                                task_id, after_status, len(rows))
                     return bool(rows)
 
@@ -438,7 +438,7 @@ class TaskManager:
         """标记任务为成功"""
         def _do_complete() -> bool:
             with self._lock:
-                with with_duckdb_connection() as conn:
+                with with_system_connection() as conn:
                     completed_at = get_storage_time()
                     started_row = conn.execute(
                         f'SELECT started_at, status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
@@ -449,7 +449,7 @@ class TaskManager:
                         return False
 
                     current_status = started_row[1] if len(started_row) > 1 else None
-                    logger.info("[TASK_DEBUG] complete_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
+                    logger.debug("[TASK_DEBUG] complete_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
                     
                     # 如果任务已被取消，不再更新为成功
                     if current_status in (TaskStatus.FAILED.value, TaskStatus.CANCELLING.value):
@@ -498,7 +498,7 @@ class TaskManager:
                     
                     success = bool(rows)
                     if success:
-                        logger.info("[TASK_DEBUG] complete_task 成功: task_id=%s, 更新后状态=%s", task_id, after_status)
+                        logger.debug("[TASK_DEBUG] complete_task 成功: task_id=%s, 更新后状态=%s", task_id, after_status)
                     else:
                         logger.warning("[TASK_DEBUG] complete_task 失败: task_id=%s, 当前状态=%s (期望 running), 更新后状态=%s, 影响行数=%d", 
                                       task_id, current_status, after_status, len(rows))
@@ -515,7 +515,7 @@ class TaskManager:
         """标记任务为失败"""
         def _do_fail() -> bool:
             with self._lock:
-                with with_duckdb_connection() as conn:
+                with with_system_connection() as conn:
                     completed_at = get_storage_time()
                     started_row = conn.execute(
                         f'SELECT started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
@@ -564,14 +564,14 @@ class TaskManager:
         def _do_force_fail():
             with self._lock:
                 completed_at = get_storage_time()
-                with with_duckdb_connection() as connection:
+                with with_system_connection() as connection:
                     # 先查询当前状态用于调试
                     current_row = connection.execute(
                         f'SELECT status, started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                         [task_id],
                     ).fetchone()
                     current_status = current_row[0] if current_row else "NOT_FOUND"
-                    logger.info("[TASK_DEBUG] force_fail_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
+                    logger.debug("[TASK_DEBUG] force_fail_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
                     
                     started_row = current_row
                     execution_time = None
@@ -602,7 +602,7 @@ class TaskManager:
                         [task_id],
                     ).fetchone()
                     after_status = after_row[0] if after_row else "NOT_FOUND"
-                    logger.info("[TASK_DEBUG] force_fail_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d", 
+                    logger.debug("[TASK_DEBUG] force_fail_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d", 
                                task_id, after_status, len(rows))
 
                 return bool(rows)
@@ -645,7 +645,7 @@ class TaskManager:
         请求取消任务（设置取消标志，不直接更新最终状态）
         使用取消信号模式，避免与后台任务产生写-写冲突
         """
-        with with_duckdb_connection() as connection:
+        with with_system_connection() as connection:
             rows = connection.execute(
                 f"""
                 UPDATE {ASYNC_TASKS_TABLE}
@@ -678,7 +678,7 @@ class TaskManager:
 
     def is_cancellation_requested(self, task_id: str) -> bool:
         """检查任务是否被请求取消"""
-        with with_duckdb_connection() as connection:
+        with with_system_connection() as connection:
             row = connection.execute(
                 f"SELECT status FROM {ASYNC_TASKS_TABLE} WHERE task_id = ?",
                 [task_id],
@@ -687,7 +687,7 @@ class TaskManager:
 
     def get_task(self, task_id: str) -> Optional[AsyncTask]:
         """获取任务信息"""
-        with with_duckdb_connection() as connection:
+        with with_system_connection() as connection:
             row = connection.execute(
                 f"""
                 SELECT task_id, status, query, task_type, datasource,
@@ -721,7 +721,7 @@ class TaskManager:
         if order_by not in allowed_order_by:
             order_by = "created_at"
         
-        with with_duckdb_connection() as connection:
+        with with_system_connection() as connection:
             rows = connection.execute(
                 f"""
                 SELECT task_id, status, query, task_type, datasource,
@@ -745,7 +745,7 @@ class TaskManager:
 
     def get_pending_tasks(self) -> List[str]:
         """获取排队中的任务ID"""
-        with with_duckdb_connection() as connection:
+        with with_system_connection() as connection:
             rows = connection.execute(
                 f"SELECT task_id FROM {ASYNC_TASKS_TABLE} WHERE status = ?",
                 [TaskStatus.QUEUED.value],
@@ -757,7 +757,7 @@ class TaskManager:
         if not updates:
             return False
 
-        with self._lock, with_duckdb_connection() as connection:
+        with self._lock, with_system_connection() as connection:
             metadata_row = connection.execute(
                 f'SELECT metadata FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                 [task_id],
@@ -815,7 +815,7 @@ class TaskManager:
         """记录导出文件信息"""
         export_id = str(uuid.uuid4())
         created_at = get_storage_time()
-        with with_duckdb_connection() as connection:
+        with with_system_connection() as connection:
             connection.execute(
                 f"""
                 INSERT INTO {TASK_EXPORTS_TABLE} (
@@ -845,7 +845,7 @@ class TaskManager:
         exports_dir = Path(config_manager.get_exports_dir())
         removed = 0
 
-        with with_duckdb_connection() as connection:
+        with with_system_connection() as connection:
             rows = connection.execute(
                 f"""
                 SELECT export_id, file_path FROM {TASK_EXPORTS_TABLE}
@@ -877,6 +877,40 @@ class TaskManager:
             )
 
         return removed
+
+    def cleanup_stuck_cancelling_tasks(self) -> int:
+        """清理卡住的取消中任务
+        
+        将长时间处于 cancelling 状态的任务标记为 failed
+        通常用于迁移后或服务重启后清理历史遗留任务
+        """
+        with with_system_connection() as connection:
+            completed_at = get_storage_time()
+            
+            # 查找所有 cancelling 状态的任务
+            rows = connection.execute(
+                f"SELECT task_id FROM {ASYNC_TASKS_TABLE} WHERE status = ?",
+                [TaskStatus.CANCELLING.value],
+            ).fetchall()
+            
+            if not rows:
+                logger.info("没有找到卡住的取消中任务")
+                return 0
+            
+            # 将它们全部更新为 failed
+            for (task_id,) in rows:
+                connection.execute(
+                    f"""
+                    UPDATE {ASYNC_TASKS_TABLE}
+                    SET status = ?, error_message = ?, completed_at = ?
+                    WHERE task_id = ?
+                    """,
+                    [TaskStatus.FAILED.value, "任务被取消（历史任务清理）", completed_at, task_id],
+                )
+                logger.info(f"已清理卡住的取消中任务: {task_id}")
+            
+            logger.info(f"清理完成: {len(rows)} 个任务已标记为失败")
+            return len(rows)
 
 
 # 全局任务管理器实例

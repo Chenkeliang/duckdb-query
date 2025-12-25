@@ -790,6 +790,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   }, [tableColumnsMapKey]);
 
   // 构建可用列信息（用于 FilterBar）
+  // 使用 tableColumnsMapKey 作为依赖以确保列加载后重新计算
   const availableColumns = React.useMemo((): ColumnInfo[] => {
     const columns: ColumnInfo[] = [];
     Object.entries(tableColumnsMap).forEach(([tableName, cols]) => {
@@ -801,8 +802,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         });
       });
     });
+    // DEBUG: 打印可用列信息
+    console.log('[JoinQueryPanel] availableColumns:', columns.length, 'columns from', Object.keys(tableColumnsMap).length, 'tables');
+    console.log('[JoinQueryPanel] tableColumnsMap:', tableColumnsMap);
     return columns;
-  }, [tableColumnsMap]);
+  }, [tableColumnsMap, tableColumnsMapKey]);
 
   // 计算活动表名的稳定 key
   const activeTableNamesKey = activeTables
@@ -1196,7 +1200,9 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     }
 
     // WHERE - 生成筛选条件
+    console.log('[JoinQueryPanel] generateSQL filterTree:', JSON.stringify(filterTree));
     const whereClause = generateFilterSQL(filterTree);
+    console.log('[JoinQueryPanel] generateSQL whereClause:', whereClause);
     if (whereClause && whereClause.trim()) {
       parts.push(`WHERE ${whereClause}`);
     }

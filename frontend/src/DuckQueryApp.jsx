@@ -1,6 +1,8 @@
 import React, { Suspense, lazy, useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import useDuckQuery from "./hooks/useDuckQuery";
+// 新 Hook 系统 - 用于渐进式迁移
+import { useAppShell } from "./new/hooks/useAppShell";
+import useAppConfig from "./new/hooks/useAppConfig";
 import {
   Database,
   Server,
@@ -83,7 +85,12 @@ const tabTitles = {
 };
 
 const DuckQueryAppInner = () => {
-  const { state, actions } = useDuckQuery();
+  // 使用新 Hook 系统替代旧的 useDuckQuery
+  const { state, actions } = useAppShell();
+
+  // 初始化全局配置（如超时时间）
+  useAppConfig();
+
   const { t, i18n } = useTranslation("common");
   const locale = i18n.language || "zh";
   const [isMobile, setIsMobile] = useState(false);
@@ -91,7 +98,6 @@ const DuckQueryAppInner = () => {
   const [queryWorkbenchTab, setQueryWorkbenchTab] = useState("query");
   const [savingDb, setSavingDb] = useState(false);
   const [selectedConfig, setSelectedConfig] = useState(null);
-  const [refreshConfigs, setRefreshConfigs] = useState(0);
   const [testingDb, setTestingDb] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -232,9 +238,7 @@ const DuckQueryAppInner = () => {
   const renderContent = () => {
     if (currentTab === "datasource") {
       const uploadPanel = (
-        <UploadPanel
-          onDataSourceSaved={triggerRefresh}
-        />
+        <UploadPanel />
       );
 
       const handleTestConnection = async params => {
@@ -282,7 +286,6 @@ const DuckQueryAppInner = () => {
             toast.success(
               response?.message || t("page.datasource.manage.saveSuccess")
             );
-            setRefreshConfigs(prev => prev + 1);
           } else {
             toast.error(
               response?.message || t("page.datasource.list.errorUnknown")
@@ -303,7 +306,6 @@ const DuckQueryAppInner = () => {
             toast.success(
               response?.message || t("page.datasource.manage.saveSuccess")
             );
-            setRefreshConfigs(prev => prev + 1);
           } else {
             toast.error(
               response?.message || t("page.datasource.list.errorUnknown")
@@ -330,14 +332,11 @@ const DuckQueryAppInner = () => {
       const savedConnectionsPanel = (
         <SavedConnectionsList
           onSelect={config => setSelectedConfig(config)}
-          onRefresh={refreshConfigs}
         />
       );
 
       const pastePanel = (
-        <DataPasteCard
-          onDataSourceSaved={triggerRefresh}
-        />
+        <DataPasteCard />
       );
 
       return (

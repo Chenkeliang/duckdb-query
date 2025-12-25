@@ -29,6 +29,7 @@ import { executeDuckDBSQL } from '@/services/apiClient';
 import type { SelectedTableObject } from '@/new/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/new/hooks/useDuckDBTables';
 import { invalidateDataSources } from '@/new/hooks/useDataSources';
+import { invalidateAfterTableDelete } from '@/new/utils/cacheInvalidation';
 
 /**
  * TableContextMenu 组件
@@ -148,6 +149,9 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         const { deleteDuckDBTableEnhanced } = await import('@/services/apiClient');
         await deleteDuckDBTableEnhanced(table.name);
         toast.success(t('dataSource.tableDeleted', { tableName: table.name }));
+
+        // 刷新缓存
+        await invalidateAfterTableDelete(queryClient);
       }
       setShowDeleteConfirm(false);
     } catch (error) {

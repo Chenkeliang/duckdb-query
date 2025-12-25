@@ -36,4 +36,5 @@ async def get_app_features():
         "max_query_rows": int(getattr(app_config, "max_query_rows", 10000)),
         "max_file_size": max_file_size,
         "max_file_size_display": format_file_size(max_file_size),
+        "federated_query_timeout": int(getattr(app_config, "federated_query_timeout", 300)),
     }

@@ -37,6 +37,7 @@ import {
 } from '@/new/components/ui/tooltip';
 import { listAsyncTasks, cancelAsyncTask, retryAsyncTask } from '@/services/apiClient';
 import { invalidateAllDataCaches } from '@/new/utils/cacheInvalidation';
+import { useAppConfig } from '@/new/hooks/useAppConfig';
 import { cn } from '@/lib/utils';
 import { DownloadResultDialog } from './DownloadResultDialog';
 
@@ -135,6 +136,7 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
 }) => {
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
+  const { maxQueryRows } = useAppConfig();
 
   // 下载对话框状态
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
@@ -209,7 +211,7 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
   const handlePreview = useCallback((task: AsyncTask) => {
     if (!onPreviewSQL) return;
     const table = task.result_info?.table_name || task.result_table || `async_result_${task.task_id}`;
-    const sql = `SELECT * FROM ${quoteDuckDBTable(table)} LIMIT 10000`;
+    const sql = `SELECT * FROM ${quoteDuckDBTable(table)} LIMIT ${maxQueryRows}`;
     onPreviewSQL(sql);
   }, [onPreviewSQL]);
 

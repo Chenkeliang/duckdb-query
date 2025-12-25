@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
-  listDatabaseConnections,
   deleteDatabaseConnection
 } from "../../services/apiClient";
+import { useQueryClient } from "@tanstack/react-query";
 import { Database, Trash2, Play, RefreshCw, Loader2 } from "lucide-react";
+import { useDatabaseConnections, type DatabaseConnection } from "../hooks/useDatabaseConnections";
+import { invalidateAfterDatabaseChange } from "../utils/cacheInvalidation";
 import { Card, CardContent } from "@/new/components/ui/card";
 import { Button } from "@/new/components/ui/button";
 import { Badge } from "@/new/components/ui/badge";
@@ -18,40 +20,27 @@ import {
   DialogTitle,
 } from "@/new/components/ui/dialog";
 
-const SavedConnectionsList = ({ onSelect, onRefresh }) => {
+interface SavedConnectionsListProps {
+  onSelect: (config: DatabaseConnection) => void;
+}
+
+const SavedConnectionsList = ({ onSelect }: SavedConnectionsListProps) => {
   const { t } = useTranslation("common");
-  const [configs, setConfigs] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  const { connections: configs, isLoading: loading, refresh } = useDatabaseConnections();
+
+  // const [configs, setConfigs] = useState([]); // Removed
+  // const [loading, setLoading] = useState(false); // Removed
+  // const [error, setError] = useState(""); // Error handled by hook theoretically, or ignored as per original code structure
+
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [configToDelete, setConfigToDelete] = useState(null);
+  const [configToDelete, setConfigToDelete] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const loadConfigs = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const response = await listDatabaseConnections();
-      if (response?.success && Array.isArray(response.connections)) {
-        setConfigs(response.connections);
-      } else {
-        setConfigs([]);
-      }
-    } catch (err) {
-      console.error("Error in loadConfigs:", err);
-      const errorMsg = t("page.datasource.manage.fetchFail");
-      setError(errorMsg);
-      toast.error(errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // loadConfigs removed
+  // useEffect removed
 
-  useEffect(() => {
-    loadConfigs();
-  }, [onRefresh]);
-
-  const handleDeleteClick = (config) => {
+  const handleDeleteClick = (config: DatabaseConnection) => {
     setConfigToDelete(config);
     setDeleteDialogOpen(true);
   };
@@ -64,12 +53,15 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
       // 使用新的统一 API 删除数据库连接
       await deleteDatabaseConnection(configToDelete.id);
 
+      // 立即失效缓存，触发列表更新
+      await invalidateAfterDatabaseChange(queryClient);
+
       const successMsg = t("page.datasource.list.deleteSuccess", { name: configToDelete.name || configToDelete.id });
       toast.success(successMsg);
-      loadConfigs();
+      // loadConfigs(); // Removed
       setDeleteDialogOpen(false);
       setConfigToDelete(null);
-    } catch (err) {
+    } catch (err: any) {
       const errorMsg = t("page.datasource.list.deleteFail", { message: err.message });
       toast.error(errorMsg);
     } finally {
@@ -97,14 +89,14 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={loadConfigs}
+              onClick={() => refresh()}
               title={t("actions.refresh")}
             >
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {configs.map(config => (
               <Card
                 key={`${config.type}-${config.id}`}
@@ -150,10 +142,10 @@ const SavedConnectionsList = ({ onSelect, onRefresh }) => {
                     variant="outline"
                     size="sm"
                     onClick={() => onSelect(config)}
-                    className="w-full"
+                    className="w-full truncate"
                   >
                     <Play className="h-3.5 w-3.5 mr-2" />
-                    {t("page.datasource.connection.connect")}
+                    {t("page.datasource.list.connect")}
                   </Button>
                 </CardContent>
               </Card>

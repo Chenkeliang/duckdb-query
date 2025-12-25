@@ -9,7 +9,7 @@
 查询 DuckDB 表列表。
 
 ```tsx
-import { useDuckDBTables } from '@/hooks/useDuckDBTables';
+import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
 
 function MyComponent() {
   const { tables, isLoading, isFetching, refresh } = useDuckDBTables();
@@ -40,7 +40,7 @@ function MyComponent() {
 查询所有数据源（包括数据库连接和文件数据源）。
 
 ```tsx
-import { useDataSources } from '@/hooks/useDataSources';
+import { useDataSources } from '@/new/hooks/useDataSources';
 
 function DataSourceList() {
   const { dataSources, total, isLoading, refresh } = useDataSources({
@@ -64,7 +64,7 @@ function DataSourceList() {
 查询数据库连接列表。
 
 ```tsx
-import { useDatabaseConnections } from '@/hooks/useDataSources';
+import { useDatabaseConnections } from '@/new/hooks/useDataSources';
 
 function ConnectionList() {
   const { connections, isLoading, refresh } = useDatabaseConnections();
@@ -89,7 +89,7 @@ function ConnectionList() {
 
 ```tsx
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateAllDataCaches } from '@/utils/cacheInvalidation';
+import { invalidateAllDataCaches } from '@/new/utils/cacheInvalidation';
 
 function AsyncTaskList() {
   const queryClient = useQueryClient();
@@ -107,7 +107,7 @@ function AsyncTaskList() {
 
 ```tsx
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateAfterFileUpload } from '@/utils/cacheInvalidation';
+import { invalidateAfterFileUpload } from '@/new/utils/cacheInvalidation';
 
 function FileUpload() {
   const queryClient = useQueryClient();
@@ -125,7 +125,7 @@ function FileUpload() {
 
 ```tsx
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateAfterDatabaseChange } from '@/utils/cacheInvalidation';
+import { invalidateAfterDatabaseChange } from '@/new/utils/cacheInvalidation';
 
 function DatabaseForm() {
   const queryClient = useQueryClient();
@@ -143,7 +143,7 @@ function DatabaseForm() {
 
 ```tsx
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateAfterTableDelete } from '@/utils/cacheInvalidation';
+import { invalidateAfterTableDelete } from '@/new/utils/cacheInvalidation';
 
 function TableList() {
   const queryClient = useQueryClient();

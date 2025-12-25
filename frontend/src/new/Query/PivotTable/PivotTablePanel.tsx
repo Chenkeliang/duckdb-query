@@ -15,6 +15,7 @@ import {
 import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
 import { useDataSources } from '@/new/hooks/useDataSources';
 import { useTableColumns } from '@/new/hooks/useTableColumns';
+import { useAppConfig } from '@/new/hooks/useAppConfig';
 import type { SelectedTable, SelectedTableObject } from '@/new/types/SelectedTable';
 import {
   normalizeSelectedTable,
@@ -66,6 +67,7 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
   const { t } = useTranslation('common');
   const { tables: duckdbTables } = useDuckDBTables();
   const { dataSources } = useDataSources();
+  const { maxQueryRows } = useAppConfig();
   const [isExecuting, setIsExecuting] = React.useState(false);
 
   // 数据源表（支持新旧格式）
@@ -209,13 +211,13 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
 
     return result;
   }, [duckdbTables, dataSources, getTableOptionValue, selectedTables]);
-  
+
   // 行字段（GROUP BY）
   const [rowFields, setRowFields] = React.useState<string[]>([]);
-  
+
   // 列字段（PIVOT）
   const [columnField, setColumnField] = React.useState<string>('');
-  
+
   // 值字段
   const [valueFields, setValueFields] = React.useState<ValueField[]>([]);
 
@@ -231,12 +233,12 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
     queryKey: ['pivot-distinct-values', tableName, columnField, isExternal ? tableSource?.connectionId : 'duckdb'],
     queryFn: async () => {
       if (!columnField || !tableName) return { values: [], hasMore: false };
-      
+
       // TODO: 对于外部表，需要调用不同的 API
       if (isExternal) {
         return { values: [], hasMore: false };
       }
-      
+
       // 查询 distinct 值（限制数量 + 1 来检测是否超过阈值）
       const { executeDuckDBSQL } = await import('@/services/apiClient');
       const normalized = normalizeSelectedTable(sourceTable!);
@@ -244,14 +246,14 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
         { name: normalized.name, schema: normalized.schema },
         'duckdb'
       );
-      
+
       const quotedColumn = quoteIdent(columnField, 'duckdb');
       const sql = `SELECT DISTINCT ${quotedColumn} FROM ${fullTableName} ORDER BY ${quotedColumn} LIMIT ${MAX_PIVOT_VALUES + 1}`;
       const result = await executeDuckDBSQL(sql);
-      
+
       const values = (result?.data || []).map((row: any) => row[columnField]);
       const hasMore = values.length > MAX_PIVOT_VALUES;
-      
+
       return {
         values: hasMore ? values.slice(0, MAX_PIVOT_VALUES) : values,
         hasMore,
@@ -354,7 +356,7 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
               pivotValue === null
                 ? `${pivotColumn} IS NULL`
                 : `${pivotColumn} = '${String(pivotValue).replace(/'/g, "''")}'`;
-            
+
             const alias = `${vf.aggFunction}_${vf.column}_${safeAlias}`;
             selectParts.push(
               `${vf.aggFunction}(CASE WHEN ${condition} THEN ${valueColumn} END) AS ${quoteIdent(alias, dialect)}`
@@ -378,7 +380,7 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
     parts.push(`FROM ${getFullTableName()}`);
     parts.push(`GROUP BY ${rowFields.map((f) => quoteIdent(f, dialect)).join(', ')}`);
     parts.push(`ORDER BY ${rowFields.map((f) => quoteIdent(f, dialect)).join(', ')}`);
-    parts.push('LIMIT 1000');
+    parts.push(`LIMIT ${maxQueryRows}`);
 
     return parts.join('\n');
   };
@@ -435,8 +437,8 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
           {/* 数据源选择 */}
           <div className="bg-muted/30 border border-border rounded-xl p-6">
             <h3 className="text-base font-semibold mb-4">{t('query.pivot.dataSource', '数据源')}</h3>
-            <Select 
-              value={sourceTable ? getTableOptionValue(sourceTable) : ''} 
+            <Select
+              value={sourceTable ? getTableOptionValue(sourceTable) : ''}
               onValueChange={handleTableChange}
             >
               <SelectTrigger className="w-full max-w-md">

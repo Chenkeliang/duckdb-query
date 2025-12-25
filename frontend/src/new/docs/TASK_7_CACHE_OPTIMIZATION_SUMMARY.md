@@ -74,7 +74,7 @@ const { connections, isLoading, refresh } = useDatabaseConnections();
 **使用示例**:
 ```tsx
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateAfterFileUpload } from '@/utils/cacheInvalidation';
+import { invalidateAfterFileUpload } from '@/new/utils/cacheInvalidation';
 
 const queryClient = useQueryClient();
 

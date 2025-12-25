@@ -8,6 +8,15 @@ const baseURL = (apiUrl === '' || apiUrl.includes('localhost:8000') || apiUrl.in
   ? '' // 使用相对路径，通过nginx代理
   : apiUrl;
 
+
+
+// 联邦查询默认超时时间（5分钟），可通过环境变量配置，也可通过API动态更新
+let federatedQueryTimeout = Number(import.meta.env.VITE_FEDERATED_QUERY_TIMEOUT) || 300000;
+
+export const setFederatedQueryTimeout = (ms) => {
+  federatedQueryTimeout = ms;
+};
+
 const apiClient = axios.create({
   baseURL,
   headers: {
@@ -757,7 +766,7 @@ export const executeFederatedQuery = async (options) => {
     attachDatabases,
     isPreview = true,
     saveAsTable = null,
-    timeout = 30000
+    timeout = federatedQueryTimeout
   } = options;
 
   try {

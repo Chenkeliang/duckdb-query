@@ -15,7 +15,7 @@ from models.datasource_models import (
     DataSourceFilter,
 )
 from core.database_manager import db_manager  # 使用全局实例
-from core.duckdb_pool import DuckDBConnectionPool
+from core.duckdb_pool import get_connection_pool
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class DataSourceAggregator:
 
     def __init__(self):
         self.db_manager = db_manager  # 使用全局实例而不是创建新实例
-        self.duckdb_pool = DuckDBConnectionPool()
+        self.duckdb_pool = get_connection_pool()
 
     async def list_all_datasources(
         self, filters: Optional[DataSourceFilter] = None
@@ -170,9 +170,7 @@ class DataSourceAggregator:
 
         try:
             # 获取 DuckDB 连接
-            conn = self.duckdb_pool.get_connection()
-
-            try:
+            with self.duckdb_pool.get_connection() as conn:
                 # 查询所有表
                 tables_query = """
                     SELECT 
@@ -219,9 +217,6 @@ class DataSourceAggregator:
                         size_bytes=size_bytes,
                     )
                     sources.append(source)
-
-            finally:
-                self.duckdb_pool.return_connection(conn)
 
             return sources
 
@@ -275,9 +270,7 @@ class DataSourceAggregator:
             # 移除 table_ 或 file_ 前缀
             table_name = id.replace("table_", "").replace("file_", "")
 
-            conn = self.duckdb_pool.get_connection()
-
-            try:
+            with self.duckdb_pool.get_connection() as conn:
                 # 检查表是否存在
                 check_query = f"""
                     SELECT 
@@ -320,9 +313,6 @@ class DataSourceAggregator:
                     size_bytes=size_bytes,
                 )
 
-            finally:
-                self.duckdb_pool.return_connection(conn)
-
         except Exception as e:
             logger.error(f"获取文件数据源 {id} 失败: {e}")
             return None
@@ -346,16 +336,11 @@ class DataSourceAggregator:
             # 移除 table_ 或 file_ 前缀
             table_name = id.replace("table_", "").replace("file_", "")
 
-            conn = self.duckdb_pool.get_connection()
-
-            try:
+            with self.duckdb_pool.get_connection() as conn:
                 # 删除表
                 conn.execute(f"DROP TABLE IF EXISTS {table_name}")
                 logger.info(f"成功删除 DuckDB 表: {table_name}")
                 return True
-
-            finally:
-                self.duckdb_pool.return_connection(conn)
 
         except Exception as e:
             logger.error(f"删除文件数据源 {id} 失败: {e}")

@@ -80,7 +80,7 @@ export const useDuckDBTables = () => {
  * @example
  * ```tsx
  * import { useQueryClient } from '@tanstack/react-query';
- * import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
+ * import { invalidateDuckDBTables } from '@/new/hooks/useDuckDBTables';
  * 
  * const queryClient = useQueryClient();
  * await uploadFile(file);

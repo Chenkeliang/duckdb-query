@@ -525,16 +525,17 @@ export function validateValueType(value: FilterValue, columnType: string): Valid
             return { valid: false, error: 'filter.error.invalidNumber', details: strValue };
         }
     }
-    // 日期类型
-    else if (type.includes('DATE') && !type.includes('TIMESTAMP')) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(strValue)) {
-            return { valid: false, error: 'filter.error.invalidDate', details: strValue };
-        }
-    }
-    // 时间戳类型
-    else if (type.includes('TIMESTAMP')) {
+    // 日期时间类型 (DATETIME, TIMESTAMP) - 需要放在 DATE 检查之前
+    else if (type.includes('DATETIME') || type.includes('TIMESTAMP')) {
         if (isNaN(Date.parse(strValue))) {
             return { valid: false, error: 'filter.error.invalidTimestamp', details: strValue };
+        }
+    }
+    // 日期类型 (纯 DATE，不包含时间)
+    else if (type.includes('DATE')) {
+        // 接受纯日期格式或日期时间格式
+        if (!/^\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}(:\d{2})?)?$/.test(strValue) && isNaN(Date.parse(strValue))) {
+            return { valid: false, error: 'filter.error.invalidDate', details: strValue };
         }
     }
     // 布尔类型

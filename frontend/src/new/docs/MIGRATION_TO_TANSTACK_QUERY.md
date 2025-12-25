@@ -2,6 +2,9 @@
 
 本文档指导如何将现有的数据获取代码迁移到 TanStack Query。
 
+> [!NOTE]
+> **Status Update**: The migration of `useDuckQuery` has been formally completed (Dec 2024). This document now serves as a reference for patterns and effective practices.
+
 ## 📋 目录
 
 - [为什么要迁移](#为什么要迁移)
@@ -122,7 +125,7 @@ useEffect(() => {
 
 ```tsx
 // ✅ 新方式
-import { useDuckDBTables } from '@/hooks/useDuckDBTables';
+import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
 
 const { tables, isLoading } = useDuckDBTables();
 ```
@@ -148,7 +151,7 @@ useEffect(() => {
 
 ```tsx
 // ✅ 新方式
-import { useDatabaseConnections } from '@/hooks/useDataSources';
+import { useDatabaseConnections } from '@/new/hooks/useDataSources';
 
 const { connections, isLoading } = useDatabaseConnections();
 ```
@@ -229,7 +232,7 @@ const handleUpload = async (file) => {
 ```tsx
 // ✅ 新方式
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateAfterFileUpload } from '@/utils/cacheInvalidation';
+import { invalidateAfterFileUpload } from '@/new/utils/cacheInvalidation';
 
 const queryClient = useQueryClient();
 const { tables } = useDuckDBTables();
@@ -292,7 +295,7 @@ const handleUpload = async (file) => {
 ```tsx
 // ✅ 新方式
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateAfterFileUpload } from '@/utils/cacheInvalidation';
+import { invalidateAfterFileUpload } from '@/new/utils/cacheInvalidation';
 
 const queryClient = useQueryClient();
 
@@ -453,7 +456,7 @@ A: 创建一个 queryClient 实例并传递：
 
 ```tsx
 import { QueryClient } from '@tanstack/react-query';
-import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
+import { invalidateDuckDBTables } from '@/new/hooks/useDuckDBTables';
 
 const queryClient = new QueryClient();
 

@@ -25,37 +25,8 @@ from core.file_datasource_manager import (
 from core.config_manager import config_manager
 from core.timezone_utils import get_current_time_iso, get_current_time
 
-# 配置详细的文件日志用于调试
+# 配置日志
 logger = logging.getLogger(__name__)
-# 移除可能存在的旧handler避免重复
-for handler in logger.handlers[:]:
-    if isinstance(handler, logging.FileHandler):
-        logger.removeHandler(handler)
-
-try:
-    # 确保 logs 目录存在
-    log_dir = os.path.join(os.getcwd(), 'logs')
-    os.makedirs(log_dir, exist_ok=True)
-    
-    file_handler = logging.FileHandler(os.path.join(log_dir, 'async_debug.log'), encoding='utf-8')
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    logger.setLevel(logging.DEBUG)  # 设置为 DEBUG 级别
-    
-    # 同时为 task_manager 添加相同的文件处理器，以便 [TASK_DEBUG] 日志也输出到此文件
-    task_manager_logger = logging.getLogger('core.task_manager')
-    task_manager_logger.addHandler(file_handler)
-    task_manager_logger.setLevel(logging.DEBUG)
-    
-    # 为 duckdb_pool 也添加，以便跟踪连接池状态
-    pool_logger = logging.getLogger('core.duckdb_pool')
-    pool_logger.addHandler(file_handler)
-    pool_logger.setLevel(logging.DEBUG)
-    
-    logger.info("异步任务调试日志已启用 (包含 task_manager 和 duckdb_pool)")
-except Exception as e:
-    print(f"无法设置文件日志: {e}")
 from core.task_utils import TaskUtils
 from models.query_models import DatabaseConnection, DataSourceType, AttachDatabase
 from core.validators import validate_pagination
@@ -676,6 +647,20 @@ async def retry_async_task(
         raise HTTPException(status_code=500, detail=f"重试任务失败: {str(e)}")
 
 
+@router.post("/api/async-tasks/cleanup-stuck", tags=["Async Tasks"])
+async def cleanup_stuck_tasks():
+    """
+    清理卡住的取消中任务
+    将所有 cancelling 状态的任务标记为 failed
+    """
+    try:
+        count = task_manager.cleanup_stuck_cancelling_tasks()
+        return {"success": True, "cleaned_count": count}
+    except Exception as e:
+        logger.error(f"清理卡住任务失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}")
+
+
 @router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
 async def generate_and_download_file(task_id: str, request: dict = Body(...)):
     """
@@ -745,13 +730,9 @@ def execute_async_query(
     query_success = False
     start_time = time.time()
     
-    logger.info(f"[ASYNC_DEBUG] 异步任务开始: task_id={task_id}")
-    
     try:
         # 第一步：标记任务为运行中（独立事务）
-        logger.info(f"[ASYNC_DEBUG] [{task_id}] 步骤1: 调用 start_task")
         if not task_manager.start_task(task_id):
-            logger.error(f"[ASYNC_DEBUG] [{task_id}] start_task 返回 False，退出")
             logger.error(f"无法启动任务: {task_id}")
             return
 
@@ -761,7 +742,6 @@ def execute_async_query(
             task_manager.fail_task(task_id, "用户取消")
             return
 
-        logger.info(f"[ASYNC_DEBUG] [{task_id}] 步骤2: 开始执行查询")
         logger.info(f"开始执行异步查询任务: {task_id}")
 
         # 智能移除系统自动添加的LIMIT
@@ -873,14 +853,11 @@ def execute_async_query(
 
         try:
             file_datasource_manager.save_file_datasource(table_metadata)
-            logger.info(f"[ASYNC_DEBUG] [{task_id}] 元数据保存成功")
             logger.info(f"表元数据保存成功: {source_id}")
         except Exception as meta_error:
-            logger.warning(f"[ASYNC_DEBUG] [{task_id}] 元数据保存失败: {str(meta_error)}")
             logger.warning(f"保存表元数据失败（非致命）: {str(meta_error)}")
 
         # 第四步：更新任务状态为完成（独立事务）
-        logger.info(f"[ASYNC_DEBUG] [{task_id}] 步骤4: 更新任务状态为完成")
         task_info = {
             "status": "completed",
             "table_name": table_name,
@@ -898,16 +875,7 @@ def execute_async_query(
             task_info["custom_table_name"] = custom_table_name
             task_info["display_name"] = custom_table_name
 
-        logger.info(f"[{task_id}] 开始调用 complete_task 更新状态")
-        logger.info(f"[ASYNC_DEBUG] [{task_id}] 调用 complete_task 前，先查询当前状态")
-        
-        # 调用前先查询状态
-        pre_check_task = task_manager.get_task(task_id)
-        pre_check_status = pre_check_task.status.value if pre_check_task else "NOT_FOUND"
-        logger.info(f"[ASYNC_DEBUG] [{task_id}] complete_task 调用前状态: {pre_check_status}")
-        
         complete_result = task_manager.complete_task(task_id, task_info)
-        logger.info(f"[ASYNC_DEBUG] [{task_id}] complete_task 返回: {complete_result}")
         logger.info(f"[{task_id}] complete_task 返回结果: {complete_result}")
         if not complete_result:
             # 检查当前状态，防止覆盖已取消或已完成的状态

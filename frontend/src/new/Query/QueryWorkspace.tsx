@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/new/components/ui/button";
 import { useQueryWorkspace } from "@/new/hooks/useQueryWorkspace";
+import { useAppConfig } from "@/new/hooks/useAppConfig";
 import { DataSourcePanel } from "./DataSourcePanel";
 import { QueryTabs } from "./QueryTabs";
 import { ResultPanel } from "./ResultPanel";
@@ -18,9 +19,9 @@ import { deleteDuckDBTableEnhanced } from "@/services/apiClient";
 import { invalidateAfterTableDelete } from "@/new/utils/cacheInvalidation";
 import type { SelectedTable } from "@/new/types/SelectedTable";
 import { normalizeSelectedTable } from "@/new/utils/tableUtils";
-import { 
-  getSourceFromSelectedTable, 
-  quoteQualifiedTable, 
+import {
+  getSourceFromSelectedTable,
+  quoteQualifiedTable,
   generateExternalTableReference,
   type AttachDatabase,
 } from "@/new/utils/sqlUtils";
@@ -46,15 +47,16 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
     handleTabChange,
     handleQueryExecute,
   } = useQueryWorkspace();
+  const { maxQueryRows } = useAppConfig();
 
   // 预览表数据
   // 统一使用 ATTACH 模式：外部表生成带别名前缀的 SQL，通过联邦查询 API 执行
   const handlePreview = React.useCallback(
     async (table: SelectedTable) => {
       const { qualifiedName, attachDatabase } = generateExternalTableReference(table);
-      
-      const sql = `SELECT * FROM ${qualifiedName} LIMIT 10000`;
-      
+
+      const sql = `SELECT * FROM ${qualifiedName} LIMIT ${maxQueryRows}`;
+
       // 构建 TableSource
       let source: TableSource;
       if (attachDatabase) {
@@ -67,7 +69,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
         // DuckDB 本地表
         source = { type: 'duckdb' };
       }
-      
+
       try {
         await handleQueryExecute(sql, source);
       } catch (error) {
@@ -80,21 +82,21 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
   const handleImport = React.useCallback(
     async (table: SelectedTable) => {
       const normalized = normalizeSelectedTable(table);
-      
+
       // 只有外部表才能导入
       if (normalized.source !== "external" || !normalized.connection) {
         return;
       }
 
       const { qualifiedName, attachDatabase } = generateExternalTableReference(table);
-      
+
       if (!attachDatabase) {
         toast.error(t("query.import.missingConnection", "缺少外部数据库连接信息"));
         return;
       }
 
-      const sql = `SELECT * FROM ${qualifiedName} LIMIT 10000`;
-      
+      const sql = `SELECT * FROM ${qualifiedName} LIMIT ${maxQueryRows}`;
+
       // 使用联邦查询模式
       const source: TableSource = {
         type: 'federated',
@@ -141,7 +143,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
   const toggleDataSourcePanel = React.useCallback(() => {
     const panel = dataSourcePanelRef.current;
     if (!panel) return;
-    
+
     if (isDataSourceCollapsed) {
       panel.expand();
     } else {
@@ -153,7 +155,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
   const toggleResultPanel = React.useCallback(() => {
     const panel = resultPanelRef.current;
     if (!panel) return;
-    
+
     if (isResultCollapsed) {
       panel.expand();
     } else {
@@ -227,9 +229,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
                 onClick={(e) => { e.stopPropagation(); toggleResultPanel(); }}
                 onMouseDown={(e) => e.stopPropagation()}
                 aria-label={isResultCollapsed ? t("workspace.expandResult") : t("workspace.collapseResult")}
-                className={`h-4 w-4 bg-card border border-border rounded shadow-sm transition-opacity relative z-10 ${
-                  isResultCollapsed ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                }`}
+                className={`h-4 w-4 bg-card border border-border rounded shadow-sm transition-opacity relative z-10 ${isResultCollapsed ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  }`}
               >
                 {isResultCollapsed ? (
                   <ChevronUp className="h-2.5 w-2.5" />

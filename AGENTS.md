@@ -370,10 +370,10 @@ AG Grid React 官方推荐不传整块 `gridOptions`，而是使用 `AgGridReact
 ---
 
 ## 7. 状态管理与入口约束
-- 业务状态集中在 `useDuckQuery`，返回 `{ state, actions }`
-- 新旧入口都通过 `useDuckQuery` 适配
-- 不要改 `UnifiedQueryInterface` 内部逻辑，只传 props
-- 状态机/全局状态的演进只允许在 `useDuckQuery` 内完成，不动 `frontend/src/new/`
+- 业务状态集中在 `useAppShell` (`frontend/src/new/hooks/useAppShell.ts`)，返回 `{ state, actions }`
+- `DuckQueryApp.jsx` 通过 `useAppShell` 获取全局状态
+- `useAppShell` 组合了 `useAppActions` 等细粒度 Hooks
+- 状态机/全局状态的演进应在 `frontend/src/new/hooks/` 下的独立 Hook 中完成，并通过 `useAppShell` 聚合
 
 ---
 

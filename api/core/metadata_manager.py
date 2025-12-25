@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from functools import lru_cache
 
-from core.duckdb_engine import with_duckdb_connection
+from core.duckdb_pool import with_system_connection
 from core.timezone_utils import get_current_time
 from utils.encryption_utils import encrypt_json, decrypt_json
 
@@ -28,7 +28,7 @@ class MetadataManager:
 
     def _init_metadata_tables(self):
         """初始化所有元数据表（自动创建，如果不存在）"""
-        with with_duckdb_connection() as conn:
+        with with_system_connection() as conn:
             # 创建数据库连接元数据表
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS system_database_connections (
@@ -177,7 +177,7 @@ class MetadataManager:
         """
         logger.debug(f"[METADATA_DEBUG] save_metadata 开始: table={table}, id={id}")
         try:
-            with with_duckdb_connection() as conn:
+            with with_system_connection() as conn:
                 logger.debug(f"[METADATA_DEBUG] save_metadata 获取连接成功: table={table}, id={id}")
                 # 对于数据库连接，智能处理密码字段
                 if table == "system_database_connections" and "params" in data:
@@ -265,7 +265,7 @@ class MetadataManager:
                 return cached_data
 
         try:
-            with with_duckdb_connection() as conn:
+            with with_system_connection() as conn:
                 # 根据表类型使用不同的主键字段
                 if table == "system_database_connections":
                     id_field = "id"
@@ -316,7 +316,7 @@ class MetadataManager:
     def list_metadata(self, table: str, filters: dict = None) -> List[dict]:
         """列出元数据"""
         try:
-            with with_duckdb_connection() as conn:
+            with with_system_connection() as conn:
                 sql = f"SELECT * FROM {table}"
                 params = []
 
@@ -367,7 +367,7 @@ class MetadataManager:
     def update_metadata(self, table: str, id: str, updates: dict) -> bool:
         """更新元数据"""
         try:
-            with with_duckdb_connection() as conn:
+            with with_system_connection() as conn:
                 # 根据表类型使用不同的主键字段
                 if table == "system_database_connections":
                     id_field = "id"
@@ -413,7 +413,7 @@ class MetadataManager:
     def delete_metadata(self, table: str, id: str) -> bool:
         """删除元数据"""
         try:
-            with with_duckdb_connection() as conn:
+            with with_system_connection() as conn:
                 # 根据表类型使用不同的主键字段
                 if table == "system_database_connections":
                     id_field = "id"

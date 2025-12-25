@@ -169,6 +169,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
 
     // 校验表单
     const validateForm = (): boolean => {
+        console.log('[FilterPopover] validateForm called', { selectedTable, selectedColumn, selectedOperator, inputValue, multiValues });
         if (!selectedTable) {
             setError(t('filter.error.required', '请选择表'));
             return false;
@@ -223,7 +224,11 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
 
     // 提交表单
     const handleSubmit = () => {
-        if (!validateForm()) return;
+        console.log('[FilterPopover] handleSubmit called');
+        if (!validateForm()) {
+            console.log('[FilterPopover] validateForm returned false, not submitting');
+            return;
+        }
 
         let value: FilterValue;
         let value2: FilterValue | undefined;

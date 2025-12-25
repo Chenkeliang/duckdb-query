@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/new/components/ui/select";
 // 引用全局 Hooks
-import { useSmartParse } from "@/hooks/useSmartParse";
+import { useSmartParse } from "@/new/hooks/useSmartParse";
 
 interface DataPasteCardProps {
   onDataSourceSaved?: (dataSource: any) => void;

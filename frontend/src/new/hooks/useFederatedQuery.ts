@@ -89,6 +89,7 @@ export interface UseFederatedQueryReturn {
   generateSelectSQL: (options: {
     columns?: Array<{ table: string; column: string }>;
     dialect?: SqlDialect;
+    maxQueryRows?: number;
   }) => string;
 
   /** 执行查询 */
@@ -183,8 +184,9 @@ export function useFederatedQuery(
     (options: {
       columns?: Array<{ table: string; column: string }>;
       dialect?: SqlDialect;
+      maxQueryRows?: number;
     }): string => {
-      const { columns, dialect = 'duckdb' } = options;
+      const { columns, dialect = 'duckdb', maxQueryRows = 10000 } = options;
 
       if (selectedTables.length === 0) {
         return '';
@@ -220,7 +222,7 @@ export function useFederatedQuery(
         parts.push(`CROSS JOIN ${formatTableReference(ref, dialect)}`);
       }
 
-      parts.push('LIMIT 1000');
+      parts.push(`LIMIT ${maxQueryRows}`);
 
       return parts.join('\n');
     },

@@ -11,6 +11,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import { setFederatedQueryTimeout } from '@/services/apiClient';
 
 // API 响应类型
 interface AppConfigResponse {
@@ -19,6 +20,7 @@ interface AppConfigResponse {
   max_query_rows: number;
   max_file_size: number;
   max_file_size_display: string;
+  federated_query_timeout?: number; // seconds
 }
 
 // 配置数据类型
@@ -28,6 +30,7 @@ export interface AppConfig {
   maxQueryRows: number;
   maxFileSize: number;
   maxFileSizeDisplay: string;
+  federatedQueryTimeout: number; // ms
 }
 
 // Query Key
@@ -40,6 +43,7 @@ const DEFAULT_CONFIG: AppConfig = {
   maxQueryRows: 10000,
   maxFileSize: 500 * 1024 * 1024, // 500MB
   maxFileSizeDisplay: '500MB',
+  federatedQueryTimeout: 300000, // 5 minutes
 };
 
 // 获取应用配置的 API 函数
@@ -52,13 +56,19 @@ async function fetchAppConfig(): Promise<AppConfig> {
 
   const result: AppConfigResponse = await response.json();
 
-  return {
+  const config = {
     enablePivotTables: result.enable_pivot_tables,
     pivotTableExtension: result.pivot_table_extension,
     maxQueryRows: result.max_query_rows,
     maxFileSize: result.max_file_size,
     maxFileSizeDisplay: result.max_file_size_display,
+    federatedQueryTimeout: (result.federated_query_timeout || 300) * 1000,
   };
+
+  // 更新 API Client 的超时设置
+  setFederatedQueryTimeout(config.federatedQueryTimeout);
+
+  return config;
 }
 
 /**

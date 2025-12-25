@@ -5,10 +5,11 @@ import { Button } from '@/new/components/ui/button';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
 import { Badge } from '@/new/components/ui/badge';
 import { useTableColumns } from '@/new/hooks/useTableColumns';
+import { useAppConfig } from '@/new/hooks/useAppConfig';
 import type { SelectedTable } from '@/new/types/SelectedTable';
-import { 
-  normalizeSelectedTable, 
-  getTableName, 
+import {
+  normalizeSelectedTable,
+  getTableName,
   isExternalTable,
   hasMixedSources,
   isSameConnection,
@@ -76,11 +77,11 @@ const TableCard: React.FC<TableCardProps> = ({
   const { t } = useTranslation('common');
   const displayColumns = columns.slice(0, 6);
   const moreCount = columns.length - 6;
-  
+
   const normalized = normalizeSelectedTable(table);
   const tableName = normalized.name;
   const isExternal = normalized.source === 'external';
-  const dbIcon = isExternal && normalized.connection 
+  const dbIcon = isExternal && normalized.connection
     ? DATABASE_TYPE_ICONS[normalized.connection.type] || '📊'
     : null;
 
@@ -172,7 +173,7 @@ interface SetConnectorProps {
 const SetConnector: React.FC<SetConnectorProps> = ({ operationType, byName }) => {
   const showByName = byName && (operationType === 'UNION' || operationType === 'UNION ALL');
   const displayText = showByName ? `${operationType} BY NAME` : operationType;
-  
+
   return (
     <div className="flex items-center justify-center px-4 shrink-0">
       <div className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-full whitespace-nowrap">
@@ -204,6 +205,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   onRemoveTable,
 }) => {
   const { t } = useTranslation('common');
+  const { maxQueryRows } = useAppConfig();
   const [isExecuting, setIsExecuting] = React.useState(false);
 
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
@@ -212,7 +214,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
 
   // 操作类型
   const [operationType, setOperationType] = React.useState<SetOperationType>('UNION');
-  
+
   // BY NAME 模式（仅对 UNION 和 UNION ALL 有效）
   const [byName, setByName] = React.useState(false);
 
@@ -224,13 +226,13 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
     const mixed = hasMixedSources(activeTables);
     const sameConn = isSameConnection(activeTables);
     const hasExternal = activeTables.some(isExternalTable);
-    
+
     // 获取当前数据源信息
     const externalTables = activeTables.filter(isExternalTable);
-    const currentSource = externalTables.length > 0 
-      ? normalizeSelectedTable(externalTables[0]).connection 
+    const currentSource = externalTables.length > 0
+      ? normalizeSelectedTable(externalTables[0]).connection
       : undefined;
-    
+
     return { mixed, sameConn, hasExternal, currentSource };
   }, [activeTables]);
 
@@ -249,7 +251,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
 
   // 是否是 BY NAME 模式（不需要列数量一致）
   const isByNameMode = byName && (operationType === 'UNION' || operationType === 'UNION ALL');
-  
+
   // 当前操作是否支持 BY NAME
   const currentOpSupportsByName = operationType === 'UNION' || operationType === 'UNION ALL';
 
@@ -310,7 +312,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   const table7Columns = useTableColumns(activeTables[7] || null);
   const table8Columns = useTableColumns(activeTables[8] || null);
   const table9Columns = useTableColumns(activeTables[9] || null);
-  
+
   // 组合所有结果
   const tableColumnsResults = [
     table0Columns,
@@ -334,7 +336,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
     .map((r, i) => activeTables[i] ? `${getTableName(activeTables[i])}:${r.columns.length}` : '')
     .filter(Boolean)
     .join(',');
-  
+
   const tableColumnsMap = React.useMemo(() => {
     const map: Record<string, TableColumn[]> = {};
     activeTables.forEach((table, index) => {
@@ -355,11 +357,11 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   React.useEffect(() => {
     // 获取当前活动表名列表
     const activeTableNames = new Set(activeTables.map(getTableName));
-    
+
     setSelectedColumns((prev) => {
       const updated: Record<string, string[]> = {};
       let hasChanges = false;
-      
+
       // 只保留当前活动表的列选择
       activeTables.forEach((table) => {
         const tableName = getTableName(table);
@@ -372,13 +374,13 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
           hasChanges = true;
         }
       });
-      
+
       // 检查是否有表被移除
       const prevTableNames = Object.keys(prev);
       if (prevTableNames.some(name => !activeTableNames.has(name))) {
         hasChanges = true;
       }
-      
+
       return hasChanges || Object.keys(updated).length !== Object.keys(prev).length ? updated : prev;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -455,7 +457,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
       parts.push(`SELECT ${selectPart} FROM ${fullTableName}`);
     });
 
-    parts.push('LIMIT 1000');
+    parts.push(`LIMIT ${maxQueryRows}`);
     return parts.join('\n');
   };
 
@@ -500,11 +502,10 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
                 key={op.value}
                 onClick={() => setOperationType(op.value)}
                 title={op.tooltip}
-                className={`px-2.5 text-xs font-medium rounded transition-colors ${
-                  operationType === op.value
+                className={`px-2.5 text-xs font-medium rounded transition-colors ${operationType === op.value
                     ? 'bg-surface text-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 {op.label}
               </button>
@@ -512,9 +513,8 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
           </div>
           {/* BY NAME 复选框 - 仅对 UNION 和 UNION ALL 有效 */}
           <label
-            className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${
-              currentOpSupportsByName ? 'text-foreground' : 'text-muted-foreground opacity-50 cursor-not-allowed'
-            }`}
+            className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${currentOpSupportsByName ? 'text-foreground' : 'text-muted-foreground opacity-50 cursor-not-allowed'
+              }`}
             title={t('query.set.byNameTooltip', '按列名匹配合并（DuckDB 特性），不要求列数量一致')}
           >
             <input
