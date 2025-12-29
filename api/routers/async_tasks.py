@@ -716,8 +716,11 @@ def execute_async_query(
     关键设计：DuckDB 是单写入者数据库，多个连接同时写入会导致写写冲突。
     因此，所有写操作（查询执行、任务状态更新、元数据保存）必须串行化，
     不能在连接池连接持有期间使用其他连接写入。
+    
+    支持查询中断：使用 interruptible_connection 包装连接，支持取消操作。
     """
-    from core.duckdb_pool import get_connection_pool
+    import duckdb
+    from core.duckdb_pool import get_connection_pool, interruptible_connection
     pool = get_connection_pool()
     
     # 用于存储查询结果的临时变量
@@ -739,7 +742,7 @@ def execute_async_query(
         # 取消检查点 1
         if task_manager.is_cancellation_requested(task_id):
             logger.info(f"任务在启动后被取消: {task_id}")
-            task_manager.fail_task(task_id, "用户取消")
+            task_manager.mark_cancelled(task_id, "用户取消（启动前）")
             return
 
         logger.info(f"开始执行异步查询任务: {task_id}")
@@ -769,18 +772,11 @@ def execute_async_query(
             table_name = safe_table_name
         else:
             table_name = task_utils.task_id_to_table_name(task_id)
-        if custom_table_name:
-            safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
-            import re
-            safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
-            table_name = safe_table_name
-        else:
-            table_name = task_utils.task_id_to_table_name(task_id)
         logger.info(f"[{task_id}] 创建持久表存储查询结果: {table_name}")
         logger.debug(f"[{task_id}] 准备执行 SQL: {clean_sql[:200]}...")
 
-        # 第二步：执行查询（使用连接池连接）
-        with pool.get_connection() as con:
+        # 第二步：执行查询（使用可中断连接）
+        with interruptible_connection(task_id, clean_sql) as con:
             if use_external_source:
                 logger.info(
                     f"异步任务将使用外部数据源 {source_datasource_id} ({datasource_type}) 执行查询"
@@ -830,7 +826,7 @@ def execute_async_query(
                     logger.info(f"已清理取消任务的表: {table_name}")
                 except Exception as drop_error:
                     logger.warning(f"清理表失败: {drop_error}")
-            task_manager.fail_task(task_id, "用户取消")
+            task_manager.mark_cancelled(task_id, "用户取消（查询完成后）")
             return
 
         # 第三步：保存元数据（连接池连接已释放，可以安全使用其他连接）
@@ -883,7 +879,7 @@ def execute_async_query(
             current_status = current_task.status.value if current_task else "None"
             
             # 使用字符串值进行比较，避免Enum身份问题
-            if current_status in ("cancelling", "failed", "success", "completed"):
+            if current_status in ("cancelling", "cancelled", "failed", "success", "completed"):
                 logger.info(f"[{task_id}] 任务最终状态为 {current_status}，无需强制标记失败")
             else:
                 logger.warning(f"[{task_id}] complete_task 失败且状态异常(status={current_status})，执行 force_fail_task")
@@ -900,18 +896,32 @@ def execute_async_query(
             f"异步查询任务执行完成: {task_id}, 执行时间: {execution_time:.2f}秒"
         )
 
+    except duckdb.InterruptException:
+        # 查询被中断（用户取消）
+        logger.info(f"任务 {task_id} 的查询被中断")
+        
+        # 清理可能已创建的表
+        if table_name:
+            try:
+                with pool.get_connection() as con:
+                    con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+                    logger.info(f"已清理被中断任务的表: {table_name}")
+            except Exception as drop_error:
+                logger.warning(f"清理表失败: {drop_error}")
+        
+        # 标记为取消状态
+        task_manager.mark_cancelled(task_id, "查询被用户中断")
+
     except Exception as e:
         logger.error(f"执行异步查询任务失败: {task_id}, 错误: {str(e)}")
         logger.error(traceback.format_exc())
 
         # 检查是否因取消而异常
         if task_manager.is_cancellation_requested(task_id):
-            error_message = "用户取消"
+            task_manager.mark_cancelled(task_id, "用户取消")
         else:
-            error_message = str(e)
-        
-        if not task_manager.fail_task(task_id, error_message):
-            logger.error(f"无法标记任务为失败: {task_id}")
+            if not task_manager.fail_task(task_id, str(e)):
+                logger.error(f"无法标记任务为失败: {task_id}")
 
 
 def execute_async_federated_query(
@@ -940,7 +950,8 @@ def execute_async_federated_query(
         datasource: 数据源信息（联邦查询时通常为 None）
         attach_databases: 需要 ATTACH 的外部数据库列表
     """
-    from core.duckdb_pool import get_connection_pool
+    import duckdb
+    from core.duckdb_pool import get_connection_pool, interruptible_connection
     pool = get_connection_pool()
     
     # 用于存储查询结果的临时变量
@@ -960,7 +971,7 @@ def execute_async_federated_query(
         # 取消检查点 1
         if task_manager.is_cancellation_requested(task_id):
             logger.info(f"联邦查询任务在启动后被取消: {task_id}")
-            task_manager.fail_task(task_id, "用户取消")
+            task_manager.mark_cancelled(task_id, "用户取消（启动前）")
             return
 
         logger.info(f"开始执行异步联邦查询任务: {task_id}")
@@ -985,7 +996,7 @@ def execute_async_federated_query(
         logger.info(f"联邦查询结果将存储到表: {table_name}")
 
         # 第二步：在同一连接中执行 ATTACH、查询、DETACH
-        with pool.get_connection() as con:
+        with interruptible_connection(task_id, clean_sql) as con:
             try:
                 # 2.1 执行 ATTACH 操作
                 if attach_databases:
@@ -996,7 +1007,7 @@ def execute_async_federated_query(
                 if task_manager.is_cancellation_requested(task_id):
                     logger.info(f"联邦查询任务在 ATTACH 后被取消: {task_id}")
                     _detach_databases(con, attached_aliases)
-                    task_manager.fail_task(task_id, "用户取消")
+                    task_manager.mark_cancelled(task_id, "用户取消（ATTACH后）")
                     return
 
                 # 2.2 执行查询并保存结果
@@ -1041,7 +1052,7 @@ def execute_async_federated_query(
                     logger.info(f"已清理取消任务的表: {table_name}")
                 except Exception as drop_error:
                     logger.warning(f"清理表失败: {drop_error}")
-            task_manager.fail_task(task_id, "用户取消")
+            task_manager.mark_cancelled(task_id, "用户取消（查询完成后）")
             return
 
         # 第三步：保存元数据
@@ -1090,7 +1101,7 @@ def execute_async_federated_query(
             current_status = current_task.status.value if current_task else "None"
             
             # 使用字符串值进行比较，避免Enum身份问题
-            if current_status in ("cancelling", "failed", "success", "completed"):
+            if current_status in ("cancelling", "cancelled", "failed", "success", "completed"):
                 logger.info(f"[{task_id}] (联邦) 任务最终状态为 {current_status}，无需强制标记失败")
             else:
                 logger.warning(f"[{task_id}] (联邦) complete_task 失败且状态异常(status={current_status})，执行 force_fail_task")
@@ -1108,20 +1119,32 @@ def execute_async_federated_query(
             f"附加数据库: {attached_aliases}"
         )
 
+    except duckdb.InterruptException:
+        # 查询被中断（用户取消）
+        logger.info(f"联邦查询任务 {task_id} 被中断")
+        
+        # 清理可能已创建的表
+        if table_name:
+            try:
+                with pool.get_connection() as con:
+                    con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+                    logger.info(f"已清理被中断联邦查询的表: {table_name}")
+            except Exception as drop_error:
+                logger.warning(f"清理表失败: {drop_error}")
+        
+        # 标记为取消状态
+        task_manager.mark_cancelled(task_id, "联邦查询被用户中断")
+
     except Exception as e:
         logger.error(f"执行异步联邦查询任务失败: {task_id}, 错误: {str(e)}")
         logger.error(traceback.format_exc())
 
-        # 注意：DETACH 清理已在 finally 块中处理，无需在此重复
-        # 如果异常发生在 with pool.get_connection() 之外，attached_aliases 为空
-
         # 检查是否因取消而异常
         if task_manager.is_cancellation_requested(task_id):
-            error_message = "用户取消"
-            error_code = "USER_CANCELLED"
+            task_manager.mark_cancelled(task_id, "用户取消")
         else:
-            error_message = str(e)
             # 根据错误类型分类错误代码
+            error_message = str(e)
             error_str = str(e).lower()
             if "不存在" in error_message or "not found" in error_str:
                 error_code = "CONNECTION_NOT_FOUND"
@@ -1135,16 +1158,16 @@ def execute_async_federated_query(
                 error_code = "AUTH_FAILED"
             else:
                 error_code = "FEDERATED_QUERY_FAILED"
-        
-        # 使用 force_fail_task 保存详细错误信息到元数据
-        error_metadata = {
-            "error_code": error_code,
-            "is_federated": True,
-            "attached_databases": attached_aliases,
-        }
-        
-        if not task_manager.force_fail_task(task_id, error_message, metadata_update=error_metadata):
-            logger.error(f"无法标记联邦查询任务为失败: {task_id}")
+            
+            # 使用 force_fail_task 保存详细错误信息到元数据
+            error_metadata = {
+                "error_code": error_code,
+                "is_federated": True,
+                "attached_databases": attached_aliases,
+            }
+            
+            if not task_manager.force_fail_task(task_id, error_message, metadata_update=error_metadata):
+                logger.error(f"无法标记联邦查询任务为失败: {task_id}")
 
 
 def generate_download_file(task_id: str, format: str = "csv"):

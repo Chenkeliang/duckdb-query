@@ -46,6 +46,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
     handleRemoveTable,
     handleTabChange,
     handleQueryExecute,
+    cancelQuery,
+    isCancelling,
   } = useQueryWorkspace();
   const { maxQueryRows } = useAppConfig();
 
@@ -216,6 +218,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
                 selectedTables={selectedTables[currentTab] || []}
                 onExecute={handleQueryExecute}
                 onRemoveTable={handleRemoveTable}
+                onCancel={cancelQuery}
+                isCancelling={isCancelling}
                 previewSQL={previewSQL}
               />
             </Panel>

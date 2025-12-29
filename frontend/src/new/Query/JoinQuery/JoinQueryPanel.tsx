@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2 } from 'lucide-react';
+import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, StopCircle, Loader2 } from 'lucide-react';
 import { Input } from '@/new/components/ui/input';
 import { Button } from '@/new/components/ui/button';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
@@ -55,6 +55,15 @@ import {
   type FilterGroup,
   type ColumnInfo,
 } from './FilterBar';
+import {
+  getTableSourceInfo,
+  extractOnFiltersGroupedByTable,
+  checkOptimizationEligibility,
+  buildFilteredSubquery,
+  generateOptimizationComments,
+  type AttachDatabase as OptimizerAttachDatabase,
+  type OptimizationReport,
+} from './sqlOptimizer';
 
 
 /**
@@ -128,6 +137,10 @@ interface JoinQueryPanelProps {
   selectedTables?: SelectedTable[];
   onExecute?: (sql: string, source?: TableSource) => Promise<void>;
   onRemoveTable?: (table: SelectedTable) => void;
+  /** 取消回调 */
+  onCancel?: () => void;
+  /** 是否正在取消 */
+  isCancelling?: boolean;
 }
 
 const JOIN_TYPES: { value: JoinType; label: string }[] = [
@@ -669,10 +682,14 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   selectedTables = [],
   onExecute,
   onRemoveTable,
+  onCancel,
+  isCancelling = false,
 }) => {
   const { t } = useTranslation('common');
   const { maxQueryRows } = useAppConfig();
   const [isExecuting, setIsExecuting] = React.useState(false);
+  const [localIsCancelling, setLocalIsCancelling] = React.useState(false);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
   const [internalTables, setInternalTables] = React.useState<SelectedTable[]>([]);
@@ -1116,15 +1133,94 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     if (selectParts.length === 0) {
       parts.push('SELECT *');
     } else {
-      parts.push(`SELECT ${selectParts.join(', ')}`);
+      parts.push(`SELECT ${selectParts.join(', ')}`)
     }
 
-    // FROM - 主表
+    // ====================================================================
+    // 联邦查询优化：分析哪些远端表可以使用子查询优化
+    // ====================================================================
+    const optimizationReports: OptimizationReport[] = [];
+    const optimizedTableRefs = new Map<string, { subquerySQL: string; alias: string }>();
+
+    // 只有在联邦查询场景下才进行优化分析
+    if (attachDatabases.length > 0) {
+      try {
+        // 提取 ON 条件并按表分组
+        const onFilterGroups = extractOnFiltersGroupedByTable(filterTree);
+
+        // 分析每个表
+        for (const table of activeTables) {
+          const tableName = getTableName(table);
+          const tableAlias = getTableAlias(table);
+          const fullRef = getFullTableRef(table);
+
+          // 转换 attachDatabases 为 sqlOptimizer 兼容格式
+          // 注意：AttachDatabase 只有 alias 和 connectionId，type 通过 alias 前缀推断
+          const optimizerAttachDbs: OptimizerAttachDatabase[] = attachDatabases.map(db => ({
+            alias: db.alias,
+            type: db.alias.split('_')[0] || 'mysql', // 从别名前缀推断类型
+            connectionId: db.connectionId
+          }));
+
+          const tableInfo = getTableSourceInfo(tableName, tableAlias, fullRef, optimizerAttachDbs);
+          const filterGroup = onFilterGroups.get(tableName) || onFilterGroups.get(tableAlias);
+          const decision = checkOptimizationEligibility(tableInfo, filterGroup);
+
+          optimizationReports.push({
+            tableName: fullRef,
+            wasOptimized: decision.shouldOptimize,
+            reason: decision.reason
+          });
+
+          // 如果可以优化，生成子查询
+          if (decision.shouldOptimize && filterGroup && filterGroup.conditions.length > 0) {
+            // 从 FilterCondition 生成 WHERE SQL
+            // 创建一个临时的 FilterGroup 来生成 SQL
+            const tempGroup: FilterGroup = {
+              id: 'temp',
+              type: 'group',
+              logic: 'AND',
+              children: filterGroup.conditions
+            };
+            const whereSQL = generateFilterSQL(tempGroup);
+
+            if (whereSQL) {
+              const subqueryResult = buildFilteredSubquery(tableInfo, whereSQL);
+              optimizedTableRefs.set(tableName, subqueryResult);
+              optimizedTableRefs.set(tableAlias, subqueryResult);
+              console.log(`[SQL Optimizer] Optimized table ${fullRef} with subquery WHERE: ${whereSQL}`);
+            }
+          }
+        }
+
+        // 生成优化警告注释（如果有回退）
+        const optimizationWarnings = generateOptimizationComments(optimizationReports);
+        if (optimizationWarnings.length > 0) {
+          // 在 parts 开头（SELECT 之前）插入警告
+          parts.unshift(...optimizationWarnings, '');
+        }
+
+      } catch (error) {
+        console.error('[SQL Optimizer] Error during optimization:', error);
+        // 优化失败时回退，不影响原有逻辑
+      }
+    }
+
+    // FROM - 主表 (可能使用子查询)
+    const firstTableName = getTableName(activeTables[0]);
     const firstTableRef = getFullTableRef(activeTables[0]);
     const firstTableAlias = getTableAlias(activeTables[0]);
-    parts.push(`FROM ${firstTableRef} AS ${quoteIdent(firstTableAlias, dialect)}`);
 
-    // JOIN - 其他表
+    const firstTableOptimization = optimizedTableRefs.get(firstTableName);
+    if (firstTableOptimization) {
+      // 使用优化后的子查询
+      parts.push(`FROM ${firstTableOptimization.subquerySQL} AS ${quoteIdent(firstTableAlias, dialect)}`);
+    } else {
+      // 使用原始表引用
+      parts.push(`FROM ${firstTableRef} AS ${quoteIdent(firstTableAlias, dialect)}`);
+    }
+
+    // JOIN - 其他表 (可能使用子查询)
     for (let i = 1; i < activeTables.length; i++) {
       const rawConfig = joinConfigs[i - 1];
       const leftTableName = getTableName(activeTables[i - 1]);
@@ -1132,6 +1228,13 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       const rightTableRef = getFullTableRef(activeTables[i]);
       const leftTableAlias = getTableAlias(activeTables[i - 1]);
       const rightTableAlias = getTableAlias(activeTables[i]);
+
+      // 检查右表是否已被优化（使用子查询）
+      const rightTableOptimization = optimizedTableRefs.get(rightTableName);
+      // 决定使用子查询还是原始表引用
+      const actualRightTableRef = rightTableOptimization
+        ? rightTableOptimization.subquerySQL
+        : rightTableRef;
 
       // 如果没有配置，使用默认的 LEFT JOIN
       const config = rawConfig ? normalizeJoinConfig(rawConfig) : {
@@ -1193,34 +1296,68 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
             return `${leftRef} ${c.operator} ${rightRef}`;
           })
           .join(' AND ');
-        parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${onClause}`);
+        parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${onClause}`);
 
         // 附加用户在 FilterBar 中设置的 ON 条件（placement='on' 的筛选条件）
-        // 使用树结构保留 AND/OR 逻辑
-        const tableOnTree = getOnConditionsTreeForTable(filterTree, rightTableName);
-        if (tableOnTree.children.length > 0) {
-          const additionalOnSQL = generateFilterSQL(tableOnTree);
-          if (additionalOnSQL) {
-            // 更新最后一个 parts 条目，追加 AND 条件
-            parts[parts.length - 1] = parts[parts.length - 1] + ' AND ' + additionalOnSQL;
-            console.log('[JoinQueryPanel] generateSQL appended ON conditions for', rightTableName, ':', additionalOnSQL);
+        // 但如果表已被优化，跳过这些条件（它们已在子查询 WHERE 中）
+        const leftTableOnTree = getOnConditionsTreeForTable(filterTree, leftTableName);
+        const rightTableOnTree = getOnConditionsTreeForTable(filterTree, rightTableName);
+
+        // 合并左右表的 ON 条件（只包含未被优化的表的条件）
+        const combinedOnConditions: string[] = [];
+
+        // 左表：只有在未被优化时才添加 ON 条件
+        const leftTableOptimized = optimizedTableRefs.has(leftTableName);
+        if (!leftTableOptimized && leftTableOnTree.children.length > 0) {
+          const leftOnSQL = generateFilterSQL(leftTableOnTree);
+          if (leftOnSQL) {
+            combinedOnConditions.push(leftOnSQL);
+            console.log('[JoinQueryPanel] generateSQL appended ON conditions for left table', leftTableName, ':', leftOnSQL);
           }
+        } else if (leftTableOptimized && leftTableOnTree.children.length > 0) {
+          console.log('[SQL Optimizer] Skipping ON conditions for optimized left table', leftTableName, '(moved to subquery WHERE)');
+        }
+
+        // 右表：只有在未被优化时才添加 ON 条件
+        if (!rightTableOptimization && rightTableOnTree.children.length > 0) {
+          const rightOnSQL = generateFilterSQL(rightTableOnTree);
+          if (rightOnSQL) {
+            combinedOnConditions.push(rightOnSQL);
+            console.log('[JoinQueryPanel] generateSQL appended ON conditions for right table', rightTableName, ':', rightOnSQL);
+          }
+        } else if (rightTableOptimization && rightTableOnTree.children.length > 0) {
+          console.log('[SQL Optimizer] Skipping ON conditions for optimized right table', rightTableName, '(moved to subquery WHERE)');
+        }
+
+        if (combinedOnConditions.length > 0) {
+          // 更新最后一个 parts 条目，追加 AND 条件
+          parts[parts.length - 1] = parts[parts.length - 1] + ' AND ' + combinedOnConditions.join(' AND ');
         }
       } else {
         // 即使没有有效条件，也生成 JOIN 子句（使用 CROSS JOIN 或带空条件的 JOIN）
         // 这样用户可以看到 JOIN 结构并手动选择条件
-        const tableOnTree = getOnConditionsTreeForTable(filterTree, rightTableName);
-        if (tableOnTree.children.length > 0) {
-          // 有筛选器中的 ON 条件，使用它们作为 ON 子句（保留 AND/OR 逻辑）
-          const additionalOnSQL = generateFilterSQL(tableOnTree);
-          if (additionalOnSQL) {
-            parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${additionalOnSQL}`);
-          } else {
-            parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* 请选择关联条件 */`);
-          }
+        const leftTableOnTree = getOnConditionsTreeForTable(filterTree, leftTableName);
+        const rightTableOnTree = getOnConditionsTreeForTable(filterTree, rightTableName);
+
+        // 合并左右表的 ON 条件（只包含未被优化的表的条件）
+        const combinedOnConditions: string[] = [];
+        const leftTableOptimized = optimizedTableRefs.has(leftTableName);
+
+        if (!leftTableOptimized && leftTableOnTree.children.length > 0) {
+          const leftOnSQL = generateFilterSQL(leftTableOnTree);
+          if (leftOnSQL) combinedOnConditions.push(leftOnSQL);
+        }
+        if (!rightTableOptimization && rightTableOnTree.children.length > 0) {
+          const rightOnSQL = generateFilterSQL(rightTableOnTree);
+          if (rightOnSQL) combinedOnConditions.push(rightOnSQL);
+        }
+
+        if (combinedOnConditions.length > 0) {
+          // 有筛选器中的 ON 条件，使用它们作为 ON 子句
+          parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${combinedOnConditions.join(' AND ')}`);
         } else {
           // 没有任何 ON 条件，使用 1=1
-          parts.push(`${config.joinType} ${rightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* 请选择关联条件 */`);
+          parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* 请选择关联条件 */`);
         }
       }
     }
@@ -1286,38 +1423,113 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       });
     } finally {
       setIsExecuting(false);
+      abortControllerRef.current = null;
     }
   };
+
+  // 本地取消处理
+  const handleCancel = React.useCallback(() => {
+    setLocalIsCancelling(true);
+
+    // 中止本地请求
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    // 调用父组件的取消回调（如果有的话）
+    if (onCancel) {
+      onCancel();
+    }
+
+    setIsExecuting(false);
+    setLocalIsCancelling(false);
+  }, [onCancel]);
 
   const sql = generateSQL();
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface">
       {/* 头部工具栏 */}
-      <div className="h-12 px-6 border-b border-border shrink-0 flex items-center justify-between bg-muted/20">
+      {/* 头部工具栏 - 双行布局 */}
+      {/* 头部工具栏 - 单行紧凑布局 */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0 bg-muted/30">
         <div className="flex items-center gap-3">
-          <GitMerge className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">{t('query.join.title', '关联查询')}</span>
-          <span className="text-xs text-muted-foreground px-2 py-0.5 bg-muted rounded">
+          <div className="flex items-center gap-2">
+            {isExecuting ? (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleCancel}
+                disabled={localIsCancelling}
+                className="gap-1.5"
+              >
+                {localIsCancelling ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <StopCircle className="w-3.5 h-3.5" />
+                )}
+                {t('query.cancel', '取消')}
+              </Button>
+            ) : (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleExecute}
+                disabled={!canExecute || isExecuting}
+                className="gap-1.5"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                {t('query.execute', '执行')}
+              </Button>
+            )}
+
+            <div className="w-[1px] h-4 bg-border mx-1" />
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClear}
+              disabled={activeTables.length === 0}
+              className="text-muted-foreground hover:text-foreground gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {t('query.join.clear', '清空')}
+            </Button>
+          </div>
+
+          <div className="w-[1px] h-4 bg-border mx-1" />
+
+          {/* 提示信息 - 留在左侧或中间 */}
+          <span className="text-muted-foreground text-xs hidden lg:inline-block">
             {t('query.join.hint', '双击左侧数据源添加表')}
           </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* 标题 - 移至右侧，样式与 SQL 面板一致 */}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background/50 text-xs text-muted-foreground">
+            <GitMerge className="w-3.5 h-3.5" />
+            <span>{t('query.join.title', '关联查询')}</span>
+          </div>
+
           {/* 附加数据库指示器 */}
           {attachDatabases.length > 0 && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span>
-                    <Badge variant="outline" className="text-primary border-primary/50 cursor-help">
-                      <Link2 className="w-3 h-3 mr-1" />
-                      {t('query.join.attachedDatabases', '{{count}} 个外部数据库', { count: attachDatabases.length })}
-                    </Badge>
-                  </span>
+                  <div className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground cursor-help transition-colors px-2 py-0.5 rounded hover:bg-muted">
+                    <Link2 className="w-3.5 h-3.5" />
+                    <span>{t('query.join.attachedDatabases', '{{count}} 个外部数据库', { count: attachDatabases.length })}</span>
+                    <Edit2 className="w-3 h-3 opacity-50" />
+                  </div>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-xs">
+                <TooltipContent side="bottom" align="end" className="max-w-xs">
                   <div className="text-xs space-y-1">
-                    <div className="font-medium mb-1">{t('query.join.attachedDatabasesTitle', '将连接的数据库:')}</div>
+                    <div className="font-medium mb-1 text-foreground">{t('query.join.attachedDatabasesTitle', '将连接的数据库:')}</div>
                     {attachDatabases.map((db) => (
                       <div key={db.connectionId} className="flex items-center gap-2">
+                        <Database className="w-3 h-3 text-muted-foreground" />
                         <span className="text-muted-foreground">{db.alias}</span>
                       </div>
                     ))}
@@ -1326,27 +1538,6 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
               </Tooltip>
             </TooltipProvider>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClear}
-            disabled={activeTables.length === 0}
-            className="text-muted-foreground"
-          >
-            <Trash2 className="w-3 h-3 mr-1" />
-            {t('query.join.clear', '清空')}
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleExecute}
-            disabled={!canExecute || isExecuting}
-            className="gap-1.5"
-          >
-            <Play className="w-3.5 h-3.5" />
-            {t('query.execute', '执行')}
-          </Button>
         </div>
       </div>
 

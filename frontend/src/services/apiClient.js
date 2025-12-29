@@ -680,19 +680,60 @@ export const getMySQLDataSources = async () => {
 };
 
 // 增强DuckDB API
-export const executeDuckDBSQL = async (sql, saveAsTable = null, is_preview = true) => {
+// 支持 requestId 和 signal 以实现查询取消
+// 使用普通函数以支持 arguments（用于向后兼容旧版调用方式）
+export async function executeDuckDBSQL(sql, optionsOrSaveAsTable, is_preview_arg) {
+  // 兼容旧版调用方式: executeDuckDBSQL(sql, saveAsTable, is_preview)
+  let saveAsTable = null;
+  let is_preview = true;
+  let requestId = null;
+  let signal = null;
+
+  if (typeof optionsOrSaveAsTable === 'string' || optionsOrSaveAsTable === null) {
+    // 旧版调用方式
+    saveAsTable = optionsOrSaveAsTable;
+    is_preview = is_preview_arg !== undefined ? is_preview_arg : true;
+  } else if (typeof optionsOrSaveAsTable === 'object' && optionsOrSaveAsTable !== null) {
+    // 新版 options 对象
+    saveAsTable = optionsOrSaveAsTable.saveAsTable || null;
+    is_preview = optionsOrSaveAsTable.is_preview !== undefined ? optionsOrSaveAsTable.is_preview : true;
+    requestId = optionsOrSaveAsTable.requestId || null;
+    signal = optionsOrSaveAsTable.signal || null;
+  } else if (typeof optionsOrSaveAsTable === 'boolean') {
+    // 兼容 executeDuckDBSQL(sql, null, is_preview) 旧版调用
+    is_preview = optionsOrSaveAsTable;
+  }
+
   try {
+    const config = {};
+
+    // 添加 X-Request-ID 头以支持查询取消
+    if (requestId) {
+      config.headers = {
+        'X-Request-ID': requestId,
+      };
+    }
+
+    // 添加 AbortController signal 以支持本地取消
+    if (signal) {
+      config.signal = signal;
+    }
+
     const response = await apiClient.post('/api/duckdb/execute', {
       sql,
       save_as_table: saveAsTable,
       is_preview: is_preview
-    });
+    }, config);
     return response.data;
   } catch (error) {
+    // 如果是取消导致的错误，直接抛出
+    if (error.name === 'CanceledError' || error.name === 'AbortError') {
+      throw error;
+    }
     // 使用统一的错误处理函数
     handleApiError(error, '查询执行失败');
   }
-};
+}
 
 /**
  * 解析联邦查询错误
@@ -766,7 +807,9 @@ export const executeFederatedQuery = async (options) => {
     attachDatabases,
     isPreview = true,
     saveAsTable = null,
-    timeout = federatedQueryTimeout
+    timeout = federatedQueryTimeout,
+    requestId = null,  // 用于取消查询
+    signal = null,     // AbortController signal
   } = options;
 
   try {
@@ -788,9 +831,24 @@ export const executeFederatedQuery = async (options) => {
       requestBody.save_as_table = saveAsTable;
     }
 
-    const response = await apiClient.post('/api/duckdb/federated-query', requestBody, {
+    // 构建请求配置
+    const config = {
       timeout,
-    });
+    };
+
+    // 添加 X-Request-ID 头以支持查询取消
+    if (requestId) {
+      config.headers = {
+        'X-Request-ID': requestId,
+      };
+    }
+
+    // 添加 AbortController signal 以支持本地取消
+    if (signal) {
+      config.signal = signal;
+    }
+
+    const response = await apiClient.post('/api/duckdb/federated-query', requestBody, config);
 
     return response.data;
   } catch (error) {

@@ -811,3 +811,35 @@ CANCELLING 状态应有超时保护：
 | Phase 6 | 集成测试 | 2h |
 | Phase 7 | 文档更新 | 1h |
 | **Total** | | **15h** |
+
+---
+
+## 12. 取消 API 响应示例（含 timestamp）
+
+### 成功（保持 499 或 200 fallback 均返回规范体）
+```json
+{
+  "success": true,
+  "data": { "request_id": "xxx" },
+  "messageCode": "QUERY_CANCELLED",
+  "message": "取消请求已提交",
+  "timestamp": "2024-12-25T00:00:00Z"
+}
+```
+
+### 不存在/已完成 (404)
+```json
+{
+  "success": false,
+  "error": {
+    "code": "QUERY_NOT_FOUND",
+    "message": "Query not found or already completed",
+    "details": {}
+  },
+  "messageCode": "QUERY_NOT_FOUND",
+  "message": "Query not found or already completed",
+  "timestamp": "2024-12-25T00:00:00Z"
+}
+```
+
+> 现有查询端点保持原样返回格式，前端通过 499 或 messageCode/cancelled 字段兼容判断；若网关不支持 499，可使用 200 + success:false 的 fallback，但响应体需保持上述字段。

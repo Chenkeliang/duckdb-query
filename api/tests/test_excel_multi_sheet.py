@@ -34,7 +34,7 @@ def test_excel_upload_inspect_import(tmp_path, header_rows):
         df_summary.to_excel(writer, sheet_name="Summary", index=False)
 
     with (
-        patch("api.routers.data_sources.schedule_cleanup"),
+        patch("routers.data_sources.schedule_cleanup"),
         patch(
             "core.file_datasource_manager.file_datasource_manager.save_file_datasource",
             return_value=True,

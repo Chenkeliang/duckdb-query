@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, HTTPException, Request, BackgroundTasks
+from fastapi import APIRouter, Body, HTTPException, Request, BackgroundTasks, Header
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse, JSONResponse
 from models.query_models import (
@@ -41,6 +41,7 @@ from core.duckdb_engine import (
     generate_improved_column_aliases,
     detect_column_conflicts,
 )
+from core.duckdb_pool import interruptible_connection
 from core.visual_query_generator import (
     validate_query_config,
     get_column_statistics,
@@ -493,7 +494,12 @@ async def generate_visual_query(request: VisualQueryRequest) -> VisualQueryRespo
 
 
 @router.post("/api/visual-query/preview", tags=["Visual Query"])
-async def preview_visual_query(request: PreviewRequest) -> PreviewResponse:
+async def preview_visual_query(
+    request: PreviewRequest,
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
+) -> PreviewResponse:
+    query_id = f"sync:{x_request_id}" if x_request_id else None
+    
     try:
         validation_result = validate_query_config(request.config)
 
@@ -529,23 +535,40 @@ async def preview_visual_query(request: PreviewRequest) -> PreviewResponse:
             )
         preview_sql = ensure_query_has_limit(generation.final_sql, preview_limit)
 
-        con = get_db_connection()
-        preview_df = execute_query(preview_sql, con)
+        # 使用可中断连接执行查询
+        if query_id:
+            with interruptible_connection(query_id, preview_sql) as conn:
+                preview_df = conn.execute(preview_sql).fetchdf()
+                
+                # 计算总行数（在同一连接上下文）
+                total_rows = len(preview_df)
+                try:
+                    count_sql = _build_preview_count_sql(generation.final_sql)
+                    count_df = conn.execute(count_sql).fetchdf()
+                    if not count_df.empty:
+                        total_rows = int(count_df.iloc[0][0])
+                except Exception as count_exc:
+                    logger.warning("计算预览总行数失败: %s", count_exc)
+        else:
+            # 向后兼容
+            con = get_db_connection()
+            preview_df = execute_query(preview_sql, con)
+            
+            total_rows = len(preview_df)
+            try:
+                count_sql = _build_preview_count_sql(generation.final_sql)
+                count_df = execute_query(count_sql, con)
+                if not count_df.empty:
+                    total_rows = int(count_df.iloc[0, 0])
+            except Exception as count_exc:
+                logger.warning("计算预览总行数失败: %s", count_exc)
 
         data = preview_df.to_dict("records")
         columns = [str(col) for col in preview_df.columns.tolist()]
-        total_rows = len(preview_df)
-
-        try:
-            count_sql = _build_preview_count_sql(generation.final_sql)
-            count_df = execute_query(count_sql, con)
-            if not count_df.empty:
-                total_rows = int(count_df.iloc[0][0])
-        except Exception as count_exc:
-            logger.warning("计算预览总行数失败: %s", count_exc)
 
         estimated_time = None
         try:
+            con = get_db_connection()
             estimate = estimate_query_performance(request.config, con)
             estimated_time = estimate.estimated_time
         except Exception as perf_exc:
@@ -562,16 +585,15 @@ async def preview_visual_query(request: PreviewRequest) -> PreviewResponse:
             estimated_time=estimated_time,
             sql=preview_sql,
             base_sql=generation.base_sql,
-            # Expose pivot fragment for frontend preview when in pivot mode
-            # (safe even if None)
-            # 注意：PreviewResponse 模型目前未包含 pivot_sql 字段，但 Pydantic 允许额外字段被忽略；
-            # 我们按返回需求补充该字段供前端显示。
             pivot_sql=generation.pivot_sql,
             mode=request.mode,
             errors=[],
             warnings=combined_warnings,
         )
 
+    except duckdb.InterruptException:
+        logger.info(f"Visual query preview {query_id} was cancelled by user")
+        raise HTTPException(status_code=499, detail="Query cancelled by client")
     except Exception as exc:
         logger.error("可视化查询预览失败: %s", exc, exc_info=True)
         return PreviewResponse(
@@ -589,14 +611,20 @@ async def preview_visual_query(request: PreviewRequest) -> PreviewResponse:
 
 
 @router.post("/api/visual-query/distinct-values", tags=["Visual Query"])
-async def get_distinct_values(req: DistinctValuesRequest):
+async def get_distinct_values(
+    req: DistinctValuesRequest,
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
+):
     """返回指定列的 Top-N 不同值，可按频次或指标聚合排序。
 
     安全注意：
     - 列名使用 _quote_identifier 包裹
     - 聚合函数白名单校验
     - LIMIT 使用参数化值
+    支持通过 X-Request-ID 头实现查询取消
     """
+    query_id = f"sync:{x_request_id}" if x_request_id else None
+    
     try:
         validation_result = validate_query_config(req.config)
         if not validation_result.is_valid:
@@ -607,8 +635,6 @@ async def get_distinct_values(req: DistinctValuesRequest):
                 "errors": validation_result.errors,
                 "warnings": validation_result.warnings,
             }
-
-        con = get_db_connection()
 
         table = _quote_identifier(req.config.table_name)
         target_col = _quote_identifier(req.column)
@@ -625,7 +651,6 @@ async def get_distinct_values(req: DistinctValuesRequest):
 
         order_by = (req.order_by or "frequency").lower()
         sql = ""
-        params = {}
         limit_val = int(req.limit or 12)
 
         if order_by == "metric" and req.metric:
@@ -643,7 +668,22 @@ async def get_distinct_values(req: DistinctValuesRequest):
                 f"FROM base WHERE {target_col} IS NOT NULL GROUP BY 1 ORDER BY c DESC LIMIT {limit_val}"
             )
 
-        df = execute_query(sql, con)
+        # 使用可中断连接执行查询
+        if query_id:
+            with interruptible_connection(query_id, sql) as conn:
+                df = conn.execute(sql).fetchdf()
+                
+                # distinct_count 统计（在同一连接上下文）
+                distinct_sql = f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base WHERE {target_col} IS NOT NULL"
+                distinct_df = conn.execute(distinct_sql).fetchdf()
+        else:
+            # 向后兼容
+            con = get_db_connection()
+            df = execute_query(sql, con)
+            
+            distinct_sql = f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base WHERE {target_col} IS NOT NULL"
+            distinct_df = execute_query(distinct_sql, con)
+
         values = []
         topN = []
         if df is not None and not df.empty:
@@ -657,9 +697,6 @@ async def get_distinct_values(req: DistinctValuesRequest):
                         item["metric"] = None
                 topN.append(item)
 
-        # distinct_count 统计
-        distinct_sql = f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base WHERE {target_col} IS NOT NULL"
-        distinct_df = execute_query(distinct_sql, con)
         distinct_count = (
             int(distinct_df.iloc[0][0])
             if distinct_df is not None and not distinct_df.empty
@@ -673,6 +710,9 @@ async def get_distinct_values(req: DistinctValuesRequest):
             "errors": [],
             "warnings": validation_result.warnings,
         }
+    except duckdb.InterruptException:
+        logger.info(f"Distinct values query {query_id} was cancelled by user")
+        raise HTTPException(status_code=499, detail="Query cancelled by client")
     except HTTPException:
         raise
     except Exception as exc:
@@ -858,16 +898,20 @@ def build_multi_table_join_query(query_request, con):
             table_id = source.id.strip('"')
             if table_id in involved_tables and source.columns:
                 for col in source.columns:
-                    alias = column_aliases[source.id][col]
-                    select_fields.append(f'"{table_id}"."{col}" AS "{alias}"')
+                    # 支持两种列格式：字符串或包含 'name' 键的字典
+                    col_name = col.get('name', str(col)) if isinstance(col, dict) else str(col)
+                    alias = column_aliases[source.id].get(col_name, col_name)
+                    select_fields.append(f'"{table_id}"."{col_name}" AS "{alias}"')
     else:
         # 如果没有JOIN，包含所有表的所有列
         for source in sources:
             table_id = source.id.strip('"')
             if source.columns:
                 for col in source.columns:
-                    alias = column_aliases[source.id][col]
-                    select_fields.append(f'"{table_id}"."{col}" AS "{alias}"')
+                    # 支持两种列格式：字符串或包含 'name' 键的字典
+                    col_name = col.get('name', str(col)) if isinstance(col, dict) else str(col)
+                    alias = column_aliases[source.id].get(col_name, col_name)
+                    select_fields.append(f'"{table_id}"."{col_name}" AS "{alias}"')
 
     # 添加关联结果列
     join_result_fields = []
@@ -1125,8 +1169,17 @@ def build_join_chain(sources, joins, table_columns):
 
 
 @router.post("/api/query", tags=["Query"])
-async def perform_query(query_request: QueryRequest):
+async def perform_query(
+    query_request: QueryRequest,
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
+):
     """Performs a join query on the specified data sources."""
+    query_id = f"sync:{x_request_id}" if x_request_id else None
+    if query_id:
+        logger.info(f"Query with request ID: {x_request_id}")
+    
+    # 始终获取有效连接
+    # TODO: 使用 interruptible_connection 包裹查询执行以支持取消
     con = get_db_connection()
 
     try:

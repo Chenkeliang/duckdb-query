@@ -48,13 +48,13 @@ class DataSourceResponse(BaseModel):
 
 class BatchDeleteRequest(BaseModel):
     """批量删除请求"""
-    ids: List[str] = Field(..., description="要删除的数据源 ID 列表", max_items=50)
+    ids: List[str] = Field(..., description="要删除的数据源 ID 列表", max_length=50)
     force: bool = Field(False, description="强制删除，忽略依赖检查")
 
 
 class BatchTestRequest(BaseModel):
     """批量测试请求"""
-    ids: List[str] = Field(..., description="要测试的数据源 ID 列表", max_items=50)
+    ids: List[str] = Field(..., description="要测试的数据源 ID 列表", max_length=50)
     timeout: int = Field(10, description="每个连接的超时时间（秒）", ge=1, le=60)
 
 

@@ -49,6 +49,10 @@ class MessageCode(str, Enum):
     TASK_SUBMITTED = "TASK_SUBMITTED"
     TASK_CANCELLED = "TASK_CANCELLED"
     
+    # 同步查询取消（新增）
+    QUERY_CANCELLED = "QUERY_CANCELLED"
+    QUERY_NOT_FOUND = "QUERY_NOT_FOUND"
+    
     # 文件相关（新增）
     FILE_UPLOADED = "FILE_UPLOADED"
     
@@ -95,6 +99,10 @@ DEFAULT_MESSAGES = {
     # 异步任务相关（新增）
     MessageCode.TASK_SUBMITTED: "任务已提交",
     MessageCode.TASK_CANCELLED: "任务已取消",
+    
+    # 同步查询取消（新增）
+    MessageCode.QUERY_CANCELLED: "查询已取消",
+    MessageCode.QUERY_NOT_FOUND: "查询不存在或已完成",
     
     # 文件相关（新增）
     MessageCode.FILE_UPLOADED: "文件上传成功",

@@ -9,9 +9,11 @@ import os
 import time
 import re
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+import duckdb
+import uuid
 
 from core.config_manager import config_manager
 from core.duckdb_engine import (
@@ -19,6 +21,7 @@ from core.duckdb_engine import (
     create_persistent_table,
     build_attach_sql,
 )
+from core.duckdb_pool import interruptible_connection
 from core.utils import normalize_dataframe_output
 from core.timezone_utils import format_storage_time_for_response
 from core.resource_manager import save_upload_file
@@ -262,7 +265,10 @@ async def refresh_duckdb_table_metadata(table_name: str):
         raise HTTPException(status_code=500, detail=f"刷新表元数据失败: {str(exc)}")
 
 
-async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryResponse:
+async def execute_duckdb_query(
+    request: DuckDBQueryRequest, 
+    request_id: Optional[str] = None
+) -> DuckDBQueryResponse:
     """
     执行DuckDB自定义SQL查询
 
@@ -271,14 +277,17 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
     - 自动添加LIMIT限制
     - 可选择将结果保存为新表
     - 返回执行时间和表信息
+    - 支持查询取消（通过 request_id）
     """
     import time
 
+    # 生成 query_id（如果有 request_id，使用 sync: 前缀）
+    query_id = f"sync:{request_id}" if request_id else None
+    start_time = time.time()
+    
     try:
+        # 先获取可用表（这个操作很快，不需要可中断）
         con = get_db_connection()
-        start_time = time.time()
-
-        # 获取当前可用的表
         available_tables_df = con.execute("SHOW TABLES").fetchdf()
         available_tables = (
             available_tables_df["name"].tolist() if len(available_tables_df) > 0 else []
@@ -336,6 +345,7 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
                     )
 
         # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式）
+        limit = None
         if request.is_preview and "LIMIT" not in sql_upper_clean:
             from core.config_manager import config_manager
             limit = config_manager.get_app_config().max_query_rows
@@ -345,24 +355,46 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
         logger.info(f"执行DuckDB查询: {sql_query}")
         logger.info(f"可用表: {available_tables}")
 
-        # 执行查询
-        result_df = con.execute(sql_query).fetchdf()
+        # 使用可中断连接执行查询（如果有 query_id）
+        if query_id:
+            with interruptible_connection(query_id, sql_query) as conn:
+                result_df = conn.execute(sql_query).fetchdf()
+                
+                # 可选：保存查询结果为新表（在同一连接上下文内）
+                saved_table = None
+                if request.save_as_table:
+                    table_name = request.save_as_table.strip()
+                    if table_name:
+                        try:
+                            save_sql = sql_query.rstrip(";")
+                            if limit:
+                                save_sql = save_sql.replace(f" LIMIT {limit}", "")
+                            create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
+                            conn.execute(create_sql)
+                            saved_table = table_name
+                            logger.info(f"查询结果已保存为表: {table_name}")
+                        except Exception as save_error:
+                            logger.warning(f"保存查询结果为表失败: {str(save_error)}")
+        else:
+            # 无 request_id 时使用普通连接（向后兼容）
+            result_df = con.execute(sql_query).fetchdf()
+            
+            saved_table = None
+            if request.save_as_table:
+                table_name = request.save_as_table.strip()
+                if table_name:
+                    try:
+                        save_sql = sql_query.rstrip(";")
+                        if limit:
+                            save_sql = save_sql.replace(f" LIMIT {limit}", "")
+                        create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
+                        con.execute(create_sql)
+                        saved_table = table_name
+                        logger.info(f"查询结果已保存为表: {table_name}")
+                    except Exception as save_error:
+                        logger.warning(f"保存查询结果为表失败: {str(save_error)}")
 
         execution_time = (time.time() - start_time) * 1000
-
-        # 可选：保存查询结果为新表
-        saved_table = None
-        if request.save_as_table:
-            table_name = request.save_as_table.strip()
-            if table_name:
-                try:
-                    # 创建新表
-                    create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql_query.rstrip(";").replace(f"LIMIT {limit}", "")})'
-                    con.execute(create_sql)
-                    saved_table = table_name
-                    logger.info(f"查询结果已保存为表: {table_name}")
-                except Exception as save_error:
-                    logger.warning(f"保存查询结果为表失败: {str(save_error)}")
 
         # 构建响应
         response = DuckDBQueryResponse(
@@ -385,6 +417,9 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
 
         return response
 
+    except duckdb.InterruptException:
+        logger.info(f"Query {query_id} was cancelled by user")
+        raise HTTPException(status_code=499, detail="Query cancelled by client")
     except HTTPException:
         raise
     except Exception as e:
@@ -394,12 +429,16 @@ async def execute_duckdb_query(request: DuckDBQueryRequest) -> DuckDBQueryRespon
 
 
 @router.post("/api/duckdb/execute", tags=["DuckDB Query"])
-async def execute_duckdb_sql(request: DuckDBQueryRequest) -> DuckDBQueryResponse:
+async def execute_duckdb_sql(
+    request: DuckDBQueryRequest,
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
+) -> DuckDBQueryResponse:
     """
     执行DuckDB SQL查询 (兼容增强SQL执行器)
     这是 /api/duckdb/query 的别名端点，保持API兼容性
+    支持通过 X-Request-ID 头实现查询取消
     """
-    return await execute_duckdb_query(request)
+    return await execute_duckdb_query(request, x_request_id)
 
 
 @router.delete("/api/duckdb/tables/{table_name}", tags=["DuckDB Query"])
@@ -574,7 +613,10 @@ async def clear_old_errors(days: int = 30):
 
 
 @router.post("/api/duckdb/federated-query", tags=["DuckDB Query"])
-async def execute_federated_query(request: FederatedQueryRequest) -> FederatedQueryResponse:
+async def execute_federated_query(
+    request: FederatedQueryRequest,
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
+) -> FederatedQueryResponse:
     """
     执行联邦查询，支持跨数据库 ATTACH
     
@@ -586,90 +628,117 @@ async def execute_federated_query(request: FederatedQueryRequest) -> FederatedQu
     5. 执行 DETACH 清理
     6. 返回结果
     
-    Args:
-        request: 联邦查询请求，包含 SQL 和需要 ATTACH 的数据库列表
-        
-    Returns:
-        FederatedQueryResponse: 查询结果
-        
-    Raises:
-        HTTPException: 当连接不存在、ATTACH 失败或查询执行失败时
+    支持通过 X-Request-ID 头实现查询取消
     """
     start_time = time.time()
-    con = get_db_connection()
     attached_aliases = []
     warnings = []
+    query_id = f"sync:{x_request_id}" if x_request_id else None
     
-    try:
-        # 1. ATTACH 外部数据库
-        if request.attach_databases:
-            for attach_db in request.attach_databases:
-                # 获取连接配置
-                connection = db_manager.get_connection(attach_db.connection_id)
-                if not connection:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"数据库连接 '{attach_db.connection_id}' 不存在"
-                    )
-                
-                # 构建数据库配置，解密密码
-                db_config = connection.params.copy()
-                
-                # 解密密码
-                password = db_config.get('password', '')
-                if password and password_encryptor.is_encrypted(password):
-                    db_config['password'] = password_encryptor.decrypt_password(password)
-                
-                # 添加数据库类型
-                db_config['type'] = connection.type.value if hasattr(connection.type, 'value') else str(connection.type)
-                
-                # 生成并执行 ATTACH SQL
-                try:
-                    attach_sql = build_attach_sql(attach_db.alias, db_config)
-                    logger.info(f"执行 ATTACH: {attach_db.alias} (connection_id: {attach_db.connection_id})")
-                    con.execute(attach_sql)
-                    attached_aliases.append(attach_db.alias)
-                    logger.info(f"成功 ATTACH 数据库: {attach_db.alias}")
-                except Exception as attach_error:
-                    logger.error(f"ATTACH 数据库 {attach_db.alias} 失败: {attach_error}")
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"连接外部数据库 '{attach_db.alias}' 失败: {str(attach_error)}"
-                    )
+    # 预先准备 ATTACH 配置（在连接外验证，避免占用连接时间）
+    attach_configs = []
+    if request.attach_databases:
+        for attach_db in request.attach_databases:
+            connection = db_manager.get_connection(attach_db.connection_id)
+            if not connection:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"数据库连接 '{attach_db.connection_id}' 不存在"
+                )
+            
+            db_config = connection.params.copy()
+            password = db_config.get('password', '')
+            if password and password_encryptor.is_encrypted(password):
+                db_config['password'] = password_encryptor.decrypt_password(password)
+            
+            db_config['type'] = connection.type.value if hasattr(connection.type, 'value') else str(connection.type)
+            attach_configs.append((attach_db.alias, db_config))
+    
+    # 处理 SQL 查询
+    sql_query = request.sql.strip()
+    sql_upper = sql_query.upper()
+    
+    if request.is_preview and "LIMIT" not in sql_upper:
+        limit = config_manager.get_app_config().max_query_rows
+        sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
+        logger.info(f"预览模式，已应用 LIMIT {limit}")
+    
+    logger.info(f"执行联邦查询: {sql_query}")
+    
+    def execute_in_connection(conn):
+        """在连接内执行 ATTACH/QUERY/DETACH"""
+        nonlocal attached_aliases, warnings
         
-        # 2. 处理 SQL 查询
-        sql_query = request.sql.strip()
-        sql_upper = sql_query.upper()
+        # 1. ATTACH 所有外部数据库
+        for alias, db_config in attach_configs:
+            try:
+                attach_sql = build_attach_sql(alias, db_config)
+                # 打印完整的 ATTACH SQL（密码已在 build_attach_sql 中处理）
+                # 为安全起见，再次屏蔽密码
+                masked_sql = attach_sql
+                if 'password' in attach_sql.lower():
+                    import re
+                    masked_sql = re.sub(r"password\s*[=:]\s*'[^']*'", "password='***'", attach_sql, flags=re.IGNORECASE)
+                logger.info(f"执行 ATTACH: {alias}")
+                logger.info(f"ATTACH SQL: {masked_sql}")
+                conn.execute(attach_sql)
+                attached_aliases.append(alias)
+                logger.info(f"成功 ATTACH 数据库: {alias}")
+            except Exception as attach_error:
+                logger.error(f"ATTACH 数据库 {alias} 失败: {attach_error}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"连接外部数据库 '{alias}' 失败: {str(attach_error)}"
+                )
         
-        # 自动添加 LIMIT 限制（如果是预览模式且 SQL 中没有 LIMIT）
-        if request.is_preview and "LIMIT" not in sql_upper:
-            limit = config_manager.get_app_config().max_query_rows
-            sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
-            logger.info(f"预览模式，已应用 LIMIT {limit}")
-        
-        logger.info(f"执行联邦查询: {sql_query}")
         logger.info(f"已 ATTACH 的数据库: {attached_aliases}")
         
-        # 3. 执行用户 SQL
-        result_df = con.execute(sql_query).fetchdf()
+        # 2. 执行用户 SQL
+        result_df = conn.execute(sql_query).fetchdf()
         
-        execution_time = (time.time() - start_time) * 1000
-        
-        # 4. 可选：保存查询结果为新表
+        # 3. 可选：保存查询结果为新表
         if request.save_as_table:
             table_name = request.save_as_table.strip()
             if table_name:
                 try:
-                    # 移除 LIMIT 子句后创建表
                     save_sql = request.sql.strip().rstrip(';')
                     create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
-                    con.execute(create_sql)
+                    conn.execute(create_sql)
                     logger.info(f"查询结果已保存为表: {table_name}")
                 except Exception as save_error:
                     logger.warning(f"保存查询结果为表失败: {str(save_error)}")
                     warnings.append(f"保存结果为表失败: {str(save_error)}")
         
-        # 5. 构建响应
+        # 4. DETACH 清理
+        for alias in attached_aliases:
+            try:
+                conn.execute(f'DETACH "{alias}"')
+                logger.info(f"成功 DETACH 数据库: {alias}")
+            except Exception as detach_error:
+                logger.warning(f"DETACH {alias} 失败: {detach_error}")
+        
+        return result_df
+    
+    try:
+        # 使用可中断连接（如果有 query_id）
+        if query_id:
+            with interruptible_connection(query_id, sql_query) as conn:
+                result_df = execute_in_connection(conn)
+        else:
+            # 向后兼容
+            con = get_db_connection()
+            try:
+                result_df = execute_in_connection(con)
+            finally:
+                # 确保 DETACH 清理（在异常情况下）
+                for alias in attached_aliases:
+                    try:
+                        con.execute(f'DETACH "{alias}"')
+                    except:
+                        pass
+        
+        execution_time = (time.time() - start_time) * 1000
+        
         response = FederatedQueryResponse(
             success=True,
             columns=result_df.columns.tolist(),
@@ -682,7 +751,6 @@ async def execute_federated_query(request: FederatedQueryRequest) -> FederatedQu
             warnings=warnings if warnings else None,
         )
         
-        # 性能日志
         if execution_time > 1000:
             logger.warning(f"慢查询检测: 联邦查询耗时 {execution_time:.2f}ms")
         else:
@@ -690,18 +758,23 @@ async def execute_federated_query(request: FederatedQueryRequest) -> FederatedQu
         
         return response
         
+    except duckdb.InterruptException:
+        logger.info(f"Federated query {query_id} was cancelled by user")
+        # 取消时也尝试清理 ATTACH
+        try:
+            con = get_db_connection()
+            for alias in attached_aliases:
+                try:
+                    con.execute(f'DETACH "{alias}"')
+                    logger.info(f"取消后清理 DETACH: {alias}")
+                except:
+                    pass
+        except:
+            pass
+        raise HTTPException(status_code=499, detail="Query cancelled by client")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"联邦查询执行失败: {str(e)}")
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"联邦查询执行失败: {str(e)}")
-        
-    finally:
-        # 6. DETACH 清理
-        for alias in attached_aliases:
-            try:
-                con.execute(f'DETACH "{alias}"')
-                logger.info(f"成功 DETACH 数据库: {alias}")
-            except Exception as detach_error:
-                logger.warning(f"DETACH {alias} 失败: {detach_error}")

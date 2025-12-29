@@ -479,72 +479,90 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface">
       {/* 头部工具栏 */}
-      <div className="h-12 px-6 border-b border-border shrink-0 flex items-center justify-between bg-muted/20">
-        <div className="flex items-center gap-3">
-          <Layers className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">{t('query.set.title', '集合操作')}</span>
-          <span className="text-xs text-muted-foreground px-2 py-0.5 bg-muted rounded">
+      {/* 头部工具栏 - 双行布局 */}
+      {/* 头部工具栏 - 单行紧凑布局 */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0 bg-muted/30">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleExecute}
+              disabled={!canExecute || isExecuting}
+              className="gap-1.5 shrink-0"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              {t('query.execute', '执行')}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClear}
+              disabled={activeTables.length === 0}
+              className="text-muted-foreground hover:text-foreground gap-1.5 shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {t('query.set.clear', '清空')}
+            </Button>
+
+            <div className="w-[1px] h-4 bg-border mx-1 shrink-0" />
+
+            {/* 操作类型切换按钮 */}
+            <div className="flex bg-muted p-0.5 rounded-md h-8 gap-0.5 shrink-0">
+              {SET_OPERATIONS.map((op) => (
+                <button
+                  key={op.value}
+                  onClick={() => setOperationType(op.value)}
+                  title={op.tooltip}
+                  className={`px-2.5 text-xs font-medium rounded transition-colors ${operationType === op.value
+                    ? 'bg-surface text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                  {op.label}
+                </button>
+              ))}
+            </div>
+            {/* BY NAME 复选框 */}
+            <label
+              className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ml-1 shrink-0 ${currentOpSupportsByName ? 'text-foreground' : 'text-muted-foreground opacity-50 cursor-not-allowed'
+                }`}
+              title={t('query.set.byNameTooltip', '按列名匹配合并（DuckDB 特性），不要求列数量一致')}
+            >
+              <input
+                type="checkbox"
+                className="accent-primary w-3.5 h-3.5"
+                checked={byName}
+                onChange={(e) => setByName(e.target.checked)}
+                disabled={!currentOpSupportsByName}
+              />
+              <span className="whitespace-nowrap">BY NAME</span>
+            </label>
+          </div>
+
+          <div className="w-[1px] h-4 bg-border mx-1 shrink-0 hidden xl:block" />
+
+          {/* 提示信息 - 留在左侧 */}
+          <span className="text-muted-foreground text-xs border-l border-border/50 pl-2 hidden xl:inline-block truncate max-w-[200px]">
             {t('query.set.hint', '双击左侧数据源添加表')}
           </span>
+        </div>
+
+        <div className="flex items-center shrink-0 ml-4 gap-2">
+          {/* 标题 - 移至右侧 */}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background/50 text-xs text-muted-foreground hidden lg:flex">
+            <Layers className="w-3.5 h-3.5" />
+            <span className="whitespace-nowrap">{t('query.set.title', '集合操作')}</span>
+          </div>
+
           {/* 外部数据库指示器 */}
           {sourceAnalysis.hasExternal && sourceAnalysis.currentSource && (
-            <Badge variant="outline" className="text-warning border-warning/50">
-              {DATABASE_TYPE_ICONS[sourceAnalysis.currentSource.type] || '📊'}{' '}
+            <Badge variant="outline" className="text-warning border-warning/50 text-[10px] h-5 px-1.5 gap-1">
+              <span className="opacity-70">{DATABASE_TYPE_ICONS[sourceAnalysis.currentSource.type] || '📊'}</span>
               {sourceAnalysis.currentSource.name}
             </Badge>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          {/* 操作类型切换按钮 */}
-          <div className="flex bg-muted p-0.5 rounded-md h-8 gap-0.5">
-            {SET_OPERATIONS.map((op) => (
-              <button
-                key={op.value}
-                onClick={() => setOperationType(op.value)}
-                title={op.tooltip}
-                className={`px-2.5 text-xs font-medium rounded transition-colors ${operationType === op.value
-                    ? 'bg-surface text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                  }`}
-              >
-                {op.label}
-              </button>
-            ))}
-          </div>
-          {/* BY NAME 复选框 - 仅对 UNION 和 UNION ALL 有效 */}
-          <label
-            className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${currentOpSupportsByName ? 'text-foreground' : 'text-muted-foreground opacity-50 cursor-not-allowed'
-              }`}
-            title={t('query.set.byNameTooltip', '按列名匹配合并（DuckDB 特性），不要求列数量一致')}
-          >
-            <input
-              type="checkbox"
-              className="accent-primary w-3.5 h-3.5"
-              checked={byName}
-              onChange={(e) => setByName(e.target.checked)}
-              disabled={!currentOpSupportsByName}
-            />
-            <span>BY NAME</span>
-          </label>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClear}
-            disabled={activeTables.length === 0}
-            className="text-muted-foreground"
-          >
-            <Trash2 className="w-3 h-3 mr-1" />
-            {t('query.set.clear', '清空')}
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleExecute}
-            disabled={!canExecute || isExecuting}
-            className="gap-1.5"
-          >
-            <Play className="w-3.5 h-3.5" />
-            {t('query.execute', '执行')}
-          </Button>
         </div>
       </div>
 

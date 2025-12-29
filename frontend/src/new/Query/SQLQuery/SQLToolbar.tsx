@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, Loader2, Save, FileCode, History, Clock, Timer } from 'lucide-react';
+import { Play, Loader2, Save, FileCode, History, Clock, Timer, StopCircle } from 'lucide-react';
 import { Button } from '@/new/components/ui/button';
 import {
   Tooltip,
@@ -17,6 +17,8 @@ import { cn } from '@/lib/utils';
 export interface SQLToolbarProps {
   /** 执行回调 */
   onExecute?: () => void;
+  /** 取消回调 */
+  onCancel?: () => void;
   /** 异步执行回调 */
   onAsyncExecute?: () => void;
   /** 格式化回调 */
@@ -27,10 +29,14 @@ export interface SQLToolbarProps {
   onHistory?: () => void;
   /** 是否正在执行 */
   isExecuting?: boolean;
+  /** 是否正在取消 */
+  isCancelling?: boolean;
   /** 是否禁用执行 */
   disableExecute?: boolean;
   /** 执行时间（毫秒） */
   executionTime?: number;
+  /** 额外内容（如状态指示器） */
+  extraContent?: React.ReactNode;
   /** 自定义类名 */
   className?: string;
 }
@@ -50,13 +56,16 @@ function formatExecutionTime(ms: number): string {
  */
 export const SQLToolbar: React.FC<SQLToolbarProps> = ({
   onExecute,
+  onCancel,
   onAsyncExecute,
   onFormat,
   onSave,
   onHistory,
   isExecuting = false,
+  isCancelling = false,
   disableExecute = false,
   executionTime,
+  extraContent,
   className,
 }) => {
   const { t } = useTranslation('common');
@@ -71,28 +80,52 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
       {/* 左侧：主要操作 */}
       <div className="flex items-center gap-2">
         <TooltipProvider>
-          {/* 执行按钮 */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={onExecute}
-                disabled={disableExecute || isExecuting}
-                className="gap-1.5"
-              >
-                {isExecuting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-                <span>{t('query.sql.execute', '执行')}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Ctrl+Enter / Cmd+Enter</p>
-            </TooltipContent>
-          </Tooltip>
+          {/* 执行按钮 - 执行时变为取消按钮 */}
+          {isExecuting && onCancel ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={onCancel}
+                  disabled={isCancelling}
+                  className="gap-1.5"
+                >
+                  {isCancelling ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <StopCircle className="h-4 w-4" />
+                  )}
+                  <span>{t('query.sql.cancel', '取消')}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t('query.sql.cancelTooltip', '取消当前查询')}</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={onExecute}
+                  disabled={disableExecute || isExecuting}
+                  className="gap-1.5"
+                >
+                  {isExecuting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                  <span>{t('query.sql.execute', '执行')}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Ctrl+Enter / Cmd+Enter</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
 
           {/* 异步执行按钮 */}
           {onAsyncExecute && (
@@ -168,6 +201,9 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
 
       {/* 右侧：状态信息和历史 */}
       <div className="flex items-center gap-3">
+        {/* 额外内容（状态指示器等） */}
+        {extraContent}
+
         {/* 执行时间 */}
         {executionTime !== undefined && (
           <div className="flex items-center gap-1 text-sm text-muted-foreground">

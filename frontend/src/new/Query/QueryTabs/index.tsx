@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Code, GitMerge, Layers, Table2, LayoutGrid } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/new/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/new/components/ui/tabs";
 import { QueryBuilder, SQLPreview } from "../VisualQuery";
 import { SQLQueryPanel } from "../SQLQuery";
 import { JoinQueryPanel } from "../JoinQuery";
@@ -39,7 +39,7 @@ const queryModes: QueryMode[] = [
   { id: 'join', labelKey: 'query.tabs.join', icon: GitMerge },
   { id: 'set', labelKey: 'query.tabs.set', icon: Layers },
   { id: 'pivot', labelKey: 'query.tabs.pivot', icon: Table2 },
-  { id: 'visual', labelKey: 'query.tabs.visual', icon: LayoutGrid },
+  // { id: 'visual', labelKey: 'query.tabs.visual', icon: LayoutGrid }, // 暂时隐藏
 ];
 
 interface QueryTabsProps {
@@ -48,6 +48,10 @@ interface QueryTabsProps {
   selectedTables: SelectedTable[];
   onExecute: (sql: string, source?: TableSource) => Promise<void>;
   onRemoveTable?: (table: SelectedTable) => void;
+  /** 取消回调 */
+  onCancel?: () => void;
+  /** 是否正在取消 */
+  isCancelling?: boolean;
   /** 预览 SQL（来自异步任务等） */
   previewSQL?: string;
 }
@@ -61,10 +65,12 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
   selectedTables,
   onExecute,
   onRemoveTable,
+  onCancel,
+  isCancelling,
   previewSQL: externalPreviewSQL,
 }) => {
   const { t } = useTranslation('common');
-  
+
   // SQL 预览状态
   const [previewOpen, setPreviewOpen] = React.useState(false);
   const [previewSQL, setPreviewSQL] = React.useState<string | null>(null);
@@ -123,67 +129,115 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
         onExecute={handleExecuteFromPreview}
         isExecuting={isExecuting}
       />
-    <Tabs value={activeTab} onValueChange={onTabChange} className="h-full flex flex-col bg-card">
-      {/* 标签页导航 - 与数据源管理页面样式一致 */}
-      <div className="h-12 border-b border-border flex items-center px-4 bg-muted/30 shrink-0">
-        <TabsList className="flex gap-1 bg-muted p-1 rounded-lg h-9">
-          {queryModes.map(mode => {
-            const Icon = mode.icon;
-            return (
-              <TabsTrigger key={mode.id} value={mode.id} className="gap-2">
-                <Icon className="w-3.5 h-3.5" />
-                <span>{t(mode.labelKey)}</span>
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
-      </div>
+      <Tabs value={activeTab} onValueChange={onTabChange} className="h-full flex flex-col bg-card">
+        {/* 标签页导航 - 与数据源管理页面样式一致 */}
+        <div className="h-12 border-b border-border flex items-center px-4 bg-muted/30 shrink-0">
+          <TabsList className="flex gap-1 bg-muted p-1 rounded-lg h-9">
+            {queryModes.map(mode => {
+              const Icon = mode.icon;
+              return (
+                <TabsTrigger key={mode.id} value={mode.id} className="gap-2">
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{t(mode.labelKey)}</span>
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+        </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden">
-        <TabsContent value="sql" className="h-full m-0 p-0 overflow-auto">
-          <SQLQueryPanel
-            selectedTables={selectedTables}
-            onExecute={onExecute}
-            editorMinHeight="150px"
-            editorMaxHeight="300px"
-            previewSQL={externalPreviewSQL}
-          />
-        </TabsContent>
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <KeepAliveTabContent value="sql" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
+            <SQLQueryPanel
+              selectedTables={selectedTables}
+              onExecute={onExecute}
+              editorMinHeight="150px"
+              editorMaxHeight="300px"
+              previewSQL={externalPreviewSQL}
+            />
+          </KeepAliveTabContent>
 
-        <TabsContent value="join" className="h-full m-0 p-0 overflow-auto">
-          <JoinQueryPanel
-            selectedTables={selectedTables}
-            onExecute={onExecute}
-            onRemoveTable={onRemoveTable}
-          />
-        </TabsContent>
+          <KeepAliveTabContent value="join" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
+            <JoinQueryPanel
+              selectedTables={selectedTables}
+              onExecute={onExecute}
+              onRemoveTable={onRemoveTable}
+              onCancel={onCancel}
+              isCancelling={isCancelling}
+            />
+          </KeepAliveTabContent>
 
-        <TabsContent value="set" className="h-full m-0 p-0 overflow-auto">
-          <SetOperationsPanel
-            selectedTables={selectedTables}
-            onExecute={onExecute}
-            onRemoveTable={onRemoveTable}
-          />
-        </TabsContent>
+          <KeepAliveTabContent value="set" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
+            <SetOperationsPanel
+              selectedTables={selectedTables}
+              onExecute={onExecute}
+              onRemoveTable={onRemoveTable}
+            />
+          </KeepAliveTabContent>
 
-        <TabsContent value="pivot" className="h-full m-0 p-0 overflow-auto">
-          <PivotTablePanel 
-            selectedTables={selectedTables}
-            onExecute={onExecute} 
-          />
-        </TabsContent>
+          <KeepAliveTabContent value="pivot" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
+            <PivotTablePanel
+              selectedTables={selectedTables}
+              onExecute={onExecute}
+            />
+          </KeepAliveTabContent>
 
-        <TabsContent value="visual" className="h-full m-0 p-0 overflow-auto">
-          <QueryBuilder
-            selectedTable={selectedTables.length > 0 ? selectedTables[0] : null}
-            onExecute={handleVisualQueryExecute}
-            onPreview={handlePreview}
-            isExecuting={isExecuting}
-          />
-        </TabsContent>
-      </div>
-    </Tabs>
+          <KeepAliveTabContent value="visual" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
+            <QueryBuilder
+              selectedTable={selectedTables.length > 0 ? selectedTables[0] : null}
+              onExecute={handleVisualQueryExecute}
+              onPreview={handlePreview}
+              isExecuting={isExecuting}
+            />
+          </KeepAliveTabContent>
+        </div>
+      </Tabs>
     </>
+  );
+};
+
+// =============================================================================
+// Helper Components
+// =============================================================================
+
+/**
+ * 保持存活的 Tab 内容组件
+ * 
+ * 只有在第一次激活时才渲染，之后切换 Tab 时只是隐藏而不是卸载，
+ * 从而保留 Tab 内部的状态（如筛选条件、滚动位置等）。
+ */
+interface KeepAliveTabContentProps {
+  value: string;
+  activeTab: string;
+  children: React.ReactNode;
+  className?: string;
+}
+
+const KeepAliveTabContent: React.FC<KeepAliveTabContentProps> = ({
+  value,
+  activeTab,
+  children,
+  className,
+}) => {
+  const [hasVisited, setHasVisited] = React.useState(false);
+
+  React.useEffect(() => {
+    if (value === activeTab) {
+      setHasVisited(true);
+    }
+  }, [value, activeTab]);
+
+  // 如果从未访问过且不是当前 tab，不渲染（懒加载）
+  if (!hasVisited && value !== activeTab) return null;
+
+  return (
+    <div
+      role="tabpanel"
+      data-state={activeTab === value ? "active" : "inactive"}
+      className={className}
+      style={{ display: activeTab === value ? "block" : "none" }}
+    >
+      {children}
+    </div>
   );
 };
 
@@ -220,8 +274,8 @@ function buildSQLFromConfig(config: QueryConfig, dialect: SqlDialect): string | 
   config.aggregations?.forEach((agg) => {
     const colName = quoteIdent(agg.column, dialect);
     // 如果有 JOIN，聚合列也需要表前缀
-    const qualifiedCol = config.joins && config.joins.length > 0 
-      ? `${baseTableRef}.${colName}` 
+    const qualifiedCol = config.joins && config.joins.length > 0
+      ? `${baseTableRef}.${colName}`
       : colName;
     let aggExpr =
       agg.function === "COUNT_DISTINCT"
@@ -255,8 +309,8 @@ function buildSQLFromConfig(config: QueryConfig, dialect: SqlDialect): string | 
       let condition = index > 0 ? ` ${filter.logicOperator} ` : "";
       const col = quoteIdent(filter.column, dialect);
       // 如果有 JOIN，WHERE 条件中的列也需要表前缀
-      const qualifiedCol = config.joins && config.joins.length > 0 
-        ? `${baseTableRef}.${col}` 
+      const qualifiedCol = config.joins && config.joins.length > 0
+        ? `${baseTableRef}.${col}`
         : col;
       switch (filter.operator) {
         case "IS NULL":
@@ -286,8 +340,8 @@ function buildSQLFromConfig(config: QueryConfig, dialect: SqlDialect): string | 
     // 如果有 JOIN，GROUP BY 中的列也需要表前缀
     const groupByParts = config.groupBy.map((col) => {
       const quotedCol = quoteIdent(col, dialect);
-      return config.joins && config.joins.length > 0 
-        ? `${baseTableRef}.${quotedCol}` 
+      return config.joins && config.joins.length > 0
+        ? `${baseTableRef}.${quotedCol}`
         : quotedCol;
     });
     parts.push(`GROUP BY ${groupByParts.join(", ")}`);
@@ -297,8 +351,8 @@ function buildSQLFromConfig(config: QueryConfig, dialect: SqlDialect): string | 
   if (config.orderBy && config.orderBy.length > 0) {
     const orderByParts = config.orderBy.map((s) => {
       const quotedCol = quoteIdent(s.column, dialect);
-      const qualifiedCol = config.joins && config.joins.length > 0 
-        ? `${baseTableRef}.${quotedCol}` 
+      const qualifiedCol = config.joins && config.joins.length > 0
+        ? `${baseTableRef}.${quotedCol}`
         : quotedCol;
       return `${qualifiedCol} ${s.direction}`;
     });

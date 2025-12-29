@@ -408,27 +408,52 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface">
       {/* 头部工具栏 */}
-      <div className="h-12 px-6 border-b border-border shrink-0 flex items-center justify-between bg-muted/20">
+      {/* 头部工具栏 - 单行紧凑布局 */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0 bg-muted/30">
         <div className="flex items-center gap-3">
-          <Table2 className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">{t('query.pivot.title', '透视表')}</span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleExecute}
+              disabled={!sql || isExecuting}
+              className="gap-1.5"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              {t('query.execute', '执行')}
+            </Button>
+
+            <div className="w-[1px] h-4 bg-border mx-1" />
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetConfig}
+              disabled={!sourceTable || (rowFields.length === 0 && !columnField && valueFields.length === 0)}
+              className="text-muted-foreground hover:text-foreground gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {t('common.clear', '清空')}
+            </Button>
+          </div>
+
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* 标题 - 移至右侧 */}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background/50 text-xs text-muted-foreground">
+            <Table2 className="w-3.5 h-3.5" />
+            <span>{t('query.pivot.title', '透视表')}</span>
+          </div>
+
           {/* 外部数据库指示器 */}
           {isExternal && tableSource && (
-            <Badge variant="outline" className="text-warning border-warning/50">
-              {DATABASE_TYPE_ICONS[tableSource.databaseType as keyof typeof DATABASE_TYPE_ICONS] || '📊'}{' '}
+            <Badge variant="outline" className="text-warning border-warning/50 text-[10px] h-5 px-1.5 gap-1">
+              <span className="opacity-70">{DATABASE_TYPE_ICONS[tableSource.databaseType as keyof typeof DATABASE_TYPE_ICONS] || '📊'}</span>
               {tableSource.connectionName}
             </Badge>
           )}
         </div>
-        <Button
-          size="sm"
-          onClick={handleExecute}
-          disabled={!sql || isExecuting}
-          className="gap-1.5"
-        >
-          <Play className="w-3.5 h-3.5" />
-          {t('query.execute', '执行')}
-        </Button>
       </div>
 
       {/* 内容区域 */}
@@ -527,12 +552,15 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
                   </div>
                 </div>
 
-                <Select value={columnField} onValueChange={setColumnField}>
+                <Select
+                  value={columnField || '__NO_COLUMN__'}
+                  onValueChange={(val) => setColumnField(val === '__NO_COLUMN__' ? '' : val)}
+                >
                   <SelectTrigger className="w-full max-w-md">
                     <SelectValue placeholder={t('query.pivot.selectColumnField', '选择列字段（可选）')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">
+                    <SelectItem value="__NO_COLUMN__">
                       {t('query.pivot.noColumnField', '不使用透视列')}
                     </SelectItem>
                     {availableColumns.map((col) => (

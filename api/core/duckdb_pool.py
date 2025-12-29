@@ -328,6 +328,51 @@ class DuckDBConnectionPool:
                 "total_errors": self._total_errors,
             }
 
+    def discard_connection(self, connection: duckdb.DuckDBPyConnection) -> bool:
+        """
+        销毁连接（中断后使用，不归还池中）
+        
+        用于查询被中断后，避免连接复用导致的状态问题
+        
+        Args:
+            connection: 要销毁的连接对象
+            
+        Returns:
+            True if connection was found and discarded, False otherwise
+        """
+        with self._lock:
+            # 通过对象身份查找连接 ID
+            conn_id_to_discard = None
+            for conn_id, conn_info in self._connections.items():
+                if conn_info.connection is connection:
+                    conn_id_to_discard = conn_id
+                    break
+            
+            if conn_id_to_discard is None:
+                logger.warning("discard_connection: 未找到要销毁的连接")
+                return False
+            
+            # 关闭连接
+            try:
+                connection.close()
+            except Exception as e:
+                logger.warning(f"discard_connection: 关闭连接失败: {e}")
+            
+            # 从池中移除
+            del self._connections[conn_id_to_discard]
+            self._total_closed += 1
+            logger.info(f"已销毁连接 {conn_id_to_discard}, 当前连接数: {len(self._connections)}")
+            
+            # 如果低于最小连接数，触发补充（在后台）
+            if len(self._connections) < self.min_connections:
+                logger.info("连接数低于最小值，将在下次请求时创建新连接")
+            
+            # 通知等待的线程
+            with self._condition:
+                self._condition.notify()
+            
+            return True
+
     def close_all(self):
         """关闭所有连接"""
         with self._lock:
@@ -355,6 +400,51 @@ def get_connection_pool() -> DuckDBConnectionPool:
             max_retries=app_config.pool_max_retries,
         )
     return _connection_pool
+
+
+@contextmanager
+def interruptible_connection(task_id: str, sql: str = ""):
+    """
+    可中断的连接上下文管理器
+    
+    复用现有 get_connection() 的事务/释放逻辑，同时支持中断
+    
+    使用方式:
+        with interruptible_connection(task_id, sql) as conn:
+            conn.execute(sql)
+    
+    Args:
+        task_id: 任务 ID，用于注册和中断
+        sql: SQL 语句，用于调试日志
+        
+    Yields:
+        DuckDB 连接对象
+        
+    Raises:
+        duckdb.InterruptException: 查询被中断时抛出
+    """
+    from core.connection_registry import connection_registry
+    
+    pool = get_connection_pool()
+    discarded = False
+    
+    with pool.get_connection() as conn:
+        # 注册到注册表
+        connection_registry.register(task_id, conn, sql[:200] if sql else "")
+        
+        try:
+            yield conn
+        except duckdb.InterruptException:
+            # 中断后销毁连接，避免被重新归还
+            pool.discard_connection(conn)
+            discarded = True
+            logger.info(f"Task {task_id} was interrupted, connection discarded")
+            raise  # 重新抛出，让上层处理
+        finally:
+            # 无论成功/失败/取消，都注销注册表
+            connection_registry.unregister(task_id)
+            if discarded:
+                logger.debug(f"Task {task_id} connection already discarded, skipping pool release")
 
 
 # ============================================

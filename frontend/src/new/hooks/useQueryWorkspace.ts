@@ -1,12 +1,12 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
 import { executeDuckDBSQL, executeFederatedQuery } from "@/services/apiClient";
 import { toast } from "sonner";
-import type { 
-  SelectedTable, 
+import type {
+  SelectedTable,
   SelectedTableObject,
-  DatabaseType 
+  DatabaseType
 } from '../types/SelectedTable';
 import { normalizeSelectedTable } from '../utils/tableUtils';
 
@@ -81,6 +81,12 @@ export interface UseQueryWorkspaceReturn {
   handleTabChange: (tab: string) => void;
   /** 执行查询 */
   handleQueryExecute: (sql: string, source?: TableSource) => Promise<void>;
+  /** 取消当前查询 */
+  cancelQuery: () => Promise<void>;
+  /** 是否正在取消 */
+  isCancelling: boolean;
+  /** 查询是否已被取消 */
+  isCancelled: boolean;
 }
 
 /**
@@ -89,23 +95,23 @@ export interface UseQueryWorkspaceReturn {
 const isSameTable = (a: SelectedTable, b: SelectedTable): boolean => {
   const normalizedA = normalizeSelectedTable(a);
   const normalizedB = normalizeSelectedTable(b);
-  
+
   if (normalizedA.source !== normalizedB.source) return false;
   if (normalizedA.name !== normalizedB.name) return false;
-  
+
   if (normalizedA.source === 'external' && normalizedB.source === 'external') {
     return (
       normalizedA.connection?.id === normalizedB.connection?.id &&
       normalizedA.schema === normalizedB.schema
     );
   }
-  
+
   return true;
 };
 
 export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   const { t } = useTranslation('common');
-  
+
   // 每个查询模式的选中表（使用 SelectedTable 对象）
   const [selectedTables, setSelectedTables] = useState<Record<string, SelectedTable[]>>({
     sql: [],
@@ -120,9 +126,15 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   // 查询结果
   const [queryResults, setQueryResults] = useState<QueryResult | null>(null);
-  
+
   // 最后执行的查询信息（用于导入功能）
   const [lastQuery, setLastQuery] = useState<LastQuery | null>(null);
+
+  // 取消状态管理
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [isCancelled, setIsCancelled] = useState(false);
+  const currentRequestIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // DuckDB 查询执行 mutation
   const duckdbMutation = useMutation({
@@ -140,10 +152,10 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   ) => {
     const columns = response.columns || [];
     const rawData = response.data || [];
-    
+
     // 检测数据格式：如果第一行是对象，则已经是对象数组；否则是二维数组
     let objectData: Record<string, unknown>[];
-    
+
     if (rawData.length > 0 && typeof rawData[0] === 'object' && !Array.isArray(rawData[0])) {
       objectData = rawData as Record<string, unknown>[];
     } else {
@@ -164,7 +176,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       rowCount: rawData.length,
       execTime: response.execTime || response.execution_time_ms,
     };
-    
+
     setQueryResults(resultData);
     toast.success(t('query.success', { count: rawData.length }));
   }, [t]);
@@ -187,7 +199,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
         // 多选模式（join, set）
         const existingIndex = currentTables.findIndex(t => isSameTable(t, normalized));
-        
+
         if (existingIndex >= 0) {
           // 取消选择
           return {
@@ -233,7 +245,14 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     async (sql: string, source?: TableSource) => {
       // 默认为 DuckDB 数据源
       const querySource: TableSource = source || { type: 'duckdb' };
-      
+
+      // 生成请求 ID 并设置取消相关状态
+      const requestId = crypto.randomUUID();
+      currentRequestIdRef.current = requestId;
+      abortControllerRef.current = new AbortController();
+      setIsCancelled(false);
+      console.log('[useQueryWorkspace] Starting query with requestId:', requestId);
+
       // 设置加载状态
       setQueryResults({
         data: null,
@@ -244,11 +263,11 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
       try {
         let response: { data?: unknown[]; columns?: string[]; execTime?: number; execution_time_ms?: number };
-        
+
         if (querySource.type === 'federated' || querySource.type === 'external') {
           // 联邦查询（包括单外部表查询，统一使用 ATTACH 模式）
           const attachDatabases = querySource.attachDatabases || [];
-          
+
           // 如果是旧的 external 类型但没有 attachDatabases，尝试构建
           if (attachDatabases.length === 0 && querySource.connectionId) {
             attachDatabases.push({
@@ -256,17 +275,19 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
               connectionId: querySource.connectionId,
             });
           }
-          
+
           if (attachDatabases.length === 0) {
             throw new Error('Federated query requires attach databases');
           }
-          
+
           const startTime = Date.now();
           const result = await executeFederatedQuery({
             sql,
             attachDatabases,
             isPreview: false,
-          }) as { data?: unknown[]; columns?: string[] };
+            requestId,  // 传递请求 ID 以支持取消
+            signal: abortControllerRef.current?.signal,  // 传递 signal 以支持本地取消
+          } as any) as { data?: unknown[]; columns?: string[] };
           const execTime = Date.now() - startTime;
           response = {
             data: result.data || [],
@@ -274,16 +295,35 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
             execTime,
           };
         } else {
-          // DuckDB 本地查询
-          response = await duckdbMutation.mutateAsync(sql);
+          // DuckDB 本地查询 - 直接调用 API 以传递 requestId 和 signal
+          const startTime = Date.now();
+          const result = await executeDuckDBSQL(sql, {
+            requestId,
+            signal: abortControllerRef.current?.signal,
+          });
+          const execTime = Date.now() - startTime;
+          response = { ...result, execTime };
         }
-        
+
+        // 检查请求是否已被取消（通过比较 requestId）
+        // 如果 currentRequestIdRef 已被清除或与当前请求不同，说明已取消
+        if (currentRequestIdRef.current !== requestId) {
+          console.log('[useQueryWorkspace] Query was cancelled, ignoring result');
+          return;
+        }
+
         // 保存最后执行的查询信息（用于导入）
         setLastQuery({ sql, source: querySource });
-        
+
         // 处理结果
         processQueryResult(response);
       } catch (error) {
+        // 检查是否是取消导致的错误
+        if (currentRequestIdRef.current !== requestId) {
+          console.log('[useQueryWorkspace] Query was cancelled, ignoring error');
+          return;
+        }
+
         setQueryResults({
           data: null,
           columns: null,
@@ -296,6 +336,41 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     [duckdbMutation, processQueryResult, t]
   );
 
+  // 取消当前查询
+  const cancelQuery = useCallback(async () => {
+    console.log('[useQueryWorkspace] cancelQuery called, currentRequestId:', currentRequestIdRef.current);
+    setIsCancelling(true);
+
+    // 本地中止请求
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    // 调用后端取消 API（如果有 requestId）
+    if (currentRequestIdRef.current) {
+      try {
+        await fetch(`/api/query/cancel/${currentRequestIdRef.current}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (e) {
+        console.warn('Cancel request failed:', e);
+      }
+      currentRequestIdRef.current = null;
+    }
+
+    setIsCancelled(true);
+    setIsCancelling(false);
+    setQueryResults(prev => prev ? {
+      ...prev,
+      loading: false,
+      error: new Error(t('query.cancelled', '查询已取消')),
+    } : null);
+
+    toast.info(t('query.cancelled', '查询已取消'));
+  }, [t]);
+
   return {
     selectedTables,
     currentTab,
@@ -305,6 +380,9 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     handleRemoveTable,
     handleTabChange,
     handleQueryExecute,
+    cancelQuery,
+    isCancelling,
+    isCancelled,
   };
 };
 

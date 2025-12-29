@@ -831,6 +831,7 @@ def generate_improved_column_aliases(
     """
     为冲突的列名生成改进的别名
     使用原始字段名 + 表标识的方式，如：字段名_表标识
+    支持两种列格式：字符串列表或字典列表
     """
     conflicts = detect_column_conflicts(sources)
     aliases = {}
@@ -844,13 +845,19 @@ def generate_improved_column_aliases(
 
         if source.columns:
             for column in source.columns:
-                if column in conflicts:
+                # 支持两种列格式：字符串或包含 'name' 键的字典
+                if isinstance(column, dict):
+                    col_name = column.get('name', str(column))
+                else:
+                    col_name = str(column)
+                
+                if col_name in conflicts:
                     # 生成改进的别名：column_name_table_identifier
-                    alias = f"{column}_{table_identifier}"
-                    source_aliases[column] = alias
+                    alias = f"{col_name}_{table_identifier}"
+                    source_aliases[col_name] = alias
                 else:
                     # 非冲突列保持原始名称
-                    source_aliases[column] = column
+                    source_aliases[col_name] = col_name
         aliases[source.id] = source_aliases
 
     return aliases
@@ -918,13 +925,19 @@ def simplify_table_name(table_name: str, max_length: int = 10) -> str:
 def detect_column_conflicts(sources: List[DataSource]) -> Dict[str, List[str]]:
     """
     检测多个数据源之间的列名冲突
+    支持两种列格式：字符串列表或字典列表
     """
     column_sources = defaultdict(list)
 
     for source in sources:
         if source.columns:
             for column in source.columns:
-                column_sources[column].append(source.id)
+                # 支持两种列格式：字符串或包含 'name' 键的字典
+                if isinstance(column, dict):
+                    col_name = column.get('name', str(column))
+                else:
+                    col_name = str(column)
+                column_sources[col_name].append(source.id)
 
     # 找出冲突的列名
     conflicts = {

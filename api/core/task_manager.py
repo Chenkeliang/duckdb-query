@@ -8,10 +8,11 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, asdict
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from enum import Enum
 from pathlib import Path
 from threading import Lock
+import threading
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from core.config_manager import config_manager
@@ -60,6 +61,84 @@ def retry_on_write_conflict(
     raise last_exception
 
 
+# ============================================
+# 取消监控守护线程 (Watchdog)
+# ============================================
+
+# 模块级单例控制，防止多次初始化启动多个线程
+_watchdog_started = False
+_watchdog_lock = threading.Lock()
+
+
+def start_cancellation_watchdog(interval_seconds: int = 60):
+    """启动取消监控守护线程（单例）"""
+    global _watchdog_started
+    
+    with _watchdog_lock:
+        if _watchdog_started:
+            logger.debug("取消监控守护线程已在运行，跳过重复启动")
+            return
+        
+        _watchdog_started = True
+    
+    def watchdog_loop():
+        while True:
+            try:
+                time.sleep(interval_seconds)
+                cleanup_cancelling_timeout()
+                cleanup_stale_registry()
+            except Exception as e:
+                logger.error(f"取消监控异常: {e}")
+    
+    thread = threading.Thread(target=watchdog_loop, daemon=True)
+    thread.start()
+    logger.info("取消监控守护线程已启动")
+
+
+def cleanup_cancelling_timeout(timeout_seconds: int = 60):
+    """清理超时的 CANCELLING 任务，将其标记为 CANCELLED"""
+    try:
+        with with_system_connection() as connection:
+            cutoff = get_storage_time() - timedelta(seconds=timeout_seconds)
+            rows = connection.execute(
+                f"""
+                UPDATE {ASYNC_TASKS_TABLE}
+                SET status = ?, error_message = ?, completed_at = ?
+                WHERE status = ? AND started_at < ?
+                RETURNING task_id
+                """,
+                [
+                    TaskStatus.CANCELLED.value,
+                    "取消超时，强制标记",
+                    get_storage_time(),
+                    TaskStatus.CANCELLING.value,
+                    cutoff,
+                ],
+            ).fetchall()
+        
+        if rows:
+            logger.info(f"清理超时 CANCELLING 任务: {[r[0] for r in rows]}")
+        return len(rows)
+    except Exception as e:
+        logger.error(f"清理超时 CANCELLING 任务失败: {e}")
+        return 0
+
+
+def cleanup_stale_registry():
+    """清理注册表中的残留条目"""
+    try:
+        from core.connection_registry import connection_registry
+        # 忽略 _cleanup 后缀的临时任务（cleanup 操作很快，不应被清理）
+        count = connection_registry.cleanup_stale(
+            max_age_seconds=1800,
+            ignore_suffix="_cleanup"
+        )
+        if count:
+            logger.info(f"清理注册表残留条目: {count}")
+    except Exception as e:
+        logger.error(f"清理注册表残留条目失败: {e}")
+
+
 class TaskStatus(str, Enum):
     """任务状态枚举"""
 
@@ -68,6 +147,7 @@ class TaskStatus(str, Enum):
     SUCCESS = "success"
     FAILED = "failed"
     CANCELLING = "cancelling"  # 取消中（用于取消信号模式）
+    CANCELLED = "cancelled"    # 已取消（最终状态）
 
 
 @dataclass
@@ -98,6 +178,7 @@ class AsyncTask:
             TaskStatus.SUCCESS.value: "completed",
             TaskStatus.FAILED.value: "failed",
             TaskStatus.CANCELLING.value: "cancelling",
+            TaskStatus.CANCELLED.value: "cancelled",
         }
         result["status"] = status_mapping.get(self.status.value, self.status.value)
         # 前端期望 sql 字段，后端存储为 query
@@ -114,6 +195,7 @@ class TaskManager:
     def __init__(self):
         self._lock = Lock()
         self._ensure_tables()
+        start_cancellation_watchdog()  # 单例控制，多次调用不会重复启动
         logger.info("异步任务管理器初始化完成（持久化存储）")
 
     # --------------------------------------------------------------------- #
@@ -221,6 +303,8 @@ class TaskManager:
             return TaskStatus.FAILED
         if normalized == "cancelling":
             return TaskStatus.CANCELLING
+        if normalized == "cancelled":
+            return TaskStatus.CANCELLED
         return TaskStatus.QUEUED
 
     @staticmethod
@@ -642,9 +726,15 @@ class TaskManager:
 
     def request_cancellation(self, task_id: str, reason: str = "用户手动取消") -> bool:
         """
-        请求取消任务（设置取消标志，不直接更新最终状态）
-        使用取消信号模式，避免与后台任务产生写-写冲突
+        请求取消任务（设置取消标志 + 中断查询）
+        
+        流程：
+        1. 将状态更新为 CANCELLING
+        2. 调用 connection_registry.interrupt() 中断查询
+        3. 更新取消元数据
         """
+        from core.connection_registry import connection_registry
+        
         with with_system_connection() as connection:
             rows = connection.execute(
                 f"""
@@ -664,6 +754,18 @@ class TaskManager:
         success = bool(rows)
         if success:
             logger.info("任务取消请求已设置: %s, 原因: %s", task_id, reason)
+            
+            # 尝试中断正在执行的查询
+            try:
+                interrupted = connection_registry.interrupt(task_id)
+                if interrupted:
+                    logger.info("已中断任务 %s 的查询执行", task_id)
+                else:
+                    logger.info("任务 %s 不在注册表中（可能已完成或尚未开始）", task_id)
+            except Exception as exc:
+                logger.warning("中断任务 %s 失败: %s", task_id, exc)
+            
+            # 更新取消元数据
             try:
                 self.update_task(task_id, {
                     "cancellation_requested": True,
@@ -676,6 +778,65 @@ class TaskManager:
             logger.warning("任务状态不允许取消或任务不存在: %s", task_id)
         return success
 
+    def mark_cancelled(self, task_id: str, reason: str = "查询被中断") -> bool:
+        """
+        标记任务为已取消（最终状态）
+        
+        在捕获 duckdb.InterruptException 后调用此方法
+        
+        Args:
+            task_id: 任务 ID
+            reason: 取消原因
+            
+        Returns:
+            True if status was updated successfully
+        """
+        def _do_mark_cancelled() -> bool:
+            with self._lock:
+                with with_system_connection() as conn:
+                    completed_at = get_storage_time()
+                    
+                    # 查询开始时间以计算执行时长
+                    started_row = conn.execute(
+                        f'SELECT started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
+                        [task_id],
+                    ).fetchone()
+                    
+                    execution_time = None
+                    if started_row and isinstance(started_row[0], datetime):
+                        started_at = self._normalize_datetime(started_row[0])
+                        if started_at:
+                            execution_time = (completed_at - started_at).total_seconds()
+
+                    rows = conn.execute(
+                        f"""
+                        UPDATE {ASYNC_TASKS_TABLE}
+                        SET status = ?, error_message = ?, completed_at = ?, execution_time = ?
+                        WHERE task_id = ?
+                        RETURNING task_id
+                        """,
+                        [
+                            TaskStatus.CANCELLED.value,
+                            reason,
+                            completed_at,
+                            execution_time,
+                            task_id,
+                        ],
+                    ).fetchall()
+
+                    return bool(rows)
+
+        try:
+            success = retry_on_write_conflict(_do_mark_cancelled, max_retries=3)
+            if success:
+                logger.info("任务已标记为取消: %s, 原因: %s", task_id, reason)
+            else:
+                logger.warning("标记任务取消失败: %s", task_id)
+            return success
+        except Exception as e:
+            logger.error("mark_cancelled 失败: %s -> %s", task_id, e)
+            return False
+
     def is_cancellation_requested(self, task_id: str) -> bool:
         """检查任务是否被请求取消"""
         with with_system_connection() as connection:
@@ -683,7 +844,10 @@ class TaskManager:
                 f"SELECT status FROM {ASYNC_TASKS_TABLE} WHERE task_id = ?",
                 [task_id],
             ).fetchone()
-        return row is not None and row[0] == TaskStatus.CANCELLING.value
+        return row is not None and row[0] in (
+            TaskStatus.CANCELLING.value, 
+            TaskStatus.CANCELLED.value
+        )
 
     def get_task(self, task_id: str) -> Optional[AsyncTask]:
         """获取任务信息"""

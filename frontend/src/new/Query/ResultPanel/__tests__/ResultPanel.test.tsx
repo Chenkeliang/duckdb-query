@@ -145,7 +145,7 @@ describe('ResultPanel', () => {
         <ResultPanel data={mockData} />
       </TestWrapper>
     );
-    expect(screen.getByTestId('ag-grid-mock')).toBeInTheDocument();
+    expect(screen.getByTestId('data-grid-mock')).toBeInTheDocument();
   });
 
   it('应该渲染所有数据行', () => {

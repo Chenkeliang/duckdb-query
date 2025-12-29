@@ -123,17 +123,17 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     const normalizedTables = selectedTables.map(t => normalizeSelectedTable(t));
     const externalTables = normalizedTables.filter(t => t.source === 'external');
     const duckdbSelectedTables = normalizedTables.filter(t => t.source !== 'external');
-    
+
     // 使用联邦查询检测的结果来判断是否混合数据源
     // 如果检测到需要联邦查询，则不再视为"混合数据源错误"
-    const hasMixedSources = !requiresFederatedQuery && 
+    const hasMixedSources = !requiresFederatedQuery &&
       externalTables.length > 0 && duckdbSelectedTables.length > 0;
-    
+
     const connectionIds = new Set(
       externalTables.map(t => t.connection?.id).filter(Boolean)
     );
     const isSameConnection = connectionIds.size <= 1;
-    
+
     // 优先使用检测到的 tableSource
     let currentSource: TableSource | undefined = detectedTableSource;
     if (!currentSource || currentSource.type === 'duckdb') {
@@ -148,7 +148,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         };
       }
     }
-    
+
     return {
       normalizedTables,
       externalTables,
@@ -161,13 +161,13 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   }, [selectedTables, requiresFederatedQuery, detectedTableSource]);
 
   // 获取外部数据库连接的所有表（用于自动补全）
-  const externalConnectionId = tableSourceInfo.isExternal 
-    ? tableSourceInfo.currentSource?.connectionId 
+  const externalConnectionId = tableSourceInfo.isExternal
+    ? tableSourceInfo.currentSource?.connectionId
     : undefined;
-  const externalSchema = tableSourceInfo.isExternal 
-    ? tableSourceInfo.currentSource?.schema || '' 
+  const externalSchema = tableSourceInfo.isExternal
+    ? tableSourceInfo.currentSource?.schema || ''
     : '';
-  
+
   const { tables: externalSchemaTables } = useSchemaTables(
     externalConnectionId || '',
     externalSchema,
@@ -182,7 +182,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     if (requiresFederatedQuery || attachDatabases.length > 0) {
       return enhancedTableNames;
     }
-    
+
     if (tableSourceInfo.isExternal) {
       // 外部数据源：提示该连接下的所有表
       if (externalSchemaTables.length > 0) {
@@ -191,13 +191,13 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       // 如果还没加载完成，先显示选中的表
       return tableSourceInfo.externalTables.map(t => t.name);
     }
-    
+
     // DuckDB：提示所有 DuckDB 表
     return duckdbTables.map(t => t.name);
   }, [
-    tableSourceInfo.isExternal, 
-    tableSourceInfo.externalTables, 
-    duckdbTables, 
+    tableSourceInfo.isExternal,
+    tableSourceInfo.externalTables,
+    duckdbTables,
     externalSchemaTables,
     requiresFederatedQuery,
     attachDatabases.length,
@@ -221,21 +221,21 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     if (selectedTables.length === 0) return null;
     return selectedTables[0]; // 使用第一个选中的表
   }, [selectedTables]);
-  
+
   const { columns: tableColumns } = useTableColumns(tableForColumns);
 
   // 构建列信息映射（表名 -> 列名列表）
   const autocompleteColumns = useMemo(() => {
     const columnMap: Record<string, string[]> = {};
-    
+
     if (tableColumns && tableColumns.length > 0) {
-      const tableName = currentDuckDBTable || (tableForColumns ? 
+      const tableName = currentDuckDBTable || (tableForColumns ?
         (typeof tableForColumns === 'string' ? tableForColumns : tableForColumns.name) : null);
       if (tableName) {
         columnMap[tableName] = tableColumns.map((col) => col.name).filter(Boolean);
       }
     }
-    
+
     return columnMap;
   }, [tableColumns, currentDuckDBTable, tableForColumns]);
 
@@ -273,7 +273,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   // - 用户 LIMIT > max_query_rows：前端显示限制为 max_query_rows
   const applyDisplayLimit = useCallback((sqlStr: string): { displaySql: string; originalSql: string } => {
     const sqlTrimmed = sqlStr.trim().replace(/;$/, '');
-    
+
     // 只对 SELECT 语句处理
     if (!/^\s*SELECT\b/i.test(sqlTrimmed)) {
       return { displaySql: sqlTrimmed, originalSql: sqlTrimmed };
@@ -318,13 +318,13 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   // 执行 SQL - 优先使用统一的 onExecute，支持外部数据源和联邦查询
   const handleExecute = useCallback(async () => {
     if (!sql.trim()) return;
-    
+
     // 检查是否有未识别的前缀且未被忽略
     if (unrecognizedPrefixes.length > 0 && !dismissedWarning) {
       // 显示警告，等待用户确认
       return;
     }
-    
+
     // 检查是否混合了不同数据源（非联邦查询模式）
     if (tableSourceInfo.hasMixedSources && !requiresFederatedQuery) {
       onExecuteError?.(
@@ -333,7 +333,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       );
       return;
     }
-    
+
     if (onExecute) {
       // 使用统一的执行入口，传递数据源信息
       setIsExecuting(true);
@@ -344,13 +344,13 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         // 构建执行时的 TableSource，包含联邦查询信息
         const executeSource: TableSource = requiresFederatedQuery
           ? {
-              type: 'federated',
-              connectionId: attachDatabases[0]?.connectionId,
-              connectionName: attachDatabases[0]?.alias,
-              attachDatabases: attachDatabases,
-            }
+            type: 'federated',
+            connectionId: attachDatabases[0]?.connectionId,
+            connectionName: attachDatabases[0]?.alias,
+            attachDatabases: attachDatabases,
+          }
           : tableSourceInfo.currentSource;
-        
+
         await onExecute(displaySql, executeSource);
         addToHistory({
           sql: displaySql,
@@ -372,8 +372,8 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       // 回退到内部执行（仅支持 DuckDB）
       execute({ isPreview: true });
     }
-  }, [sql, onExecute, execute, onExecuteError, tableSourceInfo, applyDisplayLimit, 
-      requiresFederatedQuery, attachDatabases, unrecognizedPrefixes, dismissedWarning]);
+  }, [sql, onExecute, execute, onExecuteError, tableSourceInfo, applyDisplayLimit,
+    requiresFederatedQuery, attachDatabases, unrecognizedPrefixes, dismissedWarning]);
 
   // 处理忽略未识别前缀并执行
   const handleIgnoreAndExecute = useCallback(() => {
@@ -487,30 +487,25 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         isExecuting={executing}
         disableExecute={!sql.trim() || (tableSourceInfo.hasMixedSources && !requiresFederatedQuery)}
         executionTime={executionTime}
+        extraContent={
+          <div className="flex items-center gap-2">
+            <FederatedQueryStatusBar
+              queryType={queryType}
+              attachDatabases={attachDatabases}
+              isExecuting={executing}
+              executionTime={executionTime}
+            />
+            <AttachedDatabasesIndicator
+              attachDatabases={attachDatabases}
+              variant="expandable"
+              editable={true}
+              availableConnections={availableConnections}
+              onAddDatabase={addManualDatabase}
+              onRemoveDatabase={removeManualDatabase}
+            />
+          </div>
+        }
       />
-
-      {/* 联邦查询状态栏 */}
-      <div className="px-3 py-1.5 border-b border-border flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          {/* 查询类型和状态 */}
-          <FederatedQueryStatusBar
-            queryType={queryType}
-            attachDatabases={attachDatabases}
-            isExecuting={executing}
-            executionTime={executionTime}
-          />
-        </div>
-
-        {/* 附加数据库管理 */}
-        <AttachedDatabasesIndicator
-          attachDatabases={attachDatabases}
-          variant="expandable"
-          editable={true}
-          availableConnections={availableConnections}
-          onAddDatabase={addManualDatabase}
-          onRemoveDatabase={removeManualDatabase}
-        />
-      </div>
 
       {/* 编辑器 */}
       <div className="flex-1 min-h-0 p-3">

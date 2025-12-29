@@ -12,6 +12,7 @@ from core.security import security_validator
 from core.config_manager import config_manager
 from core.exceptions import setup_exception_handlers
 from core.encryption import password_encryptor
+from middleware import RequestIdMiddleware
 
 from routers import (
     data_sources,
@@ -26,6 +27,7 @@ from routers import (
     sql_favorites,  # SQL收藏路由
     datasources,  # 统一数据源管理路由
     settings,  # 用户设置路由（快捷键等）
+    query_cancel,  # 查询取消路由
 )
 from routers import config_api  # 配置暴露路由
 
@@ -125,8 +127,13 @@ app.add_middleware(
         "Content-Type",
         "Authorization",
         "X-Requested-With",
+        "X-Request-ID",
     ],  # 限制允许的头部
+    expose_headers=["X-Request-ID"],  # 暴露 X-Request-ID 头部给前端
 )
+
+# RequestId 中间件（查询取消功能支持）
+app.add_middleware(RequestIdMiddleware)
 
 # Include routers
 app.include_router(datasources.router)  # 统一数据源管理路由（新）
@@ -142,6 +149,7 @@ app.include_router(database_tables.router)  # 数据库表管理路由
 app.include_router(sql_favorites.router)  # SQL收藏路由
 app.include_router(config_api.router)  # 配置暴露路由
 app.include_router(settings.router)  # 用户设置路由（快捷键等）
+app.include_router(query_cancel.router)  # 查询取消路由
 
 # 条件性注册可能存在的其他路由
 if enhanced_data_sources_available:

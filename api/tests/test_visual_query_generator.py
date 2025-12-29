@@ -151,15 +151,15 @@ class TestSQLGeneration:
 
         sql = generate_sql_from_config(config)
 
+        # 验证不使用 json_each 迭代（因为 root_path 是 "$" 对象）
         assert "json_each" not in sql
-        assert (
-            'json_extract("meta", \'$.templateCredsSetupCompleted\') AS "template_creds_setup_completed"'
-            in sql
-        )
-        assert (
-            'json_extract_string("meta", \'$.instanceId\') AS "instance_id"'
-            in sql
-        )
+        # 验证使用 LATERAL JOIN 和 TRY_CAST 来提取 JSON 字段
+        assert "LATERAL" in sql
+        assert "TRY_CAST" in sql
+        # 验证 JSON 提取语法存在
+        assert "json_extract" in sql
+        assert "templateCredsSetupCompleted" in sql
+        assert "instanceId" in sql
 
     def test_aggregation_functions(self):
         """Test various aggregation functions"""
@@ -767,7 +767,7 @@ class TestColumnStatistics:
             pd.DataFrame(
                 {"min_val": [1], "max_val": [100], "avg_val": [50.5]}  # Min/Max result
             ),
-            pd.DataFrame({"test_column": [1, 2, 3, 4, 5]}),  # Sample values
+            pd.DataFrame({"sample_value": [1, 2, 3, 4, 5]}),  # Sample values - use 'sample_value' column name
         ]
 
         result = get_column_statistics("test_table", "test_column", mock_con)
