@@ -390,12 +390,31 @@
       "success": "数据已成功导入到表 \"{{tableName}}\"，共 {{rowCount}} 行",
       "error": "导入失败: {{message}}"
     },
+    "bookmark": {
+      "title": "SQL 收藏夹",
+      "description": "管理您的常用查询语句",
+      "searchPlaceholder": "搜索收藏...",
+      "confirmDelete": "确定要删除这个收藏吗？",
+      "notFound": "未找到相关收藏",
+      "empty": "暂无收藏记录",
+      "hint": "在编辑器中点击星标按钮添加收藏",
+      "usageCount": "使用次数",
+      "createdDate": "创建日期",
+      "use": "使用",
+      "save": "收藏"
+    },
     "history": {
       "title": "查询历史",
       "description": "最近执行的 SQL 查询记录",
       "empty": "暂无历史记录",
       "clearAll": "清空历史",
-      "failed": "失败"
+      "failed": "失败",
+      "success": "成功",
+      "rowCount": "{{count}} 行",
+      "load": "加载",
+      "justNow": "刚刚",
+      "minutesAgo": "{{count}} 分钟前",
+      "hoursAgo": "{{count}} 小时前"
     },
     "preview": {
       "title": "SQL 预览",

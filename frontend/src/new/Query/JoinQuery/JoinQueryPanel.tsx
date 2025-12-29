@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, StopCircle, Loader2 } from 'lucide-react';
+import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, StopCircle, Loader2, Star } from 'lucide-react';
 import { Input } from '@/new/components/ui/input';
 import { Button } from '@/new/components/ui/button';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
@@ -64,6 +64,7 @@ import {
   type AttachDatabase as OptimizerAttachDatabase,
   type OptimizationReport,
 } from './sqlOptimizer';
+import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
 
 
 /**
@@ -689,6 +690,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   const { maxQueryRows } = useAppConfig();
   const [isExecuting, setIsExecuting] = React.useState(false);
   const [localIsCancelling, setLocalIsCancelling] = React.useState(false);
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
   const abortControllerRef = React.useRef<AbortController | null>(null);
 
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
@@ -1496,6 +1498,18 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
               <Trash2 className="w-3.5 h-3.5" />
               {t('query.join.clear', '清空')}
             </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsSaveDialogOpen(true)}
+              disabled={!sql}
+              className="text-muted-foreground hover:text-yellow-500 gap-1.5"
+              title={t('query.bookmark.save', '收藏查询')}
+            >
+              <Star className="w-3.5 h-3.5" />
+              {t('query.bookmark.save', '收藏')}
+            </Button>
           </div>
 
           <div className="w-[1px] h-4 bg-border mx-1" />
@@ -1681,6 +1695,13 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           handleExecute();
         }}
         sqlPreview={sql || undefined}
+      />
+
+      {/* 收藏查询对话框 */}
+      <SaveQueryDialog
+        open={isSaveDialogOpen}
+        onOpenChange={setIsSaveDialogOpen}
+        sql={sql || ''}
       />
     </div>
   );

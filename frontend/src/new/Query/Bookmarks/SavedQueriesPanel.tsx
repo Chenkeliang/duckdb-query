@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Star, Trash2, Play, Search, Calendar, Hash } from 'lucide-react';
 import { Button } from '@/new/components/ui/button';
 import { Input } from '@/new/components/ui/input';
@@ -22,7 +23,9 @@ export interface SavedQueriesPanelProps {
 
 function formatDate(dateStr: string): string {
     try {
-        const date = new Date(dateStr);
+        // Backend incorrectly appends "Z" to local time, so we need to strip it
+        const cleanedDateStr = dateStr.endsWith('Z') ? dateStr.slice(0, -1) : dateStr;
+        const date = new Date(cleanedDateStr);
         return date.toLocaleDateString('zh-CN', {
             year: 'numeric',
             month: 'short',
@@ -58,6 +61,7 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
     onOpenChange,
     onLoad,
 }) => {
+    const { t } = useTranslation('common');
     const { favorites, isLoading, deleteQuery, useQuery, refresh } = useSavedQueries();
     const [search, setSearch] = useState('');
 
@@ -84,7 +88,7 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
     };
 
     const handleDelete = async (id: string) => {
-        if (confirm('确定要删除这个收藏吗？')) {
+        if (confirm(t('query.bookmark.confirmDelete', '确定要删除这个收藏吗？'))) {
             await deleteQuery(id);
         }
     };
@@ -95,16 +99,16 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                 <SheetHeader className="px-6 py-4 border-b border-border">
                     <SheetTitle className="flex items-center gap-2 text-yellow-500">
                         <Star className="h-5 w-5 fill-yellow-500" />
-                        SQL 收藏夹
+                        {t('query.bookmark.title', 'SQL 收藏夹')}
                     </SheetTitle>
                     <SheetDescription>
-                        管理您的常用查询语句
+                        {t('query.bookmark.description', '管理您的常用查询语句')}
                     </SheetDescription>
 
                     <div className="mt-4 relative">
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
-                            placeholder="搜索收藏..."
+                            placeholder={t('query.bookmark.searchPlaceholder', '搜索收藏...')}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             className="pl-8"
@@ -121,8 +125,8 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                         ) : filteredFavorites.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                                 <Star className="h-12 w-12 mb-3 opacity-20" />
-                                <p>{search ? '未找到相关收藏' : '暂无收藏记录'}</p>
-                                <p className="text-xs mt-2 opacity-70">在编辑器中点击星标按钮添加收藏</p>
+                                <p>{search ? t('query.bookmark.notFound', '未找到相关收藏') : t('query.bookmark.empty', '暂无收藏记录')}</p>
+                                <p className="text-xs mt-2 opacity-70">{t('query.bookmark.hint', '在编辑器中点击星标按钮添加收藏')}</p>
                             </div>
                         ) : (
                             <div className="space-y-4">
@@ -133,7 +137,7 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                                     >
                                         <div className="flex justify-between items-start mb-2">
                                             <div className="flex-1">
-                                                <h3 className="font-medium text-base truncate pr-8" title={item.name}>
+                                                <h3 className="font-medium text-base truncate pr-8 text-foreground" title={item.name}>
                                                     {item.name}
                                                 </h3>
                                                 {item.description && (
@@ -151,10 +155,10 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
 
                                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                                             <div className="flex items-center gap-3">
-                                                <span className="flex items-center gap-1" title="使用次数">
+                                                <span className="flex items-center gap-1" title={t('query.bookmark.usageCount', '使用次数')}>
                                                     <Hash className="h-3 w-3" /> {item.usage_count}
                                                 </span>
-                                                <span className="flex items-center gap-1" title="创建日期">
+                                                <span className="flex items-center gap-1" title={t('query.bookmark.createdDate', '创建日期')}>
                                                     <Calendar className="h-3 w-3" /> {formatDate(item.created_at)}
                                                 </span>
                                             </div>
@@ -166,7 +170,7 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                                                     onClick={() => handleLoad(item)}
                                                 >
                                                     <Play className="h-3 w-3 mr-1" />
-                                                    使用
+                                                    {t('query.bookmark.use', '使用')}
                                                 </Button>
                                                 <Button
                                                     variant="ghost"

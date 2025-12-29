@@ -382,12 +382,31 @@
       "success": "Data successfully imported to table \"{{tableName}}\", {{rowCount}} rows",
       "error": "Import failed: {{message}}"
     },
+    "bookmark": {
+      "title": "SQL Bookmarks",
+      "description": "Manage your frequently used queries",
+      "searchPlaceholder": "Search bookmarks...",
+      "confirmDelete": "Are you sure you want to delete this bookmark?",
+      "notFound": "No matching bookmarks found",
+      "empty": "No bookmarks yet",
+      "hint": "Click the star button in the editor to add a bookmark",
+      "usageCount": "Usage count",
+      "createdDate": "Created date",
+      "use": "Use",
+      "save": "Bookmark"
+    },
     "history": {
       "title": "Query History",
       "description": "Recently executed SQL queries",
       "empty": "No history",
       "clearAll": "Clear history",
-      "failed": "Failed"
+      "failed": "Failed",
+      "success": "Success",
+      "rowCount": "{{count}} rows",
+      "load": "Load",
+      "justNow": "Just now",
+      "minutesAgo": "{{count}} min ago",
+      "hoursAgo": "{{count}} hr ago"
     },
     "preview": {
       "title": "SQL Preview",

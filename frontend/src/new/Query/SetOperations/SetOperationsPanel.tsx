@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Layers, Play, X, Database, Table, Trash2, AlertTriangle } from 'lucide-react';
+import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star } from 'lucide-react';
 import { Button } from '@/new/components/ui/button';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
 import { Badge } from '@/new/components/ui/badge';
@@ -17,6 +17,7 @@ import {
 } from '@/new/utils/tableUtils';
 import { getDialectFromSource, quoteIdent, quoteQualifiedTable } from '@/new/utils/sqlUtils';
 import { SQLHighlight } from '@/new/components/SQLHighlight';
+import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
 
 /**
  * 集合操作面板 - 按照 Demo 设计重构
@@ -207,6 +208,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   const { t } = useTranslation('common');
   const { maxQueryRows } = useAppConfig();
   const [isExecuting, setIsExecuting] = React.useState(false);
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
 
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
   const [internalTables, setInternalTables] = React.useState<SelectedTable[]>([]);
@@ -506,6 +508,18 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
               {t('query.set.clear', '清空')}
             </Button>
 
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsSaveDialogOpen(true)}
+              disabled={!sql}
+              className="text-muted-foreground hover:text-yellow-500 gap-1.5 shrink-0"
+              title={t('query.bookmark.save', '收藏查询')}
+            >
+              <Star className="w-3.5 h-3.5" />
+              {t('query.bookmark.save', '收藏')}
+            </Button>
+
             <div className="w-[1px] h-4 bg-border mx-1 shrink-0" />
 
             {/* 操作类型切换按钮 */}
@@ -654,6 +668,13 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
           </div>
         )}
       </div>
+
+      {/* 收藏查询对话框 */}
+      <SaveQueryDialog
+        open={isSaveDialogOpen}
+        onOpenChange={setIsSaveDialogOpen}
+        sql={sql || ''}
+      />
     </div>
   );
 };

@@ -24,16 +24,16 @@ export interface GlobalHistoryPanelProps {
     onClear: () => void;
 }
 
-function formatTimestamp(timestamp: number): string {
+function formatTimestamp(timestamp: number, t: (key: string, fallback: string) => string): string {
     const date = new Date(timestamp);
     const now = new Date();
     const diff = now.getTime() - timestamp;
 
-    if (diff < 60 * 1000) return '刚刚';
-    if (diff < 60 * 60 * 1000) return `${Math.floor(diff / (60 * 1000))} 分钟前`;
-    if (diff < 24 * 60 * 60 * 1000) return `${Math.floor(diff / (60 * 60 * 1000))} 小时前`;
+    if (diff < 60 * 1000) return t('query.history.justNow', '刚刚');
+    if (diff < 60 * 60 * 1000) return t('query.history.minutesAgo', '{{count}} 分钟前').replace('{{count}}', String(Math.floor(diff / (60 * 1000))));
+    if (diff < 24 * 60 * 60 * 1000) return t('query.history.hoursAgo', '{{count}} 小时前').replace('{{count}}', String(Math.floor(diff / (60 * 60 * 1000))));
 
-    return date.toLocaleDateString('zh-CN', {
+    return date.toLocaleDateString(undefined, {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
@@ -131,16 +131,16 @@ export const GlobalHistoryPanel: React.FC<GlobalHistoryPanelProps> = ({
                                             {item.error ? (
                                                 <span className="flex items-center gap-1 text-xs text-destructive">
                                                     <AlertCircle className="h-3 w-3" />
-                                                    失败
+                                                    {t('query.history.failed', '失败')}
                                                 </span>
                                             ) : (
                                                 <span className="flex items-center gap-1 text-xs text-success">
                                                     <CheckCircle className="h-3 w-3" />
-                                                    {item.rowCount !== undefined ? `${item.rowCount} 行` : '成功'}
+                                                    {item.rowCount !== undefined ? t('query.history.rowCount', '{{count}} 行').replace('{{count}}', String(item.rowCount)) : t('query.history.success', '成功')}
                                                 </span>
                                             )}
                                             <span className="text-xs text-muted-foreground ml-auto">
-                                                {formatTimestamp(item.timestamp)}
+                                                {formatTimestamp(item.timestamp, t)}
                                             </span>
                                         </div>
 
@@ -166,7 +166,7 @@ export const GlobalHistoryPanel: React.FC<GlobalHistoryPanelProps> = ({
                                                     }}
                                                 >
                                                     <Play className="h-3 w-3 mr-1" />
-                                                    加载
+                                                    {t('query.history.load', '加载')}
                                                 </Button>
                                                 <Button
                                                     variant="ghost"

@@ -82,7 +82,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
   const [bookmarksOpen, setBookmarksOpen] = React.useState(false);
 
   // Hooks
-  const { history, deleteHistoryItem, clearHistory } = useGlobalHistory();
+  const { history, addToHistory, deleteHistoryItem, clearHistory } = useGlobalHistory();
   const { favorites } = useSavedQueries();
 
   // SQL 预览状态
@@ -90,6 +90,45 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
   const [previewSQL, setPreviewSQL] = React.useState<string | null>(null);
   const [previewSource, setPreviewSource] = React.useState<TableSource | undefined>(undefined);
   const [isExecuting, setIsExecuting] = React.useState(false);
+
+  // 创建包装后的执行函数，自动记录到全局历史
+  const createWrappedExecute = React.useCallback(
+    (type: 'join' | 'set' | 'pivot') =>
+      async (sql: string, source?: TableSource) => {
+        if (!onExecute) return;
+        const startTime = Date.now();
+        try {
+          await onExecute(sql, source);
+          addToHistory({
+            type,
+            sql,
+            executionTime: Date.now() - startTime,
+          });
+        } catch (err) {
+          addToHistory({
+            type,
+            sql,
+            error: (err as Error)?.message || String(err),
+          });
+          throw err; // 重新抛出，让 Panel 处理错误 UI
+        }
+      },
+    [onExecute, addToHistory]
+  );
+
+  // 为各面板创建特定的执行函数（memoized 避免不必要的重渲染）
+  const handleJoinExecute = React.useMemo(
+    () => createWrappedExecute('join'),
+    [createWrappedExecute]
+  );
+  const handleSetExecute = React.useMemo(
+    () => createWrappedExecute('set'),
+    [createWrappedExecute]
+  );
+  const handlePivotExecute = React.useMemo(
+    () => createWrappedExecute('pivot'),
+    [createWrappedExecute]
+  );
 
   // 加载历史/收藏到编辑器
   // 注意：这需要各 Panel 提供 ref 或对外暴露设置 SQL 的方法
@@ -217,7 +256,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
               onClick={() => setBookmarksOpen(true)}
             >
               <Star className="w-4 h-4" />
-              <span className="hidden sm:inline">收藏夹</span>
+              <span className="hidden sm:inline">{t('query.bookmark.title', '收藏夹')}</span>
               {favorites?.length > 0 && (
                 <Badge variant="outline" className="h-5 px-1.5 min-w-5 justify-center">
                   {favorites.length}
@@ -232,7 +271,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
               onClick={() => setHistoryOpen(true)}
             >
               <Clock className="w-4 h-4" />
-              <span className="hidden sm:inline">历史记录</span>
+              <span className="hidden sm:inline">{t('query.history.title', '历史记录')}</span>
             </Button>
           </div>
         </div>
@@ -251,7 +290,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
           <KeepAliveTabContent value="join" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
             <JoinQueryPanel
               selectedTables={selectedTables}
-              onExecute={onExecute}
+              onExecute={handleJoinExecute}
               onRemoveTable={onRemoveTable}
               onCancel={onCancel}
               isCancelling={isCancelling}
@@ -261,7 +300,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
           <KeepAliveTabContent value="set" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
             <SetOperationsPanel
               selectedTables={selectedTables}
-              onExecute={onExecute}
+              onExecute={handleSetExecute}
               onRemoveTable={onRemoveTable}
             />
           </KeepAliveTabContent>
@@ -269,7 +308,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
           <KeepAliveTabContent value="pivot" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
             <PivotTablePanel
               selectedTables={selectedTables}
-              onExecute={onExecute}
+              onExecute={handlePivotExecute}
             />
           </KeepAliveTabContent>
 

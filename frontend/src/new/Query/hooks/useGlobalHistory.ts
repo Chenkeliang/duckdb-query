@@ -14,69 +14,99 @@ export interface GlobalHistoryItem {
 
 const STORAGE_KEY = 'duckquery-global-history';
 const MAX_HISTORY = 100;
+const SYNC_EVENT = 'global-history-updated';
+
+// 从 localStorage 读取历史
+const loadHistory = (): GlobalHistoryItem[] => {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        console.error('Failed to load global history:', e);
+        return [];
+    }
+};
+
+// 保存到 localStorage 并触发同步事件
+const saveAndSync = (newHistory: GlobalHistoryItem[]) => {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
+        // 触发自定义事件，通知其他组件实例更新
+        window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: newHistory }));
+    } catch (e) {
+        console.error('Failed to save global history:', e);
+    }
+};
 
 export const useGlobalHistory = () => {
-    const [history, setHistory] = useState<GlobalHistoryItem[]>([]);
+    const [history, setHistory] = useState<GlobalHistoryItem[]>(loadHistory);
 
-    // Load from localStorage on mount
+    // 监听同步事件（来自其他组件实例）
     useEffect(() => {
-        try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) {
-                setHistory(JSON.parse(stored));
-            }
-        } catch (e) {
-            console.error('Failed to load global history:', e);
-        }
+        const handleSync = (event: CustomEvent<GlobalHistoryItem[]>) => {
+            setHistory(event.detail);
+        };
+
+        window.addEventListener(SYNC_EVENT, handleSync as EventListener);
+        return () => {
+            window.removeEventListener(SYNC_EVENT, handleSync as EventListener);
+        };
     }, []);
 
-    const saveHistory = useCallback((newHistory: GlobalHistoryItem[]) => {
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
-            setHistory(newHistory);
-        } catch (e) {
-            console.error('Failed to save global history:', e);
-        }
+    // 监听 storage 事件（跨 tab 同步，可选）
+    useEffect(() => {
+        const handleStorage = (event: StorageEvent) => {
+            if (event.key === STORAGE_KEY && event.newValue) {
+                try {
+                    setHistory(JSON.parse(event.newValue));
+                } catch (e) {
+                    console.error('Failed to parse storage event:', e);
+                }
+            }
+        };
+
+        window.addEventListener('storage', handleStorage);
+        return () => {
+            window.removeEventListener('storage', handleStorage);
+        };
     }, []);
 
     const addToHistory = useCallback((item: Omit<GlobalHistoryItem, 'id' | 'timestamp'>) => {
-        // Generate ID
         const newItem: GlobalHistoryItem = {
             ...item,
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             timestamp: Date.now(),
         };
 
-        setHistory((prev) => {
-            // Deduplicate: exact SQL match
-            const existingDetails = prev.filter(h => h.sql === newItem.sql && h.type === newItem.type);
+        // 读取最新数据（避免闭包过期问题）
+        const currentHistory = loadHistory();
 
-            let newHistory = prev;
-            if (existingDetails.length > 0) {
-                // Move to top if exact duplicate exists (ignoring older duplicates)
-                newHistory = prev.filter(h => h.id !== existingDetails[0].id);
-            }
+        // 去重：相同 SQL + type 的记录只保留最新
+        const existingIdx = currentHistory.findIndex(h => h.sql === newItem.sql && h.type === newItem.type);
+        let newHistory = currentHistory;
+        if (existingIdx >= 0) {
+            newHistory = currentHistory.filter((_, idx) => idx !== existingIdx);
+        }
 
-            newHistory = [newItem, ...newHistory].slice(0, MAX_HISTORY);
+        newHistory = [newItem, ...newHistory].slice(0, MAX_HISTORY);
 
-            // Async save
-            setTimeout(() => localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory)), 0);
-            return newHistory;
-        });
+        // 保存并同步到所有实例
+        saveAndSync(newHistory);
+        setHistory(newHistory);
     }, []);
 
     const clearHistory = useCallback(() => {
-        setHistory([]);
         localStorage.removeItem(STORAGE_KEY);
+        saveAndSync([]);
+        setHistory([]);
         toast.success('历史记录已清空');
     }, []);
 
     const deleteHistoryItem = useCallback((id: string) => {
-        setHistory(prev => {
-            const newHistory = prev.filter(item => item.id !== id);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
-            return newHistory;
-        });
+        const currentHistory = loadHistory();
+        const newHistory = currentHistory.filter(item => item.id !== id);
+        saveAndSync(newHistory);
+        setHistory(newHistory);
     }, []);
 
     return {

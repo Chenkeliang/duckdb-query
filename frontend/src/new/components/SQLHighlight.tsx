@@ -3,7 +3,7 @@
  * 使用 CodeMirror 6 实现只读的 SQL 语法高亮显示
  */
 
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { EditorView } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { sql as sqlLang, SQLDialect, StandardSQL } from '@codemirror/lang-sql';
@@ -45,12 +45,25 @@ export const SQLHighlight: React.FC<SQLHighlightProps> = ({
   const editorRef = useRef<EditorView | null>(null);
   const themeCompartment = useRef(new Compartment());
 
-  // 检测深色模式
-  const isDarkMode = useMemo(() => {
+  // 动态检测深色模式
+  const [isDarkMode, setIsDarkMode] = React.useState(() => {
     if (typeof document !== 'undefined') {
       return document.documentElement.classList.contains('dark');
     }
     return false;
+  });
+
+  // 监听主题变化
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const dark = document.documentElement.classList.contains('dark');
+      setIsDarkMode(dark);
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    return () => observer.disconnect();
   }, []);
 
   // 初始化编辑器

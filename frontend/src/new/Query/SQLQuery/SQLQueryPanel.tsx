@@ -375,7 +375,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       execute({ isPreview: true });
     }
   }, [sql, onExecute, execute, onExecuteError, tableSourceInfo, applyDisplayLimit,
-    requiresFederatedQuery, attachDatabases, unrecognizedPrefixes, dismissedWarning]);
+    requiresFederatedQuery, attachDatabases, unrecognizedPrefixes, dismissedWarning, addToHistory]);
 
   // 处理忽略未识别前缀并执行
   const handleIgnoreAndExecute = useCallback(() => {

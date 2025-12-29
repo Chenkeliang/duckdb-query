@@ -164,7 +164,8 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
                 className={cn(
                   'p-4 bg-muted rounded-lg overflow-auto',
                   'font-mono text-sm whitespace-pre-wrap break-words',
-                  'min-h-72 max-h-96'
+                  'min-h-72 max-h-96',
+                  'text-foreground border border-border'
                 )}
               >
                 {sql || t('query.preview.noSQL', '暂无 SQL')}
