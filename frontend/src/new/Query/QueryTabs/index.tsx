@@ -1,12 +1,18 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Code, GitMerge, Layers, Table2, LayoutGrid } from "lucide-react";
+import { Code, GitMerge, Layers, Table2, LayoutGrid, Clock, Star } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/new/components/ui/tabs";
+import { Button } from "@/new/components/ui/button";
+import { Badge } from "@/new/components/ui/badge";
 import { QueryBuilder, SQLPreview } from "../VisualQuery";
 import { SQLQueryPanel } from "../SQLQuery";
 import { JoinQueryPanel } from "../JoinQuery";
 import { SetOperationsPanel } from "../SetOperations";
 import { PivotTablePanel } from "../PivotTable";
+import { GlobalHistoryPanel } from "../History/GlobalHistoryPanel";
+import { SavedQueriesPanel } from "../Bookmarks/SavedQueriesPanel";
+import { useGlobalHistory } from "../hooks/useGlobalHistory";
+import { useSavedQueries } from "../hooks/useSavedQueries";
 import type { QueryConfig } from "../VisualQuery";
 import type { SelectedTable } from "@/new/types/SelectedTable";
 import { getTableName, normalizeSelectedTable } from "@/new/utils/tableUtils";
@@ -21,11 +27,11 @@ import { getDialectFromSource, getSourceFromSelectedTable, quoteIdent, quoteQual
  * - 显示 5 个查询模式 Tab
  * - 处理 Tab 切换
  * - 渲染对应的查询构建器
+ * - 提供全局功能入口：历史记录、收藏夹
  * 
  * 样式：
- * - 与数据源管理页面的标签页保持一致
- * - 使用 shadcn/ui Tabs 默认样式（圆角、阴影）
- * - 每个标签包含图标和文字
+ * - 与数据源管理页面保持一致
+ * - 使用 shadcn/ui Tabs
  */
 
 interface QueryMode {
@@ -71,13 +77,57 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
 }) => {
   const { t } = useTranslation('common');
 
+  // 全局功能状态
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [bookmarksOpen, setBookmarksOpen] = React.useState(false);
+
+  // Hooks
+  const { history, deleteHistoryItem, clearHistory } = useGlobalHistory();
+  const { favorites } = useSavedQueries();
+
   // SQL 预览状态
   const [previewOpen, setPreviewOpen] = React.useState(false);
   const [previewSQL, setPreviewSQL] = React.useState<string | null>(null);
   const [previewSource, setPreviewSource] = React.useState<TableSource | undefined>(undefined);
   const [isExecuting, setIsExecuting] = React.useState(false);
 
-  // 处理可视化查询执行
+  // 加载历史/收藏到编辑器
+  // 注意：这需要各 Panel 提供 ref 或对外暴露设置 SQL 的方法
+  // 但目前架构中 Panel 自行管理状态。
+  // 临时方案：如果当前是 SQL 模式，我们尝试通过 props 或 context 传递？
+  // 实际上，更理想的方式是 GlobalHistoryPanel/SavedQueriesPanel 只负责展示
+  // 点击加载时，调用一个统一的 onExecute 或者切换 Tab 并设置内容。
+
+  // 这里我们简化处理：通过 onExecute 直接运行（如果是纯 SQL）
+  // 或者跳转到 SQL Tab 并填充内容（如果能获取到 SQL Panel 的控制权）
+
+  // 由于 React 状态隔离，最简单的集成方式是：
+  // 点击加载 -> 切换到 SQL Tab -> (理想情况下) 填充编辑器。
+  // 但当前没有全局状态管理 SQL 内容。
+  // 必须妥协：点击加载 -> 直接作为执行请求触发 onExecute
+  // (或者未来重构为 SQL 内容提升到 QueryTabs 状态管理)
+
+  const handleLoadSQL = async (sql: string, type: string = 'sql') => {
+    // 简单处理：切换到 SQL Tab 并尝试执行（或者仅预览）
+    // 更好的体验是填充到编辑器，目前只能通过 onExecute 触发
+    // 考虑到用户可能想编辑，我们这里先只做执行，或者提示用户复制
+
+    // 如果 onTabChange 切换到 sql，但无法设置内容。
+    // 这是一个架构限制。目前我们先实现为"执行"
+    // 后续优化：将 activeSQL 状态提升到 QueryTabs 或使用 Context
+
+    // 暂时策略：
+    // 1. 切换到 SQL Tab
+    // 2. 触发预览 (借用 SQLPreview 组件来展示并允许复制/执行)
+    //    或者直接 onExecute
+
+    onTabChange('sql');
+    // 使用 SQLPreview 来展示加载的 SQL，用户可以选择执行或复制到编辑器手动粘贴
+    setPreviewSQL(sql);
+    setPreviewOpen(true);
+  };
+
+  // ... (handleVisualQueryExecute, handlePreview, handleExecuteFromPreview 保持不变) ...
   const handleVisualQueryExecute = React.useCallback(
     async (config: QueryConfig) => {
       const source = config.table ? getSourceFromSelectedTable(config.table) : undefined;
@@ -96,7 +146,6 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
     [onExecute]
   );
 
-  // 处理 SQL 预览
   const handlePreview = React.useCallback((config: QueryConfig) => {
     const source = config.table ? getSourceFromSelectedTable(config.table) : undefined;
     const dialect = getDialectFromSource(source);
@@ -106,7 +155,6 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
     setPreviewOpen(true);
   }, []);
 
-  // 从预览执行 SQL
   const handleExecuteFromPreview = React.useCallback(
     async (sql: string) => {
       setIsExecuting(true);
@@ -120,6 +168,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
     [onExecute, previewSource]
   );
 
+
   return (
     <>
       <SQLPreview
@@ -129,9 +178,25 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
         onExecute={handleExecuteFromPreview}
         isExecuting={isExecuting}
       />
+
+      <GlobalHistoryPanel
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        history={history}
+        onDelete={deleteHistoryItem}
+        onClear={clearHistory}
+        onLoad={(item) => handleLoadSQL(item.sql)}
+      />
+
+      <SavedQueriesPanel
+        open={bookmarksOpen}
+        onOpenChange={setBookmarksOpen}
+        onLoad={(sql, type) => handleLoadSQL(sql, type)}
+      />
+
       <Tabs value={activeTab} onValueChange={onTabChange} className="h-full flex flex-col bg-card">
         {/* 标签页导航 - 与数据源管理页面样式一致 */}
-        <div className="h-12 border-b border-border flex items-center px-4 bg-muted/30 shrink-0">
+        <div className="h-12 border-b border-border flex items-center justify-between px-4 bg-muted/30 shrink-0">
           <TabsList className="flex gap-1 bg-muted p-1 rounded-lg h-9">
             {queryModes.map(mode => {
               const Icon = mode.icon;
@@ -143,6 +208,33 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
               );
             })}
           </TabsList>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-2 text-muted-foreground hover:text-foreground"
+              onClick={() => setBookmarksOpen(true)}
+            >
+              <Star className="w-4 h-4" />
+              <span className="hidden sm:inline">收藏夹</span>
+              {favorites?.length > 0 && (
+                <Badge variant="outline" className="h-5 px-1.5 min-w-5 justify-center">
+                  {favorites.length}
+                </Badge>
+              )}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-2 text-muted-foreground hover:text-foreground"
+              onClick={() => setHistoryOpen(true)}
+            >
+              <Clock className="w-4 h-4" />
+              <span className="hidden sm:inline">历史记录</span>
+            </Button>
+          </div>
         </div>
 
         <div className="flex-1 min-h-0 overflow-hidden">

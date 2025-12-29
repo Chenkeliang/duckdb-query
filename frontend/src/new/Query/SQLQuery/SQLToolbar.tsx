@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, Loader2, Save, FileCode, History, Clock, Timer, StopCircle } from 'lucide-react';
+import { Play, Loader2, Save, FileCode, Clock, Timer, StopCircle } from 'lucide-react';
 import { Button } from '@/new/components/ui/button';
 import {
   Tooltip,
@@ -25,8 +25,7 @@ export interface SQLToolbarProps {
   onFormat?: () => void;
   /** 保存回调 */
   onSave?: () => void;
-  /** 历史记录回调 */
-  onHistory?: () => void;
+
   /** 是否正在执行 */
   isExecuting?: boolean;
   /** 是否正在取消 */
@@ -60,7 +59,7 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
   onAsyncExecute,
   onFormat,
   onSave,
-  onHistory,
+
   isExecuting = false,
   isCancelling = false,
   disableExecute = false,
@@ -199,7 +198,7 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
         </TooltipProvider>
       </div>
 
-      {/* 右侧：状态信息和历史 */}
+      {/* 右侧：状态信息 */}
       <div className="flex items-center gap-3">
         {/* 额外内容（状态指示器等） */}
         {extraContent}
@@ -210,27 +209,6 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
             <Clock className="h-3.5 w-3.5" />
             <span>{formatExecutionTime(executionTime)}</span>
           </div>
-        )}
-
-        {/* 历史记录按钮 */}
-        {onHistory && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onHistory}
-                  className="h-8 px-2"
-                >
-                  <History className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{t('query.sql.history', '查询历史')}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         )}
       </div>
     </div>

@@ -103,26 +103,26 @@ export const useSQLEditor = ({
 }: UseSQLEditorOptions = {}): UseSQLEditorReturn => {
   const queryClient = useQueryClient();
   const { t } = useTranslation('common');
-  
+
   // SQL 内容
   const [sql, setSQL] = useState(initialSQL);
-  
+
   // 执行结果
   const [result, setResult] = useState<any | null>(null);
   const [executionTime, setExecutionTime] = useState<number | undefined>(undefined);
-  
+
   // 历史记录
   const [history, setHistory] = useState<SQLHistoryItem[]>(() => loadHistory(storageKey));
 
   // 执行 SQL mutation
   const executeMutation = useMutation({
-    mutationFn: async ({ 
-      sqlToExecute, 
-      saveAsTable, 
-      isPreview 
-    }: { 
-      sqlToExecute: string; 
-      saveAsTable?: string; 
+    mutationFn: async ({
+      sqlToExecute,
+      saveAsTable,
+      isPreview
+    }: {
+      sqlToExecute: string;
+      saveAsTable?: string;
       isPreview?: boolean;
     }) => {
       const startTime = Date.now();
@@ -136,33 +136,36 @@ export const useSQLEditor = ({
     onSuccess: (data, variables) => {
       setResult(data);
       setExecutionTime(data.executionTime);
-      
+
       // 添加到历史
       addToHistory({
         sql: variables.sqlToExecute,
         executionTime: data.executionTime,
         rowCount: data.data?.length || data.row_count,
       });
-      
+
       // 如果保存为表，刷新数据缓存
       if (variables.saveAsTable) {
         invalidateAllDataCaches(queryClient);
         toast.success(t('query.sql.savedToTable', { table: variables.saveAsTable }));
       }
-      
+
       onSuccess?.(data, variables.sqlToExecute);
     },
     onError: (error: Error, variables) => {
       setResult(null);
       setExecutionTime(undefined);
-      
+
       // 添加到历史（带错误）
       addToHistory({
         sql: variables.sqlToExecute,
         error: error.message,
       });
-      
-      toast.error(t('query.sql.executionFailed', { message: error.message }));
+
+      // 如果是取消操作引发的错误，不显示 toast（通常已有 "查询已取消" 的提示）
+      if (!error.message?.toLowerCase().includes('canceled')) {
+        toast.error(t('query.sql.executionFailed', { message: error.message }));
+      }
       onError?.(error, variables.sqlToExecute);
     },
   });
@@ -174,7 +177,7 @@ export const useSQLEditor = ({
       toast.error(t('query.sql.emptySQL'));
       return;
     }
-    
+
     executeMutation.mutate({
       sqlToExecute: trimmedSQL,
       saveAsTable: options?.saveAsTable,
@@ -187,9 +190,9 @@ export const useSQLEditor = ({
     setHistory((prev) => {
       // 检查是否已存在相同的 SQL
       const existingIndex = prev.findIndex((h) => h.sql === item.sql);
-      
+
       let newHistory: SQLHistoryItem[];
-      
+
       if (existingIndex >= 0) {
         // 更新现有记录并移到最前
         const existing = prev[existingIndex];
@@ -205,15 +208,15 @@ export const useSQLEditor = ({
           ...prev,
         ];
       }
-      
+
       // 限制历史记录数量
       if (newHistory.length > maxHistory) {
         newHistory = newHistory.slice(0, maxHistory);
       }
-      
+
       // 保存到 localStorage
       saveHistory(storageKey, newHistory);
-      
+
       return newHistory;
     });
   }, [maxHistory, storageKey]);

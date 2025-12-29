@@ -1333,3 +1333,76 @@ export const getDistinctValues = async (payload) => {
     handleApiError(error, '获取去重值失败');
   }
 };
+
+// ==================== SQL 收藏夹 API ====================
+
+/**
+ * 获取 SQL 收藏列表
+ * @returns {Promise<Array>} 收藏列表
+ */
+export const getSQLFavorites = async () => {
+  try {
+    const response = await apiClient.get('/api/sql-favorites');
+    return response.data?.data || [];
+  } catch (error) {
+    handleApiError(error, '获取收藏列表失败');
+    return [];
+  }
+};
+
+/**
+ * 创建 SQL 收藏
+ * @param {Object} data - 收藏数据 { name, sql, type, description, tags }
+ * @returns {Promise<Object>} 创建的收藏
+ */
+export const createSQLFavorite = async (data) => {
+  try {
+    const response = await apiClient.post('/api/sql-favorites', data);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, '创建收藏失败');
+  }
+};
+
+/**
+ * 更新 SQL 收藏
+ * @param {string} id - 收藏 ID
+ * @param {Object} data - 更新数据
+ * @returns {Promise<Object>} 更新后的收藏
+ */
+export const updateSQLFavorite = async (id, data) => {
+  try {
+    const response = await apiClient.put(`/api/sql-favorites/${id}`, data);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, '更新收藏失败');
+  }
+};
+
+/**
+ * 删除 SQL 收藏
+ * @param {string} id - 收藏 ID
+ * @returns {Promise<Object>} 删除结果
+ */
+export const deleteSQLFavorite = async (id) => {
+  try {
+    const response = await apiClient.delete(`/api/sql-favorites/${id}`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, '删除收藏失败');
+  }
+};
+
+/**
+ * 使用 SQL 收藏（增加使用次数）
+ * @param {string} id - 收藏 ID
+ * @returns {Promise<Object>} 更新后的收藏
+ */
+export const useSQLFavorite = async (id) => {
+  try {
+    const response = await apiClient.post(`/api/sql-favorites/${id}/use`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, '操作失败');
+  }
+};

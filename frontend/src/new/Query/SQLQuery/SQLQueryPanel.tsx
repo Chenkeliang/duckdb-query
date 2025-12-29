@@ -10,7 +10,6 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import { SQLToolbar } from './SQLToolbar';
-import { SQLHistory } from './SQLHistory';
 import { useSQLEditor } from './hooks/useSQLEditor';
 import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
 import { useSchemaTables } from '@/new/hooks/useSchemaTables';
@@ -18,11 +17,13 @@ import { useAppConfig } from '@/new/hooks/useAppConfig';
 import { useTableColumns } from '@/new/hooks/useTableColumns';
 import { useFederatedQueryDetection } from '@/new/hooks/useFederatedQueryDetection';
 import { useEnhancedAutocomplete } from '@/new/hooks/useEnhancedAutocomplete';
+import { useGlobalHistory } from '@/new/Query/hooks/useGlobalHistory';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
 import { AttachedDatabasesIndicator } from '@/new/Query/components/AttachedDatabasesIndicator';
 import { UnrecognizedPrefixWarning } from '@/new/Query/components/UnrecognizedPrefixWarning';
 import { FederatedQueryStatusBar } from '@/new/Query/components/FederatedQueryStatusBar';
 import { AsyncTaskDialog } from '@/new/Query/AsyncTasks/AsyncTaskDialog';
+import { SaveQueryDialog } from '@/new/Query/Bookmarks/SaveQueryDialog';
 import { cn } from '@/lib/utils';
 import type { TableSource } from '@/new/hooks/useQueryWorkspace';
 import type { SelectedTable } from '@/new/types/SelectedTable';
@@ -68,11 +69,15 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   previewSQL,
 }) => {
   const { t } = useTranslation('common');
-  const [historyOpen, setHistoryOpen] = useState(false);
+  // const [historyOpen, setHistoryOpen] = useState(false); // Removed
   const [lastSelectedTableKey, setLastSelectedTableKey] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [dismissedWarning, setDismissedWarning] = useState(false);
   const [asyncDialogOpen, setAsyncDialogOpen] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+
+  // Global History
+  const { addToHistory } = useGlobalHistory();
 
   // 获取 DuckDB 表列表用于自动补全
   const { tables: duckdbTables } = useDuckDBTables();
@@ -83,18 +88,13 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   // 获取应用配置（包含 max_query_rows）
   const { maxQueryRows } = useAppConfig();
 
-  // SQL 编辑器状态（提前声明，供联邦查询检测使用）
+  // SQL 编辑器状态
   const {
     sql,
     setSQL,
     execute,
     isExecuting: internalExecuting,
     executionTime,
-    history,
-    addToHistory,
-    loadFromHistory,
-    removeFromHistory,
-    clearHistory,
     formatSQL,
   } = useSQLEditor({
     initialSQL,
@@ -353,6 +353,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
 
         await onExecute(displaySql, executeSource);
         addToHistory({
+          type: 'sql',
           sql: displaySql,
           executionTime: Date.now() - startTime,
         });
@@ -361,6 +362,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       } catch (err) {
         console.error('SQL execution failed:', err);
         addToHistory({
+          type: 'sql',
           sql: displaySql,
           error: (err as Error)?.message || String(err),
         });
@@ -412,44 +414,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleAsyncExecute]);
 
-  // 从历史加载并执行
-  const handleExecuteFromHistory = useCallback(async (sqlFromHistory: string) => {
-    setSQL(sqlFromHistory);
-    setHistoryOpen(false);
-    // 延迟执行，等待 SQL 更新
-    setTimeout(async () => {
-      if (onExecute) {
-        setIsExecuting(true);
-        // 智能处理 LIMIT
-        const { displaySql } = applyDisplayLimit(sqlFromHistory.trim());
-        const startTime = Date.now();
-        try {
-          await onExecute(displaySql, tableSourceInfo.currentSource);
-          addToHistory({
-            sql: displaySql,
-            executionTime: Date.now() - startTime,
-          });
-        } catch (err) {
-          console.error('SQL execution failed:', err);
-          addToHistory({
-            sql: displaySql,
-            error: (err as Error)?.message || String(err),
-          });
-          onExecuteError?.(err as Error, displaySql);
-        } finally {
-          setIsExecuting(false);
-        }
-      } else {
-        execute({ isPreview: true });
-      }
-    }, 100);
-  }, [setSQL, execute, onExecute, onExecuteError, tableSourceInfo.currentSource, applyDisplayLimit]);
 
-  // 从历史加载
-  const handleLoadFromHistory = useCallback((id: string) => {
-    loadFromHistory(id);
-    setHistoryOpen(false);
-  }, [loadFromHistory]);
 
   return (
     <div className={cn('flex flex-col h-full', className)}>
@@ -483,7 +448,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         onExecute={handleExecute}
         onAsyncExecute={handleAsyncExecute}
         onFormat={formatSQL}
-        onHistory={() => setHistoryOpen(true)}
+        onSave={() => setSaveDialogOpen(true)}
         isExecuting={executing}
         disableExecute={!sql.trim() || (tableSourceInfo.hasMixedSources && !requiresFederatedQuery)}
         executionTime={executionTime}
@@ -522,15 +487,12 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         />
       </div>
 
-      {/* 历史记录抽屉 */}
-      <SQLHistory
-        history={history}
-        onLoad={handleLoadFromHistory}
-        onDelete={removeFromHistory}
-        onClear={clearHistory}
-        onExecute={handleExecuteFromHistory}
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
+      {/* 保存查询对话框 */}
+      <SaveQueryDialog
+        open={saveDialogOpen}
+        onOpenChange={setSaveDialogOpen}
+        sql={sql}
+        type={tableSourceInfo.isExternal ? tableSourceInfo.currentSource?.databaseType : 'duckdb'}
       />
 
       {/* 异步任务对话框 */}
