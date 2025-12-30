@@ -33,6 +33,9 @@ export const invalidateAllDataCaches = async (queryClient: QueryClient) => {
     invalidateDuckDBTables(queryClient),
     invalidateDataSources(queryClient),
     invalidateDatabaseConnections(queryClient),
+    // Invalidate all schema and table lists for external databases
+    queryClient.invalidateQueries({ queryKey: ['schemas'] }),
+    queryClient.invalidateQueries({ queryKey: ['schema-tables'] }),
   ]);
 };
 

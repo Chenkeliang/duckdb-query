@@ -52,14 +52,7 @@ from uuid import uuid4
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# 修复Docker环境中的配置文件路径问题
-DATASOURCES_CONFIG_FILE = os.path.join(
-    os.getenv(
-        "CONFIG_DIR",
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "config"),
-    ),
-    "datasources.json",
-)
+
 
 
 VALID_EXCEL_IMPORT_MODES = {"replace", "append", "fail"}
@@ -116,45 +109,7 @@ class ExcelImportRequest(BaseModel):
         return sheets
 
 
-def _save_connections_to_config():
-    try:
-        connections = db_manager.list_connections()
 
-        # 在保存前对密码进行加密，并处理datetime序列化问题
-        from core.encryption import encrypt_config_passwords
-
-        encrypted_connections = []
-        for conn in connections:
-            # 将DatabaseConnection对象转换为字典
-            conn_dict = conn.dict()
-
-            # 处理datetime字段，转换为ISO格式字符串
-            if conn_dict.get("created_at") and hasattr(
-                conn_dict["created_at"], "isoformat"
-            ):
-                conn_dict["created_at"] = conn_dict["created_at"].isoformat()
-            if conn_dict.get("updated_at") and hasattr(
-                conn_dict["updated_at"], "isoformat"
-            ):
-                conn_dict["updated_at"] = conn_dict["updated_at"].isoformat()
-            if conn_dict.get("last_tested") and hasattr(
-                conn_dict["last_tested"], "isoformat"
-            ):
-                conn_dict["last_tested"] = conn_dict["last_tested"].isoformat()
-
-            # 加密密码
-            encrypted_conn = encrypt_config_passwords(conn_dict)
-            encrypted_connections.append(encrypted_conn)
-
-        config_data = {"database_sources": encrypted_connections}
-        with open(DATASOURCES_CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, indent=2, ensure_ascii=False)
-        logger.info(
-            "Successfully saved connections to config file with encrypted passwords."
-        )
-    except Exception as e:
-        logger.error(f"Error saving connections to config file: {e}")
-        raise
 
 
 @router.post(
@@ -283,10 +238,7 @@ async def refresh_database_connection(connection_id: str, response: Response):
         logger.warning(f"数据库连接 {connection_id} 测试失败: {message}")
 
     db_manager.connections[connection_id] = connection
-    try:
-        _save_connections_to_config()
-    except Exception as save_error:
-        logger.error(f"保存连接配置时出错: {save_error}")
+
 
     return {
         "success": success,
@@ -422,7 +374,7 @@ async def create_database_connection(connection: DatabaseConnection, response: R
 
         success = db_manager.add_connection(connection)
         if success:
-            _save_connections_to_config()
+
             return {
                 "success": True,
                 "message": "数据库连接创建成功",
@@ -1007,7 +959,7 @@ async def update_database_connection(
         # 添加新连接
         success = db_manager.add_connection(connection)
         if success:
-            _save_connections_to_config()
+
             return {
                 "success": True,
                 "message": "数据库连接更新成功",

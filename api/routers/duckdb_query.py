@@ -241,6 +241,12 @@ async def get_duckdb_table_detail(table_name: str):
         raise HTTPException(status_code=500, detail=f"获取表元数据失败: {str(exc)}")
 
 
+@router.get("/api/duckdb/tables/{table_name}", tags=["DuckDB Query"])
+async def get_duckdb_table(table_name: str):
+    """获取指定表的详细信息（别名端点）"""
+    return await get_duckdb_table_detail(table_name)
+
+
 @router.post("/api/duckdb/table/{table_name}/refresh", tags=["DuckDB Query"])
 async def refresh_duckdb_table_metadata(table_name: str):
     """刷新指定表的元数据缓存并返回最新详细信息"""

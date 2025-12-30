@@ -61,6 +61,13 @@ def _safe_decode_row(row):
     return [_safe_decode_value(value) for value in row]
 
 
+
+@router.get("/api/datasources/databases/{connection_id}/tables", tags=["Database Management"])
+async def get_database_tables_alias(connection_id: str):
+    """获取指定数据库连接的所有表信息（别名）"""
+    return await get_database_tables(connection_id)
+
+
 @router.get("/api/database_tables/{connection_id}", tags=["Database Management"])
 async def get_database_tables(connection_id: str):
     """获取指定数据库连接的所有表信息"""
@@ -384,6 +391,13 @@ async def get_database_tables(connection_id: str):
         )
 
 
+
+@router.get("/api/datasources/databases/{connection_id}/schemas", tags=["Database Management"])
+async def list_connection_schemas_alias(connection_id: str):
+    """获取指定数据库连接的所有 schemas（别名）"""
+    return await list_connection_schemas(connection_id)
+
+
 @router.get("/api/databases/{connection_id}/schemas", tags=["Database Management"])
 async def list_connection_schemas(connection_id: str):
     """获取指定数据库连接下的所有 schemas（仅 PostgreSQL）
@@ -450,8 +464,7 @@ async def list_connection_schemas(connection_id: str):
                             schema_name,
                             (SELECT COUNT(*) 
                              FROM information_schema.tables 
-                             WHERE table_schema = schema_name 
-                             AND table_type = 'BASE TABLE') as table_count
+                             WHERE table_schema = schema_name) as table_count
                         FROM information_schema.schemata
                         WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
                         ORDER BY schema_name
@@ -481,6 +494,13 @@ async def list_connection_schemas(connection_id: str):
         raise HTTPException(
             status_code=500, detail=f"获取 schemas 失败: {str(e)}"
         )
+
+
+
+@router.get("/api/datasources/databases/{connection_id}/schemas/{schema}/tables", tags=["Database Management"])
+async def list_schema_tables_alias(connection_id: str, schema: str):
+    """获取指定 schema 下的所有表（别名）"""
+    return await list_schema_tables(connection_id, schema)
 
 
 @router.get(
@@ -549,7 +569,7 @@ async def list_schema_tables(connection_id: str, schema: str):
                         table_name,
                         table_type
                     FROM information_schema.tables 
-                    WHERE table_schema = %s AND table_type = 'BASE TABLE'
+                    WHERE table_schema = %s
                     ORDER BY table_name
                 """,
                     (schema,),
@@ -559,7 +579,7 @@ async def list_schema_tables(connection_id: str, schema: str):
                 for row in cursor.fetchall():
                     tables.append({
                         "name": row[0],
-                        "type": "TABLE",
+                        "type": row[1], # Use actual table type
                         "row_count": 0,  # 不统计行数，提升性能
                     })
 
@@ -576,6 +596,13 @@ async def list_schema_tables(connection_id: str, schema: str):
     except Exception as e:
         logger.error(f"获取表列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取表列表失败: {str(e)}")
+
+
+
+@router.get("/api/datasources/databases/{connection_id}/tables/detail", tags=["Database Management"])
+async def get_table_details_alias(connection_id: str, table_name: str, schema: str | None = None):
+    """获取指定表的详细信息（别名）"""
+    return await get_table_details(connection_id, table_name, schema)
 
 
 @router.get(

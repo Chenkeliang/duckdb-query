@@ -108,7 +108,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
           queryKey: ['schema-tables', connection.id]
         }),
       ]);
-      toast.success(t('dataSource.refreshSuccess', { name: connection.name }));
+      toast.success(t('dataSource.refreshConnectionSuccess', { name: connection.name }));
     } catch (error) {
       toast.error(t('dataSource.refreshFailed', { message: (error as Error).message }));
     }

@@ -125,6 +125,7 @@
     "refreshFailed": "刷新失败: {{error}}",
     "refreshTableInfo": "刷新表信息",
     "refreshSuccess": "表 {{tableName}} 信息已刷新",
+    "refreshConnectionSuccess": "连接 {{name}} 信息已刷新",
     "goToManagePage": "请前往数据源管理页面添加新数据源",
     "collapsePanel": "折叠数据源面板"
   },

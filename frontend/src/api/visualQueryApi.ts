@@ -1,6 +1,6 @@
 /**
  * Visual Query & SQL Favorites API Module
- * 
+ *
  * Functions for visual query builder and SQL bookmark management.
  */
 
@@ -118,13 +118,17 @@ function extractVisualQueryPayload(
 /**
  * List all SQL favorites
  */
-export async function listSqlFavorites(): Promise<{
-    success: boolean;
-    favorites: SqlFavorite[];
-}> {
+export async function listSqlFavorites(): Promise<SqlFavorite[]> {
     try {
         const response = await apiClient.get('/api/sql-favorites');
-        return response.data;
+        const payload = response.data;
+        if (payload && Array.isArray(payload.data)) {
+            return payload.data as SqlFavorite[];
+        }
+        if (Array.isArray(payload)) {
+            return payload as SqlFavorite[];
+        }
+        return [];
     } catch (error) {
         throw handleApiError(error as never, '获取收藏列表失败');
     }
@@ -212,4 +216,3 @@ export async function getAppFeatures(): Promise<{
         throw handleApiError(error as never, '获取应用配置失败');
     }
 }
-

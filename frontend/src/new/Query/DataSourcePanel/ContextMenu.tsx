@@ -5,7 +5,8 @@ import {
   Trash2,
   Eye,
   Info,
-  RefreshCw
+  RefreshCw,
+  Database
 } from 'lucide-react';
 import {
   ContextMenu,
@@ -50,6 +51,7 @@ interface TableContextMenuProps {
   canDelete?: boolean; // 是否可以删除（外部表不能删除）
   onPreview?: () => void;
   onDelete?: (tableName: string) => Promise<void> | void;
+  onImport?: (table: SelectedTableObject) => void;
 }
 
 export const TableContextMenu: React.FC<TableContextMenuProps> = ({
@@ -58,6 +60,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
   canDelete = true,
   onPreview,
   onDelete,
+  onImport,
 }) => {
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
@@ -180,6 +183,14 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
             <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>{t('dataSource.refreshTableInfo')}</span>
           </ContextMenuItem>
+
+          {/* 导入到 DuckDB - 仅外部表可用 */}
+          {isExternal && onImport && (
+            <ContextMenuItem onClick={() => onImport(table)}>
+              <Database className="mr-2 h-4 w-4" />
+              <span>{t('dataSource.importToDuckDB')}</span>
+            </ContextMenuItem>
+          )}
 
           {/* 查看结构 - 所有表都可用 */}
           <ContextMenuItem onClick={handleViewStructure}>

@@ -5,7 +5,7 @@
 <h1 align="center">DuckQuery</h1>
 
 <p align="center">
-  <b>DuckDB 的可视化分析界面。查询任意文件、任意数据库，开箱即用。</b>
+  <b>DuckDB 的可视化分析界面。SQL可视化查询文件、数据库，开箱即用。</b>
 </p>
 
 <p align="center">

@@ -4,28 +4,28 @@
 """
 
 import asyncio
-import time
-import logging
 import json
+import logging
 import os
-from pathlib import Path
-from typing import Dict, Any, Optional, List
-from sqlalchemy import create_engine, text
-from sqlalchemy.pool import QueuePool
-from sqlalchemy.exc import SQLAlchemyError
-import pandas as pd
 import sqlite3
+import time
+from contextlib import contextmanager
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
 import psycopg2
 import pymysql
-from contextlib import contextmanager
-
 from models.query_models import (
-    DataSourceType,
     ConnectionStatus,
     ConnectionTestRequest,
     ConnectionTestResponse,
     DatabaseConnection,
+    DataSourceType,
 )
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.pool import QueuePool
+
 from core.encryption import password_encryptor
 from core.metadata_manager import metadata_manager
 
@@ -47,7 +47,7 @@ class DatabaseManager:
         try:
             # 从 DuckDB 加载
             connections_data = metadata_manager.list_database_connections()
-            
+
             logger.info(f"从 DuckDB 加载 {len(connections_data)} 个数据库连接")
             for conn_data in connections_data:
                 try:
@@ -55,9 +55,7 @@ class DatabaseManager:
                     conn_type = DataSourceType(conn_type_str) if conn_type_str else None
 
                     if not conn_type:
-                        logger.warning(
-                            f"跳过类型无效的连接: {conn_data.get('id')}"
-                        )
+                        logger.warning(f"跳过类型无效的连接: {conn_data.get('id')}")
                         continue
 
                     status_str = conn_data.get("status")
@@ -81,7 +79,9 @@ class DatabaseManager:
                         last_tested=conn_data.get("last_tested"),
                     )
                     # 加载配置时不测试连接，提升启动速度
-                    self.add_connection(connection, test_connection=False, save_to_metadata=False)
+                    self.add_connection(
+                        connection, test_connection=False, save_to_metadata=False
+                    )
                 except Exception as e:
                     logger.error(f"加载连接配置失败 {conn_data.get('id')}: {e}")
 
@@ -92,7 +92,10 @@ class DatabaseManager:
         self._config_loaded = True
 
     def add_connection(
-        self, connection: DatabaseConnection, test_connection: bool = True, save_to_metadata: bool = True
+        self,
+        connection: DatabaseConnection,
+        test_connection: bool = True,
+        save_to_metadata: bool = True,
     ) -> bool:
         """添加数据库连接配置"""
         try:
@@ -121,10 +124,11 @@ class DatabaseManager:
 
             # 无论测试是否成功，都添加到连接列表
             self.connections[connection.id] = connection
-            
+
             # 保存到 DuckDB 元数据表
             if save_to_metadata:
                 from datetime import datetime
+
                 conn_data = {
                     "id": connection.id,
                     "name": connection.name,
@@ -140,7 +144,7 @@ class DatabaseManager:
                     logger.info(f"连接配置已保存到 DuckDB: {connection.id}")
                 else:
                     logger.error(f"保存连接配置到 DuckDB 失败: {connection.id}")
-            
+
             return True
 
         except Exception as e:
@@ -167,7 +171,7 @@ class DatabaseManager:
                 logger.info(f"成功移除数据库连接（包括元数据）: {connection_id}")
             else:
                 logger.warning(f"从元数据表删除连接失败: {connection_id}")
-            
+
             return True
 
         except Exception as e:
@@ -315,7 +319,12 @@ class DatabaseManager:
         """测试SQLite连接"""
         try:
             db_path = params.get("database", ":memory:")
-            connection = sqlite3.connect(db_path, timeout=app_config.sqlite_timeout)
+            from core.config_manager import config_manager
+
+            app_config = config_manager.get_app_config()
+            sqlite_timeout = getattr(app_config, "sqlite_timeout", 10)
+
+            connection = sqlite3.connect(db_path, timeout=sqlite_timeout)
 
             cursor = connection.cursor()
             cursor.execute("SELECT sqlite_version()")

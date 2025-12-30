@@ -55,7 +55,7 @@ export const SchemaNode: React.FC<SchemaNodeProps> = ({
   }, [forceExpanded]);
 
   // 懒加载表列表（仅在展开时加载）
-  const { tables, isLoading } = useSchemaTables(
+  const { tables, isLoading, isError, error } = useSchemaTables(
     connectionId,
     schema.name,
     isExpanded
@@ -90,7 +90,13 @@ export const SchemaNode: React.FC<SchemaNodeProps> = ({
         </div>
       )}
 
-      {!isLoading &&
+      {!isLoading && isError && (
+        <div className="pl-10 py-2 text-sm text-destructive">
+          {t('dataSource.loadError', '加载出错')}: {(error as Error)?.message || 'Unknown error'}
+        </div>
+      )}
+
+      {!isLoading && !isError &&
         filteredTables.map((table) => {
           const tableObj = createExternalTable(
             table.name,
@@ -113,11 +119,12 @@ export const SchemaNode: React.FC<SchemaNodeProps> = ({
               onPreview={onPreview}
               onImport={databaseType === 'mysql' ? onImport : undefined}
               searchQuery={searchQuery}
+              level={level + 1}
             />
           );
         })}
 
-      {!isLoading && filteredTables.length === 0 && isExpanded && (
+      {!isLoading && !isError && filteredTables.length === 0 && isExpanded && (
         <div className="pl-10 py-2 text-sm text-muted-foreground">
           {searchQuery ? t('dataSource.noMatchingTables', '未找到匹配的表') : t('dataSource.noTables', '暂无表')}
         </div>

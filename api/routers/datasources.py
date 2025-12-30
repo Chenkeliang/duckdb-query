@@ -154,10 +154,7 @@ async def refresh_database_connection(id: str):
         # 保存更新
         db_manager.connections[conn_id] = connection
 
-        from routers.data_sources import _save_connections_to_config
         from utils.response_helpers import create_success_response, MessageCode
-        
-        _save_connections_to_config()
 
         return JSONResponse(
             content=create_success_response(
@@ -225,10 +222,7 @@ async def create_database_connection(connection: dict):
 
         if success:
             # 保存到配置文件
-            from routers.data_sources import _save_connections_to_config
             from utils.response_helpers import create_success_response, MessageCode
-            
-            _save_connections_to_config()
 
             logger.info(f"成功创建数据库连接: {db_conn.id}")
 
@@ -294,10 +288,7 @@ async def update_database_connection(id: str, connection: dict):
         db_manager.connections[conn_id] = existing
 
         # 保存到配置文件
-        from routers.data_sources import _save_connections_to_config
         from utils.response_helpers import create_success_response, MessageCode
-        
-        _save_connections_to_config()
 
         logger.info(f"成功更新数据库连接: {conn_id}")
 

@@ -96,7 +96,7 @@ def _build_breadcrumbs(real_path: str, mount: dict) -> List[dict]:
     return breadcrumbs
 
 
-@router.get("/api/server_files/mounts")
+@router.get("/api/server-files/mounted")
 async def list_server_mounts():
     mounts = _get_mount_configs()
     return {
@@ -107,7 +107,7 @@ async def list_server_mounts():
     }
 
 
-@router.get("/api/server_files")
+@router.get("/api/server-files/browse")
 async def list_server_directory(path: str = Query(..., description="服务器目录路径")):
     real_path, mount = _resolve_path(path)
 
@@ -165,7 +165,7 @@ async def list_server_directory(path: str = Query(..., description="服务器目
     }
 
 
-@router.post("/api/server_files/import")
+@router.post("/api/server-files/import")
 async def import_server_file(payload: ServerFileImportRequest):
     real_path, mount = _resolve_path(payload.path)
 

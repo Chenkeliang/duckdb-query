@@ -116,42 +116,10 @@ def _ensure_database_connection(datasource_id: str, datasource_type: str):
     if connection:
         return connection
 
-    config_dir = os.getenv("CONFIG_DIR")
-    if config_dir:
-        config_path = os.path.join(config_dir, "datasources.json")
-    else:
-        config_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "config",
-            "datasources.json",
-        )
 
-    if not os.path.exists(config_path):
-        raise ValueError(f"未找到数据源配置文件: {config_path}")
+    # 如果此时还未找到，说明连接不存在
+    raise ValueError(f"未找到数据源连接: {datasource_id}")
 
-    with open(config_path, "r", encoding="utf-8") as f:
-        config_data = json.load(f)
-
-    target_config = None
-    for cfg in config_data.get("database_sources", []):
-        if cfg.get("id") == datasource_id:
-            target_config = cfg
-            break
-
-    if not target_config:
-        raise ValueError(f"未找到数据源配置: {datasource_id}")
-
-    connection = DatabaseConnection(
-        id=target_config["id"],
-        name=target_config.get("name", target_config["id"]),
-        type=DataSourceType(target_config.get("type", datasource_type)),
-        params=target_config.get("params", {}),
-        created_at=get_current_time(),
-    )
-
-    added = db_manager.add_connection(connection)
-    if not added:
-        raise ValueError(f"创建数据库连接失败: {datasource_id}")
 
     return db_manager.get_connection(datasource_id)
 
@@ -335,7 +303,7 @@ class RetryTaskRequest(BaseModel):
 
 
 @router.post(
-    "/api/async_query", response_model=AsyncQueryResponse, tags=["Async Tasks"]
+    "/api/async-tasks", response_model=AsyncQueryResponse, tags=["Async Tasks"]
 )
 async def submit_async_query(
     request: AsyncQueryRequest, background_tasks: BackgroundTasks
@@ -417,7 +385,7 @@ async def submit_async_query(
         raise HTTPException(status_code=500, detail=f"提交任务失败: {str(e)}")
 
 
-@router.get("/api/async_tasks", response_model=TaskListResponse, tags=["Async Tasks"])
+@router.get("/api/async-tasks", response_model=TaskListResponse, tags=["Async Tasks"])
 async def list_async_tasks(
     limit: int = 20,
     offset: int = 0,
@@ -450,7 +418,7 @@ async def list_async_tasks(
 
 
 @router.get(
-    "/api/async_tasks/{task_id}",
+    "/api/async-tasks/{task_id}",
     response_model=TaskDetailResponse,
     tags=["Async Tasks"],
 )
@@ -484,7 +452,7 @@ async def get_async_task(task_id: str):
 
 
 @router.post(
-    "/api/async_tasks/{task_id}/cancel",
+    "/api/async-tasks/{task_id}/cancel",
     tags=["Async Tasks"],
 )
 async def cancel_async_task(task_id: str, request: CancelTaskRequest):
@@ -558,7 +526,7 @@ def _extract_task_payload(task) -> Dict[str, Any]:
 
 
 @router.post(
-    "/api/async_tasks/{task_id}/retry",
+    "/api/async-tasks/{task_id}/retry",
     response_model=AsyncQueryResponse,
     tags=["Async Tasks"],
 )

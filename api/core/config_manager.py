@@ -215,7 +215,7 @@ class ConfigManager:
 
         # 配置文件路径
         self.app_config_file = self.config_dir / "app-config.json"
-        self.sql_favorites_file = self.config_dir / "sql-favorites.json"
+
 
         # 配置缓存
         self._app_config: Optional[AppConfig] = None
@@ -242,11 +242,7 @@ class ConfigManager:
             # 更新现有配置文件，确保包含所有新字段
             self._update_existing_app_config()
 
-        # SQL收藏配置模板
-        if not self.sql_favorites_file.exists():
-            default_sql_favorites = []
-            self._save_json(self.sql_favorites_file, default_sql_favorites)
-            logger.info(f"创建默认SQL收藏配置文件: {self.sql_favorites_file}")
+
 
     def _update_existing_app_config(self):
         """更新现有应用配置文件，确保包含所有新字段"""

@@ -18,7 +18,14 @@ import type { SelectedTable } from "@/new/types/SelectedTable";
 import { getTableName, normalizeSelectedTable } from "@/new/utils/tableUtils";
 import type { TableSource } from "@/new/hooks/useQueryWorkspace";
 import type { SqlDialect } from "@/new/utils/sqlUtils";
-import { getDialectFromSource, getSourceFromSelectedTable, quoteIdent, quoteQualifiedTable } from "@/new/utils/sqlUtils";
+import {
+  getDialectFromSource,
+  getSourceFromSelectedTable,
+  quoteIdent,
+  quoteQualifiedTable,
+  generateDatabaseAlias
+} from "@/new/utils/sqlUtils";
+import { useDatabaseConnections } from "@/new/hooks/useDatabaseConnections";
 
 /**
  * 查询模式 Tab 组件
@@ -84,12 +91,62 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
   // Hooks
   const { history, addToHistory, deleteHistoryItem, clearHistory } = useGlobalHistory();
   const { favorites } = useSavedQueries();
+  const { connections } = useDatabaseConnections();
 
   // SQL 预览状态
   const [previewOpen, setPreviewOpen] = React.useState(false);
   const [previewSQL, setPreviewSQL] = React.useState<string | null>(null);
   const [previewSource, setPreviewSource] = React.useState<TableSource | undefined>(undefined);
   const [isExecuting, setIsExecuting] = React.useState(false);
+
+  // ... (createWrappedExecute and handleJoinExecute definitions skipped for brevity, they are unchanged)
+
+  const handleLoadSQL = async (sql: string, type: string = 'sql') => {
+    onTabChange('sql');
+    setPreviewSQL(sql);
+
+    // 1. 尝试解析 SQL 中的联邦查询注释 (优先级最高, 因为它明确指出了意图)
+    // 格式: -- 联邦查询: db1, db2
+    let attachDatabases: { alias: string; connectionId: string }[] = [];
+    const federatedMatch = sql.match(/-- 联邦查询: (.+)/);
+
+    if (federatedMatch) {
+      const dbAliases = federatedMatch[1].split(',').map(s => s.trim());
+      attachDatabases = dbAliases.map(alias => {
+        // ... (Same matching logic as before)
+        const exactMatch = connections.find(c => generateDatabaseAlias(c) === alias);
+        if (exactMatch) return { alias, connectionId: exactMatch.id };
+        const partialMatch = connections.find(c => alias.startsWith(generateDatabaseAlias(c)));
+        if (partialMatch) return { alias, connectionId: partialMatch.id };
+        return { alias, connectionId: 'unknown' };
+      }).filter(db => db.connectionId !== 'unknown');
+    }
+
+    // 2. 如果没有注释或注释解析为空，尝试自动分析 SQL (更健壮的方式)
+    if (attachDatabases.length === 0) {
+      // 动态导入或使用已导入的 parser
+      // 需要先确保 parseSQLTableReferences 和 buildAttachDatabasesFromParsedRefs 已导入
+      try {
+        const { parseSQLTableReferences, buildAttachDatabasesFromParsedRefs } = await import("@/new/utils/sqlUtils");
+        const parsedRefs = parseSQLTableReferences(sql);
+        const autoDetected = buildAttachDatabasesFromParsedRefs(parsedRefs, connections);
+        attachDatabases = autoDetected.attachDatabases;
+      } catch (e) {
+        console.error("Failed to auto-detect federated sources:", e);
+      }
+    }
+
+    if (attachDatabases.length > 0) {
+      setPreviewSource({
+        type: 'federated',
+        attachDatabases
+      });
+    } else {
+      setPreviewSource(undefined);
+    }
+
+    setPreviewOpen(true);
+  };
 
   // 创建包装后的执行函数，自动记录到全局历史
   const createWrappedExecute = React.useCallback(
@@ -146,25 +203,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
   // 必须妥协：点击加载 -> 直接作为执行请求触发 onExecute
   // (或者未来重构为 SQL 内容提升到 QueryTabs 状态管理)
 
-  const handleLoadSQL = async (sql: string, type: string = 'sql') => {
-    // 简单处理：切换到 SQL Tab 并尝试执行（或者仅预览）
-    // 更好的体验是填充到编辑器，目前只能通过 onExecute 触发
-    // 考虑到用户可能想编辑，我们这里先只做执行，或者提示用户复制
 
-    // 如果 onTabChange 切换到 sql，但无法设置内容。
-    // 这是一个架构限制。目前我们先实现为"执行"
-    // 后续优化：将 activeSQL 状态提升到 QueryTabs 或使用 Context
-
-    // 暂时策略：
-    // 1. 切换到 SQL Tab
-    // 2. 触发预览 (借用 SQLPreview 组件来展示并允许复制/执行)
-    //    或者直接 onExecute
-
-    onTabChange('sql');
-    // 使用 SQLPreview 来展示加载的 SQL，用户可以选择执行或复制到编辑器手动粘贴
-    setPreviewSQL(sql);
-    setPreviewOpen(true);
-  };
 
   // ... (handleVisualQueryExecute, handlePreview, handleExecuteFromPreview 保持不变) ...
   const handleVisualQueryExecute = React.useCallback(

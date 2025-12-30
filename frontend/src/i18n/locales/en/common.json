@@ -117,6 +117,7 @@
     "refreshFailed": "Refresh failed: {{error}}",
     "refreshTableInfo": "Refresh Table Info",
     "refreshSuccess": "Table {{tableName}} info refreshed",
+    "refreshConnectionSuccess": "Connection {{name}} info refreshed",
     "goToManagePage": "Please go to the data source management page to add a new data source",
     "collapsePanel": "Collapse data source panel"
   },

@@ -24,7 +24,7 @@ interface TreeNodeProps {
  * Level 2: 40px (pl-10)
  * Level 3: 56px (pl-14)
  */
-const getIndentClass = (level: number): string => {
+export const getIndentClass = (level: number): string => {
   const indentMap: Record<number, string> = {
     0: 'pl-0.5',  // 2px
     1: 'pl-6',     // 24px (6 * 4)
@@ -45,7 +45,7 @@ const getStatusIndicatorClass = (status?: string): string => {
 };
 
 export const TreeNode: React.FC<TreeNodeProps> = ({
-  id,
+  id, // 保留 id prop，虽然未使用但为了接口完整性
   label,
   icon,
   level,

@@ -93,6 +93,26 @@ class MetadataManager:
                 "CREATE INDEX IF NOT EXISTS idx_file_ds_upload ON system_file_datasources(upload_time)"
             )
 
+            # 创建系统 SQL 收藏表
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS system_sql_favorites (
+                    id VARCHAR PRIMARY KEY,
+                    name VARCHAR NOT NULL,
+                    type VARCHAR NOT NULL,
+                    sql TEXT NOT NULL,
+                    description TEXT,
+                    tags JSON,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    usage_count INTEGER DEFAULT 0,
+                    metadata JSON
+                )
+            """)
+
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_fav_type ON system_sql_favorites(type)"
+            )
+
             # 迁移：添加缺失的字段（如果表已存在但缺少字段）
             try:
                 # 检查 created_at 字段是否存在
@@ -273,6 +293,8 @@ class MetadataManager:
                     id_field = "source_id"
                 elif table == "system_migration_status":
                     id_field = "migration_name"
+                elif table == "system_sql_favorites":
+                    id_field = "id"
                 else:
                     id_field = "id"
                 
@@ -375,6 +397,8 @@ class MetadataManager:
                     id_field = "source_id"
                 elif table == "system_migration_status":
                     id_field = "migration_name"
+                elif table == "system_sql_favorites":
+                    id_field = "id"
                 else:
                     id_field = "id"
                 
@@ -421,6 +445,8 @@ class MetadataManager:
                     id_field = "source_id"
                 elif table == "system_migration_status":
                     id_field = "migration_name"
+                elif table == "system_sql_favorites":
+                    id_field = "id"
                 else:
                     id_field = "id"
                 
@@ -436,8 +462,118 @@ class MetadataManager:
                 return True
 
         except Exception as e:
-            logger.error(f"删除元数据失败: {table}/{id}, 错误: {e}")
             return False
+
+    def import_legacy_sql_favorites(self) -> Dict[str, Any]:
+        """
+        从 JSON 文件导入旧的 SQL 收藏数据到 DuckDB 表。
+        这是一个手动触发的迁移操作。
+        """
+        import os
+        from pathlib import Path
+        from dateutil import parser
+
+        # 确定配置文件路径
+        if os.getenv("CONFIG_DIR"):
+            config_dir = Path(os.getenv("CONFIG_DIR"))
+        else:
+            config_dir = Path(__file__).parent.parent.parent / "config"
+        
+        favorites_file = config_dir / "sql-favorites.json"
+        migrated_file = config_dir / "sql-favorites.json.migrated"
+
+        if not favorites_file.exists():
+            return {"success": False, "message": "未找到配置文件", "path": str(favorites_file)}
+
+        imported_count = 0
+        skipped_count = 0
+        
+        try:
+            with open(favorites_file, "r", encoding="utf-8") as f:
+                favorites = json.load(f)
+
+            if not isinstance(favorites, list):
+                return {"success": False, "message": "JSON 格式错误，应为列表", "path": str(favorites_file)}
+
+            with with_system_connection() as conn:
+                conn.execute("BEGIN TRANSACTION")
+                try:
+                    for item in favorites:
+                        # 解析时间
+                        created_at = None
+                        updated_at = None
+                        try:
+                            if item.get("created_at"):
+                                created_at = parser.parse(item["created_at"])
+                            if item.get("updated_at"):
+                                updated_at = parser.parse(item["updated_at"])
+                        except Exception:
+                            # 忽略解析错误，使用默认值（由数据库决定，或者是 None）
+                            pass
+
+                        # 准备数据，注意处理 JSON 类型的 tags
+                        item_data = {
+                            "id": item.get("id"),
+                            "name": item.get("name"),
+                            "type": item.get("type", "duckdb"), # 默认类型
+                            "sql": item.get("sql"),
+                            "description": item.get("description"),
+                            "tags": json.dumps(item.get("tags", [])),
+                            "created_at": created_at,
+                            "updated_at": updated_at,
+                            "usage_count": item.get("usage_count", 0)
+                        }
+                        
+                        # 确保必需字段存在
+                        if not item_data["id"] or not item_data["name"] or not item_data["sql"]:
+                            logger.warning(f"跳过不完整的收藏项: {item.get('name', 'Unknown')}")
+                            skipped_count += 1
+                            continue
+
+                        # 执行插入 (INSERT OR IGNORE)
+                        # DuckDB 的 INSERT OR IGNORE 语法
+                        columns = list(item_data.keys())
+                        placeholders = ", ".join(["?" for _ in columns])
+                        column_names = ", ".join(columns)
+                        values = list(item_data.values())
+
+                        conn.execute(
+                            f"INSERT OR IGNORE INTO system_sql_favorites ({column_names}) VALUES ({placeholders})",
+                            values
+                        )
+                        
+                        # 检查是否插入成功（如果 ID 已存在则不会插入）
+                        # 简单的做法是认为每次执行都是 attempted import
+                        imported_count += 1
+                    
+                    conn.execute("COMMIT")
+                except Exception as e:
+                    conn.execute("ROLLBACK")
+                    raise e
+            
+            # 迁移成功，重命名文件
+            try:
+                if migrated_file.exists():
+                    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                    backup_path = f"{migrated_file}.{timestamp}"
+                    migrated_file.rename(backup_path)
+                    logger.info(f"Existing migrated file backup to {backup_path}")
+
+                favorites_file.rename(migrated_file)
+            except Exception as e:
+                logger.warning(f"文件重命名失败，但数据已导入: {e}")
+
+            return {
+                "success": True,
+                "imported": imported_count,
+                "path": str(favorites_file),
+                "migrated_path": str(migrated_file)
+            }
+
+        except Exception as e:
+            logger.error(f"导入 SQL 收藏失败: {e}")
+            return {"success": False, "message": str(e), "path": str(favorites_file)}
+
 
     def invalidate_cache(self, table: str = None, id: str = None):
         """清除缓存"""
@@ -488,6 +624,32 @@ class MetadataManager:
     def delete_file_datasource(self, source_id: str) -> bool:
         """删除文件数据源元数据"""
         return self.delete_metadata("system_file_datasources", source_id)
+
+    def save_sql_favorite(self, favorite: dict) -> bool:
+        """保存 SQL 收藏"""
+        # 确保 tags 是 JSON 列表
+        if "tags" in favorite and not isinstance(favorite["tags"], str):
+             # 只有当它是列表/对象时才序列化，如果已经是字符串则不处理
+             # 但为了统一，这里最好确保它是 JSON 字符串或者 metadata manager 能处理
+             # update/save_metadata 底层会处理 list/dict -> json.dumps
+             pass
+        return self.save_metadata("system_sql_favorites", favorite["id"], favorite)
+
+    def get_sql_favorite(self, fav_id: str) -> Optional[dict]:
+        """获取 SQL 收藏"""
+        return self.get_metadata("system_sql_favorites", fav_id)
+
+    def list_sql_favorites(self, filters: dict = None) -> List[dict]:
+        """列出 SQL 收藏"""
+        return self.list_metadata("system_sql_favorites", filters)
+
+    def update_sql_favorite(self, fav_id: str, updates: dict) -> bool:
+        """更新 SQL 收藏"""
+        return self.update_metadata("system_sql_favorites", fav_id, updates)
+
+    def delete_sql_favorite(self, fav_id: str) -> bool:
+        """删除 SQL 收藏"""
+        return self.delete_metadata("system_sql_favorites", fav_id)
 
 
 # 全局元数据管理器实例

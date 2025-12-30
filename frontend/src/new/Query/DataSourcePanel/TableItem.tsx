@@ -5,6 +5,7 @@ import { Checkbox } from '@/new/components/ui/checkbox';
 import { Badge } from '@/new/components/ui/badge';
 import { TableContextMenu } from './ContextMenu';
 import type { SelectedTableObject } from '@/new/types/SelectedTable';
+import { getIndentClass } from './TreeNode';
 
 /**
  * TableItem 组件
@@ -63,6 +64,16 @@ interface TableItemProps {
   onImport?: (table: SelectedTableObject) => void;
   searchQuery?: string;
   disabled?: boolean;
+  level?: number;
+}
+
+interface TableItemButtonProps {
+  isSelected: boolean;
+  disabled: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  children: React.ReactNode;
+  className?: string; // Add className prop
 }
 
 /**
@@ -70,14 +81,8 @@ interface TableItemProps {
  */
 const TableItemButton = forwardRef<
   HTMLDivElement,
-  {
-    isSelected: boolean;
-    disabled: boolean;
-    onClick: (e: React.MouseEvent) => void;
-    onKeyDown: (e: React.KeyboardEvent) => void;
-    children: React.ReactNode;
-  }
->(({ isSelected, disabled, onClick, onKeyDown, children, ...props }, ref) => (
+  TableItemButtonProps
+>(({ isSelected, disabled, onClick, onKeyDown, children, className, ...props }, ref) => (
   <div
     ref={ref}
     role="button"
@@ -89,7 +94,8 @@ const TableItemButton = forwardRef<
       'hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
       isSelected ? 'border-l-2 border-primary bg-primary/10' : 'border-l-2 border-transparent',
       disabled ? 'cursor-not-allowed opacity-50 hover:bg-transparent' : 'cursor-pointer',
-    ].join(' ')}
+      className, // Apply additional className
+    ].filter(Boolean).join(' ')}
     {...props}
   >
     {children}
@@ -97,7 +103,7 @@ const TableItemButton = forwardRef<
 ));
 TableItemButton.displayName = 'TableItemButton';
 
-export const TableItem: React.FC<TableItemProps> = ({
+export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
   table,
   rowCount,
   isSelected,
@@ -108,23 +114,24 @@ export const TableItem: React.FC<TableItemProps> = ({
   onImport,
   searchQuery = '',
   disabled = false,
-}) => {
+  level = 0,
+}, ref) => {
   const iconAndBadge = React.useMemo(() => getTableIconAndBadge(table), [table]);
 
   // 高亮搜索匹配的文本
   const highlightText = (text: string, query: string) => {
     if (!query) return text;
-    
+
     // 转义正则特殊字符，避免输入 (、[、* 等字符时报错
     const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    
+
     try {
       const parts = text.split(new RegExp(`(${escapedQuery})`, 'gi'));
       return (
         <>
           {parts.map((part, i) =>
             part.toLowerCase() === query.toLowerCase() ? (
-              <mark key={i} className="rounded bg-accent px-0.5 text-foreground">
+              <mark key={i} className="rounded bg-yellow-400/40 text-foreground font-medium px-0.5">
                 {part}
               </mark>
             ) : (
@@ -188,6 +195,7 @@ export const TableItem: React.FC<TableItemProps> = ({
         disabled={disabled}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
+        className={getIndentClass(level)} // 应用缩进样式
       >
         <div className="flex items-center gap-2">
           {/* 多选模式：显示 checkbox */}
@@ -220,4 +228,5 @@ export const TableItem: React.FC<TableItemProps> = ({
       </TableItemButton>
     </TableContextMenu>
   );
-};
+});
+TableItem.displayName = 'TableItem';

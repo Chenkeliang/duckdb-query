@@ -1847,44 +1847,7 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                     )
 
                     try:
-                        # 使用新的数据源配置文件
-                        config_path = os.path.join(
-                            os.getenv(
-                                "CONFIG_DIR",
-                                os.path.join(
-                                    os.path.dirname(os.path.dirname(__file__)),
-                                    "..",
-                                    "config",
-                                ),
-                            ),
-                            "datasources.json",
-                        )
-                        if os.path.exists(config_path):
-                            with open(config_path, "r", encoding="utf-8") as f:
-                                config_data = json.load(f)
-                                configs = config_data.get("database_sources", [])
-
-                            config = None
-                            for cfg in configs:
-                                if cfg["id"] == datasource_id:
-                                    config = cfg
-                                    break
-
-                            if config:
-                                db_connection = DatabaseConnection(
-                                    id=config["id"],
-                                    name=config.get("name", config["id"]),
-                                    type=DataSourceType.MYSQL,
-                                    params=config["params"],
-                                    created_at=get_current_time(),
-                                )
-                                db_manager.add_connection(db_connection)
-                                logger.info(f"成功创建数据库连接: {datasource_id}")
-                            else:
-                                raise Exception(f"未找到数据源配置: {datasource_id}")
-                        else:
-                            raise Exception(f"配置文件不存在: {config_path}")
-
+                        raise Exception(f"未找到数据源配置: {datasource_id}")
                     except Exception as config_error:
                         logger.error(f"创建数据库连接失败: {str(config_error)}")
                         raise Exception(f"数据库连接失败: {str(config_error)}")
