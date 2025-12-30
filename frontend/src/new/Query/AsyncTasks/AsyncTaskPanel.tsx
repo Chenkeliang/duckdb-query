@@ -35,7 +35,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/new/components/ui/tooltip';
-import { listAsyncTasks, cancelAsyncTask, retryAsyncTask } from '@/services/apiClient';
+import { listAsyncTasks, cancelAsyncTask, retryAsyncTask } from '@/api';
 import { invalidateAllDataCaches } from '@/new/utils/cacheInvalidation';
 import { useAppConfig } from '@/new/hooks/useAppConfig';
 import { cn } from '@/lib/utils';
@@ -393,7 +393,7 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>{t('async.download', '下载')}</p>
+                              <p>{t('async.downloadBtn', '下载')}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>

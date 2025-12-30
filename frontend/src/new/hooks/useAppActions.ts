@@ -19,7 +19,7 @@ import {
     testDatabaseConnection,
     refreshDatabaseConnection,
     createDatabaseConnection,
-} from '@/services/apiClient';
+} from '@/api';
 
 export interface DatabaseConnectParams {
     type: 'mysql' | 'postgresql' | 'sqlite';

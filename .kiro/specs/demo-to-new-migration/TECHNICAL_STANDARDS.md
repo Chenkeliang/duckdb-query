@@ -120,7 +120,7 @@ useEffect(() => {
 | 删除表 | `deleteDuckDBTableEnhanced(name)` | `/api/duckdb/tables/{name}` | DELETE |
 | 刷新表元数据 | `refreshDuckDBTableMetadata(name)` | `/api/duckdb/table/{name}/refresh` | POST |
 | **查询执行** |
-| 执行 DuckDB SQL | `executeDuckDBSQL(sql, saveAsTable, is_preview)` | `/api/duckdb/execute` | POST |
+| 执行 DuckDB SQL | `executeDuckDBSQL({ sql, saveAsTable, isPreview })` | `/api/duckdb/execute` | POST |
 | 执行通用查询 | `performQuery(request)` | `/api/query` | POST |
 | 可视化查询预览 | `previewVisualQuery(config)` | `/api/visual-query/preview` | POST |
 | 生成可视化查询 SQL | `generateVisualQuerySQL(config)` | `/api/visual-query/generate` | POST |

@@ -338,8 +338,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
                 onChange={e => setHasHeader(e.target.checked)}
                 className="accent-primary"
               />
-              {t("page.datasource.paste.sheetInfo.target", { table: "" }) ||
-                t("page.datasource.tabPaste")}
+              {t("page.datasource.paste.hasHeader")}
             </label>
           </div>
         </CardContent>

@@ -7,7 +7,7 @@ import { useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { executeDuckDBSQL } from '@/services/apiClient';
+import { executeDuckDBSQL } from '@/api';
 import { invalidateAllDataCaches } from '@/new/utils/cacheInvalidation';
 import { formatSQLDataGrip } from '@/new/utils/sqlFormatter';
 
@@ -126,7 +126,11 @@ export const useSQLEditor = ({
       isPreview?: boolean;
     }) => {
       const startTime = Date.now();
-      const response = await executeDuckDBSQL(sqlToExecute, saveAsTable, isPreview);
+      const response = await executeDuckDBSQL({
+        sql: sqlToExecute,
+        saveAsTable: saveAsTable,
+        isPreview: isPreview
+      });
       const endTime = Date.now();
       return {
         ...response,

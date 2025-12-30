@@ -1,7 +1,7 @@
 /**
  * useAppShell Hook 测试
  *
- * 测试过渡壳：组合所有新 Hooks，兼容性接口验证
+ * 测试应用状态管理组合入口
  */
 
 import * as React from 'react';
@@ -54,8 +54,8 @@ const createWrapper = () => {
     const queryClient = new QueryClient();
 
     return ({ children }: { children: React.ReactNode }) => (
-        <QueryClientProvider client= { queryClient } >
-        { children }
+        <QueryClientProvider client={queryClient}>
+            {children}
         </QueryClientProvider>
     );
 };
@@ -78,12 +78,11 @@ describe('useAppShell', () => {
             expect(result.current.state).toHaveProperty('githubStars');
         });
 
-        it('githubStars 应该存在且不是 undefined', () => {
+        it('githubStars 应该存在且正确', () => {
             const { result } = renderHook(() => useAppShell(), {
                 wrapper: createWrapper(),
             });
 
-            // ⚠️ 关键兼容性要求：githubStars 必须存在
             expect(result.current.state.githubStars).toBeDefined();
             expect(result.current.state.githubStars).toBe(123);
         });
@@ -93,7 +92,6 @@ describe('useAppShell', () => {
                 wrapper: createWrapper(),
             });
 
-            // ⚠️ 关键兼容性要求：默认 Tab 必须是 'datasource'
             expect(result.current.state.currentTab).toBe('datasource');
         });
     });
@@ -104,14 +102,14 @@ describe('useAppShell', () => {
                 wrapper: createWrapper(),
             });
 
-            expect(result.current.actions).toHaveProperty('setIsDarkMode');
-            expect(result.current.actions).toHaveProperty('setShowWelcome');
+            // 新 API 名称
+            expect(result.current.actions).toHaveProperty('setDarkMode');
             expect(result.current.actions).toHaveProperty('setCurrentTab');
             expect(result.current.actions).toHaveProperty('setPreviewQuery');
-            expect(result.current.actions).toHaveProperty('handleCloseWelcome');
-            expect(result.current.actions).toHaveProperty('triggerRefresh');
-            expect(result.current.actions).toHaveProperty('handleDatabaseConnect');
-            expect(result.current.actions).toHaveProperty('handleDatabaseSaveConfig');
+            expect(result.current.actions).toHaveProperty('closeWelcome');
+            expect(result.current.actions).toHaveProperty('refreshData');
+            expect(result.current.actions).toHaveProperty('connectDatabase');
+            expect(result.current.actions).toHaveProperty('saveDatabase');
         });
     });
 
@@ -131,61 +129,33 @@ describe('useAppShell', () => {
         });
     });
 
-    describe('setShowWelcome 兼容性', () => {
-        it('setShowWelcome(false) 应该调用 closeWelcome', () => {
-            // 重新 mock 以捕获 closeWelcome 调用
-            const mockCloseWelcome = vi.fn();
-            vi.doMock('../useWelcomeState', () => ({
-                useWelcomeState: () => ({
-                    showWelcome: true,
-                    closeWelcome: mockCloseWelcome,
-                }),
-            }));
-
+    describe('closeWelcome', () => {
+        it('应该是一个函数且可调用', () => {
             const { result } = renderHook(() => useAppShell(), {
                 wrapper: createWrapper(),
             });
 
-            // 注意：由于 mock 的限制，这里只验证函数存在
-            expect(typeof result.current.actions.setShowWelcome).toBe('function');
+            expect(typeof result.current.actions.closeWelcome).toBe('function');
 
-            // 调用 setShowWelcome(false) 不应该抛出错误
             expect(() => {
                 act(() => {
-                    result.current.actions.setShowWelcome(false);
+                    result.current.actions.closeWelcome();
                 });
             }).not.toThrow();
-        });
-
-        it('setShowWelcome(true) 应该无效果', () => {
-            const { result } = renderHook(() => useAppShell(), {
-                wrapper: createWrapper(),
-            });
-
-            // setShowWelcome(true) 不应该抛出错误，但也不应该有效果
-            expect(() => {
-                act(() => {
-                    result.current.actions.setShowWelcome(true);
-                });
-            }).not.toThrow();
-
-            // ⚠️ 关键兼容性要求：setShowWelcome(true) 无效果
-            // 由于子 hooks 是 mocked，我们验证不会抛出错误即可
         });
     });
 
-    describe('triggerRefresh', () => {
+    describe('refreshData', () => {
         it('应该调用 refreshAllData', () => {
             const { result } = renderHook(() => useAppShell(), {
                 wrapper: createWrapper(),
             });
 
-            expect(typeof result.current.actions.triggerRefresh).toBe('function');
+            expect(typeof result.current.actions.refreshData).toBe('function');
 
-            // 调用不应该抛出错误
             expect(() => {
                 act(() => {
-                    result.current.actions.triggerRefresh();
+                    result.current.actions.refreshData();
                 });
             }).not.toThrow();
         });

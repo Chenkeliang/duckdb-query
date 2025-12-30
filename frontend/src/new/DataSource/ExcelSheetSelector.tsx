@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Info, Loader2 } from "lucide-react";
-import { inspectExcelSheets, importExcelSheets } from "../../services/apiClient";
+import { inspectExcelSheets, importExcelSheets } from '@/api';
 import { Button } from "@/new/components/ui/button";
 import { Input } from "@/new/components/ui/input";
 import { Label } from "@/new/components/ui/label";

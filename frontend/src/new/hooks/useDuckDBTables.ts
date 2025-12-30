@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getDuckDBTables } from '@/services/apiClient';
+import { getDuckDBTables } from '@/api';
 import { getCacheConfig } from '../utils/cacheConfig';
 
 /**

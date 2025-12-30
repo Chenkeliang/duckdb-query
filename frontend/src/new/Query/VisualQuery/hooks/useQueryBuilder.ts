@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { executeDuckDBSQL } from '@/services/apiClient';
+import { executeDuckDBSQL } from '@/api';
 import type {
   QueryConfig,
   FilterConfig,

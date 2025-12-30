@@ -24,7 +24,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/new/components/ui/tooltip';
-import { parseFederatedQueryError } from '@/services/apiClient';
+import { parseFederatedQueryError } from '@/api';
 import { useTableColumns } from '@/new/hooks/useTableColumns';
 import { useAppConfig } from '@/new/hooks/useAppConfig';
 import { useTypeConflict, type ColumnPair } from '@/new/hooks/useTypeConflict';

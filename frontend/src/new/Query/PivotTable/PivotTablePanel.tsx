@@ -240,7 +240,7 @@ export const PivotTablePanel: React.FC<PivotTablePanelProps> = ({ selectedTables
       }
 
       // 查询 distinct 值（限制数量 + 1 来检测是否超过阈值）
-      const { executeDuckDBSQL } = await import('@/services/apiClient');
+      const { executeDuckDBSQL } = await import('@/api');
       const normalized = normalizeSelectedTable(sourceTable!);
       const fullTableName = quoteQualifiedTable(
         { name: normalized.name, schema: normalized.schema },

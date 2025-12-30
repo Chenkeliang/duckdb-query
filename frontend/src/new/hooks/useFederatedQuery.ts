@@ -25,7 +25,7 @@ import {
   type SqlDialect,
 } from '@/new/utils/sqlUtils';
 import { getTableName, normalizeSelectedTable } from '@/new/utils/tableUtils';
-import { executeFederatedQuery, parseFederatedQueryError } from '@/services/apiClient';
+import { executeFederatedQuery, parseFederatedQueryError } from '@/api';
 
 /**
  * 联邦查询状态

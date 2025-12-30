@@ -94,7 +94,7 @@ export const GlobalHistoryPanel: React.FC<GlobalHistoryPanelProps> = ({
                         <div className="relative flex-1">
                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
-                                placeholder="搜索 SQL..."
+                                placeholder={t('query.history.searchPlaceholder', '搜索 SQL...')}
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 className="pl-8"
@@ -113,7 +113,7 @@ export const GlobalHistoryPanel: React.FC<GlobalHistoryPanelProps> = ({
                         {filteredHistory.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                                 <Clock className="h-12 w-12 mb-3 opacity-50" />
-                                <p>{search ? '未找到相关记录' : t('query.history.empty', '暂无历史记录')}</p>
+                                <p>{search ? t('query.history.notFound', '未找到相关记录') : t('query.history.empty', '暂无历史记录')}</p>
                             </div>
                         ) : (
                             <div className="space-y-3">

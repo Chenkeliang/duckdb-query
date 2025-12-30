@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Folder, Loader2 } from 'lucide-react';
 import { TreeNode } from './TreeNode';
 import { TableItem } from './TableItem';
@@ -43,6 +44,7 @@ export const SchemaNode: React.FC<SchemaNodeProps> = ({
   searchQuery = '',
   forceExpanded = false,
 }) => {
+  const { t } = useTranslation('common');
   const [isExpanded, setIsExpanded] = React.useState(false);
 
   // 搜索时自动展开
@@ -84,7 +86,7 @@ export const SchemaNode: React.FC<SchemaNodeProps> = ({
       {isLoading && (
         <div className="flex items-center gap-2 pl-10 py-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          加载中...
+          {t('common.loading', '加载中...')}
         </div>
       )}
 
@@ -117,7 +119,7 @@ export const SchemaNode: React.FC<SchemaNodeProps> = ({
 
       {!isLoading && filteredTables.length === 0 && isExpanded && (
         <div className="pl-10 py-2 text-sm text-muted-foreground">
-          {searchQuery ? '未找到匹配的表' : '暂无表'}
+          {searchQuery ? t('dataSource.noMatchingTables', '未找到匹配的表') : t('dataSource.noTables', '暂无表')}
         </div>
       )}
     </TreeNode>

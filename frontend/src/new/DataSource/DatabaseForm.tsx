@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { getServerMounts, browseServerDirectory } from "../../services/apiClient";
+import { getServerMounts, browseServerDirectory } from '@/api';
 import { Server, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/new/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/new/components/ui/tabs";

@@ -25,7 +25,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/new/components/ui/tabs';
 import { Button } from '@/new/components/ui/button';
 import { toast } from 'sonner';
-import { executeDuckDBSQL } from '@/services/apiClient';
+import { executeDuckDBSQL } from '@/api';
 import type { SelectedTableObject } from '@/new/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/new/hooks/useDuckDBTables';
 import { invalidateDataSources } from '@/new/hooks/useDataSources';
@@ -100,7 +100,10 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
       } else {
         // DuckDB: 查询表结构 - 使用双引号包裹表名以支持特殊字符
         // 注意：DESCRIBE 语句不需要 LIMIT，所以 is_preview 设为 false
-        const result = await executeDuckDBSQL(`DESCRIBE "${table.name}"`, null, false);
+        const result = await executeDuckDBSQL({
+          sql: `DESCRIBE "${table.name}"`,
+          isPreview: false
+        });
         if (result?.data) {
           setStructureData(result.data);
           // DuckDB indexes fetching omitted for now or can be added similarly
@@ -146,7 +149,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         await onDelete(table.name);
       } else {
         // 默认行为：调用删除 API（使用增强版本）
-        const { deleteDuckDBTableEnhanced } = await import('@/services/apiClient');
+        const { deleteDuckDBTableEnhanced } = await import('@/api');
         await deleteDuckDBTableEnhanced(table.name);
         toast.success(t('dataSource.tableDeleted', { tableName: table.name }));
 

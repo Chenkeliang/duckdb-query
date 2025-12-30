@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { listAllDataSources } from '@/services/apiClient';
+import { listAllDataSources } from '@/api';
 import { getCacheConfig } from '../utils/cacheConfig';
 
 /**
@@ -73,17 +73,17 @@ export const useDataSources = (filters?: Record<string, unknown>) => {
   const items = query.data?.data?.items ?? [];
   const dataSources: DataSource[] = Array.isArray(items)
     ? items.map((item: Record<string, unknown>) => ({
-        id: stripDbPrefix(item.id as string),
-        name: item.name as string,
-        type: item.type as string,
-        dbType: item.subtype as DatabaseType | undefined, // 真实数据库类型
-        status: item.status as string | undefined,
-        createdAt: item.created_at as string | undefined,
-        params: {
-          ...(item.connection_info as Record<string, unknown> | undefined),
-          ...(item.metadata as Record<string, unknown> | undefined),
-        },
-      }))
+      id: stripDbPrefix(item.id as string),
+      name: item.name as string,
+      type: item.type as string,
+      dbType: item.subtype as DatabaseType | undefined, // 真实数据库类型
+      status: item.status as string | undefined,
+      createdAt: item.created_at as string | undefined,
+      params: {
+        ...(item.connection_info as Record<string, unknown> | undefined),
+        ...(item.metadata as Record<string, unknown> | undefined),
+      },
+    }))
     : [];
 
   const refresh = async () => {
@@ -111,9 +111,9 @@ export const invalidateDataSources = (queryClient: ReturnType<typeof useQueryCli
 
 // 重新导出 useDatabaseConnections 从专门的文件
 // 避免重复定义，统一使用 useDatabaseConnections.ts 中的实现
-export { 
-  useDatabaseConnections, 
+export {
+  useDatabaseConnections,
   invalidateDatabaseConnections,
   DATABASE_CONNECTIONS_QUERY_KEY,
-  type DatabaseConnection 
+  type DatabaseConnection
 } from './useDatabaseConnections';

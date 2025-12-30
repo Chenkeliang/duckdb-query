@@ -25,7 +25,7 @@ import {
   Alert,
   AlertDescription,
 } from '@/new/components/ui/alert';
-import { submitAsyncQuery } from '@/services/apiClient';
+import { submitAsyncQuery } from '@/api';
 
 // 异步任务查询 key
 const ASYNC_TASKS_QUERY_KEY = ['async-tasks'] as const;

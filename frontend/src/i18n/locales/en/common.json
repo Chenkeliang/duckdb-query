@@ -138,7 +138,7 @@
     "rows": "Rows",
     "actions": "Actions",
     "previewResult": "Preview result",
-    "download": "Download",
+    "downloadBtn": "Download",
     "cancel": "Cancel",
     "cancelSuccess": "Task cancelled",
     "cancelFailed": "Cancel failed: {{message}}",
@@ -406,7 +406,9 @@
       "load": "Load",
       "justNow": "Just now",
       "minutesAgo": "{{count}} min ago",
-      "hoursAgo": "{{count}} hr ago"
+      "hoursAgo": "{{count}} hr ago",
+      "searchPlaceholder": "Search SQL...",
+      "notFound": "No matching records found"
     },
     "preview": {
       "title": "SQL Preview",
@@ -708,6 +710,7 @@
         "cols": "{{count}} cols",
         "unifyAsString": "Force text type (recommended for joins)",
         "unifyAsStringDesc": "Set all columns to text to avoid type mismatch when joining",
+        "hasHeader": "First row is header",
         "columnConfig": "Column config",
         "columnName": "Column {{index}} name",
         "type": "Type",

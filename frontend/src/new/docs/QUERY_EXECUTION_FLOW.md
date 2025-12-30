@@ -169,8 +169,8 @@ const handleQueryExecute = useCallback(
 
 ### API 调用
 
-```javascript
-// frontend/src/services/apiClient.js
+```typescript
+// frontend/src/api/queryApi.ts
 export const executeFederatedQuery = async (options) => {
   const { sql, attachDatabases, isPreview = true } = options;
   
@@ -215,7 +215,7 @@ export function generateDatabaseAlias(connection: DatabaseConnection): string {
 - `frontend/src/new/hooks/useQueryWorkspace.ts` - 查询执行逻辑
 - `frontend/src/new/Query/QueryWorkspace.tsx` - 预览/导入处理
 - `frontend/src/new/Query/SQLQuery/SQLQueryPanel.tsx` - SQL 面板
-- `frontend/src/services/apiClient.js` - API 调用
+- `frontend/src/api/queryApi.ts` - 核心查询 API
 - `api/routers/duckdb_query.py` - 后端联邦查询 API
 
 ---

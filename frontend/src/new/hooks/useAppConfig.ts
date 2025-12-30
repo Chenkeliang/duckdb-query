@@ -11,7 +11,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { setFederatedQueryTimeout } from '@/services/apiClient';
+import { setFederatedQueryTimeout } from '@/api';
 
 // API 响应类型
 interface AppConfigResponse {

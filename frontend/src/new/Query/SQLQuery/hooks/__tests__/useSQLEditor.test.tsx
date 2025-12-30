@@ -10,7 +10,7 @@ import { useSQLEditor } from '../useSQLEditor';
 
 // Mock API
 const mockExecuteDuckDBSQL = vi.fn();
-vi.mock('@/services/apiClient', () => ({
+vi.mock('@/api', () => ({
   executeDuckDBSQL: (...args: any[]) => mockExecuteDuckDBSQL(...args),
 }));
 

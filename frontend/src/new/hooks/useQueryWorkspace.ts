@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
-import { executeDuckDBSQL, executeFederatedQuery } from "@/services/apiClient";
+import { executeDuckDBSQL, executeFederatedQuery } from "@/api";
 import { toast } from "sonner";
 import type {
   SelectedTable,

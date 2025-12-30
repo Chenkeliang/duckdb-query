@@ -11,7 +11,7 @@ import { useQueryBuilder } from '../useQueryBuilder';
 import type { QueryConfig, FilterConfig, AggregationConfig, SortConfig, JoinConfig } from '../../QueryBuilder';
 
 // Mock API
-vi.mock('@/services/apiClient', () => ({
+vi.mock('@/api', () => ({
   executeDuckDBSQL: vi.fn().mockResolvedValue({
     data: [{ id: 1, name: 'test' }],
     row_count: 1,
@@ -422,7 +422,7 @@ describe('useQueryBuilder', () => {
       });
 
       // 检查 API 是否被调用
-      const { executeDuckDBSQL } = await import('@/services/apiClient');
+      const { executeDuckDBSQL } = await import('@/api');
       expect(executeDuckDBSQL).toHaveBeenCalled();
     });
 
@@ -436,7 +436,7 @@ describe('useQueryBuilder', () => {
       });
 
       // 检查 API 是否未被调用
-      const { executeDuckDBSQL } = await import('@/services/apiClient');
+      const { executeDuckDBSQL } = await import('@/api');
       expect(executeDuckDBSQL).not.toHaveBeenCalled();
     });
   });

@@ -146,7 +146,7 @@
     "rows": "行数",
     "actions": "操作",
     "previewResult": "预览结果",
-    "download": "下载",
+    "downloadBtn": "下载",
     "cancel": "取消",
     "cancelSuccess": "任务已取消",
     "cancelFailed": "取消失败: {{message}}",
@@ -414,7 +414,9 @@
       "load": "加载",
       "justNow": "刚刚",
       "minutesAgo": "{{count}} 分钟前",
-      "hoursAgo": "{{count}} 小时前"
+      "hoursAgo": "{{count}} 小时前",
+      "searchPlaceholder": "搜索 SQL...",
+      "notFound": "未找到相关记录"
     },
     "preview": {
       "title": "SQL 预览",
@@ -717,6 +719,7 @@
         "cols": "{{count}} 列",
         "unifyAsString": "统一为文本类型（推荐用于关联查询）",
         "unifyAsStringDesc": "将所有列设置为文本类型，避免数据类型不匹配导致的关联查询问题",
+        "hasHeader": "首行作为表头",
         "columnConfig": "列配置",
         "columnName": "列 {{index}} 名称",
         "type": "类型",

@@ -20,7 +20,7 @@ import {
   DialogTitle,
 } from '@/new/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { downloadAsyncResult } from '@/services/apiClient';
+import { downloadAsyncResult } from '@/api';
 
 export type DownloadFormat = 'csv' | 'parquet';
 

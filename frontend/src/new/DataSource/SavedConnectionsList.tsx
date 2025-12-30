@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   deleteDatabaseConnection
-} from "../../services/apiClient";
+} from '@/api';
 import { useQueryClient } from "@tanstack/react-query";
 import { Database, Trash2, Play, RefreshCw, Loader2 } from "lucide-react";
 import { useDatabaseConnections, type DatabaseConnection } from "../hooks/useDatabaseConnections";

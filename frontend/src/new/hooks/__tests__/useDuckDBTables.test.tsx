@@ -9,10 +9,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useDuckDBTables, invalidateDuckDBTables, DUCKDB_TABLES_QUERY_KEY } from '../useDuckDBTables';
-import * as apiClient from '@/services/apiClient';
+import * as apiClient from '@/api';
 
 // Mock API client
-vi.mock('@/services/apiClient');
+vi.mock('@/api');
 
 const createWrapper = () => {
   const queryClient = new QueryClient({

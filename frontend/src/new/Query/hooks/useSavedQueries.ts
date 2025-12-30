@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-    getSQLFavorites,
-    createSQLFavorite,
-    deleteSQLFavorite,
-    useSQLFavorite
-} from '@/services/apiClient';
+    listSqlFavorites,
+    createSqlFavorite,
+    deleteSqlFavorite,
+    incrementFavoriteUsage
+} from '@/api';
 
 /**
  * SQL 收藏夹 Hook
@@ -32,7 +32,7 @@ export const useSavedQueries = () => {
     // 查询收藏列表
     const query = useQuery({
         queryKey: SAVED_QUERIES_QUERY_KEY,
-        queryFn: getSQLFavorites,
+        queryFn: listSqlFavorites,
         staleTime: 5 * 60 * 1000, // 5 分钟
         refetchOnWindowFocus: true,
     });
@@ -47,7 +47,7 @@ export const useSavedQueries = () => {
 
     // 创建收藏 Mutation
     const createMutation = useMutation({
-        mutationFn: createSQLFavorite,
+        mutationFn: createSqlFavorite,
         onSuccess: () => {
             toast.success('收藏成功');
             queryClient.invalidateQueries({ queryKey: SAVED_QUERIES_QUERY_KEY });
@@ -59,7 +59,7 @@ export const useSavedQueries = () => {
 
     // 删除收藏 Mutation
     const deleteMutation = useMutation({
-        mutationFn: deleteSQLFavorite,
+        mutationFn: deleteSqlFavorite,
         onSuccess: () => {
             toast.success('已删除收藏');
             queryClient.invalidateQueries({ queryKey: SAVED_QUERIES_QUERY_KEY });
@@ -71,7 +71,7 @@ export const useSavedQueries = () => {
 
     // 使用收藏 Mutation (增加计数)
     const useMutationReq = useMutation({
-        mutationFn: useSQLFavorite,
+        mutationFn: incrementFavoriteUsage,
         onSuccess: () => {
             // 静默刷新列表以更新计数
             queryClient.invalidateQueries({ queryKey: SAVED_QUERIES_QUERY_KEY });

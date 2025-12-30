@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getDuckDBTableDetail, getExternalTableDetail } from '@/services/apiClient';
+import { getDuckDBTableDetail, getExternalTableDetail } from '@/api';
 import type { SelectedTable } from '@/new/types/SelectedTable';
 import { normalizeSelectedTable, getTableName } from '@/new/utils/tableUtils';
 
@@ -48,7 +48,7 @@ export const TABLE_COLUMNS_QUERY_KEY = ['table-columns'] as const;
  */
 export const transformExternalColumns = (columns: unknown): TableColumn[] => {
   if (!Array.isArray(columns)) return [];
-  
+
   return columns
     .map((col: Record<string, unknown>) => ({
       name: String(col?.name || col?.column_name || 'unknown'),
@@ -71,7 +71,7 @@ export const transformExternalColumns = (columns: unknown): TableColumn[] => {
  */
 export const transformDuckDBColumns = (columns: unknown): TableColumn[] => {
   if (!Array.isArray(columns)) return [];
-  
+
   return columns
     .map((col: Record<string, unknown>) => ({
       name: String(col?.column_name || col?.name || 'unknown'),
@@ -120,7 +120,7 @@ export const useTableColumns = (table: SelectedTable | null): UseTableColumnsRes
   const isExternal = normalized?.source === 'external';
   const connectionId = normalized?.connection?.id;
   const schema = normalized?.schema;
-  
+
   // 构建 queryKey，包含表来源信息以区分缓存
   const queryKey = [
     ...TABLE_COLUMNS_QUERY_KEY,
@@ -128,12 +128,12 @@ export const useTableColumns = (table: SelectedTable | null): UseTableColumnsRes
     isExternal ? connectionId : 'duckdb',
     schema,
   ] as const;
-  
+
   const query = useQuery({
     queryKey,
     queryFn: async (): Promise<TableColumn[]> => {
       if (!normalized || !tableName) return [];
-      
+
       if (isExternal && connectionId) {
         // 外部表：使用 getExternalTableDetail API
         const response = await getExternalTableDetail(connectionId, tableName, schema);
@@ -151,9 +151,9 @@ export const useTableColumns = (table: SelectedTable | null): UseTableColumnsRes
     retry: 2,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
-  
+
   const columns = query.data || [];
-  
+
   return {
     columns,
     isLoading: query.isLoading,
@@ -180,7 +180,7 @@ export const useMultipleTableColumns = (tables: SelectedTable[]) => {
     const isExternal = normalized.source === 'external';
     const connectionId = normalized.connection?.id;
     const schema = normalized.schema;
-    
+
     return {
       queryKey: [
         ...TABLE_COLUMNS_QUERY_KEY,
@@ -204,7 +204,7 @@ export const useMultipleTableColumns = (tables: SelectedTable[]) => {
       retry: 2,
     };
   });
-  
+
   return queries;
 };
 

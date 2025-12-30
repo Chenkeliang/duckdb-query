@@ -97,11 +97,7 @@ setup_config() {
     
     print_success "目录权限设置完成"
 
-    # 初始化文件数据源索引
-    if [ ! -f "data/file_datasources.json" ]; then
-        echo "[]" > data/file_datasources.json
-        print_success "文件数据源索引已创建: data/file_datasources.json"
-    fi
+
     
     # 复制示例配置文件
     if [ ! -f "config/app-config.json" ]; then
@@ -118,13 +114,30 @@ setup_config() {
   "max_query_rows": 10000,
   "max_tables": 200,
   "timezone": "Asia/Shanghai",
+  "table_metadata_cache_ttl_hours": 24,
   "duckdb_memory_limit": "8GB",
   "duckdb_threads": 8,
+  "duckdb_temp_directory": null,
+  "duckdb_home_directory": null,
+  "duckdb_extension_directory": null,
   "duckdb_enable_profiling": "query_tree",
+  "duckdb_profiling_output": null,
   "duckdb_prefer_range_joins": false,
   "duckdb_enable_object_cache": true,
   "duckdb_preserve_insertion_order": false,
-  "duckdb_extensions": ["excel", "json", "parquet", "mysql", "postgres"],
+  "duckdb_enable_progress_bar": false,
+  "duckdb_extensions": ["excel", "json", "parquet", "httpfs", "mysql", "postgres"],
+  "duckdb_remote_settings": {
+    "s3_region": "cn-hangzhou",
+    "s3_endpoint": "oss-cn-hangzhou.aliyuncs.com",
+    "s3_url_style": "path",
+    "s3_use_ssl": true
+  },
+  "server_data_mounts": [
+    { "label": "Shared Data", "path": "/app/server_mounts" },
+    { "label": "macOS Downloads", "path": "/app/host_downloads" },
+    { "label": "macOS Documents", "path": "/app/host_documents" }
+  ],
   "pool_min_connections": 2,
   "pool_max_connections": 10,
   "pool_connection_timeout": 30,
@@ -143,15 +156,7 @@ EOF
         fi
     fi
     
-    if [ ! -f "config/datasources.json" ]; then
-        if [ -f "config/datasources.example.json" ]; then
-            cp config/datasources.example.json config/datasources.json
-            print_success "数据源配置已创建: config/datasources.json"
-        else
-            print_warning "数据源配置示例文件不存在，将创建空配置"
-            echo "[]" > config/datasources.json
-        fi
-    fi
+
     
     # 创建MySQL配置文件
     if [ ! -f "config/mysql-configs.json" ]; then
@@ -164,11 +169,7 @@ EOF
         fi
     fi
     
-    # 创建文件数据源配置
-    if [ ! -f "config/file-datasources.json" ]; then
-        print_info "创建文件数据源配置: config/file-datasources.json"
-        echo "[]" > config/file-datasources.json
-    fi
+
     
     # 创建SQL收藏配置文件
     if [ ! -f "config/sql-favorites.json" ]; then
@@ -202,10 +203,10 @@ start_services() {
     
     print_success "🎉 DuckQuery + DuckDB 启动成功！"
     print_info "前端界面（DuckDB 可视化分析）: http://localhost:3000"
-    print_info "API 文档 (FastAPI + DuckDB 数据服务): http://localhost:8000/docs"
+    print_info "API 文档 (FastAPI + DuckDB 数据服务): http://localhost:8001/docs"
     print_info ""
     print_info "提示："
-    print_info "- 推荐先阅读 DuckDB 快速上手: docs/duckdb-getting-started.md"
+    print_info "- 推荐先阅读 README: README.md"
     print_info "- 在前端可拖拽 Excel/CSV/Parquet，自动建 DuckDB 表"
     print_info "- DuckQuery 支持剪贴板、远程文件、多库连接的 DuckDB 分析"
     print_info "- 调整资源/端口可编辑 docker-compose.yml 或 config/app-config.json"

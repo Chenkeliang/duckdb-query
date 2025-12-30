@@ -15,7 +15,7 @@ import i18n from '@/i18n';
 import { AsyncTaskDialog, AttachDatabase } from '../AsyncTaskDialog';
 
 // Mock submitAsyncQuery
-vi.mock('@/services/apiClient', () => ({
+vi.mock('@/api', () => ({
   submitAsyncQuery: vi.fn().mockResolvedValue({ task_id: 'test-task-id' }),
 }));
 

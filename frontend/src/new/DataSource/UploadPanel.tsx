@@ -9,7 +9,7 @@ import {
   getServerMounts,
   browseServerDirectory,
   importServerFile
-} from "../../services/apiClient";
+} from '@/api';
 import ExcelSheetSelector from "./ExcelSheetSelector";
 import { Card, CardContent } from "@/new/components/ui/card";
 import { Button } from "@/new/components/ui/button";

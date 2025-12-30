@@ -13,7 +13,7 @@ import {
   invalidateAfterFileUpload, 
   invalidateAfterTableDelete
 } from '../utils/cacheInvalidation';
-import { uploadFile, deleteDuckDBTable } from '@/services/apiClient';
+import { uploadFile, deleteDuckDBTable } from '@/api';
 
 /**
  * DuckDB 表列表组件

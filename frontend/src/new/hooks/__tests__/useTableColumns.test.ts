@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { transformExternalColumns, transformDuckDBColumns } from '../useTableColumns';
 
 // Mock apiClient
-vi.mock('@/services/apiClient', () => ({
+vi.mock('@/api', () => ({
   getDuckDBTableDetail: vi.fn(),
   getExternalTableDetail: vi.fn(),
 }));

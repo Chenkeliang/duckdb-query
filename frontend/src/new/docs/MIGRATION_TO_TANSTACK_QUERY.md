@@ -390,9 +390,9 @@ test('should fetch tables', async () => {
 // ✅ 新方式
 import { render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import * as apiClient from '@/services/apiClient';
+import * as queryApi from '@/api/queryApi';
 
-jest.mock('@/services/apiClient');
+jest.mock('@/api/queryApi');
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -406,9 +406,10 @@ const createWrapper = () => {
 };
 
 test('should fetch tables', async () => {
-  (apiClient.getDuckDBTables as jest.Mock).mockResolvedValue([
-    { name: 'table1' },
-  ]);
+  (queryApi.executeDuckDBSQL as jest.Mock).mockResolvedValue({
+    success: true,
+    data: [{ name: 'table1' }]
+  });
 
   const { getByText } = render(<TableList />, {
     wrapper: createWrapper(),

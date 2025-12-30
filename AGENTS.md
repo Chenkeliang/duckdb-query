@@ -104,7 +104,7 @@ duckdb-query/
 | `frontend/src/new/hooks/useDataSources.ts` | 数据源列表 Hook |
 | `frontend/src/new/hooks/useDatabaseConnections.ts` | 数据库连接 Hook |
 | `frontend/src/new/utils/cacheInvalidation.ts` | 缓存失效工具 |
-| `frontend/src/services/apiClient.js` | 前端 API 客户端 |
+| `frontend/src/api/` | 前端 API 模块 (Axios + Types) |
 | `api/core/duckdb_pool.py` | DuckDB 连接池 |
 | `api/core/task_manager.py` | 异步任务管理 |
 | `api/utils/response_helpers.py` | 统一响应格式 |

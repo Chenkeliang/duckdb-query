@@ -24,7 +24,7 @@ vi.mock('@/new/hooks/useDuckDBTables', () => ({
 }));
 
 // Mock getDuckDBTableDetail API
-vi.mock('@/services/apiClient', () => ({
+vi.mock('@/api', () => ({
   getDuckDBTableDetail: vi.fn().mockResolvedValue({
     columns: [
       { name: 'id', type: 'INTEGER' },

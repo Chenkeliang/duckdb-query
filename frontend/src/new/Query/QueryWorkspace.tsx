@@ -15,7 +15,7 @@ import { useAppConfig } from "@/new/hooks/useAppConfig";
 import { DataSourcePanel } from "./DataSourcePanel";
 import { QueryTabs } from "./QueryTabs";
 import { ResultPanel } from "./ResultPanel";
-import { deleteDuckDBTableEnhanced } from "@/services/apiClient";
+import { deleteDuckDBTableEnhanced } from "@/api";
 import { invalidateAfterTableDelete } from "@/new/utils/cacheInvalidation";
 import type { SelectedTable } from "@/new/types/SelectedTable";
 import { normalizeSelectedTable } from "@/new/utils/tableUtils";

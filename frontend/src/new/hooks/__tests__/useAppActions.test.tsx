@@ -9,11 +9,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAppActions } from '../useAppActions';
-import * as apiClient from '@/services/apiClient';
+import * as apiClient from '@/api';
 import * as cacheInvalidation from '@/new/utils/cacheInvalidation';
 
 // Mock dependencies
-vi.mock('@/services/apiClient');
+vi.mock('@/api');
 vi.mock('@/new/utils/cacheInvalidation');
 
 const createWrapper = () => {
