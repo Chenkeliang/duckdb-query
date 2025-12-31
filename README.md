@@ -189,6 +189,18 @@ cd frontend && npm run dev -- --port 3000
 
 ---
 
+## Acknowledgments
+
+- [DuckDB](https://duckdb.org/) — High-performance embedded analytical database
+- [FastAPI](https://fastapi.tiangolo.com/) — Modern Python API framework
+- [React](https://react.dev/) — Frontend UI framework
+- [Kiro](https://kiro.dev/) — AI-assisted development
+- [Claude](https://claude.ai/) — AI coding assistant
+- [Gemini](https://gemini.google.com/) — AI coding assistant
+- [Codex](https://openai.com/blog/openai-codex) — AI coding assistant
+
+---
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

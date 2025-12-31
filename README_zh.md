@@ -189,6 +189,18 @@ cd frontend && npm run dev -- --port 3000
 
 ---
 
+## 致谢
+
+- [DuckDB](https://duckdb.org/) — 高性能嵌入式分析数据库
+- [FastAPI](https://fastapi.tiangolo.com/) — 现代 Python API 框架
+- [React](https://react.dev/) — 前端 UI 框架
+- [Kiro](https://kiro.dev/) — AI 辅助开发
+- [Claude](https://claude.ai/) — AI 编程助手
+- [Gemini](https://gemini.google.com/) — AI 编程助手
+- [Codex](https://openai.com/blog/openai-codex) — AI 编程助手
+
+---
+
 ## 许可证
 
 本项目采用 MIT 许可证开源，详见 [LICENSE](LICENSE) 文件。
