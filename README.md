@@ -30,7 +30,16 @@
 
 ## Quick Start
 
-**One command to launch:**
+### 1. Live Demo (No Installation)
+**Just want to try the UI?** Use the browser-based version powered by DuckDB Wasm.
+👉 **[Click here to try Live Demo](https://chenkeliang.github.io/duckdb-query/)**
+
+### 2. Docker Deployment (Full Features)
+**Want the full experience?** Run the full stack (Python Backend + React Frontend) to enable:
+- Direct local file system access
+- Persistent database connections (MySQL/Postgres)
+
+**Prerequisites:** Docker & Docker Compose
 
 ```bash
 git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && ./quick-start.sh

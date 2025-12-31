@@ -30,7 +30,16 @@
 
 ## 快速开始
 
-**一条命令启动：**
+### 1. 在线演示 (无需安装)
+**想直接体验 UI？** 试试基于 DuckDB Wasm 的纯浏览器版本。
+👉 **[点击这里访问在线演示](https://chenkeliang.github.io/duckdb-query/)**
+
+### 2. Docker 部署 (完整功能)
+**想要完整体验？** 启动全栈版本（Python 后端 + React 前端）以获取：
+- 直接读写本地文件系统
+- 连接持久化数据库 (MySQL/Postgres)
+
+**前置依赖：** 需要安装 Docker 和 Docker Compose
 
 ```bash
 git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && ./quick-start.sh
