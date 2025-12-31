@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Code, GitMerge, Layers, Table2, LayoutGrid, Clock, Star } from "lucide-react";
+import { Code, GitMerge, Layers, Table2, Clock, Star } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/new/components/ui/tabs";
 import { Button } from "@/new/components/ui/button";
 import { Badge } from "@/new/components/ui/badge";
@@ -23,7 +23,9 @@ import {
   getSourceFromSelectedTable,
   quoteIdent,
   quoteQualifiedTable,
-  generateDatabaseAlias
+  generateDatabaseAlias,
+  parseSQLTableReferences,
+  buildAttachDatabasesFromParsedRefs
 } from "@/new/utils/sqlUtils";
 import { useDatabaseConnections } from "@/new/hooks/useDatabaseConnections";
 
@@ -101,7 +103,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
 
   // ... (createWrappedExecute and handleJoinExecute definitions skipped for brevity, they are unchanged)
 
-  const handleLoadSQL = async (sql: string, type: string = 'sql') => {
+  const handleLoadSQL = async (sql: string, _type: string = 'sql') => {
     onTabChange('sql');
     setPreviewSQL(sql);
 
@@ -124,10 +126,8 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
 
     // 2. 如果没有注释或注释解析为空，尝试自动分析 SQL (更健壮的方式)
     if (attachDatabases.length === 0) {
-      // 动态导入或使用已导入的 parser
-      // 需要先确保 parseSQLTableReferences 和 buildAttachDatabasesFromParsedRefs 已导入
+      // 使用已导入的 parser (sqlUtils)
       try {
-        const { parseSQLTableReferences, buildAttachDatabasesFromParsedRefs } = await import("@/new/utils/sqlUtils");
         const parsedRefs = parseSQLTableReferences(sql);
         const autoDetected = buildAttachDatabasesFromParsedRefs(parsedRefs, connections);
         attachDatabases = autoDetected.attachDatabases;
