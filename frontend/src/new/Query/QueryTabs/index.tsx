@@ -287,30 +287,30 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
             })}
           </TabsList>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
-              size="sm"
-              className="h-8 gap-2 text-muted-foreground hover:text-foreground"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-yellow-500"
               onClick={() => setBookmarksOpen(true)}
+              title={t('query.bookmark.title', 'SQL 收藏夹')}
             >
               <Star className="w-4 h-4" />
-              <span className="hidden sm:inline">{t('query.bookmark.title', '收藏夹')}</span>
-              {favorites?.length > 0 && (
-                <Badge variant="outline" className="h-5 px-1.5 min-w-5 justify-center">
-                  {favorites.length}
-                </Badge>
-              )}
             </Button>
+            {favorites?.length > 0 && (
+              <Badge variant="outline" className="h-5 px-1.5 min-w-5 justify-center text-xs">
+                {favorites.length}
+              </Badge>
+            )}
 
             <Button
               variant="ghost"
-              size="sm"
-              className="h-8 gap-2 text-muted-foreground hover:text-foreground"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
               onClick={() => setHistoryOpen(true)}
+              title={t('query.history.title', '查询历史')}
             >
               <Clock className="w-4 h-4" />
-              <span className="hidden sm:inline">{t('query.history.title', '历史记录')}</span>
             </Button>
           </div>
         </div>

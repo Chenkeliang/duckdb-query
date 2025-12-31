@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, StopCircle, Loader2, Star } from 'lucide-react';
+import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, StopCircle, Loader2, Star, Timer } from 'lucide-react';
 import { Input } from '@/new/components/ui/input';
 import { Button } from '@/new/components/ui/button';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
@@ -65,6 +65,7 @@ import {
   type OptimizationReport,
 } from './sqlOptimizer';
 import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
+import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
 
 
 /**
@@ -691,6 +692,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   const [isExecuting, setIsExecuting] = React.useState(false);
   const [localIsCancelling, setLocalIsCancelling] = React.useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
+  const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
   const abortControllerRef = React.useRef<AbortController | null>(null);
 
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
@@ -1486,6 +1488,30 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
               </Button>
             )}
 
+            {/* 异步执行按钮 */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAsyncDialogOpen(true)}
+                    disabled={!canExecute || isExecuting || !sql?.trim()}
+                    className="gap-1.5"
+                    aria-label={t('query.sql.asyncExecute', '异步执行')}
+                  >
+                    <Timer className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">
+                      {t('query.sql.asyncExecute', '异步执行')}
+                    </span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('query.sql.asyncExecuteHint', '后台执行，结果保存到表')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             <div className="w-[1px] h-4 bg-border mx-1" />
 
             <Button
@@ -1702,6 +1728,31 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         open={isSaveDialogOpen}
         onOpenChange={setIsSaveDialogOpen}
         sql={sql || ''}
+      />
+
+      {/* 异步任务对话框 */}
+      <AsyncTaskDialog
+        open={asyncDialogOpen}
+        onOpenChange={setAsyncDialogOpen}
+        sql={sql?.trim() ?? ''}
+        datasource={
+          sourceAnalysis.hasExternal && sourceAnalysis.currentSource
+            ? {
+              id: sourceAnalysis.currentSource.id ?? '',
+              type: sourceAnalysis.currentSource.type ?? '',
+              name: sourceAnalysis.currentSource.name,
+            }
+            : undefined
+        }
+        attachDatabases={
+          attachDatabases?.map((db) => ({
+            alias: db.alias,
+            connectionId: db.connectionId,
+          })) ?? []
+        }
+        onSuccess={() => {
+          setAsyncDialogOpen(false);
+        }}
       />
     </div>
   );

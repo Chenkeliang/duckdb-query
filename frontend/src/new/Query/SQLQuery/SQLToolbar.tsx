@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, Loader2, Save, FileCode, Clock, Timer, StopCircle } from 'lucide-react';
+import { Play, Loader2, FileCode, Clock, Timer, StopCircle, Star } from 'lucide-react';
 import { Button } from '@/new/components/ui/button';
 import {
   Tooltip,
@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from '@/new/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { Separator } from '@/new/components/ui/separator';
 
 export interface SQLToolbarProps {
   /** 执行回调 */
@@ -152,6 +153,11 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
             </Tooltip>
           )}
 
+          {/* 分隔符 - 只在两组按钮都存在时显示 */}
+          {(onAsyncExecute || isExecuting) && (onFormat || onSave) && (
+            <Separator orientation="vertical" className="h-4 mx-1" />
+          )}
+
           {/* 格式化按钮 */}
           {onFormat && (
             <Tooltip>
@@ -161,6 +167,7 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
                   size="sm"
                   onClick={onFormat}
                   disabled={isExecuting}
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <FileCode className="h-4 w-4 mr-1" />
                   <span className="hidden sm:inline">
@@ -174,7 +181,7 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
             </Tooltip>
           )}
 
-          {/* 保存按钮 */}
+          {/* 收藏按钮 */}
           {onSave && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -183,15 +190,16 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
                   size="sm"
                   onClick={onSave}
                   disabled={isExecuting}
+                  className="text-muted-foreground hover:text-yellow-500"
                 >
-                  <Save className="h-4 w-4 mr-1" />
+                  <Star className="h-4 w-4 mr-1" />
                   <span className="hidden sm:inline">
-                    {t('query.sql.save', '保存')}
+                    {t('query.bookmark.save', '收藏')}
                   </span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>{t('query.sql.saveTooltip', '保存查询')}</p>
+                <p>{t('query.bookmark.saveTooltip', '收藏查询')}</p>
               </TooltipContent>
             </Tooltip>
           )}

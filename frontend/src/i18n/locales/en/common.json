@@ -528,6 +528,7 @@
       "emptyDescription": "Double-click a table in the data source panel on the left to add to set operations. You can add multiple tables for UNION / INTERSECT / EXCEPT operations.",
       "clear": "Clear",
       "columnMismatchWarning": "Set operations require the same number of selected columns across all tables.",
+      "columnMismatchDetail": "Table {{tableIndex}} has {{tableCount}} columns, but the first table has {{baseCount}} columns.",
       "byNameModeHint": "BY NAME mode: Matches columns by name, not position. Missing columns will be filled with NULL values.",
       "byNameTooltip": "Match columns by name (DuckDB feature), column count doesn't need to match",
       "externalNotSupported": "Set operations are not supported for external tables. Please import the external table into DuckDB first."

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star } from 'lucide-react';
+import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star, Timer } from 'lucide-react';
 import { Button } from '@/new/components/ui/button';
 import { Alert, AlertDescription } from '@/new/components/ui/alert';
 import { Badge } from '@/new/components/ui/badge';
@@ -18,6 +18,13 @@ import {
 import { getDialectFromSource, quoteIdent, quoteQualifiedTable } from '@/new/utils/sqlUtils';
 import { SQLHighlight } from '@/new/components/SQLHighlight';
 import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
+import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/new/components/ui/tooltip';
 
 /**
  * 集合操作面板 - 按照 Demo 设计重构
@@ -89,14 +96,14 @@ const TableCard: React.FC<TableCardProps> = ({
   return (
     <div className={`bg-surface border rounded-xl shrink-0 min-w-64 max-w-72 ${isExternal ? 'border-warning/50' : 'border-border'}`}>
       {/* 头部 */}
-      <div className="p-3 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="p-3 border-b border-border flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           {isExternal ? (
-            <span className="text-sm">{dbIcon}</span>
+            <span className="text-sm shrink-0">{dbIcon}</span>
           ) : (
-            <Table className="w-4 h-4 text-muted-foreground" />
+            <Table className="w-4 h-4 text-muted-foreground shrink-0" />
           )}
-          <span className="font-medium text-sm truncate">{tableName}</span>
+          <span className="font-medium text-sm truncate" title={tableName}>{tableName}</span>
         </div>
         <button
           onClick={onRemove}
@@ -209,6 +216,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   const { maxQueryRows } = useAppConfig();
   const [isExecuting, setIsExecuting] = React.useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
+  const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
 
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
   const [internalTables, setInternalTables] = React.useState<SelectedTable[]>([]);
@@ -260,12 +268,12 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   // 列一致性验证
   const columnValidation = React.useMemo(() => {
     if (activeTables.length < 2) {
-      return { isValid: true, message: null };
+      return { isValid: true, tableIndex: 0, tableCount: 0, baseCount: 0 };
     }
 
     // BY NAME 模式不需要列数量一致
     if (isByNameMode) {
-      return { isValid: true, message: null };
+      return { isValid: true, tableIndex: 0, tableCount: 0, baseCount: 0 };
     }
 
     // 获取每个表的选中列
@@ -284,12 +292,15 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
       if (currentColumns.length !== baseCount) {
         return {
           isValid: false,
-          message: `表 ${i + 1} 的选中列数量 (${currentColumns.length}) 与第一个表 (${baseCount}) 不一致`,
+          // Store indices and counts for i18n interpolation
+          tableIndex: i + 1,
+          tableCount: currentColumns.length,
+          baseCount: baseCount,
         };
       }
     }
 
-    return { isValid: true, message: null };
+    return { isValid: true, tableIndex: 0, tableCount: 0, baseCount: 0 };
   }, [activeTables, selectedColumns, isByNameMode]);
 
   // 检查是否可以执行
@@ -497,6 +508,30 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
               {t('query.execute', '执行')}
             </Button>
 
+            {/* 异步执行按钮 */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAsyncDialogOpen(true)}
+                    disabled={!canExecute || isExecuting || !sql?.trim()}
+                    className="gap-1.5 shrink-0"
+                    aria-label={t('query.sql.asyncExecute', '异步执行')}
+                  >
+                    <Timer className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">
+                      {t('query.sql.asyncExecute', '异步执行')}
+                    </span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('query.sql.asyncExecuteHint', '后台执行，结果保存到表')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             <Button
               variant="ghost"
               size="sm"
@@ -606,13 +641,17 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
         )}
 
         {/* 列一致性警告 */}
-        {!columnValidation.isValid && columnValidation.message && (
+        {!columnValidation.isValid && (
           <Alert className="mb-4 border-warning/50 bg-warning/10">
             <AlertTriangle className="h-4 w-4 text-warning" />
             <AlertDescription className="text-warning">
-              {t('query.set.columnMismatchWarning', '集合操作要求所有表的选中列数量一致。')}
+              {t('query.set.columnMismatchWarning', 'Set operations require the same number of selected columns across all tables.')}
               {' '}
-              {columnValidation.message}
+              {t('query.set.columnMismatchDetail', 'Table {{tableIndex}} has {{tableCount}} columns, but the first table has {{baseCount}} columns.', {
+                tableIndex: columnValidation.tableIndex,
+                tableCount: columnValidation.tableCount,
+                baseCount: columnValidation.baseCount,
+              })}
             </AlertDescription>
           </Alert>
         )}
@@ -674,6 +713,16 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
         open={isSaveDialogOpen}
         onOpenChange={setIsSaveDialogOpen}
         sql={sql || ''}
+      />
+
+      {/* 异步任务对话框 */}
+      <AsyncTaskDialog
+        open={asyncDialogOpen}
+        onOpenChange={setAsyncDialogOpen}
+        sql={sql?.trim() ?? ''}
+        onSuccess={() => {
+          setAsyncDialogOpen(false);
+        }}
       />
     </div>
   );

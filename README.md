@@ -35,16 +35,26 @@ Open **http://localhost:3000** and start querying.
 
 ---
 
+## Demo
+
+### Data Source Upload
+![Data Source Upload](docs/assets/en_source.gif)
+
+### Query Workbench
+![Query Workbench](docs/assets/en_query.gif)
+
+---
+
 ## What Can You Do
 
 | Action | How |
 |--------|-----|
-| 📂 **Query any file** | Drag CSV/Excel/Parquet into the browser. Instant table. |
+| 📥 **Paste CSV/TSV from anywhere** | Copy cells from any source, paste directly as a new table. |
+| 📂 **Query any file** | Drag CSV/Excel/Parquet/JSON into the browser. Instant table. |
 | 🗄️ **Connect databases** | Add MySQL/PostgreSQL. Query alongside local files. |
 | 🔗 **Cross-source JOIN** | `SELECT * FROM local_csv JOIN mysql_db.users ON ...` |
-| 📊 **Visual Builder** | Build JOINs, Pivots, Unions without writing SQL. |
-| 📥 **Paste from Excel** | Copy cells from spreadsheet, paste directly as a new table. |
-| 🌐 **Import from URL** | Enter a CSV/Parquet link, auto-import to DuckDB. |
+| 📊 **Visual Builder** | No SQL needed, select tables to build JOINs, Pivots, and Unions. |
+| 🌐 **Import from URL** | Enter a CSV/Parquet/JSON link, auto-import to DuckDB. |
 | 🌙 **Dark Mode & i18n** | Switch themes and languages (EN/中文) instantly. |
 
 ---
@@ -112,9 +122,9 @@ DuckQuery works out-of-the-box. For advanced setups, edit `config/app-config.jso
 ## FAQ
 
 <details>
-<summary><b>Can I query files without uploading?</b></summary>
+<summary><b>Docker: How to query files without uploading?</b></summary>
 
-Yes. Mount your data directory in `docker-compose.yml`:
+Mount your data directory in `docker-compose.yml`:
 ```yaml
 volumes:
   - /your/data/path:/app/server_mounts
@@ -126,7 +136,17 @@ Then add to `config/app-config.json`:
 </details>
 
 <details>
-<summary><b>How do I change the default ports?</b></summary>
+<summary><b>Local Dev: How to query files without uploading?</b></summary>
+
+Configure local folder in `config/app-config.json`:
+```json
+"server_data_mounts": [{"label": "My Data", "path": "/Users/yourname/data-folder"}]
+```
+Restart the backend, then browse and import files from the "Server Directory" tab in the data source page.
+</details>
+
+<details>
+<summary><b>Docker: How to change default ports?</b></summary>
 
 Edit `docker-compose.yml`:
 ```yaml
@@ -138,8 +158,39 @@ services:
 ```
 </details>
 
+<details>
+<summary><b>Local Dev: How to change default ports?</b></summary>
+
+**Backend port** (default 8000):
+```bash
+cd api && uvicorn main:app --reload --port 9000
+```
+
+**Frontend port** (default 5173):
+Add `port` to the `server` block in `frontend/vite.config.js`:
+```javascript
+server: {
+  port: 3000,  // Add this line
+  proxy: {
+    // ... existing config
+  },
+},
+```
+Or specify at startup:
+```bash
+cd frontend && npm run dev -- --port 3000
+```
+
+**CORS Note**: Default allows `localhost:3000` and `localhost:5173`. For other ports, add to `config/app-config.json`:
+```json
+"cors_origins": ["http://localhost:3000", "http://localhost:5173", "http://localhost:YOUR_PORT"]
+```
+</details>
+
 ---
 
 ## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 MIT © [Chenkeliang](https://github.com/Chenkeliang)

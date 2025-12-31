@@ -35,16 +35,26 @@ git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && 
 
 ---
 
+## 演示
+
+### 数据源上传
+![数据源上传](docs/assets/cn_source.gif)
+
+### 查询工作台
+![查询工作台](docs/assets/cn_query.gif)
+
+---
+
 ## 你能做什么
 
 | 功能 | 操作方式 |
 |------|---------|
-| 📂 **查询任意文件** | 拖拽 CSV/Excel/Parquet 到浏览器，即刻生成表。 |
+| 📥 **从任意处粘贴CSV/TSV** | 复制单元格，直接粘贴创建新表。 |
+| 📂 **查询任意文件** | 拖拽 CSV/Excel/Parquet/JSON 到浏览器，即刻生成表。 |
 | 🗄️ **连接外部数据库** | 添加 MySQL/PostgreSQL 连接，与本地文件一起查询。 |
 | 🔗 **跨数据源 JOIN** | `SELECT * FROM 本地表 JOIN mysql_db.users ON ...` |
-| 📊 **可视化构建器** | 无需 SQL，拖拽完成 JOIN、透视表、合并操作。 |
-| 📥 **从 Excel 粘贴** | 复制 Excel 单元格，直接粘贴创建新表。 |
-| 🌐 **从 URL 导入** | 输入 CSV/Parquet 链接，自动导入 DuckDB。 |
+| 📊 **可视化构建器** | 无需 SQL，选表即可完成 JOIN、透视表、合并操作。 |
+| 🌐 **从 URL 导入** | 输入 CSV/Parquet/JSON 链接，自动导入 DuckDB。 |
 | 🌙 **深色模式 & 多语言** | 一键切换主题和语言（中文/English）。 |
 
 ---
@@ -112,7 +122,7 @@ DuckQuery 开箱即用。如需高级配置，编辑 `config/app-config.json`：
 ## 常见问题
 
 <details>
-<summary><b>如何不上传文件直接查询？</b></summary>
+<summary><b>Docker 如何不上传文件直接查询？</b></summary>
 
 在 `docker-compose.yml` 中挂载目录：
 ```yaml
@@ -126,7 +136,17 @@ volumes:
 </details>
 
 <details>
-<summary><b>如何修改默认端口？</b></summary>
+<summary><b>本地开发如何不上传文件直接查询？</b></summary>
+
+在 `config/app-config.json` 中配置本地文件夹：
+```json
+"server_data_mounts": [{"label": "我的数据", "path": "/Users/你的用户名/数据目录"}]
+```
+重启后端服务后，在数据源页面的"服务器目录"标签页可直接浏览和导入文件。
+</details>
+
+<details>
+<summary><b>Docker 如何修改默认端口？</b></summary>
 
 编辑 `docker-compose.yml`：
 ```yaml
@@ -138,8 +158,39 @@ services:
 ```
 </details>
 
+<details>
+<summary><b>本地开发如何修改默认端口？</b></summary>
+
+**后端端口**（默认 8000）：
+```bash
+cd api && uvicorn main:app --reload --port 9000
+```
+
+**前端端口**（默认 5173）：
+在 `frontend/vite.config.js` 的 `server` 块中添加 `port`：
+```javascript
+server: {
+  port: 3000,  // 添加这一行
+  proxy: {
+    // ... 现有配置
+  },
+},
+```
+或启动时指定：
+```bash
+cd frontend && npm run dev -- --port 3000
+```
+
+**注意跨域配置**：默认允许 `localhost:3000` 和 `localhost:5173`。如使用其他端口，需在 `config/app-config.json` 添加：
+```json
+"cors_origins": ["http://localhost:3000", "http://localhost:5173", "http://localhost:你的端口"]
+```
+</details>
+
 ---
 
 ## 许可证
+
+本项目采用 MIT 许可证开源，详见 [LICENSE](LICENSE) 文件。
 
 MIT © [Chenkeliang](https://github.com/Chenkeliang)

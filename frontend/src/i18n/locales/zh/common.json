@@ -536,6 +536,7 @@
       "emptyDescription": "双击左侧数据源面板中的表来添加到集合操作。可以添加多个表进行 UNION / INTERSECT / EXCEPT 操作。",
       "clear": "清空",
       "columnMismatchWarning": "集合操作要求所有表的选中列数量一致。",
+      "columnMismatchDetail": "表 {{tableIndex}} 有 {{tableCount}} 列，但第一个表有 {{baseCount}} 列。",
       "byNameModeHint": "BY NAME 模式：按列名匹配合并，不要求列数量一致。缺失的列将填充 NULL 值。",
       "byNameTooltip": "按列名匹配合并（DuckDB 特性），不要求列数量一致",
       "externalNotSupported": "外部数据库表暂不支持集合操作。请先将外部表导入到 DuckDB 后再进行 UNION / INTERSECT / EXCEPT。"
