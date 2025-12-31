@@ -38,6 +38,7 @@ jobs:
         env:
           # GitHub Pages 部署路径
           VITE_BASE_URL: /duckdb-query/
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
