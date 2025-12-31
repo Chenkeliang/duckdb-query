@@ -4,9 +4,14 @@
 
 <h1 align="center">DuckQuery</h1>
 
-<p align="center">
-  <b>The missing UI for DuckDB. Query any file, any database, zero config.</b>
+  <b>The Visual SQL Workbench for Files and Databases.</b><br>
+  <b>Seamlessly connect local files (Excel/CSV/JSON) and remote databases (MySQL/PG). Break data silos with one-stop cross-source SQL analysis.</b>
 </p>
+
+<p align="center">
+  <a href="https://chenkeliang.github.io/duckdb-query/" target="_blank">
+    <img src="https://img.shields.io/badge/Live_Demo-Try_Now-success?style=for-the-badge&logo=github&logoColor=white" alt="Live Demo" />
+  </a>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> •

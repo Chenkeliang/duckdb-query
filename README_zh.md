@@ -4,9 +4,14 @@
 
 <h1 align="center">DuckQuery</h1>
 
-<p align="center">
-  <b>DuckDB 的可视化分析界面。SQL可视化查询文件、数据库，开箱即用。</b>
+  <b>文件与数据库的可视化 SQL 工作台。</b><br>
+  <b>无缝连接本地文件（Excel/CSV/JSON）与远程数据库（MySQL/PG）。打破数据孤岛，实现一站式跨源SQL查询分析。</b>
 </p>
+
+<p align="center">
+  <a href="https://chenkeliang.github.io/duckdb-query/" target="_blank">
+    <img src="https://img.shields.io/badge/在线演示-立即体验-success?style=for-the-badge&logo=github&logoColor=white" alt="Live Demo" />
+  </a>
 
 <p align="center">
   <a href="#快速开始">快速开始</a> •
