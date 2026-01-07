@@ -113,7 +113,14 @@ def _format_value(value: Any) -> Optional[Any]:
         except Exception:
             return value.decode("latin-1", errors="ignore")
 
-    if isinstance(value, (str, int, float, bool)):
+    if isinstance(value, float):
+        # 检查 NaN 和 Infinity（不是有效的 JSON 值）
+        import math
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return value
+
+    if isinstance(value, (str, int, bool)):
         return value
 
     return str(value)

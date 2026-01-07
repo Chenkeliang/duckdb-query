@@ -60,3 +60,9 @@ tests/
 *.sh
 *.py
 *.js
+
+# Whitelist config files
+!vite.config.js
+!tailwind.config.js
+!postcss.config.js
+!eslint.config.js

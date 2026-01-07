@@ -30,9 +30,12 @@ export interface ExcelSheet {
 export interface ExcelImportPayload {
     file_id: string;
     sheets: Array<{
-        sheet_name: string;
-        table_name: string;
-        has_header?: boolean;
+        name: string;
+        target_table: string;
+        mode?: 'create' | 'append' | 'replace';
+        header_rows?: number;
+        header_row_index?: number | null;
+        fill_merged?: boolean;
     }>;
 }
 
@@ -260,6 +263,80 @@ export async function importServerFile(payload: {
         return response.data;
     } catch (error) {
         throw handleApiError(error as never, '服务器文件导入失败');
+    }
+}
+
+// ==================== Server Excel Operations ====================
+
+export interface ServerExcelSheet {
+    name: string;
+    rows: number;
+    columns_count: number;
+    has_merged_cells: boolean;
+    suggested_header_rows: number;
+    suggested_header_row_index: number;
+    default_table_name: string;
+    columns: Array<{ name: string; type: string }>;
+    preview: Array<Record<string, unknown>>;
+}
+
+export interface ServerExcelInspectResponse {
+    success: boolean;
+    file_path: string;
+    file_extension: string;
+    default_table_prefix: string;
+    sheets: ServerExcelSheet[];
+}
+
+export interface ServerExcelSheetConfig {
+    name: string;
+    target_table: string;
+    header_rows?: number;
+    header_row_index?: number | null;
+    fill_merged?: boolean;
+    mode?: 'create' | 'append' | 'replace';
+}
+
+export interface ServerExcelImportResponse {
+    success: boolean;
+    message: string;
+    imported_tables: Array<{
+        table_name: string;
+        sheet_name: string;
+        row_count: number;
+        column_count: number;
+        columns: string[];
+        import_engine: 'duckdb' | 'pandas';
+    }>;
+}
+
+/**
+ * Inspect Excel file on server
+ */
+export async function inspectServerExcelSheets(path: string): Promise<ServerExcelInspectResponse> {
+    try {
+        const response = await apiClient.post('/api/server-files/excel/inspect', { path });
+        return response.data;
+    } catch (error) {
+        throw handleApiError(error as never, '检查Excel工作表失败');
+    }
+}
+
+/**
+ * Import Excel sheets from server file
+ */
+export async function importServerExcelSheets(
+    path: string,
+    sheets: ServerExcelSheetConfig[]
+): Promise<ServerExcelImportResponse> {
+    try {
+        const response = await apiClient.post('/api/server-files/excel/import', {
+            path,
+            sheets,
+        });
+        return response.data;
+    } catch (error) {
+        throw handleApiError(error as never, '导入Excel工作表失败');
     }
 }
 

@@ -2,10 +2,12 @@ import json
 import os
 import re
 import shutil
+import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import uuid4
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 import pandas as pd
 from openpyxl import load_workbook
@@ -13,8 +15,9 @@ from openpyxl import load_workbook
 from core.timezone_utils import get_current_time_iso
 from core.utils import normalize_dataframe_output
 
-
-PENDING_BASE_DIR = Path(__file__).resolve().parent.parent / "temp_files" / "excel_pending"
+PENDING_BASE_DIR = (
+    Path(__file__).resolve().parent.parent / "temp_files" / "excel_pending"
+)
 PENDING_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -34,7 +37,11 @@ def _metadata_path(file_id: str) -> Path:
 
 
 def _ensure_unique_name(parts: List[str], index: int) -> str:
-    cleaned = [p for p in [str(part).strip() if part is not None else "" for part in parts] if p and p.lower() != "nan"]
+    cleaned = [
+        p
+        for p in [str(part).strip() if part is not None else "" for part in parts]
+        if p and p.lower() != "nan"
+    ]
     if not cleaned:
         return f"column_{index + 1}"
     candidate = "_".join(cleaned)
@@ -43,7 +50,9 @@ def _ensure_unique_name(parts: List[str], index: int) -> str:
     return candidate or f"column_{index + 1}"
 
 
-def sanitize_identifier(value: str, allow_leading_digit: bool = False, prefix: str = "table") -> str:
+def sanitize_identifier(
+    value: str, allow_leading_digit: bool = False, prefix: str = "table"
+) -> str:
     if not value:
         value = ""
     sanitized = re.sub(r"[^\w]", "_", value, flags=re.UNICODE)
@@ -55,7 +64,9 @@ def sanitize_identifier(value: str, allow_leading_digit: bool = False, prefix: s
     return sanitized
 
 
-def register_excel_upload(source_path: str, original_filename: str, table_alias: Optional[str] = None) -> PendingExcelFile:
+def register_excel_upload(
+    source_path: str, original_filename: str, table_alias: Optional[str] = None
+) -> PendingExcelFile:
     file_id = uuid4().hex
     target_dir = PENDING_BASE_DIR / file_id
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -105,9 +116,13 @@ def cleanup_pending_excel(file_id: str):
 
 
 def derive_default_table_name(default_prefix: str, sheet_name: str) -> str:
-    sheet_part = sanitize_identifier(sheet_name or "sheet", allow_leading_digit=True, prefix="sheet")
+    sheet_part = sanitize_identifier(
+        sheet_name or "sheet", allow_leading_digit=True, prefix="sheet"
+    )
     if default_prefix:
-        return sanitize_identifier(f"{default_prefix}__{sheet_part}", prefix=default_prefix)
+        return sanitize_identifier(
+            f"{default_prefix}__{sheet_part}", prefix=default_prefix
+        )
     return sanitize_identifier(sheet_part, prefix="sheet")
 
 
@@ -128,7 +143,24 @@ def _map_pandas_dtype_to_duckdb(dtype: Any) -> str:
     return "VARCHAR"
 
 
-def inspect_excel_sheets(file_path: str, preview_rows: int = 20) -> List[Dict[str, Any]]:
+def inspect_excel_sheets(
+    file_path: str, preview_rows: int = 20
+) -> List[Dict[str, Any]]:
+    """检查 Excel 文件的工作表信息，支持 .xlsx 和 .xls 格式"""
+    file_ext = os.path.splitext(file_path)[1].lower()
+
+    if file_ext == ".xls":
+        # .xls 文件使用 pandas + xlrd
+        return _inspect_xls_sheets(file_path, preview_rows)
+    else:
+        # .xlsx 文件使用 openpyxl
+        return _inspect_xlsx_sheets(file_path, preview_rows)
+
+
+def _inspect_xlsx_sheets(
+    file_path: str, preview_rows: int = 20
+) -> List[Dict[str, Any]]:
+    """使用 openpyxl 检查 .xlsx 文件"""
     workbook = load_workbook(filename=file_path, read_only=True, data_only=True)
     try:
         sheets_info: List[Dict[str, Any]] = []
@@ -140,23 +172,29 @@ def inspect_excel_sheets(file_path: str, preview_rows: int = 20) -> List[Dict[st
             merged = False
             if merged_cells_attr is not None:
                 try:
-                    merged = bool(getattr(merged_cells_attr, "ranges", merged_cells_attr))
+                    merged = bool(
+                        getattr(merged_cells_attr, "ranges", merged_cells_attr)
+                    )
                 except Exception:
                     merged = bool(merged_cells_attr)
             max_row = sheet.max_row or 0
             max_col = sheet.max_column or 0
 
-            first_row = [cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1), [])]
-            second_row = [cell.value for cell in next(sheet.iter_rows(min_row=2, max_row=2), [])] if max_row >= 2 else []
+            first_row = [
+                cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1), [])
+            ]
+            second_row = (
+                [cell.value for cell in next(sheet.iter_rows(min_row=2, max_row=2), [])]
+                if max_row >= 2
+                else []
+            )
             first_empty_ratio = (
-                sum(1 for value in first_row if value in (None, ""))
-                / len(first_row)
+                sum(1 for value in first_row if value in (None, "")) / len(first_row)
                 if first_row
                 else 1.0
             )
             second_empty_ratio = (
-                sum(1 for value in second_row if value in (None, ""))
-                / len(second_row)
+                sum(1 for value in second_row if value in (None, "")) / len(second_row)
                 if second_row
                 else 1.0
             )
@@ -205,6 +243,93 @@ def inspect_excel_sheets(file_path: str, preview_rows: int = 20) -> List[Dict[st
         workbook.close()
 
 
+def _inspect_xls_sheets(file_path: str, preview_rows: int = 20) -> List[Dict[str, Any]]:
+    """使用 pandas + xlrd 检查 .xls 文件"""
+    import xlrd
+
+    sheets_info: List[Dict[str, Any]] = []
+    xl = pd.ExcelFile(file_path, engine="xlrd")
+
+    try:
+        for sheet_name in xl.sheet_names:
+            # 获取基本信息
+            try:
+                preview_df = pd.read_excel(
+                    file_path,
+                    sheet_name=sheet_name,
+                    nrows=preview_rows,
+                    engine="xlrd",
+                )
+                max_col = len(preview_df.columns)
+                # 读取全部行数
+                full_df = pd.read_excel(file_path, sheet_name=sheet_name, engine="xlrd")
+                max_row = len(full_df) + 1  # +1 for header
+
+                columns = [
+                    {
+                        "name": str(col),
+                        "duckdb_type": _map_pandas_dtype_to_duckdb(dtype),
+                    }
+                    for col, dtype in preview_df.dtypes.items()
+                ]
+                preview_records = normalize_dataframe_output(preview_df)
+            except Exception:
+                max_row = 0
+                max_col = 0
+                columns = []
+                preview_records = []
+
+            sheets_info.append(
+                {
+                    "name": sheet_name,
+                    "rows": int(max_row),
+                    "columns_count": int(max_col),
+                    "has_merged_cells": False,  # xlrd 检测合并单元格较复杂，暂不支持
+                    "suggested_header_rows": 1,
+                    "suggested_header_row_index": 1,
+                    "columns": columns,
+                    "preview": preview_records,
+                }
+            )
+        return sheets_info
+    finally:
+        xl.close()
+
+
+def _repair_excel_coordinates(file_path: str) -> Optional[str]:
+    if not file_path.lower().endswith(".xlsx"):
+        return None
+    temp_dir = tempfile.mkdtemp(prefix="excel_repair_")
+    temp_path = os.path.join(temp_dir, "repaired.xlsx")
+    try:
+        with zipfile.ZipFile(file_path) as zin, zipfile.ZipFile(temp_path, "w") as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if item.filename.startswith(
+                    "xl/worksheets/"
+                ) and item.filename.endswith(".xml"):
+                    try:
+                        text = data.decode("utf-8")
+                    except UnicodeDecodeError:
+                        pass
+                    else:
+                        # 增强修复逻辑：
+                        # 1. r="1" -> r="A1"
+                        # 2. r='"1"' -> r="A1" (quote variations)
+                        # 3. Handle potential empty strings if that's the case r=""? No, error says '' is not valid col name.
+                        # It likely sees column index '' from coordinate.
+                        
+                        # 更加宽容的正则，匹配 r="digits"
+                        patched = re.sub(r'r=["\'](\d+)["\']', r'r="A\1"', text)
+                        data = patched.encode("utf-8")
+                zout.writestr(item, data)
+    except Exception as e:
+        logger.error(f"Excel repair failed: {e}")
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return None
+    return temp_path
+
+
 def ensure_unique_columns(names: List[str]) -> List[str]:
     seen: Dict[str, int] = {}
     result: List[str] = []
@@ -232,12 +357,61 @@ def load_excel_sheet_dataframe(
     header_row_index: Optional[int] = 1,
     fill_merged: bool = False,
 ) -> pd.DataFrame:
-    df = pd.read_excel(
-        file_path,
-        sheet_name=sheet_name,
-        header=None,
-        engine="openpyxl",
-    )
+    # 根据文件扩展名选择引擎
+    file_ext = os.path.splitext(file_path)[1].lower()
+    if file_ext in {".xls"}:
+        engine = "xlrd"
+    else:
+        engine = "openpyxl"
+
+    # 尝试读取 Excel，某些损坏的文件可能需要特殊处理
+    try:
+        df = pd.read_excel(
+            file_path,
+            sheet_name=sheet_name,
+            header=None,
+            engine=engine,
+        )
+
+    except ValueError as e:
+        if "is not a valid column name" in str(e):
+            logger.warning(f"Openpyxl failed to read {file_path}, trying calamine fallback. Error: {e}")
+            # 尝试使用 calamine 引擎（更宽容的解析器）
+            fallback_engine = "calamine"
+            try:
+                df = pd.read_excel(
+                    file_path,
+                    sheet_name=sheet_name,
+                    header=None,
+                    engine=fallback_engine,
+                )
+            except Exception as calamine_error:
+                logger.error(f"Calamine engine failed: {calamine_error}")
+                
+                logger.info("Trying experimental XML repair...")
+                repair_path = _repair_excel_coordinates(file_path)
+                if repair_path:
+                    try:
+                        df = pd.read_excel(
+                            repair_path,
+                            sheet_name=sheet_name,
+                            header=None,
+                            engine="openpyxl",
+                        )
+                    except Exception as repair_error:
+                        logger.error(f"Repaired file read failed: {repair_error}")
+                        shutil.rmtree(os.path.dirname(repair_path), ignore_errors=True)
+                        raise ValueError(
+                            f"Excel 文件已严重损坏。Calamine 引擎报错: {str(calamine_error)}。修复尝试报错: {str(repair_error)}"
+                        )
+                    else:
+                        shutil.rmtree(os.path.dirname(repair_path), ignore_errors=True)
+                else:
+                    raise ValueError(
+                        f"Excel 文件包含无效数据且无法自动修复。建议在 Excel/WPS 中另存为新文件。Calamine 错误: {str(calamine_error)}"
+                    )
+        else:
+            raise
 
     if fill_merged:
         df = df.ffill(axis=0)
@@ -268,10 +442,15 @@ def load_excel_sheet_dataframe(
                 ],
                 col_idx,
             )
-            for col_idx in range(header_slice.shape[1] if header_slice.shape[1] else df.shape[1])
+            for col_idx in range(
+                header_slice.shape[1] if header_slice.shape[1] else df.shape[1]
+            )
         ]
 
-    headers = [sanitize_identifier(name, allow_leading_digit=True, prefix="col") for name in headers]
+    headers = [
+        sanitize_identifier(name, allow_leading_digit=True, prefix="col")
+        for name in headers
+    ]
     headers = ensure_unique_columns(headers)
     if len(headers) < data_df.shape[1]:
         headers.extend(
@@ -281,5 +460,18 @@ def load_excel_sheet_dataframe(
         headers = headers[: data_df.shape[1]]
     data_df.columns = headers
     data_df = data_df.dropna(how="all").reset_index(drop=True)
+
+    # 尝试自动推断数值类型
+    # 因为初始读取时包含表头，pandas 可能将所有列都设为 object
+    # 最稳妥的是尝试 pd.to_numeric
+    for col in data_df.columns:
+        if data_df[col].dtype == 'object':
+            try:
+                # 尝试转换为数字，如果整列都是数字（或 NaN）
+                numeric_col = pd.to_numeric(data_df[col])
+                data_df[col] = numeric_col
+            except (ValueError, TypeError):
+                # 包含无法转换的文本，保持原样
+                pass
 
     return data_df

@@ -204,12 +204,12 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
         if (operatorConfig?.needsValue) {
             if (operatorConfig.isMultiValue) {
                 if (multiValues.length === 0) {
-                    setError(t('filter.error.required', '请至少添加一个值'));
+                    setError(t('filter.validation.requiredValue', '请至少添加一个值'));
                     return false;
                 }
             } else {
                 if (inputValue.trim() === '') {
-                    setError(t('filter.error.required', '请输入值'));
+                    setError(t('filter.validation.required', '请输入值'));
                     return false;
                 }
 
@@ -226,7 +226,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
             // BETWEEN 需要第二个值
             if (operatorConfig.needsSecondValue) {
                 if (inputValue2.trim() === '') {
-                    setError(t('filter.error.required', '请输入第二个值'));
+                    setError(t('filter.validation.enterValue2', '请输入第二个值'));
                     return false;
                 }
                 if (selectedColumnInfo) {

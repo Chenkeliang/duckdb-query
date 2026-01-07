@@ -82,14 +82,14 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
     setIsDownloading(true);
 
     try {
-      // 使用 apiClient 调用下载 API
-      const result = await downloadAsyncResult(taskId, { format }) as unknown as { blob: Blob; filename: string };
+      // API 返回的是原始 Blob，不是 { blob, filename } 对象
+      const blob = await downloadAsyncResult(taskId, { format });
 
-      // 下载文件
-      const url = URL.createObjectURL(result.blob);
+      // 创建下载链接
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = result.filename || `${tableName || taskId}.${format}`;
+      a.download = `${tableName || taskId}.${format}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

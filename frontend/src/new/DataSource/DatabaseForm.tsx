@@ -130,7 +130,7 @@ const DatabaseForm = ({
     if (!isSqlite) {
       // 检查主机地址
       if (!host.trim()) {
-        const errorMsg = "请填写主机地址";
+        const errorMsg = t("page.datasource.connection.validation.requiredHost", "请填写主机地址");
         setError(errorMsg);
         toast.warning(errorMsg);
         return false;
@@ -138,7 +138,7 @@ const DatabaseForm = ({
 
       // 检查端口
       if (!port.trim()) {
-        const errorMsg = "请填写端口号";
+        const errorMsg = t("page.datasource.connection.validation.requiredPort", "请填写端口号");
         setError(errorMsg);
         toast.warning(errorMsg);
         return false;
@@ -146,7 +146,7 @@ const DatabaseForm = ({
 
       // 检查用户名
       if (!username.trim()) {
-        const errorMsg = "请填写用户名";
+        const errorMsg = t("page.datasource.connection.validation.requiredUser", "请填写用户名");
         setError(errorMsg);
         toast.warning(errorMsg);
         return false;
@@ -154,7 +154,7 @@ const DatabaseForm = ({
 
       // 检查数据库名
       if (!database.trim()) {
-        const errorMsg = "请填写数据库名称";
+        const errorMsg = t("page.datasource.connection.validation.requiredDatabase", "请填写数据库名称");
         setError(errorMsg);
         toast.warning(errorMsg);
         return false;
@@ -163,7 +163,7 @@ const DatabaseForm = ({
       // 验证端口号是否为有效数字
       const portNum = Number(port);
       if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-        const errorMsg = "端口号必须在 1-65535 之间";
+        const errorMsg = t("page.datasource.connection.validation.invalidPort", "端口号必须在 1-65535 之间");
         setError(errorMsg);
         toast.warning(errorMsg);
         return false;
@@ -171,7 +171,7 @@ const DatabaseForm = ({
     } else {
       // SQLite 检查路径
       if (!sqlitePath.trim()) {
-        const errorMsg = "请填写 SQLite 数据库文件路径";
+        const errorMsg = t("page.datasource.connection.validation.requiredPath", "请填写 SQLite 数据库文件路径");
         setError(errorMsg);
         toast.warning(errorMsg);
         return false;
@@ -328,11 +328,11 @@ const DatabaseForm = ({
                     autoComplete="current-password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    placeholder={hasStoredPassword ? "••••••（已保存，留空使用已保存密码）" : "••••••"}
+                    placeholder={hasStoredPassword ? t("page.datasource.connection.hint.passwordSavedPlaceholder", "••••••（已保存，留空使用已保存密码）") : "••••••"}
                   />
                   {hasStoredPassword && !password && (
                     <p className="text-[11px] text-muted-foreground">
-                      密码已保存；留空会使用已保存密码测试/连接。如需修改，请输入新密码。
+                      {t("page.datasource.connection.hint.passwordSaved", "密码已保存；留空会使用已保存密码测试/连接。如需修改，请输入新密码。")}
                     </p>
                   )}
                 </div>

@@ -76,6 +76,8 @@ export {
     getServerMounts,
     browseServerDirectory,
     importServerFile,
+    inspectServerExcelSheets,
+    importServerExcelSheets,
     getFilePreview,
     type UploadOptions,
     type UrlImportOptions,
@@ -83,6 +85,10 @@ export {
     type ExcelImportPayload,
     type ServerMount,
     type ServerFileItem,
+    type ServerExcelSheet,
+    type ServerExcelInspectResponse,
+    type ServerExcelSheetConfig,
+    type ServerExcelImportResponse,
 } from './fileApi';
 
 // ==================== Async Task API ====================

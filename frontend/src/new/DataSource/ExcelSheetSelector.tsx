@@ -2,7 +2,12 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Info, Loader2 } from "lucide-react";
-import { inspectExcelSheets, importExcelSheets } from '@/api';
+import {
+  inspectExcelSheets,
+  importExcelSheets,
+  inspectServerExcelSheets,
+  importServerExcelSheets,
+} from '@/api';
 import { Button } from "@/new/components/ui/button";
 import { Input } from "@/new/components/ui/input";
 import { Label } from "@/new/components/ui/label";
@@ -66,6 +71,10 @@ interface ExcelSheetSelectorProps {
   pendingInfo: PendingInfo | null;
   onClose: () => void;
   onImported: (result: any) => void;
+  /** Source type: 'upload' for file upload flow, 'server' for server file browser */
+  sourceType?: 'upload' | 'server';
+  /** Server file path (required when sourceType is 'server') */
+  serverPath?: string;
 }
 
 const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
@@ -73,6 +82,8 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
   pendingInfo,
   onClose,
   onImported,
+  sourceType = 'upload',
+  serverPath,
 }) => {
   const { t } = useTranslation('common');
   const [loading, setLoading] = useState(false);
@@ -82,12 +93,19 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
 
   const fileId = pendingInfo?.file_id;
 
-  const handleFetchSheets = async (currentFileId: string) => {
-    if (!currentFileId) return;
+  const handleFetchSheets = async () => {
     setLoading(true);
     setError("");
     try {
-      const data = await inspectExcelSheets(currentFileId);
+      let data: any;
+      if (sourceType === 'server' && serverPath) {
+        data = await inspectServerExcelSheets(serverPath);
+      } else if (fileId) {
+        data = await inspectExcelSheets(fileId);
+      } else {
+        throw new Error('缺少文件信息');
+      }
+
       const mapped: SheetConfig[] = (data?.sheets || []).map((sheet: any) => ({
         name: sheet.name,
         selected: true,
@@ -113,13 +131,17 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
   };
 
   useEffect(() => {
-    if (open && fileId) {
-      handleFetchSheets(fileId);
-    } else if (!open) {
+    if (open) {
+      if (sourceType === 'server' && serverPath) {
+        handleFetchSheets();
+      } else if (sourceType === 'upload' && fileId) {
+        handleFetchSheets();
+      }
+    } else {
       setSheetConfigs([]);
       setError("");
     }
-  }, [open, fileId]);
+  }, [open, fileId, serverPath, sourceType]);
 
   const toggleAll = (nextSelected: boolean) => {
     setSheetConfigs((prev) =>
@@ -182,25 +204,31 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
     setSubmitting(true);
     setError("");
     try {
-      const payload = {
-        file_id: fileId,
-        sheets: selected.map((sheet) => {
-          const headerRowsNumber = Number(sheet.headerRows) || 0;
-          const headerRowIndexNumber =
-            headerRowsNumber > 0 ? Number(sheet.headerRowIndex) || 1 : null;
+      const sheetsPayload = selected.map((sheet) => {
+        const headerRowsNumber = Number(sheet.headerRows) || 0;
+        const headerRowIndexNumber =
+          headerRowsNumber > 0 ? Number(sheet.headerRowIndex) || 1 : null;
 
-          return {
-            name: sheet.name,
-            target_table: sheet.targetTable,
-            mode: "replace",
-            header_rows: headerRowsNumber,
-            header_row_index: headerRowIndexNumber,
-            fill_merged: Boolean(sheet.fillMerged),
-          };
-        }),
-      };
+        return {
+          name: sheet.name,
+          target_table: sheet.targetTable,
+          mode: "replace" as const,
+          header_rows: headerRowsNumber,
+          header_row_index: headerRowIndexNumber,
+          fill_merged: Boolean(sheet.fillMerged),
+        };
+      });
 
-      const result = await importExcelSheets(payload);
+      let result: any;
+      if (sourceType === 'server' && serverPath) {
+        result = await importServerExcelSheets(serverPath, sheetsPayload);
+      } else {
+        result = await importExcelSheets({
+          file_id: fileId!,
+          sheets: sheetsPayload,
+        });
+      }
+
       onImported?.(result);
       onClose?.();
     } catch (err: any) {
@@ -227,11 +255,11 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
           <div className="bg-muted rounded-lg p-4 space-y-1">
             <p className="text-sm text-foreground">
               <span className="text-muted-foreground">文件：</span>
-              {pendingInfo?.original_filename || "-"}
+              {sourceType === 'server' ? serverPath?.split('/').pop() : pendingInfo?.original_filename || "-"}
             </p>
             <p className="text-sm text-foreground">
-              <span className="text-muted-foreground">建议表名前缀：</span>
-              {pendingInfo?.default_table_prefix || "无"}
+              <span className="text-muted-foreground">来源：</span>
+              {sourceType === 'server' ? '服务器文件' : '上传文件'}
             </p>
           </div>
 

@@ -118,10 +118,12 @@ export async function downloadAsyncResult(
     const { format } = options;
 
     try {
-        const response = await apiClient.get(`/api/async-tasks/${taskId}/download`, {
-            params: { format },
-            responseType: 'blob',
-        });
+        // Backend expects POST with format in request body
+        const response = await apiClient.post(
+            `/api/async-tasks/${taskId}/download`,
+            { format },
+            { responseType: 'blob' }
+        );
         return response.data;
     } catch (error) {
         throw handleApiError(error as never, '下载任务结果失败');

@@ -24,6 +24,9 @@ def jsonable_encoder(obj: Any) -> Any:
     elif isinstance(obj, np.integer):
         return int(obj)
     elif isinstance(obj, np.floating):
+        # 检查 NaN 和 Inf
+        if np.isnan(obj) or np.isinf(obj):
+            return None
         return float(obj)
     elif isinstance(obj, np.ndarray):
         return obj.tolist()
@@ -35,6 +38,12 @@ def jsonable_encoder(obj: Any) -> Any:
         return [jsonable_encoder(item) for item in obj]
     elif isinstance(obj, UUID):
         return str(obj)
+    elif isinstance(obj, float):
+        # 处理 Python float 的 NaN/Inf
+        import math
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
     elif pd.api.types.is_scalar(obj):
         try:
             if pd.isna(obj):

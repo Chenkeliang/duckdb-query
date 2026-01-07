@@ -11,8 +11,6 @@ import {
     generateOptimizationComment,
     generateOptimizationComments,
     getReasonMessage,
-    REASON_MESSAGES_ZH,
-    REASON_MESSAGES_EN,
     SHOULD_NOTIFY,
     type AttachDatabase,
     type TableSourceInfo,
@@ -20,6 +18,18 @@ import {
     type OptimizationReport,
 } from '../sqlOptimizer';
 import type { FilterGroup, FilterCondition } from '../FilterBar/types';
+import i18next from 'i18next';
+import { vi } from 'vitest';
+
+// Mock i18next
+vi.mock('i18next', () => {
+    const t = vi.fn((key) => `[${key}]`);
+    return {
+        default: { t },
+        t,
+        __esModule: true,
+    };
+});
 
 describe('sqlOptimizer', () => {
     describe('isRemoteTable', () => {
@@ -322,7 +332,7 @@ describe('sqlOptimizer', () => {
             const comment = generateOptimizationComment(report);
             expect(comment).toContain('⚠');
             expect(comment).toContain('mysql_db.orders');
-            expect(comment).toContain('OR');
+            expect(comment).toContain('optimizer.or_logic');
         });
 
         it('should return warning comment for fallback_error', () => {
@@ -351,14 +361,9 @@ describe('sqlOptimizer', () => {
     });
 
     describe('getReasonMessage', () => {
-        it('should return Chinese message by default', () => {
-            const msg = getReasonMessage('or_logic');
-            expect(msg).toBe(REASON_MESSAGES_ZH['or_logic']);
-        });
-
-        it('should return English message when specified', () => {
-            const msg = getReasonMessage('or_logic', 'en');
-            expect(msg).toBe(REASON_MESSAGES_EN['or_logic']);
+        it('should call i18next.t with correct key', () => {
+            getReasonMessage('or_logic');
+            expect(i18next.t).toHaveBeenCalledWith('optimizer.or_logic', { ns: 'common' });
         });
     });
 

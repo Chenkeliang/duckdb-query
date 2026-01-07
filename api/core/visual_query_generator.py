@@ -1468,14 +1468,27 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
             except Exception:
                 sample_values.append(str(val))
 
+        # 处理 NaN 值
+        import math
+        def safe_float(val):
+            if val is None:
+                return None
+            try:
+                f = float(val)
+                if math.isnan(f) or math.isinf(f):
+                    return None
+                return f
+            except (ValueError, TypeError):
+                return None
+
         return ColumnStatistics(
             column_name=column_name,
             data_type=data_type,
             null_count=int(stats_row["null_count"]),
             distinct_count=int(stats_row["distinct_count"]),
-            min_value=min_value,
-            max_value=max_value,
-            avg_value=float(avg_value) if avg_value is not None else None,
+            min_value=safe_float(min_value),
+            max_value=safe_float(max_value),
+            avg_value=safe_float(avg_value),
             sample_values=sample_values,
         )
 

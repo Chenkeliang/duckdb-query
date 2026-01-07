@@ -19,6 +19,7 @@ numpy==2.3.4
 openpyxl==3.1.5
 packaging==25.0
 pandas==2.3.3
+python-calamine==0.6.1
 pluggy==1.6.0
 psycopg2-binary==2.9.11
 pyarrow==22.0.0

@@ -92,31 +92,19 @@ export interface AttachDatabase {
 // i18n Message Mappings
 // =============================================================================
 
-/**
- * Chinese messages for optimization reasons (production)
- */
-export const REASON_MESSAGES_ZH: Record<OptimizationSkipReason, string> = {
-    'success': '优化成功',
-    'no_filters': '无需优化：没有可下推的过滤条件',
-    'local_table': '无需优化：本地表不受益于子查询优化',
-    'or_logic': 'ON 条件包含 OR 逻辑，已回退到原始查询',
-    'expression_complex': 'ON 条件包含复杂表达式，已回退',
-    'multi_table_reference': 'ON 条件引用多表，无法拆分到子查询',
-    'fallback_error': '优化过程发生异常，已回退到原始查询'
-};
+import i18next from 'i18next';
 
 /**
- * English messages for optimization reasons (debugging / future i18n)
+ * Get localized message for an optimization reason
  */
-export const REASON_MESSAGES_EN: Record<OptimizationSkipReason, string> = {
-    'success': 'Optimization applied',
-    'no_filters': 'No filters to push down',
-    'local_table': 'Local table - no optimization benefit',
-    'or_logic': 'Contains OR logic - falling back to preserve semantics',
-    'expression_complex': 'Complex expression in ON clause - falling back',
-    'multi_table_reference': 'Multi-table reference - cannot split to subquery',
-    'fallback_error': 'Exception during optimization - falling back'
-};
+export function getReasonMessage(
+    reason: OptimizationSkipReason,
+    _locale: 'zh' | 'en' = 'zh'
+): string {
+    // Rely on i18next globally initialized instance
+    // We use the 'common' namespace where we added the keys
+    return i18next.t(`optimizer.${reason}`, { ns: 'common' });
+}
 
 /**
  * Which reasons should trigger a SQL comment notification?
@@ -130,16 +118,6 @@ export const SHOULD_NOTIFY: Record<OptimizationSkipReason, boolean> = {
     'multi_table_reference': true,
     'fallback_error': true
 };
-
-/**
- * Get localized message for an optimization reason
- */
-export function getReasonMessage(
-    reason: OptimizationSkipReason,
-    locale: 'zh' | 'en' = 'zh'
-): string {
-    return locale === 'zh' ? REASON_MESSAGES_ZH[reason] : REASON_MESSAGES_EN[reason];
-}
 
 /**
  * Strip quotes from an identifier

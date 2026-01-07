@@ -338,7 +338,15 @@
         "selectColumn": "请选择列",
         "enterValue": "请输入值",
         "enterValue2": "请输入第二个值",
-        "incomplete": "部分过滤条件不完整"
+        "incomplete": "部分过滤条件不完整",
+        "invalidInteger": "请输入有效的整数",
+        "invalidNumber": "请输入有效的数字",
+        "invalidTimestamp": "请输入有效的时间戳",
+        "invalidDate": "请输入有效的日期 (YYYY-MM-DD)",
+        "invalidBoolean": "请输入有效布尔值 (true/false)",
+        "valueTooLong": "输入值过长 (最大 {{max}} 字符)",
+        "required": "此项必填",
+        "requiredValue": "请至少添加一个值"
       },
       "placement": {
         "label": "应用位置",
@@ -605,6 +613,15 @@
       "connectedDatabases": "{{count}} 个连接",
       "executing": "执行中...",
       "executionTime": "耗时: {{time}}"
+    },
+    "optimizer": {
+      "success": "优化成功",
+      "no_filters": "无需优化：没有可下推的过滤条件",
+      "local_table": "无需优化：本地表不受益于子查询优化",
+      "or_logic": "ON 条件包含 OR 逻辑，已回退到原始查询",
+      "expression_complex": "ON 条件包含复杂表达式，已回退",
+      "multi_table_reference": "ON 条件引用多表，无法拆分到子查询",
+      "fallback_error": "优化过程发生异常，已回退到原始查询"
     }
   },
   "page": {
@@ -777,6 +794,19 @@
         "errorName": "请输入连接名称",
         "errorSave": "保存连接失败: {{message}}",
         "errorUnknown": "未知错误",
+        "validation": {
+          "requiredName": "请填写连接名称",
+          "requiredHost": "请填写主机地址",
+          "requiredPort": "请填写端口号",
+          "requiredUser": "请填写用户名",
+          "requiredDatabase": "请填写数据库名称",
+          "requiredPath": "请填写 SQLite 数据库文件路径",
+          "invalidPort": "端口号必须在 1-65535 之间"
+        },
+        "hint": {
+          "passwordSaved": "密码已保存；留空会使用已保存密码测试/连接。如需修改，请输入新密码。",
+          "passwordSavedPlaceholder": "••••••（已保存，留空使用已保存密码）"
+        },
         "dbTypes": {
           "mysql": "MySQL",
           "postgresql": "PostgreSQL",

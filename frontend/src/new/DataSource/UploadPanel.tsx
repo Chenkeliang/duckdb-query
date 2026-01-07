@@ -24,6 +24,11 @@ interface PendingExcel {
   original_filename: string;
 }
 
+interface ServerExcelPending {
+  path: string;
+  filename: string;
+}
+
 /**
  * 数据源视图 A：智能文件上传（本地文件 + URL + 服务器目录）。
  * 视觉与布局参考 docs/datasource_preview.html 的 #view-file。
@@ -48,8 +53,10 @@ const UploadPanel = ({ onDataSourceSaved }) => {
   const [url, setUrl] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
 
-  // Excel 工作表选择状态
+  // Excel 工作表选择状态 (文件上传)
   const [pendingExcel, setPendingExcel] = useState<PendingExcel | null>(null);
+  // Excel 工作表选择状态 (服务器文件)
+  const [serverExcelPending, setServerExcelPending] = useState<ServerExcelPending | null>(null);
 
   // 服务器目录状态
   const [serverMounts, setServerMounts] = useState([]);
@@ -275,6 +282,18 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       toast.warning(t("page.datasource.pickFileFirst"));
       return;
     }
+
+    // 检查是否是 Excel 文件，如果是则打开工作表选择器
+    const ext = (serverSelectedFile.extension || "").toLowerCase();
+    if (ext === "excel" || ext === "xlsx" || ext === "xls") {
+      setServerExcelPending({
+        path: serverSelectedFile.path,
+        filename: serverSelectedFile.name,
+      });
+      return;
+    }
+
+    // 非 Excel 文件：直接导入
     const aliasValue =
       serverAlias ||
       serverSelectedFile.suggested_table_name ||
@@ -294,7 +313,6 @@ const UploadPanel = ({ onDataSourceSaved }) => {
         toast.success(
           result?.message || t("page.datasource.importSuccess")
         );
-        // 精细化缓存失效
         await invalidateAfterFileUpload(queryClient);
         onDataSourceSaved?.({
           id: result.table_name,
@@ -315,6 +333,44 @@ const UploadPanel = ({ onDataSourceSaved }) => {
     } finally {
       setServerImporting(false);
     }
+  };
+
+  const handleServerExcelImported = async (result: any) => {
+    try {
+      if (!result?.success) {
+        console.error("Server Excel import failed:", result);
+        toast.error(result?.message || t("page.datasource.importFail"));
+        return;
+      }
+
+      setServerExcelPending(null);
+      await invalidateAfterFileUpload(queryClient);
+
+      // 通知成功
+      const tables = result.imported_tables || [];
+      if (tables.length > 0) {
+        onDataSourceSaved?.({
+          id: tables[0].table_name,
+          type: "duckdb",
+          name: t("page.datasource.duckdbTable", {
+            table: tables[0].table_name
+          }),
+          row_count: tables[0].row_count,
+          columns: tables[0].columns || []
+        });
+      }
+
+      toast.success(result.message || t("page.datasource.importSuccess"));
+      setServerSelectedFile(null);
+      setServerAlias("");
+    } catch (err) {
+      console.error("Server Excel import handling failed:", err);
+      toast.error(err?.message || t("page.datasource.importFail"));
+    }
+  };
+
+  const handleServerExcelClose = () => {
+    setServerExcelPending(null);
   };
 
   useEffect(() => {
@@ -632,13 +688,26 @@ const UploadPanel = ({ onDataSourceSaved }) => {
         </div>
       </div>
 
-      {/* Excel 工作表选择器 */}
+      {/* Excel 工作表选择器 (文件上传) */}
       {pendingExcel && (
         <ExcelSheetSelector
           open={true}
           pendingInfo={pendingExcel}
           onClose={handleExcelClose}
           onImported={handleExcelImported}
+          sourceType="upload"
+        />
+      )}
+
+      {/* Excel 工作表选择器 (服务器文件) */}
+      {serverExcelPending && (
+        <ExcelSheetSelector
+          open={true}
+          pendingInfo={null}
+          onClose={handleServerExcelClose}
+          onImported={handleServerExcelImported}
+          sourceType="server"
+          serverPath={serverExcelPending.path}
         />
       )}
     </>

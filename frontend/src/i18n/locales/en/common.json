@@ -330,7 +330,15 @@
         "selectColumn": "Please select a column",
         "enterValue": "Please enter a value",
         "enterValue2": "Please enter the second value",
-        "incomplete": "Some filter conditions are incomplete"
+        "incomplete": "Some filter conditions are incomplete",
+        "invalidInteger": "Please enter a valid integer",
+        "invalidNumber": "Please enter a valid number",
+        "invalidTimestamp": "Please enter a valid timestamp",
+        "invalidDate": "Please enter a valid date (YYYY-MM-DD)",
+        "invalidBoolean": "Please enter a valid boolean (true/false)",
+        "valueTooLong": "Value too long (max {{max}} chars)",
+        "required": "This field is required",
+        "requiredValue": "Please add at least one value"
       },
       "placement": {
         "label": "Apply To",
@@ -597,6 +605,15 @@
       "connectedDatabases": "{{count}} connection(s)",
       "executing": "Executing...",
       "executionTime": "Time: {{time}}"
+    },
+    "optimizer": {
+      "success": "Optimization applied",
+      "no_filters": "No filters to push down",
+      "local_table": "Local table - no optimization benefit",
+      "or_logic": "Contains OR logic - falling back to preserve semantics",
+      "expression_complex": "Complex expression in ON clause - falling back",
+      "multi_table_reference": "Multi-table reference - cannot split to subquery",
+      "fallback_error": "Exception during optimization - falling back"
     }
   },
   "page": {
@@ -768,6 +785,19 @@
         "errorName": "Please enter a connection name",
         "errorSave": "Failed to save connection: {{message}}",
         "errorUnknown": "Unknown error",
+        "validation": {
+          "requiredName": "Please enter connection name",
+          "requiredHost": "Please enter host address",
+          "requiredPort": "Please enter port number",
+          "requiredUser": "Please enter username",
+          "requiredDatabase": "Please enter database name",
+          "requiredPath": "Please enter SQLite database path",
+          "invalidPort": "Port must be between 1-65535"
+        },
+        "hint": {
+          "passwordSaved": "Password saved; leave empty to use saved password. Enter new password to update.",
+          "passwordSavedPlaceholder": "•••••• (Saved, leave empty to use)"
+        },
         "dbTypes": {
           "mysql": "MySQL",
           "postgresql": "PostgreSQL",

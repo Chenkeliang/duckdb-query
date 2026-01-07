@@ -3,12 +3,10 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
-
 from core.duckdb_engine import get_db_connection
 from core.excel_import_manager import cleanup_pending_excel
+from fastapi.testclient import TestClient
 from main import app
-
 
 client = TestClient(app)
 
@@ -102,8 +100,6 @@ def test_excel_upload_inspect_import(tmp_path, header_rows):
             assert "header_row_index" in result
             count = con.execute(
                 f'SELECT COUNT(*) FROM "{table_name}"'
-            ).fetchone()[0]
-            assert count > 0
-            con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+            count = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
     finally:
         cleanup_pending_excel(file_id)

@@ -6,6 +6,7 @@ WORKDIR /app
 COPY package.json ./
 
 # 安装依赖（包括开发依赖，因为需要vite构建）
+RUN npm config set registry https://registry.npmmirror.com
 RUN npm install
 
 # 复制源代码
