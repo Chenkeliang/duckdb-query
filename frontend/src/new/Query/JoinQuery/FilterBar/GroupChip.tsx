@@ -136,7 +136,7 @@ const RawSqlChip: React.FC<{
                                 size="icon"
                                 className="h-4 w-4 hover:bg-amber-200 dark:hover:bg-amber-800"
                                 onClick={onDelete}
-                                aria-label={t('filter.deleteCondition', '删除')}
+                                aria-label={t('query.filter.deleteCondition', '删除')}
                             >
                                 <X className="h-3 w-3" />
                             </Button>
@@ -145,7 +145,7 @@ const RawSqlChip: React.FC<{
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-[400px]">
                     <p className="text-xs text-muted-foreground mb-1">
-                        {t('filter.rawSqlBlock', '原始 SQL 块（无法解析）')}
+                        {t('query.filter.rawSqlBlock', '原始 SQL 块（无法解析）')}
                     </p>
                     <pre className="font-mono text-xs whitespace-pre-wrap">{sql}</pre>
                 </TooltipContent>
@@ -228,7 +228,7 @@ export const GroupChip: React.FC<GroupChipProps> = ({
         ${className || ''}
       `}
             role="group"
-            aria-label={t('filter.group', '条件分组') + `: ${node.logic}`}
+            aria-label={t('query.filter.group', '条件分组') + `: ${node.logic}`}
         >
             {/* 拖拽手柄 */}
             {showDragHandle && !disabled && (
@@ -276,13 +276,13 @@ export const GroupChip: React.FC<GroupChipProps> = ({
                                 size="icon"
                                 className="h-4 w-4 ml-0.5 hover:bg-destructive/20 dark:hover:bg-destructive/30 hover:text-destructive"
                                 onClick={onDelete}
-                                aria-label={t('filter.ungroupConditions', '解散分组')}
+                                aria-label={t('query.filter.ungroupConditions', '解散分组')}
                             >
                                 <X className="h-3 w-3" />
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
-                            {t('filter.ungroupConditions', '解散分组')}
+                            {t('query.filter.ungroupConditions', '解散分组')}
                         </TooltipContent>
                     </Tooltip>
                 </TooltipProvider>

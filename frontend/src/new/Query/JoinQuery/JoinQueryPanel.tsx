@@ -1361,7 +1361,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${combinedOnConditions.join(' AND ')}`);
         } else {
           // 没有任何 ON 条件，使用 1=1
-          parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* 请选择关联条件 */`);
+          parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* ${t('query.join.selectConditionComment', '请选择关联条件')} */`);
         }
       }
     }

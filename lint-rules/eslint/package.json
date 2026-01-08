@@ -1,0 +1,25 @@
+{
+  "name": "eslint-plugin-duckquery",
+  "version": "1.0.0",
+  "description": "DuckQuery 项目自定义 ESLint 规则",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "keywords": [
+    "eslint",
+    "eslintplugin",
+    "duckquery"
+  ],
+  "author": "DuckQuery Team",
+  "license": "MIT",
+  "peerDependencies": {
+    "eslint": ">=8.0.0"
+  },
+  "devDependencies": {
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "jest": "^29.0.0"
+  }
+}

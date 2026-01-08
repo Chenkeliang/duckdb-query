@@ -86,7 +86,9 @@
     "delete": "删除",
     "close": "关闭",
     "confirmDelete": "确认删除",
-    "noData": "无数据"
+    "noData": "无数据",
+    "copy": "复制",
+    "copied": "已复制"
   },
   "dataSource": {
     "previewTable": "预览表: {{tableName}}",
@@ -156,6 +158,7 @@
     "retryFailed": "重试失败: {{message}}",
     "deleteSuccess": "任务已删除",
     "deleteFailed": "删除失败: {{message}}",
+    "taskCompletedRefresh": "异步任务完成，已自动刷新数据源",
     "submitSuccess": "异步任务已提交",
     "submitFailed": "提交失败: {{message}}",
     "status.pending": "等待中",
@@ -352,11 +355,11 @@
         "label": "应用位置",
         "on": "ON 子句",
         "where": "WHERE 子句",
-        "helpText": "ON 子句条件在 JOIN 时生效，保留无匹配的行（显示为 NULL）。WHERE 子句条件在 JOIN 后生效，会过滤掉不匹配的行。",
+        "helpText": "ON 子句条件在 JOIN 时生效，保留无匹配的行（显示为 NULL）。WHERE 子句条件在 JOIN 后生效，会过滤掉不匹配的行。查询外部数据库表时，建议添加时间范围条件以避免全表扫描导致查询时间过长。",
         "onHint": "在 JOIN 时过滤",
-        "whereHint": "在结果中过滤",
-        "recommended": "推荐"
-      }
+        "whereHint": "在结果中过滤"
+      },
+      "dragToSort": "拖拽排序"
     },
     "validation": {
       "noTable": "请选择一个表",
@@ -410,7 +413,18 @@
       "usageCount": "使用次数",
       "createdDate": "创建日期",
       "use": "使用",
-      "save": "收藏"
+      "save": "收藏",
+      "saveDialog": {
+        "title": "保存查询",
+        "description": "保存当前 SQL 查询以便稍后使用。",
+        "name": "名称",
+        "namePlaceholder": "输入查询名称...",
+        "descriptionLabel": "描述 (可选)",
+        "descriptionPlaceholder": "添加描述...",
+        "sqlPreview": "SQL 预览",
+        "saving": "保存中...",
+        "saveBtn": "保存"
+      }
     },
     "history": {
       "title": "查询历史",
@@ -486,6 +500,7 @@
       "removeJoin": "删除关联",
       "hint": "双击左侧数据源添加表",
       "primaryTable": "主表",
+      "selectConditionComment": "请选择关联条件",
       "remove": "移除",
       "duckdbTable": "DuckDB 表",
       "moreColumns": "更多字段",
@@ -696,6 +711,32 @@
       "fileTooLarge": "文件大小超过 {{size}}，请切换使用分块上传。",
       "excelUploadSuccess": "Excel 文件上传成功，请选择需要导入的工作表",
       "excelSelectAtLeastOne": "请至少选择一个工作表进行导入",
+      "excelSheet": {
+        "title": "Excel 工作表导入",
+        "description": "选择要导入的工作表并确认表头设置",
+        "file": "文件：",
+        "source": "来源：",
+        "sourceServer": "服务器文件",
+        "sourceUpload": "上传文件",
+        "loading": "加载工作表信息...",
+        "selectAll": "全选",
+        "selectNone": "全不选",
+        "rows": "{{count}} 行",
+        "columns": "{{count}} 列",
+        "hasMergedCells": "包含合并单元格",
+        "targetTable": "目标表名",
+        "tablePlaceholder": "输入表名",
+        "headerRows": "表头行数",
+        "headerRowIndex": "表头起始行号",
+        "fillMerged": "填充合并单元格",
+        "mergedWarning": "此工作表包含合并单元格。建议启用\"填充合并单元格\"选项。",
+        "preview": "数据预览",
+        "cancel": "取消",
+        "import": "导入选中的工作表",
+        "missingFileInfo": "缺少文件信息",
+        "fetchFailed": "获取工作表信息失败",
+        "importFailed": "导入失败"
+      },
       "uploadSuccessTable": "文件上传成功，已创建表: {{table}}",
       "uploadFail": "文件上传失败",
       "enterUrl": "请输入文件URL",

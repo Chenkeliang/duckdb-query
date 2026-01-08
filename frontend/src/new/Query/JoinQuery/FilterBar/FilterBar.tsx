@@ -227,7 +227,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                                     </div>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    <p className="text-xs">{t('filter.rawSqlBlock', '原始 SQL（无法解析）')}</p>
+                                    <p className="text-xs">{t('query.filter.rawSqlBlock', '原始 SQL（无法解析）')}</p>
                                     <pre className="font-mono text-xs mt-1">{node.sql}</pre>
                                 </TooltipContent>
                             </Tooltip>
@@ -255,7 +255,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 <div className="flex items-center gap-2">
                     <Filter className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">
-                        {t('filter.title', '筛选条件')}
+                        {t('query.filter.title', '筛选条件')}
                     </span>
                     {conditionCount > 0 && (
                         <span className="text-xs text-muted-foreground">
@@ -269,7 +269,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                                     <AlertCircle className="h-4 w-4 text-amber-500" />
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    {t('filter.error.tooManyConditions', '条件过多，建议使用 SQL 模式')}
+                                    {t('query.filter.error.tooManyConditions', '条件过多，建议使用 SQL 模式')}
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
@@ -286,7 +286,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                             onClick={() => mode === 'sql' && switchToVisualMode()}
                         >
                             <Sparkles className="h-3 w-3" />
-                            <span className="text-xs">{t('filter.modes.visual', '可视化')}</span>
+                            <span className="text-xs">{t('query.filter.modes.visual', '可视化')}</span>
                         </Button>
                         <Button
                             variant={mode === 'sql' ? 'secondary' : 'ghost'}
@@ -295,7 +295,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                             onClick={() => mode === 'visual' && switchToSqlMode()}
                         >
                             <Code className="h-3 w-3" />
-                            <span className="text-xs">{t('filter.modes.sql', 'SQL')}</span>
+                            <span className="text-xs">{t('query.filter.modes.sql', 'SQL')}</span>
                         </Button>
                     </div>
 
@@ -314,7 +314,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                                     </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    {t('filter.action.clearAll', '清空所有条件')}
+                                    {t('query.filter.action.clearAll', '清空所有条件')}
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
@@ -339,7 +339,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                     {isEmpty ? (
                         // 空状态
                         <span className="text-xs text-muted-foreground">
-                            {t('filter.emptyPlaceholder', '暂无筛选条件')}
+                            {t('query.filter.emptyPlaceholder', '暂无筛选条件')}
                         </span>
                     ) : enableDragDrop ? (
                         // 拖拽模式
@@ -373,7 +373,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                     <textarea
                         value={sqlContent}
                         onChange={(e) => setSqlContent(e.target.value)}
-                        placeholder={t('filter.sqlPlaceholder', '输入 WHERE 子句，例如: status = \'active\' AND amount > 100')}
+                        placeholder={t('query.filter.sqlPlaceholder', '输入 WHERE 子句，例如: status = \'active\' AND amount > 100')}
                         className="w-full h-20 p-2 text-sm font-mono border rounded-md bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                         disabled={disabled}
                     />
@@ -384,7 +384,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                             onClick={switchToVisualMode}
                             disabled={disabled}
                         >
-                            {t('filter.action.applyAndSwitch', '应用并切换到可视化')}
+                            {t('query.filter.action.applyAndSwitch', '应用并切换到可视化')}
                         </Button>
                     </div>
                 </div>

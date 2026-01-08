@@ -153,7 +153,7 @@ export const TagsInput: React.FC<TagsInputProps> = ({
                                 e.stopPropagation();
                                 removeValue(index);
                             }}
-                            aria-label={t('filter.action.remove', '移除') + ` ${v}`}
+                            aria-label={t('query.filter.action.remove', '移除') + ` ${v}`}
                         >
                             <X className="h-3 w-3" />
                         </button>
@@ -171,7 +171,7 @@ export const TagsInput: React.FC<TagsInputProps> = ({
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
                     onBlur={handleBlur}
-                    placeholder={value.length === 0 ? (placeholder || t('filter.form.placeholder.enterValues', '输入值，回车添加')) : ''}
+                    placeholder={value.length === 0 ? (placeholder || t('query.filter.form.placeholder.enterValues', '输入值，回车添加')) : ''}
                     className="flex-1 min-w-[100px] border-0 p-0 h-6 focus-visible:ring-0 focus-visible:ring-offset-0"
                     disabled={disabled}
                 />
@@ -180,7 +180,7 @@ export const TagsInput: React.FC<TagsInputProps> = ({
             {/* 达到上限提示 */}
             {value.length >= maxTags && (
                 <span className="text-xs text-muted-foreground">
-                    {t('filter.error.maxTagsReached', '已达上限')}
+                    {t('query.filter.error.maxTagsReached', '已达上限')}
                 </span>
             )}
         </div>

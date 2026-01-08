@@ -453,6 +453,9 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
     if (e.button !== 0) return;
     e.preventDefault();
 
+    // 确保容器获得焦点，以便键盘事件（如 Ctrl+C）能被捕获
+    containerRef.current?.focus();
+
     if (e.shiftKey && selection) {
       extendSelection(rowIndex, colIndex);
       return;

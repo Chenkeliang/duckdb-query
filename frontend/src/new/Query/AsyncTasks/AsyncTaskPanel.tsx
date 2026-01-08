@@ -151,7 +151,7 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
     queryKey: ASYNC_TASKS_QUERY_KEY,
     queryFn: async () => {
       const response = await listAsyncTasks();
-      return (response.tasks || []) as AsyncTask[];
+      return (response.tasks || []) as unknown as AsyncTask[];
     },
     refetchInterval: 5000, // 每 5 秒自动刷新
     staleTime: 2000,

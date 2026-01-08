@@ -122,7 +122,7 @@ export const FilterChip: React.FC<FilterChipProps> = ({
     }
     fullDescription += ` [${placement.toUpperCase()}]`;
 
-    const ariaLabel = t('filter.editCondition', '编辑条件') + ': ' + fullDescription;
+    const ariaLabel = t('query.filter.editCondition', '编辑条件') + ': ' + fullDescription;
 
     return (
         <TooltipProvider>
@@ -195,7 +195,7 @@ export const FilterChip: React.FC<FilterChipProps> = ({
                                 size="icon"
                                 className="h-4 w-4 ml-0.5 hover:bg-destructive/20 dark:hover:bg-destructive/30 hover:text-destructive"
                                 onClick={handleDeleteClick}
-                                aria-label={t('filter.deleteCondition', '删除条件')}
+                                aria-label={t('query.filter.deleteCondition', '删除条件')}
                             >
                                 <X className="h-3 w-3" />
                             </Button>

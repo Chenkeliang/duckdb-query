@@ -1,6 +1,8 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { invalidateAfterTableCreate } from "@/new/utils/cacheInvalidation";
 import { Card, CardContent } from "@/new/components/ui/card";
 import { Button } from "@/new/components/ui/button";
 import { Input } from "@/new/components/ui/input";
@@ -27,6 +29,7 @@ interface ParsedDataState {
 
 const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
   const { t } = useTranslation("common");
+  const queryClient = useQueryClient();
   const [pastedData, setPastedData] = useState("");
   const [parsedData, setParsedData] = useState<ParsedDataState | null>(null);
   const [tableName, setTableName] = useState("");
@@ -190,6 +193,10 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
         const successMsg = t("page.datasource.paste.save.saveOk", { table: tableName.trim() });
         setSuccess(successMsg);
         toast.success(successMsg);
+
+        // 刷新数据源缓存，使左侧列表自动更新
+        await invalidateAfterTableCreate(queryClient);
+
         onDataSourceSaved?.({
           id: tableName.trim(),
           name: tableName.trim(),

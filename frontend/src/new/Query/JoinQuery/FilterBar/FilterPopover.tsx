@@ -192,11 +192,11 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
     const validateForm = (): boolean => {
         console.log('[FilterPopover] validateForm called', { selectedTable, selectedColumn, selectedOperator, inputValue, multiValues });
         if (!selectedTable) {
-            setError(t('filter.error.required', '请选择表'));
+            setError(t('query.filter.error.required', '请选择表'));
             return false;
         }
         if (!selectedColumn) {
-            setError(t('filter.error.required', '请选择列'));
+            setError(t('query.filter.error.required', '请选择列'));
             return false;
         }
 
@@ -204,12 +204,12 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
         if (operatorConfig?.needsValue) {
             if (operatorConfig.isMultiValue) {
                 if (multiValues.length === 0) {
-                    setError(t('filter.validation.requiredValue', '请至少添加一个值'));
+                    setError(t('query.filter.validation.requiredValue', '请至少添加一个值'));
                     return false;
                 }
             } else {
                 if (inputValue.trim() === '') {
-                    setError(t('filter.validation.required', '请输入值'));
+                    setError(t('query.filter.validation.required', '请输入值'));
                     return false;
                 }
 
@@ -226,7 +226,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
             // BETWEEN 需要第二个值
             if (operatorConfig.needsSecondValue) {
                 if (inputValue2.trim() === '') {
-                    setError(t('filter.validation.enterValue2', '请输入第二个值'));
+                    setError(t('query.filter.validation.enterValue2', '请输入第二个值'));
                     return false;
                 }
                 if (selectedColumnInfo) {
@@ -293,7 +293,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
     const defaultTrigger = mode === 'add' ? (
         <Button variant="outline" size="sm" className="gap-1">
             <Plus className="h-4 w-4" />
-            {t('filter.addCondition', '添加条件')}
+            {t('query.filter.addCondition', '添加条件')}
         </Button>
     ) : (
         <Button variant="ghost" size="icon" className="h-6 w-6">
@@ -312,15 +312,15 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                 sideOffset={5}
                 collisionPadding={16}
                 role="dialog"
-                aria-label={mode === 'add' ? t('filter.addCondition', '添加条件') : t('filter.editCondition', '编辑条件')}
+                aria-label={mode === 'add' ? t('query.filter.addCondition', '添加条件') : t('query.filter.editCondition', '编辑条件')}
                 aria-modal="true"
             >
                 <div className="space-y-4">
                     {/* 标题 */}
                     <h4 className="font-medium text-sm">
                         {mode === 'add'
-                            ? t('filter.addCondition', '添加筛选条件')
-                            : t('filter.editCondition', '编辑筛选条件')
+                            ? t('query.filter.addCondition', '添加筛选条件')
+                            : t('query.filter.editCondition', '编辑筛选条件')
                         }
                     </h4>
 
@@ -328,7 +328,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
                             <Label htmlFor="filter-table" className="text-xs">
-                                {t('filter.form.table', '表')}
+                                {t('query.filter.form.table', '表')}
                             </Label>
                             <Select
                                 value={selectedTable}
@@ -336,7 +336,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                                 disabled={!!presetTable}
                             >
                                 <SelectTrigger id="filter-table">
-                                    <SelectValue placeholder={t('filter.form.placeholder.selectTable', '选择表')} />
+                                    <SelectValue placeholder={t('query.filter.form.placeholder.selectTable', '选择表')} />
                                 </SelectTrigger>
                                 <SelectContent className="z-[9999]">
                                     {tables.map(table => (
@@ -349,7 +349,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                         </div>
                         <div className="space-y-1">
                             <Label htmlFor="filter-column" className="text-xs">
-                                {t('filter.form.column', '列')}
+                                {t('query.filter.form.column', '列')}
                             </Label>
                             <Select
                                 value={selectedColumn}
@@ -357,7 +357,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                                 disabled={!selectedTable || !!presetColumn}
                             >
                                 <SelectTrigger id="filter-column">
-                                    <SelectValue placeholder={t('filter.form.placeholder.selectColumn', '选择列')} />
+                                    <SelectValue placeholder={t('query.filter.form.placeholder.selectColumn', '选择列')} />
                                 </SelectTrigger>
                                 <SelectContent className="z-[9999]">
                                     {columns.map(col => (
@@ -376,7 +376,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                     {/* 操作符选择 */}
                     <div className="space-y-1">
                         <Label htmlFor="filter-operator" className="text-xs">
-                            {t('filter.form.operator', '操作符')}
+                            {t('query.filter.form.operator', '操作符')}
                         </Label>
                         <Select
                             value={selectedOperator}
@@ -403,15 +403,15 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                         <div className="space-y-1">
                             <Label htmlFor="filter-value" className="text-xs">
                                 {operatorConfig.isMultiValue
-                                    ? t('filter.form.values', '值列表')
-                                    : t('filter.form.value', '值')
+                                    ? t('query.filter.form.values', '值列表')
+                                    : t('query.filter.form.value', '值')
                                 }
                             </Label>
                             {operatorConfig.isMultiValue ? (
                                 <TagsInput
                                     value={multiValues}
                                     onChange={setMultiValues}
-                                    placeholder={t('filter.form.placeholder.enterValues', '输入值，回车添加')}
+                                    placeholder={t('query.filter.form.placeholder.enterValues', '输入值，回车添加')}
                                     valueType={selectedColumnInfo?.type?.includes('INT') ? 'number' : 'auto'}
                                 />
                             ) : (
@@ -419,7 +419,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                                     id="filter-value"
                                     value={inputValue}
                                     onChange={(e) => setInputValue(e.target.value)}
-                                    placeholder={t('filter.form.placeholder.enterValue', '输入值')}
+                                    placeholder={t('query.filter.form.placeholder.enterValue', '输入值')}
                                 />
                             )}
                         </div>
@@ -429,13 +429,13 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                     {operatorConfig?.needsSecondValue && (
                         <div className="space-y-1">
                             <Label htmlFor="filter-value2" className="text-xs">
-                                {t('filter.form.value', '值')} 2
+                                {t('query.filter.form.value', '值')} 2
                             </Label>
                             <Input
                                 id="filter-value2"
                                 value={inputValue2}
                                 onChange={(e) => setInputValue2(e.target.value)}
-                                placeholder={t('filter.form.placeholder.enterValue', '输入第二个值')}
+                                placeholder={t('query.filter.form.placeholder.enterValue', '输入第二个值')}
                             />
                         </div>
                     )}
@@ -455,10 +455,10 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                     {/* 操作按钮 */}
                     <div className="flex justify-end gap-2 pt-2">
                         <Button variant="ghost" size="sm" onClick={handleCancel}>
-                            {t('filter.action.cancel', '取消')}
+                            {t('query.filter.action.cancel', '取消')}
                         </Button>
                         <Button size="sm" onClick={handleSubmit}>
-                            {t('filter.action.confirm', '确定')}
+                            {t('query.filter.action.confirm', '确定')}
                         </Button>
                     </div>
                 </div>

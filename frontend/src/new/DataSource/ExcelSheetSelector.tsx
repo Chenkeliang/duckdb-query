@@ -103,7 +103,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
       } else if (fileId) {
         data = await inspectExcelSheets(fileId);
       } else {
-        throw new Error('缺少文件信息');
+        throw new Error(t('page.datasource.excelSheet.missingFileInfo'));
       }
 
       const mapped: SheetConfig[] = (data?.sheets || []).map((sheet: any) => ({
@@ -124,7 +124,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
       }));
       setSheetConfigs(mapped);
     } catch (err: any) {
-      setError(err?.message || "获取工作表信息失败");
+      setError(err?.message || t('page.datasource.excelSheet.fetchFailed'));
     } finally {
       setLoading(false);
     }
@@ -232,7 +232,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
       onImported?.(result);
       onClose?.();
     } catch (err: any) {
-      const message = err?.message || "导入失败";
+      const message = err?.message || t('page.datasource.excelSheet.importFailed');
       setError(message);
       toast.error(message);
     } finally {
@@ -244,9 +244,9 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Excel 工作表导入</DialogTitle>
+          <DialogTitle>{t('page.datasource.excelSheet.title')}</DialogTitle>
           <DialogDescription>
-            选择要导入的工作表并确认表头设置
+            {t('page.datasource.excelSheet.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -254,12 +254,12 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
           {/* 文件信息 */}
           <div className="bg-muted rounded-lg p-4 space-y-1">
             <p className="text-sm text-foreground">
-              <span className="text-muted-foreground">文件：</span>
+              <span className="text-muted-foreground">{t('page.datasource.excelSheet.file')}</span>
               {sourceType === 'server' ? serverPath?.split('/').pop() : pendingInfo?.original_filename || "-"}
             </p>
             <p className="text-sm text-foreground">
-              <span className="text-muted-foreground">来源：</span>
-              {sourceType === 'server' ? '服务器文件' : '上传文件'}
+              <span className="text-muted-foreground">{t('page.datasource.excelSheet.source')}</span>
+              {sourceType === 'server' ? t('page.datasource.excelSheet.sourceServer') : t('page.datasource.excelSheet.sourceUpload')}
             </p>
           </div>
 
@@ -267,7 +267,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
           {loading && (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              <span className="ml-2 text-sm text-muted-foreground">加载工作表信息...</span>
+              <span className="ml-2 text-sm text-muted-foreground">{t('page.datasource.excelSheet.loading')}</span>
             </div>
           )}
 
@@ -288,14 +288,14 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                   size="sm"
                   onClick={() => toggleAll(true)}
                 >
-                  全选
+                  {t('page.datasource.excelSheet.selectAll')}
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => toggleAll(false)}
                 >
-                  全不选
+                  {t('page.datasource.excelSheet.selectNone')}
                 </Button>
               </div>
 
@@ -325,8 +325,8 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                         <div className="flex-1 text-left">
                           <div className="font-medium text-foreground">{sheet.name}</div>
                           <div className="text-xs text-muted-foreground">
-                            {sheet.meta.rows} 行 × {sheet.meta.columns_count} 列
-                            {sheet.meta.has_merged_cells && " • 包含合并单元格"}
+                            {t('page.datasource.excelSheet.rows', { count: sheet.meta.rows })} × {t('page.datasource.excelSheet.columns', { count: sheet.meta.columns_count })}
+                            {sheet.meta.has_merged_cells && ` • ${t('page.datasource.excelSheet.hasMergedCells')}`}
                           </div>
                         </div>
                       </div>
@@ -336,7 +336,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                       {/* 配置表单 */}
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor={`target-${sheet.name}`}>目标表名</Label>
+                          <Label htmlFor={`target-${sheet.name}`}>{t('page.datasource.excelSheet.targetTable')}</Label>
                           <Input
                             id={`target-${sheet.name}`}
                             value={sheet.targetTable}
@@ -347,12 +347,12 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                                 e.target.value
                               )
                             }
-                            placeholder="输入表名"
+                            placeholder={t('page.datasource.excelSheet.tablePlaceholder')}
                           />
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor={`header-rows-${sheet.name}`}>表头行数</Label>
+                          <Label htmlFor={`header-rows-${sheet.name}`}>{t('page.datasource.excelSheet.headerRows')}</Label>
                           <Input
                             id={`header-rows-${sheet.name}`}
                             type="number"
@@ -371,7 +371,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                         {Number(sheet.headerRows) > 0 && (
                           <div className="space-y-2">
                             <Label htmlFor={`header-index-${sheet.name}`}>
-                              表头起始行号
+                              {t('page.datasource.excelSheet.headerRowIndex')}
                             </Label>
                             <Input
                               id={`header-index-${sheet.name}`}
@@ -403,7 +403,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                               }
                             />
                             <Label htmlFor={`fill-merged-${sheet.name}`}>
-                              填充合并单元格
+                              {t('page.datasource.excelSheet.fillMerged')}
                             </Label>
                           </div>
                         )}
@@ -414,7 +414,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                         <Alert>
                           <Info className="h-4 w-4" />
                           <AlertDescription>
-                            此工作表包含合并单元格。建议启用"填充合并单元格"选项。
+                            {t('page.datasource.excelSheet.mergedWarning')}
                           </AlertDescription>
                         </Alert>
                       )}
@@ -422,7 +422,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                       {/* 数据预览 */}
                       {sheet.meta.preview && sheet.meta.preview.length > 0 && (
                         <div className="space-y-2">
-                          <Label>数据预览</Label>
+                          <Label>{t('page.datasource.excelSheet.preview')}</Label>
                           <div className="border border-border rounded-md overflow-auto max-h-64">
                             <Table>
                               <TableHeader>
@@ -461,11 +461,11 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={submitting}>
-            取消
+            {t('page.datasource.excelSheet.cancel')}
           </Button>
           <Button onClick={handleImport} disabled={submitting || loading}>
             {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            导入选中的工作表
+            {t('page.datasource.excelSheet.import')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { executeDuckDBSQL } from '@/api';
+import { invalidateAfterTableCreate } from '@/new/utils/cacheInvalidation';
 import type {
   QueryConfig,
   FilterConfig,
@@ -27,7 +28,7 @@ function buildSQL(config: QueryConfig): string {
 
   // SELECT 子句
   const selectParts: string[] = [];
-  
+
   // 添加普通列
   if (config.columns.length > 0) {
     // 如果有 JOIN，需要为列添加表前缀以避免歧义
@@ -37,7 +38,7 @@ function buildSQL(config: QueryConfig): string {
       selectParts.push(...config.columns.map((col) => `"${col}"`));
     }
   }
-  
+
   // 添加聚合列
   config.aggregations.forEach((agg) => {
     let aggExpr: string;
@@ -80,7 +81,7 @@ function buildSQL(config: QueryConfig): string {
     const whereParts: string[] = [];
     config.filters.forEach((filter, index) => {
       let condition = '';
-      
+
       // 添加逻辑操作符（第一个条件除外）
       if (index > 0) {
         condition += ` ${filter.logicOperator} `;
@@ -117,7 +118,7 @@ function buildSQL(config: QueryConfig): string {
 
   // GROUP BY 子句
   if (config.groupBy.length > 0) {
-    const groupByParts = config.groupBy.map((col) => 
+    const groupByParts = config.groupBy.map((col) =>
       hasJoins ? `"${tableName}"."${col}"` : `"${col}"`
     );
     parts.push(`GROUP BY ${groupByParts.join(', ')}`);
@@ -235,7 +236,7 @@ export interface UseQueryBuilderReturn {
   generatedSQL: string | null;
   validation: QueryValidation;
   queryHistory: QueryHistoryItem[];
-  
+
   // 操作
   updateConfig: (updates: Partial<QueryConfig>) => void;
   resetConfig: () => void;
@@ -247,15 +248,15 @@ export interface UseQueryBuilderReturn {
   setJoins: (joins: JoinConfig[]) => void;
   setOrderBy: (orderBy: SortConfig[]) => void;
   setLimit: (limit: number | undefined) => void;
-  
+
   // SQL 生成
   generateSQL: () => Promise<string | null>;
   isGeneratingSQL: boolean;
-  
+
   // 查询执行
   executeQuery: (options?: { saveAsTable?: string; isPreview?: boolean }) => Promise<unknown>;
   isExecuting: boolean;
-  
+
   // 历史记录
   loadFromHistory: (item: QueryHistoryItem) => void;
   clearHistory: () => void;
@@ -281,16 +282,17 @@ export function useQueryBuilder(
   initialConfig?: Partial<QueryConfig>
 ): UseQueryBuilderReturn {
   const { t } = useTranslation('common');
-  
+  const queryClient = useQueryClient();
+
   // 查询配置状态
   const [config, setConfig] = useState<QueryConfig>({
     ...initialQueryConfig,
     ...initialConfig,
   });
-  
+
   // 生成的 SQL
   const [generatedSQL, setGeneratedSQL] = useState<string | null>(null);
-  
+
   // 查询历史记录
   const [queryHistory, setQueryHistory] = useState<QueryHistoryItem[]>(() => loadQueryHistory());
 
@@ -413,13 +415,13 @@ export function useQueryBuilder(
   const setLimit = useCallback((limit: number | undefined) => {
     updateConfig({ limit });
   }, [updateConfig]);
-  
+
   // 从历史记录加载
   const loadFromHistory = useCallback((item: QueryHistoryItem) => {
     setConfig(item.config);
     setGeneratedSQL(item.sql);
   }, []);
-  
+
   // 清除历史记录
   const clearHistory = useCallback(() => {
     localStorage.removeItem(QUERY_HISTORY_KEY);
@@ -432,7 +434,7 @@ export function useQueryBuilder(
       if (!config.table) {
         throw new Error(t('query.validation.noTable', '请选择一个表'));
       }
-      
+
       // 使用本地 SQL 生成函数
       const sql = buildSQL(config);
       return sql;
@@ -449,17 +451,17 @@ export function useQueryBuilder(
   const executeQueryMutation = useMutation({
     mutationFn: async (options?: { saveAsTable?: string; isPreview?: boolean }) => {
       const startTime = Date.now();
-      
+
       // 先生成 SQL
       let sql = generatedSQL;
       if (!sql) {
         sql = await generateSQLMutation.mutateAsync();
       }
-      
+
       if (!sql) {
         throw new Error(t('query.sql.noSQL', '无法生成 SQL'));
       }
-      
+
       // 执行查询
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (executeDuckDBSQL as any)(
@@ -467,18 +469,24 @@ export function useQueryBuilder(
         options?.saveAsTable || null,
         options?.isPreview ?? true
       );
-      
+
       const executionTime = Date.now() - startTime;
       const rowCount = result?.data?.length || result?.row_count || 0;
-      
+
       // 添加到历史记录
       const updatedHistory = addToHistory(sql, config, executionTime, rowCount);
       setQueryHistory(updatedHistory);
-      
-      return result;
+
+      return { result, saveAsTable: options?.saveAsTable };
     },
-    onSuccess: () => {
-      toast.success(t('query.sql.executeSuccess', '查询执行成功'));
+    onSuccess: (data) => {
+      // 如果保存为表，刷新数据源缓存
+      if (data.saveAsTable) {
+        invalidateAfterTableCreate(queryClient);
+        toast.success(t('query.sql.savedToTable', { table: data.saveAsTable }));
+      } else {
+        toast.success(t('query.sql.executeSuccess', '查询执行成功'));
+      }
     },
     onError: (error: Error) => {
       toast.error(t('query.sql.executeError', '查询执行失败: {{message}}', { message: error.message }));
@@ -512,7 +520,7 @@ export function useQueryBuilder(
     generatedSQL,
     validation,
     queryHistory,
-    
+
     // 操作
     updateConfig,
     resetConfig,
@@ -524,15 +532,15 @@ export function useQueryBuilder(
     setJoins,
     setOrderBy,
     setLimit,
-    
+
     // SQL 生成
     generateSQL,
     isGeneratingSQL: generateSQLMutation.isPending,
-    
+
     // 查询执行
     executeQuery,
     isExecuting: executeQueryMutation.isPending,
-    
+
     // 历史记录
     loadFromHistory,
     clearHistory,

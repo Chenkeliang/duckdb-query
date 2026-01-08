@@ -1,0 +1,87 @@
+name: Code Quality Check
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  frontend-lint:
+    name: Frontend ESLint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        run: |
+          cd lint-rules/eslint && npm install && npm link
+          cd ../../frontend && npm install && npm link eslint-plugin-duckquery
+      
+      - name: Run ESLint
+        run: cd frontend && npm run lint
+      
+      - name: Upload ESLint results
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: eslint-results
+          path: frontend/eslint-report.json
+
+  backend-lint:
+    name: Backend Pylint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          cd lint-rules/pylint && pip install -e .
+          cd ../../api && pip install -r requirements.txt
+      
+      - name: Run Pylint
+        run: |
+          cd api
+          pylint --rcfile=../.pylintrc \
+                 --output-format=json:pylint-report.json,colorized \
+                 routers/ core/ models/ utils/ services/
+      
+      - name: Upload Pylint results
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: pylint-results
+          path: api/pylint-report.json
+
+  summary:
+    name: Lint Summary
+    runs-on: ubuntu-latest
+    needs: [frontend-lint, backend-lint]
+    if: always()
+    
+    steps:
+      - name: Check results
+        run: |
+          if [ "${{ needs.frontend-lint.result }}" == "failure" ] || [ "${{ needs.backend-lint.result }}" == "failure" ]; then
+            echo "❌ 代码检查失败，请查看详细报告"
+            exit 1
+          else
+            echo "✅ 所有代码检查通过"
+          fi

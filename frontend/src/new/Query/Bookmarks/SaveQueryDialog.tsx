@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/new/components/ui/button';
 import { Input } from '@/new/components/ui/input';
@@ -19,30 +20,26 @@ interface SaveQueryDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     sql: string;
-    type?: string;
 }
 
 export const SaveQueryDialog: React.FC<SaveQueryDialogProps> = ({
     open,
     onOpenChange,
     sql,
-    type = 'duckdb',
 }) => {
-
+    const { t } = useTranslation('common');
     const { saveQuery, isSaving } = useSavedQueries();
 
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-    const [queryType, setQueryType] = useState(type);
 
     // Reset form when opening
     useEffect(() => {
         if (open) {
             setName('');
             setDescription('');
-            setQueryType(type);
         }
-    }, [open, type]);
+    }, [open]);
 
     const handleSave = async () => {
         if (!name.trim()) return;
@@ -52,7 +49,6 @@ export const SaveQueryDialog: React.FC<SaveQueryDialogProps> = ({
                 name,
                 description,
                 sql,
-                type: queryType,
                 tags: []
             });
             onOpenChange(false);
@@ -65,34 +61,34 @@ export const SaveQueryDialog: React.FC<SaveQueryDialogProps> = ({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle>保存查询</DialogTitle>
+                    <DialogTitle>{t('query.bookmark.saveDialog.title')}</DialogTitle>
                     <DialogDescription>
-                        保存当前 SQL 查询以便稍后使用。
+                        {t('query.bookmark.saveDialog.description')}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                     <div className="grid gap-2">
-                        <Label htmlFor="name">名称</Label>
+                        <Label htmlFor="name">{t('query.bookmark.saveDialog.name')}</Label>
                         <Input
                             id="name"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            placeholder="输入查询名称..."
+                            placeholder={t('query.bookmark.saveDialog.namePlaceholder')}
                         />
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="description">描述 (可选)</Label>
+                        <Label htmlFor="description">{t('query.bookmark.saveDialog.descriptionLabel')}</Label>
                         <Textarea
                             id="description"
                             value={description}
                             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
-                            placeholder="添加描述..."
+                            placeholder={t('query.bookmark.saveDialog.descriptionPlaceholder')}
                             className="resize-none"
                         />
                     </div>
                     <div className="grid gap-2">
-                        <Label>SQL 预览</Label>
+                        <Label>{t('query.bookmark.saveDialog.sqlPreview')}</Label>
                         <div className="text-xs font-mono bg-muted p-2 rounded border max-h-[100px] overflow-auto text-muted-foreground whitespace-pre-wrap">
                             {sql}
                         </div>
@@ -100,10 +96,10 @@ export const SaveQueryDialog: React.FC<SaveQueryDialogProps> = ({
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-                        取消
+                        {t('common.cancel')}
                     </Button>
                     <Button onClick={handleSave} disabled={isSaving || !name.trim()}>
-                        {isSaving ? '保存中...' : '保存'}
+                        {isSaving ? t('query.bookmark.saveDialog.saving') : t('query.bookmark.saveDialog.saveBtn')}
                     </Button>
                 </DialogFooter>
             </DialogContent>

@@ -3,44 +3,70 @@ inclusion: always
 ---
 # 数据源刷新模式约束规则
 
-## 🎯 数据源刷新统一模式
+## 🎯 新布局刷新机制（TanStack Query）
 
-### 1. 刷新触发机制
-- **异步任务完成**: 自动触发数据源列表刷新
-- **文件上传完成**: 自动触发数据源列表刷新
-- **数据库连接**: 自动触发数据源列表刷新
-- **表删除操作**: 自动触发数据源列表刷新
-- **手动刷新**: 用户主动触发刷新
+新布局（`frontend/src/new/`）使用 TanStack Query 管理数据缓存，刷新操作通过统一的工具函数完成。
 
-### 2. 刷新执行流程
-- **缓存清理**: 首先调用 `requestManager.clearAllCache()`
-- **数据重新获取**: 调用 `loadInitialData(true)` 强制刷新
-- **状态更新**: 更新所有相关组件的状态
-- **UI同步**: 确保所有页面显示最新数据
+### 1. 统一刷新函数
 
-### 3. 全局刷新范围
-- **图形化查询**: 可用数据源列表自动更新
-- **数据表管理**: 表列表自动更新
-- **SQL执行器**: 表选择器自动更新
-- **异步任务列表**: 任务状态自动更新
-- **数据源列表**: 所有数据源自动更新
+所有刷新操作必须使用 `frontend/src/new/utils/cacheInvalidation.ts` 中的函数：
 
-## 🚫 严格禁止的刷新模式
-- **禁止绕过** `requestManager.clearAllCache()` 缓存清理
-- **禁止使用** 旧的 `getDuckDBTables()` API
-- **禁止忽略** 异步任务完成后的刷新
-- **禁止硬编码** 刷新逻辑到各个组件
-- **禁止使用** 不一致的API端点
+```typescript
+import { 
+  invalidateAfterTableCreate,
+  invalidateAfterFileUpload,
+  invalidateAfterTableDelete,
+  invalidateAllDataCaches,
+} from '@/new/utils/cacheInvalidation';
+```
 
-## ✅ 必须遵循的刷新规范
-- **统一使用** `triggerRefresh()` 触发刷新
-- **统一使用** `requestManager.clearAllCache()` 清理缓存
-- **统一使用** `getDuckDBTablesEnhanced()` 获取数据
-- **统一使用** `onTaskCompleted` 回调处理任务完成
-- **统一使用** 防抖机制避免重复刷新
+| 函数 | 使用场景 |
+|------|----------|
+| `invalidateAfterTableCreate()` | 表创建后（saveAsTable、粘贴数据） |
+| `invalidateAfterFileUpload()` | 文件上传后（CSV/Excel/Parquet/URL） |
+| `invalidateAfterTableDelete()` | 表删除后 |
+| `invalidateAllDataCaches()` | 全局刷新（含外部数据库 schemas） |
+
+### 2. 必须刷新的场景
+
+**前端调用点**：
+
+| 场景 | 文件 | 刷新函数 |
+|------|------|----------|
+| SQL saveAsTable | `useSQLEditor.ts` | `invalidateAllDataCaches()` |
+| 可视化查询 saveAsTable | `useQueryBuilder.ts` | `invalidateAfterTableCreate()` |
+| 粘贴数据创建表 | `DataPasteCard.tsx` | `invalidateAfterTableCreate()` |
+| 文件上传 | `UploadPanel.tsx` | `invalidateAfterFileUpload()` |
+| 表删除 | `ContextMenu.tsx` | `invalidateAfterTableDelete()` |
+
+**后端元数据记录**：
+
+表创建后必须调用 `file_datasource_manager.save_file_datasource()` 记录元数据（含 `created_at`），确保表列表时间排序正确。
+
+### 3. 刷新工作流
+
+```
+表创建/删除操作
+    ↓
+后端：save_file_datasource() 记录元数据
+    ↓
+前端：invalidateAfter*() 清除缓存
+    ↓
+TanStack Query 自动 refetch
+    ↓
+UI 更新
+```
+
+## 🚫 严格禁止
+
+- **禁止在创建表后遗漏前端缓存刷新调用**
+- **禁止在创建表后遗漏后端元数据记录**
+- **禁止绕过 `cacheInvalidation.ts` 自行实现刷新逻辑**
+- **禁止使用旧布局的 `requestManager.clearAllCache()`**
 
 ## 📁 相关文件参考
-- 主应用: [frontend/src/ShadcnApp.jsx](mdc:frontend/src/ShadcnApp.jsx)
-- 请求管理器: [frontend/src/utils/requestManager.js](mdc:frontend/src/utils/requestManager.js)
-- API客户端: [frontend/src/services/apiClient.js](mdc:frontend/src/services/apiClient.js)
-- 异步任务列表: [frontend/src/components/AsyncTasks/AsyncTaskList.jsx](mdc:frontend/src/components/AsyncTasks/AsyncTaskList.jsx)
+
+- 缓存失效工具: [frontend/src/new/utils/cacheInvalidation.ts](mdc:frontend/src/new/utils/cacheInvalidation.ts)
+- DuckDB 表 Hook: [frontend/src/new/hooks/useDuckDBTables.ts](mdc:frontend/src/new/hooks/useDuckDBTables.ts)
+- 数据源 Hook: [frontend/src/new/hooks/useDataSources.ts](mdc:frontend/src/new/hooks/useDataSources.ts)
+- 文件数据源管理器: [api/core/file_datasource_manager.py](mdc:api/core/file_datasource_manager.py)

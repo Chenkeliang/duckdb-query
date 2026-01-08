@@ -6,6 +6,7 @@
  */
 
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     DndContext,
     DragEndEvent,
@@ -62,6 +63,7 @@ const SortableItem: React.FC<SortableItemProps> = ({
     onDelete,
     disabled,
 }) => {
+    const { t } = useTranslation('common');
     const {
         attributes,
         listeners,
@@ -90,7 +92,7 @@ const SortableItem: React.FC<SortableItemProps> = ({
                     {...attributes}
                     {...listeners}
                     className="cursor-grab hover:bg-muted p-0.5 rounded touch-none"
-                    aria-label="拖拽排序"
+                    aria-label={t('query.filter.dragToSort', 'Drag to sort')}
                 >
                     <Grip className="h-3 w-3 text-muted-foreground" />
                 </button>

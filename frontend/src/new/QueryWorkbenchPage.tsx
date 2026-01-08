@@ -1,7 +1,8 @@
 import * as React from "react";
-import { useTranslation } from "react-i18next";
+
 import { QueryWorkspace } from "./Query/QueryWorkspace";
 import { AsyncTaskPanel } from "./Query/AsyncTasks";
+import { useAsyncTaskMonitor } from "./hooks/useAsyncTaskMonitor";
 
 /**
  * 查询工作台页面
@@ -26,7 +27,10 @@ export const QueryWorkbenchPage: React.FC<QueryWorkbenchPageProps> = ({
   previewSQL,
   onPreviewSQL,
 }) => {
-  const { t } = useTranslation("common");
+
+
+  // 启动异步任务监控
+  useAsyncTaskMonitor();
 
   return (
     <div className="h-full w-full">

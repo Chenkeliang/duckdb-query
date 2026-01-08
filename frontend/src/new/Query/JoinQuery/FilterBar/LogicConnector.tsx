@@ -54,7 +54,7 @@ export const LogicConnector: React.FC<LogicConnectorProps> = ({
     };
 
     const nextLogic = logic === 'AND' ? 'OR' : 'AND';
-    const tooltipText = t('filter.logic.toggle', '点击切换为 {{logic}}', { logic: nextLogic });
+    const tooltipText = t('query.filter.logic.toggle', '点击切换为 {{logic}}', { logic: nextLogic });
 
     return (
         <TooltipProvider>
@@ -79,7 +79,7 @@ export const LogicConnector: React.FC<LogicConnectorProps> = ({
                         onClick={handleClick}
                         onKeyDown={handleKeyDown}
                         disabled={disabled}
-                        aria-label={t('filter.logic.toggle', '切换逻辑') + `: ${logic}`}
+                        aria-label={t('query.filter.logic.toggle', '切换逻辑') + `: ${logic}`}
                         role="button"
                     >
                         <span className="mx-1">—</span>

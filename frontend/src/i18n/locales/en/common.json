@@ -86,7 +86,9 @@
     "delete": "Delete",
     "close": "Close",
     "confirmDelete": "Confirm Delete",
-    "noData": "No data"
+    "noData": "No data",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "dataSource": {
     "previewTable": "Preview table: {{tableName}}",
@@ -148,6 +150,7 @@
     "retryFailed": "Retry failed: {{message}}",
     "deleteSuccess": "Task deleted",
     "deleteFailed": "Delete failed: {{message}}",
+    "taskCompletedRefresh": "Async task completed, data sources refreshed",
     "submitSuccess": "Async task submitted",
     "submitFailed": "Submit failed: {{message}}",
     "status.pending": "Pending",
@@ -344,11 +347,11 @@
         "label": "Apply To",
         "on": "ON Clause",
         "where": "WHERE Clause",
-        "helpText": "ON clause conditions apply during JOIN, preserving unmatched rows (as NULL). WHERE clause conditions apply after JOIN, filtering out unmatched rows.",
+        "helpText": "ON clause conditions apply during JOIN, preserving unmatched rows (as NULL). WHERE clause conditions apply after JOIN, filtering out unmatched rows. When querying external database tables, it is recommended to add time range conditions to avoid full table scans that may cause long query times.",
         "onHint": "Filter during JOIN",
-        "whereHint": "Filter in results",
-        "recommended": "Recommended"
-      }
+        "whereHint": "Filter in results"
+      },
+      "dragToSort": "Drag to sort"
     },
     "validation": {
       "noTable": "Please select a table",
@@ -402,7 +405,18 @@
       "usageCount": "Usage count",
       "createdDate": "Created date",
       "use": "Use",
-      "save": "Bookmark"
+      "save": "Bookmark",
+      "saveDialog": {
+        "title": "Save Query",
+        "description": "Save the current SQL query for later use.",
+        "name": "Name",
+        "namePlaceholder": "Enter query name...",
+        "descriptionLabel": "Description (optional)",
+        "descriptionPlaceholder": "Add description...",
+        "sqlPreview": "SQL Preview",
+        "saving": "Saving...",
+        "saveBtn": "Save"
+      }
     },
     "history": {
       "title": "Query History",
@@ -478,6 +492,7 @@
       "removeJoin": "Remove join",
       "hint": "Double-click data source on the left to add table",
       "primaryTable": "Primary",
+      "selectConditionComment": "Please select join condition",
       "remove": "Remove",
       "duckdbTable": "DuckDB Table",
       "moreColumns": "more columns",
@@ -687,6 +702,32 @@
       "fileTooLarge": "File size exceeds {{size}}, please use chunked upload.",
       "excelUploadSuccess": "Excel uploaded, please choose sheets",
       "excelSelectAtLeastOne": "Please select at least one sheet to import",
+      "excelSheet": {
+        "title": "Excel Sheet Import",
+        "description": "Select sheets to import and confirm header settings",
+        "file": "File:",
+        "source": "Source:",
+        "sourceServer": "Server file",
+        "sourceUpload": "Uploaded file",
+        "loading": "Loading sheet info...",
+        "selectAll": "Select All",
+        "selectNone": "Select None",
+        "rows": "{{count}} rows",
+        "columns": "{{count}} cols",
+        "hasMergedCells": "Contains merged cells",
+        "targetTable": "Target table name",
+        "tablePlaceholder": "Enter table name",
+        "headerRows": "Header rows",
+        "headerRowIndex": "Header start row",
+        "fillMerged": "Fill merged cells",
+        "mergedWarning": "This sheet contains merged cells. It is recommended to enable the 'Fill merged cells' option.",
+        "preview": "Data preview",
+        "cancel": "Cancel",
+        "import": "Import selected sheets",
+        "missingFileInfo": "Missing file information",
+        "fetchFailed": "Failed to fetch sheet info",
+        "importFailed": "Import failed"
+      },
       "uploadSuccessTable": "File uploaded, table created: {{table}}",
       "uploadFail": "File upload failed",
       "enterUrl": "Please enter file URL",

@@ -25,7 +25,11 @@ from core.duckdb_pool import interruptible_connection
 from core.utils import normalize_dataframe_output
 from core.timezone_utils import format_storage_time_for_response
 from core.resource_manager import save_upload_file
-from core.file_datasource_manager import file_datasource_manager
+from core.file_datasource_manager import (
+    file_datasource_manager,
+    build_table_metadata_snapshot,
+)
+from core.timezone_utils import get_current_time_iso
 from core.visual_query_generator import get_table_metadata
 from core.database_manager import db_manager
 from core.encryption import password_encryptor
@@ -379,6 +383,24 @@ async def execute_duckdb_query(
                             conn.execute(create_sql)
                             saved_table = table_name
                             logger.info(f"查询结果已保存为表: {table_name}")
+                            
+                            # 保存表元数据（含创建时间）
+                            try:
+                                metadata_snapshot = build_table_metadata_snapshot(conn, table_name)
+                                table_metadata = {
+                                    "source_id": table_name,
+                                    "filename": f"sql_query_result",
+                                    "file_path": f"duckdb://{table_name}",
+                                    "file_type": "duckdb_sql_query",
+                                    "created_at": get_current_time_iso(),
+                                    "source_sql": save_sql,
+                                    "schema_version": 2,
+                                    **metadata_snapshot,
+                                }
+                                file_datasource_manager.save_file_datasource(table_metadata)
+                                logger.info(f"SQL save_as_table 元数据保存成功: {table_name}")
+                            except Exception as meta_error:
+                                logger.warning(f"保存表元数据失败（非致命）: {str(meta_error)}")
                         except Exception as save_error:
                             logger.warning(f"保存查询结果为表失败: {str(save_error)}")
         else:
@@ -397,6 +419,24 @@ async def execute_duckdb_query(
                         con.execute(create_sql)
                         saved_table = table_name
                         logger.info(f"查询结果已保存为表: {table_name}")
+                        
+                        # 保存表元数据（含创建时间）
+                        try:
+                            metadata_snapshot = build_table_metadata_snapshot(con, table_name)
+                            table_metadata = {
+                                "source_id": table_name,
+                                "filename": f"sql_query_result",
+                                "file_path": f"duckdb://{table_name}",
+                                "file_type": "duckdb_sql_query",
+                                "created_at": get_current_time_iso(),
+                                "source_sql": save_sql,
+                                "schema_version": 2,
+                                **metadata_snapshot,
+                            }
+                            file_datasource_manager.save_file_datasource(table_metadata)
+                            logger.info(f"SQL save_as_table 元数据保存成功: {table_name}")
+                        except Exception as meta_error:
+                            logger.warning(f"保存表元数据失败（非致命）: {str(meta_error)}")
                     except Exception as save_error:
                         logger.warning(f"保存查询结果为表失败: {str(save_error)}")
 

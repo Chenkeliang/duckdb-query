@@ -2,14 +2,12 @@
  * PlacementSelector - 条件应用位置选择器
  * 
  * 用于在 FilterPopover 中选择条件应用于 ON 子句还是 WHERE 子句
- * 支持智能推荐（LEFT JOIN 右表条件推荐 ON）
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Label } from '@/new/components/ui/label';
 import { Button } from '@/new/components/ui/button';
-import { Badge } from '@/new/components/ui/badge';
 import {
     Tooltip,
     TooltipContent,
@@ -25,7 +23,7 @@ interface PlacementSelectorProps {
     value: FilterPlacement;
     /** 值变更回调 */
     onChange: (value: FilterPlacement) => void;
-    /** 位置上下文（用于智能推荐） */
+    /** 位置上下文（保留接口兼容性） */
     context?: PlacementContext;
     /** 是否禁用 */
     disabled?: boolean;
@@ -37,28 +35,16 @@ interface PlacementSelectorProps {
 export const PlacementSelector: React.FC<PlacementSelectorProps> = ({
     value,
     onChange,
-    context,
+    context: _context,
     disabled = false,
 }) => {
     const { t } = useTranslation('common');
-
-    // 智能推荐的 placement
-    const recommendedPlacement = useMemo((): FilterPlacement => {
-        if (!context) return 'where';
-        if (
-            context.isRightTable &&
-            (context.joinType === 'LEFT JOIN' || context.joinType === 'FULL JOIN')
-        ) {
-            return 'on';
-        }
-        return 'where';
-    }, [context]);
 
     return (
         <div className="space-y-2">
             <div className="flex items-center gap-1.5">
                 <Label className="text-xs font-medium">
-                    {t('filter.placement.label', '应用位置')}
+                    {t('query.filter.placement.label', '应用位置')}
                 </Label>
                 <TooltipProvider>
                     <Tooltip>
@@ -69,7 +55,7 @@ export const PlacementSelector: React.FC<PlacementSelectorProps> = ({
                             <p className="text-xs">
                                 {t(
                                     'filter.placement.helpText',
-                                    'ON 子句条件在 JOIN 时生效，保留无匹配的行（显示为 NULL）。WHERE 子句条件在 JOIN 后生效，会过滤掉不匹配的行。'
+                                    'ON 子句条件在 JOIN 时生效，保留无匹配的行（显示为 NULL）。WHERE 子句条件在 JOIN 后生效，会过滤掉不匹配的行。查询外部数据库表时，建议添加时间范围条件以避免全表扫描导致查询时间过长。'
                                 )}
                             </p>
                         </TooltipContent>
@@ -91,18 +77,11 @@ export const PlacementSelector: React.FC<PlacementSelectorProps> = ({
                     onClick={() => onChange('on')}
                 >
                     <div className="flex flex-col items-start gap-0.5 w-full">
-                        <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm">
-                                {t('filter.placement.on', 'ON 子句')}
-                            </span>
-                            {recommendedPlacement === 'on' && (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10">
-                                    {t('filter.placement.recommended', '推荐')}
-                                </Badge>
-                            )}
-                        </div>
+                        <span className="font-medium text-sm">
+                            {t('query.filter.placement.on', 'ON 子句')}
+                        </span>
                         <span className="text-[10px] text-muted-foreground font-normal text-left">
-                            {t('filter.placement.onHint', '在 JOIN 时过滤')}
+                            {t('query.filter.placement.onHint', '在 JOIN 时过滤')}
                         </span>
                     </div>
                 </Button>
@@ -120,18 +99,11 @@ export const PlacementSelector: React.FC<PlacementSelectorProps> = ({
                     onClick={() => onChange('where')}
                 >
                     <div className="flex flex-col items-start gap-0.5 w-full">
-                        <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm">
-                                {t('filter.placement.where', 'WHERE 子句')}
-                            </span>
-                            {recommendedPlacement === 'where' && (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10">
-                                    {t('filter.placement.recommended', '推荐')}
-                                </Badge>
-                            )}
-                        </div>
+                        <span className="font-medium text-sm">
+                            {t('query.filter.placement.where', 'WHERE 子句')}
+                        </span>
                         <span className="text-[10px] text-muted-foreground font-normal text-left">
-                            {t('filter.placement.whereHint', '在结果中过滤')}
+                            {t('query.filter.placement.whereHint', '在结果中过滤')}
                         </span>
                     </div>
                 </Button>

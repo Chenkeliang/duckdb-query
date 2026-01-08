@@ -217,6 +217,34 @@ const mutation = useMutation({
 });
 ```
 
+### 4.5 表操作后刷新规则（强制）
+
+任何创建/删除 DuckDB 表的操作**必须**调用缓存刷新：
+
+```tsx
+import { 
+  invalidateAfterTableCreate, 
+  invalidateAfterTableDelete 
+} from '@/new/utils/cacheInvalidation';
+
+// 创建表后
+await invalidateAfterTableCreate(queryClient);
+
+// 删除表后
+await invalidateAfterTableDelete(queryClient);
+```
+
+**必须刷新的场景清单**：
+| 场景 | 刷新函数 |
+|------|----------|
+| SQL `saveAsTable` | `invalidateAllDataCaches()` |
+| 可视化查询 `saveAsTable` | `invalidateAfterTableCreate()` |
+| 粘贴数据创建表 | `invalidateAfterTableCreate()` |
+| 文件上传/导入 | `invalidateAfterFileUpload()` |
+| 表删除 | `invalidateAfterTableDelete()` |
+
+> 详见 `.kiro/steering/data-source-refresh-patterns.md`
+
 ---
 
 ## 5. UI / 样式规范（新布局，**禁止自定义**）

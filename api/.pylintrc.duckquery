@@ -1,0 +1,106 @@
+# DuckQuery 项目 Pylint 配置
+
+[MASTER]
+# 加载自定义插件
+load-plugins=duckquery_pylint
+
+# 并行作业数
+jobs=4
+
+# Python 代码的文件扩展名
+extension-pkg-whitelist=
+
+[MESSAGES CONTROL]
+# 启用的检查
+enable=
+    response-format,
+    connection-pool,
+    message-code,
+    async-task
+
+# 禁用的检查（根据项目需要调整）
+disable=
+    missing-docstring,
+    too-few-public-methods,
+    too-many-arguments,
+    too-many-locals,
+    too-many-branches,
+    too-many-statements,
+    too-many-instance-attributes,
+    fixme,
+    invalid-name
+
+[REPORTS]
+# 输出格式
+output-format=colorized
+
+# 报告评分
+score=yes
+
+[BASIC]
+# 命名规范
+good-names=i,j,k,ex,Run,_,id,db,conn
+
+# 常量命名模式
+const-rgx=(([A-Z_][A-Z0-9_]*)|(__.*__))$
+
+# 函数命名模式
+function-rgx=[a-z_][a-z0-9_]{2,50}$
+
+# 方法命名模式
+method-rgx=[a-z_][a-z0-9_]{2,50}$
+
+# 类命名模式
+class-rgx=[A-Z_][a-zA-Z0-9]+$
+
+# 模块命名模式
+module-rgx=(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$
+
+[FORMAT]
+# 最大行长度
+max-line-length=120
+
+# 缩进字符串
+indent-string='    '
+
+# 每个缩进级别的空格数
+indent-after-paren=4
+
+[DESIGN]
+# 最大参数数量
+max-args=10
+
+# 最大局部变量数量
+max-locals=25
+
+# 最大返回语句数量
+max-returns=10
+
+# 最大分支数量
+max-branches=20
+
+# 最大语句数量
+max-statements=100
+
+[IMPORTS]
+# 已弃用的模块
+deprecated-modules=optparse,tkinter.tix
+
+[EXCEPTIONS]
+# 可以捕获的异常
+overgeneral-exceptions=Exception
+
+[CUSTOM]
+# DuckQuery 自定义配置
+
+# 强制使用响应格式辅助函数
+enforce-response-format=yes
+
+# 强制使用连接池
+enforce-connection-pool=yes
+
+# 检查 MessageCode 定义
+check-message-code=yes
+
+# 检查异步任务使用
+check-async-task=yes
