@@ -144,8 +144,8 @@ export const GlobalHistoryPanel: React.FC<GlobalHistoryPanelProps> = ({
                                             </span>
                                         </div>
 
-                                        <div className="font-mono text-sm text-foreground mb-2 line-clamp-3 bg-muted/30 p-2 rounded border border-border/50">
-                                            {truncateSQL(item.sql, 150)}
+                                        <div className="font-mono text-sm text-foreground mb-2 bg-muted/30 p-2 rounded border border-border/50 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
+                                            {item.sql}
                                         </div>
 
                                         <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
