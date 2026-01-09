@@ -1,0 +1,43 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# DuckQuery Git Pre-commit Hook
+# 在提交前自动检查代码规范
+
+echo "🔍 运行代码规范检查..."
+
+# 获取暂存的文件
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
+
+# 检查前端文件
+FRONTEND_FILES=$(echo "$STAGED_FILES" | grep "^frontend/src/" || true)
+if [ -n "$FRONTEND_FILES" ]; then
+    echo "📦 检查前端文件..."
+    cd frontend
+    npm run lint -- --quiet
+    FRONTEND_EXIT=$?
+    cd ..
+    
+    if [ $FRONTEND_EXIT -ne 0 ]; then
+        echo "❌ 前端代码检查失败，请修复后再提交"
+        exit 1
+    fi
+fi
+
+# 检查后端文件
+BACKEND_FILES=$(echo "$STAGED_FILES" | grep "^api/" | grep "\.py$" || true)
+if [ -n "$BACKEND_FILES" ]; then
+    echo "🐍 检查后端文件..."
+    cd api
+    echo "$BACKEND_FILES" | xargs pylint --rcfile=../.pylintrc
+    BACKEND_EXIT=$?
+    cd ..
+    
+    if [ $BACKEND_EXIT -ne 0 ]; then
+        echo "❌ 后端代码检查失败，请修复后再提交"
+        exit 1
+    fi
+fi
+
+echo "✅ 代码检查通过"
+exit 0
