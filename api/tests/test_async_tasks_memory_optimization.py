@@ -95,8 +95,8 @@ class TestAsyncQueryMemoryOptimization:
             shutil.rmtree(self.temp_dir)
 
     @patch("routers.async_tasks.build_table_metadata_snapshot", return_value={"row_count": 100})
-    @patch("core.duckdb_pool.get_connection_pool")
-    @patch("core.duckdb_pool.interruptible_connection")
+    @patch("core.database.duckdb_pool.get_connection_pool")
+    @patch("core.database.duckdb_pool.interruptible_connection")
     @patch("routers.async_tasks.task_manager")
     @patch("routers.async_tasks.file_datasource_manager")
     def test_execute_async_query_creates_persistent_table(
@@ -140,8 +140,8 @@ class TestAsyncQueryMemoryOptimization:
         mock_task_manager.complete_task.assert_called_once()
 
     @patch("routers.async_tasks.build_table_metadata_snapshot", return_value={"row_count": 500})
-    @patch("core.duckdb_pool.get_connection_pool")
-    @patch("core.duckdb_pool.interruptible_connection")
+    @patch("core.database.duckdb_pool.get_connection_pool")
+    @patch("core.database.duckdb_pool.interruptible_connection")
     @patch("routers.async_tasks.task_manager")
     def test_execute_async_query_memory_cleanup(
         self, mock_task_manager, mock_interruptible, mock_get_pool, mock_metadata
@@ -170,7 +170,7 @@ class TestAsyncQueryMemoryOptimization:
         # 验证任务完成
         mock_task_manager.complete_task.assert_called_once()
 
-    @patch("core.duckdb_pool.get_connection_pool")
+    @patch("core.database.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
     def test_generate_download_file_on_demand(self, mock_task_manager, mock_get_pool):
         """测试按需生成下载文件功能"""
@@ -205,7 +205,7 @@ class TestAsyncQueryMemoryOptimization:
         assert "file_path" in mock_task.result_info
         assert mock_task.result_info["file_format"] == format
 
-    @patch("core.duckdb_pool.get_connection_pool")
+    @patch("core.database.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
     def test_generate_download_file_validation(self, mock_task_manager, mock_get_pool):
         """测试按需文件生成的验证逻辑"""
@@ -240,7 +240,7 @@ class TestAsyncQueryMemoryOptimization:
         with pytest.raises(Exception, match="生成下载文件失败: 任务 .* 缺少表名信息"):
             generate_download_file(task_id, "csv")
 
-    @patch("core.duckdb_pool.get_connection_pool")
+    @patch("core.database.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
     def test_cleanup_old_files(self, mock_task_manager, mock_get_pool):
         """测试文件清理功能"""
@@ -290,7 +290,7 @@ class TestAsyncQueryMemoryOptimization:
         with patch("routers.async_tasks.task_manager") as mock_task_manager:
             mock_task_manager.create_task.return_value = "test_task_123"
 
-            response = client.post("/api/async_query", json=query_data)
+            response = client.post("/api/async-tasks", json=query_data)
 
             assert response.status_code == 200
             data = response.json()
@@ -302,7 +302,7 @@ class TestAsyncQueryMemoryOptimization:
             # list_tasks 返回 (tasks, total_count) 元组
             mock_task_manager.list_tasks.return_value = ([], 0)
 
-            response = client.get("/api/async_tasks")
+            response = client.get("/api/async-tasks")
 
             assert response.status_code == 200
             data = response.json()
@@ -319,7 +319,7 @@ class TestAsyncQueryMemoryOptimization:
             }
             mock_task_manager.get_task.return_value = mock_task
 
-            response = client.get("/api/async_tasks/test_task_123")
+            response = client.get("/api/async-tasks/test_task_123")
 
             assert response.status_code == 200
             data = response.json()
@@ -367,8 +367,8 @@ class TestMemoryOptimizationIntegration:
             shutil.rmtree(self.temp_dir)
 
     @patch("routers.async_tasks.build_table_metadata_snapshot", return_value={"row_count": 5000})
-    @patch("core.duckdb_pool.get_connection_pool")
-    @patch("core.duckdb_pool.interruptible_connection")
+    @patch("core.database.duckdb_pool.get_connection_pool")
+    @patch("core.database.duckdb_pool.interruptible_connection")
     @patch("routers.async_tasks.task_manager")
     @patch("routers.async_tasks.file_datasource_manager")
     def test_full_async_query_workflow(
@@ -407,8 +407,8 @@ class TestMemoryOptimizationIntegration:
         mock_task_manager.complete_task.assert_called_once()
 
     @patch("routers.async_tasks.build_table_metadata_snapshot", return_value={"row_count": 1000000})
-    @patch("core.duckdb_pool.get_connection_pool")
-    @patch("core.duckdb_pool.interruptible_connection")
+    @patch("core.database.duckdb_pool.get_connection_pool")
+    @patch("core.database.duckdb_pool.interruptible_connection")
     @patch("routers.async_tasks.task_manager")
     def test_memory_usage_comparison(self, mock_task_manager, mock_interruptible, mock_get_pool, mock_metadata):
         """测试内存使用对比（模拟）"""
@@ -443,8 +443,8 @@ class TestMemoryOptimizationIntegration:
 class TestErrorHandling:
     """测试错误处理"""
 
-    @patch("core.duckdb_pool.get_connection_pool")
-    @patch("core.duckdb_pool.interruptible_connection")
+    @patch("core.database.duckdb_pool.get_connection_pool")
+    @patch("core.database.duckdb_pool.interruptible_connection")
     @patch("routers.async_tasks.task_manager")
     def test_execute_async_query_database_error(
         self, mock_task_manager, mock_interruptible, mock_get_pool
@@ -472,7 +472,7 @@ class TestErrorHandling:
         # 验证任务被标记为失败
         mock_task_manager.fail_task.assert_called_once()
 
-    @patch("core.duckdb_pool.get_connection_pool")
+    @patch("core.database.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
     def test_generate_download_file_table_not_found(
         self, mock_task_manager, mock_get_pool

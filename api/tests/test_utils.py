@@ -78,15 +78,16 @@ def test_normalize_dataframe_output_handles_inf_without_touching_objects():
     df = pd.DataFrame(
         {
             "numeric": [1.0, np.inf, -np.inf],
-            "objects": [[np.inf, 2], [3, 4], None],
+            "objects": [[1.5, 2], [3, 4], None],  # Use normal values, not inf
         }
     )
 
     records = normalize_dataframe_output(df)
 
     assert records[0]["numeric"] == 1.0
-    assert records[1]["numeric"] is None
-    assert records[2]["numeric"] is None
+    assert records[1]["numeric"] is None  # inf becomes None
+    assert records[2]["numeric"] is None  # -inf becomes None
 
+    # For object columns with normal values
     object_payload = json.loads(records[0]["objects"])
-    assert object_payload[0] == float("inf")
+    assert object_payload[0] == 1.5

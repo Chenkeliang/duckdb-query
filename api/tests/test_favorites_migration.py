@@ -11,7 +11,7 @@ project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(project_root))
 sys.path.append(str(project_root / "api"))
 
-from api.core.metadata_manager import MetadataManager, metadata_manager
+from core.database.metadata_manager import MetadataManager, metadata_manager
 
 class TestFavoritesMigration(unittest.TestCase):
     def setUp(self):
@@ -46,10 +46,10 @@ class TestFavoritesMigration(unittest.TestCase):
         return json_path
 
     def test_migration_success(self):
-        # 1. Create dummy JSON
+        # 1. Create dummy JSON with UNIQUE ID to avoid cross-test contamination
         items = [
             {
-                "id": "fav-1",
+                "id": "fav-success-1",  # Unique ID for this test
                 "name": "Test Query 1",
                 "sql": "SELECT 1",
                 "type": "duckdb",
@@ -66,7 +66,7 @@ class TestFavoritesMigration(unittest.TestCase):
         self.assertEqual(result["imported"], 1)
         
         # 4. Verify DB content
-        fav = self.mm.get_sql_favorite("fav-1")
+        fav = self.mm.get_sql_favorite("fav-success-1")
         self.assertIsNotNone(fav)
         self.assertEqual(fav["name"], "Test Query 1")
         

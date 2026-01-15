@@ -432,7 +432,7 @@ class TestVisualQueryModeGeneration:
             manual_column_values=["2022", "2023"],
         )
 
-        with patch("core.visual_query_generator.config_manager") as mock_manager:
+        with patch("core.services.visual_query_generator.config_manager") as mock_manager:
             mock_manager.get_app_config.return_value = Mock(
                 enable_pivot_tables=True,
                 pivot_table_extension="pivot_table",
@@ -474,7 +474,7 @@ class TestVisualQueryModeGeneration:
             strategy="native",
         )
 
-        with patch("core.visual_query_generator.config_manager") as mock_manager:
+        with patch("core.services.visual_query_generator.config_manager") as mock_manager:
             mock_manager.get_app_config.return_value = Mock(
                 enable_pivot_tables=True,
                 pivot_table_extension="pivot_table",
@@ -519,7 +519,7 @@ class TestVisualQueryModeGeneration:
             strategy="native",
         )
 
-        with patch("core.visual_query_generator.config_manager") as mock_manager:
+        with patch("core.services.visual_query_generator.config_manager") as mock_manager:
             mock_manager.get_app_config.return_value = Mock(
                 enable_pivot_tables=True,
                 pivot_table_extension="pivot_table",
@@ -567,8 +567,8 @@ class TestVisualQueryModeGeneration:
         mock_execute = Mock()
         mock_execute.fetchdf.return_value = pd.DataFrame({"v": ["2022", "2023"]})
 
-        with patch("core.visual_query_generator.config_manager") as mock_manager, \
-            patch("core.duckdb_engine.get_db_connection") as mock_conn:
+        with patch("core.services.visual_query_generator.config_manager") as mock_manager, \
+            patch("core.database.duckdb_engine.get_db_connection") as mock_conn:
             mock_manager.get_app_config.return_value = Mock(
                 enable_pivot_tables=True,
                 pivot_table_extension="pivot_table",
@@ -607,7 +607,7 @@ class TestVisualQueryModeGeneration:
             ],
         )
 
-        with patch("core.visual_query_generator.config_manager") as mock_manager:
+        with patch("core.services.visual_query_generator.config_manager") as mock_manager:
             mock_manager.get_app_config.return_value = Mock(
                 enable_pivot_tables=False,
                 pivot_table_extension="pivot_table",
@@ -843,7 +843,7 @@ class TestTableMetadata:
         assert result.columns[0].column_name == "col1"
         assert result.columns[1].column_name == "col2"
 
-    @patch("core.visual_query_generator.get_column_statistics")
+    @patch("core.services.visual_query_generator.get_column_statistics")
     def test_get_table_metadata_uses_cache(self, mock_get_column_stats):
         """Calling get_table_metadata twice should hit DuckDB once when cache enabled."""
         table_metadata_cache.invalidate()

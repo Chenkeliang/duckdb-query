@@ -31,7 +31,7 @@ client = TestClient(app)
 
 
 def test_list_server_mounts(server_mount):
-    response = client.get("/api/server_files/mounts")
+    response = client.get("/api/server-files/mounted")
     assert response.status_code == 200
     mounts = response.json().get("mounts", [])
     assert any(m["label"] == "TestMount" for m in mounts)
@@ -39,7 +39,7 @@ def test_list_server_mounts(server_mount):
 
 def test_browse_server_directory(server_mount):
     mount_dir, _ = server_mount
-    response = client.get("/api/server_files", params={"path": mount_dir})
+    response = client.get("/api/server-files/browse", params={"path": mount_dir})
     assert response.status_code == 200
     payload = response.json()
     assert payload["entries"]
@@ -50,7 +50,7 @@ def test_browse_server_directory(server_mount):
 def test_import_server_file(server_mount):
     _, sample_file = server_mount
     response = client.post(
-        "/api/server_files/import",
+        "/api/server-files/import",
         json={"path": sample_file, "table_alias": "server_file_sample"},
     )
     assert response.status_code == 200
