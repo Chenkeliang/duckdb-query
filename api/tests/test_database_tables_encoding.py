@@ -1,7 +1,7 @@
 """测试数据库表管理 API 的编码处理"""
 
 import pytest
-from api.routers.database_tables import _safe_decode_value, _safe_decode_row
+from routers.database_tables import _safe_decode_value, _safe_decode_row
 
 
 class TestEncodingHandling:

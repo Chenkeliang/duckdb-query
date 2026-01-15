@@ -98,8 +98,7 @@ def test_excel_upload_inspect_import(tmp_path, header_rows):
             table_name = result["target_table"]
             assert "header_rows" in result
             assert "header_row_index" in result
-            count = con.execute(
-                f'SELECT COUNT(*) FROM "{table_name}"'
             count = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+            assert count > 0  # Verify data was imported
     finally:
         cleanup_pending_excel(file_id)
