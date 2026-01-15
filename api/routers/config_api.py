@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from core.config_manager import config_manager
+from core.common.config_manager import config_manager
 
 router = APIRouter()
 

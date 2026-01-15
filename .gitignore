@@ -101,6 +101,9 @@ api/temp_files/*
 !api/temp_files/.gitkeep
 api/exports/*
 !api/exports/.gitkeep
+api/host_documents/
+api/host_downloads/
+api/server_mounts/
 exports/*
 !exports/.gitkeep
 temp_files/*

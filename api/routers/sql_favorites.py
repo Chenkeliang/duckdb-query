@@ -5,8 +5,8 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
 
-from core.metadata_manager import metadata_manager
-from core.timezone_utils import get_current_time
+from core.database.metadata_manager import metadata_manager
+from core.common.timezone_utils import get_current_time
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

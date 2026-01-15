@@ -84,7 +84,7 @@ def migrate_table(main_conn, system_conn, table_name: str) -> bool:
 
 def migrate_all():
     """执行完整迁移"""
-    from core.config_manager import config_manager
+    from core.common.config_manager import config_manager
     
     paths = config_manager.get_duckdb_paths()
     main_db = str(paths.database_path)

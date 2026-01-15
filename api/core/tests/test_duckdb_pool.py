@@ -17,7 +17,7 @@ class TestDiscardConnection(unittest.TestCase):
     @patch('core.duckdb_pool.config_manager')
     def test_discard_nonexistent_connection(self, mock_config):
         """测试销毁不存在的连接返回 False"""
-        from core.duckdb_pool import DuckDBConnectionPool
+        from core.database.duckdb_pool import DuckDBConnectionPool
         
         # 设置 mock 配置
         mock_config.get_app_config.return_value = MagicMock(
@@ -51,7 +51,7 @@ class TestInterruptibleConnectionRegistry(unittest.TestCase):
 
     def test_registration_and_unregistration(self):
         """测试注册和注销流程"""
-        from core.connection_registry import ConnectionRegistry
+        from core.database.connection_registry import ConnectionRegistry
         
         registry = ConnectionRegistry()
         task_id = "test-task-reg"
@@ -75,7 +75,7 @@ class TestInterruptibleConnectionRegistry(unittest.TestCase):
 
     def test_interrupt_registered_connection(self):
         """测试中断已注册的连接"""
-        from core.connection_registry import ConnectionRegistry
+        from core.database.connection_registry import ConnectionRegistry
         
         registry = ConnectionRegistry()
         task_id = "test-task-interrupt"
@@ -93,7 +93,7 @@ class TestInterruptibleConnectionRegistry(unittest.TestCase):
 
     def test_interrupt_unregistered_connection(self):
         """测试中断未注册的连接返回 False"""
-        from core.connection_registry import ConnectionRegistry
+        from core.database.connection_registry import ConnectionRegistry
         
         registry = ConnectionRegistry()
         
@@ -108,7 +108,7 @@ class TestPoolStats(unittest.TestCase):
     @patch('core.duckdb_pool.config_manager')
     def test_get_stats_structure(self, mock_config):
         """测试获取统计信息的结构"""
-        from core.duckdb_pool import DuckDBConnectionPool
+        from core.database.duckdb_pool import DuckDBConnectionPool
         
         mock_config.get_app_config.return_value = MagicMock(
             duckdb_threads=4,
@@ -143,7 +143,7 @@ class TestWatchdogFunctions(unittest.TestCase):
     @unittest.skip("Requires database access - skip in isolated tests")
     def test_start_cancellation_watchdog_singleton(self):
         """测试 watchdog 单例控制"""
-        from core.task_manager import _watchdog_started, _watchdog_lock
+        from core.services.task_manager import _watchdog_started, _watchdog_lock
         
         # 验证全局变量存在
         self.assertIsNotNone(_watchdog_lock)
@@ -152,7 +152,7 @@ class TestWatchdogFunctions(unittest.TestCase):
     @unittest.skip("Requires database access - skip in isolated tests")
     def test_cleanup_functions_exist(self):
         """测试清理函数存在"""
-        from core.task_manager import (
+        from core.services.task_manager import (
             start_cancellation_watchdog,
             cleanup_cancelling_timeout,
             cleanup_stale_registry,

@@ -14,8 +14,8 @@ from models.datasource_models import (
     DataSourceStatus,
     DataSourceFilter,
 )
-from core.database_manager import db_manager  # 使用全局实例
-from core.duckdb_pool import get_connection_pool
+from core.database.database_manager import db_manager  # 使用全局实例
+from core.database.duckdb_pool import get_connection_pool
 
 logger = logging.getLogger(__name__)
 

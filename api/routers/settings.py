@@ -9,7 +9,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from core.duckdb_pool import get_connection_pool
+from core.database.duckdb_pool import get_connection_pool
 from utils.response_helpers import (
     create_success_response,
     create_error_response,

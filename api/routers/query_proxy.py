@@ -13,8 +13,8 @@ from fastapi.responses import JSONResponse
 import numpy as np
 from pydantic import BaseModel  # 补充 BaseModel 导入
 
-from core.duckdb_engine import get_db_connection
-from core.timezone_utils import get_current_time  # 导入时区工具
+from core.database.duckdb_engine import get_db_connection
+from core.common.timezone_utils import get_current_time  # 导入时区工具
 from models.query_models import QueryRequest, QueryResponse
 
 logger = logging.getLogger(__name__)

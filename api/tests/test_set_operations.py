@@ -29,7 +29,7 @@ from models.visual_query_models import (
     ColumnMapping,
     UnionOperationRequest,
 )
-from core.visual_query_generator import (
+from core.services.visual_query_generator import (
     SetOperationQueryGenerator,
     generate_set_operation_sql,
     estimate_set_operation_rows,

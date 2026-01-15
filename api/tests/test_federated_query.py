@@ -249,7 +249,7 @@ class TestFederatedQueryEndpointLogic:
         
     def test_build_attach_sql_integration(self):
         """测试 build_attach_sql 集成"""
-        from core.duckdb_engine import build_attach_sql
+        from core.database.duckdb_engine import build_attach_sql
         
         config = {
             'type': 'mysql',

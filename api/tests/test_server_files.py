@@ -7,8 +7,8 @@ pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
 
 from main import app
-from core.config_manager import config_manager
-from core.duckdb_engine import get_db_connection
+from core.common.config_manager import config_manager
+from core.database.duckdb_engine import get_db_connection
 
 
 @pytest.fixture(scope="module", autouse=True)

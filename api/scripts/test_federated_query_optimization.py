@@ -19,10 +19,10 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import duckdb
-from core.config_manager import config_manager
-from core.database_manager import db_manager
-from core.duckdb_engine import build_attach_sql
-from core.encryption import password_encryptor
+from core.common.config_manager import config_manager
+from core.database.database_manager import db_manager
+from core.database.duckdb_engine import build_attach_sql
+from core.security.encryption import password_encryptor
 
 
 def get_mysql_config(connection_id: str) -> dict:

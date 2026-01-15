@@ -32,7 +32,7 @@ from models.visual_query_models import (
     TypeConflictModel,
     ColumnTypeReference,
 )
-from core.duckdb_engine import (
+from core.database.duckdb_engine import (
     get_db_connection,
     execute_query,
     create_persistent_table,
@@ -41,8 +41,8 @@ from core.duckdb_engine import (
     generate_improved_column_aliases,
     detect_column_conflicts,
 )
-from core.duckdb_pool import interruptible_connection
-from core.visual_query_generator import (
+from core.database.duckdb_pool import interruptible_connection
+from core.services.visual_query_generator import (
     validate_query_config,
     get_column_statistics,
     estimate_query_performance,
@@ -52,13 +52,13 @@ from core.visual_query_generator import (
     _build_where_clause,
     _quote_identifier,
 )
-from core.file_datasource_manager import (
+from core.data.file_datasource_manager import (
     file_datasource_manager,
     build_table_metadata_snapshot,
 )
-from core.validators import validate_table_name
-from core.file_utils import load_file_to_duckdb
-from core.utils import normalize_dataframe_output
+from core.common.validators import validate_table_name
+from core.data.file_utils import load_file_to_duckdb
+from core.common.utils import normalize_dataframe_output
 import pandas as pd
 import numpy as np
 import io
@@ -305,7 +305,7 @@ def remove_auto_added_limit(sql: str) -> str:
     Returns:
         用户原始SQL意图
     """
-    from core.config_manager import config_manager
+    from core.common.config_manager import config_manager
 
     # 获取系统配置的最大行数
     try:
@@ -528,7 +528,7 @@ async def preview_visual_query(
 
         preview_limit = request.limit
         if preview_limit is None or preview_limit <= 0:
-            from core.config_manager import config_manager
+            from core.common.config_manager import config_manager
 
             preview_limit = (
                 config_manager.get_app_config().max_query_rows or 10
@@ -1327,7 +1327,7 @@ async def perform_query(
                         f"处理数据库数据源: {source.id}, 连接ID: {connection_id}"
                     )
 
-                    from core.database_manager import db_manager
+                    from core.database.database_manager import db_manager
 
                     try:
                         db_connection = db_manager.get_connection(connection_id)
@@ -1490,7 +1490,7 @@ async def perform_query(
 
         # 根据is_preview标志决定是否添加LIMIT
         if query_request.is_preview:
-            from core.config_manager import config_manager
+            from core.common.config_manager import config_manager
 
             limit = config_manager.get_app_config().max_query_rows
             query = ensure_query_has_limit(query, limit)
@@ -1522,7 +1522,7 @@ async def perform_query(
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
         # 使用统一的错误代码系统
-        from core.error_codes import (
+        from core.common.error_codes import (
             analyze_error_type,
             create_error_response,
             get_http_status_code,
@@ -1554,7 +1554,7 @@ async def execute_sql(request: dict = Body(...)):
     try:
         # 如果是预览模式，则强制添加LIMIT
         if is_preview:
-            from core.config_manager import config_manager
+            from core.common.config_manager import config_manager
 
             limit = config_manager.get_app_config().max_query_rows
             sql_query = ensure_query_has_limit(sql_query, limit)
@@ -1641,7 +1641,7 @@ async def execute_sql(request: dict = Body(...)):
                 )
 
             # 使用数据库管理器执行查询
-            from core.database_manager import db_manager
+            from core.database.database_manager import db_manager
 
             datasource_id = datasource.get("id")
             if not datasource_id:
@@ -1832,7 +1832,7 @@ async def save_query_to_duckdb(request: dict = Body(...)):
             # 处理MySQL等外部数据库
             try:
                 logger.info(f"执行外部数据库查询: {datasource_id}")
-                from core.database_manager import db_manager
+                from core.database.database_manager import db_manager
 
                 # 确保数据库连接存在
                 existing_conn = db_manager.get_connection(datasource_id)
@@ -1902,7 +1902,7 @@ async def save_query_to_duckdb(request: dict = Body(...)):
             if datasource_type not in ["duckdb"] and datasource_id != "duckdb_internal":
                 try:
                     logger.info(f"尝试外部数据库查询: {datasource_id}")
-                    from core.database_manager import db_manager
+                    from core.database.database_manager import db_manager
 
                     # 确保数据库连接存在
                     existing_conn = db_manager.get_connection(datasource_id)
@@ -2007,8 +2007,8 @@ async def save_query_to_duckdb(request: dict = Body(...)):
 
             # 使用统一的时区配置
             try:
-                from core.timezone_utils import get_current_time_iso
-                from core.file_datasource_manager import file_datasource_manager
+                from core.common.timezone_utils import get_current_time_iso
+                from core.data.file_datasource_manager import file_datasource_manager
 
                 file_info = {
                     "source_id": table_alias,
@@ -2073,8 +2073,8 @@ async def list_duckdb_tables():
         tables_df = con.execute("SHOW TABLES").fetchdf()
 
         # 获取文件数据源管理器实例
-        from core.file_datasource_manager import file_datasource_manager
-        from core.database_manager import db_manager
+        from core.data.file_datasource_manager import file_datasource_manager
+        from core.database.database_manager import db_manager
 
         file_datasources = file_datasource_manager.list_file_datasources()
         # 创建source_id到创建时间的映射
@@ -2240,7 +2240,7 @@ async def delete_duckdb_table(table_name: str):
 
             # 从文件数据源配置中删除记录
             try:
-                from core.file_datasource_manager import file_datasource_manager
+                from core.data.file_datasource_manager import file_datasource_manager
 
                 file_datasource_manager.remove_file_datasource(table_name)
             except Exception as config_e:
@@ -2497,7 +2497,7 @@ async def execute_set_operation(request: SetOperationRequest):
         # 生成SQL查询，根据模式决定是否应用子查询限制
         if request.preview or (not request.save_as_table):
             # 预览模式或默认执行：在子查询级别应用限制，避免大数据集内存问题
-            from core.config_manager import config_manager
+            from core.common.config_manager import config_manager
 
             limit = config_manager.get_app_config().max_query_rows
             sql = generate_set_operation_sql(config, preview_limit=limit)
@@ -2510,7 +2510,7 @@ async def execute_set_operation(request: SetOperationRequest):
 
         if request.preview:
             # 预览模式：使用配置的max_query_rows限制
-            from core.config_manager import config_manager
+            from core.common.config_manager import config_manager
 
             limit = config_manager.get_app_config().max_query_rows
             preview_sql = f"{sql} LIMIT {limit}"
@@ -2596,7 +2596,7 @@ async def execute_set_operation(request: SetOperationRequest):
             }
         else:
             # 默认行为：执行集合操作预览，使用配置的max_query_rows限制
-            from core.config_manager import config_manager
+            from core.common.config_manager import config_manager
 
             limit = config_manager.get_app_config().max_query_rows
             preview_sql = f"{sql} LIMIT {limit}"
@@ -2740,7 +2740,7 @@ async def export_set_operation(request: SetOperationExportRequest):
     import uuid
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
-    from core.task_manager import task_manager
+    from core.services.task_manager import task_manager
 
     try:
         config = request.config

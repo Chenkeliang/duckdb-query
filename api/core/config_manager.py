@@ -24,8 +24,8 @@ class DuckDBPaths:
     home_dir: Path
 
 # 避免循环导入，在需要时动态导入
-# from core.security import mask_sensitive_config
-from core.encryption import decrypt_config_passwords
+# from core.security.security import mask_sensitive_config
+from core.security.encryption import decrypt_config_passwords
 
 @dataclass
 class DatabaseConfig:

@@ -6,8 +6,8 @@ pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient
 
-from core.duckdb_engine import with_duckdb_connection
-from core.file_datasource_manager import file_datasource_manager
+from core.database.duckdb_engine import with_duckdb_connection
+from core.data.file_datasource_manager import file_datasource_manager
 from main import app
 
 

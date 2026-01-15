@@ -43,7 +43,7 @@ async def test_database_connection(request: dict):
     """
     try:
         from models.query_models import ConnectionTestRequest, DataSourceType
-        from core.database_manager import db_manager
+        from core.database.database_manager import db_manager
         from utils.response_helpers import create_success_response, MessageCode
 
         # 构建测试请求
@@ -92,8 +92,8 @@ async def refresh_database_connection(id: str):
     """
     try:
         from models.query_models import ConnectionTestRequest, ConnectionStatus
-        from core.database_manager import db_manager
-        from core.timezone_utils import get_current_time
+        from core.database.database_manager import db_manager
+        from core.common.timezone_utils import get_current_time
 
         # 移除 db_ 前缀（如果有）
         conn_id = id.replace("db_", "")
@@ -204,8 +204,8 @@ async def create_database_connection(connection: dict):
     """
     try:
         from models.query_models import DatabaseConnection, DataSourceType
-        from core.database_manager import db_manager
-        from core.timezone_utils import get_current_time
+        from core.database.database_manager import db_manager
+        from core.common.timezone_utils import get_current_time
 
         # 构建 DatabaseConnection 对象
         db_conn = DatabaseConnection(
@@ -263,8 +263,8 @@ async def update_database_connection(id: str, connection: dict):
     """
     try:
         from models.query_models import DatabaseConnection, DataSourceType
-        from core.database_manager import db_manager
-        from core.timezone_utils import get_current_time
+        from core.database.database_manager import db_manager
+        from core.common.timezone_utils import get_current_time
 
         # 移除 db_ 前缀（如果有）
         conn_id = id.replace("db_", "")

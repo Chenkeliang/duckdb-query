@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 def cleanup_stuck_tasks():
     """清理卡住的取消中任务"""
-    from core.duckdb_pool import with_system_connection
-    from core.timezone_utils import get_storage_time
+    from core.database.duckdb_pool import with_system_connection
+    from core.common.timezone_utils import get_storage_time
     
     with with_system_connection() as conn:
         # 查找所有 cancelling 状态的任务

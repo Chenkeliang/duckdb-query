@@ -8,7 +8,7 @@ import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from core.utils import normalize_dataframe_output
+from core.common.utils import normalize_dataframe_output
 
 
 def test_normalize_dataframe_output_handles_nullable_numeric_and_datetime():

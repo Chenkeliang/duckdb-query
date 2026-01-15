@@ -18,18 +18,18 @@ from pathlib import Path
 from typing import List, Any, Optional, Dict
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from core.duckdb_engine import with_duckdb_connection
-from core.encryption import password_encryptor
+from core.database.duckdb_engine import with_duckdb_connection
+from core.security.encryption import password_encryptor
 from models.query_models import (
     DatabaseConnection,
     ConnectionTestRequest,
     ConnectionStatus,
     FileUploadResponse,
 )
-from core.database_manager import db_manager
-from core.security import security_validator
-from core.resource_manager import save_upload_file, schedule_cleanup
-from core.excel_import_manager import (
+from core.database.database_manager import db_manager
+from core.security.security import security_validator
+from core.services.resource_manager import save_upload_file, schedule_cleanup
+from core.data.excel_import_manager import (
     register_excel_upload,
     get_pending_excel,
     cleanup_pending_excel,
@@ -38,15 +38,15 @@ from core.excel_import_manager import (
     load_excel_sheet_dataframe,
     sanitize_identifier,
 )
-from core.file_utils import detect_file_type
-from core.file_datasource_manager import (
+from core.data.file_utils import detect_file_type
+from core.data.file_datasource_manager import (
     file_datasource_manager,
     create_table_from_dataframe,
     build_table_metadata_snapshot,
     _quote_identifier,
 )
 import datetime
-from core.timezone_utils import get_current_time  # 导入时区工具
+from core.common.timezone_utils import get_current_time  # 导入时区工具
 from uuid import uuid4
 
 router = APIRouter()
@@ -143,7 +143,7 @@ async def test_database_connection(request: ConnectionTestRequest, response: Res
         logger.error(f"连接测试失败: {str(e)}")
 
         # 使用统一的错误代码系统
-        from core.error_codes import (
+        from core.common.error_codes import (
             analyze_error_type,
             create_error_response,
             get_http_status_code,
@@ -294,7 +294,7 @@ async def test_connection_simple(request: dict = Body(...), response: Response =
                 import pymysql
 
                 # 获取配置的超时时间
-                from core.config_manager import config_manager
+                from core.common.config_manager import config_manager
 
                 app_config = config_manager.get_app_config()
 
@@ -318,7 +318,7 @@ async def test_connection_simple(request: dict = Body(...), response: Response =
                 import psycopg2
 
                 # 获取配置的超时时间
-                from core.config_manager import config_manager
+                from core.common.config_manager import config_manager
 
                 app_config = config_manager.get_app_config()
 
@@ -573,7 +573,7 @@ async def upload_file(
             f.write(file_content)
 
         # 获取文件预览信息
-        from core.file_utils import get_file_preview
+        from core.data.file_utils import get_file_preview
 
         if file_type == "excel":
             pending_excel = register_excel_upload(save_path, file.filename, table_alias)
@@ -1113,7 +1113,7 @@ async def get_mysql_tables(connection: DatabaseConnection) -> list:
         import pymysql
 
         # 获取配置的超时时间
-        from core.config_manager import config_manager
+        from core.common.config_manager import config_manager
 
         app_config = config_manager.get_app_config()
 
@@ -1170,7 +1170,7 @@ async def get_postgresql_tables(connection: DatabaseConnection) -> list:
         import psycopg2
 
         # 获取配置的超时时间
-        from core.config_manager import config_manager
+        from core.common.config_manager import config_manager
 
         app_config = config_manager.get_app_config()
 

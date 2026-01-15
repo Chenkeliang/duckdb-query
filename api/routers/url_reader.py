@@ -6,9 +6,9 @@ import os
 import time
 import logging
 from typing import Optional
-from core.config_manager import config_manager
-from core.duckdb_engine import get_db_connection
-from core.file_datasource_manager import (
+from core.common.config_manager import config_manager
+from core.database.duckdb_engine import get_db_connection
+from core.data.file_datasource_manager import (
     file_datasource_manager,
     create_table_from_dataframe,
 )
@@ -161,7 +161,7 @@ async def read_from_url(request: URLReadRequest):
                 reader_options=reader_options,
             )
 
-        from core.timezone_utils import get_current_time_iso
+        from core.common.timezone_utils import get_current_time_iso
 
         table_metadata = {
             "source_id": table_name,

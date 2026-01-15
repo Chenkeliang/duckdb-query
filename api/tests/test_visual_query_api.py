@@ -19,7 +19,7 @@ from models.visual_query_models import (
     SortDirection,
     VisualQueryMode,
 )
-from core.visual_query_generator import GeneratedVisualQuery
+from core.services.visual_query_generator import GeneratedVisualQuery
 
 client = TestClient(app)
 

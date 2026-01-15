@@ -12,7 +12,7 @@ import tempfile
 import os
 
 from main import app
-from core.duckdb_engine import get_db_connection
+from core.database.duckdb_engine import get_db_connection
 
 client = TestClient(app)
 

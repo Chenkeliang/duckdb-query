@@ -9,7 +9,7 @@ from unittest.mock import Mock, MagicMock
 
 import duckdb
 
-from core.connection_registry import ConnectionRegistry, ConnectionRecord, connection_registry
+from core.database.connection_registry import ConnectionRegistry, ConnectionRecord, connection_registry
 
 
 class TestConnectionRegistry(unittest.TestCase):

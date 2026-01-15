@@ -12,8 +12,8 @@ from uuid import uuid4
 import pandas as pd
 from openpyxl import load_workbook
 
-from core.timezone_utils import get_current_time_iso
-from core.utils import normalize_dataframe_output
+from core.common.timezone_utils import get_current_time_iso
+from core.common.utils import normalize_dataframe_output
 
 PENDING_BASE_DIR = (
     Path(__file__).resolve().parent.parent / "temp_files" / "excel_pending"
@@ -311,17 +311,24 @@ def _repair_excel_coordinates(file_path: str) -> Optional[str]:
                     try:
                         text = data.decode("utf-8")
                     except UnicodeDecodeError:
-                        pass
-                    else:
-                        # 增强修复逻辑：
-                        # 1. r="1" -> r="A1"
-                        # 2. r='"1"' -> r="A1" (quote variations)
-                        # 3. Handle potential empty strings if that's the case r=""? No, error says '' is not valid col name.
-                        # It likely sees column index '' from coordinate.
-                        
-                        # 更加宽容的正则，匹配 r="digits"
-                        patched = re.sub(r'r=["\'](\d+)["\']', r'r="A\1"', text)
-                        data = patched.encode("utf-8")
+                        # 增强逻辑：尝试检测编码 (处理国产软件导出的 GBK XML)
+                        try:
+                            import charset_normalizer
+                            matches = charset_normalizer.from_bytes(data).best()
+                            if matches:
+                                text = data.decode(matches.encoding)
+                            else:
+                                # 最后的尝试
+                                text = data.decode("gb18030", errors="ignore")
+                        except Exception:
+                            # 实在解不开，跳过此文件
+                            continue
+                    
+                    # 更加宽容的正则，匹配 r="digits"
+                    patched = re.sub(r'r=["\'](\d+)["\']', r'r="A\1"', text)
+                    
+                    # 写回时统一转换为 utf-8
+                    data = patched.encode("utf-8")
                 zout.writestr(item, data)
     except Exception as e:
         logger.error(f"Excel repair failed: {e}")

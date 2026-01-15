@@ -8,10 +8,10 @@ import base64
 from datetime import datetime
 from cryptography.fernet import Fernet
 from contextlib import asynccontextmanager
-from core.security import security_validator
-from core.config_manager import config_manager
-from core.exceptions import setup_exception_handlers
-from core.encryption import password_encryptor
+from core.security.security import security_validator
+from core.common.config_manager import config_manager
+from core.common.exceptions import setup_exception_handlers
+from core.security.encryption import password_encryptor
 from middleware import RequestIdMiddleware
 
 from routers import (
@@ -45,16 +45,16 @@ try:
     query_proxy_available = True
 except ImportError:
     query_proxy_available = False
-from core.database_manager import db_manager
+from core.database.database_manager import db_manager
 from models.query_models import DatabaseConnection, DataSourceType
-from core.file_datasource_manager import reload_all_file_datasources_to_duckdb
-from core.duckdb_engine import (
+from core.data.file_datasource_manager import reload_all_file_datasources_to_duckdb
+from core.database.duckdb_engine import (
     with_duckdb_connection,
     create_persistent_table,
     create_varchar_table_from_dataframe,
     ensure_all_tables_varchar,
 )
-from core.cleanup_scheduler import start_cleanup_scheduler, stop_cleanup_scheduler
+from core.services.cleanup_scheduler import start_cleanup_scheduler, stop_cleanup_scheduler
 
 logger = logging.getLogger(__name__)
 

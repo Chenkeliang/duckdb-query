@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from core.duckdb_engine import get_db_connection
-from core.excel_import_manager import cleanup_pending_excel
+from core.database.duckdb_engine import get_db_connection
+from core.data.excel_import_manager import cleanup_pending_excel
 from fastapi.testclient import TestClient
 from main import app
 

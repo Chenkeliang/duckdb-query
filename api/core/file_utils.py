@@ -11,8 +11,8 @@ import time
 from uuid import uuid4
 from typing import Dict, Any, Optional
 
-from core.utils import normalize_dataframe_output, handle_non_serializable_data
-from core.duckdb_engine import with_duckdb_connection
+from core.common.utils import normalize_dataframe_output, handle_non_serializable_data
+from core.database.duckdb_engine import with_duckdb_connection
 
 logger = logging.getLogger(__name__)
 
@@ -43,20 +43,46 @@ def read_file_by_type(
 
     try:
         if file_type == "csv":
-            # 对于CSV文件，先尝试使用 latin-1 编码，如果失败则使用 UTF-8
-            encodings_to_try = ["latin-1", "utf-8"]
-            for encoding in encodings_to_try:
+            # 智能检测编码，不再盲目尝试 latin-1
+            import charset_normalizer
+
+            # 读取文件头部的字节用于检测
+            with open(file_path, "rb") as f:
+                raw_data = f.read(1024 * 1024)  # 读取前 1MB
+                
+            # 1. 尝试常见编码 (GB18030 覆盖了 GBK 和 GB2312)
+            # 优先尝试 UTF-8 和 GB18030，因为它们最常见且区分度高
+            preferred_encodings = ["utf-8", "gb18030"]
+            detected_encoding = None
+            
+            for enc in preferred_encodings:
                 try:
-                    if nrows is not None:
-                        df = pd.read_csv(file_path, encoding=encoding, nrows=nrows)
-                    else:
-                        df = pd.read_csv(file_path, encoding=encoding)
+                    raw_data.decode(enc)
+                    # 如果能成功解码，但需要进一步确认不是伪造的 (latin-1 总是成功)
+                    # 这里如果是 utf-8 或 gb18030 成功解码，通常就是正确的
+                    detected_encoding = enc
                     break
                 except UnicodeDecodeError:
                     continue
+            
+            # 2. 如果常见编码失败，使用 charset-normalizer 深度检测
+            if not detected_encoding:
+                matches = charset_normalizer.from_bytes(raw_data).best()
+                if matches:
+                    detected_encoding = matches.encoding
+            
+            # 3. 最后的兜底
+            if not detected_encoding:
+                detected_encoding = "latin-1"  # 即使是乱码也先读出来，保证不报错
+                logger.warning(f"无法检测文件 {file_path} 的编码，回退到 latin-1")
+
+            logger.info(f"Detected encoding for {file_path}: {detected_encoding}")
+            
+            if nrows is not None:
+                df = pd.read_csv(file_path, encoding=detected_encoding, nrows=nrows)
             else:
-                # 如果所有编码都失败
-                raise ValueError(f"无法解码文件 {file_path}，请检查文件编码")
+                df = pd.read_csv(file_path, encoding=detected_encoding)
+            
         elif file_type == "excel":
             if nrows is not None:
                 df = pd.read_excel(file_path, nrows=nrows)

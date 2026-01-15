@@ -15,15 +15,15 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
-from core.config_manager import config_manager
-from core.duckdb_engine import get_db_connection
-from core.file_datasource_manager import (
+from core.common.config_manager import config_manager
+from core.database.duckdb_engine import get_db_connection
+from core.data.file_datasource_manager import (
     file_datasource_manager,
     create_table_from_dataframe,
 )
-from core.excel_import_manager import register_excel_upload, sanitize_identifier
-from core.resource_manager import schedule_cleanup
-from core.timezone_utils import get_current_time_iso  # 统一时间
+from core.data.excel_import_manager import register_excel_upload, sanitize_identifier
+from core.services.resource_manager import schedule_cleanup
+from core.common.timezone_utils import get_current_time_iso  # 统一时间
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

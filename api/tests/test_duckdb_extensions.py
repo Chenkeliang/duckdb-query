@@ -21,7 +21,7 @@ class TestDefaultExtensionConfiguration:
         
         验证默认扩展列表包含 excel, json, parquet, mysql, postgres
         """
-        from core.config_manager import AppConfig
+        from core.common.config_manager import AppConfig
         
         # 创建不带显式扩展配置的 AppConfig
         config = AppConfig()
@@ -36,7 +36,7 @@ class TestDefaultExtensionConfiguration:
 
     def test_custom_extensions_override_default(self):
         """测试自定义扩展列表覆盖默认值"""
-        from core.config_manager import AppConfig
+        from core.common.config_manager import AppConfig
         
         custom_extensions = ["json", "parquet"]
         config = AppConfig(duckdb_extensions=custom_extensions)
@@ -46,7 +46,7 @@ class TestDefaultExtensionConfiguration:
 
     def test_empty_extensions_list_preserved(self):
         """测试空扩展列表被保留"""
-        from core.config_manager import AppConfig
+        from core.common.config_manager import AppConfig
         
         config = AppConfig(duckdb_extensions=[])
         
@@ -63,7 +63,7 @@ class TestBuildAttachSQL:
         
         验证 MySQL ATTACH SQL 格式正确
         """
-        from core.duckdb_engine import build_attach_sql
+        from core.database.duckdb_engine import build_attach_sql
         
         config = {
             'type': 'mysql',
@@ -91,7 +91,7 @@ class TestBuildAttachSQL:
         
         验证 PostgreSQL ATTACH SQL 格式正确
         """
-        from core.duckdb_engine import build_attach_sql
+        from core.database.duckdb_engine import build_attach_sql
         
         config = {
             'type': 'postgresql',
@@ -119,7 +119,7 @@ class TestBuildAttachSQL:
         
         验证 SQLite ATTACH SQL 格式正确
         """
-        from core.duckdb_engine import build_attach_sql
+        from core.database.duckdb_engine import build_attach_sql
         
         config = {
             'type': 'sqlite',
@@ -135,7 +135,7 @@ class TestBuildAttachSQL:
 
     def test_mysql_without_port(self):
         """测试 MySQL 不带端口的情况"""
-        from core.duckdb_engine import build_attach_sql
+        from core.database.duckdb_engine import build_attach_sql
         
         config = {
             'type': 'mysql',
@@ -153,7 +153,7 @@ class TestBuildAttachSQL:
 
     def test_postgres_without_port(self):
         """测试 PostgreSQL 不带端口的情况"""
-        from core.duckdb_engine import build_attach_sql
+        from core.database.duckdb_engine import build_attach_sql
         
         config = {
             'type': 'postgres',
@@ -171,7 +171,7 @@ class TestBuildAttachSQL:
 
     def test_unsupported_database_type_raises_error(self):
         """测试不支持的数据库类型抛出错误"""
-        from core.duckdb_engine import build_attach_sql
+        from core.database.duckdb_engine import build_attach_sql
         
         config = {
             'type': 'oracle',
@@ -188,7 +188,7 @@ class TestBuildAttachSQL:
 
     def test_empty_password_handled(self):
         """测试空密码的处理"""
-        from core.duckdb_engine import build_attach_sql
+        from core.database.duckdb_engine import build_attach_sql
         
         config = {
             'type': 'mysql',
@@ -209,8 +209,8 @@ class TestExtensionLoading:
 
     def test_resolve_duckdb_extensions_deduplicates(self):
         """测试扩展列表去重"""
-        from core.duckdb_engine import _resolve_duckdb_extensions
-        from core.config_manager import AppConfig
+        from core.database.duckdb_engine import _resolve_duckdb_extensions
+        from core.common.config_manager import AppConfig
         
         config = AppConfig(duckdb_extensions=["json", "JSON", "parquet", "json"])
         
@@ -223,8 +223,8 @@ class TestExtensionLoading:
 
     def test_resolve_duckdb_extensions_preserves_order(self):
         """测试扩展列表保持顺序"""
-        from core.duckdb_engine import _resolve_duckdb_extensions
-        from core.config_manager import AppConfig
+        from core.database.duckdb_engine import _resolve_duckdb_extensions
+        from core.common.config_manager import AppConfig
         
         config = AppConfig(duckdb_extensions=["parquet", "json", "excel"])
         
@@ -234,8 +234,8 @@ class TestExtensionLoading:
 
     def test_resolve_duckdb_extensions_with_override(self):
         """测试扩展列表覆盖"""
-        from core.duckdb_engine import _resolve_duckdb_extensions
-        from core.config_manager import AppConfig
+        from core.database.duckdb_engine import _resolve_duckdb_extensions
+        from core.common.config_manager import AppConfig
         
         config = AppConfig(duckdb_extensions=["json", "parquet"])
         override = ["mysql", "postgres"]

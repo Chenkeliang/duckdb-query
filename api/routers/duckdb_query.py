@@ -15,24 +15,24 @@ from pydantic import BaseModel
 import duckdb
 import uuid
 
-from core.config_manager import config_manager
-from core.duckdb_engine import (
+from core.common.config_manager import config_manager
+from core.database.duckdb_engine import (
     get_db_connection,
     create_persistent_table,
     build_attach_sql,
 )
-from core.duckdb_pool import interruptible_connection
-from core.utils import normalize_dataframe_output
-from core.timezone_utils import format_storage_time_for_response
-from core.resource_manager import save_upload_file
-from core.file_datasource_manager import (
+from core.database.duckdb_pool import interruptible_connection
+from core.common.utils import normalize_dataframe_output
+from core.common.timezone_utils import format_storage_time_for_response
+from core.services.resource_manager import save_upload_file
+from core.data.file_datasource_manager import (
     file_datasource_manager,
     build_table_metadata_snapshot,
 )
-from core.timezone_utils import get_current_time_iso
-from core.visual_query_generator import get_table_metadata
-from core.database_manager import db_manager
-from core.encryption import password_encryptor
+from core.common.timezone_utils import get_current_time_iso
+from core.services.visual_query_generator import get_table_metadata
+from core.database.database_manager import db_manager
+from core.security.encryption import password_encryptor
 from models.query_models import FederatedQueryRequest, FederatedQueryResponse
 from datetime import datetime
 
@@ -357,7 +357,7 @@ async def execute_duckdb_query(
         # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式）
         limit = None
         if request.is_preview and "LIMIT" not in sql_upper_clean:
-            from core.config_manager import config_manager
+            from core.common.config_manager import config_manager
             limit = config_manager.get_app_config().max_query_rows
             sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
             logger.info(f"预览模式，已应用LIMIT {limit}")
@@ -511,7 +511,7 @@ async def delete_duckdb_table(table_name: str):
 
         # 同时尝试删除文件数据源记录
         try:
-            from core.file_datasource_manager import file_datasource_manager
+            from core.data.file_datasource_manager import file_datasource_manager
 
             file_datasource_manager.delete_file_datasource(table_name)
             logger.info(f"已删除文件数据源记录: {table_name}")
@@ -535,7 +535,7 @@ async def delete_duckdb_table(table_name: str):
 async def get_connection_pool_status():
     """获取连接池状态"""
     try:
-        from core.duckdb_pool import get_connection_pool
+        from core.database.duckdb_pool import get_connection_pool
 
         pool = get_connection_pool()
         stats = pool.get_stats()
@@ -550,7 +550,7 @@ async def get_connection_pool_status():
 async def reset_connection_pool():
     """重置连接池"""
     try:
-        from core.duckdb_pool import get_connection_pool
+        from core.database.duckdb_pool import get_connection_pool
 
         pool = get_connection_pool()
 
@@ -558,7 +558,7 @@ async def reset_connection_pool():
         pool.close_all()
 
         # 重新初始化连接池
-        from core.duckdb_pool import _connection_pool
+        from core.database.duckdb_pool import _connection_pool
 
         global _connection_pool
         _connection_pool = None
@@ -573,7 +573,7 @@ async def reset_connection_pool():
 async def migrate_created_at_field():
     """迁移 created_at 字段：为现有表填充创建时间"""
     try:
-        from core.duckdb_engine import with_duckdb_connection
+        from core.database.duckdb_engine import with_duckdb_connection
         from datetime import datetime
         
         with with_duckdb_connection() as conn:

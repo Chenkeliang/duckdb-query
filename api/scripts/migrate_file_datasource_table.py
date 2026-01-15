@@ -9,8 +9,8 @@ from pathlib import Path
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.duckdb_engine import with_duckdb_connection
-from core.timezone_utils import get_current_time
+from core.database.duckdb_engine import with_duckdb_connection
+from core.common.timezone_utils import get_current_time
 import logging
 
 logging.basicConfig(level=logging.INFO)

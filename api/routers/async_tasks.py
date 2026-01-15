@@ -15,21 +15,21 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from datetime import datetime
 
-from core.task_manager import task_manager, TaskStatus
-from core.duckdb_engine import get_db_connection, create_varchar_table_from_dataframe
-from core.file_datasource_manager import (
+from core.services.task_manager import task_manager, TaskStatus
+from core.database.duckdb_engine import get_db_connection, create_varchar_table_from_dataframe
+from core.data.file_datasource_manager import (
     file_datasource_manager,
     create_table_from_dataframe,
     build_table_metadata_snapshot,
 )
-from core.config_manager import config_manager
-from core.timezone_utils import get_current_time_iso, get_current_time
+from core.common.config_manager import config_manager
+from core.common.timezone_utils import get_current_time_iso, get_current_time
 
 # 配置日志
 logger = logging.getLogger(__name__)
-from core.task_utils import TaskUtils
+from core.services.task_utils import TaskUtils
 from models.query_models import DatabaseConnection, DataSourceType, AttachDatabase
-from core.validators import validate_pagination
+from core.common.validators import validate_pagination
 
 router = APIRouter()
 
@@ -101,7 +101,7 @@ def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) 
 
 
 def _ensure_database_connection(datasource_id: str, datasource_type: str):
-    from core.database_manager import db_manager
+    from core.database.database_manager import db_manager
 
     connection = db_manager.get_connection(datasource_id)
     if connection:
@@ -140,7 +140,7 @@ def _fetch_external_query_result(datasource: Dict[str, Any], sql: str) -> pd.Dat
     if not connection:
         raise ValueError(f"无法建立数据源连接: {datasource_id}")
 
-    from core.database_manager import db_manager
+    from core.database.database_manager import db_manager
 
     result_df = db_manager.execute_query(datasource_id, sql)
     if result_df is None or result_df.empty:
@@ -170,9 +170,9 @@ def _attach_external_databases(
         失败时会 DETACH 已附加的数据库并抛出异常
     """
     import re
-    from core.database_manager import db_manager
-    from core.encryption import password_encryptor
-    from core.duckdb_engine import build_attach_sql
+    from core.database.database_manager import db_manager
+    from core.security.encryption import password_encryptor
+    from core.database.duckdb_engine import build_attach_sql
     
     attached = []
     
@@ -688,7 +688,7 @@ def execute_async_query(
     支持查询中断：使用 interruptible_connection 包装连接，支持取消操作。
     """
     import duckdb
-    from core.duckdb_pool import get_connection_pool, interruptible_connection
+    from core.database.duckdb_pool import get_connection_pool, interruptible_connection
     pool = get_connection_pool()
     
     # 用于存储查询结果的临时变量
@@ -919,7 +919,7 @@ def execute_async_federated_query(
         attach_databases: 需要 ATTACH 的外部数据库列表
     """
     import duckdb
-    from core.duckdb_pool import get_connection_pool, interruptible_connection
+    from core.database.duckdb_pool import get_connection_pool, interruptible_connection
     pool = get_connection_pool()
     
     # 用于存储查询结果的临时变量
@@ -1178,7 +1178,7 @@ def generate_download_file(task_id: str, format: str = "csv"):
             raise ValueError(f"任务 {task_id} 缺少表名信息")
 
         # 使用连接池获取连接
-        from core.duckdb_pool import get_connection_pool
+        from core.database.duckdb_pool import get_connection_pool
 
         pool = get_connection_pool()
 
@@ -1247,7 +1247,7 @@ def cleanup_old_files():
 
         # 清理过期的DuckDB表
         try:
-            from core.duckdb_pool import get_connection_pool
+            from core.database.duckdb_pool import get_connection_pool
 
             pool = get_connection_pool()
 

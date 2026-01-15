@@ -2,9 +2,9 @@
 
 from fastapi import APIRouter, HTTPException
 import logging
-from core.database_manager import db_manager
-from core.config_manager import config_manager
-from core.encryption import password_encryptor
+from core.database.database_manager import db_manager
+from core.common.config_manager import config_manager
+from core.security.encryption import password_encryptor
 
 # 获取应用配置
 app_config = config_manager.get_app_config()
@@ -73,7 +73,7 @@ async def get_database_tables(connection_id: str):
     """获取指定数据库连接的所有表信息"""
     try:
         # 获取应用配置
-        from core.config_manager import config_manager
+        from core.common.config_manager import config_manager
 
         app_config = config_manager.get_app_config()
 
@@ -406,7 +406,7 @@ async def list_connection_schemas(connection_id: str):
     """
     try:
         # 获取应用配置
-        from core.config_manager import config_manager
+        from core.common.config_manager import config_manager
         app_config = config_manager.get_app_config()
 
         # 获取数据库连接配置
@@ -514,7 +514,7 @@ async def list_schema_tables(connection_id: str, schema: str):
     """
     try:
         # 获取应用配置
-        from core.config_manager import config_manager
+        from core.common.config_manager import config_manager
         app_config = config_manager.get_app_config()
 
         # 获取数据库连接配置
@@ -613,7 +613,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
     """获取指定表的详细信息，包括字段详情和示例数据"""
     try:
         # 获取应用配置
-        from core.config_manager import config_manager
+        from core.common.config_manager import config_manager
 
         app_config = config_manager.get_app_config()
 

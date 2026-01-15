@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import Mock, patch
 import pandas as pd
 
-from core.visual_query_generator import (
+from core.services.visual_query_generator import (
     generate_sql_from_config,
     generate_visual_query_sql,
     validate_query_config,
@@ -35,7 +35,7 @@ from models.visual_query_models import (
     JSONTableConfig,
     JSONTableColumnConfig,
 )
-from core.table_metadata_cache import table_metadata_cache
+from core.database.table_metadata_cache import table_metadata_cache
 
 
 class TestSQLGeneration:

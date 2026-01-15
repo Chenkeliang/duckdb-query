@@ -5,8 +5,8 @@ from uuid import uuid4
 
 import pandas as pd
 
-from core.duckdb_engine import get_db_connection
-from core.file_datasource_manager import create_table_from_dataframe
+from core.database.duckdb_engine import get_db_connection
+from core.data.file_datasource_manager import create_table_from_dataframe
 
 
 def _make_table_name(prefix: str) -> str:

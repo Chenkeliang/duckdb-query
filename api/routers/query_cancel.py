@@ -8,7 +8,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
-from core.connection_registry import connection_registry
+from core.database.connection_registry import connection_registry
 from utils.response_helpers import create_success_response, create_error_response, MessageCode
 
 logger = logging.getLogger(__name__)

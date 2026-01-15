@@ -18,9 +18,9 @@ from datetime import datetime
 
 import duckdb
 
-from core.duckdb_engine import with_duckdb_connection
-from core.config_manager import config_manager
-from core.file_utils import detect_file_type, load_file_to_duckdb
+from core.database.duckdb_engine import with_duckdb_connection
+from core.common.config_manager import config_manager
+from core.data.file_utils import detect_file_type, load_file_to_duckdb
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +246,7 @@ class FileDatasourceManager:
 
     def __init__(self):
         """初始化文件数据源管理器"""
-        from core.metadata_manager import metadata_manager
+        from core.database.metadata_manager import metadata_manager
         
         self.metadata_manager = metadata_manager
         self.config_dir = config_manager.config_dir
