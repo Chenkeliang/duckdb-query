@@ -1,7 +1,7 @@
 import React, { lazy, useEffect, useState, useCallback, Component, ReactNode, ErrorInfo } from 'react';
 import { toast } from 'sonner';
-import { useAppShell } from './new/hooks/useAppShell';
-import useAppConfig from './new/hooks/useAppConfig';
+import { useAppShell } from './hooks/useAppShell';
+import useAppConfig from './hooks/useAppConfig';
 import {
     Database,
     Server,
@@ -15,22 +15,22 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-import PageShell from './new/Layout/PageShell';
-import Sidebar from './new/Layout/Sidebar';
-import Header from './new/Layout/Header';
-import DataSourcePage from './new/DataSource/DataSourcePage';
-import DatabaseForm from './new/DataSource/DatabaseForm';
-import UploadPanel from './new/DataSource/UploadPanel';
-import DataSourceTabs from './new/DataSource/DataSourceTabs';
-import SavedConnectionsList from './new/DataSource/SavedConnectionsList';
+import PageShell from './Layout/PageShell';
+import Sidebar from './Layout/Sidebar';
+import Header from './Layout/Header';
+import DataSourcePage from './DataSource/DataSourcePage';
+import DatabaseForm from './DataSource/DatabaseForm';
+import UploadPanel from './DataSource/UploadPanel';
+import DataSourceTabs from './DataSource/DataSourceTabs';
+import SavedConnectionsList from './DataSource/SavedConnectionsList';
 
-import DataPasteCard from './new/DataSource/DataPasteCard';
-import QueryWorkbenchPage from './new/QueryWorkbenchPage';
-import { CommandPalette } from './new/components/CommandPalette';
-import { ShortcutProvider, useKeyboardShortcuts } from './new/Settings/shortcuts';
+import DataPasteCard from './DataSource/DataPasteCard';
+import QueryWorkbenchPage from './QueryWorkbenchPage';
+import { CommandPalette } from './components/CommandPalette';
+import { ShortcutProvider, useKeyboardShortcuts } from './Settings/shortcuts';
 
 import Logo from './assets/duckq-logo.svg';
-const WelcomePage = lazy(() => import('./new/WelcomePage'));
+const WelcomePage = lazy(() => import('./WelcomePage'));
 
 // Types
 type TabId = 'datasource' | 'queryworkbench' | 'settings';
@@ -127,7 +127,7 @@ const tabTitles: Record<TabId, string> = {
 };
 
 const SettingsPage = React.lazy(() =>
-    import('./new/Settings/SettingsPage').then(m => ({ default: m.SettingsPage }))
+    import('./Settings/SettingsPage').then(m => ({ default: m.SettingsPage }))
 );
 
 const AppInner: React.FC = () => {

@@ -9,8 +9,8 @@ import '@fontsource/inter/700.css';
 import './i18n/config';
 import { I18nextProvider } from 'react-i18next';
 import i18n from './i18n/config';
-import { Toaster } from '@/new/components/ui/sonner';
-import { QueryProvider } from './new/providers/QueryProvider';
+import { Toaster } from '@/components/ui/sonner';
+import { QueryProvider } from './providers/QueryProvider';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

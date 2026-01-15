@@ -208,13 +208,19 @@ class ConfigManager:
         elif os.getenv("CONFIG_DIR"):
             self.config_dir = Path(os.getenv("CONFIG_DIR"))
         else:
-            # 默认配置目录
-            self.config_dir = Path(__file__).parent.parent.parent / "config"
+            # 默认配置目录 (common -> core -> api -> root -> config)
+            self.config_dir = Path(__file__).resolve().parent.parent.parent.parent / "config"
 
         self.config_dir.mkdir(exist_ok=True)
 
-        # 配置文件路径
-        self.app_config_file = self.config_dir / "app-config.json"
+        # 配置文件路径 (优先检测 .json，如果没有则检测 .jsonc)
+        json_path = self.config_dir / "app-config.json"
+        jsonc_path = self.config_dir / "app-config.jsonc"
+        
+        if not json_path.exists() and jsonc_path.exists():
+            self.app_config_file = jsonc_path
+        else:
+            self.app_config_file = json_path
 
 
         # 配置缓存
@@ -270,11 +276,45 @@ class ConfigManager:
             logger.warning(f"更新应用配置文件失败: {str(e)}")
 
     def _load_json(self, file_path: Path) -> Dict[str, Any]:
-        """加载JSON配置文件"""
+        """加载JSON配置文件（支持注释）"""
         try:
             if file_path.exists():
                 with open(file_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    content = f.read()
+                    
+                # 移除注释 (支持 // 和 /* */)
+                import re
+                
+                # 移除块注释 /* ... */
+                content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
+                
+                # 移除行注释 // ... (注意处理URL中的//，这里简单处理：//前必须有空白或行首，且不是URL的一部分)
+                # 更稳健的方式是忽略字符串内容的解析，但作为简单的配置加载器，
+                # 我们假设注释出现在行尾或独立行，并且URL不会与注释混淆（URL的//前是:）
+                # 这里使用简单的行处理：如果行中存在 // 且不紧跟在 : 之后（为了兼容URL），则截断
+                # 或者更简单：只支持独立行的注释和行尾且前面有空格的注释
+                
+                lines = content.split('\n')
+                cleaned_lines = []
+                for line in lines:
+                    # 查找注释标记 //
+                    comment_idx = line.find('//')
+                    if comment_idx != -1:
+                        # 检查是否看起来像URL (https://)
+                        # 如果 // 前面试 :，则认为是URL的一部分，不处理（简易逻辑）
+                        if comment_idx > 0 and line[comment_idx-1] == ':':
+                            pass
+                        else:
+                            line = line[:comment_idx]
+                    cleaned_lines.append(line)
+                
+                content = '\n'.join(cleaned_lines)
+                
+                # 处理可能产生的尾部逗号问题（JSON不支持，但配置变更是常事）
+                # 为了保持简单，暂不处理尾部逗号，依赖标准json解析
+                # 大多数情况下用户只需小心
+                
+                return json.loads(content)
             return {}
         except Exception as e:
             logger.error(f"加载配置文件失败 {file_path}: {str(e)}")
@@ -296,7 +336,8 @@ class ConfigManager:
         container_root = Path("/app")
         if container_root.exists():
             return container_root
-        return Path(__file__).resolve().parent.parent.parent
+        # common -> core -> api -> root
+        return Path(__file__).resolve().parent.parent.parent.parent
 
     def _default_data_dir(self) -> Path:
         """默认数据目录"""

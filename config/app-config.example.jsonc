@@ -1,0 +1,110 @@
+{
+  // ==================== 基础应用配置 / Basic App Config ====================
+  // 调试模式开关 / Debug mode
+  // true: 输出详细日志 / Enable verbose logging
+  "debug": false,
+  // 跨域设置 / CORS Origins
+  // 允许的前端访问源 / Allowed frontend domains
+  "cors_origins": [
+    "http://localhost:3000",
+    "http://localhost:5173"
+  ],
+  // 导出文件目录 / Export directory
+  // 留空使用系统默认 (project_root/exports) / Leave null for default
+  "exports_dir": null,
+  // ==================== 性能与限制 / Performance & Limits ====================
+  // 最大文件上传大小 (字节) / Max file upload size (bytes)
+  // Default: 50GB
+  "max_file_size": 53687091200,
+  // 页面查询最大行数 / Max query rows for UI
+  // 超过此数量建议使用导出功能 / Use export for larger results
+  "max_query_rows": 10000,
+  // 表格预览最大数量 / Max tables in sidebar
+  "max_tables": 200,
+  // 应用时区 / App Timezone
+  "timezone": "Asia/Shanghai",
+  // 表元数据缓存时间 (小时) / Table metadata cache TTL (hours)
+  "table_metadata_cache_ttl_hours": 24,
+  // ==================== DuckDB 引擎配置 / DuckDB Engine Config ====================
+  // 内存限制 / Memory limit
+  "duckdb_memory_limit": "8GB",
+  // 并行线程数 / Parallel threads
+  // 建议设置为CPU核心数 / Recommended: CPU cores
+  "duckdb_threads": 8,
+  // 目录配置 / Directory Paths
+  // 留空使用系统默认 (data/duckdb/...) / Leave null for default structure
+  "duckdb_data_dir": null, // 数据根目录 / Data root
+  "duckdb_database_path": null, // 主数据库文件路径 / Main DB file path
+  "duckdb_temp_directory": null, // 临时目录 / Temp dir
+  "duckdb_extension_directory": null, // 扩展目录 / Extension dir
+  "duckdb_home_directory": null, // Home目录 / Home dir
+  // 性能分析 / Profiling
+  "duckdb_enable_profiling": "query_tree", // query_tree, json, no_output
+  "duckdb_profiling_output": null,
+  // 优化选项 / Optimization options
+  "duckdb_prefer_range_joins": false,
+  "duckdb_enable_object_cache": true, // 启用对象缓存 / Enable object cache
+  "duckdb_preserve_insertion_order": false, // 保持插入顺序 / Preserve insertion order
+  "duckdb_enable_progress_bar": false,
+  // 调试日志 / Debug Logging
+  // 输出 SQL 执行日志 / Log SQL execution
+  "duckdb_debug_logging": false,
+  // 自动 Explain 阈值 (毫秒) / Auto Explain Threshold (ms)
+  // 超过此时间的查询将自动记录执行计划 / Queries slower than this will trigger EXPLAIN
+  // 0 = 禁用 / 0 = Disabled
+  "duckdb_auto_explain_threshold_ms": 0,
+  // 预加载扩展 / Preloaded Extensions
+  "duckdb_extensions": [
+    "excel",
+    "json",
+    "parquet",
+    "httpfs",
+    "mysql",
+    "postgres"
+  ],
+  // 远程存储配置 (如 S3/OSS) / Remote Storage Settings
+  "duckdb_remote_settings": {
+    // "s3_region": "'cn-hangzhou'",
+    // "s3_endpoint": "'oss-cn-hangzhou.aliyuncs.com'",
+    // "s3_url_style": "'path'",
+    // "s3_use_ssl": "true",
+    // "s3_access_key_id": "'...'",
+    // "s3_secret_access_key": "'...'"
+  },
+  // ==================== 数据挂载 / Data Mounts ====================
+  // 服务器本地目录挂载 / Local directory mounts
+  // 允许在前端浏览和导入这些目录下的文件 / Browse and import files from these paths
+  "server_data_mounts": [
+    {
+      "label": "Shared Data",
+      "path": "/app/server_mounts"
+    },
+    {
+      "label": "macOS Downloads",
+      "path": "/app/host_downloads"
+    },
+    {
+      "label": "macOS Documents",
+      "path": "/app/host_documents"
+    }
+  ],
+  // ==================== 连接池与超时 / Connection Pool & Timeouts ====================
+  // 连接池配置 / Pool Settings
+  "pool_min_connections": 2,
+  "pool_max_connections": 10,
+  "pool_connection_timeout": 30, // seconds
+  "pool_idle_timeout": 300, // seconds
+  "pool_max_retries": 3,
+  "pool_wait_timeout": 1.0,
+  // 数据库操作超时 / DB Operation Timeouts (seconds)
+  "db_connect_timeout": 10,
+  "db_read_timeout": 30,
+  "db_write_timeout": 30,
+  "db_ping_timeout": 5,
+  // 联邦查询超时 / Federated Query Timeout (seconds)
+  "federated_query_timeout": 300,
+  // 其他超时 / Other Timeouts
+  "url_reader_timeout": 30,
+  "url_reader_head_timeout": 10,
+  "sqlite_timeout": 10
+}
