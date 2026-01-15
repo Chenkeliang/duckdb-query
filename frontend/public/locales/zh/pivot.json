@@ -1,0 +1,31 @@
+{
+    "pivot": {
+        "title": "透视分析",
+        "description": "拖拽字段进行多维数据分析",
+        "fields": "字段列表",
+        "columns": "列 (Columns)",
+        "rows": "行 (Rows)",
+        "values": "值 (Values)",
+        "dropZone": {
+            "columns": "拖拽字段到此处作为列",
+            "rows": "拖拽字段到此处作为行",
+            "values": "拖拽字段到此处进行聚合计算"
+        },
+        "run": "运行分析",
+        "clear": "清空配置",
+        "export": "导出结果",
+        "aggregations": {
+            "sum": "求和 (SUM)",
+            "avg": "平均值 (AVG)",
+            "count": "计数 (COUNT)",
+            "min": "最小值 (MIN)",
+            "max": "最大值 (MAX)",
+            "count_distinct": "去重计数 (COUNT DISTINCT)"
+        },
+        "search": "搜索字段...",
+        "empty": "请先选择数据表并配置透视维度",
+        "loading": "正在生成透视表...",
+        "error": "生成失败",
+        "limitWarning": "结果已截断 (显示前 {{rows}} 行)"
+    }
+}
