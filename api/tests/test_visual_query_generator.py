@@ -621,6 +621,51 @@ class TestVisualQueryModeGeneration:
                 )
 
 
+    def test_generate_visual_query_sql_pivot_dynamic_strategy(self):
+        """Test that dynamic pivot is used when no manual values provided and no limit set."""
+        config = VisualQueryConfig(
+            table_name="sales",
+            selected_columns=[],
+            aggregations=[],
+            filters=[],
+            order_by=[],
+        )
+
+        pivot_config = PivotConfig(
+            rows=["region"],
+            columns=["year"],
+            values=[
+                PivotValueConfig(
+                    column="revenue",
+                    aggregation=AggregationFunction.SUM,
+                )
+            ],
+            # No manual values, NO limit -> should trigger dynamic
+        )
+
+        mock_execute = Mock()
+        
+        with patch("core.services.visual_query_generator.config_manager") as mock_manager, \
+            patch("core.database.duckdb_engine.get_db_connection") as mock_conn:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+            )
+            mock_conn.return_value.execute.return_value = mock_execute
+
+            result = generate_visual_query_sql(
+                config,
+                VisualQueryMode.PIVOT,
+                pivot_config=pivot_config,
+            )
+
+        assert result.mode == VisualQueryMode.PIVOT
+        assert result.metadata.get("strategy") == "native:dynamic"
+        assert result.metadata.get("uses_pivot_extension") is False
+        assert "IN (" not in result.final_sql  # No explicit IN list
+        assert "PIVOT" in result.final_sql
+
+
 class TestValidation:
     """Test query configuration validation"""
 

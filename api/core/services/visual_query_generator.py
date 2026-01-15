@@ -651,28 +651,32 @@ def _generate_pivot_transformation_sql(
         except Exception as _:
             return None
 
-    # 只使用原生PIVOT策略
-    native_candidate = _try_generate_native_pivot(base_sql, pivot_config)
-    if native_candidate is not None:
-        native_candidate["metadata"].update(
-            {"uses_pivot_extension": False, "strategy": "native"}
-        )
-        # 当需要小计/总计时，构建额外结果集
-        if pivot_config.include_subtotals or pivot_config.include_grand_totals:
-            native_candidate = _inject_pivot_totals(
-                native_candidate,
-                row_dimensions,
-                pivot_config.values,
-                manual_values,
-                include_subtotals=pivot_config.include_subtotals,
-                include_grand_totals=pivot_config.include_grand_totals,
-            )
-        return native_candidate
+    # 检查是否设置了列数量限制
+    # 如果设置了限制，我们不能使用动态 PIVOT（因为它会返回所有列），
+    # 而应该跳过此步直接进入下面的采样逻辑。
+    # 除非已经有了 manual_column_values（即用户手动指定了列），那样 _try_generate_native_pivot 会优先使用它。
+    explicit_limit = getattr(pivot_config, "column_value_limit", None)
+    should_use_dynamic = explicit_limit is None or explicit_limit <= 0 or bool(pivot_config.manual_column_values)
 
-    # 如果原生PIVOT失败，尝试自动采样
+    if should_use_dynamic:
+        # 尝试使用原生PIVOT策略（支持动态列，不需要显式 IN 列表）
+        native_candidate = _try_generate_native_pivot(base_sql, pivot_config, allow_dynamic=True)
+        if native_candidate is not None:
+            native_candidate["metadata"].update({"uses_pivot_extension": False})
+            # 当需要小计/总计时，构建额外结果集
+            if pivot_config.include_subtotals or pivot_config.include_grand_totals:
+                native_candidate = _inject_pivot_totals(
+                    native_candidate,
+                    row_dimensions,
+                    pivot_config.values,
+                    manual_values,
+                    include_subtotals=pivot_config.include_subtotals,
+                    include_grand_totals=pivot_config.include_grand_totals,
+                )
+            return native_candidate
+
+    # 动态 PIVOT 失败（多列维度场景），仅当显式设置 column_value_limit 时采样
     sample_cap = getattr(pivot_config, "column_value_limit", None)
-    if sample_cap is None:
-        sample_cap = 12
     if sample_cap and sample_cap > 0:
         sampled = _autosample_native_in_values(int(sample_cap))
         if sampled:
@@ -685,7 +689,7 @@ def _generate_pivot_transformation_sql(
                 temp_cfg = pivot_config
                 temp_cfg.manual_column_values = sampled
 
-            native_candidate = _try_generate_native_pivot(base_sql, temp_cfg)
+            native_candidate = _try_generate_native_pivot(base_sql, temp_cfg, allow_dynamic=False)
             if native_candidate is not None:
                 native_candidate["metadata"].update(
                     {
@@ -718,18 +722,30 @@ def _generate_pivot_transformation_sql(
 
 
 def _try_generate_native_pivot(
-    base_sql: str, pivot_config: PivotConfig
+    base_sql: str, pivot_config: PivotConfig, allow_dynamic: bool = True
 ) -> Optional[Dict[str, Any]]:
     """Attempt to generate a DuckDB native PIVOT query.
+    
     Requirements:
       - Exactly one column dimension is provided (pivot_config.columns length == 1)
-      - manual_column_values present (IN list)
+      - If manual_column_values present, use explicit IN list
+      - If manual_column_values is empty AND allow_dynamic is True, generate dynamic PIVOT
+        (DuckDB will automatically use all distinct values as column headers)
+    
+    Args:
+        base_sql: The base SELECT query to pivot on
+        pivot_config: PivotConfig with rows, columns, values configuration
+        allow_dynamic: If True, allows generating PIVOT without explicit IN list
     """
     # Must have one column dimension
     if not pivot_config.columns or len(pivot_config.columns) != 1:
         return None
-    # Require explicit IN list
-    if not pivot_config.manual_column_values:
+    
+    # Determine if we have explicit IN values
+    has_explicit_values = bool(pivot_config.manual_column_values)
+    
+    # If not allowing dynamic and no explicit values, fail early
+    if not has_explicit_values and not allow_dynamic:
         return None
 
     # Build aggregated expressions list
@@ -748,11 +764,20 @@ def _try_generate_native_pivot(
         agg_items.append(f"{v.aggregation.value}({column_expr})")
 
     col_dim = _quote_identifier(pivot_config.columns[0])
-    in_values = ", ".join(_format_literal(x) for x in pivot_config.manual_column_values)
+    
+    # Build IN clause only if explicit values provided
+    if has_explicit_values:
+        in_values = ", ".join(_format_literal(x) for x in pivot_config.manual_column_values)
+        in_clause = f" IN ({in_values})"
+        strategy = "native"
+    else:
+        # Dynamic PIVOT: no IN clause, DuckDB auto-detects column values
+        in_clause = ""
+        strategy = "native:dynamic"
 
     # Construct native PIVOT statement并保留基础 CTE 结构，方便注入 totals
     pivot_select = (
-        f"SELECT * FROM base PIVOT({', '.join(agg_items)} FOR {col_dim} IN ({in_values}))"
+        f"SELECT * FROM base PIVOT({', '.join(agg_items)} FOR {col_dim}{in_clause})"
     )
 
     base_cte = f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)"
@@ -767,7 +792,7 @@ def _try_generate_native_pivot(
         "base_cte": base_cte,
         "pivot_cte": pivot_cte,
         "warnings": [],
-        "metadata": {"pivot_native_on": pivot_select},
+        "metadata": {"pivot_native_on": pivot_select, "strategy": strategy},
     }
 
 
