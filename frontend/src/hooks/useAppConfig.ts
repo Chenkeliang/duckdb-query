@@ -54,7 +54,8 @@ async function fetchAppConfig(): Promise<AppConfig> {
     throw new Error(`获取应用配置失败: ${response.status}`);
   }
 
-  const result: AppConfigResponse = await response.json();
+  const json = await response.json();
+  const result: AppConfigResponse = json.data;
 
   const config = {
     enablePivotTables: result.enable_pivot_tables,

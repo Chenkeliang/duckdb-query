@@ -789,7 +789,7 @@ class TestValidation:
 class TestColumnStatistics:
     """Test column statistics functionality"""
 
-    @patch("core.visual_query_generator.logger")
+    @patch("core.services.visual_query_generator.logger")
     def test_get_column_statistics_success(self, mock_logger):
         """Test successful column statistics retrieval"""
         # Mock DuckDB connection
@@ -844,7 +844,7 @@ class TestColumnStatistics:
 class TestTableMetadata:
     """Test table metadata functionality"""
 
-    @patch("core.visual_query_generator.get_column_statistics")
+    @patch("core.services.visual_query_generator.get_column_statistics")
     def test_get_table_metadata_success(self, mock_get_column_stats):
         """Test successful table metadata retrieval"""
         mock_con = Mock()

@@ -80,7 +80,7 @@ async def test_database_connection(request: dict):
             details={"error": str(e)}
         )
         
-        raise HTTPException(status_code=500, detail=error_response)
+        return JSONResponse(status_code=500, content=error_response)
 
 
 @router.post("/databases/{id}/refresh", tags=["Unified Data Sources"])

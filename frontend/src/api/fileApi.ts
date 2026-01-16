@@ -229,7 +229,7 @@ export async function getServerMounts(): Promise<{
 }> {
     try {
         const response = await apiClient.get('/api/server-files/mounted');
-        return response.data;
+        return response.data.data;
     } catch (error) {
         throw handleApiError(error as never, '获取服务器挂载点失败');
     }
@@ -245,7 +245,7 @@ export async function browseServerDirectory(path: string): Promise<{
 }> {
     try {
         const response = await apiClient.get(`/api/server-files/browse?path=${encodeURIComponent(path)}`);
-        return response.data;
+        return response.data.data;
     } catch (error) {
         throw handleApiError(error as never, '浏览服务器目录失败');
     }

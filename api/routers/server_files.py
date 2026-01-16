@@ -18,6 +18,7 @@ from core.data.file_datasource_manager import (
 )
 from core.data.file_utils import detect_file_type
 from core.common.timezone_utils import get_storage_time
+from api.utils.response_helpers import create_success_response
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
@@ -135,12 +136,12 @@ def _build_breadcrumbs(real_path: str, mount: dict) -> List[dict]:
 @router.get("/api/server-files/mounted")
 async def list_server_mounts():
     mounts = _get_mount_configs()
-    return {
+    return create_success_response({
         "mounts": [
             {"label": m["label"], "path": m["path"], "exists": m["exists"]}
             for m in mounts
         ]
-    }
+    })
 
 
 @router.get("/api/server-files/browse")
@@ -193,12 +194,12 @@ async def list_server_directory(path: str = Query(..., description="服务器目
 
     entries.sort(key=lambda item: (item["type"] != "directory", item["name"].lower()))
 
-    return {
+    return create_success_response({
         "path": _to_display_path(real_path, mount),
         "entries": entries,
         "breadcrumbs": _build_breadcrumbs(real_path, mount),
         "mount": {"label": mount["label"], "path": mount["path"]},
-    }
+    })
 
 
 @router.post("/api/server-files/import")

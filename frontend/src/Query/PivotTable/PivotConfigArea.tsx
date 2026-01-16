@@ -197,9 +197,14 @@ export const PivotConfigArea: React.FC<PivotConfigAreaProps> = ({
                 </DropZone>
             </SortableContext>
 
-            {/* Columns Zone */}
+            {/* Columns Zone - 只支持单个透视列 */}
             <SortableContext id="cols-context" items={columns} strategy={horizontalListSortingStrategy}>
-                <DropZone id="zone-columns" title={t("pivot.columns", "Columns")} items={columns} placeholder={t("pivot.dropZone.columns")}>
+                <DropZone
+                    id="zone-columns"
+                    title={`${t("pivot.columns", "Columns")} (1 max)`}
+                    items={columns}
+                    placeholder={t("pivot.dropZone.columnsSingle", "拖入一个字段作为透视列 (仅支持单列)")}
+                >
                     {columns.map((col) => (
                         <SortableItem
                             key={col}

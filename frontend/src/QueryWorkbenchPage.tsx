@@ -1,7 +1,6 @@
 import * as React from "react";
 
 import { QueryWorkspace } from "./Query/QueryWorkspace";
-import { PivotWorkbench } from "./Query/PivotWorkbench";
 import { AsyncTaskPanel } from "./Query/AsyncTasks";
 import { useAsyncTaskMonitor } from "./hooks/useAsyncTaskMonitor";
 
@@ -29,7 +28,6 @@ export const QueryWorkbenchPage: React.FC<QueryWorkbenchPageProps> = ({
   onPreviewSQL,
 }) => {
 
-
   // 启动异步任务监控
   useAsyncTaskMonitor();
 
@@ -37,8 +35,6 @@ export const QueryWorkbenchPage: React.FC<QueryWorkbenchPageProps> = ({
     <div className="h-full w-full">
       {activeTab === "query" ? (
         <QueryWorkspace previewSQL={previewSQL} />
-      ) : activeTab === "pivot" ? (
-        <PivotWorkbench />
       ) : (
         <AsyncTaskPanel
           className="h-full"

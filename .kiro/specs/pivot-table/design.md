@@ -79,8 +79,6 @@ class PivotConfig(BaseModel):
     queryKey: [...],
     queryFn: () => api.generateVisualQuery(config),
     staleTime: 5 * 60 * 1000, // 5 mins
-    gcTime: 10 * 60 * 1000,
-    enabled: !!config.isValid()
   })
   ```
 - **Cache Strategy**:

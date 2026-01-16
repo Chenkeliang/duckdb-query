@@ -8,7 +8,7 @@ import { QueryBuilder, SQLPreview } from "../VisualQuery";
 import { SQLQueryPanel } from "../SQLQuery";
 import { JoinQueryPanel } from "../JoinQuery";
 import { SetOperationsPanel } from "../SetOperations";
-import { PivotTablePanel } from "../PivotTable";
+import { PivotPanel } from "../PivotTable/PivotPanel";
 import { GlobalHistoryPanel } from "../History/GlobalHistoryPanel";
 import { SavedQueriesPanel } from "../Bookmarks/SavedQueriesPanel";
 import { useGlobalHistory } from "../hooks/useGlobalHistory";
@@ -345,7 +345,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
           </KeepAliveTabContent>
 
           <KeepAliveTabContent value="pivot" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
-            <PivotTablePanel
+            <PivotPanel
               selectedTables={selectedTables}
               onExecute={handlePivotExecute}
             />

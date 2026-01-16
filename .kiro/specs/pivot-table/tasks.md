@@ -1,36 +1,51 @@
 # Pivot Table Implementation Tasks
 
 ## Backend Tasks
-- [ ] **Verify Existing API** <!-- id: 100 -->
-    - Check `visual_query_generator.py` for current Pivot logic.
-    - Create a test case in `tests/test_pivot_queries.py` to assert current behavior.
-- [ ] **Implement Dynamic PIVOT Optimization** <!-- id: 101 -->
-    - Refactor `_try_generate_native_pivot` to support dynamic column generation (remove `IN` clause requirement).
-    - Update `generate_visual_query_sql` to bypass auto-sampling when dynamic pivot is applicable.
-    - Verify with unit tests.
+- [x] **Verify & Optimize API** <!-- id: 100 -->
+    - [x] Check `visual_query_generator.py` for current Pivot logic.
+    - [x] **Refactor**: Implement `Dynamic PIVOT` logic (remove mandatory `IN` clause constraint).
+    - [x] **Security**: Verify `_quote_identifier` usage for all dynamic column paths.
+    - [x] **Limits**: Add default `LIMIT 10000` to generated SQL to prevent browser crash.
+    - [x] **Test Cases (`tests/test_pivot_queries.py`)**:
+        - [x] Dynamic Columns: verify PIVOT generates columns without `manual_column_values`.
+        - [x] Aggregation: verify switching SUM/AVG/COUNT.
+        - [x] Security: verify handling of column names with quotes/spaces.
+        - [x] Limits: verify `LIMIT` is applied.
 
 ## Frontend Tasks
-- [ ] **Create Pivot Workbench Skeleton** <!-- id: 200 -->
-    - Create `src/Query/PivotWorkbench.tsx`.
-    - Implement basic layout (Sidebar, Config Panel, Results).
-    - Add route/tab integration in `App.tsx` or `QueryWorkbenchPage.tsx`.
-- [ ] **Implement Drag-and-Drop Logic** <!-- id: 201 -->
-    - Setup `@dnd-kit` contexts (DndContext, DragOverlay).
-    - Create Draggable `FieldItem` components.
-    - Create Droppable `DropZone` components for Rows, Columns, Values.
-    - Implement `onDragEnd` logic to update state.
-- [ ] **Implement Value Configuration** <!-- id: 202 -->
-    - Add UI to change aggregation function (SUM -> AVG, etc.) on dropped value items.
-    - (Optional) Add alias editing.
-- [ ] **Integrate Backend API** <!-- id: 203 -->
-    - Create `usePivotQuery` hook using `useAppShell` or `react-query`.
-    - Connect "Run Analysis" button to `generate_visual_query` API.
-    - Handle loading states and errors.
-- [ ] **Render Results** <!-- id: 204 -->
-    - customized `AgGrid` or `DataGrid` to display dynamic columns.
-    - Verify column headers match the pivoted values.
+- [x] **Infrastructure & Integration** <!-- id: 200 -->
+    - [x] Update `src/QueryWorkbenchPage.tsx` to include `PivotWorkbench` tab.
+    - [x] Define common i18n keys (`pivot.*`) in `public/locales/common.json`.
+    - [x] **Check**: Verify `useAppShell` integration for global state.
+- [x] **Pivot Workbench State** <!-- id: 201 -->
+    - [x] Implement `PivotWorkbench` container.
+    - [x] Create `usePivotQuery` hook using **TanStack Query** (key: `['pivot', 'result', hash]`).
+        - [x] Implement `getCacheConfig()` usage if applicable.
+        - [x] Handle `isLoading`, `isError`, `data` states.
+    - [x] Integrate `useTableColumns` (existing) for field list.
+- [x] **UI Components (Shadcn + Tailwind)** <!-- id: 202 -->
+    - [x] **FieldsPanel**: Draggable list (using `@dnd-kit`).
+    - [x] **DropZones**: Row/Col/Value zones with visual feedback.
+    - [x] **ValueConfig**: Popover to change Aggregation Function (Sum/Max/Avg).
+    - [x] **Styling**: Strictly use Tailwind semantic classes (`bg-muted`, `border-border`).
+- [x] **Data Grid Implementation** <!-- id: 203 -->
+    - [x] Setup `AgGridReact` with `theme="legacy"`.
+    - [x] **Memoization**: exact wrappers for `gridOptions` and `defaultColDef`.
+    - [x] **Dynamic Columns**: Logic to map API result keys to `columnDefs`.
+    - [x] **Large Data**: Enable AG Grid virtualization (ensure explicit container height).
+    - [x] **UX**: Handle Loading (Skeleton) and Error/Empty states.
 
-## Verification
-- [ ] **End-to-End Test** <!-- id: 300 -->
-    - Select table -> Drag Fields -> Run -> Verify Grid.
-    - Verify dynamic columns appear without manual configuration.
+## Verification & Testing
+- [x] **Backend Tests** <!-- id: 300 -->
+    - [x] Unit tests for `generate_visual_query_sql` with Dynamic Pivot mode.
+- [ ] **Frontend Tests** <!-- id: 301 -->
+    - **Interaction**: Test dragging field to DropZone updates config state.
+    - **Integration**: Mock API response and verify Grid renders correct columns.
+    - **Edge Cases**: Test empty result, API error, switching tables.
+- [ ] **E2E Check** <!-- id: 302 -->
+    - Flow: Open Pivot Tab -> Select Table -> Drag 'Year' to Cols -> Run -> Verify '2022' column exists.
+    - Check for "Truncated" warning if result exceeds limit.
+
+## Documentation
+- [ ] **Update AGENTS Doc** <!-- id: 400 -->
+    - Add note in `AGENTS.md` clarifying `src` flat structure compliance.

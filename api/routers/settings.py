@@ -172,9 +172,9 @@ async def update_shortcut(action_id: str, data: ShortcutUpdate):
         raise
     except Exception as e:
         logger.error(f"更新快捷键失败: {str(e)}")
-        raise HTTPException(
+        return JSONResponse(
             status_code=500,
-            detail=create_error_response(
+            content=create_error_response(
                 code="SHORTCUT_UPDATE_FAILED",
                 message=f"更新快捷键失败: {str(e)}"
             )
@@ -228,9 +228,9 @@ async def reset_shortcuts(data: ShortcutReset):
         raise
     except Exception as e:
         logger.error(f"重置快捷键失败: {str(e)}")
-        raise HTTPException(
+        return JSONResponse(
             status_code=500,
-            detail=create_error_response(
+            content=create_error_response(
                 code="SHORTCUT_RESET_FAILED",
                 message=f"重置快捷键失败: {str(e)}"
             )

@@ -63,3 +63,20 @@ Implement a fully functional **Pivot Table** feature powered by DuckDB's `PIVOT`
 ### Safety & Limits
 - **Sanitization**: All identifiers (table/column names) passed to backend must be properly quoted/escaped.
 - **Result Limits**: Backend should enforce a row/column limit (e.g., 10k rows) to prevent browser crashes, with clear UI truncation indicators.
+
+## Verification & Acceptance Criteria
+### Functional Acceptance
+- [ ] **E2E Flow**: Select Table -> Drag 'Category' to Rows -> Drag 'Year' to Cols -> Click Run -> Result Grid displays Year columns.
+- [ ] **Dynamic Columns**: Verify adding/removing a Column field (e.g., Year) dynamically updates the grid columns without page reload.
+- [ ] **Aggregation**: Verify switching from SUM to AVG correctly updates the numbers.
+- [ ] **Updates**: Verify switching base table correctly clears/resets the configuration.
+
+### Technical Acceptance
+- [ ] **Sanitization**: Backend tests confirm quoting of special characters in column names.
+- [ ] **Limits**: Verify query requesting 1M rows is truncated or limited to 10k with a UI warning.
+- [ ] **Network**: Verify `usePivotQuery` uses correct staleTime and doesn't spam requests on mount.
+- [ ] **Code Standards**:
+    - [ ] No custom CSS files used.
+    - [ ] No hardcoded strings (all i18n).
+    - [ ] AG Grid uses `legacy` theme.
+

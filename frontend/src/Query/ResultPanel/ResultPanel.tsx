@@ -282,11 +282,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           <ResultToolbar
             stats={{ totalRows: 0, filteredRows: 0, selectedRows: 0, columnCount: 0, visibleColumnCount: 0 }}
             columns={[]}
-            onToggleColumn={() => {}}
-            onShowAllColumns={() => {}}
-            onResetColumns={() => {}}
-            onAutoSizeColumns={() => {}}
-            onSizeColumnsToFit={() => {}}
+            onToggleColumn={() => { }}
+            onShowAllColumns={() => { }}
+            onResetColumns={() => { }}
+            onAutoSizeColumns={() => { }}
+            onSizeColumnsToFit={() => { }}
             loading={true}
             disabled={true}
           />
@@ -309,11 +309,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           <ResultToolbar
             stats={{ totalRows: 0, filteredRows: 0, selectedRows: 0, columnCount: 0, visibleColumnCount: 0 }}
             columns={[]}
-            onToggleColumn={() => {}}
-            onShowAllColumns={() => {}}
-            onResetColumns={() => {}}
-            onAutoSizeColumns={() => {}}
-            onSizeColumnsToFit={() => {}}
+            onToggleColumn={() => { }}
+            onShowAllColumns={() => { }}
+            onResetColumns={() => { }}
+            onAutoSizeColumns={() => { }}
+            onSizeColumnsToFit={() => { }}
             onRefresh={onRefresh}
             disabled={true}
           />
@@ -322,7 +322,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           <div className="flex flex-col items-center gap-3 text-destructive max-w-md text-center px-4">
             <AlertCircle className="h-10 w-10" />
             <span className="font-medium">{t('query.result.error', '查询失败')}</span>
-            <span className="text-sm text-muted-foreground">{error.message}</span>
+            <span className="text-sm text-muted-foreground">{cleanErrorMessage(error.message)}</span>
           </div>
         </div>
       </div>
@@ -337,11 +337,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           <ResultToolbar
             stats={{ totalRows: 0, filteredRows: 0, selectedRows: 0, columnCount: 0, visibleColumnCount: 0 }}
             columns={[]}
-            onToggleColumn={() => {}}
-            onShowAllColumns={() => {}}
-            onResetColumns={() => {}}
-            onAutoSizeColumns={() => {}}
-            onSizeColumnsToFit={() => {}}
+            onToggleColumn={() => { }}
+            onShowAllColumns={() => { }}
+            onResetColumns={() => { }}
+            onAutoSizeColumns={() => { }}
+            onSizeColumnsToFit={() => { }}
             onRefresh={onRefresh}
           />
         )}
@@ -366,22 +366,22 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           stats={
             useNewDataGrid && dataGridStats
               ? {
-                  totalRows: dataGridStats.totalRows,
-                  filteredRows: dataGridStats.filteredRows,
-                  selectedRows: 0,
-                  columnCount: dataGridStats.columnCount,
-                  visibleColumnCount: dataGridStats.visibleColumnCount,
-                }
+                totalRows: dataGridStats.totalRows,
+                filteredRows: dataGridStats.filteredRows,
+                selectedRows: 0,
+                columnCount: dataGridStats.columnCount,
+                visibleColumnCount: dataGridStats.visibleColumnCount,
+              }
               : stats
           }
           selectedCells={useNewDataGrid ? dataGridStats?.selectedCells || 0 : 0}
           executionTime={actualExecTime}
           columns={useNewDataGrid ? [] : columns}
-          onToggleColumn={useNewDataGrid ? () => {} : toggleColumn}
-          onShowAllColumns={useNewDataGrid ? () => {} : showAllColumns}
-          onResetColumns={useNewDataGrid ? () => {} : resetColumns}
-          onAutoSizeColumns={useNewDataGrid ? () => {} : autoSizeColumns}
-          onSizeColumnsToFit={useNewDataGrid ? () => {} : sizeColumnsToFit}
+          onToggleColumn={useNewDataGrid ? () => { } : toggleColumn}
+          onShowAllColumns={useNewDataGrid ? () => { } : showAllColumns}
+          onResetColumns={useNewDataGrid ? () => { } : resetColumns}
+          onAutoSizeColumns={useNewDataGrid ? () => { } : autoSizeColumns}
+          onSizeColumnsToFit={useNewDataGrid ? () => { } : sizeColumnsToFit}
           onRefresh={onRefresh}
           onExport={useNewDataGrid ? undefined : handleExport}
           onCopySelected={useNewDataGrid ? undefined : copySelectedRows}

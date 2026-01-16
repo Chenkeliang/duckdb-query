@@ -187,6 +187,7 @@ def create_error_response(
     """
     return {
         "success": False,
+        "detail": message,
         "error": {
             "code": code,
             "message": message,
