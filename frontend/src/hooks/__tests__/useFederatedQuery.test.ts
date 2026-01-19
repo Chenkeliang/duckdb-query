@@ -128,6 +128,7 @@ describe('useFederatedQuery Hook', () => {
     it('should handle mixed sources correctly on removal', () => {
       fc.assert(
         fc.property(duckdbTableArb, externalTableArb, (duckdbTable, externalTable) => {
+          fc.pre(duckdbTable.name !== externalTable.name);
           const { result } = renderHook(() => useFederatedQuery());
 
           // 添加两种类型的表

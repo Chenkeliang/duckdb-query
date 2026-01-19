@@ -143,11 +143,11 @@ describe('useSQLEditor', () => {
         expect(result.current.result).not.toBeNull();
       });
 
-      expect(mockExecuteDuckDBSQL).toHaveBeenCalledWith(
-        'SELECT * FROM users',
-        undefined,
-        undefined
-      );
+      expect(mockExecuteDuckDBSQL).toHaveBeenCalledWith({
+        sql: 'SELECT * FROM users',
+        saveAsTable: undefined,
+        isPreview: undefined
+      });
     });
 
     it('空 SQL 不应该执行', async () => {
@@ -190,11 +190,11 @@ describe('useSQLEditor', () => {
       });
 
       await waitFor(() => {
-        expect(mockExecuteDuckDBSQL).toHaveBeenCalledWith(
-          'SELECT * FROM users',
-          'new_table',
-          undefined
-        );
+        expect(mockExecuteDuckDBSQL).toHaveBeenCalledWith({
+          sql: 'SELECT * FROM users',
+          saveAsTable: 'new_table',
+          isPreview: undefined
+        });
       });
     });
 
@@ -209,11 +209,11 @@ describe('useSQLEditor', () => {
       });
 
       await waitFor(() => {
-        expect(mockExecuteDuckDBSQL).toHaveBeenCalledWith(
-          'SELECT * FROM users',
-          undefined,
-          true
-        );
+        expect(mockExecuteDuckDBSQL).toHaveBeenCalledWith({
+          sql: 'SELECT * FROM users',
+          saveAsTable: undefined,
+          isPreview: true
+        });
       });
     });
 
