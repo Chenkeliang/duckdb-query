@@ -115,6 +115,7 @@ config/datasources.json
 /data/
 !/data/uploads/.gitkeep
 !/data/duckdb/.gitkeep
+api/data/
 
 # DuckDB相关文件
 .duckdb/
