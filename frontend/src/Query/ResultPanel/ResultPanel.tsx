@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { Database, AlertCircle, Loader2 } from 'lucide-react';
 import type { GridApi } from 'ag-grid-community';
 import { toast } from 'sonner';
+import { showErrorToast, cleanErrorMessage } from '@/utils/toastHelpers';
 
 import { AGGridWrapper } from './AGGridWrapper';
 import { DataGridWrapper } from './DataGridWrapper';
@@ -215,12 +216,12 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     if (!currentSQL) return;
 
     if (!source.connectionId) {
-      toast.error(t('query.import.missingConnection', '缺少外部数据库连接信息'));
+      showErrorToast(t, 'INVALID_REQUEST', t('query.import.missingConnection', '缺少外部数据库连接信息'));
       return;
     }
 
     if (source.databaseType !== 'mysql') {
-      toast.error(t('query.import.mysqlOnly', '目前仅支持从 MySQL 导入到 DuckDB'));
+      showErrorToast(t, 'INVALID_REQUEST', t('query.import.mysqlOnly', '目前仅支持从 MySQL 导入到 DuckDB'));
       return;
     }
 

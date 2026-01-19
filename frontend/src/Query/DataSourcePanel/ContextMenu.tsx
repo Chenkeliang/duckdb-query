@@ -31,6 +31,7 @@ import type { SelectedTableObject } from '@/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
 import { invalidateDataSources } from '@/hooks/useDataSources';
 import { invalidateAfterTableDelete } from '@/utils/cacheInvalidation';
+import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 
 /**
  * TableContextMenu 组件
@@ -113,7 +114,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         }
       }
     } catch (error) {
-      toast.error(t('dataSource.getStructureFailed', { error: (error as Error).message }));
+      showErrorToast(t, undefined, t('dataSource.getStructureFailed', { error: (error as Error).message }));
       setShowStructure(false);
     } finally {
       setLoadingStructure(false);
@@ -136,11 +137,9 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         invalidateDuckDBTables(queryClient),
         invalidateDataSources(queryClient),
       ]);
-      toast.success(t('dataSource.refreshSuccess', { tableName: table.name }));
+      showSuccessToast(t, 'TABLE_REFRESHED', t('dataSource.refreshSuccess', { tableName: table.name }));
     } catch (error) {
-      toast.error(
-        t('dataSource.refreshFailed', { error: (error as Error).message })
-      );
+      showErrorToast(t, undefined, t('dataSource.refreshFailed', { error: (error as Error).message }));
     } finally {
       setIsRefreshing(false);
     }
@@ -154,14 +153,14 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         // 默认行为：调用删除 API（使用增强版本）
         const { deleteDuckDBTableEnhanced } = await import('@/api');
         await deleteDuckDBTableEnhanced(table.name);
-        toast.success(t('dataSource.tableDeleted', { tableName: table.name }));
+        showSuccessToast(t, 'TABLE_DELETED', t('dataSource.tableDeleted', { tableName: table.name }));
 
         // 刷新缓存
         await invalidateAfterTableDelete(queryClient);
       }
       setShowDeleteConfirm(false);
     } catch (error) {
-      toast.error(t('dataSource.deleteFailed', { error: (error as Error).message }));
+      showErrorToast(t, undefined, t('dataSource.deleteFailed', { error: (error as Error).message }));
     }
   };
 

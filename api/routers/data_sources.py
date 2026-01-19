@@ -1,58 +1,63 @@
-from fastapi import (
-    APIRouter,
-    HTTPException,
-    Body,
-    UploadFile,
-    File,
-    Form,
-    BackgroundTasks,
-    Request,
-    Response,
-)
+import datetime
+import json
 import logging
 import os
-import json
 import time
 import traceback
 from pathlib import Path
-from typing import List, Any, Optional, Dict
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator, model_validator
-from core.database.duckdb_engine import with_duckdb_connection
-from core.security.encryption import password_encryptor
-from models.query_models import (
-    DatabaseConnection,
-    ConnectionTestRequest,
-    ConnectionStatus,
-    FileUploadResponse,
-)
-from core.database.database_manager import db_manager
-from core.security.security import security_validator
-from core.services.resource_manager import save_upload_file, schedule_cleanup
+from core.common.timezone_utils import get_current_time, get_current_time_iso  # 导入时区工具
 from core.data.excel_import_manager import (
-    register_excel_upload,
-    get_pending_excel,
     cleanup_pending_excel,
     derive_default_table_name,
+    get_pending_excel,
     inspect_excel_sheets,
     load_excel_sheet_dataframe,
+    register_excel_upload,
     sanitize_identifier,
 )
-from core.data.file_utils import detect_file_type
 from core.data.file_datasource_manager import (
-    file_datasource_manager,
-    create_table_from_dataframe,
-    build_table_metadata_snapshot,
     _quote_identifier,
+    build_table_metadata_snapshot,
+    create_table_from_dataframe,
+    file_datasource_manager,
 )
-import datetime
-from core.common.timezone_utils import get_current_time  # 导入时区工具
-from uuid import uuid4
+from core.data.file_utils import detect_file_type
+from core.database.database_manager import db_manager
+from core.database.duckdb_engine import with_duckdb_connection
+from core.security.encryption import password_encryptor
+from core.security.security import security_validator
+from core.services.resource_manager import save_upload_file, schedule_cleanup
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Body,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
+from fastapi.responses import JSONResponse
+from models.query_models import (
+    ConnectionStatus,
+    ConnectionTestRequest,
+    DatabaseConnection,
+    FileUploadResponse,
+)
+from pydantic import BaseModel, Field, field_validator, model_validator
+from utils.response_helpers import (
+    MessageCode,
+    create_error_response,
+    create_list_response,
+    create_success_response,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
 
 
 VALID_EXCEL_IMPORT_MODES = {"replace", "append", "fail"}
@@ -67,7 +72,9 @@ class ExcelImportSheet(BaseModel):
     target_table: str = Field(..., description="目标DuckDB表名")
     mode: str = Field(default="replace", description="导入模式 replace/append/fail")
     header_rows: int = Field(default=1, description="表头行数")
-    header_row_index: Optional[int] = Field(default=1, description="表头起始行(1-based)")
+    header_row_index: Optional[int] = Field(
+        default=1, description="表头起始行(1-based)"
+    )
     fill_merged: bool = Field(default=False, description="是否填充合并单元格")
 
     @field_validator("mode", mode="before")
@@ -109,15 +116,12 @@ class ExcelImportRequest(BaseModel):
         return sheets
 
 
-
-
-
 @router.post(
-    "/api/database_connections/test", 
+    "/api/database_connections/test",
     tags=["Database Management"],
     deprecated=True,
     summary="测试数据库连接（已废弃）",
-    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases/test"
+    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases/test",
 )
 async def test_database_connection(request: ConnectionTestRequest, response: Response):
     """
@@ -129,13 +133,13 @@ async def test_database_connection(request: ConnectionTestRequest, response: Res
     response.headers["X-Deprecated"] = "true"
     response.headers["X-New-Endpoint"] = "/api/datasources/databases/test"
     response.headers["X-Sunset-Date"] = "2025-06-01"
-    
+
     # 记录废弃警告日志
     logger.warning(
         "使用了废弃的端点: /api/database_connections/test, "
         "请迁移到 /api/datasources/databases/test"
     )
-    
+
     try:
         result = db_manager.test_connection(request)
         return result
@@ -167,7 +171,7 @@ async def test_database_connection(request: ConnectionTestRequest, response: Res
     tags=["Database Management"],
     deprecated=True,
     summary="刷新数据库连接（已废弃）",
-    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases/{connection_id}/refresh"
+    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases/{connection_id}/refresh",
 )
 async def refresh_database_connection(connection_id: str, response: Response):
     """
@@ -177,15 +181,17 @@ async def refresh_database_connection(connection_id: str, response: Response):
     """
     # 添加废弃响应头
     response.headers["X-Deprecated"] = "true"
-    response.headers["X-New-Endpoint"] = f"/api/datasources/databases/{connection_id}/refresh"
+    response.headers["X-New-Endpoint"] = (
+        f"/api/datasources/databases/{connection_id}/refresh"
+    )
     response.headers["X-Sunset-Date"] = "2025-06-01"
-    
+
     # 记录废弃警告日志
     logger.warning(
         f"使用了废弃的端点: POST /api/database_connections/{connection_id}/refresh, "
         f"请迁移到 POST /api/datasources/databases/{connection_id}/refresh"
     )
-    
+
     connection = db_manager.get_connection(connection_id)
     if not connection:
         raise HTTPException(status_code=404, detail="未找到数据库连接")
@@ -208,9 +214,7 @@ async def refresh_database_connection(connection_id: str, response: Response):
                 try:
                     db_manager.engines[connection_id].dispose()
                 except Exception as dispose_error:
-                    logger.warning(
-                        f"释放旧数据库引擎时出现警告: {dispose_error}"
-                    )
+                    logger.warning(f"释放旧数据库引擎时出现警告: {dispose_error}")
 
             engine = db_manager._create_engine(connection.type, connection.params)
             db_manager.engines[connection_id] = engine
@@ -239,21 +243,24 @@ async def refresh_database_connection(connection_id: str, response: Response):
 
     db_manager.connections[connection_id] = connection
 
-
-    return {
-        "success": success,
-        "message": message,
-        "connection": connection,
-        "test_result": test_result,
-    }
+    return create_success_response(
+        data={
+            "connection": connection,
+            "test_result": test_result,
+        },
+        message_code=MessageCode.CONNECTION_TEST_SUCCESS
+        if success
+        else MessageCode.CONNECTION_TEST_FAILED,
+        message=message,
+    )
 
 
 @router.post(
-    "/api/test_connection_simple", 
+    "/api/test_connection_simple",
     tags=["Database Management"],
     deprecated=True,
     summary="简化的数据库连接测试（已废弃）",
-    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases/test"
+    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases/test",
 )
 async def test_connection_simple(request: dict = Body(...), response: Response = None):
     """
@@ -266,7 +273,7 @@ async def test_connection_simple(request: dict = Body(...), response: Response =
         response.headers["X-Deprecated"] = "true"
         response.headers["X-New-Endpoint"] = "/api/datasources/databases/test"
         response.headers["X-Sunset-Date"] = "2025-06-01"
-    
+
     # 记录废弃警告日志
     logger.warning(
         "使用了废弃的端点: /api/test_connection_simple, "
@@ -284,9 +291,20 @@ async def test_connection_simple(request: dict = Body(...), response: Response =
                 conn = sqlite3.connect(database)
                 conn.execute("SELECT 1")
                 conn.close()
-                return {"success": True, "message": "SQLite连接测试成功"}
+                return create_success_response(
+                    data={"connection_type": "sqlite"},
+                    message_code=MessageCode.CONNECTION_TEST_SUCCESS,
+                    message="SQLite连接测试成功",
+                )
             except Exception as e:
-                return {"success": False, "message": f"SQLite连接失败: {str(e)}"}
+                return JSONResponse(
+                    status_code=500,
+                    content=create_error_response(
+                        code=MessageCode.CONNECTION_TEST_FAILED,
+                        message=f"SQLite connection failed: {str(e)}",
+                        details={"connection_type": "sqlite"},
+                    ),
+                )
 
         elif db_type == "mysql":
             # MySQL连接测试
@@ -308,9 +326,20 @@ async def test_connection_simple(request: dict = Body(...), response: Response =
                 )
                 conn.ping()
                 conn.close()
-                return {"success": True, "message": "MySQL连接测试成功"}
+                return create_success_response(
+                    data={"connection_type": "mysql"},
+                    message_code=MessageCode.CONNECTION_TEST_SUCCESS,
+                    message="MySQL连接测试成功",
+                )
             except Exception as e:
-                return {"success": False, "message": f"MySQL连接失败: {str(e)}"}
+                return JSONResponse(
+                    status_code=500,
+                    content=create_error_response(
+                        code=MessageCode.CONNECTION_TEST_FAILED,
+                        message=f"MySQL连接失败: {str(e)}",
+                        details={"connection_type": "mysql"},
+                    ),
+                )
 
         elif db_type == "postgresql":
             # PostgreSQL连接测试
@@ -331,26 +360,53 @@ async def test_connection_simple(request: dict = Body(...), response: Response =
                     connect_timeout=app_config.db_ping_timeout,
                 )
                 conn.close()
-                return {"success": True, "message": "PostgreSQL连接测试成功"}
+                return create_success_response(
+                    data={"connection_type": "postgresql"},
+                    message_code=MessageCode.CONNECTION_TEST_SUCCESS,
+                    message="PostgreSQL连接测试成功",
+                )
             except Exception as e:
-                return {"success": False, "message": f"PostgreSQL连接失败: {str(e)}"}
+                return JSONResponse(
+                    status_code=500,
+                    content=create_error_response(
+                        code=MessageCode.CONNECTION_TEST_FAILED,
+                        message=f"PostgreSQL连接失败: {str(e)}",
+                        details={"connection_type": "postgresql"},
+                    ),
+                )
 
         else:
-            return {"success": False, "message": f"不支持的数据库类型: {db_type}"}
+            return JSONResponse(
+                status_code=400,
+                content=create_error_response(
+                    code=MessageCode.VALIDATION_ERROR,
+                    message=f"Unsupported database type: {db_type}",
+                    details={"db_type": db_type},
+                ),
+            )
 
     except Exception as e:
         logger.error(f"连接测试失败: {str(e)}")
-        return {"success": False, "message": f"连接测试失败: {str(e)}"}
+        return JSONResponse(
+            status_code=500,
+            content=create_error_response(
+                code=MessageCode.CONNECTION_TEST_FAILED,
+                message=f"Connection test failed: {str(e)}",
+                details={},
+            ),
+        )
 
 
 @router.post(
-    "/api/database_connections", 
+    "/api/database_connections",
     tags=["Database Management"],
     deprecated=True,
     summary="创建数据库连接（已废弃）",
-    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases"
+    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases",
 )
-async def create_database_connection(connection: DatabaseConnection, response: Response):
+async def create_database_connection(
+    connection: DatabaseConnection, response: Response
+):
     """
     创建数据库连接（已废弃）
     ⚠️ 此端点将在 2025-06-01 移除，请迁移到新端点：
@@ -360,13 +416,13 @@ async def create_database_connection(connection: DatabaseConnection, response: R
     response.headers["X-Deprecated"] = "true"
     response.headers["X-New-Endpoint"] = "/api/datasources/databases"
     response.headers["X-Sunset-Date"] = "2025-06-01"
-    
+
     # 记录废弃警告日志
     logger.warning(
         "使用了废弃的端点: /api/database_connections, "
         "请迁移到 /api/datasources/databases"
     )
-    
+
     try:
         # 设置创建时间
         connection.created_at = get_current_time()
@@ -374,27 +430,25 @@ async def create_database_connection(connection: DatabaseConnection, response: R
 
         success = db_manager.add_connection(connection)
         if success:
-
-            return {
-                "success": True,
-                "message": "数据库连接创建成功",
-                "connection": connection,
-            }
+            return create_success_response(
+                data={"connection": connection},
+                message_code=MessageCode.CONNECTION_CREATED,
+            )
         else:
-            raise HTTPException(status_code=400, detail="数据库连接创建失败")
+            raise HTTPException(status_code=400, detail="Database connection creation failed")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"创建数据库连接失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"创建数据库连接失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database connection creation failed: {str(e)}")
 
 
 @router.get(
-    "/api/database_connections", 
+    "/api/database_connections",
     tags=["Database Management"],
     deprecated=True,
     summary="列出所有数据库连接（已废弃）",
-    description="⚠️ 此端点已废弃，请使用 GET /api/datasources?type=database"
+    description="⚠️ 此端点已废弃，请使用 GET /api/datasources?type=database",
 )
 async def list_database_connections(request: Request, response: Response):
     """
@@ -403,12 +457,12 @@ async def list_database_connections(request: Request, response: Response):
     - 新端点: GET /api/datasources?type=database
     """
     import time
-    
+
     # 添加废弃响应头
     response.headers["X-Deprecated"] = "true"
     response.headers["X-New-Endpoint"] = "/api/datasources?type=database"
     response.headers["X-Sunset-Date"] = "2025-06-01"
-    
+
     # 记录废弃警告日志
     logger.warning(
         "使用了废弃的端点: /api/database_connections, "
@@ -498,7 +552,11 @@ async def list_database_connections(request: Request, response: Response):
 
         logger.info(f"返回数据库连接列表，共 {len(serializable_connections)} 个连接")
 
-        result = {"success": True, "connections": serializable_connections}
+        result = create_list_response(
+            items=serializable_connections,
+            total=len(serializable_connections),
+            message_code=MessageCode.DATASOURCES_RETRIEVED,
+        )
 
         # 不缓存结果，确保每次都是最新状态
         # list_database_connections._cached_result = result
@@ -506,7 +564,7 @@ async def list_database_connections(request: Request, response: Response):
         return result
     except Exception as e:
         logger.error(f"获取数据库连接列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取数据库连接列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get database connections: {str(e)}")
 
 
 @router.post("/api/upload", tags=["Data Sources"])
@@ -593,25 +651,31 @@ async def upload_file(
                 pending_excel.file_id,
             )
 
-            return {
-                "success": True,
-                "file_type": "excel",
-                "requires_sheet_selection": True,
-                "message": "Excel 文件已上传，请选择需要导入的工作表。",
-                "pending_excel": {
-                    "file_id": pending_excel.file_id,
-                    "original_filename": pending_excel.original_filename,
-                    "file_size": pending_excel.file_size,
-                    "table_alias": pending_excel.table_alias,
-                    "uploaded_at": pending_excel.uploaded_at,
-                    "default_table_prefix": pending_excel.default_table_prefix,
+            return create_success_response(
+                data={
+                    "file_type": "excel",
+                    "requires_sheet_selection": True,
+                    "pending_excel": {
+                        "file_id": pending_excel.file_id,
+                        "original_filename": pending_excel.original_filename,
+                        "file_size": pending_excel.file_size,
+                        "table_alias": pending_excel.table_alias,
+                        "uploaded_at": pending_excel.uploaded_at,
+                        "default_table_prefix": pending_excel.default_table_prefix,
+                    },
                 },
-            }
+                message_code=MessageCode.FILE_UPLOADED,
+                message="Excel 文件已上传，请选择需要导入的工作表。",
+            )
 
         preview_info = get_file_preview(save_path, rows=10)
 
         source_id = table_alias if table_alias else file.filename.split(".")[0]
-        source_id = sanitize_identifier(source_id, allow_leading_digit=False, prefix="table")
+        # 如果用户明确提供了 table_alias，尊重用户输入（允许数字开头）
+        # 只有使用文件名作为默认值时才需要更严格的处理
+        source_id = sanitize_identifier(
+            source_id, allow_leading_digit=bool(table_alias), prefix="table"
+        )
 
         if not source_id:
             source_id = f"table_{int(time.time())}"
@@ -658,7 +722,7 @@ async def upload_file(
             "columns": columns,
             "column_profiles": column_profiles,
             "schema_version": 2,
-            "created_at": get_current_time(),
+            "created_at": get_current_time_iso(),
         }
 
         config_saved = file_datasource_manager.save_file_datasource(file_info)
@@ -722,7 +786,9 @@ def _fetch_existing_columns(con, table_name: str) -> List[str]:
 async def inspect_excel(request: ExcelInspectRequest):
     pending = get_pending_excel(request.file_id)
     if not pending:
-        raise HTTPException(status_code=404, detail="未找到对应的Excel缓存文件，请重新上传。")
+        raise HTTPException(
+            status_code=404, detail="未找到对应的Excel缓存文件，请重新上传。"
+        )
 
     try:
         sheets = inspect_excel_sheets(pending.stored_path)
@@ -738,28 +804,33 @@ async def inspect_excel(request: ExcelInspectRequest):
             pending.default_table_prefix, sheet["name"]
         )
 
-    return {
-        "success": True,
-        "file_id": pending.file_id,
-        "original_filename": pending.original_filename,
-        "default_table_prefix": pending.default_table_prefix,
-        "sheets": sheets,
-    }
+    return create_success_response(
+        data={
+            "file_id": pending.file_id,
+            "original_filename": pending.original_filename,
+            "default_table_prefix": pending.default_table_prefix,
+            "sheets": sheets,
+        },
+        message_code=MessageCode.EXCEL_SHEETS_INSPECTED,
+    )
 
 
 @router.post("/api/data-sources/excel/import", tags=["Data Sources"])
 async def import_excel(request: ExcelImportRequest):
     pending = get_pending_excel(request.file_id)
     if not pending:
-        raise HTTPException(status_code=404, detail="未找到对应的Excel缓存文件，请重新上传。")
+        raise HTTPException(
+            status_code=404, detail="未找到对应的Excel缓存文件，请重新上传。"
+        )
 
     processed_results = []
     metadata_to_persist = []
     sanitized_name_map = {}
 
     for sheet_cfg in request.sheets:
+        # 用户明确提供了目标表名，尊重用户输入（允许数字开头）
         sanitized = sanitize_identifier(
-            sheet_cfg.target_table, allow_leading_digit=False, prefix="table"
+            sheet_cfg.target_table, allow_leading_digit=True, prefix="table"
         )
         if sanitized in sanitized_name_map:
             raise HTTPException(
@@ -793,7 +864,9 @@ async def import_excel(request: ExcelImportRequest):
                 view_name = f"excel_view_{uuid4().hex[:8]}"
                 con.register(view_name, df)
 
-                columns_clause = ", ".join(f"{_quote_identifier(col)}" for col in df.columns)
+                columns_clause = ", ".join(
+                    f"{_quote_identifier(col)}" for col in df.columns
+                )
                 try:
                     if mode == "append" and table_exists:
                         existing_cols = _fetch_existing_columns(con, target_table)
@@ -870,7 +943,7 @@ async def import_excel(request: ExcelImportRequest):
             "columns": metadata.get("columns", []),
             "column_profiles": metadata.get("column_profiles", []),
             "schema_version": 2,
-            "created_at": get_current_time(),
+            "created_at": get_current_time_iso(),
         }
         try:
             file_datasource_manager.save_file_datasource(file_info)
@@ -879,19 +952,21 @@ async def import_excel(request: ExcelImportRequest):
 
     cleanup_pending_excel(request.file_id)
 
-    return {
-        "success": True,
-        "file_id": pending.file_id,
-        "results": processed_results,
-    }
+    return create_success_response(
+        data={
+            "file_id": pending.file_id,
+            "results": processed_results,
+        },
+        message_code=MessageCode.EXCEL_SHEETS_IMPORTED,
+    )
 
 
 @router.get(
-    "/api/database_connections/{connection_id}", 
+    "/api/database_connections/{connection_id}",
     tags=["Database Management"],
     deprecated=True,
     summary="获取指定数据库连接（已废弃）",
-    description="⚠️ 此端点已废弃，请使用 GET /api/datasources/db_{connection_id}"
+    description="⚠️ 此端点已废弃，请使用 GET /api/datasources/db_{connection_id}",
 )
 async def get_database_connection(connection_id: str, response: Response):
     """
@@ -903,19 +978,29 @@ async def get_database_connection(connection_id: str, response: Response):
     response.headers["X-Deprecated"] = "true"
     response.headers["X-New-Endpoint"] = f"/api/datasources/db_{connection_id}"
     response.headers["X-Sunset-Date"] = "2025-06-01"
-    
+
     # 记录废弃警告日志
     logger.warning(
         f"使用了废弃的端点: /api/database_connections/{connection_id}, "
         f"请迁移到 /api/datasources/db_{connection_id}"
     )
-    
+
     try:
         connection = db_manager.get_connection(connection_id)
         if connection:
-            return {"success": True, "connection": connection}
+            return create_success_response(
+                data={"connection": connection},
+                message_code=MessageCode.DATASOURCE_RETRIEVED,
+            )
         else:
-            raise HTTPException(status_code=404, detail="数据库连接不存在")
+            return JSONResponse(
+                status_code=404,
+                content=create_error_response(
+                    code=MessageCode.DATASOURCE_NOT_FOUND,
+                    message="数据库连接不存在",
+                    details={"connection_id": connection_id},
+                ),
+            )
     except HTTPException:
         raise
     except Exception as e:
@@ -924,11 +1009,11 @@ async def get_database_connection(connection_id: str, response: Response):
 
 
 @router.put(
-    "/api/database_connections/{connection_id}", 
+    "/api/database_connections/{connection_id}",
     tags=["Database Management"],
     deprecated=True,
     summary="更新数据库连接（已废弃）",
-    description="⚠️ 此端点已废弃，请使用 PUT /api/datasources/databases/{connection_id}"
+    description="⚠️ 此端点已废弃，请使用 PUT /api/datasources/databases/{connection_id}",
 )
 async def update_database_connection(
     connection_id: str, connection: DatabaseConnection, response: Response
@@ -942,13 +1027,13 @@ async def update_database_connection(
     response.headers["X-Deprecated"] = "true"
     response.headers["X-New-Endpoint"] = f"/api/datasources/databases/{connection_id}"
     response.headers["X-Sunset-Date"] = "2025-06-01"
-    
+
     # 记录废弃警告日志
     logger.warning(
         f"使用了废弃的端点: /api/database_connections/{connection_id}, "
         f"请迁移到 /api/datasources/databases/{connection_id}"
     )
-    
+
     try:
         # 设置更新时间
         connection.updated_at = get_current_time()
@@ -959,27 +1044,25 @@ async def update_database_connection(
         # 添加新连接
         success = db_manager.add_connection(connection)
         if success:
-
-            return {
-                "success": True,
-                "message": "数据库连接更新成功",
-                "connection": connection,
-            }
+            return create_success_response(
+                data={"connection": connection},
+                message_code=MessageCode.CONNECTION_UPDATED,
+            )
         else:
-            raise HTTPException(status_code=400, detail="数据库连接更新失败")
+            raise HTTPException(status_code=400, detail="Database connection update failed")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"更新数据库连接失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"更新数据库连接失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database connection update failed: {str(e)}")
 
 
 @router.delete(
-    "/api/database_connections/{connection_id}", 
+    "/api/database_connections/{connection_id}",
     tags=["Database Management"],
     deprecated=True,
     summary="删除数据库连接（已废弃）",
-    description="⚠️ 此端点已废弃，请使用 DELETE /api/datasources/db_{connection_id}"
+    description="⚠️ 此端点已废弃，请使用 DELETE /api/datasources/db_{connection_id}",
 )
 async def delete_database_connection(connection_id: str, response: Response):
     """
@@ -991,13 +1074,13 @@ async def delete_database_connection(connection_id: str, response: Response):
     response.headers["X-Deprecated"] = "true"
     response.headers["X-New-Endpoint"] = f"/api/datasources/db_{connection_id}"
     response.headers["X-Sunset-Date"] = "2025-06-01"
-    
+
     # 记录废弃警告日志
     logger.warning(
         f"使用了废弃的端点: DELETE /api/database_connections/{connection_id}, "
         f"请迁移到 DELETE /api/datasources/db_{connection_id}"
     )
-    
+
     try:
         # 从内存中删除连接
         success = db_manager.remove_connection(connection_id)
@@ -1032,9 +1115,20 @@ async def delete_database_connection(connection_id: str, response: Response):
                     status_code=500, detail=f"更新配置文件失败: {str(e)}"
                 )
 
-            return {"success": True, "message": "数据库连接删除成功"}
+            return create_success_response(
+                data={"deleted_connection": connection_id},
+                message_code=MessageCode.CONNECTION_DELETED,
+                message="数据库连接删除成功",
+            )
         else:
-            raise HTTPException(status_code=404, detail="数据库连接不存在")
+            return JSONResponse(
+                status_code=404,
+                content=create_error_response(
+                    code=MessageCode.DATASOURCE_NOT_FOUND,
+                    message="数据库连接不存在",
+                    details={"connection_id": connection_id},
+                ),
+            )
     except HTTPException:
         raise
     except Exception as e:
@@ -1044,11 +1138,11 @@ async def delete_database_connection(connection_id: str, response: Response):
 
 # 新增数据库连接接口
 @router.post(
-    "/api/database/connect", 
+    "/api/database/connect",
     tags=["Database Management"],
     deprecated=True,
     summary="连接数据库并返回表信息（已废弃）",
-    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases + GET /databases/{id}/schemas"
+    description="⚠️ 此端点已废弃，请使用 POST /api/datasources/databases + GET /databases/{id}/schemas",
 )
 async def connect_database(connection: DatabaseConnection, response: Response = None):
     """
@@ -1062,11 +1156,10 @@ async def connect_database(connection: DatabaseConnection, response: Response = 
         response.headers["X-Deprecated"] = "true"
         response.headers["X-New-Endpoint"] = "/api/datasources/databases"
         response.headers["X-Sunset-Date"] = "2025-06-01"
-    
+
     # 记录废弃警告日志
     logger.warning(
-        "使用了废弃的端点: /api/database/connect, "
-        "请迁移到 /api/datasources/databases"
+        "使用了废弃的端点: /api/database/connect, 请迁移到 /api/datasources/databases"
     )
     try:
         # 测试连接
@@ -1079,14 +1172,18 @@ async def connect_database(connection: DatabaseConnection, response: Response = 
         if success:
             # 获取数据库表信息
             tables = await get_database_tables(connection)
-            return {
-                "success": True,
-                "message": "数据库连接成功",
-                "connection": connection,
-                "tables": tables,
-            }
+            return create_success_response(
+                data={
+                    "connection": connection,
+                    "tables": tables,
+                },
+                message_code=MessageCode.CONNECTION_CREATED,
+                message="Database connection successful",
+            )
         else:
-            raise HTTPException(status_code=400, detail="数据库连接创建失败")
+            raise HTTPException(status_code=400, detail="Database connection creation failed")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"数据库连接失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1191,8 +1288,8 @@ async def get_postgresql_tables(connection: DatabaseConnection) -> list:
             # 获取表列表
             cursor.execute(
                 """
-                SELECT table_name 
-                FROM information_schema.tables 
+                SELECT table_name
+                FROM information_schema.tables
                 WHERE table_schema = %s
             """,
                 (schema,),

@@ -33,8 +33,11 @@ const fetchSchemas = async (connectionId: string): Promise<Schema[]> => {
     throw new Error('获取 schemas 列表失败');
   }
   
-  const data: SchemasResponse = await response.json();
-  return data.schemas || [];
+  const data = await response.json();
+  // 兼容不同的 API 响应格式
+  // 标准格式: { success: true, data: { schemas: [...] } }
+  // 旧格式: { schemas: [...] }
+  return data.data?.schemas || data.schemas || [];
 };
 
 /**

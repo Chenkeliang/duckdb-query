@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import {
+  showSuccessToast,
+  showErrorToast,
+  showResponseToast
+} from "@/utils/toastHelpers";
 import { Upload, FileType, Link2, Server, HardDrive } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,7 +14,7 @@ import {
   getServerMounts,
   browseServerDirectory,
   importServerFile
-} from '@/api';
+} from "@/api";
 import ExcelSheetSelector from "./ExcelSheetSelector";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,7 +37,7 @@ interface ServerExcelPending {
 /**
  * 数据源视图 A：智能文件上传（本地文件 + URL + 服务器目录）。
  * 视觉与布局参考 docs/datasource_preview.html 的 #view-file。
- * 
+ *
  * Now using shadcn/ui components:
  * - Card for containers
  * - Button for all actions
@@ -56,7 +61,10 @@ const UploadPanel = ({ onDataSourceSaved }) => {
   // Excel 工作表选择状态 (文件上传)
   const [pendingExcel, setPendingExcel] = useState<PendingExcel | null>(null);
   // Excel 工作表选择状态 (服务器文件)
-  const [serverExcelPending, setServerExcelPending] = useState<ServerExcelPending | null>(null);
+  const [
+    serverExcelPending,
+    setServerExcelPending
+  ] = useState<ServerExcelPending | null>(null);
 
   // 服务器目录状态
   const [serverMounts, setServerMounts] = useState([]);
@@ -69,7 +77,6 @@ const UploadPanel = ({ onDataSourceSaved }) => {
   const [serverSelectedFile, setServerSelectedFile] = useState(null);
   const [serverAlias, setServerAlias] = useState("");
   const [serverImporting, setServerImporting] = useState(false);
-
 
   const handleDrop = e => {
     e.preventDefault();
@@ -108,7 +115,9 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       const response = await uploadFile(selectedFile, alias || null);
 
       if (!response?.success) {
-        toast.error(response?.message || t("page.datasource.uploadFail"));
+        showResponseToast(t, response, {
+          errorFallback: t("page.datasource.uploadFail")
+        });
         return;
       }
 
@@ -120,7 +129,9 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       }
 
       // 直接导入成功
-      toast.success(
+      showSuccessToast(
+        t,
+        "FILE_UPLOADED",
         t("page.datasource.uploadSuccessTable", {
           table: response.file_id
         })
@@ -143,7 +154,7 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       setAlias("");
     } catch (err) {
       console.error("Upload failed:", err);
-      toast.error(err?.message || t("page.datasource.uploadFail"));
+      showErrorToast(t, err as Error, t("page.datasource.uploadFail"));
     } finally {
       setUploading(false);
     }
@@ -162,7 +173,9 @@ const UploadPanel = ({ onDataSourceSaved }) => {
     try {
       const result = await readFromUrl(url.trim(), alias.trim());
       if (result?.success) {
-        toast.success(
+        showSuccessToast(
+          t,
+          "URL_READ_SUCCESS",
           t("page.datasource.urlReadSuccess", { table: result.table_name })
         );
         // 精细化缓存失效
@@ -178,12 +191,16 @@ const UploadPanel = ({ onDataSourceSaved }) => {
         });
         setUrl("");
       } else {
-        toast.error(result?.message || t("page.datasource.urlReadFail"));
+        showResponseToast(t, result, {
+          errorFallback: t("page.datasource.urlReadFail")
+        });
       }
     } catch (err) {
-      toast.error(
+      showErrorToast(
+        t,
+        err as Error,
         t("page.datasource.urlReadFailDetail", {
-          message: err?.message || t("common.unknown")
+          message: (err as Error)?.message || t("common.unknown")
         })
       );
     } finally {
@@ -202,7 +219,12 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       const data = await browseServerDirectory(path);
       setServerEntries(data?.entries || []);
     } catch (err) {
-      setServerError(err?.message || t("page.datasource.serverBrowseFail"));
+      setServerError(
+        err?.messageCode ||
+        err?.code ||
+        err?.message ||
+        "page.datasource.serverBrowseFail"
+      );
     } finally {
       setServerLoading(false);
     }
@@ -221,17 +243,24 @@ const UploadPanel = ({ onDataSourceSaved }) => {
         await loadServerDirectory(first.path);
       }
     } catch (err) {
-      setServerError(err?.message || t("page.datasource.serverBrowseFail"));
+      setServerError(
+        err?.messageCode ||
+        err?.code ||
+        err?.message ||
+        "page.datasource.serverBrowseFail"
+      );
     } finally {
       setServerMountLoading(false);
     }
   };
 
-  const handleExcelImported = async (result) => {
+  const handleExcelImported = async result => {
     try {
       if (!result?.success) {
         console.error("Excel import failed:", result);
-        toast.error(result?.message || t("page.datasource.importFail"));
+        showResponseToast(t, result, {
+          errorFallback: t("page.datasource.importFail")
+        });
         // 保持 pendingExcel 状态，允许用户重试
         return;
       }
@@ -254,7 +283,9 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       });
 
       // 显示成功通知
-      toast.success(
+      showSuccessToast(
+        t,
+        "FILE_IMPORTED",
         result.message || t("page.datasource.importSuccess")
       );
 
@@ -263,7 +294,7 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       setAlias("");
     } catch (err) {
       console.error("Import handling failed:", err);
-      toast.error(err?.message || t("page.datasource.importFail"));
+      showErrorToast(t, err as Error, t("page.datasource.importFail"));
     }
   };
 
@@ -288,7 +319,7 @@ const UploadPanel = ({ onDataSourceSaved }) => {
     if (ext === "excel" || ext === "xlsx" || ext === "xls") {
       setServerExcelPending({
         path: serverSelectedFile.path,
-        filename: serverSelectedFile.name,
+        filename: serverSelectedFile.name
       });
       return;
     }
@@ -310,7 +341,9 @@ const UploadPanel = ({ onDataSourceSaved }) => {
         table_alias: aliasValue
       });
       if (result?.success) {
-        toast.success(
+        showSuccessToast(
+          t,
+          "SERVER_FILE_IMPORTED",
           result?.message || t("page.datasource.importSuccess")
         );
         await invalidateAfterFileUpload(queryClient);
@@ -326,10 +359,12 @@ const UploadPanel = ({ onDataSourceSaved }) => {
         setServerSelectedFile(null);
         setServerAlias("");
       } else {
-        toast.error(result?.message || t("page.datasource.importFail"));
+        showResponseToast(t, result, {
+          errorFallback: t("page.datasource.importFail")
+        });
       }
     } catch (err) {
-      toast.error(err?.message || t("page.datasource.importFail"));
+      showErrorToast(t, err as Error, t("page.datasource.importFail"));
     } finally {
       setServerImporting(false);
     }
@@ -339,7 +374,9 @@ const UploadPanel = ({ onDataSourceSaved }) => {
     try {
       if (!result?.success) {
         console.error("Server Excel import failed:", result);
-        toast.error(result?.message || t("page.datasource.importFail"));
+        showResponseToast(t, result, {
+          errorFallback: t("page.datasource.importFail")
+        });
         return;
       }
 
@@ -360,12 +397,16 @@ const UploadPanel = ({ onDataSourceSaved }) => {
         });
       }
 
-      toast.success(result.message || t("page.datasource.importSuccess"));
+      showSuccessToast(
+        t,
+        "EXCEL_SHEETS_IMPORTED",
+        result.message || t("page.datasource.importSuccess")
+      );
       setServerSelectedFile(null);
       setServerAlias("");
     } catch (err) {
       console.error("Server Excel import handling failed:", err);
-      toast.error(err?.message || t("page.datasource.importFail"));
+      showErrorToast(t, err as Error, t("page.datasource.importFail"));
     }
   };
 
@@ -409,8 +450,8 @@ const UploadPanel = ({ onDataSourceSaved }) => {
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
               className={`cursor-pointer rounded-xl border border-dashed px-6 py-10 text-center transition-colors flex flex-col items-center justify-center gap-2 ${dragOver
-                ? "border-primary bg-surface-hover"
-                : "border-border bg-surface hover:border-primary"
+                  ? "border-primary bg-surface-hover"
+                  : "border-border bg-surface hover:border-primary"
                 }`}
             >
               <input
@@ -425,7 +466,9 @@ const UploadPanel = ({ onDataSourceSaved }) => {
                 {t("page.datasource.dragHere")}
               </p>
               <p className="text-xs text-muted-fg">
-                {t("page.datasource.maxSizeTemplate", { size: maxFileSizeDisplay })}
+                {t("page.datasource.maxSizeTemplate", {
+                  size: maxFileSizeDisplay
+                })}
               </p>
               {selectedFile ? (
                 <p className="mt-1 text-xs text-muted-fg">
@@ -499,7 +542,10 @@ const UploadPanel = ({ onDataSourceSaved }) => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="remote-alias" className="flex items-center gap-2">
+                <Label
+                  htmlFor="remote-alias"
+                  className="flex items-center gap-2"
+                >
                   <FileType className="h-4 w-4" />
                   {t("page.datasource.remoteAliasLabel")}
                 </Label>
@@ -568,7 +614,9 @@ const UploadPanel = ({ onDataSourceSaved }) => {
                   </select>
                 )}
                 {serverError ? (
-                  <div className="text-xs text-error">{serverError}</div>
+                  <div className="text-xs text-error">
+                    {t(`errors:${serverError}`, { defaultValue: serverError })}
+                  </div>
                 ) : null}
               </div>
 
@@ -589,12 +637,18 @@ const UploadPanel = ({ onDataSourceSaved }) => {
                         type="button"
                         onClick={() => {
                           // 计算父目录路径
-                          const parentPath = currentPath.split('/').slice(0, -1).join('/') || selectedMount;
+                          const parentPath =
+                            currentPath
+                              .split("/")
+                              .slice(0, -1)
+                              .join("/") || selectedMount;
                           loadServerDirectory(parentPath);
                         }}
                         className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left cursor-pointer hover:bg-surface-hover border-b border-border"
                       >
-                        <span className="text-xs text-primary font-medium">← {t("page.datasource.serverGoBack", "返回上一级")}</span>
+                        <span className="text-xs text-primary font-medium">
+                          ← {t("page.datasource.serverGoBack", "返回上一级")}
+                        </span>
                       </button>
                     )}
 
@@ -605,28 +659,46 @@ const UploadPanel = ({ onDataSourceSaved }) => {
                         // 只显示支持的文件类型
                         // 后端返回的 extension 是映射后的类型：excel, csv, json, parquet 等
                         const ext = (entry.extension || "").toLowerCase();
-                        const supportedTypes = ["csv", "excel", "json", "jsonl", "parquet"];
+                        const supportedTypes = [
+                          "csv",
+                          "excel",
+                          "json",
+                          "jsonl",
+                          "parquet"
+                        ];
                         return supportedTypes.includes(ext);
                       })
                       .map(entry => {
-                        const selected = serverSelectedFile?.path === entry.path;
+                        const selected =
+                          serverSelectedFile?.path === entry.path;
                         const isDir = entry.type === "directory";
                         return (
                           <button
                             key={entry.path}
                             type="button"
                             onClick={() => {
-                              console.log("File clicked:", entry.name, "isDir:", isDir, "extension:", entry.extension);
+                              console.log(
+                                "File clicked:",
+                                entry.name,
+                                "isDir:",
+                                isDir,
+                                "extension:",
+                                entry.extension
+                              );
                               if (isDir) {
                                 loadServerDirectory(entry.path);
                               } else {
                                 setServerSelectedFile(entry);
                                 if (!serverAlias) {
-                                  setServerAlias(entry.name.replace(/\.[^/.]+$/, ""));
+                                  setServerAlias(
+                                    entry.name.replace(/\.[^/.]+$/, "")
+                                  );
                                 }
                               }
                             }}
-                            className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left cursor-pointer ${selected ? "bg-surface-hover" : "hover:bg-surface-hover"
+                            className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left cursor-pointer ${selected
+                                ? "bg-surface-hover"
+                                : "hover:bg-surface-hover"
                               }`}
                           >
                             <span className="flex items-center gap-2 text-xs text-foreground">
@@ -661,7 +733,10 @@ const UploadPanel = ({ onDataSourceSaved }) => {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="server-alias" className="flex items-center gap-2">
+                <Label
+                  htmlFor="server-alias"
+                  className="flex items-center gap-2"
+                >
                   <FileType className="h-4 w-4" />
                   {t("page.datasource.serverAliasLabel")}
                 </Label>

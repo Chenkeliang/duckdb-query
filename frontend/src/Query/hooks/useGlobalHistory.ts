@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { showSuccessToast } from '@/utils/toastHelpers';
 
 export interface GlobalHistoryItem {
     id: string;
@@ -39,6 +40,7 @@ const saveAndSync = (newHistory: GlobalHistoryItem[]) => {
 };
 
 export const useGlobalHistory = () => {
+    const { t } = useTranslation('common');
     const [history, setHistory] = useState<GlobalHistoryItem[]>(loadHistory);
 
     // 监听同步事件（来自其他组件实例）
@@ -99,8 +101,8 @@ export const useGlobalHistory = () => {
         localStorage.removeItem(STORAGE_KEY);
         saveAndSync([]);
         setHistory([]);
-        toast.success('历史记录已清空');
-    }, []);
+        showSuccessToast(t, 'HISTORY_CLEARED', t('query.history.cleared', '历史记录已清空'));
+    }, [t]);
 
     const deleteHistoryItem = useCallback((id: string) => {
         const currentHistory = loadHistory();

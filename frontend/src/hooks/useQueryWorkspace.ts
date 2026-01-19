@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
 import { executeDuckDBSQL, executeFederatedQuery } from "@/api";
+import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import { toast } from "sonner";
 import type {
   SelectedTable,
@@ -12,7 +13,7 @@ import { normalizeSelectedTable } from '../utils/tableUtils';
 
 /**
  * 查询工作台状态管理 Hook
- * 
+ *
  * 职责：
  * - 管理选中的表（每个查询模式独立）
  * - 管理当前查询模式
@@ -178,7 +179,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     };
 
     setQueryResults(resultData);
-    toast.success(t('query.success', { count: rawData.length }));
+    showSuccessToast(t, 'QUERY_SUCCESS', t('query.success', { count: rawData.length }));
   }, [t]);
 
   // 表选择处理
@@ -330,7 +331,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
           loading: false,
           error: error as Error,
         });
-        toast.error(t('query.error', { message: (error as Error).message }));
+        showErrorToast(t, undefined, t('query.error', { message: (error as Error).message }));
       }
     },
     [duckdbMutation, processQueryResult, t]
@@ -365,10 +366,10 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     setQueryResults(prev => prev ? {
       ...prev,
       loading: false,
-      error: new Error(t('query.cancelled', '查询已取消')),
+      error: new Error(t('query.cancelled')),
     } : null);
 
-    toast.info(t('query.cancelled', '查询已取消'));
+    toast.info(t('query.cancelled'));
   }, [t]);
 
   return {

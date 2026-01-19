@@ -17,7 +17,6 @@ import {
   Download,
   Database,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -37,6 +36,7 @@ import {
 } from '@/components/ui/tooltip';
 import { listAsyncTasks, cancelAsyncTask, retryAsyncTask } from '@/api';
 import { invalidateAllDataCaches } from '@/utils/cacheInvalidation';
+import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
 import { useAppConfig } from '@/hooks/useAppConfig';
 import { cn } from '@/lib/utils';
 import { DownloadResultDialog } from './DownloadResultDialog';
@@ -161,11 +161,11 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
   const cancelMutation = useMutation({
     mutationFn: cancelAsyncTask,
     onSuccess: () => {
-      toast.success(t('async.cancelSuccess', '任务已取消'));
+      showSuccessToast(t, 'TASK_CANCELLED', t('async.cancelSuccess', '任务已取消'));
       queryClient.invalidateQueries({ queryKey: ASYNC_TASKS_QUERY_KEY });
     },
     onError: (error: Error) => {
-      toast.error(t('async.cancelFailed', '取消失败: {{message}}', { message: error.message }));
+      handleApiErrorToast(t, error, t('async.cancelFailed', '取消失败'));
     },
   });
 
@@ -178,11 +178,11 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
   const retryMutation = useMutation({
     mutationFn: (taskId: string) => retryAsyncTask(taskId, {}),
     onSuccess: () => {
-      toast.success(t('async.retrySuccess', '任务已重试'));
+      showSuccessToast(t, 'TASK_RETRY_SUCCESS', t('async.retrySuccess', '任务已重试'));
       queryClient.invalidateQueries({ queryKey: ASYNC_TASKS_QUERY_KEY });
     },
     onError: (error: Error) => {
-      toast.error(t('async.retryFailed', '重试失败: {{message}}', { message: error.message }));
+      handleApiErrorToast(t, error, t('async.retryFailed', '重试失败'));
     },
   });
 

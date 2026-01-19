@@ -46,8 +46,12 @@ const fetchSchemaTables = async (
   const data = await response.json();
 
   // 兼容不同的 API 响应格式
-  if (data.tables) {
-    return data.tables.map((t: any) => ({
+  // 标准格式: { success: true, data: { tables: [...] } }
+  // 旧格式: { tables: [...] }
+  const tables = data.data?.tables || data.tables;
+  
+  if (tables) {
+    return tables.map((t: any) => ({
       name: t.name || t.table_name,
       type: t.type || 'TABLE',
       row_count: t.row_count || 0,

@@ -12,6 +12,11 @@ from core.data.file_datasource_manager import (
     file_datasource_manager,
     create_table_from_dataframe,
 )
+from utils.response_helpers import (
+    create_success_response,
+    create_error_response,
+    MessageCode,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -180,17 +185,19 @@ async def read_from_url(request: URLReadRequest):
         file_datasource_manager.save_file_datasource(table_metadata)
         logger.debug("成功保存URL表元数据: %s", table_name)
 
-        return {
-            "success": True,
-            "message": f"成功从URL读取文件并创建表: {table_name}",
-            "table_name": table_name,
-            "row_count": metadata.get("row_count", 0),
-            "column_count": metadata.get("column_count", 0),
-            "columns": metadata.get("columns", []),
-            "file_type": file_type,
-            "url": converted_url,
-            "original_url": str(request.url),
-        }
+        return create_success_response(
+            data={
+                "table_name": table_name,
+                "row_count": metadata.get("row_count", 0),
+                "column_count": metadata.get("column_count", 0),
+                "columns": metadata.get("columns", []),
+                "file_type": file_type,
+                "url": converted_url,
+                "original_url": str(request.url),
+            },
+            message_code=MessageCode.URL_READ_SUCCESS,
+            message=f"成功从URL读取文件并创建表: {table_name}",
+        )
 
     except HTTPException:
         raise
@@ -225,13 +232,15 @@ async def get_url_info(url: str):
         else:
             file_type = "unknown"
 
-        return {
-            "success": True,
-            "file_type": file_type,
-            "content_type": content_type,
-            "content_length": int(content_length) if content_length else None,
-            "url": url,
-        }
+        return create_success_response(
+            data={
+                "file_type": file_type,
+                "content_type": content_type,
+                "content_length": int(content_length) if content_length else None,
+                "url": url,
+            },
+            message_code=MessageCode.URL_INFO_RETRIEVED,
+        )
 
     except requests.RequestException as e:
         raise HTTPException(status_code=400, detail=f"无法访问URL: {str(e)}")

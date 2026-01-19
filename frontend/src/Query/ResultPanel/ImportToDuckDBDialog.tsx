@@ -19,8 +19,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { toast } from 'sonner';
+import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 import { DUCKDB_TABLES_QUERY_KEY } from '@/hooks/useDuckDBTables';
+import { saveQueryToDuckDB } from '@/api';
 import type { TableSource } from '@/hooks/useQueryWorkspace';
 
 export interface ImportToDuckDBDialogProps {
@@ -44,7 +45,7 @@ export interface ImportToDuckDBDialogProps {
  */
 const validateTableName = (name: string): { valid: boolean; error?: string } => {
   if (!name || !name.trim()) {
-    return { valid: false, error: '表名不能为空' };
+    return { valid: false, error: 'Table name cannot be empty' };
   }
   
   const trimmed = name.trim();
@@ -52,12 +53,12 @@ const validateTableName = (name: string): { valid: boolean; error?: string } => 
   if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) {
     return { 
       valid: false, 
-      error: '表名只能包含字母、数字和下划线，且必须以字母或下划线开头' 
+      error: 'Table name can only contain letters, numbers and underscores, and must start with a letter or underscore' 
     };
   }
   
   if (trimmed.length > 64) {
-    return { valid: false, error: '表名长度不能超过 64 个字符' };
+    return { valid: false, error: 'Table name cannot exceed 64 characters' };
   }
   
   return { valid: true };
@@ -102,70 +103,66 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
   // 执行导入
   const handleImport = useCallback(async () => {
     if (!source || source.type !== 'external') {
-      toast.error(t('query.import.externalOnly', '仅支持将外部数据库查询结果导入到 DuckDB'));
+      showErrorToast(t, 'INVALID_REQUEST', t('query.import.externalOnly', 'Only external database query results can be imported to DuckDB'));
       return;
     }
 
     if (!source.connectionId) {
-      toast.error(t('query.import.missingConnection', '缺少外部数据库连接信息'));
+      showErrorToast(t, 'INVALID_REQUEST', t('query.import.missingConnection', 'Missing external database connection info'));
       return;
     }
 
     if (source.databaseType !== 'mysql') {
-      toast.error(t('query.import.mysqlOnly', '目前仅支持从 MySQL 导入到 DuckDB'));
+      showErrorToast(t, 'INVALID_REQUEST', t('query.import.mysqlOnly', 'Currently only MySQL import to DuckDB is supported'));
       return;
     }
 
     const validation = validateTableName(tableName);
     if (!validation.valid) {
-      setValidationError(validation.error || '表名无效');
+      setValidationError(validation.error || 'Invalid table name');
       return;
     }
 
     setIsImporting(true);
     try {
-      const response = await fetch('/api/save_query_to_duckdb', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sql,
-          table_alias: tableName.trim(),
-          datasource: source ? {
-            // 确保 ID 不带 db_ 前缀
-            id: source.connectionId?.replace(/^db_/, '') || source.connectionId,
-            type: source.databaseType,
-          } : {
-            id: 'duckdb_internal',
-            type: 'duckdb',
-          },
-        }),
-      });
+      const datasource = {
+        // Ensure ID doesn't have db_ prefix
+        id: source.connectionId?.replace(/^db_/, '') || source.connectionId,
+        type: source.databaseType as 'mysql' | 'postgresql' | 'sqlite' | 'duckdb' | 'file',
+      };
 
-      const result = await response.json();
+      const result = await saveQueryToDuckDB(
+        sql,
+        datasource,
+        tableName.trim()
+      );
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.detail || result.message || '导入失败');
+      if (!result.success) {
+        throw new Error(result.message || 'Import failed');
       }
 
-      // 刷新 DuckDB 表列表
+      // Refresh DuckDB table list
       await queryClient.invalidateQueries({ queryKey: DUCKDB_TABLES_QUERY_KEY });
 
-      toast.success(
+      showSuccessToast(
+        t,
+        result.messageCode || 'TABLE_CREATED',
         t('query.import.success', { 
-          defaultValue: '数据已成功导入到表 "{{tableName}}"，共 {{rowCount}} 行',
+          defaultValue: 'Data successfully imported to table "{{tableName}}"',
           tableName,
-          rowCount: result.row_count || 0
         })
       );
 
-      onImportSuccess?.(tableName, result.row_count || 0);
+      onImportSuccess?.(tableName, 0);
       onOpenChange(false);
     } catch (error) {
       console.error('Import failed:', error);
       const errorMessage = (error as Error).message;
-      toast.error(
+      showErrorToast(
+        t,
+        error as Error,
         t('query.import.error', { 
-          defaultValue: '导入失败: {{message}}',
+          defaultValue: 'Import failed: {{message}}',
           message: errorMessage
         })
       );

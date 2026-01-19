@@ -121,7 +121,7 @@ const DatabaseForm = ({
   const validate = () => {
     // 检查连接名称
     if (!name.trim()) {
-      const errorMsg = "请填写连接名称";
+      const errorMsg = t("page.datasource.connection.validation.requiredName", "请填写连接名称");
       setError(errorMsg);
       toast.warning(errorMsg);
       return false;

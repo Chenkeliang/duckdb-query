@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import {
   deleteDatabaseConnection
 } from '@/api';
@@ -57,13 +58,13 @@ const SavedConnectionsList = ({ onSelect }: SavedConnectionsListProps) => {
       await invalidateAfterDatabaseChange(queryClient);
 
       const successMsg = t("page.datasource.list.deleteSuccess", { name: configToDelete.name || configToDelete.id });
-      toast.success(successMsg);
+      showSuccessToast(t, 'CONNECTION_DELETED', successMsg);
       // loadConfigs(); // Removed
       setDeleteDialogOpen(false);
       setConfigToDelete(null);
     } catch (err: any) {
       const errorMsg = t("page.datasource.list.deleteFail", { message: err.message });
-      toast.error(errorMsg);
+      showErrorToast(t, err, errorMsg);
     } finally {
       setIsDeleting(false);
     }

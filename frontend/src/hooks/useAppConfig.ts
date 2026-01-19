@@ -11,17 +11,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { setFederatedQueryTimeout } from '@/api';
-
-// API 响应类型
-interface AppConfigResponse {
-  enable_pivot_tables: boolean;
-  pivot_table_extension: string;
-  max_query_rows: number;
-  max_file_size: number;
-  max_file_size_display: string;
-  federated_query_timeout?: number; // seconds
-}
+import { setFederatedQueryTimeout, getAppConfig } from '@/api';
 
 // 配置数据类型
 export interface AppConfig {
@@ -48,22 +38,15 @@ const DEFAULT_CONFIG: AppConfig = {
 
 // 获取应用配置的 API 函数
 async function fetchAppConfig(): Promise<AppConfig> {
-  const response = await fetch('/api/app-config/features');
-
-  if (!response.ok) {
-    throw new Error(`获取应用配置失败: ${response.status}`);
-  }
-
-  const json = await response.json();
-  const result: AppConfigResponse = json.data;
+  const result = await getAppConfig();
 
   const config = {
-    enablePivotTables: result.enable_pivot_tables,
-    pivotTableExtension: result.pivot_table_extension,
-    maxQueryRows: result.max_query_rows,
-    maxFileSize: result.max_file_size,
-    maxFileSizeDisplay: result.max_file_size_display,
-    federatedQueryTimeout: (result.federated_query_timeout || 300) * 1000,
+    enablePivotTables: result.config.enable_pivot_tables,
+    pivotTableExtension: result.config.pivot_table_extension,
+    maxQueryRows: result.config.max_query_rows,
+    maxFileSize: result.config.max_file_size,
+    maxFileSizeDisplay: result.config.max_file_size_display,
+    federatedQueryTimeout: (result.config.federated_query_timeout || 300) * 1000,
   };
 
   // 更新 API Client 的超时设置

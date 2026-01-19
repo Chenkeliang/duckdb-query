@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.database.duckdb_pool import get_connection_pool
@@ -112,7 +113,7 @@ async def get_shortcuts():
         
         return create_success_response(
             data={"shortcuts": shortcuts, "defaults": DEFAULT_SHORTCUTS},
-            message_code=MessageCode.OPERATION_SUCCESS,
+            message_code=MessageCode.SHORTCUTS_RETRIEVED,
             message="获取快捷键配置成功"
         )
         

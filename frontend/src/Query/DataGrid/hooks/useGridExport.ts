@@ -12,6 +12,7 @@
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 
 /** 导出范围 */
 export type ExportScope = 'all' | 'filtered' | 'selected';
@@ -216,7 +217,7 @@ export function useGridExport({
 
       const exportData = getExportData(scope);
       if (exportData.length === 0) {
-        toast.error(t('query.export.noData'));
+        showErrorToast(t, 'EXPORT_NO_DATA', t('query.export.noData'));
         return;
       }
 
@@ -243,10 +244,10 @@ export function useGridExport({
 
         const content = lines.join('\n');
         downloadFile(content, `${filename}.csv`, 'text/csv');
-        toast.success(t('query.export.success', { rowCount: exportData.length.toLocaleString() }));
+        showSuccessToast(t, 'EXPORT_SUCCESS', t('query.export.success', { rowCount: exportData.length.toLocaleString() }));
       } catch (error) {
         console.error('CSV 导出失败:', error);
-        toast.error(t('query.export.failed'));
+        showErrorToast(t, 'EXPORT_FAILED', t('query.export.failed'));
       }
     },
     [columns, getExportData, maxClientExportRows, t]
@@ -259,7 +260,7 @@ export function useGridExport({
 
       const exportData = getExportData(scope);
       if (exportData.length === 0) {
-        toast.error(t('query.export.noData'));
+        showErrorToast(t, 'EXPORT_NO_DATA', t('query.export.noData'));
         return;
       }
 
@@ -283,10 +284,10 @@ export function useGridExport({
         // 使用 jsonReplacer 处理 BigInt
         const content = JSON.stringify(filteredExportData, jsonReplacer, 2);
         downloadFile(content, `${filename}.json`, 'application/json');
-        toast.success(t('query.export.success', { rowCount: exportData.length.toLocaleString() }));
+        showSuccessToast(t, 'EXPORT_SUCCESS', t('query.export.success', { rowCount: exportData.length.toLocaleString() }));
       } catch (error) {
         console.error('JSON 导出失败:', error);
-        toast.error(t('query.export.failed'));
+        showErrorToast(t, 'EXPORT_FAILED', t('query.export.failed'));
       }
     },
     [columns, getExportData, maxClientExportRows, t]

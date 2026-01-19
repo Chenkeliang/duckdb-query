@@ -9,7 +9,14 @@
 
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Play, Trash2, Table2 } from "lucide-react";
+import { Play, Trash2, Table2, Timer } from "lucide-react";
+import { AsyncTaskDialog } from "../AsyncTasks/AsyncTaskDialog";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { SQLHighlight } from "@/components/SQLHighlight";
 
@@ -18,7 +25,7 @@ import { useTableColumns } from "@/hooks/useTableColumns";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import type { SelectedTable } from "@/types/SelectedTable";
 import type { TableSource } from "@/hooks/useQueryWorkspace";
-import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
+import { getTableName, normalizeSelectedTable, isExternalTable } from "@/utils/tableUtils";
 import { quoteIdent, getDialectFromSource, getSourceFromSelectedTable } from "@/utils/sqlUtils";
 import { AggregationFunction } from "@/types/visualQuery";
 
@@ -43,11 +50,15 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     const selectedTable = selectedTables.length > 0 ? selectedTables[0] : null;
     const tableName = selectedTable ? getTableName(selectedTable) : "";
 
+    // 检测是否为外部表 - 使用更可靠的 isExternalTable 函数
+    const isExternal = selectedTable ? isExternalTable(selectedTable) : false;
+
     // State
     const [rows, setRows] = React.useState<string[]>([]);
     const [columns, setColumns] = React.useState<string[]>([]);
     const [values, setValues] = React.useState<PivotValueConfig[]>([]);
     const [isExecuting, setIsExecuting] = React.useState(false);
+    const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
 
     // Fetch columns for selected table
     const { columns: tableColumns, isLoading: columnsLoading } = useTableColumns(
@@ -123,7 +134,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     }, [selectedTable, rows, columns, values, maxQueryRows]);
 
     const sql = generateSQL();
-    const canRun = !!sql;
+    const canRun = !!sql && !isExternal; // 外部表不支持透视表
     const hasConfig = rows.length > 0 || columns.length > 0 || values.length > 0;
 
     // Execute
@@ -145,16 +156,56 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
             <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0 bg-muted/30">
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
-                        <Button
-                            variant="default"
-                            size="sm"
-                            onClick={handleExecute}
-                            disabled={!canRun || isExecuting}
-                            className="gap-1.5"
-                        >
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            {t('common:query.execute', '执行')}
-                        </Button>
+                        {/* 执行按钮 - 外部表不支持透视表 */}
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={handleExecute}
+                                        disabled={!canRun || isExecuting}
+                                        className="gap-1.5"
+                                    >
+                                        <Play className="w-3.5 h-3.5 fill-current" />
+                                        {t('common:query.execute', '执行')}
+                                    </Button>
+                                </TooltipTrigger>
+                                {isExternal && (
+                                    <TooltipContent>
+                                        <p>{t('common:query.pivot.externalNotSupported', '外部数据库表暂不支持透视表')}</p>
+                                    </TooltipContent>
+                                )}
+                            </Tooltip>
+                        </TooltipProvider>
+
+                        {/* 异步执行按钮 - 外部表不支持异步执行 */}
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setAsyncDialogOpen(true)}
+                                        disabled={!canRun || isExecuting || isExternal}
+                                        className="gap-1.5"
+                                        aria-label={t('common:query.sql.asyncExecute', '异步执行')}
+                                    >
+                                        <Timer className="w-3.5 h-3.5" />
+                                        <span className="hidden sm:inline">
+                                            {t('common:query.sql.asyncExecute', '异步执行')}
+                                        </span>
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>
+                                        {isExternal
+                                            ? t('common:query.pivot.asyncNotSupportedForExternal', '外部数据库表暂不支持异步执行')
+                                            : t('common:query.sql.asyncExecuteHint', '后台执行，结果保存到表')}
+                                    </p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
 
                         <div className="w-[1px] h-4 bg-border mx-1" />
 
@@ -183,6 +234,14 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
 
             {/* 主内容区 */}
             <div className="flex-1 overflow-auto p-4 space-y-4">
+                {/* 外部表警告 */}
+                {isExternal && (
+                    <div className="flex items-center gap-2 p-3 bg-warning/10 border border-warning/30 rounded-lg text-sm text-warning">
+                        <Table2 className="w-4 h-4 shrink-0" />
+                        <span>{t('common:query.pivot.externalNotSupported', '外部数据库表暂不支持透视表。请先将外部表导入到 DuckDB 后再使用透视表功能。')}</span>
+                    </div>
+                )}
+
                 {/* 统一的表格设计器 */}
                 <PivotTableDesigner
                     availableFields={tableColumns}
@@ -203,6 +262,23 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                     </div>
                 )}
             </div>
+
+            {/* 异步任务对话框 */}
+            <AsyncTaskDialog
+                open={asyncDialogOpen}
+                onOpenChange={setAsyncDialogOpen}
+                sql={sql?.trim() ?? ''}
+                datasource={
+                    selectedTable && getSourceFromSelectedTable(selectedTable)?.type === 'external' ? {
+                        id: (getSourceFromSelectedTable(selectedTable) as any).connectionId!,
+                        type: (getSourceFromSelectedTable(selectedTable) as any).databaseType!,
+                        name: (getSourceFromSelectedTable(selectedTable) as any).connectionName,
+                    } : undefined
+                }
+                onSuccess={() => {
+                    setAsyncDialogOpen(false);
+                }}
+            />
         </div>
     );
 };

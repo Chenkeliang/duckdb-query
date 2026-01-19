@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { showErrorToast } from "@/utils/toastHelpers";
 import { Info, Loader2 } from "lucide-react";
 import {
   inspectExcelSheets,
@@ -234,7 +235,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
     } catch (err: any) {
       const message = err?.message || t('page.datasource.excelSheet.importFailed');
       setError(message);
-      toast.error(message);
+      showErrorToast(t, 'EXCEL_IMPORT_FAILED', message);
     } finally {
       setSubmitting(false);
     }

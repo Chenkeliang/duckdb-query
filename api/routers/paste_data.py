@@ -13,6 +13,10 @@ from core.data.file_datasource_manager import (
     file_datasource_manager,
 )
 from core.common.timezone_utils import get_current_time_iso  # 导入时区工具
+from utils.response_helpers import (
+    create_success_response,
+    MessageCode,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -207,19 +211,21 @@ async def save_paste_data(request: PasteDataRequest):
         except Exception as exc:
             logger.warning(f"刷新粘贴数据的元数据失败: {exc}")
 
-        return {
-            "success": True,
-            "message": f"数据已成功保存到表: {clean_table_name}",
-            "table_name": clean_table_name,
-            "rows_saved": saved_rows,
-            "columns_count": metadata.get("column_count", len(request.column_names)),
-            "column_info": [
-                {"name": name, "type": type_}
-                for name, type_ in column_definitions
-            ],
-            "created_at": created_at_value,
-            "createdAt": created_at_value,
-        }
+        return create_success_response(
+            data={
+                "table_name": clean_table_name,
+                "rows_saved": saved_rows,
+                "columns_count": metadata.get("column_count", len(request.column_names)),
+                "column_info": [
+                    {"name": name, "type": type_}
+                    for name, type_ in column_definitions
+                ],
+                "created_at": created_at_value,
+                "createdAt": created_at_value,
+            },
+            message_code=MessageCode.PASTE_DATA_SUCCESS,
+            message=f"数据已成功保存到表: {clean_table_name}",
+        )
 
     except HTTPException:
         raise

@@ -1,7 +1,7 @@
 /**
  * Grid 复制功能 Hook
  * 提供单元格区域复制和行复制功能
- * 
+ *
  * 支持两种复制模式：
  * 1. 选中行复制：复制选中行的所有列数据
  * 2. 单列复制：复制选中行的指定列数据（竖向复制）
@@ -11,6 +11,7 @@ import { useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type { GridApi } from 'ag-grid-community';
+import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 
 export interface UseGridCopyReturn {
   /** 复制选中的单元格区域或行到剪贴板 */
@@ -119,9 +120,9 @@ export function useGridCopy(gridApi: GridApi | null): UseGridCopyReturn {
       const text = convertToSingleColumn(values);
 
       await navigator.clipboard.writeText(text);
-      toast.success(t('result.columnCopySuccess', { 
+      showSuccessToast(t, 'COPY_SUCCESS', t('result.columnCopySuccess', {
         defaultValue: '已复制 {{count}} 个单元格',
-        count: values.length 
+        count: values.length
       }));
       return true;
     } catch (error) {
@@ -139,7 +140,7 @@ export function useGridCopy(gridApi: GridApi | null): UseGridCopyReturn {
     try {
       const selectedRows = gridApi.getSelectedRows();
       if (selectedRows.length === 0) {
-        toast.warning(t('result.noRowsSelected', { defaultValue: '请先选择要复制的行' }));
+        toast.warning(t('result.noRowsSelected'));
         return;
       }
 
@@ -160,13 +161,13 @@ export function useGridCopy(gridApi: GridApi | null): UseGridCopyReturn {
       const tsv = convertToTSV(data);
 
       await navigator.clipboard.writeText(tsv);
-      toast.success(t('result.copySuccess', { 
+      showSuccessToast(t, 'COPY_SUCCESS', t('result.copySuccess', {
         defaultValue: '已复制 {{count}} 行',
-        count: selectedRows.length 
+        count: selectedRows.length
       }));
     } catch (error) {
       console.error('复制失败:', error);
-      toast.error(t('result.copyFailed', { defaultValue: '复制失败' }));
+      showErrorToast(t, 'COPY_FAILED', t('result.copyFailed', { defaultValue: '复制失败' }));
     }
   }, [gridApi, convertToTSV, t]);
 
@@ -197,10 +198,10 @@ export function useGridCopy(gridApi: GridApi | null): UseGridCopyReturn {
 
           const rowCount = data.length - 1; // 减去表头
           const colCount = data[0].length;
-          toast.success(t('result.rangeCopySuccess', { 
+          showSuccessToast(t, 'COPY_SUCCESS', t('result.rangeCopySuccess', {
             defaultValue: '已复制 {{rows}} 行 × {{cols}} 列',
-            rows: rowCount, 
-            cols: colCount 
+            rows: rowCount,
+            cols: colCount
           }));
           return;
         }
@@ -208,7 +209,7 @@ export function useGridCopy(gridApi: GridApi | null): UseGridCopyReturn {
 
       // 2. 尝试获取当前聚焦的单元格列
       let focusedColId = focusedColumnRef.current;
-      
+
       // 也尝试从 AG Grid 获取聚焦单元格
       if (!focusedColId) {
         try {
@@ -234,7 +235,7 @@ export function useGridCopy(gridApi: GridApi | null): UseGridCopyReturn {
       await copySelectedRows();
     } catch (error) {
       console.error('复制失败:', error);
-      toast.error(t('result.copyFailed', { defaultValue: '复制失败' }));
+      showErrorToast(t, 'COPY_FAILED', t('result.copyFailed', { defaultValue: '复制失败' }));
     }
   }, [gridApi, extractRangeData, convertToTSV, t, copySelectedRows, copySingleColumn]);
 

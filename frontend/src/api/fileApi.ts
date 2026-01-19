@@ -2,10 +2,12 @@
  * File API Module
  * 
  * Functions for file upload, URL import, and paste data operations.
+ * 
+ * Updated to use normalizeResponse for standard API response handling.
  */
 
-import { apiClient, uploadClient, handleApiError } from './client';
-import type { UploadResponse, UploadProgress, ApiResponse } from './types';
+import { apiClient, uploadClient, handleApiError, normalizeResponse } from './client';
+import type { UploadResponse, UploadProgress, NormalizedResponse } from './types';
 
 // ==================== Types ====================
 
@@ -57,6 +59,8 @@ export interface ServerFileItem {
 
 /**
  * Upload file to DuckDB
+ * 
+ * Returns normalized UploadResponse
  */
 export async function uploadFile(
     file: File,
@@ -75,7 +79,11 @@ export async function uploadFile(
             maxContentLength: 100 * 1024 * 1024, // 100MB
             maxBodyLength: 100 * 1024 * 1024,
         });
-        return response.data;
+        const normalized = normalizeResponse<UploadResponse>(response);
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
         throw handleApiError(error as never, '文件上传失败');
     }
@@ -83,6 +91,8 @@ export async function uploadFile(
 
 /**
  * Upload file with enhanced options (target parameter)
+ * 
+ * Returns normalized UploadResponse
  */
 export async function uploadFileEnhanced(
     file: File,
@@ -115,7 +125,11 @@ export async function uploadFileEnhanced(
                 }
             } : undefined,
         });
-        return response.data;
+        const normalized = normalizeResponse<UploadResponse>(response);
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
         throw handleApiError(error as never, '文件上传失败');
     }
@@ -123,6 +137,8 @@ export async function uploadFileEnhanced(
 
 /**
  * Upload file directly to DuckDB
+ * 
+ * Returns normalized UploadResponse
  */
 export async function uploadFileToDuckDB(
     file: File,
@@ -137,7 +153,11 @@ export async function uploadFileToDuckDB(
             headers: { 'Content-Type': 'multipart/form-data' },
             timeout: 300000,
         });
-        return response.data;
+        const normalized = normalizeResponse<UploadResponse>(response);
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
         throw error;
     }
@@ -147,6 +167,8 @@ export async function uploadFileToDuckDB(
 
 /**
  * Read data from URL and import to DuckDB
+ * 
+ * Returns normalized UploadResponse
  */
 export async function readFromUrl(
     url: string,
@@ -161,7 +183,11 @@ export async function readFromUrl(
             delimiter: options.delimiter,
             encoding: options.encoding,
         });
-        return response.data;
+        const normalized = normalizeResponse<UploadResponse>(response);
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
         throw handleApiError(error as never, 'URL导入失败');
     }
@@ -169,16 +195,26 @@ export async function readFromUrl(
 
 /**
  * Get URL file information (without importing)
+ * 
+ * Returns normalized response with file info
  */
 export async function getUrlInfo(url: string): Promise<{
     success: boolean;
     file_type?: string;
     size?: number;
     content_type?: string;
+    messageCode?: string;
+    message?: string;
 }> {
     try {
         const response = await apiClient.get(`/api/url-reader/info?url=${encodeURIComponent(url)}`);
-        return response.data;
+        const normalized = normalizeResponse<{ file_type?: string; size?: number; content_type?: string }>(response);
+        return {
+            success: true,
+            ...normalized.data,
+            messageCode: normalized.messageCode,
+            message: normalized.message,
+        };
     } catch (error) {
         throw handleApiError(error as never, '获取URL信息失败');
     }
@@ -188,16 +224,26 @@ export async function getUrlInfo(url: string): Promise<{
 
 /**
  * Inspect Excel file sheets
+ * 
+ * Returns normalized response with sheets info
  */
 export async function inspectExcelSheets(fileId: string): Promise<{
     success: boolean;
     sheets: ExcelSheet[];
+    messageCode?: string;
+    message?: string;
 }> {
     try {
         const response = await apiClient.post('/api/data-sources/excel/inspect', {
             file_id: fileId
         });
-        return response.data;
+        const normalized = normalizeResponse<{ sheets: ExcelSheet[] }>(response);
+        return {
+            success: true,
+            sheets: normalized.data.sheets ?? [],
+            messageCode: normalized.messageCode,
+            message: normalized.message,
+        };
     } catch (error) {
         throw handleApiError(error as never, '获取Excel工作表失败');
     }
@@ -205,14 +251,24 @@ export async function inspectExcelSheets(fileId: string): Promise<{
 
 /**
  * Import Excel sheets as tables
+ * 
+ * Returns normalized response with imported tables
  */
 export async function importExcelSheets(payload: ExcelImportPayload): Promise<{
     success: boolean;
     tables: Array<{ name: string; row_count: number }>;
+    messageCode?: string;
+    message?: string;
 }> {
     try {
         const response = await apiClient.post('/api/data-sources/excel/import', payload);
-        return response.data;
+        const normalized = normalizeResponse<{ tables: Array<{ name: string; row_count: number }> }>(response);
+        return {
+            success: true,
+            tables: normalized.data.tables ?? [],
+            messageCode: normalized.messageCode,
+            message: normalized.message,
+        };
     } catch (error) {
         throw handleApiError(error as never, 'Excel导入失败');
     }
@@ -222,14 +278,24 @@ export async function importExcelSheets(payload: ExcelImportPayload): Promise<{
 
 /**
  * Get server mount points
+ * 
+ * Returns normalized response with mounts
  */
 export async function getServerMounts(): Promise<{
     success: boolean;
     mounts: ServerMount[];
+    messageCode?: string;
+    message?: string;
 }> {
     try {
         const response = await apiClient.get('/api/server-files/mounted');
-        return response.data.data;
+        const normalized = normalizeResponse<{ mounts?: ServerMount[] }>(response);
+        return {
+            success: true,
+            mounts: normalized.data.mounts ?? [],
+            messageCode: normalized.messageCode,
+            message: normalized.message,
+        };
     } catch (error) {
         throw handleApiError(error as never, '获取服务器挂载点失败');
     }
@@ -237,15 +303,26 @@ export async function getServerMounts(): Promise<{
 
 /**
  * Browse server directory
+ * 
+ * Returns normalized response with directory items
  */
 export async function browseServerDirectory(path: string): Promise<{
     success: boolean;
     items: ServerFileItem[];
     current_path: string;
+    messageCode?: string;
+    message?: string;
 }> {
     try {
         const response = await apiClient.get(`/api/server-files/browse?path=${encodeURIComponent(path)}`);
-        return response.data.data;
+        const normalized = normalizeResponse<{ items?: ServerFileItem[]; current_path?: string }>(response);
+        return {
+            success: true,
+            items: normalized.data.items ?? [],
+            current_path: normalized.data.current_path ?? path,
+            messageCode: normalized.messageCode,
+            message: normalized.message,
+        };
     } catch (error) {
         throw handleApiError(error as never, '浏览服务器目录失败');
     }
@@ -253,6 +330,8 @@ export async function browseServerDirectory(path: string): Promise<{
 
 /**
  * Import file from server
+ * 
+ * Returns normalized UploadResponse
  */
 export async function importServerFile(payload: {
     path: string;
@@ -260,7 +339,11 @@ export async function importServerFile(payload: {
 }): Promise<UploadResponse> {
     try {
         const response = await apiClient.post('/api/server-files/import', payload);
-        return response.data;
+        const normalized = normalizeResponse<UploadResponse>(response);
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
         throw handleApiError(error as never, '服务器文件导入失败');
     }
@@ -312,11 +395,17 @@ export interface ServerExcelImportResponse {
 
 /**
  * Inspect Excel file on server
+ * 
+ * Returns normalized response with sheets info
  */
 export async function inspectServerExcelSheets(path: string): Promise<ServerExcelInspectResponse> {
     try {
         const response = await apiClient.post('/api/server-files/excel/inspect', { path });
-        return response.data;
+        const normalized = normalizeResponse<ServerExcelInspectResponse>(response);
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
         throw handleApiError(error as never, '检查Excel工作表失败');
     }
@@ -324,6 +413,8 @@ export async function inspectServerExcelSheets(path: string): Promise<ServerExce
 
 /**
  * Import Excel sheets from server file
+ * 
+ * Returns normalized response with imported tables
  */
 export async function importServerExcelSheets(
     path: string,
@@ -334,9 +425,53 @@ export async function importServerExcelSheets(
             path,
             sheets,
         });
-        return response.data;
+        const normalized = normalizeResponse<ServerExcelImportResponse>(response);
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
         throw handleApiError(error as never, '导入Excel工作表失败');
+    }
+}
+
+// ==================== Paste Data ====================
+
+export interface PasteDataRequest {
+    table_name: string;
+    column_names: string[];
+    column_types: string[];
+    data_rows: string[][];
+    delimiter?: string;
+    has_header?: boolean;
+}
+
+export interface PasteDataResponse {
+    success: boolean;
+    table_name?: string;
+    row_count?: number;
+    messageCode?: string;
+    message?: string;
+}
+
+/**
+ * Create table from pasted data
+ *
+ * Returns normalized response with table info
+ */
+export async function pasteData(request: PasteDataRequest): Promise<PasteDataResponse> {
+    try {
+        const response = await apiClient.post('/api/paste-data', request);
+        const normalized = normalizeResponse<{ table_name?: string; row_count?: number }>(response);
+        return {
+            success: true,
+            table_name: normalized.data.table_name,
+            row_count: normalized.data.row_count,
+            messageCode: normalized.messageCode,
+            message: normalized.message,
+        };
+    } catch (error) {
+        throw handleApiError(error as never, 'Paste data failed');
     }
 }
 
@@ -344,6 +479,8 @@ export async function importServerExcelSheets(
 
 /**
  * Get file preview data
+ * 
+ * Returns normalized response with preview data
  */
 export async function getFilePreview(
     filename: string,
@@ -352,10 +489,19 @@ export async function getFilePreview(
     success: boolean;
     data: Record<string, unknown>[];
     columns: Array<{ name: string; type: string }>;
+    messageCode?: string;
+    message?: string;
 }> {
     try {
         const response = await apiClient.get(`/api/file_preview/${filename}?rows=${rows}`);
-        return response.data;
+        const normalized = normalizeResponse<{ data?: Record<string, unknown>[]; columns?: Array<{ name: string; type: string }> }>(response);
+        return {
+            success: true,
+            data: normalized.data.data ?? [],
+            columns: normalized.data.columns ?? [],
+            messageCode: normalized.messageCode,
+            message: normalized.message,
+        };
     } catch (error) {
         throw error;
     }

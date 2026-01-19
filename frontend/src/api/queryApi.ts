@@ -1,15 +1,17 @@
 /**
  * Query API Module
- * 
+ *
  * Functions for executing SQL queries across different data sources.
+ *
+ * Updated to use normalizeResponse for standard API response handling.
  */
 
-import { apiClient, handleApiError, getFederatedQueryTimeout } from './client';
+import { apiClient, handleApiError, getFederatedQueryTimeout, normalizeResponse } from './client';
 import type {
     QueryRequest,
     QueryResponse,
     DataSource,
-    ColumnInfo
+    NormalizedResponse
 } from './types';
 
 // ==================== Types ====================
@@ -42,10 +44,12 @@ export interface FederatedQueryError extends Error {
 
 /**
  * Execute SQL on local DuckDB instance
- * 
+ *
  * Supports two calling patterns for backwards compatibility:
  * - executeDuckDBSQL("SELECT * FROM table")  // legacy
  * - executeDuckDBSQL({ sql: "SELECT * FROM table", isPreview: true })  // new
+ *
+ * Returns normalized QueryResponse with messageCode
  */
 export async function executeDuckDBSQL(
     sqlOrOptions: string | ExecuteQueryOptions,
@@ -75,7 +79,15 @@ export async function executeDuckDBSQL(
             is_preview: isPreview
         }, config);
 
-        return response.data;
+        // Use normalizeResponse but preserve QueryResponse structure
+        const normalized = normalizeResponse<QueryResponse>(response);
+        const data = normalized.data;
+
+        // Return QueryResponse with additional messageCode info
+        return {
+            ...data,
+            success: true,
+        };
     } catch (error) {
         if ((error as Error).name === 'CanceledError' || (error as Error).name === 'AbortError') {
             throw error;
@@ -86,6 +98,8 @@ export async function executeDuckDBSQL(
 
 /**
  * Execute federated query with external database attach
+ *
+ * Returns normalized QueryResponse with messageCode
  */
 export async function executeFederatedQuery(options: FederatedQueryOptions): Promise<QueryResponse> {
     const {
@@ -126,7 +140,12 @@ export async function executeFederatedQuery(options: FederatedQueryOptions): Pro
         }
 
         const response = await apiClient.post('/api/duckdb/federated-query', requestBody, config);
-        return response.data;
+        const normalized = normalizeResponse<QueryResponse>(response);
+
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
         const parsedError = parseFederatedQueryError(error as Error);
         const enhancedError = new Error(parsedError.message) as FederatedQueryError;
@@ -204,6 +223,8 @@ export function parseFederatedQueryError(error: Error & { response?: { data?: un
 
 /**
  * Execute SQL on external database (MySQL/PostgreSQL)
+ *
+ * Returns normalized QueryResponse
  */
 export async function executeExternalSQL(
     sql: string,
@@ -221,7 +242,12 @@ export async function executeExternalSQL(
             datasource: normalizedDatasource,
             is_preview: isPreview
         });
-        return response.data;
+
+        const normalized = normalizeResponse<QueryResponse>(response);
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
         throw handleApiError(error as never, '外部数据库查询执行失败');
     }
@@ -229,6 +255,8 @@ export async function executeExternalSQL(
 
 /**
  * Execute general SQL query
+ *
+ * Returns normalized QueryResponse
  */
 export async function executeSQL(
     sql: string,
@@ -241,7 +269,12 @@ export async function executeSQL(
             datasource,
             is_preview: isPreview
         });
-        return response.data;
+
+        const normalized = normalizeResponse<QueryResponse>(response);
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
         throw error;
     }
@@ -249,19 +282,18 @@ export async function executeSQL(
 
 /**
  * Perform query using proxy endpoint
+ *
+ * Returns normalized QueryResponse
  */
 export async function performQuery(queryRequest: QueryRequest): Promise<QueryResponse> {
     try {
         const response = await apiClient.post('/api/query', queryRequest);
-        return response.data;
+        const normalized = normalizeResponse<QueryResponse>(response);
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
-        const axiosError = error as { response?: { data?: { success?: boolean; error?: unknown } } };
-        if (axiosError.response?.data) {
-            const errorData = axiosError.response.data;
-            if (errorData.success === false && errorData.error) {
-                return errorData as QueryResponse;
-            }
-        }
         throw handleApiError(error as never, '查询执行失败');
     }
 }
@@ -270,13 +302,15 @@ export async function performQuery(queryRequest: QueryRequest): Promise<QueryRes
 
 /**
  * Save query result as a new table in DuckDB
+ *
+ * Returns normalized response with table_name
  */
 export async function saveQueryToDuckDB(
     sql: string,
     datasource: DataSource,
     tableAlias: string,
     queryData: Record<string, unknown>[] | null = null
-): Promise<{ success: boolean; table_name?: string; message?: string }> {
+): Promise<{ success: boolean; table_name?: string; message?: string; messageCode?: string }> {
     try {
         const requestData: Record<string, unknown> = {
             sql,
@@ -289,7 +323,16 @@ export async function saveQueryToDuckDB(
         }
 
         const response = await apiClient.post('/api/save_query_to_duckdb', requestData);
-        return response.data;
+        const normalized = normalizeResponse<{ success?: boolean; table_name?: string }>(response);
+
+        const success = normalized.data?.success ?? (normalized as { success?: boolean }).success ?? true;
+
+        return {
+            success,
+            table_name: normalized.data.table_name,
+            message: normalized.message,
+            messageCode: normalized.messageCode,
+        };
     } catch (error) {
         throw error;
     }
@@ -297,19 +340,21 @@ export async function saveQueryToDuckDB(
 
 /**
  * Save query result as a named datasource
+ *
+ * Returns normalized response
  */
 export async function saveQueryResultAsDatasource(
     sql: string,
     datasourceName: string,
     originalDatasource: DataSource
-): Promise<{ success: boolean; message?: string }> {
+): Promise<NormalizedResponse<Record<string, unknown>>> {
     try {
         const response = await apiClient.post('/api/save_query_result_as_datasource', {
             sql,
             datasource_name: datasourceName,
             datasource: originalDatasource
         });
-        return response.data;
+        return normalizeResponse(response);
     } catch (error) {
         throw error;
     }

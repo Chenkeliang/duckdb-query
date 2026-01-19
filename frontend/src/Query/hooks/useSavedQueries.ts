@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
     listSqlFavorites,
     createSqlFavorite,
     deleteSqlFavorite,
     incrementFavoriteUsage
 } from '@/api';
+import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
 
 /**
  * SQL 收藏夹 Hook
@@ -27,6 +28,7 @@ export interface SavedQuery {
 }
 
 export const useSavedQueries = () => {
+    const { t } = useTranslation('common');
     const queryClient = useQueryClient();
 
     // 查询收藏列表
@@ -48,12 +50,12 @@ export const useSavedQueries = () => {
     // 创建收藏 Mutation
     const createMutation = useMutation({
         mutationFn: createSqlFavorite,
-        onSuccess: () => {
-            toast.success('收藏成功');
+        onSuccess: (_data, _variables, _context) => {
+            showSuccessToast(t, 'FAVORITE_CREATED', t('query.favorites.createSuccess', '收藏成功'));
             queryClient.invalidateQueries({ queryKey: SAVED_QUERIES_QUERY_KEY });
         },
         onError: (error: Error) => {
-            toast.error('收藏失败: ' + error.message);
+            handleApiErrorToast(t, error, t('query.favorites.createFailed', '收藏失败'));
         }
     });
 
@@ -61,11 +63,11 @@ export const useSavedQueries = () => {
     const deleteMutation = useMutation({
         mutationFn: deleteSqlFavorite,
         onSuccess: () => {
-            toast.success('已删除收藏');
+            showSuccessToast(t, 'FAVORITE_DELETED', t('query.favorites.deleteSuccess', '已删除收藏'));
             queryClient.invalidateQueries({ queryKey: SAVED_QUERIES_QUERY_KEY });
         },
         onError: (error: Error) => {
-            toast.error('删除失败: ' + error.message);
+            handleApiErrorToast(t, error, t('query.favorites.deleteFailed', '删除失败'));
         }
     });
 

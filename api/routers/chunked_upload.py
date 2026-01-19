@@ -24,6 +24,11 @@ from core.data.file_datasource_manager import (
 from core.data.excel_import_manager import register_excel_upload, sanitize_identifier
 from core.services.resource_manager import schedule_cleanup
 from core.common.timezone_utils import get_current_time_iso  # 统一时间
+from utils.response_helpers import (
+    create_success_response,
+    create_error_response,
+    MessageCode,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -130,12 +135,13 @@ class ChunkStreamWriter:
                 pass
 
 
-def _generate_unique_table_name(con, desired_name: Optional[str]) -> str:
+def _generate_unique_table_name(con, desired_name: Optional[str], user_provided: bool = False) -> str:
     base_name = desired_name if desired_name else ""
     if not base_name:
         base_name = "table"
 
-    sanitized = sanitize_identifier(base_name, allow_leading_digit=False, prefix="table")
+    # 如果用户明确提供了表名，尊重用户输入（允许数字开头）
+    sanitized = sanitize_identifier(base_name, allow_leading_digit=user_provided, prefix="table")
     if not sanitized:
         sanitized = f"table_{int(time.time())}"
 
@@ -339,13 +345,15 @@ async def init_upload(
             f"初始化上传会话: {upload_id}, 文件: {file_name}, 大小: {file_size}, 分块数: {total_chunks}"
         )
 
-        return {
-            "success": True,
-            "upload_id": upload_id,
-            "total_chunks": total_chunks,
-            "chunk_size": chunk_size,
-            "message": "上传会话初始化成功",
-        }
+        return create_success_response(
+            data={
+                "upload_id": upload_id,
+                "total_chunks": total_chunks,
+                "chunk_size": chunk_size,
+            },
+            message_code=MessageCode.CHUNKED_UPLOAD_INIT,
+            message="上传会话初始化成功",
+        )
 
     except HTTPException:
         raise
@@ -389,13 +397,16 @@ async def upload_chunk(
 
         # 检查分块是否已上传
         if chunk_number in session["uploaded_chunk_numbers"]:
-            return {
-                "success": True,
-                "message": f"分块 {chunk_number} 已存在，跳过上传",
-                "progress": len(session["uploaded_chunk_numbers"])
-                / session["total_chunks"]
-                * 100,
-            }
+            return create_success_response(
+                data={
+                    "chunk_number": chunk_number,
+                    "progress": len(session["uploaded_chunk_numbers"])
+                    / session["total_chunks"]
+                    * 100,
+                },
+                message_code=MessageCode.CHUNKED_UPLOAD_CHUNK,
+                message=f"分块 {chunk_number} 已存在，跳过上传",
+            )
 
         # 保存分块
         chunk_path = _build_chunk_path(session, chunk_number)
@@ -414,14 +425,16 @@ async def upload_chunk(
             f"上传分块 {chunk_number}/{session['total_chunks']}, 进度: {progress:.1f}%"
         )
 
-        return {
-            "success": True,
-            "chunk_number": chunk_number,
-            "uploaded_chunks": session["uploaded_chunks"],
-            "total_chunks": session["total_chunks"],
-            "progress": progress,
-            "message": f"分块 {chunk_number} 上传成功",
-        }
+        return create_success_response(
+            data={
+                "chunk_number": chunk_number,
+                "uploaded_chunks": session["uploaded_chunks"],
+                "total_chunks": session["total_chunks"],
+                "progress": progress,
+            },
+            message_code=MessageCode.CHUNKED_UPLOAD_CHUNK,
+            message=f"分块 {chunk_number} 上传成功",
+        )
 
     except HTTPException:
         raise
@@ -516,12 +529,14 @@ async def complete_upload(
             f"文件上传完成: {session['file_name']}, 大小: {session['file_size']}"
         )
 
-        return {
-            "success": True,
-            "upload_id": upload_id,
-            "file_info": file_info,
-            "message": "文件上传和处理完成",
-        }
+        return create_success_response(
+            data={
+                "upload_id": upload_id,
+                "file_info": file_info,
+            },
+            message_code=MessageCode.CHUNKED_UPLOAD_COMPLETE,
+            message="文件上传和处理完成",
+        )
 
     except HTTPException:
         raise
@@ -574,7 +589,7 @@ async def process_uploaded_file(
 
         con = get_db_connection()
         desired_name = table_alias if table_alias else file_name.split(".")[0]
-        source_id = _generate_unique_table_name(con, desired_name)
+        source_id = _generate_unique_table_name(con, desired_name, user_provided=bool(table_alias))
         logger.info(f"生成的表名: {source_id}")
 
         table_info = None
@@ -651,7 +666,11 @@ async def cancel_upload(upload_id: str):
 
         logger.info(f"取消上传: {upload_id}")
 
-        return {"success": True, "message": "上传已取消"}
+        return create_success_response(
+            data={"upload_id": upload_id},
+            message_code=MessageCode.CHUNKED_UPLOAD_CANCELLED,
+            message="上传已取消",
+        )
 
     except HTTPException:
         raise

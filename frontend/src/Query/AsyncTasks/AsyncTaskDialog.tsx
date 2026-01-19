@@ -8,7 +8,6 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, AlertCircle, Info, Database } from 'lucide-react';
-import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +25,7 @@ import {
   AlertDescription,
 } from '@/components/ui/alert';
 import { submitAsyncQuery } from '@/api';
+import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
 
 // 异步任务查询 key
 const ASYNC_TASKS_QUERY_KEY = ['async-tasks'] as const;
@@ -168,13 +168,13 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
       return submitAsyncQuery(payload);
     },
     onSuccess: (response) => {
-      toast.success(t('async.submitSuccess', '异步任务已提交'));
+      showSuccessToast(t, 'TASK_SUBMITTED', t('async.submitSuccess', '异步任务已提交'));
       queryClient.invalidateQueries({ queryKey: ASYNC_TASKS_QUERY_KEY });
       onOpenChange(false);
       onSuccess?.(response.task_id);
     },
     onError: (error: Error) => {
-      toast.error(t('async.submitFailed', '提交失败: {{message}}', { message: error.message }));
+      handleApiErrorToast(t, error, t('async.submitFailed', '提交失败'));
     },
   });
 

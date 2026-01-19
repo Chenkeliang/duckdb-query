@@ -1,10 +1,9 @@
-
 import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import { listAsyncTasks } from '@/api';
 import { invalidateAllDataCaches } from '@/utils/cacheInvalidation';
+import { showSuccessToast } from '@/utils/toastHelpers';
 import { AsyncTask } from '@/Query/AsyncTasks/AsyncTaskPanel';
 
 const ASYNC_TASKS_QUERY_KEY = ['async-tasks'] as const;
@@ -55,7 +54,7 @@ export function useAsyncTaskMonitor() {
 
         if (hasCompletedTask) {
             invalidateAllDataCaches(queryClient);
-            toast.success(t('async.taskCompletedRefresh', '异步任务完成，已自动刷新数据源'));
+            showSuccessToast(t, 'ASYNC_TASK_COMPLETED', t('async.taskCompletedRefresh', '异步任务完成，已自动刷新数据源'));
         }
     }, [tasks, isLoading, queryClient, t]);
 }

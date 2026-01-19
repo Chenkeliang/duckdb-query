@@ -2,7 +2,6 @@ import * as React from 'react';
 import { Database, Loader2, RefreshCw } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import { TreeNode } from './TreeNode';
 import { SchemaNode } from '@/Query/DataSourcePanel/SchemaNode';
 import { TableItem } from './TableItem';
@@ -11,6 +10,7 @@ import { useSchemaTables } from '@/hooks/useSchemaTables';
 import type { DatabaseConnection } from '@/hooks/useDatabaseConnections';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { createExternalTable, isTableSelected } from '@/utils/tableUtils';
+import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -108,9 +108,9 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
           queryKey: ['schema-tables', connection.id]
         }),
       ]);
-      toast.success(t('dataSource.refreshConnectionSuccess', { name: connection.name }));
+      showSuccessToast(t, 'CONNECTION_REFRESHED', t('dataSource.refreshConnectionSuccess', { name: connection.name }));
     } catch (error) {
-      toast.error(t('dataSource.refreshFailed', { message: (error as Error).message }));
+      showErrorToast(t, undefined, t('dataSource.refreshFailed', { message: (error as Error).message }));
     }
   };
 
@@ -140,7 +140,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
           {isLoading && (
             <div className="flex items-center gap-2 pl-6 py-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              加载中...
+              {t('common.loading')}
             </div>
           )}
 
@@ -197,7 +197,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
           {/* 空状态 */}
           {!isLoading && !hasSchemas && !hasTables && isExpanded && (
             <div className="pl-6 py-2 text-sm text-muted-foreground">
-              暂无数据
+              {t('common.noData')}
             </div>
           )}
         </TreeNode>
@@ -207,7 +207,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
       <ContextMenuContent>
         <ContextMenuItem onClick={handleRefreshConnection}>
           <RefreshCw className="mr-2 h-4 w-4" />
-          刷新此连接
+          {t('dataSource.refreshConnection')}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

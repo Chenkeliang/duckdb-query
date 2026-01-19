@@ -18,7 +18,11 @@ from core.data.file_datasource_manager import (
 )
 from core.data.file_utils import detect_file_type
 from core.common.timezone_utils import get_storage_time
-from api.utils.response_helpers import create_success_response
+from utils.response_helpers import (
+    create_success_response,
+    create_list_response,
+    MessageCode,
+)
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
@@ -136,12 +140,15 @@ def _build_breadcrumbs(real_path: str, mount: dict) -> List[dict]:
 @router.get("/api/server-files/mounted")
 async def list_server_mounts():
     mounts = _get_mount_configs()
-    return create_success_response({
-        "mounts": [
-            {"label": m["label"], "path": m["path"], "exists": m["exists"]}
-            for m in mounts
-        ]
-    })
+    return create_success_response(
+        data={
+            "mounts": [
+                {"label": m["label"], "path": m["path"], "exists": m["exists"]}
+                for m in mounts
+            ]
+        },
+        message_code=MessageCode.SERVER_MOUNTS_RETRIEVED,
+    )
 
 
 @router.get("/api/server-files/browse")
@@ -194,12 +201,15 @@ async def list_server_directory(path: str = Query(..., description="服务器目
 
     entries.sort(key=lambda item: (item["type"] != "directory", item["name"].lower()))
 
-    return create_success_response({
-        "path": _to_display_path(real_path, mount),
-        "entries": entries,
-        "breadcrumbs": _build_breadcrumbs(real_path, mount),
-        "mount": {"label": mount["label"], "path": mount["path"]},
-    })
+    return create_success_response(
+        data={
+            "path": _to_display_path(real_path, mount),
+            "entries": entries,
+            "breadcrumbs": _build_breadcrumbs(real_path, mount),
+            "mount": {"label": mount["label"], "path": mount["path"]},
+        },
+        message_code=MessageCode.SERVER_DIRECTORY_BROWSED,
+    )
 
 
 @router.post("/api/server-files/import")
@@ -216,8 +226,9 @@ async def import_server_file(payload: ServerFileImportRequest):
         raise HTTPException(status_code=400, detail=f"暂不支持的文件类型: {file_type}")
 
     base_name = payload.table_alias or os.path.splitext(os.path.basename(real_path))[0]
+    # 如果用户明确提供了 table_alias，尊重用户输入（允许数字开头）
     table_name = sanitize_identifier(
-        base_name, allow_leading_digit=False, prefix="table"
+        base_name, allow_leading_digit=bool(payload.table_alias), prefix="table"
     )
 
     try:
@@ -255,17 +266,19 @@ async def import_server_file(payload: ServerFileImportRequest):
     except Exception as exc:
         logger.warning("保存文件数据源元数据失败（已忽略）: %s", exc, exc_info=True)
 
-    return {
-        "success": True,
-        "message": f"已导入服务器文件，创建表: {table_name}",
-        "table_name": table_name,
-        "row_count": metadata.get("row_count", 0),
-        "column_count": metadata.get("column_count", 0),
-        "columns": metadata.get("columns", []),
-        "file_type": file_type,
-        "file_path": table_metadata["file_path"],
-        "mount_label": mount["label"],
-    }
+    return create_success_response(
+        data={
+            "table_name": table_name,
+            "row_count": metadata.get("row_count", 0),
+            "column_count": metadata.get("column_count", 0),
+            "columns": metadata.get("columns", []),
+            "file_type": file_type,
+            "file_path": table_metadata["file_path"],
+            "mount_label": mount["label"],
+        },
+        message_code=MessageCode.SERVER_FILE_IMPORTED,
+        message=f"已导入服务器文件，创建表: {table_name}",
+    )
 
 
 # ============ Excel 专用 API ============
@@ -331,13 +344,15 @@ async def inspect_server_excel(payload: ServerExcelInspectRequest):
             default_prefix, sheet["name"]
         )
 
-    return {
-        "success": True,
-        "file_path": _to_display_path(real_path, mount),
-        "file_extension": file_ext,
-        "default_table_prefix": default_prefix,
-        "sheets": sheets,
-    }
+    return create_success_response(
+        data={
+            "file_path": _to_display_path(real_path, mount),
+            "file_extension": file_ext,
+            "default_table_prefix": default_prefix,
+            "sheets": sheets,
+        },
+        message_code=MessageCode.EXCEL_SHEETS_INSPECTED,
+    )
 
 
 @router.post("/api/server-files/excel/import")
@@ -367,8 +382,9 @@ async def import_server_excel(payload: ServerExcelImportRequest):
     # 1. 先构建表名映射，检查批次内部冲突
     sanitized_name_map = {}
     for sheet_cfg in payload.sheets:
+        # 用户明确提供了目标表名，尊重用户输入（允许数字开头）
         sanitized = sanitize_identifier(
-            sheet_cfg.target_table, allow_leading_digit=False, prefix="table"
+            sheet_cfg.target_table, allow_leading_digit=True, prefix="table"
         )
         if sanitized in sanitized_name_map.values():
             raise HTTPException(
@@ -500,8 +516,10 @@ async def import_server_excel(payload: ServerExcelImportRequest):
                 status_code=500, detail=f"导入工作表 {sheet_cfg.name} 失败: {str(exc)}"
             )
 
-    return {
-        "success": True,
-        "message": f"成功导入 {len(imported_tables)} 个工作表",
-        "imported_tables": imported_tables,
-    }
+    return create_success_response(
+        data={
+            "imported_tables": imported_tables,
+        },
+        message_code=MessageCode.EXCEL_SHEETS_IMPORTED,
+        message=f"成功导入 {len(imported_tables)} 个工作表",
+    )

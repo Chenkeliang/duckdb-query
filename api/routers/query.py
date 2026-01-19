@@ -59,6 +59,12 @@ from core.data.file_datasource_manager import (
 from core.common.validators import validate_table_name
 from core.data.file_utils import load_file_to_duckdb
 from core.common.utils import normalize_dataframe_output
+from utils.response_helpers import (
+    create_success_response,
+    create_list_response,
+    create_error_response,
+    MessageCode,
+)
 import pandas as pd
 import numpy as np
 import io
@@ -415,20 +421,20 @@ def _build_preview_count_sql(sql: str) -> str:
 
 
 @router.post("/api/visual-query/generate", tags=["Visual Query"])
-async def generate_visual_query(request: VisualQueryRequest) -> VisualQueryResponse:
+async def generate_visual_query(request: VisualQueryRequest):
+    """生成可视化查询 SQL"""
     try:
         validation_result = validate_query_config(request.config)
 
         if not validation_result.is_valid:
-            return VisualQueryResponse(
-                success=False,
-                sql=None,
-                base_sql=None,
-                pivot_sql=None,
-                errors=validation_result.errors,
-                warnings=validation_result.warnings,
-                metadata=None,
-                mode=request.mode,
+            return create_error_response(
+                code=MessageCode.VISUAL_QUERY_INVALID.value,
+                message="可视化查询配置无效",
+                details={
+                    "errors": validation_result.errors,
+                    "warnings": validation_result.warnings,
+                    "mode": request.mode,
+                }
             )
 
         resolved_casts_map = _map_resolved_casts(request.resolved_casts)
@@ -468,28 +474,25 @@ async def generate_visual_query(request: VisualQueryRequest) -> VisualQueryRespo
         elif generation.metadata:
             metadata = generation.metadata
 
-        return VisualQueryResponse(
-            success=True,
-            sql=generation.final_sql,
-            base_sql=generation.base_sql,
-            pivot_sql=generation.pivot_sql,
-            errors=[],
-            warnings=combined_warnings,
-            metadata=metadata,
-            mode=request.mode,
+        return create_success_response(
+            data={
+                "sql": generation.final_sql,
+                "base_sql": generation.base_sql,
+                "pivot_sql": generation.pivot_sql,
+                "errors": [],
+                "warnings": combined_warnings,
+                "metadata": metadata,
+                "mode": request.mode,
+            },
+            message_code=MessageCode.VISUAL_QUERY_GENERATED,
         )
 
     except Exception as exc:
         logger.error("生成可视化查询失败: %s", exc, exc_info=True)
-        return VisualQueryResponse(
-            success=False,
-            sql=None,
-            base_sql=None,
-            pivot_sql=None,
-            errors=[f"生成查询失败: {str(exc)}"],
-            warnings=[],
-            metadata=None,
-            mode=request.mode,
+        return create_error_response(
+            code=MessageCode.OPERATION_FAILED.value,
+            message=f"生成查询失败: {str(exc)}",
+            details={"mode": request.mode}
         )
 
 
@@ -497,24 +500,22 @@ async def generate_visual_query(request: VisualQueryRequest) -> VisualQueryRespo
 async def preview_visual_query(
     request: PreviewRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
-) -> PreviewResponse:
+):
+    """预览可视化查询结果"""
     query_id = f"sync:{x_request_id}" if x_request_id else None
     
     try:
         validation_result = validate_query_config(request.config)
 
         if not validation_result.is_valid:
-            return PreviewResponse(
-                success=False,
-                data=None,
-                columns=None,
-                row_count=0,
-                estimated_time=None,
-                sql=None,
-                base_sql=None,
-                mode=request.mode,
-                errors=validation_result.errors,
-                warnings=validation_result.warnings,
+            return create_error_response(
+                code=MessageCode.VISUAL_QUERY_INVALID.value,
+                message="可视化查询配置无效",
+                details={
+                    "errors": validation_result.errors,
+                    "warnings": validation_result.warnings,
+                    "mode": request.mode,
+                }
             )
 
         resolved_casts_map = _map_resolved_casts(request.resolved_casts)
@@ -577,18 +578,20 @@ async def preview_visual_query(
         combined_warnings = list(validation_result.warnings or [])
         combined_warnings.extend(generation.warnings)
 
-        return PreviewResponse(
-            success=True,
-            data=data,
-            columns=columns,
-            row_count=total_rows,
-            estimated_time=estimated_time,
-            sql=preview_sql,
-            base_sql=generation.base_sql,
-            pivot_sql=generation.pivot_sql,
-            mode=request.mode,
-            errors=[],
-            warnings=combined_warnings,
+        return create_success_response(
+            data={
+                "data": data,
+                "columns": columns,
+                "row_count": total_rows,
+                "estimated_time": estimated_time,
+                "sql": preview_sql,
+                "base_sql": generation.base_sql,
+                "pivot_sql": generation.pivot_sql,
+                "mode": request.mode,
+                "errors": [],
+                "warnings": combined_warnings,
+            },
+            message_code=MessageCode.VISUAL_QUERY_PREVIEWED,
         )
 
     except duckdb.InterruptException:
@@ -596,17 +599,10 @@ async def preview_visual_query(
         raise HTTPException(status_code=499, detail="Query cancelled by client")
     except Exception as exc:
         logger.error("可视化查询预览失败: %s", exc, exc_info=True)
-        return PreviewResponse(
-            success=False,
-            data=None,
-            columns=None,
-            row_count=0,
-            estimated_time=None,
-            sql=None,
-            base_sql=None,
-            mode=request.mode,
-            errors=[f"查询预览失败: {str(exc)}"],
-            warnings=[],
+        return create_error_response(
+            code=MessageCode.OPERATION_FAILED.value,
+            message=f"查询预览失败: {str(exc)}",
+            details={"mode": request.mode}
         )
 
 
@@ -628,13 +624,14 @@ async def get_distinct_values(
     try:
         validation_result = validate_query_config(req.config)
         if not validation_result.is_valid:
-            return {
-                "success": False,
-                "values": [],
-                "stats": {},
-                "errors": validation_result.errors,
-                "warnings": validation_result.warnings,
-            }
+            return create_error_response(
+                code=MessageCode.VALIDATION_ERROR.value,
+                message="查询配置验证失败",
+                details={
+                    "errors": validation_result.errors,
+                    "warnings": validation_result.warnings,
+                }
+            )
 
         table = _quote_identifier(req.config.table_name)
         target_col = _quote_identifier(req.column)
@@ -703,13 +700,15 @@ async def get_distinct_values(
             else None
         )
 
-        return {
-            "success": True,
-            "values": values,
-            "stats": {"distinct_count": distinct_count, "topN": topN},
-            "errors": [],
-            "warnings": validation_result.warnings,
-        }
+        return create_success_response(
+            data={
+                "values": values,
+                "stats": {"distinct_count": distinct_count, "topN": topN},
+                "errors": [],
+                "warnings": validation_result.warnings,
+            },
+            message_code=MessageCode.QUERY_SUCCESS,
+        )
     except duckdb.InterruptException:
         logger.info(f"Distinct values query {query_id} was cancelled by user")
         raise HTTPException(status_code=499, detail="Query cancelled by client")
@@ -717,13 +716,11 @@ async def get_distinct_values(
         raise
     except Exception as exc:
         logger.error("获取列去重值失败: %s", exc, exc_info=True)
-        return {
-            "success": False,
-            "values": [],
-            "stats": {},
-            "errors": [str(exc)],
-            "warnings": [],
-        }
+        return create_error_response(
+            code=MessageCode.QUERY_FAILED.value,
+            message=str(exc),
+            details={"errors": [str(exc)]}
+        )
 
 
 @router.get(
@@ -731,6 +728,7 @@ async def get_distinct_values(
     tags=["Visual Query"],
 )
 async def get_visual_query_column_stats(table_name: str, column_name: str):
+    """获取列统计信息"""
     try:
         con = get_db_connection()
         available_tables = con.execute("SHOW TABLES").fetchdf()
@@ -746,10 +744,10 @@ async def get_visual_query_column_stats(table_name: str, column_name: str):
             stats.model_dump() if hasattr(stats, "model_dump") else stats.dict()
         )
 
-        return {
-            "success": True,
-            "statistics": stats_dict,
-        }
+        return create_success_response(
+            data={"statistics": stats_dict},
+            message_code=MessageCode.QUERY_SUCCESS,
+        )
 
     except HTTPException:
         raise
@@ -762,6 +760,7 @@ async def get_visual_query_column_stats(table_name: str, column_name: str):
 async def validate_visual_query_config_endpoint(
     payload: Dict[str, Any] = Body(...)
 ):
+    """验证可视化查询配置"""
     try:
         if isinstance(payload, dict) and "config" in payload:
             request_payload = VisualQueryValidationRequest(**payload)
@@ -773,22 +772,18 @@ async def validate_visual_query_config_endpoint(
             )
     except ValidationError as exc:
         logger.error("校验请求解析失败: %s", exc)
-        return VisualQueryValidationResponse(
-            success=False,
-            is_valid=False,
-            errors=["请求格式错误"],
-            warnings=[],
-            complexity_score=0,
-        ).model_dump()
+        return create_error_response(
+            code=MessageCode.VALIDATION_ERROR.value,
+            message="请求格式错误",
+            details={"errors": ["请求格式错误"]}
+        )
     except Exception as exc:
         logger.error("校验请求解析异常: %s", exc, exc_info=True)
-        return VisualQueryValidationResponse(
-            success=False,
-            is_valid=False,
-            errors=[f"配置解析失败: {str(exc)}"],
-            warnings=[],
-            complexity_score=0,
-        ).model_dump()
+        return create_error_response(
+            code=MessageCode.VALIDATION_ERROR.value,
+            message=f"配置解析失败: {str(exc)}",
+            details={"errors": [f"配置解析失败: {str(exc)}"]}
+        )
 
     try:
         validation_result = validate_query_config(request_payload.config)
@@ -808,26 +803,25 @@ async def validate_visual_query_config_endpoint(
 
         is_valid = validation_result.is_valid and not agg_conflicts
 
-        response = VisualQueryValidationResponse(
-            success=True,
-            is_valid=is_valid,
-            errors=validation_result.errors,
-            warnings=validation_result.warnings,
-            complexity_score=validation_result.complexity_score,
-            conflicts=agg_conflicts,
-            suggested_casts=suggested_casts,
+        return create_success_response(
+            data={
+                "is_valid": is_valid,
+                "errors": validation_result.errors,
+                "warnings": validation_result.warnings,
+                "complexity_score": validation_result.complexity_score,
+                "conflicts": [c.model_dump() if hasattr(c, "model_dump") else c.dict() for c in agg_conflicts],
+                "suggested_casts": suggested_casts,
+            },
+            message_code=MessageCode.VISUAL_QUERY_VALIDATED if is_valid else MessageCode.VISUAL_QUERY_INVALID,
         )
-        return response.model_dump()
 
     except Exception as exc:
         logger.error("可视化查询配置验证失败: %s", exc, exc_info=True)
-        return VisualQueryValidationResponse(
-            success=False,
-            is_valid=False,
-            errors=[f"配置验证失败: {str(exc)}"],
-            warnings=[],
-            complexity_score=0,
-        ).model_dump()
+        return create_error_response(
+            code=MessageCode.VALIDATION_ERROR.value,
+            message=f"配置验证失败: {str(exc)}",
+            details={"errors": [f"配置验证失败: {str(exc)}"]}
+        )
 
 
 def safe_alias(table, col):
@@ -1505,14 +1499,16 @@ async def perform_query(
         data_records = normalize_dataframe_output(result_df)
         columns_list = [str(col) for col in result_df.columns.tolist()]
 
-        result = {
-            "data": data_records,
-            "columns": columns_list,
-            "index": result_df.index.tolist(),
-            "sql": query,  # 返回完整SQL
-        }
-
-        return jsonable_encoder(result)
+        return create_success_response(
+            data={
+                "data": data_records,
+                "columns": columns_list,
+                "index": result_df.index.tolist(),
+                "sql": query,
+                "row_count": len(data_records),
+            },
+            message_code=MessageCode.QUERY_SUCCESS,
+        )
     except HTTPException:
         # 重新抛出HTTPException，保持原始状态码
         raise
@@ -1524,7 +1520,6 @@ async def perform_query(
         # 使用统一的错误代码系统
         from core.common.error_codes import (
             analyze_error_type,
-            create_error_response,
             get_http_status_code,
         )
 
@@ -1534,9 +1529,9 @@ async def perform_query(
 
         # 创建标准化的错误响应
         error_response = create_error_response(
-            error_code=error_code,
-            original_error=original_error,
-            sql=getattr(query_request, "sql", None),
+            code=error_code,
+            message=original_error,
+            details={"sql": getattr(query_request, "sql", None)}
         )
 
         # 返回详细的错误响应
@@ -1740,16 +1735,18 @@ async def execute_sql(request: dict = Body(...)):
                 columns_list = [str(col) for col in result_df.columns.tolist()]
 
                 logger.info(f"准备返回数据库查询结果，行数: {len(result_df)}")
-                return {
-                    "success": True,
-                    "data": data_records,
-                    "columns": columns_list,
-                    "rowCount": len(result_df),
-                    "source_type": "database",
-                    "source_id": datasource_id,
-                    "sql_query": sql_query,
-                    "can_save_to_duckdb": True,  # 标识可以保存到DuckDB
-                }
+                return create_success_response(
+                    data={
+                        "data": data_records,
+                        "columns": columns_list,
+                        "rowCount": len(result_df),
+                        "source_type": "database",
+                        "source_id": datasource_id,
+                        "sql_query": sql_query,
+                        "can_save_to_duckdb": True,
+                    },
+                    message_code=MessageCode.QUERY_SUCCESS,
+                )
 
             except Exception as db_error:
                 logger.error(f"数据库查询失败: {str(db_error)}")
@@ -1768,15 +1765,16 @@ async def execute_sql(request: dict = Body(...)):
             # 确保所有列名是字符串类型
             columns_list = [str(col) for col in result_df.columns.tolist()]
 
-            # 返回结果 - 只使用简单的数据结构
-            result = {
-                "success": True,
-                "data": data_records,
-                "columns": columns_list,
-                "rowCount": len(result_df),
-            }
-
-            return result
+            return create_success_response(
+                data={
+                    "data": data_records,
+                    "columns": columns_list,
+                    "rowCount": len(result_df),
+                },
+                message_code=MessageCode.QUERY_SUCCESS,
+            )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"SQL执行失败: {str(e)}")
         logger.error(f"堆栈跟踪: {traceback.format_exc()}")
@@ -2030,26 +2028,28 @@ async def save_query_to_duckdb(request: dict = Body(...)):
             except Exception as config_error:
                 logger.warning(f"创建文件数据源配置失败: {str(config_error)}")
 
-            return {
-                "success": True,
-                "message": f"查询结果已保存为DuckDB表: {table_alias}",
-                "table_alias": table_alias,
-                "row_count": len(result_df),
-                "columns": result_df.columns.tolist(),
-                "source_sql": sql_query,
-                "source_datasource": datasource_id,
-                "created_at": get_current_time_iso(),  # 使用统一的时区配置
-                "datasource": {
-                    "id": table_alias,
-                    "name": table_alias,
-                    "type": "duckdb",
-                    "table_name": table_alias,
+            return create_success_response(
+                data={
+                    "table_alias": table_alias,
                     "row_count": len(result_df),
-                    "column_count": len(result_df.columns),
-                    "created_at": get_current_time_iso(),  # 使用统一的时区配置
-                    "updated_at": get_current_time_iso(),  # 使用统一的时区配置
+                    "columns": result_df.columns.tolist(),
+                    "source_sql": sql_query,
+                    "source_datasource": datasource_id,
+                    "created_at": get_current_time_iso(),
+                    "datasource": {
+                        "id": table_alias,
+                        "name": table_alias,
+                        "type": "duckdb",
+                        "table_name": table_alias,
+                        "row_count": len(result_df),
+                        "column_count": len(result_df.columns),
+                        "created_at": get_current_time_iso(),
+                        "updated_at": get_current_time_iso(),
+                    },
                 },
-            }
+                message_code=MessageCode.TABLE_CREATED,
+                message=f"查询结果已保存为DuckDB表: {table_alias}",
+            )
 
         except Exception as duckdb_error:
             logger.error(f"DuckDB操作失败: {str(duckdb_error)}")
@@ -2179,11 +2179,11 @@ async def list_duckdb_tables():
         # 先按是否有创建时间分组（有的在前），再按时间戳倒序
         tables_info.sort(key=get_sort_key, reverse=True)
 
-        return {
-            "success": True,
-            "tables": tables_info,
-            "total_tables": len(tables_info),
-        }
+        return create_list_response(
+            items=tables_info,
+            total=len(tables_info),
+            message_code=MessageCode.TABLES_RETRIEVED,
+        )
 
     except Exception as e:
         logger.error(f"获取DuckDB表列表失败: {str(e)}")
@@ -2268,7 +2268,11 @@ async def delete_duckdb_table(table_name: str):
         if deleted_files:
             message += f"，同时删除了源文件: {', '.join(deleted_files)}"
 
-        return {"success": True, "message": message, "deleted_files": deleted_files}
+        return create_success_response(
+            data={"deleted_files": deleted_files, "table_name": table_name},
+            message_code=MessageCode.TABLE_DELETED,
+            message=message,
+        )
 
     except HTTPException:
         raise
@@ -2317,34 +2321,30 @@ async def generate_set_operation_query(request: SetOperationRequest):
             ],
         }
 
-        return SetOperationResponse(
-            success=True,
-            sql=sql,
-            errors=[],
-            warnings=[],
-            metadata=metadata if request.include_metadata else None,
-            estimated_rows=estimated_rows,
+        return create_success_response(
+            data={
+                "sql": sql,
+                "errors": [],
+                "warnings": [],
+                "metadata": metadata if request.include_metadata else None,
+                "estimated_rows": estimated_rows,
+            },
+            message_code=MessageCode.SET_OPERATION_GENERATED,
         )
 
     except ValueError as e:
         logger.warning(f"集合操作查询生成失败: {str(e)}")
-        return SetOperationResponse(
-            success=False,
-            sql=None,
-            errors=[str(e)],
-            warnings=[],
-            metadata=None,
-            estimated_rows=0,
+        return create_error_response(
+            code=MessageCode.VALIDATION_ERROR.value,
+            message=str(e),
+            details={"errors": [str(e)]}
         )
     except Exception as e:
         logger.error(f"集合操作查询生成失败: {str(e)}")
-        return SetOperationResponse(
-            success=False,
-            sql=None,
-            errors=[f"生成查询失败: {str(e)}"],
-            warnings=[],
-            metadata=None,
-            estimated_rows=0,
+        return create_error_response(
+            code=MessageCode.OPERATION_FAILED.value,
+            message=f"生成查询失败: {str(e)}",
+            details={"errors": [f"生成查询失败: {str(e)}"]}
         )
 
 
@@ -2373,38 +2373,32 @@ async def preview_set_operation(request: SetOperationRequest):
         # 获取总行数估算
         estimated_rows = estimate_set_operation_rows(config, con)
 
-        return {
-            "success": True,
-            "data": preview_data,
-            "row_count": len(preview_data),
-            "estimated_total_rows": estimated_rows,
-            "sql": preview_sql,
-            "errors": [],
-            "warnings": [],
-        }
+        return create_success_response(
+            data={
+                "data": preview_data,
+                "row_count": len(preview_data),
+                "estimated_total_rows": estimated_rows,
+                "sql": preview_sql,
+                "errors": [],
+                "warnings": [],
+            },
+            message_code=MessageCode.SET_OPERATION_PREVIEWED,
+        )
 
     except ValueError as e:
         logger.warning(f"集合操作预览失败: {str(e)}")
-        return {
-            "success": False,
-            "data": None,
-            "row_count": 0,
-            "estimated_total_rows": 0,
-            "sql": None,
-            "errors": [str(e)],
-            "warnings": [],
-        }
+        return create_error_response(
+            code=MessageCode.VALIDATION_ERROR.value,
+            message=str(e),
+            details={"errors": [str(e)]}
+        )
     except Exception as e:
         logger.error(f"集合操作预览失败: {str(e)}")
-        return {
-            "success": False,
-            "data": None,
-            "row_count": 0,
-            "estimated_total_rows": 0,
-            "sql": None,
-            "errors": [f"预览失败: {str(e)}"],
-            "warnings": [],
-        }
+        return create_error_response(
+            code=MessageCode.OPERATION_FAILED.value,
+            message=f"预览失败: {str(e)}",
+            details={"errors": [f"预览失败: {str(e)}"]}
+        )
 
 
 @router.post("/api/set-operations/validate", tags=["Set Operations"])
@@ -2461,27 +2455,26 @@ async def validate_set_operation(request: SetOperationRequest):
         if len(config.tables) > 5:
             warnings.append("表数量较多，查询性能可能较慢")
 
-        return {
-            "success": len(errors) == 0,
-            "is_valid": len(errors) == 0,
-            "errors": errors,
-            "warnings": warnings,
-            "table_count": len(config.tables),
-            "operation_type": config.operation_type,
-            "use_by_name": config.use_by_name,
-        }
+        is_valid = len(errors) == 0
+        return create_success_response(
+            data={
+                "is_valid": is_valid,
+                "errors": errors,
+                "warnings": warnings,
+                "table_count": len(config.tables),
+                "operation_type": config.operation_type,
+                "use_by_name": config.use_by_name,
+            },
+            message_code=MessageCode.SET_OPERATION_VALIDATED if is_valid else MessageCode.VALIDATION_ERROR,
+        )
 
     except Exception as e:
         logger.error(f"集合操作验证失败: {str(e)}")
-        return {
-            "success": False,
-            "is_valid": False,
-            "errors": [f"验证失败: {str(e)}"],
-            "warnings": [],
-            "table_count": 0,
-            "operation_type": None,
-            "use_by_name": False,
-        }
+        return create_error_response(
+            code=MessageCode.VALIDATION_ERROR.value,
+            message=f"验证失败: {str(e)}",
+            details={"errors": [f"验证失败: {str(e)}"]}
+        )
 
 
 @router.post("/api/set-operations/execute", tags=["Set Operations"])
@@ -2521,24 +2514,26 @@ async def execute_set_operation(request: SetOperationRequest):
             ]
             data = normalize_dataframe_output(result_df)
 
-            return {
-                "success": True,
-                "data": data,
-                "row_count": len(data),
-                "column_count": len(columns),
-                "columns": columns,
-                "sql": sql,
-                "sqlQuery": sql,  # 为前端兼容性
-                "originalDatasource": {
-                    "type": "set_operation",
-                    "operation": config.operation_type,
-                    "tables": [source.table_name for source in config.tables],
+            return create_success_response(
+                data={
+                    "data": data,
+                    "row_count": len(data),
+                    "column_count": len(columns),
+                    "columns": columns,
+                    "sql": sql,
+                    "sqlQuery": sql,
+                    "originalDatasource": {
+                        "type": "set_operation",
+                        "operation": config.operation_type,
+                        "tables": [source.table_name for source in config.tables],
+                    },
+                    "isSetOperation": True,
+                    "setOperationConfig": config.model_dump() if hasattr(config, "model_dump") else config.dict(),
+                    "errors": [],
+                    "warnings": [],
                 },
-                "isSetOperation": True,
-                "setOperationConfig": config,
-                "errors": [],
-                "warnings": [],
-            }
+                message_code=MessageCode.SET_OPERATION_PREVIEWED,
+            )
         elif request.save_as_table:
             # 保存到表模式：直接创建表，不使用fetchdf避免内存溢出
             table_name = request.save_as_table.strip()
@@ -2574,26 +2569,28 @@ async def execute_set_operation(request: SetOperationRequest):
 
             logger.info(f"表 {table_name} 创建成功，行数: {row_count}")
 
-            return {
-                "success": True,
-                "saved_table": table_name,
-                "table_alias": table_name,  # 为前端兼容性
-                "row_count": row_count,
-                "column_count": len(columns),
-                "columns": columns,
-                "sql": sql,
-                "sqlQuery": sql,  # 为前端兼容性
-                "originalDatasource": {
-                    "type": "set_operation",
-                    "operation": config.operation_type,
-                    "tables": [source.table_name for source in config.tables],
+            return create_success_response(
+                data={
+                    "saved_table": table_name,
+                    "table_alias": table_name,
+                    "row_count": row_count,
+                    "column_count": len(columns),
+                    "columns": columns,
+                    "sql": sql,
+                    "sqlQuery": sql,
+                    "originalDatasource": {
+                        "type": "set_operation",
+                        "operation": config.operation_type,
+                        "tables": [source.table_name for source in config.tables],
+                    },
+                    "isSetOperation": True,
+                    "setOperationConfig": config.model_dump() if hasattr(config, "model_dump") else config.dict(),
+                    "errors": [],
+                    "warnings": [],
                 },
-                "isSetOperation": True,
-                "setOperationConfig": config,
-                "errors": [],
-                "warnings": [],
-                "message": f"集合操作结果已保存到表: {table_name}，共 {row_count:,} 行数据。",
-            }
+                message_code=MessageCode.SET_OPERATION_EXECUTED,
+                message=f"集合操作结果已保存到表: {table_name}，共 {row_count:,} 行数据。",
+            )
         else:
             # 默认行为：执行集合操作预览，使用配置的max_query_rows限制
             from core.common.config_manager import config_manager
@@ -2607,49 +2604,41 @@ async def execute_set_operation(request: SetOperationRequest):
             ]
             data = normalize_dataframe_output(result_df)
 
-            return {
-                "success": True,
-                "data": data,
-                "row_count": len(data),
-                "column_count": len(columns),
-                "columns": columns,
-                "sql": sql,
-                "sqlQuery": sql,  # 为前端兼容性
-                "originalDatasource": {
-                    "type": "set_operation",
-                    "operation": config.operation_type,
-                    "tables": [source.table_name for source in config.tables],
+            return create_success_response(
+                data={
+                    "data": data,
+                    "row_count": len(data),
+                    "column_count": len(columns),
+                    "columns": columns,
+                    "sql": sql,
+                    "sqlQuery": sql,
+                    "originalDatasource": {
+                        "type": "set_operation",
+                        "operation": config.operation_type,
+                        "tables": [source.table_name for source in config.tables],
+                    },
+                    "isSetOperation": True,
+                    "setOperationConfig": config.model_dump() if hasattr(config, "model_dump") else config.dict(),
+                    "errors": [],
+                    "warnings": [],
                 },
-                "isSetOperation": True,
-                "setOperationConfig": config,
-                "errors": [],
-                "warnings": [],
-            }
+                message_code=MessageCode.SET_OPERATION_EXECUTED,
+            )
 
     except ValueError as e:
         logger.warning(f"集合操作执行失败: {str(e)}")
-        return {
-            "success": False,
-            "data": None,
-            "row_count": 0,
-            "column_count": 0,
-            "columns": [],
-            "sql": None,
-            "errors": [str(e)],
-            "warnings": [],
-        }
+        return create_error_response(
+            code=MessageCode.VALIDATION_ERROR.value,
+            message=str(e),
+            details={"errors": [str(e)]}
+        )
     except Exception as e:
         logger.error(f"集合操作执行失败: {str(e)}")
-        return {
-            "success": False,
-            "data": None,
-            "row_count": 0,
-            "column_count": 0,
-            "columns": [],
-            "sql": None,
-            "errors": [f"执行失败: {str(e)}"],
-            "warnings": [],
-        }
+        return create_error_response(
+            code=MessageCode.OPERATION_FAILED.value,
+            message=f"执行失败: {str(e)}",
+            details={"errors": [f"执行失败: {str(e)}"]}
+        )
 
 
 @router.post("/api/set-operations/simple-union", tags=["Set Operations"])
@@ -2692,41 +2681,33 @@ async def simple_union_operation(request: UnionOperationRequest):
         con = get_db_connection()
         estimated_rows = estimate_set_operation_rows(config, con)
 
-        return {
-            "success": True,
-            "sql": sql,
-            "estimated_rows": estimated_rows,
-            "table_count": len(tables),
-            "operation_type": operation_type,
-            "use_by_name": use_by_name,
-            "errors": [],
-            "warnings": [],
-        }
+        return create_success_response(
+            data={
+                "sql": sql,
+                "estimated_rows": estimated_rows,
+                "table_count": len(tables),
+                "operation_type": operation_type,
+                "use_by_name": use_by_name,
+                "errors": [],
+                "warnings": [],
+            },
+            message_code=MessageCode.SET_OPERATION_GENERATED,
+        )
 
     except ValueError as e:
         logger.warning(f"简化UNION操作失败: {str(e)}")
-        return {
-            "success": False,
-            "sql": None,
-            "estimated_rows": 0,
-            "table_count": 0,
-            "operation_type": None,
-            "use_by_name": False,
-            "errors": [str(e)],
-            "warnings": [],
-        }
+        return create_error_response(
+            code=MessageCode.VALIDATION_ERROR.value,
+            message=str(e),
+            details={"errors": [str(e)]}
+        )
     except Exception as e:
         logger.error(f"简化UNION操作失败: {str(e)}")
-        return {
-            "success": False,
-            "sql": None,
-            "estimated_rows": 0,
-            "table_count": 0,
-            "operation_type": None,
-            "use_by_name": False,
-            "errors": [f"操作失败: {str(e)}"],
-            "warnings": [],
-        }
+        return create_error_response(
+            code=MessageCode.OPERATION_FAILED.value,
+            message=f"操作失败: {str(e)}",
+            details={"errors": [f"操作失败: {str(e)}"]}
+        )
 
 
 @router.post("/api/set-operations/export", tags=["Set Operations"])
@@ -2893,18 +2874,20 @@ async def export_set_operation(request: SetOperationExportRequest):
         executor = ThreadPoolExecutor(max_workers=1)
         executor.submit(export_task)
 
-        return {
-            "success": True,
-            "task_id": task_id,
-            "message": "导出任务已创建，请稍后查看异步任务列表",
-            "filename": filename,
-            "format": export_format,
-        }
+        return create_success_response(
+            data={
+                "task_id": task_id,
+                "filename": filename,
+                "format": export_format,
+            },
+            message_code=MessageCode.SET_OPERATION_EXPORTED,
+            message="导出任务已创建，请稍后查看异步任务列表",
+        )
 
     except Exception as e:
         logger.error(f"集合操作导出失败: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e),
-            "message": f"创建导出任务失败: {str(e)}",
-        }
+        return create_error_response(
+            code=MessageCode.OPERATION_FAILED.value,
+            message=f"创建导出任务失败: {str(e)}",
+            details={"error": str(e)}
+        )

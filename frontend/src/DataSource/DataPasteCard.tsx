@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { invalidateAfterTableCreate } from "@/utils/cacheInvalidation";
+import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-// 引用全局 Hooks
+// API module
+import { pasteData } from "@/api";
+// Global Hooks
 import { useSmartParse } from "@/hooks/useSmartParse";
 
 interface DataPasteCardProps {
@@ -176,25 +179,21 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/paste-data", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          table_name: tableName.trim(),
-          column_names: columnNames,
-          column_types: columnTypes,
-          data_rows: parsedData.rows,
-          delimiter: currentResult?.delimiter || delimiter,
-          has_header: hasHeader || currentResult?.hasHeader
-        })
+      const result = await pasteData({
+        table_name: tableName.trim(),
+        column_names: columnNames,
+        column_types: columnTypes,
+        data_rows: parsedData.rows,
+        delimiter: currentResult?.delimiter || delimiter,
+        has_header: hasHeader || currentResult?.hasHeader
       });
-      const result = await res.json();
+
       if (result.success) {
         const successMsg = t("page.datasource.paste.save.saveOk", { table: tableName.trim() });
         setSuccess(successMsg);
-        toast.success(successMsg);
+        showSuccessToast(t, result.messageCode || 'TABLE_CREATED', successMsg);
 
-        // 刷新数据源缓存，使左侧列表自动更新
+        // Refresh datasource cache to update left panel
         await invalidateAfterTableCreate(queryClient);
 
         onDataSourceSaved?.({
@@ -207,18 +206,17 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
         });
         clearForm();
       } else {
-        const errorMsg = result.error ||
-          result.message ||
-          t("page.datasource.paste.save.saveFail");
+        const errorMsg = result.message || t("page.datasource.paste.save.saveFail");
         setError(errorMsg);
-        toast.error(errorMsg);
+        showErrorToast(t, result.messageCode, errorMsg);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as Error & { messageCode?: string };
       const errorMsg = t("page.datasource.paste.save.saveFailDetail", {
-        message: err.message || ""
+        message: error.message || ""
       });
       setError(errorMsg);
-      toast.error(errorMsg);
+      showErrorToast(t, error.messageCode, errorMsg);
     } finally {
       setLoading(false);
     }
@@ -305,7 +303,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
               onClick={handleParse}
               disabled={!pastedData.trim() || isLoading}
             >
-              {isLoading ? "解析中..." : t("page.datasource.paste.btnParse")}
+              {isLoading ? t("page.datasource.paste.parsing") : t("page.datasource.paste.btnParse")}
             </Button>
             <Button
               variant="outline"
@@ -318,7 +316,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
             {results.length > 0 && (
               <>
                 <Label className="ml-2">
-                  解析策略:
+                  {t("page.datasource.paste.parseStrategy")}
                 </Label>
                 <Select
                   value={selectedIndex.toString()}
@@ -330,7 +328,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
                   <SelectContent>
                     {results.map((res, idx) => (
                       <SelectItem key={idx} value={idx.toString()}>
-                        {res.strategy} ({res.confidence}%)
+                        {t(`page.datasource.paste.strategies.${res.strategy}`)} ({res.confidence}%)
                       </SelectItem>
                     ))}
                   </SelectContent>

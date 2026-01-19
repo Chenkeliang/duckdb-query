@@ -49,6 +49,7 @@ export {
 // ==================== Data Source API ====================
 export {
     listDatabaseConnections,
+    listDatabaseDataSourcesRaw,
     getDatabaseConnection,
     createDatabaseConnection,
     updateDatabaseConnection,
@@ -62,6 +63,7 @@ export {
     type CreateConnectionRequest,
     type UpdateConnectionRequest,
     type DataSourceFilter,
+    type RawDatabaseDataSourceItem,
 } from './dataSourceApi';
 
 // ==================== File API ====================
@@ -79,6 +81,7 @@ export {
     inspectServerExcelSheets,
     importServerExcelSheets,
     getFilePreview,
+    pasteData,
     type UploadOptions,
     type UrlImportOptions,
     type ExcelSheet,
@@ -89,6 +92,8 @@ export {
     type ServerExcelInspectResponse,
     type ServerExcelSheetConfig,
     type ServerExcelImportResponse,
+    type PasteDataRequest,
+    type PasteDataResponse,
 } from './fileApi';
 
 // ==================== Async Task API ====================
@@ -135,4 +140,6 @@ export {
     deleteSqlFavorite,
     incrementFavoriteUsage,
     getAppFeatures,
+    getAppConfig,
+    type AppConfigResponse,
 } from './visualQueryApi';

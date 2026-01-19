@@ -5,6 +5,11 @@ import logging
 from core.database.database_manager import db_manager
 from core.common.config_manager import config_manager
 from core.security.encryption import password_encryptor
+from utils.response_helpers import (
+    create_success_response,
+    create_list_response,
+    MessageCode,
+)
 
 # 获取应用配置
 app_config = config_manager.get_app_config()
@@ -172,14 +177,16 @@ async def get_database_tables(connection_id: str):
                                 }
                             )
 
-                    return {
-                        "success": True,
-                        "connection_id": connection_id,
-                        "connection_name": connection.name,
-                        "database": db_config["database"],
-                        "tables": table_info,
-                        "table_count": len(table_info),
-                    }
+                    return create_success_response(
+                        data={
+                            "connection_id": connection_id,
+                            "connection_name": connection.name,
+                            "database": db_config["database"],
+                            "tables": table_info,
+                            "table_count": len(table_info),
+                        },
+                        message_code=MessageCode.TABLES_RETRIEVED,
+                    )
 
             finally:
                 conn.close()
@@ -366,14 +373,16 @@ async def get_database_tables(connection_id: str):
                                 }
                             )
 
-                    return {
-                        "success": True,
-                        "connection_id": connection_id,
-                        "connection_name": connection.name,
-                        "database": db_config["database"],
-                        "tables": table_info,
-                        "table_count": len(table_info),
-                    }
+                    return create_success_response(
+                        data={
+                            "connection_id": connection_id,
+                            "connection_name": connection.name,
+                            "database": db_config["database"],
+                            "tables": table_info,
+                            "table_count": len(table_info),
+                        },
+                        message_code=MessageCode.TABLES_RETRIEVED,
+                    )
 
             finally:
                 conn.close()
@@ -424,12 +433,11 @@ async def list_connection_schemas(connection_id: str):
 
         # MySQL 和 SQLite 不支持 schema，返回空列表
         if db_type in ["mysql", "sqlite"]:
-            return {
-                "success": True,
-                "connection_id": connection_id,
-                "schemas": [],
-                "total_schemas": 0,
-            }
+            return create_list_response(
+                items=[],
+                total=0,
+                message_code=MessageCode.SCHEMAS_RETRIEVED,
+            )
 
         # PostgreSQL: 查询所有 schemas
         if db_type == "postgresql":
@@ -475,12 +483,11 @@ async def list_connection_schemas(connection_id: str):
                     for row in cursor.fetchall():
                         schemas.append({"name": row[0], "table_count": row[1]})
 
-                    return {
-                        "success": True,
-                        "connection_id": connection_id,
-                        "schemas": schemas,
-                        "total_schemas": len(schemas),
-                    }
+                    return create_list_response(
+                        items=schemas,
+                        total=len(schemas),
+                        message_code=MessageCode.SCHEMAS_RETRIEVED,
+                    )
             finally:
                 conn.close()
 
@@ -583,13 +590,11 @@ async def list_schema_tables(connection_id: str, schema: str):
                         "row_count": 0,  # 不统计行数，提升性能
                     })
 
-                return {
-                    "success": True,
-                    "connection_id": connection_id,
-                    "schema": schema,
-                    "tables": tables,
-                    "total_tables": len(tables),
-                }
+                return create_list_response(
+                    items=tables,
+                    total=len(tables),
+                    message_code=MessageCode.TABLES_RETRIEVED,
+                )
         finally:
             conn.close()
 
@@ -723,15 +728,17 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                         logger.warning(f"获取MySQL索引失败: {e}")
 
 
-                    return {
-                        "success": True,
-                        "table_name": table_name,
-                        "columns": columns,
-                        "indexes": indexes,
-                        "column_count": len(columns),
-                        "row_count": row_count,
-                        "sample_data": sample_data,
-                    }
+                    return create_success_response(
+                        data={
+                            "table_name": table_name,
+                            "columns": columns,
+                            "indexes": indexes,
+                            "column_count": len(columns),
+                            "row_count": row_count,
+                            "sample_data": sample_data,
+                        },
+                        message_code=MessageCode.TABLE_RETRIEVED,
+                    )
 
             finally:
                 conn.close()
@@ -900,15 +907,17 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                          logger.warning(f"获取PostgreSQL索引失败: {e}")
 
 
-                    return {
-                        "success": True,
-                        "table_name": table_name,
-                        "columns": columns,
-                        "indexes": indexes, 
-                        "column_count": len(columns),
-                        "row_count": row_count,
-                        "sample_data": sample_data,
-                    }
+                    return create_success_response(
+                        data={
+                            "table_name": table_name,
+                            "columns": columns,
+                            "indexes": indexes, 
+                            "column_count": len(columns),
+                            "row_count": row_count,
+                            "sample_data": sample_data,
+                        },
+                        message_code=MessageCode.TABLE_RETRIEVED,
+                    )
 
             finally:
                 conn.close()

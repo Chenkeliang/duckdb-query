@@ -1,6 +1,7 @@
 import React, { lazy, useEffect, useState, useCallback, Component, ReactNode, ErrorInfo } from 'react';
 import { toast } from 'sonner';
 import { useAppShell } from './hooks/useAppShell';
+import { showSuccessToast, showErrorToast, showResponseToast } from './utils/toastHelpers';
 import useAppConfig from './hooks/useAppConfig';
 import {
     Database,
@@ -209,11 +210,11 @@ const AppInner: React.FC = () => {
         navigateQueryWorkbench: () => setCurrentTab('queryworkbench'),
         refreshData: () => {
             refreshData();
-            toast.success(t('actions.refreshSuccess', 'Refreshed'));
+            showSuccessToast(t, 'DATASOURCES_REFRESHED', t('actions.refreshSuccess', 'Refreshed'));
         },
         refreshDataSources: () => {
             refreshData();
-            toast.success(t('dataSource.refreshed', 'Data sources refreshed'));
+            showSuccessToast(t, 'DATASOURCES_REFRESHED', t('dataSource.refreshed', 'Data sources refreshed'));
         },
         uploadFile: () => {
             setCurrentTab('datasource');
@@ -241,7 +242,7 @@ const AppInner: React.FC = () => {
                 break;
             case 'refresh':
                 refreshData();
-                toast.success(t('actions.refreshSuccess', 'Refreshed'));
+                showSuccessToast(t, 'DATASOURCES_REFRESHED', t('actions.refreshSuccess', 'Refreshed'));
                 break;
             case 'toggleTheme':
                 setDarkMode(!isDarkMode);
@@ -282,7 +283,7 @@ const AppInner: React.FC = () => {
                         '@/api'
                     );
 
-                    let result: { success?: boolean; message?: string } | undefined;
+                    let result: { success?: boolean; message?: string; messageCode?: string } | undefined;
                     if (params?.useStoredPassword && params.id) {
                         result = await refreshDatabaseConnection(params.id);
                     } else {
@@ -295,15 +296,16 @@ const AppInner: React.FC = () => {
 
                     const testSuccess = result?.success === true;
                     const testMessage = result?.message;
+                    const testMessageCode = result?.messageCode;
 
                     if (testSuccess) {
-                        toast.success(testMessage || t('page.datasource.list.testSuccess'));
+                        showSuccessToast(t, testMessageCode || 'CONNECTION_TEST_SUCCESS', testMessage || t('page.datasource.list.testSuccess'));
                     } else {
-                        toast.error(testMessage || t('page.datasource.list.testFail'));
+                        showErrorToast(t, testMessageCode || 'CONNECTION_TEST_FAILED', testMessage || t('page.datasource.list.testFail'));
                     }
                 } catch (err) {
                     const error = err as Error;
-                    toast.error(error?.message || t('page.datasource.list.testFail'));
+                    showErrorToast(t, error, t('page.datasource.list.testFail'));
                 } finally {
                     setTestingDb(false);
                 }
@@ -314,13 +316,13 @@ const AppInner: React.FC = () => {
                     setSavingDb(true);
                     const response = await connectDatabase(params);
                     if (response?.success) {
-                        toast.success(response?.message || t('page.datasource.manage.saveSuccess'));
+                        showResponseToast(t, response, { successFallback: t('page.datasource.manage.saveSuccess') });
                     } else {
-                        toast.error(response?.message || t('page.datasource.list.errorUnknown'));
+                        showResponseToast(t, response, { errorFallback: t('page.datasource.list.errorUnknown') });
                     }
                 } catch (err) {
                     const error = err as Error;
-                    toast.error(error?.message || t('page.datasource.list.errorUnknown'));
+                    showErrorToast(t, error, t('page.datasource.list.errorUnknown'));
                 } finally {
                     setSavingDb(false);
                 }
@@ -331,13 +333,13 @@ const AppInner: React.FC = () => {
                     setSavingDb(true);
                     const response = await saveDatabase(params);
                     if (response?.success) {
-                        toast.success(response?.message || t('page.datasource.manage.saveSuccess'));
+                        showResponseToast(t, response, { successFallback: t('page.datasource.manage.saveSuccess') });
                     } else {
-                        toast.error(response?.message || t('page.datasource.list.errorUnknown'));
+                        showResponseToast(t, response, { errorFallback: t('page.datasource.list.errorUnknown') });
                     }
                 } catch (err) {
                     const error = err as Error;
-                    toast.error(error?.message || t('page.datasource.list.errorUnknown'));
+                    showErrorToast(t, error, t('page.datasource.list.errorUnknown'));
                 } finally {
                     setSavingDb(false);
                 }

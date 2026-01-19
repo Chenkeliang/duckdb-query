@@ -7,7 +7,6 @@ import {
 } from "react-resizable-panels";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQueryWorkspace } from "@/hooks/useQueryWorkspace";
@@ -17,6 +16,7 @@ import { QueryTabs } from "./QueryTabs";
 import { ResultPanel } from "./ResultPanel";
 import { deleteDuckDBTableEnhanced } from "@/api";
 import { invalidateAfterTableDelete } from "@/utils/cacheInvalidation";
+import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import type { SelectedTable } from "@/types/SelectedTable";
 import { normalizeSelectedTable } from "@/utils/tableUtils";
 import {
@@ -75,7 +75,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
       try {
         await handleQueryExecute(sql, source);
       } catch (error) {
-        toast.error(t('query.previewFailed', { message: (error as Error).message }));
+        showErrorToast(t, undefined, t('query.previewFailed', { message: (error as Error).message }));
       }
     },
     [handleQueryExecute, t]
@@ -93,7 +93,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
       const { qualifiedName, attachDatabase } = generateExternalTableReference(table);
 
       if (!attachDatabase) {
-        toast.error(t("query.import.missingConnection", "缺少外部数据库连接信息"));
+        showErrorToast(t, undefined, t("query.import.missingConnection", "缺少外部数据库连接信息"));
         return;
       }
 
@@ -110,9 +110,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
         await handleQueryExecute(sql, source);
         setAutoOpenImportDialog(true);
       } catch (error) {
-        toast.error(
-          t("query.import.error", `导入失败: ${(error as Error).message}`)
-        );
+        showErrorToast(t, undefined, t("query.import.error", `导入失败: ${(error as Error).message}`));
       }
     },
     [handleQueryExecute, t]
@@ -124,9 +122,9 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
       try {
         await deleteDuckDBTableEnhanced(tableName);
         await invalidateAfterTableDelete(queryClient);
-        toast.success(t('query.tableDeleted', { table: tableName }));
+        showSuccessToast(t, 'TABLE_DELETED', t('query.tableDeleted', { table: tableName }));
       } catch (error) {
-        toast.error(t('query.deleteFailed', { message: (error as Error).message }));
+        showErrorToast(t, undefined, t('query.deleteFailed', { message: (error as Error).message }));
         throw error; // 重新抛出以便调用方知道失败了
       }
     },

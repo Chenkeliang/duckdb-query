@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, RefreshCw, ChevronLeft, Database } from 'lucide-react';
-import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -9,6 +8,7 @@ import { useDuckDBTables, type Table } from '@/hooks/useDuckDBTables';
 import { useDatabaseConnections } from '@/hooks/useDatabaseConnections';
 import { invalidateAllDataCaches, invalidateAfterTableDelete } from '@/utils/cacheInvalidation';
 import { createDuckDBTable, isTableSelected } from '@/utils/tableUtils';
+import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { TreeSection } from './TreeSection';
 import { TableItem } from './TableItem';
@@ -77,10 +77,10 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       }
       // 删除成功后才刷新缓存
       await invalidateAfterTableDelete(queryClient);
-      toast.success(t('dataSource.tableDeletedRefreshed'));
+      showSuccessToast(t, 'TABLE_DELETED', t('dataSource.tableDeletedRefreshed'));
     } catch (error) {
       // 删除失败时显示错误，不触发缓存失效
-      toast.error(t('dataSource.deleteFailed', { error: (error as Error).message }));
+      showErrorToast(t, undefined, t('dataSource.deleteFailed', { error: (error as Error).message }));
     }
   };
 
@@ -121,9 +121,9 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       // 使用统一的缓存失效工具刷新所有数据缓存
       await invalidateAllDataCaches(queryClient);
       onRefresh?.();
-      toast.success(t('dataSource.refreshed'));
+      showSuccessToast(t, 'DATASOURCES_REFRESHED', t('dataSource.refreshed'));
     } catch (error) {
-      toast.error(t('dataSource.refreshFailed', { error: (error as Error).message }));
+      showErrorToast(t, undefined, t('dataSource.refreshFailed', { error: (error as Error).message }));
     }
   }, [queryClient, onRefresh, t]);
 

@@ -250,7 +250,8 @@ class DatabaseManager:
 
             return ConnectionTestResponse(
                 success=True,
-                message="MySQL连接成功",
+                message="MySQL connection successful",
+                messageCode="MYSQL_CONNECTION_SUCCESS",
                 latency_ms=latency,
                 database_info={"version": version, "type": "MySQL"},
             )
@@ -258,7 +259,11 @@ class DatabaseManager:
         except Exception as e:
             latency = (time.time() - start_time) * 1000
             return ConnectionTestResponse(
-                success=False, message=f"MySQL连接失败: {str(e)}", latency_ms=latency
+                success=False, 
+                message=f"MySQL connection failed: {str(e)}", 
+                messageCode="MYSQL_CONNECTION_FAILED",
+                latency_ms=latency,
+                error_details=str(e)
             )
 
     def _test_postgresql_connection(
@@ -300,7 +305,8 @@ class DatabaseManager:
 
             return ConnectionTestResponse(
                 success=True,
-                message="PostgreSQL连接成功",
+                message="PostgreSQL connection successful",
+                messageCode="POSTGRESQL_CONNECTION_SUCCESS",
                 latency_ms=latency,
                 database_info={"version": version, "type": "PostgreSQL"},
             )
@@ -309,8 +315,10 @@ class DatabaseManager:
             latency = (time.time() - start_time) * 1000
             return ConnectionTestResponse(
                 success=False,
-                message=f"PostgreSQL连接失败: {str(e)}",
+                message=f"PostgreSQL connection failed: {str(e)}",
+                messageCode="POSTGRESQL_CONNECTION_FAILED",
                 latency_ms=latency,
+                error_details=str(e)
             )
 
     def _test_sqlite_connection(
@@ -335,7 +343,8 @@ class DatabaseManager:
 
             return ConnectionTestResponse(
                 success=True,
-                message="SQLite连接成功",
+                message="SQLite connection successful",
+                messageCode="SQLITE_CONNECTION_SUCCESS",
                 latency_ms=latency,
                 database_info={"version": version, "type": "SQLite"},
             )
@@ -343,7 +352,11 @@ class DatabaseManager:
         except Exception as e:
             latency = (time.time() - start_time) * 1000
             return ConnectionTestResponse(
-                success=False, message=f"SQLite连接失败: {str(e)}", latency_ms=latency
+                success=False, 
+                message=f"SQLite connection failed: {str(e)}", 
+                messageCode="SQLITE_CONNECTION_FAILED",
+                latency_ms=latency,
+                error_details=str(e)
             )
 
     def _create_engine(self, db_type: DataSourceType, params: Dict[str, Any]):

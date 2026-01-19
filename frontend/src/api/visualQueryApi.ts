@@ -2,21 +2,25 @@
  * Visual Query & SQL Favorites API Module
  *
  * Functions for visual query builder and SQL bookmark management.
+ *
+ * Updated to use normalizeResponse for standard API response handling.
  */
 
-import { apiClient, handleApiError } from './client';
+import { apiClient, handleApiError, normalizeResponse } from './client';
 import type {
     VisualQueryConfig,
     SqlFavorite,
     CreateFavoriteRequest,
     QueryResponse,
-    ApiResponse
+    NormalizedResponse
 } from './types';
 
 // ==================== Visual Query Builder ====================
 
 /**
  * Generate SQL from visual query configuration
+ *
+ * Returns normalized response with generated SQL
  */
 export async function generateVisualQuery(
     config: VisualQueryConfig,
@@ -24,12 +28,21 @@ export async function generateVisualQuery(
 ): Promise<{
     success: boolean;
     sql: string;
+    messageCode?: string;
+    message?: string;
 }> {
     const payload = extractVisualQueryPayload(config, options);
 
     try {
         const response = await apiClient.post('/api/visual-query/generate', payload);
-        return response.data;
+        const normalized = normalizeResponse<{ sql: string }>(response);
+
+        return {
+            success: true,
+            sql: normalized.data.sql,
+            messageCode: normalized.messageCode,
+            message: normalized.message,
+        };
     } catch (error) {
         throw handleApiError(error as never, 'SQL生成失败');
     }
@@ -37,6 +50,8 @@ export async function generateVisualQuery(
 
 /**
  * Preview visual query results
+ *
+ * Returns normalized QueryResponse
  */
 export async function previewVisualQuery(
     config: VisualQueryConfig,
@@ -50,7 +65,12 @@ export async function previewVisualQuery(
             ...payload,
             limit,
         });
-        return response.data;
+        const normalized = normalizeResponse<QueryResponse>(response);
+
+        return {
+            ...normalized.data,
+            success: true,
+        };
     } catch (error) {
         throw handleApiError(error as never, '查询预览失败');
     }
@@ -117,16 +137,24 @@ function extractVisualQueryPayload(
 
 /**
  * List all SQL favorites
+ *
+ * Returns array of SqlFavorite from normalized list response
  */
 export async function listSqlFavorites(): Promise<SqlFavorite[]> {
     try {
         const response = await apiClient.get('/api/sql-favorites');
-        const payload = response.data;
-        if (payload && Array.isArray(payload.data)) {
-            return payload.data as SqlFavorite[];
+        const normalized = normalizeResponse<{ items?: SqlFavorite[] } | SqlFavorite[]>(response);
+
+        // Handle both list format (items array) and direct array
+        const data = normalized.data;
+        if (normalized.items) {
+            return normalized.items as SqlFavorite[];
         }
-        if (Array.isArray(payload)) {
-            return payload as SqlFavorite[];
+        if (Array.isArray(data)) {
+            return data;
+        }
+        if (data && typeof data === 'object' && 'items' in data) {
+            return (data as { items: SqlFavorite[] }).items;
         }
         return [];
     } catch (error) {
@@ -136,11 +164,16 @@ export async function listSqlFavorites(): Promise<SqlFavorite[]> {
 
 /**
  * Get a single SQL favorite
+ *
+ * Returns SqlFavorite from normalized response
  */
 export async function getSqlFavorite(id: string): Promise<SqlFavorite> {
     try {
         const response = await apiClient.get(`/api/sql-favorites/${id}`);
-        return response.data;
+        const normalized = normalizeResponse<{ favorite?: SqlFavorite } | SqlFavorite>(response);
+
+        const data = normalized.data;
+        return (data as { favorite?: SqlFavorite })?.favorite ?? data as SqlFavorite;
     } catch (error) {
         throw handleApiError(error as never, '获取收藏详情失败');
     }
@@ -148,13 +181,15 @@ export async function getSqlFavorite(id: string): Promise<SqlFavorite> {
 
 /**
  * Create a new SQL favorite
+ *
+ * Returns normalized response with created favorite
  */
 export async function createSqlFavorite(
     data: CreateFavoriteRequest
-): Promise<ApiResponse<SqlFavorite>> {
+): Promise<NormalizedResponse<{ favorite?: SqlFavorite }>> {
     try {
         const response = await apiClient.post('/api/sql-favorites', data);
-        return response.data;
+        return normalizeResponse<{ favorite?: SqlFavorite }>(response);
     } catch (error) {
         throw handleApiError(error as never, '创建收藏失败');
     }
@@ -162,14 +197,16 @@ export async function createSqlFavorite(
 
 /**
  * Update a SQL favorite
+ *
+ * Returns normalized response with updated favorite
  */
 export async function updateSqlFavorite(
     id: string,
     data: Partial<CreateFavoriteRequest>
-): Promise<ApiResponse<SqlFavorite>> {
+): Promise<NormalizedResponse<{ favorite?: SqlFavorite }>> {
     try {
         const response = await apiClient.put(`/api/sql-favorites/${id}`, data);
-        return response.data;
+        return normalizeResponse<{ favorite?: SqlFavorite }>(response);
     } catch (error) {
         throw handleApiError(error as never, '更新收藏失败');
     }
@@ -177,11 +214,13 @@ export async function updateSqlFavorite(
 
 /**
  * Delete a SQL favorite
+ *
+ * Returns normalized response
  */
-export async function deleteSqlFavorite(id: string): Promise<ApiResponse> {
+export async function deleteSqlFavorite(id: string): Promise<NormalizedResponse<Record<string, unknown>>> {
     try {
         const response = await apiClient.delete(`/api/sql-favorites/${id}`);
-        return response.data;
+        return normalizeResponse(response);
     } catch (error) {
         throw handleApiError(error as never, '删除收藏失败');
     }
@@ -189,29 +228,82 @@ export async function deleteSqlFavorite(id: string): Promise<ApiResponse> {
 
 /**
  * Increment favorite usage count
+ *
+ * Returns normalized response (silent failure for usage tracking)
  */
-export async function incrementFavoriteUsage(id: string): Promise<ApiResponse> {
+export async function incrementFavoriteUsage(id: string): Promise<NormalizedResponse<Record<string, unknown>> | { data: Record<string, unknown>; messageCode: string; message: string; timestamp: string; raw: unknown }> {
     try {
         const response = await apiClient.post(`/api/sql-favorites/${id}/use`);
-        return response.data;
-    } catch (error) {
+        return normalizeResponse(response);
+    } catch {
         // Silent failure for usage tracking
-        return { success: false };
+        return {
+            data: {},
+            messageCode: 'OPERATION_FAILED',
+            message: '',
+            timestamp: new Date().toISOString(),
+            raw: null,
+        };
     }
 }
 
 // ==================== App Features ====================
 
 /**
+ * App config response from /api/app-config/features
+ */
+export interface AppConfigResponse {
+    enable_pivot_tables: boolean;
+    pivot_table_extension: string;
+    max_query_rows: number;
+    max_file_size: number;
+    max_file_size_display: string;
+    federated_query_timeout?: number;
+}
+
+/**
+ * Get application configuration from /api/app-config/features
+ *
+ * Returns normalized response with config data
+ */
+export async function getAppConfig(): Promise<{
+    config: AppConfigResponse;
+    messageCode?: string;
+    message?: string;
+}> {
+    try {
+        const response = await apiClient.get('/api/app-config/features');
+        const normalized = normalizeResponse<AppConfigResponse>(response);
+
+        return {
+            config: normalized.data,
+            messageCode: normalized.messageCode,
+            message: normalized.message,
+        };
+    } catch (error) {
+        throw handleApiError(error as never, 'Failed to get app config');
+    }
+}
+
+/**
  * Get application features configuration
+ *
+ * Returns normalized response with features
  */
 export async function getAppFeatures(): Promise<{
-    success: boolean;
     features: Record<string, boolean | string | number>;
+    messageCode?: string;
+    message?: string;
 }> {
     try {
         const response = await apiClient.get('/api/features');
-        return response.data;
+        const normalized = normalizeResponse<{ features: Record<string, boolean | string | number> }>(response);
+
+        return {
+            features: normalized.data.features ?? {},
+            messageCode: normalized.messageCode,
+            message: normalized.message,
+        };
     } catch (error) {
         throw handleApiError(error as never, '获取应用配置失败');
     }

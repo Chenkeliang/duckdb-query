@@ -77,11 +77,14 @@ const cleanCell = (cell: string): string => {
 
 /**
  * 分隔符解析策略
+ * @param text - 要解析的文本
+ * @param delimiter - 分隔符
+ * @param strategyKey - 策略 key（用于 i18n）
  */
-const parseWithDelimiter = (text: string, delimiter: string, name: string): ParseResult => {
+const parseWithDelimiter = (text: string, delimiter: string, strategyKey: string): ParseResult => {
   const lines = text.trim().split('\n').filter(line => line.trim());
   if (lines.length === 0) {
-    return { strategy: name, confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
+    return { strategy: strategyKey, confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
   }
 
   const rows = lines.map(line => {
@@ -135,7 +138,7 @@ const parseWithDelimiter = (text: string, delimiter: string, name: string): Pars
   const confidence = consistency * baseScore * (mostCommon > 1 ? 1 : 0.3);
 
   return {
-    strategy: name,
+    strategy: strategyKey,
     confidence: Math.round(confidence),
     rows: normalizedRows,
     columns: mostCommon,
@@ -151,7 +154,7 @@ const parseWithDelimiter = (text: string, delimiter: string, name: string): Pars
 const parseWithMultiSpace = (text: string): ParseResult => {
   const lines = text.trim().split('\n').filter(line => line.trim());
   if (lines.length === 0) {
-    return { strategy: '多空格分隔', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
+    return { strategy: 'multiSpace', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
   }
 
   const rows = lines.map(line =>
@@ -166,7 +169,7 @@ const parseWithMultiSpace = (text: string): ParseResult => {
   const confidence = consistency * 80 * (mostCommon > 1 ? 1 : 0);
 
   return {
-    strategy: '多空格分隔',
+    strategy: 'multiSpace',
     confidence: Math.round(confidence),
     rows: filteredRows,
     columns: mostCommon,
@@ -236,12 +239,12 @@ const parseJson = (text: string): ParseResult => {
       arr = [json];
     } else {
       console.warn("JSON parsed but structure not supported");
-      return { strategy: 'JSON', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
+      return { strategy: 'json', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
     }
 
     if (arr.length === 0 || typeof arr[0] !== 'object') {
       console.warn("JSON array empty or items not objects");
-      return { strategy: 'JSON', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
+      return { strategy: 'json', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
     }
 
     // 收集所有键
@@ -255,7 +258,7 @@ const parseJson = (text: string): ParseResult => {
 
     if (keys.length === 0) {
       console.warn("No keys found in JSON objects");
-      return { strategy: 'JSON', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
+      return { strategy: 'json', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
     }
 
     // 转换为行数据
@@ -266,7 +269,7 @@ const parseJson = (text: string): ParseResult => {
     console.log("JSON Parse Success!", { columns: keys.length, rows: rows.length });
 
     return {
-      strategy: 'JSON',
+      strategy: 'json',
       confidence: 150,  // 高于所有分隔符策略
       rows: [keys, ...rows],  // 第一行是列名
       columns: keys.length,
@@ -275,7 +278,7 @@ const parseJson = (text: string): ParseResult => {
     };
   } catch (err) {
     console.error("JSON Parse Final Error:", err);
-    return { strategy: 'JSON', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
+    return { strategy: 'json', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
   }
 };
 
@@ -285,7 +288,7 @@ const parseJson = (text: string): ParseResult => {
 const parseKeyValue = (text: string): ParseResult => {
   const lines = text.trim().split('\n').filter(line => line.trim());
   if (lines.length === 0) {
-    return { strategy: '键值对', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
+    return { strategy: 'keyValue', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
   }
 
   const kvPattern = /^([^:：=]+)[：:=]\s*(.*)$/;
@@ -300,7 +303,7 @@ const parseKeyValue = (text: string): ParseResult => {
 
   const matchRate = pairs.length / lines.length;
   if (matchRate < 0.8) {
-    return { strategy: '键值对', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
+    return { strategy: 'keyValue', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
   }
 
   // 转换为表格格式（键作为列名，值作为数据）
@@ -308,7 +311,7 @@ const parseKeyValue = (text: string): ParseResult => {
   const values = pairs.map(p => p[1]);
 
   return {
-    strategy: '键值对',
+    strategy: 'keyValue',
     confidence: Math.round(matchRate * 90),
     rows: [keys, values],
     columns: pairs.length,
@@ -323,7 +326,7 @@ const parseKeyValue = (text: string): ParseResult => {
 const parseFixedWidth = (text: string): ParseResult => {
   const lines = text.trim().split('\n').filter(line => line.trim());
   if (lines.length < 2) {
-    return { strategy: '固定宽度', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
+    return { strategy: 'fixedWidth', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
   }
 
   // 找到所有行中连续空格的位置
@@ -346,7 +349,7 @@ const parseFixedWidth = (text: string): ParseResult => {
   // 找到所有行共同的分割位置
   const allPositions = lines.map(findSpaceRanges);
   if (allPositions.length === 0 || allPositions[0].length === 0) {
-    return { strategy: '固定宽度', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
+    return { strategy: 'fixedWidth', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
   }
 
   // 找交集（允许 ±2 的误差）
@@ -357,7 +360,7 @@ const parseFixedWidth = (text: string): ParseResult => {
   );
 
   if (commonPositions.length === 0) {
-    return { strategy: '固定宽度', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
+    return { strategy: 'fixedWidth', confidence: 0, rows: [], columns: 0, preview: [], hasHeader: false };
   }
 
   // 按位置分割
@@ -376,7 +379,7 @@ const parseFixedWidth = (text: string): ParseResult => {
   const confidence = Math.min(70, 50 + commonPositions.length * 5);
 
   return {
-    strategy: '固定宽度',
+    strategy: 'fixedWidth',
     confidence,
     rows,
     columns: colCount,
@@ -410,10 +413,10 @@ export const useSmartParse = (): UseSmartParseReturn => {
       if (config?.format && config.format !== 'auto') {
         switch (config.format) {
           case 'csv':
-            allResults.push(parseWithDelimiter(text, ',', '逗号分隔 (CSV)'));
+            allResults.push(parseWithDelimiter(text, ',', 'csv'));
             break;
           case 'tsv':
-            allResults.push(parseWithDelimiter(text, '\t', 'Tab 分隔 (TSV)'));
+            allResults.push(parseWithDelimiter(text, '\t', 'tsv'));
             break;
           case 'json':
             allResults.push(parseJson(text));
@@ -426,17 +429,17 @@ export const useSmartParse = (): UseSmartParseReturn => {
             break;
           case 'custom':
             if (config.delimiter) {
-              allResults.push(parseWithDelimiter(text, config.delimiter, `自定义分隔符 (${config.delimiter})`));
+              allResults.push(parseWithDelimiter(text, config.delimiter, 'custom'));
             }
             break;
         }
       } else {
         // 自动检测：先尝试 JSON（因为 JSON 中包含逗号会被误识别为 CSV）
         allResults.push(parseJson(text));
-        allResults.push(parseWithDelimiter(text, '\t', 'Tab 分隔'));
-        allResults.push(parseWithDelimiter(text, ',', '逗号分隔'));
-        allResults.push(parseWithDelimiter(text, '|', '管道符分隔'));
-        allResults.push(parseWithDelimiter(text, ';', '分号分隔'));
+        allResults.push(parseWithDelimiter(text, '\t', 'tsv'));
+        allResults.push(parseWithDelimiter(text, ',', 'csv'));
+        allResults.push(parseWithDelimiter(text, '|', 'pipe'));
+        allResults.push(parseWithDelimiter(text, ';', 'semicolon'));
         allResults.push(parseWithMultiSpace(text));
         allResults.push(parseKeyValue(text));
         allResults.push(parseFixedWidth(text));

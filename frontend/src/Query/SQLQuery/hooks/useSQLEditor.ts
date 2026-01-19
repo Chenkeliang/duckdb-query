@@ -6,10 +6,10 @@
 import { useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import { executeDuckDBSQL } from '@/api';
 import { invalidateAllDataCaches } from '@/utils/cacheInvalidation';
 import { formatSQLDataGrip } from '@/utils/sqlFormatter';
+import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 
 export interface SQLHistoryItem {
   id: string;
@@ -151,7 +151,7 @@ export const useSQLEditor = ({
       // 如果保存为表，刷新数据缓存
       if (variables.saveAsTable) {
         invalidateAllDataCaches(queryClient);
-        toast.success(t('query.sql.savedToTable', { table: variables.saveAsTable }));
+        showSuccessToast(t, 'TABLE_CREATED', t('query.sql.savedToTable', { table: variables.saveAsTable }));
       }
 
       onSuccess?.(data, variables.sqlToExecute);
@@ -168,7 +168,7 @@ export const useSQLEditor = ({
 
       // 如果是取消操作引发的错误，不显示 toast（通常已有 "查询已取消" 的提示）
       if (!error.message?.toLowerCase().includes('canceled')) {
-        toast.error(t('query.sql.executionFailed', { message: error.message }));
+        showErrorToast(t, undefined, t('query.sql.executionFailed', { message: error.message }));
       }
       onError?.(error, variables.sqlToExecute);
     },
@@ -178,7 +178,7 @@ export const useSQLEditor = ({
   const execute = useCallback((options?: { saveAsTable?: string; isPreview?: boolean }) => {
     const trimmedSQL = sql.trim();
     if (!trimmedSQL) {
-      toast.error(t('query.sql.emptySQL'));
+      showErrorToast(t, undefined, t('query.sql.emptySQL'));
       return;
     }
 

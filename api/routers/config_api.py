@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from api.utils.response_helpers import create_success_response
+from utils.response_helpers import create_success_response, MessageCode
 from core.common.config_manager import config_manager
 
 router = APIRouter()
@@ -29,13 +29,16 @@ async def get_app_features():
     """
     app_config = config_manager.get_app_config()
     max_file_size = int(getattr(app_config, "max_file_size", 500 * 1024 * 1024))
-    return create_success_response({
-        "enable_pivot_tables": bool(getattr(app_config, "enable_pivot_tables", True)),
-        "pivot_table_extension": getattr(
-            app_config, "pivot_table_extension", "pivot_table"
-        ),
-        "max_query_rows": int(getattr(app_config, "max_query_rows", 10000)),
-        "max_file_size": max_file_size,
-        "max_file_size_display": format_file_size(max_file_size),
-        "federated_query_timeout": int(getattr(app_config, "federated_query_timeout", 300)),
-    })
+    return create_success_response(
+        data={
+            "enable_pivot_tables": bool(getattr(app_config, "enable_pivot_tables", True)),
+            "pivot_table_extension": getattr(
+                app_config, "pivot_table_extension", "pivot_table"
+            ),
+            "max_query_rows": int(getattr(app_config, "max_query_rows", 10000)),
+            "max_file_size": max_file_size,
+            "max_file_size_display": format_file_size(max_file_size),
+            "federated_query_timeout": int(getattr(app_config, "federated_query_timeout", 300)),
+        },
+        message_code=MessageCode.APP_FEATURES_RETRIEVED,
+    )

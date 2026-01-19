@@ -1,9 +1,9 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { executeDuckDBSQL } from '@/api';
 import { invalidateAfterTableCreate } from '@/utils/cacheInvalidation';
+import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 import type {
   QueryConfig,
   FilterConfig,
@@ -443,7 +443,7 @@ export function useQueryBuilder(
       setGeneratedSQL(sql);
     },
     onError: (error: Error) => {
-      toast.error(t('query.sql.generateError', 'SQL 生成失败: {{message}}', { message: error.message }));
+      showErrorToast(t, undefined, t('query.sql.generateError', 'SQL 生成失败: {{message}}', { message: error.message }));
     },
   });
 
@@ -483,35 +483,35 @@ export function useQueryBuilder(
       // 如果保存为表，刷新数据源缓存
       if (data.saveAsTable) {
         invalidateAfterTableCreate(queryClient);
-        toast.success(t('query.sql.savedToTable', { table: data.saveAsTable }));
+        showSuccessToast(t, 'TABLE_CREATED', t('query.sql.savedToTable', { table: data.saveAsTable }));
       } else {
-        toast.success(t('query.sql.executeSuccess', '查询执行成功'));
+        showSuccessToast(t, 'QUERY_SUCCESS', t('query.sql.executeSuccess', '查询执行成功'));
       }
     },
     onError: (error: Error) => {
-      toast.error(t('query.sql.executeError', '查询执行失败: {{message}}', { message: error.message }));
+      showErrorToast(t, undefined, t('query.sql.executeError', '查询执行失败: {{message}}', { message: error.message }));
     },
   });
 
   // 生成 SQL
   const generateSQL = useCallback(async () => {
     if (!validation.isValid) {
-      validation.errors.forEach((error) => toast.error(error));
+      validation.errors.forEach((error) => showErrorToast(t, undefined, error));
       return null;
     }
     return generateSQLMutation.mutateAsync();
-  }, [validation, generateSQLMutation]);
+  }, [validation, generateSQLMutation, t]);
 
   // 执行查询
   const executeQuery = useCallback(
     async (options?: { saveAsTable?: string; isPreview?: boolean }) => {
       if (!validation.isValid) {
-        validation.errors.forEach((error) => toast.error(error));
+        validation.errors.forEach((error) => showErrorToast(t, undefined, error));
         return null;
       }
       return executeQueryMutation.mutateAsync(options);
     },
-    [validation, executeQueryMutation]
+    [validation, executeQueryMutation, t]
   );
 
   return {

@@ -7,7 +7,6 @@
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, FileSpreadsheet, FileArchive, Loader2, Check } from 'lucide-react';
-import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -21,6 +20,7 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { downloadAsyncResult } from '@/api';
+import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
 
 export type DownloadFormat = 'csv' | 'parquet';
 
@@ -95,12 +95,11 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success(t('async.download.success', '下载成功'));
+      showSuccessToast(t, 'TASK_DOWNLOAD_SUCCESS', t('async.download.success', '下载成功'));
       onOpenChange(false);
       onSuccess?.();
     } catch (error) {
-      const message = error instanceof Error ? error.message : '下载失败';
-      toast.error(t('async.download.failed', '下载失败: {{message}}', { message }));
+      handleApiErrorToast(t, error, t('async.download.failed', '下载失败'));
     } finally {
       setIsDownloading(false);
     }

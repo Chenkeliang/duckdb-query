@@ -2,14 +2,16 @@
  * Data Source API Module
  * 
  * Functions for managing database connections and data sources.
+ * 
+ * Updated to use normalizeResponse for standard API response handling.
  */
 
-import { apiClient } from './client';
+import { apiClient, normalizeResponse } from './client';
 import type {
     DatabaseConnection,
     DatabaseConnectionParams,
     ConnectionTestResult,
-    ApiResponse
+    NormalizedResponse
 } from './types';
 
 // ==================== Types ====================
@@ -88,22 +90,87 @@ function mapDatasourceItemToConnection(item: DatasourceItem): DatabaseConnection
 
 /**
  * List all database connections
+ * 
+ * Returns normalized response with connections array
  */
 export async function listDatabaseConnections(): Promise<{
     success: boolean;
     connections: DatabaseConnection[];
+    messageCode?: string;
+    message?: string;
 }> {
     try {
         const response = await apiClient.get('/api/datasources?type=database');
-        const envelope = response.data;
-        const items = (envelope?.data?.items ?? []) as DatasourceItem[];
+        const normalized = normalizeResponse<{ items?: DatasourceItem[] }>(response);
+        
+        // Handle list response format
+        const items = (normalized.items ?? normalized.data?.items ?? []) as DatasourceItem[];
         const connections = Array.isArray(items)
             ? items.map(mapDatasourceItemToConnection).filter(Boolean) as DatabaseConnection[]
             : [];
+            
         return {
-            ...(envelope as object),
             success: true,
             connections,
+            messageCode: normalized.messageCode,
+            message: normalized.message,
+        };
+    } catch (error) {
+        throw error;
+    }
+}
+
+/**
+ * Raw API response item from /api/datasources/databases/list
+ */
+export interface RawDatabaseDataSourceItem {
+    id: string;
+    name: string;
+    type: string;
+    subtype: string;
+    status?: string;
+    connection_info?: {
+        host?: string;
+        port?: number;
+        database?: string;
+        username?: string;
+        password?: string;
+        schema?: string;
+    };
+    metadata?: Record<string, unknown>;
+    created_at?: string;
+}
+
+/**
+ * List database data sources using /api/datasources/databases/list endpoint
+ *
+ * This is a lower-level API that returns raw data source items.
+ * Used by useDatabaseConnections hook.
+ *
+ * Returns normalized response with items array
+ */
+export async function listDatabaseDataSourcesRaw(subtype?: string): Promise<{
+    success: boolean;
+    items: RawDatabaseDataSourceItem[];
+    total: number;
+    messageCode?: string;
+    message?: string;
+}> {
+    try {
+        const params = subtype ? `?subtype=${encodeURIComponent(subtype)}` : '';
+        const response = await apiClient.get(`/api/datasources/databases/list${params}`);
+        const normalized = normalizeResponse<{ items?: RawDatabaseDataSourceItem[]; total?: number }>(response);
+
+        // Handle list response format
+        const items = (normalized.items ?? normalized.data?.items ?? []) as RawDatabaseDataSourceItem[];
+        const total = normalized.total ?? normalized.data?.total ?? items.length;
+
+        return {
+            success: true,
+            items,
+            total,
+            messageCode: normalized.messageCode,
+            message: normalized.message,
         };
     } catch (error) {
         throw error;
@@ -112,12 +179,17 @@ export async function listDatabaseConnections(): Promise<{
 
 /**
  * Get a single database connection by ID
+ * 
+ * Returns DatabaseConnection from normalized response
  */
 export async function getDatabaseConnection(connectionId: string): Promise<DatabaseConnection> {
     try {
         const id = connectionId.startsWith('db_') ? connectionId : `db_${connectionId}`;
         const response = await apiClient.get(`/api/datasources/${id}`);
-        return response.data;
+        const normalized = normalizeResponse<{ connection?: DatabaseConnection } | DatabaseConnection>(response);
+        
+        const data = normalized.data;
+        return (data as { connection?: DatabaseConnection })?.connection ?? data as DatabaseConnection;
     } catch (error) {
         throw error;
     }
@@ -125,19 +197,15 @@ export async function getDatabaseConnection(connectionId: string): Promise<Datab
 
 /**
  * Create a new database connection
+ * 
+ * Returns normalized response with created connection
  */
 export async function createDatabaseConnection(
     connectionData: CreateConnectionRequest
-): Promise<ApiResponse<{ connection: DatabaseConnection }>> {
+): Promise<NormalizedResponse<{ connection?: DatabaseConnection }>> {
     try {
         const response = await apiClient.post('/api/datasources/databases', connectionData);
-        // Caches are handled by React Query invalidation in hooks
-        const envelope = response.data;
-        return {
-            ...(envelope as object),
-            success: true,
-            data: { connection: envelope?.data?.connection },
-        };
+        return normalizeResponse<{ connection?: DatabaseConnection }>(response);
     } catch (error) {
         throw error;
     }
@@ -145,19 +213,16 @@ export async function createDatabaseConnection(
 
 /**
  * Update an existing database connection
+ * 
+ * Returns normalized response with updated connection
  */
 export async function updateDatabaseConnection(
     connectionId: string,
     connectionData: UpdateConnectionRequest
-): Promise<ApiResponse<{ connection: DatabaseConnection }>> {
+): Promise<NormalizedResponse<{ connection?: DatabaseConnection }>> {
     try {
         const response = await apiClient.put(`/api/datasources/databases/${connectionId}`, connectionData);
-        const envelope = response.data;
-        return {
-            ...(envelope as object),
-            success: true,
-            data: { connection: envelope?.data?.connection },
-        };
+        return normalizeResponse<{ connection?: DatabaseConnection }>(response);
     } catch (error) {
         throw error;
     }
@@ -165,12 +230,14 @@ export async function updateDatabaseConnection(
 
 /**
  * Delete a database connection
+ * 
+ * Returns normalized response
  */
-export async function deleteDatabaseConnection(connectionId: string): Promise<ApiResponse> {
+export async function deleteDatabaseConnection(connectionId: string): Promise<NormalizedResponse<Record<string, unknown>>> {
     try {
         const id = connectionId.startsWith('db_') ? connectionId : `db_${connectionId}`;
         const response = await apiClient.delete(`/api/datasources/${id}`);
-        return response.data;
+        return normalizeResponse(response);
     } catch (error) {
         throw error;
     }
@@ -180,16 +247,20 @@ export async function deleteDatabaseConnection(connectionId: string): Promise<Ap
 
 /**
  * Test a new database connection (before saving)
+ * 
+ * Returns ConnectionTestResult from normalized response
  */
 export async function testDatabaseConnection(
     connectionData: CreateConnectionRequest
 ): Promise<ConnectionTestResult> {
     try {
         const response = await apiClient.post('/api/datasources/databases/test', connectionData);
-        const envelope = response.data;
-        const payload = envelope?.data || {};
-        const connectionTest = payload?.connection_test || envelope?.connection_test;
-        const message = connectionTest?.message || envelope?.message;
+        const normalized = normalizeResponse<{ connection_test?: ConnectionTestResult }>(response);
+        
+        const data = normalized.data;
+        const connectionTest = data?.connection_test;
+        const message = connectionTest?.message || normalized.message;
+        const messageCode = connectionTest?.messageCode || normalized.messageCode;
         const latencyMs = typeof connectionTest?.latency_ms === 'number'
             ? connectionTest.latency_ms
             : typeof connectionTest?.details?.latency_ms === 'number'
@@ -199,6 +270,7 @@ export async function testDatabaseConnection(
         return {
             success: connectionTest?.success === true,
             message,
+            messageCode,
             latency_ms: latencyMs,
             details: connectionTest,
         };
@@ -209,6 +281,8 @@ export async function testDatabaseConnection(
 
 /**
  * Test connection (unified entry - handles both new and saved connections)
+ * 
+ * Returns ConnectionTestResult
  */
 export async function testConnection(
     connectionData: { id?: string } & Partial<CreateConnectionRequest>
@@ -225,8 +299,9 @@ export async function testConnection(
             response = await apiClient.post('/api/datasources/databases/test', connectionData);
         }
 
-        const data = response.data;
-        const connectionTest = data?.data?.connection_test || data?.connection_test;
+        const normalized = normalizeResponse<{ connection_test?: ConnectionTestResult }>(response);
+        const data = normalized.data;
+        const connectionTest = data?.connection_test;
 
         if (connectionTest) {
             return {
@@ -237,8 +312,8 @@ export async function testConnection(
         }
 
         return {
-            success: data?.success === true,
-            message: data?.message || (data?.success ? '连接成功' : '连接失败'),
+            success: true,
+            message: normalized.message || '连接成功',
             details: data,
         };
     } catch (error) {
@@ -251,27 +326,35 @@ export async function testConnection(
 
 /**
  * Refresh a saved database connection
+ * 
+ * Returns normalized response with refresh result
  */
 export async function refreshDatabaseConnection(connectionId: string): Promise<{
     success: boolean;
     message?: string;
     connection?: DatabaseConnection;
     test_result?: ConnectionTestResult;
+    messageCode?: string;
 }> {
     try {
         const response = await apiClient.post(`/api/datasources/databases/${connectionId}/refresh`);
-        const envelope = response.data;
-        const payload = envelope?.data || {};
-
-        const refreshSuccess = typeof payload?.refresh_success === 'boolean'
-            ? payload.refresh_success
-            : payload?.test_result?.success === true;
+        const normalized = normalizeResponse<{
+            refresh_success?: boolean;
+            connection?: DatabaseConnection;
+            test_result?: ConnectionTestResult;
+        }>(response);
+        
+        const data = normalized.data;
+        const refreshSuccess = typeof data?.refresh_success === 'boolean'
+            ? data.refresh_success
+            : data?.test_result?.success === true;
 
         return {
             success: refreshSuccess === true,
-            message: envelope?.message || payload?.test_result?.message,
-            connection: payload?.connection,
-            test_result: payload?.test_result,
+            message: normalized.message || data?.test_result?.message,
+            connection: data?.connection,
+            test_result: data?.test_result,
+            messageCode: normalized.messageCode,
         };
     } catch (error) {
         throw error;
@@ -282,8 +365,10 @@ export async function refreshDatabaseConnection(connectionId: string): Promise<{
 
 /**
  * List all data sources (files and databases)
+ * 
+ * Returns normalized response
  */
-export async function listAllDataSources(filters: DataSourceFilter = {}): Promise<ApiResponse> {
+export async function listAllDataSources(filters: DataSourceFilter = {}): Promise<NormalizedResponse<{ items?: unknown[]; total?: number }>> {
     try {
         const params = new URLSearchParams();
         if (filters.type) params.append('type', filters.type);
@@ -293,7 +378,7 @@ export async function listAllDataSources(filters: DataSourceFilter = {}): Promis
 
         const url = `/api/datasources${params.toString() ? '?' + params.toString() : ''}`;
         const response = await apiClient.get(url);
-        return response.data;
+        return normalizeResponse(response);
     } catch (error) {
         throw error;
     }
@@ -301,8 +386,10 @@ export async function listAllDataSources(filters: DataSourceFilter = {}): Promis
 
 /**
  * List database data sources only
+ * 
+ * Returns normalized response
  */
-export async function listDatabaseDataSources(filters: Omit<DataSourceFilter, 'type'> = {}): Promise<ApiResponse> {
+export async function listDatabaseDataSources(filters: Omit<DataSourceFilter, 'type'> = {}): Promise<NormalizedResponse<{ items?: unknown[]; total?: number }>> {
     try {
         const params = new URLSearchParams();
         if (filters.subtype) params.append('subtype', filters.subtype);
@@ -310,7 +397,7 @@ export async function listDatabaseDataSources(filters: Omit<DataSourceFilter, 't
 
         const url = `/api/datasources/databases/list${params.toString() ? '?' + params.toString() : ''}`;
         const response = await apiClient.get(url);
-        return response.data;
+        return normalizeResponse(response);
     } catch (error) {
         throw error;
     }
@@ -318,8 +405,10 @@ export async function listDatabaseDataSources(filters: Omit<DataSourceFilter, 't
 
 /**
  * List file data sources only
+ * 
+ * Returns normalized response
  */
-export async function listFileDataSources(filters: Omit<DataSourceFilter, 'type'> = {}): Promise<ApiResponse> {
+export async function listFileDataSources(filters: Omit<DataSourceFilter, 'type'> = {}): Promise<NormalizedResponse<{ items?: unknown[]; total?: number }>> {
     try {
         const params = new URLSearchParams();
         if (filters.subtype) params.append('subtype', filters.subtype);
@@ -327,7 +416,7 @@ export async function listFileDataSources(filters: Omit<DataSourceFilter, 'type'
 
         const url = `/api/datasources/files/list${params.toString() ? '?' + params.toString() : ''}`;
         const response = await apiClient.get(url);
-        return response.data;
+        return normalizeResponse(response);
     } catch (error) {
         throw error;
     }

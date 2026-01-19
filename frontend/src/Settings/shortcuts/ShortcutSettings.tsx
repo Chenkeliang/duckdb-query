@@ -10,7 +10,7 @@ import { useShortcuts } from './ShortcutContext';
 import { ShortcutRecorder } from './ShortcutRecorder';
 import { SHORTCUT_CATEGORIES, ShortcutConfig } from './defaultShortcuts';
 import { RotateCcw, Keyboard, Circle } from 'lucide-react';
-import { toast } from 'sonner';
+import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 
 export function ShortcutSettings() {
   const { t } = useTranslation('common');
@@ -49,9 +49,9 @@ export function ShortcutSettings() {
   const handleUpdateShortcut = async (actionId: string, newShortcut: string) => {
     try {
       await updateShortcut(actionId, newShortcut);
-      toast.success(t('shortcuts.updateSuccess', 'Shortcut updated'));
+      showSuccessToast(t, 'SHORTCUT_UPDATED', t('shortcuts.updateSuccess', 'Shortcut updated'));
     } catch {
-      toast.error(t('shortcuts.updateError', 'Failed to update shortcut'));
+      showErrorToast(t, 'SHORTCUT_UPDATE_FAILED', t('shortcuts.updateError', 'Failed to update shortcut'));
     }
   };
 
@@ -59,9 +59,9 @@ export function ShortcutSettings() {
   const handleResetShortcut = async (actionId: string) => {
     try {
       await resetShortcut(actionId);
-      toast.success(t('shortcuts.resetSuccess', 'Shortcut reset to default'));
+      showSuccessToast(t, 'SHORTCUT_RESET', t('shortcuts.resetSuccess', 'Shortcut reset to default'));
     } catch {
-      toast.error(t('shortcuts.resetError', 'Failed to reset shortcut'));
+      showErrorToast(t, 'SHORTCUT_RESET_FAILED', t('shortcuts.resetError', 'Failed to reset shortcut'));
     }
   };
 
@@ -69,9 +69,9 @@ export function ShortcutSettings() {
   const handleResetAll = async () => {
     try {
       await resetAllShortcuts();
-      toast.success(t('shortcuts.resetAllSuccess', 'All shortcuts reset to defaults'));
+      showSuccessToast(t, 'SHORTCUTS_RESET_ALL', t('shortcuts.resetAllSuccess', 'All shortcuts reset to defaults'));
     } catch {
-      toast.error(t('shortcuts.resetAllError', 'Failed to reset shortcuts'));
+      showErrorToast(t, 'SHORTCUTS_RESET_ALL_FAILED', t('shortcuts.resetAllError', 'Failed to reset shortcuts'));
     }
   };
 

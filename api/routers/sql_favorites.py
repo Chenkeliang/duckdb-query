@@ -7,6 +7,12 @@ from pydantic import BaseModel
 
 from core.database.metadata_manager import metadata_manager
 from core.common.timezone_utils import get_current_time
+from utils.response_helpers import (
+    create_success_response,
+    create_list_response,
+    create_error_response,
+    MessageCode,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -46,7 +52,11 @@ async def get_sql_favorites():
     """获取所有SQL收藏"""
     try:
         favorites = metadata_manager.list_sql_favorites()
-        return {"success": True, "data": favorites}
+        return create_list_response(
+            items=favorites,
+            total=len(favorites),
+            message_code=MessageCode.FAVORITES_RETRIEVED,
+        )
     except Exception as e:
         logger.error(f"获取SQL收藏失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"获取SQL收藏失败: {str(e)}")
@@ -83,7 +93,10 @@ async def create_sql_favorite(request: CreateSQLFavoriteRequest = Body(...)):
         if not success:
              raise Exception("保存到数据库失败")
 
-        return {"success": True, "data": new_favorite}
+        return create_success_response(
+            data={"favorite": new_favorite},
+            message_code=MessageCode.FAVORITE_CREATED,
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -130,7 +143,10 @@ async def update_sql_favorite(
 
         # 获取更新后的完整数据返回
         updated_favorite = metadata_manager.get_sql_favorite(favorite_id)
-        return {"success": True, "data": updated_favorite}
+        return create_success_response(
+            data={"favorite": updated_favorite},
+            message_code=MessageCode.FAVORITE_UPDATED,
+        )
 
     except HTTPException:
         raise
@@ -152,9 +168,14 @@ async def delete_sql_favorite(favorite_id: str):
         if not success:
              raise Exception("从数据库删除失败")
 
-        return {"success": True, "data": {"id": favorite_id}}
+        return create_success_response(
+            data={"id": favorite_id},
+            message_code=MessageCode.FAVORITE_DELETED,
+        )
     except HTTPException:
         raise
+    except Exception as e:
+        logger.error(f"删除SQL收藏失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"删除SQL收藏失败: {str(e)}")
 
 
@@ -176,7 +197,10 @@ async def increment_favorite_usage(favorite_id: str):
         if not success:
              raise Exception("更新使用次数失败")
 
-        return {"success": True, "usage_count": new_count}
+        return create_success_response(
+            data={"usage_count": new_count},
+            message_code=MessageCode.FAVORITE_USAGE_INCREMENTED,
+        )
     except HTTPException:
         raise
     except Exception as e:

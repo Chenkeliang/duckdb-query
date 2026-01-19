@@ -3,12 +3,18 @@
 定义项目中使用的自定义异常类和异常处理器
 """
 
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _get_utc_timestamp() -> str:
+    """获取 UTC 时间戳（ISO 8601 格式）"""
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 class BaseAPIException(Exception):
@@ -148,6 +154,8 @@ class ConfigurationError(BaseAPIException):
 
 async def api_exception_handler(request: Request, exc: BaseAPIException) -> JSONResponse:
     """API异常处理器"""
+    from datetime import datetime
+    
     logger.error(
         f"API异常: {exc.error_code} - {exc.message}",
         extra={
@@ -163,20 +171,22 @@ async def api_exception_handler(request: Request, exc: BaseAPIException) -> JSON
         status_code=exc.status_code,
         content={
             "success": False,
+            "detail": exc.message,
             "error": {
                 "code": exc.error_code,
                 "message": exc.message,
                 "details": exc.details
             },
-            "timestamp": logger.handlers[0].formatter.formatTime(logger.makeRecord(
-                name="", level=0, pathname="", lineno=0, msg="", args=(), exc_info=None
-            )) if logger.handlers else None
+            "messageCode": exc.error_code,
+            "message": exc.message,
+            "timestamp": _get_utc_timestamp()
         }
     )
 
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """HTTP异常处理器"""
+    
     logger.warning(
         f"HTTP异常: {exc.status_code} - {exc.detail}",
         extra={
@@ -186,22 +196,48 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         }
     )
     
+    # 检查 detail 是否已经是标准格式（防止二次包装）
+    if isinstance(exc.detail, dict) and exc.detail.get("success") is False:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=exc.detail
+        )
+    
+    # 根据状态码映射错误代码
+    error_code_map = {
+        400: "INVALID_REQUEST",
+        401: "UNAUTHORIZED",
+        403: "FORBIDDEN",
+        404: "RESOURCE_NOT_FOUND",
+        408: "TIMEOUT_ERROR",
+        422: "VALIDATION_ERROR",
+        500: "INTERNAL_ERROR",
+        502: "NETWORK_ERROR",
+        503: "INTERNAL_ERROR",
+    }
+    error_code = error_code_map.get(exc.status_code, "OPERATION_FAILED")
+    message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "success": False,
-            "detail": exc.detail,
+            "detail": message,
             "error": {
-                "code": "HTTP_ERROR",
-                "message": exc.detail,
+                "code": error_code,
+                "message": message,
                 "details": {}
-            }
+            },
+            "messageCode": error_code,
+            "message": message,
+            "timestamp": _get_utc_timestamp()
         }
     )
 
 
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """通用异常处理器"""
+    
     logger.error(
         f"未处理的异常: {type(exc).__name__} - {str(exc)}",
         extra={
@@ -215,11 +251,15 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         status_code=500,
         content={
             "success": False,
+            "detail": "服务器内部错误",
             "error": {
-                "code": "INTERNAL_SERVER_ERROR",
+                "code": "INTERNAL_ERROR",
                 "message": "服务器内部错误",
                 "details": {}
-            }
+            },
+            "messageCode": "INTERNAL_ERROR",
+            "message": "服务器内部错误",
+            "timestamp": _get_utc_timestamp()
         }
     )
 

@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCacheConfig } from '../utils/cacheConfig';
+import { listDatabaseDataSourcesRaw, type RawDatabaseDataSourceItem } from '@/api';
 
 /**
  * 数据库类型
@@ -33,37 +34,6 @@ export interface DatabaseConnection {
 }
 
 /**
- * API 响应中的原始数据源项
- */
-interface ApiDataSourceItem {
-  id: string;
-  name: string;
-  type: string;           // 固定为 "database"
-  subtype: DatabaseType;  // 真实数据库类型
-  status?: string;
-  connection_info?: {
-    host?: string;
-    port?: number;
-    database?: string;
-    username?: string;
-    password?: string;
-  };
-  metadata?: Record<string, unknown>;
-  created_at?: string;
-}
-
-/**
- * API 响应类型
- */
-interface DatabaseConnectionsResponse {
-  success: boolean;
-  data?: {
-    items: ApiDataSourceItem[];
-    total: number;
-  };
-}
-
-/**
  * QueryKey 常量
  */
 export const DATABASE_CONNECTIONS_QUERY_KEY = ['database-connections'] as const;
@@ -78,16 +48,16 @@ const stripDbPrefix = (id: string): string => {
 /**
  * 转换 API 响应项为 DatabaseConnection
  */
-const transformApiItem = (item: ApiDataSourceItem): DatabaseConnection => {
+const transformApiItem = (item: RawDatabaseDataSourceItem): DatabaseConnection => {
   const connectionInfo = item.connection_info || {};
   const metadata = item.metadata || {};
 
   // 提取用户名（兼容多种字段）
   const username =
     connectionInfo.username ||
-    (connectionInfo as any).user ||
-    (metadata as any).username ||
-    (metadata as any).user;
+    (connectionInfo as Record<string, unknown>).user as string ||
+    (metadata as Record<string, unknown>).username as string ||
+    (metadata as Record<string, unknown>).user as string;
 
   // 检查是否已存储加密密码
   const password = connectionInfo.password;
@@ -96,7 +66,7 @@ const transformApiItem = (item: ApiDataSourceItem): DatabaseConnection => {
   return {
     id: stripDbPrefix(item.id),
     name: item.name,
-    type: item.subtype,
+    type: item.subtype as DatabaseType,
     status: (item.status as DatabaseConnection['status']) || 'inactive',
     requiresPassword,
     params: {
@@ -104,7 +74,7 @@ const transformApiItem = (item: ApiDataSourceItem): DatabaseConnection => {
       port: connectionInfo.port,
       database: connectionInfo.database,
       username: username,
-      schema: (connectionInfo as any).schema || (metadata as any).schema, // PostgreSQL schema
+      schema: connectionInfo.schema || (metadata as Record<string, unknown>).schema as string,
       ...metadata,
     },
     createdAt: item.created_at,
@@ -115,17 +85,13 @@ const transformApiItem = (item: ApiDataSourceItem): DatabaseConnection => {
  * 获取数据库连接列表
  */
 const fetchDatabaseConnections = async (): Promise<DatabaseConnection[]> => {
-  const response = await fetch('/api/datasources/databases/list');
+  const result = await listDatabaseDataSourcesRaw();
 
-  if (!response.ok) {
-    throw new Error('获取数据库连接列表失败');
+  if (!result.success) {
+    throw new Error('Failed to get database connections');
   }
 
-  const data: DatabaseConnectionsResponse = await response.json();
-
-  // 正确读取 data.data.items 并转换
-  const items = data.data?.items ?? [];
-  return items.map(transformApiItem);
+  return result.items.map(transformApiItem);
 };
 
 /**

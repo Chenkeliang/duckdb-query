@@ -24,6 +24,12 @@ from core.data.file_datasource_manager import (
 )
 from core.common.config_manager import config_manager
 from core.common.timezone_utils import get_current_time_iso, get_current_time
+from utils.response_helpers import (
+    create_success_response,
+    create_list_response,
+    create_error_response,
+    MessageCode,
+)
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -271,21 +277,23 @@ class AsyncQueryResponse(BaseModel):
 
 
 class TaskListResponse(BaseModel):
-    """任务列表响应模型（支持分页）"""
+    """任务列表响应模型（支持分页）- 标准格式"""
 
     success: bool
-    tasks: list
-    count: int
-    total: int = 0  # 总数据量
-    limit: int = 20
-    offset: int = 0
+    data: dict  # 包含 items, total, page, pageSize
+    messageCode: str
+    message: str
+    timestamp: str
 
 
 class TaskDetailResponse(BaseModel):
-    """任务详情响应模型"""
+    """任务详情响应模型 - 标准格式"""
 
     success: bool
-    task: dict
+    data: dict  # 包含 task
+    messageCode: str
+    message: str
+    timestamp: str
 
 
 class CancelTaskRequest(BaseModel):
@@ -303,7 +311,7 @@ class RetryTaskRequest(BaseModel):
 
 
 @router.post(
-    "/api/async-tasks", response_model=AsyncQueryResponse, tags=["Async Tasks"]
+    "/api/async-tasks", tags=["Async Tasks"]
 )
 async def submit_async_query(
     request: AsyncQueryRequest, background_tasks: BackgroundTasks
@@ -374,8 +382,9 @@ async def submit_async_query(
                 request.datasource,
             )
 
-        return AsyncQueryResponse(
-            success=True, task_id=task_id, message="任务已提交，请稍后查询任务状态"
+        return create_success_response(
+            data={"task_id": task_id},
+            message_code=MessageCode.TASK_SUBMITTED,
         )
 
     except HTTPException:
@@ -385,7 +394,7 @@ async def submit_async_query(
         raise HTTPException(status_code=500, detail=f"提交任务失败: {str(e)}")
 
 
-@router.get("/api/async-tasks", response_model=TaskListResponse, tags=["Async Tasks"])
+@router.get("/api/async-tasks", tags=["Async Tasks"])
 async def list_async_tasks(
     limit: int = 20,
     offset: int = 0,
@@ -404,13 +413,12 @@ async def list_async_tasks(
     
     try:
         tasks, total = task_manager.list_tasks(limit, offset, order_by)
-        return TaskListResponse(
-            success=True, 
-            tasks=tasks, 
-            count=len(tasks),
+        return create_list_response(
+            items=tasks,
             total=total,
-            limit=limit,
-            offset=offset
+            message_code=MessageCode.TASKS_RETRIEVED,
+            page=offset // limit + 1 if limit > 0 else 1,
+            page_size=limit,
         )
     except Exception as e:
         logger.error(f"获取异步任务列表失败: {str(e)}")
@@ -419,7 +427,6 @@ async def list_async_tasks(
 
 @router.get(
     "/api/async-tasks/{task_id}",
-    response_model=TaskDetailResponse,
     tags=["Async Tasks"],
 )
 async def get_async_task(task_id: str):
@@ -443,7 +450,10 @@ async def get_async_task(task_id: str):
             # 如果不是JSON格式，保持原样
             pass
 
-        return TaskDetailResponse(success=True, task=task_dict)
+        return create_success_response(
+            data={"task": task_dict},
+            message_code=MessageCode.TASK_RETRIEVED,
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -473,7 +483,11 @@ async def cancel_async_task(task_id: str, request: CancelTaskRequest):
                 status_code=400, 
                 detail=f"任务状态不允许取消，当前状态: {task.status.value}"
             )
-        return {"success": True, "task_id": task_id, "message": "取消请求已提交"}
+        return create_success_response(
+            data={"task_id": task_id},
+            message_code=MessageCode.TASK_CANCELLED,
+            message="取消请求已提交",
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -527,7 +541,6 @@ def _extract_task_payload(task) -> Dict[str, Any]:
 
 @router.post(
     "/api/async-tasks/{task_id}/retry",
-    response_model=AsyncQueryResponse,
     tags=["Async Tasks"],
 )
 async def retry_async_task(
@@ -602,9 +615,9 @@ async def retry_async_task(
         # 注意：移除了 update_task 调用，避免写写冲突
         # 重试关系已通过 retry_metadata["retry_of"] 记录在新任务中
 
-        return AsyncQueryResponse(
-            success=True,
-            task_id=new_task_id,
+        return create_success_response(
+            data={"task_id": new_task_id},
+            message_code=MessageCode.TASK_RETRY_SUCCESS,
             message="任务已重新提交执行",
         )
     except HTTPException:
@@ -623,7 +636,10 @@ async def cleanup_stuck_tasks():
     """
     try:
         count = task_manager.cleanup_stuck_cancelling_tasks()
-        return {"success": True, "cleaned_count": count}
+        return create_success_response(
+            data={"cleaned_count": count},
+            message_code=MessageCode.TASK_CLEANUP_SUCCESS,
+        )
     except Exception as e:
         logger.error(f"清理卡住任务失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}")

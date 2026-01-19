@@ -79,6 +79,7 @@ class ConnectionTestResponse(BaseModel):
     """连接测试响应"""
     success: bool = Field(..., description="测试是否成功")
     message: str = Field(..., description="测试消息")
+    messageCode: Optional[str] = Field(None, description="消息代码（用于 i18n）")
     
     # 成功时的详细信息
     connection_time_ms: Optional[int] = Field(None, description="连接耗时（毫秒）")

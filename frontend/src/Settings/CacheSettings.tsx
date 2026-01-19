@@ -7,7 +7,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Clock, RotateCcw, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
 
 import {
   Card,
@@ -26,6 +25,7 @@ import {
   MIN_CACHE_DURATION,
   MAX_CACHE_DURATION,
 } from '@/hooks/useCacheSettings';
+import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 
 /**
  * 缓存设置组件
@@ -69,11 +69,9 @@ export function CacheSettings() {
     if (clampedValue !== settings.cacheDuration) {
       const success = updateSettings({ cacheDuration: clampedValue });
       if (success) {
-        toast.success(
-          t('settings.cache.saveSuccess', '缓存设置已保存')
-        );
+        showSuccessToast(t, 'SETTINGS_SAVED', t('settings.cache.saveSuccess', '缓存设置已保存'));
       } else {
-        toast.error(t('settings.cache.saveFailed', '保存缓存设置失败'));
+        showErrorToast(t, 'SETTINGS_SAVE_FAILED', t('settings.cache.saveFailed', '保存缓存设置失败'));
         setInputValue(String(settings.cacheDuration));
       }
     }
@@ -97,11 +95,9 @@ export function CacheSettings() {
     const success = resetToDefaults();
     if (success) {
       setInputValue(String(DEFAULT_CACHE_DURATION));
-      toast.success(
-        t('settings.cache.resetSuccess', '已重置为默认值')
-      );
+      showSuccessToast(t, 'SETTINGS_RESET', t('settings.cache.resetSuccess', '已重置为默认值'));
     } else {
-      toast.error(t('settings.cache.resetFailed', '重置失败'));
+      showErrorToast(t, 'SETTINGS_RESET_FAILED', t('settings.cache.resetFailed', '重置失败'));
     }
   };
 
@@ -111,11 +107,9 @@ export function CacheSettings() {
   const handleClearCache = async () => {
     try {
       await clearAllCache();
-      toast.success(
-        t('settings.cache.clearSuccess', '已清除所有缓存')
-      );
+      showSuccessToast(t, 'CACHE_CLEARED', t('settings.cache.clearSuccess', '已清除所有缓存'));
     } catch {
-      toast.error(t('settings.cache.clearFailed', '清除缓存失败'));
+      showErrorToast(t, 'CACHE_CLEAR_FAILED', t('settings.cache.clearFailed', '清除缓存失败'));
     }
   };
 
