@@ -14,9 +14,7 @@ extension-pkg-whitelist=
 # 启用的检查
 enable=
     response-format,
-    connection-pool,
-    message-code,
-    async-task
+    connection-pool
 
 # 禁用的检查（根据项目需要调整）
 disable=
@@ -88,7 +86,7 @@ deprecated-modules=optparse,tkinter.tix
 
 [EXCEPTIONS]
 # 可以捕获的异常
-overgeneral-exceptions=Exception
+overgeneral-exceptions=builtins.Exception
 
 [CUSTOM]
 # DuckQuery 自定义配置
@@ -98,9 +96,3 @@ enforce-response-format=yes
 
 # 强制使用连接池
 enforce-connection-pool=yes
-
-# 检查 MessageCode 定义
-check-message-code=yes
-
-# 检查异步任务使用
-check-async-task=yes

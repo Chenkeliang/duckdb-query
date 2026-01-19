@@ -6,13 +6,10 @@
 
 import astroid
 from pylint.checkers import BaseChecker
-from pylint.interfaces import IAstroidChecker
 
 
 class ConnectionPoolChecker(BaseChecker):
     """检查 DuckDB 连接池使用规范"""
-
-    __implements__ = IAstroidChecker
 
     name = 'connection-pool'
     priority = -1
@@ -44,11 +41,19 @@ class ConnectionPoolChecker(BaseChecker):
         self.in_function = False
 
     def visit_functiondef(self, node):
-        """进入函数"""
+        """进入同步函数"""
+        self.in_function = True
+
+    def visit_asyncfunctiondef(self, node):
+        """进入异步函数"""
         self.in_function = True
 
     def leave_functiondef(self, node):
-        """离开函数"""
+        """离开同步函数"""
+        self.in_function = False
+
+    def leave_asyncfunctiondef(self, node):
+        """离开异步函数"""
         self.in_function = False
 
     def visit_call(self, node):

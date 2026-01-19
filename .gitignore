@@ -112,9 +112,9 @@ config/mysql-configs.json
 config/postgresql-configs.json
 config/mysql-production.json
 config/datasources.json
-data/
-!data/uploads/.gitkeep
-!data/duckdb/.gitkeep
+/data/
+!/data/uploads/.gitkeep
+!/data/duckdb/.gitkeep
 
 # DuckDB相关文件
 .duckdb/

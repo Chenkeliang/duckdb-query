@@ -6,13 +6,10 @@
 
 import astroid
 from pylint.checkers import BaseChecker
-from pylint.interfaces import IAstroidChecker
 
 
 class ResponseFormatChecker(BaseChecker):
     """检查 API 响应格式是否符合规范"""
-
-    __implements__ = IAstroidChecker
 
     name = 'response-format'
     priority = -1
@@ -55,14 +52,10 @@ class ResponseFormatChecker(BaseChecker):
         if node.modname == 'utils.response_helpers':
             self.has_response_helper_import = True
 
-    def visit_functiondef(self, node):
-        """检查函数定义"""
-        # 只检查路由文件中的异步函数
+    def _check_route_function(self, node):
+        """检查路由函数的响应格式"""
+        # 只检查路由文件
         if not self.is_router_file:
-            return
-        
-        # 检查是否是路由处理函数（通常是异步函数）
-        if not node.is_async:
             return
         
         # 检查函数装饰器，确认是路由函数
@@ -80,6 +73,15 @@ class ResponseFormatChecker(BaseChecker):
         # 检查函数体中的 return 语句
         for child in node.nodes_of_class(astroid.Return):
             self._check_return_statement(child)
+
+    def visit_functiondef(self, node):
+        """检查同步函数定义"""
+        # 同步函数通常不是路由处理函数，但仍然检查
+        self._check_route_function(node)
+
+    def visit_asyncfunctiondef(self, node):
+        """检查异步函数定义（路由处理函数通常是异步的）"""
+        self._check_route_function(node)
 
     def _check_return_statement(self, node):
         """检查 return 语句"""
@@ -111,22 +113,35 @@ class ResponseFormatChecker(BaseChecker):
                 if not self.has_response_helper_import:
                     self.add_message('missing-response-helper-import', node=node)
 
+    def _has_route_decorator(self, func):
+        """检查函数是否有路由装饰器"""
+        if func.decorators:
+            for decorator in func.decorators.nodes:
+                if isinstance(decorator, astroid.Call):
+                    if hasattr(decorator.func, 'attrname'):
+                        if decorator.func.attrname in ('get', 'post', 'put', 'delete', 'patch'):
+                            return True
+        return False
+
     def leave_module(self, node):
         """离开模块时的检查"""
         # 如果是路由文件但没有导入响应辅助函数，给出提示
         if self.is_router_file and not self.has_response_helper_import:
-            # 检查是否有任何路由函数
+            # 检查是否有任何路由函数（同步或异步）
             has_route_function = False
+            
+            # 检查同步函数
             for func in node.nodes_of_class(astroid.FunctionDef):
-                if func.decorators:
-                    for decorator in func.decorators.nodes:
-                        if isinstance(decorator, astroid.Call):
-                            if hasattr(decorator.func, 'attrname'):
-                                if decorator.func.attrname in ('get', 'post', 'put', 'delete', 'patch'):
-                                    has_route_function = True
-                                    break
-                if has_route_function:
+                if self._has_route_decorator(func):
+                    has_route_function = True
                     break
+            
+            # 检查异步函数
+            if not has_route_function and hasattr(astroid, 'AsyncFunctionDef'):
+                for func in node.nodes_of_class(astroid.AsyncFunctionDef):
+                    if self._has_route_decorator(func):
+                        has_route_function = True
+                        break
             
             if has_route_function:
                 self.add_message('missing-response-helper-import', node=node, line=1)
