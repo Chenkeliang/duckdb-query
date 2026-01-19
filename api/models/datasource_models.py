@@ -4,9 +4,10 @@
 定义统一的数据源响应模型、批量操作模型和连接测试响应模型
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class DataSourceType(str, Enum):
@@ -33,13 +34,13 @@ class DataSourceResponse(BaseModel):
     created_at: datetime = Field(..., description="创建时间")
     updated_at: Optional[datetime] = Field(None, description="更新时间")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="类型特定的元数据")
-    
+
     # 数据库特定字段
     connection_info: Optional[Dict[str, Any]] = Field(None, description="连接信息（脱敏）")
-    
+
     # 文件特定字段
     file_info: Optional[Dict[str, Any]] = Field(None, description="文件信息")
-    
+
     # 统计信息
     row_count: Optional[int] = Field(None, description="行数")
     column_count: Optional[int] = Field(None, description="列数")
@@ -80,17 +81,17 @@ class ConnectionTestResponse(BaseModel):
     success: bool = Field(..., description="测试是否成功")
     message: str = Field(..., description="测试消息")
     messageCode: Optional[str] = Field(None, description="消息代码（用于 i18n）")
-    
+
     # 成功时的详细信息
     connection_time_ms: Optional[int] = Field(None, description="连接耗时（毫秒）")
     database_version: Optional[str] = Field(None, description="数据库版本")
     server_info: Optional[Dict[str, Any]] = Field(None, description="服务器信息")
     table_count: Optional[int] = Field(None, description="表数量")
     schema_count: Optional[int] = Field(None, description="Schema 数量")
-    
+
     # 警告信息
     warnings: List[str] = Field(default_factory=list, description="警告列表（如未启用 SSL）")
-    
+
     # 失败时的诊断信息
     error_type: Optional[str] = Field(None, description="错误类型: network, auth, permission, timeout")
     error_details: Optional[str] = Field(None, description="详细错误信息")

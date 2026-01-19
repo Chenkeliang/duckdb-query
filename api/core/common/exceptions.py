@@ -3,11 +3,12 @@
 定义项目中使用的自定义异常类和异常处理器
 """
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
-import logging
+
 
 logger = logging.getLogger(__name__)
 
@@ -154,10 +155,11 @@ class ConfigurationError(BaseAPIException):
 
 async def api_exception_handler(request: Request, exc: BaseAPIException) -> JSONResponse:
     """API异常处理器"""
-    from datetime import datetime
-    
+
     logger.error(
-        f"API异常: {exc.error_code} - {exc.message}",
+        "API异常: %s - %s",
+        exc.error_code,
+        exc.message,
         extra={
             "status_code": exc.status_code,
             "error_code": exc.error_code,
@@ -166,6 +168,7 @@ async def api_exception_handler(request: Request, exc: BaseAPIException) -> JSON
             "method": request.method
         }
     )
+
     
     return JSONResponse(
         status_code=exc.status_code,
@@ -188,13 +191,16 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     """HTTP异常处理器"""
     
     logger.warning(
-        f"HTTP异常: {exc.status_code} - {exc.detail}",
+        "HTTP异常: %s - %s",
+        exc.status_code,
+        exc.detail,
         extra={
             "status_code": exc.status_code,
             "path": request.url.path,
             "method": request.method
         }
     )
+
     
     # 检查 detail 是否已经是标准格式（防止二次包装）
     if isinstance(exc.detail, dict) and exc.detail.get("success") is False:
@@ -239,13 +245,16 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     """通用异常处理器"""
     
     logger.error(
-        f"未处理的异常: {type(exc).__name__} - {str(exc)}",
+        "未处理的异常: %s - %s",
+        type(exc).__name__,
+        str(exc),
         extra={
             "path": request.url.path,
             "method": request.method
         },
         exc_info=True
     )
+
     
     return JSONResponse(
         status_code=500,

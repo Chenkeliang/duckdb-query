@@ -50,8 +50,8 @@ class EncryptionUtils:
 
             return encrypted_b64
 
-        except Exception as e:
-            logger.error(f"密码加密失败: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("密码加密失败: %s", e)
             # 如果加密失败，返回原密码（向后兼容）
             return password
 
@@ -81,8 +81,8 @@ class EncryptionUtils:
 
             return password
 
-        except Exception as e:
-            logger.error(f"密码解密失败: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("密码解密失败: %s", e)
             # 如果解密失败，返回原字符串（可能是未加密的密码）
             return encrypted
 
@@ -114,8 +114,8 @@ class EncryptionUtils:
 
             return json.dumps(encrypted_data)
 
-        except Exception as e:
-            logger.error(f"JSON 加密失败: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("JSON 加密失败: %s", e)
             # 如果加密失败，返回原数据
             return json.dumps(data)
 
@@ -147,12 +147,12 @@ class EncryptionUtils:
 
             return data
 
-        except Exception as e:
-            logger.error(f"JSON 解密失败: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("JSON 解密失败: %s", e)
             # 如果解密失败，尝试返回原数据
             try:
                 return json.loads(encrypted)
-            except:
+            except Exception:  # pylint: disable=broad-exception-caught
                 return {}
 
     @classmethod
@@ -174,7 +174,7 @@ class EncryptionUtils:
             base64.b64decode(text.encode("utf-8"))
             # 如果能成功解码，可能是加密的
             return True
-        except:
+        except Exception:  # pylint: disable=broad-exception-caught
             # 如果解码失败，不是加密的
             return False
 

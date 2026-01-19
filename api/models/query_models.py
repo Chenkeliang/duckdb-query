@@ -1,8 +1,9 @@
-from pydantic import BaseModel, Field, validator, field_validator
-from typing import List, Dict, Any, Optional, Union, Literal
-from enum import Enum
 import datetime
 import re
+from enum import Enum
+from typing import List, Dict, Any, Optional, Union
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class DataSourceType(str, Enum):
@@ -148,17 +149,17 @@ class MultiTableJoin(BaseModel):
 
 class AttachDatabase(BaseModel):
     """外部数据库连接信息，用于联邦查询"""
-    
+
     alias: str = Field(..., description="SQL 中使用的数据库别名")
     connection_id: str = Field(..., description="已保存的数据库连接 ID")
 
 
 class FederatedQueryRequest(BaseModel):
     """联邦查询请求模型
-    
+
     用于执行跨数据库的联邦查询，支持 ATTACH 外部数据库后执行 SQL。
     """
-    
+
     sql: str = Field(..., description="SQL 查询语句")
     attach_databases: Optional[List[AttachDatabase]] = Field(
         None, description="需要 ATTACH 的外部数据库列表"
@@ -184,7 +185,7 @@ class FederatedQueryRequest(BaseModel):
 
 class FederatedQueryResponse(BaseModel):
     """联邦查询响应模型"""
-    
+
     success: bool = Field(..., description="查询是否成功")
     columns: List[str] = Field(default_factory=list, description="列名列表")
     data: List[Dict[str, Any]] = Field(default_factory=list, description="查询结果数据")

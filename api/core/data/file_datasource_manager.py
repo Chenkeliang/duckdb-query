@@ -3,15 +3,15 @@
 负责管理文件数据源的配置、加载和持久化
 """
 
-import json
-import os
-import logging
-import re
-import pandas as pd
 import hashlib
+import logging
+import math
+import re
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+
 from typing import Dict, Any, List, Optional, Sequence, Tuple
 from uuid import uuid4
 from datetime import datetime
@@ -41,6 +41,7 @@ class ColumnProfile:
     scale: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
+
         min_value = _format_value(self.min_value)
         max_value = _format_value(self.max_value)
 
@@ -104,7 +105,7 @@ def _format_value(value: Any) -> Optional[Any]:
     try:
         if pd.isna(value):
             return None
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         pass
 
     if isinstance(value, bytes):
@@ -115,7 +116,6 @@ def _format_value(value: Any) -> Optional[Any]:
 
     if isinstance(value, float):
         # 检查 NaN 和 Infinity（不是有效的 JSON 值）
-        import math
         if math.isnan(value) or math.isinf(value):
             return None
         return value
@@ -134,7 +134,7 @@ def _configure_duckdb_for_ingestion(con: duckdb.DuckDBPyConnection):
     for stmt in settings:
         try:
             con.execute(stmt)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.debug("配置DuckDB推断参数失败 (%s): %s", stmt, exc)
 
 
@@ -154,13 +154,13 @@ def _create_table_atomically(
         con.execute(f"DROP TABLE IF EXISTS {quoted_target}")
         con.execute(f"ALTER TABLE {quoted_tmp} RENAME TO {quoted_target}")
         con.execute("COMMIT")
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         con.execute("ROLLBACK")
         raise
     finally:
         try:
             con.execute(f"DROP TABLE IF EXISTS {quoted_tmp}")
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
 
@@ -273,33 +273,32 @@ class FileDatasourceManager:
             
             # 保存到 DuckDB 元数据表
             success = self.metadata_manager.save_file_datasource(file_info)
-            
-            if success:
-                logger.info(f"文件数据源配置已保存到 DuckDB: {file_info['source_id']}")
-                return True
-            else:
-                logger.error(f"保存文件数据源配置到 DuckDB 失败: {file_info['source_id']}")
-                logger.error(f"失败的数据: {file_info}")
-                raise Exception(f"保存到 DuckDB 失败: source_id={file_info['source_id']}")
 
-        except Exception as e:
-            logger.error(f"保存文件数据源配置失败: {str(e)}", exc_info=True)
+            if success:
+                logger.info("文件数据源配置已保存到 DuckDB: %s", file_info['source_id'])
+                return True
+            logger.error("保存文件数据源配置到 DuckDB 失败: %s", file_info['source_id'])
+            logger.error("失败的数据: %s", file_info)
+            raise RuntimeError(f"保存到 DuckDB 失败: source_id={file_info['source_id']}")
+
+        except Exception:
+            logger.error("保存文件数据源配置失败: %s", str(file_info.get('source_id')), exc_info=True)
             raise
 
     def get_file_datasource(self, source_id: str) -> Optional[Dict[str, Any]]:
         """从 DuckDB 元数据表获取文件数据源配置"""
         try:
             return self.metadata_manager.get_file_datasource(source_id)
-        except Exception as e:
-            logger.error(f"获取文件数据源配置失败: {str(e)}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("获取文件数据源配置失败: %s", str(e))
             return None
 
     def list_file_datasources(self) -> List[Dict[str, Any]]:
         """从 DuckDB 元数据表列出所有文件数据源"""
         try:
             return self.metadata_manager.list_file_datasources()
-        except Exception as e:
-            logger.error(f"列出文件数据源失败: {str(e)}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("列出文件数据源失败: %s", str(e))
             return []
 
     def delete_file_datasource(self, source_id: str) -> bool:
@@ -307,16 +306,15 @@ class FileDatasourceManager:
         try:
             # 从 DuckDB 删除
             success = self.metadata_manager.delete_file_datasource(source_id)
-            
+
             if success:
-                logger.info(f"文件数据源配置已从 DuckDB 删除: {source_id}")
+                logger.info("文件数据源配置已从 DuckDB 删除: %s", source_id)
                 return True
-            else:
-                logger.warning(f"文件数据源配置不存在: {source_id}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"删除文件数据源配置失败: {str(e)}")
+            logger.warning("文件数据源配置不存在: %s", source_id)
+            return False
+
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("删除文件数据源配置失败: %s", str(e))
             return False
 
     def reload_all_file_datasources(self, con: Optional[duckdb.DuckDBPyConnection] = None):
@@ -339,7 +337,7 @@ class FileDatasourceManager:
                 file_type = config["file_type"]
 
                 if not os.path.exists(file_path):
-                    logger.warning(f"文件不存在，跳过: {file_path}")
+                    logger.warning("文件不存在，跳过: %s", file_path)
                     continue
 
                 try:
@@ -370,14 +368,14 @@ class FileDatasourceManager:
                         table_metadata.get("row_count") if table_metadata else "未知",
                     )
                     success_count += 1
-                except Exception as exc:
-                    logger.error(f"重新加载文件数据源失败 {source_id}: {str(exc)}")
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    logger.error("重新加载文件数据源失败 %s: %s", source_id, str(exc))
 
-            logger.info(f"文件数据源重新加载完成，成功: {success_count}/{len(configs)}")
+            logger.info("文件数据源重新加载完成，成功: %s/%s", success_count, len(configs))
             return success_count
 
-        except Exception as exc:
-            logger.error(f"重新加载文件数据源失败: {str(exc)}")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.error("重新加载文件数据源失败: %s", str(exc))
 
 
 def create_typed_table_from_dataframe(
@@ -401,7 +399,7 @@ def create_typed_table_from_dataframe(
     finally:
         try:
             duckdb_con.unregister(temp_view)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
     metadata = build_table_metadata_snapshot(duckdb_con, table_name)
@@ -438,7 +436,7 @@ def create_table_from_file_path_typed(
                 _create_table_atomically(
                     duckdb_con, table_name, select_sql, [file_path]
                 )
-            except Exception as excel_exc:
+            except Exception as excel_exc:  # pylint: disable=broad-exception-caught
                 logger.warning("DuckDB Excel 扩展失败，回退至 pandas: %s", excel_exc)
                 df = pd.read_excel(file_path)
                 return create_typed_table_from_dataframe(duckdb_con, table_name, df)
@@ -496,7 +494,7 @@ create_varchar_table_from_dataframe_file = create_typed_table_from_dataframe
 create_varchar_table_from_file_path = create_table_from_file_path_typed
 
 
-def convert_table_to_varchar(table_name: str, table_alias: str, duckdb_con):
+def convert_table_to_varchar(table_name: str, _table_alias: str, duckdb_con):
     """
     将表的所有列转换为VARCHAR类型
     """
@@ -519,7 +517,7 @@ def convert_table_to_varchar(table_name: str, table_alias: str, duckdb_con):
             return
 
         # 如果不是所有列都是VARCHAR，则进行转换
-        logger.info(f"表 {table_name} 需要转换列类型为VARCHAR")
+        logger.info("表 %s 需要转换列类型为VARCHAR", table_name)
 
         # 构建新的表名
         new_table_name = f"{table_name}_new_{int(datetime.now().timestamp() * 1000)}"
@@ -548,10 +546,10 @@ def convert_table_to_varchar(table_name: str, table_alias: str, duckdb_con):
         # 重命名新表
         duckdb_con.execute(f'ALTER TABLE "{new_table_name}" RENAME TO "{table_name}"')
 
-        logger.info(f"成功将表 {table_name} 转换为VARCHAR类型")
+        logger.info("成功将表 %s 转换为VARCHAR类型", table_name)
 
     except Exception as e:
-        logger.error(f"转换表 {table_name} 列类型失败: {str(e)}")
+        logger.error("转换表 %s 列类型失败: %s", table_name, str(e))
         raise
 
 

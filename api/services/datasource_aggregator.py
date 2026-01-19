@@ -56,7 +56,7 @@ class DataSourceAggregator:
 
             return datasources
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("获取数据源列表失败: %s", e)
             raise
 
@@ -84,7 +84,7 @@ class DataSourceAggregator:
 
             return None
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("获取数据源 %s 失败: %s", source_id, e)
             raise
 
@@ -105,7 +105,7 @@ class DataSourceAggregator:
                 return True
             return False
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("删除数据源 %s 失败: %s", source_id, e)
             raise
 
@@ -159,7 +159,7 @@ class DataSourceAggregator:
 
             return sources
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("获取数据库数据源失败: %s", e)
             return []
 
@@ -221,7 +221,7 @@ class DataSourceAggregator:
 
             return sources
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("获取文件数据源失败: %s", e)
             return []
 
@@ -263,7 +263,7 @@ class DataSourceAggregator:
                 },
             )
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("获取数据库数据源 %s 失败: %s", source_id, e)
             return None
 
@@ -316,7 +316,7 @@ class DataSourceAggregator:
                     size_bytes=size_bytes,
                 )
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("获取文件数据源 %s 失败: %s", source_id, e)
             return None
 
@@ -329,7 +329,7 @@ class DataSourceAggregator:
             # 使用 DatabaseManager 删除连接
             return self.db_manager.remove_connection(conn_id)
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("删除数据库数据源 %s 失败: %s", source_id, e)
             return False
 
@@ -345,7 +345,7 @@ class DataSourceAggregator:
                 logger.info("成功删除 DuckDB 表: %s", table_name)
                 return True
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("删除文件数据源 %s 失败: %s", source_id, e)
             return False
 
