@@ -2,7 +2,9 @@ import logging
 import os
 from typing import List, Optional
 
-import pandas as pd
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, field_validator
+
 from core.common.config_manager import config_manager
 from core.database.duckdb_engine import get_db_connection
 from core.data.excel_import_manager import (
@@ -20,11 +22,8 @@ from core.data.file_utils import detect_file_type
 from core.common.timezone_utils import get_storage_time
 from utils.response_helpers import (
     create_success_response,
-    create_list_response,
     MessageCode,
 )
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, field_validator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -57,6 +56,7 @@ class ServerExcelImportRequest(BaseModel):
     sheets: List[ExcelSheetImportConfig]
 
     @field_validator("sheets")
+    @classmethod
     def validate_sheets(cls, sheets):
         if not sheets:
             raise ValueError("至少需要选择一个工作表")
@@ -196,8 +196,8 @@ async def list_server_directory(path: str = Query(..., description="服务器目
                             "suggested_table_name": suggested,
                         }
                     )
-    except PermissionError:
-        raise HTTPException(status_code=403, detail="没有权限读取该目录")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="没有权限读取该目录") from exc
 
     entries.sort(key=lambda item: (item["type"] != "directory", item["name"].lower()))
 
@@ -238,7 +238,7 @@ async def import_server_file(payload: ServerFileImportRequest):
         )
     except Exception as exc:
         logger.error("导入服务器文件失败: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"导入失败: {str(exc)}")
+        raise HTTPException(status_code=500, detail=f"导入失败: {str(exc)}") from exc
 
     # 使用 UTC naive 时间用于数据库存储
     current_time = get_storage_time()
@@ -263,7 +263,7 @@ async def import_server_file(payload: ServerFileImportRequest):
     }
     try:
         file_datasource_manager.save_file_datasource(table_metadata)
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.warning("保存文件数据源元数据失败（已忽略）: %s", exc, exc_info=True)
 
     return create_success_response(
@@ -307,7 +307,7 @@ def _table_exists(con, table_name: str) -> bool:
     try:
         result = con.execute("SHOW TABLES").fetchdf()
         return table_name in result["name"].tolist()
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return False
 
 
@@ -331,7 +331,7 @@ async def inspect_server_excel(payload: ServerExcelInspectRequest):
         sheets = inspect_excel_sheets(real_path)
     except Exception as exc:
         logger.error("检查 Excel 工作表失败: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"检查 Excel 失败: {str(exc)}")
+        raise HTTPException(status_code=500, detail=f"检查 Excel 失败: {str(exc)}") from exc
 
     # 为每个工作表生成默认表名
     base_name = os.path.splitext(os.path.basename(real_path))[0]
@@ -402,9 +402,6 @@ async def import_server_excel(payload: ServerExcelImportRequest):
                 detail=f"表 '{target_table}' 已存在，请修改目标表名或选择覆盖模式",
             )
 
-    # 3. 获取实际文件后缀（用于 pandas 引擎选择）
-    actual_ext = os.path.splitext(real_path)[1].lower().lstrip(".")
-
     # 4. 执行导入
     for sheet_cfg in payload.sheets:
         target_table = sanitized_name_map[sheet_cfg.name]
@@ -414,12 +411,13 @@ async def import_server_excel(payload: ServerExcelImportRequest):
         use_duckdb = _should_use_duckdb(
             file_ext, header_row_index, sheet_cfg.fill_merged
         )
+        metadata = {}
 
         try:
             if use_duckdb:
                 # 尝试 DuckDB 导入
                 try:
-                    logger.info(f"尝试使用 DuckDB 导入工作表: {sheet_cfg.name}")
+                    logger.info("尝试使用 DuckDB 导入工作表: %s", sheet_cfg.name)
                     con.execute("INSTALL excel")
                     con.execute("LOAD excel")
 
@@ -441,15 +439,16 @@ async def import_server_excel(payload: ServerExcelImportRequest):
                         "column_count": len(columns),
                         "columns": columns,
                     }
-                    logger.info(f"DuckDB 导入成功: {target_table}, 行数: {row_count}")
+                    logger.info("DuckDB 导入成功: %s, 行数: %d", target_table, row_count)
 
                 except Exception as duckdb_exc:
-                    logger.warning(f"DuckDB 导入失败，回退到 pandas: {duckdb_exc}")
+                    logger.warning("DuckDB 导入失败，回退到 pandas: %s", duckdb_exc)
                     use_duckdb = False  # 触发下面的 pandas fallback
 
             if not use_duckdb:
                 # pandas 导入
-                logger.info(f"使用 pandas 导入工作表: {sheet_cfg.name}")
+                # pandas 导入
+                logger.info("使用 pandas 导入工作表: %s", sheet_cfg.name)
                 df = load_excel_sheet_dataframe(
                     real_path,
                     sheet_cfg.name,
@@ -494,7 +493,7 @@ async def import_server_excel(payload: ServerExcelImportRequest):
 
             try:
                 file_datasource_manager.save_file_datasource(table_metadata)
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("保存元数据失败（已忽略）: %s", exc)
 
             imported_tables.append(
@@ -511,10 +510,10 @@ async def import_server_excel(payload: ServerExcelImportRequest):
         except HTTPException:
             raise
         except Exception as exc:
-            logger.error(f"导入工作表 {sheet_cfg.name} 失败: {exc}", exc_info=True)
+            logger.error("导入工作表 %s 失败: %s", sheet_cfg.name, exc, exc_info=True)
             raise HTTPException(
                 status_code=500, detail=f"导入工作表 {sheet_cfg.name} 失败: {str(exc)}"
-            )
+            ) from exc
 
     return create_success_response(
         data={

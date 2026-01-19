@@ -59,6 +59,7 @@ jobs:
       - name: Run Pylint
         run: |
           cd api
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
           pylint --rcfile=.pylintrc \
                  --output-format=json:pylint-report.json,colorized \
                  routers/ core/ models/ utils/ services/
