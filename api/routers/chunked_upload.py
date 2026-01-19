@@ -7,11 +7,13 @@ import os
 import hashlib
 import logging
 import traceback
-import asyncio
 import time
 import threading
 import shutil
+import uuid
 from typing import Dict, Any, Optional
+from pathlib import Path
+
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
@@ -26,7 +28,6 @@ from core.services.resource_manager import schedule_cleanup
 from core.common.timezone_utils import get_current_time_iso  # 统一时间
 from utils.response_helpers import (
     create_success_response,
-    create_error_response,
     MessageCode,
 )
 
@@ -126,7 +127,7 @@ class ChunkStreamWriter:
                 # FIFO读取完成后由DuckDB关闭，我们负责回收文件
         except BrokenPipeError as exc:
             self.error = exc
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             self.error = exc
         finally:
             try:
@@ -157,7 +158,7 @@ def _generate_unique_table_name(con, desired_name: Optional[str], user_provided:
             timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
             sanitized = f"{original}_{timestamp}"
             break
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.debug("检查表名冲突失败: %s", exc)
             break
 
@@ -205,8 +206,8 @@ async def process_streaming_upload(
             os.unlink(fifo_path)
         os.mkfifo(fifo_path)
     except Exception as exc:
-        logger.error(f"创建FIFO失败: {exc}")
-        raise HTTPException(status_code=500, detail="无法创建流式上传通道")
+        logger.error("创建FIFO失败: %s", exc)
+        raise HTTPException(status_code=500, detail="无法创建流式上传通道") from exc
 
     final_file_path = _get_final_file_path(session["file_name"])
     writer = ChunkStreamWriter(session, fifo_path, final_file_path)
@@ -317,8 +318,6 @@ async def init_upload(
             )
 
         # 生成上传ID
-        import uuid
-
         upload_id = str(uuid.uuid4())
 
         # 计算总分块数
@@ -342,7 +341,8 @@ async def init_upload(
         }
 
         logger.info(
-            f"初始化上传会话: {upload_id}, 文件: {file_name}, 大小: {file_size}, 分块数: {total_chunks}"
+            "初始化上传会话: %s, 文件: %s, 大小: %d, 分块数: %d",
+            upload_id, file_name, file_size, total_chunks
         )
 
         return create_success_response(
@@ -358,8 +358,8 @@ async def init_upload(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"初始化上传失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"初始化上传失败: {str(e)}")
+        logger.error("初始化上传失败: %s", e)
+        raise HTTPException(status_code=500, detail=f"初始化上传失败: {str(e)}") from e
 
 
 @router.post("/api/upload/chunk", tags=["Chunked Upload"])
@@ -422,7 +422,8 @@ async def upload_chunk(
         progress = session["uploaded_chunks"] / session["total_chunks"] * 100
 
         logger.info(
-            f"上传分块 {chunk_number}/{session['total_chunks']}, 进度: {progress:.1f}%"
+            "上传分块 %d/%d, 进度: %.1f%%",
+            chunk_number, session['total_chunks'], progress
         )
 
         return create_success_response(
@@ -439,8 +440,8 @@ async def upload_chunk(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"上传分块失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"上传分块失败: {str(e)}")
+        logger.error("上传分块失败: %s", e)
+        raise HTTPException(status_code=500, detail=f"上传分块失败: {str(e)}") from e
 
 
 @router.post("/api/upload/complete", tags=["Chunked Upload"])
@@ -492,7 +493,7 @@ async def complete_upload(
 
             final_file_path = _get_final_file_path(session["file_name"])
             shutil.move(temp_upload_path, final_file_path)
-            logger.info(f"文件已移动到: {final_file_path}")
+            logger.info("文件已移动到: %s", final_file_path)
 
             if session.get("file_hash"):
                 actual_hash = calculate_file_hash(final_file_path)
@@ -526,7 +527,8 @@ async def complete_upload(
         session["file_info"] = file_info
 
         logger.info(
-            f"文件上传完成: {session['file_name']}, 大小: {session['file_size']}"
+            "文件上传完成: %s, 大小: %d",
+            session['file_name'], session['file_size']
         )
 
         return create_success_response(
@@ -541,15 +543,15 @@ async def complete_upload(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"完成上传失败: {str(e)}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        logger.error("完成上传失败: %s", e)
+        logger.error("堆栈跟踪: %s", traceback.format_exc())
 
         # 更新会话状态为失败
         if upload_id in upload_sessions:
             upload_sessions[upload_id]["status"] = "failed"
             upload_sessions[upload_id]["error_message"] = str(e)
 
-        raise HTTPException(status_code=500, detail=f"完成上传失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"完成上传失败: {str(e)}") from e
 
 
 async def process_uploaded_file(
@@ -560,16 +562,14 @@ async def process_uploaded_file(
 ) -> Dict[str, Any]:
     """处理上传的文件并加载到DuckDB"""
     try:
-        logger.info(f"开始处理上传的文件: {file_name}, 路径: {file_path}")
+        logger.info("开始处理上传的文件: %s, 路径: %s", file_name, file_path)
 
         file_extension = file_name.lower().split(".")[-1]
-        logger.info(f"文件类型: {file_extension}")
+        logger.info("文件类型: %s", file_extension)
 
         if file_extension in {"xlsx", "xls"}:
             pending_excel = register_excel_upload(file_path, file_name, table_alias)
             if background_tasks:
-                from pathlib import Path
-
                 pending_dir = Path(pending_excel.stored_path).parent
                 schedule_cleanup(str(pending_dir), background_tasks, delay_seconds=6 * 3600)
 
@@ -590,7 +590,7 @@ async def process_uploaded_file(
         con = get_db_connection()
         desired_name = table_alias if table_alias else file_name.split(".")[0]
         source_id = _generate_unique_table_name(con, desired_name, user_provided=bool(table_alias))
-        logger.info(f"生成的表名: {source_id}")
+        logger.info("生成的表名: %s", source_id)
 
         table_info = None
         try:
@@ -601,7 +601,7 @@ async def process_uploaded_file(
             )
             logger.info("成功加载到DuckDB: %s", table_info)
         except Exception as e:
-            logger.error(f"加载到DuckDB失败: {str(e)}")
+            logger.error("加载到DuckDB失败: %s", e)
             raise
 
         file_metadata = {
@@ -622,11 +622,12 @@ async def process_uploaded_file(
             file_datasource_manager.save_file_datasource(file_metadata)
             logger.info("成功保存文件数据源配置")
         except Exception as e:
-            logger.error(f"保存文件数据源配置失败: {str(e)}")
+            logger.error("保存文件数据源配置失败: %s", e)
             raise
 
         logger.info(
-            f"文件处理完成: {file_name}, 表名: {source_id}, 行数: {file_metadata['row_count']}"
+            "文件处理完成: %s, 表名: %s, 行数: %d",
+            file_name, source_id, file_metadata['row_count']
         )
 
         return {
@@ -641,8 +642,8 @@ async def process_uploaded_file(
         }
 
     except Exception as e:
-        logger.error(f"处理文件失败: {str(e)}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        logger.error("处理文件失败: %s", e)
+        logger.error("堆栈跟踪: %s", traceback.format_exc())
         raise
 
 
@@ -656,15 +657,13 @@ async def cancel_upload(upload_id: str):
         session = upload_sessions[upload_id]
 
         # 清理分块文件
-        import shutil
-
         if os.path.exists(session["chunks_dir"]):
             shutil.rmtree(session["chunks_dir"])
 
         # 删除会话
         del upload_sessions[upload_id]
 
-        logger.info(f"取消上传: {upload_id}")
+        logger.info("取消上传: %s", upload_id)
 
         return create_success_response(
             data={"upload_id": upload_id},
@@ -675,5 +674,5 @@ async def cancel_upload(upload_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"取消上传失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"取消上传失败: {str(e)}")
+        logger.error("取消上传失败: %s", e)
+        raise HTTPException(status_code=500, detail=f"取消上传失败: {str(e)}") from e

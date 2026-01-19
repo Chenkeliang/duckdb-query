@@ -91,8 +91,5 @@ overgeneral-exceptions=builtins.Exception
 [CUSTOM]
 # DuckQuery 自定义配置
 
-# 强制使用响应格式辅助函数
-enforce-response-format=yes
-
-# 强制使用连接池
-enforce-connection-pool=yes
+# enforce-response-format=yes
+# enforce-connection-pool=yes
