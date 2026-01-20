@@ -2,6 +2,8 @@
 增强的错误处理工具
 提高系统稳定性
 """
+# pylint: disable=broad-exception-raised
+
 
 import logging
 import json

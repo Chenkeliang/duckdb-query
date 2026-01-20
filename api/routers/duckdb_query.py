@@ -12,8 +12,10 @@ import traceback
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 import duckdb
+from core.common.enhanced_error_handler import get_error_handler
 from core.common.config_manager import config_manager
 from core.common.timezone_utils import (
     format_storage_time_for_response,

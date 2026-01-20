@@ -62,6 +62,7 @@ logger = logging.getLogger(__name__)
 
 
 VALID_EXCEL_IMPORT_MODES = {"replace", "append", "fail"}
+DATASOURCES_CONFIG_FILE = "datasources.json"
 
 
 class ExcelInspectRequest(BaseModel):
@@ -79,6 +80,7 @@ class ExcelImportSheet(BaseModel):
     fill_merged: bool = Field(default=False, description="是否填充合并单元格")
 
     @field_validator("mode", mode="before")
+    @classmethod
     def _validate_mode(cls, mode: str) -> str:
         normalized = (mode or "").lower()
         if normalized not in VALID_EXCEL_IMPORT_MODES:
@@ -86,12 +88,14 @@ class ExcelImportSheet(BaseModel):
         return normalized
 
     @field_validator("header_rows")
+    @classmethod
     def _validate_header_rows(cls, value: int) -> int:
         if value < 0:
             raise ValueError("表头行数不能为负数")
         return value
 
     @field_validator("target_table")
+    @classmethod
     def _validate_target_table(cls, value: str) -> str:
         if not value or not value.strip():
             raise ValueError("目标表名不能为空")
@@ -111,6 +115,7 @@ class ExcelImportRequest(BaseModel):
     sheets: List[ExcelImportSheet]
 
     @field_validator("sheets")
+    @classmethod
     def _validate_sheets(cls, sheets: List[ExcelImportSheet]) -> List[ExcelImportSheet]:
         if not sheets:
             raise ValueError("至少需要选择一个工作表进行导入")
@@ -1164,7 +1169,7 @@ async def connect_database(connection: DatabaseConnection, response: Response = 
     )
     try:
         # 测试连接
-        test_result = await test_database_connection(connection)
+        test_result = await test_database_connection(connection, response)
         if not test_result.success:
             raise HTTPException(status_code=400, detail=test_result.message)
 

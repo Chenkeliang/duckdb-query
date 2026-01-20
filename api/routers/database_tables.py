@@ -1,6 +1,7 @@
 """数据库表管理API端点，支持MySQL和PostgreSQL"""
 
 from fastapi import APIRouter, HTTPException
+# pylint: disable=bad-indentation
 import logging
 from core.database.database_manager import db_manager
 from core.common.config_manager import config_manager

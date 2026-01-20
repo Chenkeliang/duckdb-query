@@ -1,4 +1,4 @@
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,too-many-public-methods,bad-indentation
 """
 元数据管理器
 负责管理数据库连接和文件数据源的元数据，统一存储在 DuckDB 中

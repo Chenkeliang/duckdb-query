@@ -34,8 +34,6 @@ class Join(BaseModel):
     join_type: str
     conditions: List[Dict[str, Any]]
 
-
 class QueryRequest(BaseModel):
     sources: List[DataSource]
     joins: List[Join]
-
