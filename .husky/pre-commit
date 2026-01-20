@@ -1,5 +1,7 @@
 #!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
+
+# . "$(dirname "$0")/_/husky.sh" # Removed dependency
+
 
 # DuckQuery Git Pre-commit Hook
 # 在提交前自动检查代码规范
@@ -28,10 +30,23 @@ fi
 BACKEND_FILES=$(echo "$STAGED_FILES" | grep "^api/" | grep "\.py$" || true)
 if [ -n "$BACKEND_FILES" ]; then
     echo "🐍 检查后端文件..."
-    cd api
-    echo "$BACKEND_FILES" | xargs pylint --rcfile=../.pylintrc
+    
+    # 尝试检测 Python 环境
+    if [ -f ".venv/bin/python" ]; then
+        PYTHON_CMD=".venv/bin/python"
+    elif [ -f "api/.venv/bin/python" ]; then
+        PYTHON_CMD="api/.venv/bin/python"
+    else
+        PYTHON_CMD="python"
+    fi
+    
+    # 设置 PYTHONPATH 以确保能够解析 core 等模块
+    export PYTHONPATH=$PYTHONPATH:$(pwd)/api
+    
+    # 运行 Pylint
+    # 注意：在根目录运行，files 路径原本就是 relative to root (api/...)
+    echo "$BACKEND_FILES" | xargs $PYTHON_CMD -m pylint --rcfile=api/.pylintrc
     BACKEND_EXIT=$?
-    cd ..
     
     if [ $BACKEND_EXIT -ne 0 ]; then
         echo "❌ 后端代码检查失败，请修复后再提交"
