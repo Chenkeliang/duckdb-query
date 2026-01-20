@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """
 工具函数模块
 """

@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """
 Visual Query Generator
 
@@ -593,12 +594,21 @@ def _format_extension_list(items: List[str]) -> str:
 
 
 def _format_literal(value: Optional[Union[str, int, float]]) -> str:
+    """Format literal value for SQL."""
     if value is None:
         return "NULL"
+
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+
     if isinstance(value, (int, float)):
+        if isinstance(value, float) and value == float("inf"):
+            raise ValueError("浮点值不能为无穷大")
         return str(value)
-    escaped = str(value).replace("'", "''")
-    return f"'{escaped}'"
+
+    # Escape single quotes
+    text = str(value).replace("'", "''")
+    return f"'{text}'"
 
 
 def _generate_pivot_transformation_sql(
@@ -1101,24 +1111,6 @@ def _format_identifier(identifier: str) -> str:
         return identifier
 
     return f'"{identifier}"'
-
-
-def _format_literal(value: Optional[Union[str, int, float]]) -> str:
-    """Format literal value for SQL."""
-    if value is None:
-        return "NULL"
-
-    if isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
-
-    if isinstance(value, (int, float)):
-        if isinstance(value, float) and value == float("inf"):
-            raise ValueError("浮点值不能为无穷大")
-        return str(value)
-
-    # Escape single quotes
-    text = str(value).replace("'", "''")
-    return f"'{text}'"
 
 
 def _wrap_expression(expr: str) -> str:

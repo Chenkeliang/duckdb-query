@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, HttpUrl
 import requests

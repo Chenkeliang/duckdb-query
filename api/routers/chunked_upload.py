@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """
 分块文件上传路由
 支持大文件上传，带进度显示和断点续传

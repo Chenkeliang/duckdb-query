@@ -83,11 +83,11 @@ class TaskUtils:
         # 优先使用result_file_path
         if task.result_file_path:
             return task.result_file_path
-        
+
         # 如果为空，从result_info获取
         if task.result_info and task.result_info.get("file_path"):
             return task.result_info.get("file_path")
-        
+
         return None
 
     def create_recovered_task(self, task_id: str, file_path: str) -> AsyncTask:

@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code,cyclic-import
 """
 数据源聚合器服务
 

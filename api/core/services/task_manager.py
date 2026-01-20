@@ -73,14 +73,14 @@ _watchdog_lock = threading.Lock()
 def start_cancellation_watchdog(interval_seconds: int = 60):
     """启动取消监控守护线程（单例）"""
     global _watchdog_started
-    
+
     with _watchdog_lock:
         if _watchdog_started:
             logger.debug("取消监控守护线程已在运行，跳过重复启动")
             return
-        
+
         _watchdog_started = True
-    
+
     def watchdog_loop():
         while True:
             try:
@@ -89,7 +89,7 @@ def start_cancellation_watchdog(interval_seconds: int = 60):
                 cleanup_stale_registry()
             except Exception as e:
                 logger.error(f"取消监控异常: {e}")
-    
+
     thread = threading.Thread(target=watchdog_loop, daemon=True)
     thread.start()
     logger.info("取消监控守护线程已启动")
@@ -115,7 +115,7 @@ def cleanup_cancelling_timeout(timeout_seconds: int = 60):
                     cutoff,
                 ],
             ).fetchall()
-        
+
         if rows:
             logger.info(f"清理超时 CANCELLING 任务: {[r[0] for r in rows]}")
         return len(rows)
@@ -479,7 +479,7 @@ class TaskManager:
                     ).fetchone()
                     current_status = current_row[0] if current_row else "NOT_FOUND"
                     logger.debug("[TASK_DEBUG] start_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
-                    
+
                     started_at = get_storage_time()
                     rows = conn.execute(
                         f"""
@@ -496,14 +496,14 @@ class TaskManager:
                             TaskStatus.RUNNING.value,
                         ],
                     ).fetchall()
-                    
+
                     # 更新后再查询确认
                     after_row = conn.execute(
                         f'SELECT status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                         [task_id],
                     ).fetchone()
                     after_status = after_row[0] if after_row else "NOT_FOUND"
-                    logger.debug("[TASK_DEBUG] start_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d", 
+                    logger.debug("[TASK_DEBUG] start_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d",
                                task_id, after_status, len(rows))
                     return bool(rows)
 
@@ -534,7 +534,7 @@ class TaskManager:
 
                     current_status = started_row[1] if len(started_row) > 1 else None
                     logger.debug("[TASK_DEBUG] complete_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
-                    
+
                     # 如果任务已被取消，不再更新为成功
                     if current_status in (TaskStatus.FAILED.value, TaskStatus.CANCELLING.value):
                         logger.info("[TASK_DEBUG] complete_task: 任务已被取消或失败，跳过完成: %s, 状态: %s", task_id, current_status)
@@ -579,12 +579,12 @@ class TaskManager:
                         [task_id],
                     ).fetchone()
                     after_status = after_row[0] if after_row else "NOT_FOUND"
-                    
+
                     success = bool(rows)
                     if success:
                         logger.debug("[TASK_DEBUG] complete_task 成功: task_id=%s, 更新后状态=%s", task_id, after_status)
                     else:
-                        logger.warning("[TASK_DEBUG] complete_task 失败: task_id=%s, 当前状态=%s (期望 running), 更新后状态=%s, 影响行数=%d", 
+                        logger.warning("[TASK_DEBUG] complete_task 失败: task_id=%s, 当前状态=%s (期望 running), 更新后状态=%s, 影响行数=%d",
                                       task_id, current_status, after_status, len(rows))
                     return success
 
@@ -656,7 +656,7 @@ class TaskManager:
                     ).fetchone()
                     current_status = current_row[0] if current_row else "NOT_FOUND"
                     logger.debug("[TASK_DEBUG] force_fail_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
-                    
+
                     started_row = current_row
                     execution_time = None
                     if started_row and len(started_row) > 1 and isinstance(started_row[1], datetime):
@@ -679,14 +679,14 @@ class TaskManager:
                             task_id,
                         ],
                     ).fetchall()
-                    
+
                     # 更新后再查询确认
                     after_row = connection.execute(
                         f'SELECT status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                         [task_id],
                     ).fetchone()
                     after_status = after_row[0] if after_row else "NOT_FOUND"
-                    logger.debug("[TASK_DEBUG] force_fail_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d", 
+                    logger.debug("[TASK_DEBUG] force_fail_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d",
                                task_id, after_status, len(rows))
 
                 return bool(rows)
@@ -700,11 +700,11 @@ class TaskManager:
             logger.error("[TASK_DEBUG] force_fail_task 异常: task_id=%s, error=%s", task_id, error_str)
             if "write-write conflict" in error_str or "TransactionContext Error" in error_str:
                 current_task = self.get_task(task_id)
-                logger.info("[TASK_DEBUG] force_fail_task 冲突后查询: task_id=%s, 当前状态=%s", 
+                logger.info("[TASK_DEBUG] force_fail_task 冲突后查询: task_id=%s, 当前状态=%s",
                            task_id, current_task.status.value if current_task else "NOT_FOUND")
                 if current_task and current_task.status in (
-                    TaskStatus.CANCELLING, 
-                    TaskStatus.FAILED, 
+                    TaskStatus.CANCELLING,
+                    TaskStatus.FAILED,
                     TaskStatus.SUCCESS
                 ):
                     logger.info(
@@ -712,7 +712,7 @@ class TaskManager:
                         task_id, current_task.status.value
                     )
                     return True
-            
+
             logger.error("force_fail_task 最终失败: %s -> %s", task_id, error_str)
             return False
 
@@ -727,14 +727,14 @@ class TaskManager:
     def request_cancellation(self, task_id: str, reason: str = "用户手动取消") -> bool:
         """
         请求取消任务（设置取消标志 + 中断查询）
-        
+
         流程：
         1. 将状态更新为 CANCELLING
         2. 调用 connection_registry.interrupt() 中断查询
         3. 更新取消元数据
         """
         from core.database.connection_registry import connection_registry
-        
+
         with with_system_connection() as connection:
             rows = connection.execute(
                 f"""
@@ -754,7 +754,7 @@ class TaskManager:
         success = bool(rows)
         if success:
             logger.info("任务取消请求已设置: %s, 原因: %s", task_id, reason)
-            
+
             # 尝试中断正在执行的查询
             try:
                 interrupted = connection_registry.interrupt(task_id)
@@ -764,7 +764,7 @@ class TaskManager:
                     logger.info("任务 %s 不在注册表中（可能已完成或尚未开始）", task_id)
             except Exception as exc:
                 logger.warning("中断任务 %s 失败: %s", task_id, exc)
-            
+
             # 更新取消元数据
             try:
                 self.update_task(task_id, {
@@ -781,13 +781,13 @@ class TaskManager:
     def mark_cancelled(self, task_id: str, reason: str = "查询被中断") -> bool:
         """
         标记任务为已取消（最终状态）
-        
+
         在捕获 duckdb.InterruptException 后调用此方法
-        
+
         Args:
             task_id: 任务 ID
             reason: 取消原因
-            
+
         Returns:
             True if status was updated successfully
         """
@@ -795,13 +795,13 @@ class TaskManager:
             with self._lock:
                 with with_system_connection() as conn:
                     completed_at = get_storage_time()
-                    
+
                     # 查询开始时间以计算执行时长
                     started_row = conn.execute(
                         f'SELECT started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                         [task_id],
                     ).fetchone()
-                    
+
                     execution_time = None
                     if started_row and isinstance(started_row[0], datetime):
                         started_at = self._normalize_datetime(started_row[0])
@@ -845,7 +845,7 @@ class TaskManager:
                 [task_id],
             ).fetchone()
         return row is not None and row[0] in (
-            TaskStatus.CANCELLING.value, 
+            TaskStatus.CANCELLING.value,
             TaskStatus.CANCELLED.value
         )
 
@@ -867,14 +867,14 @@ class TaskManager:
         return self._row_to_async_task(row) if row else None
 
     def list_tasks(
-        self, 
-        limit: int = 100, 
+        self,
+        limit: int = 100,
         offset: int = 0,
         order_by: str = "created_at"
     ) -> List[Dict[str, Any]]:
         """
         列出任务（支持分页和排序）
-        
+
         Args:
             limit: 返回数量限制
             offset: 偏移量
@@ -884,7 +884,7 @@ class TaskManager:
         allowed_order_by = {"created_at", "started_at", "completed_at", "status"}
         if order_by not in allowed_order_by:
             order_by = "created_at"
-        
+
         with with_system_connection() as connection:
             rows = connection.execute(
                 f"""
@@ -898,7 +898,7 @@ class TaskManager:
                 """,
                 [limit, offset],
             ).fetchall()
-            
+
             # 获取总数用于分页
             total_row = connection.execute(
                 f"SELECT COUNT(*) FROM {ASYNC_TASKS_TABLE}"
@@ -1044,23 +1044,23 @@ class TaskManager:
 
     def cleanup_stuck_cancelling_tasks(self) -> int:
         """清理卡住的取消中任务
-        
+
         将长时间处于 cancelling 状态的任务标记为 failed
         通常用于迁移后或服务重启后清理历史遗留任务
         """
         with with_system_connection() as connection:
             completed_at = get_storage_time()
-            
+
             # 查找所有 cancelling 状态的任务
             rows = connection.execute(
                 f"SELECT task_id FROM {ASYNC_TASKS_TABLE} WHERE status = ?",
                 [TaskStatus.CANCELLING.value],
             ).fetchall()
-            
+
             if not rows:
                 logger.info("没有找到卡住的取消中任务")
                 return 0
-            
+
             # 将它们全部更新为 failed
             for (task_id,) in rows:
                 connection.execute(
@@ -1072,7 +1072,7 @@ class TaskManager:
                     [TaskStatus.FAILED.value, "任务被取消（历史任务清理）", completed_at, task_id],
                 )
                 logger.info(f"已清理卡住的取消中任务: {task_id}")
-            
+
             logger.info(f"清理完成: {len(rows)} 个任务已标记为失败")
             return len(rows)
 

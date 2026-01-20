@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 import duckdb
 import logging
 import pandas as pd

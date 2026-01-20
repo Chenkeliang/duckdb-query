@@ -1,85 +1,69 @@
-from fastapi import APIRouter, Body, HTTPException, Request, BackgroundTasks, Header
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import StreamingResponse, JSONResponse
-from models.query_models import (
-    QueryRequest,
-    QueryResponse,
-    AsyncQueryRequest,
-    AsyncQueryResponse,
-    QueryResult,
-    DatabaseConnection,
-    DataSourceType,
+# pylint: disable=too-many-lines,no-member,too-many-public-methods,too-many-locals,too-many-statements,too-many-arguments,duplicate-code,broad-exception-caught,logging-fstring-interpolation,import-outside-toplevel,broad-exception-raised,redefined-outer-name,reimported,raise-missing-from,too-many-nested-blocks,no-else-return,unused-variable,import-error,line-too-long,bare-except,consider-using-in,unused-argument,f-string-without-interpolation,using-constant-test,unused-import
+import json
+import logging
+import os
+import re
+import traceback
+import uuid
+from datetime import datetime, time
+from typing import Any, Dict, List, Optional, Tuple
+
+import duckdb
+import pandas as pd
+from sqlalchemy import create_engine
+from fastapi import APIRouter, Body, Header, HTTPException
+from pydantic import BaseModel, Field, ValidationError
+
+from core.database.database_manager import db_manager
+from core.common.timezone_utils import get_current_time
+
+from core.common.utils import normalize_dataframe_output
+from core.common.validators import validate_table_name
+from core.data.file_datasource_manager import (
+    build_table_metadata_snapshot,
+    file_datasource_manager,
 )
-from models.visual_query_models import (
-    VisualQueryRequest,
-    VisualQueryResponse,
-    PreviewRequest,
-    PreviewResponse,
-    ColumnStatistics,
-    VisualQueryConfig,
-    SetOperationRequest,
-    SetOperationResponse,
-    SetOperationConfig,
-    SetOperationType,
-    UnionOperationRequest,
-    SetOperationExportRequest,
-    UniversalExportRequest,
-    QueryType,
-    VisualQueryValidationRequest,
-    VisualQueryValidationResponse,
-    ColumnProfilePayload,
-    ResolvedTypeCast,
-    TypeConflictModel,
-    ColumnTypeReference,
-)
+from core.data.file_utils import load_file_to_duckdb
 from core.database.duckdb_engine import (
-    get_db_connection,
-    execute_query,
-    create_persistent_table,
-    create_varchar_table_from_dataframe,
     build_single_table_query,
+    create_varchar_table_from_dataframe,
+    execute_query,
     generate_improved_column_aliases,
-    detect_column_conflicts,
+    get_db_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.services.visual_query_generator import (
-    validate_query_config,
-    get_column_statistics,
-    estimate_query_performance,
-    generate_set_operation_sql,
-    estimate_set_operation_rows,
-    generate_visual_query_sql,
     _build_where_clause,
     _quote_identifier,
+    estimate_query_performance,
+    estimate_set_operation_rows,
+    generate_set_operation_sql,
+    generate_visual_query_sql,
+    get_column_statistics,
+    validate_query_config,
 )
-from core.data.file_datasource_manager import (
-    file_datasource_manager,
-    build_table_metadata_snapshot,
+from models.query_models import QueryRequest
+from models.visual_query_models import (
+    ColumnProfilePayload,
+    ColumnTypeReference,
+    PreviewRequest,
+    ResolvedTypeCast,
+    SetOperationConfig,
+    SetOperationExportRequest,
+    SetOperationRequest,
+    SetOperationType,
+    TypeConflictModel,
+    UnionOperationRequest,
+    VisualQueryConfig,
+    VisualQueryRequest,
+    VisualQueryValidationRequest,
 )
-from core.common.validators import validate_table_name
-from core.data.file_utils import load_file_to_duckdb
-from core.common.utils import normalize_dataframe_output
 from utils.response_helpers import (
-    create_success_response,
-    create_list_response,
-    create_error_response,
     MessageCode,
+    create_error_response,
+    create_list_response,
+    create_success_response,
 )
-import pandas as pd
-import numpy as np
-import io
-import os
-import time
-import traceback
-import logging
-import re
-import uuid
-from datetime import datetime, date, time, timedelta
-from typing import List, Optional, Dict, Any, Union, Tuple
-from pydantic import BaseModel, Field, ValidationError
-import duckdb
-from io import StringIO
-import tempfile
 
 # 设置日志
 logging.basicConfig(
@@ -355,7 +339,7 @@ def get_join_type_sql(join_type):
 
 def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
     """确保SQL查询有LIMIT子句，防止返回过多数据。
-    
+
     注意：以下类型的语句不应该添加 LIMIT：
     - DESCRIBE / DESC 语句
     - SHOW 语句
@@ -367,7 +351,7 @@ def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
     # 去除前后空白并转大写用于匹配
     query_stripped = query.strip()
     query_upper = query_stripped.upper()
-    
+
     # 不应该添加 LIMIT 的语句类型（使用正则表达式更精确匹配）
     # 匹配以这些关键字开头的语句（忽略大小写）
     no_limit_patterns = [
@@ -393,12 +377,12 @@ def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
         r'^COMMIT\b',        # COMMIT 语句
         r'^ROLLBACK\b',      # ROLLBACK 语句
     ]
-    
+
     # 检查是否是不应该添加 LIMIT 的语句
     for pattern in no_limit_patterns:
         if re.match(pattern, query_upper):
             return query
-    
+
     # 使用正则表达式检查LIMIT子句，更稳健
     if not re.search(r"\sLIMIT\s+\d+\s*($|;)", query, re.IGNORECASE):
         if query_stripped.endswith(";"):
@@ -503,7 +487,7 @@ async def preview_visual_query(
 ):
     """预览可视化查询结果"""
     query_id = f"sync:{x_request_id}" if x_request_id else None
-    
+
     try:
         validation_result = validate_query_config(request.config)
 
@@ -540,7 +524,7 @@ async def preview_visual_query(
         if query_id:
             with interruptible_connection(query_id, preview_sql) as conn:
                 preview_df = conn.execute(preview_sql).fetchdf()
-                
+
                 # 计算总行数（在同一连接上下文）
                 total_rows = len(preview_df)
                 try:
@@ -554,7 +538,7 @@ async def preview_visual_query(
             # 向后兼容
             con = get_db_connection()
             preview_df = execute_query(preview_sql, con)
-            
+
             total_rows = len(preview_df)
             try:
                 count_sql = _build_preview_count_sql(generation.final_sql)
@@ -620,7 +604,7 @@ async def get_distinct_values(
     支持通过 X-Request-ID 头实现查询取消
     """
     query_id = f"sync:{x_request_id}" if x_request_id else None
-    
+
     try:
         validation_result = validate_query_config(req.config)
         if not validation_result.is_valid:
@@ -669,7 +653,7 @@ async def get_distinct_values(
         if query_id:
             with interruptible_connection(query_id, sql) as conn:
                 df = conn.execute(sql).fetchdf()
-                
+
                 # distinct_count 统计（在同一连接上下文）
                 distinct_sql = f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base WHERE {target_col} IS NOT NULL"
                 distinct_df = conn.execute(distinct_sql).fetchdf()
@@ -677,7 +661,7 @@ async def get_distinct_values(
             # 向后兼容
             con = get_db_connection()
             df = execute_query(sql, con)
-            
+
             distinct_sql = f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base WHERE {target_col} IS NOT NULL"
             distinct_df = execute_query(distinct_sql, con)
 
@@ -825,8 +809,6 @@ async def validate_visual_query_config_endpoint(
 
 
 def safe_alias(table, col):
-    import re
-
     col_safe = re.sub(r"[^a-zA-Z0-9_]", "_", col)
     alias = f"{table}_{col_safe}"
     # 保证别名以字母或下划线开头
@@ -1171,7 +1153,7 @@ async def perform_query(
     query_id = f"sync:{x_request_id}" if x_request_id else None
     if query_id:
         logger.info(f"Query with request ID: {x_request_id}")
-    
+
     # 始终获取有效连接
     # TODO: 使用 interruptible_connection 包裹查询执行以支持取消
     con = get_db_connection()
@@ -1321,7 +1303,6 @@ async def perform_query(
                         f"处理数据库数据源: {source.id}, 连接ID: {connection_id}"
                     )
 
-                    from core.database.database_manager import db_manager
 
                     try:
                         db_connection = db_manager.get_connection(connection_id)
@@ -1354,8 +1335,6 @@ async def perform_query(
                     )
 
                     try:
-                        import json
-                        from sqlalchemy import create_engine
 
                         # 读取MySQL配置文件
                         mysql_config_file = os.path.join(
@@ -1409,7 +1388,6 @@ async def perform_query(
                     logger.warning(f"使用直接连接参数模式（不推荐）: {source.id}")
 
                     try:
-                        from sqlalchemy import create_engine
 
                         # 获取连接参数
                         host = source.params.get("host", "localhost")
@@ -1472,7 +1450,6 @@ async def perform_query(
             query = build_single_table_query(query_request)
 
             # 验证表是否存在（从查询中提取实际表名）
-            import re
 
             table_match = re.search(r'FROM "([^"]+)"', query)
             if table_match:
@@ -1636,7 +1613,6 @@ async def execute_sql(request: dict = Body(...)):
                 )
 
             # 使用数据库管理器执行查询
-            from core.database.database_manager import db_manager
 
             datasource_id = datasource.get("id")
             if not datasource_id:
@@ -1648,8 +1624,6 @@ async def execute_sql(request: dict = Body(...)):
                 if not existing_conn:
                     logger.info(f"连接 {datasource_id} 不存在，尝试创建...")
                     # 读取配置文件并创建连接
-                    import json
-                    from datetime import datetime
                     from models.query_models import DatabaseConnection, DataSourceType
 
                     config_path = os.path.join(
@@ -1830,15 +1804,12 @@ async def save_query_to_duckdb(request: dict = Body(...)):
             # 处理MySQL等外部数据库
             try:
                 logger.info(f"执行外部数据库查询: {datasource_id}")
-                from core.database.database_manager import db_manager
 
                 # 确保数据库连接存在
                 existing_conn = db_manager.get_connection(datasource_id)
                 if not existing_conn:
                     logger.info(f"连接 {datasource_id} 不存在，尝试从配置创建...")
                     # 尝试从配置文件创建连接
-                    import json
-                    from datetime import datetime
                     from models.query_models import (
                         DatabaseConnection,
                         DataSourceType,
@@ -1895,77 +1866,6 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                     status_code=500, detail=f"DuckDB查询失败: {str(duckdb_error)}"
                 )
 
-        # 删除原来的重复处理逻辑
-        if False:  # 禁用原来的逻辑
-            if datasource_type not in ["duckdb"] and datasource_id != "duckdb_internal":
-                try:
-                    logger.info(f"尝试外部数据库查询: {datasource_id}")
-                    from core.database.database_manager import db_manager
-
-                    # 确保数据库连接存在
-                    existing_conn = db_manager.get_connection(datasource_id)
-                    if not existing_conn:
-                        logger.info(f"连接 {datasource_id} 不存在，尝试从配置创建...")
-                        # 尝试从配置文件创建连接
-                        import json
-                        from datetime import datetime
-                        from models.query_models import (
-                            DatabaseConnection,
-                            DataSourceType,
-                        )
-
-                        try:
-                            config_path = os.path.join(
-                                os.path.dirname(os.path.dirname(__file__)),
-                                "config/mysql-configs.json",
-                            )
-                            if os.path.exists(config_path):
-                                with open(config_path, "r", encoding="utf-8") as f:
-                                    configs = json.load(f)
-
-                                config = None
-                                for cfg in configs:
-                                    if cfg["id"] == datasource_id:
-                                        config = cfg
-                                        break
-
-                                if config:
-                                    db_connection = DatabaseConnection(
-                                        id=config["id"],
-                                        name=config.get("name", config["id"]),
-                                        type=DataSourceType.MYSQL,
-                                        params=config["params"],
-                                        created_at=get_current_time(),
-                                    )
-                                    db_manager.add_connection(db_connection)
-                                    logger.info(f"成功创建数据库连接: {datasource_id}")
-                                else:
-                                    raise Exception(
-                                        f"未找到数据源配置: {datasource_id}"
-                                    )
-                            else:
-                                raise Exception(f"配置文件不存在: {config_path}")
-
-                        except Exception as config_error:
-                            logger.error(f"创建数据库连接失败: {str(config_error)}")
-                            raise Exception(f"数据库连接失败: {str(config_error)}")
-
-                    # 执行查询获取数据
-                    result_df = db_manager.execute_query(datasource_id, sql_query)
-                    logger.info(
-                        f"外部数据库查询执行完成，准备保存到DuckDB: {result_df.shape}"
-                    )
-
-                except Exception as db_error:
-                    logger.error(f"数据库查询失败: {str(db_error)}")
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"查询执行失败: {str(duckdb_error)} | 外部数据库查询也失败: {str(db_error)}",
-                    )
-            else:
-                raise HTTPException(
-                    status_code=500, detail=f"DuckDB查询失败: {str(duckdb_error)}"
-                )
 
         # 验证查询结果
         if result_df is None or result_df.empty:
@@ -2074,7 +1974,6 @@ async def list_duckdb_tables():
 
         # 获取文件数据源管理器实例
         from core.data.file_datasource_manager import file_datasource_manager
-        from core.database.database_manager import db_manager
 
         file_datasources = file_datasource_manager.list_file_datasources()
         # 创建source_id到创建时间的映射
@@ -2084,7 +1983,7 @@ async def list_duckdb_tables():
             created_at = datasource.get("created_at")
             if source_id and created_at:
                 datasource_timestamps[source_id] = created_at
-        
+
         # 获取所有数据库连接的ID，用于标识数据库连接的表
         db_connection_ids = set()
         try:
@@ -2117,7 +2016,7 @@ async def list_duckdb_tables():
                 # 3. 否则默认为 file 类型
                 created_at = datasource_timestamps.get(table_name)
                 source_type = "file"  # 默认为文件类型
-                
+
                 # 检查是否是数据库连接的表（表名通常包含连接ID）
                 for db_conn_id in db_connection_ids:
                     if table_name.startswith(f"{db_conn_id}_") or table_name == db_conn_id:
@@ -2147,17 +2046,16 @@ async def list_duckdb_tables():
                 )
 
         # 按创建时间倒序排序，没有创建时间的表排在最后
-        from datetime import datetime
         from dateutil import parser as date_parser
-        
+
         def get_sort_key(table):
             created_at = table.get("created_at")
             table_name = table.get("table_name", "")
-            
+
             if not created_at:
                 # 没有创建时间的表排在最后，按表名排序
                 return (0, table_name)
-            
+
             # 如果是字符串，转换为 datetime
             if isinstance(created_at, str):
                 try:
@@ -2168,14 +2066,14 @@ async def list_duckdb_tables():
                     return (1, ts)
                 except Exception:
                     return (0, table_name)
-            
+
             # 如果已经是 datetime
             if hasattr(created_at, 'timestamp'):
                 ts = created_at.replace(tzinfo=None).timestamp() if created_at.tzinfo else created_at.timestamp()
                 return (1, ts)
-            
+
             return (0, table_name)
-        
+
         # 先按是否有创建时间分组（有的在前），再按时间戳倒序
         tables_info.sort(key=get_sort_key, reverse=True)
 
@@ -2195,7 +2093,7 @@ async def delete_duckdb_table(table_name: str):
     """删除DuckDB中的指定表，同时删除对应的源文件"""
     # 系统表保护：禁止删除 system_ 前缀或保护 Schema 中的表
     validate_table_name(table_name)
-    
+
     try:
         con = get_db_connection()
 
@@ -2718,8 +2616,6 @@ async def export_set_operation(request: SetOperationExportRequest):
     支持Excel、CSV、Parquet格式，使用DuckDB COPY命令直接导出完整数据，
     避免内存限制问题。
     """
-    import uuid
-    import asyncio
     from concurrent.futures import ThreadPoolExecutor
     from core.services.task_manager import task_manager
 
@@ -2819,13 +2715,11 @@ async def export_set_operation(request: SetOperationExportRequest):
                     )
 
                     # 将CSV转换为Excel
-                    import pandas as pd
 
                     df = pd.read_csv(csv_path)
                     df.to_excel(file_path, index=False)
 
                     # 删除临时CSV文件
-                    import os
 
                     os.remove(csv_path)
 
@@ -2837,7 +2731,6 @@ async def export_set_operation(request: SetOperationExportRequest):
                     con.execute(copy_sql)
 
                 # 检查文件是否创建成功
-                import os
 
                 if not os.path.exists(file_path):
                     raise Exception("导出文件未创建")

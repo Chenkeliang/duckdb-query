@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """
 文件数据源管理器
 负责管理文件数据源的配置、加载和持久化
@@ -6,6 +7,7 @@
 import hashlib
 import logging
 import math
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,9 +16,9 @@ from pathlib import Path
 
 from typing import Dict, Any, List, Optional, Sequence, Tuple
 from uuid import uuid4
-from datetime import datetime
 
 import duckdb
+import pandas as pd
 
 from core.database.duckdb_engine import with_duckdb_connection
 from core.common.config_manager import config_manager

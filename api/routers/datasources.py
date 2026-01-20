@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """
 统一数据源管理 API
 

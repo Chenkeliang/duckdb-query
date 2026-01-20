@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """
 DuckDB自定义SQL查询路由
 基于已加载到DuckDB中的表进行SQL查询

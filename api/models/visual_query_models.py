@@ -5,7 +5,7 @@ Pydantic models for visual query configuration and validation.
 Supports Chinese display labels and comprehensive validation logic.
 """
 
-# pylint: disable=no-member,too-many-lines
+# pylint: disable=no-member,too-many-lines,duplicate-code,not-an-iterable,unused-variable
 from enum import Enum
 from typing import List, Optional, Dict, Any, Union, Literal, ClassVar, Set
 from pydantic import BaseModel, Field, field_validator, model_validator

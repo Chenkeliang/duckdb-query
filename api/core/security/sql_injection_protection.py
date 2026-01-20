@@ -6,8 +6,9 @@ SQL注入防护工具
 import re
 import logging
 import json
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Tuple
 from enum import Enum
 
 from core.common.timezone_utils import get_current_time  # 导入时区工具
