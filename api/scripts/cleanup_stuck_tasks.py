@@ -29,10 +29,10 @@ def cleanup_stuck_tasks():
         """).fetchall()
         
         if not rows:
-            logger.info("没有找到卡住的取消中任务")
+            logger.info("No stuck cancelling tasks found")
             return 0
         
-        logger.info(f"找到 {len(rows)} 个卡住的取消中任务")
+        logger.info(f"Found {len(rows)} stuck cancelling tasks")
         
         # 将它们全部更新为 failed
         completed_at = get_storage_time()
@@ -40,13 +40,13 @@ def cleanup_stuck_tasks():
             conn.execute("""
                 UPDATE system_async_tasks
                 SET status = 'failed',
-                    error_message = '任务被取消（历史任务清理）',
+                    error_message = 'Task cancelled (historical task cleanup)',
                     completed_at = ?
                 WHERE task_id = ?
             """, [completed_at, task_id])
-            logger.info(f"已清理: {task_id} - {query[:50]}...")
+            logger.info(f"Cleaned: {task_id} - {query[:50]}...")
         
-        logger.info(f"清理完成: {len(rows)} 个任务已标记为失败")
+        logger.info(f"Cleanup completed: {len(rows)} tasks marked as failed")
         return len(rows)
 
 

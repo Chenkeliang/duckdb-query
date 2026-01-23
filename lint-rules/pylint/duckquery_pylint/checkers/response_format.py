@@ -92,7 +92,9 @@ class ResponseFormatChecker(BaseChecker):
         if isinstance(node.value, astroid.Dict):
             # 检查字典中是否有 messageCode 字段
             has_message_code = False
-            for key in node.value.keys:
+            # In astroid 4.x, keys is a list attribute, not a method
+            dict_keys = node.value.keys if isinstance(node.value.keys, list) else []
+            for key in dict_keys:
                 if isinstance(key, astroid.Const) and key.value == 'messageCode':
                     has_message_code = True
                     break

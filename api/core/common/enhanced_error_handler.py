@@ -1,5 +1,5 @@
 """
-增强的错误处理工具
+增强的error处理工具
 提高系统稳定性
 """
 # pylint: disable=broad-exception-raised
@@ -41,7 +41,7 @@ class ErrorCategory(Enum):
 
 @dataclass
 class ErrorContext:
-    """错误上下文信息"""
+    """error上下文info"""
 
     user_id: Optional[str] = None
     request_id: Optional[str] = None
@@ -55,7 +55,7 @@ class ErrorContext:
 
 @dataclass
 class ErrorInfo:
-    """错误详细信息"""
+    """error详细info"""
 
     error_type: str
     error_message: str
@@ -80,7 +80,7 @@ class EnhancedErrorHandler:
         self._initialize_retry_strategies()
 
     def _initialize_error_patterns(self):
-        """初始化错误模式识别"""
+        """initializingerror模式识别"""
         self.error_patterns = {
             "database_connection": {
                 "patterns": [
@@ -148,7 +148,7 @@ class EnhancedErrorHandler:
         }
 
     def _initialize_retry_strategies(self):
-        """初始化重试策略"""
+        """initializingretry策略"""
         self.retry_strategies = {
             "exponential_backoff": {
                 "base_delay": 1.0,
@@ -160,16 +160,16 @@ class EnhancedErrorHandler:
         }
 
     def analyze_error(self, exception: Exception, context: ErrorContext) -> ErrorInfo:
-        """分析错误并返回详细信息"""
+        """分析error并返回详细info"""
         error_message = str(exception)
         error_type = type(exception).__name__
 
-        # 识别错误类别和严重性
+        # 识别error类别和严重性
         category, severity, retryable, max_retries, retry_delay = self._classify_error(
             error_message
         )
 
-        # 创建错误信息
+        # creatingerrorinfo
         error_info = ErrorInfo(
             error_type=error_type,
             error_message=error_message,
@@ -181,7 +181,7 @@ class EnhancedErrorHandler:
             max_retries=max_retries,
         )
 
-        # 记录错误
+        # 记录error
         self.error_log.append(error_info)
 
         # 记录到日志
@@ -190,7 +190,7 @@ class EnhancedErrorHandler:
         return error_info
 
     def _classify_error(self, error_message: str) -> tuple:
-        """分类错误"""
+        """分类error"""
         error_message_lower = error_message.lower()
 
         for pattern_name, pattern_info in self.error_patterns.items():
@@ -208,9 +208,9 @@ class EnhancedErrorHandler:
         return (ErrorCategory.UNKNOWN, ErrorSeverity.MEDIUM, False, 0, 0.0)
 
     def _log_error(self, error_info: ErrorInfo):
-        """记录错误到日志"""
+        """记录error到日志"""
         log_message = (
-            f"错误: {error_info.error_type} - {error_info.error_message} "
+            f"error: {error_info.error_type} - {error_info.error_message} "
             f"(严重性: {error_info.severity.value}, 类别: {error_info.category.value})"
         )
 
@@ -225,16 +225,16 @@ class EnhancedErrorHandler:
 
         # 记录堆栈跟踪
         if error_info.stack_trace:
-            logger.debug(f"堆栈跟踪:\n{error_info.stack_trace}")
+            logger.debug(f"Stack trace:\n{error_info.stack_trace}")
 
     def should_retry(self, error_info: ErrorInfo) -> bool:
-        """判断是否应该重试"""
+        """判断是否应该retry"""
         return error_info.retryable and error_info.retry_count < error_info.max_retries
 
     def get_retry_delay(
         self, error_info: ErrorInfo, strategy: str = "exponential_backoff"
     ) -> float:
-        """获取重试延迟时间"""
+        """gettingretry延迟时间"""
         if strategy not in self.retry_strategies:
             strategy = "fixed_delay"
 
@@ -254,7 +254,7 @@ class EnhancedErrorHandler:
             return strategy_config["delay"]
 
     def create_user_friendly_error(self, error_info: ErrorInfo) -> Dict[str, Any]:
-        """创建用户友好的错误信息"""
+        """creating用户友好的errorinfo"""
         base_error = {
             "success": False,
             "error_type": error_info.category.value,
@@ -262,35 +262,35 @@ class EnhancedErrorHandler:
             "timestamp": error_info.created_at.isoformat(),
         }
 
-        # 根据错误类别生成不同的错误信息
+        # 根据error类别生成不同的errorinfo
         if error_info.category == ErrorCategory.VALIDATION:
             base_error.update(
                 {
-                    "error": "输入数据验证失败",
+                    "error": "输入data验证failed",
                     "details": error_info.error_message,
-                    "suggestion": "请检查输入数据格式是否正确",
+                    "suggestion": "请检查输入data格式是否正确",
                 }
             )
         elif error_info.category == ErrorCategory.DATABASE:
             base_error.update(
                 {
-                    "error": "数据库操作失败",
-                    "details": "系统暂时无法访问数据库",
-                    "suggestion": "请稍后重试，如果问题持续存在请联系管理员",
+                    "error": "database操作failed",
+                    "details": "系统暂时无法访问database",
+                    "suggestion": "请稍后retry，如果问题持续存在请联系管理员",
                 }
             )
         elif error_info.category == ErrorCategory.AUTHENTICATION:
             base_error.update(
                 {
-                    "error": "身份验证失败",
-                    "details": "您的登录信息无效或已过期",
+                    "error": "身份验证failed",
+                    "details": "您的登录infoinvalid或已过期",
                     "suggestion": "请重新登录",
                 }
             )
         elif error_info.category == ErrorCategory.RESOURCE:
             base_error.update(
                 {
-                    "error": "资源操作失败",
+                    "error": "资源操作failed",
                     "details": error_info.error_message,
                     "suggestion": "请检查资源是否存在或您是否有权限访问",
                 }
@@ -298,21 +298,21 @@ class EnhancedErrorHandler:
         elif error_info.category == ErrorCategory.SYSTEM:
             base_error.update(
                 {
-                    "error": "系统错误",
-                    "details": "系统遇到内部错误",
-                    "suggestion": "请稍后重试，如果问题持续存在请联系技术支持",
+                    "error": "系统error",
+                    "details": "系统遇到内部error",
+                    "suggestion": "请稍后retry，如果问题持续存在请联系技术支持",
                 }
             )
         else:
             base_error.update(
                 {
-                    "error": "未知错误",
+                    "error": "未知error",
                     "details": error_info.error_message,
-                    "suggestion": "请稍后重试或联系技术支持",
+                    "suggestion": "请稍后retry或联系技术支持",
                 }
             )
 
-        # 添加重试信息
+        # 添加retryinfo
         if self.should_retry(error_info):
             base_error["retryable"] = True
             base_error["retry_count"] = error_info.retry_count
@@ -323,7 +323,7 @@ class EnhancedErrorHandler:
         return base_error
 
     def handle_error_with_retry(self, func, *args, **kwargs) -> Any:
-        """带重试的错误处理"""
+        """带retry的error处理"""
         max_attempts = 3
         attempt = 0
 
@@ -333,7 +333,7 @@ class EnhancedErrorHandler:
             except Exception as e:
                 attempt += 1
 
-                # 创建错误上下文
+                # creatingerror上下文
                 context = ErrorContext(
                     endpoint="retry_function",
                     method="retry",
@@ -344,23 +344,23 @@ class EnhancedErrorHandler:
                     },
                 )
 
-                # 分析错误
+                # 分析error
                 error_info = self.analyze_error(e, context)
 
-                # 判断是否应该重试
+                # 判断是否应该retry
                 if not self.should_retry(error_info) or attempt >= max_attempts:
                     raise e
 
-                # 计算重试延迟
+                # 计算retry延迟
                 delay = self.get_retry_delay(error_info)
-                logger.info(f"第 {attempt} 次尝试失败，{delay} 秒后重试")
+                logger.info(f"Attempt {attempt} failed, retrying in {delay} seconds")
                 time.sleep(delay)
 
-        # 所有重试都失败了
-        raise Exception(f"函数 {func.__name__} 在 {max_attempts} 次尝试后仍然失败")
+        # 所有retry都failed了
+        raise Exception(f"Function {func.__name__} still failed after {max_attempts} attempts")
 
     def get_error_statistics(self) -> Dict[str, Any]:
-        """获取错误统计信息"""
+        """gettingerror统计info"""
         if not self.error_log:
             return {"total_errors": 0}
 
@@ -377,7 +377,7 @@ class EnhancedErrorHandler:
             severity = error.severity.value
             severity_stats[severity] = severity_stats.get(severity, 0) + 1
 
-        # 最近错误
+        # 最近error
         recent_errors = sorted(
             self.error_log, key=lambda x: x.created_at, reverse=True
         )[:10]
@@ -396,24 +396,24 @@ class EnhancedErrorHandler:
                 }
                 for e in recent_errors
             ],
-            "last_updated": get_current_time(),  # 使用统一的时区配置
+            "last_updated": get_current_time(),  # 使用统一的时区configuration
         }
 
     def clear_old_errors(self, days: int = 30):
-        """清理旧错误记录"""
+        """清理旧error记录"""
         cutoff_date = get_current_time().replace(day=get_current_time().day - days)
         self.error_log = [
             error for error in self.error_log if error.created_at > cutoff_date
         ]
-        logger.info(f"已清理 {days} 天前的错误记录")
+        logger.info(f"Cleaned up error records older than {days} days")
 
 
-# 全局错误处理器实例
+# 全局error处理器实例
 _error_handler = None
 
 
 def get_error_handler() -> EnhancedErrorHandler:
-    """获取错误处理器实例"""
+    """gettingerror处理器实例"""
     global _error_handler
     if _error_handler is None:
         _error_handler = EnhancedErrorHandler()
@@ -421,13 +421,13 @@ def get_error_handler() -> EnhancedErrorHandler:
 
 
 def handle_error_safely(exception: Exception, context: ErrorContext) -> Dict[str, Any]:
-    """安全地处理错误"""
+    """安全地处理error"""
     handler = get_error_handler()
     error_info = handler.analyze_error(exception, context)
     return handler.create_user_friendly_error(error_info)
 
 
 def retry_on_error(func, *args, **kwargs) -> Any:
-    """带重试的函数执行"""
+    """带retry的函数executing"""
     handler = get_error_handler()
     return handler.handle_error_with_retry(func, *args, **kwargs)

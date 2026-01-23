@@ -30,7 +30,7 @@ export interface StandardList<T = unknown>
     total: number;
     page?: number;
     pageSize?: number;
-  }> {}
+  }> { }
 
 /**
  * 标准错误响应
@@ -147,6 +147,17 @@ export interface ConnectionTestResult {
   messageCode?: string;
   latency_ms?: number;
   details?: Record<string, unknown>;
+}
+
+export interface CreateConnectionResponseData {
+  connection: DatabaseConnection;
+  test_result?: ConnectionTestResult;
+}
+
+export interface DatabaseConnectResult {
+  success: boolean;
+  message: string;
+  connection?: DatabaseConnection;
 }
 
 // ==================== File Types ====================
@@ -280,6 +291,7 @@ export interface SqlFavorite {
 export interface CreateFavoriteRequest {
   name: string;
   sql: string;
+  type: string;  // 'mysql' | 'duckdb' | 'federated'
   description?: string;
   tags?: string[];
 }

@@ -258,7 +258,7 @@ def generate_sql_from_config(
 
     except Exception as e:
         logger.error(f"SQL generation failed: {str(e)}")
-        raise ValueError(f"SQL生成失败: {str(e)}")
+        raise ValueError(f"SQL generation failed: {str(e)}")
 
 
 def generate_visual_query_sql(
@@ -274,19 +274,19 @@ def generate_visual_query_sql(
 
     if mode == VisualQueryMode.PIVOT:
         if pivot_config is None:
-            raise ValueError("Pivot配置不能为空")
+            raise ValueError("Pivot configuration cannot be empty")
 
         if app_config is None and config_manager is not None:
             try:
                 app_config = config_manager.get_app_config()
             except Exception as exc:  # pragma: no cover - fallback
-                logger.warning("无法从配置管理器加载AppConfig，使用默认设置: %s", exc)
+                logger.warning("Unable to load AppConfig from config manager, using default settings: %s", exc)
                 app_config = None
 
         enable_pivot = getattr(app_config, "enable_pivot_tables", True)
 
         if not enable_pivot:
-            raise ValueError("系统配置已禁用透视表功能，请联系管理员启用")
+            raise ValueError("System configuration has disabled pivot table feature, please contact administrator to enable")
 
         # 强制使用原生PIVOT策略（因为扩展不可用）
         pivot_config.strategy = "native"
@@ -387,7 +387,7 @@ def _build_json_table_join_clause(
     index: int,
 ) -> str:
     if not json_config.columns:
-        raise ValueError("JSON_TABLE 配置需要至少一个列定义")
+        raise ValueError("JSON_TABLE configuration需要至少一个column定义")
 
     alias = json_config.alias or f"json_table_{index + 1}"
     alias_sql = _quote_identifier(alias)
@@ -504,7 +504,7 @@ def _generate_pivot_base_sql(
     pivot_config: PivotConfig,
     casts_map: Optional[Dict[str, str]] = None,
 ) -> str:
-    # 构建必需列：行/列维度 + 指标引用列
+    # 构建必需column：行/column维度 + 指标引用column
     required_columns = (
         pivot_config.rows
         + pivot_config.columns
@@ -514,10 +514,10 @@ def _generate_pivot_base_sql(
     ordered_columns = _deduplicate_preserve_order(required_columns)
 
     if not ordered_columns:
-        raise ValueError("Pivot分析至少需要选择一个指标或维度列")
+        raise ValueError("Pivot分析至少需要选择一个指标或维度column")
 
-    # 支持计算列：如果 required_columns 中包含与 calculated_fields 同名的列，
-    # 则在 SELECT 中使用表达式 AS 别名，而不是裸列名
+    # 支持计算column：如果 required_columns 中包含与 calculated_fields 同名的column，
+    # 则在 SELECT 中使用table达式 AS 别名，而不是裸column名
     calc_map = {}
     try:
         for calc in getattr(config, "calculated_fields", []) or []:
@@ -538,7 +538,7 @@ def _generate_pivot_base_sql(
         else:
             select_items.append(_quote_identifier(col))
 
-    # 附加其余计算列（如果用户配置了但不在必需列里），以便后续引用（安全扩展）
+    # 附加其余计算column（如果用户configuration了但不在必需column里），以便后续引用（安全扩展）
     for alias, expr in calc_map.items():
         if alias not in used_aliases and alias not in ordered_columns:
             select_items.append(f"{expr} AS {_quote_identifier(alias)}")
@@ -661,19 +661,19 @@ def _generate_pivot_transformation_sql(
         except Exception as _:
             return None
 
-    # 检查是否设置了列数量限制
-    # 如果设置了限制，我们不能使用动态 PIVOT（因为它会返回所有列），
-    # 而应该跳过此步直接进入下面的采样逻辑。
-    # 除非已经有了 manual_column_values（即用户手动指定了列），那样 _try_generate_native_pivot 会优先使用它。
+    # 检查是否设置了column数量限制
+    # 如果设置了限制，我们不能使用动态 PIVOT（因为它会返回所有column），
+    # 而应该skip此步直接进入下面的采样逻辑。
+    # 除非已经有了 manual_column_values（即用户手动指定了column），那样 _try_generate_native_pivot 会优先使用它。
     explicit_limit = getattr(pivot_config, "column_value_limit", None)
     should_use_dynamic = explicit_limit is None or explicit_limit <= 0 or bool(pivot_config.manual_column_values)
 
     if should_use_dynamic:
-        # 尝试使用原生PIVOT策略（支持动态列，不需要显式 IN 列表）
+        # 尝试使用原生PIVOT策略（支持动态column，不需要显式 IN columntable）
         native_candidate = _try_generate_native_pivot(base_sql, pivot_config, allow_dynamic=True)
         if native_candidate is not None:
             native_candidate["metadata"].update({"uses_pivot_extension": False})
-            # 当需要小计/总计时，构建额外结果集
+            # 当需要小计/总计时，构建额外result集
             if pivot_config.include_subtotals or pivot_config.include_grand_totals:
                 native_candidate = _inject_pivot_totals(
                     native_candidate,
@@ -685,12 +685,12 @@ def _generate_pivot_transformation_sql(
                 )
             return native_candidate
 
-    # 动态 PIVOT 失败（多列维度场景），仅当显式设置 column_value_limit 时采样
+    # 动态 PIVOT failed（多column维度场景），仅当显式设置 column_value_limit 时采样
     sample_cap = getattr(pivot_config, "column_value_limit", None)
     if sample_cap and sample_cap > 0:
         sampled = _autosample_native_in_values(int(sample_cap))
         if sampled:
-            # 构造临时配置，使用采样的列值
+            # 构造临时configuration，使用采样的column值
             try:
                 temp_cfg = pivot_config.model_copy(
                     update={"manual_column_values": sampled}
@@ -718,16 +718,16 @@ def _generate_pivot_transformation_sql(
                         include_grand_totals=pivot_config.include_grand_totals,
                     )
                 return native_candidate
-        # 如果自动采样也失败，返回错误
+        # 如果自动采样也failed，返回error
         raise ValueError(
-            "未满足原生PIVOT条件（需要单一列维度和列值集合）；"
-            "请填写‘列值顺序’或设置‘列数量上限’后重试"
+            "未满足原生PIVOT条件（需要单一column维度和column值集合）；"
+            "请填写‘column值顺序’或设置‘column数量上限’后retry"
         )
 
-    # 如果到达这里，说明原生PIVOT和自动采样都失败了
+    # 如果到达这里，说明原生PIVOT和自动采样都failed了
     raise ValueError(
-        "未满足原生PIVOT条件（需要单一列维度和列值集合）；"
-        "请填写‘列值顺序’或设置‘列数量上限’后重试"
+        "未满足原生PIVOT条件（需要单一column维度和column值集合）；"
+        "请填写‘column值顺序’或设置‘column数量上限’后retry"
     )
 
 
@@ -1167,14 +1167,14 @@ def _build_filter_condition(
         if value_type == FilterValueType.COLUMN:
             right_column = getattr(filter_config, "right_column", None)
             if not right_column:
-                raise ValueError("列对列比较缺少 right_column 参数")
+                raise ValueError("column对column比较missing right_column parameter")
             right = _format_identifier(right_column)
             right_expr = _apply_column_cast_sql(right, right_column, casts_map)
             return f"{column_expr} {operator} {right_expr}"
         elif value_type == FilterValueType.EXPRESSION:
             expression = getattr(filter_config, "expression", None)
             if not expression:
-                raise ValueError("表达式比较缺少 expression 参数")
+                raise ValueError("table达式比较missing expression parameter")
             expr_with_casts = _apply_casts_to_expression_text(expression, casts_map)
             expr = _wrap_expression(expr_with_casts)
             expr = _apply_cast(expr, cast_target)
@@ -1289,7 +1289,7 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
     try:
         # Basic validation
         if not config.table_name or not config.table_name.strip():
-            errors.append("表名不能为空")
+            errors.append("table名不能is empty")
 
         # Check if we have any analysis configuration
         has_analysis = (
@@ -1303,18 +1303,18 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
         )
 
         if not has_analysis:
-            warnings.append("未配置任何分析条件，将执行全表查询")
+            warnings.append("未configuration任何分析条件，将executing全tablequery")
 
         # Validate aggregations
         for agg in config.aggregations:
             if not agg.column or not agg.column.strip():
-                errors.append("聚合函数必须指定列名")
+                errors.append("聚合函数必须指定column名")
             complexity_score += 2
 
         # Validate filters
         for filter_config in config.filters:
             if not filter_config.column or not filter_config.column.strip():
-                errors.append("筛选条件必须指定列名")
+                errors.append("筛选条件必须指定column名")
 
             # Check if value is required for operator
             if filter_config.operator not in [
@@ -1335,7 +1335,7 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
             if not calc_field.name or not calc_field.name.strip():
                 errors.append("计算字段必须有名称")
             if not calc_field.expression or not calc_field.expression.strip():
-                errors.append("计算字段必须有表达式")
+                errors.append("计算字段必须有table达式")
             complexity_score += 3
 
         # Validate conditional fields
@@ -1348,7 +1348,7 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
                     errors.append("条件字段必须至少有一个条件")
             elif cond_field.type.value == "binning":
                 if not cond_field.column or not cond_field.column.strip():
-                    errors.append("分组字段必须指定列名")
+                    errors.append("分组字段必须指定column名")
                 if not cond_field.bins or cond_field.bins < 2:
                     errors.append("分组字段必须至少有2个分组")
 
@@ -1357,21 +1357,21 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
         # Validate sorting
         for sort_config in config.order_by:
             if not sort_config.column or not sort_config.column.strip():
-                errors.append("排序必须指定列名")
+                errors.append("排序必须指定column名")
             complexity_score += 1
 
         # Check for potential performance issues
         if len(config.aggregations) > 5:
-            warnings.append("聚合函数过多可能影响查询性能")
+            warnings.append("聚合函数过多可能影响query性能")
 
         if len(config.filters) > 10:
-            warnings.append("筛选条件过多可能影响查询性能")
+            warnings.append("筛选条件过多可能影响query性能")
 
         # Validate GROUP BY logic
         if config.aggregations and config.selected_columns:
             # When we have aggregations and selected columns, we need GROUP BY
             if not config.group_by:
-                warnings.append("使用聚合函数时建议明确指定分组列")
+                warnings.append("使用聚合函数时建议明确指定分组column")
 
         is_valid = len(errors) == 0
 
@@ -1386,7 +1386,7 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
         logger.error(f"Validation failed: {str(e)}")
         return ValidationResult(
             is_valid=False,
-            errors=[f"配置验证失败: {str(e)}"],
+            errors=[f"configuration验证failed: {str(e)}"],
             warnings=[],
             complexity_score=0,
         )
@@ -1411,7 +1411,7 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
 
         column_row = columns_df[columns_df["column_name"] == column_name]
         if column_row.empty:
-            raise ValueError(f"列 '{column_name}' 在表 '{table_name}' 中不存在")
+            raise ValueError(f"column '{column_name}' 在table '{table_name}' 中does not exist")
 
         data_type = column_row.iloc[0]["column_type"]
 
@@ -1511,7 +1511,7 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
 
     except Exception as e:
         logger.error(f"Failed to get column statistics: {str(e)}")
-        raise ValueError(f"获取列统计信息失败: {str(e)}")
+        raise ValueError(f"gettingcolumn统计infofailed: {str(e)}")
 
 
 def get_table_metadata(table_name: str, con, use_cache: bool = True) -> TableMetadata:
@@ -1571,7 +1571,7 @@ def get_table_metadata(table_name: str, con, use_cache: bool = True) -> TableMet
         )
     except Exception as e:
         logger.error(f"Failed to get table metadata: {str(e)}")
-        raise ValueError(f"获取表元数据失败: {str(e)}")
+        raise ValueError(f"gettingtable元datafailed: {str(e)}")
 
 
 def estimate_query_performance(config: VisualQueryConfig, con) -> PerformanceEstimate:
@@ -1633,13 +1633,13 @@ def estimate_query_performance(config: VisualQueryConfig, con) -> PerformanceEst
 
         # Add performance warnings
         if complexity_score > 20:
-            warnings.append("查询复杂度较高，可能需要较长执行时间")
+            warnings.append("query复杂度较高，可能需要较长executing时间")
 
         if estimated_rows > 100000:
-            warnings.append("预计结果集较大，建议添加筛选条件或限制行数")
+            warnings.append("预计result集较大，建议添加筛选条件或限制行数")
 
         if len(config.aggregations) > 5:
-            warnings.append("聚合函数较多，可能影响查询性能")
+            warnings.append("聚合函数较多，可能影响query性能")
 
         return PerformanceEstimate(
             estimated_rows=int(estimated_rows),
@@ -1654,48 +1654,48 @@ def estimate_query_performance(config: VisualQueryConfig, con) -> PerformanceEst
             estimated_rows=0,
             estimated_time=0.0,
             complexity_score=0,
-            warnings=[f"性能估算失败: {str(e)}"],
+            warnings=[f"性能估算failed: {str(e)}"],
         )
 
 
-# ==================== 集合操作查询生成器 ====================
+# ==================== 集合操作query生成器 ====================
 
 
 class SetOperationQueryGenerator:
-    """集合操作查询生成器"""
+    """集合操作query生成器"""
 
     def __init__(self):
-        """初始化集合操作查询生成器"""
+        """initializing集合操作query生成器"""
         self.logger = logging.getLogger(__name__)
 
     def build_set_operation_query(
         self, config: SetOperationConfig, preview_limit: int = None
     ) -> str:
         """
-        构建集合操作查询
+        构建集合操作query
 
         Args:
-            config: 集合操作配置
-            preview_limit: 预览模式下每个表的行数限制
+            config: 集合操作configuration
+            preview_limit: 预览模式下每个table的行数限制
 
         Returns:
-            str: 生成的SQL查询
+            str: 生成的SQLquery
         """
         try:
             operation_type = config.operation_type
             tables = config.tables
             use_by_name = config.use_by_name
 
-            # 验证配置
+            # 验证configuration
             self._validate_config(config)
 
-            # 生成各个子查询
+            # 生成各个子query
             subqueries = []
             for table in tables:
                 subquery = self._build_table_subquery(table, use_by_name, preview_limit)
                 subqueries.append(f"({subquery})")
 
-            # 组合集合操作查询
+            # 组合集合操作query
             if use_by_name and operation_type in [
                 SetOperationType.UNION,
                 SetOperationType.UNION_ALL,
@@ -1707,47 +1707,47 @@ class SetOperationQueryGenerator:
             set_query = f" {operation} ".join(subqueries)
 
             self.logger.info(
-                f"生成集合操作查询: {operation_type}, 表数量: {len(tables)}"
+                f"生成集合操作query: {operation_type}, table数量: {len(tables)}"
             )
             return set_query
 
         except Exception as e:
-            self.logger.error(f"构建集合操作查询失败: {str(e)}")
-            raise ValueError(f"构建集合操作查询失败: {str(e)}")
+            self.logger.error(f"Failed to build set operation query: {str(e)}")
+            raise ValueError(f"Failed to build set operation query: {str(e)}")
 
     def _build_table_subquery(
         self, table: TableConfig, use_by_name: bool, limit: int = None
     ) -> str:
         """
-        构建单表子查询
+        构建单table子query
 
         Args:
-            table: 表配置
+            table: tableconfiguration
             use_by_name: 是否使用BY NAME模式
             limit: 可选的行数限制
 
         Returns:
-            str: 子查询SQL
+            str: 子querySQL
         """
         table_name = table.table_name
         selected_columns = table.selected_columns
         column_mappings = table.column_mappings
         alias = table.alias
 
-        # 构建表名（带别名）
+        # 构建table名（带别名）
         table_ref = f'"{table_name}"'
         if alias:
             table_ref += f' AS "{alias}"'
 
         if use_by_name:
-            # BY NAME模式：DuckDB会自动按列名匹配，使用SELECT *即可
+            # BY NAME模式：DuckDB会自动按column名匹配，使用SELECT *即可
             columns_sql = "*"
         else:
-            # 位置模式：使用选择的列
+            # 位置模式：使用选择的column
             if not selected_columns:
                 columns_sql = "*"
             else:
-                # 转义列名
+                # 转义column名
                 escaped_columns = [f'"{col}"' for col in selected_columns]
                 columns_sql = ", ".join(escaped_columns)
 
@@ -1761,24 +1761,24 @@ class SetOperationQueryGenerator:
 
     def _validate_config(self, config: SetOperationConfig):
         """
-        验证集合操作配置
+        验证集合操作configuration
 
         Args:
-            config: 集合操作配置
+            config: 集合操作configuration
 
         Raises:
-            ValueError: 配置验证失败
+            ValueError: configuration验证failed
         """
         operation_type = config.operation_type
         tables = config.tables
         use_by_name = config.use_by_name
 
-        # 验证表数量
+        # 验证table数量
         if len(tables) < 2:
-            raise ValueError("集合操作至少需要两个表")
+            raise ValueError("集合操作至少需要两个table")
 
         if len(tables) > 10:
-            raise ValueError("集合操作最多支持10个表")
+            raise ValueError("集合操作最多支持10个table")
 
         # 验证BY NAME模式
         if use_by_name:
@@ -1788,19 +1788,19 @@ class SetOperationQueryGenerator:
             ]:
                 raise ValueError("只有UNION和UNION ALL支持BY NAME模式")
 
-        # 验证列兼容性（非BY NAME模式）
+        # 验证column兼容性（非BY NAME模式）
         if not use_by_name:
             self._validate_column_compatibility(tables)
 
     def _validate_column_compatibility(self, tables: List[TableConfig]):
         """
-        验证列兼容性（位置模式）
+        验证column兼容性（位置模式）
 
         Args:
-            tables: 表配置列表
+            tables: tableconfigurationcolumntable
 
         Raises:
-            ValueError: 列兼容性验证失败
+            ValueError: column兼容性验证failed
         """
         if not tables:
             return
@@ -1813,31 +1813,31 @@ class SetOperationQueryGenerator:
 
             if len(first_columns) != len(table_columns):
                 raise ValueError(
-                    f"表 {table.table_name} 的列数量({len(table_columns)}) "
-                    f"与第一个表 {first_table.table_name} 的列数量({len(first_columns)})不匹配"
+                    f"table {table.table_name} 的column数量({len(table_columns)}) "
+                    f"与第一个table {first_table.table_name} 的column数量({len(first_columns)})不匹配"
                 )
 
     def estimate_result_rows(self, config: SetOperationConfig, connection=None) -> int:
         """
-        估算集合操作结果行数
+        估算集合操作result行数
 
         Args:
-            config: 集合操作配置
-            connection: DuckDB连接（可选）
+            config: 集合操作configuration
+            connection: DuckDBconnection（可选）
 
         Returns:
-            int: 预估结果行数
+            int: 预估result行数
         """
         try:
             if not connection:
-                # 如果没有提供连接，返回粗略估算
+                # 如果没有提供connection，返回粗略估算
                 return self._rough_estimate_rows(config)
 
             operation_type = config.operation_type
             tables = config.tables
 
             if operation_type == SetOperationType.UNION:
-                # UNION: 去重后的行数，通常小于所有表行数之和
+                # UNION: 去重后的行数，通常小于所有table行数之和
                 total_rows = 0
                 for table in tables:
                     count_sql = f'SELECT COUNT(*) FROM "{table.table_name}"'
@@ -1847,7 +1847,7 @@ class SetOperationQueryGenerator:
                 return int(total_rows * 0.8)
 
             elif operation_type == SetOperationType.UNION_ALL:
-                # UNION ALL: 所有表行数之和
+                # UNION ALL: 所有table行数之和
                 total_rows = 0
                 for table in tables:
                     count_sql = f'SELECT COUNT(*) FROM "{table.table_name}"'
@@ -1856,22 +1856,22 @@ class SetOperationQueryGenerator:
                 return total_rows
 
             elif operation_type == SetOperationType.EXCEPT:
-                # EXCEPT: 第一个表减去其他表，结果行数通常较小
+                # EXCEPT: 第一个table减去其他table，result行数通常较小
                 if len(tables) >= 2:
                     first_table_rows = connection.execute(
                         f'SELECT COUNT(*) FROM "{tables[0].table_name}"'
                     ).fetchone()[0]
-                    # 粗略估算：假设差集为第一个表的10%
+                    # 粗略估算：假设差集为第一个table的10%
                     return int(first_table_rows * 0.1)
                 return 0
 
             elif operation_type == SetOperationType.INTERSECT:
-                # INTERSECT: 交集，结果行数通常最小
+                # INTERSECT: 交集，result行数通常最小
                 if len(tables) >= 2:
                     first_table_rows = connection.execute(
                         f'SELECT COUNT(*) FROM "{tables[0].table_name}"'
                     ).fetchone()[0]
-                    # 粗略估算：假设交集为第一个表的5%
+                    # 粗略估算：假设交集为第一个table的5%
                     return int(first_table_rows * 0.05)
                 return 0
 
@@ -1879,15 +1879,15 @@ class SetOperationQueryGenerator:
                 return 0
 
         except Exception as e:
-            self.logger.warning(f"估算结果行数失败: {str(e)}")
+            self.logger.warning(f"Failed to estimate result row count: {str(e)}")
             return 0
 
     def _rough_estimate_rows(self, config: SetOperationConfig) -> int:
         """
-        粗略估算行数（无数据库连接时）
+        粗略估算行数（无databaseconnection时）
 
         Args:
-            config: 集合操作配置
+            config: 集合操作configuration
 
         Returns:
             int: 粗略估算的行数
@@ -1895,11 +1895,11 @@ class SetOperationQueryGenerator:
         operation_type = config.operation_type
         table_count = len(config.tables)
 
-        # 基于操作类型和表数量的粗略估算
+        # 基于操作类型和table数量的粗略估算
         if operation_type == SetOperationType.UNION:
-            return 1000 * table_count  # 假设每表1000行，去重后约800行/表
+            return 1000 * table_count  # 假设每table1000行，去重后约800行/table
         elif operation_type == SetOperationType.UNION_ALL:
-            return 1000 * table_count  # 假设每表1000行
+            return 1000 * table_count  # 假设每table1000行
         elif operation_type == SetOperationType.EXCEPT:
             return 100  # 差集通常较小
         elif operation_type == SetOperationType.INTERSECT:
@@ -1908,7 +1908,7 @@ class SetOperationQueryGenerator:
             return 1000
 
 
-# 全局集合操作查询生成器实例
+# 全局集合操作query生成器实例
 set_operation_generator = SetOperationQueryGenerator()
 
 
@@ -1916,27 +1916,27 @@ def generate_set_operation_sql(
     config: SetOperationConfig, preview_limit: int = None
 ) -> str:
     """
-    生成集合操作SQL查询
+    生成集合操作SQLquery
 
     Args:
-        config: 集合操作配置
-        preview_limit: 预览模式下每个表的行数限制
+        config: 集合操作configuration
+        preview_limit: 预览模式下每个table的行数限制
 
     Returns:
-        str: 生成的SQL查询
+        str: 生成的SQLquery
     """
     return set_operation_generator.build_set_operation_query(config, preview_limit)
 
 
 def estimate_set_operation_rows(config: SetOperationConfig, connection=None) -> int:
     """
-    估算集合操作结果行数
+    估算集合操作result行数
 
     Args:
-        config: 集合操作配置
-        connection: DuckDB连接（可选）
+        config: 集合操作configuration
+        connection: DuckDBconnection（可选）
 
     Returns:
-        int: 预估结果行数
+        int: 预估result行数
     """
     return set_operation_generator.estimate_result_rows(config, connection)

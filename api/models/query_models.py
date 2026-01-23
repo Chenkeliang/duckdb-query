@@ -179,7 +179,7 @@ class FederatedQueryRequest(BaseModel):
     def validate_sql(cls, value: str):
         """验证 SQL 不为空"""
         if not value or not value.strip():
-            raise ValueError("SQL 查询语句不能为空")
+            raise ValueError("SQL query cannot be empty")
         return value.strip()
 
 

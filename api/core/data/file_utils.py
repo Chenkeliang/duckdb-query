@@ -1,6 +1,6 @@
 """
-文件工具模块
-提供文件类型检测和文件读取功能
+file工具模块
+提供file类型检测和file读取功能
 """
 
 import pandas as pd
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def detect_file_type(filename: str) -> str:
-    """检测文件类型"""
+    """检测file类型"""
     extension = filename.lower().split(".")[-1]
 
     type_mapping = {
@@ -37,7 +37,7 @@ def detect_file_type(filename: str) -> str:
 def read_file_by_type(
     file_path: str, file_type: str = None, nrows: int = None
 ) -> pd.DataFrame:
-    """根据文件类型读取文件"""
+    """根据file类型读取file"""
     if file_type is None:
         file_type = detect_file_type(file_path)
 
@@ -46,7 +46,7 @@ def read_file_by_type(
             # 智能检测编码，不再盲目尝试 latin-1
             import charset_normalizer
 
-            # 读取文件头部的字节用于检测
+            # 读取file头部的字节用于检测
             with open(file_path, "rb") as f:
                 raw_data = f.read(1024 * 1024)  # 读取前 1MB
                 
@@ -58,14 +58,14 @@ def read_file_by_type(
             for enc in preferred_encodings:
                 try:
                     raw_data.decode(enc)
-                    # 如果能成功解码，但需要进一步确认不是伪造的 (latin-1 总是成功)
-                    # 这里如果是 utf-8 或 gb18030 成功解码，通常就是正确的
+                    # 如果能successfully解码，但需要进一步确认不是伪造的 (latin-1 总是successfully)
+                    # 这里如果是 utf-8 或 gb18030 successfully解码，通常就是正确的
                     detected_encoding = enc
                     break
                 except UnicodeDecodeError:
                     continue
             
-            # 2. 如果常见编码失败，使用 charset-normalizer 深度检测
+            # 2. 如果常见编码failed，使用 charset-normalizer 深度检测
             if not detected_encoding:
                 matches = charset_normalizer.from_bytes(raw_data).best()
                 if matches:
@@ -74,7 +74,7 @@ def read_file_by_type(
             # 3. 最后的兜底
             if not detected_encoding:
                 detected_encoding = "latin-1"  # 即使是乱码也先读出来，保证不报错
-                logger.warning(f"无法检测文件 {file_path} 的编码，回退到 latin-1")
+                logger.warning(f"Unable to detect encoding for file {file_path}, falling back to latin-1")
 
             logger.info(f"Detected encoding for {file_path}: {detected_encoding}")
             
@@ -90,13 +90,13 @@ def read_file_by_type(
                 df = pd.read_excel(file_path)
         elif file_type == "json":
             if nrows is not None:
-                # JSON文件不支持nrows参数，需要手动处理
+                # JSONfile不支持nrowsparameter，需要手动处理
                 df = pd.read_json(file_path)
                 df = df.head(nrows)
             else:
                 df = pd.read_json(file_path)
         elif file_type == "jsonl":
-            # JSONL文件每行一个JSON对象，使用lines=True参数
+            # JSONLfile每行一个JSON对象，使用lines=Trueparameter
             if nrows is not None:
                 df = pd.read_json(file_path, lines=True)
                 df = df.head(nrows)
@@ -104,23 +104,23 @@ def read_file_by_type(
                 df = pd.read_json(file_path, lines=True)
         elif file_type == "parquet":
             if nrows is not None:
-                # Parquet文件不支持nrows参数，需要手动处理
+                # Parquetfile不支持nrowsparameter，需要手动处理
                 df = pd.read_parquet(file_path)
                 df = df.head(nrows)
             else:
                 df = pd.read_parquet(file_path)
         else:
-            raise ValueError(f"不支持的文件类型: {file_type}")
+            raise ValueError(f"Unsupported file type: {file_type}")
 
         return df
 
     except Exception as e:
-        logger.error(f"读取文件失败 {file_path}: {str(e)}")
+        logger.error(f"Failed to read file {file_path}: {str(e)}")
         raise
 
 
 def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
-    """获取文件预览信息"""
+    """gettingfile预览info"""
     try:
         file_type = detect_file_type(file_path)
         normalized_type = "parquet" if file_type == "pq" else file_type
@@ -132,13 +132,13 @@ def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
                 )
             except Exception as preview_error:
                 logger.warning(
-                    "DuckDB预览失败，回退pandas: %s", preview_error
+                    "DuckDB preview failed, falling back to pandas: %s", preview_error
                 )
 
         return _get_pandas_file_preview(file_path, file_type, rows)
 
     except Exception as e:
-        logger.error(f"获取文件预览失败 {file_path}: {str(e)}")
+        logger.error(f"Failed to get file preview {file_path}: {str(e)}")
         raise
 
 
@@ -281,21 +281,21 @@ def load_file_to_duckdb(
     reader_options: Optional[Dict[str, Any]] = None,
     drop_existing: bool = True,
 ) -> Dict[str, Any]:
-    """使用DuckDB原生read_*系列加载文件，必要时回退到pandas。
+    """使用DuckDB原生read_*系columnloadingfile，必要时回退到pandas。
 
     Args:
-        connection: DuckDB连接实例
-        table_name: 目标表名
-        file_path: 本地文件路径
-        file_type: 可选文件类型；缺省时自动根据扩展名推断
-        reader_options: 传递给read_*函数的额外参数
-        drop_existing: 是否在创建前删除旧表
+        connection: DuckDBconnection实例
+        table_name: 目标table名
+        file_path: 本地filepath
+        file_type: 可选file类型；缺省时自动根据扩展名推断
+        reader_options: 传递给read_*函数的额外parameter
+        drop_existing: 是否在creating前deleting旧table
     Returns:
-        包含是否触发pandas回退的结果字典
+        包含是否触发pandas回退的result字典
     """
 
     if connection is None:
-        raise ValueError("load_file_to_duckdb 需要有效的DuckDB连接")
+        raise ValueError("load_file_to_duckdb requires valid DuckDB connection")
 
     normalized_type = (file_type or detect_file_type(file_path) or "").lower()
 
@@ -314,7 +314,7 @@ def load_file_to_duckdb(
     }
 
     if normalized_type not in native_readers:
-        raise ValueError(f"不支持的文件类型: {normalized_type}")
+        raise ValueError(f"Unsupported file type: {normalized_type}")
 
     function_name, defaults = native_readers[normalized_type]
     merged_options = defaults.copy()
@@ -330,11 +330,11 @@ def load_file_to_duckdb(
 
     try:
         connection.execute(load_sql, [file_path])
-        logger.info("使用DuckDB %s 加载文件 %s", function_name, file_path)
+        logger.info("Loaded file %s using DuckDB %s", file_path, function_name)
         return {"fallback_used": False, "engine": "duckdb"}
     except Exception as native_error:
         logger.warning(
-            "DuckDB原生读取 %s 失败，回退pandas: %s", file_path, native_error
+            "DuckDB native read failed for %s, falling back to pandas: %s", file_path, native_error
         )
 
     # pandas fallback
@@ -348,7 +348,7 @@ def load_file_to_duckdb(
         connection.execute(
             f"CREATE TABLE {quoted_table} AS SELECT * FROM {source_ref}"
         )
-        logger.info("已通过pandas回退创建表 %s", table_name)
+        logger.info("Created table %s via pandas fallback", table_name)
         return {"fallback_used": True, "engine": "pandas"}
     finally:
         try:

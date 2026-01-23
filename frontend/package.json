@@ -3,7 +3,7 @@
   "description": "DuckQuery · DuckDB visual analytics SPA frontend",
   "homepage": "https://chenkeliang.github.io/duckdb-query/",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.2",
   "type": "module",
   "keywords": [
     "duckquery",

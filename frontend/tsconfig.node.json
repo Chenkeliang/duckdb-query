@@ -5,8 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
-    "allowJs": true,
-    "noEmit": true
+    "allowJs": true
   },
   "include": [
     "vite.config.js"

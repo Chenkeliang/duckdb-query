@@ -110,7 +110,11 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
       ]);
       showSuccessToast(t, 'CONNECTION_REFRESHED', t('dataSource.refreshConnectionSuccess', { name: connection.name }));
     } catch (error) {
-      showErrorToast(t, undefined, t('dataSource.refreshFailed', { message: (error as Error).message }));
+      showErrorToast(
+        t,
+        (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED",
+        t('dataSource.refreshFailed', { message: (error as Error).message })
+      );
     }
   };
 

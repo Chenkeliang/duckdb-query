@@ -50,7 +50,7 @@ class ValidationError(BaseAPIException):
 class AuthenticationError(BaseAPIException):
     """认证异常"""
     
-    def __init__(self, message: str = "认证失败"):
+    def __init__(self, message: str = "Authentication failed"):
         super().__init__(
             message=message,
             status_code=401,
@@ -61,7 +61,7 @@ class AuthenticationError(BaseAPIException):
 class AuthorizationError(BaseAPIException):
     """授权异常"""
     
-    def __init__(self, message: str = "权限不足"):
+    def __init__(self, message: str = "Insufficient permissions"):
         super().__init__(
             message=message,
             status_code=403,
@@ -73,7 +73,7 @@ class ResourceNotFoundError(BaseAPIException):
     """资源未找到异常"""
     
     def __init__(self, resource_type: str, resource_id: str):
-        message = f"{resource_type} '{resource_id}' 未找到"
+        message = f"{resource_type} '{resource_id}' not found"
         super().__init__(
             message=message,
             status_code=404,
@@ -157,7 +157,7 @@ async def api_exception_handler(request: Request, exc: BaseAPIException) -> JSON
     """API异常处理器"""
 
     logger.error(
-        "API异常: %s - %s",
+        "API exception: %s - %s",
         exc.error_code,
         exc.message,
         extra={
@@ -191,7 +191,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     """HTTP异常处理器"""
     
     logger.warning(
-        "HTTP异常: %s - %s",
+        "HTTP exception: %s - %s",
         exc.status_code,
         exc.detail,
         extra={
@@ -245,7 +245,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     """通用异常处理器"""
     
     logger.error(
-        "未处理的异常: %s - %s",
+        "Unhandled exception: %s - %s",
         type(exc).__name__,
         str(exc),
         extra={
@@ -260,14 +260,14 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         status_code=500,
         content={
             "success": False,
-            "detail": "服务器内部错误",
+            "detail": "Internal server error",
             "error": {
                 "code": "INTERNAL_ERROR",
-                "message": "服务器内部错误",
+                "message": "Internal server error",
                 "details": {}
             },
             "messageCode": "INTERNAL_ERROR",
-            "message": "服务器内部错误",
+            "message": "Internal server error",
             "timestamp": _get_utc_timestamp()
         }
     )

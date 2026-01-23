@@ -6,7 +6,7 @@
  * Updated to use normalizeResponse for standard API response handling.
  */
 
-import { apiClient, handleApiError, getFederatedQueryTimeout, normalizeResponse } from './client';
+import { apiClient, handleApiError, getFederatedQueryTimeout, normalizeResponse, extractMessage } from './client';
 import type {
     QueryRequest,
     QueryResponse,
@@ -168,9 +168,13 @@ export function parseFederatedQueryError(error: Error & { response?: { data?: un
     connectionName?: string;
     host?: string;
 } {
-    const detail = (error.response?.data as Record<string, unknown>)?.detail ||
-        (error.response?.data as Record<string, unknown>)?.message ||
-        error.message || '';
+    const respData = error.response?.data;
+    const detail =
+        extractMessage(respData) ||
+        (respData as Record<string, unknown> | undefined)?.detail ||
+        (respData as Record<string, unknown> | undefined)?.message ||
+        error.message ||
+        '';
     const detailStr = typeof detail === 'string' ? detail : JSON.stringify(detail);
 
     // ATTACH error
@@ -323,17 +327,17 @@ export async function saveQueryToDuckDB(
         }
 
         const response = await apiClient.post('/api/save_query_to_duckdb', requestData);
-        const normalized = normalizeResponse<{ success?: boolean; table_name?: string }>(response);
-
-        const success = normalized.data?.success ?? (normalized as { success?: boolean }).success ?? true;
+        // normalizeResponse 成功返回说明 API 成功，失败会抛出异常
+        const normalized = normalizeResponse<{ table_name?: string }>(response);
 
         return {
-            success,
-            table_name: normalized.data.table_name,
+            success: true,
+            table_name: normalized.data?.table_name,
             message: normalized.message,
             messageCode: normalized.messageCode,
         };
     } catch (error) {
+        // 失败情况由调用方处理异常
         throw error;
     }
 }

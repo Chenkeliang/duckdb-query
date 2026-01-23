@@ -391,6 +391,7 @@
       "executeSuccess": "查询执行成功",
       "executeError": "查询执行失败: {{message}}",
       "mixedSourceWarning": "不能在同一查询中混合 DuckDB 表和外部数据库表。请先将外部表导入到 DuckDB。",
+      "federatedQuery": "联邦查询",
       "targetDatabase": "目标数据库"
     },
     "import": {

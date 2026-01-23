@@ -3,41 +3,44 @@
 提供异步任务的创建、查询和管理功能
 """
 
-import logging
-import os
-import traceback
 # pylint: disable=unreachable,broad-exception-raised,duplicate-code
 import asyncio
 import json
+import logging
+import os
 import time
+import traceback
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
-from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
+from core.common.config_manager import config_manager
+from core.common.timezone_utils import get_current_time, get_current_time_iso
+from core.data.file_datasource_manager import (
+    build_table_metadata_snapshot,
+    create_table_from_dataframe,
+    file_datasource_manager,
+)
+from core.database.duckdb_engine import (
+    create_varchar_table_from_dataframe,
+    get_db_connection,
+)
+from core.services.task_manager import TaskStatus, task_manager
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-from datetime import datetime
-
-from core.services.task_manager import task_manager, TaskStatus
-from core.database.duckdb_engine import get_db_connection, create_varchar_table_from_dataframe
-from core.data.file_datasource_manager import (
-    file_datasource_manager,
-    create_table_from_dataframe,
-    build_table_metadata_snapshot,
-)
-from core.common.config_manager import config_manager
-from core.common.timezone_utils import get_current_time_iso, get_current_time
 from utils.response_helpers import (
-    create_success_response,
-    create_list_response,
-    create_error_response,
     MessageCode,
+    create_error_response,
+    create_list_response,
+    create_success_response,
 )
 
 # 配置日志
 logger = logging.getLogger(__name__)
-from core.services.task_utils import TaskUtils
-from models.query_models import DatabaseConnection, DataSourceType, AttachDatabase
 from core.common.validators import validate_pagination
+from core.services.task_utils import TaskUtils
+from models.query_models import AttachDatabase, DatabaseConnection, DataSourceType
 
 router = APIRouter()
 
@@ -53,23 +56,23 @@ SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite"}
 def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) -> None:
     """
     验证 attach_databases 参数
-    
+
     Args:
         attach_databases: 需要 ATTACH 的外部数据库列表
-        
+
     Raises:
         HTTPException: 当验证失败时抛出 400 错误
-        
+
     Note:
         空数组视为普通查询（非联邦查询），不会抛出错误
     """
     if not attach_databases:
         return
-    
+
     # 空数组视为普通查询
     if len(attach_databases) == 0:
         return
-    
+
     aliases = set()
     for db in attach_databases:
         # 验证 alias 不为空
@@ -78,22 +81,22 @@ def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) 
                 status_code=400,
                 detail={
                     "code": "VALIDATION_ERROR",
-                    "message": "数据库别名不能为空",
-                    "field": "attach_databases.alias"
-                }
+                    "message": "Database alias cannot be empty",
+                    "field": "attach_databases.alias",
+                },
             )
-        
+
         # 验证 connection_id 不为空
         if not db.connection_id or not db.connection_id.strip():
             raise HTTPException(
                 status_code=400,
                 detail={
                     "code": "VALIDATION_ERROR",
-                    "message": "连接ID不能为空",
-                    "field": "attach_databases.connection_id"
-                }
+                    "message": "Connection ID cannot be empty",
+                    "field": "attach_databases.connection_id",
+                },
             )
-        
+
         # 验证别名不重复
         alias = db.alias.strip()
         if alias in aliases:
@@ -101,9 +104,9 @@ def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) 
                 status_code=400,
                 detail={
                     "code": "VALIDATION_ERROR",
-                    "message": f"重复的数据库别名: {alias}",
-                    "field": "attach_databases.alias"
-                }
+                    "message": f"Duplicate database alias: {alias}",
+                    "field": "attach_databases.alias",
+                },
             )
         aliases.add(alias)
 
@@ -118,145 +121,150 @@ def _ensure_database_connection(datasource_id: str, datasource_type: str):
     try:
         db_manager.list_connections()
     except Exception as load_error:
-        logger.debug(f"加载数据库连接配置失败: {load_error}")
+        logger.debug(f"Failed to load database connection configuration: {load_error}")
 
     connection = db_manager.get_connection(datasource_id)
     if connection:
         return connection
 
-
     # 如果此时还未找到，说明连接不存在
-    raise ValueError(f"未找到数据源连接: {datasource_id}")
-
+    raise ValueError(f"Data source connection not found: {datasource_id}")
 
     return db_manager.get_connection(datasource_id)
 
 
 def _fetch_external_query_result(datasource: Dict[str, Any], sql: str) -> pd.DataFrame:
     if not isinstance(datasource, dict):
-        raise ValueError("无效的数据源配置")
+        raise ValueError("Invalid data source configuration")
 
     datasource_type = (datasource.get("type") or "").lower()
     if datasource_type not in SUPPORTED_EXTERNAL_TYPES:
-        raise ValueError(f"不支持的数据源类型: {datasource_type}")
+        raise ValueError(f"Unsupported data source type: {datasource_type}")
 
     datasource_id = datasource.get("id")
     if not datasource_id:
-        raise ValueError("外部数据源缺少ID")
+        raise ValueError("Missing external data source ID")
 
     connection = _ensure_database_connection(datasource_id, datasource_type)
     if not connection:
-        raise ValueError(f"无法建立数据源连接: {datasource_id}")
+        raise ValueError(f"Failed to establish data source connection: {datasource_id}")
 
     from core.database.database_manager import db_manager
 
     result_df = db_manager.execute_query(datasource_id, sql)
     if result_df is None or result_df.empty:
-        raise ValueError("查询结果为空，无法创建异步任务")
+        raise ValueError("Query result is empty, cannot create async task")
 
     return result_df
 
 
 def _attach_external_databases(
-    con,
-    attach_databases: List[Dict[str, str]]
+    con, attach_databases: List[Dict[str, str]]
 ) -> List[str]:
     """
     执行 ATTACH 操作，返回成功附加的别名列表
-    
+
     Args:
         con: DuckDB 连接
         attach_databases: 需要 ATTACH 的数据库列表，每个元素包含 alias 和 connection_id
-        
+
     Returns:
         成功附加的数据库别名列表
-        
+
     Raises:
         ValueError: 当连接不存在或 ATTACH 失败时
-        
+
     Note:
         失败时会 DETACH 已附加的数据库并抛出异常
     """
     import re
+
     from core.database.database_manager import db_manager
-    from core.security.encryption import password_encryptor
     from core.database.duckdb_engine import build_attach_sql
-    
+    from core.security.encryption import password_encryptor
+
     attached = []
-    
+
     # 验证 alias 格式（防止 SQL 注入）
-    SAFE_ALIAS_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
-    
+    SAFE_ALIAS_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
     try:
         for db in attach_databases:
             alias = db["alias"]
             connection_id = db["connection_id"]
-            
+
             # 验证 alias 格式安全性
             if not SAFE_ALIAS_PATTERN.match(alias):
-                raise ValueError(f"无效的数据库别名格式: {alias}")
-            
+                raise ValueError(f"Invalid database alias format: {alias}")
+
             # 获取连接配置
             connection = db_manager.get_connection(connection_id)
             if not connection:
-                raise ValueError(f"数据库连接 '{connection_id}' 不存在")
-            
+                raise ValueError(
+                    f"Database connection '{connection_id}' does not exist"
+                )
+
             # 验证数据库类型
-            db_type = connection.type.value if hasattr(connection.type, 'value') else str(connection.type)
+            db_type = (
+                connection.type.value
+                if hasattr(connection.type, "value")
+                else str(connection.type)
+            )
             if db_type.lower() not in SUPPORTED_EXTERNAL_TYPES:
-                raise ValueError(f"不支持的数据源类型: {db_type}")
-            
+                raise ValueError(f"Unsupported data source type: {db_type}")
+
             # 构建配置
             db_config = connection.params.copy()
-            db_config['type'] = db_type
-            
+            db_config["type"] = db_type
+
             # 解密密码（不记录敏感信息）
-            password = db_config.get('password', '')
+            password = db_config.get("password", "")
             if password and password_encryptor.is_encrypted(password):
-                db_config['password'] = password_encryptor.decrypt_password(password)
-                logger.debug(f"连接 {connection_id} 密码已处理")
-            
+                db_config["password"] = password_encryptor.decrypt_password(password)
+                logger.debug(f"Connection {connection_id} password processed")
+
             # 执行 ATTACH
             attach_sql = build_attach_sql(alias, db_config)
-            logger.info(f"执行 ATTACH: {alias} (connection_id: {connection_id})")
+            logger.info(f"Executing ATTACH: {alias} (connection_id: {connection_id})")
             con.execute(attach_sql)
             attached.append(alias)
-            logger.info(f"成功 ATTACH 数据库: {alias}")
-            
+            logger.info(f"Successfully ATTACH database: {alias}")
+
     except Exception as e:
         # 回滚已附加的数据库
-        logger.error(f"ATTACH 失败: {e}, 回滚已附加的数据库: {attached}")
+        logger.error(f"ATTACH failed, rolling back attached databases: {attached}")
         _detach_databases(con, attached)
         raise
-    
+
     return attached
 
 
 def _detach_databases(con, aliases: List[str]) -> None:
     """
-    执行 DETACH 操作，忽略单个失败继续处理其他
-    
+    执行 DETACH failed继续处理其他
+
     Args:
         con: DuckDB 连接
         aliases: 需要 DETACH 的数据库别名列表
-        
+
     Note:
         alias 已在 _attach_external_databases 中验证过格式安全性
     """
     import re
-    SAFE_ALIAS_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
-    
+
+    SAFE_ALIAS_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
     for alias in aliases:
         try:
             # 二次验证 alias 格式（防御性编程）
             if not SAFE_ALIAS_PATTERN.match(alias):
-                logger.warning(f"跳过无效别名格式的 DETACH: {alias}")
+                logger.warning(f"Skipping DETACH with invalid alias format: {alias}")
                 continue
             # 使用引号包裹 alias 防止 SQL 注入
             con.execute(f'DETACH "{alias}"')
-            logger.info(f"成功 DETACH 数据库: {alias}")
+            logger.info(f"Successfully DETACH database: {alias}")
         except Exception as e:
-            logger.warning(f"DETACH {alias} 失败: {e}")
+            logger.warning(f"DETACH failed: {e}")
 
 
 class AsyncQueryRequest(BaseModel):
@@ -312,15 +320,13 @@ class RetryTaskRequest(BaseModel):
     datasource_override: Optional[Dict[str, Any]] = None
 
 
-@router.post(
-    "/api/async-tasks", tags=["Async Tasks"]
-)
+@router.post("/api/async-tasks", tags=["Async Tasks"])
 async def submit_async_query(
     request: AsyncQueryRequest, background_tasks: BackgroundTasks
 ):
     """
     提交异步查询任务
-    
+
     支持联邦查询：通过 attach_databases 参数指定需要 ATTACH 的外部数据库
     """
     try:
@@ -329,16 +335,18 @@ async def submit_async_query(
                 status_code=400,
                 detail={
                     "code": "VALIDATION_ERROR",
-                    "message": "SQL查询不能为空",
-                    "field": "sql"
-                }
+                    "message": "SQL query cannot be empty",
+                    "field": "sql",
+                },
             )
 
         # 验证 attach_databases 参数
         validate_attach_databases(request.attach_databases)
 
         # 判断是否为联邦查询
-        is_federated = bool(request.attach_databases and len(request.attach_databases) > 0)
+        is_federated = bool(
+            request.attach_databases and len(request.attach_databases) > 0
+        )
 
         # 创建任务，将信息存储在任务查询中
         task_query = {
@@ -349,7 +357,9 @@ async def submit_async_query(
             "attach_databases": [
                 {"alias": db.alias, "connection_id": db.connection_id}
                 for db in request.attach_databases
-            ] if request.attach_databases else None,
+            ]
+            if request.attach_databases
+            else None,
             "is_federated": is_federated,
         }
 
@@ -371,7 +381,10 @@ async def submit_async_query(
                 request.custom_table_name,
                 request.task_type,
                 request.datasource,
-                [{"alias": db.alias, "connection_id": db.connection_id} for db in request.attach_databases],
+                [
+                    {"alias": db.alias, "connection_id": db.connection_id}
+                    for db in request.attach_databases
+                ],
             )
         else:
             # 普通查询：使用原有执行函数
@@ -392,19 +405,17 @@ async def submit_async_query(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"提交异步查询任务失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"提交任务失败: {str(e)}")
+        logger.error(f"Failed to submit async query task: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to submit task: {str(e)}")
 
 
 @router.get("/api/async-tasks", tags=["Async Tasks"])
 async def list_async_tasks(
-    limit: int = 20,
-    offset: int = 0,
-    order_by: str = "created_at"
+    limit: int = 20, offset: int = 0, order_by: str = "created_at"
 ):
     """
     获取异步任务列表（支持分页）
-    
+
     Args:
         limit: 每页条数 (20, 50, 100)
         offset: 偏移量
@@ -412,7 +423,7 @@ async def list_async_tasks(
     """
     # 校验分页参数
     validate_pagination(limit, offset)
-    
+
     try:
         tasks, total = task_manager.list_tasks(limit, offset, order_by)
         return create_list_response(
@@ -423,8 +434,8 @@ async def list_async_tasks(
             page_size=limit,
         )
     except Exception as e:
-        logger.error(f"获取异步任务列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")
+        logger.error(f"Failed to get async task list: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get task list: {str(e)}")
 
 
 @router.get(
@@ -438,7 +449,7 @@ async def get_async_task(task_id: str):
     try:
         task = task_manager.get_task(task_id)
         if not task:
-            raise HTTPException(status_code=404, detail="任务不存在")
+            raise HTTPException(status_code=404, detail="Task not found")
 
         # 解析任务查询中的格式信息
         import json
@@ -459,8 +470,8 @@ async def get_async_task(task_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取异步任务详情失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取任务详情失败: {str(e)}")
+        logger.error(f"Failed to get async task detail: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch task detail: {str(e)}")
 
 
 @router.post(
@@ -472,35 +483,35 @@ async def cancel_async_task(task_id: str, request: CancelTaskRequest):
     请求取消异步任务（使用取消信号模式，避免写-写冲突）
     """
     try:
-        reason = (request.reason or "用户手动取消").strip()
+        reason = (request.reason or "User cancelled manually").strip()
         # 使用 request_cancellation 设置取消标志，由后台任务检测并自行终止
         success = task_manager.request_cancellation(task_id, reason)
         if not success:
             # 检查任务是否存在
             task = task_manager.get_task(task_id)
             if not task:
-                raise HTTPException(status_code=404, detail="任务不存在")
+                raise HTTPException(status_code=404, detail="Task not found")
             # 任务存在但状态不允许取消（已完成或已失败）
             raise HTTPException(
-                status_code=400, 
-                detail=f"任务状态不允许取消，当前状态: {task.status.value}"
+                status_code=400,
+                detail=f"Task status does not allow cancellation. Current status: {task.status.value}",
             )
         return create_success_response(
             data={"task_id": task_id},
             message_code=MessageCode.TASK_CANCELLED,
-            message="取消请求已提交",
+            message="Cancellation request submitted",
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"取消任务失败: {task_id}, 错误: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"取消任务失败: {str(e)}")
+        logger.error(f"Failed to cancel task {task_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel task: {str(e)}")
 
 
 def _extract_task_payload(task) -> Dict[str, Any]:
     """
     提取任务的原始执行参数
-    
+
     支持提取联邦查询的 attach_databases 配置
     """
     metadata = task.metadata or {}
@@ -528,11 +539,17 @@ def _extract_task_payload(task) -> Dict[str, Any]:
                     if isinstance(guess, dict) and "sql" in guess:
                         payload.setdefault("sql", guess.get("sql"))
                         payload.setdefault("task_type", guess.get("task_type"))
-                        payload.setdefault("custom_table_name", guess.get("custom_table_name"))
+                        payload.setdefault(
+                            "custom_table_name", guess.get("custom_table_name")
+                        )
                         payload.setdefault("datasource", guess.get("datasource"))
                         # 提取联邦查询配置
-                        payload.setdefault("attach_databases", guess.get("attach_databases"))
-                        payload.setdefault("is_federated", guess.get("is_federated", False))
+                        payload.setdefault(
+                            "attach_databases", guess.get("attach_databases")
+                        )
+                        payload.setdefault(
+                            "is_federated", guess.get("is_federated", False)
+                        )
                 except Exception:
                     pass
             else:
@@ -556,19 +573,23 @@ async def retry_async_task(
     try:
         task = task_manager.get_task(task_id)
         if not task:
-            raise HTTPException(status_code=404, detail="任务不存在")
+            raise HTTPException(status_code=404, detail="Task not found")
 
         payload = _extract_task_payload(task)
-        logger.info(f"重试任务 {task_id}, 提取的 payload: {payload}")
+        logger.info(f"Retrying task {task_id}, extracted payload: {payload}")
 
         sql = (request.override_sql or payload.get("sql") or "").strip()
         if not sql:
-            raise HTTPException(status_code=400, detail="原任务缺少SQL，无法重试")
+            raise HTTPException(
+                status_code=400, detail="Original task missing SQL, cannot retry"
+            )
 
         task_type = payload.get("task_type", "query")
         datasource = request.datasource_override or payload.get("datasource")
-        custom_table_name = request.custom_table_name or payload.get("custom_table_name")
-        
+        custom_table_name = request.custom_table_name or payload.get(
+            "custom_table_name"
+        )
+
         # 提取联邦查询配置（支持覆盖）
         attach_databases = payload.get("attach_databases")
         is_federated = bool(attach_databases and len(attach_databases) > 0)
@@ -620,14 +641,14 @@ async def retry_async_task(
         return create_success_response(
             data={"task_id": new_task_id},
             message_code=MessageCode.TASK_RETRY_SUCCESS,
-            message="任务已重新提交执行",
+            message="Task has been resubmitted",
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"重试任务失败 {task_id}: {str(e)}")
+        logger.error(f"Failed to retry task {task_id}: {str(e)}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"重试任务失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retry task: {str(e)}")
 
 
 @router.post("/api/async-tasks/cleanup-stuck", tags=["Async Tasks"])
@@ -643,8 +664,8 @@ async def cleanup_stuck_tasks():
             message_code=MessageCode.TASK_CLEANUP_SUCCESS,
         )
     except Exception as e:
-        logger.error(f"清理卡住任务失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}")
+        logger.error(f"Failed to clean stuck tasks: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
 
 
 @router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
@@ -659,7 +680,8 @@ async def generate_and_download_file(task_id: str, request: dict = Body(...)):
         # 验证格式参数
         if format not in ["csv", "parquet"]:
             raise HTTPException(
-                status_code=400, detail="不支持的格式，只支持csv和parquet"
+                status_code=400,
+                detail="Unsupported format, only csv and parquet are allowed",
             )
 
         # 生成下载文件
@@ -667,7 +689,7 @@ async def generate_and_download_file(task_id: str, request: dict = Body(...)):
 
         # 检查文件是否存在
         if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="生成的文件不存在")
+            raise HTTPException(status_code=404, detail="Generated file not found")
 
         # 确定文件名和媒体类型
         file_name = os.path.basename(file_path)
@@ -681,11 +703,11 @@ async def generate_and_download_file(task_id: str, request: dict = Body(...)):
         )
 
     except ValueError as e:
-        logger.warning(f"下载文件生成失败: {task_id}, 错误: {str(e)}")
+        logger.warning(f"Failed to generate download file: {task_id}, error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"下载文件生成失败: {task_id}, 错误: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"生成下载文件失败: {str(e)}")
+        logger.error(f"Failed to generate download file: {task_id}, error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate download file: {str(e)}")
 
 
 def execute_async_query(
@@ -698,17 +720,18 @@ def execute_async_query(
     """
     执行异步查询（后台任务）- 内存优化版本
     使用DuckDB原生功能，避免Python内存加载
-    
+
     关键设计：DuckDB 是单写入者数据库，多个连接同时写入会导致写写冲突。
     因此，所有写操作（查询执行、任务状态更新、元数据保存）必须串行化，
     不能在连接池连接持有期间使用其他连接写入。
-    
+
     支持查询中断：使用 interruptible_connection 包装连接，支持取消操作。
     """
     import duckdb
     from core.database.duckdb_pool import get_connection_pool, interruptible_connection
+
     pool = get_connection_pool()
-    
+
     # 用于存储查询结果的临时变量
     table_name = None
     row_count = 0
@@ -718,34 +741,33 @@ def execute_async_query(
     datasource_type = ""
     query_success = False
     start_time = time.time()
-    
+
     try:
         # 第一步：标记任务为运行中（独立事务）
         if not task_manager.start_task(task_id):
-            logger.error(f"无法启动任务: {task_id}")
+            logger.error(f"Unable to start task: {task_id}")
             return
 
         # 取消检查点 1
         if task_manager.is_cancellation_requested(task_id):
-            logger.info(f"任务在启动后被取消: {task_id}")
-            task_manager.mark_cancelled(task_id, "用户取消（启动前）")
+            logger.info(f"Task cancelled after start: {task_id}")
+            task_manager.mark_cancelled(task_id, "User cancelled (before start)")
             return
 
-        logger.info(f"开始执行异步查询任务: {task_id}")
+        logger.info(f"Starting async query task: {task_id}")
 
         # 智能移除系统自动添加的LIMIT
         from routers.query import remove_auto_added_limit
+
         clean_sql = remove_auto_added_limit(sql)
         if clean_sql != sql.strip():
-            logger.info(f"异步任务移除了系统自动添加的LIMIT: {sql} -> {clean_sql}")
+            logger.info(f"Async task removed auto-added LIMIT: {sql} -> {clean_sql}")
         else:
-            logger.info(f"异步任务使用原始SQL: {clean_sql}")
+            logger.info(f"Async task using original SQL: {clean_sql}")
 
         datasource_info = datasource if isinstance(datasource, dict) else None
         datasource_type = (
-            (datasource_info.get("type") or "").lower()
-            if datasource_info
-            else ""
+            (datasource_info.get("type") or "").lower() if datasource_info else ""
         )
         use_external_source = datasource_type in SUPPORTED_EXTERNAL_TYPES
         source_datasource_id = datasource_info.get("id") if datasource_info else None
@@ -754,12 +776,13 @@ def execute_async_query(
         if custom_table_name:
             safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
             import re
+
             safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
             table_name = safe_table_name
         else:
             table_name = task_utils.task_id_to_table_name(task_id)
-        logger.info(f"[{task_id}] 创建持久表存储查询结果: {table_name}")
-        logger.debug(f"[{task_id}] 准备执行 SQL: {clean_sql[:200]}...")
+        logger.info(f"[{task_id}] Creating persistent table to store query result: {table_name}")
+        logger.debug(f"[{task_id}] Preparing to execute SQL: {clean_sql[:200]}...")
 
         # 第二步：执行查询（使用可中断连接）
         with interruptible_connection(task_id, clean_sql) as con:
@@ -768,55 +791,58 @@ def execute_async_query(
                     f"异步任务将使用外部数据源 {source_datasource_id} ({datasource_type}) 执行查询"
                 )
                 result_df = _fetch_external_query_result(datasource_info, clean_sql)
-                created = create_varchar_table_from_dataframe(table_name, result_df, con)
+                created = create_varchar_table_from_dataframe(
+                    table_name, result_df, con
+                )
                 if not created:
-                    raise ValueError("外部数据源结果写入DuckDB失败")
-                logger.info(f"外部数据源查询结果已写入DuckDB表: {table_name}")
+                    raise ValueError("Failed to write external data source result to DuckDB")
+                logger.info(f"External data source result written to DuckDB table: {table_name}")
             else:
                 create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
-                logger.debug(f"[{task_id}] 开始执行 CREATE TABLE AS SELECT...")
+                logger.debug(f"[{task_id}] Starting CREATE TABLE AS SELECT...")
                 con.execute(create_sql)
-                logger.info(f"[{task_id}] 持久表创建成功: {table_name}")
+                logger.info(f"[{task_id}] Persistent table created successfully: {table_name}")
 
             # 获取元数据（在同一连接中）
             metadata_snapshot = build_table_metadata_snapshot(con, table_name)
             row_count = metadata_snapshot.get("row_count", 0)
-            logger.info(f"查询结果行数: {row_count}")
+            logger.info(f"Query result row count: {row_count}")
 
             columns_sql = f'DESCRIBE "{table_name}"'
             columns_info = con.execute(columns_sql).fetchall()
             columns = [{"name": col[0], "type": col[1]} for col in columns_info]
-            logger.info(f"[{task_id}] 查询结果列数: {len(columns)}")
-            
-            logger.debug(f"[{task_id}] 资源释放检查点 - 即将释放连接")
+            logger.info(f"[{task_id}] Query result column count: {len(columns)}")
+
+            logger.debug(f"[{task_id}] Resource release checkpoint - about to release connection")
 
             # 内存清理
             try:
                 # 显式触发GC回收内存
                 import gc
+
                 gc.collect()
-                logger.info("内存清理完成")
+                logger.info("Memory cleanup completed")
             except Exception as cleanup_error:
-                logger.warning(f"内存清理失败: {str(cleanup_error)}")
+                logger.warning(f"Memory cleanup failed: {str(cleanup_error)}")
 
             query_success = True
         # 连接池连接在这里释放
 
         # 取消检查点 2: 查询完成后检查
         if task_manager.is_cancellation_requested(task_id):
-            logger.info(f"任务在查询完成后被取消: {task_id}, 清理已创建的表")
+            logger.info(f"Task was cancelled after query completion: {task_id}, cleaning created table")
             # 使用新连接清理表
             with pool.get_connection() as con:
                 try:
                     con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-                    logger.info(f"已清理取消任务的表: {table_name}")
+                    logger.info(f"Cleaned table for cancelled task: {table_name}")
                 except Exception as drop_error:
-                    logger.warning(f"清理表失败: {drop_error}")
-            task_manager.mark_cancelled(task_id, "用户取消（查询完成后）")
+                    logger.warning(f"Failed to clean table: {drop_error}")
+            task_manager.mark_cancelled(task_id, "User cancelled after query completion")
             return
 
         # 第三步：保存元数据（连接池连接已释放，可以安全使用其他连接）
-        logger.info(f"[ASYNC_DEBUG] [{task_id}] 步骤3: 保存元数据")
+        logger.info(f"[ASYNC_DEBUG] [{task_id}] Step 3: Saving metadata")
         source_id = table_name
         table_metadata = {
             "source_id": source_id,
@@ -835,9 +861,9 @@ def execute_async_query(
 
         try:
             file_datasource_manager.save_file_datasource(table_metadata)
-            logger.info(f"表元数据保存成功: {source_id}")
+            logger.info(f"Table metadata saved successfully: {source_id}")
         except Exception as meta_error:
-            logger.warning(f"保存表元数据失败（非致命）: {str(meta_error)}")
+            logger.warning(f"Failed to save table metadata (non-fatal): {str(meta_error)}")
 
         # 第四步：更新任务状态为完成（独立事务）
         task_info = {
@@ -858,56 +884,66 @@ def execute_async_query(
             task_info["display_name"] = custom_table_name
 
         complete_result = task_manager.complete_task(task_id, task_info)
-        logger.info(f"[{task_id}] complete_task 返回结果: {complete_result}")
+        logger.info(f"[{task_id}] complete_task return result: {complete_result}")
         if not complete_result:
             # 检查当前状态，防止覆盖已取消或已完成的状态
             current_task = task_manager.get_task(task_id)
             current_status = current_task.status.value if current_task else "None"
-            
+
             # 使用字符串值进行比较，避免Enum身份问题
-            if current_status in ("cancelling", "cancelled", "failed", "success", "completed"):
-                logger.info(f"[{task_id}] 任务最终状态为 {current_status}，无需强制标记失败")
+            if current_status in (
+                "cancelling",
+                "cancelled",
+                "failed",
+                "success",
+                "completed",
+            ):
+                logger.info(
+                    f"[{task_id}] Task final status is, no need to force mark as failed"
+                )
             else:
-                logger.warning(f"[{task_id}] complete_task 失败且状态异常(status={current_status})，执行 force_fail_task")
+                logger.warning(
+                    f"[{task_id}] complete_task failed with abnormal status, executing force_fail_task"
+                )
                 # 使用 force_fail_task 确保任务状态被更新
                 task_manager.force_fail_task(
-                    task_id, 
-                    f"任务执行完成但状态更新失败(Last status: {current_status})，请检查结果表",
-                    {"actual_result": task_info}
+                    task_id,
+                    f"Task execution completed but status update failed, please check result table",
+                    {"actual_result": task_info},
                 )
-                logger.error(f"[{task_id}] 无法标记任务为成功，已强制标记为失败")
+                logger.error(f"[{task_id}] Unable to mark task as successful, force marked as failed")
 
         execution_time = time.time() - start_time
         logger.info(
-            f"异步查询任务执行完成: {task_id}, 执行时间: {execution_time:.2f}秒"
+            f"Async query task completed: {task_id}, elapsed time: {execution_time:.2f}s"
         )
 
     except duckdb.InterruptException:
         # 查询被中断（用户取消）
-        logger.info(f"任务 {task_id} 的查询被中断")
-        
+        logger.info(f"Task {task_id} query interrupted")
+
         # 清理可能已创建的表
         if table_name:
             try:
                 with pool.get_connection() as con:
                     con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-                    logger.info(f"已清理被中断任务的表: {table_name}")
+                    logger.info(f"Cleaned table for interrupted task: {table_name}")
             except Exception as drop_error:
-                logger.warning(f"清理表失败: {drop_error}")
-        
+                logger.warning(f"Failed to clean table: {drop_error}")
+
         # 标记为取消状态
-        task_manager.mark_cancelled(task_id, "查询被用户中断")
+        task_manager.mark_cancelled(task_id, "Query interrupted by user")
 
     except Exception as e:
-        logger.error(f"执行异步查询任务失败: {task_id}, 错误: {str(e)}")
+        logger.error(f"Async query task failed: {task_id}, error: {str(e)}")
         logger.error(traceback.format_exc())
 
         # 检查是否因取消而异常
         if task_manager.is_cancellation_requested(task_id):
-            task_manager.mark_cancelled(task_id, "用户取消")
+            task_manager.mark_cancelled(task_id, "Cancelled by user")
         else:
             if not task_manager.fail_task(task_id, str(e)):
-                logger.error(f"无法标记任务为失败: {task_id}")
+                logger.error(f"Unable to mark task as failed: {task_id}")
 
 
 def execute_async_federated_query(
@@ -920,14 +956,14 @@ def execute_async_federated_query(
 ):
     """
     执行异步联邦查询（后台任务）
-    
+
     支持跨数据库查询，通过 ATTACH 外部数据库实现联邦查询。
-    
+
     关键设计：
     1. 所有 ATTACH/DETACH 操作必须在同一连接上下文中完成
     2. 无论成功或失败，都必须执行 DETACH 清理
     3. 支持任务取消检查点
-    
+
     Args:
         task_id: 任务ID
         sql: SQL 查询语句
@@ -938,8 +974,9 @@ def execute_async_federated_query(
     """
     import duckdb
     from core.database.duckdb_pool import get_connection_pool, interruptible_connection
+
     pool = get_connection_pool()
-    
+
     # 用于存储查询结果的临时变量
     table_name = None
     row_count = 0
@@ -947,39 +984,41 @@ def execute_async_federated_query(
     metadata_snapshot = {}
     attached_aliases = []
     start_time = time.time()
-    
+
     try:
         # 第一步：标记任务为运行中
         if not task_manager.start_task(task_id):
-            logger.error(f"无法启动联邦查询任务: {task_id}")
+            logger.error(f"Unable to start federated query task: {task_id}")
             return
 
         # 取消检查点 1
         if task_manager.is_cancellation_requested(task_id):
-            logger.info(f"联邦查询任务在启动后被取消: {task_id}")
-            task_manager.mark_cancelled(task_id, "用户取消（启动前）")
+            logger.info(f"Federated query task cancelled after start: {task_id}")
+            task_manager.mark_cancelled(task_id, "User cancelled (before start)")
             return
 
-        logger.info(f"开始执行异步联邦查询任务: {task_id}")
-        logger.info(f"需要 ATTACH 的数据库: {attach_databases}")
+        logger.info(f"Starting async federated query task: {task_id}")
+        logger.info(f"Databases to ATTACH: {attach_databases}")
 
         # 智能移除系统自动添加的LIMIT
         from routers.query import remove_auto_added_limit
+
         clean_sql = remove_auto_added_limit(sql)
         if clean_sql != sql.strip():
-            logger.info(f"联邦查询移除了系统自动添加的LIMIT: {sql} -> {clean_sql}")
+            logger.info(f"Federated query removed auto-added LIMIT: {sql} -> {clean_sql}")
         else:
-            logger.info(f"联邦查询使用原始SQL: {clean_sql}")
+            logger.info(f"Federated query using original SQL: {clean_sql}")
 
         # 确定表名
         if custom_table_name:
             safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
             import re
+
             safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
             table_name = safe_table_name
         else:
             table_name = task_utils.task_id_to_table_name(task_id)
-        logger.info(f"联邦查询结果将存储到表: {table_name}")
+        logger.info(f"Federated query result will be stored in table: {table_name}")
 
         # 第二步：在同一连接中执行 ATTACH、查询、DETACH
         with interruptible_connection(task_id, clean_sql) as con:
@@ -987,58 +1026,61 @@ def execute_async_federated_query(
                 # 2.1 执行 ATTACH 操作
                 if attach_databases:
                     attached_aliases = _attach_external_databases(con, attach_databases)
-                    logger.info(f"成功 ATTACH {len(attached_aliases)} 个数据库: {attached_aliases}")
+                    logger.info(
+                        f"Successfully ATTACHed {len(attached_aliases)} databases: {attached_aliases}"
+                    )
 
                 # 取消检查点 2: ATTACH 完成后检查
                 if task_manager.is_cancellation_requested(task_id):
-                    logger.info(f"联邦查询任务在 ATTACH 后被取消: {task_id}")
+                    logger.info(f"Federated query task cancelled after ATTACH: {task_id}")
                     _detach_databases(con, attached_aliases)
-                    task_manager.mark_cancelled(task_id, "用户取消（ATTACH后）")
+                    task_manager.mark_cancelled(task_id, "User cancelled (after ATTACH)")
                     return
 
                 # 2.2 执行查询并保存结果
                 create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
-                logger.info(f"执行联邦查询: {create_sql[:200]}...")
+                logger.info(f"Executing federated query: {create_sql[:200]}...")
                 con.execute(create_sql)
-                logger.info(f"联邦查询结果表创建成功: {table_name}")
+                logger.info(f"Federated query result table created: {table_name}")
 
                 # 2.3 获取元数据（在同一连接中）
                 metadata_snapshot = build_table_metadata_snapshot(con, table_name)
                 row_count = metadata_snapshot.get("row_count", 0)
-                logger.info(f"联邦查询结果行数: {row_count}")
+                logger.info(f"Federated query result row count: {row_count}")
 
-                columns_sql = f'DESCRIBE "{table_name}"'
+                columns_sql = f'DESCRIBE \"{table_name}\"'
                 columns_info = con.execute(columns_sql).fetchall()
                 columns = [{"name": col[0], "type": col[1]} for col in columns_info]
-                logger.info(f"联邦查询结果列数: {len(columns)}")
+                logger.info(f"Federated query result column count: {len(columns)}")
 
                 # 内存清理
                 try:
                     # 显式触发GC回收内存
                     import gc
+
                     gc.collect()
-                    logger.info("内存清理完成")
+                    logger.info("Memory cleanup completed")
                 except Exception as cleanup_error:
-                    logger.warning(f"内存清理失败: {str(cleanup_error)}")
+                    logger.warning(f"Memory cleanup failed: {str(cleanup_error)}")
 
             finally:
-                # 2.4 DETACH 清理（无论成功或失败都要执行）
+                # 2.4 DETACH failed都要执行）
                 if attached_aliases:
-                    logger.info(f"开始 DETACH 清理: {attached_aliases}")
+                    logger.info(f"Starting DETACH cleanup: {attached_aliases}")
                     _detach_databases(con, attached_aliases)
 
         # 连接池连接在这里释放
 
         # 取消检查点 3: 查询完成后检查
         if task_manager.is_cancellation_requested(task_id):
-            logger.info(f"联邦查询任务在查询完成后被取消: {task_id}, 清理已创建的表")
+            logger.info(f"Federated query task cancelled after completion: {task_id}, cleaning created table")
             with pool.get_connection() as con:
                 try:
-                    con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-                    logger.info(f"已清理取消任务的表: {table_name}")
+                    con.execute(f'DROP TABLE IF EXISTS \"{table_name}\"')
+                    logger.info(f"Cleaned table for cancelled task: {table_name}")
                 except Exception as drop_error:
-                    logger.warning(f"清理表失败: {drop_error}")
-            task_manager.mark_cancelled(task_id, "用户取消（查询完成后）")
+                    logger.warning(f"Failed to clean table: {drop_error}")
+            task_manager.mark_cancelled(task_id, "User cancelled after completion")
             return
 
         # 第三步：保存元数据
@@ -1058,9 +1100,9 @@ def execute_async_federated_query(
 
         try:
             file_datasource_manager.save_file_datasource(table_metadata)
-            logger.info(f"联邦查询表元数据保存成功: {source_id}")
+            logger.info(f"Federated query table metadata saved: {source_id}")
         except Exception as meta_error:
-            logger.warning(f"保存表元数据失败（非致命）: {str(meta_error)}")
+            logger.warning(f"Saving table metadata failed (non-fatal): {str(meta_error)}")
 
         # 第四步：更新任务状态为完成
         task_info = {
@@ -1078,56 +1120,66 @@ def execute_async_federated_query(
             task_info["custom_table_name"] = custom_table_name
             task_info["display_name"] = custom_table_name
 
-        logger.info(f"[{task_id}] (联邦) 开始调用 complete_task 更新状态")
+        logger.info(f"[{task_id}] (Federated) calling complete_task to update status")
         complete_result = task_manager.complete_task(task_id, task_info)
-        logger.info(f"[{task_id}] (联邦) complete_task 返回结果: {complete_result}")
+        logger.info(f"[{task_id}] (Federated) complete_task result: {complete_result}")
         if not complete_result:
             # 检查当前状态，防止覆盖已取消或已完成的状态
             current_task = task_manager.get_task(task_id)
             current_status = current_task.status.value if current_task else "None"
-            
+
             # 使用字符串值进行比较，避免Enum身份问题
-            if current_status in ("cancelling", "cancelled", "failed", "success", "completed"):
-                logger.info(f"[{task_id}] (联邦) 任务最终状态为 {current_status}，无需强制标记失败")
+            if current_status in (
+                "cancelling",
+                "cancelled",
+                "failed",
+                "success",
+                "completed",
+            ):
+                logger.info(
+                    f"[{task_id}] (Federated) task final status {current_status}, no need to force fail"
+                )
             else:
-                logger.warning(f"[{task_id}] (联邦) complete_task 失败且状态异常(status={current_status})，执行 force_fail_task")
+                logger.warning(
+                    f"[{task_id}] (Federated) complete_task failed with abnormal status ({current_status}), executing force_fail_task"
+                )
                 # 使用 force_fail_task 确保任务状态被更新
                 task_manager.force_fail_task(
-                    task_id, 
-                    f"联邦查询执行完成但状态更新失败(Last status: {current_status})，请检查结果表",
-                    {"actual_result": task_info}
+                    task_id,
+                    f"Federated query execution completed but status update failed, please check result table",
+                    {"actual_result": task_info},
                 )
-                logger.error(f"[{task_id}] (联邦) 无法标记任务为成功，已强制标记为失败")
+                logger.error(f"[{task_id}] (Federated) Unable to mark task as successful, force marked as failed")
 
         execution_time = time.time() - start_time
         logger.info(
-            f"异步联邦查询任务执行完成: {task_id}, 执行时间: {execution_time:.2f}秒, "
-            f"附加数据库: {attached_aliases}"
+            f"Async federated query task completed: {task_id}, execution time: {execution_time:.2f}s, "
+            f"attached databases: {attached_aliases}"
         )
 
     except duckdb.InterruptException:
         # 查询被中断（用户取消）
-        logger.info(f"联邦查询任务 {task_id} 被中断")
-        
+        logger.info(f"Federated query task {task_id} was interrupted")
+
         # 清理可能已创建的表
         if table_name:
             try:
                 with pool.get_connection() as con:
                     con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-                    logger.info(f"已清理被中断联邦查询的表: {table_name}")
+                    logger.info(f"Cleaned table for interrupted federated query: {table_name}")
             except Exception as drop_error:
-                logger.warning(f"清理表失败: {drop_error}")
-        
+                logger.warning(f"Failed to clean table: {drop_error}")
+
         # 标记为取消状态
-        task_manager.mark_cancelled(task_id, "联邦查询被用户中断")
+        task_manager.mark_cancelled(task_id, "Federated query interrupted by user")
 
     except Exception as e:
-        logger.error(f"执行异步联邦查询任务失败: {task_id}, 错误: {str(e)}")
+        logger.error(f"Async federated query task failed: {task_id}, error: {str(e)}")
         logger.error(traceback.format_exc())
 
         # 检查是否因取消而异常
         if task_manager.is_cancellation_requested(task_id):
-            task_manager.mark_cancelled(task_id, "用户取消")
+            task_manager.mark_cancelled(task_id, "Cancelled by user")
         else:
             # 根据错误类型分类错误代码
             error_message = str(e)
@@ -1140,20 +1192,26 @@ def execute_async_federated_query(
                 error_code = "ATTACH_FAILED"
             elif "timeout" in error_str or "超时" in error_message:
                 error_code = "TIMEOUT"
-            elif "authentication" in error_str or "认证" in error_message or "密码" in error_message:
+            elif (
+                "authentication" in error_str
+                or "认证" in error_message
+                or "密码" in error_message
+            ):
                 error_code = "AUTH_FAILED"
             else:
                 error_code = "FEDERATED_QUERY_FAILED"
-            
+
             # 使用 force_fail_task 保存详细错误信息到元数据
             error_metadata = {
                 "error_code": error_code,
                 "is_federated": True,
                 "attached_databases": attached_aliases,
             }
-            
-            if not task_manager.force_fail_task(task_id, error_message, metadata_update=error_metadata):
-                logger.error(f"无法标记联邦查询任务为失败: {task_id}")
+
+            if not task_manager.force_fail_task(
+                task_id, error_message, metadata_update=error_metadata
+            ):
+                logger.error(f"Unable to mark federated query task as failed: {task_id}")
 
 
 def generate_download_file(task_id: str, format: str = "csv"):
@@ -1168,11 +1226,11 @@ def generate_download_file(task_id: str, format: str = "csv"):
             # 尝试从文件系统恢复任务信息
             task_info = task_utils.recover_task_from_files(task_id)
             if not task_info:
-                raise ValueError(f"任务 {task_id} 不存在")
+                raise ValueError(f"Task does not exist")
 
         # 检查任务状态
         if not task_utils.is_task_completed(task_info):
-            raise ValueError(f"任务 {task_id} 未完成，无法生成下载文件")
+            raise ValueError(f"Task {task_id} not completed, cannot generate download file")
 
         # 检查是否已经有生成的文件
         if task_info.result_file_path and os.path.exists(task_info.result_file_path):
@@ -1181,19 +1239,19 @@ def generate_download_file(task_id: str, format: str = "csv"):
 
             # 如果请求的格式与现有文件格式相同，直接返回
             if existing_format == format:
-                logger.info(f"使用现有文件: {existing_file}")
+                logger.info(f"Using existing file: {existing_file}")
                 return existing_file
 
             # 如果格式不同，需要转换
-            logger.info(f"需要转换格式: {existing_format} -> {format}")
+            logger.info(f"Format conversion needed: {existing_format} -> {format}")
 
         # 从result_info中获取表名
         if not task_info.result_info:
-            raise ValueError(f"任务 {task_id} 缺少结果信息")
+            raise ValueError(f"Task {task_id} missing result information")
 
         table_name = task_info.result_info.get("table_name")
         if not table_name:
-            raise ValueError(f"任务 {task_id} 缺少表名信息")
+            raise ValueError(f"Task {task_id} missing table name information")
 
         # 使用连接池获取连接
         from core.database.duckdb_pool import get_connection_pool
@@ -1205,7 +1263,7 @@ def generate_download_file(task_id: str, format: str = "csv"):
             try:
                 con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()
             except Exception as e:
-                raise ValueError(f"表 {table_name} 不存在或已删除: {str(e)}")
+                raise ValueError(f"Table does not exist or has been deleted: {str(e)}")
 
             # 生成文件路径
             result_file_path = task_utils.generate_file_path(task_id, format)
@@ -1218,9 +1276,9 @@ def generate_download_file(task_id: str, format: str = "csv"):
                     f'COPY "{table_name}" TO "{result_file_path}" WITH (FORMAT PARQUET)'
                 )
 
-            logger.info(f"开始生成下载文件: {result_file_path}")
+            logger.info(f"Starting download file generation: {result_file_path}")
             con.execute(copy_sql)
-            logger.info(f"下载文件生成成功: {result_file_path}")
+            logger.info(f"Download file generated successfully: {result_file_path}")
 
             # 更新任务信息，标记文件已生成
             task_utils.update_task_file_info(task_info, result_file_path, format)
@@ -1230,9 +1288,9 @@ def generate_download_file(task_id: str, format: str = "csv"):
     except Exception as e:
         import traceback
 
-        logger.error(f"生成下载文件失败: {task_id}, 错误: {str(e)}")
-        logger.error(f"完整堆栈跟踪: {traceback.format_exc()}")
-        raise Exception(f"生成下载文件失败: {str(e)}")
+        logger.error(f"Failed to generate download file, error: {str(e)}")
+        logger.error(f"Full stack trace: {traceback.format_exc()}")
+        raise Exception(f"Failed to generate download file: {str(e)}")
 
 
 def cleanup_old_files():
@@ -1259,9 +1317,9 @@ def cleanup_old_files():
                     if file_mtime < cutoff_time:
                         os.remove(file_path)
                         cleaned_count += 1
-                        logger.info(f"清理过期文件: {file_path}")
+                        logger.info(f"Cleaning up expired file: {file_path}")
                 except Exception as e:
-                    logger.warning(f"清理文件失败: {file_path}, 错误: {str(e)}")
+                    logger.warning(f"Failed to clean up file, error: {str(e)}")
 
         # 清理过期的DuckDB表
         try:
@@ -1272,8 +1330,8 @@ def cleanup_old_files():
             with pool.get_connection() as con:
                 # 获取所有异步结果表
                 tables_sql = """
-                SELECT table_name 
-                FROM information_schema.tables 
+                SELECT table_name
+                FROM information_schema.tables
                 WHERE table_name LIKE 'async_result_%'
                 """
                 tables = con.execute(tables_sql).fetchall()
@@ -1291,17 +1349,17 @@ def cleanup_old_files():
                             if created_at < cutoff_time:
                                 # 删除过期的表
                                 con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-                                logger.info(f"清理过期表: {table_name}")
+                                logger.info(f"Cleaned expired table: {table_name}")
                                 cleaned_count += 1
                     except Exception as e:
-                        logger.warning(f"清理表失败: {table_name}, 错误: {str(e)}")
+                        logger.warning(f"Failed to clean table: {table_name}, error: {str(e)}")
 
         except Exception as e:
-            logger.warning(f"清理DuckDB表失败: {str(e)}")
+            logger.warning(f"Failed to clean DuckDB tables: {str(e)}")
 
-        logger.info(f"文件清理完成，共清理 {cleaned_count} 个文件/表")
+        logger.info(f"File cleanup completed, cleaned {cleaned_count} files/tables")
         return cleaned_count
 
     except Exception as e:
-        logger.error(f"文件清理失败: {str(e)}")
+        logger.error(f"File cleanup failed: {str(e)}")
         return 0

@@ -9,7 +9,21 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from core.common.timezone_utils import get_current_time, get_current_time_iso  # 导入时区工具
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Body,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from core.common.timezone_utils import get_current_time, get_current_time_iso
 from core.data.excel_import_manager import (
     cleanup_pending_excel,
     derive_default_table_name,
@@ -31,25 +45,12 @@ from core.database.duckdb_engine import with_duckdb_connection
 from core.security.encryption import password_encryptor
 from core.security.security import security_validator
 from core.services.resource_manager import save_upload_file, schedule_cleanup
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Body,
-    File,
-    Form,
-    HTTPException,
-    Request,
-    Response,
-    UploadFile,
-)
-from fastapi.responses import JSONResponse
 from models.query_models import (
     ConnectionStatus,
     ConnectionTestRequest,
     DatabaseConnection,
     FileUploadResponse,
 )
-from pydantic import BaseModel, Field, field_validator, model_validator
 from utils.response_helpers import (
     MessageCode,
     create_error_response,
@@ -58,6 +59,7 @@ from utils.response_helpers import (
 )
 
 router = APIRouter()
+
 logger = logging.getLogger(__name__)
 
 
@@ -84,21 +86,21 @@ class ExcelImportSheet(BaseModel):
     def _validate_mode(cls, mode: str) -> str:
         normalized = (mode or "").lower()
         if normalized not in VALID_EXCEL_IMPORT_MODES:
-            raise ValueError(f"不支持的导入模式: {mode}")
+            raise ValueError(f"Unsupported import mode: {mode}")
         return normalized
 
     @field_validator("header_rows")
     @classmethod
     def _validate_header_rows(cls, value: int) -> int:
         if value < 0:
-            raise ValueError("表头行数不能为负数")
+            raise ValueError("Header row count cannot be negative")
         return value
 
     @field_validator("target_table")
     @classmethod
     def _validate_target_table(cls, value: str) -> str:
         if not value or not value.strip():
-            raise ValueError("目标表名不能为空")
+            raise ValueError("Target table name cannot be empty")
         return value
 
     @model_validator(mode="after")
@@ -118,7 +120,7 @@ class ExcelImportRequest(BaseModel):
     @classmethod
     def _validate_sheets(cls, sheets: List[ExcelImportSheet]) -> List[ExcelImportSheet]:
         if not sheets:
-            raise ValueError("至少需要选择一个工作表进行导入")
+            raise ValueError("At least one worksheet must be selected for import")
         return sheets
 
 
@@ -150,7 +152,7 @@ async def test_database_connection(request: ConnectionTestRequest, response: Res
         result = db_manager.test_connection(request)
         return result
     except Exception as e:
-        logger.error(f"连接测试失败: {str(e)}")
+        logger.error(f"Connection test failed: {str(e)}")
 
         # 使用统一的错误代码系统
         from core.common.error_codes import (
@@ -200,9 +202,9 @@ async def refresh_database_connection(connection_id: str, response: Response):
 
     connection = db_manager.get_connection(connection_id)
     if not connection:
-        raise HTTPException(status_code=404, detail="未找到数据库连接")
+        raise HTTPException(status_code=404, detail="Database connection not found")
 
-    logger.info(f"开始重新测试数据库连接: {connection_id}")
+    logger.info(f"Starting to re-test database connection: {connection_id}")
 
     test_request = ConnectionTestRequest(type=connection.type, params=connection.params)
     test_result = db_manager.test_connection(test_request)
@@ -220,43 +222,55 @@ async def refresh_database_connection(connection_id: str, response: Response):
                 try:
                     db_manager.engines[connection_id].dispose()
                 except Exception as dispose_error:
-                    logger.warning(f"释放旧数据库引擎时出现警告: {dispose_error}")
+                    logger.warning(f"Warning when disposing old database engine: {dispose_error}")
 
             engine = db_manager._create_engine(connection.type, connection.params)
             db_manager.engines[connection_id] = engine
             connection.status = ConnectionStatus.ACTIVE
             success = True
-            message = test_result.message or "连接测试成功"
-            logger.info(f"数据库连接 {connection_id} 测试成功，状态已更新为 ACTIVE")
+            message = test_result.message or "Connection test successful"
+            logger.info(f"Database connection {connection_id} test successful, status updated to ACTIVE")
         except Exception as engine_error:
             logger.error(
-                f"连接 {connection_id} 测试成功但初始化引擎失败: {engine_error}"
+                f"Connection {connection_id} test successful but engine initialization failed: {engine_error}"
             )
             connection.status = ConnectionStatus.ERROR
-            message = f"连接成功但初始化失败: {engine_error}"
+            message = f"Connection successful but initialization failed: {engine_error}"
     else:
         connection.status = ConnectionStatus.ERROR
-        message = test_result.message or "连接测试失败"
+        message = test_result.message or "Connection test failed"
         if connection_id in db_manager.engines:
             try:
                 db_manager.engines[connection_id].dispose()
             except Exception as dispose_error:
                 logger.warning(
-                    f"连接 {connection_id} 测试失败，释放引擎时出现警告: {dispose_error}"
+                    f"Connection {connection_id} test failed, warning when disposing engine: {dispose_error}"
                 )
             db_manager.engines.pop(connection_id, None)
-        logger.warning(f"数据库连接 {connection_id} 测试失败: {message}")
+        logger.warning(f"Database connection {connection_id} test failed: {message}")
 
     db_manager.connections[connection_id] = connection
+
+    if not success:
+        return JSONResponse(
+            status_code=400,
+            content=create_error_response(
+                code=MessageCode.CONNECTION_TEST_FAILED,
+                message=message or "Connection test failed",
+                details={
+                    "connection": connection,
+                    "test_result": test_result,
+                    "refresh_success": success,
+                },
+            ),
+        )
 
     return create_success_response(
         data={
             "connection": connection,
             "test_result": test_result,
         },
-        message_code=MessageCode.CONNECTION_TEST_SUCCESS
-        if success
-        else MessageCode.CONNECTION_TEST_FAILED,
+        message_code=MessageCode.CONNECTION_TEST_SUCCESS,
         message=message,
     )
 
@@ -300,7 +314,7 @@ async def test_connection_simple(request: dict = Body(...), response: Response =
                 return create_success_response(
                     data={"connection_type": "sqlite"},
                     message_code=MessageCode.CONNECTION_TEST_SUCCESS,
-                    message="SQLite连接测试成功",
+                    message="SQLiteConnection test successful",
                 )
             except Exception as e:
                 return JSONResponse(
@@ -335,14 +349,14 @@ async def test_connection_simple(request: dict = Body(...), response: Response =
                 return create_success_response(
                     data={"connection_type": "mysql"},
                     message_code=MessageCode.CONNECTION_TEST_SUCCESS,
-                    message="MySQL连接测试成功",
+                    message="MySQLConnection test successful",
                 )
             except Exception as e:
                 return JSONResponse(
                     status_code=500,
                     content=create_error_response(
                         code=MessageCode.CONNECTION_TEST_FAILED,
-                        message=f"MySQL连接失败: {str(e)}",
+                        message=f"MySQL connection failed: {str(e)}",
                         details={"connection_type": "mysql"},
                     ),
                 )
@@ -369,14 +383,14 @@ async def test_connection_simple(request: dict = Body(...), response: Response =
                 return create_success_response(
                     data={"connection_type": "postgresql"},
                     message_code=MessageCode.CONNECTION_TEST_SUCCESS,
-                    message="PostgreSQL连接测试成功",
+                    message="PostgreSQLConnection test successful",
                 )
             except Exception as e:
                 return JSONResponse(
                     status_code=500,
                     content=create_error_response(
                         code=MessageCode.CONNECTION_TEST_FAILED,
-                        message=f"PostgreSQL连接失败: {str(e)}",
+                        message=f"PostgreSQL connection failed: {str(e)}",
                         details={"connection_type": "postgresql"},
                     ),
                 )
@@ -392,7 +406,7 @@ async def test_connection_simple(request: dict = Body(...), response: Response =
             )
 
     except Exception as e:
-        logger.error(f"连接测试失败: {str(e)}")
+        logger.error(f"Connection test failed: {str(e)}")
         return JSONResponse(
             status_code=500,
             content=create_error_response(
@@ -441,12 +455,16 @@ async def create_database_connection(
                 message_code=MessageCode.CONNECTION_CREATED,
             )
         else:
-            raise HTTPException(status_code=400, detail="Database connection creation failed")
+            raise HTTPException(
+                status_code=400, detail="Database connection creation failed"
+            )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"创建数据库连接失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database connection creation failed: {str(e)}")
+        logger.error(f"Failed to create database connection: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Database connection creation failed: {str(e)}"
+        )
 
 
 @router.get(
@@ -499,29 +517,29 @@ async def list_database_connections(request: Request, response: Response):
 
     # 更新最后请求时间
     list_database_connections._last_requests[client_ip] = current_time
-    logger.info(f"处理数据库连接请求 - IP: {client_ip}")
+    logger.info(f"Processing database connection request - IP: {client_ip}")
 
     try:
         # 每次调用都重新加载配置，确保数据最新
-        logger.info("重新加载数据库连接配置")
-        logger.info(f"重新加载前连接数量: {len(db_manager.connections)}")
+        logger.info("Reloading database connection configuration")
+        logger.info(f"Connection count before reload: {len(db_manager.connections)}")
         logger.info(
-            f"重新加载前配置状态: {getattr(db_manager, '_config_loaded', 'Unknown')}"
+            f"Config status before reload: {getattr(db_manager, '_config_loaded', 'Unknown')}"
         )
 
         db_manager._load_connections_from_config()
 
-        logger.info(f"重新加载后连接数量: {len(db_manager.connections)}")
+        logger.info(f"Connection count after reload: {len(db_manager.connections)}")
         logger.info(
-            f"重新加载后配置状态: {getattr(db_manager, '_config_loaded', 'Unknown')}"
+            f"Config status after reload: {getattr(db_manager, '_config_loaded', 'Unknown')}"
         )
 
         connections = db_manager.list_connections()
-        logger.info(f"list_connections() 返回: {len(connections)} 个连接")
+        logger.info(f"list_connections() returned: {len(connections)} connections")
 
-        # 调试每个连接的状态
+        # 调试每connections的状态
         for conn in connections:
-            logger.info(f"连接 {conn.id}: 状态={conn.status}, 类型={type(conn.status)}")
+            logger.info(f"Connection {conn.id}: status={conn.status}, type={type(conn.status)}")
 
         # 将DatabaseConnection对象转换为可序列化的字典
         serializable_connections = []
@@ -556,7 +574,7 @@ async def list_database_connections(request: Request, response: Response):
             }
             serializable_connections.append(conn_dict)
 
-        logger.info(f"返回数据库连接列表，共 {len(serializable_connections)} 个连接")
+        logger.info(f"Returning database connection list, total {len(serializable_connections)} connections")
 
         result = create_list_response(
             items=serializable_connections,
@@ -569,8 +587,10 @@ async def list_database_connections(request: Request, response: Response):
 
         return result
     except Exception as e:
-        logger.error(f"获取数据库连接列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get database connections: {str(e)}")
+        logger.error(f"Failed to get database connection list: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get database connections: {str(e)}"
+        )
 
 
 @router.post("/api/upload", tags=["Data Sources"])
@@ -604,7 +624,7 @@ async def upload_file(
                 pass
             raise HTTPException(
                 status_code=400,
-                detail=f"文件验证失败: {'; '.join(validation_result['errors'])}",
+                detail=f"File validation failed: {'; '.join(validation_result['errors'])}",
             )
 
         # 记录警告信息
@@ -622,7 +642,7 @@ async def upload_file(
                 pass
             raise HTTPException(
                 status_code=400,
-                detail=f"不支持的文件类型。支持的格式：CSV, Excel, JSON, Parquet",
+                detail=f"Unsupported file type. Supported formats: CSV, Excel, JSON, Parquet",
             )
 
         # 创建临时目录
@@ -646,13 +666,13 @@ async def upload_file(
                 if os.path.exists(temp_file_path):
                     os.remove(temp_file_path)
             except Exception as e:
-                logger.warning(f"删除临时文件失败: {str(e)}")
+                logger.warning(f"Failed to delete temporary file: {str(e)}")
 
             pending_dir = Path(pending_excel.stored_path).parent
             schedule_cleanup(str(pending_dir), background_tasks, delay_seconds=6 * 3600)
 
             logger.info(
-                "Excel 文件上传成功，等待工作表选择: %s (%s)",
+                "Excel file uploaded successfully, waiting for sheet selection: %s (%s)",
                 pending_excel.original_filename,
                 pending_excel.file_id,
             )
@@ -671,7 +691,7 @@ async def upload_file(
                     },
                 },
                 message_code=MessageCode.FILE_UPLOADED,
-                message="Excel 文件已上传，请选择需要导入的工作表。",
+                message="Excel file uploaded, please select the worksheets to import.",
             )
 
         preview_info = get_file_preview(save_path, rows=10)
@@ -701,7 +721,7 @@ async def upload_file(
                     source_id = f"{original_source_id}_{timestamp}"
                     break
                 except Exception as e:
-                    logger.warning(f"检查表名时出错: {e}")
+                    logger.warning(f"Error checking table name: {e}")
                     break
 
             try:
@@ -710,7 +730,7 @@ async def upload_file(
                 )
             except Exception as e:
                 raise HTTPException(
-                    status_code=500, detail=f"持久化到DuckDB失败: {str(e)}"
+                    status_code=500, detail=f"Failed to persist to DuckDB: {str(e)}"
                 )
 
         row_count = table_metadata.get("row_count", 0)
@@ -733,7 +753,7 @@ async def upload_file(
 
         config_saved = file_datasource_manager.save_file_datasource(file_info)
         if not config_saved:
-            logger.warning(f"文件数据源配置保存失败: {source_id}")
+            logger.warning(f"Failed to save file datasource configuration: {source_id}")
 
         logger.info(
             f"已将文件 {file.filename} 持久化到DuckDB，表名: {source_id}, 行数: {row_count}"
@@ -743,13 +763,13 @@ async def upload_file(
             if os.path.exists(save_path):
                 os.remove(save_path)
         except Exception as e:
-            logger.warning(f"删除原始上传文件失败: {str(e)}")
+            logger.warning(f"Failed to delete original uploaded file: {str(e)}")
 
         try:
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
         except Exception as e:
-            logger.warning(f"删除临时文件失败: {str(e)}")
+            logger.warning(f"Failed to delete temporary file: {str(e)}")
 
         schedule_cleanup(save_path, background_tasks)
 
@@ -766,9 +786,9 @@ async def upload_file(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"文件上传处理失败: {str(e)}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"文件上传处理失败: {str(e)}")
+        logger.error(f"File upload processing failed: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"File upload processing failed: {str(e)}")
 
 
 def _table_exists(con, table_name: str) -> bool:
@@ -779,7 +799,7 @@ def _table_exists(con, table_name: str) -> bool:
         ).fetchone()
         return result is not None
     except Exception as exc:
-        logger.warning("检查表是否存在失败 %s: %s", table_name, exc)
+        logger.warning("Failed to check if table exists %s: %s", table_name, exc)
         return False
 
 
@@ -793,16 +813,16 @@ async def inspect_excel(request: ExcelInspectRequest):
     pending = get_pending_excel(request.file_id)
     if not pending:
         raise HTTPException(
-            status_code=404, detail="未找到对应的Excel缓存文件，请重新上传。"
+            status_code=404, detail="Excel cache file not found, please re-upload."
         )
 
     try:
         sheets = inspect_excel_sheets(pending.stored_path)
     except Exception as exc:
-        logger.error("读取Excel工作表失败 %s: %s", pending.stored_path, exc)
+        logger.error("Failed to read Excel worksheets %s: %s", pending.stored_path, exc)
         raise HTTPException(
             status_code=500,
-            detail=f"读取Excel工作表失败: {str(exc)}",
+            detail=f"Failed to read Excel worksheets: {str(exc)}",
         )
 
     for sheet in sheets:
@@ -826,7 +846,7 @@ async def import_excel(request: ExcelImportRequest):
     pending = get_pending_excel(request.file_id)
     if not pending:
         raise HTTPException(
-            status_code=404, detail="未找到对应的Excel缓存文件，请重新上传。"
+            status_code=404, detail="Excel cache file not found, please re-upload."
         )
 
     processed_results = []
@@ -841,7 +861,7 @@ async def import_excel(request: ExcelImportRequest):
         if sanitized in sanitized_name_map:
             raise HTTPException(
                 status_code=400,
-                detail=f"存在重复的目标表名: {sanitized}",
+                detail=f"Duplicate target table name exists: {sanitized}",
             )
         sanitized_name_map[sheet_cfg.name] = sanitized
 
@@ -859,13 +879,13 @@ async def import_excel(request: ExcelImportRequest):
                 )
 
                 if df.empty:
-                    raise ValueError(f"工作表 {sheet_cfg.name} 不包含可导入的数据。")
+                    raise ValueError(f"Worksheet does not contain importable data。")
 
                 table_exists = _table_exists(con, target_table)
                 mode = sheet_cfg.mode
 
                 if mode == "fail" and table_exists:
-                    raise ValueError(f"目标表 {target_table} 已存在，导入模式为 fail。")
+                    raise ValueError(f"Target table already exists, import mode is fail。")
 
                 view_name = f"excel_view_{uuid4().hex[:8]}"
                 con.register(view_name, df)
@@ -920,7 +940,7 @@ async def import_excel(request: ExcelImportRequest):
 
             con.execute("COMMIT")
         except Exception as exc:
-            logger.error("Excel 导入失败: %s", exc, exc_info=True)
+            logger.error("Excel import failed: %s", exc, exc_info=True)
             try:
                 con.execute("ROLLBACK")
             except Exception:
@@ -954,7 +974,7 @@ async def import_excel(request: ExcelImportRequest):
         try:
             file_datasource_manager.save_file_datasource(file_info)
         except Exception as exc:
-            logger.warning("保存Excel导入元数据失败 %s: %s", target_table, exc)
+            logger.warning("Failed to save Excel import metadata %s: %s", target_table, exc)
 
     cleanup_pending_excel(request.file_id)
 
@@ -1003,15 +1023,15 @@ async def get_database_connection(connection_id: str, response: Response):
                 status_code=404,
                 content=create_error_response(
                     code=MessageCode.DATASOURCE_NOT_FOUND,
-                    message="数据库连接不存在",
+                    message="Database connection does not exist",
                     details={"connection_id": connection_id},
                 ),
             )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取数据库连接失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取数据库连接失败: {str(e)}")
+        logger.error(f"Failed to get database connection: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get database connection: {str(e)}")
 
 
 @router.put(
@@ -1055,12 +1075,16 @@ async def update_database_connection(
                 message_code=MessageCode.CONNECTION_UPDATED,
             )
         else:
-            raise HTTPException(status_code=400, detail="Database connection update failed")
+            raise HTTPException(
+                status_code=400, detail="Database connection update failed"
+            )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"更新数据库连接失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database connection update failed: {str(e)}")
+        logger.error(f"Failed to update database connection: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Database connection update failed: {str(e)}"
+        )
 
 
 @router.delete(
@@ -1109,37 +1133,37 @@ async def delete_database_connection(connection_id: str, response: Response):
                 with open(DATASOURCES_CONFIG_FILE, "w", encoding="utf-8") as f:
                     json.dump(config_data, f, indent=2, ensure_ascii=False)
 
-                logger.info(f"数据库连接 {connection_id} 删除成功，配置文件已更新")
+                logger.info(f"Database connection deleted successfully, configuration file updated")
 
                 # 强制重新加载配置，确保内存状态与文件同步
                 db_manager._config_loaded = False
                 db_manager._load_connections_from_config()
 
             except Exception as e:
-                logger.error(f"更新配置文件失败: {str(e)}")
+                logger.error(f"Failed to update configuration file: {str(e)}")
                 raise HTTPException(
-                    status_code=500, detail=f"更新配置文件失败: {str(e)}"
+                    status_code=500, detail=f"Failed to update configuration file: {str(e)}"
                 )
 
             return create_success_response(
                 data={"deleted_connection": connection_id},
                 message_code=MessageCode.CONNECTION_DELETED,
-                message="数据库连接删除成功",
+                message="Database connection deleted successfully",
             )
         else:
             return JSONResponse(
                 status_code=404,
                 content=create_error_response(
                     code=MessageCode.DATASOURCE_NOT_FOUND,
-                    message="数据库连接不存在",
+                    message="Database connection does not exist",
                     details={"connection_id": connection_id},
                 ),
             )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"删除数据库连接失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"删除数据库连接失败: {str(e)}")
+        logger.error(f"Failed to delete database connection: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete database connection: {str(e)}")
 
 
 # 新增数据库连接接口
@@ -1187,11 +1211,13 @@ async def connect_database(connection: DatabaseConnection, response: Response = 
                 message="Database connection successful",
             )
         else:
-            raise HTTPException(status_code=400, detail="Database connection creation failed")
+            raise HTTPException(
+                status_code=400, detail="Database connection creation failed"
+            )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"数据库连接失败: {str(e)}")
+        logger.error(f"Database connection failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1206,7 +1232,7 @@ async def get_database_tables(connection: DatabaseConnection) -> list:
         else:
             return []
     except Exception as e:
-        logger.warning(f"获取数据库表信息失败: {str(e)}")
+        logger.warning(f"Failed to get database table information: {str(e)}")
         return []
 
 
@@ -1263,7 +1289,7 @@ async def get_mysql_tables(connection: DatabaseConnection) -> list:
         return table_info
 
     except Exception as e:
-        logger.error(f"获取MySQL表信息失败: {str(e)}")
+        logger.error(f"Failed to get MySQL table information: {str(e)}")
         return []
 
 
@@ -1338,5 +1364,5 @@ async def get_postgresql_tables(connection: DatabaseConnection) -> list:
         return table_info
 
     except Exception as e:
-        logger.error(f"获取PostgreSQL表信息失败: {str(e)}")
+        logger.error(f"Failed to get PostgreSQL table information: {str(e)}")
         return []

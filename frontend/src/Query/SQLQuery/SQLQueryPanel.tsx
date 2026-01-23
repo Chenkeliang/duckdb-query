@@ -492,7 +492,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         open={saveDialogOpen}
         onOpenChange={setSaveDialogOpen}
         sql={sql}
-        type={tableSourceInfo.isExternal ? tableSourceInfo.currentSource?.databaseType : 'duckdb'}
+        type={queryType === 'external' && tableSourceInfo.currentSource ? tableSourceInfo.currentSource.databaseType : queryType}
       />
 
       {/* 异步任务对话框 */}

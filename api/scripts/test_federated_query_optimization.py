@@ -32,7 +32,7 @@ def get_mysql_config(connection_id: str) -> dict:
     
     connection = db_manager.get_connection(connection_id)
     if not connection:
-        raise ValueError(f"连接不存在: {connection_id}")
+        raise ValueError(f"Connection does not exist: {connection_id}")
     
     db_config = connection.params.copy()
     password = db_config.get('password', '')

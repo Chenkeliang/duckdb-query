@@ -1,12 +1,12 @@
 /**
  * Data Source API Module
- * 
+ *
  * Functions for managing database connections and data sources.
- * 
+ *
  * Updated to use normalizeResponse for standard API response handling.
  */
 
-import { apiClient, normalizeResponse } from './client';
+import { apiClient, normalizeResponse, extractMessage, extractMessageCode } from './client';
 import type {
     DatabaseConnection,
     DatabaseConnectionParams,
@@ -19,6 +19,7 @@ import type {
 export type DatabaseType = 'mysql' | 'postgresql' | 'sqlite';
 
 export interface CreateConnectionRequest {
+    id?: string;
     type: DatabaseType;
     name: string;
     params: DatabaseConnectionParams;
@@ -90,7 +91,7 @@ function mapDatasourceItemToConnection(item: DatasourceItem): DatabaseConnection
 
 /**
  * List all database connections
- * 
+ *
  * Returns normalized response with connections array
  */
 export async function listDatabaseConnections(): Promise<{
@@ -102,13 +103,13 @@ export async function listDatabaseConnections(): Promise<{
     try {
         const response = await apiClient.get('/api/datasources?type=database');
         const normalized = normalizeResponse<{ items?: DatasourceItem[] }>(response);
-        
+
         // Handle list response format
         const items = (normalized.items ?? normalized.data?.items ?? []) as DatasourceItem[];
         const connections = Array.isArray(items)
             ? items.map(mapDatasourceItemToConnection).filter(Boolean) as DatabaseConnection[]
             : [];
-            
+
         return {
             success: true,
             connections,
@@ -179,7 +180,7 @@ export async function listDatabaseDataSourcesRaw(subtype?: string): Promise<{
 
 /**
  * Get a single database connection by ID
- * 
+ *
  * Returns DatabaseConnection from normalized response
  */
 export async function getDatabaseConnection(connectionId: string): Promise<DatabaseConnection> {
@@ -187,7 +188,7 @@ export async function getDatabaseConnection(connectionId: string): Promise<Datab
         const id = connectionId.startsWith('db_') ? connectionId : `db_${connectionId}`;
         const response = await apiClient.get(`/api/datasources/${id}`);
         const normalized = normalizeResponse<{ connection?: DatabaseConnection } | DatabaseConnection>(response);
-        
+
         const data = normalized.data;
         return (data as { connection?: DatabaseConnection })?.connection ?? data as DatabaseConnection;
     } catch (error) {
@@ -197,14 +198,18 @@ export async function getDatabaseConnection(connectionId: string): Promise<Datab
 
 /**
  * Create a new database connection
- * 
+ *
  * Returns normalized response with created connection
  */
 export async function createDatabaseConnection(
-    connectionData: CreateConnectionRequest
+    connectionData: CreateConnectionRequest,
+    options?: { test?: boolean }
 ): Promise<NormalizedResponse<{ connection?: DatabaseConnection }>> {
     try {
-        const response = await apiClient.post('/api/datasources/databases', connectionData);
+        const url = options?.test === false
+            ? '/api/datasources/databases?test_connection=false'
+            : '/api/datasources/databases';
+        const response = await apiClient.post(url, connectionData);
         return normalizeResponse<{ connection?: DatabaseConnection }>(response);
     } catch (error) {
         throw error;
@@ -213,15 +218,19 @@ export async function createDatabaseConnection(
 
 /**
  * Update an existing database connection
- * 
+ *
  * Returns normalized response with updated connection
  */
 export async function updateDatabaseConnection(
     connectionId: string,
-    connectionData: UpdateConnectionRequest
+    connectionData: UpdateConnectionRequest,
+    options?: { test?: boolean }
 ): Promise<NormalizedResponse<{ connection?: DatabaseConnection }>> {
     try {
-        const response = await apiClient.put(`/api/datasources/databases/${connectionId}`, connectionData);
+        const url = options?.test === false
+            ? `/api/datasources/databases/${connectionId}?test_connection=false`
+            : `/api/datasources/databases/${connectionId}`;
+        const response = await apiClient.put(url, connectionData);
         return normalizeResponse<{ connection?: DatabaseConnection }>(response);
     } catch (error) {
         throw error;
@@ -230,7 +239,7 @@ export async function updateDatabaseConnection(
 
 /**
  * Delete a database connection
- * 
+ *
  * Returns normalized response
  */
 export async function deleteDatabaseConnection(connectionId: string): Promise<NormalizedResponse<Record<string, unknown>>> {
@@ -247,16 +256,20 @@ export async function deleteDatabaseConnection(connectionId: string): Promise<No
 
 /**
  * Test a new database connection (before saving)
- * 
+ *
  * Returns ConnectionTestResult from normalized response
  */
 export async function testDatabaseConnection(
     connectionData: CreateConnectionRequest
 ): Promise<ConnectionTestResult> {
     try {
-        const response = await apiClient.post('/api/datasources/databases/test', connectionData);
+        const payload = {
+            ...connectionData,
+            id: connectionData.id ? connectionData.id.replace(/^db_/, '') : undefined
+        };
+        const response = await apiClient.post('/api/datasources/databases/test', payload);
         const normalized = normalizeResponse<{ connection_test?: ConnectionTestResult }>(response);
-        
+
         const data = normalized.data;
         const connectionTest = data?.connection_test;
         const message = connectionTest?.message || normalized.message;
@@ -281,7 +294,7 @@ export async function testDatabaseConnection(
 
 /**
  * Test connection (unified entry - handles both new and saved connections)
- * 
+ *
  * Returns ConnectionTestResult
  */
 export async function testConnection(
@@ -290,14 +303,13 @@ export async function testConnection(
     try {
         let response;
 
-        if (connectionData.id) {
-            // Saved connection: use refresh API
-            const connectionId = connectionData.id.replace(/^db_/, '');
-            response = await apiClient.post(`/api/datasources/databases/${connectionId}/refresh`);
-        } else {
-            // New connection: use test API
-            response = await apiClient.post('/api/datasources/databases/test', connectionData);
-        }
+        // Unified test logic: always use /test endpoint
+        // If ID is provided, backend will handle password inheritance
+        const payload = {
+            ...connectionData,
+            id: connectionData.id ? connectionData.id.replace(/^db_/, '') : undefined
+        };
+        response = await apiClient.post('/api/datasources/databases/test', payload);
 
         const normalized = normalizeResponse<{ connection_test?: ConnectionTestResult }>(response);
         const data = normalized.data;
@@ -326,7 +338,7 @@ export async function testConnection(
 
 /**
  * Refresh a saved database connection
- * 
+ *
  * Returns normalized response with refresh result
  */
 export async function refreshDatabaseConnection(connectionId: string): Promise<{
@@ -343,7 +355,7 @@ export async function refreshDatabaseConnection(connectionId: string): Promise<{
             connection?: DatabaseConnection;
             test_result?: ConnectionTestResult;
         }>(response);
-        
+
         const data = normalized.data;
         const refreshSuccess = typeof data?.refresh_success === 'boolean'
             ? data.refresh_success
@@ -365,7 +377,7 @@ export async function refreshDatabaseConnection(connectionId: string): Promise<{
 
 /**
  * List all data sources (files and databases)
- * 
+ *
  * Returns normalized response
  */
 export async function listAllDataSources(filters: DataSourceFilter = {}): Promise<NormalizedResponse<{ items?: unknown[]; total?: number }>> {
@@ -386,7 +398,7 @@ export async function listAllDataSources(filters: DataSourceFilter = {}): Promis
 
 /**
  * List database data sources only
- * 
+ *
  * Returns normalized response
  */
 export async function listDatabaseDataSources(filters: Omit<DataSourceFilter, 'type'> = {}): Promise<NormalizedResponse<{ items?: unknown[]; total?: number }>> {
@@ -405,7 +417,7 @@ export async function listDatabaseDataSources(filters: Omit<DataSourceFilter, 't
 
 /**
  * List file data sources only
- * 
+ *
  * Returns normalized response
  */
 export async function listFileDataSources(filters: Omit<DataSourceFilter, 'type'> = {}): Promise<NormalizedResponse<{ items?: unknown[]; total?: number }>> {

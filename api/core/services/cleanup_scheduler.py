@@ -39,11 +39,11 @@ class CleanupScheduler:
     def start(self):
         """启动清理调度器"""
         if self.running:
-            logger.warning("清理调度器已在运行")
+            logger.warning("Cleanup scheduler is already running")
             return
 
         if not self.cleanup_function:
-            logger.error("未设置清理函数，无法启动调度器")
+            logger.error("Cleanup function not set, cannot start scheduler")
             return
 
         self.running = True
@@ -61,7 +61,7 @@ class CleanupScheduler:
         self.running = False
         if self.cleanup_thread:
             self.cleanup_thread.join(timeout=5)
-        logger.info("文件清理调度器已停止")
+        logger.info("File cleanup scheduler stopped")
 
     def _cleanup_loop(self):
         """清理循环"""
@@ -71,12 +71,12 @@ class CleanupScheduler:
                 if self.cleanup_function:
                     cleaned_count = self.cleanup_function()
                     if cleaned_count > 0:
-                        logger.info(f"定时清理完成，清理了 {cleaned_count} 个文件/表")
+                        logger.info(f"Scheduled cleanup completed, cleaned {cleaned_count} files/tables")
                     else:
-                        logger.debug("定时清理完成，无需清理的文件")
+                        logger.debug("Scheduled cleanup completed, no files to clean")
 
             except Exception as e:
-                logger.error(f"定时清理失败: {str(e)}")
+                logger.error(f"Scheduled cleanup failed: {str(e)}")
 
             # 等待下次清理
             for _ in range(self.cleanup_interval_hours * 3600):  # 转换为秒
@@ -92,15 +92,15 @@ class CleanupScheduler:
             int: 清理的文件数量
         """
         if not self.cleanup_function:
-            logger.error("未设置清理函数")
+            logger.error("Cleanup function not set")
             return 0
 
         try:
             cleaned_count = self.cleanup_function()
-            logger.info(f"强制清理完成，清理了 {cleaned_count} 个文件/表")
+            logger.info(f"Force cleanup completed, cleaned {cleaned_count} files/tables")
             return cleaned_count
         except Exception as e:
-            logger.error(f"强制清理失败: {str(e)}")
+            logger.error(f"Force cleanup failed: {str(e)}")
             return 0
 
 

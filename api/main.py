@@ -62,46 +62,46 @@ logger = logging.getLogger(__name__)
 def load_file_datasources_on_startup():
     """应用启动时重新加载所有文件数据源到DuckDB"""
     try:
-        logger.info("开始重新加载文件数据源...")
+        logger.info("Starting to reload file datasources...")
         with with_duckdb_connection() as duckdb_con:
             success_count = reload_all_file_datasources_to_duckdb(duckdb_con)
-        logger.info(f"文件数据源重新加载完成，成功加载 {success_count} 个文件")
+        logger.info(f"File datasources reload completed, successfully loaded files")
     except Exception as e:
-        logger.error(f"重新加载文件数据源时出错: {str(e)}")
+        logger.error(f"Error reloading file datasources: {str(e)}")
 
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
     """统一管理应用生命周期，替代 on_event 钩子"""
-    logger.info("应用正在启动...")
+    logger.info("Application is starting...")
     
     # 加载数据库连接配置
     try:
-        logger.info("开始加载数据库连接配置...")
+        logger.info("Starting to load database connection configuration...")
         db_manager._load_connections_from_config()
         connections = db_manager.list_connections()
-        logger.info(f"数据库连接配置加载完成，共 {len(connections)} 个连接")
-        logger.info("所有数据源加载完成")
+        logger.info(f"Database connection configuration loaded, total {len(connections)} connections")
+        logger.info("All datasources loaded successfully")
     except Exception as e:
-        logger.error(f"启动时加载数据源失败: {str(e)}")
+        logger.error(f"Failed to load datasources at startup: {str(e)}")
 
     try:
         from routers.async_tasks import cleanup_old_files
 
         start_cleanup_scheduler(cleanup_old_files)
-        logger.info("文件清理调度器启动成功")
+        logger.info("File cleanup scheduler started successfully")
     except Exception as e:
-        logger.error(f"启动文件清理调度器失败: {str(e)}")
+        logger.error(f"Failed to start file cleanup scheduler: {str(e)}")
 
     try:
         yield
     finally:
-        logger.info("应用关闭中...")
+        logger.info("Application is shutting down...")
         try:
             stop_cleanup_scheduler()
-            logger.info("文件清理调度器已停止")
+            logger.info("File cleanup scheduler stopped")
         except Exception as e:
-            logger.error(f"停止文件清理调度器失败: {str(e)}")
+            logger.error(f"Failed to stop file cleanup scheduler: {str(e)}")
 
 
 app = FastAPI(
@@ -223,4 +223,3 @@ def initialize_encryption_key():
 @app.get("/health", tags=["Health"])
 async def health_check():
     return {"status": "healthy", "timestamp": "2025-01-18"}
-

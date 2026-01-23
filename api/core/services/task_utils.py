@@ -126,17 +126,17 @@ class TaskUtils:
             existing_files = self.find_existing_files(task_id)
 
             if not existing_files:
-                logger.warning(f"任务 {task_id} 没有找到对应的文件")
+                logger.warning(f"Task {task_id} has no corresponding files found")
                 return None
 
             # 使用第一个找到的文件
             file_path = existing_files[0]
-            logger.info(f"从文件恢复任务 {task_id}: {file_path}")
+            logger.info(f"Recovering task from file {task_id}: {file_path}")
 
             return self.create_recovered_task(task_id, file_path)
 
         except Exception as e:
-            logger.error(f"恢复任务信息失败: {task_id}, 错误: {str(e)}")
+            logger.error(f"Failed to recover task information: {task_id}, error: {str(e)}")
             return None
 
     @staticmethod

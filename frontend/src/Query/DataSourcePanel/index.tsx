@@ -16,9 +16,9 @@ import { DatabaseConnectionNode } from './DatabaseConnectionNode';
 
 /**
  * 数据源面板
- * 
+ *
  * 显示可用的数据表列表，支持搜索、分组和选择
- * 
+ *
  * 使用 useDuckDBTables hook 确保：
  * - 请求自动去重
  * - 智能缓存（5 分钟）
@@ -64,7 +64,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
 
   // 获取表列表（使用共享 hook，自动去重和缓存）
   const { tables, isLoading, isFetching } = useDuckDBTables();
-  
+
   // 获取数据库连接列表
   const { connections, isLoading: isLoadingConnections, isFetching: isFetchingConnections } = useDatabaseConnections();
 
@@ -79,15 +79,16 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       await invalidateAfterTableDelete(queryClient);
       showSuccessToast(t, 'TABLE_DELETED', t('dataSource.tableDeletedRefreshed'));
     } catch (error) {
+      const code = (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED";
       // 删除失败时显示错误，不触发缓存失效
-      showErrorToast(t, undefined, t('dataSource.deleteFailed', { error: (error as Error).message }));
+      showErrorToast(t, code, t('dataSource.deleteFailed', { error: (error as Error).message }));
     }
   };
 
   // 过滤表
   const filteredTables = React.useMemo(() => {
     if (!debouncedSearch) return tables;
-    
+
     const query = debouncedSearch.toLowerCase();
     return tables.filter((table: Table) =>
       table.name.toLowerCase().includes(query)
@@ -123,7 +124,8 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       onRefresh?.();
       showSuccessToast(t, 'DATASOURCES_REFRESHED', t('dataSource.refreshed'));
     } catch (error) {
-      showErrorToast(t, undefined, t('dataSource.refreshFailed', { error: (error as Error).message }));
+      const code = (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED";
+      showErrorToast(t, code, t('dataSource.refreshFailed', { error: (error as Error).message }));
     }
   }, [queryClient, onRefresh, t]);
 

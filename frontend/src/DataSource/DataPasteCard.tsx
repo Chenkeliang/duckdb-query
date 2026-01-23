@@ -13,7 +13,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select";
 // API module
 import { pasteData } from "@/api";
@@ -47,7 +47,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
     parse,
     selectResult,
     isLoading,
-    error: parseError,
+    error: parseError
   } = useSmartParse();
 
   const [delimiter, setDelimiter] = useState(","); // 仅用于手动覆盖
@@ -111,18 +111,21 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
         );
       }
 
-      setSuccess(t("page.datasource.paste.parseSuccess", {
-        rows: bodyRows.length,
-        cols: currentResult.columns
-      }));
+      setSuccess(
+        t("page.datasource.paste.parseSuccess", {
+          rows: bodyRows.length,
+          cols: currentResult.columns
+        })
+      );
       setError("");
 
       setColumnNames(extractedNames);
 
       // 推断类型 (仅根据前 100 行推断以提高性能)
       const sampleRows = bodyRows.slice(0, 100);
-      const inferTypes = Array.from({ length: currentResult.columns }, (_, colIdx) =>
-        detectDataType(sampleRows.map(r => r[colIdx]))
+      const inferTypes = Array.from(
+        { length: currentResult.columns },
+        (_, colIdx) => detectDataType(sampleRows.map(r => r[colIdx]))
       );
       setColumnTypes(inferTypes);
 
@@ -152,7 +155,6 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
       setParsedData(null);
     }
   }, [parseError]);
-
 
   const handleParse = () => {
     if (!pastedData.trim()) {
@@ -189,9 +191,11 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
       });
 
       if (result.success) {
-        const successMsg = t("page.datasource.paste.save.saveOk", { table: tableName.trim() });
+        const successMsg = t("page.datasource.paste.save.saveOk", {
+          table: tableName.trim()
+        });
         setSuccess(successMsg);
-        showSuccessToast(t, result.messageCode || 'TABLE_CREATED', successMsg);
+        showSuccessToast(t, result.messageCode || "TABLE_CREATED", successMsg);
 
         // Refresh datasource cache to update left panel
         await invalidateAfterTableCreate(queryClient);
@@ -206,14 +210,16 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
         });
         clearForm();
       } else {
-        const errorMsg = result.message || t("page.datasource.paste.save.saveFail");
+        const errorMsg =
+          result.message || t("page.datasource.paste.save.saveFail");
         setError(errorMsg);
         showErrorToast(t, result.messageCode, errorMsg);
       }
-    } catch (err: unknown) {
+    } catch (err) {
       const error = err as Error & { messageCode?: string };
+      const msgText = error?.message || "";
       const errorMsg = t("page.datasource.paste.save.saveFailDetail", {
-        message: error.message || ""
+        message: msgText
       });
       setError(errorMsg);
       showErrorToast(t, error.messageCode, errorMsg);
@@ -303,12 +309,11 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
               onClick={handleParse}
               disabled={!pastedData.trim() || isLoading}
             >
-              {isLoading ? t("page.datasource.paste.parsing") : t("page.datasource.paste.btnParse")}
+              {isLoading
+                ? t("page.datasource.paste.parsing")
+                : t("page.datasource.paste.btnParse")}
             </Button>
-            <Button
-              variant="outline"
-              onClick={clearForm}
-            >
+            <Button variant="outline" onClick={clearForm}>
               {t("page.datasource.paste.btnClear")}
             </Button>
 
@@ -328,7 +333,8 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
                   <SelectContent>
                     {results.map((res, idx) => (
                       <SelectItem key={idx} value={idx.toString()}>
-                        {t(`page.datasource.paste.strategies.${res.strategy}`)} ({res.confidence}%)
+                        {t(`page.datasource.paste.strategies.${res.strategy}`)}{" "}
+                        ({res.confidence}%)
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -393,12 +399,16 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
                           <input
                             className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             value={name}
-                            onChange={e => updateColumnName(idx, e.target.value)}
+                            onChange={e =>
+                              updateColumnName(idx, e.target.value)
+                            }
                           />
                           <select
                             className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground"
                             value={columnTypes[idx] || "VARCHAR"}
-                            onChange={e => updateColumnType(idx, e.target.value)}
+                            onChange={e =>
+                              updateColumnType(idx, e.target.value)
+                            }
                           >
                             {dataTypes.map(dt => (
                               <option key={dt.value} value={dt.value}>
@@ -429,10 +439,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={saveToDatabase}
-                disabled={loading}
-              >
+              <Button onClick={saveToDatabase} disabled={loading}>
                 {loading
                   ? t("page.datasource.paste.save.saving")
                   : t("page.datasource.paste.save.saveBtn")}

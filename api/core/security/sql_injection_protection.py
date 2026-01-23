@@ -46,7 +46,7 @@ class SQLInjectionProtector:
             },
             "sql_union": {
                 "pattern": r"\bUNION\s+ALL?\b",
-                "description": "UNION查询",
+                "description": "UNIONquery",
                 "severity": "critical",
             },
             "sql_drop": {
@@ -82,12 +82,12 @@ class SQLInjectionProtector:
             },
             "sql_execute": {
                 "pattern": r"\bEXEC\b|\bEXECUTE\b",
-                "description": "动态执行语句",
+                "description": "动态executing语句",
                 "severity": "critical",
             },
             "sql_xp_cmdshell": {
                 "pattern": r"\bxp_cmdshell\b",
-                "description": "系统命令执行",
+                "description": "系统命令executing",
                 "severity": "critical",
             },
             "sql_script_tag": {
@@ -176,7 +176,7 @@ class SQLInjectionProtector:
         is_safe = len(self.violations) == 0
 
         if not is_safe:
-            logger.warning(f"SQL注入检测到安全违规: {len(self.violations)} 个问题")
+            logger.warning(f"SQL injection detected security violations: {len(self.violations)} issues")
             for violation in self.violations:
                 logger.warning(
                     f"  - {violation.type}: {violation.description} (严重性: {violation.severity})"
@@ -185,7 +185,7 @@ class SQLInjectionProtector:
         return is_safe, self.violations.copy()
 
     def _perform_advanced_checks(self, sql: str, context: str):
-        """执行高级安全检查"""
+        """executing高级安全检查"""
         # 检查SQL语句结构
         self._check_sql_structure(sql)
 
@@ -195,7 +195,7 @@ class SQLInjectionProtector:
 
     def _check_sql_structure(self, sql: str):
         """检查SQL语句结构"""
-        # 检查是否以SELECT开头（只允许查询操作）
+        # 检查是否以SELECT开头（只允许query操作）
         if not sql.strip().upper().startswith("SELECT"):
             violation = SecurityViolation(
                 type="non_select_statement",
@@ -221,23 +221,23 @@ class SQLInjectionProtector:
         """检查上下文相关的安全规则"""
         # 根据上下文应用不同的规则
         if context == "user_query":
-            # 用户查询：更严格的限制
+            # 用户query：更严格的限制
             if "INFORMATION_SCHEMA" in sql.upper():
                 violation = SecurityViolation(
                     type="system_schema_access",
                     severity="medium",
                     pattern="INFORMATION_SCHEMA",
-                    description="访问系统架构信息",
+                    description="访问系统架构info",
                     line_number=1,
                 )
                 self.violations.append(violation)
 
         elif context == "admin_query":
-            # 管理员查询：允许更多操作
+            # 管理员query：允许更多操作
             pass
 
     def _get_line_number(self, text: str, position: int) -> int:
-        """获取指定位置的行号"""
+        """getting指定位置的行号"""
         return text[:position].count("\n") + 1
 
     def sanitize_sql(self, sql: str) -> str:
@@ -277,7 +277,7 @@ class SQLInjectionProtector:
         return sql
 
     def get_security_report(self) -> Dict[str, Any]:
-        """获取安全报告"""
+        """getting安全报告"""
         return {
             "security_level": self.security_level.value,
             "total_violations": len(self.violations),
@@ -306,28 +306,28 @@ class SQLInjectionProtector:
         violation_types = set(violation.type for violation in self.violations)
 
         if "sql_union" in violation_types:
-            recommendations.append("避免使用UNION语句，可能被用于数据泄露")
+            recommendations.append("避免使用UNION语句，可能被用于data泄露")
 
         if "sql_drop" in violation_types:
-            recommendations.append("避免使用DROP语句，可能导致数据丢失")
+            recommendations.append("避免使用DROP语句，可能导致data丢失")
 
         if "sql_execute" in violation_types:
-            recommendations.append("避免使用动态执行语句，存在代码注入风险")
+            recommendations.append("避免使用动态executing语句，存在代码注入风险")
 
         if "multiple_statements" in violation_types:
-            recommendations.append("避免在单个查询中包含多个SQL语句")
+            recommendations.append("避免在单个query中包含多个SQL语句")
 
-        recommendations.append("建议使用参数化查询来防止SQL注入")
-        recommendations.append("定期审查SQL查询的安全策略")
+        recommendations.append("建议使用parameter化query来防止SQL注入")
+        recommendations.append("定期审查SQLquery的安全策略")
 
         return recommendations
 
     def _get_timestamp(self) -> str:
-        """获取当前时间戳"""
+        """getting当前时间戳"""
         try:
             from core.common.timezone_utils import get_current_time_iso
 
-            return get_current_time_iso()  # 使用统一的时区配置
+            return get_current_time_iso()  # 使用统一的时区configuration
         except ImportError:
             # 如果无法导入时区工具，使用默认时间
             from datetime import datetime
@@ -342,7 +342,7 @@ _sql_protector = None
 def get_sql_protector(
     security_level: SecurityLevel = SecurityLevel.HIGH,
 ) -> SQLInjectionProtector:
-    """获取SQL注入防护器实例"""
+    """gettingSQL注入防护器实例"""
     global _sql_protector
     if _sql_protector is None:
         _sql_protector = SQLInjectionProtector(security_level)

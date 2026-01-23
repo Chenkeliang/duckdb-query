@@ -128,7 +128,7 @@ def _persist_pasted_dataframe(
         try:
             connection.unregister(temp_view)
         except Exception as exc:
-            logger.debug("释放粘贴数据临时视图失败: %s (%s)", temp_view, exc)
+            logger.debug("Failed to release paste data temporary view: %s (%s)", temp_view, exc)
 
     return build_table_metadata_snapshot(connection, table_name)
 
@@ -136,31 +136,31 @@ def _persist_pasted_dataframe(
 @router.post("/api/paste-data", tags=["Data Sources"])
 async def save_paste_data(request: PasteDataRequest):
     """
-    保存粘贴的数据到DuckDB
+    Save pasted data to DuckDB
     """
     try:
-        logger.info(f"开始处理粘贴数据保存请求，表名: {request.table_name}")
+        logger.info(f"Processing paste data save request, table: {request.table_name}")
 
-        # 验证输入
+        # Validate input
         if not request.table_name.strip():
-            raise HTTPException(status_code=400, detail="表名不能为空")
+            raise HTTPException(status_code=400, detail="Table name cannot be empty")
 
         if not request.column_names:
-            raise HTTPException(status_code=400, detail="列名不能为空")
+            raise HTTPException(status_code=400, detail="Column names cannot be empty")
 
         if not request.data_rows:
-            raise HTTPException(status_code=400, detail="数据不能为空")
+            raise HTTPException(status_code=400, detail="Data cannot be empty")
 
         if len(request.column_names) != len(request.column_types):
-            raise HTTPException(status_code=400, detail="列名和列类型数量不匹配")
+            raise HTTPException(status_code=400, detail="Column names and types count mismatch")
 
-        # 验证数据行列数一致性
+        # Validate row column count consistency
         expected_columns = len(request.column_names)
         for i, row in enumerate(request.data_rows):
             if len(row) != expected_columns:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"第 {i+1} 行数据列数 ({len(row)}) 与预期列数 ({expected_columns}) 不匹配",
+                    detail=f"Row {i+1} column count ({len(row)}) does not match expected ({expected_columns})",
                 )
 
         cleaned_rows = [
@@ -175,7 +175,7 @@ async def save_paste_data(request: PasteDataRequest):
         )
 
         if not column_definitions:
-            raise HTTPException(status_code=400, detail="列配置不能为空")
+            raise HTTPException(status_code=400, detail="Column definitions cannot be empty")
 
         with with_duckdb_connection() as connection:
             metadata = _persist_pasted_dataframe(
@@ -184,7 +184,7 @@ async def save_paste_data(request: PasteDataRequest):
 
         saved_rows = metadata.get("row_count", len(df))
         logger.info(
-            "成功保存粘贴数据到表: %s, 行数: %s, 列数: %s",
+            "Successfully saved pasted data to table: %s, rows: %s, columns: %s",
             clean_table_name,
             saved_rows,
             len(request.column_names),
@@ -207,9 +207,9 @@ async def save_paste_data(request: PasteDataRequest):
 
         try:
             file_datasource_manager.save_file_datasource(metadata_payload)
-            logger.info(f"成功刷新粘贴数据的元数据: {clean_table_name}")
+            logger.info(f"Successfully refreshed pasted data metadata: {clean_table_name}")
         except Exception as exc:
-            logger.warning(f"刷新粘贴数据的元数据失败: {exc}")
+            logger.warning(f"Failed to refresh pasted data metadata: {exc}")
 
         return create_success_response(
             data={
@@ -224,14 +224,14 @@ async def save_paste_data(request: PasteDataRequest):
                 "createdAt": created_at_value,
             },
             message_code=MessageCode.PASTE_DATA_SUCCESS,
-            message=f"数据已成功保存到表: {clean_table_name}",
+            message=f"Data saved to table: {clean_table_name}",
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"保存粘贴数据失败: {str(e)}")
+        logger.error(f"Failed to save pasted data: {str(e)}")
         logger.error(
-            f"请求数据: table_name={request.table_name}, columns={len(request.column_names)}, rows={len(request.data_rows)}"
+            f"Request data: table_name={request.table_name}, columns={len(request.column_names)}, rows={len(request.data_rows)}"
         )
-        raise HTTPException(status_code=500, detail=f"保存数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save data: {str(e)}")

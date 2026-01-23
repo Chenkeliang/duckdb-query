@@ -238,8 +238,10 @@ class TestAsyncQueryRequestModel:
         
         assert request.sql == "SELECT * FROM mysql_db.users"
         assert len(request.attach_databases) == 1
+        # pylint: disable=unsubscriptable-object
         assert request.attach_databases[0].alias == "mysql_db"
         assert request.attach_databases[0].connection_id == "conn-123"
+        # pylint: enable=unsubscriptable-object
 
     def test_request_without_attach_databases(self):
         """测试请求模型不带 attach_databases 参数"""
@@ -327,17 +329,17 @@ class TestAttachExternalDatabases:
         **Feature: async-federated-query, Property 7: ATTACH Failure Rollback**
         **Validates: Requirements 8.1**
         
-        测试连接不存在时抛出错误
+        测试连接does not exist时抛出错误
         """
-        # 模拟连接不存在的情况
+        # 模拟连接does not exist的情况
         connection_id = "non-existent"
         connection = None  # 模拟 db_manager.get_connection 返回 None
         
         if not connection:
             with pytest.raises(ValueError) as exc_info:
-                raise ValueError(f"数据库连接 '{connection_id}' 不存在")
+                raise ValueError(f"Database connection '{connection_id}' does not exist")
             
-            assert "不存在" in str(exc_info.value)
+            assert "does not exist" in str(exc_info.value)
             assert "non-existent" in str(exc_info.value)
 
     def test_attach_rollback_on_failure(self):
@@ -345,14 +347,14 @@ class TestAttachExternalDatabases:
         **Feature: async-federated-query, Property 7: ATTACH Failure Rollback**
         **Validates: Requirements 1.4, 4.1**
         
-        测试 ATTACH 失败时回滚已附加的数据库
+        测试 ATTACH failed时回滚已附加的数据库
         """
         mock_con = MagicMock()
         
-        # 模拟第一次成功，第二次失败
+        # 模拟第一次成功，第二次failed
         attached = ["db1"]  # 第一个已成功附加
         
-        # 模拟 ATTACH 失败后的回滚
+        # 模拟 ATTACH failed后的回滚
         for alias in attached:
             mock_con.execute(f"DETACH {alias}")
         
@@ -386,19 +388,19 @@ class TestDetachDatabases:
         **Feature: async-federated-query, Property 2: DETACH Cleanup Invariant**
         **Validates: Requirements 4.3**
         
-        测试单个 DETACH 失败时继续处理其他
+        测试单个 DETACH failed时继续处理其他
         """
         mock_con = MagicMock()
         aliases = ["db1", "db2"]
         
-        # 模拟 _detach_databases 的逻辑（忽略失败继续）
+        # 模拟 _detach_databases 的逻辑（忽略failed继续）
         for alias in aliases:
             try:
                 if alias == "db1":
-                    raise Exception("DETACH failed")
+                    raise RuntimeError("DETACH failed")
                 mock_con.execute(f"DETACH {alias}")
-            except Exception:
-                pass  # 忽略失败，继续处理
+            except RuntimeError:
+                pass  # 忽略failed，继续处理
         
         # db2 应该被尝试
         mock_con.execute.assert_called_with("DETACH db2")
@@ -451,15 +453,15 @@ class TestExecuteAsyncFederatedQuery:
         **Feature: async-federated-query, Property 2: DETACH Cleanup Invariant**
         **Validates: Requirements 4.2**
         
-        测试查询失败时仍执行 DETACH 清理
+        测试查询failed时仍执行 DETACH 清理
         """
         mock_con = MagicMock()
         attached_aliases = ["mysql_db"]
         
-        # 模拟查询失败后的清理
+        # 模拟查询failed后的清理
         try:
-            raise Exception("Query failed")
-        except Exception:
+            raise RuntimeError("Query failed")
+        except RuntimeError:
             # 在 finally 块中执行 DETACH
             for alias in attached_aliases:
                 mock_con.execute(f"DETACH {alias}")
@@ -573,14 +575,14 @@ class TestErrorHandling:
         **Feature: async-federated-query**
         **Validates: Requirements 8.1, 12.2**
         
-        测试连接不存在错误处理
+        测试连接does not exist错误处理
         """
         connection_id = "non-existent"
         
         # 模拟错误响应
         error_response = {
             "code": "CONNECTION_NOT_FOUND",
-            "message": f"数据库连接 '{connection_id}' 不存在",
+            "message": f"数据库连接 '{connection_id}' does not exist",
             "connection_id": connection_id
         }
         
@@ -607,7 +609,7 @@ class TestErrorHandling:
         **Feature: async-federated-query**
         **Validates: Requirements 8.3, 12.3**
         
-        测试 ATTACH 失败错误处理
+        测试 ATTACH failed错误处理
         """
         alias = "mysql_db"
         original_error = "Authentication failed"
@@ -615,7 +617,7 @@ class TestErrorHandling:
         # 模拟错误响应
         error_response = {
             "code": "ATTACH_FAILED",
-            "message": f"ATTACH 数据库 '{alias}' 失败",
+            "message": f"ATTACH 数据库 '{alias}' failed",
             "alias": alias,
             "original_error": original_error
         }
@@ -628,7 +630,7 @@ class TestErrorHandling:
         **Feature: async-federated-query**
         **Validates: Requirements 12.4**
         
-        测试失败时 result_info 包含 error_code
+        测试failed时 result_info 包含 error_code
         """
         error_info = {
             "error_message": "Query execution failed",
@@ -951,12 +953,12 @@ class TestDetailedErrorHandling:
         **Feature: async-federated-query, Property 7: ATTACH Failure Rollback**
         **Validates: Requirements 8.1, 12.2**
         
-        测试连接不存在错误代码分类
+        测试连接does not exist错误代码分类
         """
-        error_message = "数据库连接 'conn-123' 不存在"
+        error_message = "Database connection 'conn-123' does not exist"
         error_str = error_message.lower()
         
-        if "不存在" in error_message or "not found" in error_str:
+        if "does not exist" in error_message or "not found" in error_str:
             error_code = "CONNECTION_NOT_FOUND"
         else:
             error_code = "FEDERATED_QUERY_FAILED"
@@ -970,7 +972,7 @@ class TestDetailedErrorHandling:
         
         测试不支持类型错误代码分类
         """
-        error_message = "不支持的数据源类型: oracle"
+        error_message = "Unsupported datasource type: oracle"
         error_str = error_message.lower()
         
         if "不支持" in error_message or "unsupported" in error_str:
@@ -985,7 +987,7 @@ class TestDetailedErrorHandling:
         **Feature: async-federated-query**
         **Validates: Requirements 8.3, 12.3**
         
-        测试 ATTACH 失败错误代码分类
+        测试 ATTACH failed错误代码分类
         """
         error_message = "ATTACH database failed: connection refused"
         error_str = error_message.lower()
@@ -1019,7 +1021,7 @@ class TestDetailedErrorHandling:
         **Feature: async-federated-query**
         **Validates: Requirements 8.4**
         
-        测试认证失败错误代码分类
+        测试认证failed错误代码分类
         """
         error_message = "Authentication failed: invalid password"
         error_str = error_message.lower()
@@ -1042,7 +1044,7 @@ class TestDetailedErrorHandling:
         
         if is_cancellation_requested:
             error_code = "USER_CANCELLED"
-            error_message = "用户取消"
+            error_message = "User cancelled"
         else:
             error_code = "FEDERATED_QUERY_FAILED"
             error_message = "Unknown error"
@@ -1056,7 +1058,7 @@ class TestDetailedErrorHandling:
         error_str = error_message.lower()
         
         # 不匹配任何特定错误类型
-        if "不存在" in error_message or "not found" in error_str:
+        if "does not exist" in error_message or "not found" in error_str:
             error_code = "CONNECTION_NOT_FOUND"
         elif "不支持" in error_message or "unsupported" in error_str:
             error_code = "UNSUPPORTED_TYPE"
@@ -1120,7 +1122,7 @@ class TestOptimizedErrorHandling:
         """
         # 模拟 force_fail_task 的调用参数
         task_id = "test-task-id"
-        error_message = "ATTACH 数据库 'mysql_db' 失败"
+        error_message = "Failed to ATTACH database 'mysql_db' failed"
         error_metadata = {
             "error_code": "ATTACH_FAILED",
             "is_federated": True,
@@ -1150,8 +1152,8 @@ class TestOptimizedErrorHandling:
         # 模拟 finally 块中的 DETACH 清理
         try:
             # 模拟查询执行
-            raise Exception("Query failed")
-        except Exception:
+            raise RuntimeError("Query failed")
+        except RuntimeError:
             # 异常处理中不再调用 DETACH（已优化移除）
             pass
         finally:
@@ -1233,7 +1235,7 @@ class TestSecurityValidation:
         - 日志消息不包含 "密码" 或 "password" 等敏感词
         """
         # 验证日志消息不包含敏感信息
-        safe_log_message = "连接 conn-123 密码已处理"
+        safe_log_message = "Connection conn-123 password processed"
         
-        assert "已解密" not in safe_log_message
+        assert "decrypted" not in safe_log_message
         assert "password" not in safe_log_message.lower()

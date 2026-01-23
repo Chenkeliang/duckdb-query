@@ -53,13 +53,13 @@ class RateLimiter:
         
         # 检查客户端限制
         if len(self.client_requests[client_key]) >= client_limit:
-            logger.warning(f"客户端 {client_key} 请求频率过高: {len(self.client_requests[client_key])} 次/{window_seconds}秒")
-            return True, f"客户端请求频率过高，请稍后再试"
+            logger.warning(f"Client {client_key} request rate too high: {len(self.client_requests[client_key])} 次/{window_seconds}秒")
+            return True, f"Client request rate too high, please try again later"
         
         # 检查全局限制
         if len(self.endpoint_requests[endpoint]) >= global_limit:
-            logger.warning(f"端点 {endpoint} 全局请求频率过高: {len(self.endpoint_requests[endpoint])} 次/{window_seconds}秒")
-            return True, f"服务器繁忙，请稍后再试"
+            logger.warning(f"Endpoint {endpoint} global request rate too high: {len(self.endpoint_requests[endpoint])} 次/{window_seconds}秒")
+            return True, f"Server busy, please try again later"
         
         return False, ""
     
@@ -71,14 +71,14 @@ class RateLimiter:
         self.client_requests[client_key].append(current_time)
         self.endpoint_requests[endpoint].append(current_time)
         
-        logger.info(f"记录请求: 客户端 {client_key}, 端点 {endpoint}")
+        logger.info(f"Recording request: client {client_key}, endpoint {endpoint}")
     
     def get_cached_response(self, cache_key: str, cache_seconds: int = 5) -> any:
-        """获取缓存的响应"""
+        """getting缓存的响应"""
         if cache_key in self.response_cache:
             timestamp, response = self.response_cache[cache_key]
             if time.time() - timestamp < cache_seconds:
-                logger.info(f"返回缓存响应: {cache_key}")
+                logger.info(f"Returning cached response: {cache_key}")
                 return response
         return None
     
@@ -96,7 +96,7 @@ class RateLimiter:
             del self.response_cache[key]
     
     def get_stats(self) -> dict:
-        """获取统计信息"""
+        """getting统计info"""
         return {
             "active_clients": len(self.client_requests),
             "cached_responses": len(self.response_cache),
@@ -143,7 +143,7 @@ def rate_limit_middleware(client_ip: str,
     # 记录请求
     rate_limiter.record_request(client_ip, user_agent, endpoint)
     
-    # 如果提供了响应数据，缓存它
+    # 如果提供了响应data，缓存它
     if response_data is not None:
         rate_limiter.cache_response(cache_key, response_data)
     

@@ -75,7 +75,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
       try {
         await handleQueryExecute(sql, source);
       } catch (error) {
-        showErrorToast(t, undefined, t('query.previewFailed', { message: (error as Error).message }));
+        const code = (error as any)?.code || (error as any)?.messageCode || "QUERY_FAILED";
+        showErrorToast(t, code, t('query.previewFailed', { message: (error as Error).message }));
       }
     },
     [handleQueryExecute, t]
@@ -93,7 +94,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
       const { qualifiedName, attachDatabase } = generateExternalTableReference(table);
 
       if (!attachDatabase) {
-        showErrorToast(t, undefined, t("query.import.missingConnection", "缺少外部数据库连接信息"));
+        showErrorToast(t, "INVALID_REQUEST", t("query.import.missingConnection", "缺少外部数据库连接信息"));
         return;
       }
 
@@ -110,7 +111,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
         await handleQueryExecute(sql, source);
         setAutoOpenImportDialog(true);
       } catch (error) {
-        showErrorToast(t, undefined, t("query.import.error", `导入失败: ${(error as Error).message}`));
+        const code = (error as any)?.code || (error as any)?.messageCode || "QUERY_FAILED";
+        showErrorToast(t, code, t("query.import.error", `导入失败: ${(error as Error).message}`));
       }
     },
     [handleQueryExecute, t]
@@ -124,7 +126,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
         await invalidateAfterTableDelete(queryClient);
         showSuccessToast(t, 'TABLE_DELETED', t('query.tableDeleted', { table: tableName }));
       } catch (error) {
-        showErrorToast(t, undefined, t('query.deleteFailed', { message: (error as Error).message }));
+        const code = (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED";
+        showErrorToast(t, code, t('query.deleteFailed', { message: (error as Error).message }));
         throw error; // 重新抛出以便调用方知道失败了
       }
     },

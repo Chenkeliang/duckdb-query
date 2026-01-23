@@ -73,13 +73,24 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
     }, [open, refresh]);
 
     const filteredFavorites = React.useMemo(() => {
-        if (!search.trim()) return favorites;
+        // Sort by created_at descending (newest first)
+        const sorted = [...favorites].sort((a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+        if (!search.trim()) return sorted;
+
         const lowerSearch = search.toLowerCase();
-        return favorites.filter(fav =>
+        return sorted.filter(fav =>
             fav.name.toLowerCase().includes(lowerSearch) ||
             fav.sql.toLowerCase().includes(lowerSearch)
         );
     }, [favorites, search]);
+
+    // Helper to localize SQL comments
+    const formatSqlPreview = (sql: string) => {
+        return sql.replace(/-- 联邦查询:/g, `-- ${t('query.sql.federatedQuery', '联邦查询')}:`);
+    };
 
     const handleLoad = async (item: SavedQuery) => {
         await useQuery(item.id); // 增加计数
@@ -150,7 +161,7 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                                         </div>
 
                                         <div className="font-mono text-xs text-muted-foreground bg-muted/50 p-3 rounded-md border border-border/50 mb-3 line-clamp-3">
-                                            {item.sql}
+                                            {formatSqlPreview(item.sql)}
                                         </div>
 
                                         <div className="flex items-center justify-between text-xs text-muted-foreground">

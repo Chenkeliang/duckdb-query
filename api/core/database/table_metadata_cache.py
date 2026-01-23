@@ -38,7 +38,7 @@ class TableMetadataCache:
             app_cfg = config_manager.get_app_config()
             ttl_hours = getattr(app_cfg, "table_metadata_cache_ttl_hours", 0) or 0
         except Exception as exc:  # pragma: no cover - defensive branch
-            logger.warning("无法获取表元数据缓存TTL配置: %s", exc)
+            logger.warning("Unable to get table metadata cache TTL configuration: %s", exc)
             return None
         if ttl_hours <= 0:
             return None

@@ -116,7 +116,7 @@ export const useDatabaseConnections = () => {
     queryFn: fetchDatabaseConnections,
     staleTime: cacheConfig.staleTime, // 使用可配置的缓存时间
     gcTime: cacheConfig.gcTime, // 使用可配置的缓存时间
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false, // 禁用窗口聚焦时自动刷新（避免重复请求）
     refetchOnMount: false, // 优先使用缓存
   });
 

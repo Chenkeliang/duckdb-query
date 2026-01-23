@@ -3,13 +3,13 @@
  * 管理 SQL 编辑器状态、历史记录和执行
  */
 
-import { useState, useCallback } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useTranslation } from 'react-i18next';
-import { executeDuckDBSQL } from '@/api';
-import { invalidateAllDataCaches } from '@/utils/cacheInvalidation';
-import { formatSQLDataGrip } from '@/utils/sqlFormatter';
-import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
+import { useState, useCallback } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { executeDuckDBSQL } from "@/api";
+import { invalidateAllDataCaches } from "@/utils/cacheInvalidation";
+import { formatSQLDataGrip } from "@/utils/sqlFormatter";
+import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 
 export interface SQLHistoryItem {
   id: string;
@@ -51,7 +51,7 @@ export interface UseSQLEditorReturn {
   /** 历史记录 */
   history: SQLHistoryItem[];
   /** 添加到历史 */
-  addToHistory: (item: Omit<SQLHistoryItem, 'id' | 'timestamp'>) => void;
+  addToHistory: (item: Omit<SQLHistoryItem, "id" | "timestamp">) => void;
   /** 从历史加载 */
   loadFromHistory: (id: string) => void;
   /** 清除历史 */
@@ -66,7 +66,9 @@ export interface UseSQLEditorReturn {
 
 // 生成唯一 ID
 function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `${Date.now()}-${Math.random()
+    .toString(36)
+    .substr(2, 9)}`;
 }
 
 // 从 localStorage 加载历史
@@ -77,7 +79,7 @@ function loadHistory(key: string): SQLHistoryItem[] {
       return JSON.parse(stored);
     }
   } catch (e) {
-    console.error('Failed to load SQL history:', e);
+    console.error("Failed to load SQL history:", e);
   }
   return [];
 }
@@ -87,7 +89,7 @@ function saveHistory(key: string, history: SQLHistoryItem[]): void {
   try {
     localStorage.setItem(key, JSON.stringify(history));
   } catch (e) {
-    console.error('Failed to save SQL history:', e);
+    console.error("Failed to save SQL history:", e);
   }
 }
 
@@ -95,24 +97,28 @@ function saveHistory(key: string, history: SQLHistoryItem[]): void {
  * SQL 编辑器 Hook
  */
 export const useSQLEditor = ({
-  initialSQL = '',
+  initialSQL = "",
   maxHistory = 50,
-  storageKey = 'duckquery-sql-history',
+  storageKey = "duckquery-sql-history",
   onSuccess,
-  onError,
+  onError
 }: UseSQLEditorOptions = {}): UseSQLEditorReturn => {
   const queryClient = useQueryClient();
-  const { t } = useTranslation('common');
+  const { t } = useTranslation("common");
 
   // SQL 内容
   const [sql, setSQL] = useState(initialSQL);
 
   // 执行结果
   const [result, setResult] = useState<any | null>(null);
-  const [executionTime, setExecutionTime] = useState<number | undefined>(undefined);
+  const [executionTime, setExecutionTime] = useState<number | undefined>(
+    undefined
+  );
 
   // 历史记录
-  const [history, setHistory] = useState<SQLHistoryItem[]>(() => loadHistory(storageKey));
+  const [history, setHistory] = useState<SQLHistoryItem[]>(() =>
+    loadHistory(storageKey)
+  );
 
   // 执行 SQL mutation
   const executeMutation = useMutation({
@@ -134,7 +140,7 @@ export const useSQLEditor = ({
       const endTime = Date.now();
       return {
         ...response,
-        executionTime: endTime - startTime,
+        executionTime: endTime - startTime
       };
     },
     onSuccess: (data, variables) => {
@@ -145,13 +151,17 @@ export const useSQLEditor = ({
       addToHistory({
         sql: variables.sqlToExecute,
         executionTime: data.executionTime,
-        rowCount: data.data?.length || data.row_count,
+        rowCount: data.data?.length || data.row_count
       });
 
       // 如果保存为表，刷新数据缓存
       if (variables.saveAsTable) {
         invalidateAllDataCaches(queryClient);
-        showSuccessToast(t, 'TABLE_CREATED', t('query.sql.savedToTable', { table: variables.saveAsTable }));
+        showSuccessToast(
+          t,
+          "TABLE_CREATED",
+          t("query.sql.savedToTable", { table: variables.saveAsTable })
+        );
       }
 
       onSuccess?.(data, variables.sqlToExecute);
@@ -163,75 +173,88 @@ export const useSQLEditor = ({
       // 添加到历史（带错误）
       addToHistory({
         sql: variables.sqlToExecute,
-        error: error.message,
+        error: error.message
       });
 
       // 如果是取消操作引发的错误，不显示 toast（通常已有 "查询已取消" 的提示）
-      if (!error.message?.toLowerCase().includes('canceled')) {
-        showErrorToast(t, undefined, t('query.sql.executionFailed', { message: error.message }));
+      if (!error.message?.toLowerCase().includes("canceled")) {
+        const code =
+          (error as any)?.code || (error as any)?.messageCode || "QUERY_FAILED";
+        const msg =
+          error?.message || t("query.sql.executionFailed", { message: "" });
+        showErrorToast(t, code, msg);
       }
       onError?.(error, variables.sqlToExecute);
-    },
+    }
   });
 
   // 执行 SQL
-  const execute = useCallback((options?: { saveAsTable?: string; isPreview?: boolean }) => {
-    const trimmedSQL = sql.trim();
-    if (!trimmedSQL) {
-      showErrorToast(t, undefined, t('query.sql.emptySQL'));
-      return;
-    }
+  const execute = useCallback(
+    (options?: { saveAsTable?: string; isPreview?: boolean }) => {
+      const trimmedSQL = sql.trim();
+      if (!trimmedSQL) {
+        showErrorToast(t, undefined, t("query.sql.emptySQL"));
+        return;
+      }
 
-    executeMutation.mutate({
-      sqlToExecute: trimmedSQL,
-      saveAsTable: options?.saveAsTable,
-      isPreview: options?.isPreview,
-    });
-  }, [sql, executeMutation]);
+      executeMutation.mutate({
+        sqlToExecute: trimmedSQL,
+        saveAsTable: options?.saveAsTable,
+        isPreview: options?.isPreview
+      });
+    },
+    [sql, executeMutation]
+  );
 
   // 添加到历史
-  const addToHistory = useCallback((item: Omit<SQLHistoryItem, 'id' | 'timestamp'>) => {
-    setHistory((prev) => {
-      // 检查是否已存在相同的 SQL
-      const existingIndex = prev.findIndex((h) => h.sql === item.sql);
+  const addToHistory = useCallback(
+    (item: Omit<SQLHistoryItem, "id" | "timestamp">) => {
+      setHistory(prev => {
+        // 检查是否已存在相同的 SQL
+        const existingIndex = prev.findIndex(h => h.sql === item.sql);
 
-      let newHistory: SQLHistoryItem[];
+        let newHistory: SQLHistoryItem[];
 
-      if (existingIndex >= 0) {
-        // 更新现有记录并移到最前
-        const existing = prev[existingIndex];
-        newHistory = [
-          { ...existing, ...item, timestamp: Date.now() },
-          ...prev.slice(0, existingIndex),
-          ...prev.slice(existingIndex + 1),
-        ];
-      } else {
-        // 添加新记录
-        newHistory = [
-          { ...item, id: generateId(), timestamp: Date.now() },
-          ...prev,
-        ];
-      }
+        if (existingIndex >= 0) {
+          // 更新现有记录并移到最前
+          const existing = prev[existingIndex];
+          newHistory = [
+            { ...existing, ...item, timestamp: Date.now() },
+            ...prev.slice(0, existingIndex),
+            ...prev.slice(existingIndex + 1)
+          ];
+        } else {
+          // 添加新记录
+          newHistory = [
+            { ...item, id: generateId(), timestamp: Date.now() },
+            ...prev
+          ];
+        }
 
-      // 限制历史记录数量
-      if (newHistory.length > maxHistory) {
-        newHistory = newHistory.slice(0, maxHistory);
-      }
+        // 限制历史记录数量
+        if (newHistory.length > maxHistory) {
+          newHistory = newHistory.slice(0, maxHistory);
+        }
 
-      // 保存到 localStorage
-      saveHistory(storageKey, newHistory);
+        // 保存到 localStorage
+        saveHistory(storageKey, newHistory);
 
-      return newHistory;
-    });
-  }, [maxHistory, storageKey]);
+        return newHistory;
+      });
+    },
+    [maxHistory, storageKey]
+  );
 
   // 从历史加载
-  const loadFromHistory = useCallback((id: string) => {
-    const item = history.find((h) => h.id === id);
-    if (item) {
-      setSQL(item.sql);
-    }
-  }, [history]);
+  const loadFromHistory = useCallback(
+    (id: string) => {
+      const item = history.find(h => h.id === id);
+      if (item) {
+        setSQL(item.sql);
+      }
+    },
+    [history]
+  );
 
   // 清除历史
   const clearHistory = useCallback(() => {
@@ -240,13 +263,16 @@ export const useSQLEditor = ({
   }, [storageKey]);
 
   // 删除历史项
-  const removeFromHistory = useCallback((id: string) => {
-    setHistory((prev) => {
-      const newHistory = prev.filter((h) => h.id !== id);
-      saveHistory(storageKey, newHistory);
-      return newHistory;
-    });
-  }, [storageKey]);
+  const removeFromHistory = useCallback(
+    (id: string) => {
+      setHistory(prev => {
+        const newHistory = prev.filter(h => h.id !== id);
+        saveHistory(storageKey, newHistory);
+        return newHistory;
+      });
+    },
+    [storageKey]
+  );
 
   // 格式化 SQL（使用 sql-formatter 库，DataGrip 风格）
   const formatSQL = useCallback(() => {
@@ -256,7 +282,7 @@ export const useSQLEditor = ({
 
   // 清空编辑器
   const clear = useCallback(() => {
-    setSQL('');
+    setSQL("");
     setResult(null);
     setExecutionTime(undefined);
   }, []);
@@ -275,7 +301,7 @@ export const useSQLEditor = ({
     clearHistory,
     removeFromHistory,
     formatSQL,
-    clear,
+    clear
   };
 };
 

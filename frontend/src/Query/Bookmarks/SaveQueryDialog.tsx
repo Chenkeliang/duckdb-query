@@ -20,12 +20,14 @@ interface SaveQueryDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     sql: string;
+    type?: string;  // 'mysql' | 'postgresql' | 'duckdb' | 'federated'
 }
 
 export const SaveQueryDialog: React.FC<SaveQueryDialogProps> = ({
     open,
     onOpenChange,
     sql,
+    type = 'duckdb',
 }) => {
     const { t } = useTranslation('common');
     const { saveQuery, isSaving } = useSavedQueries();
@@ -49,6 +51,7 @@ export const SaveQueryDialog: React.FC<SaveQueryDialogProps> = ({
                 name,
                 description,
                 sql,
+                type: type || 'duckdb',
                 tags: []
             });
             onOpenChange(false);

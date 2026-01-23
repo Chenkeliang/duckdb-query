@@ -57,8 +57,8 @@ async def get_sql_favorites():
             message_code=MessageCode.FAVORITES_RETRIEVED,
         )
     except Exception as e:
-        logger.error("获取SQL收藏失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取SQL收藏失败: {str(e)}") from e
+        logger.error("Failed to get SQL favorites: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get SQL favorites: {str(e)}") from e
 
 
 @router.post("/api/sql-favorites", tags=["SQL Favorites"])
@@ -70,7 +70,7 @@ async def create_sql_favorite(request: CreateSQLFavoriteRequest = Body(...)):
         # 理想情况下应该在数据库层面做唯一约束检查
         existing_favorites = metadata_manager.list_sql_favorites()
         if any(fav["name"] == request.name for fav in existing_favorites):
-            raise HTTPException(status_code=400, detail="收藏名称已存在")
+            raise HTTPException(status_code=400, detail="Favorite name already exists")
 
         # 创建新的收藏项
         new_id = str(uuid.uuid4())
@@ -90,7 +90,7 @@ async def create_sql_favorite(request: CreateSQLFavoriteRequest = Body(...)):
 
         success = metadata_manager.save_sql_favorite(new_favorite)
         if not success:
-            raise HTTPException(status_code=500, detail="保存到数据库失败")
+            raise HTTPException(status_code=500, detail="Failed to save to database")
 
         return create_success_response(
             data={"favorite": new_favorite},
@@ -99,8 +99,8 @@ async def create_sql_favorite(request: CreateSQLFavoriteRequest = Body(...)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("创建SQL收藏失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"创建SQL收藏失败: {str(e)}") from e
+        logger.error("Failed to create SQL favorite: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create SQL favorite: {str(e)}") from e
 
 
 @router.put("/api/sql-favorites/{favorite_id}", tags=["SQL Favorites"])
@@ -112,14 +112,14 @@ async def update_sql_favorite(
         # 检查是否存在
         existing = metadata_manager.get_sql_favorite(favorite_id)
         if not existing:
-            raise HTTPException(status_code=404, detail="SQL收藏不存在")
+            raise HTTPException(status_code=404, detail="SQL favorite not found")
 
         # 检查名称是否与其他收藏冲突
         if request.name and request.name != existing["name"]:
             all_favorites = metadata_manager.list_sql_favorites()
             for fav in all_favorites:
                 if fav["id"] != favorite_id and fav["name"] == request.name:
-                    raise HTTPException(status_code=400, detail="收藏名称已存在")
+                    raise HTTPException(status_code=400, detail="Favorite name already exists")
 
         # 构建更新数据
         updates = {}
@@ -138,7 +138,7 @@ async def update_sql_favorite(
 
         success = metadata_manager.update_sql_favorite(favorite_id, updates)
         if not success:
-            raise HTTPException(status_code=500, detail="更新数据库失败")
+            raise HTTPException(status_code=500, detail="Failed to update database")
 
         # 获取更新后的完整数据返回
         updated_favorite = metadata_manager.get_sql_favorite(favorite_id)
@@ -150,8 +150,8 @@ async def update_sql_favorite(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("更新SQL收藏失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"更新SQL收藏失败: {str(e)}") from e
+        logger.error("Failed to update SQL favorite: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update SQL favorite: {str(e)}") from e
 
 
 @router.delete("/api/sql-favorites/{favorite_id}", tags=["SQL Favorites"])
@@ -161,11 +161,11 @@ async def delete_sql_favorite(favorite_id: str):
         # 检查是否存在
         existing = metadata_manager.get_sql_favorite(favorite_id)
         if not existing:
-            raise HTTPException(status_code=404, detail="SQL收藏不存在")
+            raise HTTPException(status_code=404, detail="SQL favorite not found")
 
         success = metadata_manager.delete_sql_favorite(favorite_id)
         if not success:
-            raise HTTPException(status_code=500, detail="从数据库删除失败")
+            raise HTTPException(status_code=500, detail="Failed to delete from database")
 
         return create_success_response(
             data={"id": favorite_id},
@@ -174,8 +174,8 @@ async def delete_sql_favorite(favorite_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("删除SQL收藏失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"删除SQL收藏失败: {str(e)}") from e
+        logger.error("Failed to delete SQL favorite: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete SQL favorite: {str(e)}") from e
 
 
 @router.post("/api/sql-favorites/{favorite_id}/use", tags=["SQL Favorites"])
@@ -185,7 +185,7 @@ async def increment_favorite_usage(favorite_id: str):
         # 获取当前信息
         existing = metadata_manager.get_sql_favorite(favorite_id)
         if not existing:
-            raise HTTPException(status_code=404, detail="SQL收藏不存在")
+            raise HTTPException(status_code=404, detail="SQL favorite not found")
 
         # 计算新次数
         current_count = existing.get("usage_count", 0)
@@ -194,7 +194,7 @@ async def increment_favorite_usage(favorite_id: str):
         # 更新数据库
         success = metadata_manager.update_sql_favorite(favorite_id, {"usage_count": new_count})
         if not success:
-            raise HTTPException(status_code=500, detail="更新使用次数失败")
+            raise HTTPException(status_code=500, detail="Failed to update usage count")
 
         return create_success_response(
             data={"usage_count": new_count},
@@ -203,5 +203,5 @@ async def increment_favorite_usage(favorite_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("更新使用次数失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"更新使用次数失败: {str(e)}") from e
+        logger.error("Failed to update usage count: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update usage count: {str(e)}") from e

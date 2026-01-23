@@ -114,7 +114,11 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         }
       }
     } catch (error) {
-      showErrorToast(t, undefined, t('dataSource.getStructureFailed', { error: (error as Error).message }));
+      showErrorToast(
+        t,
+        (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED",
+        t('dataSource.getStructureFailed', { error: (error as Error).message })
+      );
       setShowStructure(false);
     } finally {
       setLoadingStructure(false);
@@ -139,7 +143,11 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
       ]);
       showSuccessToast(t, 'TABLE_REFRESHED', t('dataSource.refreshSuccess', { tableName: table.name }));
     } catch (error) {
-      showErrorToast(t, undefined, t('dataSource.refreshFailed', { error: (error as Error).message }));
+      showErrorToast(
+        t,
+        (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED",
+        t('dataSource.refreshFailed', { error: (error as Error).message })
+      );
     } finally {
       setIsRefreshing(false);
     }
@@ -160,7 +168,11 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
       }
       setShowDeleteConfirm(false);
     } catch (error) {
-      showErrorToast(t, undefined, t('dataSource.deleteFailed', { error: (error as Error).message }));
+      showErrorToast(
+        t,
+        (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED",
+        t('dataSource.deleteFailed', { error: (error as Error).message })
+      );
     }
   };
 

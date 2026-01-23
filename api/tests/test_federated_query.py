@@ -123,7 +123,7 @@ class TestFederatedQueryResponseModel:
             row_count=1,
             execution_time_ms=100.5,
             attached_databases=["db1"],
-            message="查询成功"
+            message="Query successful"
         )
         
         assert response.success is True

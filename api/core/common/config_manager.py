@@ -1,6 +1,6 @@
 """
-统一配置管理系统
-集中管理所有配置文件，提供配置加载、验证、更新等功能
+统一configuration管理系统
+集中管理所有configurationfile，提供configurationloading、验证、updating等功能
 """
 
 import os
@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DuckDBPaths:
-    """DuckDB 数据目录集合"""
+    """DuckDB data目录集合"""
 
     database_path: Path
-    system_database_path: Path  # 系统表数据库路径（独立于用户数据）
+    system_database_path: Path  # 系统tabledatabasepath（独立于用户data）
     temp_dir: Path
     extension_dir: Path
     home_dir: Path
@@ -29,7 +29,7 @@ from core.foundation.crypto_utils import decrypt_config_passwords
 
 @dataclass
 class DatabaseConfig:
-    """数据库配置"""
+    """databaseconfiguration"""
 
     id: str
     name: str
@@ -42,150 +42,150 @@ class DatabaseConfig:
 @dataclass
 class AppConfig:
     """
-    应用配置类
+    应用configuration类
 
-    包含应用运行所需的所有配置参数，包括基础配置和DuckDB引擎配置。
-    所有配置都可以通过配置文件进行自定义，系统会自动加载和验证。
+    包含应用运行所需的所有configurationparameter，包括基础configuration和DuckDB引擎configuration。
+    所有configuration都可以通过configurationfile进行自定义，系统会自动loading和验证。
     """
 
-    # ==================== 基础应用配置 ====================
+    # ==================== 基础应用configuration ====================
     debug: bool = False
-    """调试模式开关，启用后会输出详细的调试信息"""
+    """debug模式开关，启用后会输出详细的debuginfo"""
 
     cors_origins: List[str] = None
-    """跨域请求允许的源列表，用于前端跨域访问"""
+    """跨域请求允许的源columntable，用于前端跨域访问"""
 
     max_file_size: int = 50 * 1024 * 1024 * 1024  # 50GB
-    """最大文件上传大小限制，单位为字节"""
+    """最大file上传大小限制，单位为字节"""
 
     max_query_rows: int = 10000
-    """页面查询结果最大行数，更大数据量使用异步任务"""
+    """页面queryresult最大行数，更大data量使用异步任务"""
 
     max_tables: int = 200
-    """数据库表预览最大数量限制"""
+    """databasetable预览最大数量限制"""
 
     timezone: str = "Asia/Shanghai"
-    """应用时区设置，影响时间相关的数据处理。默认使用中国时区"""
+    """应用时区设置，影响时间相关的data处理。默认使用中国时区"""
 
     table_metadata_cache_ttl_hours: int = 24
-    """表元数据缓存有效期（小时），<=0 时禁用缓存"""
+    """table元data缓存valid期（小时），<=0 时禁用缓存"""
 
-    # ==================== DuckDB引擎配置 ====================
-    # 这些参数控制DuckDB查询引擎的行为和性能
+    # ==================== DuckDB引擎configuration ====================
+    # 这些parameter控制DuckDBquery引擎的行为和性能
 
     duckdb_memory_limit: str = "8GB"
     """DuckDB内存使用限制，支持KB/MB/GB单位"""
 
     duckdb_threads: int = 8
-    """DuckDB并行查询线程数，建议设置为CPU核心数"""
+    """DuckDB并行query线程数，建议设置为CPU核心数"""
 
     duckdb_temp_directory: str = None
-    """DuckDB临时文件目录，None时使用系统默认"""
+    """DuckDB临时file目录，None时使用系统默认"""
 
     duckdb_home_directory: str = None
-    """DuckDB主目录，用于存储配置和扩展，None时使用系统默认"""
+    """DuckDB主目录，用于存储configuration和扩展，None时使用系统默认"""
 
     duckdb_extension_directory: str = None
     """DuckDB扩展安装目录，None时使用系统默认"""
 
     duckdb_data_dir: str = None
-    """DuckDB数据根目录，包含数据库文件、临时目录、扩展目录"""
+    """DuckDBdata根目录，包含databasefile、临时目录、扩展目录"""
 
     duckdb_database_path: str = None
-    """DuckDB数据库文件路径，为空时在数据目录下创建 main.db"""
+    """DuckDBdatabasefilepath，is empty时在data目录下creating main.db"""
 
     duckdb_enable_profiling: str = "query_tree"
-    """DuckDB查询性能分析格式：json, query_tree, query_tree_optimizer, no_output"""
+    """DuckDBquery性能分析格式：json, query_tree, query_tree_optimizer, no_output"""
 
     duckdb_profiling_output: str = None
-    """性能分析输出文件路径，None时使用系统默认"""
+    """性能分析输出filepath，None时使用系统默认"""
 
     duckdb_prefer_range_joins: bool = False
     """是否优先使用范围JOIN，可能影响JOIN性能"""
 
     duckdb_enable_object_cache: bool = True
-    """是否启用对象缓存，提升重复查询性能"""
+    """是否启用对象缓存，提升重复query性能"""
 
     duckdb_preserve_insertion_order: bool = False
-    """是否保持数据插入顺序，False可提升查询性能"""
+    """是否保持data插入顺序，False可提升query性能"""
 
     duckdb_enable_progress_bar: bool = False
-    """是否启用查询进度条，生产环境建议关闭"""
+    """是否启用query进度条，生产环境建议关闭"""
 
     duckdb_extensions: List[str] = None
-    """要自动安装和加载的DuckDB扩展列表"""
+    """要自动安装和loading的DuckDB扩展columntable"""
 
     server_data_mounts: List[Dict[str, Any]] = None
-    """服务器挂载目录列表，供容器内直接读取文件"""
+    """服务器挂载目录columntable，供容器内直接读取file"""
 
     duckdb_remote_settings: Dict[str, Any] = None
-    """DuckDB初始化时需要执行的SET语句，如S3/OSS参数"""
+    """DuckDBinitializing时需要executing的SET语句，如S3/OSSparameter"""
 
     duckdb_debug_logging: bool = False
-    """是否启用DuckDB调试日志（SHOW TABLES / EXPLAIN等）"""
+    """是否启用DuckDBdebug日志（SHOW TABLES / EXPLAIN等）"""
 
     duckdb_auto_explain_threshold_ms: int = 0
-    """慢查询阈值，超过后自动记录EXPLAIN，0表示关闭"""
+    """慢query阈值，超过后自动记录EXPLAIN，0table示关闭"""
 
     exports_dir: str = None
-    """导出文件目录，默认在运行根目录的exports"""
+    """导出file目录，默认在运行根目录的exports"""
 
-    # ==================== 连接池配置 ====================
-    # 这些参数控制DuckDB连接池的行为和性能
+    # ==================== connection池configuration ====================
+    # 这些parameter控制DuckDBconnection池的行为和性能
 
     pool_min_connections: int = 2
-    """连接池最小连接数"""
+    """connection池最小connection数"""
 
     pool_max_connections: int = 10
-    """连接池最大连接数"""
+    """connection池最大connection数"""
 
     pool_connection_timeout: int = 30
-    """连接获取超时时间，单位为秒"""
+    """connectiongettingtimeout时间，单位为秒"""
 
     pool_idle_timeout: int = 300
-    """空闲连接超时时间，单位为秒"""
+    """空闲connectiontimeout时间，单位为秒"""
 
     pool_max_retries: int = 3
-    """连接重试最大次数"""
+    """connectionretry最大次数"""
 
-    # ==================== 数据库连接配置 ====================
-    # 这些参数控制外部数据库连接的行为
+    # ==================== databaseconnectionconfiguration ====================
+    # 这些parameter控制外部databaseconnection的行为
 
     db_connect_timeout: int = 10
-    """数据库连接超时时间，单位为秒"""
+    """databaseconnectiontimeout时间，单位为秒"""
 
     db_read_timeout: int = 30
-    """数据库读取超时时间，单位为秒"""
+    """database读取timeout时间，单位为秒"""
 
     db_write_timeout: int = 30
-    """数据库写入超时时间，单位为秒"""
+    """database写入timeout时间，单位为秒"""
 
     db_ping_timeout: int = 5
-    """数据库连接测试超时时间，单位为秒"""
+    """databaseconnection测试timeout时间，单位为秒"""
 
-    # ==================== 其他超时配置 ====================
-    # 这些参数控制各种操作的超时行为
+    # ==================== 其他timeoutconfiguration ====================
+    # 这些parameter控制各种操作的timeout行为
 
     url_reader_timeout: int = 30
-    """URL读取超时时间，单位为秒"""
+    """URL读取timeout时间，单位为秒"""
 
     url_reader_head_timeout: int = 10
-    """URL HEAD请求超时时间，单位为秒"""
+    """URL HEAD请求timeout时间，单位为秒"""
 
     sqlite_timeout: int = 10
-    """SQLite连接超时时间，单位为秒"""
+    """SQLiteconnectiontimeout时间，单位为秒"""
 
     pool_wait_timeout: float = 1.0
-    """连接池等待超时时间，单位为秒"""
+    """connection池等待timeout时间，单位为秒"""
 
     federated_query_timeout: int = 300
-    """联邦查询前端请求超时时间，单位为秒。默认 300秒 (5分钟)"""
+    """联邦query前端请求timeout时间，单位为秒。默认 300秒 (5分钟)"""
 
     def __post_init__(self):
         if self.cors_origins is None:
             self.cors_origins = ["http://localhost:3000", "http://localhost:5173"]
 
-        # 设置默认DuckDB扩展（包含联邦查询扩展）
+        # 设置默认DuckDB扩展（包含联邦query扩展）
         if self.duckdb_extensions is None:
             self.duckdb_extensions = ["excel", "json", "parquet", "mysql", "postgres"]
 
@@ -197,7 +197,7 @@ class AppConfig:
 
 
 class ConfigManager:
-    """统一配置管理器"""
+    """统一configuration管理器"""
 
     def __init__(self, config_dir: str = None):
         self._write_lock = Lock()
@@ -208,12 +208,12 @@ class ConfigManager:
         elif os.getenv("CONFIG_DIR"):
             self.config_dir = Path(os.getenv("CONFIG_DIR"))
         else:
-            # 默认配置目录 (common -> core -> api -> root -> config)
+            # 默认configuration目录 (common -> core -> api -> root -> config)
             self.config_dir = Path(__file__).resolve().parent.parent.parent.parent / "config"
 
         self.config_dir.mkdir(exist_ok=True)
 
-        # 配置文件路径 (优先检测 .json，如果没有则检测 .jsonc)
+        # configurationfilepath (优先检测 .json，如果没有则检测 .jsonc)
         json_path = self.config_dir / "app-config.json"
         jsonc_path = self.config_dir / "app-config.jsonc"
         
@@ -223,60 +223,60 @@ class ConfigManager:
             self.app_config_file = json_path
 
 
-        # 配置缓存
+        # configuration缓存
         self._app_config: Optional[AppConfig] = None
 
-        # 初始化配置
+        # initializingconfiguration
         self._initialize_configs()
 
     def _initialize_configs(self):
-        """初始化配置文件"""
-        # 创建默认配置文件
+        """initializingconfigurationfile"""
+        # creating默认configurationfile
         self._create_default_configs()
 
-        # 加载配置
+        # loadingconfiguration
         self.load_all_configs()
 
     def _create_default_configs(self):
-        """创建默认配置文件"""
-        # 应用配置模板
+        """creating默认configurationfile"""
+        # 应用configuration模板
         if not self.app_config_file.exists():
             default_app_config = asdict(AppConfig())
             self._save_json(self.app_config_file, default_app_config)
-            logger.info(f"创建默认应用配置文件: {self.app_config_file}")
+            logger.info(f"Creating default application configuration file: {self.app_config_file}")
         else:
-            # 更新现有配置文件，确保包含所有新字段
+            # updating现有configurationfile，确保包含所有新字段
             self._update_existing_app_config()
 
 
 
     def _update_existing_app_config(self):
-        """更新现有应用配置文件，确保包含所有新字段"""
+        """updating现有应用configurationfile，确保包含所有新字段"""
         try:
-            # 读取现有配置
+            # 读取现有configuration
             existing_config = self._load_json(self.app_config_file)
 
-            # 创建默认配置
+            # creating默认configuration
             default_config = asdict(AppConfig())
 
-            # 合并配置：保留现有值，添加缺失的字段
+            # 合并configuration：保留现有值，添加缺失的字段
             updated_config = {}
             for key, default_value in default_config.items():
                 if key in existing_config:
                     updated_config[key] = existing_config[key]
                 else:
                     updated_config[key] = default_value
-                    logger.info(f"添加新配置字段: {key} = {default_value}")
+                    logger.info(f"Adding new configuration field: {key} = {default_value}")
 
-            # 保存更新后的配置
+            # savingupdating后的configuration
             self._save_json(self.app_config_file, updated_config)
-            logger.info(f"应用配置文件已更新: {self.app_config_file}")
+            logger.info(f"Application configuration file updated: {self.app_config_file}")
 
         except Exception as e:
-            logger.warning(f"更新应用配置文件失败: {str(e)}")
+            logger.warning(f"updating应用configurationfilefailed: {str(e)}")
 
     def _load_json(self, file_path: Path) -> Dict[str, Any]:
-        """加载JSON配置文件（支持注释）"""
+        """loadingJSONconfigurationfile（支持注释）"""
         try:
             if file_path.exists():
                 with open(file_path, "r", encoding="utf-8") as f:
@@ -289,7 +289,7 @@ class ConfigManager:
                 content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
                 
                 # 移除行注释 // ... (注意处理URL中的//，这里简单处理：//前必须有空白或行首，且不是URL的一部分)
-                # 更稳健的方式是忽略字符串内容的解析，但作为简单的配置加载器，
+                # 更稳健的方式是ignore字符串内容的解析，但作为简单的configurationloading器，
                 # 我们假设注释出现在行尾或独立行，并且URL不会与注释混淆（URL的//前是:）
                 # 这里使用简单的行处理：如果行中存在 // 且不紧跟在 : 之后（为了兼容URL），则截断
                 # 或者更简单：只支持独立行的注释和行尾且前面有空格的注释
@@ -310,22 +310,22 @@ class ConfigManager:
                 
                 content = '\n'.join(cleaned_lines)
                 
-                # 处理可能产生的尾部逗号问题（JSON不支持，但配置变更是常事）
+                # 处理可能产生的尾部逗号问题（JSON不支持，但configuration变更是常事）
                 # 为了保持简单，暂不处理尾部逗号，依赖标准json解析
                 # 大多数情况下用户只需小心
                 
                 return json.loads(content)
             return {}
         except Exception as e:
-            logger.error(f"加载配置文件失败 {file_path}: {str(e)}")
+            logger.error(f"Loading configuration filefailed {file_path}: {str(e)}")
             return {}
 
     def _save_json(self, file_path: Path, data: Any):
-        """保存JSON配置文件"""
+        """savingJSONconfigurationfile"""
         self.atomic_write_json(file_path, data)
 
     def load_all_configs(self):
-        """加载所有配置"""
+        """loading所有configuration"""
         self.load_app_config()
 
     def _resolve_project_root(self) -> Path:
@@ -340,11 +340,11 @@ class ConfigManager:
         return Path(__file__).resolve().parent.parent.parent.parent
 
     def _default_data_dir(self) -> Path:
-        """默认数据目录"""
+        """默认data目录"""
         return self._project_root / "data"
 
     def get_duckdb_paths(self, ensure_dirs: bool = True) -> DuckDBPaths:
-        """获取DuckDB相关目录配置"""
+        """gettingDuckDB相关目录configuration"""
         app_config = self.get_app_config()
 
         base_dir = (
@@ -384,7 +384,7 @@ class ConfigManager:
             ]:
                 path.mkdir(parents=True, exist_ok=True)
 
-        # 系统数据库路径（与 main.db 同目录）
+        # 系统databasepath（与 main.db 同目录）
         system_database_path = database_path.parent / "system.db"
 
         return DuckDBPaths(
@@ -396,7 +396,7 @@ class ConfigManager:
         )
 
     def get_exports_dir(self, ensure_dir: bool = True) -> Path:
-        """获取导出目录"""
+        """getting导出目录"""
         app_config = self.get_app_config()
         exports_dir = (
             Path(app_config.exports_dir)
@@ -408,7 +408,7 @@ class ConfigManager:
         return exports_dir
 
     def atomic_write_json(self, file_path: Path, data: Any):
-        """原子写入JSON配置"""
+        """原子写入JSONconfiguration"""
         tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
         file_path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -417,22 +417,22 @@ class ConfigManager:
                     json.dump(data, tmp_file, indent=2, ensure_ascii=False, default=str)
                 os.replace(tmp_path, file_path)
         except Exception as exc:
-            logger.error(f"保存配置文件失败 {file_path}: {exc}")
+            logger.error(f"savingconfigurationfilefailed {file_path}: {exc}")
             if tmp_path.exists():
                 try:
                     tmp_path.unlink()
                 except OSError:
-                    logger.debug("移除临时文件失败: %s", tmp_path)
+                    logger.debug("移除临时filefailed: %s", tmp_path)
             raise
 
 
 
     def load_app_config(self) -> AppConfig:
-        """加载应用配置"""
+        """loading应用configuration"""
         try:
             config_data = self._load_json(self.app_config_file)
 
-            # 从环境变量覆盖配置
+            # 从环境变量覆盖configuration
             config_data.update(
                 {
                     "debug": os.getenv(
@@ -491,7 +491,7 @@ class ConfigManager:
                         "EXPORTS_DIR", config_data.get("exports_dir")
                     )
                     or None,
-                    # 数据库超时配置
+                    # databasetimeoutconfiguration
                     "db_connect_timeout": int(
                         os.getenv(
                             "DB_CONNECT_TIMEOUT",
@@ -513,7 +513,7 @@ class ConfigManager:
                             "DB_PING_TIMEOUT", config_data.get("db_ping_timeout", 5)
                         )
                     ),
-                    # 连接池配置
+                    # connection池configuration
                     "pool_min_connections": int(
                         os.getenv(
                             "POOL_MIN_CONNECTIONS",
@@ -549,7 +549,7 @@ class ConfigManager:
                             config_data.get("pool_wait_timeout", 1.0),
                         )
                     ),
-                    # 其他超时配置
+                    # 其他timeoutconfiguration
                     "url_reader_timeout": int(
                         os.getenv(
                             "URL_READER_TIMEOUT",
@@ -583,18 +583,18 @@ class ConfigManager:
                 )
 
             self._app_config = AppConfig(**config_data)
-            logger.info("应用配置加载成功")
+            logger.info("应用configurationloadingsuccessfully")
             return self._app_config
 
         except Exception as e:
-            logger.error(f"加载应用配置失败: {str(e)}")
+            logger.error(f"loading应用configurationfailed: {str(e)}")
             self._app_config = AppConfig()
             return self._app_config
 
 
 
     def get_app_config(self) -> AppConfig:
-        """获取应用配置"""
+        """getting应用configuration"""
         if self._app_config is None:
             self.load_app_config()
         return self._app_config
@@ -602,31 +602,31 @@ class ConfigManager:
 
 
     def update_app_config(self, **kwargs) -> bool:
-        """更新应用配置"""
+        """updating应用configuration"""
         try:
             if self._app_config is None:
                 self.load_app_config()
 
-            # 更新配置
+            # updatingconfiguration
             for key, value in kwargs.items():
                 if hasattr(self._app_config, key):
                     setattr(self._app_config, key, value)
 
-            # 保存到文件
+            # saving到file
             self._save_json(self.app_config_file, asdict(self._app_config))
 
-            logger.info("应用配置更新成功")
+            logger.info("应用configurationupdatingsuccessfully")
             return True
 
         except Exception as e:
-            logger.error(f"更新应用配置失败: {str(e)}")
+            logger.error(f"updating应用configurationfailed: {str(e)}")
             return False
 
     def get_safe_mysql_configs(self) -> List[Dict[str, Any]]:
-        """获取安全的MySQL配置（遮蔽敏感信息）"""
+        """getting安全的MySQLconfiguration（遮蔽敏感info）"""
         safe_configs = []
         for config in self._mysql_configs.values():
-            # 本地实现敏感信息遮蔽，避免循环导入
+            # 本地实现敏感info遮蔽，避免循环导入
             safe_params = config.params.copy()
             sensitive_keys = ["password", "pwd", "secret", "token", "key"]
             for key in safe_params:
@@ -645,5 +645,5 @@ class ConfigManager:
         return safe_configs
 
 
-# 全局配置管理器实例
+# 全局configuration管理器实例
 config_manager = ConfigManager()

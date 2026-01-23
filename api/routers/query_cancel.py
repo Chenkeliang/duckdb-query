@@ -40,7 +40,7 @@ async def cancel_sync_query(request_id: str):
         return create_success_response(
             data={"request_id": request_id},
             message_code=MessageCode.QUERY_CANCELLED,
-            message="取消请求已提交"
+            message="Cancel request submitted"
         )
 
     logger.warning("Query %s not found or already completed", request_id)
@@ -49,7 +49,7 @@ async def cancel_sync_query(request_id: str):
         status_code=404,
         content=create_error_response(
             code="QUERY_NOT_FOUND",
-            message="查询不存在或已完成",
+            message="Query does not exist or has already completed",
             details={"request_id": request_id}
         )
     )

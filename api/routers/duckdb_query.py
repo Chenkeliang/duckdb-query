@@ -133,7 +133,7 @@ async def list_duckdb_tables_summary():
                 items=[],
                 total=0,
                 message_code=MessageCode.TABLES_RETRIEVED,
-                message="当前DuckDB中没有可用的表，请先上传文件或连接数据库",
+                message="No tables available in DuckDB. Please upload a file or connect to a database first.",
             )
 
         # 获取每个表的概要信息
@@ -171,7 +171,7 @@ async def list_duckdb_tables_summary():
                     }
                 )
             except Exception as table_error:
-                logger.warning(f"获取表 {table_name} 信息失败: {str(table_error)}")
+                logger.warning(f"Failed to get table {table_name} info: {str(table_error)}")
 
                 # 尝试从元数据获取列信息
                 metadata = file_datasource_manager.get_file_datasource(table_name)
@@ -228,15 +228,15 @@ async def list_duckdb_tables_summary():
         )
 
     except Exception as e:
-        logger.error(f"获取DuckDB表信息失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取表信息失败: {str(e)}")
+        logger.error(f"Failed to get DuckDB table info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get table info: {str(e)}")
 
 
 def _ensure_table_exists(con, table_name: str) -> None:
     tables_df = con.execute("SHOW TABLES").fetchdf()
     available_tables = tables_df["name"].tolist() if not tables_df.empty else []
     if table_name not in available_tables:
-        raise HTTPException(status_code=404, detail=f"数据表 {table_name} 不存在")
+        raise HTTPException(status_code=404, detail=f"Table {table_name} does not exist")
 
 
 @router.get("/api/duckdb/tables/detail/{table_name}", tags=["DuckDB Query"])
@@ -258,8 +258,8 @@ async def get_duckdb_table_detail(table_name: str):
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("获取表元数据失败: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取表元数据失败: {str(exc)}")
+        logger.error("Failed to get table metadata: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get table metadata: {str(exc)}")
 
 
 @router.get("/api/duckdb/tables/{table_name}", tags=["DuckDB Query"])
@@ -287,8 +287,8 @@ async def refresh_duckdb_table_metadata(table_name: str):
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("刷新表元数据失败: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"刷新表元数据失败: {str(exc)}")
+        logger.error("Failed to refresh table metadata: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to refresh table metadata: {str(exc)}")
 
 
 async def execute_duckdb_query(
@@ -321,7 +321,7 @@ async def execute_duckdb_query(
         # 验证SQL查询
         sql_query = request.sql.strip()
         if not sql_query:
-            raise HTTPException(status_code=400, detail="SQL查询不能为空")
+            raise HTTPException(status_code=400, detail="SQL query cannot be empty")
 
         # 检查是否是简单的SELECT查询（不需要表）
         sql_upper = sql_query.upper().strip()
@@ -346,7 +346,7 @@ async def execute_duckdb_query(
         # 如果没有可用的表且不是简单SELECT查询，则报错
         if not available_tables and not is_simple_select:
             raise HTTPException(
-                status_code=400, detail="DuckDB中没有可用的表，请先上传文件或连接数据库"
+                status_code=400, detail="No tables available in DuckDB. Please upload a file or connect to a database first."
             )
 
         # 检查SQL中是否包含危险操作（已在上面检查过）
@@ -366,7 +366,7 @@ async def execute_duckdb_query(
                 if keyword != "CREATE" and contains_keyword(sql_upper_clean, keyword):
                     raise HTTPException(
                         status_code=400,
-                        detail=f"不允许执行 {keyword} 操作，仅支持查询操作",
+                        detail=f"{keyword} operation is not allowed. Only query operations are supported.",
                     )
 
         # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式）
@@ -376,10 +376,10 @@ async def execute_duckdb_query(
 
             limit = config_manager.get_app_config().max_query_rows
             sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
-            logger.info(f"预览模式，已应用LIMIT {limit}")
+            logger.info(f"Preview mode, applied LIMIT {limit}")
 
-        logger.info(f"执行DuckDB查询: {sql_query}")
-        logger.info(f"可用表: {available_tables}")
+        logger.info(f"Executing DuckDB query: {sql_query}")
+        logger.info(f"Available tables: {available_tables}")
 
         # 使用可中断连接执行查询（如果有 query_id）
         if query_id:
@@ -398,7 +398,7 @@ async def execute_duckdb_query(
                             create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
                             conn.execute(create_sql)
                             saved_table = table_name
-                            logger.info(f"查询结果已保存为表: {table_name}")
+                            logger.info(f"Query result saved as table: {table_name}")
 
                             # 保存表元数据（含创建时间）
                             try:
@@ -419,14 +419,14 @@ async def execute_duckdb_query(
                                     table_metadata
                                 )
                                 logger.info(
-                                    f"SQL save_as_table 元数据保存成功: {table_name}"
+                                    f"SQL save_as_table metadata saved: {table_name}"
                                 )
                             except Exception as meta_error:
                                 logger.warning(
-                                    f"保存表元数据失败（非致命）: {str(meta_error)}"
+                                    f"Failed to save table metadata (non-fatal): {str(meta_error)}"
                                 )
                         except Exception as save_error:
-                            logger.warning(f"保存查询结果为表失败: {str(save_error)}")
+                            logger.warning(f"Failed to save query result as table: {str(save_error)}")
         else:
             # 无 request_id 时使用普通连接（向后兼容）
             result_df = con.execute(sql_query).fetchdf()
@@ -444,7 +444,7 @@ async def execute_duckdb_query(
                         )
                         con.execute(create_sql)
                         saved_table = table_name
-                        logger.info(f"查询结果已保存为表: {table_name}")
+                        logger.info(f"Query result saved as table: {table_name}")
 
                         # 保存表元数据（含创建时间）
                         try:
@@ -463,14 +463,14 @@ async def execute_duckdb_query(
                             }
                             file_datasource_manager.save_file_datasource(table_metadata)
                             logger.info(
-                                f"SQL save_as_table 元数据保存成功: {table_name}"
+                                f"SQL save_as_table metadata saved: {table_name}"
                             )
                         except Exception as meta_error:
                             logger.warning(
-                                f"保存表元数据失败（非致命）: {str(meta_error)}"
+                                f"Failed to save table metadata (non-fatal): {str(meta_error)}"
                             )
                     except Exception as save_error:
-                        logger.warning(f"保存查询结果为表失败: {str(save_error)}")
+                        logger.warning(f"Failed to save query result as table: {str(save_error)}")
 
         execution_time = (time.time() - start_time) * 1000
 
@@ -487,14 +487,14 @@ async def execute_duckdb_query(
 
         # 性能日志
         if execution_time > 1000:  # 超过1秒的查询
-            logger.warning(f"慢查询检测: 耗时 {execution_time:.2f}ms")
+            logger.warning(f"Slow query detected: {execution_time:.2f}ms")
         else:
-            logger.info(f"查询执行完成，耗时: {execution_time:.2f}ms")
+            logger.info(f"Query execution completed, time: {execution_time:.2f}ms")
 
         return create_success_response(
             data=response_payload,
             message_code=MessageCode.QUERY_EXECUTED,
-            message=f"查询成功，返回 {len(result_df)} 行数据",
+            message=f"Query successful, returned {len(result_df)} rows",
         )
 
     except duckdb.InterruptException as e:
@@ -503,7 +503,7 @@ async def execute_duckdb_query(
             status_code=499,
             content=create_error_response(
                 code=MessageCode.QUERY_CANCELLED,
-                message="查询已取消",
+                message="Query cancelled",
                 details={"query_id": query_id, "error": str(e)},
             ),
         )
@@ -518,13 +518,13 @@ async def execute_duckdb_query(
             ),
         )
     except Exception as e:
-        logger.error(f"DuckDB查询执行失败: {str(e)}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        logger.error(f"DuckDB query execution failed: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
         return JSONResponse(
             status_code=500,
             content=create_error_response(
                 code=MessageCode.QUERY_FAILED,
-                message=f"查询执行失败: {str(e)}",
+                message=f"Query execution failed: {str(e)}",
                 details={"query_id": query_id},
             ),
         )
@@ -556,35 +556,35 @@ async def delete_duckdb_table(table_name: str):
         if table_name not in available_tables:
             raise HTTPException(
                 status_code=404,
-                detail=f"表 '{table_name}' 不存在。可用的表: {', '.join(available_tables)}",
+                detail=f"Table '{table_name}' does not exist. Available tables: {', '.join(available_tables)}",
             )
 
         # 删除表
         drop_sql = f'DROP TABLE IF EXISTS "{table_name}"'
         con.execute(drop_sql)
 
-        logger.info(f"成功删除DuckDB表: {table_name}")
+        logger.info(f"Successfully deleted DuckDB table: {table_name}")
 
         # 同时尝试删除文件数据源记录
         try:
             from core.data.file_datasource_manager import file_datasource_manager
 
             file_datasource_manager.delete_file_datasource(table_name)
-            logger.info(f"已删除文件数据源记录: {table_name}")
+            logger.info(f"Deleted file datasource record: {table_name}")
         except Exception as e:
-            logger.warning(f"删除文件数据源记录失败: {str(e)}")
+            logger.warning(f"Failed to delete file datasource record: {str(e)}")
 
         return create_success_response(
             data={"deleted_table": table_name},
             message_code=MessageCode.TABLE_DELETED,
-            message=f"表 '{table_name}' 已成功删除",
+            message=f"Table '{table_name}' has been successfully deleted",
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"删除DuckDB表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"删除表失败: {str(e)}")
+        logger.error(f"Failed to delete DuckDB table: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete table: {str(e)}")
 
 
 # 新增连接池状态监控接口
@@ -602,7 +602,7 @@ async def get_connection_pool_status():
             message_code=MessageCode.POOL_STATUS_RETRIEVED,
         )
     except Exception as e:
-        logger.error(f"获取连接池状态失败: {str(e)}")
+        logger.error(f"Failed to get connection pool status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -628,7 +628,7 @@ async def reset_connection_pool():
             message_code=MessageCode.POOL_RESET_SUCCESS,
         )
     except Exception as e:
-        logger.error(f"重置连接池失败: {str(e)}")
+        logger.error(f"Failed to reset connection pool: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -649,13 +649,13 @@ async def migrate_created_at_field():
             """).fetchone()
 
             count = result[0] if result else 0
-            logger.info(f"发现 {count} 条记录需要填充 created_at 字段")
+            logger.info(f"Found {count} records that need created_at field populated")
 
             if count == 0:
                 return create_success_response(
                     data={"migrated_count": 0, "remaining_null": 0},
                     message_code=MessageCode.OPERATION_SUCCESS,
-                    message="所有记录的 created_at 字段已填充，无需迁移",
+                    message="All records already have created_at field populated, no migration needed",
                 )
 
             # 使用 upload_time 填充 created_at
@@ -672,7 +672,7 @@ async def migrate_created_at_field():
                 WHERE updated_at IS NULL
             """)
 
-            logger.info(f"成功迁移 {count} 条记录的 created_at 字段")
+            logger.info(f"Successfully migrated {count} records' created_at field")
 
             # 验证迁移结果
             result = conn.execute("""
@@ -686,12 +686,12 @@ async def migrate_created_at_field():
             return create_success_response(
                 data={"migrated_count": count, "remaining_null": remaining},
                 message_code=MessageCode.OPERATION_SUCCESS,
-                message=f"成功迁移 {count} 条记录的 created_at 字段",
+                message=f"Successfully migrated {count} records' created_at field",
             )
 
     except Exception as e:
-        logger.error(f"迁移 created_at 字段失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"迁移失败: {str(e)}")
+        logger.error(f"Failed to migrate created_at field: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Migration failed: {str(e)}")
 
 
 # 新增错误统计接口
@@ -707,7 +707,7 @@ async def get_error_statistics():
             message_code=MessageCode.ERROR_STATS_RETRIEVED,
         )
     except Exception as e:
-        logger.error(f"获取错误统计失败: {str(e)}")
+        logger.error(f"Failed to get error statistics: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -721,10 +721,10 @@ async def clear_old_errors(days: int = 30):
         return create_success_response(
             data={"days": days},
             message_code=MessageCode.ERRORS_CLEARED,
-            message=f"已清理 {days} 天前的错误记录",
+            message=f"Cleared error records older than {days} days",
         )
     except Exception as e:
-        logger.error(f"清理错误记录失败: {str(e)}")
+        logger.error(f"Failed to clear error records: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -759,7 +759,7 @@ async def execute_federated_query(
             if not connection:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"数据库连接 '{attach_db.connection_id}' 不存在",
+                    detail=f"Database connection '{attach_db.connection_id}' does not exist",
                 )
 
             db_config = connection.params.copy()
@@ -781,9 +781,9 @@ async def execute_federated_query(
     if request.is_preview and "LIMIT" not in sql_upper:
         limit = config_manager.get_app_config().max_query_rows
         sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
-        logger.info(f"预览模式，已应用 LIMIT {limit}")
+        logger.info(f"Preview mode, applied LIMIT {limit}")
 
-    logger.info(f"执行联邦查询: {sql_query}")
+    logger.info(f"Executing federated query: {sql_query}")
 
     def execute_in_connection(conn):
         """在连接内执行 ATTACH/QUERY/DETACH"""
@@ -805,19 +805,19 @@ async def execute_federated_query(
                         attach_sql,
                         flags=re.IGNORECASE,
                     )
-                logger.info(f"执行 ATTACH: {alias}")
+                logger.info(f"Executing ATTACH: {alias}")
                 logger.info(f"ATTACH SQL: {masked_sql}")
                 conn.execute(attach_sql)
                 attached_aliases.append(alias)
-                logger.info(f"成功 ATTACH 数据库: {alias}")
+                logger.info(f"Successfully ATTACH database: {alias}")
             except Exception as attach_error:
-                logger.error(f"ATTACH 数据库 {alias} 失败: {attach_error}")
+                logger.error(f"ATTACH database {alias} failed: {attach_error}")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"连接外部数据库 '{alias}' 失败: {str(attach_error)}",
+                    detail=f"Failed to connect to external database '{alias}': {str(attach_error)}",
                 )
 
-        logger.info(f"已 ATTACH 的数据库: {attached_aliases}")
+        logger.info(f"Attached databases: {attached_aliases}")
 
         # 2. 执行用户 SQL
         result_df = conn.execute(sql_query).fetchdf()
@@ -832,18 +832,18 @@ async def execute_federated_query(
                         f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
                     )
                     conn.execute(create_sql)
-                    logger.info(f"查询结果已保存为表: {table_name}")
+                    logger.info(f"Query result saved as table: {table_name}")
                 except Exception as save_error:
-                    logger.warning(f"保存查询结果为表失败: {str(save_error)}")
-                    warnings.append(f"保存结果为表失败: {str(save_error)}")
+                    logger.warning(f"Failed to save query result as table: {str(save_error)}")
+                    warnings.append(f"Failed to save result as table: {str(save_error)}")
 
         # 4. DETACH 清理
         for alias in attached_aliases:
             try:
                 conn.execute(f'DETACH "{alias}"')
-                logger.info(f"成功 DETACH 数据库: {alias}")
+                logger.info(f"Successfully DETACH database: {alias}")
             except Exception as detach_error:
-                logger.warning(f"DETACH {alias} 失败: {detach_error}")
+                logger.warning(f"DETACH {alias} failed: {detach_error}")
 
         return result_df
 
@@ -878,9 +878,9 @@ async def execute_federated_query(
         }
 
         if execution_time > 1000:
-            logger.warning(f"慢查询检测: 联邦查询耗时 {execution_time:.2f}ms")
+            logger.warning(f"Slow query detected: federated query took {execution_time:.2f}ms")
         else:
-            logger.info(f"联邦查询执行完成，耗时: {execution_time:.2f}ms")
+            logger.info(f"Federated query execution completed, time: {execution_time:.2f}ms")
 
         return create_success_response(
             data=response_data,
@@ -896,7 +896,7 @@ async def execute_federated_query(
             for alias in attached_aliases:
                 try:
                     con.execute(f'DETACH "{alias}"')
-                    logger.info(f"取消后清理 DETACH: {alias}")
+                    logger.info(f"Cleanup DETACH after cancellation: {alias}")
                 except:
                     pass
         except:
@@ -912,8 +912,8 @@ async def execute_federated_query(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"联邦查询执行失败: {str(e)}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        logger.error(f"Federated query execution failed: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
         return JSONResponse(
             status_code=500,
             content=create_error_response(

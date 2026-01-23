@@ -37,6 +37,66 @@ export const uploadClient: AxiosInstance = axios.create({
     timeout: 600000, // 10 minutes for large files
 });
 
+// 全局错误归一化
+const normalizeAxiosError = (error: AxiosError): AxiosError & ApiError => {
+    const respData = error.response?.data;
+    const message = extractMessage(respData) || error.message || 'OPERATION_FAILED';
+    const code = extractMessageCode(respData) || error.code || 'OPERATION_FAILED';
+    const details =
+        (respData as Record<string, unknown> | undefined)?.error?.details ||
+        (respData as Record<string, unknown> | undefined)?.detail?.details ||
+        (respData as Record<string, unknown> | undefined)?.details;
+
+    const enhanced = error as AxiosError & ApiError;
+    enhanced.message = message;
+    enhanced.statusCode = error.response?.status;
+    enhanced.code = code;
+    enhanced.messageCode = code;
+    if (details) {
+        enhanced.details = details as Record<string, unknown>;
+    }
+    return enhanced;
+};
+
+// 统一响应拦截：成功直返，失败归一化抛出 ApiError
+apiClient.interceptors.response.use(
+    (response) => response,
+    (error: AxiosError) => {
+        if (error.code === 'ECONNABORTED') {
+            const err = new Error('TIMEOUT_ERROR') as ApiError;
+            err.code = 'TIMEOUT_ERROR';
+            err.messageCode = 'TIMEOUT_ERROR';
+            throw err;
+        }
+        if (!error.response) {
+            const err = new Error('NETWORK_ERROR') as ApiError;
+            err.code = 'NETWORK_ERROR';
+            err.messageCode = 'NETWORK_ERROR';
+            throw err;
+        }
+        return Promise.reject(normalizeAxiosError(error));
+    }
+);
+
+uploadClient.interceptors.response.use(
+    (response) => response,
+    (error: AxiosError) => {
+        if (error.code === 'ECONNABORTED') {
+            const err = new Error('TIMEOUT_ERROR') as ApiError;
+            err.code = 'TIMEOUT_ERROR';
+            err.messageCode = 'TIMEOUT_ERROR';
+            throw err;
+        }
+        if (!error.response) {
+            const err = new Error('NETWORK_ERROR') as ApiError;
+            err.code = 'NETWORK_ERROR';
+            err.messageCode = 'NETWORK_ERROR';
+            throw err;
+        }
+        return Promise.reject(normalizeAxiosError(error));
+    }
+);
+
 /**
  * Extract error message from various response formats
  */
@@ -208,9 +268,26 @@ export function normalizeResponse<T = unknown>(response: AxiosResponse): Normali
 
         // Check for legacy success format
         if (p.success === true) {
+            const legacyCode = (p.messageCode as string) || 'OPERATION_SUCCESS';
+            const legacyData = (p.data ?? payload) as Record<string, unknown> | undefined;
+            const innerFailure =
+                (typeof legacyCode === 'string' && legacyCode.endsWith('_FAILED')) ||
+                (legacyData &&
+                    ((legacyData as any).connection_test?.success === false ||
+                        (legacyData as any).refresh_success === false ||
+                        (legacyData as any).test_result?.success === false));
+            if (innerFailure) {
+                const err = new Error(extractMessage(payload) || 'OPERATION_FAILED') as ApiError;
+                err.code = legacyCode.endsWith('_FAILED') ? legacyCode : 'OPERATION_FAILED';
+                err.messageCode = err.code;
+                err.statusCode = response.status;
+                err.details = legacyData as Record<string, unknown> | undefined;
+                throw err;
+            }
+
             return {
-                data: (p.data ?? payload) as T,
-                messageCode: (p.messageCode as string) || 'OPERATION_SUCCESS',
+                data: legacyData as T,
+                messageCode: legacyCode,
                 message: (p.message as string) || '',
                 timestamp: (p.timestamp as string) || new Date().toISOString(),
                 raw: payload,

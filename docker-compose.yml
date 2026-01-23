@@ -61,9 +61,9 @@ services:
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
       - DOCKER_ENV=true
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+#    volumes:
+#      - ./frontend:/app
+#      - /app/node_modules
     networks:
       - dataquery-network
     depends_on:

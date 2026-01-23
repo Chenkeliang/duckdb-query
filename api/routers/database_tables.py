@@ -87,7 +87,7 @@ async def get_database_tables(connection_id: str):
         connection = db_manager.get_connection(connection_id)
         if not connection:
             raise HTTPException(
-                status_code=404, detail=f"数据库连接 {connection_id} 不存在"
+                status_code=404, detail=f"Database connection {connection_id} does not exist"
             )
 
         # 根据数据库类型处理不同的连接方式
@@ -106,7 +106,7 @@ async def get_database_tables(connection_id: str):
             username = db_config.get("user") or db_config.get("username")
             if not username:
                 raise HTTPException(
-                    status_code=400, detail="缺少用户名参数 (user 或 username)"
+                    status_code=400, detail="Missing username parameter (user or username)"
                 )
 
             password = db_config.get("password", "")
@@ -165,7 +165,7 @@ async def get_database_tables(connection_id: str):
 
                         except Exception as table_error:
                             logger.warning(
-                                f"获取表 {table_name} 信息失败: {str(table_error)}"
+                                f"Failed to get table {table_name} info: {str(table_error)}"
                             )
                             # 即使单个表失败，也继续处理其他表
                             table_info.append(
@@ -200,7 +200,7 @@ async def get_database_tables(connection_id: str):
             username = db_config.get("user") or db_config.get("username")
             if not username:
                 raise HTTPException(
-                    status_code=400, detail="缺少用户名参数 (user 或 username)"
+                    status_code=400, detail="Missing username parameter (user or username)"
                 )
 
             password = db_config.get("password", "")
@@ -220,7 +220,7 @@ async def get_database_tables(connection_id: str):
                 with conn.cursor() as cursor:
                     # 获取schema参数，默认为public
                     schema = db_config.get("schema", "public")
-                    logger.info(f"PostgreSQL查询schema: {schema}")
+                    logger.info(f"PostgreSQL query schema: {schema}")
 
                     # 首先检查schema是否存在
                     cursor.execute(
@@ -232,7 +232,7 @@ async def get_database_tables(connection_id: str):
                         (schema,),
                     )
                     schema_exists = cursor.fetchall()
-                    logger.info(f"Schema '{schema}' 存在: {len(schema_exists) > 0}")
+                    logger.info(f"Schema '{schema}' exists: {len(schema_exists) > 0}")
 
                     # 获取所有表名 (指定的schema) - 只包含真正的表，排除视图
                     cursor.execute(
@@ -250,7 +250,7 @@ async def get_database_tables(connection_id: str):
                     )
 
                     # 添加详细的诊断信息，无论是否找到表
-                    logger.info(f"尝试诊断schema '{schema}'的访问情况...")
+                    logger.info(f"Attempting to diagnose schema '{schema}' access...")
 
                     # 检查所有表的详细信息，区分表和视图
                     try:
@@ -265,11 +265,11 @@ async def get_database_tables(connection_id: str):
                             (schema,),
                         )
                         type_counts = cursor.fetchall()
-                        logger.info(f"schema '{schema}' 对象统计:")
+                        logger.info(f"schema '{schema}' object statistics:")
                         for table_type, count in type_counts:
-                            logger.info(f"  - {table_type}: {count} 个")
+                            logger.info(f"  - {table_type}: {count} items")
                     except Exception as e:
-                        logger.warning(f"表类型统计查询失败: {e}")
+                        logger.warning(f"Table type statistics query failed: {e}")
 
                     # 尝试pg_class查询（更底层的方式）
                     try:
@@ -285,16 +285,16 @@ async def get_database_tables(connection_id: str):
                             (schema,),
                         )
                         pg_class_tables = cursor.fetchall()
-                        logger.info(f"pg_class查询结果: {len(pg_class_tables)} 个表")
+                        logger.info(f"pg_class query result: {len(pg_class_tables)} tables")
                         for table in pg_class_tables:
-                            logger.info(f"  - {table[0]} (来自pg_class)")
+                            logger.info(f"  - {table[0]} (from pg_class)")
                     except Exception as e:
-                        logger.warning(f"pg_class查询失败: {e}")
+                        logger.warning(f"pg_class query failed: {e}")
 
                     # 如果还是没有找到表，使用最宽松的查询
                     if len(tables) == 0:
                         try:
-                            logger.info("尝试最宽松的查询...")
+                            logger.info("Attempting most permissive query...")
                             cursor.execute(
                                 """
                                 SELECT table_name 
@@ -311,7 +311,7 @@ async def get_database_tables(connection_id: str):
                                 )
                                 tables = [row[0] for row in loose_tables]
                         except Exception as e:
-                            logger.warning(f"宽松查询失败: {e}")
+                            logger.warning(f"Loose query failed: {e}")
 
                     table_info = []
                     # 限制表数量，避免超时
@@ -361,9 +361,9 @@ async def get_database_tables(connection_id: str):
 
                         except Exception as table_error:
                             logger.warning(
-                                f"获取表 {table_name} 信息失败: {str(table_error)}"
+                                f"Failed to get table {table_name} info: {str(table_error)}"
                             )
-                            # 即使单个表失败，也继续处理其他表
+                            # Even if a single table fails, continue processing other tables
                             table_info.append(
                                 {
                                     "table_name": table_name,
@@ -390,14 +390,14 @@ async def get_database_tables(connection_id: str):
 
         else:
             raise HTTPException(
-                status_code=400, detail=f"不支持的数据库类型: {db_type}"
+                status_code=400, detail=f"Unsupported database type: {db_type}"
             )
 
     except Exception as e:
-        logger.error(f"获取数据库 '{connection_id}' 的表信息失败: {str(e)}")
+        logger.error(f"Failed to get database '{connection_id}' table info: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"获取数据库 '{connection_id}' 的表信息失败: {str(e)}",
+            detail=f"Failed to get database '{connection_id}' table info: {str(e)}",
         )
 
 
@@ -423,7 +423,7 @@ async def list_connection_schemas(connection_id: str):
         connection = db_manager.get_connection(connection_id)
         if not connection:
             raise HTTPException(
-                status_code=404, detail=f"数据库连接 {connection_id} 不存在"
+                status_code=404, detail=f"Database connection {connection_id} does not exist"
             )
 
         db_type = (
@@ -432,7 +432,7 @@ async def list_connection_schemas(connection_id: str):
             else str(connection.type)
         )
 
-        # MySQL 和 SQLite 不支持 schema，返回空列表
+        # MySQL and SQLite do not support schema, return empty list
         if db_type in ["mysql", "sqlite"]:
             return create_list_response(
                 items=[],
@@ -448,7 +448,7 @@ async def list_connection_schemas(connection_id: str):
             username = db_config.get("user") or db_config.get("username")
             if not username:
                 raise HTTPException(
-                    status_code=400, detail="缺少用户名参数 (user 或 username)"
+                    status_code=400, detail="Missing username parameter (user or username)"
                 )
 
             password = db_config.get("password", "")
@@ -494,13 +494,13 @@ async def list_connection_schemas(connection_id: str):
 
         else:
             raise HTTPException(
-                status_code=400, detail=f"不支持的数据库类型: {db_type}"
+                status_code=400, detail=f"Unsupported database type: {db_type}"
             )
 
     except Exception as e:
-        logger.error(f"获取 schemas 失败: {str(e)}")
+        logger.error(f"Failed to get schemas: {str(e)}")
         raise HTTPException(
-            status_code=500, detail=f"获取 schemas 失败: {str(e)}"
+            status_code=500, detail=f"Failed to get schemas: {str(e)}"
         )
 
 
@@ -529,7 +529,7 @@ async def list_schema_tables(connection_id: str, schema: str):
         connection = db_manager.get_connection(connection_id)
         if not connection:
             raise HTTPException(
-                status_code=404, detail=f"数据库连接 {connection_id} 不存在"
+                status_code=404, detail=f"Database connection {connection_id} does not exist"
             )
 
         db_type = (
@@ -542,7 +542,7 @@ async def list_schema_tables(connection_id: str, schema: str):
         if db_type != "postgresql":
             raise HTTPException(
                 status_code=400,
-                detail=f"此端点仅支持 PostgreSQL，当前类型: {db_type}",
+                detail=f"This endpoint only supports PostgreSQL, current type: {db_type}",
             )
 
         # PostgreSQL: 查询指定 schema 下的表
@@ -552,7 +552,7 @@ async def list_schema_tables(connection_id: str, schema: str):
         username = db_config.get("user") or db_config.get("username")
         if not username:
             raise HTTPException(
-                status_code=400, detail="缺少用户名参数 (user 或 username)"
+                status_code=400, detail="Missing username parameter (user or username)"
             )
 
         password = db_config.get("password", "")
@@ -600,8 +600,8 @@ async def list_schema_tables(connection_id: str, schema: str):
             conn.close()
 
     except Exception as e:
-        logger.error(f"获取表列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取表列表失败: {str(e)}")
+        logger.error(f"Failed to get table list: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get table list: {str(e)}")
 
 
 
@@ -627,7 +627,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
         connection = db_manager.get_connection(connection_id)
         if not connection:
             raise HTTPException(
-                status_code=404, detail=f"数据库连接 {connection_id} 不存在"
+                status_code=404, detail=f"Database connection {connection_id} does not exist"
             )
 
         # 根据数据库类型处理不同的连接方式
@@ -646,7 +646,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
             username = db_config.get("user") or db_config.get("username")
             if not username:
                 raise HTTPException(
-                    status_code=400, detail="缺少用户名参数 (user 或 username)"
+                    status_code=400, detail="Missing username parameter (user or username)"
                 )
 
             password = db_config.get("password", "")
@@ -726,7 +726,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                                 "type": "PRIMARY" if k == "PRIMARY" else ("UNIQUE" if v["unique"] else "INDEX")
                             })
                     except Exception as e:
-                        logger.warning(f"获取MySQL索引失败: {e}")
+                        logger.warning(f"Failed to get MySQL indexes: {e}")
 
 
                     return create_success_response(
@@ -754,7 +754,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
             username = db_config.get("user") or db_config.get("username")
             if not username:
                 raise HTTPException(
-                    status_code=400, detail="缺少用户名参数 (user 或 username)"
+                    status_code=400, detail="Missing username parameter (user or username)"
                 )
 
             password = db_config.get("password", "")
@@ -905,7 +905,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                                 "type": "PRIMARY" if v["primary"] else ("UNIQUE" if v["unique"] else "INDEX")
                             })
                     except Exception as e:
-                         logger.warning(f"获取PostgreSQL索引失败: {e}")
+                         logger.warning(f"Failed to get PostgreSQL indexes: {e}")
 
 
                     return create_success_response(
@@ -925,9 +925,9 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
 
         else:
             raise HTTPException(
-                status_code=400, detail=f"不支持的数据库类型: {db_type}"
+                status_code=400, detail=f"Unsupported database type: {db_type}"
             )
 
     except Exception as e:
-        logger.error(f"获取表详细信息失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取表详细信息失败: {str(e)}")
+        logger.error(f"Failed to get table details: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get table details: {str(e)}")

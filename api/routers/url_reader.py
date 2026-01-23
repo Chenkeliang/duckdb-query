@@ -90,9 +90,9 @@ async def read_from_url(request: URLReadRequest):
                 else:
                     # 默认尝试 CSV
                     file_type = "csv"
-                    logger.info(f"无法从 Content-Type 推断文件类型，使用默认 CSV: {content_type}")
+                    logger.info(f"Unable to infer file type from Content-Type, using default CSV: {content_type}")
             except Exception as head_err:
-                logger.warning(f"HEAD 请求失败，使用默认 CSV: {head_err}")
+                logger.warning(f"HEAD request failed, using default CSV: {head_err}")
                 file_type = "csv"
         conn = get_db_connection()
 
@@ -111,7 +111,7 @@ async def read_from_url(request: URLReadRequest):
                 table_name = f"{original_table_name}_{timestamp}"
                 break
             except Exception as e:
-                logger.debug("检查表名时出错: %s", e)
+                logger.debug("Error checking table name: %s", e)
                 break
 
         reader_options = None
@@ -137,7 +137,7 @@ async def read_from_url(request: URLReadRequest):
                 )
             except Exception as exc:
                 logger.warning(
-                    "DuckDB/httpfs 读取失败，准备回退: url=%s, err=%s",
+                    "DuckDB/httpfs read failed, preparing fallback: url=%s, err=%s",
                     converted_url,
                     exc,
                 )
@@ -150,7 +150,7 @@ async def read_from_url(request: URLReadRequest):
                 response.raise_for_status()
             except requests.RequestException as download_error:
                 raise HTTPException(
-                    status_code=400, detail=f"无法下载文件: {str(download_error)}"
+                    status_code=400, detail=f"Unable to download file: {str(download_error)}"
                 )
 
             with tempfile.NamedTemporaryFile(
@@ -184,7 +184,7 @@ async def read_from_url(request: URLReadRequest):
         }
 
         file_datasource_manager.save_file_datasource(table_metadata)
-        logger.debug("成功保存URL表元数据: %s", table_name)
+        logger.debug("Successfully saved URL table metadata: %s", table_name)
 
         return create_success_response(
             data={
@@ -197,13 +197,13 @@ async def read_from_url(request: URLReadRequest):
                 "original_url": str(request.url),
             },
             message_code=MessageCode.URL_READ_SUCCESS,
-            message=f"成功从URL读取文件并创建表: {table_name}",
+            message=f"Successfully read file from URL and created table: {table_name}",
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"处理文件时发生错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error occurred while processing file: {str(e)}")
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
@@ -244,6 +244,6 @@ async def get_url_info(url: str):
         )
 
     except requests.RequestException as e:
-        raise HTTPException(status_code=400, detail=f"无法访问URL: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Unable to access URL: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取URL信息时发生错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error occurred while getting URL info: {str(e)}")

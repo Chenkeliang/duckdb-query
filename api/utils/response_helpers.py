@@ -386,7 +386,7 @@ def create_error_response(
     Example:
         >>> create_error_response(
         ...     code="CONNECTION_FAILED",
-        ...     message="无法连接到数据库",
+        ...     message="Unable to connect to database",
         ...     details={"error_type": "auth"}
         ... )
         {

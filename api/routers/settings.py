@@ -68,7 +68,7 @@ def ensure_shortcuts_table():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        logger.info("system_keyboard_shortcuts 表已确保存在")
+        logger.info("system_keyboard_shortcuts table ensured to exist")
 
 # ============================================================================
 # API 端点
@@ -114,16 +114,16 @@ async def get_shortcuts():
         return create_success_response(
             data={"shortcuts": shortcuts, "defaults": DEFAULT_SHORTCUTS},
             message_code=MessageCode.SHORTCUTS_RETRIEVED,
-            message="获取快捷键配置成功"
+            message="Shortcuts configuration retrieved successfully"
         )
         
     except Exception as e:
-        logger.error(f"获取快捷键配置失败: {str(e)}")
+        logger.error(f"Failed to get shortcuts configuration: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=create_error_response(
                 code="SHORTCUTS_LOAD_FAILED",
-                message=f"获取快捷键配置失败: {str(e)}"
+                message=f"Failed to get shortcuts configuration: {str(e)}"
             )
         )
 
@@ -140,7 +140,7 @@ async def update_shortcut(action_id: str, data: ShortcutUpdate):
                 status_code=400,
                 detail=create_error_response(
                     code="INVALID_ACTION_ID",
-                    message=f"无效的操作ID: {action_id}"
+                    message=f"Invalid action ID: {action_id}"
                 )
             )
         
@@ -161,23 +161,23 @@ async def update_shortcut(action_id: str, data: ShortcutUpdate):
                     updated_at = EXCLUDED.updated_at
             """, [action_id, data.shortcut, current_time])
         
-        logger.info(f"更新快捷键: {action_id} -> {data.shortcut}")
+        logger.info(f"Update shortcut: {action_id} -> {data.shortcut}")
         
         return create_success_response(
             data={"action_id": action_id, "shortcut": data.shortcut},
             message_code=MessageCode.OPERATION_SUCCESS,
-            message="快捷键更新成功"
+            message="Shortcut updated successfully"
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"更新快捷键失败: {str(e)}")
+        logger.error(f"Failed to update shortcut: {str(e)}")
         return JSONResponse(
             status_code=500,
             content=create_error_response(
                 code="SHORTCUT_UPDATE_FAILED",
-                message=f"更新快捷键失败: {str(e)}"
+                message=f"Failed to update shortcut: {str(e)}"
             )
         )
 
@@ -201,7 +201,7 @@ async def reset_shortcuts(data: ShortcutReset):
                         status_code=400,
                         detail=create_error_response(
                             code="INVALID_ACTION_ID",
-                            message=f"无效的操作ID: {data.action_id}"
+                            message=f"Invalid action ID: {data.action_id}"
                         )
                     )
                 
@@ -211,13 +211,13 @@ async def reset_shortcuts(data: ShortcutReset):
                     WHERE action_id = ?
                 """, [data.action_id])
                 
-                logger.info(f"重置快捷键: {data.action_id}")
-                message = f"快捷键 {data.action_id} 已重置为默认值"
+                logger.info(f"Reset shortcut: {data.action_id}")
+                message = f"Shortcut {data.action_id} has been reset to default value"
             else:
                 # 删除所有快捷键记录
                 conn.execute("DELETE FROM system_keyboard_shortcuts")
-                logger.info("重置所有快捷键")
-                message = "所有快捷键已重置为默认值"
+                logger.info("Reset all shortcuts")
+                message = "All shortcuts have been reset to default values"
         
         return create_success_response(
             data={"reset": data.action_id or "all"},
@@ -228,11 +228,11 @@ async def reset_shortcuts(data: ShortcutReset):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"重置快捷键失败: {str(e)}")
+        logger.error(f"Failed to reset shortcut: {str(e)}")
         return JSONResponse(
             status_code=500,
             content=create_error_response(
                 code="SHORTCUT_RESET_FAILED",
-                message=f"重置快捷键失败: {str(e)}"
+                message=f"Failed to reset shortcuts: {str(e)}"
             )
         )

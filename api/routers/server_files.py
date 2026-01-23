@@ -60,7 +60,7 @@ class ServerExcelImportRequest(BaseModel):
     @classmethod
     def validate_sheets(cls, sheets):
         if not sheets:
-            raise ValueError("至少需要选择一个工作表")
+            raise ValueError("At least one worksheet must be selected")
         return sheets
 
 
@@ -85,7 +85,7 @@ def _get_mount_configs() -> List[dict]:
 
 def _resolve_path(path: str) -> tuple[str, dict]:
     if not path:
-        raise HTTPException(status_code=400, detail="缺少路径参数")
+        raise HTTPException(status_code=400, detail="Missing path parameter")
 
     mounts = _get_mount_configs()
     real_path = os.path.realpath(path)
@@ -99,13 +99,13 @@ def _resolve_path(path: str) -> tuple[str, dict]:
                     status_code=403,
                     detail={
                         "code": "SYMLINK_NOT_ALLOWED",
-                        "message": "不允许访问符号链接",
+                        "message": "Symbolic links are not allowed",
                         "field": "path",
                     },
                 )
             return real_path, mount
 
-    raise HTTPException(status_code=400, detail="路径不在允许的挂载目录内")
+    raise HTTPException(status_code=400, detail="Path is not within allowed mount directories")
 
 
 def _to_display_path(real_path: str, mount: dict) -> str:
@@ -157,9 +157,9 @@ async def list_server_directory(path: str = Query(..., description="服务器目
     real_path, mount = _resolve_path(path)
 
     if not os.path.exists(real_path):
-        raise HTTPException(status_code=404, detail="路径不存在")
+        raise HTTPException(status_code=404, detail="Path does not exist")
     if not os.path.isdir(real_path):
-        raise HTTPException(status_code=400, detail="目标路径不是目录")
+        raise HTTPException(status_code=400, detail="Target path is not a directory")
 
     entries = []
     try:
@@ -198,7 +198,7 @@ async def list_server_directory(path: str = Query(..., description="服务器目
                         }
                     )
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail="没有权限读取该目录") from exc
+        raise HTTPException(status_code=403, detail="No permission to read this directory") from exc
 
     entries.sort(key=lambda item: (item["type"] != "directory", item["name"].lower()))
 
@@ -218,13 +218,13 @@ async def import_server_file(payload: ServerFileImportRequest):
     real_path, mount = _resolve_path(payload.path)
 
     if not os.path.exists(real_path):
-        raise HTTPException(status_code=404, detail="文件不存在")
+        raise HTTPException(status_code=404, detail="File does not exist")
     if not os.path.isfile(real_path):
-        raise HTTPException(status_code=400, detail="目标路径不是文件")
+        raise HTTPException(status_code=400, detail="Target path is not a file")
 
     file_type = detect_file_type(real_path)
     if file_type not in SUPPORTED_FORMATS:
-        raise HTTPException(status_code=400, detail=f"暂不支持的文件类型: {file_type}")
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
 
     base_name = payload.table_alias or os.path.splitext(os.path.basename(real_path))[0]
     # 如果用户明确提供了 table_alias，尊重用户输入（允许数字开头）
@@ -238,8 +238,8 @@ async def import_server_file(payload: ServerFileImportRequest):
             con, table_name, real_path, file_type
         )
     except Exception as exc:
-        logger.error("导入服务器文件失败: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"导入失败: {str(exc)}") from exc
+        logger.error("Failed to import server file: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(exc)}") from exc
 
     # 使用 UTC naive 时间用于数据库存储
     current_time = get_storage_time()
@@ -265,7 +265,7 @@ async def import_server_file(payload: ServerFileImportRequest):
     try:
         file_datasource_manager.save_file_datasource(table_metadata)
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        logger.warning("保存文件数据源元数据失败（已忽略）: %s", exc, exc_info=True)
+        logger.warning("Failed to save file datasource metadata (ignored): %s", exc, exc_info=True)
 
     return create_success_response(
         data={
@@ -278,7 +278,7 @@ async def import_server_file(payload: ServerFileImportRequest):
             "mount_label": mount["label"],
         },
         message_code=MessageCode.SERVER_FILE_IMPORTED,
-        message=f"已导入服务器文件，创建表: {table_name}",
+        message=f"Server file imported, table created: {table_name}",
     )
 
 
@@ -320,19 +320,19 @@ async def inspect_server_excel(payload: ServerExcelInspectRequest):
     real_path, mount = _resolve_path(payload.path)
 
     if not os.path.exists(real_path):
-        raise HTTPException(status_code=404, detail="文件不存在")
+        raise HTTPException(status_code=404, detail="File does not exist")
     if not os.path.isfile(real_path):
-        raise HTTPException(status_code=400, detail="目标路径不是文件")
+        raise HTTPException(status_code=400, detail="Target path is not a file")
 
     file_ext = detect_file_type(real_path)
     if file_ext not in {"xlsx", "xls", "excel"}:
-        raise HTTPException(status_code=400, detail=f"不是 Excel 文件: {file_ext}")
+        raise HTTPException(status_code=400, detail=f"Not an Excel file: {file_ext}")
 
     try:
         sheets = inspect_excel_sheets(real_path)
     except Exception as exc:
-        logger.error("检查 Excel 工作表失败: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"检查 Excel 失败: {str(exc)}") from exc
+        logger.error("Failed to check Excel worksheets: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to check Excel: {str(exc)}") from exc
 
     # 为每个工作表生成默认表名
     base_name = os.path.splitext(os.path.basename(real_path))[0]
@@ -368,13 +368,13 @@ async def import_server_excel(payload: ServerExcelImportRequest):
     real_path, mount = _resolve_path(payload.path)
 
     if not os.path.exists(real_path):
-        raise HTTPException(status_code=404, detail="文件不存在")
+        raise HTTPException(status_code=404, detail="File does not exist")
     if not os.path.isfile(real_path):
-        raise HTTPException(status_code=400, detail="目标路径不是文件")
+        raise HTTPException(status_code=400, detail="Target path is not a file")
 
     file_ext = detect_file_type(real_path)
     if file_ext not in {"xlsx", "xls", "excel"}:
-        raise HTTPException(status_code=400, detail=f"不是 Excel 文件: {file_ext}")
+        raise HTTPException(status_code=400, detail=f"Not an Excel file: {file_ext}")
 
     con = get_db_connection()
     imported_tables = []
@@ -390,7 +390,7 @@ async def import_server_excel(payload: ServerExcelImportRequest):
         if sanitized in sanitized_name_map.values():
             raise HTTPException(
                 status_code=400,
-                detail=f"工作表 '{sheet_cfg.name}' 的目标表名 '{sanitized}' 与其他工作表冲突",
+                detail=f"Worksheet '{sheet_cfg.name}' target table name '{sanitized}' conflicts with other worksheets",
             )
         sanitized_name_map[sheet_cfg.name] = sanitized
 
@@ -400,7 +400,7 @@ async def import_server_excel(payload: ServerExcelImportRequest):
         if sheet_cfg.mode == "create" and _table_exists(con, target_table):
             raise HTTPException(
                 status_code=400,
-                detail=f"表 '{target_table}' 已存在，请修改目标表名或选择覆盖模式",
+                detail=f"Table '{target_table}' already exists, please modify target table name or select overwrite mode",
             )
 
     # 4. 执行导入
@@ -418,7 +418,7 @@ async def import_server_excel(payload: ServerExcelImportRequest):
             if use_duckdb:
                 # 尝试 DuckDB 导入
                 try:
-                    logger.info("尝试使用 DuckDB 导入工作表: %s", sheet_cfg.name)
+                    logger.info("Attempting to import worksheet using DuckDB: %s", sheet_cfg.name)
                     con.execute("INSTALL excel")
                     con.execute("LOAD excel")
 
@@ -440,16 +440,16 @@ async def import_server_excel(payload: ServerExcelImportRequest):
                         "column_count": len(columns),
                         "columns": columns,
                     }
-                    logger.info("DuckDB 导入成功: %s, 行数: %d", target_table, row_count)
+                    logger.info("DuckDB import successful: %s, row count: %d", target_table, row_count)
 
                 except Exception as duckdb_exc:
-                    logger.warning("DuckDB 导入失败，回退到 pandas: %s", duckdb_exc)
+                    logger.warning("DuckDB import failed, falling back to pandas: %s", duckdb_exc)
                     use_duckdb = False  # 触发下面的 pandas fallback
 
             if not use_duckdb:
                 # pandas 导入
                 # pandas 导入
-                logger.info("使用 pandas 导入工作表: %s", sheet_cfg.name)
+                logger.info("Importing worksheet using pandas: %s", sheet_cfg.name)
                 df = load_excel_sheet_dataframe(
                     real_path,
                     sheet_cfg.name,
@@ -459,7 +459,7 @@ async def import_server_excel(payload: ServerExcelImportRequest):
                 )
 
                 if df is None or df.empty:
-                    raise ValueError(f"工作表 {sheet_cfg.name} 不包含可导入的数据")
+                    raise ValueError(f"Worksheet {sheet_cfg.name} contains no importable data")
 
                 # 处理追加/替换模式
                 if sheet_cfg.mode == "replace":
@@ -495,7 +495,7 @@ async def import_server_excel(payload: ServerExcelImportRequest):
             try:
                 file_datasource_manager.save_file_datasource(table_metadata)
             except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.warning("保存元数据失败（已忽略）: %s", exc)
+                logger.warning("Failed to save metadata (ignored): %s", exc)
 
             imported_tables.append(
                 {
@@ -511,9 +511,9 @@ async def import_server_excel(payload: ServerExcelImportRequest):
         except HTTPException:
             raise
         except Exception as exc:
-            logger.error("导入工作表 %s 失败: %s", sheet_cfg.name, exc, exc_info=True)
+            logger.error("Failed to import worksheet %s: %s", sheet_cfg.name, exc, exc_info=True)
             raise HTTPException(
-                status_code=500, detail=f"导入工作表 {sheet_cfg.name} 失败: {str(exc)}"
+                status_code=500, detail=f"Failed to import worksheet {sheet_cfg.name}: {str(exc)}"
             ) from exc
 
     return create_success_response(
@@ -521,5 +521,5 @@ async def import_server_excel(payload: ServerExcelImportRequest):
             "imported_tables": imported_tables,
         },
         message_code=MessageCode.EXCEL_SHEETS_IMPORTED,
-        message=f"成功导入 {len(imported_tables)} 个工作表",
+        message=f"Successfully imported {len(imported_tables)} worksheets",
     )

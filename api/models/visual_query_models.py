@@ -224,9 +224,9 @@ class FilterConfig(BaseModel):
             if not self.expression or not str(self.expression).strip():
                 raise ValueError("Expression comparison requires expression text")
             if self.operator in {FilterOperator.IS_NULL, FilterOperator.IS_NOT_NULL}:
-                raise ValueError("IS NULL / IS NOT NULL 不支持表达式类型")
+                raise ValueError("IS NULL / IS NOT NULL does not support expression type")
             if self.operator == FilterOperator.BETWEEN:
-                raise ValueError("BETWEEN 不支持表达式比较")
+                raise ValueError("BETWEEN does not support expression comparison")
             # 表达式可以在没有 column 的情况下直接使用
         else:
             # CONSTANT
@@ -573,7 +573,7 @@ class JSONTableConfig(BaseModel):
     @model_validator(mode="after")
     def validate_columns(self):
         if not self.columns:
-            raise ValueError("JSON_TABLE 配置必须至少包含一个列定义")
+            raise ValueError("JSON_TABLE configuration must include at least one column definition")
         return self
 
 
@@ -941,14 +941,14 @@ class ColumnMapping(BaseModel):
     @classmethod
     def validate_source_column(cls, v):
         if not v or not v.strip():
-            raise ValueError("源列名不能为空")
+            raise ValueError("Source column name cannot be empty")
         return v.strip()
 
     @field_validator("target_column")
     @classmethod
     def validate_target_column(cls, v):
         if not v or not v.strip():
-            raise ValueError("目标列名不能为空")
+            raise ValueError("Target column name cannot be empty")
         return v.strip()
 
 
@@ -966,7 +966,7 @@ class TableConfig(BaseModel):
     @classmethod
     def validate_table_name(cls, v):
         if not v or not v.strip():
-            raise ValueError("表名不能为空")
+            raise ValueError("Table name cannot be empty")
         return v.strip()
 
     @field_validator("selected_columns")
@@ -979,7 +979,7 @@ class TableConfig(BaseModel):
     @classmethod
     def validate_alias(cls, v):
         if v is not None and not v.strip():
-            raise ValueError("别名不能为空字符串")
+            raise ValueError("Alias cannot be empty string")
         return v.strip() if v else None
 
 
@@ -994,7 +994,7 @@ class SetOperationConfig(BaseModel):
     @classmethod
     def validate_tables(cls, v):
         if not v or len(v) < 2:
-            raise ValueError("集合操作至少需要两个表")
+            raise ValueError("Set operation requires at least two tables")
         return v
 
     @model_validator(mode="after")
@@ -1010,7 +1010,7 @@ class SetOperationConfig(BaseModel):
                 SetOperationType.UNION,
                 SetOperationType.UNION_ALL,
             ]:
-                raise ValueError("只有UNION和UNION ALL支持BY NAME模式")
+                raise ValueError("Only UNION and UNION ALL support BY NAME mode")
 
         # 验证列兼容性（非BY NAME模式）
         if not use_by_name:
@@ -1051,10 +1051,10 @@ class SetOperationRequest(BaseModel):
 
         # 验证表数量
         if len(config.tables) < 2:
-            raise ValueError("集合操作至少需要两个表")
+            raise ValueError("Set operation requires at least two tables")
 
         if len(config.tables) > 10:
-            raise ValueError("集合操作最多支持10个表")
+            raise ValueError("Set operation supports at most 10 tables")
 
         return self
 
@@ -1086,7 +1086,7 @@ class UnionOperationRequest(BaseModel):
     @classmethod
     def validate_tables(cls, v):
         if not v or len(v) < 2:
-            raise ValueError("至少需要两个表")
+            raise ValueError("At least two tables are required")
         return [table.strip() for table in v if table and table.strip()]
 
 

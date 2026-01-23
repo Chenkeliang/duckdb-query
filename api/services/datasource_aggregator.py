@@ -58,7 +58,7 @@ class DataSourceAggregator:
             return datasources
 
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("获取数据源列表失败: %s", e)
+            logger.error("Failed to get datasource list: %s", e)
             raise
 
     async def get_datasource(self, source_id: str) -> Optional[DataSourceResponse]:
@@ -86,7 +86,7 @@ class DataSourceAggregator:
             return None
 
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("获取数据源 %s 失败: %s", source_id, e)
+            logger.error("Failed to get datasource %s: %s", source_id, e)
             raise
 
     async def delete_datasource(self, source_id: str) -> bool:
@@ -107,7 +107,7 @@ class DataSourceAggregator:
             return False
 
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("删除数据源 %s 失败: %s", source_id, e)
+            logger.error("Failed to delete datasource %s: %s", source_id, e)
             raise
 
     async def _get_database_sources(
@@ -161,7 +161,7 @@ class DataSourceAggregator:
             return sources
 
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("获取数据库数据源失败: %s", e)
+            logger.error("Failed to get database datasources: %s", e)
             return []
 
     async def _get_file_sources(
@@ -223,7 +223,7 @@ class DataSourceAggregator:
             return sources
 
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("获取文件数据源失败: %s", e)
+            logger.error("Failed to get file datasources: %s", e)
             return []
 
     async def _get_database_source_by_id(
@@ -265,7 +265,7 @@ class DataSourceAggregator:
             )
 
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("获取数据库数据源 %s 失败: %s", source_id, e)
+            logger.error("Failed to get database datasource %s: %s", source_id, e)
             return None
 
     async def _get_file_source_by_id(self, source_id: str) -> Optional[DataSourceResponse]:
@@ -318,7 +318,7 @@ class DataSourceAggregator:
                 )
 
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("获取文件数据源 %s 失败: %s", source_id, e)
+            logger.error("Failed to get file datasource %s: %s", source_id, e)
             return None
 
     async def _delete_database_source(self, source_id: str) -> bool:
@@ -331,7 +331,7 @@ class DataSourceAggregator:
             return self.db_manager.remove_connection(conn_id)
 
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("删除数据库数据源 %s 失败: %s", source_id, e)
+            logger.error("Failed to delete database datasource %s: %s", source_id, e)
             return False
 
     async def _delete_file_source(self, source_id: str) -> bool:
@@ -343,11 +343,11 @@ class DataSourceAggregator:
             with self.duckdb_pool.get_connection() as conn:
                 # 删除表
                 conn.execute(f"DROP TABLE IF EXISTS {table_name}")
-                logger.info("成功删除 DuckDB 表: %s", table_name)
+                logger.info("Successfully deleted DuckDB table: %s", table_name)
                 return True
 
         except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("删除文件数据源 %s 失败: %s", source_id, e)
+            logger.error("Failed to delete file datasource %s: %s", source_id, e)
             return False
 
     def _sanitize_connection_params(self, params: Dict[str, Any]) -> Dict[str, Any]:

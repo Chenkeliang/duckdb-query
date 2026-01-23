@@ -10,13 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import duckdb
 import pandas as pd
-from sqlalchemy import create_engine
-from fastapi import APIRouter, Body, Header, HTTPException
-from pydantic import BaseModel, Field, ValidationError
-
-from core.database.database_manager import db_manager
 from core.common.timezone_utils import get_current_time
-
 from core.common.utils import normalize_dataframe_output
 from core.common.validators import validate_table_name
 from core.data.file_datasource_manager import (
@@ -24,6 +18,7 @@ from core.data.file_datasource_manager import (
     file_datasource_manager,
 )
 from core.data.file_utils import load_file_to_duckdb
+from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     build_single_table_query,
     create_varchar_table_from_dataframe,
@@ -42,6 +37,7 @@ from core.services.visual_query_generator import (
     get_column_statistics,
     validate_query_config,
 )
+from fastapi import APIRouter, Body, Header, HTTPException
 from models.query_models import QueryRequest
 from models.visual_query_models import (
     ColumnProfilePayload,
@@ -58,6 +54,8 @@ from models.visual_query_models import (
     VisualQueryRequest,
     VisualQueryValidationRequest,
 )
+from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import create_engine
 from utils.response_helpers import (
     MessageCode,
     create_error_response,
@@ -65,7 +63,7 @@ from utils.response_helpers import (
     create_success_response,
 )
 
-# 设置日志
+# Setup logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
@@ -168,7 +166,7 @@ def _load_backend_column_profiles(table_name: str) -> Dict[str, Dict[str, Any]]:
             for profile in snapshot.get("column_profiles", [])
         }
     except Exception as exc:
-        logger.warning("加载后端列元数据失败: %s", exc)
+        logger.warning("Failed to load backend column metadata: %s", exc)
         return {}
 
 
@@ -209,7 +207,7 @@ def _detect_aggregation_conflicts(
             continue
 
         if column_key.lower() in resolved_casts:
-            # 用户已指定 TRY_CAST，视为已解决
+            # User has specified TRY_CAST, considered resolved
             continue
 
         backend_profile = backend_profiles.get(column_key.lower())
@@ -226,9 +224,7 @@ def _detect_aggregation_conflicts(
 
         if not normalized_type and frontend_profile:
             duckdb_type = (
-                frontend_profile.duckdb_type
-                or frontend_profile.raw_type
-                or duckdb_type
+                frontend_profile.duckdb_type or frontend_profile.raw_type or duckdb_type
             )
             normalized_type = (
                 frontend_profile.normalized_type
@@ -244,7 +240,7 @@ def _detect_aggregation_conflicts(
             suggested_casts[column_key] = recommended
 
         message = (
-            f"{func} 需要数值类型，但列 {column_key} 当前为 {duckdb_type or '未知类型'}"
+            f"{func} requires numeric type, but column {column_key} is currently {duckdb_type or 'unknown type'}"
         )
 
         conflicts.append(
@@ -265,63 +261,64 @@ def _detect_aggregation_conflicts(
 
     return conflicts, suggested_casts
 
+
 class DistinctValuesMetric(BaseModel):
-    agg: str = Field(..., description="聚合：SUM|COUNT|AVG|MIN|MAX")
-    column: str = Field(..., description="用于指标排序的列名")
+    agg: str = Field(..., description="Aggregation: SUM|COUNT|AVG|MIN|MAX")
+    column: str = Field(..., description="Column name for metric sorting")
 
 
 class DistinctValuesRequest(BaseModel):
     config: VisualQueryConfig = Field(
-        ..., description="用于构造基础过滤的配置，仅需表与过滤条件"
+        ..., description="Configuration for constructing base filters, only table and filter conditions needed"
     )
-    column: str = Field(..., description="目标列（可为计算列别名）")
-    limit: int = Field(12, description="Top-N 数量")
+    column: str = Field(..., description="Target column (can be computed column alias)")
+    limit: int = Field(12, description="Top-N count")
     order_by: Optional[str] = Field("frequency", description="frequency|metric")
     metric: Optional[DistinctValuesMetric] = None
-    base_limit: Optional[int] = Field(None, description="基础采样行数上限，可选")
+    base_limit: Optional[int] = Field(None, description="Base sampling row limit, optional")
 
 
 def remove_auto_added_limit(sql: str) -> str:
     """
-    智能移除系统自动添加的LIMIT子句，恢复用户原始SQL
+    Intelligently remove system-added LIMIT clause, restore user original SQL
 
-    保存功能应该使用用户的原始SQL意图：
-    - 如果用户原始SQL有LIMIT，完全保留
-    - 如果用户原始SQL无LIMIT，移除系统添加的LIMIT
+    Save function should use user original SQL intent:
+    - If user original SQL has LIMIT, keep it completely
+    - If user original SQL has no LIMIT, remove system-added LIMIT
 
     Args:
-        sql: 前端传递的SQL（可能被系统修改过）
+        sql: SQL passed from frontend (may have been modified by system)
 
     Returns:
-        用户原始SQL意图
+        User original SQL intent
     """
     from core.common.config_manager import config_manager
 
-    # 获取系统配置的最大行数
+    # Get system configured max rows
     try:
         max_rows = config_manager.get_app_config().max_query_rows
     except:
-        max_rows = 10000  # 默认值
+        max_rows = 10000  # Default value
 
-    # 移除末尾的分号和空白
+    # Remove trailing semicolons and whitespace
     sql_cleaned = sql.rstrip("; \t\n\r")
 
-    # 只移除系统自动添加的LIMIT（等于配置的max_rows）
-    # 保留用户原始的所有LIMIT（无论大小）
+    # Only remove system-added LIMIT (equal to configured max_rows)
+    # Keep all user original LIMIT (regardless of size)
     limit_pattern = rf"\s+LIMIT\s+{max_rows}$"
 
     if re.search(limit_pattern, sql_cleaned, re.IGNORECASE):
-        # 移除系统自动添加的LIMIT，恢复用户原始SQL
+        # Remove system-added LIMIT, restore user original SQL
         sql_cleaned = re.sub(limit_pattern, "", sql_cleaned, flags=re.IGNORECASE)
-        logger.info(f"移除了系统自动添加的LIMIT {max_rows}，恢复用户原始SQL")
+        logger.info(f"Removed system-added LIMIT {max_rows}, restored user original SQL")
     else:
-        logger.info("保留用户原始SQL的LIMIT子句")
+        logger.info("Keeping user original SQL LIMIT clause")
 
     return sql_cleaned.strip()
 
 
 def get_join_type_sql(join_type):
-    """将前端的join类型转换为正确的SQL JOIN语法"""
+    """Convert frontend join type to correct SQL JOIN syntax"""
     join_type = join_type.lower()
     if join_type == "inner":
         return "INNER JOIN"
@@ -330,60 +327,60 @@ def get_join_type_sql(join_type):
     elif join_type == "right":
         return "RIGHT JOIN"
     elif join_type == "outer" or join_type == "full_outer":
-        return "FULL OUTER JOIN"  # 外连接的正确SQL语法
+        return "FULL OUTER JOIN"  # Correct SQL syntax for outer join
     elif join_type == "cross":
         return "CROSS JOIN"
     else:
-        return "INNER JOIN"  # 默认使用内连接
+        return "INNER JOIN"  # Default to inner join
 
 
 def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
-    """确保SQL查询有LIMIT子句，防止返回过多数据。
+    """Ensure SQL query has LIMIT clause to prevent returning too much data.
 
-    注意：以下类型的语句不应该添加 LIMIT：
-    - DESCRIBE / DESC 语句
-    - SHOW 语句
-    - EXPLAIN 语句
-    - PRAGMA 语句
-    - SET 语句
-    - CREATE / ALTER / DROP 等 DDL 语句
+    Note: The following types of statements should not have LIMIT added:
+    - DESCRIBE / DESC statements
+    - SHOW statements
+    - EXPLAIN statements
+    - PRAGMA statements
+    - SET statements
+    - CREATE / ALTER / DROP and other DDL statements
     """
-    # 去除前后空白并转大写用于匹配
+    # Remove leading/trailing whitespace and convert to uppercase for matching
     query_stripped = query.strip()
     query_upper = query_stripped.upper()
 
-    # 不应该添加 LIMIT 的语句类型（使用正则表达式更精确匹配）
-    # 匹配以这些关键字开头的语句（忽略大小写）
+    # Statement types that should not have LIMIT added (using regex for precise matching)
+    # Match statements starting with these keywords (case insensitive)
     no_limit_patterns = [
-        r'^DESCRIBE\b',      # DESCRIBE 语句
-        r'^DESC\b',          # DESC 语句（DESCRIBE 的简写）
-        r'^SHOW\b',          # SHOW 语句
-        r'^EXPLAIN\b',       # EXPLAIN 语句
-        r'^PRAGMA\b',        # PRAGMA 语句
-        r'^SET\b',           # SET 语句
-        r'^CREATE\b',        # CREATE 语句
-        r'^ALTER\b',         # ALTER 语句
-        r'^DROP\b',          # DROP 语句
-        r'^TRUNCATE\b',      # TRUNCATE 语句
-        r'^INSERT\b',        # INSERT 语句
-        r'^UPDATE\b',        # UPDATE 语句
-        r'^DELETE\b',        # DELETE 语句
-        r'^GRANT\b',         # GRANT 语句
-        r'^REVOKE\b',        # REVOKE 语句
-        r'^CALL\b',          # CALL 语句
-        r'^EXECUTE\b',       # EXECUTE 语句
-        r'^USE\b',           # USE 语句
-        r'^BEGIN\b',         # BEGIN 语句
-        r'^COMMIT\b',        # COMMIT 语句
-        r'^ROLLBACK\b',      # ROLLBACK 语句
+        r"^DESCRIBE\b",  # DESCRIBE statement
+        r"^DESC\b",  # DESC statement (abbreviation of DESCRIBE)
+        r"^SHOW\b",  # SHOW statement
+        r"^EXPLAIN\b",  # EXPLAIN statement
+        r"^PRAGMA\b",  # PRAGMA statement
+        r"^SET\b",  # SET statement
+        r"^CREATE\b",  # CREATE statement
+        r"^ALTER\b",  # ALTER statement
+        r"^DROP\b",  # DROP statement
+        r"^TRUNCATE\b",  # TRUNCATE statement
+        r"^INSERT\b",  # INSERT statement
+        r"^UPDATE\b",  # UPDATE statement
+        r"^DELETE\b",  # DELETE statement
+        r"^GRANT\b",  # GRANT statement
+        r"^REVOKE\b",  # REVOKE statement
+        r"^CALL\b",  # CALL statement
+        r"^EXECUTE\b",  # EXECUTE statement
+        r"^USE\b",  # USE statement
+        r"^BEGIN\b",  # BEGIN statement
+        r"^COMMIT\b",  # COMMIT statement
+        r"^ROLLBACK\b",  # ROLLBACK statement
     ]
 
-    # 检查是否是不应该添加 LIMIT 的语句
+    # Check if this is a statement that should not have LIMIT added
     for pattern in no_limit_patterns:
         if re.match(pattern, query_upper):
             return query
 
-    # 使用正则表达式检查LIMIT子句，更稳健
+    # Use regex to check LIMIT clause, more robust
     if not re.search(r"\sLIMIT\s+\d+\s*($|;)", query, re.IGNORECASE):
         if query_stripped.endswith(";"):
             return f"{query_stripped[:-1]} LIMIT {default_limit};"
@@ -401,24 +398,24 @@ def _build_preview_count_sql(sql: str) -> str:
     return f"SELECT COUNT(*) AS total_rows FROM ({cleaned}) AS preview_count"
 
 
-# ==================== Visual Query API 端点 ====================
+# ==================== Visual Query API Endpoints ====================
 
 
 @router.post("/api/visual-query/generate", tags=["Visual Query"])
 async def generate_visual_query(request: VisualQueryRequest):
-    """生成可视化查询 SQL"""
+    """Generate visual query SQL"""
     try:
         validation_result = validate_query_config(request.config)
 
         if not validation_result.is_valid:
             return create_error_response(
                 code=MessageCode.VISUAL_QUERY_INVALID.value,
-                message="可视化查询配置无效",
+                message="Visual query configuration is invalid",
                 details={
                     "errors": validation_result.errors,
                     "warnings": validation_result.warnings,
                     "mode": request.mode,
-                }
+                },
             )
 
         resolved_casts_map = _map_resolved_casts(request.resolved_casts)
@@ -445,8 +442,8 @@ async def generate_visual_query(request: VisualQueryRequest):
                     "complexity_score": validation_result.complexity_score,
                 }
             except Exception as perf_exc:
-                logger.warning("查询性能估算失败: %s", perf_exc)
-                combined_warnings.append("无法估算查询性能")
+                logger.warning("Failed to estimate query performance: %s", perf_exc)
+                combined_warnings.append("Unable to estimate query performance")
                 metadata = {
                     "estimated_rows": None,
                     "estimated_time": None,
@@ -472,20 +469,20 @@ async def generate_visual_query(request: VisualQueryRequest):
         )
 
     except Exception as exc:
-        logger.error("生成可视化查询失败: %s", exc, exc_info=True)
+        logger.error("Failed to generate visual query: %s", exc, exc_info=True)
         return create_error_response(
             code=MessageCode.OPERATION_FAILED.value,
-            message=f"生成查询失败: {str(exc)}",
-            details={"mode": request.mode}
+            message=f"Failed to generate query: {str(exc)}",
+            details={"mode": request.mode},
         )
 
 
 @router.post("/api/visual-query/preview", tags=["Visual Query"])
 async def preview_visual_query(
     request: PreviewRequest,
-    x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
-    """预览可视化查询结果"""
+    """Preview visual query results"""
     query_id = f"sync:{x_request_id}" if x_request_id else None
 
     try:
@@ -494,12 +491,12 @@ async def preview_visual_query(
         if not validation_result.is_valid:
             return create_error_response(
                 code=MessageCode.VISUAL_QUERY_INVALID.value,
-                message="可视化查询配置无效",
+                message="Visual query configuration is invalid",
                 details={
                     "errors": validation_result.errors,
                     "warnings": validation_result.warnings,
                     "mode": request.mode,
-                }
+                },
             )
 
         resolved_casts_map = _map_resolved_casts(request.resolved_casts)
@@ -515,17 +512,15 @@ async def preview_visual_query(
         if preview_limit is None or preview_limit <= 0:
             from core.common.config_manager import config_manager
 
-            preview_limit = (
-                config_manager.get_app_config().max_query_rows or 10
-            )
+            preview_limit = config_manager.get_app_config().max_query_rows or 10
         preview_sql = ensure_query_has_limit(generation.final_sql, preview_limit)
 
-        # 使用可中断连接执行查询
+        # Execute query using interruptible connection
         if query_id:
             with interruptible_connection(query_id, preview_sql) as conn:
                 preview_df = conn.execute(preview_sql).fetchdf()
 
-                # 计算总行数（在同一连接上下文）
+                # Calculate total rows (in same connection context)
                 total_rows = len(preview_df)
                 try:
                     count_sql = _build_preview_count_sql(generation.final_sql)
@@ -533,9 +528,9 @@ async def preview_visual_query(
                     if not count_df.empty:
                         total_rows = int(count_df.iloc[0][0])
                 except Exception as count_exc:
-                    logger.warning("计算预览总行数失败: %s", count_exc)
+                    logger.warning("Failed to calculate preview total rows: %s", count_exc)
         else:
-            # 向后兼容
+            # Backward compatibility
             con = get_db_connection()
             preview_df = execute_query(preview_sql, con)
 
@@ -546,7 +541,7 @@ async def preview_visual_query(
                 if not count_df.empty:
                     total_rows = int(count_df.iloc[0, 0])
             except Exception as count_exc:
-                logger.warning("计算预览总行数失败: %s", count_exc)
+                logger.warning("Failed to calculate preview total rows: %s", count_exc)
 
         data = preview_df.to_dict("records")
         columns = [str(col) for col in preview_df.columns.tolist()]
@@ -557,7 +552,7 @@ async def preview_visual_query(
             estimate = estimate_query_performance(request.config, con)
             estimated_time = estimate.estimated_time
         except Exception as perf_exc:
-            logger.debug("预览性能估算失败: %s", perf_exc)
+            logger.debug("Failed to estimate preview performance: %s", perf_exc)
 
         combined_warnings = list(validation_result.warnings or [])
         combined_warnings.extend(generation.warnings)
@@ -582,26 +577,26 @@ async def preview_visual_query(
         logger.info(f"Visual query preview {query_id} was cancelled by user")
         raise HTTPException(status_code=499, detail="Query cancelled by client")
     except Exception as exc:
-        logger.error("可视化查询预览失败: %s", exc, exc_info=True)
+        logger.error("Failed to preview visual query: %s", exc, exc_info=True)
         return create_error_response(
             code=MessageCode.OPERATION_FAILED.value,
-            message=f"查询预览失败: {str(exc)}",
-            details={"mode": request.mode}
+            message=f"Failed to preview query: {str(exc)}",
+            details={"mode": request.mode},
         )
 
 
 @router.post("/api/visual-query/distinct-values", tags=["Visual Query"])
 async def get_distinct_values(
     req: DistinctValuesRequest,
-    x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
-    """返回指定列的 Top-N 不同值，可按频次或指标聚合排序。
+    """Return Top-N distinct values for specified column, sortable by frequency or metric aggregation.
 
-    安全注意：
-    - 列名使用 _quote_identifier 包裹
-    - 聚合函数白名单校验
-    - LIMIT 使用参数化值
-    支持通过 X-Request-ID 头实现查询取消
+    Security notes:
+    - Column names wrapped with _quote_identifier
+    - Aggregation function whitelist validation
+    - LIMIT uses parameterized values
+    Supports query cancellation via X-Request-ID header
     """
     query_id = f"sync:{x_request_id}" if x_request_id else None
 
@@ -610,18 +605,18 @@ async def get_distinct_values(
         if not validation_result.is_valid:
             return create_error_response(
                 code=MessageCode.VALIDATION_ERROR.value,
-                message="查询配置验证失败",
+                message="Query configuration validation failed",
                 details={
                     "errors": validation_result.errors,
                     "warnings": validation_result.warnings,
-                }
+                },
             )
 
         table = _quote_identifier(req.config.table_name)
         target_col = _quote_identifier(req.column)
         where_clause = _build_where_clause(req.config.filters)
 
-        # 可选基础采样限制
+        # Optional base sampling limit
         base_limit_sql = ""
         if req.base_limit and req.base_limit > 0:
             base_limit_sql = f" LIMIT {int(req.base_limit)}"
@@ -637,7 +632,7 @@ async def get_distinct_values(
         if order_by == "metric" and req.metric:
             agg = (req.metric.agg or "").upper()
             if agg not in ["SUM", "COUNT", "AVG", "MIN", "MAX"]:
-                raise HTTPException(status_code=400, detail="不支持的聚合函数")
+                raise HTTPException(status_code=400, detail="Unsupported aggregation function")
             metric_col = _quote_identifier(req.metric.column)
             sql = (
                 f"{base_cte} SELECT {target_col} AS v, COUNT(*) AS c, {agg}({metric_col}) AS m "
@@ -649,16 +644,16 @@ async def get_distinct_values(
                 f"FROM base WHERE {target_col} IS NOT NULL GROUP BY 1 ORDER BY c DESC LIMIT {limit_val}"
             )
 
-        # 使用可中断连接执行查询
+        # Execute query using interruptible connection
         if query_id:
             with interruptible_connection(query_id, sql) as conn:
                 df = conn.execute(sql).fetchdf()
 
-                # distinct_count 统计（在同一连接上下文）
+                # distinct_count statistics (in same connection context)
                 distinct_sql = f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base WHERE {target_col} IS NOT NULL"
                 distinct_df = conn.execute(distinct_sql).fetchdf()
         else:
-            # 向后兼容
+            # Backward compatibility
             con = get_db_connection()
             df = execute_query(sql, con)
 
@@ -699,11 +694,11 @@ async def get_distinct_values(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("获取列去重值失败: %s", exc, exc_info=True)
+        logger.error("Failed to get column distinct values: %s", exc, exc_info=True)
         return create_error_response(
             code=MessageCode.QUERY_FAILED.value,
             message=str(exc),
-            details={"errors": [str(exc)]}
+            details={"errors": [str(exc)]},
         )
 
 
@@ -712,7 +707,7 @@ async def get_distinct_values(
     tags=["Visual Query"],
 )
 async def get_visual_query_column_stats(table_name: str, column_name: str):
-    """获取列统计信息"""
+    """Get column statistics"""
     try:
         con = get_db_connection()
         available_tables = con.execute("SHOW TABLES").fetchdf()
@@ -721,7 +716,7 @@ async def get_visual_query_column_stats(table_name: str, column_name: str):
         )
 
         if table_name not in available_names:
-            raise HTTPException(status_code=404, detail=f"数据表 {table_name} 不存在")
+            raise HTTPException(status_code=404, detail=f"Table {table_name} does not exist")
 
         stats = get_column_statistics(table_name, column_name, con)
         stats_dict = (
@@ -736,15 +731,13 @@ async def get_visual_query_column_stats(table_name: str, column_name: str):
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("获取列统计信息失败: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取列统计信息失败: {str(exc)}")
+        logger.error("Failed to get column statistics: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get column statistics: {str(exc)}")
 
 
 @router.post("/api/visual-query/validate", tags=["Visual Query"])
-async def validate_visual_query_config_endpoint(
-    payload: Dict[str, Any] = Body(...)
-):
-    """验证可视化查询配置"""
+async def validate_visual_query_config_endpoint(payload: Dict[str, Any] = Body(...)):
+    """Validate visual query configuration"""
     try:
         if isinstance(payload, dict) and "config" in payload:
             request_payload = VisualQueryValidationRequest(**payload)
@@ -755,18 +748,18 @@ async def validate_visual_query_config_endpoint(
                 resolved_casts=[],
             )
     except ValidationError as exc:
-        logger.error("校验请求解析失败: %s", exc)
+        logger.error("Failed to parse validation request: %s", exc)
         return create_error_response(
             code=MessageCode.VALIDATION_ERROR.value,
-            message="请求格式错误",
-            details={"errors": ["请求格式错误"]}
+            message="Invalid request format",
+            details={"errors": ["Invalid request format"]},
         )
     except Exception as exc:
-        logger.error("校验请求解析异常: %s", exc, exc_info=True)
+        logger.error("Validation request parsing exception: %s", exc, exc_info=True)
         return create_error_response(
             code=MessageCode.VALIDATION_ERROR.value,
-            message=f"配置解析失败: {str(exc)}",
-            details={"errors": [f"配置解析失败: {str(exc)}"]}
+            message=f"Failed to parse configuration: {str(exc)}",
+            details={"errors": [f"Failed to parse configuration: {str(exc)}"]},
         )
 
     try:
@@ -793,25 +786,30 @@ async def validate_visual_query_config_endpoint(
                 "errors": validation_result.errors,
                 "warnings": validation_result.warnings,
                 "complexity_score": validation_result.complexity_score,
-                "conflicts": [c.model_dump() if hasattr(c, "model_dump") else c.dict() for c in agg_conflicts],
+                "conflicts": [
+                    c.model_dump() if hasattr(c, "model_dump") else c.dict()
+                    for c in agg_conflicts
+                ],
                 "suggested_casts": suggested_casts,
             },
-            message_code=MessageCode.VISUAL_QUERY_VALIDATED if is_valid else MessageCode.VISUAL_QUERY_INVALID,
+            message_code=MessageCode.VISUAL_QUERY_VALIDATED
+            if is_valid
+            else MessageCode.VISUAL_QUERY_INVALID,
         )
 
     except Exception as exc:
-        logger.error("可视化查询配置验证失败: %s", exc, exc_info=True)
+        logger.error("Failed to validate visual query configuration: %s", exc, exc_info=True)
         return create_error_response(
             code=MessageCode.VALIDATION_ERROR.value,
-            message=f"配置验证失败: {str(exc)}",
-            details={"errors": [f"配置验证失败: {str(exc)}"]}
+            message=f"Failed to validate configuration: {str(exc)}",
+            details={"errors": [f"Failed to validate configuration: {str(exc)}"]},
         )
 
 
 def safe_alias(table, col):
     col_safe = re.sub(r"[^a-zA-Z0-9_]", "_", col)
     alias = f"{table}_{col_safe}"
-    # 保证别名以字母或下划线开头
+    # Ensure alias starts with letter or underscore
     if not re.match(r"^[a-zA-Z_]", alias):
         alias = f"col_{alias}"
     return f'"{alias}"'
@@ -819,23 +817,23 @@ def safe_alias(table, col):
 
 def build_multi_table_join_query(query_request, con):
     """
-    构建多表JOIN查询
-    支持多个数据源的复杂JOIN操作
-    增加关联结果列显示JOIN匹配状态
-    使用改进的列名生成逻辑
+    Build multi-table JOIN query
+    Support complex JOIN operations for multiple data sources
+    Add association result column to display JOIN match status
+    Use improved column name generation logic
     """
     sources = query_request.sources
     joins = query_request.joins
 
     if not sources:
-        raise ValueError("至少需要一个数据源")
+        raise ValueError("At least one data source is required")
 
     if len(sources) == 1:
-        # 单表查询
+        # Single table query
         source_id = sources[0].id.strip('"')
         return f'SELECT * FROM "{source_id}"'
 
-    # 验证所有表都已注册
+    # Verify all tables are registered
     available_tables = con.execute("SHOW TABLES").fetchdf()
     available_table_names = available_tables["name"].tolist()
 
@@ -843,27 +841,27 @@ def build_multi_table_join_query(query_request, con):
         table_id = source.id.strip('"')
         if table_id not in available_table_names:
             raise ValueError(
-                f"表 '{table_id}' 未注册到DuckDB中。可用表: {', '.join(available_table_names)}"
+                f"Table '{table_id}' not registered in DuckDB. Available tables: {', '.join(available_table_names)}"
             )
 
-    # 为每个source添加columns信息（如果还没有的话）
+    # Add columns info for each source (if not already present)
     for source in sources:
         if not hasattr(source, "columns") or source.columns is None:
             try:
-                # 获取表的列信息
+                # Get table column information
                 cols_df = con.execute(f"PRAGMA table_info('{source.id}')").fetchdf()
                 source.columns = cols_df["name"].tolist()
             except Exception as e:
-                logger.error(f"获取表 {source.id} 的列信息失败: {e}")
+                logger.error(f"Failed to get column information for table {source.id}: {e}")
                 source.columns = []
 
-    # 使用改进的列别名生成逻辑
+    # Use improved column alias generation logic
     column_aliases = generate_improved_column_aliases(sources)
 
-    # 构建SELECT子句 - 只为JOIN中涉及的表生成列
+    # Build SELECT clause - only generate columns for tables involved in JOIN
     select_fields = []
 
-    # 为涉及的表生成列（如果有JOIN）
+    # Generate columns for involved tables (if there are JOINs)
     if joins:
         involved_tables = set()
         for join in joins:
@@ -874,25 +872,29 @@ def build_multi_table_join_query(query_request, con):
             table_id = source.id.strip('"')
             if table_id in involved_tables and source.columns:
                 for col in source.columns:
-                    # 支持两种列格式：字符串或包含 'name' 键的字典
-                    col_name = col.get('name', str(col)) if isinstance(col, dict) else str(col)
+                    # Support two column formats: string or dict containing 'name' key
+                    col_name = (
+                        col.get("name", str(col)) if isinstance(col, dict) else str(col)
+                    )
                     alias = column_aliases[source.id].get(col_name, col_name)
                     select_fields.append(f'"{table_id}"."{col_name}" AS "{alias}"')
     else:
-        # 如果没有JOIN，包含所有表的所有列
+        # If no JOIN, include all columns from all tables
         for source in sources:
             table_id = source.id.strip('"')
             if source.columns:
                 for col in source.columns:
-                    # 支持两种列格式：字符串或包含 'name' 键的字典
-                    col_name = col.get('name', str(col)) if isinstance(col, dict) else str(col)
+                    # Support two column formats: string or dict containing 'name' key
+                    col_name = (
+                        col.get("name", str(col)) if isinstance(col, dict) else str(col)
+                    )
                     alias = column_aliases[source.id].get(col_name, col_name)
                     select_fields.append(f'"{table_id}"."{col_name}" AS "{alias}"')
 
-    # 添加关联结果列
+    # Add association result columns
     join_result_fields = []
     if joins:
-        # 为简单起见，我们仍然使用字母前缀来生成JOIN结果列名
+        # For simplicity, we still use letter prefixes to generate JOIN result column names
         table_prefixes = {}
         prefix_index = 0
         for source in sources:
@@ -905,24 +907,24 @@ def build_multi_table_join_query(query_request, con):
             left_table = join.left_source_id.strip('"')
             right_table = join.right_source_id.strip('"')
 
-            # 生成关联结果列名
+            # Generate association result column name
             left_prefix = table_prefixes.get(left_table, left_table)
             right_prefix = table_prefixes.get(right_table, right_table)
             join_result_column = f"join_result_{left_prefix}_{right_prefix}"
 
-            # 根据JOIN类型生成CASE表达式
+            # Generate CASE expression based on JOIN type
             join_type = join.join_type.lower()
             if join_type == "inner":
-                # INNER JOIN: 只有匹配的记录，都标记为'both'
+                # INNER JOIN: only matched records, all marked as 'both'
                 join_result_expr = f"'both' AS {join_result_column}"
             elif join_type == "left":
-                # LEFT JOIN: 检查右表关键字段是否为NULL
+                # LEFT JOIN: check if right table key field is NULL
                 if join.conditions and len(join.conditions) > 0:
                     right_key_col = (
                         f'"{right_table}"."{join.conditions[0].right_column}"'
                     )
                 else:
-                    # 如果没有条件，使用第一个列作为检查
+                    # If no conditions, use first column for check
                     right_cols = (
                         [col for col in sources if col.id.strip('"') == right_table][
                             0
@@ -937,11 +939,11 @@ def build_multi_table_join_query(query_request, con):
                     )
                 join_result_expr = f"CASE WHEN {right_key_col} IS NULL THEN 'left' ELSE 'both' END AS {join_result_column}"
             elif join_type == "right":
-                # RIGHT JOIN: 检查左表关键字段是否为NULL
+                # RIGHT JOIN: check if left table key field is NULL
                 if join.conditions and len(join.conditions) > 0:
                     left_key_col = f'"{left_table}"."{join.conditions[0].left_column}"'
                 else:
-                    # 如果没有条件，使用第一个列作为检查
+                    # If no conditions, use first column for check
                     left_cols = (
                         [col for col in sources if col.id.strip('"') == left_table][
                             0
@@ -956,14 +958,14 @@ def build_multi_table_join_query(query_request, con):
                     )
                 join_result_expr = f"CASE WHEN {left_key_col} IS NULL THEN 'right' ELSE 'both' END AS {join_result_column}"
             elif join_type in ["full", "full_outer", "outer"]:
-                # FULL OUTER JOIN: 检查两边关键字段是否为NULL
+                # FULL OUTER JOIN: check if both sides key fields are NULL
                 if join.conditions and len(join.conditions) > 0:
                     left_key_col = f'"{left_table}"."{join.conditions[0].left_column}"'
                     right_key_col = (
                         f'"{right_table}"."{join.conditions[0].right_column}"'
                     )
                 else:
-                    # 如果没有条件，使用第一个列作为检查
+                    # If no conditions, use first column for check
                     left_cols = (
                         [col for col in sources if col.id.strip('"') == left_table][
                             0
@@ -994,32 +996,32 @@ def build_multi_table_join_query(query_request, con):
                     ELSE 'both'
                 END AS {join_result_column}"""
             else:
-                # 其他类型的JOIN（如CROSS JOIN），默认标记为'both'
+                # Other types of JOIN (like CROSS JOIN), default mark as 'both'
                 join_result_expr = f"'both' AS {join_result_column}"
 
             join_result_fields.append(join_result_expr)
 
-    # 合并所有字段
+    # Merge all fields
     all_fields = select_fields + join_result_fields
     select_clause = ", ".join(all_fields) if all_fields else "*"
 
-    # 构建FROM和JOIN子句
+    # Build FROM and JOIN clauses
     if not joins:
-        # 没有JOIN条件，使用CROSS JOIN
+        # No JOIN conditions, use CROSS JOIN
         first_source_id = sources[0].id.strip('"')
         from_clause = f'"{first_source_id}"'
         for source in sources[1:]:
             source_id = source.id.strip('"')
             from_clause += f' CROSS JOIN "{source_id}"'
     else:
-        # 构建JOIN链
+        # Build JOIN chain
         from_clause = build_join_chain(
             sources, joins, {source.id.strip('"'): source.columns for source in sources}
         )
 
     query = f"SELECT {select_clause} FROM {from_clause}"
 
-    # 添加LIMIT
+    # Add LIMIT
     if query_request.limit:
         query += f" LIMIT {query_request.limit}"
 
@@ -1028,35 +1030,35 @@ def build_multi_table_join_query(query_request, con):
 
 def build_join_chain(sources, joins, table_columns):
     """
-    构建JOIN链，支持多表连接和多字段关联
+    Build JOIN chain, support multi-table connections and multi-field associations
     """
     if not joins:
         first_source_id = sources[0].id.strip('"')
         return f'"{first_source_id}"'
 
-    # 创建表的映射
+    # Create table mapping
     source_map = {source.id.strip('"'): source for source in sources}
 
-    # 跟踪已经加入查询的表
+    # Track tables already joined in query
     joined_tables = set()
 
-    # 从第一个JOIN开始构建
+    # Start building from first JOIN
     first_join = joins[0]
     left_table = first_join.left_source_id.strip('"')
     right_table = first_join.right_source_id.strip('"')
 
-    # 开始构建查询
+    # Start building query
     from_clause = f'"{left_table}"'
     joined_tables.add(left_table)
 
-    # 收集所有相同表对的JOIN条件
+    # Collect JOIN conditions for all same table pairs
     join_conditions_map = {}
 
     for join in joins:
         left_id = join.left_source_id.strip('"')
         right_id = join.right_source_id.strip('"')
 
-        # 创建JOIN键，用于合并相同表对的JOIN条件
+        # Create JOIN key for merging JOIN conditions of same table pairs
         join_key = tuple(sorted([left_id, right_id]))
 
         if join_key not in join_conditions_map:
@@ -1067,66 +1069,62 @@ def build_join_chain(sources, joins, table_columns):
                 "conditions": [],
             }
 
-        # 添加条件到对应的JOIN
+        # Add conditions to corresponding JOIN
         if join.conditions:
             join_conditions_map[join_key]["conditions"].extend(join.conditions)
 
-    # 处理所有JOIN（现在每个表对只处理一次）
+    # Process all JOINs (now each table pair is processed only once)
     for join_key, join_info in join_conditions_map.items():
         left_id = join_info["left_table"]
         right_id = join_info["right_table"]
         join_type = join_info["join_type"]
         all_conditions = join_info["conditions"]
 
-        # 确定哪个表需要被JOIN进来
+        # Determine which table needs to be JOINed in
         if left_id in joined_tables and right_id not in joined_tables:
-            # 右表需要被JOIN进来
+            # Right table needs to be JOINed in
             table_to_join = right_id
         elif right_id in joined_tables and left_id not in joined_tables:
-            # 左表需要被JOIN进来
+            # Left table needs to be JOINed in
             table_to_join = left_id
         elif left_id not in joined_tables and right_id not in joined_tables:
-            # 两个表都不在查询中，JOIN右表
+            # Both tables not in query, JOIN right table
             table_to_join = right_id
         else:
-            # 两个表都已经在查询中，跳过这个JOIN
+            # Both tables already in query, skip this JOIN
             continue
 
         join_type_sql = get_join_type_sql(join_type)
         from_clause += f' {join_type_sql} "{table_to_join}"'
 
-        # 添加所有JOIN条件（包括多字段关联）
+        # Add all JOIN conditions (including multi-field associations)
         if join_type.lower() != "cross" and all_conditions:
             conditions = []
             for condition in all_conditions:
                 left_table_id = left_id
                 right_table_id = right_id
 
-                # 智能数据类型转换和清洗
-                base_left_col = (
-                    f'"{left_table_id}"."{condition.left_column}"'
-                )
-                base_right_col = (
-                    f'"{right_table_id}"."{condition.right_column}"'
-                )
+                # Intelligent data type conversion and cleaning
+                base_left_col = f'"{left_table_id}"."{condition.left_column}"'
+                base_right_col = f'"{right_table_id}"."{condition.right_column}"'
 
                 left_col = base_left_col
                 right_col = base_right_col
 
-                # 检查是否需要数据清洗（针对包含JSON或复杂字符串的情况）
-                # 如果左列包含复杂数据，尝试提取数字部分
+                # Check if data cleaning is needed (for JSON or complex strings)
+                # If left column contains complex data, try to extract numeric part
                 if condition.left_column == "uid" and left_table_id in ["0711", "0702"]:
-                    # 使用正则表达式提取数字部分
+                    # Use regex to extract numeric part
                     left_col = (
                         f"CAST(REGEXP_EXTRACT({left_col}, '^([0-9]+)', 1) AS VARCHAR)"
                     )
 
-                # 如果右列是数字类型，确保类型匹配
+                # If right column is numeric type, ensure type matching
                 if condition.right_column in [
                     "iget_uid",
                     "buyer_id",
                 ] and right_table_id.startswith("query_result"):
-                    # 确保右列也是字符串类型进行比较
+                    # Ensure right column is also string type for comparison
                     right_col = f"CAST({right_col} AS VARCHAR)"
 
                 if condition.left_cast:
@@ -1147,15 +1145,15 @@ def build_join_chain(sources, joins, table_columns):
 @router.post("/api/query", tags=["Query"])
 async def perform_query(
     query_request: QueryRequest,
-    x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
     """Performs a join query on the specified data sources."""
     query_id = f"sync:{x_request_id}" if x_request_id else None
     if query_id:
         logger.info(f"Query with request ID: {x_request_id}")
 
-    # 始终获取有效连接
-    # TODO: 使用 interruptible_connection 包裹查询执行以支持取消
+    # Always get valid connection
+    # TODO: Use interruptible_connection to wrap query execution for cancellation support
     con = get_db_connection()
 
     try:
@@ -1199,13 +1197,13 @@ async def perform_query(
                         break
 
                 if not file_path:
-                    logger.error(f"文件不存在，尝试的路径: {possible_paths}")
-                    raise ValueError(f"文件不存在: {original_path}")
+                    logger.error(f"File does not exist, attempted paths: {possible_paths}")
+                    raise ValueError(f"File does not exist: {original_path}")
 
                 # 更新source中的路径为实际找到的路径
                 source.params["path"] = file_path
 
-                logger.info(f"注册数据源: {source.id}, 路径: {file_path}")
+                logger.info(f"Registering datasource: {source.id}, path: {file_path}")
 
                 # 根据文件扩展名选择合适的读取方法
                 file_extension = file_path.lower().split(".")[-1]
@@ -1215,9 +1213,7 @@ async def perform_query(
                     try:
                         con.execute("INSTALL excel;")
                         con.execute("LOAD excel;")
-                        duckdb_query = (
-                            f"SELECT * FROM read_xlsx('{file_path}') LIMIT 1"
-                        )
+                        duckdb_query = f"SELECT * FROM read_xlsx('{file_path}') LIMIT 1"
                         con.execute(duckdb_query).fetchdf()
                         # 先创建临时表
                         temp_table = f"temp_{source.id}_{int(time.time())}"
@@ -1245,7 +1241,7 @@ async def perform_query(
 
                         # 删除临时表
                         con.execute(f'DROP TABLE "{temp_table}"')
-                        logger.info(f"使用DuckDB read_xlsx 注册Excel表: {source.id}")
+                        logger.info(f"Registered Excel table using DuckDB read_xlsx: {source.id}")
                     except Exception as duckdb_exc:
                         logger.warning(
                             f"DuckDB read_xlsx 读取失败，降级为pandas: {duckdb_exc}"
@@ -1268,7 +1264,7 @@ async def perform_query(
                             normalized_ext,
                         )
                         logger.info(
-                            "已通过DuckDB原生加载文件 %s -> 表 %s",
+                            "已通过DuckDB原生加载文件 %s -> Table %s",
                             file_path,
                             source.id,
                         )
@@ -1278,7 +1274,7 @@ async def perform_query(
                         )
                         raise
                 else:
-                    logger.warning(f"未知文件类型: {file_extension}，尝试pandas读取")
+                    logger.warning(f"Unknown file type: {file_extension}, trying pandas read")
                     try:
                         df = pd.read_csv(file_path, dtype=str)
                         create_varchar_table_from_dataframe(source.id, df, con)
@@ -1303,11 +1299,10 @@ async def perform_query(
                         f"处理数据库数据源: {source.id}, 连接ID: {connection_id}"
                     )
 
-
                     try:
                         db_connection = db_manager.get_connection(connection_id)
                         if not db_connection:
-                            raise ValueError(f"未找到数据库连接: {connection_id}")
+                            raise ValueError(f"Database connection not found: {connection_id}")
 
                         if hasattr(db_connection.params, "query"):
                             query = db_connection.params.get(
@@ -1323,7 +1318,7 @@ async def perform_query(
                         )
 
                     except Exception as db_error:
-                        logger.error(f"数据库连接处理失败: {db_error}")
+                        logger.error(f"Failed to process database connection: {db_error}")
                         raise ValueError(
                             f"数据库连接处理失败: {source.id}, 错误: {str(db_error)}"
                         )
@@ -1335,14 +1330,13 @@ async def perform_query(
                     )
 
                     try:
-
                         # 读取MySQL配置文件
                         mysql_config_file = os.path.join(
                             os.path.dirname(os.path.dirname(__file__)),
                             "config/mysql-configs.json",
                         )
                         if not os.path.exists(mysql_config_file):
-                            raise ValueError("MySQL配置文件不存在")
+                            raise ValueError("MySQL config file does not exist")
 
                         with open(mysql_config_file, "r", encoding="utf-8") as f:
                             configs = json.load(f)
@@ -1355,7 +1349,7 @@ async def perform_query(
                                 break
 
                         if not mysql_config:
-                            raise ValueError(f"未找到数据源配置: {datasource_name}")
+                            raise ValueError(f"Datasource configuration not found: {datasource_name}")
 
                         # 获取查询语句
                         query = source.params.get(
@@ -1379,16 +1373,15 @@ async def perform_query(
                         )
 
                     except Exception as secure_db_error:
-                        logger.error(f"安全数据源处理失败: {secure_db_error}")
+                        logger.error(f"Failed to process secure datasource: {secure_db_error}")
                         raise ValueError(
                             f"安全数据源处理失败: {source.id}, 错误: {str(secure_db_error)}"
                         )
                 else:
                     # 模式3：直接使用连接参数（兼容旧版本，但不推荐）
-                    logger.warning(f"使用直接连接参数模式（不推荐）: {source.id}")
+                    logger.warning(f"Using direct connection parameter mode (not recommended): {source.id}")
 
                     try:
-
                         # 获取连接参数
                         host = source.params.get("host", "localhost")
                         port = source.params.get(
@@ -1400,7 +1393,7 @@ async def perform_query(
                         query = source.params.get("query", "SELECT 1 as test")
 
                         if not all([host, user, database, query]):
-                            raise ValueError(f"数据库连接参数不完整: {source.id}")
+                            raise ValueError(f"Incomplete database connection parameters: {source.id}")
 
                         # 创建连接字符串
                         if source.type == "mysql":
@@ -1410,7 +1403,7 @@ async def perform_query(
                         elif source.type == "sqlite":
                             connection_str = f"sqlite:///{database}"
                         else:
-                            raise ValueError(f"不支持的数据库类型: {source.type}")
+                            raise ValueError(f"Unsupported database type: {source.type}")
 
                         # 创建引擎并执行查询
                         engine = create_engine(connection_str)
@@ -1423,9 +1416,9 @@ async def perform_query(
                         )
 
                     except Exception as direct_db_error:
-                        logger.error(f"直接数据库连接失败: {direct_db_error}")
+                        logger.error(f"Failed to connect to database directly: {direct_db_error}")
                         raise ValueError(
-                            f"直接数据库连接失败: {source.id}, 错误: {str(direct_db_error)}"
+                            f"直接Database connection failed: {source.id}, 错误: {str(direct_db_error)}"
                         )
 
         # 获取当前可用的表
@@ -1433,12 +1426,12 @@ async def perform_query(
         available_table_names = (
             available_tables["name"].tolist() if not available_tables.empty else []
         )
-        logger.info(f"当前DuckDB中的表: {available_tables.to_string()}")
+        logger.info(f"Current tables in DuckDB: {available_tables.to_string()}")
 
         # 验证是否有数据源
         if not query_request.sources:
             raise HTTPException(
-                status_code=422, detail="查询请求必须包含至少一个数据源"
+                status_code=422, detail="Query request must contain at least one data source"
             )
 
         # 构建查询 - 确保表名使用双引号括起来
@@ -1446,7 +1439,7 @@ async def perform_query(
             # 多表JOIN查询 - 使用改进的多表JOIN支持
             query = build_multi_table_join_query(query_request, con)
         else:
-            # 单表查询 - 使用build_single_table_query来处理表名
+            # Single table query - 使用build_single_table_query来处理表名
             query = build_single_table_query(query_request)
 
             # 验证表是否存在（从查询中提取实际表名）
@@ -1455,7 +1448,7 @@ async def perform_query(
             if table_match:
                 actual_table_name = table_match.group(1)
                 if actual_table_name not in available_table_names:
-                    error_msg = f"无法执行查询，表 '{actual_table_name}' 不存在。可用的表: {', '.join(available_table_names)}"
+                    error_msg = f"无法执行查询，Table '{actual_table_name}' does not exist。可用的表: {', '.join(available_table_names)}"
                     logger.error(error_msg)
                     raise ValueError(error_msg)
 
@@ -1465,13 +1458,13 @@ async def perform_query(
 
             limit = config_manager.get_app_config().max_query_rows
             query = ensure_query_has_limit(query, limit)
-            logger.info(f"预览模式，已应用LIMIT {limit}")
+            logger.info(f"Preview mode, applied LIMIT {limit}")
 
-        logger.info(f"执行查询: {query}")
+        logger.info(f"Executing query: {query}")
 
         # 执行查询
         result_df = execute_query(query, con)
-        logger.info(f"查询完成，结果形状: {result_df.shape}")
+        logger.info(f"Query completed, result shape: {result_df.shape}")
 
         data_records = normalize_dataframe_output(result_df)
         columns_list = [str(col) for col in result_df.columns.tolist()]
@@ -1491,8 +1484,8 @@ async def perform_query(
         raise
     except Exception as e:
         error_message = str(e)
-        logger.error(f"查询失败: {error_message}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        logger.error(f"Query failed: {error_message}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
 
         # 使用统一的错误代码系统
         from core.common.error_codes import (
@@ -1508,7 +1501,7 @@ async def perform_query(
         error_response = create_error_response(
             code=error_code,
             message=original_error,
-            details={"sql": getattr(query_request, "sql", None)}
+            details={"sql": getattr(query_request, "sql", None)},
         )
 
         # 返回详细的错误响应
@@ -1530,9 +1523,9 @@ async def execute_sql(request: dict = Body(...)):
 
             limit = config_manager.get_app_config().max_query_rows
             sql_query = ensure_query_has_limit(sql_query, limit)
-            logger.info(f"预览模式，已应用LIMIT {limit} 到SQL: {sql_query}")
+            logger.info(f"Preview mode, applied LIMIT {limit} to SQL: {sql_query}")
 
-        logger.info(f"=== EXECUTE_SQL 函数开始执行 ===")
+        logger.info(f"=== EXECUTE_SQL function started ===")
         logger.info(f"request type: {type(request)}, content: {request}")
         # 兼容 dict、Pydantic/BaseModel、FormData
         if isinstance(request, dict):
@@ -1556,8 +1549,8 @@ async def execute_sql(request: dict = Body(...)):
         datasource_type = (
             datasource.get("type") if isinstance(datasource, dict) else None
         )
-        logger.info(f"检查数据源类型: {datasource_type}")
-        logger.info(f"是否为字典: {isinstance(datasource, dict)}")
+        logger.info(f"Checking datasource type: {datasource_type}")
+        logger.info(f"Is dictionary: {isinstance(datasource, dict)}")
         logger.info(
             f"类型检查结果: {datasource_type in ['mysql', 'postgresql', 'sqlite', 'duckdb']}"
         )
@@ -1580,13 +1573,13 @@ async def execute_sql(request: dict = Body(...)):
                     )
                     file_path = os.path.join(temp_dir, filename)
                 else:
-                    raise ValueError("缺少文件路径参数")
+                    raise ValueError("Missing file path parameter")
 
             table_id = datasource.get("id", "temp_table")
 
             # 检查文件是否存在
             if not os.path.exists(file_path):
-                raise ValueError(f"文件不存在: {file_path}")
+                raise ValueError(f"File does not exist: {file_path}")
 
             normalized_ext = file_path.split(".")[-1].lower()
             if normalized_ext == "pq":
@@ -1609,20 +1602,20 @@ async def execute_sql(request: dict = Body(...)):
             if not sql_query.strip():
                 raise HTTPException(
                     status_code=400,
-                    detail="数据库类型的数据源需要提供自定义SQL查询语句",
+                    detail="Database type datasource requires custom SQL query statement",
                 )
 
             # 使用数据库管理器执行查询
 
             datasource_id = datasource.get("id")
             if not datasource_id:
-                raise HTTPException(status_code=400, detail="缺少数据源ID")
+                raise HTTPException(status_code=400, detail="Missing datasource ID")
 
-            # 确保数据库连接存在，如果不存在则创建
+            # 确保数据库连接存在，如果does not exist则创建
             try:
                 existing_conn = db_manager.get_connection(datasource_id)
                 if not existing_conn:
-                    logger.info(f"连接 {datasource_id} 不存在，尝试创建...")
+                    logger.info(f"Connection {datasource_id} does not exist, attempting to create...")
                     # 读取配置文件并创建连接
                     from models.query_models import DatabaseConnection, DataSourceType
 
@@ -1641,7 +1634,7 @@ async def execute_sql(request: dict = Body(...)):
 
                     if not config:
                         raise HTTPException(
-                            status_code=404, detail=f"未找到数据源配置: {datasource_id}"
+                            status_code=404, detail=f"Datasource configuration not found: {datasource_id}"
                         )
 
                     # 创建连接
@@ -1657,24 +1650,24 @@ async def execute_sql(request: dict = Body(...)):
                     if not success:
                         raise HTTPException(
                             status_code=500,
-                            detail=f"创建数据库连接失败: {datasource_id}",
+                            detail=f"Failed to create database connection: {datasource_id}",
                         )
 
-                    logger.info(f"成功创建数据库连接: {datasource_id}")
+                    logger.info(f"Successfully created database connection: {datasource_id}")
 
             except HTTPException:
                 raise
             except Exception as e:
-                logger.error(f"创建数据库连接失败: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"数据库连接失败: {str(e)}")
+                logger.error(f"Failed to create database connection: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
 
             # 在原始数据库上执行SQL查询
             try:
                 logger.info(
-                    f"开始执行数据库查询: datasource_id={datasource_id}, sql={sql_query}"
+                    f"开始执rows据库查询: datasource_id={datasource_id}, sql={sql_query}"
                 )
                 result_df = db_manager.execute_query(datasource_id, sql_query)
-                logger.info(f"数据库查询执行完成，结果形状: {result_df.shape}")
+                logger.info(f"Database query execution completed, result shape: {result_df.shape}")
 
                 # 处理编码问题：安全地转换为字符串
                 for col in result_df.columns:
@@ -1708,7 +1701,7 @@ async def execute_sql(request: dict = Body(...)):
                 data_records = normalize_dataframe_output(result_df)
                 columns_list = [str(col) for col in result_df.columns.tolist()]
 
-                logger.info(f"准备返回数据库查询结果，行数: {len(result_df)}")
+                logger.info(f"Preparing to return database query result, rows: {len(result_df)}")
                 return create_success_response(
                     data={
                         "data": data_records,
@@ -1723,16 +1716,16 @@ async def execute_sql(request: dict = Body(...)):
                 )
 
             except Exception as db_error:
-                logger.error(f"数据库查询失败: {str(db_error)}")
+                logger.error(f"Database query failed: {str(db_error)}")
                 raise HTTPException(
-                    status_code=500, detail=f"数据库查询失败: {str(db_error)}"
+                    status_code=500, detail=f"Database query failed: {str(db_error)}"
                 )
 
         # 如果不是数据库类型，则在DuckDB中执行查询
         else:
             # 执行SQL查询
             result_df = execute_query(sql_query, con)
-            logger.info(f"SQL查询执行完成，结果形状: {result_df.shape}")
+            logger.info(f"SQL query execution completed, result shape: {result_df.shape}")
 
             data_records = normalize_dataframe_output(result_df)
 
@@ -1750,16 +1743,16 @@ async def execute_sql(request: dict = Body(...)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"SQL执行失败: {str(e)}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"SQL执行失败: {str(e)}")
+        logger.error(f"SQL execution failed: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"SQL execution failed: {str(e)}")
 
 
 @router.post("/api/save_query_to_duckdb", tags=["Query"])
 async def save_query_to_duckdb(request: dict = Body(...)):
     """将数据库查询结果保存到DuckDB作为新的数据源"""
     try:
-        logger.info(f"保存查询到DuckDB请求: {request}")
+        logger.info(f"Save query to DuckDB request: {request}")
 
         # 获取请求参数，支持多种格式，确保安全处理None值
         datasource = (
@@ -1775,10 +1768,10 @@ async def save_query_to_duckdb(request: dict = Body(...)):
 
         # 参数验证
         if not table_alias or not table_alias.strip():
-            raise HTTPException(status_code=400, detail="请提供DuckDB表别名")
+            raise HTTPException(status_code=400, detail="Please provide DuckDB table alias")
 
         if not sql_query or not sql_query.strip():
-            raise HTTPException(status_code=400, detail="请提供SQL查询语句")
+            raise HTTPException(status_code=400, detail="Please provide SQL query statement")
 
         # 验证数据源，提供默认值防止None错误
         datasource_id = datasource.get("id", "duckdb_internal")
@@ -1797,18 +1790,18 @@ async def save_query_to_duckdb(request: dict = Body(...)):
 
         # 对于保存功能，始终重新执行SQL以确保数据完整性
         # 智能移除系统自动添加的LIMIT，保留用户原始的所有SQL逻辑
-        logger.info("重新执行SQL以获取完整数据，智能处理LIMIT限制")
+        logger.info("Re-executing SQL to get complete data, intelligently handling LIMIT")
 
         # 判断数据源类型
         if datasource_type in ["mysql"] and datasource_id != "duckdb_internal":
             # 处理MySQL等外部数据库
             try:
-                logger.info(f"执行外部数据库查询: {datasource_id}")
+                logger.info(f"Executing external database query: {datasource_id}")
 
                 # 确保数据库连接存在
                 existing_conn = db_manager.get_connection(datasource_id)
                 if not existing_conn:
-                    logger.info(f"连接 {datasource_id} 不存在，尝试从配置创建...")
+                    logger.info(f"Connection {datasource_id} does not exist, attempting to create from config...")
                     # 尝试从配置文件创建连接
                     from models.query_models import (
                         DatabaseConnection,
@@ -1816,10 +1809,10 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                     )
 
                     try:
-                        raise Exception(f"未找到数据源配置: {datasource_id}")
+                        raise Exception(f"Datasource configuration not found: {datasource_id}")
                     except Exception as config_error:
-                        logger.error(f"创建数据库连接失败: {str(config_error)}")
-                        raise Exception(f"数据库连接失败: {str(config_error)}")
+                        logger.error(f"Failed to create database connection: {str(config_error)}")
+                        raise Exception(f"Database connection failed: {str(config_error)}")
 
                 # 智能清理SQL，移除系统自动添加的LIMIT，保留所有用户条件
                 clean_sql = remove_auto_added_limit(sql_query)
@@ -1830,12 +1823,12 @@ async def save_query_to_duckdb(request: dict = Body(...)):
 
                 # 执行查询获取完整数据（保留所有WHERE条件和用户逻辑）
                 result_df = db_manager.execute_query(datasource_id, clean_sql)
-                logger.info(f"外部数据库查询执行完成，结果形状: {result_df.shape}")
+                logger.info(f"External database query execution completed, result shape: {result_df.shape}")
 
             except Exception as db_error:
-                logger.error(f"外部数据库查询失败: {str(db_error)}")
+                logger.error(f"External database query failed: {str(db_error)}")
                 raise HTTPException(
-                    status_code=500, detail=f"外部数据库查询失败: {str(db_error)}"
+                    status_code=500, detail=f"External database query failed: {str(db_error)}"
                 )
         else:
             # 处理DuckDB内部查询
@@ -1844,7 +1837,7 @@ async def save_query_to_duckdb(request: dict = Body(...)):
 
                 # 智能清理SQL：移除系统自动添加的LIMIT，保留所有用户条件和逻辑
                 clean_sql = sql_query.strip()
-                logger.info(f"原始SQL: {clean_sql}")
+                logger.info(f"Original SQL: {clean_sql}")
 
                 # 智能检测并移除系统自动添加的LIMIT（保留用户原始LIMIT和所有WHERE/JOIN/ORDER BY等条件）
                 clean_sql = remove_auto_added_limit(clean_sql)
@@ -1854,44 +1847,43 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                         f"DuckDB查询移除了系统自动添加的LIMIT，保留所有用户条件: {clean_sql}"
                     )
                 else:
-                    logger.info(f"SQL无需清理或包含用户原始LIMIT: {clean_sql}")
+                    logger.info(f"SQL needs no cleaning or contains user original LIMIT: {clean_sql}")
 
-                logger.info(f"在DuckDB中执行完整查询: {clean_sql}")
+                logger.info(f"Executing complete query in DuckDB: {clean_sql}")
                 result_df = execute_query(clean_sql, con)
-                logger.info(f"DuckDB查询执行完成，结果形状: {result_df.shape}")
+                logger.info(f"DuckDB query execution completed, result shape: {result_df.shape}")
 
             except Exception as duckdb_error:
-                logger.error(f"DuckDB查询失败: {str(duckdb_error)}")
+                logger.error(f"DuckDB query failed: {str(duckdb_error)}")
                 raise HTTPException(
-                    status_code=500, detail=f"DuckDB查询失败: {str(duckdb_error)}"
+                    status_code=500, detail=f"DuckDB query failed: {str(duckdb_error)}"
                 )
-
 
         # 验证查询结果
         if result_df is None or result_df.empty:
-            raise HTTPException(status_code=400, detail="查询结果为空，无法保存")
+            raise HTTPException(status_code=400, detail="Query result is empty, cannot save")
 
         # 获取DuckDB连接并创建持久化表
         try:
             con = get_db_connection()
 
-            # 检查表名是否已存在
+            # 检查表名是否already exists
             existing_tables = con.execute("SHOW TABLES").fetchdf()
             existing_table_names = (
                 existing_tables["name"].tolist() if not existing_tables.empty else []
             )
 
             if table_alias in existing_table_names:
-                logger.warning(f"表 {table_alias} 已存在，将被覆盖")
+                logger.warning(f"Table {table_alias} already exists, will be overwritten")
                 con.execute(f'DROP TABLE IF EXISTS "{table_alias}"')
 
             # 使用改进的函数创建表
             success = create_varchar_table_from_dataframe(table_alias, result_df, con)
 
             if not success:
-                raise Exception("查询结果持久化到DuckDB失败")
+                raise Exception("Failed to persist query result to DuckDB")
 
-            logger.info(f"数据已持久化保存到DuckDB表: {table_alias}")
+            logger.info(f"Data has been persisted to DuckDB table: {table_alias}")
 
             # 验证表是否成功创建
             try:
@@ -1899,9 +1891,9 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                     f'SELECT COUNT(*) as count FROM "{table_alias}"'
                 ).fetchdf()
                 actual_count = verification_result.iloc[0]["count"]
-                logger.info(f"表 {table_alias} 验证成功，行数: {actual_count}")
+                logger.info(f"Table {table_alias} verification successful, rows: {actual_count}")
             except Exception as verify_error:
-                logger.warning(f"表验证失败: {str(verify_error)}")
+                logger.warning(f"Table verification failed: {str(verify_error)}")
 
             # 使用统一的时区配置
             try:
@@ -1923,10 +1915,10 @@ async def save_query_to_duckdb(request: dict = Body(...)):
 
                 # 保存到文件数据源管理器
                 file_datasource_manager.save_file_datasource(file_info)
-                logger.info(f"已创建查询结果表的文件数据源配置: {table_alias}")
+                logger.info(f"Created file datasource configuration for query result table: {table_alias}")
 
             except Exception as config_error:
-                logger.warning(f"创建文件数据源配置失败: {str(config_error)}")
+                logger.warning(f"Failed to create file datasource configuration: {str(config_error)}")
 
             return create_success_response(
                 data={
@@ -1948,21 +1940,21 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                     },
                 },
                 message_code=MessageCode.TABLE_CREATED,
-                message=f"查询结果已保存为DuckDB表: {table_alias}",
+                message=f"Query result has been saved as DuckDB table: {table_alias}",
             )
 
         except Exception as duckdb_error:
-            logger.error(f"DuckDB操作失败: {str(duckdb_error)}")
+            logger.error(f"DuckDB operation failed: {str(duckdb_error)}")
             raise HTTPException(
-                status_code=500, detail=f"DuckDB操作失败: {str(duckdb_error)}"
+                status_code=500, detail=f"DuckDB operation failed: {str(duckdb_error)}"
             )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"保存到DuckDB失败: {str(e)}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"保存到DuckDB失败: {str(e)}")
+        logger.error(f"Failed to save to DuckDB: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to save to DuckDB: {str(e)}")
 
 
 @router.get("/api/duckdb_tables", tags=["Query"])
@@ -1991,7 +1983,7 @@ async def list_duckdb_tables():
             for db_conn in db_connections:
                 db_connection_ids.add(db_conn.id)
         except Exception as e:
-            logger.warning(f"获取数据库连接列表失败: {str(e)}")
+            logger.warning(f"Failed to get database connection list: {str(e)}")
 
         tables_info = []
         for _, row in tables_df.iterrows():
@@ -2019,7 +2011,10 @@ async def list_duckdb_tables():
 
                 # 检查是否是数据库连接的表（表名通常包含连接ID）
                 for db_conn_id in db_connection_ids:
-                    if table_name.startswith(f"{db_conn_id}_") or table_name == db_conn_id:
+                    if (
+                        table_name.startswith(f"{db_conn_id}_")
+                        or table_name == db_conn_id
+                    ):
                         source_type = "database"
                         break
 
@@ -2034,7 +2029,7 @@ async def list_duckdb_tables():
                     }
                 )
             except Exception as e:
-                logger.warning(f"获取表 {table_name} 信息失败: {str(e)}")
+                logger.warning(f"Failed to get table {table_name} information: {str(e)}")
                 tables_info.append(
                     {
                         "table_name": table_name,
@@ -2068,8 +2063,12 @@ async def list_duckdb_tables():
                     return (0, table_name)
 
             # 如果已经是 datetime
-            if hasattr(created_at, 'timestamp'):
-                ts = created_at.replace(tzinfo=None).timestamp() if created_at.tzinfo else created_at.timestamp()
+            if hasattr(created_at, "timestamp"):
+                ts = (
+                    created_at.replace(tzinfo=None).timestamp()
+                    if created_at.tzinfo
+                    else created_at.timestamp()
+                )
                 return (1, ts)
 
             return (0, table_name)
@@ -2084,8 +2083,8 @@ async def list_duckdb_tables():
         )
 
     except Exception as e:
-        logger.error(f"获取DuckDB表列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取表列表失败: {str(e)}")
+        logger.error(f"Failed to get DuckDB table list: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get table list: {str(e)}")
 
 
 @router.delete("/api/duckdb_tables/{table_name}", tags=["Query"])
@@ -2102,7 +2101,7 @@ async def delete_duckdb_table(table_name: str):
         existing_tables = tables_df["name"].tolist() if not tables_df.empty else []
 
         if table_name not in existing_tables:
-            raise HTTPException(status_code=404, detail=f"表 '{table_name}' 不存在")
+            raise HTTPException(status_code=404, detail=f"Table '{table_name}' does not exist")
 
         # 尝试查找并删除对应的源文件
         deleted_files = []
@@ -2132,9 +2131,9 @@ async def delete_duckdb_table(table_name: str):
                         try:
                             os.remove(file_path)
                             deleted_files.append(filename)
-                            logger.info(f"已删除源文件: {filename}")
+                            logger.info(f"Deleted source file: {filename}")
                         except Exception as file_e:
-                            logger.warning(f"删除源文件失败 {filename}: {str(file_e)}")
+                            logger.warning(f"Failed to delete source file {filename}: {str(file_e)}")
 
             # 从文件数据源配置中删除记录
             try:
@@ -2142,10 +2141,10 @@ async def delete_duckdb_table(table_name: str):
 
                 file_datasource_manager.remove_file_datasource(table_name)
             except Exception as config_e:
-                logger.warning(f"删除文件数据源配置失败: {str(config_e)}")
+                logger.warning(f"Failed to delete file datasource configuration: {str(config_e)}")
 
         except Exception as cleanup_e:
-            logger.warning(f"清理源文件时出错: {str(cleanup_e)}")
+            logger.warning(f"Error cleaning up source files: {str(cleanup_e)}")
 
         # 删除DuckDB中的表或视图
         try:
@@ -2159,10 +2158,10 @@ async def delete_duckdb_table(table_name: str):
             else:
                 raise e
 
-        logger.info(f"成功删除DuckDB表: {table_name}")
+        logger.info(f"Successfully deleted DuckDB table: {table_name}")
 
         # 构建返回消息
-        message = f"表 '{table_name}' 已成功删除"
+        message = f"Table '{table_name}' 已成功删除"
         if deleted_files:
             message += f"，同时删除了源文件: {', '.join(deleted_files)}"
 
@@ -2175,8 +2174,8 @@ async def delete_duckdb_table(table_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"删除DuckDB表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"删除表失败: {str(e)}")
+        logger.error(f"Failed to delete DuckDB table: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete table: {str(e)}")
 
 
 # ==================== 集合操作API端点 ====================
@@ -2199,7 +2198,7 @@ async def generate_set_operation_query(request: SetOperationRequest):
         # 生成SQL查询
         sql = generate_set_operation_sql(config)
 
-        # 估算结果行数
+        # 估算结果rows
         con = get_db_connection()
         estimated_rows = estimate_set_operation_rows(config, con)
 
@@ -2231,18 +2230,18 @@ async def generate_set_operation_query(request: SetOperationRequest):
         )
 
     except ValueError as e:
-        logger.warning(f"集合操作查询生成失败: {str(e)}")
+        logger.warning(f"Failed to generate set operation query: {str(e)}")
         return create_error_response(
             code=MessageCode.VALIDATION_ERROR.value,
             message=str(e),
-            details={"errors": [str(e)]}
+            details={"errors": [str(e)]},
         )
     except Exception as e:
-        logger.error(f"集合操作查询生成失败: {str(e)}")
+        logger.error(f"Failed to generate set operation query: {str(e)}")
         return create_error_response(
             code=MessageCode.OPERATION_FAILED.value,
-            message=f"生成查询失败: {str(e)}",
-            details={"errors": [f"生成查询失败: {str(e)}"]}
+            message=f"Failed to generate query: {str(e)}",
+            details={"errors": [f"Failed to generate query: {str(e)}"]},
         )
 
 
@@ -2251,7 +2250,7 @@ async def preview_set_operation(request: SetOperationRequest):
     """
     预览集合操作结果
 
-    执行集合操作查询并返回前几行数据
+    执行集合操作查询并返回前几rows据
     """
     try:
         config = request.config
@@ -2259,7 +2258,7 @@ async def preview_set_operation(request: SetOperationRequest):
         # 生成SQL查询
         sql = generate_set_operation_sql(config)
 
-        # 添加LIMIT进行预览
+        # Add LIMIT进行预览
         preview_sql = f"{sql} LIMIT 100"
 
         # 执行预览查询
@@ -2268,7 +2267,7 @@ async def preview_set_operation(request: SetOperationRequest):
 
         preview_data = normalize_dataframe_output(result_df)
 
-        # 获取总行数估算
+        # 获取总rows估算
         estimated_rows = estimate_set_operation_rows(config, con)
 
         return create_success_response(
@@ -2284,18 +2283,18 @@ async def preview_set_operation(request: SetOperationRequest):
         )
 
     except ValueError as e:
-        logger.warning(f"集合操作预览失败: {str(e)}")
+        logger.warning(f"Failed to preview set operation: {str(e)}")
         return create_error_response(
             code=MessageCode.VALIDATION_ERROR.value,
             message=str(e),
-            details={"errors": [str(e)]}
+            details={"errors": [str(e)]},
         )
     except Exception as e:
-        logger.error(f"集合操作预览失败: {str(e)}")
+        logger.error(f"Failed to preview set operation: {str(e)}")
         return create_error_response(
             code=MessageCode.OPERATION_FAILED.value,
-            message=f"预览失败: {str(e)}",
-            details={"errors": [f"预览失败: {str(e)}"]}
+            message=f"Failed to preview: {str(e)}",
+            details={"errors": [f"Failed to preview: {str(e)}"]},
         )
 
 
@@ -2320,7 +2319,7 @@ async def validate_set_operation(request: SetOperationRequest):
                 check_sql = f'SELECT COUNT(*) FROM "{table.table_name}"'
                 con.execute(check_sql).fetchone()
             except Exception as e:
-                errors.append(f"表 {table.table_name} 不存在或无法访问: {str(e)}")
+                errors.append(f"Table {table.table_name} does not exist或无法访问: {str(e)}")
 
         # 检查列兼容性
         if not config.use_by_name:
@@ -2333,8 +2332,8 @@ async def validate_set_operation(request: SetOperationRequest):
                     table_columns = table.selected_columns or []
                     if len(first_columns) != len(table_columns):
                         errors.append(
-                            f"表 {table.table_name} 的列数量({len(table_columns)}) "
-                            f"与第一个表 {first_table.table_name} 的列数量({len(first_columns)})不匹配"
+                            f"Table {table.table_name} 的列数量({len(table_columns)}) "
+                            f"与第一个Table {first_table.table_name} 的列数量({len(first_columns)})不匹配"
                         )
 
         # BY NAME模式验证
@@ -2363,15 +2362,17 @@ async def validate_set_operation(request: SetOperationRequest):
                 "operation_type": config.operation_type,
                 "use_by_name": config.use_by_name,
             },
-            message_code=MessageCode.SET_OPERATION_VALIDATED if is_valid else MessageCode.VALIDATION_ERROR,
+            message_code=MessageCode.SET_OPERATION_VALIDATED
+            if is_valid
+            else MessageCode.VALIDATION_ERROR,
         )
 
     except Exception as e:
-        logger.error(f"集合操作验证失败: {str(e)}")
+        logger.error(f"Failed to validate set operation: {str(e)}")
         return create_error_response(
             code=MessageCode.VALIDATION_ERROR.value,
-            message=f"验证失败: {str(e)}",
-            details={"errors": [f"验证失败: {str(e)}"]}
+            message=f"Failed to validate: {str(e)}",
+            details={"errors": [f"Failed to validate: {str(e)}"]},
         )
 
 
@@ -2426,7 +2427,9 @@ async def execute_set_operation(request: SetOperationRequest):
                         "tables": [source.table_name for source in config.tables],
                     },
                     "isSetOperation": True,
-                    "setOperationConfig": config.model_dump() if hasattr(config, "model_dump") else config.dict(),
+                    "setOperationConfig": config.model_dump()
+                    if hasattr(config, "model_dump")
+                    else config.dict(),
                     "errors": [],
                     "warnings": [],
                 },
@@ -2435,20 +2438,20 @@ async def execute_set_operation(request: SetOperationRequest):
         elif request.save_as_table:
             # 保存到表模式：直接创建表，不使用fetchdf避免内存溢出
             table_name = request.save_as_table.strip()
-            logger.info(f"开始保存集合操作结果到表: {table_name}")
+            logger.info(f"Starting to save set operation result to table: {table_name}")
 
-            # 检查表名是否已存在
+            # 检查表名是否already exists
             existing_tables = con.execute("SHOW TABLES").fetchdf()
             existing_table_names = (
                 existing_tables["name"].tolist() if not existing_tables.empty else []
             )
 
             if table_name in existing_table_names:
-                logger.warning(f"表 {table_name} 已存在，将被替换")
+                logger.warning(f"Table {table_name} already exists，will be replaced")
 
             # 直接创建表，不使用fetchdf
             create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql})'
-            logger.info(f"执行创建表SQL: {create_sql}")
+            logger.info(f"Executing create table SQL: {create_sql}")
             con.execute(create_sql)
 
             # 获取统计信息（不使用fetchdf）
@@ -2465,7 +2468,7 @@ async def execute_set_operation(request: SetOperationRequest):
                 for col in sample_df.columns
             ]
 
-            logger.info(f"表 {table_name} 创建成功，行数: {row_count}")
+            logger.info(f"Table {table_name} created successfully，rows: {row_count}")
 
             return create_success_response(
                 data={
@@ -2482,12 +2485,14 @@ async def execute_set_operation(request: SetOperationRequest):
                         "tables": [source.table_name for source in config.tables],
                     },
                     "isSetOperation": True,
-                    "setOperationConfig": config.model_dump() if hasattr(config, "model_dump") else config.dict(),
+                    "setOperationConfig": config.model_dump()
+                    if hasattr(config, "model_dump")
+                    else config.dict(),
                     "errors": [],
                     "warnings": [],
                 },
                 message_code=MessageCode.SET_OPERATION_EXECUTED,
-                message=f"集合操作结果已保存到表: {table_name}，共 {row_count:,} 行数据。",
+                message=f"Set operation result has been saved to table: {table_name}, total {row_count:,} rows.",
             )
         else:
             # 默认行为：执行集合操作预览，使用配置的max_query_rows限制
@@ -2516,7 +2521,9 @@ async def execute_set_operation(request: SetOperationRequest):
                         "tables": [source.table_name for source in config.tables],
                     },
                     "isSetOperation": True,
-                    "setOperationConfig": config.model_dump() if hasattr(config, "model_dump") else config.dict(),
+                    "setOperationConfig": config.model_dump()
+                    if hasattr(config, "model_dump")
+                    else config.dict(),
                     "errors": [],
                     "warnings": [],
                 },
@@ -2524,18 +2531,18 @@ async def execute_set_operation(request: SetOperationRequest):
             )
 
     except ValueError as e:
-        logger.warning(f"集合操作执行失败: {str(e)}")
+        logger.warning(f"Failed to execute set operation: {str(e)}")
         return create_error_response(
             code=MessageCode.VALIDATION_ERROR.value,
             message=str(e),
-            details={"errors": [str(e)]}
+            details={"errors": [str(e)]},
         )
     except Exception as e:
-        logger.error(f"集合操作执行失败: {str(e)}")
+        logger.error(f"Failed to execute set operation: {str(e)}")
         return create_error_response(
             code=MessageCode.OPERATION_FAILED.value,
-            message=f"执行失败: {str(e)}",
-            details={"errors": [f"执行失败: {str(e)}"]}
+            message=f"Failed to execute: {str(e)}",
+            details={"errors": [f"Failed to execute: {str(e)}"]},
         )
 
 
@@ -2575,7 +2582,7 @@ async def simple_union_operation(request: UnionOperationRequest):
         # 生成SQL查询
         sql = generate_set_operation_sql(config)
 
-        # 估算结果行数
+        # 估算结果rows
         con = get_db_connection()
         estimated_rows = estimate_set_operation_rows(config, con)
 
@@ -2593,18 +2600,18 @@ async def simple_union_operation(request: UnionOperationRequest):
         )
 
     except ValueError as e:
-        logger.warning(f"简化UNION操作失败: {str(e)}")
+        logger.warning(f"Failed to simplify UNION operation: {str(e)}")
         return create_error_response(
             code=MessageCode.VALIDATION_ERROR.value,
             message=str(e),
-            details={"errors": [str(e)]}
+            details={"errors": [str(e)]},
         )
     except Exception as e:
-        logger.error(f"简化UNION操作失败: {str(e)}")
+        logger.error(f"Failed to simplify UNION operation: {str(e)}")
         return create_error_response(
             code=MessageCode.OPERATION_FAILED.value,
-            message=f"操作失败: {str(e)}",
-            details={"errors": [f"操作失败: {str(e)}"]}
+            message=f"Failed to operate: {str(e)}",
+            details={"errors": [f"Failed to operate: {str(e)}"]},
         )
 
 
@@ -2617,6 +2624,7 @@ async def export_set_operation(request: SetOperationExportRequest):
     避免内存限制问题。
     """
     from concurrent.futures import ThreadPoolExecutor
+
     from core.services.task_manager import task_manager
 
     try:
@@ -2630,9 +2638,9 @@ async def export_set_operation(request: SetOperationExportRequest):
 
         # 生成完整SQL（无LIMIT）
         sql = generate_set_operation_sql(config)
-        logger.info(f"生成的完整SQL: {sql}")
+        logger.info(f"Generated complete SQL: {sql}")
 
-        # 创建异步导出任务
+        # 创建异步Export task
         task_id = str(uuid.uuid4())
 
         # 生成文件名
@@ -2657,7 +2665,7 @@ async def export_set_operation(request: SetOperationExportRequest):
             copy_format = "CSV"  # 先导出为CSV，然后转换为Excel
             copy_options = "HEADER"
         else:
-            raise ValueError(f"不支持的导出格式: {export_format}")
+            raise ValueError(f"Unsupported export format: {export_format}")
 
         # 构建文件路径
         filename = f"{base_filename}.{file_extension}"
@@ -2680,7 +2688,7 @@ async def export_set_operation(request: SetOperationExportRequest):
         # 注册任务
         task_manager.add_task(task_id, task_info)
 
-        # 在后台线程中执行导出任务
+        # 在后台线程中执行Export task
         def export_task():
             try:
                 # 更新任务状态
@@ -2706,7 +2714,7 @@ async def export_set_operation(request: SetOperationExportRequest):
                     csv_path = file_path.replace(".xlsx", ".csv")
                     copy_sql = f"COPY ({sql}) TO '{csv_path}' (FORMAT {copy_format}, {copy_options})"
 
-                    logger.info(f"执行CSV导出: {copy_sql}")
+                    logger.info(f"Executing CSV export: {copy_sql}")
                     con.execute(copy_sql)
 
                     # 更新任务状态
@@ -2727,13 +2735,13 @@ async def export_set_operation(request: SetOperationExportRequest):
                     # 直接使用DuckDB COPY命令
                     copy_sql = f"COPY ({sql}) TO '{file_path}' (FORMAT {copy_format}, {copy_options})"
 
-                    logger.info(f"执行导出: {copy_sql}")
+                    logger.info(f"Executing export: {copy_sql}")
                     con.execute(copy_sql)
 
-                # 检查文件是否创建成功
+                # 检查文件是否created successfully
 
                 if not os.path.exists(file_path):
-                    raise Exception("导出文件未创建")
+                    raise Exception("Export file not created")
 
                 file_size = os.path.getsize(file_path)
 
@@ -2743,16 +2751,16 @@ async def export_set_operation(request: SetOperationExportRequest):
                     {
                         "status": "completed",
                         "progress": 100,
-                        "message": f"导出完成，文件大小: {file_size / 1024 / 1024:.2f} MB",
+                        "message": f"导出完成，文件size: {file_size / 1024 / 1024:.2f} MB",
                         "file_size": file_size,
                         "download_url": f"/api/async-tasks/{task_id}/download",
                     },
                 )
 
-                logger.info(f"集合操作导出完成: {filename}, 大小: {file_size} bytes")
+                logger.info(f"Set operation export completed: {filename}, size: {file_size} bytes")
 
             except Exception as e:
-                logger.error(f"导出任务执行失败: {str(e)}")
+                logger.error(f"Export taskFailed to execute: {str(e)}")
                 task_manager.update_task(
                     task_id,
                     {
@@ -2763,7 +2771,7 @@ async def export_set_operation(request: SetOperationExportRequest):
                     },
                 )
 
-        # 在后台线程中执行导出任务
+        # 在后台线程中执行Export task
         executor = ThreadPoolExecutor(max_workers=1)
         executor.submit(export_task)
 
@@ -2774,13 +2782,13 @@ async def export_set_operation(request: SetOperationExportRequest):
                 "format": export_format,
             },
             message_code=MessageCode.SET_OPERATION_EXPORTED,
-            message="导出任务已创建，请稍后查看异步任务列表",
+            message="Export task created, please check async task list later",
         )
 
     except Exception as e:
-        logger.error(f"集合操作导出失败: {str(e)}")
+        logger.error(f"Failed to export set operation: {str(e)}")
         return create_error_response(
             code=MessageCode.OPERATION_FAILED.value,
-            message=f"创建导出任务失败: {str(e)}",
-            details={"error": str(e)}
+            message=f"Failed to create export task: {str(e)}",
+            details={"error": str(e)},
         )

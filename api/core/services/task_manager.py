@@ -1,6 +1,6 @@
 """
-异步任务管理器
-负责管理异步任务的状态、持久化与导出记录
+Async Task Manager
+Manages async task status, persistence and export records
 """
 
 import json
@@ -37,8 +37,8 @@ def retry_on_write_conflict(
     base_delay: float = 0.1,
 ) -> T:
     """
-    重试机制：处理 DuckDB 写写冲突
-    使用指数退避策略
+    Retry mechanism: handle DuckDB write-write conflicts
+    Using exponential backoff strategy
     """
     last_exception = None
     for attempt in range(max_retries):
@@ -50,33 +50,33 @@ def retry_on_write_conflict(
                 last_exception = e
                 delay = base_delay * (2 ** attempt)
                 logger.warning(
-                    "写写冲突，第 %d 次重试，等待 %.2f 秒: %s",
+                    "Write-write conflict, retry %d, waiting %.2f seconds: %s",
                     attempt + 1, delay, error_str[:100]
                 )
                 time.sleep(delay)
             else:
                 raise
-    # 所有重试都失败了
-    logger.error("写写冲突重试 %d 次后仍然失败", max_retries)
+    # All retries failed
+    logger.error("Write-write conflict retry %d times still failed", max_retries)
     raise last_exception
 
 
 # ============================================
-# 取消监控守护线程 (Watchdog)
+# Cancellation monitoring daemon thread (Watchdog)
 # ============================================
 
-# 模块级单例控制，防止多次初始化启动多个线程
+# Module-level singleton control to prevent multiple thread initialization
 _watchdog_started = False
 _watchdog_lock = threading.Lock()
 
 
 def start_cancellation_watchdog(interval_seconds: int = 60):
-    """启动取消监控守护线程（单例）"""
+    """Start cancellation monitoring daemon thread (singleton)"""
     global _watchdog_started
 
     with _watchdog_lock:
         if _watchdog_started:
-            logger.debug("取消监控守护线程已在运行，跳过重复启动")
+            logger.debug("Cancel monitoring daemon thread is already running, skipping duplicate start")
             return
 
         _watchdog_started = True
@@ -88,15 +88,15 @@ def start_cancellation_watchdog(interval_seconds: int = 60):
                 cleanup_cancelling_timeout()
                 cleanup_stale_registry()
             except Exception as e:
-                logger.error(f"取消监控异常: {e}")
+                logger.error(f"Cancel monitoring exception: {e}")
 
     thread = threading.Thread(target=watchdog_loop, daemon=True)
     thread.start()
-    logger.info("取消监控守护线程已启动")
+    logger.info("Cancellation monitoring daemon started")
 
 
 def cleanup_cancelling_timeout(timeout_seconds: int = 60):
-    """清理超时的 CANCELLING 任务，将其标记为 CANCELLED"""
+    """Clean up timed-out CANCELLING tasks and mark them as CANCELLED"""
     try:
         with with_system_connection() as connection:
             cutoff = get_storage_time() - timedelta(seconds=timeout_seconds)
@@ -109,7 +109,7 @@ def cleanup_cancelling_timeout(timeout_seconds: int = 60):
                 """,
                 [
                     TaskStatus.CANCELLED.value,
-                    "取消超时，强制标记",
+                    "Cancellation timeout, force marked",
                     get_storage_time(),
                     TaskStatus.CANCELLING.value,
                     cutoff,
@@ -117,42 +117,42 @@ def cleanup_cancelling_timeout(timeout_seconds: int = 60):
             ).fetchall()
 
         if rows:
-            logger.info(f"清理超时 CANCELLING 任务: {[r[0] for r in rows]}")
+            logger.info(f"Cleaning up timed-out CANCELLING tasks: {[r[0] for r in rows]}")
         return len(rows)
     except Exception as e:
-        logger.error(f"清理超时 CANCELLING 任务失败: {e}")
+        logger.error(f"Cleaning up timed-out CANCELLING tasksfailed: {e}")
         return 0
 
 
 def cleanup_stale_registry():
-    """清理注册表中的残留条目"""
+    """Clean up residual entries in registry"""
     try:
         from core.database.connection_registry import connection_registry
-        # 忽略 _cleanup 后缀的临时任务（cleanup 操作很快，不应被清理）
+        # Ignore temporary tasks with _cleanup suffix (cleanup operations are fast and should not be cleaned)
         count = connection_registry.cleanup_stale(
             max_age_seconds=1800,
             ignore_suffix="_cleanup"
         )
         if count:
-            logger.info(f"清理注册表残留条目: {count}")
+            logger.info(f"Cleaning up registry residual entries: {count}")
     except Exception as e:
-        logger.error(f"清理注册表残留条目失败: {e}")
+        logger.error(f"Cleaning up registry residual entriesfailed: {e}")
 
 
 class TaskStatus(str, Enum):
-    """任务状态枚举"""
+    """Task status enumeration"""
 
     QUEUED = "queued"
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
-    CANCELLING = "cancelling"  # 取消中（用于取消信号模式）
-    CANCELLED = "cancelled"    # 已取消（最终状态）
+    CANCELLING = "cancelling"  # cancelling (for cancellation signal mode)
+    CANCELLED = "cancelled"    # cancelled (final status)
 
 
 @dataclass
 class AsyncTask:
-    """异步任务数据结构"""
+    """Async task data structure"""
 
     task_id: str
     status: TaskStatus
@@ -169,9 +169,9 @@ class AsyncTask:
     metadata: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典格式，便于返回给前端"""
+        """Convert to dictionary format for frontend response"""
         result = asdict(self)
-        # 将后端状态映射为前端期望的状态值
+        # Map backend status to frontend expected status values
         status_mapping = {
             TaskStatus.QUEUED.value: "pending",
             TaskStatus.RUNNING.value: "running",
@@ -181,7 +181,7 @@ class AsyncTask:
             TaskStatus.CANCELLED.value: "cancelled",
         }
         result["status"] = status_mapping.get(self.status.value, self.status.value)
-        # 前端期望 sql 字段，后端存储为 query
+        # Frontend expects sql field, backend stores as query
         result["sql"] = result.get("query", "")
         for key in ["created_at", "started_at", "completed_at"]:
             if result.get(key):
@@ -190,20 +190,20 @@ class AsyncTask:
 
 
 class TaskManager:
-    """异步任务管理器（基于DuckDB持久化）"""
+    """Async Task Manager（基于DuckDB持久化）"""
 
     def __init__(self):
         self._lock = Lock()
         self._ensure_tables()
-        start_cancellation_watchdog()  # 单例控制，多次调用不会重复启动
-        logger.info("异步任务管理器初始化完成（持久化存储）")
+        start_cancellation_watchdog()  # Singleton control, multiple calls will not start repeatedly
+        logger.info("Async task manager initialization completed (persistent storage)")
 
     # --------------------------------------------------------------------- #
-    # 初始化与工具方法
+    # Initialization and utility methods
     # --------------------------------------------------------------------- #
 
     def _ensure_tables(self) -> None:
-        """确保所需的DuckDB表已创建"""
+        """Ensure required DuckDB tables are created"""
         with with_system_connection() as connection:
             self._migrate_legacy_tables(connection)
 
@@ -247,15 +247,15 @@ class TaskManager:
             )
 
     def _migrate_legacy_tables(self, connection) -> None:
-        """迁移旧版本的系统表名称"""
+        """Migrate legacy system table names"""
         try:
             pass
         except Exception as exc:
-            logger.warning("检查旧版系统表失败: %s", exc)
+            logger.warning("Failed to check legacy system tables: %s", exc)
 
     @staticmethod
     def _json_default(value: Any) -> Any:
-        """JSON序列化默认处理"""
+        """JSON serialization default handler"""
         if isinstance(value, (datetime, date)):
             return value.isoformat()
         if isinstance(value, Enum):
@@ -276,7 +276,7 @@ class TaskManager:
         try:
             return json.loads(payload)
         except Exception:
-            logger.debug("JSON解析失败，返回原始值: %s", payload)
+            logger.debug("JSON parsing failed, returning original value: %s", payload)
             return None
 
     @staticmethod
@@ -309,7 +309,7 @@ class TaskManager:
 
     @staticmethod
     def _normalize_datetime(value: Optional[datetime]) -> Optional[datetime]:
-        """确保写入数据库的时间为 naive，避免 tz 混淆"""
+        """Ensure time written to database is naive to avoid tz confusion"""
         return normalize_to_storage_timezone(value)
 
     def _row_to_async_task(self, row: Any) -> AsyncTask:
@@ -401,7 +401,7 @@ class TaskManager:
             )
 
     # --------------------------------------------------------------------- #
-    # 对外接口
+    # Public interface
     # --------------------------------------------------------------------- #
 
     def create_task(
@@ -411,7 +411,7 @@ class TaskManager:
         datasource: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """创建新任务"""
+        """Creating new task"""
         task_id = str(uuid.uuid4())
         created_at = get_storage_time()
 
@@ -431,12 +431,12 @@ class TaskManager:
             metadata=metadata,
         )
 
-        logger.info("创建新任务: %s (%s)", task_id, task_type)
+        logger.info("Creating new task: %s (%s)", task_id, task_type)
         return task_id
 
     def add_task(self, task_id: str, task_info: Dict[str, Any]) -> str:
         """
-        兼容旧接口：直接写入一条任务记录
+        Compatible with old interface: directly write a task record
         """
         info = dict(task_info)
         status = self._coerce_status(info.pop("status", TaskStatus.QUEUED.value))
@@ -468,17 +468,17 @@ class TaskManager:
         return task_id
 
     def start_task(self, task_id: str) -> bool:
-        """标记任务为运行中"""
+        """Mark task as running"""
         def _do_start() -> bool:
             with self._lock:
                 with with_system_connection() as conn:
-                    # 先查询当前状态用于调试
+                    # Query current status for debugging
                     current_row = conn.execute(
                         f'SELECT status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                         [task_id],
                     ).fetchone()
                     current_status = current_row[0] if current_row else "NOT_FOUND"
-                    logger.debug("[TASK_DEBUG] start_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
+                    logger.debug("[TASK_DEBUG] start_task beginning: task_id=%s, current status=%s", task_id, current_status)
 
                     started_at = get_storage_time()
                     rows = conn.execute(
@@ -497,29 +497,29 @@ class TaskManager:
                         ],
                     ).fetchall()
 
-                    # 更新后再查询确认
+                    # Query again after update to confirm
                     after_row = conn.execute(
                         f'SELECT status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                         [task_id],
                     ).fetchone()
                     after_status = after_row[0] if after_row else "NOT_FOUND"
-                    logger.debug("[TASK_DEBUG] start_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d",
+                    logger.debug("[TASK_DEBUG] start_task completed: task_id=%s, updated status=%s, affected rows=%d",
                                task_id, after_status, len(rows))
                     return bool(rows)
 
         try:
             success = retry_on_write_conflict(_do_start)
             if success:
-                logger.info("任务开始运行: %s", task_id)
+                logger.info("Task开始运行: %s", task_id)
             else:
-                logger.warning("任务状态不允许启动: %s", task_id)
+                logger.warning("Task status does not allow starting: %s", task_id)
             return success
         except Exception as e:
-            logger.error("start_task 失败: %s -> %s", task_id, e)
+            logger.error("start_task failed: %s -> %s", task_id, e)
             return False
 
     def complete_task(self, task_id: str, result_info: Dict[str, Any]) -> bool:
-        """标记任务为成功"""
+        """Mark task as successful"""
         def _do_complete() -> bool:
             with self._lock:
                 with with_system_connection() as conn:
@@ -529,15 +529,15 @@ class TaskManager:
                         [task_id],
                     ).fetchone()
                     if not started_row:
-                        logger.warning("[TASK_DEBUG] complete_task: 任务不存在: %s", task_id)
+                        logger.warning("[TASK_DEBUG] complete_task: Task does not exist: %s", task_id)
                         return False
 
                     current_status = started_row[1] if len(started_row) > 1 else None
-                    logger.debug("[TASK_DEBUG] complete_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
+                    logger.debug("[TASK_DEBUG] complete_task beginning: task_id=%s, current status=%s", task_id, current_status)
 
-                    # 如果任务已被取消，不再更新为成功
+                    # If task has been cancelled, do not update to success
                     if current_status in (TaskStatus.FAILED.value, TaskStatus.CANCELLING.value):
-                        logger.info("[TASK_DEBUG] complete_task: 任务已被取消或失败，跳过完成: %s, 状态: %s", task_id, current_status)
+                        logger.info("[TASK_DEBUG] complete_task: Task has been cancelled or failed, skip completion: %s, status: %s", task_id, current_status)
                         return False
 
                     started_at = started_row[0]
@@ -569,11 +569,11 @@ class TaskManager:
                             completed_at,
                             execution_time,
                             task_id,
-                            TaskStatus.RUNNING.value,  # 只更新状态为 RUNNING 的任务
+                            TaskStatus.RUNNING.value,  # Only update tasks with RUNNING status
                         ],
                     ).fetchall()
 
-                    # 更新后再查询确认
+                    # Query again after update to confirm
                     after_row = conn.execute(
                         f'SELECT status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                         [task_id],
@@ -582,21 +582,21 @@ class TaskManager:
 
                     success = bool(rows)
                     if success:
-                        logger.debug("[TASK_DEBUG] complete_task 成功: task_id=%s, 更新后状态=%s", task_id, after_status)
+                        logger.debug("[TASK_DEBUG] complete_task successful: task_id=%s, updated status=%s", task_id, after_status)
                     else:
-                        logger.warning("[TASK_DEBUG] complete_task 失败: task_id=%s, 当前状态=%s (期望 running), 更新后状态=%s, 影响行数=%d",
+                        logger.warning("[TASK_DEBUG] complete_task failed: task_id=%s, current status=%s (expected running), updated status=%s, affected rows=%d",
                                       task_id, current_status, after_status, len(rows))
                     return success
 
         try:
-            # 增加重试次数和延迟以应对 DuckDB WAL checkpoint 期间的写写冲突
+            # Increase retry count and delay to handle write-write conflicts during DuckDB WAL checkpoint
             return retry_on_write_conflict(_do_complete, max_retries=5, base_delay=0.2)
         except Exception as e:
-            logger.error("complete_task 最终失败: %s -> %s", task_id, e)
+            logger.error("complete_task finally failed: %s -> %s", task_id, e)
             return False
 
     def fail_task(self, task_id: str, error_message: str) -> bool:
-        """标记任务为失败"""
+        """Mark task as failed"""
         def _do_fail() -> bool:
             with self._lock:
                 with with_system_connection() as conn:
@@ -629,33 +629,33 @@ class TaskManager:
 
                     success = bool(rows)
                     if success:
-                        logger.info("任务执行失败: %s -> %s", task_id, error_message)
+                        logger.info("Task execution failed: %s -> %s", task_id, error_message)
                     else:
-                        logger.warning("任务状态不允许标记失败: %s", task_id)
+                        logger.warning("Taskstatus不允许标记failed: %s", task_id)
                     return success
 
         try:
-            # 增加重试次数和延迟以应对 DuckDB WAL checkpoint 期间的写写冲突
+            # Increase retry count and delay to handle write-write conflicts during DuckDB WAL checkpoint
             return retry_on_write_conflict(_do_fail, max_retries=5, base_delay=0.2)
         except Exception as e:
-            logger.error("fail_task 最终失败: %s -> %s", task_id, e)
+            logger.error("fail_task finally failed: %s -> %s", task_id, e)
             return False
 
     def force_fail_task(
         self, task_id: str, error_message: str, metadata_update: Optional[Dict[str, Any]] = None
     ) -> bool:
-        """无论当前状态，强制将任务标记为失败（手动取消等场景）"""
+        """Force mark task as failed regardless of current status (manual cancellation scenarios)"""
         def _do_force_fail():
             with self._lock:
                 completed_at = get_storage_time()
                 with with_system_connection() as connection:
-                    # 先查询当前状态用于调试
+                    # Query current status for debugging
                     current_row = connection.execute(
                         f'SELECT status, started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                         [task_id],
                     ).fetchone()
                     current_status = current_row[0] if current_row else "NOT_FOUND"
-                    logger.debug("[TASK_DEBUG] force_fail_task 开始: task_id=%s, 当前状态=%s", task_id, current_status)
+                    logger.debug("[TASK_DEBUG] force_fail_task beginning: task_id=%s, current status=%s", task_id, current_status)
 
                     started_row = current_row
                     execution_time = None
@@ -680,13 +680,13 @@ class TaskManager:
                         ],
                     ).fetchall()
 
-                    # 更新后再查询确认
+                    # Query again after update to confirm
                     after_row = connection.execute(
                         f'SELECT status FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                         [task_id],
                     ).fetchone()
                     after_status = after_row[0] if after_row else "NOT_FOUND"
-                    logger.debug("[TASK_DEBUG] force_fail_task 完成: task_id=%s, 更新后状态=%s, 影响行数=%d",
+                    logger.debug("[TASK_DEBUG] force_fail_task completed: task_id=%s, updated status=%s, affected rows=%d",
                                task_id, after_status, len(rows))
 
                 return bool(rows)
@@ -695,12 +695,12 @@ class TaskManager:
             # 增加重试次数以应对高并发冲突
             success = retry_on_write_conflict(_do_force_fail, max_retries=5)
         except Exception as e:
-            # 最终确认：如果是写写冲突，检查是否任务其实已经被其他事务（如用户取消）更新了
+            # 最终确认：如果是写写冲突，检查是否Task其实已经被其他事务（如用户取消）更新了
             error_str = str(e)
             logger.error("[TASK_DEBUG] force_fail_task 异常: task_id=%s, error=%s", task_id, error_str)
             if "write-write conflict" in error_str or "TransactionContext Error" in error_str:
                 current_task = self.get_task(task_id)
-                logger.info("[TASK_DEBUG] force_fail_task 冲突后查询: task_id=%s, 当前状态=%s",
+                logger.info("[TASK_DEBUG] force_fail_task 冲突后查询: task_id=%s, current status=%s",
                            task_id, current_task.status.value if current_task else "NOT_FOUND")
                 if current_task and current_task.status in (
                     TaskStatus.CANCELLING,
@@ -708,30 +708,30 @@ class TaskManager:
                     TaskStatus.SUCCESS
                 ):
                     logger.info(
-                        "Force fail 遇到冲突但任务已处于终端状态: %s (Status: %s)，视为成功",
+                        "Force fail encountered conflict but task is already in terminal status: %s (Status: %s)，considered successful",
                         task_id, current_task.status.value
                     )
                     return True
 
-            logger.error("force_fail_task 最终失败: %s -> %s", task_id, error_str)
+            logger.error("force_fail_task finally failed: %s -> %s", task_id, error_str)
             return False
 
         if success and metadata_update:
             try:
                 self.update_task(task_id, metadata_update)
             except Exception as exc:
-                logger.warning("更新任务元数据失败 %s: %s", task_id, exc)
+                logger.warning("Failed to update task metadata %s: %s", task_id, exc)
 
         return success
 
     def request_cancellation(self, task_id: str, reason: str = "用户手动取消") -> bool:
         """
-        请求取消任务（设置取消标志 + 中断查询）
+        Request task cancellation (set cancellation flag + interrupt query)
 
         流程：
-        1. 将状态更新为 CANCELLING
-        2. 调用 connection_registry.interrupt() 中断查询
-        3. 更新取消元数据
+        1. Update status to CANCELLING
+        2. Call connection_registry.interrupt() to interrupt query
+        3. Update cancellation metadata
         """
         from core.database.connection_registry import connection_registry
 
@@ -753,19 +753,19 @@ class TaskManager:
 
         success = bool(rows)
         if success:
-            logger.info("任务取消请求已设置: %s, 原因: %s", task_id, reason)
+            logger.info("Task cancellation request set: %s, reason: %s", task_id, reason)
 
             # 尝试中断正在执行的查询
             try:
                 interrupted = connection_registry.interrupt(task_id)
                 if interrupted:
-                    logger.info("已中断任务 %s 的查询执行", task_id)
+                    logger.info("Interrupted query execution for task %s", task_id)
                 else:
-                    logger.info("任务 %s 不在注册表中（可能已完成或尚未开始）", task_id)
+                    logger.info("Task %s not in registry (possibly completed or not started yet)", task_id)
             except Exception as exc:
-                logger.warning("中断任务 %s 失败: %s", task_id, exc)
+                logger.warning("Failed to interrupt task %s: %s", task_id, exc)
 
-            # 更新取消元数据
+            # Update cancellation metadata
             try:
                 self.update_task(task_id, {
                     "cancellation_requested": True,
@@ -773,20 +773,20 @@ class TaskManager:
                     "cancelled_at": get_storage_time().isoformat(),
                 })
             except Exception as exc:
-                logger.warning("更新取消元数据失败 %s: %s", task_id, exc)
+                logger.warning("Update cancellation metadatafailed %s: %s", task_id, exc)
         else:
-            logger.warning("任务状态不允许取消或任务不存在: %s", task_id)
+            logger.warning("Task status does not allow cancellation or task does not exist: %s", task_id)
         return success
 
-    def mark_cancelled(self, task_id: str, reason: str = "查询被中断") -> bool:
+    def mark_cancelled(self, task_id: str, reason: str = "Query interrupted") -> bool:
         """
-        标记任务为已取消（最终状态）
+        Mark task as cancelled (final status)
 
-        在捕获 duckdb.InterruptException 后调用此方法
+        Call this method after catching duckdb.InterruptException
 
         Args:
-            task_id: 任务 ID
-            reason: 取消原因
+            task_id: Task ID
+            reason: 取消reason
 
         Returns:
             True if status was updated successfully
@@ -796,7 +796,7 @@ class TaskManager:
                 with with_system_connection() as conn:
                     completed_at = get_storage_time()
 
-                    # 查询开始时间以计算执行时长
+                    # Query start time to calculate execution duration
                     started_row = conn.execute(
                         f'SELECT started_at FROM "{ASYNC_TASKS_TABLE}" WHERE task_id = ?',
                         [task_id],
@@ -829,16 +829,16 @@ class TaskManager:
         try:
             success = retry_on_write_conflict(_do_mark_cancelled, max_retries=3)
             if success:
-                logger.info("任务已标记为取消: %s, 原因: %s", task_id, reason)
+                logger.info("Task已标记为取消: %s, reason: %s", task_id, reason)
             else:
-                logger.warning("标记任务取消失败: %s", task_id)
+                logger.warning("标记Task取消failed: %s", task_id)
             return success
         except Exception as e:
-            logger.error("mark_cancelled 失败: %s -> %s", task_id, e)
+            logger.error("mark_cancelled failed: %s -> %s", task_id, e)
             return False
 
     def is_cancellation_requested(self, task_id: str) -> bool:
-        """检查任务是否被请求取消"""
+        """检查Task是否被请求取消"""
         with with_system_connection() as connection:
             row = connection.execute(
                 f"SELECT status FROM {ASYNC_TASKS_TABLE} WHERE task_id = ?",
@@ -850,7 +850,7 @@ class TaskManager:
         )
 
     def get_task(self, task_id: str) -> Optional[AsyncTask]:
-        """获取任务信息"""
+        """获取Task信息"""
         with with_system_connection() as connection:
             row = connection.execute(
                 f"""
@@ -873,7 +873,7 @@ class TaskManager:
         order_by: str = "created_at"
     ) -> List[Dict[str, Any]]:
         """
-        列出任务（支持分页和排序）
+        列出Task（支持分页和排序）
 
         Args:
             limit: 返回数量限制
@@ -908,7 +908,7 @@ class TaskManager:
         return [self._row_to_async_task(row).to_dict() for row in rows], total
 
     def get_pending_tasks(self) -> List[str]:
-        """获取排队中的任务ID"""
+        """获取排队中的TaskID"""
         with with_system_connection() as connection:
             rows = connection.execute(
                 f"SELECT task_id FROM {ASYNC_TASKS_TABLE} WHERE status = ?",
@@ -928,7 +928,7 @@ class TaskManager:
             ).fetchone()
 
             if not metadata_row:
-                logger.warning("任务不存在，无法更新: %s", task_id)
+                logger.warning("Task does not exist，无法更新: %s", task_id)
                 return False
 
             metadata = self._deserialize_json(metadata_row[0]) or {}
@@ -963,9 +963,9 @@ class TaskManager:
 
         success = bool(rows)
         if success:
-            logger.debug("任务已更新: %s -> %s", task_id, updates)
+            logger.debug("Task已更新: %s -> %s", task_id, updates)
         else:
-            logger.warning("任务更新失败: %s", task_id)
+            logger.warning("Task更新failed: %s", task_id)
         return success
 
     def record_export(
@@ -1028,7 +1028,7 @@ class TaskManager:
                             path.unlink()
                             removed += 1
                         except Exception as exc:
-                            logger.warning("删除导出文件失败 %s: %s", path, exc)
+                            logger.warning("删除导出文件failed %s: %s", path, exc)
 
                 connection.execute(
                     f"UPDATE {TASK_EXPORTS_TABLE} SET status = 'expired' WHERE export_id = ?",
@@ -1043,22 +1043,22 @@ class TaskManager:
         return removed
 
     def cleanup_stuck_cancelling_tasks(self) -> int:
-        """清理卡住的取消中任务
+        """Cleaning up stuck cancelling tasks
 
-        将长时间处于 cancelling 状态的任务标记为 failed
-        通常用于迁移后或服务重启后清理历史遗留任务
+        将长时间处于 cancelling status的Task标记为 failed
+        通常用于迁移后或服务重启后清理历史遗留Task
         """
         with with_system_connection() as connection:
             completed_at = get_storage_time()
 
-            # 查找所有 cancelling 状态的任务
+            # 查找所有 cancelling status的Task
             rows = connection.execute(
                 f"SELECT task_id FROM {ASYNC_TASKS_TABLE} WHERE status = ?",
                 [TaskStatus.CANCELLING.value],
             ).fetchall()
 
             if not rows:
-                logger.info("没有找到卡住的取消中任务")
+                logger.info("没有找到卡住的cancellingTask")
                 return 0
 
             # 将它们全部更新为 failed
@@ -1069,13 +1069,13 @@ class TaskManager:
                     SET status = ?, error_message = ?, completed_at = ?
                     WHERE task_id = ?
                     """,
-                    [TaskStatus.FAILED.value, "任务被取消（历史任务清理）", completed_at, task_id],
+                    [TaskStatus.FAILED.value, "Task被取消（历史Task清理）", completed_at, task_id],
                 )
-                logger.info(f"已清理卡住的取消中任务: {task_id}")
+                logger.info(f"已Cleaning up stuck cancelling tasks: {task_id}")
 
-            logger.info(f"清理完成: {len(rows)} 个任务已标记为失败")
+            logger.info(f"清理完成: {len(rows)} 个Task已标记为failed")
             return len(rows)
 
 
-# 全局任务管理器实例
+# 全局Task管理器实例
 task_manager = TaskManager()

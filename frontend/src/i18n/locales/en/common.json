@@ -383,6 +383,7 @@
       "executeSuccess": "Query executed successfully",
       "executeError": "Query execution failed: {{message}}",
       "mixedSourceWarning": "Cannot mix DuckDB tables and external database tables in the same query. Please import external tables to DuckDB first.",
+      "federatedQuery": "Federated Query",
       "targetDatabase": "Target Database"
     },
     "import": {
