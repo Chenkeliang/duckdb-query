@@ -282,7 +282,7 @@ export function normalizeResponse<T>(res: AxiosResponse): NormalizedResponse<T> 
 - **团队培训**: 培训大纲、培训材料、实战演示
 
 **关键文档**:
-- `docs/api-response-standard.md` - 开发者文档
+- `docs/API_RESPONSE_STANDARD.md` - 开发者文档
 - `docs/migration-guide.md` - 迁移指南
 - `docs/best-practices.md` - 最佳实践
 - `docs/code-review-checklist.md` - Code Review 清单

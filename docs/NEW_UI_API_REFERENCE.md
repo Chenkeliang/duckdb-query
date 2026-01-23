@@ -1,6 +1,21 @@
-# DuckQ 前端 API 使用文档
+# DuckQuery 前端 API 使用文档
 
-本文档梳理了 `frontend/src/new` 新 UI 中实际使用的后端 API 接口，包含问题分析和基于项目架构的最优解决方案。
+> **版本**: 2.0  
+> **最后更新**: 2026-01-23  
+> **状态**: ✅ 已更新
+
+本文档梳理了前端实际使用的后端 API 接口，包含问题分析和基于项目架构的最优解决方案。
+
+## 📋 更新说明
+
+- 移除了所有 `frontend/src/new` 的引用（该目录已不存在）
+- 更新了接口状态（标记已修复的问题）
+- 添加了最新的 API 规范文档链接
+
+**相关规范文档**:
+- [API 响应格式标准](../.kiro/steering/api-response-format-standard.md)
+- [前端开发约束](../.kiro/steering/frontend-constraints.md)
+- [TypeScript API 模块标准](../.kiro/steering/typescript-api-module-standards.md)
 
 ---
 
@@ -126,11 +141,11 @@
 
 ## 公共模块提取建议
 
-建议创建 `api/core/validators.py` 统一校验逻辑（✅ 已创建）：
+建议使用 `api/core/common/validators.py` 统一校验逻辑（✅ 已实现）：
 
 ```python
-# api/core/validators.py - 已实现的功能
-from core.validators import (
+# api/core/common/validators.py - 已实现的功能
+from core.common.validators import (
     validate_table_name,   # 表名校验（含 Schema 保护）
     validate_alias,        # 别名校验
     validate_shortcut,     # 快捷键校验
@@ -145,9 +160,21 @@ from core.validators import (
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| 快捷键设置 | ✅ 使用中 | `ShortcutSettings.tsx` |
-| 缓存设置 | ✅ 使用中 | `CacheSettings.tsx` |
+| 快捷键设置 | ✅ 使用中 | `frontend/src/Settings/shortcuts/ShortcutSettings.tsx` |
+| 缓存设置 | ✅ 使用中 | `frontend/src/Settings/CacheSettings.tsx` |
 | 数据库设置 | ❌ 未使用 | i18n 有定义但无组件 |
 | 界面设置 | ❌ 未使用 | 可通过顶栏按钮操作 |
 | 语言设置 | ❌ 未使用 | 可通过顶栏按钮操作 |
 | 安全设置 | ❌ 未使用 | 无组件实现 |
+
+## 相关文档
+
+- [API 响应格式标准](../.kiro/steering/api-response-format-standard.md) - API 响应格式规范
+- [前端开发约束](../.kiro/steering/frontend-constraints.md) - 前端开发规范
+- [TypeScript API 模块标准](../.kiro/steering/typescript-api-module-standards.md) - API 模块使用指南
+- [TanStack Query 使用标准](../.kiro/steering/tanstack-query-standards.md) - 数据获取规范
+
+---
+
+**维护者**: 项目团队  
+**最后更新**: 2026-01-23

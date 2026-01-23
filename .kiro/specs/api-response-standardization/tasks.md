@@ -362,7 +362,7 @@
 > 注：核心文档已在 spec 中完成，以下为可选的扩展文档
 
 ### 10.1 开发者文档
-- [ ] 创建 `docs/api-response-standard.md`
+- [ ] 创建 `docs/API_RESPONSE_STANDARD.md`
 - [ ] 说明标准响应格式
 - [ ] 提供后端使用示例
 - [ ] 提供前端使用示例

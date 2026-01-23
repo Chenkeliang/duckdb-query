@@ -1,8 +1,9 @@
 # API 响应格式标准
 
-> **版本**: 1.0  
-> **最后更新**: 2026-01-16  
-> **状态**: ✅ 已实施
+> **版本**: 2.0  
+> **最后更新**: 2026-01-23  
+> **状态**: ✅ 已实施  
+> **相关规范文档**: 详细规范请参考 [.kiro/steering/api-response-format-standard.md](../.kiro/steering/api-response-format-standard.md)
 
 ## 概述
 
@@ -233,11 +234,17 @@ function MyComponent() {
 
 | 文件 | 说明 |
 |------|------|
-| `api/utils/response_helpers.py` | 后端响应辅助函数 |
+| `api/utils/response_helpers.py` | 后端响应辅助函数和 MessageCode 枚举 |
 | `frontend/src/api/client.ts` | 前端 API 客户端 |
-| `frontend/src/api/types.ts` | 前端类型定义 |
-| `frontend/src/utils/toastHelpers.ts` | Toast 辅助函数 |
+| `frontend/src/api/types.ts` | 前端类型定义（StandardSuccess, StandardError） |
 | `frontend/src/i18n/locales/*/errors.json` | i18n 翻译文件 |
+
+## 相关规范文档
+
+- [API 响应格式标准（详细版）](../.kiro/steering/api-response-format-standard.md) - 完整的规范文档
+- [国际化强制规范](../.kiro/steering/i18n-enforcement-standards.md) - MessageCode 和 i18n 机制
+- [前端开发约束](../.kiro/steering/frontend-constraints.md) - 前端 API 调用规范
+- [后端开发约束](../.kiro/steering/backend-constraints.md) - 后端响应格式规范
 
 ## 测试
 

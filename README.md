@@ -129,7 +129,7 @@ DuckQuery works out-of-the-box. For advanced setups, edit `config/app-config.jso
 | `server_data_mounts` | `[]` | Mount host directories for direct file access |
 | `cors_origins` | `[localhost:3000]` | Allowed frontend origins |
 
-👉 **[Full Configuration Reference →](docs/configuration.md)**
+👉 **[Full Configuration Reference →](docs/CONFIGURATION.md)**
 
 ---
 

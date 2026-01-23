@@ -1525,7 +1525,7 @@ class AlertManager:
 
 #### 快速开始指南
 
-**文件**: `docs/api-response-standard.md`
+**文件**: `docs/API_RESPONSE_STANDARD.md`
 
 ```markdown
 # API 响应格式标准

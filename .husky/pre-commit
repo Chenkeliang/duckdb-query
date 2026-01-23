@@ -26,8 +26,8 @@ if [ -n "$FRONTEND_FILES" ]; then
     fi
 fi
 
-# 检查后端文件
-BACKEND_FILES=$(echo "$STAGED_FILES" | grep "^api/" | grep "\.py$" || true)
+# 检查后端文件（排除 scripts 目录，因为是一次性脚本）
+BACKEND_FILES=$(echo "$STAGED_FILES" | grep "^api/" | grep "\.py$" | grep -v "^api/scripts/" || true)
 if [ -n "$BACKEND_FILES" ]; then
     echo "🐍 检查后端文件..."
     

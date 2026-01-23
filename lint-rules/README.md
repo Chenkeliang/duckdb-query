@@ -31,10 +31,16 @@
 
 | 检查器名称 | 消息代码 | 说明 |
 |-----------|---------|------|
-| `response-format` | W9001 | 检查是否使用统一响应格式 |
-| `connection-pool` | W9002 | 检查是否使用连接池 |
-| `message-code` | W9003 | 检查 MessageCode 是否已定义 |
-| `async-task` | W9004 | 检查异步任务是否正确使用 |
+| `response-format` | W9001, W9002, W9003 | 检查是否使用统一响应格式 |
+| `connection-pool` | W9010, W9011, W9012 | 检查是否使用连接池 |
+
+**注意**：自定义检查器默认在 `.pylintrc` 中被禁用。如需启用，请在配置文件中添加：
+```ini
+[MESSAGES CONTROL]
+enable=
+    W9001,W9002,W9003,  # response-format
+    W9010,W9011,W9012   # connection-pool
+```
 
 详细文档：[pylint/docs/](./pylint/docs/)
 
@@ -151,4 +157,5 @@ class MyChecker(BaseChecker):
 
 ## 📝 更新日志
 
-- 2026-01-08: 初始版本，包含 7 个前端规则和 4 个后端检查器
+- 2026-01-23: 修复 Pylint 4.x 兼容性问题，完成所有规则测试验证
+- 2026-01-08: 初始版本，包含 7 个前端规则和 2 个后端检查器

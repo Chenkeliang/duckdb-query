@@ -7,6 +7,9 @@ load-plugins=duckquery_pylint
 # 并行作业数
 jobs=4
 
+# 忽略的目录（一次性脚本目录，允许使用 print）
+ignore=scripts
+
 # Python 代码的文件扩展名
 extension-pkg-whitelist=
 
