@@ -43,10 +43,12 @@ if [ -n "$BACKEND_FILES" ]; then
     # 设置 PYTHONPATH 以确保能够解析 core 等模块
     export PYTHONPATH=$PYTHONPATH:$(pwd)/api
     
-    # 运行 Pylint
-    # 注意：在根目录运行，files 路径原本就是 relative to root (api/...)
-    echo "$BACKEND_FILES" | xargs $PYTHON_CMD -m pylint --rcfile=api/.pylintrc
+    # 运行 Pylint - 全项目检查，与 CI 行为一致
+    # 避免"本地通过但 CI 失败"的问题
+    cd api
+    $PYTHON_CMD -m pylint --rcfile=.pylintrc routers/ core/ models/ utils/ services/
     BACKEND_EXIT=$?
+    cd ..
     
     if [ $BACKEND_EXIT -ne 0 ]; then
         echo "❌ 后端代码检查失败，请修复后再提交"
