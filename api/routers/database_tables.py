@@ -138,25 +138,46 @@ async def get_database_tables(connection_id: str):
 
                     for table_name in tables_to_process:
                         try:
-                            # 获取表结构信息
-                            cursor.execute(f"DESCRIBE {_quote_mysql_identifier(table_name)}")
+                            # 获取表结构信息 (使用 SHOW FULL COLUMNS 获取注释)
+                            cursor.execute(f"SHOW FULL COLUMNS FROM {_quote_mysql_identifier(table_name)}")
                             columns = []
                             for col_row in cursor.fetchall():
+                                # SHOW FULL COLUMNS returns:
+                                # Field, Type, Collation, Null, Key, Default, Extra, Privileges, Comment
                                 columns.append(
                                     {
                                         "name": _safe_decode_value(col_row[0]),
                                         "type": _safe_decode_value(col_row[1]),
-                                        "null": _safe_decode_value(col_row[2]),
-                                        "key": _safe_decode_value(col_row[3]),
-                                        "default": _safe_decode_value(col_row[4]),
-                                        "extra": _safe_decode_value(col_row[5]),
+                                        "null": _safe_decode_value(col_row[3]),
+                                        "key": _safe_decode_value(col_row[4]),
+                                        "default": _safe_decode_value(col_row[5]),
+                                        "extra": _safe_decode_value(col_row[6]),
+                                        "comment": _safe_decode_value(col_row[8]),
                                     }
                                 )
+
+                            # 获取表注释
+                            table_comment = None
+                            try:
+                                cursor.execute(
+                                    """
+                                    SELECT TABLE_COMMENT 
+                                    FROM information_schema.TABLES 
+                                    WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
+                                    """,
+                                    (db_config["database"], table_name),
+                                )
+                                comment_row = cursor.fetchone()
+                                if comment_row:
+                                    table_comment = _safe_decode_value(comment_row[0])
+                            except Exception as e:
+                                logger.warning(f"Failed to get table comment for {table_name}: {e}")
 
                             # 不再统计行数，提升性能
                             table_info.append(
                                 {
                                     "table_name": table_name,
+                                    "table_comment": table_comment,
                                     "columns": columns,
                                     "column_count": len(columns),
                                     "row_count": 0,  # 不再提供行数统计，返回0避免前端错误
@@ -320,18 +341,23 @@ async def get_database_tables(connection_id: str):
 
                     for table_name in tables_to_process:
                         try:
-                            # 获取表结构信息
+                            # 获取表结构信息 (包含注释)
                             cursor.execute(
                                 """
                                 SELECT 
-                                    column_name,
-                                    data_type,
-                                    is_nullable,
-                                    column_default,
-                                    '' as extra  -- PostgreSQL没有extra字段，保持与MySQL结构一致
-                                FROM information_schema.columns 
-                                WHERE table_name = %s AND table_schema = %s
-                                ORDER BY ordinal_position
+                                    c.column_name,
+                                    c.data_type,
+                                    c.is_nullable,
+                                    c.column_default,
+                                    '' as extra,
+                                    pgd.description as comment
+                                FROM information_schema.columns c
+                                LEFT JOIN pg_catalog.pg_statio_all_tables st 
+                                    ON c.table_schema = st.schemaname AND c.table_name = st.relname
+                                LEFT JOIN pg_catalog.pg_description pgd 
+                                    ON pgd.objoid = st.relid AND pgd.objsubid = c.ordinal_position
+                                WHERE c.table_name = %s AND c.table_schema = %s
+                                ORDER BY c.ordinal_position
                             """,
                                 (table_name, schema),
                             )
@@ -346,13 +372,34 @@ async def get_database_tables(connection_id: str):
                                         "key": "",  # PostgreSQL的键信息需要额外查询
                                         "default": col_row[3] if col_row[3] else None,
                                         "extra": col_row[4],
+                                        "comment": col_row[5],
                                     }
                                 )
+
+                            # 获取表注释
+                            table_comment = None
+                            try:
+                                cursor.execute(
+                                    """
+                                    SELECT obj_description(oid)
+                                    FROM pg_class
+                                    WHERE relname = %s AND relnamespace = (
+                                        SELECT oid FROM pg_namespace WHERE nspname = %s
+                                    )
+                                    """,
+                                    (table_name, schema),
+                                )
+                                comment_row = cursor.fetchone()
+                                if comment_row:
+                                    table_comment = comment_row[0]
+                            except Exception as e:
+                                logger.warning(f"Failed to get table comment for {table_name}: {e}")
 
                             # 不再统计行数，提升性能
                             table_info.append(
                                 {
                                     "table_name": table_name,
+                                    "table_comment": table_comment,
                                     "columns": columns,
                                     "column_count": len(columns),
                                     "row_count": 0,  # 不再提供行数统计，返回0避免前端错误
@@ -667,20 +714,40 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
 
             try:
                 with conn.cursor() as cursor:
-                    # 获取表结构详细信息
-                    cursor.execute(f"DESCRIBE {_quote_mysql_identifier(table_name)}")
+                    # 获取表结构详细信息 (使用 SHOW FULL COLUMNS)
+                    cursor.execute(f"SHOW FULL COLUMNS FROM {_quote_mysql_identifier(table_name)}")
                     columns = []
                     for col_row in cursor.fetchall():
+                        # SHOW FULL COLUMNS returns:
+                        # Field, Type, Collation, Null, Key, Default, Extra, Privileges, Comment
                         columns.append(
                             {
                                 "name": _safe_decode_value(col_row[0]),
                                 "type": _safe_decode_value(col_row[1]),
-                                "null": _safe_decode_value(col_row[2]),
-                                "key": _safe_decode_value(col_row[3]),
-                                "default": _safe_decode_value(col_row[4]),
-                                "extra": _safe_decode_value(col_row[5]),
+                                "null": _safe_decode_value(col_row[3]),
+                                "key": _safe_decode_value(col_row[4]),
+                                "default": _safe_decode_value(col_row[5]),
+                                "extra": _safe_decode_value(col_row[6]),
+                                "comment": _safe_decode_value(col_row[8]),
                             }
                         )
+
+                    # 获取表注释
+                    table_comment = None
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT TABLE_COMMENT 
+                            FROM information_schema.TABLES 
+                            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
+                            """,
+                            (db_config["database"], table_name),
+                        )
+                        comment_row = cursor.fetchone()
+                        if comment_row:
+                            table_comment = _safe_decode_value(comment_row[0])
+                    except Exception as e:
+                        logger.warning(f"Failed to get table comment for {table_name}: {e}")
 
                     # 不再统计行数，提升性能
                     row_count = 0  # 返回0避免前端错误
@@ -732,6 +799,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                     return create_success_response(
                         data={
                             "table_name": table_name,
+                            "table_comment": table_comment,
                             "columns": columns,
                             "indexes": indexes,
                             "column_count": len(columns),
@@ -775,23 +843,47 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                     # 获取schema参数，默认为public
                     schema = schema or db_config.get("schema", "public")
 
-                    # 获取表结构详细信息
+                    # 获取表结构详细信息 (包含注释)
                     cursor.execute(
                         """
                         SELECT 
-                            column_name,
-                            data_type,
-                            is_nullable,
-                            column_default,
-                            '' as extra  -- PostgreSQL没有extra字段，保持与MySQL结构一致
-                        FROM information_schema.columns 
-                        WHERE table_name = %s AND table_schema = %s
-                        ORDER BY ordinal_position
+                            c.column_name,
+                            c.data_type,
+                            c.is_nullable,
+                            c.column_default,
+                            '' as extra,
+                            pgd.description as comment
+                        FROM information_schema.columns c
+                        LEFT JOIN pg_catalog.pg_statio_all_tables st 
+                            ON c.table_schema = st.schemaname AND c.table_name = st.relname
+                        LEFT JOIN pg_catalog.pg_description pgd 
+                            ON pgd.objoid = st.relid AND pgd.objsubid = c.ordinal_position
+                        WHERE c.table_name = %s AND c.table_schema = %s
+                        ORDER BY c.ordinal_position
                     """,
                         (table_name, schema),
                     )
 
                     columns_data = cursor.fetchall()
+                    
+                    # 获取表注释
+                    table_comment = None
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT obj_description(oid)
+                            FROM pg_class
+                            WHERE relname = %s AND relnamespace = (
+                                SELECT oid FROM pg_namespace WHERE nspname = %s
+                            )
+                            """,
+                            (table_name, schema),
+                        )
+                        comment_row = cursor.fetchone()
+                        if comment_row:
+                            table_comment = comment_row[0]
+                    except Exception as e:
+                        logger.warning(f"Failed to get table comment for {table_name}: {e}")
                     
                     # 获取主键和唯一键信息 (用于在列列表显示简略信息)
                     cursor.execute(
@@ -911,6 +1003,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                     return create_success_response(
                         data={
                             "table_name": table_name,
+                            "table_comment": table_comment, # Include table comment
                             "columns": columns,
                             "indexes": indexes, 
                             "column_count": len(columns),
