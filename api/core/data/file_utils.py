@@ -388,6 +388,8 @@ def load_file_to_duckdb(
         detected_encoding = _detect_csv_encoding(file_path)
         if detected_encoding:
             merged_options["encoding"] = detected_encoding
+            # 非 UTF-8 编码的 CSV 文件需要 strict_mode=false 以正确处理引号
+            merged_options["strict_mode"] = False
             logger.info(f"Using encoding '{detected_encoding}' for CSV file: {file_path}")
 
     if reader_options:
