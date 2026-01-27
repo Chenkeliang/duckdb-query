@@ -53,12 +53,12 @@ class RateLimiter:
         
         # 检查客户端限制
         if len(self.client_requests[client_key]) >= client_limit:
-            logger.warning(f"Client {client_key} request rate too high: {len(self.client_requests[client_key])} 次/{window_seconds}秒")
+            logger.warning(f"Client {client_key} request rate too high: {len(self.client_requests[client_key])} times/{window_seconds}s")
             return True, f"Client request rate too high, please try again later"
         
         # 检查全局限制
         if len(self.endpoint_requests[endpoint]) >= global_limit:
-            logger.warning(f"Endpoint {endpoint} global request rate too high: {len(self.endpoint_requests[endpoint])} 次/{window_seconds}秒")
+            logger.warning(f"Endpoint {endpoint} global request rate too high: {len(self.endpoint_requests[endpoint])} times/{window_seconds}s")
             return True, f"Server busy, please try again later"
         
         return False, ""

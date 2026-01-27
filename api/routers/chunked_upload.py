@@ -342,7 +342,7 @@ async def init_upload(
         }
 
         logger.info(
-            "初始化上传会话: %s, 文件: %s, 大小: %d, 分块数: %d",
+            "Initialized upload session: %s, file: %s, size: %d, chunks: %d",
             upload_id, file_name, file_size, total_chunks
         )
 
@@ -423,7 +423,7 @@ async def upload_chunk(
         progress = session["uploaded_chunks"] / session["total_chunks"] * 100
 
         logger.info(
-            "上传分块 %d/%d, 进度: %.1f%%",
+            "Uploaded chunk %d/%d, progress: %.1f%%",
             chunk_number, session['total_chunks'], progress
         )
 
@@ -528,7 +528,7 @@ async def complete_upload(
         session["file_info"] = file_info
 
         logger.info(
-            "文件上传完成: %s, 大小: %d",
+            "File upload completed: %s, size: %d",
             session['file_name'], session['file_size']
         )
 
@@ -627,7 +627,7 @@ async def process_uploaded_file(
             raise
 
         logger.info(
-            "文件处理完成: %s, 表名: %s, 行数: %d",
+            "File processing completed: %s, table: %s, rows: %d",
             file_name, source_id, file_metadata['row_count']
         )
 

@@ -273,7 +273,7 @@ class ConfigManager:
             logger.info(f"Application configuration file updated: {self.app_config_file}")
 
         except Exception as e:
-            logger.warning(f"updating应用configurationfilefailed: {str(e)}")
+            logger.warning(f"Failed to update application configuration file: {str(e)}")
 
     def _load_json(self, file_path: Path) -> Dict[str, Any]:
         """loadingJSONconfigurationfile（支持注释）"""
@@ -422,7 +422,7 @@ class ConfigManager:
                 try:
                     tmp_path.unlink()
                 except OSError:
-                    logger.debug("移除临时filefailed: %s", tmp_path)
+                    logger.debug("Failed to remove temporary file: %s", tmp_path)
             raise
 
 
@@ -583,11 +583,11 @@ class ConfigManager:
                 )
 
             self._app_config = AppConfig(**config_data)
-            logger.info("应用configurationloadingsuccessfully")
+            logger.info("Application configuration loaded successfully")
             return self._app_config
 
         except Exception as e:
-            logger.error(f"loading应用configurationfailed: {str(e)}")
+            logger.error(f"Failed to load application configuration: {str(e)}")
             self._app_config = AppConfig()
             return self._app_config
 
@@ -615,11 +615,11 @@ class ConfigManager:
             # saving到file
             self._save_json(self.app_config_file, asdict(self._app_config))
 
-            logger.info("应用configurationupdatingsuccessfully")
+            logger.info("Application configuration updated successfully")
             return True
 
         except Exception as e:
-            logger.error(f"updating应用configurationfailed: {str(e)}")
+            logger.error(f"Failed to update application configuration: {str(e)}")
             return False
 
     def get_safe_mysql_configs(self) -> List[Dict[str, Any]]:

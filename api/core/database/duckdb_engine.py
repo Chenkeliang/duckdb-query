@@ -197,7 +197,7 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
                     f"SET profiling_output='{config_items['duckdb_profiling_output']}'"
                 )
             logger.info(
-                f"DuckDB性能分析设置为: {config_items['duckdb_enable_profiling']}"
+                f"DuckDB profiling set to: {config_items['duckdb_enable_profiling']}"
             )
 
         if config_items.get("duckdb_prefer_range_joins") is not None:
@@ -205,7 +205,7 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
                 f"SET prefer_range_joins={str(config_items['duckdb_prefer_range_joins']).lower()}"
             )
             logger.info(
-                f"DuckDB优先范围JOIN设置为: {config_items['duckdb_prefer_range_joins']}"
+                f"DuckDB prefer range joins set to: {config_items['duckdb_prefer_range_joins']}"
             )
 
         if config_items.get("duckdb_enable_object_cache") is not None:
@@ -213,7 +213,7 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
                 f"SET enable_object_cache={str(config_items['duckdb_enable_object_cache']).lower()}"
             )
             logger.info(
-                f"DuckDB对象缓存设置为: {config_items['duckdb_enable_object_cache']}"
+                f"DuckDB object cache set to: {config_items['duckdb_enable_object_cache']}"
             )
 
         if config_items.get("duckdb_preserve_insertion_order") is not None:
@@ -221,7 +221,7 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
                 f"SET preserve_insertion_order={str(config_items['duckdb_preserve_insertion_order']).lower()}"
             )
             logger.info(
-                f"DuckDB保持插入顺序设置为: {config_items['duckdb_preserve_insertion_order']}"
+                f"DuckDB preserve insertion order set to: {config_items['duckdb_preserve_insertion_order']}"
             )
 
         if config_items.get("duckdb_enable_progress_bar") is not None:
@@ -229,7 +229,7 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
                 f"SET enable_progress_bar={str(config_items['duckdb_enable_progress_bar']).lower()}"
             )
             logger.info(
-                f"DuckDB进度条设置为: {config_items['duckdb_enable_progress_bar']}"
+                f"DuckDB progress bar set to: {config_items['duckdb_enable_progress_bar']}"
             )
 
         remote_settings = config_items.get("duckdb_remote_settings") or {}
@@ -242,7 +242,7 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
                     logger.info("Applied remote configuration: %s=%s", setting_key, setting_value)
                 except Exception as remote_error:
                     logger.warning(
-                        "应用远程配置 %s 失败: %s", setting_key, remote_error
+                        "Failed to apply remote config %s: %s", setting_key, remote_error
                     )
 
         # 设置目录配置
@@ -257,7 +257,7 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
                 f"SET extension_directory='{config_items['duckdb_extension_directory']}'"
             )
             logger.info(
-                f"DuckDB扩展目录设置为: {config_items['duckdb_extension_directory']}"
+                f"DuckDB extension directory set to: {config_items['duckdb_extension_directory']}"
             )
 
         # 自动安装和加载扩展
@@ -299,7 +299,7 @@ def _install_duckdb_extensions(connection, extensions: List[str]):
                 logger.info(f"DuckDB extension {ext_name} installed and loaded successfully")
             except Exception as install_error:
                 logger.warning(
-                    f"安装或加载DuckDB扩展 {ext_name} 失败: {str(install_error)}"
+                    f"Failed to install or load DuckDB extension {ext_name}: {str(install_error)}"
                 )
 
 
@@ -715,7 +715,7 @@ def create_varchar_table_from_dataframe(
 
         file_datasource_manager.save_file_datasource(table_metadata)
         logger.info(
-            "Successfully created typed DuckDB table: %s (行: %s, 列: %s)",
+            "Successfully created typed DuckDB table: %s (rows: %s, columns: %s)",
             table_name,
             table_metadata["row_count"],
             table_metadata["column_count"],
@@ -739,7 +739,7 @@ def prepare_dataframe_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
     processed_df = df.copy()
 
     logger.info(
-        f"Starting DataFrame preprocessing: {len(processed_df)}行, {len(processed_df.columns)}列"
+        f"Starting DataFrame preprocessing: {len(processed_df)} rows, {len(processed_df.columns)} columns"
     )
 
     # 处理所有列，统一转换为字符串类型

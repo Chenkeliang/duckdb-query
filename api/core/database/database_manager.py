@@ -146,7 +146,7 @@ class DatabaseManager:
                 else:
                     connection.status = ConnectionStatus.ERROR
                     logger.warning(
-                        f"connection测试failed: {test_result.message}，但仍updating到configuration中(状态为ERROR)"
+                        f"Connection test failed: {test_result.message}, but still updating to configuration (status set to ERROR)"
                     )
             else:
                 # 不测试connection，直接添加configuration
@@ -173,12 +173,12 @@ class DatabaseManager:
                 if success:
                     logger.info(f"Connection configuration saved to DuckDB: {connection.id}")
                 else:
-                    logger.error(f"savingconnectionconfiguration到 DuckDB failed: {connection.id}")
+                    logger.error(f"Failed to save connection configuration to DuckDB: {connection.id}")
 
             return True, test_result
 
         except Exception as e:
-            logger.error(f"添加database connectionfailed: {str(e)}")
+            logger.error(f"Failed to add database connection: {str(e)}")
             connection.status = ConnectionStatus.ERROR
             return False, None
 
@@ -198,14 +198,14 @@ class DatabaseManager:
             # 从 DuckDB 元datatabledeleting
             success = metadata_manager.delete_database_connection(connection_id)
             if success:
-                logger.info(f"successfully移除database connection（包括元data）: {connection_id}")
+                logger.info(f"Successfully removed database connection (including metadata): {connection_id}")
             else:
-                logger.warning(f"从元datatabledeletingconnectionfailed: {connection_id}")
+                logger.warning(f"Failed to delete connection from metadata table: {connection_id}")
 
             return True
 
         except Exception as e:
-            logger.error(f"移除database connectionfailed: {str(e)}")
+            logger.error(f"Failed to remove database connection: {str(e)}")
             return False
 
     def get_connection(self, connection_id: str) -> Optional[DatabaseConnection]:
@@ -249,13 +249,13 @@ class DatabaseManager:
             # 支持 user 和 username 两种parameter名称
             username = params.get("user") or params.get("username")
             if not username:
-                raise ValueError("missing用户名parameter (user 或 username)")
+                raise ValueError("Missing username parameter (user or username)")
 
             # 解密密码
             password = params.get("password", "")
             if password_encryptor.is_encrypted(password):
                 password = password_encryptor.decrypt_password(password)
-                logger.info("密码已解密用于connection测试")
+                logger.info("Password decrypted for connection test")
 
             # gettingconfiguration的timeout时间
             from core.common.config_manager import config_manager
@@ -304,13 +304,13 @@ class DatabaseManager:
             # 支持 user 和 username 两种parameter名称
             username = params.get("user") or params.get("username")
             if not username:
-                raise ValueError("missing用户名parameter (user 或 username)")
+                raise ValueError("Missing username parameter (user or username)")
 
             # 解密密码
             password = params.get("password", "")
             if password_encryptor.is_encrypted(password):
                 password = password_encryptor.decrypt_password(password)
-                logger.info("密码已解密用于PostgreSQLconnection测试")
+                logger.info("Password decrypted for PostgreSQL connection test")
 
             # gettingconfiguration的timeout时间
             from core.common.config_manager import config_manager
@@ -395,7 +395,7 @@ class DatabaseManager:
             # 支持 user 和 username 两种parameter名称
             username = params.get("user") or params.get("username")
             if not username:
-                raise ValueError("missing用户名parameter (user 或 username)")
+                raise ValueError("Missing username parameter (user or username)")
 
             # 解密密码
             password = params.get("password", "")
@@ -410,7 +410,7 @@ class DatabaseManager:
             # 支持 user 和 username 两种parameter名称
             username = params.get("user") or params.get("username")
             if not username:
-                raise ValueError("missing用户名parameter (user 或 username)")
+                raise ValueError("Missing username parameter (user or username)")
 
             # 解密密码
             password = params.get("password", "")
@@ -425,7 +425,7 @@ class DatabaseManager:
             db_path = params.get("database", ":memory:")
             connection_string = f"sqlite:///{db_path}"
         else:
-            raise ValueError(f"不支持的database类型: {db_type}")
+            raise ValueError(f"Unsupported database type: {db_type}")
 
         return create_engine(
             connection_string,

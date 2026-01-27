@@ -179,7 +179,7 @@ class SQLInjectionProtector:
             logger.warning(f"SQL injection detected security violations: {len(self.violations)} issues")
             for violation in self.violations:
                 logger.warning(
-                    f"  - {violation.type}: {violation.description} (严重性: {violation.severity})"
+                    f"  - {violation.type}: {violation.description} (severity: {violation.severity})"
                 )
 
         return is_safe, self.violations.copy()

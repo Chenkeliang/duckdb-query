@@ -361,13 +361,13 @@ class FileDatasourceManager:
                             self.save_file_datasource(config)
                         except Exception as save_exc:
                             logger.warning(
-                                "updatingfile元datafailed %s: %s", source_id, save_exc
+                                "Failed to update file metadata %s: %s", source_id, save_exc
                             )
 
                     logger.info(
-                        "successfully重新loadingfiledata源: %s (行: %s)",
+                        "Successfully reloaded file datasource: %s (rows: %s)",
                         source_id,
-                        table_metadata.get("row_count") if table_metadata else "未知",
+                        table_metadata.get("row_count") if table_metadata else "unknown",
                     )
                     success_count += 1
                 except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -406,7 +406,7 @@ def create_typed_table_from_dataframe(
 
     metadata = build_table_metadata_snapshot(duckdb_con, table_name)
     logger.info(
-        "successfullycreatingTypedtable: %s (行: %s, column: %s)",
+        "Successfully created typed table: %s (rows: %s, columns: %s)",
         table_name,
         metadata["row_count"],
         metadata["column_count"],
@@ -456,7 +456,7 @@ def create_table_from_file_path_typed(
 
     metadata = build_table_metadata_snapshot(duckdb_con, table_name)
     logger.info(
-        "successfullycreatingTypedfiletable: %s (行: %s, column: %s)",
+        "Successfully created typed file table: %s (rows: %s, columns: %s)",
         table_name,
         metadata["row_count"],
         metadata["column_count"],

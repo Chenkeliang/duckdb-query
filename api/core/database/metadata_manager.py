@@ -215,7 +215,7 @@ class MetadataManager:
                             if isinstance(existing_params, dict) and "password" in existing_params:
                                 # 使用原密码
                                 params["password"] = existing_params["password"]
-                                logger.debug(f"保持原密码不变: {id}")
+                                logger.debug(f"Keeping original password: {id}")
                             else:
                                 # 原connection没有密码，清除标记
                                 params.pop("password", None)
@@ -231,7 +231,7 @@ class MetadataManager:
                     table_columns_df = conn.execute(f"DESCRIBE {table}").fetchdf()
                     valid_columns = set(table_columns_df["column_name"].tolist())
                 except Exception as e:
-                    logger.warning(f"无法gettingtable {table} 的columninfo: {e}")
+                    logger.warning(f"Unable to get table {table} column info: {e}")
                     valid_columns = None
                 
                 # 过滤data，只保留table中存在的column
@@ -239,7 +239,7 @@ class MetadataManager:
                     filtered_data = {k: v for k, v in data.items() if k in valid_columns}
                     if len(filtered_data) < len(data):
                         removed_fields = set(data.keys()) - set(filtered_data.keys())
-                        logger.debug(f"过滤掉does not exist的字段: {removed_fields}")
+                        logger.debug(f"Filtered out non-existent fields: {removed_fields}")
                     data = filtered_data
 
                 # 构建插入语句
@@ -384,7 +384,7 @@ class MetadataManager:
                 return data_list
 
         except Exception as e:
-            logger.error(f"column出metadatafailed: {table}, error: {e}")
+            logger.error(f"Failed to list metadata: {table}, error: {e}")
             return []
 
     def update_metadata(self, table: str, id: str, updates: dict) -> bool:
@@ -527,7 +527,7 @@ class MetadataManager:
                         
                         # 确保必需字段存在
                         if not item_data["id"] or not item_data["name"] or not item_data["sql"]:
-                            logger.warning(f"skip不完整的收藏项: {item.get('name', 'Unknown')}")
+                            logger.warning(f"Skipping incomplete favorite item: {item.get('name', 'Unknown')}")
                             skipped_count += 1
                             continue
 
@@ -562,7 +562,7 @@ class MetadataManager:
 
                 favorites_file.rename(migrated_file)
             except Exception as e:
-                logger.warning(f"file重命名failed，但data已导入: {e}")
+                logger.warning(f"File rename failed, but data imported: {e}")
 
             return {
                 "success": True,
@@ -572,7 +572,7 @@ class MetadataManager:
             }
 
         except Exception as e:
-            logger.error(f"导入 SQL 收藏failed: {e}")
+            logger.error(f"Failed to import SQL favorites: {e}")
             return {"success": False, "message": str(e), "path": str(favorites_file)}
 
 
@@ -583,7 +583,7 @@ class MetadataManager:
             self._cache.pop(cache_key, None)
         else:
             self._cache.clear()
-            logger.info("清除所有metadata缓存")
+            logger.info("Cleared all metadata cache")
 
     # 便捷方法（内部调用统一接口）
     def save_database_connection(self, connection: dict) -> bool:

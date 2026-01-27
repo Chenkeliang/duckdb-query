@@ -50,7 +50,7 @@ class CleanupScheduler:
         self.cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
         self.cleanup_thread.start()
         logger.info(
-            f"文件清理调度器已启动，清理间隔: {self.cleanup_interval_hours}小时"
+            f"File cleanup scheduler started, cleanup interval: {self.cleanup_interval_hours} hours"
         )
 
     def stop(self):

@@ -1244,12 +1244,12 @@ async def perform_query(
                         logger.info(f"Registered Excel table using DuckDB read_xlsx: {source.id}")
                     except Exception as duckdb_exc:
                         logger.warning(
-                            f"DuckDB read_xlsx 读取失败，降级为pandas: {duckdb_exc}"
+                            f"DuckDB read_xlsx failed, falling back to pandas: {duckdb_exc}"
                         )
                         df = pd.read_excel(file_path, dtype=str)
                         con.register(source.id, df)
                         logger.info(
-                            f"已用pandas.read_excel注册表: {source.id}, shape: {df.shape}"
+                            f"Registered table using pandas.read_excel: {source.id}, shape: {df.shape}"
                         )
 
                 elif file_extension in {"csv", "json", "jsonl", "parquet", "pq"}:
@@ -1264,13 +1264,13 @@ async def perform_query(
                             normalized_ext,
                         )
                         logger.info(
-                            "已通过DuckDB原生加载文件 %s -> Table %s",
+                            "Loaded file via DuckDB native: %s -> Table %s",
                             file_path,
                             source.id,
                         )
                     except Exception as load_error:
                         logger.error(
-                            "文件 %s 加载失败: %s", file_path, load_error, exc_info=True
+                            "File %s load failed: %s", file_path, load_error, exc_info=True
                         )
                         raise
                 else:
@@ -1279,13 +1279,13 @@ async def perform_query(
                         df = pd.read_csv(file_path, dtype=str)
                         create_varchar_table_from_dataframe(source.id, df, con)
                         logger.info(
-                            f"已用pandas.read_csv创建持久化表: {source.id}, shape: {df.shape}"
+                            f"Created persistent table using pandas.read_csv: {source.id}, shape: {df.shape}"
                         )
                     except Exception:
                         df = pd.read_excel(file_path, dtype=str)
                         create_varchar_table_from_dataframe(source.id, df, con)
                         logger.info(
-                            f"已用pandas.read_excel注册表: {source.id}, shape: {df.shape}"
+                            f"Registered table using pandas.read_excel: {source.id}, shape: {df.shape}"
                         )
 
             elif source.type in ["mysql", "postgresql", "sqlite"]:
@@ -1296,7 +1296,7 @@ async def perform_query(
                 if connection_id:
                     # 模式1：使用预先保存的数据库连接
                     logger.info(
-                        f"处理数据库数据源: {source.id}, 连接ID: {connection_id}"
+                        f"Processing database datasource: {source.id}, connection_id: {connection_id}"
                     )
 
                     try:
@@ -1314,19 +1314,19 @@ async def perform_query(
                         df = db_manager.execute_query(connection_id, query)
                         create_varchar_table_from_dataframe(source.id, df, con)
                         logger.info(
-                            f"已创建持久化数据库表: {source.id}, shape: {df.shape}"
+                            f"Created persistent database table: {source.id}, shape: {df.shape}"
                         )
 
                     except Exception as db_error:
                         logger.error(f"Failed to process database connection: {db_error}")
                         raise ValueError(
-                            f"数据库连接处理失败: {source.id}, 错误: {str(db_error)}"
+                            f"Database connection processing failed: {source.id}, error: {str(db_error)}"
                         )
 
                 elif datasource_name:
                     # 模式2：使用数据源名称（安全模式）- 从配置文件读取连接信息
                     logger.info(
-                        f"处理安全数据源: {source.id}, 数据源名称: {datasource_name}"
+                        f"Processing secure datasource: {source.id}, datasource_name: {datasource_name}"
                     )
 
                     try:
@@ -1369,13 +1369,13 @@ async def perform_query(
                         # 注册到DuckDB
                         con.register(source.id, df)
                         logger.info(
-                            f"已注册安全数据源表: {source.id}, shape: {df.shape}"
+                            f"Registered secure datasource table: {source.id}, shape: {df.shape}"
                         )
 
                     except Exception as secure_db_error:
                         logger.error(f"Failed to process secure datasource: {secure_db_error}")
                         raise ValueError(
-                            f"安全数据源处理失败: {source.id}, 错误: {str(secure_db_error)}"
+                            f"Secure datasource processing failed: {source.id}, error: {str(secure_db_error)}"
                         )
                 else:
                     # 模式3：直接使用连接参数（兼容旧版本，但不推荐）
@@ -1412,13 +1412,13 @@ async def perform_query(
                         # 创建持久化表到DuckDB
                         create_varchar_table_from_dataframe(source.id, df, con)
                         logger.info(
-                            f"已创建持久化直接连接数据库表: {source.id}, shape: {df.shape}"
+                            f"Created persistent direct connection database table: {source.id}, shape: {df.shape}"
                         )
 
                     except Exception as direct_db_error:
                         logger.error(f"Failed to connect to database directly: {direct_db_error}")
                         raise ValueError(
-                            f"直接Database connection failed: {source.id}, 错误: {str(direct_db_error)}"
+                            f"Direct database connection failed: {source.id}, error: {str(direct_db_error)}"
                         )
 
         # 获取当前可用的表
@@ -1552,10 +1552,10 @@ async def execute_sql(request: dict = Body(...)):
         logger.info(f"Checking datasource type: {datasource_type}")
         logger.info(f"Is dictionary: {isinstance(datasource, dict)}")
         logger.info(
-            f"类型检查结果: {datasource_type in ['mysql', 'postgresql', 'sqlite', 'duckdb']}"
+            f"Type check result: {datasource_type in ['mysql', 'postgresql', 'sqlite', 'duckdb']}"
         )
         logger.info(
-            f"完整条件判断: {isinstance(datasource, dict) and datasource.get('type') in ['mysql', 'postgresql', 'sqlite', 'duckdb']}"
+            f"Full condition check: {isinstance(datasource, dict) and datasource.get('type') in ['mysql', 'postgresql', 'sqlite', 'duckdb']}"
         )
         # 支持 file 类型数据源
         if isinstance(datasource, dict) and datasource.get("type") == "file":
@@ -1664,7 +1664,7 @@ async def execute_sql(request: dict = Body(...)):
             # 在原始数据库上执行SQL查询
             try:
                 logger.info(
-                    f"开始执rows据库查询: datasource_id={datasource_id}, sql={sql_query}"
+                    f"Starting database query: datasource_id={datasource_id}, sql={sql_query}"
                 )
                 result_df = db_manager.execute_query(datasource_id, sql_query)
                 logger.info(f"Database query execution completed, result shape: {result_df.shape}")
@@ -1778,11 +1778,11 @@ async def save_query_to_duckdb(request: dict = Body(...)):
         datasource_type = datasource.get("type", "duckdb")
 
         logger.info(
-            f"解析参数: datasource_id={datasource_id}, datasource_type={datasource_type}, table_alias={table_alias}"
+            f"Parsed params: datasource_id={datasource_id}, datasource_type={datasource_type}, table_alias={table_alias}"
         )
 
         logger.info(
-            f"开始保存查询结果: datasource_id={datasource_id}, datasource_type={datasource_type}, table_alias={table_alias}"
+            f"Starting to save query result: datasource_id={datasource_id}, datasource_type={datasource_type}, table_alias={table_alias}"
         )
 
         # 根据数据源类型处理
@@ -1818,7 +1818,7 @@ async def save_query_to_duckdb(request: dict = Body(...)):
                 clean_sql = remove_auto_added_limit(sql_query)
                 if clean_sql != sql_query.strip():
                     logger.info(
-                        f"MySQL查询移除了系统自动添加的LIMIT: {sql_query} -> {clean_sql}"
+                        f"MySQL query removed auto-added LIMIT: {sql_query} -> {clean_sql}"
                     )
 
                 # 执行查询获取完整数据（保留所有WHERE条件和用户逻辑）
@@ -1844,7 +1844,7 @@ async def save_query_to_duckdb(request: dict = Body(...)):
 
                 if clean_sql != sql_query.strip():
                     logger.info(
-                        f"DuckDB查询移除了系统自动添加的LIMIT，保留所有用户条件: {clean_sql}"
+                        f"DuckDB query removed auto-added LIMIT, kept all user conditions: {clean_sql}"
                     )
                 else:
                     logger.info(f"SQL needs no cleaning or contains user original LIMIT: {clean_sql}")
@@ -2633,7 +2633,7 @@ async def export_set_operation(request: SetOperationExportRequest):
         custom_filename = request.filename
 
         logger.info(
-            f"开始集合操作导出: 格式={export_format}, 操作类型={config.operation_type}"
+            f"Starting set operation export: format={export_format}, operation_type={config.operation_type}"
         )
 
         # 生成完整SQL（无LIMIT）

@@ -788,7 +788,7 @@ def execute_async_query(
         with interruptible_connection(task_id, clean_sql) as con:
             if use_external_source:
                 logger.info(
-                    f"异步任务将使用外部数据源 {source_datasource_id} ({datasource_type}) 执行查询"
+                    f"Async task will use external datasource {source_datasource_id} ({datasource_type}) to execute query"
                 )
                 result_df = _fetch_external_query_result(datasource_info, clean_sql)
                 created = create_varchar_table_from_dataframe(

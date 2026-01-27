@@ -246,7 +246,7 @@ async def get_database_tables(connection_id: str):
                     )
                     tables = [row[0] for row in cursor.fetchall()]
                     logger.info(
-                        f"PostgreSQL找到 {len(tables)} 个表在schema '{schema}'中"
+                        f"PostgreSQL found {len(tables)} tables in schema '{schema}'"
                     )
 
                     # 添加详细的诊断信息，无论是否找到表
@@ -307,7 +307,7 @@ async def get_database_tables(connection_id: str):
                             loose_tables = cursor.fetchall()
                             if len(loose_tables) > 0:
                                 logger.info(
-                                    f"宽松查询找到 {len(loose_tables)} 个非视图表，更新主结果"
+                                    f"Loose query found {len(loose_tables)} non-view tables, updating main result"
                                 )
                                 tables = [row[0] for row in loose_tables]
                         except Exception as e:

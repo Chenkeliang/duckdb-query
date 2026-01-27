@@ -148,7 +148,7 @@ class SecurityValidator:
                             f"fileMIME类型不匹配: 检测到 {detected_mime}, 期望 {allowed_mimes}"
                         )
                 except Exception as e:
-                    logger.warning(f"MIME类型检查failed: {str(e)}")
+                    logger.warning(f"MIME type check failed: {str(e)}")
                     result["warnings"].append("无法检查MIME类型")
             elif self.magic_mime is None:
                 result["warnings"].append("MIME类型检查不可用（missinglibmagic）")
@@ -162,7 +162,7 @@ class SecurityValidator:
             result["file_type"] = file_extension
 
         except Exception as e:
-            logger.error(f"file验证failed: {str(e)}")
+            logger.error(f"File validation failed: {str(e)}")
             result["errors"].append(f"file验证过程中出错: {str(e)}")
 
         return result
@@ -233,7 +233,7 @@ class SecurityValidator:
             result["valid"] = True
 
         except Exception as e:
-            logger.error(f"SQL验证failed: {str(e)}")
+            logger.error(f"SQL validation failed: {str(e)}")
             result["errors"].append(f"SQL验证过程中出错: {str(e)}")
 
         return result
