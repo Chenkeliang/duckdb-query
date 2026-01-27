@@ -249,7 +249,7 @@ def _inspect_xlsx_sheets(
 
 def _inspect_xls_sheets(file_path: str, preview_rows: int = 20) -> List[Dict[str, Any]]:
     """使用 pandas + xlrd 检查 .xls 文件"""
-    import xlrd
+    import xlrd  # pylint: disable=import-error
 
     sheets_info: List[Dict[str, Any]] = []
     xl = pd.ExcelFile(file_path, engine="xlrd")
@@ -413,13 +413,13 @@ def load_excel_sheet_dataframe(
                         logger.error(f"Repaired file read failed: {repair_error}")
                         shutil.rmtree(os.path.dirname(repair_path), ignore_errors=True)
                         raise ValueError(
-                            f"Excel 文件已严重损坏。Calamine 引擎报错: {str(calamine_error)}。修复尝试报错: {str(repair_error)}"
+                            f"Excel file is severely corrupted. Calamine engine error: {str(calamine_error)}. Repair attempt error: {str(repair_error)}"
                         )
                     else:
                         shutil.rmtree(os.path.dirname(repair_path), ignore_errors=True)
                 else:
                     raise ValueError(
-                        f"Excel 文件包含无效数据且无法自动修复。建议在 Excel/WPS 中另存为新文件。Calamine 错误: {str(calamine_error)}"
+                        f"Excel file contains invalid data and cannot be auto-repaired. Please re-save in Excel/WPS. Calamine error: {str(calamine_error)}"
                     )
         else:
             raise
