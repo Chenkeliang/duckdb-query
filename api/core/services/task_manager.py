@@ -510,7 +510,7 @@ class TaskManager:
         try:
             success = retry_on_write_conflict(_do_start)
             if success:
-                logger.info("Task开始运行: %s", task_id)
+                logger.info("Task started running: %s", task_id)
             else:
                 logger.warning("Task status does not allow starting: %s", task_id)
             return success
@@ -631,7 +631,7 @@ class TaskManager:
                     if success:
                         logger.info("Task execution failed: %s -> %s", task_id, error_message)
                     else:
-                        logger.warning("Taskstatus不允许标记failed: %s", task_id)
+                        logger.warning("Task status does not allow marking as failed: %s", task_id)
                     return success
 
         try:
@@ -697,10 +697,10 @@ class TaskManager:
         except Exception as e:
             # 最终确认：如果是写写冲突，检查是否Task其实已经被其他事务（如用户取消）更新了
             error_str = str(e)
-            logger.error("[TASK_DEBUG] force_fail_task 异常: task_id=%s, error=%s", task_id, error_str)
+            logger.error("[TASK_DEBUG] force_fail_task exception: task_id=%s, error=%s", task_id, error_str)
             if "write-write conflict" in error_str or "TransactionContext Error" in error_str:
                 current_task = self.get_task(task_id)
-                logger.info("[TASK_DEBUG] force_fail_task 冲突后查询: task_id=%s, current status=%s",
+                logger.info("[TASK_DEBUG] force_fail_task query after conflict: task_id=%s, current status=%s",
                            task_id, current_task.status.value if current_task else "NOT_FOUND")
                 if current_task and current_task.status in (
                     TaskStatus.CANCELLING,
@@ -829,9 +829,9 @@ class TaskManager:
         try:
             success = retry_on_write_conflict(_do_mark_cancelled, max_retries=3)
             if success:
-                logger.info("Task已标记为取消: %s, reason: %s", task_id, reason)
+                logger.info("Task marked as cancelled: %s, reason: %s", task_id, reason)
             else:
-                logger.warning("标记Task取消failed: %s", task_id)
+                logger.warning("Failed to mark task as cancelled: %s", task_id)
             return success
         except Exception as e:
             logger.error("mark_cancelled failed: %s -> %s", task_id, e)
@@ -928,7 +928,7 @@ class TaskManager:
             ).fetchone()
 
             if not metadata_row:
-                logger.warning("Task does not exist，无法更新: %s", task_id)
+                logger.warning("Task does not exist, cannot update: %s", task_id)
                 return False
 
             metadata = self._deserialize_json(metadata_row[0]) or {}
@@ -963,9 +963,9 @@ class TaskManager:
 
         success = bool(rows)
         if success:
-            logger.debug("Task已更新: %s -> %s", task_id, updates)
+            logger.debug("Task updated: %s -> %s", task_id, updates)
         else:
-            logger.warning("Task更新failed: %s", task_id)
+            logger.warning("Task update failed: %s", task_id)
         return success
 
     def record_export(
@@ -1028,7 +1028,7 @@ class TaskManager:
                             path.unlink()
                             removed += 1
                         except Exception as exc:
-                            logger.warning("删除导出文件failed %s: %s", path, exc)
+                            logger.warning("Failed to delete export file %s: %s", path, exc)
 
                 connection.execute(
                     f"UPDATE {TASK_EXPORTS_TABLE} SET status = 'expired' WHERE export_id = ?",
@@ -1058,7 +1058,7 @@ class TaskManager:
             ).fetchall()
 
             if not rows:
-                logger.info("没有找到卡住的cancellingTask")
+                logger.info("No stuck cancelling tasks found")
                 return 0
 
             # 将它们全部更新为 failed
@@ -1071,9 +1071,9 @@ class TaskManager:
                     """,
                     [TaskStatus.FAILED.value, "Task被取消（历史Task清理）", completed_at, task_id],
                 )
-                logger.info(f"已Cleaning up stuck cancelling tasks: {task_id}")
+                logger.info(f"Cleaned up stuck cancelling task: {task_id}")
 
-            logger.info(f"清理完成: {len(rows)} 个Task已标记为failed")
+            logger.info(f"Cleanup completed: {len(rows)} tasks marked as failed")
             return len(rows)
 
 

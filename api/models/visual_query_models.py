@@ -216,7 +216,7 @@ class FilterConfig(BaseModel):
                 raise ValueError("Column comparison requires right_column")
             if self.operator in {FilterOperator.BETWEEN, FilterOperator.LIKE, FilterOperator.ILIKE}:
                 raise ValueError(
-                    f"Operator {self.operator.value} 不支持列对列比较"
+                    f"Operator {self.operator.value} does not support column-to-column comparison"
                 )
             if not self.column or not str(self.column).strip():
                 raise ValueError("Column comparison requires column")
@@ -1031,8 +1031,8 @@ class SetOperationConfig(BaseModel):
 
             if len(first_columns) != len(table_columns):
                 raise ValueError(
-                    f"表 {table.table_name} 的列数量({len(table_columns)}) "
-                    f"与第一个表 {first_table.table_name} 的列数量({len(first_columns)})不匹配"
+                    f"Table {table.table_name} column count ({len(table_columns)}) "
+                    f"does not match first table {first_table.table_name} column count ({len(first_columns)})"
                 )
 
 

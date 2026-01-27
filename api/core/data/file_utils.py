@@ -273,6 +273,70 @@ def _build_reader_invocation(function_name: str, options: Optional[Dict[str, Any
     return f"{function_name}({', '.join(args)})"
 
 
+def _detect_csv_encoding(file_path: str) -> Optional[str]:
+    """检测 CSV 文件编码，返回 DuckDB 可识别的编码名称。
+
+    Args:
+        file_path: CSV 文件路径
+
+    Returns:
+        检测到的编码名称，如果是 UTF-8 则返回 None（让 DuckDB 使用默认值）
+    """
+    import charset_normalizer
+
+    # DuckDB 支持的编码名称映射
+    # 注意：DuckDB 支持 GB18030 但不支持 GBK，需要将 GBK 映射到 GB18030
+    encoding_map = {
+        "gb18030": "GB18030",
+        "gb2312": "GB18030",  # GB2312 是 GB18030 的子集
+        "gbk": "GB18030",     # GBK 是 GB18030 的子集
+        "big5": "BIG5",
+        "shift_jis": "SHIFT_JIS",
+        "euc_jp": "EUC_JP",
+        "euc_kr": "EUC_KR",
+        "euc_jis_2004": "GB18030",  # 有时中文文件会被误检测为日文编码
+        "iso-8859-1": "LATIN1",
+        "latin1": "LATIN1",
+        "cp1252": "WINDOWS-1252",
+        "utf-16": "UTF-16",
+        "utf-16-le": "UTF-16LE",
+        "utf-16-be": "UTF-16BE",
+    }
+
+    try:
+        with open(file_path, "rb") as f:
+            # 读取前 100KB 用于编码检测（避免在多字节字符中间截断）
+            raw_data = f.read(100 * 1024)
+
+        # 优先尝试 UTF-8
+        try:
+            raw_data.decode("utf-8")
+            return None  # UTF-8 是 DuckDB 默认编码，无需指定
+        except UnicodeDecodeError:
+            pass
+
+        # 使用 charset_normalizer 检测编码
+        result = charset_normalizer.from_bytes(raw_data)
+        if result and result.best():
+            detected = result.best().encoding
+            logger.info(f"Detected CSV encoding for {file_path}: {detected}")
+            return encoding_map.get(detected.lower(), detected.upper())
+
+        # charset_normalizer 失败时，尝试常见中文编码
+        for enc in ["gb18030", "gbk"]:
+            try:
+                raw_data.decode(enc)
+                logger.info(f"Fallback encoding detection for {file_path}: {enc}")
+                return "GBK"
+            except UnicodeDecodeError:
+                continue
+
+    except Exception as e:
+        logger.warning(f"Failed to detect encoding for {file_path}: {e}")
+
+    return None
+
+
 def load_file_to_duckdb(
     connection,
     table_name: str,
@@ -318,6 +382,14 @@ def load_file_to_duckdb(
 
     function_name, defaults = native_readers[normalized_type]
     merged_options = defaults.copy()
+
+    # 对于 CSV 文件，先检测编码
+    if normalized_type == "csv":
+        detected_encoding = _detect_csv_encoding(file_path)
+        if detected_encoding:
+            merged_options["encoding"] = detected_encoding
+            logger.info(f"Using encoding '{detected_encoding}' for CSV file: {file_path}")
+
     if reader_options:
         merged_options.update(reader_options)
 

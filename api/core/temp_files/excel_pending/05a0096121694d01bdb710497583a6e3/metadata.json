@@ -1,0 +1,9 @@
+{
+  "file_id": "05a0096121694d01bdb710497583a6e3",
+  "original_filename": "导入发货-关联订单号.xlsx",
+  "stored_path": "/app/core/temp_files/excel_pending/05a0096121694d01bdb710497583a6e3/导入发货-关联订单号.xlsx",
+  "uploaded_at": "2026-01-27T11:24:29.437306+08:00",
+  "file_size": 350776,
+  "table_alias": "meepo_ship",
+  "default_table_prefix": "meepo_ship"
+}

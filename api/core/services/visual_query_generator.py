@@ -387,7 +387,7 @@ def _build_json_table_join_clause(
     index: int,
 ) -> str:
     if not json_config.columns:
-        raise ValueError("JSON_TABLE configuration需要至少一个column定义")
+        raise ValueError("JSON_TABLE configuration requires at least one column definition")
 
     alias = json_config.alias or f"json_table_{index + 1}"
     alias_sql = _quote_identifier(alias)
@@ -514,7 +514,7 @@ def _generate_pivot_base_sql(
     ordered_columns = _deduplicate_preserve_order(required_columns)
 
     if not ordered_columns:
-        raise ValueError("Pivot分析至少需要选择一个指标或维度column")
+        raise ValueError("Pivot analysis requires at least one metric or dimension column")
 
     # 支持计算column：如果 required_columns 中包含与 calculated_fields 同名的column，
     # 则在 SELECT 中使用table达式 AS 别名，而不是裸column名
@@ -603,7 +603,7 @@ def _format_literal(value: Optional[Union[str, int, float]]) -> str:
 
     if isinstance(value, (int, float)):
         if isinstance(value, float) and value == float("inf"):
-            raise ValueError("浮点值不能为无穷大")
+            raise ValueError("Float value cannot be infinity")
         return str(value)
 
     # Escape single quotes
@@ -720,14 +720,14 @@ def _generate_pivot_transformation_sql(
                 return native_candidate
         # 如果自动采样也failed，返回error
         raise ValueError(
-            "未满足原生PIVOT条件（需要单一column维度和column值集合）；"
-            "请填写‘column值顺序’或设置‘column数量上限’后retry"
+            "Native PIVOT conditions not met (requires single column dimension and column value set); "
+            "please fill in 'column value order' or set 'column count limit' and retry"
         )
 
     # 如果到达这里，说明原生PIVOT和自动采样都failed了
     raise ValueError(
-        "未满足原生PIVOT条件（需要单一column维度和column值集合）；"
-        "请填写‘column值顺序’或设置‘column数量上限’后retry"
+        "Native PIVOT conditions not met (requires single column dimension and column value set); "
+        "please fill in 'column value order' or set 'column count limit' and retry"
     )
 
 
@@ -1049,7 +1049,7 @@ def _build_aggregation_expression(
         return f"LAST_VALUE({column_expr}) OVER (ORDER BY {column_expr})"
 
     else:
-        raise ValueError(f"不支持的聚合函数: {func}")
+        raise ValueError(f"Unsupported aggregation function: {func}")
 
 
 def _build_where_clause(
@@ -1167,14 +1167,14 @@ def _build_filter_condition(
         if value_type == FilterValueType.COLUMN:
             right_column = getattr(filter_config, "right_column", None)
             if not right_column:
-                raise ValueError("column对column比较missing right_column parameter")
+                raise ValueError("Column-to-column comparison requires right_column parameter")
             right = _format_identifier(right_column)
             right_expr = _apply_column_cast_sql(right, right_column, casts_map)
             return f"{column_expr} {operator} {right_expr}"
         elif value_type == FilterValueType.EXPRESSION:
             expression = getattr(filter_config, "expression", None)
             if not expression:
-                raise ValueError("table达式比较missing expression parameter")
+                raise ValueError("Expression comparison requires expression parameter")
             expr_with_casts = _apply_casts_to_expression_text(expression, casts_map)
             expr = _wrap_expression(expr_with_casts)
             expr = _apply_cast(expr, cast_target)
@@ -1411,7 +1411,7 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
 
         column_row = columns_df[columns_df["column_name"] == column_name]
         if column_row.empty:
-            raise ValueError(f"column '{column_name}' 在table '{table_name}' 中does not exist")
+            raise ValueError(f"Column '{column_name}' does not exist in table '{table_name}'")
 
         data_type = column_row.iloc[0]["column_type"]
 
@@ -1511,7 +1511,7 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
 
     except Exception as e:
         logger.error(f"Failed to get column statistics: {str(e)}")
-        raise ValueError(f"gettingcolumn统计infofailed: {str(e)}")
+        raise ValueError(f"Failed to get column statistics: {str(e)}")
 
 
 def get_table_metadata(table_name: str, con, use_cache: bool = True) -> TableMetadata:
@@ -1571,7 +1571,7 @@ def get_table_metadata(table_name: str, con, use_cache: bool = True) -> TableMet
         )
     except Exception as e:
         logger.error(f"Failed to get table metadata: {str(e)}")
-        raise ValueError(f"gettingtable元datafailed: {str(e)}")
+        raise ValueError(f"Failed to get table metadata: {str(e)}")
 
 
 def estimate_query_performance(config: VisualQueryConfig, con) -> PerformanceEstimate:
@@ -1707,7 +1707,7 @@ class SetOperationQueryGenerator:
             set_query = f" {operation} ".join(subqueries)
 
             self.logger.info(
-                f"生成集合操作query: {operation_type}, table数量: {len(tables)}"
+                f"Generated set operation query: {operation_type}, table count: {len(tables)}"
             )
             return set_query
 
@@ -1775,10 +1775,10 @@ class SetOperationQueryGenerator:
 
         # 验证table数量
         if len(tables) < 2:
-            raise ValueError("集合操作至少需要两个table")
+            raise ValueError("Set operation requires at least two tables")
 
         if len(tables) > 10:
-            raise ValueError("集合操作最多支持10个table")
+            raise ValueError("Set operation supports a maximum of 10 tables")
 
         # 验证BY NAME模式
         if use_by_name:
@@ -1786,7 +1786,7 @@ class SetOperationQueryGenerator:
                 SetOperationType.UNION,
                 SetOperationType.UNION_ALL,
             ]:
-                raise ValueError("只有UNION和UNION ALL支持BY NAME模式")
+                raise ValueError("Only UNION and UNION ALL support BY NAME mode")
 
         # 验证column兼容性（非BY NAME模式）
         if not use_by_name:
@@ -1813,8 +1813,8 @@ class SetOperationQueryGenerator:
 
             if len(first_columns) != len(table_columns):
                 raise ValueError(
-                    f"table {table.table_name} 的column数量({len(table_columns)}) "
-                    f"与第一个table {first_table.table_name} 的column数量({len(first_columns)})不匹配"
+                    f"Table {table.table_name} column count ({len(table_columns)}) "
+                    f"does not match first table {first_table.table_name} column count ({len(first_columns)})"
                 )
 
     def estimate_result_rows(self, config: SetOperationConfig, connection=None) -> int:
