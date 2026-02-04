@@ -69,6 +69,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [structureData, setStructureData] = React.useState<any[]>([]);
   const [indexData, setIndexData] = React.useState<any[]>([]); // Added indexData state
+  const [tableComment, setTableComment] = React.useState<string | null>(null); // Added tableComment state
   const [loadingStructure, setLoadingStructure] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const isExternal = table.source === 'external';
@@ -87,6 +88,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
     setLoadingStructure(true);
     setStructureData([]);
     setIndexData([]);
+    setTableComment(null);
 
     try {
       if (isExternal && table.connection?.id) {
@@ -98,9 +100,12 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         if (!resp.ok) {
           throw new Error(await resp.text());
         }
-        const data = await resp.json();
-        setStructureData(data?.columns || []);
-        setIndexData(data?.indexes || []); // Set index data
+        const result = await resp.json();
+        // API response structure: { success, data: { columns, indexes, ... }, ... }
+        const tableData = result?.data || result;
+        setStructureData(tableData?.columns || []);
+        setIndexData(tableData?.indexes || []); // Set index data
+        setTableComment(tableData?.table_comment || null); // Set table comment
       } else {
         // DuckDB: 查询表结构 - 使用双引号包裹表名以支持特殊字符
         // 注意：DESCRIBE 语句不需要 LIMIT，所以 is_preview 设为 false
@@ -227,12 +232,17 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
 
       {/* 查看结构对话框 */}
       <Dialog open={showStructure} onOpenChange={setShowStructure}>
-        <DialogContent className="max-w-2xl">
-          <Tabs defaultValue="columns">
-            <div className="flex items-center justify-between px-6 pt-4">
+        <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col p-0">
+          <Tabs defaultValue="columns" className="flex flex-col h-full overflow-hidden">
+            <div className="flex flex-col px-6 pt-6 gap-2 shrink-0">
               <DialogTitle className="text-lg font-semibold">{t('dataSource.tableStructure', { tableName: table.name })}</DialogTitle>
+              {tableComment && (
+                <div className="text-sm text-muted-foreground break-all bg-muted/30 p-2 rounded-md border text-xs max-h-[100px] overflow-y-auto">
+                  {tableComment}
+                </div>
+              )}
             </div>
-            <div className="px-6 pb-2">
+            <div className="px-6 pb-2 shrink-0">
               <TabsList className="w-full justify-start border-b border-border rounded-none h-auto p-0 bg-transparent">
                 <TabsTrigger
                   value="columns"
@@ -267,6 +277,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
                           <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.columnType')}</th>
                           <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.nullable')}</th>
                           <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.key')}</th>
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.comment')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -291,6 +302,9 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
                                   UNI
                                 </span>
                               ) : row.key || row.Key || ''}
+                            </td>
+                            <td className="px-4 py-2 text-muted-foreground text-xs break-all max-w-[200px]">
+                              {row.comment || row.Comment || ''}
                             </td>
                           </tr>
                         ))}

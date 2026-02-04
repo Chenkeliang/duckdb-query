@@ -9,16 +9,7 @@ export interface SchemaTable {
   row_count?: number;
 }
 
-/**
- * API 响应类型
- */
-interface SchemaTablesResponse {
-  success: boolean;
-  connection_id: string;
-  schema: string;
-  tables: SchemaTable[];
-  total_tables: number;
-}
+
 
 /**
  * 获取 schema 下的表列表
@@ -28,10 +19,10 @@ const fetchSchemaTables = async (
   schema: string
 ): Promise<SchemaTable[]> => {
   // 移除 db_ 前缀（如果存在）
-  const actualConnectionId = connectionId.startsWith('db_') 
-    ? connectionId.substring(3) 
+  const actualConnectionId = connectionId.startsWith('db_')
+    ? connectionId.substring(3)
     : connectionId;
-  
+
   // 如果 schema 为空，使用旧的 API 获取所有表
   const url = schema
     ? `/api/databases/${actualConnectionId}/schemas/${schema}/tables`
@@ -46,10 +37,12 @@ const fetchSchemaTables = async (
   const data = await response.json();
 
   // 兼容不同的 API 响应格式
-  // 标准格式: { success: true, data: { tables: [...] } }
-  // 旧格式: { tables: [...] }
-  const tables = data.data?.tables || data.tables;
-  
+  // 兼容不同的 API 响应格式
+  // 标准格式: { success: true, data: { items: [...] } }
+  // 旧格式: { tables: [...] } or { data: { tables: [...] } }
+  const responseData = data.data || data;
+  const tables = responseData.items || responseData.tables;
+
   if (tables) {
     return tables.map((t: any) => ({
       name: t.name || t.table_name,

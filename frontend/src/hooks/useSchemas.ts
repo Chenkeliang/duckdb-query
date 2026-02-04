@@ -8,36 +8,29 @@ export interface Schema {
   table_count?: number;
 }
 
-/**
- * API 响应类型
- */
-interface SchemasResponse {
-  success: boolean;
-  connection_id: string;
-  schemas: Schema[];
-  total_schemas: number;
-}
+
 
 /**
  * 获取 schemas 列表
  */
 const fetchSchemas = async (connectionId: string): Promise<Schema[]> => {
   // 移除 db_ 前缀（如果存在）
-  const actualConnectionId = connectionId.startsWith('db_') 
-    ? connectionId.substring(3) 
+  const actualConnectionId = connectionId.startsWith('db_')
+    ? connectionId.substring(3)
     : connectionId;
-  
+
   const response = await fetch(`/api/databases/${actualConnectionId}/schemas`);
-  
+
   if (!response.ok) {
     throw new Error('获取 schemas 列表失败');
   }
-  
+
   const data = await response.json();
   // 兼容不同的 API 响应格式
-  // 标准格式: { success: true, data: { schemas: [...] } }
-  // 旧格式: { schemas: [...] }
-  return data.data?.schemas || data.schemas || [];
+  // 标准格式: { success: true, data: { items: [...] } }
+  // 旧格式: { schemas: [...] } or { data: { schemas: [...] } }
+  const responseData = data.data || data;
+  return responseData.items || responseData.schemas || [];
 };
 
 /**

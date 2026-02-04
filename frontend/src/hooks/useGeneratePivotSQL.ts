@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import {
     VisualQueryConfig,
     PivotConfig,
@@ -36,7 +36,8 @@ export const useGeneratePivotSQL = () => {
                 throw new Error(errorData.detail || "Failed to generate pivot SQL");
             }
 
-            return response.json();
+            const result = await response.json();
+            return result.data || result;
         },
     });
 };

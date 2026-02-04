@@ -248,6 +248,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     dataGridRef.current?.exportDataAsCsv();
   }, []);
 
+  // DataGrid 导出 Excel
+  const handleDataGridExportExcel = useCallback(() => {
+    dataGridRef.current?.exportDataAsExcel();
+  }, []);
+
   // DataGrid 导出 JSON
   const handleDataGridExportJSON = useCallback(() => {
     dataGridRef.current?.exportDataAsJson();
@@ -398,6 +403,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           onDataGridToggleColumn={useNewDataGrid ? handleDataGridToggleColumn : undefined}
           onDataGridShowAllColumns={useNewDataGrid ? handleDataGridShowAllColumns : undefined}
           onDataGridExportCSV={useNewDataGrid ? handleDataGridExportCSV : undefined}
+          onDataGridExportExcel={useNewDataGrid ? handleDataGridExportExcel : undefined}
           onDataGridExportJSON={useNewDataGrid ? handleDataGridExportJSON : undefined}
           onDataGridAutoFitColumns={useNewDataGrid ? handleDataGridAutoFitColumns : undefined}
           onDataGridFitToWidth={useNewDataGrid ? handleDataGridFitToWidth : undefined}

@@ -77,10 +77,19 @@ def normalize_dataframe_output(df: pd.DataFrame) -> List[Dict[str, Any]]:
     if not numeric_cols.empty:
         normalized[numeric_cols.columns] = numeric_cols.replace([np.inf, -np.inf], np.nan)
 
+    object_cols = normalized.select_dtypes(include=["object"]).columns.tolist()
+    object_cols_backup = {col: normalized[col].copy() for col in object_cols}
+
     try:
         normalized = normalized.convert_dtypes()
     except Exception:
         normalized = normalized.astype(object)
+
+    # 恢复 object 列的原始值（避免日期字符串被转换后重新格式化）
+    for col in object_cols_backup:
+        if col in normalized.columns:
+            normalized[col] = object_cols_backup[col]
+
 
     datetime_cols = [
         col for col in normalized.columns if pd.api.types.is_datetime64_any_dtype(normalized[col])

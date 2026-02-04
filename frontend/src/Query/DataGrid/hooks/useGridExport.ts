@@ -47,6 +47,8 @@ export interface UseGridExportReturn {
   exportCSV: (options?: ExportOptions) => void;
   /** 导出为 JSON */
   exportJSON: (options?: ExportOptions) => void;
+  /** 导出为 Excel */
+  exportExcel: (options?: ExportOptions) => void;
   /** 是否可以导出选中数据 */
   canExportSelected: boolean;
   /** 当前预览数据行数 */
@@ -55,6 +57,8 @@ export interface UseGridExportReturn {
   exceedsClientLimit: boolean;
   /** 获取导出数据（用于预览） */
   getExportData: (scope?: ExportScope) => Record<string, unknown>[];
+  /** 下载文件工具函数 */
+  downloadFile: (content: string, filename: string, mimeType: string) => void;
 }
 
 /** 默认最大客户端导出行数 */
@@ -72,17 +76,31 @@ export function serializeCellValue(value: unknown): string {
   if (value === null || value === undefined) {
     return '';
   }
-  
+
+  // 优先处理字符串：保持原始格式（解决日期字符串被转换为 ISO 格式的问题）
+  if (typeof value === 'string') {
+    return value;
+  }
+
   // 处理 BigInt（JSON.stringify 会崩溃）
   if (typeof value === 'bigint') {
     return value.toString();
   }
-  
-  // 处理 Date
+
+  // 处理 Date（仅对真正的 Date 对象生效）
   if (value instanceof Date) {
-    return value.toISOString();
+    // 使用本地时间格式，避免 toISOString() 的时区转换
+    const pad = (n: number, d = 2) => n.toString().padStart(d, '0');
+    const y = value.getFullYear();
+    const m = pad(value.getMonth() + 1);
+    const day = pad(value.getDate());
+    const h = pad(value.getHours());
+    const min = pad(value.getMinutes());
+    const s = pad(value.getSeconds());
+    const ms = pad(value.getMilliseconds(), 3);
+    return `${y}-${m}-${day} ${h}:${min}:${s}.${ms}`;
   }
-  
+
   // 处理数组和对象（LIST、STRUCT 类型）
   if (typeof value === 'object') {
     try {
@@ -91,7 +109,7 @@ export function serializeCellValue(value: unknown): string {
       return String(value);
     }
   }
-  
+
   return String(value);
 }
 
@@ -101,15 +119,25 @@ export function serializeCellValue(value: unknown): string {
  * 规则：
  * - 如果值包含逗号、换行或双引号，需要用双引号包裹
  * - 值中的双引号需要转义为两个双引号
+ * - 对于带毫秒的日期时间字符串，使用 Excel 公式格式 ="xxx" 强制作为文本处理
+ *   避免 WPS/Excel 将其解析为日期数值导致显示异常
  */
 function escapeCSVValue(value: unknown): string {
   const str = serializeCellValue(value);
+
+  // 检测带毫秒的日期时间字符串：YYYY-MM-DD HH:MM:SS.mmm
+  // 使用 Excel 公式格式 ="xxx" 强制作为文本，防止 WPS/Excel 自动解析
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+$/.test(str)) {
+    return `="${str}"`;
+  }
+
   // 如果包含逗号、换行或引号，需要用引号包裹
   if (str.includes(',') || str.includes('\n') || str.includes('\r') || str.includes('"')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
 }
+
 
 /**
  * JSON.stringify 的 replacer，处理 BigInt
@@ -184,7 +212,7 @@ export function useGridExport({
   maxClientExportRows = DEFAULT_MAX_CLIENT_EXPORT_ROWS,
 }: UseGridExportOptions): UseGridExportReturn {
   const { t } = useTranslation('common');
-  
+
   // 获取要导出的数据
   const getExportData = useCallback(
     (scope: ExportScope = 'all'): Record<string, unknown>[] => {
@@ -253,6 +281,79 @@ export function useGridExport({
     [columns, getExportData, maxClientExportRows, t]
   );
 
+  // 导出 Excel (.xlsx)
+  const exportExcel = useCallback(
+    (options: ExportOptions = {}) => {
+      // 动态导入 xlsx 库，避免增加首屏体积
+      import('xlsx').then((XLSX) => {
+        const {
+          filename = generateFilename(),
+          scope = 'all',
+          includeHeader = true,
+        } = options;
+
+        const exportData = getExportData(scope);
+        if (exportData.length === 0) {
+          showErrorToast(t, 'EXPORT_NO_DATA', t('query.export.noData'));
+          return;
+        }
+
+        if (exportData.length > maxClientExportRows) {
+          toast.warning(
+            t('query.export.largeDataWarning', { rowCount: exportData.length.toLocaleString() })
+          );
+        }
+
+        try {
+          // 准备数据：手动构建数组以控制列顺序
+          const sheetData: unknown[][] = [];
+
+          // 表头
+          if (includeHeader) {
+            sheetData.push(columns);
+          }
+
+          // 数据行
+          exportData.forEach(row => {
+            const rowArray = columns.map(col => {
+              const val = row[col];
+              // 尝试保持原始类型，让 Excel 自己处理格式
+              // 对于日期字符串，尝试解析为 Date 对象以便 Excel 正确格式化
+              if (typeof val === 'string') {
+                // 匹配 YYYY-MM-DD HH:MM:SS.mmm
+                if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(val)) {
+                  // 保持字符串，让 Excel 自动识别，或者转换为 Date
+                  return val;
+                }
+              }
+              return val;
+            });
+            sheetData.push(rowArray);
+          });
+
+          // 创建工作簿
+          const wb = XLSX.utils.book_new();
+          const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+          // 添加工作表
+          XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+
+          // 导出文件
+          XLSX.writeFile(wb, `${filename}.xlsx`);
+
+          showSuccessToast(t, 'EXPORT_SUCCESS', t('query.export.success', { rowCount: exportData.length.toLocaleString() }));
+        } catch (error) {
+          console.error('Excel 导出失败:', error);
+          showErrorToast(t, 'EXPORT_FAILED', t('query.export.failed'));
+        }
+      }).catch(err => {
+        console.error('Failed to load xlsx library:', err);
+        showErrorToast(t, 'EXPORT_FAILED', 'Failed to load Excel export library');
+      });
+    },
+    [columns, getExportData, maxClientExportRows, t]
+  );
+
   // 导出 JSON
   const exportJSON = useCallback(
     (options: ExportOptions = {}) => {
@@ -299,18 +400,14 @@ export function useGridExport({
     [selectedRows]
   );
 
-  // 是否超过客户端导出限制
-  const exceedsClientLimit = useMemo(
-    () => data.length > maxClientExportRows,
-    [data.length, maxClientExportRows]
-  );
-
   return {
     exportCSV,
     exportJSON,
+    exportExcel,
     canExportSelected,
     previewRowCount: data.length,
-    exceedsClientLimit,
+    exceedsClientLimit: data.length > maxClientExportRows,
     getExportData,
+    downloadFile,
   };
 }

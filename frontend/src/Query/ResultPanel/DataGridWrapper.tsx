@@ -74,6 +74,8 @@ export interface DataGridWrapperProps {
 export interface DataGridApi {
   /** 导出为 CSV */
   exportDataAsCsv: (params?: { fileName?: string }) => void;
+  /** 导出为 Excel */
+  exportDataAsExcel: (params?: { fileName?: string }) => void;
   /** 导出为 JSON */
   exportDataAsJson: (params?: { fileName?: string }) => void;
   /** 遍历筛选后的节点 */
@@ -164,7 +166,7 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
   });
 
   // 导出功能
-  const { exportCSV, exportJSON } = useGridExport({
+  const { exportCSV, exportJSON, exportExcel } = useGridExport({
     data: processedData,
     columns: visibleColumns,
   });
@@ -172,9 +174,9 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
   // 将 AG Grid 列定义转换为 DataGrid 列定义（只包含可见列）
   const convertedColumns = useMemo((): DataGridColumnDef[] | undefined => {
     if (!columnDefs) return undefined;
-    
+
     return columnDefs
-      .filter((col): col is AGGridColumnDef & { field: string } => 
+      .filter((col): col is AGGridColumnDef & { field: string } =>
         !!col.field && visibleColumns.includes(col.field)
       )
       .map((col) => ({
@@ -201,6 +203,10 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
       const fileName = params?.fileName || `export_${Date.now()}.csv`;
       exportCSV({ filename: fileName.replace('.csv', '') });
     },
+    exportDataAsExcel: (params) => {
+      const fileName = params?.fileName || `export_${Date.now()}.xlsx`;
+      exportExcel({ filename: fileName.replace('.xlsx', '') });
+    },
     exportDataAsJson: (params) => {
       const fileName = params?.fileName || `export_${Date.now()}.json`;
       exportJSON({ filename: fileName.replace('.json', '') });
@@ -216,7 +222,7 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
     autoFitAllColumns: () => dataGridInnerRef.current?.autoFitAllColumns(),
     fitToWidth: () => dataGridInnerRef.current?.fitToWidth(),
     resetColumns: () => dataGridInnerRef.current?.resetColumns(),
-  }), [processedData, exportCSV, exportJSON, columnVisibilityInfo, toggleColumn, showAllColumns]);
+  }), [processedData, exportCSV, exportJSON, exportExcel, columnVisibilityInfo, toggleColumn, showAllColumns]);
 
   // 创建稳定的 API 对象用于 onGridReady 回调
   const stableApi = useMemo((): DataGridApi => ({
@@ -224,6 +230,10 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
       const fileName = params?.fileName || `export_${Date.now()}.csv`;
       exportCSV({ filename: fileName.replace('.csv', '') });
     },
+    exportDataAsExcel: (params) => {
+      const fileName = params?.fileName || `export_${Date.now()}.xlsx`;
+      exportExcel({ filename: fileName.replace('.xlsx', '') });
+    },
     exportDataAsJson: (params) => {
       const fileName = params?.fileName || `export_${Date.now()}.json`;
       exportJSON({ filename: fileName.replace('.json', '') });
@@ -239,7 +249,7 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
     autoFitAllColumns: () => dataGridInnerRef.current?.autoFitAllColumns(),
     fitToWidth: () => dataGridInnerRef.current?.fitToWidth(),
     resetColumns: () => dataGridInnerRef.current?.resetColumns(),
-  }), [processedData, exportCSV, exportJSON, columnVisibilityInfo, toggleColumn, showAllColumns]);
+  }), [processedData, exportCSV, exportJSON, exportExcel, columnVisibilityInfo, toggleColumn, showAllColumns]);
 
   // 仅在首次渲染时调用 onGridReady（避免每次数据变化都重新调用）
   if (!hasCalledGridReady.current && onGridReadyRef.current) {

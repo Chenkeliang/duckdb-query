@@ -3,7 +3,7 @@
  * 使用 CodeMirror 6 实现 SQL 语法高亮和自动补全
  */
 
-import React, { useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EditorView, keymap, placeholder as placeholderExt } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
@@ -100,7 +100,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   // 调试：打印 schema 信息
   useEffect(() => {
     if (tables.length > 0) {
-      console.log('[SQLEditor] Autocomplete tables:', tables.length, 'tables');
+
     }
   }, [tables]);
 
@@ -314,17 +314,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
     });
   }, [schema]);
 
-  // 暴露方法
-  const focus = useCallback(() => {
-    editorRef.current?.focus();
-  }, []);
 
-  const getSelection = useCallback(() => {
-    const view = editorRef.current;
-    if (!view) return '';
-    const { from, to } = view.state.selection.main;
-    return view.state.doc.sliceString(from, to);
-  }, []);
 
   return (
     <div

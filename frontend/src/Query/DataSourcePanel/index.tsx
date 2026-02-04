@@ -211,25 +211,25 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                     title={t('dataSource.duckdbTables', 'DuckDB 表')}
                     count={groupedTables.normal.length}
                     defaultExpanded={true}
-	                  >
-	                    {groupedTables.normal.map((table: Table) => {
-	                      const tableObj = createDuckDBTable(table.name);
-	                      return (
-	                        <TableItem
-	                          key={table.name}
-	                          table={tableObj}
-	                          rowCount={table.row_count}
-	                          isSelected={isTableSelected(tableObj, selectedTables)}
-	                          selectionMode={selectionMode}
-	                          onSelect={onTableSelect}
-	                          onPreview={onPreview}
-	                          onDelete={handleDelete}
-	                          searchQuery={debouncedSearch}
-	                        />
-	                      );
-	                    })}
-	                  </TreeSection>
-	                )}
+                  >
+                    {groupedTables.normal.map((table: Table) => {
+                      const tableObj = createDuckDBTable(table.name);
+                      return (
+                        <TableItem
+                          key={table.name}
+                          table={tableObj}
+                          rowCount={table.row_count}
+                          isSelected={isTableSelected(tableObj, selectedTables)}
+                          selectionMode={selectionMode}
+                          onSelect={onTableSelect}
+                          onPreview={onPreview}
+                          onDelete={handleDelete}
+                          searchQuery={debouncedSearch}
+                        />
+                      );
+                    })}
+                  </TreeSection>
+                )}
 
                 {/* 系统表 */}
                 {groupedTables.system.length > 0 && (
@@ -238,25 +238,25 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                     title={t('dataSource.systemTables')}
                     count={groupedTables.system.length}
                     defaultExpanded={false}
-	                  >
-	                    {groupedTables.system.map((table: Table) => {
-	                      const tableObj = createDuckDBTable(table.name);
-	                      return (
-	                        <TableItem
-	                          key={table.name}
-	                          table={tableObj}
-	                          rowCount={table.row_count}
-	                          isSelected={isTableSelected(tableObj, selectedTables)}
-	                          selectionMode={selectionMode}
-	                          onSelect={onTableSelect}
-	                          onPreview={onPreview}
-	                          onDelete={handleDelete}
-	                          searchQuery={debouncedSearch}
-	                        />
-	                      );
-	                    })}
-	                  </TreeSection>
-	                )}
+                  >
+                    {groupedTables.system.map((table: Table) => {
+                      const tableObj = createDuckDBTable(table.name);
+                      return (
+                        <TableItem
+                          key={table.name}
+                          table={tableObj}
+                          rowCount={table.row_count}
+                          isSelected={isTableSelected(tableObj, selectedTables)}
+                          selectionMode={selectionMode}
+                          onSelect={onTableSelect}
+                          onPreview={onPreview}
+                          onDelete={handleDelete}
+                          searchQuery={debouncedSearch}
+                        />
+                      );
+                    })}
+                  </TreeSection>
+                )}
               </>
             )}
           </div>
@@ -264,7 +264,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       </div>
 
       {/* 底部操作按钮 */}
-      <div className="p-3 border-t border-border flex gap-2">
+      <div className="h-14 px-3 border-t border-border flex items-center gap-2">
         <Button
           variant="outline"
           size="sm"

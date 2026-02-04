@@ -105,6 +105,7 @@
     "columnType": "类型",
     "nullable": "可空",
     "key": "键类型",
+    "comment": "注释",
     "indexName": "索引名称",
     "indexType": "索引类型",
     "indexColumns": "包含列",

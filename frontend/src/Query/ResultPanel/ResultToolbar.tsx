@@ -90,6 +90,8 @@ export interface ResultToolbarProps {
   onDataGridShowAllColumns?: () => void;
   /** DataGrid 导出 CSV */
   onDataGridExportCSV?: () => void;
+  /** DataGrid 导出 Excel */
+  onDataGridExportExcel?: () => void;
   /** DataGrid 导出 JSON */
   onDataGridExportJSON?: () => void;
   /** DataGrid 自动列宽 */
@@ -145,6 +147,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
   onDataGridToggleColumn,
   onDataGridShowAllColumns,
   onDataGridExportCSV,
+  onDataGridExportExcel,
   onDataGridExportJSON,
   onDataGridAutoFitColumns,
   onDataGridFitToWidth,
@@ -466,7 +469,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
         )}
 
         {/* 导出按钮（DataGrid 模式） */}
-        {useNewDataGrid && (onDataGridExportCSV || onDataGridExportJSON) && (
+        {useNewDataGrid && (onDataGridExportCSV || onDataGridExportExcel || onDataGridExportJSON) && (
           <DropdownMenu>
             <DropdownMenuTrigger
               className="inline-flex items-center justify-center h-8 px-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
@@ -482,6 +485,11 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
               {onDataGridExportCSV && (
                 <DropdownMenuItem onClick={onDataGridExportCSV}>
                   {t('query.result.exportCSV', '导出 CSV')}
+                </DropdownMenuItem>
+              )}
+              {onDataGridExportExcel && (
+                <DropdownMenuItem onClick={onDataGridExportExcel}>
+                  {t('query.result.exportExcel', '导出 Excel')}
                 </DropdownMenuItem>
               )}
               {onDataGridExportJSON && (
