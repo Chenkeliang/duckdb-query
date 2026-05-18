@@ -483,6 +483,8 @@ async def execute_duckdb_query(
             "sql_executed": sql_query,
             "available_tables": available_tables,
             "saved_table": saved_table,
+            # 仅当预览模式且服务端自动追加了 LIMIT 时有值，供前端判断是否可能截断
+            "preview_limit_applied": limit,
         }
 
         # 性能日志
@@ -778,6 +780,7 @@ async def execute_federated_query(
     sql_query = request.sql.strip()
     sql_upper = sql_query.upper()
 
+    limit = None
     if request.is_preview and "LIMIT" not in sql_upper:
         limit = config_manager.get_app_config().max_query_rows
         sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
@@ -875,6 +878,7 @@ async def execute_federated_query(
             "attached_databases": attached_aliases,
             "sql_query": sql_query,
             "warnings": warnings if warnings else None,
+            "preview_limit_applied": limit,
         }
 
         if execution_time > 1000:

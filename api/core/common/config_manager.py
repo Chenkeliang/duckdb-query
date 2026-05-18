@@ -59,7 +59,7 @@ class AppConfig:
     """最大file上传大小限制，单位为字节"""
 
     max_query_rows: int = 10000
-    """页面queryresult最大行数，更大data量使用异步任务"""
+    """页面queryresult最大行数，更大data量使用异步任务（默认与 frontend/src/constants/queryLimits.ts 中 DEFAULT_MAX_QUERY_ROWS 一致）"""
 
     max_tables: int = 200
     """databasetable预览最大数量限制"""
