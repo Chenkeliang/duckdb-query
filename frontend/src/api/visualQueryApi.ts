@@ -14,6 +14,12 @@ import type {
     QueryResponse,
     NormalizedResponse
 } from './types';
+import type {
+    VisualQueryConfig as PivotVisualQueryConfig,
+    PivotConfig,
+    VisualQueryPreviewPayload,
+} from '@/types/visualQuery';
+import { VisualQueryMode } from '@/types/visualQuery';
 
 // ==================== Visual Query Builder ====================
 
@@ -73,6 +79,32 @@ export async function previewVisualQuery(
         };
     } catch (error) {
         throw handleApiError(error as never, '查询预览失败');
+    }
+}
+
+/**
+ * 透视模式预览：请求体与 PivotWorkbench 一致，返回解包后的 data 载荷（与后端 create_success_response.data 对齐）
+ */
+export async function previewPivotVisualQuery(
+    config: PivotVisualQueryConfig,
+    pivotConfig: PivotConfig,
+    limit: number
+): Promise<VisualQueryPreviewPayload> {
+    try {
+        const response = await apiClient.post('/api/visual-query/preview', {
+            config,
+            mode: VisualQueryMode.PIVOT,
+            pivot_config: pivotConfig,
+            limit,
+        });
+        const normalized = normalizeResponse<VisualQueryPreviewPayload>(response);
+        const body = normalized.data;
+        if (body.returned_rows == null && Array.isArray(body.data)) {
+            return { ...body, returned_rows: body.data.length };
+        }
+        return body;
+    } catch (error) {
+        throw handleApiError(error as never, '透视预览失败');
     }
 }
 

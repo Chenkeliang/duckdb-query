@@ -132,6 +132,7 @@ export {
 export {
     generateVisualQuery,
     previewVisualQuery,
+    previewPivotVisualQuery,
     validateVisualQueryConfig,
     listSqlFavorites,
     getSqlFavorite,

@@ -66,11 +66,13 @@ export interface GeneratedVisualQuery {
     estimated_rows?: number;
 }
 
-export interface PreviewResponse {
-    success: boolean;
-    data: any[] | null;
+export interface VisualQueryPreviewPayload {
+    data: Record<string, unknown>[] | null;
     columns: string[] | null;
+    /** 与查询匹配的总行数估计（COUNT），可能大于本次返回行数 */
     row_count: number;
+    /** 本响应实际返回的行数（LIMIT 之后）；旧后端缺省时由前端用 data.length 兜底 */
+    returned_rows?: number;
     estimated_time?: number | null;
     sql?: string | null;
     base_sql?: string | null;
@@ -79,3 +81,6 @@ export interface PreviewResponse {
     errors: string[];
     warnings: string[];
 }
+
+/** @deprecated 使用 VisualQueryPreviewPayload；保留别名供旧引用 */
+export type PreviewResponse = VisualQueryPreviewPayload;

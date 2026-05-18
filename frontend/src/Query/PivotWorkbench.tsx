@@ -62,6 +62,18 @@ export const PivotWorkbench: React.FC = () => {
         previewRowLimit: maxQueryRows,
     });
 
+    const previewSummaryText = React.useMemo(() => {
+        if (!data) {
+            return t("pivot.previewReadyHint", "配置字段后点击「运行」查看结果");
+        }
+        const returned = data.returned_rows ?? data.data?.length ?? 0;
+        const total = data.row_count ?? returned;
+        if (total > returned) {
+            return t("pivot.previewRowsPartial", { returned, total });
+        }
+        return t("pivot.previewRows", { count: returned });
+    }, [data, t]);
+
     // Sensors
     const sensors = useSensors(
         useSensor(MouseSensor, {
@@ -273,8 +285,10 @@ export const PivotWorkbench: React.FC = () => {
                             {/* Action Bar */}
                             <div className="flex items-center justify-between px-4 py-2 border-b">
                                 <div className="text-sm text-muted-foreground">
-                                    {data ? `${data.row_count} rows found` : "Configure and run to see results"}
-                                    {data?.estimated_time ? ` (${data.estimated_time.toFixed(3)}s)` : ""}
+                                    {previewSummaryText}
+                                    {data?.estimated_time != null && typeof data.estimated_time === "number"
+                                        ? ` (${data.estimated_time.toFixed(3)}s)`
+                                        : ""}
                                 </div>
                                 <Button onClick={handleRun} disabled={!selectedTable || isFetching} size="sm">
                                     {isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
@@ -292,9 +306,7 @@ export const PivotWorkbench: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* We reuse DataGrid. We need to adapt data structure if necessary. 
-                                PreviewResponse returns: data: any[], columns: string[]
-                            */}
+                                {/* 数据与列来自 VisualQueryPreviewPayload（与 /api/visual-query/preview 的 data 载荷一致） */}
                                 {data && data.data && (
                                     <DataGrid
                                         data={data.data}
