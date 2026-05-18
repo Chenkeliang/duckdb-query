@@ -17,6 +17,8 @@ from models.query_models import (
     DataSource,
 )
 
+from core.common.utils import handle_non_serializable_data
+
 logger = logging.getLogger(__name__)
 
 # 导入连接池管理器
@@ -1364,28 +1366,3 @@ def validate_query_syntax(query: str, con=None) -> Tuple[bool, str]:
         return True, "Query syntax correct"
     except Exception as e:
         return False, f"Query syntax error: {str(e)}"
-
-
-def handle_non_serializable_data(obj):
-    """
-    处理不可序列化的数据类型，转换为JSON可序列化的格式
-    """
-    import json
-    import decimal
-    import numpy as np
-    from datetime import datetime, date
-
-    if isinstance(obj, (datetime, date)):
-        return obj.isoformat()
-    elif isinstance(obj, decimal.Decimal):
-        return float(obj)
-    elif isinstance(obj, np.integer):
-        return int(obj)
-    elif isinstance(obj, np.floating):
-        return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    elif pd.isna(obj):
-        return None
-    else:
-        return str(obj)

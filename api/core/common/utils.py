@@ -13,17 +13,41 @@ from uuid import UUID
 
 DATETIME_OUTPUT_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
 
+# JavaScript Number.MAX_SAFE_INTEGER — 超过则序列化为字符串，避免前端精度丢失
+_JS_MAX_SAFE_INT = 9007199254740991
+
 
 def jsonable_encoder(obj: Any) -> Any:
     """
-    将对象转换为JSON可序列化的格式
+    将对象转换为 JSON 可序列化的格式（供 API 响应 / 记录列表使用）。
+
+    契约说明（与 DuckDB 表结构、JOIN 元数据区分）：
+    - 本函数只影响「查询结果行」在 HTTP JSON 中的标量形态，不改变数据库里列的
+      DuckDB 类型；Join / 可视化查询所依赖的列类型来自表结构接口（如列元数据），
+      与此处是否输出 str 无直接耦合。
+    - 对超出 JS 安全整数或 Decimal 的值使用 str，可避免前端 Number 精度丢失；
+      若前端用 `===` 将单元格与另一来源的 number 比较、或仅识别 `typeof === 'number'`
+      做数值统计，需改为宽松解析或依赖服务端类型字段。
     """
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
     elif isinstance(obj, decimal.Decimal):
-        return float(obj)
+        # 使用十进制字符串，避免 float 精度损失；前端按字符串展示/筛选
+        try:
+            if hasattr(obj, "is_finite") and not obj.is_finite():
+                return None
+        except (decimal.InvalidOperation, ValueError, AttributeError):
+            return None
+        return str(obj)
     elif isinstance(obj, np.integer):
-        return int(obj)
+        val = int(obj)
+        if abs(val) > _JS_MAX_SAFE_INT:
+            return str(val)
+        return val
+    elif isinstance(obj, int) and not isinstance(obj, bool):
+        if abs(obj) > _JS_MAX_SAFE_INT:
+            return str(obj)
+        return obj
     elif isinstance(obj, np.floating):
         # 检查 NaN 和 Inf
         if np.isnan(obj) or np.isinf(obj):

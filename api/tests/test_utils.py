@@ -4,7 +4,6 @@ import sys
 from decimal import Decimal
 
 import pandas as pd
-import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -35,7 +34,10 @@ def test_normalize_dataframe_output_handles_nullable_numeric_and_datetime():
     assert len(records) == 3
     assert records[0]["int_col"] == 1
     assert records[1]["int_col"] is None
-    assert records[0]["decimal_col"] == pytest.approx(1.23)
+    # Decimal 序列化为十进制字符串，避免 JSON 经 float 产生精度损失
+    assert records[0]["decimal_col"] == "1.23"
+    assert records[1]["decimal_col"] == "4.56"
+    assert records[2]["decimal_col"] == "0"
     assert records[0]["timestamp_col"] == "2024-02-01 12:34:56.12345"
     assert records[2]["timestamp_col"] == "2024-02-03 00:00:00"
     assert records[1]["timestamp_col"] is None
