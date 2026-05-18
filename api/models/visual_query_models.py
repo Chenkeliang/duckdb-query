@@ -836,13 +836,21 @@ class PreviewRequest(BaseModel):
 class PreviewResponse(BaseModel):
     """Response model for data preview"""
 
-    success: bool = Field(..., description="Whether the operation was successful")
+    success: bool = Field(
+        default=True,
+        description="Whether the operation was successful (optional in API data payload)",
+    )
     data: Optional[List[Dict[str, Any]]] = Field(None, description="Preview data")
     columns: Optional[List[str]] = Field(
         None, description="List of columns returned in the preview"
     )
     row_count: Optional[int] = Field(
-        None, description="Total number of rows that would be returned"
+        None,
+        description="Estimated total rows matching the query (may exceed preview limit)",
+    )
+    returned_rows: Optional[int] = Field(
+        None,
+        description="Number of rows actually returned in this preview response (after LIMIT)",
     )
     estimated_time: Optional[float] = Field(
         None, description="Estimated execution time in seconds"

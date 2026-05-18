@@ -153,8 +153,10 @@ class TestEndToEndWorkflows:
         
         preview_response = response.json()
         assert preview_response["success"] is True
-        assert len(preview_response["data"]) <= 10
-        assert preview_response["row_count"] == 25
+        inner = preview_response["data"]
+        assert len(inner["data"]) <= 10
+        assert inner["row_count"] == 25
+        assert inner["returned_rows"] == len(inner["data"])
         
         # Step 3: Execute full query (simulated through regular query API)
         query_request = {

@@ -557,11 +557,13 @@ async def preview_visual_query(
         combined_warnings = list(validation_result.warnings or [])
         combined_warnings.extend(generation.warnings)
 
+        returned_rows = len(data)
         return create_success_response(
             data={
                 "data": data,
                 "columns": columns,
                 "row_count": total_rows,
+                "returned_rows": returned_rows,
                 "estimated_time": estimated_time,
                 "sql": preview_sql,
                 "base_sql": generation.base_sql,

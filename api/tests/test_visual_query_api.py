@@ -237,11 +237,13 @@ class TestVisualQueryPreview:
             response = client.post("/api/visual-query/preview", json=config_data)
 
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert len(data["data"]) == 3
-            assert data["row_count"] == 1000
-            assert data["estimated_time"] == 0.2
+            envelope = response.json()
+            assert envelope["success"] is True
+            inner = envelope["data"]
+            assert len(inner["data"]) == 3
+            assert inner["row_count"] == 1000
+            assert inner["returned_rows"] == 3
+            assert inner["estimated_time"] == 0.2
     
     def test_preview_query_validation_error(self):
         """Test preview with validation errors - Pydantic rejects invalid config"""
