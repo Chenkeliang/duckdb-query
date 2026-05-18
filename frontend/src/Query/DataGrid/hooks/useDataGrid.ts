@@ -37,7 +37,8 @@ const customFilterFn: FilterFn<Record<string, unknown>> = (row, columnId, filter
       : new Set(Array.isArray(selectedValues) ? selectedValues : []);
 
     if (!valuesSet || valuesSet.size === 0) {
-      return mode === 'exclude';
+      // 未选任何值：包含模式视为「不过滤」；排除模式保留原语义（空集不排除任何项）
+      return true;
     }
 
     const isSelected = valuesSet.has(cellStr);
@@ -158,6 +159,12 @@ function toTanStackColumns(columns: ColumnDef[]): TanStackColumnDef<Record<strin
   }));
 }
 
+/** 从首行推导列名字典序键，仅在列集合变化时变化，避免每次查询刷新都重建 TanStack 列模型 */
+function getRowSchemaKey(rows: Record<string, unknown>[]): string {
+  if (!rows.length) return '';
+  return Object.keys(rows[0]).slice().sort().join('\u0001');
+}
+
 export function useDataGrid({
   data,
   columns: propColumns,
@@ -171,11 +178,26 @@ export function useDataGrid({
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(initialColumnSizing);
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
 
-  // 列定义
+  const inferredSchemaKey = useMemo(() => getRowSchemaKey(data), [data]);
+
+  const columnsSpecKey = useMemo(() => {
+    if (propColumns?.length) {
+      return propColumns
+        .map(
+          (c) =>
+            `${c.field}\u0001${c.headerName ?? ''}\u0001${String(c.width ?? '')}\u0001${c.sortable !== false}\u0001${c.filterable !== false}`
+        )
+        .join('|');
+    }
+    return `__infer__${inferredSchemaKey}`;
+  }, [propColumns, inferredSchemaKey]);
+
+  // 列定义：仅在列规格键变化时重建，减轻列宽/排序随数据刷新「乱跳」
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 列结构由 columnsSpecKey 刻画；省略 `data` 避免每次行刷新重建列模型
   const columns = useMemo(() => {
-    const cols = propColumns || inferColumns(data);
+    const cols = propColumns?.length ? propColumns : inferColumns(data);
     return toTanStackColumns(cols);
-  }, [propColumns, data]);
+  }, [columnsSpecKey, propColumns]);
 
   // 所有列字段名
   const allColumns = useMemo(() => {
@@ -197,7 +219,7 @@ export function useDataGrid({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    columnResizeMode: 'onChange',
+    columnResizeMode: 'onEnd',
     filterFns: {
       customFilter: customFilterFn,
     },

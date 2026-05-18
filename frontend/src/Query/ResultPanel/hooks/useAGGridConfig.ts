@@ -170,15 +170,39 @@ export const useAGGridConfig = ({
 }: UseAGGridConfigOptions): UseAGGridConfigReturn => {
   const { detectColumnTypes } = useColumnTypeDetection();
 
-  // 检测列类型
-  const columnTypes = useMemo(() => {
+  const schemaKey = useMemo(() => {
+    if (!data || data.length === 0) {
+      return '';
+    }
+    return Object.keys(data[0])
+      .slice()
+      .sort()
+      .join('|');
+  }, [data]);
+
+  // 检测列类型（原始结果仅用于返回与列定义闭包）
+  const columnTypesRaw = useMemo(() => {
     if (!data || data.length === 0) {
       return {};
     }
     return detectColumnTypes(data, sampleSize);
   }, [data, sampleSize, detectColumnTypes]);
 
-  // 生成列定义
+  /** 类型指纹：避免 detect 每次返回新对象导致 columnDefs 无意义重建 */
+  const columnTypesKey = useMemo(
+    () =>
+      Object.keys(columnTypesRaw)
+        .sort()
+        .map((k) => {
+          const t = columnTypesRaw[k];
+          if (!t) return `${k}:string:0`;
+          return `${k}:${t.type}:${t.nullable ? 1 : 0}`;
+        })
+        .join('\u0001'),
+    [columnTypesRaw]
+  );
+
+  // 生成列定义（结构仅随列名集合与类型指纹变化）
   const columnDefs = useMemo((): ColDef[] => {
     if (!data || data.length === 0) {
       return [];
@@ -187,7 +211,7 @@ export const useAGGridConfig = ({
     const columns = Object.keys(data[0]);
 
     return columns.map((field): ColDef => {
-      const typeInfo = columnTypes[field];
+      const typeInfo = columnTypesRaw[field];
       const type = typeInfo?.type || 'string';
       const override = columnOverrides[field] || {};
 
@@ -246,11 +270,12 @@ export const useAGGridConfig = ({
 
       return colDef;
     });
-  }, [data, columnTypes, columnOverrides, enableFilters, enableSorting]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 依赖 schemaKey/columnTypesKey；`data`/`columnTypesRaw` 由指纹变化时的闭包提供
+  }, [schemaKey, columnTypesKey, columnOverrides, enableFilters, enableSorting]);
 
   return {
     columnDefs,
-    columnTypes,
+    columnTypes: columnTypesRaw,
     loading: false,
   };
 };

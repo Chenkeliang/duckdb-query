@@ -55,6 +55,14 @@ export function useGridStats({
             const value = data[row]?.[colName];
             if (typeof value === 'number' && !isNaN(value)) {
               values.push(value);
+            } else if (typeof value === 'string') {
+              const t = value.replace(/,/g, '').trim();
+              if (/^-?\d+(\.\d+)?$/.test(t)) {
+                const n = Number(t);
+                if (!Number.isNaN(n)) {
+                  values.push(n);
+                }
+              }
             }
           }
 

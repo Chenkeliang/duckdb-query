@@ -15,6 +15,7 @@
     "apply": "Apply",
     "cancel": "Cancel",
     "partialValuesHint": "Showing partial values, use condition filter for more",
+    "highCardinalityValueListBlocked": "This column has too many distinct values. Use the condition filter above; the checklist only shows the most frequent values and cannot represent the full table.",
     "noData": "No data",
     "loading": "Loading...",
     "totalRows": "{{count}} rows",
@@ -257,6 +258,7 @@
       "rangeCopySuccess": "Successfully copied {{rows}} rows {{cols}} columns to clipboard",
       "copyFailed": "Failed to copy to clipboard",
       "importToDuckDB": "Import to DuckDB",
+      "previewCapHint": "Preview limited to {{max}} rows; more data may exist",
       "filter": {
         "search": "Search...",
         "selectAll": "Select All",

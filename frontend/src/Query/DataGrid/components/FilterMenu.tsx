@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { toast } from 'sonner';
 import { useColumnFilter } from '../hooks/useColumnFilter';
 import type { ConditionFilter, ConditionFilterType, ColumnFilterValue, UniqueValueItem } from '../types';
 import { getSelectedValuesSize, hasSelectedValue } from '../types';
@@ -156,6 +157,25 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({
       onFilterChange?.(column, condition);
       setOpen(false);
       return;
+    }
+
+    // 高基数列：禁止仅用值列表应用筛选（列表仅为 TopN，无法代表全表）
+    if (isHighCardinality && !trimmedCondition) {
+      const draft = applyFilter();
+      const hasValueList =
+        draft &&
+        typeof draft === 'object' &&
+        'selectedValues' in draft &&
+        getSelectedValuesSize((draft as ColumnFilterValue).selectedValues) > 0;
+      if (hasValueList) {
+        toast.info(
+          t(
+            'dataGrid.highCardinalityValueListBlocked',
+            '该列不同取值过多，请使用上方条件筛选。勾选列表仅含高频前若干条，无法覆盖全表。'
+          )
+        );
+        return;
+      }
     }
 
     const next = applyFilter();

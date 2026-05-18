@@ -123,10 +123,18 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent
+        <DialogContent
         ref={dialogRef}
         className="max-w-2xl max-h-[85vh] flex flex-col"
-        onPointerDownOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => {
+          // 允许与 portaled 的 Select 下拉交互；其余外侧点击仍阻止以保留对话框（与 Radix Dialog + Select 组合用法一致）
+          const target = e.target as HTMLElement | null;
+          if (target?.closest?.('[data-radix-select-content]')) {
+            e.preventDefault();
+            return;
+          }
+          e.preventDefault();
+        }}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -287,17 +295,13 @@ const ConflictRow: React.FC<ConflictRowProps> = ({ conflict, onResolve }) => {
       {/* 类型选择器 */}
       <td className="px-3 py-2">
         <Select
-          value={conflict.resolvedType || ''}
+          value={conflict.resolvedType}
           onValueChange={(value) => onResolve(conflict.key, value)}
         >
           <SelectTrigger className="w-36 h-8 text-xs">
             <SelectValue placeholder={t('query.typeConflict.selectType', '选择类型')} />
           </SelectTrigger>
-          <SelectContent
-            position="popper"
-            sideOffset={4}
-            className="z-[1000]"
-          >
+          <SelectContent position="popper" sideOffset={4}>
             {DUCKDB_CAST_TYPES.map((type) => (
               <SelectItem key={type} value={type} className="text-xs">
                 <span className="flex items-center gap-2">

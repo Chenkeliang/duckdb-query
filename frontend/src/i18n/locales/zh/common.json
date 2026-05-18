@@ -15,6 +15,7 @@
     "apply": "应用",
     "cancel": "取消",
     "partialValuesHint": "仅展示部分值，可使用条件过滤",
+    "highCardinalityValueListBlocked": "该列不同取值过多，请使用上方条件筛选。勾选列表仅含高频前若干条，无法覆盖全表。",
     "noData": "暂无数据",
     "loading": "加载中...",
     "totalRows": "共 {{count}} 行",
@@ -263,6 +264,7 @@
       "rangeCopySuccess": "已成功复制 {{rows}} 行 {{cols}} 列到剪贴板",
       "copyFailed": "复制到剪贴板失败",
       "importToDuckDB": "导入到 DuckDB",
+      "previewCapHint": "预览最多 {{max}} 行，数据集可能更大",
       "filter": {
         "search": "搜索...",
         "selectAll": "全选",

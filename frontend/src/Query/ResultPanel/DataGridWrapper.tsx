@@ -135,9 +135,24 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
     return noRowsOverlayText || t('dataGrid.noData', '暂无数据');
   }, [noRowsOverlayText, t]);
 
+  // 列定义内容指纹：避免父组件每次传入新数组引用时无意义重建子列配置
+  const columnDefsSpecKey = useMemo(() => {
+    if (!columnDefs?.length) return '';
+    return columnDefs
+      .filter((col): col is AGGridColumnDef & { field: string } => !!col.field)
+      .map((col) => `${col.field}\u0001${String(col.headerName ?? '')}\u0001${typeof col.width === 'number' ? col.width : ''}\u0001${col.sortable !== false}\u0001${col.filter !== false}`)
+      .join('|');
+  }, [columnDefs]);
+
+  const processedSchemaKey = useMemo(
+    () => (!processedData.length ? '' : Object.keys(processedData[0]).slice().sort().join('\u0001')),
+    [processedData]
+  );
+
   // 获取所有列名
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 由 columnDefsSpecKey / processedSchemaKey 刻画列集合变化
   const allColumns = useMemo(() => {
-    if (columnDefs) {
+    if (columnDefs?.length) {
       return columnDefs
         .filter((col): col is AGGridColumnDef & { field: string } => !!col.field)
         .map(col => col.field);
@@ -146,7 +161,7 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
       return Object.keys(processedData[0]);
     }
     return [];
-  }, [columnDefs, processedData]);
+  }, [columnDefsSpecKey, processedSchemaKey]);
 
   // 列可见性管理
   const {
@@ -172,6 +187,7 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
   });
 
   // 将 AG Grid 列定义转换为 DataGrid 列定义（只包含可见列）
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 由 columnDefsSpecKey 与 visibleColumns 驱动；`columnDefs` 取指纹变化时的闭包
   const convertedColumns = useMemo((): DataGridColumnDef[] | undefined => {
     if (!columnDefs) return undefined;
 
@@ -187,7 +203,7 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
         filterable: col.filter !== false,
         resizable: col.resizable !== false,
       }));
-  }, [columnDefs, visibleColumns]);
+  }, [columnDefsSpecKey, visibleColumns]);
 
   // 使用 ref 跟踪是否已调用 onGridReady
   const hasCalledGridReady = useRef(false);
