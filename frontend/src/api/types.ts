@@ -95,6 +95,8 @@ export interface QueryResponse {
   data?: Record<string, unknown>[];
   columns?: ColumnInfo[];
   row_count?: number;
+  /** 预览模式下服务端自动追加的 LIMIT 数值；未追加时为 null */
+  preview_limit_applied?: number | null;
   execution_time_ms?: number;
   error?: QueryError;
 }

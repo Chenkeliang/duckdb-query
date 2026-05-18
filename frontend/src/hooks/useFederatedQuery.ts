@@ -26,6 +26,7 @@ import {
 } from '@/utils/sqlUtils';
 import { getTableName, normalizeSelectedTable } from '@/utils/tableUtils';
 import { executeFederatedQuery, parseFederatedQueryError } from '@/api';
+import { DEFAULT_MAX_QUERY_ROWS } from '@/constants/queryLimits';
 
 /**
  * 联邦查询状态
@@ -186,7 +187,7 @@ export function useFederatedQuery(
       dialect?: SqlDialect;
       maxQueryRows?: number;
     }): string => {
-      const { columns, dialect = 'duckdb', maxQueryRows = 10000 } = options;
+      const { columns, dialect = 'duckdb', maxQueryRows = DEFAULT_MAX_QUERY_ROWS } = options;
 
       if (selectedTables.length === 0) {
         return '';

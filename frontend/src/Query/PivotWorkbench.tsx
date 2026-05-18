@@ -25,12 +25,14 @@ import { DataGrid, ColumnDef } from "./DataGrid";
 
 // Import Hooks & Types
 import { usePivotQuery } from "@/hooks/usePivotQuery";
+import { useAppConfig } from "@/hooks/useAppConfig";
 import { SelectedTable } from "@/types/SelectedTable";
 import { PivotValueConfig, AggregationFunction, PivotConfig } from "@/types/visualQuery";
 import { getTableName } from "@/utils/tableUtils";
 
 export const PivotWorkbench: React.FC = () => {
     const { t } = useTranslation(["pivot", "common"]);
+    const { maxQueryRows } = useAppConfig();
 
     // State
     const [selectedTable, setSelectedTable] = React.useState<SelectedTable | null>(null);
@@ -57,6 +59,7 @@ export const PivotWorkbench: React.FC = () => {
         config,
         pivotConfig,
         enabled: false, // User must click run
+        previewRowLimit: maxQueryRows,
     });
 
     // Sensors

@@ -37,6 +37,8 @@ export interface ResultPanelProps {
   execTime?: number;
   /** 行数 */
   rowCount?: number;
+  /** 预览时服务端自动追加的 LIMIT；与行数相等时可能仍有更多数据 */
+  previewLimitApplied?: number | null;
   /** 刷新回调 */
   onRefresh?: () => void;
   /** 导出回调 */
@@ -70,6 +72,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   executionTime,
   execTime,
   rowCount: _rowCount,
+  previewLimitApplied,
   onRefresh,
   onExport,
   className = '',
@@ -408,6 +411,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           onDataGridAutoFitColumns={useNewDataGrid ? handleDataGridAutoFitColumns : undefined}
           onDataGridFitToWidth={useNewDataGrid ? handleDataGridFitToWidth : undefined}
           onDataGridResetColumns={useNewDataGrid ? handleDataGridResetColumns : undefined}
+          previewLimitApplied={previewLimitApplied}
         />
       )}
       <div className="flex-1 min-h-0">

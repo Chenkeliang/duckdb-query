@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
 import { executeDuckDBSQL, executeFederatedQuery } from "@/api";
+import type { ColumnInfo } from "@/api/types";
 import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import { toast } from "sonner";
 import type {
@@ -63,6 +64,11 @@ export interface QueryResult {
   rowCount?: number;
   /** 执行时间（毫秒） */
   execTime?: number;
+  /**
+   * 预览时服务端自动追加的 LIMIT（与 max_query_rows 一致）；
+   * 若返回行数等于该值，结果可能被截断。
+   */
+  previewLimitApplied?: number | null;
 }
 
 export interface UseQueryWorkspaceReturn {
@@ -149,9 +155,19 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   // 处理查询结果
   const processQueryResult = useCallback((
-    response: { data?: unknown[]; columns?: string[]; execTime?: number; execution_time_ms?: number }
+    response: {
+      data?: unknown[];
+      columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
+      execTime?: number;
+      execution_time_ms?: number;
+      preview_limit_applied?: number | null;
+      row_count?: number;
+    }
   ) => {
-    const columns = response.columns || [];
+    const rawCols = response.columns || [];
+    const columns = rawCols.map((col) =>
+      typeof col === 'string' ? col : String((col as { name: string }).name)
+    );
     const rawData = response.data || [];
 
     // 检测数据格式：如果第一行是对象，则已经是对象数组；否则是二维数组
@@ -176,6 +192,10 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       error: null,
       rowCount: rawData.length,
       execTime: response.execTime || response.execution_time_ms,
+      previewLimitApplied:
+        response.preview_limit_applied === undefined
+          ? null
+          : response.preview_limit_applied,
     };
 
     setQueryResults(resultData);
@@ -263,7 +283,13 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       });
 
       try {
-        let response: { data?: unknown[]; columns?: string[]; execTime?: number; execution_time_ms?: number };
+        let response: {
+          data?: unknown[];
+          columns?: string[] | ColumnInfo[];
+          execTime?: number;
+          execution_time_ms?: number;
+          preview_limit_applied?: number | null;
+        };
 
         if (querySource.type === 'federated' || querySource.type === 'external') {
           // 联邦查询（包括单外部表查询，统一使用 ATTACH 模式）
@@ -286,14 +312,15 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
             sql,
             attachDatabases,
             isPreview: false,
-            requestId,  // 传递请求 ID 以支持取消
-            signal: abortControllerRef.current?.signal,  // 传递 signal 以支持本地取消
-          } as any) as { data?: unknown[]; columns?: string[] };
+            requestId,
+            signal: abortControllerRef.current?.signal,
+          });
           const execTime = Date.now() - startTime;
           response = {
             data: result.data || [],
             columns: result.columns || [],
             execTime,
+            preview_limit_applied: result.preview_limit_applied ?? null,
           };
         } else {
           // DuckDB 本地查询 - 直接调用 API 以传递 requestId 和 signal

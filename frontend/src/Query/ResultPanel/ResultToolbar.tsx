@@ -100,6 +100,8 @@ export interface ResultToolbarProps {
   onDataGridFitToWidth?: () => void;
   /** DataGrid 重置列 */
   onDataGridResetColumns?: () => void;
+  /** 预览行上限（服务端自动 LIMIT）；与当前总行数相等时提示可能截断 */
+  previewLimitApplied?: number | null;
 }
 
 /**
@@ -152,6 +154,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
   onDataGridAutoFitColumns,
   onDataGridFitToWidth,
   onDataGridResetColumns,
+  previewLimitApplied,
 }) => {
   const { t } = useTranslation('common');
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
@@ -183,6 +186,16 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
             </>
           )}
         </span>
+
+        {previewLimitApplied != null &&
+          stats.totalRows > 0 &&
+          stats.totalRows === previewLimitApplied && (
+            <span className="hidden sm:inline border-l border-border pl-3 text-xs text-muted-foreground max-w-md truncate">
+              {t('query.result.previewCapHint', {
+                max: formatNumber(previewLimitApplied),
+              })}
+            </span>
+          )}
 
         {/* 列数统计 */}
         <span>

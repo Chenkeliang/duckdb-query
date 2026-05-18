@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { ColumnValueFilterContext } from './AGGridWrapper';
+import { useAppConfig } from '@/hooks/useAppConfig';
 
 export interface ColumnFilterMenuProps {
   /** AG Grid 列对象 */
@@ -48,6 +49,7 @@ export function ColumnFilterMenu({
   children,
 }: ColumnFilterMenuProps) {
   const { t } = useTranslation('common');
+  const { maxQueryRows } = useAppConfig();
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set());
@@ -74,7 +76,7 @@ export function ColumnFilterMenu({
     const startTime = performance.now();
     
     const values = new Map<string, number>();
-    const maxRows = 10000; // 采样最多 10000 行优化性能
+    const maxRows = maxQueryRows;
     const colId = column.getColId();
 
     let rowCount = 0;
@@ -113,7 +115,7 @@ export function ColumnFilterMenu({
     if (duration > 500) {
       console.warn(`ColumnFilterMenu: 唯一值计算耗时 ${duration.toFixed(2)}ms (列: ${colId}, 行数: ${rowCount}, 唯一值: ${values.size})`);
     }
-  }, [open, gridApi, column, context]);
+  }, [open, gridApi, column, context, maxQueryRows]);
 
   // 过滤显示的值（使用防抖后的搜索文本）
   const filteredValues = useMemo(() => {

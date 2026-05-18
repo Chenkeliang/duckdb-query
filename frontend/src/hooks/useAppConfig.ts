@@ -12,6 +12,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { setFederatedQueryTimeout, getAppConfig } from '@/api';
+import { DEFAULT_MAX_QUERY_ROWS } from '@/constants/queryLimits';
 
 // 配置数据类型
 export interface AppConfig {
@@ -30,7 +31,7 @@ export const APP_CONFIG_QUERY_KEY = ['app-config'] as const;
 const DEFAULT_CONFIG: AppConfig = {
   enablePivotTables: true,
   pivotTableExtension: 'pivot_table',
-  maxQueryRows: 10000,
+  maxQueryRows: DEFAULT_MAX_QUERY_ROWS,
   maxFileSize: 500 * 1024 * 1024, // 500MB
   maxFileSizeDisplay: '500MB',
   federatedQueryTimeout: 300000, // 5 minutes

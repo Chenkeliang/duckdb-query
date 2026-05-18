@@ -265,6 +265,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
                   error={queryResults?.error ?? null}
                   rowCount={queryResults?.rowCount}
                   execTime={queryResults?.execTime}
+                  previewLimitApplied={queryResults?.previewLimitApplied}
                   source={lastQuery?.source}
                   currentSQL={lastQuery?.sql}
                   autoOpenImportDialog={autoOpenImportDialog}
