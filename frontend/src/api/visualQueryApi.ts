@@ -11,13 +11,13 @@ import type {
     VisualQueryConfig,
     SqlFavorite,
     CreateFavoriteRequest,
-    QueryResponse,
     NormalizedResponse
 } from './types';
 import type {
     VisualQueryConfig as PivotVisualQueryConfig,
     PivotConfig,
     VisualQueryPreviewPayload,
+    GeneratedVisualQuery,
 } from '@/types/visualQuery';
 import { VisualQueryMode } from '@/types/visualQuery';
 
@@ -55,15 +55,13 @@ export async function generateVisualQuery(
 }
 
 /**
- * Preview visual query results
- *
- * Returns normalized QueryResponse
+ * Preview visual query results（标准 success.data，与 DuckDB execute 的 QueryResponse 不同）
  */
 export async function previewVisualQuery(
     config: VisualQueryConfig,
     limit = 10,
     options: { datasource?: string } = {}
-): Promise<QueryResponse> {
+): Promise<VisualQueryPreviewPayload> {
     const payload = extractVisualQueryPayload(config, options);
 
     try {
@@ -71,14 +69,48 @@ export async function previewVisualQuery(
             ...payload,
             limit,
         });
-        const normalized = normalizeResponse<QueryResponse>(response);
-
-        return {
-            ...normalized.data,
-            success: true,
-        };
+        const normalized = normalizeResponse<VisualQueryPreviewPayload>(response);
+        const body = normalized.data;
+        if (body.returned_rows == null && Array.isArray(body.data)) {
+            return { ...body, returned_rows: body.data.length };
+        }
+        return body;
     } catch (error) {
         throw handleApiError(error as never, '查询预览失败');
+    }
+}
+
+/**
+ * 透视模式生成 SQL：POST /api/visual-query/generate（取代已不存在的 /api/query/visual-generation）
+ */
+export async function generatePivotVisualQuery(
+    config: PivotVisualQueryConfig,
+    pivotConfig: PivotConfig
+): Promise<GeneratedVisualQuery> {
+    try {
+        const response = await apiClient.post('/api/visual-query/generate', {
+            config,
+            mode: VisualQueryMode.PIVOT,
+            pivot_config: pivotConfig,
+        });
+        const normalized = normalizeResponse<{
+            sql: string;
+            base_sql: string;
+            pivot_sql?: string | null;
+            warnings?: string[];
+            metadata?: Record<string, unknown>;
+        }>(response);
+        const d = normalized.data;
+        return {
+            mode: VisualQueryMode.PIVOT,
+            base_sql: d.base_sql,
+            final_sql: d.sql,
+            pivot_sql: d.pivot_sql ?? undefined,
+            warnings: d.warnings ?? [],
+            metadata: (d.metadata as Record<string, unknown>) || {},
+        };
+    } catch (error) {
+        throw handleApiError(error as never, '透视 SQL 生成失败');
     }
 }
 
@@ -317,26 +349,3 @@ export async function getAppConfig(): Promise<{
     }
 }
 
-/**
- * Get application features configuration
- *
- * Returns normalized response with features
- */
-export async function getAppFeatures(): Promise<{
-    features: Record<string, boolean | string | number>;
-    messageCode?: string;
-    message?: string;
-}> {
-    try {
-        const response = await apiClient.get('/api/features');
-        const normalized = normalizeResponse<{ features: Record<string, boolean | string | number> }>(response);
-
-        return {
-            features: normalized.data.features ?? {},
-            messageCode: normalized.messageCode,
-            message: normalized.message,
-        };
-    } catch (error) {
-        throw handleApiError(error as never, '获取应用配置失败');
-    }
-}

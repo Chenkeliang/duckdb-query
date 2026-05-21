@@ -5,7 +5,7 @@ import {
     VisualQueryPreviewPayload,
 } from "../types/visualQuery";
 import { DEFAULT_MAX_QUERY_ROWS } from "@/constants/queryLimits";
-import { previewPivotVisualQuery } from "@/api/visualQueryApi";
+import { previewPivotVisualQuery } from "@/api";
 
 interface UsePivotQueryParams {
     config: VisualQueryConfig;

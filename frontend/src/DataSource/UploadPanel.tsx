@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -6,20 +6,20 @@ import {
   showErrorToast,
   showResponseToast
 } from "@/utils/toastHelpers";
-import { Upload, FileType, Link2, Server, HardDrive } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  uploadFile,
+  uploadFileAuto,
   readFromUrl,
   getServerMounts,
   browseServerDirectory,
-  importServerFile
+  importServerFile,
+  type FileImportMode,
 } from "@/api";
 import ExcelSheetSelector from "./ExcelSheetSelector";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { stemFromFilename, stemFromUrl } from "./upload/uploadPathUtils";
+import { LocalUploadCard } from "./upload/LocalUploadCard";
+import { RemoteUrlCard } from "./upload/RemoteUrlCard";
+import { ServerBrowseCard } from "./upload/ServerBrowseCard";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import { invalidateAfterFileUpload } from "@/utils/cacheInvalidation";
 
@@ -27,6 +27,8 @@ import { invalidateAfterFileUpload } from "@/utils/cacheInvalidation";
 interface PendingExcel {
   file_id: string;
   original_filename: string;
+  table_alias?: string | null;
+  default_table_prefix?: string;
 }
 
 interface ServerExcelPending {
@@ -47,13 +49,17 @@ interface ServerExcelPending {
 const UploadPanel = ({ onDataSourceSaved }) => {
   const { t } = useTranslation("common");
   const queryClient = useQueryClient();
-  const fileInputRef = useRef(null);
-  const { maxFileSizeDisplay } = useAppConfig();
+  const { maxFileSize, maxFileSizeDisplay } = useAppConfig();
 
-  const [alias, setAlias] = useState("");
+  /** 本地上传专用；与远程/服务器别名互不影响 */
+  const [uploadAlias, setUploadAlias] = useState("");
+  /** 远程 URL 专用（必填） */
+  const [remoteAlias, setRemoteAlias] = useState("");
+  const [importMode, setImportMode] = useState<FileImportMode>("auto");
   const [selectedFile, setSelectedFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   const [url, setUrl] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
@@ -78,29 +84,6 @@ const UploadPanel = ({ onDataSourceSaved }) => {
   const [serverAlias, setServerAlias] = useState("");
   const [serverImporting, setServerImporting] = useState(false);
 
-  const handleDrop = e => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-    const file = e.dataTransfer?.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      if (!alias) {
-        setAlias(file.name.replace(/\.[^/.]+$/, ""));
-      }
-    }
-  };
-
-  const handleFileChange = e => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      if (!alias) {
-        setAlias(file.name.replace(/\.[^/.]+$/, ""));
-      }
-    }
-  };
-
   const handleUpload = async () => {
     if (!selectedFile) {
       toast.warning(t("page.datasource.pickFileFirst"));
@@ -110,9 +93,27 @@ const UploadPanel = ({ onDataSourceSaved }) => {
     // 清除之前的 pendingExcel 状态（支持多次上传）
     setPendingExcel(null);
 
+    if (selectedFile.size > maxFileSize) {
+      toast.warning(
+        t("page.datasource.fileTooLarge", {
+          limit: maxFileSizeDisplay,
+          defaultValue: `文件超过上限 ${maxFileSizeDisplay}`,
+        })
+      );
+      return;
+    }
+
     setUploading(true);
+    setUploadProgress(0);
     try {
-      const response = await uploadFile(selectedFile, alias || null);
+      const response = await uploadFileAuto(
+        selectedFile,
+        uploadAlias.trim() || null,
+        {
+          importMode,
+          onProgress: (progress) => setUploadProgress(progress.percent),
+        }
+      );
 
       if (!response?.success) {
         showResponseToast(t, response, {
@@ -151,12 +152,13 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       });
 
       setSelectedFile(null);
-      setAlias("");
+      setUploadAlias("");
     } catch (err) {
       console.error("Upload failed:", err);
       showErrorToast(t, err as Error, t("page.datasource.uploadFail"));
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   };
 
@@ -165,13 +167,15 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       toast.warning(t("page.datasource.enterUrl"));
       return;
     }
-    if (!alias.trim()) {
-      toast.warning(t("page.datasource.enterAlias"));
+    if (!remoteAlias.trim()) {
+      toast.warning(t("page.datasource.enterRemoteAlias"));
       return;
     }
     setUrlLoading(true);
     try {
-      const result = await readFromUrl(url.trim(), alias.trim());
+      const result = await readFromUrl(url.trim(), remoteAlias.trim(), {
+        importMode,
+      });
       if (result?.success) {
         showSuccessToast(
           t,
@@ -190,6 +194,7 @@ const UploadPanel = ({ onDataSourceSaved }) => {
           columns: result.columns || []
         });
         setUrl("");
+        setRemoteAlias("");
       } else {
         showResponseToast(t, result, {
           errorFallback: t("page.datasource.urlReadFail")
@@ -213,7 +218,6 @@ const UploadPanel = ({ onDataSourceSaved }) => {
     setServerLoading(true);
     setServerError("");
     setServerSelectedFile(null);
-    setServerAlias("");
     setCurrentPath(path); // 记录当前路径
     try {
       const data = await browseServerDirectory(path);
@@ -291,7 +295,7 @@ const UploadPanel = ({ onDataSourceSaved }) => {
 
       // 重置上传状态
       setSelectedFile(null);
-      setAlias("");
+      setUploadAlias("");
     } catch (err) {
       console.error("Import handling failed:", err);
       showErrorToast(t, err as Error, t("page.datasource.importFail"));
@@ -317,6 +321,16 @@ const UploadPanel = ({ onDataSourceSaved }) => {
     // 检查是否是 Excel 文件，如果是则打开工作表选择器
     const ext = (serverSelectedFile.extension || "").toLowerCase();
     if (ext === "excel" || ext === "xlsx" || ext === "xls") {
+      const prefix =
+        serverAlias.trim() ||
+        stemFromFilename(serverSelectedFile.name || "");
+      if (!prefix) {
+        toast.warning(t("page.datasource.enterServerAlias"));
+        return;
+      }
+      if (!serverAlias.trim()) {
+        setServerAlias(prefix);
+      }
       setServerExcelPending({
         path: serverSelectedFile.path,
         filename: serverSelectedFile.name
@@ -331,14 +345,15 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       serverSelectedFile.name?.replace(/\.[^/.]+$/, "") ||
       "";
     if (!aliasValue) {
-      toast.warning(t("page.datasource.enterAlias"));
+      toast.warning(t("page.datasource.enterServerAlias"));
       return;
     }
     setServerImporting(true);
     try {
       const result = await importServerFile({
         path: serverSelectedFile.path,
-        table_alias: aliasValue
+        table_alias: aliasValue,
+        import_mode: importMode,
       });
       if (result?.success) {
         showSuccessToast(
@@ -424,342 +439,68 @@ const UploadPanel = ({ onDataSourceSaved }) => {
   return (
     <>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* 左侧：智能文件上传主卡片 */}
-        <Card className="shadow-sm">
-          <CardContent className="p-6 space-y-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-fg">
-                  {t("page.datasource.tabLocal")}
-                </p>
-                <h3 className="text-lg font-semibold text-foreground">
-                  {t("page.datasource.cardLocalTitle")}
-                </h3>
-              </div>
-              <span className="text-xs text-muted-fg">
-                {t("page.datasource.localTipsFormats")}
-              </span>
-            </div>
+        <LocalUploadCard
+          maxFileSizeDisplay={maxFileSizeDisplay}
+          selectedFile={selectedFile}
+          uploadAlias={uploadAlias}
+          importMode={importMode}
+          uploading={uploading}
+          uploadProgress={uploadProgress}
+          dragOver={dragOver}
+          onFileSelect={file => {
+            setSelectedFile(file);
+            if (!uploadAlias.trim()) {
+              setUploadAlias(stemFromFilename(file.name));
+            }
+          }}
+          onUploadAliasChange={setUploadAlias}
+          onImportModeChange={setImportMode}
+          onDragOver={setDragOver}
+          onUpload={handleUpload}
+          onClear={() => {
+            setSelectedFile(null);
+            setUploadAlias("");
+          }}
+        />
 
-            <div
-              onDragOver={e => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`cursor-pointer rounded-xl border border-dashed px-6 py-10 text-center transition-colors flex flex-col items-center justify-center gap-2 ${dragOver
-                  ? "border-primary bg-surface-hover"
-                  : "border-border bg-surface hover:border-primary"
-                }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                onChange={handleFileChange}
-                accept=".csv,.xlsx,.xls,.json,.parquet,.pq"
-              />
-              <Upload className="h-8 w-8 text-muted-fg" />
-              <p className="text-foreground font-medium text-sm">
-                {t("page.datasource.dragHere")}
-              </p>
-              <p className="text-xs text-muted-fg">
-                {t("page.datasource.maxSizeTemplate", {
-                  size: maxFileSizeDisplay
-                })}
-              </p>
-              {selectedFile ? (
-                <p className="mt-1 text-xs text-muted-fg">
-                  {t("page.datasource.selectedFile")}: {selectedFile.name}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="upload-alias">
-                {t("page.datasource.aliasLabel")}
-              </Label>
-              <Input
-                id="upload-alias"
-                value={alias}
-                onChange={e => setAlias(e.target.value)}
-                placeholder={t("page.datasource.aliasPlaceholder")}
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={handleUpload}
-                disabled={uploading || !selectedFile}
-              >
-                {uploading
-                  ? t("page.datasource.connection.saving")
-                  : t("page.datasource.btnStartUpload")}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSelectedFile(null);
-                  setAlias("");
-                }}
-              >
-                {t("page.datasource.paste.btnClear")}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 右侧：URL 拉取 + 服务器目录导入卡片 */}
         <div className="flex flex-col gap-6">
-          {/* URL 拉取 */}
-          <Card className="shadow-sm">
-            <CardContent className="p-6 space-y-4">
-              <div>
-                <p className="text-sm text-muted-fg">
-                  {t("page.datasource.cardRemoteTitle")}
-                </p>
-                <h3 className="text-lg font-semibold text-foreground">
-                  {t("page.datasource.cardRemoteDesc")}
-                </h3>
-              </div>
+          <RemoteUrlCard
+            url={url}
+            remoteAlias={remoteAlias}
+            urlLoading={urlLoading}
+            onUrlChange={next => {
+              setUrl(next);
+              if (next.trim() && !remoteAlias.trim()) {
+                const stem = stemFromUrl(next);
+                if (stem) setRemoteAlias(stem);
+              }
+            }}
+            onRemoteAliasChange={setRemoteAlias}
+            onImport={handleUrlImport}
+          />
 
-              <div className="space-y-2">
-                <Label htmlFor="remote-url" className="flex items-center gap-2">
-                  <Link2 className="h-4 w-4" />
-                  {t("page.datasource.remoteUrlLabel")}
-                </Label>
-                <Input
-                  id="remote-url"
-                  value={url}
-                  onChange={e => setUrl(e.target.value)}
-                  placeholder="https://example.com/data.csv"
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  {t("page.datasource.remoteUrlHelper")}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label
-                  htmlFor="remote-alias"
-                  className="flex items-center gap-2"
-                >
-                  <FileType className="h-4 w-4" />
-                  {t("page.datasource.remoteAliasLabel")}
-                </Label>
-                <Input
-                  id="remote-alias"
-                  value={alias}
-                  onChange={e => setAlias(e.target.value)}
-                  placeholder={t("page.datasource.remoteAliasPlaceholder")}
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <Button
-                  onClick={handleUrlImport}
-                  disabled={urlLoading || !url.trim()}
-                >
-                  {urlLoading
-                    ? t("page.datasource.connection.testing")
-                    : t("page.datasource.btnReadRemote")}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 服务器目录导入 */}
-          <Card className="shadow-sm">
-            <CardContent className="p-6 space-y-4">
-              <div>
-                <p className="text-sm text-muted-fg">
-                  {t("page.datasource.cardServerTitle")}
-                </p>
-                <h3 className="text-lg font-semibold text-foreground">
-                  {t("page.datasource.cardServerDesc")}
-                </h3>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs text-muted-fg flex items-center gap-2">
-                  <HardDrive className="h-4 w-4 text-muted-fg" />
-                  {t("page.datasource.serverSelectMount")}
-                </label>
-                {serverMountLoading ? (
-                  <div className="text-xs text-muted-fg">
-                    {t("actions.loading")}
-                  </div>
-                ) : serverMounts.length === 0 ? (
-                  <div className="space-y-2 text-xs text-muted-fg">
-                    <div>{t("page.datasource.serverNoMount")}</div>
-                    <div>{t("page.datasource.serverMountAlert")}</div>
-                  </div>
-                ) : (
-                  <select
-                    className="h-9 w-full rounded-md border border-border bg-input px-2 text-sm text-foreground"
-                    value={selectedMount}
-                    onChange={e => {
-                      const path = e.target.value;
-                      setSelectedMount(path);
-                      loadServerDirectory(path);
-                    }}
-                  >
-                    {serverMounts.map(m => (
-                      <option key={m.path} value={m.path}>
-                        {m.label || m.path}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {serverError ? (
-                  <div className="text-xs text-error">
-                    {t(`errors:${serverError}`, { defaultValue: serverError })}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="rounded-lg border border-border bg-surface max-h-48 overflow-auto space-y-1 text-sm">
-                {serverLoading ? (
-                  <div className="px-3 py-2 text-xs text-muted-fg">
-                    {t("actions.loading")}
-                  </div>
-                ) : serverEntries.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-muted-fg">
-                    {t("page.datasource.serverNoFiles")}
-                  </div>
-                ) : (
-                  <>
-                    {/* 返回上一级按钮 */}
-                    {currentPath && currentPath !== selectedMount && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // 计算父目录路径
-                          const parentPath =
-                            currentPath
-                              .split("/")
-                              .slice(0, -1)
-                              .join("/") || selectedMount;
-                          loadServerDirectory(parentPath);
-                        }}
-                        className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left cursor-pointer hover:bg-surface-hover border-b border-border"
-                      >
-                        <span className="text-xs text-primary font-medium">
-                          ← {t("page.datasource.serverGoBack", "返回上一级")}
-                        </span>
-                      </button>
-                    )}
-
-                    {serverEntries
-                      .filter(entry => {
-                        // 显示所有目录
-                        if (entry.type === "directory") return true;
-                        // 只显示支持的文件类型
-                        // 后端返回的 extension 是映射后的类型：excel, csv, json, parquet 等
-                        const ext = (entry.extension || "").toLowerCase();
-                        const supportedTypes = [
-                          "csv",
-                          "excel",
-                          "json",
-                          "jsonl",
-                          "parquet"
-                        ];
-                        return supportedTypes.includes(ext);
-                      })
-                      .map(entry => {
-                        const selected =
-                          serverSelectedFile?.path === entry.path;
-                        const isDir = entry.type === "directory";
-                        return (
-                          <button
-                            key={entry.path}
-                            type="button"
-                            onClick={() => {
-                              console.log(
-                                "File clicked:",
-                                entry.name,
-                                "isDir:",
-                                isDir,
-                                "extension:",
-                                entry.extension
-                              );
-                              if (isDir) {
-                                loadServerDirectory(entry.path);
-                              } else {
-                                setServerSelectedFile(entry);
-                                if (!serverAlias) {
-                                  setServerAlias(
-                                    entry.name.replace(/\.[^/.]+$/, "")
-                                  );
-                                }
-                              }
-                            }}
-                            className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left cursor-pointer ${selected
-                                ? "bg-surface-hover"
-                                : "hover:bg-surface-hover"
-                              }`}
-                          >
-                            <span className="flex items-center gap-2 text-xs text-foreground">
-                              <Server className="h-3 w-3 text-muted-fg" />
-                              {entry.name}
-                            </span>
-                            <span className="text-[10px] text-muted-fg">
-                              {isDir
-                                ? t("page.datasource.serverTypeFolder")
-                                : (entry.extension || "").toUpperCase()}
-                            </span>
-                          </button>
-                        );
-                      })}
-                  </>
-                )}
-              </div>
-
-              {/* 显示选中的文件 */}
-              {serverSelectedFile && (
-                <div className="rounded-lg border border-primary/50 bg-primary/5 p-3">
-                  <div className="text-xs font-medium text-foreground mb-1">
-                    {t("page.datasource.selectedFile", "已选择文件")}:
-                  </div>
-                  <div className="text-sm text-foreground font-medium">
-                    {serverSelectedFile.name}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {(serverSelectedFile.extension || "").toUpperCase()}
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label
-                  htmlFor="server-alias"
-                  className="flex items-center gap-2"
-                >
-                  <FileType className="h-4 w-4" />
-                  {t("page.datasource.serverAliasLabel")}
-                </Label>
-                <Input
-                  id="server-alias"
-                  value={serverAlias}
-                  onChange={e => setServerAlias(e.target.value)}
-                  placeholder={t("page.datasource.serverAliasPlaceholder")}
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <Button
-                  onClick={handleServerImport}
-                  disabled={serverImporting || !serverSelectedFile}
-                >
-                  {serverImporting
-                    ? t("page.datasource.connection.saving")
-                    : t("page.datasource.btnImportServer")}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <ServerBrowseCard
+            serverMounts={serverMounts}
+            serverMountLoading={serverMountLoading}
+            selectedMount={selectedMount}
+            currentPath={currentPath}
+            serverEntries={serverEntries}
+            serverLoading={serverLoading}
+            serverError={serverError}
+            serverSelectedFile={serverSelectedFile}
+            serverAlias={serverAlias}
+            serverImporting={serverImporting}
+            importMode={importMode}
+            onImportModeChange={setImportMode}
+            onMountChange={path => {
+              setSelectedMount(path);
+              loadServerDirectory(path);
+            }}
+            onBrowseDirectory={loadServerDirectory}
+            onSelectFile={setServerSelectedFile}
+            onServerAliasChange={setServerAlias}
+            onImport={handleServerImport}
+          />
         </div>
       </div>
 
@@ -771,6 +512,7 @@ const UploadPanel = ({ onDataSourceSaved }) => {
           onClose={handleExcelClose}
           onImported={handleExcelImported}
           sourceType="upload"
+          importMode={importMode}
         />
       )}
 
@@ -783,6 +525,8 @@ const UploadPanel = ({ onDataSourceSaved }) => {
           onImported={handleServerExcelImported}
           sourceType="server"
           serverPath={serverExcelPending.path}
+          importMode={importMode}
+          tablePrefix={serverAlias}
         />
       )}
     </>

@@ -18,18 +18,30 @@ from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
-from core.common.config_manager import config_manager
-from core.database.duckdb_engine import get_db_connection
-from core.data.file_datasource_manager import (
-    file_datasource_manager,
-    create_table_from_dataframe,
+from core.common.exceptions import (
+    BaseAPIException,
+    QueryExecutionError,
+    ResourceNotFoundError,
+    ValidationError as APIValidationError,
 )
-from core.data.excel_import_manager import register_excel_upload, sanitize_identifier
+from core.common.config_manager import config_manager
+from core.database.duckdb_engine import get_db_connection, with_duckdb_connection
+from core.data.excel_import_manager import sanitize_identifier
+from core.data.file_datasource_manager import (
+    create_table_from_dataframe,
+    file_datasource_manager,
+)
+from core.data.import_mode import normalize_import_mode
+from core.services.file_ingestion_service import (
+    ingest_tabular_file,
+    prepare_excel_pending,
+)
 from core.services.resource_manager import schedule_cleanup
 from core.common.timezone_utils import get_current_time_iso  # 统一时间
 from utils.response_helpers import (
     create_success_response,
     MessageCode,
+    error_json_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -208,7 +220,7 @@ async def process_streaming_upload(
         os.mkfifo(fifo_path)
     except Exception as exc:
         logger.error("Failed to create FIFO: %s", exc)
-        raise HTTPException(status_code=500, detail="Unable to create streaming upload channel") from exc
+        raise QueryExecutionError("Unable to create streaming upload channel") from exc
 
     final_file_path = _get_final_file_path(session["file_name"])
     writer = ChunkStreamWriter(session, fifo_path, final_file_path)
@@ -223,12 +235,12 @@ async def process_streaming_upload(
 
     writer.wait()
     if writer.error:
-        raise HTTPException(status_code=500, detail=f"Streaming write failed: {writer.error}")
+        raise QueryExecutionError(f"Streaming write failed: {writer.error}")
 
     if session.get("file_hash"):
         actual_hash = calculate_file_hash(final_file_path)
         if actual_hash != session["file_hash"]:
-            raise HTTPException(status_code=400, detail="File hash verification failed, file may be corrupted")
+            raise APIValidationError("File hash verification failed, file may be corrupted")
 
     try:
         file_size = os.path.getsize(final_file_path)
@@ -240,7 +252,9 @@ async def process_streaming_upload(
     return file_info
 
 
-def _load_stream_into_duckdb(session: Dict[str, Any], fifo_path: str, final_file_path: str) -> Dict[str, Any]:
+def _load_stream_into_duckdb(
+    session: Dict[str, Any], fifo_path: str, final_file_path: str
+) -> Dict[str, Any]:
     file_extension = session.get("file_extension") or session["file_name"].lower().split(".")[-1]
     con = get_db_connection()
     desired_name = session.get("table_alias") or session["file_name"].split(".")[0]
@@ -251,6 +265,7 @@ def _load_stream_into_duckdb(session: Dict[str, Any], fifo_path: str, final_file
         source_id,
         fifo_path,
         file_extension,
+        import_mode=session.get("import_mode", "auto"),
     )
 
     table_metadata = {
@@ -287,6 +302,7 @@ async def init_upload(
     chunk_size: int = Form(default=1024 * 1024),  # 默认1MB分块
     file_hash: str = Form(default=None),
     table_alias: str = Form(default=None),  # 表别名支持
+    import_mode: str = Form(default="auto"),
 ):
     """
     初始化分块上传
@@ -299,13 +315,19 @@ async def init_upload(
         table_alias: 表别名（可选）
     """
     try:
+        try:
+            normalize_import_mode(import_mode)
+        except ValueError as exc:
+            raise APIValidationError(str(exc)) from exc
+
         # 从配置中获取文件大小限制
         app_config = config_manager.get_app_config()
         if file_size > app_config.max_file_size:
             max_file_size_mb = app_config.max_file_size / 1024 / 1024
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large, maximum supported {max_file_size_mb:.0f}MB. Current file size: {file_size / 1024 / 1024:.1f}MB",
+            return error_json_response(
+                413,
+                MessageCode.FILE_TOO_LARGE,
+                f"File too large, maximum supported {max_file_size_mb:.0f}MB. Current file size: {file_size / 1024 / 1024:.1f}MB",
             )
 
         # 检查文件类型
@@ -313,9 +335,8 @@ async def init_upload(
         supported_formats = ["csv", "xlsx", "xls", "json", "jsonl", "parquet", "pq"]
 
         if file_extension not in supported_formats:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported file format. Supported formats: {', '.join(supported_formats)}",
+            raise APIValidationError(
+                f"Unsupported file format. Supported formats: {', '.join(supported_formats)}"
             )
 
         # 生成上传ID
@@ -337,6 +358,7 @@ async def init_upload(
             "created_at": get_current_time_iso(),
             "file_hash": file_hash,
             "table_alias": table_alias,  # 保存表别名
+            "import_mode": import_mode,
             "chunks_dir": get_chunks_dir(upload_id),
             "file_extension": file_extension,
         }
@@ -356,11 +378,17 @@ async def init_upload(
             message="Upload session initialized successfully",
         )
 
+    except BaseAPIException:
+        raise
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to initialize upload: %s", e)
-        raise HTTPException(status_code=500, detail=f"Failed to initialize upload: {str(e)}") from e
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to initialize upload: {str(e)}",
+        )
 
 
 @router.post("/api/upload/chunk", tags=["Chunked Upload"])
@@ -380,20 +408,16 @@ async def upload_chunk(
     try:
         # Check upload session
         if upload_id not in upload_sessions:
-            raise HTTPException(status_code=404, detail="Upload session does not exist")
+            raise ResourceNotFoundError("Upload session", upload_id)
 
         session = upload_sessions[upload_id]
 
         if session["status"] != "uploading":
-            raise HTTPException(
-                status_code=400, detail=f"Upload session status error: {session['status']}"
-            )
+            raise APIValidationError(f"Upload session status error: {session['status']}")
 
-        # 检查分块编号
         if chunk_number < 0 or chunk_number >= session["total_chunks"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid chunk number: {chunk_number}, total chunks: {session['total_chunks']}",
+            raise APIValidationError(
+                f"Invalid chunk number: {chunk_number}, total chunks: {session['total_chunks']}"
             )
 
         # 检查分块是否已上传
@@ -438,11 +462,17 @@ async def upload_chunk(
             message=f"Chunk {chunk_number} uploaded successfully",
         )
 
+    except BaseAPIException:
+        raise
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to upload chunk: %s", e)
-        raise HTTPException(status_code=500, detail=f"Failed to upload chunk: {str(e)}") from e
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to upload chunk: {str(e)}",
+        )
 
 
 @router.post("/api/upload/complete", tags=["Chunked Upload"])
@@ -458,15 +488,13 @@ async def complete_upload(
     try:
         # Check upload session
         if upload_id not in upload_sessions:
-            raise HTTPException(status_code=404, detail="Upload session does not exist")
+            raise ResourceNotFoundError("Upload session", upload_id)
 
         session = upload_sessions[upload_id]
 
-        # 检查所有分块是否已上传
         if session["uploaded_chunks"] != session["total_chunks"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Upload incomplete, uploaded: {session['uploaded_chunks']}/{session['total_chunks']}",
+            raise APIValidationError(
+                f"Upload incomplete, uploaded: {session['uploaded_chunks']}/{session['total_chunks']}"
             )
 
         session["status"] = "processing"
@@ -487,10 +515,7 @@ async def complete_upload(
                         with open(chunk_path, "rb") as chunk_file:
                             final_file.write(chunk_file.read())
                     else:
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Chunk file missing: chunk_{chunk_num:06d}",
-                        )
+                        raise QueryExecutionError(f"Chunk file missing: chunk_{chunk_num:06d}")
 
             final_file_path = _get_final_file_path(session["file_name"])
             shutil.move(temp_upload_path, final_file_path)
@@ -499,8 +524,8 @@ async def complete_upload(
             if session.get("file_hash"):
                 actual_hash = calculate_file_hash(final_file_path)
                 if actual_hash != session["file_hash"]:
-                    raise HTTPException(
-                        status_code=400, detail="File hash verification failed, file may be corrupted"
+                    raise APIValidationError(
+                        "File hash verification failed, file may be corrupted"
                     )
 
             file_info = await process_uploaded_file(
@@ -508,6 +533,7 @@ async def complete_upload(
                 session["file_name"],
                 session.get("table_alias"),
                 background_tasks=background_tasks,
+                import_mode=session.get("import_mode", "auto"),
             )
 
         if os.path.exists(session["chunks_dir"]):
@@ -541,18 +567,23 @@ async def complete_upload(
             message="File upload and processing completed",
         )
 
+    except BaseAPIException:
+        raise
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to complete upload: %s", e)
         logger.error("Stack trace: %s", traceback.format_exc())
 
-        # 更新会话状态为失败
         if upload_id in upload_sessions:
             upload_sessions[upload_id]["status"] = "failed"
             upload_sessions[upload_id]["error_message"] = str(e)
 
-        raise HTTPException(status_code=500, detail=f"Failed to complete upload: {str(e)}") from e
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to complete upload: {str(e)}",
+        )
 
 
 async def process_uploaded_file(
@@ -560,84 +591,65 @@ async def process_uploaded_file(
     file_name: str,
     table_alias: str = None,
     background_tasks: Optional[BackgroundTasks] = None,
+    import_mode: str = "auto",
 ) -> Dict[str, Any]:
     """Process uploaded file and load to DuckDB"""
     try:
+        normalize_import_mode(import_mode)
         logger.info("Starting to process uploaded file: %s, path: %s", file_name, file_path)
 
         file_extension = file_name.lower().split(".")[-1]
         logger.info("File type: %s", file_extension)
 
         if file_extension in {"xlsx", "xls"}:
-            pending_excel = register_excel_upload(file_path, file_name, table_alias)
+            pending_payload = prepare_excel_pending(file_path, file_name, table_alias)
             if background_tasks:
-                pending_dir = Path(pending_excel.stored_path).parent
+                from core.data.excel_import_manager import PENDING_BASE_DIR
+
+                pending_dir = PENDING_BASE_DIR / pending_payload.file_id
                 schedule_cleanup(str(pending_dir), background_tasks, delay_seconds=6 * 3600)
 
             return {
                 "success": True,
-                "pending_excel": {
-                    "file_id": pending_excel.file_id,
-                    "original_filename": pending_excel.original_filename,
-                    "file_size": pending_excel.file_size,
-                    "table_alias": pending_excel.table_alias,
-                    "uploaded_at": pending_excel.uploaded_at,
-                    "default_table_prefix": pending_excel.default_table_prefix,
-                },
+                "pending_excel": pending_payload.to_api_dict(),
                 "message": "Excel 文件已上传，请选择需要导入的工作表。",
                 "cleanup_path": None,
             }
 
-        con = get_db_connection()
-        desired_name = table_alias if table_alias else file_name.split(".")[0]
-        source_id = _generate_unique_table_name(con, desired_name, user_provided=bool(table_alias))
-        logger.info("Generated table name: %s", source_id)
-
-        table_info = None
-        try:
+        with with_duckdb_connection() as con:
             logger.info("Starting to load into DuckDB...")
-            con = get_db_connection()
-            table_info = create_table_from_dataframe(
-                con, source_id, file_path, file_extension
+            ingest_result = ingest_tabular_file(
+                con,
+                file_path,
+                file_extension,
+                table_alias,
+                import_mode=import_mode,
+                filename_for_meta=file_name,
+                persist_path=file_path,
             )
+            source_id = ingest_result.table_name
+            table_info = {
+                "row_count": ingest_result.row_count,
+                "column_count": ingest_result.column_count,
+                "columns": ingest_result.columns,
+                "column_profiles": ingest_result.column_profiles,
+            }
             logger.info("Successfully loaded into DuckDB: %s", table_info)
-        except Exception as e:
-            logger.error("Failed to load into DuckDB: %s", e)
-            raise
-
-        file_metadata = {
-            "source_id": source_id,
-            "filename": file_name,
-            "file_path": file_path,
-            "file_type": file_extension,
-            "row_count": table_info.get("row_count", 0),
-            "column_count": table_info.get("column_count", 0),
-            "columns": table_info.get("columns", []),
-            "column_profiles": table_info.get("column_profiles", []),
-            "schema_version": 2,
-            "created_at": get_current_time_iso(),
-        }
-
-        try:
-            logger.info("Saving file datasource configuration...")
-            file_datasource_manager.save_file_datasource(file_metadata)
-            logger.info("Successfully saved file datasource configuration")
-        except Exception as e:
-            logger.error("Failed to save file datasource configuration: %s", e)
-            raise
 
         logger.info(
             "File processing completed: %s, table: %s, rows: %d",
-            file_name, source_id, file_metadata['row_count']
+            file_name,
+            source_id,
+            table_info["row_count"],
         )
 
         return {
             "source_id": source_id,
             "filename": file_name,
             "file_size": os.path.getsize(file_path),
-            "row_count": file_metadata["row_count"],
-            "column_count": file_metadata["column_count"],
-            "columns": file_metadata["columns"],
+            "row_count": table_info["row_count"],
+            "column_count": table_info["column_count"],
+            "columns": table_info["columns"],
             "preview_data": [{"提示": "预览数据已禁用以提高性能"}],
             "cleanup_path": file_path,
         }
@@ -653,7 +665,7 @@ async def cancel_upload(upload_id: str):
     """取消上传"""
     try:
         if upload_id not in upload_sessions:
-            raise HTTPException(status_code=404, detail="Upload session does not exist")
+            raise ResourceNotFoundError("Upload session", upload_id)
 
         session = upload_sessions[upload_id]
 
@@ -672,8 +684,14 @@ async def cancel_upload(upload_id: str):
             message="Upload cancelled",
         )
 
+    except BaseAPIException:
+        raise
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to cancel upload: %s", e)
-        raise HTTPException(status_code=500, detail=f"Failed to cancel upload: {str(e)}") from e
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to cancel upload: {str(e)}",
+        )

@@ -14,6 +14,7 @@
  */
 
 import { FilterGroup, FilterCondition, FilterNode } from './FilterBar/types';
+import { quoteIdent } from '@/utils/sqlUtils';
 
 // =============================================================================
 // Type Definitions
@@ -281,17 +282,6 @@ export function checkOptimizationEligibility(
 // =============================================================================
 // Subquery Builder
 // =============================================================================
-
-/**
- * Quote an identifier for SQL
- */
-function quoteIdent(name: string, _dialect: 'duckdb' | 'mysql' | 'postgres' = 'duckdb'): string {
-    // DuckDB uses double quotes, but we'll keep it simple for now
-    if (name.includes('"') || name.includes(' ') || name.includes('.')) {
-        return `"${name.replace(/"/g, '""')}"`;
-    }
-    return name;
-}
 
 /**
  * Build a filtered subquery for a remote table

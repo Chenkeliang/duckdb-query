@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch, MagicMock
 import pandas as pd
 import json
+from pydantic import ValidationError
 
 from main import app
 from models.visual_query_models import (
@@ -67,15 +68,15 @@ class TestSetOperationModels:
 
     def test_set_operation_config_validation(self):
         """测试集合操作配置验证"""
-        # 测试最少表数量验证
-        with pytest.raises(ValueError, match="集合操作至少需要两个表"):
+        # 测试最少表数量验证（Pydantic v2 包装为 ValidationError）
+        with pytest.raises(ValidationError, match="at least two tables"):
             SetOperationConfig(
                 operation_type=SetOperationType.UNION,
                 tables=[TableConfig(table_name="table1")],
             )
 
         # 测试BY NAME模式验证
-        with pytest.raises(ValueError, match="只有UNION和UNION ALL支持BY NAME模式"):
+        with pytest.raises(ValidationError, match="BY NAME mode"):
             SetOperationConfig(
                 operation_type=SetOperationType.EXCEPT,
                 tables=[
@@ -275,9 +276,9 @@ class TestSetOperationAPI:
             "include_metadata": True,
         }
 
-        with patch("routers.query.generate_set_operation_sql") as mock_generate, patch(
-            "routers.query.estimate_set_operation_rows"
-        ) as mock_estimate, patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
+            "routers.set_operations.estimate_set_operation_rows"
+        ) as mock_estimate, patch("routers.set_operations.get_db_connection") as mock_get_db:
 
             # 模拟查询生成
             mock_generate.return_value = (
@@ -294,9 +295,9 @@ class TestSetOperationAPI:
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
-            assert "UNION" in data["sql"]
-            assert data["estimated_rows"] == 1000
-            assert data["metadata"] is not None
+            assert "UNION" in data["data"]["sql"]
+            assert data["data"]["estimated_rows"] == 1000
+            assert data["data"]["metadata"] is not None
 
     def test_generate_set_operation_query_validation_error(self):
         """测试集合操作查询生成验证错误"""
@@ -341,9 +342,9 @@ class TestSetOperationAPI:
             "include_metadata": False,
         }
 
-        with patch("routers.query.generate_set_operation_sql") as mock_generate, patch(
-            "routers.query.estimate_set_operation_rows"
-        ) as mock_estimate, patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
+            "routers.set_operations.estimate_set_operation_rows"
+        ) as mock_estimate, patch("routers.set_operations.get_db_connection") as mock_get_db:
 
             # 模拟查询生成
             mock_generate.return_value = "SELECT id, name FROM users UNION SELECT id, name FROM customers LIMIT 10"
@@ -364,8 +365,55 @@ class TestSetOperationAPI:
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
-            assert len(data["data"]) == 3
-            assert data["row_count"] == 3
+            assert len(data["data"]["data"]) == 3
+            assert data["data"]["row_count"] == 3
+
+    def test_preview_set_operation_sql_limit_matches_max_query_rows(self):
+        """预览 SQL 的 LIMIT 与 max_query_rows 一致"""
+        request_data = {
+            "config": {
+                "operation_type": "UNION",
+                "tables": [
+                    {
+                        "table_name": "users",
+                        "selected_columns": ["id", "name"],
+                        "alias": "u",
+                    },
+                    {
+                        "table_name": "customers",
+                        "selected_columns": ["id", "name"],
+                        "alias": "c",
+                    },
+                ],
+                "use_by_name": False,
+            },
+            "preview": True,
+            "include_metadata": False,
+        }
+
+        with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
+            "routers.set_operations.estimate_set_operation_rows"
+        ) as mock_estimate, patch("routers.set_operations.get_db_connection") as mock_get_db, patch(
+            "core.common.config_manager.config_manager.get_app_config",
+            return_value=Mock(max_query_rows=88),
+        ):
+            mock_generate.return_value = (
+                "SELECT id, name FROM users UNION SELECT id, name FROM customers"
+            )
+            mock_estimate.return_value = 1000
+
+            mock_con = Mock()
+            mock_get_db.return_value = mock_con
+
+            preview_frame = pd.DataFrame({"id": [1], "name": ["Alice"]})
+            mock_con.execute.return_value.fetchdf.return_value = preview_frame
+
+            response = client.post("/api/set-operations/preview", json=request_data)
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["success"] is True
+            assert "LIMIT 88" in body["data"]["sql"]
 
     def test_validate_set_operation_success(self):
         """测试成功验证集合操作"""
@@ -390,7 +438,7 @@ class TestSetOperationAPI:
             "include_metadata": False,
         }
 
-        with patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.set_operations.get_db_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
             mock_get_db.return_value = mock_con
@@ -405,7 +453,7 @@ class TestSetOperationAPI:
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
-            assert data["is_valid"] is True
+            assert data["data"]["is_valid"] is True
 
     def test_execute_set_operation_success(self):
         """测试成功执行集合操作"""
@@ -428,8 +476,8 @@ class TestSetOperationAPI:
             }
         }
 
-        with patch("routers.query.generate_set_operation_sql") as mock_generate, patch(
-            "routers.query.get_db_connection"
+        with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
+            "routers.set_operations.get_db_connection"
         ) as mock_get_db:
 
             # 模拟查询生成
@@ -455,15 +503,15 @@ class TestSetOperationAPI:
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
-            assert len(data["data"]) == 5
+            assert len(data["data"]["data"]) == 5
 
     def test_simple_union_operation(self):
         """测试简单UNION操作"""
         request_data = {"tables": ["users", "customers"], "operation_type": "UNION"}
 
-        with patch("routers.query.generate_set_operation_sql") as mock_generate, patch(
-            "routers.query.estimate_set_operation_rows"
-        ) as mock_estimate, patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
+            "routers.set_operations.estimate_set_operation_rows"
+        ) as mock_estimate, patch("routers.set_operations.get_db_connection") as mock_get_db:
 
             # 模拟查询生成
             mock_generate.return_value = (
@@ -482,8 +530,8 @@ class TestSetOperationAPI:
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
-            assert "UNION" in data["sql"]
-            assert data["estimated_rows"] == 500
+            assert "UNION" in data["data"]["sql"]
+            assert data["data"]["estimated_rows"] == 500
 
 
 class TestSetOperationIntegration:
@@ -512,9 +560,9 @@ class TestSetOperationIntegration:
             "include_metadata": True,
         }
 
-        with patch("routers.query.generate_set_operation_sql") as mock_generate, patch(
-            "routers.query.estimate_set_operation_rows"
-        ) as mock_estimate, patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
+            "routers.set_operations.estimate_set_operation_rows"
+        ) as mock_estimate, patch("routers.set_operations.get_db_connection") as mock_get_db:
 
             # 模拟查询生成
             mock_generate.return_value = (
@@ -564,7 +612,7 @@ class TestSetOperationIntegration:
             assert response.status_code == 200
             execute_data = response.json()
             assert execute_data["success"] is True
-            assert len(execute_data["data"]) == 5
+            assert len(execute_data["data"]["data"]) == 5
 
 
 class TestSetOperationErrorHandling:
@@ -613,7 +661,7 @@ class TestSetOperationErrorHandling:
             }
         }
 
-        with patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.set_operations.get_db_connection") as mock_get_db:
             # 模拟数据库连接错误
             mock_get_db.side_effect = Exception("Database connection failed")
 
@@ -622,7 +670,7 @@ class TestSetOperationErrorHandling:
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is False
-            assert len(data["errors"]) > 0
+            assert data.get("error") is not None
 
 
 if __name__ == "__main__":

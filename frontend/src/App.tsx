@@ -8,7 +8,7 @@ import React, {
   ErrorInfo
 } from "react";
 import { toast } from "sonner";
-import { extractMessage, extractMessageCode } from "@/api/client";
+import { extractMessage, extractMessageCode } from "@/api";
 import { useAppShell } from "./hooks/useAppShell";
 import {
   showSuccessToast,

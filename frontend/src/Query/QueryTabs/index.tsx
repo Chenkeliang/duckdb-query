@@ -16,7 +16,7 @@ import { useSavedQueries } from "../hooks/useSavedQueries";
 import type { QueryConfig } from "../VisualQuery";
 import type { SelectedTable } from "@/types/SelectedTable";
 import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
-import type { TableSource } from "@/hooks/useQueryWorkspace";
+import type { TableSource, UseQueryWorkspaceReturn } from "@/hooks/useQueryWorkspace";
 import type { SqlDialect } from "@/utils/sqlUtils";
 import {
   getDialectFromSource,
@@ -24,6 +24,7 @@ import {
   quoteIdent,
   quoteQualifiedTable,
   generateDatabaseAlias,
+  generateExternalTableReference,
   parseSQLTableReferences,
   buildAttachDatabasesFromParsedRefs
 } from "@/utils/sqlUtils";
@@ -62,6 +63,7 @@ interface QueryTabsProps {
   onTabChange: (tab: string) => void;
   selectedTables: SelectedTable[];
   onExecute: (sql: string, source?: TableSource) => Promise<void>;
+  onDisplayPreview?: UseQueryWorkspaceReturn['displayQueryPreview'];
   onRemoveTable?: (table: SelectedTable) => void;
   /** 取消回调 */
   onCancel?: () => void;
@@ -79,6 +81,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
   onTabChange,
   selectedTables,
   onExecute,
+  onDisplayPreview,
   onRemoveTable,
   onCancel,
   isCancelling,
@@ -340,6 +343,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
             <SetOperationsPanel
               selectedTables={selectedTables}
               onExecute={handleSetExecute}
+              onDisplayPreview={onDisplayPreview}
               onRemoveTable={onRemoveTable}
             />
           </KeepAliveTabContent>
@@ -428,8 +432,13 @@ function buildSQLFromConfig(config: QueryConfig, dialect: SqlDialect): string | 
   const parts: string[] = [];
   const normalizedTable = normalizeSelectedTable(config.table);
   const tableName = getTableName(config.table);
-  const fromTableName = quoteQualifiedTable({ name: tableName, schema: normalizedTable.schema }, dialect);
-  const baseTableRef = quoteIdent(tableName, dialect);
+  const isExternalTable = normalizedTable.source === "external";
+  const fromTableName = isExternalTable
+    ? generateExternalTableReference(config.table).qualifiedName
+    : quoteQualifiedTable({ name: tableName, schema: normalizedTable.schema }, dialect);
+  const baseTableRef = isExternalTable
+    ? fromTableName
+    : quoteIdent(tableName, dialect);
 
   // SELECT
   const selectParts: string[] = [];

@@ -16,6 +16,7 @@ from openpyxl import load_workbook
 
 from core.common.timezone_utils import get_current_time_iso
 from core.common.utils import normalize_dataframe_output
+from core.data.ingestion_precision import coerce_dataframe_numeric_columns_safe
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +218,7 @@ def _inspect_xlsx_sheets(
                     sheet_name=sheet_name,
                     nrows=preview_rows,
                     engine="openpyxl",
+                    dtype=object,
                 )
                 columns = [
                     {
@@ -263,6 +265,7 @@ def _inspect_xls_sheets(file_path: str, preview_rows: int = 20) -> List[Dict[str
                     sheet_name=sheet_name,
                     nrows=preview_rows,
                     engine="xlrd",
+                    dtype=object,
                 )
                 max_col = len(preview_df.columns)
                 # 读取全部行数
@@ -367,6 +370,7 @@ def load_excel_sheet_dataframe(
     header_rows: int = 1,
     header_row_index: Optional[int] = 1,
     fill_merged: bool = False,
+    import_mode: Optional[str] = None,
 ) -> pd.DataFrame:
     # 根据文件扩展名选择引擎
     file_ext = os.path.splitext(file_path)[1].lower()
@@ -382,6 +386,7 @@ def load_excel_sheet_dataframe(
             sheet_name=sheet_name,
             header=None,
             engine=engine,
+            dtype=object,
         )
 
     except ValueError as e:
@@ -395,6 +400,7 @@ def load_excel_sheet_dataframe(
                     sheet_name=sheet_name,
                     header=None,
                     engine=fallback_engine,
+                    dtype=object,
                 )
             except Exception as calamine_error:
                 logger.error(f"Calamine engine failed: {calamine_error}")
@@ -408,6 +414,7 @@ def load_excel_sheet_dataframe(
                             sheet_name=sheet_name,
                             header=None,
                             engine="openpyxl",
+                            dtype=object,
                         )
                     except Exception as repair_error:
                         logger.error(f"Repaired file read failed: {repair_error}")
@@ -472,17 +479,4 @@ def load_excel_sheet_dataframe(
     data_df.columns = headers
     data_df = data_df.dropna(how="all").reset_index(drop=True)
 
-    # 尝试自动推断数值类型
-    # 因为初始读取时包含表头，pandas 可能将所有列都设为 object
-    # 最稳妥的是尝试 pd.to_numeric
-    for col in data_df.columns:
-        if data_df[col].dtype == 'object':
-            try:
-                # 尝试转换为数字，如果整列都是数字（或 NaN）
-                numeric_col = pd.to_numeric(data_df[col])
-                data_df[col] = numeric_col
-            except (ValueError, TypeError):
-                # 包含无法转换的文本，保持原样
-                pass
-
-    return data_df
+    return coerce_dataframe_numeric_columns_safe(data_df, import_mode=import_mode)

@@ -11,26 +11,37 @@ import type { UploadResponse, UploadProgress, NormalizedResponse } from './types
 
 // ==================== Types ====================
 
+/** 与后端 `import_mode` 一致：auto=先文本再安全定型，literal=全部 VARCHAR */
+export type FileImportMode = 'auto' | 'literal';
+
 export interface UploadOptions {
     tableAlias?: string;
     target?: 'duckdb' | 'memory';
+    importMode?: FileImportMode;
     onProgress?: (progress: UploadProgress) => void;
+}
+
+function appendImportMode(formData: FormData, importMode?: FileImportMode): void {
+    formData.append('import_mode', importMode ?? 'auto');
 }
 
 export interface UrlImportOptions {
     hasHeader?: boolean;
     delimiter?: string;
     encoding?: string;
+    importMode?: FileImportMode;
 }
 
 export interface ExcelSheet {
     name: string;
-    index: number;
+    index?: number;
     row_count?: number;
+    default_table_name?: string;
 }
 
 export interface ExcelImportPayload {
     file_id: string;
+    import_mode?: FileImportMode;
     sheets: Array<{
         name: string;
         target_table: string;
@@ -71,6 +82,7 @@ export async function uploadFile(
     if (tableAlias) {
         formData.append('table_alias', tableAlias);
     }
+    appendImportMode(formData);
 
     try {
         const response = await apiClient.post('/api/upload', formData, {
@@ -98,7 +110,7 @@ export async function uploadFileEnhanced(
     file: File,
     options: UploadOptions = {}
 ): Promise<UploadResponse> {
-    const { tableAlias = null, target = 'duckdb', onProgress } = options;
+    const { tableAlias = null, target = 'duckdb', onProgress, importMode } = options;
 
     const formData = new FormData();
     formData.append('file', file);
@@ -108,6 +120,7 @@ export async function uploadFileEnhanced(
     if (target) {
         formData.append('target', target);
     }
+    appendImportMode(formData, importMode);
 
     try {
         const response = await uploadClient.post('/api/upload', formData, {
@@ -135,55 +148,215 @@ export async function uploadFileEnhanced(
     }
 }
 
-/**
- * Upload file directly to DuckDB
- * 
- * Returns normalized UploadResponse
- */
-export async function uploadFileToDuckDB(
-    file: File,
-    tableAlias: string
-): Promise<UploadResponse> {
-    try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('table_alias', tableAlias);
+// ==================== Chunked Upload ====================
 
-        const response = await apiClient.post('/api/duckdb/upload-file', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-            timeout: 300000,
-        });
-        const normalized = normalizeResponse<UploadResponse>(response);
+/** 超过此大小走分块上传（与单次 POST 并存） */
+export const CHUNKED_UPLOAD_THRESHOLD_BYTES = 8 * 1024 * 1024;
+
+const DEFAULT_CHUNK_SIZE_BYTES = 2 * 1024 * 1024;
+
+export interface ChunkedUploadInitResult {
+    upload_id: string;
+    total_chunks: number;
+    chunk_size: number;
+}
+
+export interface ChunkedUploadFileInfo {
+    source_id?: string;
+    filename?: string;
+    row_count?: number;
+    column_count?: number;
+    columns?: unknown[];
+    pending_excel?: UploadResponse['pending_excel'];
+    message?: string;
+    success?: boolean;
+}
+
+function mapChunkedFileInfoToUploadResponse(
+    fileInfo: ChunkedUploadFileInfo
+): UploadResponse & Record<string, unknown> {
+    if (fileInfo.pending_excel) {
         return {
-            ...normalized.data,
             success: true,
+            requires_sheet_selection: true,
+            pending_excel: fileInfo.pending_excel,
+            message: fileInfo.message,
         };
-    } catch (error) {
-        throw error;
     }
+    const fileId = fileInfo.source_id;
+    return {
+        success: true,
+        file_id: fileId,
+        row_count: fileInfo.row_count,
+        columns: fileInfo.columns,
+        column_count: fileInfo.column_count,
+    };
+}
+
+export async function initChunkedUpload(
+    file: File,
+    tableAlias: string | null = null,
+    chunkSize = DEFAULT_CHUNK_SIZE_BYTES,
+    importMode: FileImportMode = 'auto'
+): Promise<ChunkedUploadInitResult> {
+    const formData = new FormData();
+    formData.append('file_name', file.name);
+    formData.append('file_size', String(file.size));
+    formData.append('chunk_size', String(chunkSize));
+    if (tableAlias) {
+        formData.append('table_alias', tableAlias);
+    }
+    appendImportMode(formData, importMode);
+    const response = await uploadClient.post('/api/upload/init', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const normalized = normalizeResponse<ChunkedUploadInitResult>(response);
+    return normalized.data;
+}
+
+export async function uploadChunk(
+    uploadId: string,
+    chunkNumber: number,
+    chunkBlob: Blob
+): Promise<{ progress: number }> {
+    const formData = new FormData();
+    formData.append('upload_id', uploadId);
+    formData.append('chunk_number', String(chunkNumber));
+    formData.append('chunk', chunkBlob, `chunk_${chunkNumber}`);
+    const response = await uploadClient.post('/api/upload/chunk', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const normalized = normalizeResponse<{ progress: number }>(response);
+    return normalized.data;
+}
+
+export async function completeChunkedUpload(
+    uploadId: string
+): Promise<{ file_info: ChunkedUploadFileInfo }> {
+    const formData = new FormData();
+    formData.append('upload_id', uploadId);
+    const response = await uploadClient.post('/api/upload/complete', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 600000,
+    });
+    const normalized = normalizeResponse<{ file_info: ChunkedUploadFileInfo }>(response);
+    return normalized.data;
+}
+
+export async function cancelChunkedUpload(uploadId: string): Promise<void> {
+    await uploadClient.delete(`/api/upload/cancel/${encodeURIComponent(uploadId)}`);
+}
+
+/**
+ * 分块上传完整流程（init → chunk × N → complete）
+ */
+export async function uploadFileChunked(
+    file: File,
+    tableAlias: string | null = null,
+    options: UploadOptions = {}
+): Promise<UploadResponse & Record<string, unknown>> {
+    const { onProgress } = options;
+    let uploadId: string | null = null;
+    try {
+        const init = await initChunkedUpload(
+            file,
+            tableAlias,
+            DEFAULT_CHUNK_SIZE_BYTES,
+            options.importMode ?? 'auto'
+        );
+        uploadId = init.upload_id;
+        const chunkSize = init.chunk_size;
+
+        for (let chunkNumber = 0; chunkNumber < init.total_chunks; chunkNumber++) {
+            const start = chunkNumber * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const blob = file.slice(start, end);
+            const chunkResult = await uploadChunk(uploadId, chunkNumber, blob);
+            onProgress?.({
+                loaded: end,
+                total: file.size,
+                percent: Math.round(chunkResult.progress ?? (end / file.size) * 100),
+            });
+        }
+
+        const complete = await completeChunkedUpload(uploadId);
+        uploadId = null;
+        return mapChunkedFileInfoToUploadResponse(complete.file_info);
+    } catch (error) {
+        if (uploadId) {
+            try {
+                await cancelChunkedUpload(uploadId);
+            } catch {
+                // ignore cleanup errors
+            }
+        }
+        throw handleApiError(error as never, '分块文件上传失败');
+    }
+}
+
+/**
+ * 按文件大小自动选择单次上传或分块上传
+ */
+export async function uploadFileAuto(
+    file: File,
+    tableAlias: string | null = null,
+    options: UploadOptions = {}
+): Promise<UploadResponse & Record<string, unknown>> {
+    if (file.size > CHUNKED_UPLOAD_THRESHOLD_BYTES) {
+        return uploadFileChunked(file, tableAlias, options);
+    }
+    return uploadFileEnhanced(file, {
+        tableAlias: tableAlias ?? undefined,
+        target: options.target,
+        importMode: options.importMode,
+        onProgress: options.onProgress,
+    });
 }
 
 // ==================== URL Import ====================
 
+/** 与后端 `URLReadRequest`（url_reader.py）一致的请求体 */
+interface ReadFromUrlRequestBody {
+    url: string;
+    table_alias: string;
+    header?: boolean;
+    delimiter?: string;
+    encoding?: string;
+    import_mode?: FileImportMode;
+}
+
+/** `POST /api/read_from_url` 成功时 `data` 形状（见 docs/API_URL_IMPORT_CALL_MAP.md） */
+interface ReadFromUrlData {
+    table_name: string;
+    row_count?: number;
+    column_count?: number;
+    columns?: unknown[];
+    file_type?: string;
+    url?: string;
+    original_url?: string;
+}
+
 /**
  * Read data from URL and import to DuckDB
- * 
- * Returns normalized UploadResponse
+ *
+ * @see docs/API_URL_IMPORT_CALL_MAP.md
  */
 export async function readFromUrl(
     url: string,
     tableAlias: string,
     options: UrlImportOptions = {}
-): Promise<UploadResponse> {
+): Promise<UploadResponse & ReadFromUrlData> {
     try {
-        const response = await apiClient.post('/api/url-reader/read', {
+        const body: ReadFromUrlRequestBody = {
             url,
             table_alias: tableAlias,
-            has_header: options.hasHeader ?? true,
+            header: options.hasHeader ?? true,
             delimiter: options.delimiter,
             encoding: options.encoding,
-        });
-        const normalized = normalizeResponse<UploadResponse>(response);
+            import_mode: options.importMode ?? 'auto',
+        };
+        const response = await apiClient.post('/api/read_from_url', body);
+        const normalized = normalizeResponse<ReadFromUrlData>(response);
         return {
             ...normalized.data,
             success: true,
@@ -193,10 +366,18 @@ export async function readFromUrl(
     }
 }
 
+/** `GET /api/url_info` 成功时 `data` 形状 */
+interface UrlInfoData {
+    file_type?: string;
+    content_type?: string;
+    content_length?: number | null;
+    url?: string;
+}
+
 /**
  * Get URL file information (without importing)
- * 
- * Returns normalized response with file info
+ *
+ * @see docs/API_URL_IMPORT_CALL_MAP.md
  */
 export async function getUrlInfo(url: string): Promise<{
     success: boolean;
@@ -207,11 +388,16 @@ export async function getUrlInfo(url: string): Promise<{
     message?: string;
 }> {
     try {
-        const response = await apiClient.get(`/api/url-reader/info?url=${encodeURIComponent(url)}`);
-        const normalized = normalizeResponse<{ file_type?: string; size?: number; content_type?: string }>(response);
+        const response = await apiClient.get(
+            `/api/url_info?url=${encodeURIComponent(url)}`
+        );
+        const normalized = normalizeResponse<UrlInfoData>(response);
+        const data = normalized.data;
         return {
             success: true,
-            ...normalized.data,
+            file_type: data.file_type,
+            content_type: data.content_type,
+            size: data.content_length ?? undefined,
             messageCode: normalized.messageCode,
             message: normalized.message,
         };
@@ -230,6 +416,8 @@ export async function getUrlInfo(url: string): Promise<{
 export async function inspectExcelSheets(fileId: string): Promise<{
     success: boolean;
     sheets: ExcelSheet[];
+    table_alias?: string | null;
+    default_table_prefix?: string;
     messageCode?: string;
     message?: string;
 }> {
@@ -237,10 +425,16 @@ export async function inspectExcelSheets(fileId: string): Promise<{
         const response = await apiClient.post('/api/data-sources/excel/inspect', {
             file_id: fileId
         });
-        const normalized = normalizeResponse<{ sheets: ExcelSheet[] }>(response);
+        const normalized = normalizeResponse<{
+            sheets?: ExcelSheet[];
+            table_alias?: string | null;
+            default_table_prefix?: string;
+        }>(response);
         return {
             success: true,
             sheets: normalized.data.sheets ?? [],
+            table_alias: normalized.data.table_alias,
+            default_table_prefix: normalized.data.default_table_prefix,
             messageCode: normalized.messageCode,
             message: normalized.message,
         };
@@ -336,6 +530,7 @@ export async function browseServerDirectory(path: string): Promise<{
 export async function importServerFile(payload: {
     path: string;
     table_alias?: string;
+    import_mode?: FileImportMode;
 }): Promise<UploadResponse> {
     try {
         const response = await apiClient.post('/api/server-files/import', payload);
@@ -398,9 +593,16 @@ export interface ServerExcelImportResponse {
  * 
  * Returns normalized response with sheets info
  */
-export async function inspectServerExcelSheets(path: string): Promise<ServerExcelInspectResponse> {
+export async function inspectServerExcelSheets(
+    path: string,
+    tableAlias?: string | null
+): Promise<ServerExcelInspectResponse> {
     try {
-        const response = await apiClient.post('/api/server-files/excel/inspect', { path });
+        const body: { path: string; table_alias?: string } = { path };
+        if (tableAlias?.trim()) {
+            body.table_alias = tableAlias.trim();
+        }
+        const response = await apiClient.post('/api/server-files/excel/inspect', body);
         const normalized = normalizeResponse<ServerExcelInspectResponse>(response);
         return {
             ...normalized.data,
@@ -418,12 +620,14 @@ export async function inspectServerExcelSheets(path: string): Promise<ServerExce
  */
 export async function importServerExcelSheets(
     path: string,
-    sheets: ServerExcelSheetConfig[]
+    sheets: ServerExcelSheetConfig[],
+    importMode: FileImportMode = 'auto'
 ): Promise<ServerExcelImportResponse> {
     try {
         const response = await apiClient.post('/api/server-files/excel/import', {
             path,
             sheets,
+            import_mode: importMode,
         });
         const normalized = normalizeResponse<ServerExcelImportResponse>(response);
         return {
@@ -475,34 +679,3 @@ export async function pasteData(request: PasteDataRequest): Promise<PasteDataRes
     }
 }
 
-// ==================== File Preview ====================
-
-/**
- * Get file preview data
- * 
- * Returns normalized response with preview data
- */
-export async function getFilePreview(
-    filename: string,
-    rows = 10
-): Promise<{
-    success: boolean;
-    data: Record<string, unknown>[];
-    columns: Array<{ name: string; type: string }>;
-    messageCode?: string;
-    message?: string;
-}> {
-    try {
-        const response = await apiClient.get(`/api/file_preview/${filename}?rows=${rows}`);
-        const normalized = normalizeResponse<{ data?: Record<string, unknown>[]; columns?: Array<{ name: string; type: string }> }>(response);
-        return {
-            success: true,
-            data: normalized.data.data ?? [],
-            columns: normalized.data.columns ?? [],
-            messageCode: normalized.messageCode,
-            message: normalized.message,
-        };
-    } catch (error) {
-        throw error;
-    }
-}

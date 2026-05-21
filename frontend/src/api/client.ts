@@ -42,10 +42,7 @@ const normalizeAxiosError = (error: AxiosError): AxiosError & ApiError => {
     const respData = error.response?.data;
     const message = extractMessage(respData) || error.message || 'OPERATION_FAILED';
     const code = extractMessageCode(respData) || error.code || 'OPERATION_FAILED';
-    const details =
-        (respData as Record<string, unknown> | undefined)?.error?.details ||
-        (respData as Record<string, unknown> | undefined)?.detail?.details ||
-        (respData as Record<string, unknown> | undefined)?.details;
+    const details = (respData as Record<string, unknown> | undefined)?.error?.details;
 
     const enhanced = error as AxiosError & ApiError;
     enhanced.message = message;
@@ -106,20 +103,6 @@ export const extractMessage = (payload: unknown): string => {
 
     const p = payload as Record<string, unknown>;
 
-    if (typeof p.detail === 'string') {
-        return p.detail;
-    }
-
-    if (p.detail && typeof p.detail === 'object') {
-        const detail = p.detail as Record<string, unknown>;
-        if (typeof detail.message === 'string') {
-            return detail.message;
-        }
-        if (typeof detail.detail === 'string') {
-            return detail.detail;
-        }
-    }
-
     if (p.error) {
         if (typeof p.error === 'string') {
             return p.error;
@@ -158,14 +141,6 @@ export const extractMessageCode = (payload: unknown): string | undefined => {
         const error = p.error as Record<string, unknown>;
         if (typeof error.code === 'string') {
             return error.code;
-        }
-    }
-
-    // 从 detail 对象中获取
-    if (p.detail && typeof p.detail === 'object') {
-        const detail = p.detail as Record<string, unknown>;
-        if (typeof detail.code === 'string') {
-            return detail.code;
         }
     }
 
@@ -350,18 +325,19 @@ export async function parseBlobError(blob: Blob): Promise<StandardError | null> 
             return parsed;
         }
 
-        // Try to construct a standard error from legacy format
         if (parsed && typeof parsed === 'object' && parsed.success === false) {
+            const code = extractMessageCode(parsed) || 'OPERATION_FAILED';
+            const message = extractMessage(parsed) || 'OPERATION_FAILED';
+            const errObj = (parsed as Record<string, unknown>).error as Record<string, unknown> | undefined;
             return {
                 success: false,
                 error: {
-                    code: extractMessageCode(parsed) || 'OPERATION_FAILED',
-                    message: extractMessage(parsed) || 'OPERATION_FAILED',
-                    details: (parsed as Record<string, unknown>).details as Record<string, unknown> | undefined,
+                    code,
+                    message,
+                    details: errObj?.details as Record<string, unknown> | undefined,
                 },
-                detail: extractMessage(parsed) || 'OPERATION_FAILED',
-                messageCode: extractMessageCode(parsed) || 'OPERATION_FAILED',
-                message: extractMessage(parsed) || 'OPERATION_FAILED',
+                messageCode: code,
+                message,
                 timestamp: new Date().toISOString(),
             };
         }
@@ -409,35 +385,21 @@ export const handleApiError = (error: AxiosError, defaultMessage = 'OPERATION_FA
         throw err;
     }
 
-    // Extract from various formats
     const messageFromData = extractMessage(data);
     const codeFromData = extractMessageCode(data);
-    const d = data as Record<string, unknown>;
-    const detail = d?.detail as Record<string, unknown> | undefined;
-    const detailsFromData = detail?.details as Record<string, unknown> | undefined;
+    const detailsFromData = (data as Record<string, unknown>)?.error as Record<string, unknown> | undefined;
+    const nestedDetails = detailsFromData?.details as Record<string, unknown> | undefined;
 
     const throwWithMessage = (fallbackCode: string): never => {
         const err = new Error(messageFromData || fallbackCode) as ApiError;
         err.statusCode = status;
         err.code = codeFromData || fallbackCode;
         err.messageCode = err.code;
-        if (detailsFromData) {
-            err.details = detailsFromData;
+        if (nestedDetails) {
+            err.details = nestedDetails;
         }
         throw err;
     };
-
-    // Check unified error format (legacy)
-    if (detail && typeof detail === 'object' && detail.code) {
-        const originalError = (detail.details as Record<string, unknown>)?.original_error as string | undefined;
-        const errorMessage = originalError || (detail.message as string) || defaultMessage;
-        const enhancedError = new Error(errorMessage) as ApiError;
-        enhancedError.code = detail.code as string;
-        enhancedError.messageCode = detail.code as string;
-        enhancedError.details = detail.details as Record<string, unknown>;
-        enhancedError.statusCode = status;
-        throw enhancedError;
-    }
 
     // Handle by status code
     switch (status) {

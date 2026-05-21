@@ -225,7 +225,7 @@ await invalidateAfterDatabaseChange(queryClient);
 #### 前端错误处理
 
 ```typescript
-import { handleApiError } from '@/api/client';
+import { handleApiError } from '@/api';
 
 try {
   const result = await executeDuckDBSQL({ sql });

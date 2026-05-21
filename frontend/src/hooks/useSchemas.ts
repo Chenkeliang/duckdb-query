@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { listConnectionSchemas } from '@/api';
 
 /**
  * Schema 类型
@@ -14,23 +15,7 @@ export interface Schema {
  * 获取 schemas 列表
  */
 const fetchSchemas = async (connectionId: string): Promise<Schema[]> => {
-  // 移除 db_ 前缀（如果存在）
-  const actualConnectionId = connectionId.startsWith('db_')
-    ? connectionId.substring(3)
-    : connectionId;
-
-  const response = await fetch(`/api/databases/${actualConnectionId}/schemas`);
-
-  if (!response.ok) {
-    throw new Error('获取 schemas 列表失败');
-  }
-
-  const data = await response.json();
-  // 兼容不同的 API 响应格式
-  // 标准格式: { success: true, data: { items: [...] } }
-  // 旧格式: { schemas: [...] } or { data: { schemas: [...] } }
-  const responseData = data.data || data;
-  return responseData.items || responseData.schemas || [];
+  return listConnectionSchemas(connectionId);
 };
 
 /**

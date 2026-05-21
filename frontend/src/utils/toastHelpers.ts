@@ -20,7 +20,7 @@
 
 import { toast } from 'sonner';
 import type { TFunction } from 'i18next';
-import type { ApiError } from '@/api/client';
+import type { ApiError } from '@/api';
 
 /**
  * 显示成功 Toast

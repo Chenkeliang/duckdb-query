@@ -7,7 +7,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from fastapi import HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from utils.response_helpers import MessageCode, create_error_response
 
 
 logger = logging.getLogger(__name__)
@@ -172,18 +174,11 @@ async def api_exception_handler(request: Request, exc: BaseAPIException) -> JSON
     
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "success": False,
-            "detail": exc.message,
-            "error": {
-                "code": exc.error_code,
-                "message": exc.message,
-                "details": exc.details
-            },
-            "messageCode": exc.error_code,
-            "message": exc.message,
-            "timestamp": _get_utc_timestamp()
-        }
+        content=create_error_response(
+            code=exc.error_code,
+            message=exc.message,
+            details=exc.details,
+        ),
     )
 
 
@@ -226,18 +221,39 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "success": False,
-            "detail": message,
-            "error": {
-                "code": error_code,
-                "message": message,
-                "details": {}
-            },
-            "messageCode": error_code,
-            "message": message,
-            "timestamp": _get_utc_timestamp()
-        }
+        content=create_error_response(
+            code=error_code,
+            message=message,
+            details={},
+        ),
+    )
+
+
+async def request_validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Pydantic / FastAPI 请求体验证失败 → 标准 error 信封（422）。"""
+    field_errors = []
+    for item in exc.errors():
+        loc = ".".join(str(part) for part in item.get("loc", ()))
+        field_errors.append(
+            {"field": loc, "message": item.get("msg", ""), "type": item.get("type", "")}
+        )
+
+    logger.warning(
+        "Request validation failed: %s %s — %d issue(s)",
+        request.method,
+        request.url.path,
+        len(field_errors),
+    )
+
+    return JSONResponse(
+        status_code=422,
+        content=create_error_response(
+            code=MessageCode.VALIDATION_ERROR,
+            message="Request validation failed",
+            details={"errors": field_errors},
+        ),
     )
 
 
@@ -258,23 +274,17 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     
     return JSONResponse(
         status_code=500,
-        content={
-            "success": False,
-            "detail": "Internal server error",
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "message": "Internal server error",
-                "details": {}
-            },
-            "messageCode": "INTERNAL_ERROR",
-            "message": "Internal server error",
-            "timestamp": _get_utc_timestamp()
-        }
+        content=create_error_response(
+            code=MessageCode.INTERNAL_ERROR,
+            message="Internal server error",
+            details={},
+        ),
     )
 
 
 def setup_exception_handlers(app):
     """设置异常处理器"""
+    app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
     app.add_exception_handler(BaseAPIException, api_exception_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(Exception, general_exception_handler)

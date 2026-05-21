@@ -44,7 +44,6 @@ export interface StandardError {
     message: string;
     details?: Record<string, unknown>;
   };
-  detail: string;
   messageCode: string;
   message: string;
   timestamp: string;
@@ -175,6 +174,16 @@ export interface UploadResponse {
   file_id?: string;
   table_name?: string;
   message?: string;
+  row_count?: number;
+  columns?: unknown[];
+  requires_sheet_selection?: boolean;
+  pending_excel?: {
+    file_id: string;
+    original_filename: string;
+    file_size?: number;
+    table_alias?: string | null;
+    default_table_prefix?: string;
+  };
 }
 
 export interface FileInfo {

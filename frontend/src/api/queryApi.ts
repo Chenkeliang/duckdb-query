@@ -8,10 +8,8 @@
 
 import { apiClient, handleApiError, getFederatedQueryTimeout, normalizeResponse, extractMessage } from './client';
 import type {
-    QueryRequest,
     QueryResponse,
     DataSource,
-    NormalizedResponse
 } from './types';
 
 // ==================== Types ====================
@@ -169,13 +167,11 @@ export function parseFederatedQueryError(error: Error & { response?: { data?: un
     host?: string;
 } {
     const respData = error.response?.data;
-    const detail =
+    const detailStr =
         extractMessage(respData) ||
-        (respData as Record<string, unknown> | undefined)?.detail ||
         (respData as Record<string, unknown> | undefined)?.message ||
         error.message ||
         '';
-    const detailStr = typeof detail === 'string' ? detail : JSON.stringify(detail);
 
     // ATTACH error
     if (detailStr.includes('ATTACH') || detailStr.includes('attach')) {
@@ -223,85 +219,6 @@ export function parseFederatedQueryError(error: Error & { response?: { data?: un
     };
 }
 
-// ==================== External Database Query ====================
-
-/**
- * Execute SQL on external database (MySQL/PostgreSQL)
- *
- * Returns normalized QueryResponse
- */
-export async function executeExternalSQL(
-    sql: string,
-    datasource: DataSource,
-    isPreview = true
-): Promise<QueryResponse> {
-    try {
-        const normalizedDatasource = {
-            ...datasource,
-            id: datasource.id?.replace(/^db_/, '') || datasource.id,
-        };
-
-        const response = await apiClient.post('/api/execute_sql', {
-            sql,
-            datasource: normalizedDatasource,
-            is_preview: isPreview
-        });
-
-        const normalized = normalizeResponse<QueryResponse>(response);
-        return {
-            ...normalized.data,
-            success: true,
-        };
-    } catch (error) {
-        throw handleApiError(error as never, '外部数据库查询执行失败');
-    }
-}
-
-/**
- * Execute general SQL query
- *
- * Returns normalized QueryResponse
- */
-export async function executeSQL(
-    sql: string,
-    datasource: DataSource,
-    isPreview = true
-): Promise<QueryResponse> {
-    try {
-        const response = await apiClient.post('/api/execute_sql', {
-            sql,
-            datasource,
-            is_preview: isPreview
-        });
-
-        const normalized = normalizeResponse<QueryResponse>(response);
-        return {
-            ...normalized.data,
-            success: true,
-        };
-    } catch (error) {
-        throw error;
-    }
-}
-
-/**
- * Perform query using proxy endpoint
- *
- * Returns normalized QueryResponse
- */
-export async function performQuery(queryRequest: QueryRequest): Promise<QueryResponse> {
-    try {
-        const response = await apiClient.post('/api/query', queryRequest);
-        const normalized = normalizeResponse<QueryResponse>(response);
-        return {
-            ...normalized.data,
-            success: true,
-        };
-    } catch (error) {
-        throw handleApiError(error as never, '查询执行失败');
-    }
-}
-
 // ==================== Query Result Operations ====================
 
 /**
@@ -343,23 +260,13 @@ export async function saveQueryToDuckDB(
 }
 
 /**
- * Save query result as a named datasource
- *
- * Returns normalized response
+ * 取消同步查询（与 X-Request-ID 对应，后端使用 sync:{requestId}）
  */
-export async function saveQueryResultAsDatasource(
-    sql: string,
-    datasourceName: string,
-    originalDatasource: DataSource
-): Promise<NormalizedResponse<Record<string, unknown>>> {
+export async function cancelSyncQuery(requestId: string): Promise<void> {
     try {
-        const response = await apiClient.post('/api/save_query_result_as_datasource', {
-            sql,
-            datasource_name: datasourceName,
-            datasource: originalDatasource
-        });
-        return normalizeResponse(response);
+        await apiClient.post(`/api/query/cancel/${requestId}`);
     } catch (error) {
-        throw error;
+        throw handleApiError(error as never, '取消查询失败');
     }
 }
+

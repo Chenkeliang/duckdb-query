@@ -1,10 +1,12 @@
 # require-tanstack-query
 
-强制在新布局中使用 TanStack Query 进行服务端数据获取。
+强制在 `frontend/src/` 中使用 TanStack Query 进行服务端数据获取。
+
+> **废止（2026-05-21）**：`frontend/src/new/` 路径已废止；规则适用范围为 **`frontend/src/**`**（与 [`AGENTS.md`](../../../AGENTS.md) §4.4 一致）。
 
 ## 规则详情
 
-此规则禁止在新布局 (`frontend/src/new/`) 中使用传统的 `useState` + `useEffect` + `fetch` 模式管理服务端数据，强制使用 TanStack Query。
+此规则禁止在业务代码中使用传统的 `useState` + `useEffect` + 裸 `fetch` 管理**本后端**数据，须经 `@/api` + TanStack Query。
 
 ### 为什么需要这个规则？
 

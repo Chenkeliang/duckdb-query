@@ -6,9 +6,11 @@
 import React, { createContext, useContext, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_SHORTCUTS, ShortcutConfig } from './defaultShortcuts';
-
-// API base URL
-const API_BASE = '/api/settings';
+import {
+  fetchShortcutsConfig,
+  updateShortcutSetting,
+  resetShortcutsSetting,
+} from '@/api';
 
 // Query key
 export const SHORTCUTS_QUERY_KEY = ['shortcuts'] as const;
@@ -26,18 +28,12 @@ interface ShortcutContextValue {
   isCustomized: (actionId: string) => boolean;
 }
 
-// API functions
+// API: 见 @/api（fetchShortcutsConfig 等）
 async function fetchShortcuts(): Promise<Record<string, ShortcutConfig>> {
-  const response = await fetch(`${API_BASE}/shortcuts`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch shortcuts');
-  }
-  const data = await response.json();
-  
-  // Merge API response with defaults
+  const payload = await fetchShortcutsConfig();
   const shortcuts: Record<string, ShortcutConfig> = {};
-  const apiShortcuts = data.data?.shortcuts || [];
-  
+  const apiShortcuts = payload.shortcuts || [];
+
   for (const [actionId, defaultConfig] of Object.entries(DEFAULT_SHORTCUTS)) {
     const apiShortcut = apiShortcuts.find((s: { action_id: string }) => s.action_id === actionId);
     shortcuts[actionId] = {
@@ -45,30 +41,16 @@ async function fetchShortcuts(): Promise<Record<string, ShortcutConfig>> {
       shortcut: apiShortcut?.shortcut || defaultConfig.defaultShortcut,
     };
   }
-  
+
   return shortcuts;
 }
 
 async function updateShortcutAPI(actionId: string, shortcut: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/shortcuts/${actionId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ shortcut }),
-  });
-  if (!response.ok) {
-    throw new Error('Failed to update shortcut');
-  }
+  await updateShortcutSetting(actionId, shortcut);
 }
 
 async function resetShortcutAPI(actionId?: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/shortcuts/reset`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action_id: actionId }),
-  });
-  if (!response.ok) {
-    throw new Error('Failed to reset shortcut');
-  }
+  await resetShortcutsSetting(actionId);
 }
 
 // Context

@@ -7,7 +7,7 @@ charset-normalizer==3.4.4
 click==8.3.1
 cryptography==46.0.3
 dnspython==2.8.0
-duckdb==1.4.2
+duckdb==1.4.4
 email-validator==2.3.0
 et_xmlfile==2.0.0
 fastapi==0.121.2

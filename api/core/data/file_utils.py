@@ -78,10 +78,12 @@ def read_file_by_type(
 
             logger.info(f"Detected encoding for {file_path}: {detected_encoding}")
             
+            read_kwargs = {"encoding": detected_encoding, "dtype": str, "keep_default_na": False}
             if nrows is not None:
-                df = pd.read_csv(file_path, encoding=detected_encoding, nrows=nrows)
+                df = pd.read_csv(file_path, nrows=nrows, **read_kwargs)
             else:
-                df = pd.read_csv(file_path, encoding=detected_encoding)
+                df = pd.read_csv(file_path, **read_kwargs)
+            df = df.replace("", pd.NA)
             
         elif file_type == "excel":
             if nrows is not None:
@@ -257,6 +259,13 @@ def _format_reader_option_value(value: Any) -> str:
         return "TRUE" if value else "FALSE"
     if isinstance(value, (int, float)):
         return str(value)
+    if isinstance(value, dict):
+        parts = []
+        for key, val in value.items():
+            escaped_key = str(key).replace("'", "''")
+            escaped_val = str(val).replace("'", "''")
+            parts.append(f"'{escaped_key}': '{escaped_val}'")
+        return "{" + ", ".join(parts) + "}"
     if value is None:
         return "NULL"
     text = str(value).replace("'", "''")
@@ -344,6 +353,7 @@ def load_file_to_duckdb(
     file_type: Optional[str] = None,
     reader_options: Optional[Dict[str, Any]] = None,
     drop_existing: bool = True,
+    import_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """使用DuckDB原生read_*系columnloadingfile，必要时回退到pandas。
 
@@ -395,6 +405,19 @@ def load_file_to_duckdb(
     if reader_options:
         merged_options.update(reader_options)
 
+    if normalized_type == "csv":
+        from core.data.import_mode import (
+            normalize_import_mode,
+            should_promote_column_types,
+            use_all_varchar_on_load,
+        )
+        from core.data.ingestion_precision import promote_table_column_types_from_varchar
+
+        normalize_import_mode(import_mode)
+        if use_all_varchar_on_load(import_mode) and "all_varchar" not in merged_options:
+            merged_options["all_varchar"] = True
+            logger.info("CSV import_mode=%s: all_varchar=true for %s", import_mode, file_path)
+
     quoted_table = _quote_identifier(table_name)
     invocation = _build_reader_invocation(function_name, merged_options)
     load_sql = f"CREATE TABLE {quoted_table} AS SELECT * FROM {invocation}"
@@ -405,6 +428,12 @@ def load_file_to_duckdb(
     try:
         connection.execute(load_sql, [file_path])
         logger.info("Loaded file %s using DuckDB %s", file_path, function_name)
+        if normalized_type == "csv":
+            from core.data.import_mode import should_promote_column_types
+            from core.data.ingestion_precision import promote_table_column_types_from_varchar
+
+            if should_promote_column_types(import_mode):
+                promote_table_column_types_from_varchar(connection, table_name)
         return {"fallback_used": False, "engine": "duckdb"}
     except Exception as native_error:
         logger.warning(
@@ -423,6 +452,12 @@ def load_file_to_duckdb(
             f"CREATE TABLE {quoted_table} AS SELECT * FROM {source_ref}"
         )
         logger.info("Created table %s via pandas fallback", table_name)
+        if normalized_type == "csv":
+            from core.data.import_mode import should_promote_column_types
+            from core.data.ingestion_precision import promote_table_column_types_from_varchar
+
+            if should_promote_column_types(import_mode):
+                promote_table_column_types_from_varchar(connection, table_name)
         return {"fallback_used": True, "engine": "pandas"}
     finally:
         try:

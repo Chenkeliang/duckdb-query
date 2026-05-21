@@ -16,6 +16,17 @@ import * as cacheInvalidation from '@/utils/cacheInvalidation';
 vi.mock('@/api');
 vi.mock('@/utils/cacheInvalidation');
 
+/** 与 `createDatabaseConnection` → `normalizeResponse` 解包形状一致 */
+function mockNormalizedCreate(connection: { id: string }, message = 'ok') {
+    return {
+        message,
+        messageCode: 'OPERATION_SUCCESS',
+        data: { connection },
+        timestamp: new Date().toISOString(),
+        raw: {},
+    };
+}
+
 const createWrapper = () => {
     const queryClient = new QueryClient({
         defaultOptions: {
@@ -82,11 +93,9 @@ describe('useAppActions', () => {
                 message: '连接测试成功',
             });
 
-            vi.mocked(apiClient.createDatabaseConnection).mockResolvedValue({
-                success: true,
-                message: '连接创建成功',
-                connection: { id: '123' },
-            });
+            vi.mocked(apiClient.createDatabaseConnection).mockResolvedValue(
+                mockNormalizedCreate({ id: '123' }, '连接创建成功')
+            );
 
             const { result } = renderHook(() => useAppActions(), {
                 wrapper: createWrapper(),
@@ -170,10 +179,11 @@ describe('useAppActions', () => {
                 success: true,
             });
 
-            vi.mocked(apiClient.createDatabaseConnection).mockResolvedValue({
-                success: false,
-                message: '数据库连接创建失败',
-            });
+            vi.mocked(apiClient.createDatabaseConnection).mockRejectedValue(
+                Object.assign(new Error('数据库连接创建失败'), {
+                    messageCode: 'CREATE_FAILED',
+                })
+            );
 
             const { result } = renderHook(() => useAppActions(), {
                 wrapper: createWrapper(),
@@ -196,12 +206,14 @@ describe('useAppActions', () => {
             expect(connectResult.message).toContain('创建');
         });
 
-        it('使用存储密码的已保存连接应该调用 refresh', async () => {
-            vi.mocked(apiClient.refreshDatabaseConnection).mockResolvedValue({
+        it('使用存储密码的已保存连接应先测试再创建（不调用 refresh）', async () => {
+            vi.mocked(apiClient.testDatabaseConnection).mockResolvedValue({
                 success: true,
-                message: '刷新成功',
-                connection: { id: 'saved-123' },
+                message: '测试成功',
             });
+            vi.mocked(apiClient.createDatabaseConnection).mockResolvedValue(
+                mockNormalizedCreate({ id: 'saved-123' }, '连接成功')
+            );
 
             const { result } = renderHook(() => useAppActions(), {
                 wrapper: createWrapper(),
@@ -216,20 +228,20 @@ describe('useAppActions', () => {
                 });
             });
 
-            expect(apiClient.refreshDatabaseConnection).toHaveBeenCalledWith('saved-123');
-            expect(apiClient.testDatabaseConnection).not.toHaveBeenCalled();
-            expect(apiClient.createDatabaseConnection).not.toHaveBeenCalled();
+            expect(apiClient.testDatabaseConnection).toHaveBeenCalled();
+            expect(apiClient.createDatabaseConnection).toHaveBeenCalled();
+            expect(apiClient.refreshDatabaseConnection).not.toHaveBeenCalled();
             expect(connectResult.success).toBe(true);
+            expect(connectResult.connection).toEqual({ id: 'saved-123' });
         });
     });
 
     describe('缓存失效', () => {
         it('连接成功后应该调用 invalidateAfterDatabaseChange', async () => {
             vi.mocked(apiClient.testDatabaseConnection).mockResolvedValue({ success: true });
-            vi.mocked(apiClient.createDatabaseConnection).mockResolvedValue({
-                success: true,
-                connection: { id: '123' },
-            });
+            vi.mocked(apiClient.createDatabaseConnection).mockResolvedValue(
+                mockNormalizedCreate({ id: '123' })
+            );
 
             const { result } = renderHook(() => useAppActions(), {
                 wrapper: createWrapper(),
@@ -245,10 +257,11 @@ describe('useAppActions', () => {
             expect(cacheInvalidation.invalidateAfterDatabaseChange).toHaveBeenCalled();
         });
 
-        it('刷新连接成功后应该调用 invalidateAfterDatabaseChange', async () => {
-            vi.mocked(apiClient.refreshDatabaseConnection).mockResolvedValue({
-                success: true,
-            });
+        it('已保存连接测试+创建成功后应调用 invalidateAfterDatabaseChange', async () => {
+            vi.mocked(apiClient.testDatabaseConnection).mockResolvedValue({ success: true });
+            vi.mocked(apiClient.createDatabaseConnection).mockResolvedValue(
+                mockNormalizedCreate({ id: 'saved-123' })
+            );
 
             const { result } = renderHook(() => useAppActions(), {
                 wrapper: createWrapper(),
@@ -269,11 +282,9 @@ describe('useAppActions', () => {
 
     describe('handleDatabaseSaveConfig', () => {
         it('应该保存配置并刷新缓存', async () => {
-            vi.mocked(apiClient.createDatabaseConnection).mockResolvedValue({
-                success: true,
-                message: '保存成功',
-                connection: { id: 'config-123' },
-            });
+            vi.mocked(apiClient.createDatabaseConnection).mockResolvedValue(
+                mockNormalizedCreate({ id: 'config-123' }, '保存成功')
+            );
 
             const { result } = renderHook(() => useAppActions(), {
                 wrapper: createWrapper(),

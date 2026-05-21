@@ -1,8 +1,12 @@
 import { useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
-import { executeDuckDBSQL, executeFederatedQuery } from "@/api";
-import type { ColumnInfo } from "@/api/types";
+import {
+  executeDuckDBSQL,
+  executeFederatedQuery,
+  cancelSyncQuery,
+  type ColumnInfo,
+} from "@/api";
 import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import { toast } from "sonner";
 import type {
@@ -88,6 +92,17 @@ export interface UseQueryWorkspaceReturn {
   handleTabChange: (tab: string) => void;
   /** 执行查询 */
   handleQueryExecute: (sql: string, source?: TableSource) => Promise<void>;
+  displayQueryPreview: (
+    response: {
+      data?: unknown[];
+      columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
+      row_count?: number;
+      execTime?: number;
+      preview_limit_applied?: number | null;
+    },
+    sql?: string,
+    source?: TableSource
+  ) => void;
   /** 取消当前查询 */
   cancelQuery: () => Promise<void>;
   /** 是否正在取消 */
@@ -378,10 +393,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     // 调用后端取消 API（如果有 requestId）
     if (currentRequestIdRef.current) {
       try {
-        await fetch(`/api/query/cancel/${currentRequestIdRef.current}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
+        await cancelSyncQuery(currentRequestIdRef.current);
       } catch (e) {
         console.warn('Cancel request failed:', e);
       }
@@ -399,6 +411,34 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     toast.info(t('query.cancelled'));
   }, [t]);
 
+  /** 将预览结果写入结果面板（集合运算预览等） */
+  const displayQueryPreview = useCallback(
+    (
+      response: {
+        data?: unknown[];
+        columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
+        row_count?: number;
+        execTime?: number;
+        preview_limit_applied?: number | null;
+      },
+      sql?: string,
+      source: TableSource = { type: 'duckdb' }
+    ) => {
+      if (sql) {
+        setLastQuery({ sql, source });
+      }
+      processQueryResult({
+        ...response,
+        columns:
+          response.columns ??
+          (response.data?.length
+            ? Object.keys(response.data[0] as Record<string, unknown>)
+            : []),
+      });
+    },
+    [processQueryResult]
+  );
+
   return {
     selectedTables,
     currentTab,
@@ -408,6 +448,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     handleRemoveTable,
     handleTabChange,
     handleQueryExecute,
+    displayQueryPreview,
     cancelQuery,
     isCancelling,
     isCancelled,

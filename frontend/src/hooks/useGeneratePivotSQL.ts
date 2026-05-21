@@ -3,10 +3,8 @@ import {
     VisualQueryConfig,
     PivotConfig,
     GeneratedVisualQuery,
-    VisualQueryMode
 } from "../types/visualQuery";
-
-const API_BASE_URL = "/api/query";
+import { generatePivotVisualQuery } from "@/api";
 
 interface GeneratePivotParams {
     config: VisualQueryConfig;
@@ -14,30 +12,11 @@ interface GeneratePivotParams {
 }
 
 /**
- * Hook to generate Pivot Table SQL from the backend
+ * Hook to generate Pivot Table SQL from the backend（/api/visual-query/generate）
  */
 export const useGeneratePivotSQL = () => {
     return useMutation<GeneratedVisualQuery, Error, GeneratePivotParams>({
-        mutationFn: async ({ config, pivotConfig }) => {
-            const response = await fetch(`${API_BASE_URL}/visual-generation`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    config,
-                    mode: VisualQueryMode.PIVOT,
-                    pivot_config: pivotConfig,
-                }),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || "Failed to generate pivot SQL");
-            }
-
-            const result = await response.json();
-            return result.data || result;
-        },
+        mutationFn: ({ config, pivotConfig }) =>
+            generatePivotVisualQuery(config, pivotConfig),
     });
 };

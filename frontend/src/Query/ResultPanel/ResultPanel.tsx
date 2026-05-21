@@ -93,7 +93,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const [_selectedColumn, setSelectedColumn] = useState<Column | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   // 开关：是否使用新的 TanStack DataGrid（默认使用 TanStack DataGrid）
-  const [useNewDataGrid, setUseNewDataGrid] = useState(true);
+  /** AG Grid 为默认结果网格；TanStack DataGrid 保留供对比，默认关闭 */
+  const [useNewDataGrid, setUseNewDataGrid] = useState(false);
   const [dataGridStats, setDataGridStats] = useState<{
     totalRows: number;
     filteredRows: number;

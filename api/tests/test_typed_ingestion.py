@@ -3,18 +3,29 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
+import duckdb
 import pandas as pd
+import pytest
 
-from core.database.duckdb_engine import get_db_connection
-from core.data.file_datasource_manager import create_table_from_dataframe
+from core.data.file_datasource_manager import (
+    create_table_from_dataframe,
+    create_table_from_file_path_typed,
+)
 
 
 def _make_table_name(prefix: str) -> str:
     return f"test_{prefix}_{uuid4().hex[:8]}"
 
 
-def test_dataframe_ingestion_preserves_types():
-    con = get_db_connection()
+@pytest.fixture
+def ingestion_con():
+    con = duckdb.connect()
+    yield con
+    con.close()
+
+
+def test_dataframe_ingestion_preserves_types(ingestion_con):
+    con = ingestion_con
     table_name = _make_table_name("df_typed")
 
     df = pd.DataFrame(
@@ -25,7 +36,7 @@ def test_dataframe_ingestion_preserves_types():
         }
     )
 
-    with patch("core.file_datasource_manager.file_datasource_manager.save_file_datasource"):
+    with patch("core.data.file_datasource_manager.file_datasource_manager.save_file_datasource"):
         metadata = create_table_from_dataframe(con, table_name, df)
 
     info = con.execute(f"PRAGMA table_info('{table_name}')").fetchall()
@@ -45,8 +56,8 @@ def test_dataframe_ingestion_preserves_types():
     con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
 
 
-def test_csv_ingestion_preserves_types(tmp_path):
-    con = get_db_connection()
+def test_csv_ingestion_preserves_types(tmp_path, ingestion_con):
+    con = ingestion_con
     table_name = _make_table_name("csv_typed")
 
     df = pd.DataFrame(
@@ -60,13 +71,13 @@ def test_csv_ingestion_preserves_types(tmp_path):
     csv_path = Path(tmp_path) / "typed_dataset.csv"
     df.to_csv(csv_path, index=False)
 
-    with patch("core.file_datasource_manager.file_datasource_manager.save_file_datasource"):
-        metadata = create_table_from_dataframe(con, table_name, str(csv_path), "csv")
+    with patch("core.data.file_datasource_manager.file_datasource_manager.save_file_datasource"):
+        metadata = create_table_from_file_path_typed(con, table_name, str(csv_path), "csv")
 
     info = con.execute(f"PRAGMA table_info('{table_name}')").fetchall()
     column_types = {row[1]: row[2] for row in info}
 
-    assert column_types["price"].upper().startswith("DOUBLE")
+    assert "DECIMAL" in column_types["price"].upper()
     assert column_types["qty"].upper().startswith("BIGINT")
     assert column_types["label"].upper().startswith("VARCHAR")
 

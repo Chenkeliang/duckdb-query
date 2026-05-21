@@ -1585,7 +1585,7 @@ async def get_resource(id: int):
 ### API 调用
 
 \`\`\`typescript
-import { normalizeResponse } from '@/api/client';
+import { normalizeResponse } from '@/api';
 
 async function fetchData() {
   const response = await axios.get('/api/resource');

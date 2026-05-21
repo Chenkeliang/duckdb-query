@@ -9,12 +9,12 @@ import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useQueryWorkspace } from "@/hooks/useQueryWorkspace";
+import { useQueryRunner } from "@/hooks/useQueryRunner";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import { DataSourcePanel } from "./DataSourcePanel";
 import { QueryTabs } from "./QueryTabs";
 import { ResultPanel } from "./ResultPanel";
-import { deleteDuckDBTableEnhanced } from "@/api";
+import { deleteDuckDBTable } from "@/api";
 import { invalidateAfterTableDelete } from "@/utils/cacheInvalidation";
 import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import type { SelectedTable } from "@/types/SelectedTable";
@@ -45,10 +45,11 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
     handleTableSelect,
     handleRemoveTable,
     handleTabChange,
-    handleQueryExecute,
-    cancelQuery,
+    execute: handleQueryExecute,
+    displayPreview: displayQueryPreview,
+    cancel: cancelQuery,
     isCancelling,
-  } = useQueryWorkspace();
+  } = useQueryRunner();
   const { maxQueryRows } = useAppConfig();
 
   // 预览表数据
@@ -122,7 +123,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
   const handleDelete = React.useCallback(
     async (tableName: string) => {
       try {
-        await deleteDuckDBTableEnhanced(tableName);
+        await deleteDuckDBTable(tableName);
         await invalidateAfterTableDelete(queryClient);
         showSuccessToast(t, 'TABLE_DELETED', t('query.tableDeleted', { table: tableName }));
       } catch (error) {
@@ -218,6 +219,9 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
                 onTabChange={handleTabChange}
                 selectedTables={selectedTables[currentTab] || []}
                 onExecute={handleQueryExecute}
+                onCancel={cancelQuery}
+                isCancelling={isCancelling}
+                onDisplayPreview={displayQueryPreview}
                 onRemoveTable={handleRemoveTable}
                 onCancel={cancelQuery}
                 isCancelling={isCancelling}

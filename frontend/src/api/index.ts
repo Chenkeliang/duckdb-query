@@ -1,19 +1,19 @@
 /**
  * API Module - Public Exports
- * 
+ *
  * This module provides typed API utilities as modular replacements for apiClient.js.
  * All API functions are now organized by domain with full TypeScript support.
- * 
+ *
  * @example
- * // Import specific functions
- * import { executeDuckDBSQL, listDatabaseConnections } from '@/api';
- * 
- * // Import from specific modules
- * import { uploadFile, readFromUrl } from '@/api/fileApi';
- * import { listAsyncTasks, cancelAsyncTask } from '@/api/asyncTaskApi';
- * 
- * // Import types
- * import type { QueryRequest, DatabaseConnection, AsyncTask } from '@/api';
+ * import {
+ *   executeDuckDBSQL,
+ *   listDatabaseConnections,
+ *   listConnectionSchemas,
+ *   extractMessage,
+ *   extractMessageCode,
+ *   type ColumnInfo,
+ *   type ApiError,
+ * } from '@/api';
  */
 
 // ==================== Client & Core ====================
@@ -24,7 +24,12 @@ export {
     setFederatedQueryTimeout,
     getFederatedQueryTimeout,
     extractMessage,
+    extractMessageCode,
+    normalizeResponse,
     handleApiError,
+    isStandardSuccess,
+    isStandardList,
+    isStandardError,
     type ApiError,
 } from './client';
 
@@ -35,11 +40,8 @@ export * from './types';
 export {
     executeDuckDBSQL,
     executeFederatedQuery,
-    executeExternalSQL,
-    executeSQL,
-    performQuery,
     saveQueryToDuckDB,
-    saveQueryResultAsDatasource,
+    cancelSyncQuery,
     parseFederatedQueryError,
     type ExecuteQueryOptions,
     type FederatedQueryOptions,
@@ -66,11 +68,21 @@ export {
     type RawDatabaseDataSourceItem,
 } from './dataSourceApi';
 
-// ==================== File API ====================
+// ==================== Upload API (subset of file API) ====================
 export {
     uploadFile,
     uploadFileEnhanced,
-    uploadFileToDuckDB,
+    uploadFileAuto,
+    uploadFileChunked,
+    initChunkedUpload,
+    uploadChunk,
+    completeChunkedUpload,
+    cancelChunkedUpload,
+    CHUNKED_UPLOAD_THRESHOLD_BYTES,
+} from './uploadApi';
+
+// ==================== File API ====================
+export {
     readFromUrl,
     getUrlInfo,
     inspectExcelSheets,
@@ -80,8 +92,8 @@ export {
     importServerFile,
     inspectServerExcelSheets,
     importServerExcelSheets,
-    getFilePreview,
     pasteData,
+    type FileImportMode,
     type UploadOptions,
     type UrlImportOptions,
     type ExcelSheet,
@@ -122,15 +134,43 @@ export {
     deleteDuckDBTableEnhanced,
     refreshDuckDBTableMetadata,
     getExternalTableDetail,
-    getAvailableTables,
-    getAllTables,
-    getColumnStatistics,
-    getDistinctValues,
 } from './tableApi';
+
+// ==================== Database schemas (external connections) ====================
+export {
+    listConnectionSchemas,
+    listSchemaTablesForConnection,
+    listConnectionTablesFlat,
+    getExternalDatabaseTableDetails,
+    type ConnectionSchemaItem,
+    type ConnectionTableItem,
+    type ExternalTableDetailsPayload,
+} from './databaseSchemasApi';
+
+// ==================== Settings (shortcuts) ====================
+export {
+    fetchShortcutsConfig,
+    updateShortcutSetting,
+    resetShortcutsSetting,
+    type ShortcutRecordApi,
+    type ShortcutsConfigPayload,
+} from './settingsShortcutsApi';
+
+// ==================== Set Operations API ====================
+export {
+    generateSetOperation,
+    previewSetOperation,
+    type SetOperationTypeApi,
+    type SetOperationConfigPayload,
+    type SetOperationRequestPayload,
+    type SetOperationGenerateResult,
+    type SetOperationPreviewResult,
+} from './setOperationsApi';
 
 // ==================== Visual Query & Favorites API ====================
 export {
     generateVisualQuery,
+    generatePivotVisualQuery,
     previewVisualQuery,
     previewPivotVisualQuery,
     validateVisualQueryConfig,
@@ -140,7 +180,6 @@ export {
     updateSqlFavorite,
     deleteSqlFavorite,
     incrementFavoriteUsage,
-    getAppFeatures,
     getAppConfig,
     type AppConfigResponse,
 } from './visualQueryApi';

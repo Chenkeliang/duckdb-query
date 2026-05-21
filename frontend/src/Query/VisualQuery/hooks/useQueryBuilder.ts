@@ -229,6 +229,15 @@ export interface QueryValidation {
   warnings: string[];
 }
 
+export interface UseQueryBuilderOptions {
+  initialConfig?: Partial<QueryConfig>;
+  /** 统一执行入口（优先于直接 executeDuckDBSQL） */
+  onExecuteSQL?: (
+    sql: string,
+    options?: { saveAsTable?: string; isPreview?: boolean }
+  ) => Promise<unknown>;
+}
+
 // Hook 返回类型
 export interface UseQueryBuilderReturn {
   // 状态
@@ -278,9 +287,23 @@ export interface UseQueryBuilderReturn {
  * } = useQueryBuilder();
  * ```
  */
+function resolveUseQueryBuilderOptions(
+  options?: Partial<QueryConfig> | UseQueryBuilderOptions
+): UseQueryBuilderOptions {
+  if (!options) {
+    return {};
+  }
+  if ("initialConfig" in options || "onExecuteSQL" in options) {
+    return options as UseQueryBuilderOptions;
+  }
+  return { initialConfig: options as Partial<QueryConfig> };
+}
+
 export function useQueryBuilder(
-  initialConfig?: Partial<QueryConfig>
+  options?: Partial<QueryConfig> | UseQueryBuilderOptions
 ): UseQueryBuilderReturn {
+  const { initialConfig, onExecuteSQL } = resolveUseQueryBuilderOptions(options);
+
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
 
@@ -462,13 +485,16 @@ export function useQueryBuilder(
         throw new Error(t('query.sql.noSQL', '无法生成 SQL'));
       }
 
-      // 执行查询
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (executeDuckDBSQL as any)(
-        sql,
-        options?.saveAsTable || null,
-        options?.isPreview ?? true
-      );
+      const result = onExecuteSQL
+        ? await onExecuteSQL(sql, {
+            saveAsTable: options?.saveAsTable,
+            isPreview: options?.isPreview ?? true,
+          })
+        : await executeDuckDBSQL({
+            sql,
+            saveAsTable: options?.saveAsTable,
+            isPreview: options?.isPreview ?? true,
+          });
 
       const executionTime = Date.now() - startTime;
       const rowCount = result?.data?.length || result?.row_count || 0;

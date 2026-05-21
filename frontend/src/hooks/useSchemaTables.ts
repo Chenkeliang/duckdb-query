@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { listConnectionTablesFlat, listSchemaTablesForConnection } from '@/api';
 
 /**
  * 表类型
@@ -18,40 +19,10 @@ const fetchSchemaTables = async (
   connectionId: string,
   schema: string
 ): Promise<SchemaTable[]> => {
-  // 移除 db_ 前缀（如果存在）
-  const actualConnectionId = connectionId.startsWith('db_')
-    ? connectionId.substring(3)
-    : connectionId;
-
-  // 如果 schema 为空，使用旧的 API 获取所有表
-  const url = schema
-    ? `/api/databases/${actualConnectionId}/schemas/${schema}/tables`
-    : `/api/database_tables/${actualConnectionId}`;
-
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error('获取表列表失败');
+  if (schema) {
+    return listSchemaTablesForConnection(connectionId, schema);
   }
-
-  const data = await response.json();
-
-  // 兼容不同的 API 响应格式
-  // 兼容不同的 API 响应格式
-  // 标准格式: { success: true, data: { items: [...] } }
-  // 旧格式: { tables: [...] } or { data: { tables: [...] } }
-  const responseData = data.data || data;
-  const tables = responseData.items || responseData.tables;
-
-  if (tables) {
-    return tables.map((t: any) => ({
-      name: t.name || t.table_name,
-      type: t.type || 'TABLE',
-      row_count: t.row_count || 0,
-    }));
-  }
-
-  return [];
+  return listConnectionTablesFlat(connectionId);
 };
 
 /**

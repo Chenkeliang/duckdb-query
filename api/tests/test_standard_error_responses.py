@@ -1,0 +1,60 @@
+"""标准错误体：422 校验与 perform_query 错误信封。"""
+
+import os
+import sys
+
+import pytest
+from fastapi.testclient import TestClient
+
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+from main import app
+
+client = TestClient(app, raise_server_exceptions=False)
+
+
+def test_validation_error_422_standard_envelope():
+    """Pydantic 422 须返回 success=false + error.code。"""
+    response = client.post(
+        "/api/visual-query/generate",
+        json={
+            "config": {
+                "table_name": "",
+                "selected_columns": [],
+                "aggregations": [],
+                "filters": [],
+                "order_by": [],
+                "is_distinct": False,
+            },
+            "preview": False,
+            "include_metadata": False,
+        },
+    )
+    assert response.status_code == 422
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert body["messageCode"] == "VALIDATION_ERROR"
+    assert "detail" not in body
+    assert isinstance(body["error"].get("details", {}).get("errors"), list)
+    assert len(body["error"]["details"]["errors"]) > 0
+
+
+def test_perform_query_empty_sources_standard_error():
+    """JOIN /api/query 空 sources 走 APIValidationError。"""
+    response = client.post("/api/query", json={"sources": [], "joins": []})
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert "detail" not in body
+
+
+def test_datasource_not_found_has_no_top_level_detail():
+    """ResourceNotFoundError 响应不含顶层 detail。"""
+    response = client.get("/api/datasources/db_nonexistent_id_for_test")
+    assert response.status_code == 404
+    body = response.json()
+    assert body["success"] is False
+    assert "detail" not in body
+    assert body["error"]["code"] == "RESOURCE_NOT_FOUND"

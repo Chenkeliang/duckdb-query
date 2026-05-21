@@ -62,10 +62,15 @@ def test_excel_upload_inspect_import(tmp_path, header_rows):
     assert inspect_resp.status_code == 200
     inspect_data = inspect_resp.json()
 
-    sheets = inspect_data.get("sheets", [])
+    inspect_payload = inspect_data.get("data", inspect_data)
+    sheets = inspect_payload.get("sheets", [])
     assert len(sheets) == 2
     sheet_names = {sheet["name"] for sheet in sheets}
     assert sheet_names == {"Orders", "Summary"}
+    for sheet in sheets:
+        assert sheet.get("default_table_name"), (
+            "inspect should return default_table_name per sheet"
+        )
 
     payload = {
         "file_id": file_id,

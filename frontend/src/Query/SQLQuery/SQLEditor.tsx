@@ -97,13 +97,6 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
     return result;
   }, [tables, columns]);
 
-  // 调试：打印 schema 信息
-  useEffect(() => {
-    if (tables.length > 0) {
-
-    }
-  }, [tables]);
-
   // 创建执行快捷键
   const executeKeymap = useMemo(() => {
     const run = () => {
@@ -131,7 +124,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   }, []);
 
   // 获取实际的 placeholder 文本
-  const placeholderText = placeholder || t('query.sql.placeholder', '输入 SQL 查询语句，按 Ctrl+Enter 执行...');
+  const placeholderText = placeholder || t('query.sql.placeholder', '输入 SQL，Ctrl+Space 补全，Ctrl+Enter 执行');
 
   // 初始化编辑器
   useEffect(() => {
@@ -156,7 +149,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
           sql({
             dialect: duckDBDialect,
             schema: schema,
-            upperCaseKeywords: true,
+            upperCaseKeywords: false,
           })
         ),
 
@@ -308,7 +301,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
         sql({
           dialect: duckDBDialect,
           schema: schema,
-          upperCaseKeywords: true,
+          upperCaseKeywords: false,
         })
       ),
     });

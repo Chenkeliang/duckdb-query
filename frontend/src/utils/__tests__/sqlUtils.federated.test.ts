@@ -16,6 +16,8 @@ import {
   generateDatabaseAlias,
   formatTableReference,
   createTableReference,
+  quoteIdent,
+  needsQuoting,
   type AttachDatabase,
   type DatabaseConnection,
   type TableReference,
@@ -217,10 +219,9 @@ describe('Federated Query SQL Utils', () => {
 
           const sql = formatTableReference(tableRef, 'duckdb');
 
-          // 验证 SQL 包含别名前缀
-          expect(sql).toContain(`"${alias}"`);
-          expect(sql).toContain(`"${tableName}"`);
-          expect(sql).toBe(`"${alias}"."${tableName}"`);
+          // 简单标识符：无引号，alias.table
+          expect(sql).toBe(`${alias}.${tableName}`);
+          expect(sql.startsWith(`${alias}.`)).toBe(true);
         }),
         { numRuns: 100 }
       );
@@ -238,8 +239,7 @@ describe('Federated Query SQL Utils', () => {
 
           const sql = formatTableReference(tableRef, 'duckdb');
 
-          // 验证 SQL 包含 alias.schema.table 格式
-          expect(sql).toBe(`"${alias}"."${schema}"."${tableName}"`);
+          expect(sql).toBe(`${alias}.${schema}.${tableName}`);
         }),
         { numRuns: 100 }
       );
@@ -263,9 +263,7 @@ describe('Federated Query SQL Utils', () => {
 
           const sql = formatTableReference(tableRef, 'duckdb');
 
-          // 验证 SQL 只包含表名，没有别名前缀
-          expect(sql).toBe(`"${tableName}"`);
-          // 验证没有点号（表示没有前缀）
+          expect(sql).toBe(tableName);
           expect(sql.split('.').length).toBe(1);
         }),
         { numRuns: 100 }
@@ -283,11 +281,25 @@ describe('Federated Query SQL Utils', () => {
 
           const sql = formatTableReference(tableRef, 'duckdb');
 
-          // 验证 SQL 包含 schema.table 格式（没有数据库别名）
-          expect(sql).toBe(`"${schema}"."${tableName}"`);
+          expect(sql).toBe(`${schema}.${tableName}`);
         }),
         { numRuns: 100 }
       );
+    });
+  });
+
+  describe('quoteIdent (on-demand quoting)', () => {
+    it('should not quote simple identifiers', () => {
+      expect(needsQuoting('orders')).toBe(false);
+      expect(quoteIdent('mysql_prod', 'duckdb')).toBe('mysql_prod');
+      expect(quoteIdent('public', 'duckdb')).toBe('public');
+    });
+
+    it('should quote identifiers with spaces or reserved words', () => {
+      expect(needsQuoting('user name')).toBe(true);
+      expect(quoteIdent('user name', 'duckdb')).toBe('"user name"');
+      expect(needsQuoting('select')).toBe(true);
+      expect(quoteIdent('select', 'duckdb')).toBe('"select"');
     });
   });
 

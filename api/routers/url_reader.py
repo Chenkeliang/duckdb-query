@@ -8,10 +8,13 @@ import time
 import logging
 from typing import Optional
 from core.common.config_manager import config_manager
-from core.database.duckdb_engine import get_db_connection
-from core.data.file_datasource_manager import (
-    file_datasource_manager,
-    create_table_from_dataframe,
+from core.database.duckdb_engine import with_duckdb_connection
+from core.data.import_mode import normalize_import_mode
+from core.services.file_ingestion_service import (
+    build_file_metadata,
+    ingest_tabular_file,
+    resolve_unique_table_name,
+    save_file_metadata,
 )
 from utils.response_helpers import (
     create_success_response,
@@ -35,6 +38,7 @@ class URLReadRequest(BaseModel):
     encoding: Optional[str] = "utf-8"
     delimiter: Optional[str] = ","
     header: Optional[bool] = True
+    import_mode: Optional[str] = "auto"
 
 
 def normalize_remote_url(url: str) -> str:
@@ -94,25 +98,7 @@ async def read_from_url(request: URLReadRequest):
             except Exception as head_err:
                 logger.warning(f"HEAD request failed, using default CSV: {head_err}")
                 file_type = "csv"
-        conn = get_db_connection()
-
-        table_name = request.table_alias
-        original_table_name = table_name
-
-        while True:
-            try:
-                result = conn.execute(
-                    "SELECT table_name FROM information_schema.tables WHERE lower(table_name) = lower(?)",
-                    [table_name],
-                ).fetchone()
-                if result is None:
-                    break
-                timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
-                table_name = f"{original_table_name}_{timestamp}"
-                break
-            except Exception as e:
-                logger.debug("Error checking table name: %s", e)
-                break
+        import_mode = normalize_import_mode(request.import_mode or "auto")
 
         reader_options = None
         if file_type == "csv":
@@ -126,65 +112,78 @@ async def read_from_url(request: URLReadRequest):
 
         metadata = None
         native_attempted = file_type in NATIVE_REMOTE_TYPES
-        if native_attempted:
-            try:
-                metadata = create_table_from_dataframe(
+
+        with with_duckdb_connection() as conn:
+            table_name = resolve_unique_table_name(
+                conn, request.table_alias, user_provided=True
+            )
+            if native_attempted:
+                try:
+                    from core.data.file_datasource_manager import (
+                        create_table_from_dataframe,
+                    )
+
+                    metadata = create_table_from_dataframe(
+                        conn,
+                        table_name,
+                        converted_url,
+                        file_type,
+                        reader_options=reader_options,
+                        import_mode=import_mode,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "DuckDB/httpfs read failed, preparing fallback: url=%s, err=%s",
+                        converted_url,
+                        exc,
+                    )
+
+            if metadata is None:
+                try:
+                    response = requests.get(
+                        converted_url, timeout=app_config.url_reader_timeout
+                    )
+                    response.raise_for_status()
+                except requests.RequestException as download_error:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Unable to download file: {str(download_error)}",
+                    ) from download_error
+
+                with tempfile.NamedTemporaryFile(
+                    delete=False, suffix=f".{file_type}"
+                ) as temp_file:
+                    temp_file.write(response.content)
+                    temp_file_path = temp_file.name
+
+                ingest_result = ingest_tabular_file(
                     conn,
-                    table_name,
-                    converted_url,
+                    temp_file_path,
                     file_type,
+                    request.table_alias,
+                    import_mode=import_mode,
+                    filename_for_meta=f"url_{request.table_alias}",
+                    persist_path=f"url://{converted_url}",
                     reader_options=reader_options,
                 )
-            except Exception as exc:
-                logger.warning(
-                    "DuckDB/httpfs read failed, preparing fallback: url=%s, err=%s",
-                    converted_url,
-                    exc,
+                table_name = ingest_result.table_name
+                metadata = {
+                    "row_count": ingest_result.row_count,
+                    "column_count": ingest_result.column_count,
+                    "columns": ingest_result.columns,
+                    "column_profiles": ingest_result.column_profiles,
+                }
+            else:
+                table_metadata = build_file_metadata(
+                    source_id=table_name,
+                    filename=f"url_{table_name}",
+                    file_path=f"url://{converted_url}",
+                    file_type=file_type,
+                    table_metadata=metadata,
+                    extra={"source_url": converted_url},
                 )
-
-        if metadata is None:
-            try:
-                response = requests.get(
-                    converted_url, timeout=app_config.url_reader_timeout
-                )
-                response.raise_for_status()
-            except requests.RequestException as download_error:
-                raise HTTPException(
-                    status_code=400, detail=f"Unable to download file: {str(download_error)}"
-                )
-
-            with tempfile.NamedTemporaryFile(
-                delete=False, suffix=f".{file_type}"
-            ) as temp_file:
-                temp_file.write(response.content)
-                temp_file_path = temp_file.name
-
-            metadata = create_table_from_dataframe(
-                conn,
-                table_name,
-                temp_file_path,
-                file_type,
-                reader_options=reader_options,
-            )
-
-        from core.common.timezone_utils import get_current_time_iso
-
-        table_metadata = {
-            "source_id": table_name,
-            "filename": f"url_{table_name}",
-            "file_path": f"url://{converted_url}",
-            "file_type": file_type,
-            "row_count": metadata.get("row_count", 0),
-            "column_count": metadata.get("column_count", 0),
-            "columns": metadata.get("columns", []),
-            "column_profiles": metadata.get("column_profiles", []),
-            "schema_version": 2,
-            "created_at": get_current_time_iso(),
-            "source_url": converted_url,
-        }
-
-        file_datasource_manager.save_file_datasource(table_metadata)
-        logger.debug("Successfully saved URL table metadata: %s", table_name)
+                save_file_metadata(table_metadata)
+                logger.debug("Successfully saved URL table metadata: %s", table_name)
 
         return create_success_response(
             data={

@@ -14,11 +14,8 @@ import { AggregationBuilder } from './AggregationBuilder';
 import { SortBuilder } from './SortBuilder';
 import { JoinBuilder } from './JoinBuilder';
 import type { SelectedTable } from '@/types/SelectedTable';
-import { 
-  normalizeSelectedTable, 
-  getTableName, 
-  DATABASE_TYPE_ICONS,
-} from '@/utils/tableUtils';
+import { getTableName, DATABASE_TYPE_ICONS } from '@/utils/tableUtils';
+import { getSourceFromSelectedTable } from '@/utils/sqlUtils';
 
 // 查询配置类型
 export interface QueryConfig {
@@ -106,13 +103,9 @@ const initialQueryConfig: QueryConfig = {
   limit: 1000,
 };
 
-/** 数据源信息（用于外部查询） */
-export interface TableSource {
-  type: 'duckdb' | 'external';
-  connectionId?: string;
-  connectionName?: string;
-  databaseType?: string;
-}
+/** 与查询工作台一致的表源（含联邦 ATTACH） */
+export type { TableSource } from '@/hooks/useQueryWorkspace';
+import type { TableSource } from '@/hooks/useQueryWorkspace';
 
 export interface QueryBuilderProps {
   /** 初始查询配置 */
@@ -185,21 +178,11 @@ export const QueryBuilder: React.FC<QueryBuilderProps> = ({
   // 分析当前表的来源
   const tableSource = useMemo((): TableSource | undefined => {
     if (!config.table) return undefined;
-    
-    const normalized = normalizeSelectedTable(config.table);
-    if (normalized.source === 'external' && normalized.connection) {
-      return {
-        type: 'external',
-        connectionId: normalized.connection.id,
-        connectionName: normalized.connection.name,
-        databaseType: normalized.connection.type,
-      };
-    }
-    return { type: 'duckdb' };
+    return getSourceFromSelectedTable(config.table);
   }, [config.table]);
 
-  // 是否为外部表
-  const isExternal = tableSource?.type === 'external';
+  const isExternal = tableSource?.type === 'external' || tableSource?.type === 'federated';
+  const externalJoinBlocked = isExternal && config.joins.length > 0;
 
   // 更新配置
   const updateConfig = useCallback(
@@ -284,20 +267,21 @@ export const QueryBuilder: React.FC<QueryBuilderProps> = ({
 
   // 执行查询
   const handleExecute = useCallback(() => {
-    if (!isExternal && config.table && config.columns.length > 0) {
+    if (config.table && config.columns.length > 0 && !externalJoinBlocked) {
       onExecute?.(config, tableSource);
     }
-  }, [config, isExternal, onExecute, tableSource]);
+  }, [config, externalJoinBlocked, onExecute, tableSource]);
 
-  // 预览 SQL
   const handlePreview = useCallback(() => {
-    if (!isExternal && config.table) {
+    if (config.table && !externalJoinBlocked) {
       onPreview?.(config, tableSource);
     }
-  }, [config, isExternal, onPreview, tableSource]);
+  }, [config, externalJoinBlocked, onPreview, tableSource]);
 
-  // 是否可以执行查询
-  const canExecute = !isExternal && !!config.table && config.columns.length > 0;
+  const canExecute =
+    !!config.table &&
+    config.columns.length > 0 &&
+    !externalJoinBlocked;
 
   // 获取表名用于子组件
   const tableName = config.table ? getTableName(config.table) : null;
@@ -332,7 +316,7 @@ export const QueryBuilder: React.FC<QueryBuilderProps> = ({
               variant="outline"
               size="sm"
               onClick={handlePreview}
-              disabled={!config.table || isExternal || isExecuting}
+              disabled={!config.table || isExecuting}
             >
               <Eye className="h-4 w-4 mr-1" />
               {t('query.builder.preview', '预览 SQL')}
@@ -360,13 +344,13 @@ export const QueryBuilder: React.FC<QueryBuilderProps> = ({
             <TabsTrigger value="join" disabled={!config.table || isExternal}>
               {t('query.builder.tabJoin', '关联')}
             </TabsTrigger>
-            <TabsTrigger value="filter" disabled={!config.table || isExternal}>
+            <TabsTrigger value="filter" disabled={!config.table}>
               {t('query.builder.tabFilter', '过滤')}
             </TabsTrigger>
-            <TabsTrigger value="aggregate" disabled={!config.table || isExternal}>
+            <TabsTrigger value="aggregate" disabled={!config.table}>
               {t('query.builder.tabAggregate', '聚合')}
             </TabsTrigger>
-            <TabsTrigger value="sort" disabled={!config.table || isExternal}>
+            <TabsTrigger value="sort" disabled={!config.table}>
               {t('query.builder.tabSort', '排序')}
             </TabsTrigger>
           </TabsList>
@@ -387,18 +371,29 @@ export const QueryBuilder: React.FC<QueryBuilderProps> = ({
 
               {/* 外部表警告 */}
               {isExternal && (
-                <Alert className="border-warning/50 bg-warning/10">
-                  <AlertTriangle className="h-4 w-4 text-warning" />
-                  <AlertDescription className="text-warning">
+                <Alert className="border-border bg-muted/30">
+                  <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                  <AlertDescription className="text-muted-foreground">
                     {t(
-                      'query.builder.externalNotSupported',
-                      '外部数据库表暂不支持可视化查询。请先将外部表导入到 DuckDB 后再使用此功能。'
+                      'query.builder.externalFederatedHint',
+                      '外部表将通过联邦查询（ATTACH）执行。可视化 JOIN 暂不支持，请使用 SQL 或连接查询。'
                     )}
                   </AlertDescription>
                 </Alert>
               )}
 
-              {tableName && !isExternal && (
+              {externalJoinBlocked && (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    {t(
+                      'query.builder.externalJoinBlocked',
+                      '外部表不支持在可视化构建器中添加 JOIN，请清空关联配置或改用 SQL 面板。'
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {tableName && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">
                     {t('query.builder.selectColumns', '选择列')}
@@ -417,11 +412,10 @@ export const QueryBuilder: React.FC<QueryBuilderProps> = ({
             <TabsContent value="join" className="h-full mt-0">
               {isExternal ? (
                 <Alert className="border-warning/50 bg-warning/10">
-                  <AlertTriangle className="h-4 w-4 text-warning" />
-                  <AlertDescription className="text-warning">
+                  <AlertDescription className="text-muted-foreground">
                     {t(
-                      'query.builder.externalNotSupported',
-                      '外部数据库表暂不支持可视化查询。请先将外部表导入到 DuckDB 后再使用此功能。'
+                      'query.builder.externalJoinTabDisabled',
+                      '外部表请在 SQL 或连接查询中配置 JOIN。'
                     )}
                   </AlertDescription>
                 </Alert>
@@ -435,72 +429,33 @@ export const QueryBuilder: React.FC<QueryBuilderProps> = ({
               )}
             </TabsContent>
 
-            {/* 过滤标签页 */}
             <TabsContent value="filter" className="h-full mt-0">
-              {isExternal ? (
-                <Alert className="border-warning/50 bg-warning/10">
-                  <AlertTriangle className="h-4 w-4 text-warning" />
-                  <AlertDescription className="text-warning">
-                    {t(
-                      'query.builder.externalNotSupported',
-                      '外部数据库表暂不支持可视化查询。请先将外部表导入到 DuckDB 后再使用此功能。'
-                    )}
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <FilterBuilder
-                  tableName={tableName}
-                  filters={config.filters}
-                  onFiltersChange={handleFiltersChange}
-                  disabled={isExecuting}
-                />
-              )}
+              <FilterBuilder
+                tableName={tableName}
+                filters={config.filters}
+                onFiltersChange={handleFiltersChange}
+                disabled={isExecuting}
+              />
             </TabsContent>
 
-            {/* 聚合标签页 */}
             <TabsContent value="aggregate" className="h-full mt-0">
-              {isExternal ? (
-                <Alert className="border-warning/50 bg-warning/10">
-                  <AlertTriangle className="h-4 w-4 text-warning" />
-                  <AlertDescription className="text-warning">
-                    {t(
-                      'query.builder.externalNotSupported',
-                      '外部数据库表暂不支持可视化查询。请先将外部表导入到 DuckDB 后再使用此功能。'
-                    )}
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <AggregationBuilder
-                  tableName={tableName}
-                  aggregations={config.aggregations}
-                  groupBy={config.groupBy}
-                  onAggregationsChange={handleAggregationsChange}
-                  onGroupByChange={handleGroupByChange}
-                  disabled={isExecuting}
-                />
-              )}
+              <AggregationBuilder
+                tableName={tableName}
+                aggregations={config.aggregations}
+                groupBy={config.groupBy}
+                onAggregationsChange={handleAggregationsChange}
+                onGroupByChange={handleGroupByChange}
+                disabled={isExecuting}
+              />
             </TabsContent>
 
-            {/* 排序标签页 */}
             <TabsContent value="sort" className="h-full mt-0">
-              {isExternal ? (
-                <Alert className="border-warning/50 bg-warning/10">
-                  <AlertTriangle className="h-4 w-4 text-warning" />
-                  <AlertDescription className="text-warning">
-                    {t(
-                      'query.builder.externalNotSupported',
-                      '外部数据库表暂不支持可视化查询。请先将外部表导入到 DuckDB 后再使用此功能。'
-                    )}
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <SortBuilder
-                  tableName={tableName}
-                  orderBy={config.orderBy}
-                  onOrderByChange={handleOrderByChange}
-                  disabled={isExecuting}
-                />
-              )}
+              <SortBuilder
+                tableName={tableName}
+                orderBy={config.orderBy}
+                onOrderByChange={handleOrderByChange}
+                disabled={isExecuting}
+              />
             </TabsContent>
           </div>
         </Tabs>

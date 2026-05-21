@@ -1,14 +1,17 @@
-# DuckQuery 项目 AGENT 规则（v3.2）
+# DuckQuery 项目 AGENT 规则（v3.3）
 
-> **更新时间**：2026-01-19  
+> **更新时间**：2026-05-18  
 > **适用范围**：全项目（前端、后端、测试、文档）  
-> **权威性**：本文件为唯一 AGENT 约束来源。
+> **权威性**：本文件为唯一 AGENT 约束来源。  
+> **契约真相表**：`frontend/src/api/*` 在用路径、部署入口与字段语义见 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)（与 §9 响应格式互补）。**改 API 时须先更新该表，再改后端与 `frontend/src/api/*`。**  
+> **调用链路**：入湖 / 查询 / 元数据 / 异步的全局调用图见 [`docs/ARCHITECTURE_CALL_MAP.md`](docs/ARCHITECTURE_CALL_MAP.md)；改相关逻辑前先对照该文档。
 
 ---
 
 ## 目录
 1. 项目架构与技术栈  
 2. 目录结构与关键文件  
+2.1 前后端契约与 PR 模板  
 3. 运行与测试  
 4. 前端开发规范  
 5. UI / 样式规范（**禁止自定义**）  
@@ -63,19 +66,22 @@ duckdb-query/
 │       ├── api/                      # TypeScript API 模块 ⭐
 │       │   ├── client.ts             # Axios 客户端配置
 │       │   ├── types.ts              # 共享类型定义
-│       │   ├── queryApi.ts           # 查询 API
+│       │   ├── queryApi.ts           # 查询 API（含取消同步查询等）
 │       │   ├── tableApi.ts           # 表 API
 │       │   ├── dataSourceApi.ts      # 数据源 API
+│       │   ├── databaseSchemasApi.ts # 外部库 schemas / 表列表 / 表详情
+│       │   ├── settingsShortcutsApi.ts # 设置：快捷键 API
 │       │   ├── fileApi.ts            # 文件 API
 │       │   ├── asyncTaskApi.ts       # 异步任务 API
-│       │   ├── visualQueryApi.ts     # 可视化查询 API
-│       │   └── index.ts              # 统一导出
+│       │   ├── visualQueryApi.ts     # 可视化查询 / 收藏 / 应用配置 API
+│       │   └── index.ts              # 统一导出（@/api）
 │       ├── hooks/                    # 共享 Hooks（TanStack Query）⭐
 │       │   ├── useDuckDBTables.ts    # DuckDB 表列表
 │       │   ├── useDataSources.ts     # 数据源列表
 │       │   ├── useDatabaseConnections.ts # 数据库连接
 │       │   ├── useTableColumns.ts    # 表列信息
-│       │   ├── useSchemas.ts         # Schema 列表
+│       │   ├── useSchemas.ts         # Schema 列表（经 @/api → listConnectionSchemas）
+│       │   ├── useSchemaTables.ts    # Schema 下表列表（经 @/api）
 │       │   └── ...
 │       ├── utils/                    # 工具函数 ⭐
 │       │   ├── cacheInvalidation.ts  # 缓存失效工具
@@ -103,6 +109,9 @@ duckdb-query/
 │       └── i18n/                     # 国际化
 ├── config/                           # 配置文件
 ├── docs/                             # 文档
+│   └── API_CONTRACT_FE_BE.md         # 前后端 API 契约真相表（按域 / 端点 / data 语义）
+├── .github/                          # CI / PR 模板
+│   └── pull_request_template.md      # PR：契约与验证勾选
 └── docker-compose.yml
 ```
 
@@ -110,8 +119,16 @@ duckdb-query/
 
 | 文件 | 用途 |
 |------|------|
-| `frontend/src/api/index.ts` | API 模块统一导出 |
+| `frontend/src/api/index.ts` | API 模块统一导出（`@/api`） |
 | `frontend/src/api/types.ts` | 共享类型定义（StandardSuccess, StandardError 等） |
+| `frontend/src/api/client.ts` | `apiClient`、`normalizeResponse`、错误归一化 |
+| `frontend/src/api/queryApi.ts` | DuckDB / 联邦执行、`cancelSyncQuery` 等 |
+| `frontend/src/api/visualQueryApi.ts` | 可视化预览 / 生成 SQL、收藏、应用配置 |
+| `frontend/src/api/databaseSchemasApi.ts` | 外部库 schemas / 表 / 表详情 |
+| `frontend/src/api/settingsShortcutsApi.ts` | 快捷键配置 API |
+| `docs/API_CONTRACT_FE_BE.md` | 端点契约表（与后端路由、`normalizeResponse` 对齐） |
+| `docs/ARCHITECTURE_CALL_MAP.md` | 全局分域调用图（入湖 / 查询 / 元数据 / 异步 / 可视化） |
+| `.github/pull_request_template.md` | PR 自检：契约 / lint / pytest |
 | `frontend/src/hooks/useDuckDBTables.ts` | DuckDB 表列表 Hook |
 | `frontend/src/hooks/useDataSources.ts` | 数据源列表 Hook |
 | `frontend/src/hooks/useDatabaseConnections.ts` | 数据库连接 Hook |
@@ -122,6 +139,13 @@ duckdb-query/
 | `api/core/common/timezone_utils.py` | 时区工具 |
 | `api/routers/async_tasks.py` | 异步任务 API |
 | `api/routers/duckdb_query.py` | DuckDB 查询 API |
+
+### 2.1 前后端契约与 PR 模板
+
+| 资源 | 用途 |
+|------|------|
+| [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md) | 端点、成功体、`data` 字段语义、前端消费入口；**与后端路由、§9.2 同源维护** |
+| [`.github/pull_request_template.md`](.github/pull_request_template.md) | PR 勾选：是否改 API、是否已更新契约表、验证命令 |
 
 ---
 
@@ -184,8 +208,11 @@ import { invalidateAfterTableCreate } from '@/utils/cacheInvalidation';
 ```tsx
 import { Button } from '@mui/material';     // ❌ 禁止 MUI
 import '@/styles/modern.css';               // ❌ 禁止旧样式
-fetch('/api/duckdb/tables');                // ❌ 禁止直接 fetch
+fetch('/api/duckdb/tables');                // ❌ 禁止对本后端 /api 裸 fetch（须 @/api + apiClient）
+import { extractMessage } from '@/api/client'; // ❌ 禁止业务文件深路径（须 import { extractMessage } from '@/api'）
 ```
+
+**允许的 `fetch`（须在代码中注释说明）**：仅访问**第三方** URL（如 GitHub）。本后端动态路径仍须 `apiClient`（见 `useQueryExecution`）。
 
 ### 4.3 TypeScript 与表单
 - Props 必须定义接口/类型
@@ -229,8 +256,9 @@ function MyComponent() {
 ```
 
 **QueryKey 命名**
-- ✅ `['duckdb-tables']`、`['datasources', id]`、`['async-tasks']`
-- ❌ `['tables']`、`['getTables']`、`['duckdb_tables']`
+- ✅ 推荐可辨.resource + kebab：`['duckdb-tables']`、`['datasources', id]`、`['async-tasks']`
+- 现有代码中仍有 `['schemas', connectionId]`、`['schema-tables', …]` 等历史 Key；**新功能**优先采用上表风格；若重命名 Key，须同步 `cacheInvalidation.ts` 等前缀失效逻辑。
+- ❌ 过于泛化：`['tables']`、`['getTables']`、`['duckdb_tables']`
 
 ### 4.5 缓存刷新规则（强制）
 
@@ -318,17 +346,19 @@ gridOptions.theme = 'legacy';
 - 状态机/全局状态在 `frontend/src/hooks/` 下的独立 Hook 中完成
 
 ### 7.2 API 调用
-- **必须使用** `frontend/src/api/` TypeScript 模块
-- **禁止** 直接使用 `fetch` 或 `axios`
+- **必须使用** `frontend/src/api/` 下的封装函数；**业务代码**（`frontend/src` 下除 `frontend/src/api/` 自身实现文件外）应 **`import { … } from '@/api'`**（与 `index.ts` 导出一致），禁止 `import … from '@/api/xxxApi'`、`@/api/client`、`@/api/types` 等深路径。
+- **`frontend/src/api/*.ts` 内部**：模块之间仍用相对路径（如 `./client`、`./types`），**禁止**在 api 子模块内 `from '@/api'`（避免 barrel 循环依赖）。
+- **禁止**对本项目后端 `/api/...` 使用裸 **`fetch`** 或未走 `apiClient` 的 **`axios`**，以免绕过统一错误体、`normalizeResponse`、超时与请求头约定。
+- **例外**（须注释「第三方」或「动态端点待收敛」）：第三方 HTTP；本仓库内动态 endpoint（如 `useQueryExecution`）**仍须** `apiClient`，禁止裸 `fetch`。新增固定 `/api/...` 端点时**须**在 `frontend/src/api/` 增加封装并改为经 `apiClient`；**新增**的 client 工具函数须从 `client.ts` 再导出到 `index.ts`，业务侧仍只从 `@/api` 导入。
 
 ```tsx
 // ✅ 正确
-import { executeDuckDBSQL, getDuckDBTables } from '@/api';
+import { executeDuckDBSQL, getDuckDBTables, listConnectionSchemas } from '@/api';
 
 const result = await executeDuckDBSQL({ sql, isPreview: true });
 const tables = await getDuckDBTables();
 
-// ❌ 错误
+// ❌ 错误（本后端）
 const response = await fetch('/api/duckdb/tables');
 ```
 
@@ -495,6 +525,16 @@ interface StandardError {
 }
 ```
 
+### 9.5 前后端契约维护（与 `docs/API_CONTRACT_FE_BE.md` 一致）
+
+| 动作 | 顺序 |
+|------|------|
+| 修改某端点 JSON 形状或语义 | 1）更新 `docs/API_CONTRACT_FE_BE.md` 对应行；2）改 `api/routers/*` 与 Pydantic；3）改 `frontend/src/api/*` 类型与解包；4）改调用方 / 单测。 |
+| 新增 `/api/...` 端点 | 契约表新增一行后再实现；前端须经 `apiClient` + `normalizeResponse`（列表用 `items`/`total`）。 |
+| 列表 vs 对象成功体 | 后端列表用 `create_list_response`；前端 `normalizeResponse` 会填充 `items`（见 `client.ts`）。 |
+
+**说明**：网关或代理若改写 JSON，以线上 Network 为准；契约表以仓库内 FastAPI 与 `response_helpers` 为准。
+
 ---
 
 ## 10. 测试规范
@@ -510,7 +550,8 @@ frontend/src/hooks/__tests__/useDuckDBTables.test.ts
 
 ### 后端
 ```bash
-python -m pytest api/tests -q
+cd api
+python -m pytest tests -q
 ```
 
 ---
@@ -524,9 +565,12 @@ python -m pytest api/tests -q
 
 ### 数据获取
 - [ ] 使用 TanStack Query
-- [ ] 使用 `@/api` 模块
-- [ ] QueryKey 常量化 + kebab-case
+- [ ] 本后端请求经 `@/api`（`apiClient`），无未说明的裸 `fetch`
+- [ ] QueryKey 常量化；新代码优先 kebab.resource 风格
 - [ ] Mutation 后调用缓存刷新
+
+### API / 契约
+- [ ] 若改响应字段或端点：已同步 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)
 
 ### 后端
 - [ ] 使用统一响应格式
@@ -544,3 +588,47 @@ python -m pytest api/tests -q
 - 未经指示不修改代码；仅分析则不动代码
 - 不做全局安装，避免触碰非项目文件
 - 清理/删除前先 grep 查引用，确认无用再删
+
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **duckdb-query** (12234 symbols, 21948 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+
+> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
+- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/duckdb-query/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/duckdb-query/clusters` | All functional areas |
+| `gitnexus://repo/duckdb-query/processes` | All execution flows |
+| `gitnexus://repo/duckdb-query/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->

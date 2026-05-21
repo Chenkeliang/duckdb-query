@@ -187,15 +187,15 @@ class TestCreateErrorResponse:
         
         assert result["error"]["details"] == {}
 
-    def test_error_response_has_detail_field(self):
-        """Test error response includes detail field for FastAPI compatibility."""
+    def test_error_response_has_no_top_level_detail_field(self):
+        """标准错误体不含顶层 detail（与 FastAPI 默认区分）。"""
         result = create_error_response(
             code="NOT_FOUND",
             message="Resource not found"
         )
-        
-        assert "detail" in result
-        assert result["detail"] == "Resource not found"
+
+        assert "detail" not in result
+        assert result["error"]["message"] == "Resource not found"
 
     def test_error_response_with_message_code_enum(self):
         """Test error response accepts MessageCode enum as code parameter."""
@@ -314,8 +314,9 @@ class TestResponseConsistency:
             message="Test error"
         )
         
-        required_fields = {"success", "error", "messageCode", "message", "timestamp", "detail"}
+        required_fields = {"success", "error", "messageCode", "message", "timestamp"}
         assert required_fields.issubset(error.keys())
+        assert "detail" not in error
         
         error_fields = {"code", "message", "details"}
         assert error_fields.issubset(error["error"].keys())

@@ -45,7 +45,9 @@
 | `async_tasks.py` | custom_table_name SQL 拼接 | 使用 `"{custom_table_name}"` |
 | `async_tasks.py` alias | ✅ 已修复 | 使用 `SAFE_ALIAS_PATTERN` |
 
-**⚠️ 核心原则：所有表名在 SQL 中必须用双引号包裹**
+> **废止（2026-05-21）**：下列「一律双引号」原则已废止。现行以 `frontend/src/utils/sqlUtils.ts` 的 **按需引号**（`needsQuoting` / `quoteIdent`）及 [`docs/frontend/QUERY_EXECUTION_FLOW.md`](../../../docs/frontend/QUERY_EXECUTION_FLOW.md) 为准。仍须对动态表名使用引号定界以防注入。
+
+**⚠️ 历史原则（已废止）：所有表名在 SQL 中必须用双引号包裹**
 
 ```python
 # ✅ 正确写法 - 所有表名用引号包裹

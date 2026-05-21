@@ -8,8 +8,20 @@
 import logging
 from typing import Any, Dict, Optional
 
+from core.common.exceptions import (
+    BaseAPIException,
+    ResourceNotFoundError,
+    ValidationError as APIValidationError,
+)
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
+from utils.response_helpers import (
+    MessageCode,
+    create_error_response,
+    create_list_response,
+    create_success_response,
+    error_json_response,
+)
 
 from models.datasource_models import (
     DataSourceErrorCode,
@@ -139,7 +151,7 @@ async def refresh_database_connection(id: str):
         # 获取连接
         connection = db_manager.get_connection(conn_id)
         if not connection:
-            raise HTTPException(status_code=404, detail=f"Database connection not found: {conn_id}")
+            raise ResourceNotFoundError("Database connection", conn_id)
 
         logger.info(f"Starting to refresh database connection: {conn_id}")
 
@@ -244,7 +256,11 @@ async def refresh_database_connection(id: str):
         raise
     except Exception as e:
         logger.error(f"Refresh database connection failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Refresh database connection failed: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Refresh database connection failed: {str(e)}",
+        )
 
 
 async def _handle_save_connection(db_conn, test_connection: bool = True):
@@ -317,10 +333,11 @@ async def _handle_save_connection(db_conn, test_connection: bool = True):
         )
     else:
         # 保存失败（通常是系统/IO错误）
-        error_response = create_error_response(
-            code="OPERATION_FAILED", message="Failed to save database connection"
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            "Failed to save database connection",
         )
-        raise HTTPException(status_code=500, detail=error_response)
 
 
 @router.post("/databases", tags=["Unified Data Sources"])
@@ -349,11 +366,17 @@ async def create_database_connection(
 
         return await _handle_save_connection(db_conn, test_connection)
 
+    except BaseAPIException:
+        raise
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Create database connection failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Create database connection failed: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Create database connection failed: {str(e)}",
+        )
 
 
 @router.put("/databases/{id}", tags=["Unified Data Sources"])
@@ -378,7 +401,7 @@ async def update_database_connection(
         # 检查是否存在
         existing = db_manager.get_connection(conn_id)
         if not existing:
-            raise HTTPException(status_code=404, detail=f"Database connection not found: {conn_id}")
+            raise ResourceNotFoundError("Database connection", conn_id)
 
         # 构建更新后的连接对象（不修改现有对象，以便 add_connection 可以对比旧数据）
         from models.query_models import DatabaseConnection
@@ -400,7 +423,11 @@ async def update_database_connection(
         raise
     except Exception as e:
         logger.error(f"Update database connection failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Update database connection failed: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Update database connection failed: {str(e)}",
+        )
 
 
 @router.get("/databases/list")
@@ -437,10 +464,11 @@ async def list_database_datasources(
         logger.error(f"List database datasources failed: {e}")
         from utils.response_helpers import create_error_response
 
-        error_response = create_error_response(
-            code="OPERATION_FAILED", message=f"Failed to get database datasource list: {str(e)}"
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get database datasource list: {str(e)}",
         )
-        raise HTTPException(status_code=500, detail=error_response)
 
 
 @router.get("/files/list")
@@ -477,10 +505,11 @@ async def list_file_datasources(
         logger.error(f"List file datasources failed: {e}")
         from utils.response_helpers import create_error_response
 
-        error_response = create_error_response(
-            code="OPERATION_FAILED", message=f"Failed to get file datasource list: {str(e)}"
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get file datasource list: {str(e)}",
         )
-        raise HTTPException(status_code=500, detail=error_response)
 
 
 # ==================== 通用数据源端点 ====================
@@ -528,10 +557,11 @@ async def list_datasources(
         logger.error(f"List datasources failed: {e}")
         from utils.response_helpers import create_error_response
 
-        error_response = create_error_response(
-            code="OPERATION_FAILED", message=f"Failed to get datasource list: {str(e)}"
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get datasource list: {str(e)}",
         )
-        raise HTTPException(status_code=500, detail=error_response)
 
 
 @router.get("/{id}")
@@ -553,10 +583,7 @@ async def get_datasource(id: str):
         datasource = await datasource_aggregator.get_datasource(id)
 
         if not datasource:
-            error_response = create_error_response(
-                code="DATASOURCE_NOT_FOUND", message=f"Datasource not found: {id}"
-            )
-            raise HTTPException(status_code=404, detail=error_response)
+            raise ResourceNotFoundError("Datasource", id)
 
         logger.info(f"Get datasource: {id}")
 
@@ -564,14 +591,17 @@ async def get_datasource(id: str):
             data=datasource.dict(), message_code=MessageCode.DATASOURCE_RETRIEVED
         )
 
+    except BaseAPIException:
+        raise
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Get datasource {id} failed: {e}")
-        error_response = create_error_response(
-            code="OPERATION_FAILED", message=f"Failed to get datasource: {str(e)}"
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get datasource: {str(e)}",
         )
-        raise HTTPException(status_code=500, detail=error_response)
 
 
 @router.delete("/{id}")
@@ -586,29 +616,18 @@ async def delete_datasource(id: str):
         # 先检查数据源是否存在
         datasource = await datasource_aggregator.get_datasource(id)
         if not datasource:
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "error_code": DataSourceErrorCode.NOT_FOUND,
-                    "message": f"Datasource not found: {id}",
-                },
-            )
+            raise ResourceNotFoundError("Datasource", id)
 
-        # 删除数据源
         success = await datasource_aggregator.delete_datasource(id)
 
         if not success:
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error_code": DataSourceErrorCode.BATCH_OPERATION_FAILED,
-                    "message": f"Failed to delete datasource: {id}",
-                },
+            return error_json_response(
+                500,
+                MessageCode.BATCH_OPERATION_FAILED,
+                f"Failed to delete datasource: {id}",
             )
 
         logger.info(f"Delete datasource: {id}")
-
-        from utils.response_helpers import MessageCode, create_success_response
 
         return JSONResponse(
             content=create_success_response(
@@ -618,8 +637,14 @@ async def delete_datasource(id: str):
             )
         )
 
+    except BaseAPIException:
+        raise
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Delete datasource {id} failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete datasource: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to delete datasource: {str(e)}",
+        )

@@ -24,6 +24,18 @@ from core.services.visual_query_generator import GeneratedVisualQuery
 client = TestClient(app)
 
 
+def api_data(body: dict) -> dict:
+    assert body["success"] is True, body
+    return body["data"]
+
+
+def api_errors(body: dict) -> list:
+    assert body["success"] is False, body
+    err = body.get("error") or {}
+    details = err.get("details") if isinstance(err.get("details"), dict) else {}
+    return (details or {}).get("errors") or [body.get("message") or err.get("message", "")]
+
+
 class TestVisualQueryGeneration:
     """Test visual query generation endpoint"""
     
@@ -52,9 +64,10 @@ class TestVisualQueryGeneration:
             metadata={"mode": VisualQueryMode.REGULAR.value},
         )
 
-        with patch('routers.query.validate_query_config') as mock_validate, \
-             patch('routers.query.generate_visual_query_sql') as mock_generate, \
-             patch('routers.query.estimate_query_performance') as mock_estimate:
+        with patch('routers.visual_query.validate_query_config') as mock_validate, \
+             patch('routers.visual_query.generate_visual_query_sql') as mock_generate, \
+             patch('routers.visual_query.get_db_connection') as mock_get_db, \
+             patch('routers.visual_query.estimate_query_performance') as mock_estimate:
 
             mock_validate.return_value = Mock(
                 is_valid=True,
@@ -64,6 +77,7 @@ class TestVisualQueryGeneration:
             )
 
             mock_generate.return_value = generation_result
+            mock_get_db.return_value = Mock()
 
             mock_estimate.return_value = Mock(
                 estimated_rows=100,
@@ -73,10 +87,9 @@ class TestVisualQueryGeneration:
             response = client.post("/api/visual-query/generate", json=config_data)
 
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["sql"] == 'SELECT "col1", "col2" FROM "test_table"'
-            assert data["metadata"]["estimated_rows"] == 100
+            inner = api_data(response.json())
+            assert inner["sql"] == 'SELECT "col1", "col2" FROM "test_table"'
+            assert inner["metadata"]["estimated_rows"] == 100
     
     def test_generate_query_with_validation_errors(self):
         """Test query generation with validation errors - Pydantic rejects invalid config"""
@@ -151,9 +164,10 @@ class TestVisualQueryGeneration:
             metadata={"mode": VisualQueryMode.REGULAR.value},
         )
 
-        with patch('routers.query.validate_query_config') as mock_validate, \
-             patch('routers.query.generate_visual_query_sql') as mock_generate, \
-             patch('routers.query.estimate_query_performance') as mock_estimate:
+        with patch('routers.visual_query.validate_query_config') as mock_validate, \
+             patch('routers.visual_query.generate_visual_query_sql') as mock_generate, \
+             patch('routers.visual_query.get_db_connection') as mock_get_db, \
+             patch('routers.visual_query.estimate_query_performance') as mock_estimate:
 
             mock_validate.return_value = Mock(
                 is_valid=True,
@@ -163,6 +177,7 @@ class TestVisualQueryGeneration:
             )
 
             mock_generate.return_value = generation_result
+            mock_get_db.return_value = Mock()
 
             mock_estimate.return_value = Mock(
                 estimated_rows=50,
@@ -172,11 +187,10 @@ class TestVisualQueryGeneration:
             response = client.post("/api/visual-query/generate", json=config_data)
 
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["sql"] == expected_sql
-            assert len(data["warnings"]) > 0
-            assert data["metadata"]["estimated_rows"] == 50
+            inner = api_data(response.json())
+            assert inner["sql"] == expected_sql
+            assert len(inner["warnings"]) > 0
+            assert inner["metadata"]["estimated_rows"] == 50
 
 
 class TestVisualQueryPreview:
@@ -206,10 +220,10 @@ class TestVisualQueryPreview:
             metadata={"mode": VisualQueryMode.REGULAR.value},
         )
 
-        with patch('routers.query.validate_query_config') as mock_validate, \
-             patch('routers.query.generate_visual_query_sql') as mock_generate, \
-             patch('routers.query.execute_query') as mock_execute, \
-             patch('routers.query.estimate_query_performance') as mock_estimate:
+        with patch('routers.visual_query.validate_query_config') as mock_validate, \
+             patch('routers.visual_query.generate_visual_query_sql') as mock_generate, \
+             patch('routers.visual_query.get_db_connection') as mock_get_db, \
+             patch('routers.visual_query.estimate_query_performance') as mock_estimate:
 
             mock_validate.return_value = Mock(
                 is_valid=True,
@@ -227,7 +241,9 @@ class TestVisualQueryPreview:
                 'age': [25, 30, 35],
             })
 
-            mock_execute.side_effect = [
+            mock_con = Mock()
+            mock_get_db.return_value = mock_con
+            mock_con.execute.return_value.fetchdf.side_effect = [
                 preview_data,
                 pd.DataFrame({'total_rows': [1000]}),
             ]
@@ -276,8 +292,8 @@ class TestColumnStatistics:
     
     def test_get_column_statistics_success(self):
         """Test successful column statistics retrieval"""
-        with patch('routers.query.get_db_connection') as mock_db, \
-             patch('routers.query.get_column_statistics') as mock_stats:
+        with patch('routers.visual_query.get_db_connection') as mock_db, \
+             patch('routers.visual_query.get_column_statistics') as mock_stats:
             
             # Mock database connection
             mock_con = Mock()
@@ -305,16 +321,15 @@ class TestColumnStatistics:
             response = client.get("/api/visual-query/column-stats/test_table/age")
             
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["statistics"]["column_name"] == "age"
-            assert data["statistics"]["data_type"] == "INTEGER"
-            assert data["statistics"]["min_value"] == 18
-            assert data["statistics"]["max_value"] == 65
+            stats = api_data(response.json())["statistics"]
+            assert stats["column_name"] == "age"
+            assert stats["data_type"] == "INTEGER"
+            assert stats["min_value"] == 18
+            assert stats["max_value"] == 65
     
     def test_get_column_statistics_table_not_found(self):
         """Test column statistics for non-existent table"""
-        with patch('routers.query.get_db_connection') as mock_db:
+        with patch('routers.visual_query.get_db_connection') as mock_db:
             # Mock database connection
             mock_con = Mock()
             mock_db.return_value = mock_con
@@ -328,7 +343,9 @@ class TestColumnStatistics:
             response = client.get("/api/visual-query/column-stats/nonexistent_table/age")
             
             assert response.status_code == 404
-            assert "不存在" in response.json()["detail"]
+            body = response.json()
+            msg = body.get("error", {}).get("message", "") or body.get("message", "")
+            assert "not found" in msg.lower() or "does not exist" in msg.lower()
 class TestTableMetadata:
     """Test table metadata endpoint"""
     
@@ -384,12 +401,11 @@ class TestTableMetadata:
             response = client.get("/api/duckdb/tables/detail/test_table")
             
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["table"]["table_name"] == "test_table"
-            assert data["table"]["row_count"] == 1000
-            assert data["table"]["column_count"] == 3
-            assert len(data["table"]["columns"]) == 3
+            table = api_data(response.json())["table"]
+            assert table["table_name"] == "test_table"
+            assert table["row_count"] == 1000
+            assert table["column_count"] == 3
+            assert len(table["columns"]) == 3
     
     def test_get_table_metadata_table_not_found(self):
         """Test table metadata for non-existent table"""
@@ -407,7 +423,10 @@ class TestTableMetadata:
             response = client.get("/api/duckdb/tables/detail/nonexistent_table")
             
             assert response.status_code == 404
-            assert "不存在" in response.json()["detail"]
+            body = response.json()
+            msg = body.get("error", {}).get("message", "") or body.get("message", "")
+            assert "not found" in msg.lower() or "does not exist" in msg.lower()
+            assert "detail" not in body
 
     def test_refresh_table_metadata_success(self):
         """Refreshing metadata should bypass cache."""
@@ -440,9 +459,7 @@ class TestTableMetadata:
 
             response = client.post("/api/duckdb/table/test_table/refresh")
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["refreshed"] is True
+            assert api_data(response.json())["refreshed"] is True
             mock_metadata.assert_called_once_with("test_table", mock_con, use_cache=False)
 
     def test_refresh_table_metadata_table_not_found(self):
@@ -493,9 +510,9 @@ class TestVisualQueryValidation:
             "is_distinct": False
         }
         
-        with patch('routers.query.validate_query_config') as mock_validate, \
-             patch('routers.query._load_backend_column_profiles') as mock_profiles, \
-             patch('routers.query._detect_aggregation_conflicts') as mock_conflicts:
+        with patch('routers.visual_query.validate_query_config') as mock_validate, \
+             patch('routers.visual_query._load_backend_column_profiles') as mock_profiles, \
+             patch('routers.visual_query._detect_aggregation_conflicts') as mock_conflicts:
             # Mock validation success
             mock_validate.return_value = Mock(
                 is_valid=True,
@@ -511,12 +528,11 @@ class TestVisualQueryValidation:
             response = client.post("/api/visual-query/validate", json=config_data)
             
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["is_valid"] is True
-            assert len(data["errors"]) == 0
-            assert len(data["warnings"]) >= 1
-            assert data["complexity_score"] == 5
+            inner = api_data(response.json())
+            assert inner["is_valid"] is True
+            assert len(inner["errors"]) == 0
+            assert len(inner["warnings"]) >= 1
+            assert inner["complexity_score"] == 5
     
     def test_validate_invalid_config(self):
         """Test validation of invalid configuration - Pydantic validates before endpoint logic"""
@@ -547,10 +563,7 @@ class TestVisualQueryValidation:
         response = client.post("/api/visual-query/validate", json=config_data)
         
         assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is False  # Request parsing failed
-        assert data["is_valid"] is False
-        assert len(data["errors"]) > 0  # Should have validation errors
+        assert len(api_errors(response.json())) > 0
     
     def test_validate_config_exception(self):
         """Test validation with exception handling"""
@@ -563,17 +576,15 @@ class TestVisualQueryValidation:
             "is_distinct": False
         }
         
-        with patch('routers.query.validate_query_config') as mock_validate:
+        with patch('routers.visual_query.validate_query_config') as mock_validate:
             # Mock validation exception
             mock_validate.side_effect = Exception("Validation service unavailable")
             
             response = client.post("/api/visual-query/validate", json=config_data)
             
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is False
-            assert data["is_valid"] is False
-            assert "配置验证失败" in data["errors"][0]
+            errors = api_errors(response.json())
+            assert "Failed to validate configuration" in errors[0]
 
 
 class TestErrorHandling:

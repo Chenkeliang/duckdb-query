@@ -390,9 +390,9 @@ test('should fetch tables', async () => {
 // ✅ 新方式
 import { render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import * as queryApi from '@/api/queryApi';
+import * as queryApi from '@/api';
 
-jest.mock('@/api/queryApi');
+jest.mock('@/api');
 
 const createWrapper = () => {
   const queryClient = new QueryClient({

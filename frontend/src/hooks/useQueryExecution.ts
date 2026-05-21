@@ -20,6 +20,8 @@
 
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { isCancel } from 'axios';
+import { apiClient, cancelSyncQuery } from '@/api';
 
 /**
  * 查询执行状态
@@ -145,12 +147,7 @@ export function useQueryExecution<T = unknown>(): UseQueryExecutionReturn<T> {
         // 如果有 requestId，调用后端取消 API
         if (requestId) {
             try {
-                await fetch(`/api/query/cancel/${requestId}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                });
+                await cancelSyncQuery(requestId);
             } catch (e) {
                 // 取消 API 失败不阻塞，本地已中止
                 console.warn('Cancel request failed:', e);
@@ -188,18 +185,17 @@ export function useQueryExecution<T = unknown>(): UseQueryExecutionReturn<T> {
             setErrorCode(null);
 
             try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
+                const response = await apiClient.post(endpoint, payload, {
                     headers: {
-                        'Content-Type': 'application/json',
                         'X-Request-ID': newRequestId,
                         ...options?.headers,
                     },
-                    body: JSON.stringify(payload),
                     signal,
+                    ...(options?.timeout != null ? { timeout: options.timeout } : {}),
+                    // 与 fetch 一致：非 2xx 仍进入下方分支（含 499 取消）
+                    validateStatus: () => true,
                 });
 
-                // 处理 499 状态码（查询被取消）
                 if (response.status === 499) {
                     setStatus('cancelled');
                     setError('查询已取消');
@@ -207,9 +203,17 @@ export function useQueryExecution<T = unknown>(): UseQueryExecutionReturn<T> {
                     return null;
                 }
 
-                const result = await response.json();
+                type LooseBody = {
+                    success?: boolean;
+                    message?: string;
+                    detail?: string;
+                    messageCode?: string;
+                    cancelled?: boolean;
+                    data?: unknown;
+                    error?: { message?: string; code?: string };
+                };
+                const result = (response.data ?? {}) as LooseBody;
 
-                // 检查响应中的取消标记（499 fallback 方案）
                 if (result.messageCode === 'QUERY_CANCELLED' || result.cancelled === true) {
                     setStatus('cancelled');
                     setError(result.message || '查询已取消');
@@ -217,9 +221,10 @@ export function useQueryExecution<T = unknown>(): UseQueryExecutionReturn<T> {
                     return null;
                 }
 
-                // 处理其他错误
-                if (!response.ok || result.success === false) {
-                    const errorMessage = result.message || result.detail || result.error?.message || '查询执行失败';
+                const httpOk = response.status >= 200 && response.status < 300;
+                if (!httpOk || result.success === false) {
+                    const errorMessage =
+                        result.message || result.error?.message || '查询执行失败';
                     const code = result.messageCode || result.error?.code || 'QUERY_ERROR';
                     setStatus('error');
                     setError(errorMessage);
@@ -227,22 +232,19 @@ export function useQueryExecution<T = unknown>(): UseQueryExecutionReturn<T> {
                     return null;
                 }
 
-                // 成功
                 const resultData = result.data !== undefined ? result.data : result;
                 setData(resultData as T);
                 setLastSuccessData(resultData as T);
                 setStatus('success');
                 return resultData as T;
             } catch (e) {
-                // 处理中止错误
-                if (e instanceof Error && e.name === 'AbortError') {
+                if (isCancel(e) || (e instanceof Error && e.name === 'AbortError')) {
                     setStatus('cancelled');
                     setError('查询已取消');
                     setErrorCode('QUERY_CANCELLED');
                     return null;
                 }
 
-                // 处理网络错误
                 const errorMessage = e instanceof Error ? e.message : '网络请求失败';
                 setStatus('error');
                 setError(errorMessage);

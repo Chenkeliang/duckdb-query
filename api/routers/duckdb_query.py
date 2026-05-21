@@ -36,6 +36,12 @@ from core.database.duckdb_pool import interruptible_connection
 from core.security.encryption import password_encryptor
 from core.services.resource_manager import save_upload_file
 from core.services.visual_query_generator import get_table_metadata
+from core.common.exceptions import (
+    BaseAPIException,
+    DatabaseConnectionError,
+    ResourceNotFoundError,
+    ValidationError as APIValidationError,
+)
 from fastapi import APIRouter, Body, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from models.query_models import FederatedQueryRequest, FederatedQueryResponse
@@ -45,6 +51,7 @@ from utils.response_helpers import (
     create_error_response,
     create_list_response,
     create_success_response,
+    error_json_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -229,14 +236,18 @@ async def list_duckdb_tables_summary():
 
     except Exception as e:
         logger.error(f"Failed to get DuckDB table info: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get table info: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get table info: {str(e)}",
+        )
 
 
 def _ensure_table_exists(con, table_name: str) -> None:
     tables_df = con.execute("SHOW TABLES").fetchdf()
     available_tables = tables_df["name"].tolist() if not tables_df.empty else []
     if table_name not in available_tables:
-        raise HTTPException(status_code=404, detail=f"Table {table_name} does not exist")
+        raise ResourceNotFoundError("Table", table_name)
 
 
 @router.get("/api/duckdb/tables/detail/{table_name}", tags=["DuckDB Query"])
@@ -255,11 +266,15 @@ async def get_duckdb_table_detail(table_name: str):
             data={"table": metadata_dict},
             message_code=MessageCode.TABLE_RETRIEVED,
         )
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as exc:
         logger.error("Failed to get table metadata: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get table metadata: {str(exc)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get table metadata: {str(exc)}",
+        )
 
 
 @router.get("/api/duckdb/tables/{table_name}", tags=["DuckDB Query"])
@@ -284,11 +299,15 @@ async def refresh_duckdb_table_metadata(table_name: str):
             data={"table": metadata_dict, "refreshed": True},
             message_code=MessageCode.TABLE_REFRESHED,
         )
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as exc:
         logger.error("Failed to refresh table metadata: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to refresh table metadata: {str(exc)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to refresh table metadata: {str(exc)}",
+        )
 
 
 async def execute_duckdb_query(
@@ -311,17 +330,16 @@ async def execute_duckdb_query(
     start_time = time.time()
 
     try:
+        sql_query = request.sql.strip()
+        if not sql_query:
+            raise APIValidationError("SQL query cannot be empty")
+
         # 先获取可用表（这个操作很快，不需要可中断）
         con = get_db_connection()
         available_tables_df = con.execute("SHOW TABLES").fetchdf()
         available_tables = (
             available_tables_df["name"].tolist() if len(available_tables_df) > 0 else []
         )
-
-        # 验证SQL查询
-        sql_query = request.sql.strip()
-        if not sql_query:
-            raise HTTPException(status_code=400, detail="SQL query cannot be empty")
 
         # 检查是否是简单的SELECT查询（不需要表）
         sql_upper = sql_query.upper().strip()
@@ -345,8 +363,8 @@ async def execute_duckdb_query(
 
         # 如果没有可用的表且不是简单SELECT查询，则报错
         if not available_tables and not is_simple_select:
-            raise HTTPException(
-                status_code=400, detail="No tables available in DuckDB. Please upload a file or connect to a database first."
+            raise APIValidationError(
+                "No tables available in DuckDB. Please upload a file or connect to a database first."
             )
 
         # 检查SQL中是否包含危险操作（已在上面检查过）
@@ -364,9 +382,8 @@ async def execute_duckdb_query(
         if not request.save_as_table:
             for keyword in dangerous_keywords:
                 if keyword != "CREATE" and contains_keyword(sql_upper_clean, keyword):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"{keyword} operation is not allowed. Only query operations are supported.",
+                    raise APIValidationError(
+                        f"{keyword} operation is not allowed. Only query operations are supported."
                     )
 
         # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式）
@@ -509,16 +526,8 @@ async def execute_duckdb_query(
                 details={"query_id": query_id, "error": str(e)},
             ),
         )
-    except HTTPException as e:
-        # 将 HTTPException 转换为标准错误结构
-        return JSONResponse(
-            status_code=e.status_code,
-            content=create_error_response(
-                code=MessageCode.QUERY_FAILED,
-                message=str(e.detail),
-                details={"query_id": query_id},
-            ),
-        )
+    except BaseAPIException:
+        raise
     except Exception as e:
         logger.error(f"DuckDB query execution failed: {str(e)}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
@@ -556,10 +565,7 @@ async def delete_duckdb_table(table_name: str):
         available_tables = tables_df["name"].tolist() if not tables_df.empty else []
 
         if table_name not in available_tables:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Table '{table_name}' does not exist. Available tables: {', '.join(available_tables)}",
-            )
+            raise ResourceNotFoundError("Table", table_name)
 
         # 删除表
         drop_sql = f'DROP TABLE IF EXISTS "{table_name}"'
@@ -582,11 +588,15 @@ async def delete_duckdb_table(table_name: str):
             message=f"Table '{table_name}' has been successfully deleted",
         )
 
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Failed to delete DuckDB table: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete table: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to delete table: {str(e)}",
+        )
 
 
 # 新增连接池状态监控接口
@@ -605,7 +615,7 @@ async def get_connection_pool_status():
         )
     except Exception as e:
         logger.error(f"Failed to get connection pool status: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return error_json_response(500, MessageCode.OPERATION_FAILED, str(e))
 
 
 @router.post("/api/duckdb/pool/reset", tags=["DuckDB Management"])
@@ -631,7 +641,7 @@ async def reset_connection_pool():
         )
     except Exception as e:
         logger.error(f"Failed to reset connection pool: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return error_json_response(500, MessageCode.OPERATION_FAILED, str(e))
 
 
 @router.post("/api/duckdb/migrate/created_at", tags=["DuckDB Management"])
@@ -693,7 +703,11 @@ async def migrate_created_at_field():
 
     except Exception as e:
         logger.error(f"Failed to migrate created_at field: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Migration failed: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Migration failed: {str(e)}",
+        )
 
 
 # 新增错误统计接口
@@ -710,7 +724,11 @@ async def get_error_statistics():
         )
     except Exception as e:
         logger.error(f"Failed to get error statistics: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get error statistics: {str(e)}",
+        )
 
 
 @router.post("/api/errors/clear", tags=["System Management"])
@@ -727,7 +745,11 @@ async def clear_old_errors(days: int = 30):
         )
     except Exception as e:
         logger.error(f"Failed to clear error records: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to clear error records: {str(e)}",
+        )
 
 
 @router.post("/api/duckdb/federated-query", tags=["DuckDB Query"])
@@ -759,9 +781,8 @@ async def execute_federated_query(
         for attach_db in request.attach_databases:
             connection = db_manager.get_connection(attach_db.connection_id)
             if not connection:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Database connection '{attach_db.connection_id}' does not exist",
+                raise ResourceNotFoundError(
+                    "Database connection", attach_db.connection_id
                 )
 
             db_config = connection.params.copy()
@@ -815,10 +836,9 @@ async def execute_federated_query(
                 logger.info(f"Successfully ATTACH database: {alias}")
             except Exception as attach_error:
                 logger.error(f"ATTACH database {alias} failed: {attach_error}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to connect to external database '{alias}': {str(attach_error)}",
-                )
+                raise DatabaseConnectionError(
+                    f"Failed to connect to external database '{alias}': {str(attach_error)}",
+                ) from attach_error
 
         logger.info(f"Attached databases: {attached_aliases}")
 
@@ -913,7 +933,7 @@ async def execute_federated_query(
                 details={"query_id": query_id},
             ),
         )
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Federated query execution failed: {str(e)}")

@@ -6,6 +6,13 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
+from core.common.exceptions import (
+    AuthorizationError,
+    BaseAPIException,
+    ResourceNotFoundError,
+    SecurityError,
+    ValidationError as APIValidationError,
+)
 from core.common.config_manager import config_manager
 from core.database.duckdb_engine import get_db_connection
 from core.data.excel_import_manager import (
@@ -20,10 +27,17 @@ from core.data.file_datasource_manager import (
     file_datasource_manager,
 )
 from core.data.file_utils import detect_file_type
+from core.data.import_mode import (
+    normalize_import_mode,
+    should_promote_column_types,
+    use_all_varchar_on_load,
+)
+from core.data.ingestion_precision import promote_table_column_types_from_varchar
 from core.common.timezone_utils import get_storage_time
 from utils.response_helpers import (
     create_success_response,
     MessageCode,
+    error_json_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,10 +49,17 @@ SUPPORTED_FORMATS = {"csv", "json", "jsonl", "parquet", "pq", "xlsx", "xls", "ex
 class ServerFileImportRequest(BaseModel):
     path: str
     table_alias: Optional[str] = None
+    import_mode: str = "auto"
+
+    @field_validator("import_mode", mode="before")
+    @classmethod
+    def _validate_import_mode(cls, value: str) -> str:
+        return normalize_import_mode(value)
 
 
 class ServerExcelInspectRequest(BaseModel):
     path: str
+    table_alias: Optional[str] = None
 
 
 class ExcelSheetImportConfig(BaseModel):
@@ -55,6 +76,12 @@ class ExcelSheetImportConfig(BaseModel):
 class ServerExcelImportRequest(BaseModel):
     path: str
     sheets: List[ExcelSheetImportConfig]
+    import_mode: str = "auto"
+
+    @field_validator("import_mode", mode="before")
+    @classmethod
+    def _validate_cell_import_mode(cls, value: str) -> str:
+        return normalize_import_mode(value)
 
     @field_validator("sheets")
     @classmethod
@@ -85,7 +112,7 @@ def _get_mount_configs() -> List[dict]:
 
 def _resolve_path(path: str) -> tuple[str, dict]:
     if not path:
-        raise HTTPException(status_code=400, detail="Missing path parameter")
+        raise APIValidationError("Missing path parameter")
 
     mounts = _get_mount_configs()
     real_path = os.path.realpath(path)
@@ -93,19 +120,14 @@ def _resolve_path(path: str) -> tuple[str, dict]:
     for mount in mounts:
         root = mount["real_path"]
         if real_path.startswith(root):
-            # 安全检查：禁止符号链接（防止白名单目录内的符号链接指向外部）
             if os.path.islink(path):
-                raise HTTPException(
-                    status_code=403,
-                    detail={
-                        "code": "SYMLINK_NOT_ALLOWED",
-                        "message": "Symbolic links are not allowed",
-                        "field": "path",
-                    },
+                raise SecurityError(
+                    "Symbolic links are not allowed",
+                    details={"field": "path", "code": "SYMLINK_NOT_ALLOWED"},
                 )
             return real_path, mount
 
-    raise HTTPException(status_code=400, detail="Path is not within allowed mount directories")
+    raise APIValidationError("Path is not within allowed mount directories")
 
 
 def _to_display_path(real_path: str, mount: dict) -> str:
@@ -157,9 +179,9 @@ async def list_server_directory(path: str = Query(..., description="服务器目
     real_path, mount = _resolve_path(path)
 
     if not os.path.exists(real_path):
-        raise HTTPException(status_code=404, detail="Path does not exist")
+        raise ResourceNotFoundError("Path", path)
     if not os.path.isdir(real_path):
-        raise HTTPException(status_code=400, detail="Target path is not a directory")
+        raise APIValidationError("Target path is not a directory")
 
     entries = []
     try:
@@ -198,7 +220,7 @@ async def list_server_directory(path: str = Query(..., description="服务器目
                         }
                     )
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail="No permission to read this directory") from exc
+        raise AuthorizationError("No permission to read this directory") from exc
 
     entries.sort(key=lambda item: (item["type"] != "directory", item["name"].lower()))
 
@@ -218,13 +240,13 @@ async def import_server_file(payload: ServerFileImportRequest):
     real_path, mount = _resolve_path(payload.path)
 
     if not os.path.exists(real_path):
-        raise HTTPException(status_code=404, detail="File does not exist")
+        raise ResourceNotFoundError("File", payload.path)
     if not os.path.isfile(real_path):
-        raise HTTPException(status_code=400, detail="Target path is not a file")
+        raise APIValidationError("Target path is not a file")
 
     file_type = detect_file_type(real_path)
     if file_type not in SUPPORTED_FORMATS:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
+        raise APIValidationError(f"Unsupported file type: {file_type}")
 
     base_name = payload.table_alias or os.path.splitext(os.path.basename(real_path))[0]
     # 如果用户明确提供了 table_alias，尊重用户输入（允许数字开头）
@@ -233,13 +255,53 @@ async def import_server_file(payload: ServerFileImportRequest):
     )
 
     try:
-        con = get_db_connection()
-        metadata = create_table_from_file_path_typed(
-            con, table_name, real_path, file_type
+        from core.database.duckdb_engine import with_duckdb_connection
+        from core.services.file_ingestion_service import ingest_server_tabular
+
+        from core.services.file_ingestion_service import build_file_metadata, save_file_metadata
+
+        with with_duckdb_connection() as con:
+            ingest_result = ingest_server_tabular(
+                con, real_path, payload.table_alias, import_mode=payload.import_mode
+            )
+        table_name = ingest_result.table_name
+        metadata = {
+            "row_count": ingest_result.row_count,
+            "column_count": ingest_result.column_count,
+            "columns": ingest_result.columns,
+            "column_profiles": ingest_result.column_profiles,
+        }
+        current_time = get_storage_time()
+        table_metadata = build_file_metadata(
+            source_id=table_name,
+            filename=os.path.basename(real_path),
+            file_path=_to_display_path(real_path, mount),
+            file_type=file_type,
+            table_metadata=metadata,
+            extra={
+                "upload_time": current_time,
+                "created_at": current_time,
+                "updated_at": current_time,
+                "metadata": {
+                    "schema_version": 2,
+                    "mount_label": mount["label"],
+                    "source_type": "server_directory",
+                },
+            },
         )
+        try:
+            save_file_metadata(table_metadata)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("Failed to save file datasource metadata (ignored): %s", exc)
+    except BaseAPIException:
+        raise
     except Exception as exc:
         logger.error("Failed to import server file: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Import failed: {str(exc)}") from exc
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Import failed: {str(exc)}",
+        )
 
     # 使用 UTC naive 时间用于数据库存储
     current_time = get_storage_time()
@@ -320,37 +382,34 @@ async def inspect_server_excel(payload: ServerExcelInspectRequest):
     real_path, mount = _resolve_path(payload.path)
 
     if not os.path.exists(real_path):
-        raise HTTPException(status_code=404, detail="File does not exist")
+        raise ResourceNotFoundError("File", payload.path)
     if not os.path.isfile(real_path):
-        raise HTTPException(status_code=400, detail="Target path is not a file")
+        raise APIValidationError("Target path is not a file")
 
     file_ext = detect_file_type(real_path)
     if file_ext not in {"xlsx", "xls", "excel"}:
-        raise HTTPException(status_code=400, detail=f"Not an Excel file: {file_ext}")
+        raise APIValidationError(f"Not an Excel file: {file_ext}")
 
     try:
-        sheets = inspect_excel_sheets(real_path)
+        from core.services.file_ingestion_service import inspect_excel_at_path
+
+        inspected = inspect_excel_at_path(real_path, payload.table_alias)
+    except BaseAPIException:
+        raise
     except Exception as exc:
         logger.error("Failed to check Excel worksheets: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to check Excel: {str(exc)}") from exc
-
-    # 为每个工作表生成默认表名
-    base_name = os.path.splitext(os.path.basename(real_path))[0]
-    default_prefix = sanitize_identifier(
-        base_name, allow_leading_digit=False, prefix="table"
-    )
-
-    for sheet in sheets:
-        sheet["default_table_name"] = derive_default_table_name(
-            default_prefix, sheet["name"]
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to check Excel: {str(exc)}",
         )
 
     return create_success_response(
         data={
             "file_path": _to_display_path(real_path, mount),
-            "file_extension": file_ext,
-            "default_table_prefix": default_prefix,
-            "sheets": sheets,
+            "file_extension": inspected["file_extension"],
+            "default_table_prefix": inspected["default_table_prefix"],
+            "sheets": inspected["sheets"],
         },
         message_code=MessageCode.EXCEL_SHEETS_INSPECTED,
     )
@@ -368,13 +427,13 @@ async def import_server_excel(payload: ServerExcelImportRequest):
     real_path, mount = _resolve_path(payload.path)
 
     if not os.path.exists(real_path):
-        raise HTTPException(status_code=404, detail="File does not exist")
+        raise ResourceNotFoundError("File", payload.path)
     if not os.path.isfile(real_path):
-        raise HTTPException(status_code=400, detail="Target path is not a file")
+        raise APIValidationError("Target path is not a file")
 
     file_ext = detect_file_type(real_path)
     if file_ext not in {"xlsx", "xls", "excel"}:
-        raise HTTPException(status_code=400, detail=f"Not an Excel file: {file_ext}")
+        raise APIValidationError(f"Not an Excel file: {file_ext}")
 
     con = get_db_connection()
     imported_tables = []
@@ -388,9 +447,8 @@ async def import_server_excel(payload: ServerExcelImportRequest):
             sheet_cfg.target_table, allow_leading_digit=True, prefix="table"
         )
         if sanitized in sanitized_name_map.values():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Worksheet '{sheet_cfg.name}' target table name '{sanitized}' conflicts with other worksheets",
+            raise APIValidationError(
+                f"Worksheet '{sheet_cfg.name}' target table name '{sanitized}' conflicts with other worksheets"
             )
         sanitized_name_map[sheet_cfg.name] = sanitized
 
@@ -398,9 +456,8 @@ async def import_server_excel(payload: ServerExcelImportRequest):
     for sheet_cfg in payload.sheets:
         target_table = sanitized_name_map[sheet_cfg.name]
         if sheet_cfg.mode == "create" and _table_exists(con, target_table):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Table '{target_table}' already exists, please modify target table name or select overwrite mode",
+            raise APIValidationError(
+                f"Table '{target_table}' already exists, please modify target table name or select overwrite mode"
             )
 
     # 4. 执行导入
@@ -422,11 +479,18 @@ async def import_server_excel(payload: ServerExcelImportRequest):
                     con.execute("INSTALL excel")
                     con.execute("LOAD excel")
 
+                    all_varchar_clause = (
+                        ", all_varchar = true"
+                        if use_all_varchar_on_load(payload.import_mode)
+                        else ""
+                    )
                     sql = f"""
                         CREATE OR REPLACE TABLE "{target_table}" AS
-                        SELECT * FROM read_xlsx('{real_path}', sheet='{sheet_cfg.name}', header=true)
+                        SELECT * FROM read_xlsx('{real_path}', sheet='{sheet_cfg.name}', header=true{all_varchar_clause})
                     """
                     con.execute(sql)
+                    if should_promote_column_types(payload.import_mode):
+                        promote_table_column_types_from_varchar(con, target_table)
 
                     # 获取元数据
                     row_count = con.execute(
@@ -456,6 +520,7 @@ async def import_server_excel(payload: ServerExcelImportRequest):
                     header_rows=sheet_cfg.header_rows,
                     header_row_index=header_row_index,
                     fill_merged=sheet_cfg.fill_merged,
+                    import_mode=payload.import_mode,
                 )
 
                 if df is None or df.empty:
@@ -465,7 +530,9 @@ async def import_server_excel(payload: ServerExcelImportRequest):
                 if sheet_cfg.mode == "replace":
                     con.execute(f'DROP TABLE IF EXISTS "{target_table}"')
 
-                metadata = create_typed_table_from_dataframe(con, target_table, df)
+                metadata = create_typed_table_from_dataframe(
+                    con, target_table, df, import_mode=payload.import_mode
+                )
 
             # 保存元数据
             table_metadata = {
@@ -508,13 +575,15 @@ async def import_server_excel(payload: ServerExcelImportRequest):
                 }
             )
 
-        except HTTPException:
+        except BaseAPIException:
             raise
         except Exception as exc:
             logger.error("Failed to import worksheet %s: %s", sheet_cfg.name, exc, exc_info=True)
-            raise HTTPException(
-                status_code=500, detail=f"Failed to import worksheet {sheet_cfg.name}: {str(exc)}"
-            ) from exc
+            return error_json_response(
+                500,
+                MessageCode.OPERATION_FAILED,
+                f"Failed to import worksheet {sheet_cfg.name}: {str(exc)}",
+            )
 
     return create_success_response(
         data={

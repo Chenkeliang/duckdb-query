@@ -181,6 +181,7 @@ function MyButton() {
   { "pattern": "@/new/components/**", "group": "components", "position": "after" },
   { "pattern": "@/new/hooks/**", "group": "hooks", "position": "before" },
   { "pattern": "@/new/utils/**", "group": "utils", "position": "before" },
+  { "pattern": "@/api", "group": "internal", "position": "before" },
   { "pattern": "@/api/**", "group": "internal", "position": "before" },
   { "pattern": "@/types/**", "group": "types", "position": "before" },
   { "pattern": "*.css", "group": "styles", "position": "after" }

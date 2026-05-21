@@ -5,20 +5,47 @@ import { tokenizeSQL } from "./sqlTokenizer";
 
 export type SqlDialect = DatabaseType | "duckdb";
 
+/** 作为裸标识符不安全、需双引号定界的 SQL 关键字（小写比对） */
+const SQL_RESERVED_IDENTIFIERS = new Set([
+  "select", "from", "where", "join", "inner", "left", "right", "full", "outer",
+  "cross", "on", "and", "or", "not", "in", "exists", "between", "like", "is",
+  "null", "true", "false", "as", "order", "by", "group", "having", "limit",
+  "offset", "union", "intersect", "except", "all", "distinct", "with",
+  "insert", "into", "values", "update", "set", "delete", "create", "table",
+  "view", "index", "drop", "alter", "case", "when", "then", "else", "end",
+  "user", "default", "primary", "key", "foreign", "references", "constraint",
+]);
+
 /**
- * 引用 SQL 标识符（表名、列名等）
- * 
- * 注意：由于所有查询最终都在 DuckDB 中执行（包括通过 ATTACH 的外部数据库），
- * 我们统一使用 DuckDB 兼容的双引号语法。DuckDB 能够正确处理双引号标识符，
- * 即使是查询 ATTACH 的 MySQL/PostgreSQL 数据库。
- * 
- * @param identifier - 标识符名称
- * @param _dialect - SQL 方言（保留参数以便将来需要时扩展，当前未使用）
- * @returns 带引号的标识符
+ * 判断标识符是否必须用双引号包裹（DuckDB 定界符）
+ * 简单名如 orders、public、mysql_prod 返回 false，便于生成可读 SQL
+ */
+export function needsQuoting(identifier: string): boolean {
+  if (!identifier) return true;
+  if (identifier.includes('"') || identifier.includes(" ") || identifier.includes(".")) {
+    return true;
+  }
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(identifier)) {
+    return true;
+  }
+  if (/[A-Z]/.test(identifier) && identifier !== identifier.toLowerCase()) {
+    return true;
+  }
+  if (SQL_RESERVED_IDENTIFIERS.has(identifier.toLowerCase())) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 按需引用 SQL 标识符（表名、列名等）
+ *
+ * 查询最终在 DuckDB 执行（含 ATTACH）；简单标识符不引号，与联邦识别无关。
  */
 export function quoteIdent(identifier: string, _dialect: SqlDialect): string {
-  // 统一使用双引号，因为 DuckDB 是最终执行环境
-  // DuckDB 兼容双引号标识符，即使查询 ATTACH 的外部数据库
+  if (!needsQuoting(identifier)) {
+    return identifier;
+  }
   const escaped = identifier.replace(/"/g, '""');
   return `"${escaped}"`;
 }
@@ -43,6 +70,17 @@ export function getDialectFromSource(source?: TableSource): SqlDialect {
 export function getSourceFromSelectedTable(table: SelectedTable): TableSource {
   const normalized = normalizeSelectedTable(table);
   if (normalized.source === "external" && normalized.connection) {
+    const { attachDatabase } = generateExternalTableReference(table);
+    if (attachDatabase) {
+      return {
+        type: "federated",
+        connectionId: normalized.connection.id,
+        connectionName: normalized.connection.name,
+        databaseType: normalized.connection.type,
+        schema: normalized.schema,
+        attachDatabases: [attachDatabase],
+      };
+    }
     return {
       type: "external",
       connectionId: normalized.connection.id,
@@ -57,7 +95,7 @@ export function getSourceFromSelectedTable(table: SelectedTable): TableSource {
 /**
  * 生成外部表的完整限定名（用于 ATTACH 模式）
  * 
- * 格式: "alias"."schema"."table" 或 "alias"."table"
+ * 格式: alias.schema.table 或 alias.table（简单名无引号；特殊名按需加引号）
  * 
  * @param table - 选中的表
  * @returns { qualifiedName: string, attachDatabase: AttachDatabase | null }
@@ -65,15 +103,15 @@ export function getSourceFromSelectedTable(table: SelectedTable): TableSource {
  * @example
  * // MySQL 表（无 schema）
  * generateExternalTableReference({ name: 'orders', source: 'external', connection: { id: '1', name: 'prod_db', type: 'mysql' } })
- * // => { qualifiedName: '"mysql_prod_db"."orders"', attachDatabase: { alias: 'mysql_prod_db', connectionId: '1' } }
+ * // => { qualifiedName: 'mysql_prod_db.orders', attachDatabase: { alias: 'mysql_prod_db', connectionId: '1' } }
  * 
  * // PostgreSQL 表（有 schema）
  * generateExternalTableReference({ name: 'users', schema: 'public', source: 'external', connection: { id: '2', name: 'pg_db', type: 'postgresql' } })
- * // => { qualifiedName: '"postgresql_pg_db"."public"."users"', attachDatabase: { alias: 'postgresql_pg_db', connectionId: '2' } }
+ * // => { qualifiedName: 'postgresql_pg_db.public.users', attachDatabase: { alias: 'postgresql_pg_db', connectionId: '2' } }
  * 
  * // DuckDB 本地表
  * generateExternalTableReference({ name: 'local_table', source: 'duckdb' })
- * // => { qualifiedName: '"local_table"', attachDatabase: null }
+ * // => { qualifiedName: 'local_table', attachDatabase: null }
  */
 export function generateExternalTableReference(table: SelectedTable): {
   qualifiedName: string;
@@ -258,15 +296,15 @@ export function extractAttachDatabases(tables: SelectedTable[]): AttachDatabase[
  * @example
  * // 外部表
  * formatTableReference({ name: 'users', alias: 'mysql_db', isExternal: true }, 'duckdb')
- * // => '"mysql_db"."users"'
+ * // => 'mysql_db.users'
  *
  * // 外部表带 schema
  * formatTableReference({ name: 'users', schema: 'public', alias: 'pg_db', isExternal: true }, 'duckdb')
- * // => '"pg_db"."public"."users"'
+ * // => 'pg_db.public.users'
  *
  * // DuckDB 本地表
  * formatTableReference({ name: 'local_users', isExternal: false }, 'duckdb')
- * // => '"local_users"'
+ * // => 'local_users'
  */
 export function formatTableReference(
   table: TableReference,

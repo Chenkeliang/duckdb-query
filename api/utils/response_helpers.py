@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from typing import Any, Optional, Union
 from enum import Enum
 
+from fastapi.responses import JSONResponse
+
 
 def _get_utc_timestamp() -> str:
     """获取 UTC 时间戳（ISO 8601 格式）"""
@@ -406,7 +408,6 @@ def create_error_response(
 
     return {
         "success": False,
-        "detail": message,
         "error": {
             "code": code_str,
             "message": message,
@@ -471,4 +472,17 @@ def create_list_response(  # pylint: disable=too-many-positional-arguments
         data=data,
         message_code=message_code,
         message=message
+    )
+
+
+def error_json_response(
+    status_code: int,
+    code: Union[str, MessageCode],
+    message: str,
+    details: Optional[dict] = None,
+) -> JSONResponse:
+    """Return standard error envelope with HTTP status (prefer over HTTPException)."""
+    return JSONResponse(
+        status_code=status_code,
+        content=create_error_response(code=code, message=message, details=details),
     )

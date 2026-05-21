@@ -8,6 +8,7 @@ import {
   importExcelSheets,
   inspectServerExcelSheets,
   importServerExcelSheets,
+  type FileImportMode,
 } from '@/api';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,6 +77,10 @@ interface ExcelSheetSelectorProps {
   sourceType?: 'upload' | 'server';
   /** Server file path (required when sourceType is 'server') */
   serverPath?: string;
+  /** 与上传面板一致：auto | literal */
+  importMode?: FileImportMode;
+  /** 服务器 Excel：上传前填写的表别名，用于 inspect 默认表名 */
+  tablePrefix?: string;
 }
 
 const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
@@ -85,12 +90,15 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
   onImported,
   sourceType = 'upload',
   serverPath,
+  importMode = 'auto',
+  tablePrefix,
 }) => {
   const { t } = useTranslation('common');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [sheetConfigs, setSheetConfigs] = useState<SheetConfig[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [namePrefix, setNamePrefix] = useState("");
 
   const fileId = pendingInfo?.file_id;
 
@@ -100,9 +108,25 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
     try {
       let data: any;
       if (sourceType === 'server' && serverPath) {
-        data = await inspectServerExcelSheets(serverPath);
+        data = await inspectServerExcelSheets(
+          serverPath,
+          tablePrefix ?? pendingInfo?.table_alias ?? null
+        );
+        setNamePrefix(
+          data.default_table_prefix ||
+            tablePrefix ||
+            pendingInfo?.default_table_prefix ||
+            ""
+        );
       } else if (fileId) {
         data = await inspectExcelSheets(fileId);
+        setNamePrefix(
+          data.default_table_prefix ||
+            pendingInfo?.default_table_prefix ||
+            data.table_alias ||
+            pendingInfo?.table_alias ||
+            ""
+        );
       } else {
         throw new Error(t('page.datasource.excelSheet.missingFileInfo'));
       }
@@ -142,7 +166,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
       setSheetConfigs([]);
       setError("");
     }
-  }, [open, fileId, serverPath, sourceType]);
+  }, [open, fileId, serverPath, sourceType, tablePrefix, pendingInfo?.table_alias]);
 
   const toggleAll = (nextSelected: boolean) => {
     setSheetConfigs((prev) =>
@@ -222,10 +246,15 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
 
       let result: any;
       if (sourceType === 'server' && serverPath) {
-        result = await importServerExcelSheets(serverPath, sheetsPayload);
+        result = await importServerExcelSheets(
+          serverPath,
+          sheetsPayload,
+          importMode
+        );
       } else {
         result = await importExcelSheets({
           file_id: fileId!,
+          import_mode: importMode,
           sheets: sheetsPayload,
         });
       }
@@ -262,6 +291,17 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
               <span className="text-muted-foreground">{t('page.datasource.excelSheet.source')}</span>
               {sourceType === 'server' ? t('page.datasource.excelSheet.sourceServer') : t('page.datasource.excelSheet.sourceUpload')}
             </p>
+            {namePrefix ? (
+              <p className="text-sm text-foreground">
+                <span className="text-muted-foreground">
+                  {t('page.datasource.excelSheet.tablePrefix')}
+                </span>
+                {namePrefix}
+                <span className="text-muted-foreground text-xs ml-1">
+                  {t('page.datasource.excelSheet.tablePrefixHint')}
+                </span>
+              </p>
+            ) : null}
           </div>
 
           {/* 加载状态 */}

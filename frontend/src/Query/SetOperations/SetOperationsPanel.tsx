@@ -1,11 +1,14 @@
 import * as React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star, Timer } from 'lucide-react';
+import { generateSetOperation, previewSetOperation } from '@/api';
+import { Layers, Play, Eye, X, Database, Table, Trash2, AlertTriangle, Star, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useAppConfig } from '@/hooks/useAppConfig';
+import { showErrorToast } from '@/utils/toastHelpers';
 import type { SelectedTable } from '@/types/SelectedTable';
 import {
   normalizeSelectedTable,
@@ -15,7 +18,6 @@ import {
   isSameConnection,
   DATABASE_TYPE_ICONS,
 } from '@/utils/tableUtils';
-import { getDialectFromSource, quoteIdent, quoteQualifiedTable } from '@/utils/sqlUtils';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
 import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
@@ -44,12 +46,13 @@ interface TableColumn {
 }
 
 // 使用统一的 TableSource 类型
-import type { TableSource } from '@/hooks/useQueryWorkspace';
+import type { TableSource, UseQueryWorkspaceReturn } from '@/hooks/useQueryWorkspace';
 export type { TableSource };
 
 interface SetOperationsPanelProps {
   selectedTables?: SelectedTable[];
   onExecute?: (sql: string, source?: TableSource) => Promise<void>;
+  onDisplayPreview?: UseQueryWorkspaceReturn['displayQueryPreview'];
   onRemoveTable?: (table: SelectedTable) => void;
 }
 
@@ -210,11 +213,13 @@ const EmptyState: React.FC = () => {
 export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   selectedTables = [],
   onExecute,
+  onDisplayPreview,
   onRemoveTable,
 }) => {
   const { t } = useTranslation('common');
   const { maxQueryRows } = useAppConfig();
   const [isExecuting, setIsExecuting] = React.useState(false);
+  const [isPreviewing, setIsPreviewing] = React.useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
   const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
 
@@ -437,57 +442,107 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
     setSelectedColumns({});
   };
 
-  // 生成 SQL
-  const generateSQL = (): string | null => {
+  const canGenerateServerSql =
+    activeTables.length >= 2 &&
+    !sourceAnalysis.hasExternal &&
+    columnValidation.isValid;
+
+  const buildSetOperationRequest = React.useCallback(() => {
     if (activeTables.length < 2) return null;
-
-    const dialect = getDialectFromSource(tableSource);
-
-    // 获取表名（支持外部表的 schema）
-    const getFullTableName = (table: SelectedTable): string => {
-      const normalized = normalizeSelectedTable(table);
-      return quoteQualifiedTable(
-        { name: normalized.name, schema: normalized.schema },
-        dialect
-      );
+    return {
+      config: {
+        operation_type: operationType,
+        use_by_name: isByNameMode,
+        tables: activeTables.map((table) => {
+          const tableName = getTableName(table);
+          return {
+            table_name: tableName,
+            selected_columns: selectedColumns[tableName] || [],
+          };
+        }),
+      },
+      include_metadata: false,
     };
+  }, [activeTables, operationType, isByNameMode, selectedColumns]);
 
-    const parts: string[] = [];
+  const setOpQueryKey = React.useMemo(
+    () => [
+      'set-operation-sql',
+      operationType,
+      isByNameMode,
+      activeTableNamesKey,
+      JSON.stringify(selectedColumns),
+    ] as const,
+    [operationType, isByNameMode, activeTableNamesKey, selectedColumns]
+  );
 
-    activeTables.forEach((table, index) => {
-      const tableName = getTableName(table);
-      const fullTableName = getFullTableName(table);
-      const cols = selectedColumns[tableName] || [];
-      const selectPart = cols.length > 0
-        ? cols.map((c) => quoteIdent(c, dialect)).join(', ')
-        : '*';
+  const {
+    data: generatedBaseSql,
+    isFetching: isGeneratingSql,
+    error: generateSqlError,
+  } = useQuery({
+    queryKey: setOpQueryKey,
+    queryFn: async () => {
+      const payload = buildSetOperationRequest();
+      if (!payload) return '';
+      const result = await generateSetOperation(payload);
+      return result.sql?.trim() ?? '';
+    },
+    enabled: canGenerateServerSql,
+    staleTime: 30_000,
+  });
 
-      if (index > 0) {
-        // 生成操作符，如果是 UNION/UNION ALL 且启用了 BY NAME，则添加 BY NAME
-        const op = isByNameMode ? `${operationType} BY NAME` : operationType;
-        parts.push(op);
-      }
-      parts.push(`SELECT ${selectPart} FROM ${fullTableName}`);
-    });
+  const sqlForExecute = React.useMemo(() => {
+    if (!generatedBaseSql) return null;
+    return `${generatedBaseSql}\nLIMIT ${maxQueryRows}`;
+  }, [generatedBaseSql, maxQueryRows]);
 
-    parts.push(`LIMIT ${maxQueryRows}`);
-    return parts.join('\n');
-  };
-
-  // 执行查询
   const handleExecute = async () => {
-    const sql = generateSQL();
-    if (!sql || !onExecute || !canExecute) return;
+    if (!sqlForExecute || !onExecute || !canExecute) return;
 
     setIsExecuting(true);
     try {
-      await onExecute(sql, tableSource);
+      await onExecute(sqlForExecute, tableSource);
     } finally {
       setIsExecuting(false);
     }
   };
 
-  const sql = generateSQL();
+  const handlePreview = async () => {
+    if (!onDisplayPreview || !canGenerateServerSql) return;
+    const payload = buildSetOperationRequest();
+    if (!payload) return;
+
+    setIsPreviewing(true);
+    const startTime = Date.now();
+    try {
+      const result = await previewSetOperation(payload);
+      const limitMatch = result.sql?.match(/LIMIT\s+(\d+)\s*$/i);
+      const columns =
+        result.data?.length > 0
+          ? Object.keys(result.data[0] as Record<string, unknown>)
+          : [];
+      onDisplayPreview(
+        {
+          data: result.data,
+          columns,
+          row_count: result.row_count,
+          execTime: Date.now() - startTime,
+          preview_limit_applied: limitMatch
+            ? parseInt(limitMatch[1], 10)
+            : null,
+        },
+        result.sql,
+        { type: 'duckdb' }
+      );
+    } catch (err) {
+      showErrorToast(t, err as Error, t('query.set.previewFailed', '集合运算预览失败'));
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
+  const sql = sqlForExecute;
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface">
@@ -498,10 +553,23 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
         <div className="flex items-center gap-3 overflow-hidden">
           <div className="flex items-center gap-2 shrink-0">
             <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePreview}
+              disabled={!canGenerateServerSql || isPreviewing || isExecuting}
+              className="gap-1.5 shrink-0"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              {isPreviewing
+                ? t('query.set.previewing', '预览中…')
+                : t('query.set.preview', '预览')}
+            </Button>
+
+            <Button
               variant="default"
               size="sm"
               onClick={handleExecute}
-              disabled={!canExecute || isExecuting}
+              disabled={!canExecute || isExecuting || isPreviewing}
               className="gap-1.5 shrink-0"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
@@ -689,21 +757,29 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
         </div>
 
         {/* SQL 预览 */}
-        {sql && (
+        {(sql || isGeneratingSql || generateSqlError) && canGenerateServerSql && (
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium flex items-center gap-2">
                 <span className="text-primary">SQL</span>
-                {t('query.sqlPreview', '预览')}
+                {isGeneratingSql
+                  ? t('query.set.generatingSql', '生成中…')
+                  : t('query.sqlPreview', '预览')}
               </label>
               <button
                 className="text-xs text-primary hover:underline"
-                onClick={() => navigator.clipboard.writeText(sql)}
+                onClick={() => sql && navigator.clipboard.writeText(sql)}
               >
                 {t('common.copy', '复制')}
               </button>
             </div>
-            <SQLHighlight sql={sql} minHeight="120px" maxHeight="300px" />
+            {generateSqlError ? (
+              <Alert variant="destructive">
+                <AlertDescription>{(generateSqlError as Error).message}</AlertDescription>
+              </Alert>
+            ) : sql ? (
+              <SQLHighlight sql={sql} minHeight="120px" maxHeight="300px" />
+            ) : null}
           </div>
         )}
       </div>

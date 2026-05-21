@@ -1,7 +1,9 @@
 # DuckQuery 系统架构与流程图
 
-> **版本**: v1.0  
-> **更新时间**: 2026-01-23
+> **版本**: v1.1  
+> **更新时间**: 2026-05-21  
+> **调用链路（按域）**：[`ARCHITECTURE_CALL_MAP.md`](ARCHITECTURE_CALL_MAP.md)  
+> **端点契约**：[`API_CONTRACT_FE_BE.md`](API_CONTRACT_FE_BE.md)
 
 ---
 

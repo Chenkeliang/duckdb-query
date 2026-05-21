@@ -40,6 +40,7 @@ from utils.response_helpers import (
 logger = logging.getLogger(__name__)
 from core.common.validators import validate_pagination
 from core.services.task_utils import TaskUtils
+from core.common.connection_alias import resolve_attach_databases_for_async
 from models.query_models import AttachDatabase, DatabaseConnection, DataSourceType
 
 router = APIRouter()
@@ -112,8 +113,10 @@ def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) 
 
 
 def _ensure_database_connection(datasource_id: str, datasource_type: str):
+    from core.common.connection_alias import normalize_connection_id
     from core.database.database_manager import db_manager
 
+    datasource_id = normalize_connection_id(datasource_id)
     connection = db_manager.get_connection(datasource_id)
     if connection:
         return connection
@@ -134,6 +137,14 @@ def _ensure_database_connection(datasource_id: str, datasource_type: str):
 
 
 def _fetch_external_query_result(datasource: Dict[str, Any], sql: str) -> pd.DataFrame:
+    """
+    [已废弃] 直连外部库拉取 DataFrame。阶段 C 起异步任务统一 ATTACH，请勿新增调用。
+    """
+    logger.warning(
+        "DEPRECATED: _fetch_external_query_result is no longer used by async tasks; "
+        "use ATTACH + federated SQL instead. datasource_id=%s",
+        datasource.get("id") if isinstance(datasource, dict) else None,
+    )
     if not isinstance(datasource, dict):
         raise ValueError("Invalid data source configuration")
 
@@ -141,10 +152,13 @@ def _fetch_external_query_result(datasource: Dict[str, Any], sql: str) -> pd.Dat
     if datasource_type not in SUPPORTED_EXTERNAL_TYPES:
         raise ValueError(f"Unsupported data source type: {datasource_type}")
 
-    datasource_id = datasource.get("id")
-    if not datasource_id:
+    from core.common.connection_alias import normalize_connection_id
+
+    raw_id = datasource.get("id")
+    if not raw_id:
         raise ValueError("Missing external data source ID")
 
+    datasource_id = normalize_connection_id(str(raw_id))
     connection = _ensure_database_connection(datasource_id, datasource_type)
     if not connection:
         raise ValueError(f"Failed to establish data source connection: {datasource_id}")
@@ -340,13 +354,16 @@ async def submit_async_query(
                 },
             )
 
-        # 验证 attach_databases 参数
-        validate_attach_databases(request.attach_databases)
-
-        # 判断是否为联邦查询
-        is_federated = bool(
-            request.attach_databases and len(request.attach_databases) > 0
+        attach_list, is_federated = resolve_attach_databases_for_async(
+            request.attach_databases, request.datasource
         )
+        if attach_list:
+            validate_attach_databases(
+                [
+                    AttachDatabase(alias=item["alias"], connection_id=item["connection_id"])
+                    for item in attach_list
+                ]
+            )
 
         # 创建任务，将信息存储在任务查询中
         task_query = {
@@ -354,12 +371,7 @@ async def submit_async_query(
             "custom_table_name": request.custom_table_name,
             "task_type": request.task_type,
             "datasource": request.datasource,
-            "attach_databases": [
-                {"alias": db.alias, "connection_id": db.connection_id}
-                for db in request.attach_databases
-            ]
-            if request.attach_databases
-            else None,
+            "attach_databases": attach_list if attach_list else None,
             "is_federated": is_federated,
         }
 
@@ -373,7 +385,7 @@ async def submit_async_query(
 
         # 根据是否为联邦查询选择执行函数
         if is_federated:
-            # 联邦查询：使用新的执行函数
+            # 联邦查询：ATTACH + DuckDB SQL（含从 datasource 自动推导的 attach）
             background_tasks.add_task(
                 execute_async_federated_query,
                 task_id,
@@ -381,10 +393,7 @@ async def submit_async_query(
                 request.custom_table_name,
                 request.task_type,
                 request.datasource,
-                [
-                    {"alias": db.alias, "connection_id": db.connection_id}
-                    for db in request.attach_databases
-                ],
+                attach_list,
             )
         else:
             # 普通查询：使用原有执行函数
@@ -590,9 +599,16 @@ async def retry_async_task(
             "custom_table_name"
         )
 
-        # 提取联邦查询配置（支持覆盖）
-        attach_databases = payload.get("attach_databases")
-        is_federated = bool(attach_databases and len(attach_databases) > 0)
+        attach_list, is_federated = resolve_attach_databases_for_async(
+            payload.get("attach_databases"), datasource
+        )
+        if attach_list:
+            validate_attach_databases(
+                [
+                    AttachDatabase(alias=item["alias"], connection_id=item["connection_id"])
+                    for item in attach_list
+                ]
+            )
 
         retry_metadata = dict(payload)
         retry_metadata.update(
@@ -601,7 +617,7 @@ async def retry_async_task(
                 "task_type": task_type,
                 "custom_table_name": custom_table_name,
                 "datasource": datasource,
-                "attach_databases": attach_databases,
+                "attach_databases": attach_list if attach_list else None,
                 "is_federated": is_federated,
                 "retry_of": task_id,
             }
@@ -623,7 +639,7 @@ async def retry_async_task(
                 custom_table_name,
                 task_type,
                 datasource,
-                attach_databases,
+                attach_list,
             )
         else:
             background_tasks.add_task(
@@ -787,16 +803,32 @@ def execute_async_query(
         # 第二步：执行查询（使用可中断连接）
         with interruptible_connection(task_id, clean_sql) as con:
             if use_external_source:
+                from core.common.connection_alias import build_attach_list_from_datasource
+
+                attach_list = build_attach_list_from_datasource(datasource_info)
+                if not attach_list:
+                    raise ValueError(
+                        "External datasource async task requires attach_databases or "
+                        "a resolvable mysql/postgresql/sqlite datasource"
+                    )
                 logger.info(
-                    f"Async task will use external datasource {source_datasource_id} ({datasource_type}) to execute query"
+                    "Async task using ATTACH for external datasource %s (%s), aliases=%s",
+                    source_datasource_id,
+                    datasource_type,
+                    [a["alias"] for a in attach_list],
                 )
-                result_df = _fetch_external_query_result(datasource_info, clean_sql)
-                created = create_varchar_table_from_dataframe(
-                    table_name, result_df, con
-                )
-                if not created:
-                    raise ValueError("Failed to write external data source result to DuckDB")
-                logger.info(f"External data source result written to DuckDB table: {table_name}")
+                attached_aliases = _attach_external_databases(con, attach_list)
+                try:
+                    create_sql = (
+                        f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
+                    )
+                    con.execute(create_sql)
+                    logger.info(
+                        "External federated result written to DuckDB table: %s",
+                        table_name,
+                    )
+                finally:
+                    _detach_databases(con, attached_aliases)
             else:
                 create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
                 logger.debug(f"[{task_id}] Starting CREATE TABLE AS SELECT...")

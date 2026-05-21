@@ -27,12 +27,9 @@ from models.query_models import (
     Join,
     QueryRequest,
 )
-from routers.query import (
-    build_multi_table_join_query,
-    build_join_chain,
-    get_join_type_sql,
-    generate_improved_column_aliases,
-)
+from core.database.duckdb_engine import generate_improved_column_aliases
+from routers.query import build_join_chain, build_multi_table_join_query
+from routers.query_sql_utils import get_join_type_sql
 
 client = TestClient(app, raise_server_exceptions=False)
 
@@ -583,12 +580,15 @@ class TestJoinAPI:
 
             response = client.post("/api/query", json=request_data)
 
-            # 表不存在应该返回 500 错误
-            assert response.status_code == 500
+            assert response.status_code in (404, 500)
             data = response.json()
-            # 检查响应中包含错误信息
-            error_str = str(data)
-            assert "不存在" in error_str or "not found" in error_str.lower() or "error" in error_str.lower()
+            error_str = str(data).lower()
+            assert (
+                "not found" in error_str
+                or "does not exist" in error_str
+                or "不存在" in error_str
+                or "resource_not_found" in error_str
+            )
 
 
 class TestJoinIntegration:

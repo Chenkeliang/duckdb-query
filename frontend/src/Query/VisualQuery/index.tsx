@@ -7,6 +7,7 @@ export type { ColumnSelectorProps, ColumnInfo } from './ColumnSelector';
 export { QueryBuilder } from './QueryBuilder';
 export type {
   QueryBuilderProps,
+  TableSource,
   QueryConfig,
   FilterConfig,
   FilterOperator,

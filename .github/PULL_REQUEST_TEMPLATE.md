@@ -1,38 +1,20 @@
-## 描述
+## Summary
 
-<!-- 简要描述本次修改，以及它如何提升 DuckQuery 与 DuckDB 体验 -->
+<!-- 1–3 条说明本 PR 目的与行为变化 -->
 
-- [ ] 修复 Bug
-- [ ] 新功能 / 改进
-- [ ] 文档更新
-- [ ] 其他（请说明）：
+## API / 契约
 
-## 关联 Issue / 背景
+- [ ] 未改 API 响应
+- [ ] 已改 API：已同步更新 [docs/API_CONTRACT_FE_BE.md](docs/API_CONTRACT_FE_BE.md)
+- [ ] 需**同时**部署/升级前端与后端（若否，请说明兼容策略）
 
-<!-- 如有，列出相关 Issue 编号或讨论链接 -->
+## 验证
 
-## 变更内容
+- [ ] `npm run lint`（前端）
+- [ ] `npm run build` 或 `npx tsc --noEmit`（按需）
+- [ ] `python -m pytest api/tests -q`（后端，按需）
 
-- [ ] 后端（FastAPI + DuckDB）
-- [ ] 前端（React）
-- [ ] 配置 / 脚本
-- [ ] 文档
+## Test plan
 
-## 测试清单
-
-请勾选或补充你已执行的验证：
-
-- [ ] `./quick-start.sh` / Docker Compose 启动通过
-- [ ] `python -m pytest api/tests`
-- [ ] `npm run build` （或 `npm run lint`）
-- [ ] 手动验证 DuckDB SQL / 图形化分析功能
-- [ ] 其他（请说明）：
-
-## DuckDB 兼容性
-
-- DuckDB 版本：<!-- 例如 0.10.3 -->
-- 是否需要启用新的 DuckDB 扩展或配置：<!-- 如有请注明 -->
-
-## 其他补充
-
-<!-- 截图、示例数据、文档链接或发布注意事项 -->
+1. 
+2. 

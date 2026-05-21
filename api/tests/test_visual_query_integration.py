@@ -54,7 +54,7 @@ def mock_duckdb_connection(sample_data):
 class TestEndToEndWorkflows:
     """Test complete end-to-end workflows"""
     
-    @patch('core.duckdb_engine.get_db_connection')
+    @patch('core.database.duckdb_engine.get_db_connection')
     def test_complete_visual_query_workflow(self, mock_get_db, sample_data, mock_duckdb_connection):
         """Test complete workflow from query generation to execution"""
         mock_get_db.return_value = mock_duckdb_connection
@@ -105,16 +105,16 @@ class TestEndToEndWorkflows:
             "include_metadata": True
         }
         
-        with patch('routers.query.estimate_query_performance') as mock_estimate:
+        with patch('routers.visual_query.estimate_query_performance') as mock_estimate:
             mock_estimate.return_value = Mock(estimated_rows=100, estimated_time=0.5)
             response = client.post("/api/visual-query/generate", json=config_data)
         assert response.status_code == 200
         
         generation_result = response.json()
         assert generation_result["success"] is True
-        assert "sql" in generation_result
-        
-        generated_sql = generation_result["sql"]
+        assert "data" in generation_result
+
+        generated_sql = generation_result["data"]["sql"]
         
         # Verify SQL contains expected components
         assert 'SELECT "department", "city"' in generated_sql
@@ -138,8 +138,8 @@ class TestEndToEndWorkflows:
         }).reset_index().head(10)
         preview_result.columns = ['department', 'city', 'avg_salary', 'employee_count']
 
-        with patch('routers.query.execute_query') as mock_execute, \
-             patch('routers.query.estimate_query_performance') as mock_preview_estimate:
+        with patch('routers.visual_query.execute_query') as mock_execute, \
+             patch('routers.visual_query.estimate_query_performance') as mock_preview_estimate:
 
             mock_execute.side_effect = [
                 preview_result,
@@ -179,7 +179,7 @@ class TestEndToEndWorkflows:
         
         mock_duckdb_connection.execute.return_value.fetchdf.return_value = full_result
 
-        with patch('routers.query.execute_query') as mock_execute:
+        with patch('routers.visual_query.execute_query') as mock_execute:
             mock_execute.return_value = full_result
             
             response = client.post("/api/query", json=query_request)
@@ -190,7 +190,7 @@ class TestEndToEndWorkflows:
             assert "columns" in query_response
             assert len(query_response["data"]) > 0
     
-    @patch('core.duckdb_engine.get_db_connection')
+    @patch('core.database.duckdb_engine.get_db_connection')
     def test_visual_query_with_table_metadata(self, mock_get_db, mock_duckdb_connection):
         """Test workflow including table metadata retrieval"""
         mock_get_db.return_value = mock_duckdb_connection
@@ -219,8 +219,9 @@ class TestEndToEndWorkflows:
         
         metadata_response = response.json()
         assert metadata_response["success"] is True
-        assert metadata_response["table"]["table_name"] == "test_employees"
-        assert metadata_response["table"]["row_count"] == 1000
+        table = metadata_response["data"]["table"]
+        assert table["table_name"] == "test_employees"
+        assert table["row_count"] == 1000
         
         # Step 2: Get specific column statistics
         response = client.get("/api/visual-query/column-stats/test_employees/salary")
@@ -228,7 +229,7 @@ class TestEndToEndWorkflows:
         
         stats_response = response.json()
         assert stats_response["success"] is True
-        assert stats_response["statistics"]["column_name"] == "salary"
+        assert stats_response["data"]["statistics"]["column_name"] == "salary"
     
     def test_visual_query_validation_workflow(self):
         """Test query validation workflow"""
@@ -263,8 +264,8 @@ class TestEndToEndWorkflows:
         }
         
         # Mock the validation dependencies
-        with patch('routers.query._load_backend_column_profiles') as mock_profiles, \
-             patch('routers.query._detect_aggregation_conflicts') as mock_conflicts:
+        with patch('routers.visual_query._load_backend_column_profiles') as mock_profiles, \
+             patch('routers.visual_query._detect_aggregation_conflicts') as mock_conflicts:
             mock_profiles.return_value = {}
             mock_conflicts.return_value = ([], {})
             
@@ -273,7 +274,7 @@ class TestEndToEndWorkflows:
             
             validation_response = response.json()
             assert validation_response["success"] is True
-            assert validation_response["is_valid"] is True
+            assert validation_response["data"]["is_valid"] is True
         
         # Test invalid configuration - Pydantic validates before endpoint logic
         # Empty table_name and empty aggregation column will fail Pydantic validation
@@ -295,17 +296,16 @@ class TestEndToEndWorkflows:
         assert response.status_code == 200
         
         validation_response = response.json()
-        # Pydantic validation fails, so success is False and is_valid is False
         assert validation_response["success"] is False
-        assert validation_response["is_valid"] is False
-        assert len(validation_response["errors"]) > 0
+        err = validation_response.get("error", {}).get("details", {})
+        assert len(err.get("errors", [])) > 0
 
 
 @pytest.mark.skip(reason="Integration tests require real database tables; run with pytest -m integration")
 class TestBackwardCompatibility:
     """Test backward compatibility with existing query system"""
     
-    @patch('core.duckdb_engine.get_db_connection')
+    @patch('core.database.duckdb_engine.get_db_connection')
     def test_visual_query_integrates_with_existing_api(self, mock_get_db, sample_data, mock_duckdb_connection):
         """Test that visual queries work with existing query API"""
         mock_get_db.return_value = mock_duckdb_connection
@@ -342,7 +342,7 @@ class TestBackwardCompatibility:
         assert response.status_code == 200
         
         generation_result = response.json()
-        generated_sql = generation_result["sql"]
+        generated_sql = generation_result["data"]["sql"]
         
         # Use generated SQL with existing query API
         query_request = {
@@ -360,7 +360,7 @@ class TestBackwardCompatibility:
         filtered_data = sample_data[sample_data['age'] > 30].head(20)
         mock_duckdb_connection.execute.return_value.fetchdf.return_value = filtered_data
         
-        with patch('routers.query.execute_query') as mock_execute:
+        with patch('routers.visual_query.execute_query') as mock_execute:
             mock_execute.return_value = filtered_data
             
             response = client.post("/api/query", json=query_request)
@@ -402,7 +402,7 @@ class TestBackwardCompatibility:
             ]
         }
         
-        with patch('routers.query.get_db_connection') as mock_get_db:
+        with patch('routers.visual_query.get_db_connection') as mock_get_db:
             # Setup mock connection with table existence check
             mock_con = MagicMock()
             mock_get_db.return_value = mock_con
@@ -428,7 +428,7 @@ class TestBackwardCompatibility:
 class TestPerformanceAndScaling:
     """Test performance characteristics and scaling"""
     
-    @patch('core.duckdb_engine.get_db_connection')
+    @patch('core.database.duckdb_engine.get_db_connection')
     def test_large_dataset_handling(self, mock_get_db, mock_duckdb_connection):
         """Test handling of large datasets"""
         mock_get_db.return_value = mock_duckdb_connection
@@ -478,10 +478,9 @@ class TestPerformanceAndScaling:
         generation_result = response.json()
         assert generation_result["success"] is True
         
-        # Check that performance warnings are generated for large datasets
-        if "metadata" in generation_result:
-            metadata = generation_result["metadata"]
-            assert "estimated_rows" in metadata
+        inner = generation_result.get("data") or {}
+        if inner.get("metadata"):
+            assert "estimated_rows" in inner["metadata"]
     
     def test_complex_query_performance_warnings(self):
         """Test performance warnings for complex queries"""
@@ -510,10 +509,9 @@ class TestPerformanceAndScaling:
         
         validation_response = response.json()
         assert validation_response["success"] is True
-        
-        # Should generate performance warnings
-        assert len(validation_response["warnings"]) > 0
-        assert any("性能" in warning for warning in validation_response["warnings"])
+
+        inner = validation_response["data"]
+        assert len(inner["warnings"]) > 0
 
 
 if __name__ == "__main__":

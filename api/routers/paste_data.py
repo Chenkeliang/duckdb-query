@@ -7,6 +7,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from core.common.exceptions import BaseAPIException, ValidationError as APIValidationError
 from core.database.duckdb_engine import with_duckdb_connection
 from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
@@ -16,6 +17,7 @@ from core.common.timezone_utils import get_current_time_iso  # 导入时区工�
 from utils.response_helpers import (
     create_success_response,
     MessageCode,
+    error_json_response,
 )
 
 router = APIRouter()
@@ -143,24 +145,22 @@ async def save_paste_data(request: PasteDataRequest):
 
         # Validate input
         if not request.table_name.strip():
-            raise HTTPException(status_code=400, detail="Table name cannot be empty")
+            raise APIValidationError("Table name cannot be empty")
 
         if not request.column_names:
-            raise HTTPException(status_code=400, detail="Column names cannot be empty")
+            raise APIValidationError("Column names cannot be empty")
 
         if not request.data_rows:
-            raise HTTPException(status_code=400, detail="Data cannot be empty")
+            raise APIValidationError("Data cannot be empty")
 
         if len(request.column_names) != len(request.column_types):
-            raise HTTPException(status_code=400, detail="Column names and types count mismatch")
+            raise APIValidationError("Column names and types count mismatch")
 
-        # Validate row column count consistency
         expected_columns = len(request.column_names)
         for i, row in enumerate(request.data_rows):
             if len(row) != expected_columns:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Row {i+1} column count ({len(row)}) does not match expected ({expected_columns})",
+                raise APIValidationError(
+                    f"Row {i+1} column count ({len(row)}) does not match expected ({expected_columns})"
                 )
 
         cleaned_rows = [
@@ -175,7 +175,7 @@ async def save_paste_data(request: PasteDataRequest):
         )
 
         if not column_definitions:
-            raise HTTPException(status_code=400, detail="Column definitions cannot be empty")
+            raise APIValidationError("Column definitions cannot be empty")
 
         with with_duckdb_connection() as connection:
             metadata = _persist_pasted_dataframe(
@@ -227,6 +227,8 @@ async def save_paste_data(request: PasteDataRequest):
             message=f"Data saved to table: {clean_table_name}",
         )
 
+    except BaseAPIException:
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -234,4 +236,8 @@ async def save_paste_data(request: PasteDataRequest):
         logger.error(
             f"Request data: table_name={request.table_name}, columns={len(request.column_names)}, rows={len(request.data_rows)}"
         )
-        raise HTTPException(status_code=500, detail=f"Failed to save data: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to save data: {str(e)}",
+        )

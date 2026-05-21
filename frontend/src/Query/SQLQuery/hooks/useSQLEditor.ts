@@ -27,6 +27,14 @@ export interface UseSQLEditorOptions {
   maxHistory?: number;
   /** 历史记录存储 key */
   storageKey?: string;
+  /**
+   * 统一执行入口（如 useQueryRunner.execute / QueryWorkspace.handleQueryExecute）。
+   * 提供时优先于内置 executeDuckDBSQL。
+   */
+  onExecuteSQL?: (
+    sql: string,
+    options?: { saveAsTable?: string; isPreview?: boolean }
+  ) => Promise<unknown>;
   /** 执行成功回调 */
   onSuccess?: (data: any, sql: string) => void;
   /** 执行失败回调 */
@@ -100,6 +108,7 @@ export const useSQLEditor = ({
   initialSQL = "",
   maxHistory = 50,
   storageKey = "duckquery-sql-history",
+  onExecuteSQL,
   onSuccess,
   onError
 }: UseSQLEditorOptions = {}): UseSQLEditorReturn => {
@@ -132,11 +141,13 @@ export const useSQLEditor = ({
       isPreview?: boolean;
     }) => {
       const startTime = Date.now();
-      const response = await executeDuckDBSQL({
-        sql: sqlToExecute,
-        saveAsTable: saveAsTable,
-        isPreview: isPreview
-      });
+      const response = onExecuteSQL
+        ? await onExecuteSQL(sqlToExecute, { saveAsTable, isPreview })
+        : await executeDuckDBSQL({
+            sql: sqlToExecute,
+            saveAsTable: saveAsTable,
+            isPreview: isPreview
+          });
       const endTime = Date.now();
       return {
         ...response,

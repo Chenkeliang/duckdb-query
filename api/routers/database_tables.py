@@ -3,6 +3,11 @@
 from fastapi import APIRouter, HTTPException
 # pylint: disable=bad-indentation
 import logging
+from core.common.exceptions import (
+    BaseAPIException,
+    ResourceNotFoundError,
+    ValidationError as APIValidationError,
+)
 from core.database.database_manager import db_manager
 from core.common.config_manager import config_manager
 from core.security.encryption import password_encryptor
@@ -10,7 +15,15 @@ from utils.response_helpers import (
     create_success_response,
     create_list_response,
     MessageCode,
+    error_json_response,
 )
+
+
+def _require_connection(connection_id: str):
+    connection = db_manager.get_connection(connection_id)
+    if not connection:
+        raise ResourceNotFoundError("Database connection", connection_id)
+    return connection
 
 # 获取应用配置
 app_config = config_manager.get_app_config()
@@ -84,11 +97,7 @@ async def get_database_tables(connection_id: str):
         app_config = config_manager.get_app_config()
 
         # 获取数据库连接配置
-        connection = db_manager.get_connection(connection_id)
-        if not connection:
-            raise HTTPException(
-                status_code=404, detail=f"Database connection {connection_id} does not exist"
-            )
+        connection = _require_connection(connection_id)
 
         # 根据数据库类型处理不同的连接方式
         db_config = connection.params
@@ -105,8 +114,8 @@ async def get_database_tables(connection_id: str):
             # 支持 user 和 username 两种参数名称
             username = db_config.get("user") or db_config.get("username")
             if not username:
-                raise HTTPException(
-                    status_code=400, detail="Missing username parameter (user or username)"
+                raise APIValidationError(
+                    "Missing username parameter (user or username)"
                 )
 
             password = db_config.get("password", "")
@@ -220,8 +229,8 @@ async def get_database_tables(connection_id: str):
             # 支持 user 和 username 两种参数名称
             username = db_config.get("user") or db_config.get("username")
             if not username:
-                raise HTTPException(
-                    status_code=400, detail="Missing username parameter (user or username)"
+                raise APIValidationError(
+                    "Missing username parameter (user or username)"
                 )
 
             password = db_config.get("password", "")
@@ -467,11 +476,7 @@ async def list_connection_schemas(connection_id: str):
         app_config = config_manager.get_app_config()
 
         # 获取数据库连接配置
-        connection = db_manager.get_connection(connection_id)
-        if not connection:
-            raise HTTPException(
-                status_code=404, detail=f"Database connection {connection_id} does not exist"
-            )
+        connection = _require_connection(connection_id)
 
         db_type = (
             connection.type.value
@@ -494,8 +499,8 @@ async def list_connection_schemas(connection_id: str):
             db_config = connection.params
             username = db_config.get("user") or db_config.get("username")
             if not username:
-                raise HTTPException(
-                    status_code=400, detail="Missing username parameter (user or username)"
+                raise APIValidationError(
+                    "Missing username parameter (user or username)"
                 )
 
             password = db_config.get("password", "")
@@ -573,11 +578,7 @@ async def list_schema_tables(connection_id: str, schema: str):
         app_config = config_manager.get_app_config()
 
         # 获取数据库连接配置
-        connection = db_manager.get_connection(connection_id)
-        if not connection:
-            raise HTTPException(
-                status_code=404, detail=f"Database connection {connection_id} does not exist"
-            )
+        connection = _require_connection(connection_id)
 
         db_type = (
             connection.type.value
@@ -654,13 +655,16 @@ async def list_schema_tables(connection_id: str, schema: str):
 
 @router.get("/api/datasources/databases/{connection_id}/tables/detail", tags=["Database Management"])
 async def get_table_details_alias(connection_id: str, table_name: str, schema: str | None = None):
-    """获取指定表的详细信息（别名）"""
-    return await get_table_details(connection_id, table_name, schema)
+    """Canonical 外部表详情路径。"""
+    from core.services.catalog_service import get_external_table_detail
+
+    return await get_external_table_detail(connection_id, table_name, schema)
 
 
 @router.get(
     "/api/database_table_details/{connection_id}/{table_name}",
     tags=["Database Management"],
+    deprecated=True,
 )
 async def get_table_details(connection_id: str, table_name: str, schema: str | None = None):
     """获取指定表的详细信息，包括字段详情和示例数据"""
@@ -671,11 +675,7 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
         app_config = config_manager.get_app_config()
 
         # 获取数据库连接配置
-        connection = db_manager.get_connection(connection_id)
-        if not connection:
-            raise HTTPException(
-                status_code=404, detail=f"Database connection {connection_id} does not exist"
-            )
+        connection = _require_connection(connection_id)
 
         # 根据数据库类型处理不同的连接方式
         db_config = connection.params
@@ -692,8 +692,8 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
             # 支持 user 和 username 两种参数名称
             username = db_config.get("user") or db_config.get("username")
             if not username:
-                raise HTTPException(
-                    status_code=400, detail="Missing username parameter (user or username)"
+                raise APIValidationError(
+                    "Missing username parameter (user or username)"
                 )
 
             password = db_config.get("password", "")
@@ -821,8 +821,8 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
             # 支持 user 和 username 两种参数名称
             username = db_config.get("user") or db_config.get("username")
             if not username:
-                raise HTTPException(
-                    status_code=400, detail="Missing username parameter (user or username)"
+                raise APIValidationError(
+                    "Missing username parameter (user or username)"
                 )
 
             password = db_config.get("password", "")
@@ -1017,10 +1017,14 @@ async def get_table_details(connection_id: str, table_name: str, schema: str | N
                 conn.close()
 
         else:
-            raise HTTPException(
-                status_code=400, detail=f"Unsupported database type: {db_type}"
-            )
+            raise APIValidationError(f"Unsupported database type: {db_type}")
 
+    except BaseAPIException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get table details: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get table details: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get table details: {str(e)}",
+        )

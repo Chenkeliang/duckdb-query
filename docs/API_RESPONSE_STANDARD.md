@@ -1,7 +1,7 @@
 # API 响应格式标准
 
 > **版本**: 2.0  
-> **最后更新**: 2026-01-23  
+> **最后更新**: 2026-05-21（422 校验、`error_json_response`、`ResourceNotFoundError` 收敛中）  
 > **状态**: ✅ 已实施  
 > **相关规范文档**: 详细规范请参考 [.kiro/steering/api-response-format-standard.md](../.kiro/steering/api-response-format-standard.md)
 
@@ -41,6 +41,10 @@
   "timestamp": "2026-01-16T12:00:00.000000Z"
 }
 ```
+
+### 请求体验证失败（422）
+
+FastAPI / Pydantic 校验失败由 `request_validation_exception_handler` 统一为与业务错误相同的信封（`error.code` = `VALIDATION_ERROR`，`details.errors` 为字段列表）。**不再**返回裸 `detail: [{loc, msg}]` 数组。
 
 ### 错误响应
 
@@ -145,7 +149,7 @@ async def create_table(data: TableCreate):
 ### TypeScript/React
 
 ```typescript
-import { normalizeResponse, handleApiError } from '@/api/client';
+import { apiClient, normalizeResponse, handleApiError } from '@/api';
 import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
 
 // 基础查询

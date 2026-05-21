@@ -5,13 +5,13 @@ fileMatchPattern: ['frontend/src/new/**/*.tsx', 'frontend/src/new/**/*.jsx']
 
 # Shadcn/UI 组件使用标准
 
+> **路径废止（2026-05-21）**：`frontend/src/new/` 为历史迁移目录，**现行代码在 `frontend/src/`**。shadcn/ui 组件目录为 `frontend/src/components/ui/`。下文若出现 `new/`，仅作历史说明。
+
 ## 🎯 核心原则
 
 ### 1. 架构隔离原则
-- **完全隔离**: 新旧布局完全分离，避免混淆和冲突
-- **目录隔离**: shadcn/ui 组件仅在 `frontend/src/new/components/ui/` 目录下
-- **导入隔离**: 新布局组件只能导入 `@/new/components/ui/*`，禁止导入 MUI 组件
-- **样式隔离**: 新布局使用 Tailwind CSS + shadcn/ui，旧布局使用 MUI + modern.css
+- **现行**：全项目使用 shadcn/ui + Tailwind（`frontend/src/components/ui/`），禁止 MUI
+- **历史**：`frontend/src/new/` 隔离布局已废止，勿在新功能中引用 `@/new/*`
 
 ## 📁 目录结构规范
 

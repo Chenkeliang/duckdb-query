@@ -56,11 +56,22 @@ from models.visual_query_models import (
 )
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import create_engine
+from core.common.exceptions import (
+    BaseAPIException,
+    ResourceNotFoundError,
+    ValidationError as APIValidationError,
+)
 from utils.response_helpers import (
     MessageCode,
     create_error_response,
     create_list_response,
     create_success_response,
+    error_json_response,
+)
+from routers.query_sql_utils import (
+    ensure_query_has_limit,
+    get_join_type_sql,
+    remove_auto_added_limit,
 )
 
 # Setup logging
@@ -71,741 +82,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-
-_NUMERIC_AGG_FUNCTIONS = {
-    "SUM",
-    "AVG",
-    "STDDEV_SAMP",
-    "VAR_SAMP",
-    "MEDIAN",
-    "PERCENTILE_CONT_25",
-    "PERCENTILE_CONT_75",
-    "PERCENTILE_DISC_25",
-    "PERCENTILE_DISC_75",
-    "SUM_OVER",
-    "AVG_OVER",
-}
-
-_NUMERIC_TYPE_PREFIXES = (
-    "DECIMAL",
-    "NUMERIC",
-    "DOUBLE",
-    "FLOAT",
-    "REAL",
-)
-
-_NUMERIC_TYPE_NAMES = {
-    "INTEGER",
-    "INT",
-    "BIGINT",
-    "SMALLINT",
-    "TINYINT",
-    "HUGEINT",
-    "UTINYINT",
-    "USMALLINT",
-    "UINTEGER",
-    "UBIGINT",
-    "DOUBLE",
-    "FLOAT",
-    "REAL",
-}
-
-
-def _normalize_duckdb_type(type_str: Optional[str]) -> Optional[str]:
-    if not type_str:
-        return None
-    normalized = type_str.strip().upper()
-    if "(" in normalized:
-        normalized = normalized.split("(", 1)[0]
-    return normalized
-
-
-def _is_numeric_type(type_str: Optional[str]) -> bool:
-    normalized = _normalize_duckdb_type(type_str)
-    if not normalized:
-        return False
-    if normalized in _NUMERIC_TYPE_NAMES:
-        return True
-    return any(normalized.startswith(prefix) for prefix in _NUMERIC_TYPE_PREFIXES)
-
-
-def _map_resolved_casts(resolved_casts: List[ResolvedTypeCast]) -> Dict[str, str]:
-    casts_map: Dict[str, str] = {}
-    for item in resolved_casts or []:
-        column = (item.column or "").strip()
-        cast = (item.cast or "").strip().upper()
-        if not column or not cast:
-            continue
-        casts_map[column.lower()] = cast
-    return casts_map
-
-
-def _map_frontend_profiles(
-    profiles: List[ColumnProfilePayload],
-) -> Dict[str, ColumnProfilePayload]:
-    return {
-        profile.name.lower(): profile
-        for profile in profiles or []
-        if profile.name and profile.name.strip()
-    }
-
-
-def _load_backend_column_profiles(table_name: str) -> Dict[str, Dict[str, Any]]:
-    try:
-        entry = file_datasource_manager.get_file_datasource(table_name)
-        profiles = (entry or {}).get("column_profiles") if entry else None
-        if profiles:
-            return {
-                str(profile.get("name", "")).lower(): profile for profile in profiles
-            }
-
-        con = get_db_connection()
-        snapshot = build_table_metadata_snapshot(con, table_name)
-        return {
-            str(profile.get("name", "")).lower(): profile
-            for profile in snapshot.get("column_profiles", [])
-        }
-    except Exception as exc:
-        logger.warning("Failed to load backend column metadata: %s", exc)
-        return {}
-
-
-def _recommended_numeric_casts(_: Optional[str]) -> List[str]:
-    return ["DECIMAL(18,4)", "DOUBLE"]
-
-
-def _build_conflict_column_ref(
-    table: str,
-    column: str,
-    duckdb_type: Optional[str],
-    normalized_type: Optional[str],
-) -> ColumnTypeReference:
-    return ColumnTypeReference(
-        table=table,
-        column=column,
-        duckdb_type=duckdb_type,
-        normalized_type=normalized_type,
-    )
-
-
-def _detect_aggregation_conflicts(
-    config: VisualQueryConfig,
-    backend_profiles: Dict[str, Dict[str, Any]],
-    frontend_profiles: Dict[str, ColumnProfilePayload],
-    resolved_casts: Dict[str, str],
-) -> Tuple[List[TypeConflictModel], Dict[str, List[str]]]:
-    conflicts: List[TypeConflictModel] = []
-    suggested_casts: Dict[str, List[str]] = {}
-
-    for agg in config.aggregations or []:
-        func = agg.function.value.upper()
-        if func not in _NUMERIC_AGG_FUNCTIONS:
-            continue
-
-        column_key = (agg.column or "").strip()
-        if not column_key:
-            continue
-
-        if column_key.lower() in resolved_casts:
-            # User has specified TRY_CAST, considered resolved
-            continue
-
-        backend_profile = backend_profiles.get(column_key.lower())
-        frontend_profile = frontend_profiles.get(column_key.lower())
-
-        duckdb_type = None
-        normalized_type = None
-
-        if backend_profile:
-            duckdb_type = backend_profile.get("duckdb_type") or backend_profile.get(
-                "type"
-            )
-            normalized_type = _normalize_duckdb_type(duckdb_type)
-
-        if not normalized_type and frontend_profile:
-            duckdb_type = (
-                frontend_profile.duckdb_type or frontend_profile.raw_type or duckdb_type
-            )
-            normalized_type = (
-                frontend_profile.normalized_type
-                or _normalize_duckdb_type(frontend_profile.duckdb_type)
-                or _normalize_duckdb_type(frontend_profile.raw_type)
-            )
-
-        if _is_numeric_type(normalized_type):
-            continue
-
-        recommended = _recommended_numeric_casts(normalized_type)
-        if recommended:
-            suggested_casts[column_key] = recommended
-
-        message = (
-            f"{func} requires numeric type, but column {column_key} is currently {duckdb_type or 'unknown type'}"
-        )
-
-        conflicts.append(
-            TypeConflictModel(
-                operation="aggregation",
-                message=message,
-                left=_build_conflict_column_ref(
-                    table=config.table_name,
-                    column=column_key,
-                    duckdb_type=duckdb_type,
-                    normalized_type=normalized_type,
-                ),
-                right=None,
-                function=func,
-                recommended_casts=recommended,
-            )
-        )
-
-    return conflicts, suggested_casts
-
-
-class DistinctValuesMetric(BaseModel):
-    agg: str = Field(..., description="Aggregation: SUM|COUNT|AVG|MIN|MAX")
-    column: str = Field(..., description="Column name for metric sorting")
-
-
-class DistinctValuesRequest(BaseModel):
-    config: VisualQueryConfig = Field(
-        ..., description="Configuration for constructing base filters, only table and filter conditions needed"
-    )
-    column: str = Field(..., description="Target column (can be computed column alias)")
-    limit: int = Field(12, description="Top-N count")
-    order_by: Optional[str] = Field("frequency", description="frequency|metric")
-    metric: Optional[DistinctValuesMetric] = None
-    base_limit: Optional[int] = Field(None, description="Base sampling row limit, optional")
-
-
-def remove_auto_added_limit(sql: str) -> str:
-    """
-    Intelligently remove system-added LIMIT clause, restore user original SQL
-
-    Save function should use user original SQL intent:
-    - If user original SQL has LIMIT, keep it completely
-    - If user original SQL has no LIMIT, remove system-added LIMIT
-
-    Args:
-        sql: SQL passed from frontend (may have been modified by system)
-
-    Returns:
-        User original SQL intent
-    """
-    from core.common.config_manager import config_manager
-
-    # Get system configured max rows
-    try:
-        max_rows = config_manager.get_app_config().max_query_rows
-    except:
-        max_rows = 10000  # Default value
-
-    # Remove trailing semicolons and whitespace
-    sql_cleaned = sql.rstrip("; \t\n\r")
-
-    # Only remove system-added LIMIT (equal to configured max_rows)
-    # Keep all user original LIMIT (regardless of size)
-    limit_pattern = rf"\s+LIMIT\s+{max_rows}$"
-
-    if re.search(limit_pattern, sql_cleaned, re.IGNORECASE):
-        # Remove system-added LIMIT, restore user original SQL
-        sql_cleaned = re.sub(limit_pattern, "", sql_cleaned, flags=re.IGNORECASE)
-        logger.info(f"Removed system-added LIMIT {max_rows}, restored user original SQL")
-    else:
-        logger.info("Keeping user original SQL LIMIT clause")
-
-    return sql_cleaned.strip()
-
-
-def get_join_type_sql(join_type):
-    """Convert frontend join type to correct SQL JOIN syntax"""
-    join_type = join_type.lower()
-    if join_type == "inner":
-        return "INNER JOIN"
-    elif join_type == "left":
-        return "LEFT JOIN"
-    elif join_type == "right":
-        return "RIGHT JOIN"
-    elif join_type == "outer" or join_type == "full_outer":
-        return "FULL OUTER JOIN"  # Correct SQL syntax for outer join
-    elif join_type == "cross":
-        return "CROSS JOIN"
-    else:
-        return "INNER JOIN"  # Default to inner join
-
-
-def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
-    """Ensure SQL query has LIMIT clause to prevent returning too much data.
-
-    Note: The following types of statements should not have LIMIT added:
-    - DESCRIBE / DESC statements
-    - SHOW statements
-    - EXPLAIN statements
-    - PRAGMA statements
-    - SET statements
-    - CREATE / ALTER / DROP and other DDL statements
-    """
-    # Remove leading/trailing whitespace and convert to uppercase for matching
-    query_stripped = query.strip()
-    query_upper = query_stripped.upper()
-
-    # Statement types that should not have LIMIT added (using regex for precise matching)
-    # Match statements starting with these keywords (case insensitive)
-    no_limit_patterns = [
-        r"^DESCRIBE\b",  # DESCRIBE statement
-        r"^DESC\b",  # DESC statement (abbreviation of DESCRIBE)
-        r"^SHOW\b",  # SHOW statement
-        r"^EXPLAIN\b",  # EXPLAIN statement
-        r"^PRAGMA\b",  # PRAGMA statement
-        r"^SET\b",  # SET statement
-        r"^CREATE\b",  # CREATE statement
-        r"^ALTER\b",  # ALTER statement
-        r"^DROP\b",  # DROP statement
-        r"^TRUNCATE\b",  # TRUNCATE statement
-        r"^INSERT\b",  # INSERT statement
-        r"^UPDATE\b",  # UPDATE statement
-        r"^DELETE\b",  # DELETE statement
-        r"^GRANT\b",  # GRANT statement
-        r"^REVOKE\b",  # REVOKE statement
-        r"^CALL\b",  # CALL statement
-        r"^EXECUTE\b",  # EXECUTE statement
-        r"^USE\b",  # USE statement
-        r"^BEGIN\b",  # BEGIN statement
-        r"^COMMIT\b",  # COMMIT statement
-        r"^ROLLBACK\b",  # ROLLBACK statement
-    ]
-
-    # Check if this is a statement that should not have LIMIT added
-    for pattern in no_limit_patterns:
-        if re.match(pattern, query_upper):
-            return query
-
-    # Use regex to check LIMIT clause, more robust
-    if not re.search(r"\sLIMIT\s+\d+\s*($|;)", query, re.IGNORECASE):
-        if query_stripped.endswith(";"):
-            return f"{query_stripped[:-1]} LIMIT {default_limit};"
-        else:
-            return f"{query_stripped} LIMIT {default_limit}"
-    return query
-
-
-def _strip_sql_semicolon(sql: str) -> str:
-    return sql.rstrip().rstrip(";")
-
-
-def _build_preview_count_sql(sql: str) -> str:
-    cleaned = _strip_sql_semicolon(sql)
-    return f"SELECT COUNT(*) AS total_rows FROM ({cleaned}) AS preview_count"
-
-
-# ==================== Visual Query API Endpoints ====================
-
-
-@router.post("/api/visual-query/generate", tags=["Visual Query"])
-async def generate_visual_query(request: VisualQueryRequest):
-    """Generate visual query SQL"""
-    try:
-        validation_result = validate_query_config(request.config)
-
-        if not validation_result.is_valid:
-            return create_error_response(
-                code=MessageCode.VISUAL_QUERY_INVALID.value,
-                message="Visual query configuration is invalid",
-                details={
-                    "errors": validation_result.errors,
-                    "warnings": validation_result.warnings,
-                    "mode": request.mode,
-                },
-            )
-
-        resolved_casts_map = _map_resolved_casts(request.resolved_casts)
-
-        generation = generate_visual_query_sql(
-            request.config,
-            mode=request.mode,
-            pivot_config=request.pivot_config,
-            resolved_casts=resolved_casts_map,
-        )
-
-        combined_warnings = list(validation_result.warnings or [])
-        combined_warnings.extend(generation.warnings)
-
-        metadata: Optional[Dict[str, Any]] = None
-
-        if request.include_metadata:
-            try:
-                con = get_db_connection()
-                estimate = estimate_query_performance(request.config, con)
-                metadata = {
-                    "estimated_rows": estimate.estimated_rows,
-                    "estimated_time": estimate.estimated_time,
-                    "complexity_score": validation_result.complexity_score,
-                }
-            except Exception as perf_exc:
-                logger.warning("Failed to estimate query performance: %s", perf_exc)
-                combined_warnings.append("Unable to estimate query performance")
-                metadata = {
-                    "estimated_rows": None,
-                    "estimated_time": None,
-                    "complexity_score": validation_result.complexity_score,
-                }
-
-            if metadata is not None:
-                metadata.update(generation.metadata or {})
-        elif generation.metadata:
-            metadata = generation.metadata
-
-        return create_success_response(
-            data={
-                "sql": generation.final_sql,
-                "base_sql": generation.base_sql,
-                "pivot_sql": generation.pivot_sql,
-                "errors": [],
-                "warnings": combined_warnings,
-                "metadata": metadata,
-                "mode": request.mode,
-            },
-            message_code=MessageCode.VISUAL_QUERY_GENERATED,
-        )
-
-    except Exception as exc:
-        logger.error("Failed to generate visual query: %s", exc, exc_info=True)
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to generate query: {str(exc)}",
-            details={"mode": request.mode},
-        )
-
-
-@router.post("/api/visual-query/preview", tags=["Visual Query"])
-async def preview_visual_query(
-    request: PreviewRequest,
-    x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
-):
-    """Preview visual query results"""
-    query_id = f"sync:{x_request_id}" if x_request_id else None
-
-    try:
-        validation_result = validate_query_config(request.config)
-
-        if not validation_result.is_valid:
-            return create_error_response(
-                code=MessageCode.VISUAL_QUERY_INVALID.value,
-                message="Visual query configuration is invalid",
-                details={
-                    "errors": validation_result.errors,
-                    "warnings": validation_result.warnings,
-                    "mode": request.mode,
-                },
-            )
-
-        resolved_casts_map = _map_resolved_casts(request.resolved_casts)
-
-        generation = generate_visual_query_sql(
-            request.config,
-            mode=request.mode,
-            pivot_config=request.pivot_config,
-            resolved_casts=resolved_casts_map,
-        )
-
-        preview_limit = request.limit
-        if preview_limit is None or preview_limit <= 0:
-            from core.common.config_manager import config_manager
-
-            preview_limit = config_manager.get_app_config().max_query_rows or 10
-        preview_sql = ensure_query_has_limit(generation.final_sql, preview_limit)
-
-        # Execute query using interruptible connection
-        if query_id:
-            with interruptible_connection(query_id, preview_sql) as conn:
-                preview_df = conn.execute(preview_sql).fetchdf()
-
-                # Calculate total rows (in same connection context)
-                total_rows = len(preview_df)
-                try:
-                    count_sql = _build_preview_count_sql(generation.final_sql)
-                    count_df = conn.execute(count_sql).fetchdf()
-                    if not count_df.empty:
-                        total_rows = int(count_df.iloc[0][0])
-                except Exception as count_exc:
-                    logger.warning("Failed to calculate preview total rows: %s", count_exc)
-        else:
-            # Backward compatibility
-            con = get_db_connection()
-            preview_df = execute_query(preview_sql, con)
-
-            total_rows = len(preview_df)
-            try:
-                count_sql = _build_preview_count_sql(generation.final_sql)
-                count_df = execute_query(count_sql, con)
-                if not count_df.empty:
-                    total_rows = int(count_df.iloc[0, 0])
-            except Exception as count_exc:
-                logger.warning("Failed to calculate preview total rows: %s", count_exc)
-
-        data = preview_df.to_dict("records")
-        columns = [str(col) for col in preview_df.columns.tolist()]
-
-        estimated_time = None
-        try:
-            con = get_db_connection()
-            estimate = estimate_query_performance(request.config, con)
-            estimated_time = estimate.estimated_time
-        except Exception as perf_exc:
-            logger.debug("Failed to estimate preview performance: %s", perf_exc)
-
-        combined_warnings = list(validation_result.warnings or [])
-        combined_warnings.extend(generation.warnings)
-
-        returned_rows = len(data)
-        return create_success_response(
-            data={
-                "data": data,
-                "columns": columns,
-                "row_count": total_rows,
-                "returned_rows": returned_rows,
-                "estimated_time": estimated_time,
-                "sql": preview_sql,
-                "base_sql": generation.base_sql,
-                "pivot_sql": generation.pivot_sql,
-                "mode": request.mode,
-                "errors": [],
-                "warnings": combined_warnings,
-            },
-            message_code=MessageCode.VISUAL_QUERY_PREVIEWED,
-        )
-
-    except duckdb.InterruptException:
-        logger.info(f"Visual query preview {query_id} was cancelled by user")
-        raise HTTPException(status_code=499, detail="Query cancelled by client")
-    except Exception as exc:
-        logger.error("Failed to preview visual query: %s", exc, exc_info=True)
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to preview query: {str(exc)}",
-            details={"mode": request.mode},
-        )
-
-
-@router.post("/api/visual-query/distinct-values", tags=["Visual Query"])
-async def get_distinct_values(
-    req: DistinctValuesRequest,
-    x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
-):
-    """Return Top-N distinct values for specified column, sortable by frequency or metric aggregation.
-
-    Security notes:
-    - Column names wrapped with _quote_identifier
-    - Aggregation function whitelist validation
-    - LIMIT uses parameterized values
-    Supports query cancellation via X-Request-ID header
-    """
-    query_id = f"sync:{x_request_id}" if x_request_id else None
-
-    try:
-        validation_result = validate_query_config(req.config)
-        if not validation_result.is_valid:
-            return create_error_response(
-                code=MessageCode.VALIDATION_ERROR.value,
-                message="Query configuration validation failed",
-                details={
-                    "errors": validation_result.errors,
-                    "warnings": validation_result.warnings,
-                },
-            )
-
-        table = _quote_identifier(req.config.table_name)
-        target_col = _quote_identifier(req.column)
-        where_clause = _build_where_clause(req.config.filters)
-
-        # Optional base sampling limit
-        base_limit_sql = ""
-        if req.base_limit and req.base_limit > 0:
-            base_limit_sql = f" LIMIT {int(req.base_limit)}"
-
-        base_cte = (
-            f"WITH base AS (SELECT * FROM {table} {where_clause}{base_limit_sql})"
-        )
-
-        order_by = (req.order_by or "frequency").lower()
-        sql = ""
-        limit_val = int(req.limit or 12)
-
-        if order_by == "metric" and req.metric:
-            agg = (req.metric.agg or "").upper()
-            if agg not in ["SUM", "COUNT", "AVG", "MIN", "MAX"]:
-                raise HTTPException(status_code=400, detail="Unsupported aggregation function")
-            metric_col = _quote_identifier(req.metric.column)
-            sql = (
-                f"{base_cte} SELECT {target_col} AS v, COUNT(*) AS c, {agg}({metric_col}) AS m "
-                f"FROM base WHERE {target_col} IS NOT NULL GROUP BY 1 ORDER BY m DESC, c DESC LIMIT {limit_val}"
-            )
-        else:
-            sql = (
-                f"{base_cte} SELECT {target_col} AS v, COUNT(*) AS c "
-                f"FROM base WHERE {target_col} IS NOT NULL GROUP BY 1 ORDER BY c DESC LIMIT {limit_val}"
-            )
-
-        # Execute query using interruptible connection
-        if query_id:
-            with interruptible_connection(query_id, sql) as conn:
-                df = conn.execute(sql).fetchdf()
-
-                # distinct_count statistics (in same connection context)
-                distinct_sql = f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base WHERE {target_col} IS NOT NULL"
-                distinct_df = conn.execute(distinct_sql).fetchdf()
-        else:
-            # Backward compatibility
-            con = get_db_connection()
-            df = execute_query(sql, con)
-
-            distinct_sql = f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base WHERE {target_col} IS NOT NULL"
-            distinct_df = execute_query(distinct_sql, con)
-
-        values = []
-        topN = []
-        if df is not None and not df.empty:
-            for _, row in df.iterrows():
-                values.append(str(row["v"]))
-                item = {"value": str(row["v"]), "count": int(row.get("c", 0))}
-                if "m" in df.columns:
-                    try:
-                        item["metric"] = float(row.get("m"))
-                    except Exception:
-                        item["metric"] = None
-                topN.append(item)
-
-        distinct_count = (
-            int(distinct_df.iloc[0][0])
-            if distinct_df is not None and not distinct_df.empty
-            else None
-        )
-
-        return create_success_response(
-            data={
-                "values": values,
-                "stats": {"distinct_count": distinct_count, "topN": topN},
-                "errors": [],
-                "warnings": validation_result.warnings,
-            },
-            message_code=MessageCode.QUERY_SUCCESS,
-        )
-    except duckdb.InterruptException:
-        logger.info(f"Distinct values query {query_id} was cancelled by user")
-        raise HTTPException(status_code=499, detail="Query cancelled by client")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("Failed to get column distinct values: %s", exc, exc_info=True)
-        return create_error_response(
-            code=MessageCode.QUERY_FAILED.value,
-            message=str(exc),
-            details={"errors": [str(exc)]},
-        )
-
-
-@router.get(
-    "/api/visual-query/column-stats/{table_name}/{column_name}",
-    tags=["Visual Query"],
-)
-async def get_visual_query_column_stats(table_name: str, column_name: str):
-    """Get column statistics"""
-    try:
-        con = get_db_connection()
-        available_tables = con.execute("SHOW TABLES").fetchdf()
-        available_names = (
-            available_tables["name"].tolist() if not available_tables.empty else []
-        )
-
-        if table_name not in available_names:
-            raise HTTPException(status_code=404, detail=f"Table {table_name} does not exist")
-
-        stats = get_column_statistics(table_name, column_name, con)
-        stats_dict = (
-            stats.model_dump() if hasattr(stats, "model_dump") else stats.dict()
-        )
-
-        return create_success_response(
-            data={"statistics": stats_dict},
-            message_code=MessageCode.QUERY_SUCCESS,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("Failed to get column statistics: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get column statistics: {str(exc)}")
-
-
-@router.post("/api/visual-query/validate", tags=["Visual Query"])
-async def validate_visual_query_config_endpoint(payload: Dict[str, Any] = Body(...)):
-    """Validate visual query configuration"""
-    try:
-        if isinstance(payload, dict) and "config" in payload:
-            request_payload = VisualQueryValidationRequest(**payload)
-        else:
-            request_payload = VisualQueryValidationRequest(
-                config=VisualQueryConfig(**payload),
-                column_profiles=[],
-                resolved_casts=[],
-            )
-    except ValidationError as exc:
-        logger.error("Failed to parse validation request: %s", exc)
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message="Invalid request format",
-            details={"errors": ["Invalid request format"]},
-        )
-    except Exception as exc:
-        logger.error("Validation request parsing exception: %s", exc, exc_info=True)
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=f"Failed to parse configuration: {str(exc)}",
-            details={"errors": [f"Failed to parse configuration: {str(exc)}"]},
-        )
-
-    try:
-        validation_result = validate_query_config(request_payload.config)
-
-        backend_profiles = _load_backend_column_profiles(
-            request_payload.config.table_name
-        )
-        frontend_profiles = _map_frontend_profiles(request_payload.column_profiles)
-        resolved_casts_map = _map_resolved_casts(request_payload.resolved_casts)
-
-        agg_conflicts, suggested_casts = _detect_aggregation_conflicts(
-            request_payload.config,
-            backend_profiles,
-            frontend_profiles,
-            resolved_casts_map,
-        )
-
-        is_valid = validation_result.is_valid and not agg_conflicts
-
-        return create_success_response(
-            data={
-                "is_valid": is_valid,
-                "errors": validation_result.errors,
-                "warnings": validation_result.warnings,
-                "complexity_score": validation_result.complexity_score,
-                "conflicts": [
-                    c.model_dump() if hasattr(c, "model_dump") else c.dict()
-                    for c in agg_conflicts
-                ],
-                "suggested_casts": suggested_casts,
-            },
-            message_code=MessageCode.VISUAL_QUERY_VALIDATED
-            if is_valid
-            else MessageCode.VISUAL_QUERY_INVALID,
-        )
-
-    except Exception as exc:
-        logger.error("Failed to validate visual query configuration: %s", exc, exc_info=True)
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=f"Failed to validate configuration: {str(exc)}",
-            details={"errors": [f"Failed to validate configuration: {str(exc)}"]},
-        )
 
 
 def safe_alias(table, col):
@@ -1154,6 +430,11 @@ async def perform_query(
     if query_id:
         logger.info(f"Query with request ID: {x_request_id}")
 
+    if not query_request.sources:
+        raise APIValidationError(
+            "Query request must contain at least one data source"
+        )
+
     # Always get valid connection
     # TODO: Use interruptible_connection to wrap query execution for cancellation support
     con = get_db_connection()
@@ -1430,12 +711,6 @@ async def perform_query(
         )
         logger.info(f"Current tables in DuckDB: {available_tables.to_string()}")
 
-        # 验证是否有数据源
-        if not query_request.sources:
-            raise HTTPException(
-                status_code=422, detail="Query request must contain at least one data source"
-            )
-
         # 构建查询 - 确保表名使用双引号括起来
         if len(query_request.joins) > 0:
             # 多表JOIN查询 - 使用改进的多表JOIN支持
@@ -1450,9 +725,12 @@ async def perform_query(
             if table_match:
                 actual_table_name = table_match.group(1)
                 if actual_table_name not in available_table_names:
-                    error_msg = f"无法执行查询，Table '{actual_table_name}' does not exist。可用的表: {', '.join(available_table_names)}"
-                    logger.error(error_msg)
-                    raise ValueError(error_msg)
+                    logger.error(
+                        "Table '%s' does not exist. Available: %s",
+                        actual_table_name,
+                        ", ".join(available_table_names),
+                    )
+                    raise ResourceNotFoundError("Table", actual_table_name)
 
         # 根据is_preview标志决定是否添加LIMIT
         if query_request.is_preview:
@@ -1482,37 +760,72 @@ async def perform_query(
             message_code=MessageCode.QUERY_SUCCESS,
         )
     except HTTPException:
-        # 重新抛出HTTPException，保持原始状态码
+        raise
+    except BaseAPIException:
         raise
     except Exception as e:
         error_message = str(e)
-        logger.error(f"Query failed: {error_message}")
-        logger.error(f"Stack trace: {traceback.format_exc()}")
+        logger.error("Query failed: %s", error_message)
+        logger.error("Stack trace: %s", traceback.format_exc())
 
-        # 使用统一的错误代码系统
-        from core.common.error_codes import (
-            analyze_error_type,
-            get_http_status_code,
-        )
+        from core.common.error_codes import analyze_error_type, get_http_status_code
 
-        original_error = str(e)
-        error_code = analyze_error_type(original_error)
+        error_code = analyze_error_type(error_message)
         status_code = get_http_status_code(error_code)
 
-        # 创建标准化的错误响应
-        error_response = create_error_response(
+        return error_json_response(
+            status_code=status_code,
             code=error_code,
-            message=original_error,
+            message=error_message,
             details={"sql": getattr(query_request, "sql", None)},
         )
 
-        # 返回详细的错误响应
-        raise HTTPException(status_code=status_code, detail=error_response)
+
+def _should_proxy_execute_sql_to_duckdb(request: dict) -> bool:
+    """仅 DuckDB 本地 SQL（无 file/外部库）时代理到 canonical 端点。"""
+    if not isinstance(request, dict):
+        return False
+    if not str(request.get("sql", "")).strip():
+        return False
+    datasource = request.get("datasource") or {}
+    if not isinstance(datasource, dict):
+        return False
+    ds_type = datasource.get("type")
+    if ds_type in ("mysql", "postgresql", "sqlite"):
+        return False
+    if ds_type == "file":
+        return False
+    return True
 
 
-@router.post("/api/execute_sql", tags=["Query"])
-async def execute_sql(request: dict = Body(...)):
-    """直接执行SQL查询语句，主要用于调试和验证数据源"""
+@router.post("/api/execute_sql", tags=["Query"], deprecated=True)
+async def execute_sql(
+    request: dict = Body(...),
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
+):
+    """
+    [已废弃] 直接执行 SQL，主要用于历史调试。
+
+    请使用 ``POST /api/duckdb/execute`` 或 ``POST /api/duckdb/federated-query``。
+    """
+    logger.warning(
+        "DEPRECATED: POST /api/execute_sql — use /api/duckdb/execute or "
+        "/api/duckdb/federated-query"
+    )
+
+    if _should_proxy_execute_sql_to_duckdb(request):
+        from routers.duckdb_query import DuckDBQueryRequest, execute_duckdb_sql
+
+        return await execute_duckdb_sql(
+            DuckDBQueryRequest(
+                sql=request.get("sql", ""),
+                is_preview=request.get("is_preview", True),
+                save_as_table=request.get("save_as_table")
+                or request.get("saveAsTable"),
+            ),
+            x_request_id,
+        )
+
     con = get_db_connection()
     sql_query = request.get("sql", "")
     datasource = request.get("datasource", {})
@@ -1704,11 +1017,13 @@ async def execute_sql(request: dict = Body(...)):
                 columns_list = [str(col) for col in result_df.columns.tolist()]
 
                 logger.info(f"Preparing to return database query result, rows: {len(result_df)}")
+                row_count = len(result_df)
                 return create_success_response(
                     data={
                         "data": data_records,
                         "columns": columns_list,
-                        "rowCount": len(result_df),
+                        "row_count": row_count,
+                        "rowCount": row_count,
                         "source_type": "database",
                         "source_id": datasource_id,
                         "sql_query": sql_query,
@@ -1734,11 +1049,13 @@ async def execute_sql(request: dict = Body(...)):
             # 确保所有列名是字符串类型
             columns_list = [str(col) for col in result_df.columns.tolist()]
 
+            row_count = len(result_df)
             return create_success_response(
                 data={
                     "data": data_records,
                     "columns": columns_list,
-                    "rowCount": len(result_df),
+                    "row_count": row_count,
+                    "rowCount": row_count,
                 },
                 message_code=MessageCode.QUERY_SUCCESS,
             )
@@ -1959,225 +1276,25 @@ async def save_query_to_duckdb(request: dict = Body(...)):
         raise HTTPException(status_code=500, detail=f"Failed to save to DuckDB: {str(e)}")
 
 
-@router.get("/api/duckdb_tables", tags=["Query"])
+@router.get("/api/duckdb_tables", tags=["Query"], deprecated=True)
 async def list_duckdb_tables():
-    """列出DuckDB中的所有可用表"""
-    try:
-        con = get_db_connection()
-        tables_df = con.execute("SHOW TABLES").fetchdf()
+    """[已废弃] 请使用 ``GET /api/duckdb/tables``。"""
+    logger.warning("DEPRECATED: GET /api/duckdb_tables — use GET /api/duckdb/tables")
+    from routers.duckdb_query import list_duckdb_tables_summary
 
-        # 获取文件数据源管理器实例
-        from core.data.file_datasource_manager import file_datasource_manager
-
-        file_datasources = file_datasource_manager.list_file_datasources()
-        # 创建source_id到创建时间的映射
-        datasource_timestamps = {}
-        for datasource in file_datasources:
-            source_id = datasource.get("source_id")
-            created_at = datasource.get("created_at")
-            if source_id and created_at:
-                datasource_timestamps[source_id] = created_at
-
-        # 获取所有数据库连接的ID，用于标识数据库连接的表
-        db_connection_ids = set()
-        try:
-            db_connections = db_manager.list_connections()
-            for db_conn in db_connections:
-                db_connection_ids.add(db_conn.id)
-        except Exception as e:
-            logger.warning(f"Failed to get database connection list: {str(e)}")
-
-        tables_info = []
-        for _, row in tables_df.iterrows():
-            table_name = row["name"]
-            if table_name.lower().startswith("system_"):
-                continue
-            # 获取表的基本信息
-            try:
-                # 对表名进行引号包围以处理特殊字符
-                quoted_table_name = f'"{table_name}"'
-                count_result = con.execute(
-                    f"SELECT COUNT(*) as count FROM {quoted_table_name}"
-                ).fetchdf()
-                row_count = count_result.iloc[0]["count"]
-
-                columns_result = con.execute(f"DESCRIBE {quoted_table_name}").fetchdf()
-                columns = columns_result["column_name"].tolist()
-
-                # 判断表的来源类型
-                # 1. 如果表名在 file_datasources 中，使用文件数据源的创建时间
-                # 2. 如果表名匹配数据库连接ID，标记为 database 类型
-                # 3. 否则默认为 file 类型
-                created_at = datasource_timestamps.get(table_name)
-                source_type = "file"  # 默认为文件类型
-
-                # 检查是否是数据库连接的表（表名通常包含连接ID）
-                for db_conn_id in db_connection_ids:
-                    if (
-                        table_name.startswith(f"{db_conn_id}_")
-                        or table_name == db_conn_id
-                    ):
-                        source_type = "database"
-                        break
-
-                tables_info.append(
-                    {
-                        "table_name": table_name,
-                        "row_count": int(row_count),
-                        "columns": columns,
-                        "column_count": len(columns),
-                        "created_at": created_at,
-                        "source_type": source_type,
-                    }
-                )
-            except Exception as e:
-                logger.warning(f"Failed to get table {table_name} information: {str(e)}")
-                tables_info.append(
-                    {
-                        "table_name": table_name,
-                        "row_count": 0,
-                        "columns": [],
-                        "column_count": 0,
-                        "error": str(e),
-                    }
-                )
-
-        # 按创建时间倒序排序，没有创建时间的表排在最后
-        from dateutil import parser as date_parser
-
-        def get_sort_key(table):
-            created_at = table.get("created_at")
-            table_name = table.get("table_name", "")
-
-            if not created_at:
-                # 没有创建时间的表排在最后，按表名排序
-                return (0, table_name)
-
-            # 如果是字符串，转换为 datetime
-            if isinstance(created_at, str):
-                try:
-                    # 使用 dateutil.parser 更健壮地解析日期
-                    parsed = date_parser.parse(created_at)
-                    # 移除时区信息以便比较
-                    ts = parsed.replace(tzinfo=None).timestamp()
-                    return (1, ts)
-                except Exception:
-                    return (0, table_name)
-
-            # 如果已经是 datetime
-            if hasattr(created_at, "timestamp"):
-                ts = (
-                    created_at.replace(tzinfo=None).timestamp()
-                    if created_at.tzinfo
-                    else created_at.timestamp()
-                )
-                return (1, ts)
-
-            return (0, table_name)
-
-        # 先按是否有创建时间分组（有的在前），再按时间戳倒序
-        tables_info.sort(key=get_sort_key, reverse=True)
-
-        return create_list_response(
-            items=tables_info,
-            total=len(tables_info),
-            message_code=MessageCode.TABLES_RETRIEVED,
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to get DuckDB table list: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get table list: {str(e)}")
+    return await list_duckdb_tables_summary()
 
 
-@router.delete("/api/duckdb_tables/{table_name}", tags=["Query"])
-async def delete_duckdb_table(table_name: str):
-    """删除DuckDB中的指定表，同时删除对应的源文件"""
-    # 系统表保护：禁止删除 system_ 前缀或保护 Schema 中的表
-    validate_table_name(table_name)
+@router.delete("/api/duckdb_tables/{table_name}", tags=["Query"], deprecated=True)
+async def delete_duckdb_table_legacy(table_name: str):
+    """[已废弃] 请使用 ``DELETE /api/duckdb/tables/{table_name}``。"""
+    logger.warning(
+        "DEPRECATED: DELETE /api/duckdb_tables/%s — use DELETE /api/duckdb/tables/{name}",
+        table_name,
+    )
+    from routers.duckdb_query import delete_duckdb_table
 
-    try:
-        con = get_db_connection()
-
-        # 检查表是否存在
-        tables_df = con.execute("SHOW TABLES").fetchdf()
-        existing_tables = tables_df["name"].tolist() if not tables_df.empty else []
-
-        if table_name not in existing_tables:
-            raise HTTPException(status_code=404, detail=f"Table '{table_name}' does not exist")
-
-        # 尝试查找并删除对应的源文件
-        deleted_files = []
-        try:
-            # 查找可能的文件路径
-            temp_dir = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)), "temp_files"
-            )
-
-            # 可能的文件名模式
-            possible_filenames = [
-                f"{table_name}.csv",
-                f"{table_name}.xlsx",
-                f"{table_name}.xls",
-                f"{table_name}.json",
-                f"{table_name}.parquet",
-                f"{table_name}.pq",
-            ]
-
-            # 查找并删除匹配的文件
-            if os.path.exists(temp_dir):
-                for filename in os.listdir(temp_dir):
-                    # 检查文件名是否匹配表名（去掉扩展名）
-                    file_base_name = os.path.splitext(filename)[0]
-                    if file_base_name == table_name or filename in possible_filenames:
-                        file_path = os.path.join(temp_dir, filename)
-                        try:
-                            os.remove(file_path)
-                            deleted_files.append(filename)
-                            logger.info(f"Deleted source file: {filename}")
-                        except Exception as file_e:
-                            logger.warning(f"Failed to delete source file {filename}: {str(file_e)}")
-
-            # 从文件数据源配置中删除记录
-            try:
-                from core.data.file_datasource_manager import file_datasource_manager
-
-                file_datasource_manager.remove_file_datasource(table_name)
-            except Exception as config_e:
-                logger.warning(f"Failed to delete file datasource configuration: {str(config_e)}")
-
-        except Exception as cleanup_e:
-            logger.warning(f"Error cleaning up source files: {str(cleanup_e)}")
-
-        # 删除DuckDB中的表或视图
-        try:
-            drop_query = f'DROP TABLE IF EXISTS "{table_name}"'
-            con.execute(drop_query)
-        except Exception as e:
-            if "is of type View" in str(e):
-                # 如果是视图，则删除视图
-                drop_query = f'DROP VIEW IF EXISTS "{table_name}"'
-                con.execute(drop_query)
-            else:
-                raise e
-
-        logger.info(f"Successfully deleted DuckDB table: {table_name}")
-
-        # 构建返回消息
-        message = f"Table '{table_name}' 已成功删除"
-        if deleted_files:
-            message += f"，同时删除了源文件: {', '.join(deleted_files)}"
-
-        return create_success_response(
-            data={"deleted_files": deleted_files, "table_name": table_name},
-            message_code=MessageCode.TABLE_DELETED,
-            message=message,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to delete DuckDB table: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete table: {str(e)}")
+    return await delete_duckdb_table(table_name)
 
 
 # ==================== 集合操作API端点 ====================
@@ -2186,611 +1303,10 @@ async def delete_duckdb_table(table_name: str):
 # ==================== 集合操作API端点 ====================
 
 
-@router.post("/api/set-operations/generate", tags=["Set Operations"])
-async def generate_set_operation_query(request: SetOperationRequest):
-    """
-    生成集合操作SQL查询
 
-    支持UNION, UNION ALL, EXCEPT, INTERSECT等集合操作
-    支持BY NAME模式进行列名映射
-    """
-    try:
-        config = request.config
+# Visual / set-operation routes (paths unchanged)
+from routers.set_operations import router as set_operations_router
+from routers.visual_query import router as visual_query_router
 
-        # 生成SQL查询
-        sql = generate_set_operation_sql(config)
-
-        # 估算结果rows
-        con = get_db_connection()
-        estimated_rows = estimate_set_operation_rows(config, con)
-
-        # 构建元数据
-        metadata = {
-            "operation_type": config.operation_type,
-            "table_count": len(config.tables),
-            "use_by_name": config.use_by_name,
-            "estimated_rows": estimated_rows,
-            "tables": [
-                {
-                    "table_name": table.table_name,
-                    "selected_columns": table.selected_columns,
-                    "alias": table.alias,
-                }
-                for table in config.tables
-            ],
-        }
-
-        return create_success_response(
-            data={
-                "sql": sql,
-                "errors": [],
-                "warnings": [],
-                "metadata": metadata if request.include_metadata else None,
-                "estimated_rows": estimated_rows,
-            },
-            message_code=MessageCode.SET_OPERATION_GENERATED,
-        )
-
-    except ValueError as e:
-        logger.warning(f"Failed to generate set operation query: {str(e)}")
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=str(e),
-            details={"errors": [str(e)]},
-        )
-    except Exception as e:
-        logger.error(f"Failed to generate set operation query: {str(e)}")
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to generate query: {str(e)}",
-            details={"errors": [f"Failed to generate query: {str(e)}"]},
-        )
-
-
-@router.post("/api/set-operations/preview", tags=["Set Operations"])
-async def preview_set_operation(request: SetOperationRequest):
-    """
-    预览集合操作结果
-
-    执行集合操作查询并返回前几rows据
-    """
-    try:
-        config = request.config
-
-        # 生成SQL查询
-        sql = generate_set_operation_sql(config)
-
-        # Add LIMIT进行预览
-        preview_sql = f"{sql} LIMIT 100"
-
-        # 执行预览查询
-        con = get_db_connection()
-        result_df = con.execute(preview_sql).fetchdf()
-
-        preview_data = normalize_dataframe_output(result_df)
-
-        # 获取总rows估算
-        estimated_rows = estimate_set_operation_rows(config, con)
-
-        return create_success_response(
-            data={
-                "data": preview_data,
-                "row_count": len(preview_data),
-                "estimated_total_rows": estimated_rows,
-                "sql": preview_sql,
-                "errors": [],
-                "warnings": [],
-            },
-            message_code=MessageCode.SET_OPERATION_PREVIEWED,
-        )
-
-    except ValueError as e:
-        logger.warning(f"Failed to preview set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=str(e),
-            details={"errors": [str(e)]},
-        )
-    except Exception as e:
-        logger.error(f"Failed to preview set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to preview: {str(e)}",
-            details={"errors": [f"Failed to preview: {str(e)}"]},
-        )
-
-
-@router.post("/api/set-operations/validate", tags=["Set Operations"])
-async def validate_set_operation(request: SetOperationRequest):
-    """
-    验证集合操作配置
-
-    检查表是否存在、列是否兼容等
-    """
-    try:
-        config = request.config
-        con = get_db_connection()
-
-        errors = []
-        warnings = []
-
-        # 检查所有表是否存在
-        for table in config.tables:
-            try:
-                # 检查表是否存在
-                check_sql = f'SELECT COUNT(*) FROM "{table.table_name}"'
-                con.execute(check_sql).fetchone()
-            except Exception as e:
-                errors.append(f"Table {table.table_name} does not exist或无法访问: {str(e)}")
-
-        # 检查列兼容性
-        if not config.use_by_name:
-            # 位置模式：检查列数量是否匹配
-            if len(config.tables) >= 2:
-                first_table = config.tables[0]
-                first_columns = first_table.selected_columns or []
-
-                for i, table in enumerate(config.tables[1:], 1):
-                    table_columns = table.selected_columns or []
-                    if len(first_columns) != len(table_columns):
-                        errors.append(
-                            f"Table {table.table_name} 的列数量({len(table_columns)}) "
-                            f"与第一个Table {first_table.table_name} 的列数量({len(first_columns)})不匹配"
-                        )
-
-        # BY NAME模式验证
-        if config.use_by_name:
-            # DuckDB的BY NAME模式会自动按列名匹配，不需要手动列映射
-            pass
-
-        # 检查操作类型支持
-        if config.use_by_name and config.operation_type not in [
-            SetOperationType.UNION,
-            SetOperationType.UNION_ALL,
-        ]:
-            errors.append("只有UNION和UNION ALL支持BY NAME模式")
-
-        # 性能警告
-        if len(config.tables) > 5:
-            warnings.append("表数量较多，查询性能可能较慢")
-
-        is_valid = len(errors) == 0
-        return create_success_response(
-            data={
-                "is_valid": is_valid,
-                "errors": errors,
-                "warnings": warnings,
-                "table_count": len(config.tables),
-                "operation_type": config.operation_type,
-                "use_by_name": config.use_by_name,
-            },
-            message_code=MessageCode.SET_OPERATION_VALIDATED
-            if is_valid
-            else MessageCode.VALIDATION_ERROR,
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to validate set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=f"Failed to validate: {str(e)}",
-            details={"errors": [f"Failed to validate: {str(e)}"]},
-        )
-
-
-@router.post("/api/set-operations/execute", tags=["Set Operations"])
-async def execute_set_operation(request: SetOperationRequest):
-    """
-    执行集合操作查询
-
-    执行完整的集合操作并返回结果
-    """
-    try:
-        config = request.config
-
-        # 生成SQL查询，根据模式决定是否应用子查询限制
-        if request.preview or (not request.save_as_table):
-            # 预览模式或默认执行：在子查询级别应用限制，避免大数据集内存问题
-            from core.common.config_manager import config_manager
-
-            limit = config_manager.get_app_config().max_query_rows
-            sql = generate_set_operation_sql(config, preview_limit=limit)
-        else:
-            # 保存到表模式：生成完整查询
-            sql = generate_set_operation_sql(config)
-
-        # 执行查询
-        con = get_db_connection()
-
-        if request.preview:
-            # 预览模式：使用配置的max_query_rows限制
-            from core.common.config_manager import config_manager
-
-            limit = config_manager.get_app_config().max_query_rows
-            preview_sql = f"{sql} LIMIT {limit}"
-            result_df = con.execute(preview_sql).fetchdf()
-            columns = [
-                {"name": col, "type": str(result_df[col].dtype)}
-                for col in result_df.columns
-            ]
-            data = normalize_dataframe_output(result_df)
-
-            return create_success_response(
-                data={
-                    "data": data,
-                    "row_count": len(data),
-                    "column_count": len(columns),
-                    "columns": columns,
-                    "sql": sql,
-                    "sqlQuery": sql,
-                    "originalDatasource": {
-                        "type": "set_operation",
-                        "operation": config.operation_type,
-                        "tables": [source.table_name for source in config.tables],
-                    },
-                    "isSetOperation": True,
-                    "setOperationConfig": config.model_dump()
-                    if hasattr(config, "model_dump")
-                    else config.dict(),
-                    "errors": [],
-                    "warnings": [],
-                },
-                message_code=MessageCode.SET_OPERATION_PREVIEWED,
-            )
-        elif request.save_as_table:
-            # 保存到表模式：直接创建表，不使用fetchdf避免内存溢出
-            table_name = request.save_as_table.strip()
-            logger.info(f"Starting to save set operation result to table: {table_name}")
-
-            # 检查表名是否already exists
-            existing_tables = con.execute("SHOW TABLES").fetchdf()
-            existing_table_names = (
-                existing_tables["name"].tolist() if not existing_tables.empty else []
-            )
-
-            if table_name in existing_table_names:
-                logger.warning(f"Table {table_name} already exists，will be replaced")
-
-            # 直接创建表，不使用fetchdf
-            create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql})'
-            logger.info(f"Executing create table SQL: {create_sql}")
-            con.execute(create_sql)
-
-            # 获取统计信息（不使用fetchdf）
-            row_count_result = con.execute(
-                f'SELECT COUNT(*) FROM "{table_name}"'
-            ).fetchone()
-            row_count = row_count_result[0] if row_count_result else 0
-
-            # 获取列信息（使用LIMIT 1避免大数据集问题）
-            sample_sql = f'SELECT * FROM "{table_name}" LIMIT 1'
-            sample_df = con.execute(sample_sql).fetchdf()
-            columns = [
-                {"name": col, "type": str(sample_df[col].dtype)}
-                for col in sample_df.columns
-            ]
-
-            logger.info(f"Table {table_name} created successfully，rows: {row_count}")
-
-            return create_success_response(
-                data={
-                    "saved_table": table_name,
-                    "table_alias": table_name,
-                    "row_count": row_count,
-                    "column_count": len(columns),
-                    "columns": columns,
-                    "sql": sql,
-                    "sqlQuery": sql,
-                    "originalDatasource": {
-                        "type": "set_operation",
-                        "operation": config.operation_type,
-                        "tables": [source.table_name for source in config.tables],
-                    },
-                    "isSetOperation": True,
-                    "setOperationConfig": config.model_dump()
-                    if hasattr(config, "model_dump")
-                    else config.dict(),
-                    "errors": [],
-                    "warnings": [],
-                },
-                message_code=MessageCode.SET_OPERATION_EXECUTED,
-                message=f"Set operation result has been saved to table: {table_name}, total {row_count:,} rows.",
-            )
-        else:
-            # 默认行为：执行集合操作预览，使用配置的max_query_rows限制
-            from core.common.config_manager import config_manager
-
-            limit = config_manager.get_app_config().max_query_rows
-            preview_sql = f"{sql} LIMIT {limit}"
-            result_df = con.execute(preview_sql).fetchdf()
-            columns = [
-                {"name": col, "type": str(result_df[col].dtype)}
-                for col in result_df.columns
-            ]
-            data = normalize_dataframe_output(result_df)
-
-            return create_success_response(
-                data={
-                    "data": data,
-                    "row_count": len(data),
-                    "column_count": len(columns),
-                    "columns": columns,
-                    "sql": sql,
-                    "sqlQuery": sql,
-                    "originalDatasource": {
-                        "type": "set_operation",
-                        "operation": config.operation_type,
-                        "tables": [source.table_name for source in config.tables],
-                    },
-                    "isSetOperation": True,
-                    "setOperationConfig": config.model_dump()
-                    if hasattr(config, "model_dump")
-                    else config.dict(),
-                    "errors": [],
-                    "warnings": [],
-                },
-                message_code=MessageCode.SET_OPERATION_EXECUTED,
-            )
-
-    except ValueError as e:
-        logger.warning(f"Failed to execute set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=str(e),
-            details={"errors": [str(e)]},
-        )
-    except Exception as e:
-        logger.error(f"Failed to execute set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to execute: {str(e)}",
-            details={"errors": [f"Failed to execute: {str(e)}"]},
-        )
-
-
-@router.post("/api/set-operations/simple-union", tags=["Set Operations"])
-async def simple_union_operation(request: UnionOperationRequest):
-    """
-    简化的UNION操作
-
-    提供简化的UNION操作接口，只需要表名列表
-    """
-    try:
-        tables = request.tables
-        operation_type = request.operation_type
-        use_by_name = request.use_by_name
-        column_mappings = request.column_mappings
-
-        # 构建简化的配置
-        table_configs = []
-        for table_name in tables:
-            table_config = {
-                "table_name": table_name,
-                "selected_columns": [],  # 使用所有列
-                "alias": None,
-            }
-
-            # 如果有列映射，添加到配置中
-            if use_by_name and column_mappings and table_name in column_mappings:
-                table_config["column_mappings"] = column_mappings[table_name]
-
-            table_configs.append(table_config)
-
-        # 创建集合操作配置
-        config = SetOperationConfig(
-            operation_type=operation_type, tables=table_configs, use_by_name=use_by_name
-        )
-
-        # 生成SQL查询
-        sql = generate_set_operation_sql(config)
-
-        # 估算结果rows
-        con = get_db_connection()
-        estimated_rows = estimate_set_operation_rows(config, con)
-
-        return create_success_response(
-            data={
-                "sql": sql,
-                "estimated_rows": estimated_rows,
-                "table_count": len(tables),
-                "operation_type": operation_type,
-                "use_by_name": use_by_name,
-                "errors": [],
-                "warnings": [],
-            },
-            message_code=MessageCode.SET_OPERATION_GENERATED,
-        )
-
-    except ValueError as e:
-        logger.warning(f"Failed to simplify UNION operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=str(e),
-            details={"errors": [str(e)]},
-        )
-    except Exception as e:
-        logger.error(f"Failed to simplify UNION operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to operate: {str(e)}",
-            details={"errors": [f"Failed to operate: {str(e)}"]},
-        )
-
-
-@router.post("/api/set-operations/export", tags=["Set Operations"])
-async def export_set_operation(request: SetOperationExportRequest):
-    """
-    集合操作异步导出 - 使用DuckDB COPY命令
-
-    支持Excel、CSV、Parquet格式，使用DuckDB COPY命令直接导出完整数据，
-    避免内存限制问题。
-    """
-    from concurrent.futures import ThreadPoolExecutor
-
-    from core.services.task_manager import task_manager
-
-    try:
-        config = request.config
-        export_format = request.format
-        custom_filename = request.filename
-
-        logger.info(
-            f"Starting set operation export: format={export_format}, operation_type={config.operation_type}"
-        )
-
-        # 生成完整SQL（无LIMIT）
-        sql = generate_set_operation_sql(config)
-        logger.info(f"Generated complete SQL: {sql}")
-
-        # 创建异步Export task
-        task_id = str(uuid.uuid4())
-
-        # 生成文件名
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        if custom_filename:
-            base_filename = custom_filename
-        else:
-            operation_name = config.operation_type.replace(" ", "_").lower()
-            base_filename = f"set_operation_{operation_name}_{timestamp}"
-
-        # 根据格式确定文件扩展名和DuckDB COPY格式
-        if export_format == "csv":
-            file_extension = "csv"
-            copy_format = "CSV"
-            copy_options = "HEADER"
-        elif export_format == "parquet":
-            file_extension = "parquet"
-            copy_format = "PARQUET"
-            copy_options = ""
-        elif export_format == "excel":
-            file_extension = "xlsx"
-            copy_format = "CSV"  # 先导出为CSV，然后转换为Excel
-            copy_options = "HEADER"
-        else:
-            raise ValueError(f"Unsupported export format: {export_format}")
-
-        # 构建文件路径
-        filename = f"{base_filename}.{file_extension}"
-        file_path = f"/app/exports/{filename}"
-
-        # 创建任务记录
-        task_info = {
-            "task_id": task_id,
-            "type": "set_operation_export",
-            "status": "running",
-            "created_at": datetime.now().isoformat(),
-            "config": config.dict(),
-            "format": export_format,
-            "filename": filename,
-            "file_path": file_path,
-            "progress": 0,
-            "message": "正在准备导出...",
-        }
-
-        # 注册任务
-        task_manager.add_task(task_id, task_info)
-
-        # 在后台线程中执行Export task
-        def export_task():
-            try:
-                # 更新任务状态
-                task_manager.update_task(
-                    task_id,
-                    {
-                        "status": "running",
-                        "progress": 10,
-                        "message": "正在连接数据库...",
-                    },
-                )
-
-                # 获取数据库连接
-                con = get_db_connection()
-
-                # 更新任务状态
-                task_manager.update_task(
-                    task_id, {"progress": 30, "message": "正在执行查询..."}
-                )
-
-                if export_format == "excel":
-                    # Excel需要特殊处理：先导出为CSV，然后转换为Excel
-                    csv_path = file_path.replace(".xlsx", ".csv")
-                    copy_sql = f"COPY ({sql}) TO '{csv_path}' (FORMAT {copy_format}, {copy_options})"
-
-                    logger.info(f"Executing CSV export: {copy_sql}")
-                    con.execute(copy_sql)
-
-                    # 更新任务状态
-                    task_manager.update_task(
-                        task_id, {"progress": 70, "message": "正在转换为Excel格式..."}
-                    )
-
-                    # 将CSV转换为Excel
-
-                    df = pd.read_csv(csv_path)
-                    df.to_excel(file_path, index=False)
-
-                    # 删除临时CSV文件
-
-                    os.remove(csv_path)
-
-                else:
-                    # 直接使用DuckDB COPY命令
-                    copy_sql = f"COPY ({sql}) TO '{file_path}' (FORMAT {copy_format}, {copy_options})"
-
-                    logger.info(f"Executing export: {copy_sql}")
-                    con.execute(copy_sql)
-
-                # 检查文件是否created successfully
-
-                if not os.path.exists(file_path):
-                    raise Exception("Export file not created")
-
-                file_size = os.path.getsize(file_path)
-
-                # 更新任务状态为完成
-                task_manager.update_task(
-                    task_id,
-                    {
-                        "status": "completed",
-                        "progress": 100,
-                        "message": f"导出完成，文件size: {file_size / 1024 / 1024:.2f} MB",
-                        "file_size": file_size,
-                        "download_url": f"/api/async-tasks/{task_id}/download",
-                    },
-                )
-
-                logger.info(f"Set operation export completed: {filename}, size: {file_size} bytes")
-
-            except Exception as e:
-                logger.error(f"Export taskFailed to execute: {str(e)}")
-                task_manager.update_task(
-                    task_id,
-                    {
-                        "status": "failed",
-                        "progress": 0,
-                        "message": f"导出失败: {str(e)}",
-                        "error": str(e),
-                    },
-                )
-
-        # 在后台线程中执行Export task
-        executor = ThreadPoolExecutor(max_workers=1)
-        executor.submit(export_task)
-
-        return create_success_response(
-            data={
-                "task_id": task_id,
-                "filename": filename,
-                "format": export_format,
-            },
-            message_code=MessageCode.SET_OPERATION_EXPORTED,
-            message="Export task created, please check async task list later",
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to export set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to create export task: {str(e)}",
-            details={"error": str(e)},
-        )
+router.include_router(visual_query_router)
+router.include_router(set_operations_router)

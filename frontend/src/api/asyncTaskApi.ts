@@ -201,21 +201,21 @@ export async function downloadAsyncResult(
  * Returns normalized response with pool information
  */
 export async function getConnectionPoolStatus(): Promise<{
-    pools: Array<{
-        name: string;
-        active: number;
-        idle: number;
-        total: number;
-    }>;
+    pool_status: Record<string, unknown>;
+    timestamp?: number;
     messageCode?: string;
     message?: string;
 }> {
     try {
-        const response = await apiClient.get('/api/connection-pool/status');
-        const normalized = normalizeResponse<{ pools: Array<{ name: string; active: number; idle: number; total: number }> }>(response);
+        const response = await apiClient.get('/api/duckdb/pool/status');
+        const normalized = normalizeResponse<{
+            pool_status?: Record<string, unknown>;
+            timestamp?: number;
+        }>(response);
 
         return {
-            pools: normalized.data.pools ?? [],
+            pool_status: normalized.data.pool_status ?? {},
+            timestamp: normalized.data.timestamp,
             messageCode: normalized.messageCode,
             message: normalized.message,
         };
@@ -231,7 +231,7 @@ export async function getConnectionPoolStatus(): Promise<{
  */
 export async function resetConnectionPool(): Promise<NormalizedResponse<Record<string, unknown>>> {
     try {
-        const response = await apiClient.post('/api/connection-pool/reset');
+        const response = await apiClient.post('/api/duckdb/pool/reset');
         return normalizeResponse(response);
     } catch (error) {
         throw handleApiError(error as never, '重置连接池失败');
@@ -246,20 +246,16 @@ export async function resetConnectionPool(): Promise<NormalizedResponse<Record<s
  * Returns normalized response with error stats
  */
 export async function getErrorStatistics(): Promise<{
-    errors: Array<{
-        type: string;
-        count: number;
-        last_occurred: string;
-    }>;
+    error_statistics: Record<string, unknown>;
     messageCode?: string;
     message?: string;
 }> {
     try {
         const response = await apiClient.get('/api/errors/statistics');
-        const normalized = normalizeResponse<{ errors: Array<{ type: string; count: number; last_occurred: string }> }>(response);
+        const normalized = normalizeResponse<{ error_statistics?: Record<string, unknown> }>(response);
 
         return {
-            errors: normalized.data.errors ?? [],
+            error_statistics: normalized.data.error_statistics ?? {},
             messageCode: normalized.messageCode,
             message: normalized.message,
         };
@@ -275,7 +271,7 @@ export async function getErrorStatistics(): Promise<{
  */
 export async function clearOldErrors(days = 30): Promise<NormalizedResponse<{ cleared_count?: number }>> {
     try {
-        const response = await apiClient.delete(`/api/errors/clear?days=${days}`);
+        const response = await apiClient.post(`/api/errors/clear?days=${days}`);
         return normalizeResponse(response);
     } catch (error) {
         throw handleApiError(error as never, '清理错误记录失败');

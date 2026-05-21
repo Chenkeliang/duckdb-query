@@ -136,7 +136,7 @@ describe('JoinQueryPanel Federated Query Integration', () => {
 
           // 验证格式化后的引用只包含表名
           const formatted = formatTableReference(ref, 'duckdb');
-          expect(formatted).toBe(`"${table.name}"`);
+          expect(formatted).toBe(table.name);
         }),
         { numRuns: 50 }
       );

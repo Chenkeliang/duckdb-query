@@ -1,5 +1,18 @@
 # 查询执行流程与引号逻辑
 
+## 部署与 API 入口
+
+| 模式 | 前端 | 后端 | 说明 |
+|------|------|------|------|
+| Docker（推荐） | http://localhost:3000 | API 经 nginx `/api/` → `:8000` | 见项目 `README.md` |
+| 本地开发 | http://localhost:5173（Vite） | http://localhost:8000 | Vite 代理 `/api` |
+
+契约全表：[`docs/API_CONTRACT_FE_BE.md`](../API_CONTRACT_FE_BE.md)。
+
+**已废弃（勿作用户路径）**：`POST /api/execute_sql`、`GET/DELETE /api/duckdb_tables*`。同步查询仅使用 § 统一架构 中的两个端点。
+
+---
+
 ## 概述
 
 DuckQuery 使用统一的查询执行模式：
@@ -15,35 +28,42 @@ DuckQuery 使用统一的查询执行模式：
 
 | 场景 | API | SQL 格式 |
 |------|-----|---------|
-| DuckDB 本地表 | `/api/duckdb/execute` | `SELECT * FROM "table"` |
-| 外部表（MySQL/PostgreSQL/SQLite） | `/api/duckdb/federated-query` | `SELECT * FROM "mysql_prod"."orders"` |
-| 跨库 JOIN | `/api/duckdb/federated-query` | `SELECT * FROM "mysql_prod"."orders" JOIN "local_table"` |
+| DuckDB 本地表 | `/api/duckdb/execute` | `SELECT * FROM table` |
+| 外部表（MySQL/PostgreSQL/SQLite） | `/api/duckdb/federated-query` | `SELECT * FROM mysql_prod.orders` |
+| 跨库 JOIN | `/api/duckdb/federated-query` | `SELECT * FROM mysql_prod.orders JOIN local_table` |
 
 ### 优点
 
 1. **前端逻辑简化**：只需判断是否涉及外部表
-2. **引号统一**：全部使用 DuckDB 双引号语法
+2. **标识符按需引号**：简单名无引号，必要时才用 DuckDB 双引号定界
 3. **SQL 语法一致**：用户写的 SQL 始终是 DuckDB 语法
 4. **便于扩展**：联邦查询（跨库 JOIN）自然支持
 5. **减少 bug**：不会再出现 API 选择错误的问题
 
 ---
 
-## 引号规范（统一使用双引号）
+## 引号规范（按需双引号）
+
+**重要**：引号**不是**联邦查询的识别手段。是否走 `/api/duckdb/federated-query` 由 `attach_databases`、SQL 解析出的 `alias.table` 前缀、选中外部表等决定，与 SQL 中带不带引号无关。
 
 ```typescript
 // frontend/src/utils/sqlUtils.ts
+export function needsQuoting(identifier: string): boolean { /* … */ }
 export function quoteIdent(identifier: string, _dialect: SqlDialect): string {
-  // 统一使用双引号，因为 DuckDB 是最终执行环境
+  if (!needsQuoting(identifier)) return identifier;
   const escaped = identifier.replace(/"/g, '""');
   return `"${escaped}"`;
 }
 ```
 
+**规则摘要**：
+- 简单标识符（`[a-zA-Z_][a-zA-Z0-9_]*`、非保留字）：生成 SQL 时**不加引号**，如 `mysql_prod.orders`
+- 含空格、含 `"`、以数字开头、含 `-` 等非字母数字下划线、SQL 保留字、需保留大小写时：**加双引号**
+- 点号仅用于分段拼接（`alias.schema.table`），不对整段 `a.b` 一次性 quote
+
 **原因**：
-- 所有查询最终都在 DuckDB 中执行
-- DuckDB 使用标准 SQL 双引号语法
-- 统一引号避免混淆和兼容性问题
+- 所有查询最终在 DuckDB 执行；`mysql_alias.orders` 与 `"mysql_alias"."orders"` 在常见简单名下均可执行
+- 可读 SQL 更接近传统客户端，降低书写心理负担
 
 ---
 
@@ -63,9 +83,9 @@ export function generateExternalTableReference(table: SelectedTable): {
 
 | 表类型 | 输入 | 输出 |
 |--------|------|------|
-| MySQL 表 | `{ name: 'orders', connection: { name: 'prod_db', type: 'mysql' } }` | `"mysql_prod_db"."orders"` |
-| PostgreSQL 表（带 schema） | `{ name: 'users', schema: 'public', connection: { name: 'pg_db', type: 'postgresql' } }` | `"postgresql_pg_db"."public"."users"` |
-| DuckDB 本地表 | `{ name: 'local_table', source: 'duckdb' }` | `"local_table"` |
+| MySQL 表 | `{ name: 'orders', connection: { name: 'prod_db', type: 'mysql' } }` | `mysql_prod_db.orders` |
+| PostgreSQL 表（带 schema） | `{ name: 'users', schema: 'public', connection: { name: 'pg_db', type: 'postgresql' } }` | `postgresql_pg_db.public.users` |
+| DuckDB 本地表 | `{ name: 'local_table', source: 'duckdb' }` | `local_table` |
 
 ---
 
@@ -76,7 +96,7 @@ export function generateExternalTableReference(table: SelectedTable): {
 ```
 用户选择 DuckDB 表
     ↓
-前端生成 SQL: SELECT * FROM "table_name" LIMIT 10000
+前端生成 SQL: SELECT * FROM table_name LIMIT 10000
     ↓
 调用 executeDuckDBSQL(sql)
     ↓
@@ -92,7 +112,7 @@ POST /api/duckdb/execute { sql, is_preview: true }
 ```
 用户选择外部表（如 MySQL 的 bschool_order）
     ↓
-前端生成 SQL: SELECT * FROM "mysql_sorder"."store_order"."bschool_order" LIMIT 10000
+前端生成 SQL: SELECT * FROM mysql_sorder.store_order.bschool_order LIMIT 10000
 前端生成 attachDatabase: { alias: 'mysql_sorder', connectionId: 'xxx' }
     ↓
 调用 executeFederatedQuery({ sql, attachDatabases })
@@ -220,7 +240,31 @@ export function generateDatabaseAlias(connection: DatabaseConnection): string {
 
 ---
 
+## 异步查询
+
+外部库异步任务与同步一致：优先 `attach_databases`；仅传 `datasource` 时后端自动推导 ATTACH（见 [`API_PHASE_C_CALL_MAP.md`](../API_PHASE_C_CALL_MAP.md)）。入口：`POST /api/async-tasks`（`asyncTaskApi.submitAsyncQuery`）。
+
+## 可视化查询（外部表）
+
+- 表源：`getSourceFromSelectedTable` → `type: 'federated'` + `attachDatabases`（与 SQL 面板一致）。
+- SQL：`QueryTabs.buildSQLFromConfig` 对外部表使用 `generateExternalTableReference().qualifiedName`。
+- 限制：可视化 **JOIN** 仍禁用；过滤/聚合/排序可用。执行经 `handleQueryExecute` → `executeFederatedQuery`。
+
+## 集合运算
+
+- DuckDB 表：`generateSetOperation` 生成 SQL；**预览** 走 `previewSetOperation`（LIMIT = 后端 `max_query_rows`）→ `displayQueryPreview` 写入结果面板；**执行** 在 SQL 后追加 `maxQueryRows` LIMIT。
+- 外部表：仍提示先导入 DuckDB（后端 `set-operations` 仅查 DuckDB 目录）。
+
+## 文件上传
+
+- 小文件（≤ 8MB）：`POST /api/upload`（`uploadFileAuto` → `uploadFileEnhanced`）。
+- 大文件（&gt; 8MB）：`POST /api/upload/init` → `chunk` × N → `complete`（`uploadFileChunked`）；失败时 `DELETE /api/upload/cancel/{id}`。
+- 上限：前端按 `useAppConfig().maxFileSize` 拦截，与后端 `max_file_size` 一致。
+
+---
+
 ## 版本历史
 
+- **v2.1** (2026-05-21): 文档对齐契约表；明确废弃 `execute_sql` / `duckdb_tables`；异步 ATTACH 单轨
 - **v2.0** (2024-12-19): 统一使用 ATTACH 模式，移除单独的外部数据库查询 API
 - **v1.0** (2024-12-04): 初始版本，区分外部查询和联邦查询

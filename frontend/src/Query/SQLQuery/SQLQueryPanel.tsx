@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils';
 import type { TableSource } from '@/hooks/useQueryWorkspace';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { normalizeSelectedTable } from '@/utils/tableUtils';
-import { generateExternalTableReference } from '@/utils/sqlUtils';
+import { generateDatabaseAlias, generateExternalTableReference } from '@/utils/sqlUtils';
 
 export interface SQLQueryPanelProps {
   /** 初始 SQL */
@@ -204,17 +204,6 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     enhancedTableNames,
   ]);
 
-  // 获取选中 DuckDB 表的列信息（用于自动补全）
-  const currentDuckDBTable = useMemo(() => {
-    if (!tableSourceInfo.isExternal && selectedTables.length > 0) {
-      const normalized = normalizeSelectedTable(selectedTables[0]);
-      if (normalized.source !== 'external') {
-        return normalized.name;
-      }
-    }
-    return null;
-  }, [tableSourceInfo.isExternal, selectedTables]);
-
   // 获取当前选中表的列信息 - 使用统一的 useTableColumns Hook
   // 支持 DuckDB 表和外部表
   const tableForColumns = useMemo(() => {
@@ -225,19 +214,38 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   const { columns: tableColumns } = useTableColumns(tableForColumns);
 
   // 构建列信息映射（表名 -> 列名列表）
+  // CodeMirror 用 schema 的 key 匹配表引用：外部/联邦下常为 alias.schema.table，仅填短表名会导致列无法提示
   const autocompleteColumns = useMemo(() => {
     const columnMap: Record<string, string[]> = {};
 
-    if (tableColumns && tableColumns.length > 0) {
-      const tableName = currentDuckDBTable || (tableForColumns ?
-        (typeof tableForColumns === 'string' ? tableForColumns : tableForColumns.name) : null);
-      if (tableName) {
-        columnMap[tableName] = tableColumns.map((col) => col.name).filter(Boolean);
+    if (!tableColumns?.length || selectedTables.length === 0) {
+      return columnMap;
+    }
+
+    const names = tableColumns.map((col) => col.name).filter(Boolean);
+    if (names.length === 0) {
+      return columnMap;
+    }
+
+    const norm = normalizeSelectedTable(selectedTables[0]);
+    const register = (key: string | null | undefined) => {
+      if (key) {
+        columnMap[key] = names;
       }
+    };
+
+    register(norm.name);
+
+    if (norm.source === 'external' && norm.connection) {
+      const alias = generateDatabaseAlias(norm.connection);
+      if (norm.schema) {
+        register(`${alias}.${norm.schema}.${norm.name}`);
+      }
+      register(`${alias}.${norm.name}`);
     }
 
     return columnMap;
-  }, [tableColumns, currentDuckDBTable, tableForColumns]);
+  }, [tableColumns, selectedTables]);
 
   // 计算当前选中表的唯一标识（用于检测表变化）
   const currentTableKey = useMemo(() => {
@@ -478,7 +486,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
           value={sql}
           onChange={setSQL}
           onExecute={handleExecute}
-          placeholder={t('query.sql.placeholder', '输入 SQL 查询语句...')}
+          placeholder={t('query.sql.placeholder')}
           minHeight={editorMinHeight}
           maxHeight={editorMaxHeight}
           tables={autocompleteTables}

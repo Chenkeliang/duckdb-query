@@ -117,6 +117,13 @@ cd api && pip install -r requirements.txt && uvicorn main:app --reload
 cd frontend && npm install && npm run dev
 ```
 
+| Service | Default URL | API from browser |
+|---------|-------------|------------------|
+| Frontend (Vite) | http://localhost:5173 | `/api/*` proxied to backend |
+| Backend | http://localhost:8000 | Direct (e.g. `/docs`) |
+
+**Query APIs (user path)**: DuckDB local → `POST /api/duckdb/execute`; external / federated → `POST /api/duckdb/federated-query` with ATTACH. Do **not** use legacy `POST /api/execute_sql`. Full endpoint list: [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md). Execution flow: [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md).
+
 ---
 
 ## Configuration

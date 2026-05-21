@@ -66,7 +66,7 @@ import { cn } from '@/lib/utils';
 import { executeDuckDBSQL } from '@/api';
 
 // 类型导入
-import type { TableInfo } from '@/api/types';
+import type { TableInfo } from '@/api';
 
 // Props 类型定义
 interface MyComponentProps {
@@ -257,7 +257,7 @@ import { invalidateAfterTableCreate } from '@/utils/cacheInvalidation';
 import { executeDuckDBSQL } from '@/api';
 
 // 7. 类型
-import type { TableInfo } from '@/api/types';
+import type { TableInfo } from '@/api';
 ```
 
 ## 🚫 严格禁止的做法

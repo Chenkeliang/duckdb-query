@@ -26,7 +26,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { executeDuckDBSQL } from '@/api';
+import { executeDuckDBSQL, getExternalDatabaseTableDetails } from '@/api';
 import type { SelectedTableObject } from '@/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
 import { invalidateDataSources } from '@/hooks/useDataSources';
@@ -41,7 +41,7 @@ import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
  * Features:
  * - 预览数据（SELECT * LIMIT 100）
  * - 查看结构（显示列信息对话框）- 仅 DuckDB 表
- * - 删除表（确认对话框 + deleteDuckDBTableEnhanced）- 仅 DuckDB 表
+ * - 删除表（确认对话框 + deleteDuckDBTable）- 仅 DuckDB 表
  * - 导入到 DuckDB - 仅外部表
  * - 外部表只显示 Preview 和 Import 选项
  */
@@ -92,20 +92,14 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
 
     try {
       if (isExternal && table.connection?.id) {
-        const params = new URLSearchParams();
-        if (table.schema) params.set('schema', table.schema);
-        const resp = await fetch(
-          `/api/database_table_details/${table.connection.id}/${encodeURIComponent(table.name)}${params.toString() ? `?${params.toString()}` : ''}`
+        const tableData = await getExternalDatabaseTableDetails(
+          table.connection.id,
+          table.name,
+          table.schema ?? null
         );
-        if (!resp.ok) {
-          throw new Error(await resp.text());
-        }
-        const result = await resp.json();
-        // API response structure: { success, data: { columns, indexes, ... }, ... }
-        const tableData = result?.data || result;
-        setStructureData(tableData?.columns || []);
-        setIndexData(tableData?.indexes || []); // Set index data
-        setTableComment(tableData?.table_comment || null); // Set table comment
+        setStructureData((tableData?.columns as unknown[]) || []);
+        setIndexData((tableData?.indexes as unknown[]) || []);
+        setTableComment(tableData?.table_comment ?? null);
       } else {
         // DuckDB: 查询表结构 - 使用双引号包裹表名以支持特殊字符
         // 注意：DESCRIBE 语句不需要 LIMIT，所以 is_preview 设为 false
@@ -164,8 +158,8 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         await onDelete(table.name);
       } else {
         // 默认行为：调用删除 API（使用增强版本）
-        const { deleteDuckDBTableEnhanced } = await import('@/api');
-        await deleteDuckDBTableEnhanced(table.name);
+        const { deleteDuckDBTable } = await import('@/api');
+        await deleteDuckDBTable(table.name);
         showSuccessToast(t, 'TABLE_DELETED', t('dataSource.tableDeleted', { tableName: table.name }));
 
         // 刷新缓存

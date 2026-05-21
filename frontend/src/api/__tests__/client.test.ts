@@ -115,7 +115,6 @@ describe('isStandardError', () => {
         message: '参数验证失败',
         details: { field: 'name' },
       },
-      detail: '参数验证失败',
       messageCode: 'VALIDATION_ERROR',
       message: '参数验证失败',
       timestamp: '2024-01-01T00:00:00Z',
@@ -227,14 +226,6 @@ describe('extractMessage', () => {
     expect(extractMessage('error message')).toBe('error message');
   });
 
-  it('should extract message from detail string', () => {
-    expect(extractMessage({ detail: 'error detail' })).toBe('error detail');
-  });
-
-  it('should extract message from detail.message', () => {
-    expect(extractMessage({ detail: { message: 'nested message' } })).toBe('nested message');
-  });
-
   it('should extract message from error.message', () => {
     expect(extractMessage({ error: { message: 'error message' } })).toBe('error message');
   });
@@ -258,10 +249,6 @@ describe('extractMessageCode', () => {
     expect(extractMessageCode({ error: { code: 'VALIDATION_ERROR' } })).toBe('VALIDATION_ERROR');
   });
 
-  it('should extract code from detail object', () => {
-    expect(extractMessageCode({ detail: { code: 'ERROR_CODE' } })).toBe('ERROR_CODE');
-  });
-
   it('should return undefined for missing code', () => {
     expect(extractMessageCode({})).toBeUndefined();
     expect(extractMessageCode(null)).toBeUndefined();
@@ -278,7 +265,6 @@ describe('parseBlobError', () => {
         code: 'FILE_NOT_FOUND',
         message: '文件不存在',
       },
-      detail: '文件不存在',
       messageCode: 'FILE_NOT_FOUND',
       message: '文件不存在',
       timestamp: '2024-01-01T00:00:00Z',

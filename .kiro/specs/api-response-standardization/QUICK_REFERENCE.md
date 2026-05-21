@@ -26,7 +26,7 @@ async def get_my_resource():
 ### 前端 - 调用 API
 
 ```typescript
-import { normalizeResponse } from '@/api/client';
+import { normalizeResponse } from '@/api';
 
 async function fetchData() {
   const response = await axios.get('/api/my-resource');

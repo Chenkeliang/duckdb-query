@@ -381,7 +381,10 @@ class FileDatasourceManager:
 
 
 def create_typed_table_from_dataframe(
-    duckdb_con: duckdb.DuckDBPyConnection, table_name: str, df: pd.DataFrame
+    duckdb_con: duckdb.DuckDBPyConnection,
+    table_name: str,
+    df: pd.DataFrame,
+    import_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     使用 DuckDB 原生能力将 DataFrame 落库且保留column类型。
@@ -404,6 +407,13 @@ def create_typed_table_from_dataframe(
         except Exception:  # pylint: disable=broad-exception-caught
             pass
 
+    from core.data.import_mode import normalize_import_mode, should_promote_column_types
+    from core.data.ingestion_precision import promote_table_column_types_from_varchar
+
+    normalize_import_mode(import_mode)
+    if should_promote_column_types(import_mode):
+        promote_table_column_types_from_varchar(duckdb_con, table_name)
+
     metadata = build_table_metadata_snapshot(duckdb_con, table_name)
     logger.info(
         "Successfully created typed table: %s (rows: %s, columns: %s)",
@@ -420,6 +430,7 @@ def create_table_from_file_path_typed(
     file_path: str,
     file_type: str,
     reader_options: Optional[Dict[str, Any]] = None,
+    import_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     从filepathcreating带类型的 DuckDB 持久化table。
@@ -431,17 +442,36 @@ def create_table_from_file_path_typed(
 
     try:
         if normalized_type in {"xlsx", "xls", "excel"}:
+            from core.data.import_mode import (
+                normalize_import_mode,
+                should_promote_column_types,
+                use_all_varchar_on_load,
+            )
+            from core.data.ingestion_precision import (
+                dataframe_to_literal_fidelity,
+                promote_table_column_types_from_varchar,
+            )
+
+            normalize_import_mode(import_mode)
             try:
                 duckdb_con.execute("INSTALL excel")
                 duckdb_con.execute("LOAD excel")
-                select_sql = "SELECT * FROM read_xlsx(?)"
+                if use_all_varchar_on_load(import_mode) and normalized_type != "xls":
+                    select_sql = "SELECT * FROM read_xlsx(?, all_varchar = true)"
+                else:
+                    select_sql = "SELECT * FROM read_xlsx(?)"
                 _create_table_atomically(
                     duckdb_con, table_name, select_sql, [file_path]
                 )
+                if should_promote_column_types(import_mode):
+                    promote_table_column_types_from_varchar(duckdb_con, table_name)
             except Exception as excel_exc:  # pylint: disable=broad-exception-caught
                 logger.warning("DuckDB Excel extension failed, falling back to pandas: %s", excel_exc)
-                df = pd.read_excel(file_path)
-                return create_typed_table_from_dataframe(duckdb_con, table_name, df)
+                df = pd.read_excel(file_path, dtype=object)
+                df = dataframe_to_literal_fidelity(df)
+                return create_typed_table_from_dataframe(
+                    duckdb_con, table_name, df, import_mode=import_mode
+                )
         else:
             load_file_to_duckdb(
                 duckdb_con,
@@ -449,6 +479,7 @@ def create_table_from_file_path_typed(
                 file_path,
                 normalized_type,
                 reader_options=reader_options,
+                import_mode=import_mode,
             )
     except Exception as exc:
         logger.error("Failed to create table from file %s: %s", table_name, exc)
@@ -470,6 +501,7 @@ def create_table_from_dataframe(
     file_path_or_df,
     file_type: Optional[str] = None,
     reader_options: Optional[Dict[str, Any]] = None,
+    import_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     统一入口：支持直接传入filepath或 DataFrame。
@@ -482,10 +514,11 @@ def create_table_from_dataframe(
             file_path_or_df,
             file_type or "",
             reader_options=reader_options,
+            import_mode=import_mode,
         )
     else:
         metadata = create_typed_table_from_dataframe(
-            duckdb_con, table_name, file_path_or_df
+            duckdb_con, table_name, file_path_or_df, import_mode=import_mode
         )
 
     return metadata
