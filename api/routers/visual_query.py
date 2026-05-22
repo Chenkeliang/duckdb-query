@@ -9,12 +9,16 @@ from core.database.duckdb_engine import execute_query, with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import execute_sql_with_attach
 from core.services.visual_query_generator import (
-    estimate_query_performance,
     generate_visual_query_sql,
     validate_query_config,
 )
 from fastapi import APIRouter, Header
-from models.visual_query_models import PreviewRequest, ResolvedTypeCast, VisualQueryRequest
+from models.visual_query_models import (
+    PreviewRequest,
+    ResolvedTypeCast,
+    VisualQueryMode,
+    VisualQueryRequest,
+)
 from utils.response_helpers import (
     MessageCode,
     create_success_response,
@@ -47,12 +51,33 @@ def _build_preview_count_sql(sql: str) -> str:
     return f"SELECT COUNT(*) AS total_rows FROM ({cleaned}) AS preview_count"
 
 
+def _reject_non_pivot_request(request: VisualQueryRequest | PreviewRequest):
+    """HTTP API 仅支持透视 Tab。"""
+    if request.mode != VisualQueryMode.PIVOT:
+        return error_json_response(
+            400,
+            MessageCode.VISUAL_QUERY_INVALID,
+            "Only pivot mode is supported; the visual query builder was removed",
+            details={"mode": request.mode, "supported_mode": VisualQueryMode.PIVOT.value},
+        )
+    if request.pivot_config is None:
+        return error_json_response(
+            400,
+            MessageCode.VISUAL_QUERY_INVALID,
+            "pivot_config is required when mode is pivot",
+        )
+    return None
+
+
 # ==================== Visual Query API Endpoints ====================
 
 
 @router.post("/api/visual-query/generate", tags=["Visual Query"])
 async def generate_visual_query(request: VisualQueryRequest):
-    """Generate visual query SQL"""
+    """Generate pivot query SQL (mode=pivot only)."""
+    rejected = _reject_non_pivot_request(request)
+    if rejected is not None:
+        return rejected
     try:
         validation_result = validate_query_config(request.config)
 
@@ -80,30 +105,8 @@ async def generate_visual_query(request: VisualQueryRequest):
         combined_warnings = list(validation_result.warnings or [])
         combined_warnings.extend(generation.warnings)
 
-        metadata: Optional[Dict[str, Any]] = None
-
-        if request.include_metadata:
-            try:
-                with with_duckdb_connection() as con:
-                    estimate = estimate_query_performance(request.config, con)
-                metadata = {
-                    "estimated_rows": estimate.estimated_rows,
-                    "estimated_time": estimate.estimated_time,
-                    "complexity_score": validation_result.complexity_score,
-                }
-            except Exception as perf_exc:
-                logger.warning("Failed to estimate query performance: %s", perf_exc)
-                combined_warnings.append("Unable to estimate query performance")
-                metadata = {
-                    "estimated_rows": None,
-                    "estimated_time": None,
-                    "complexity_score": validation_result.complexity_score,
-                }
-
-            if metadata is not None:
-                metadata.update(generation.metadata or {})
-        elif generation.metadata:
-            metadata = generation.metadata
+        metadata: Optional[Dict[str, Any]] = dict(generation.metadata or {})
+        metadata["complexity_score"] = validation_result.complexity_score
 
         return create_success_response(
             data={
@@ -133,7 +136,10 @@ async def preview_visual_query(
     request: PreviewRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
-    """Preview visual query results"""
+    """Preview pivot query results (mode=pivot only)."""
+    rejected = _reject_non_pivot_request(request)
+    if rejected is not None:
+        return rejected
     query_id = f"sync:{x_request_id}" if x_request_id else None
 
     try:
@@ -183,7 +189,7 @@ async def preview_visual_query(
                     query_id=None,
                 )
                 if not count_df.empty:
-                    total_rows = int(count_df.iloc[0][0])
+                    total_rows = int(count_df.iloc[0, 0])
             except Exception as count_exc:
                 logger.warning("Failed to calculate preview total rows: %s", count_exc)
         elif query_id:
@@ -194,7 +200,7 @@ async def preview_visual_query(
                     count_sql = _build_preview_count_sql(generation.final_sql)
                     count_df = conn.execute(count_sql).fetchdf()
                     if not count_df.empty:
-                        total_rows = int(count_df.iloc[0][0])
+                        total_rows = int(count_df.iloc[0, 0])
                 except Exception as count_exc:
                     logger.warning("Failed to calculate preview total rows: %s", count_exc)
         else:
@@ -205,20 +211,12 @@ async def preview_visual_query(
                     count_sql = _build_preview_count_sql(generation.final_sql)
                     count_df = execute_query(count_sql, con)
                     if not count_df.empty:
-                        total_rows = int(count_df.iloc[0][0])
+                        total_rows = int(count_df.iloc[0, 0])
                 except Exception as count_exc:
                     logger.warning("Failed to calculate preview total rows: %s", count_exc)
 
         data = preview_df.to_dict("records")
         columns = [str(col) for col in preview_df.columns.tolist()]
-
-        estimated_time = None
-        try:
-            with with_duckdb_connection() as con:
-                estimate = estimate_query_performance(request.config, con)
-                estimated_time = estimate.estimated_time
-        except Exception as perf_exc:
-            logger.debug("Failed to estimate preview performance: %s", perf_exc)
 
         combined_warnings = list(validation_result.warnings or [])
         combined_warnings.extend(generation.warnings)
@@ -230,7 +228,6 @@ async def preview_visual_query(
                 "columns": columns,
                 "row_count": total_rows,
                 "returned_rows": returned_rows,
-                "estimated_time": estimated_time,
                 "sql": preview_sql,
                 "base_sql": generation.base_sql,
                 "pivot_sql": generation.pivot_sql,

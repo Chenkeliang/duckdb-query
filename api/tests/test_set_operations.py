@@ -26,7 +26,6 @@ from models.visual_query_models import (
     SetOperationType,
     SetOperationConfig,
     SetOperationRequest,
-    SetOperationResponse,
     TableConfig,
     ColumnMapping,
     UnionOperationRequest,

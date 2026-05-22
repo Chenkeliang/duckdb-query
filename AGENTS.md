@@ -584,6 +584,19 @@ python -m pytest tests -q
 - 不做全局安装，避免触碰非项目文件
 - 清理/删除前先 grep 查引用，确认无用再删
 
+### 12.1 透视表 Tab（**禁止误删**）
+
+查询工作台「透视表」为**在产功能**（`QueryTabs` → `PivotPanel`），清理时**不得**删除或整文件移除：
+
+| 层级 | 路径 |
+|------|------|
+| 前端 UI | `frontend/src/Query/PivotTable/`（`PivotPanel`、`PivotTableDesigner`、`buildPivotQueryPayload`） |
+| 前端 API | `frontend/src/api/visualQueryApi.ts` 的 `generatePivotVisualQuery` / `previewPivotVisualQuery` |
+| 后端路由 | `api/routers/visual_query.py`（`/api/visual-query/generate`、`/preview`） |
+| SQL 生成 | `api/core/services/visual_query_generator.py`（pivot 分支）、`visual_query_sql_common.py` |
+
+已移除 **Visual 构建器**（`frontend/src/Query/VisualQuery/`、HTTP `mode=regular`、`/api/visual-query/validate` 等）及后端 `regular_query_generator`、构建器专用 Pydantic 字段。透视路径见 `PivotTable/*` 与 `POST /api/visual-query/*`。
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 

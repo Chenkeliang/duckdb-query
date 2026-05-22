@@ -11,12 +11,9 @@ from unittest.mock import Mock, patch
 from main import app
 from models.visual_query_models import (
     VisualQueryConfig,
-    AggregationConfig,
     FilterConfig,
-    SortConfig,
     AggregationFunction,
     FilterOperator,
-    SortDirection,
     VisualQueryMode,
 )
 from core.services.visual_query_generator import GeneratedVisualQuery
@@ -37,38 +34,46 @@ def api_errors(body: dict) -> list:
     return (details or {}).get("errors") or [body.get("message") or err.get("message", "")]
 
 
+# HTTP `/api/visual-query/*` 仅接受 pivot（与前端 PivotPanel 一致）
+PIVOT_REQUEST_FIELDS = {
+    "mode": "pivot",
+    "pivot_config": {
+        "rows": ["col1"],
+        "columns": [],
+        "values": [{"column": "col2", "aggregation": "COUNT"}],
+    },
+}
+
+
+def _with_pivot_request(body: dict) -> dict:
+    return {**PIVOT_REQUEST_FIELDS, **body}
+
+
 class TestVisualQueryGeneration:
     """Test visual query generation endpoint"""
     
     def test_generate_simple_query(self):
         """Test generating a simple visual query"""
 
-        config_data = {
+        config_data = _with_pivot_request({
             "config": {
                 "table_name": "test_table",
-                "selected_columns": ["col1", "col2"],
-                "aggregations": [],
                 "filters": [],
-                "order_by": [],
-                "is_distinct": False,
-            },
+                },
             "preview": False,
-            "include_metadata": True,
-        }
+            })
 
         generation_result = GeneratedVisualQuery(
-            mode=VisualQueryMode.REGULAR,
+            mode=VisualQueryMode.PIVOT,
             base_sql='SELECT "col1", "col2" FROM "test_table"',
             final_sql='SELECT "col1", "col2" FROM "test_table"',
             pivot_sql=None,
             warnings=[],
-            metadata={"mode": VisualQueryMode.REGULAR.value},
+            metadata={"mode": VisualQueryMode.PIVOT.value},
         )
 
         with patch('routers.visual_query.validate_query_config') as mock_validate, \
-             patch('routers.visual_query.generate_visual_query_sql') as mock_generate, \
-             patch('routers.visual_query.with_duckdb_connection') as mock_pool, \
-             patch('routers.visual_query.estimate_query_performance') as mock_estimate:
+             patch('routers.visual_query.generate_visual_query_sql') as mock_generate:
 
             mock_validate.return_value = Mock(
                 is_valid=True,
@@ -78,34 +83,35 @@ class TestVisualQueryGeneration:
             )
 
             mock_generate.return_value = generation_result
-            bind_mock_duckdb_pool(mock_pool, Mock())
-
-            mock_estimate.return_value = Mock(
-                estimated_rows=100,
-                estimated_time=0.5,
-            )
 
             response = client.post("/api/visual-query/generate", json=config_data)
 
             assert response.status_code == 200
             inner = api_data(response.json())
             assert inner["sql"] == 'SELECT "col1", "col2" FROM "test_table"'
-            assert inner["metadata"]["estimated_rows"] == 100
+            assert inner["metadata"]["complexity_score"] == 1
+
+    def test_reject_regular_mode(self):
+        """mode=regular 已由 Pydantic 枚举拒绝（构建器已移除）。"""
+        body = _with_pivot_request({
+            "config": {
+                "table_name": "test_table",
+                "filters": [],
+                },
+        })
+        body["mode"] = "regular"
+        response = client.post("/api/visual-query/generate", json=body)
+        assert response.status_code == 422
     
     def test_generate_query_with_validation_errors(self):
         """Test query generation with validation errors - Pydantic rejects invalid config"""
         config_data = {
             "config": {
                 "table_name": "",  # Invalid empty table name - FastAPI/Pydantic returns 422
-                "selected_columns": [],
-                "aggregations": [],
                 "filters": [],
-                "order_by": [],
-                "is_distinct": False
-            },
+                },
             "preview": False,
-            "include_metadata": False
-        }
+            }
         
         # FastAPI/Pydantic validation rejects empty table_name with 422
         response = client.post("/api/visual-query/generate", json=config_data)
@@ -116,17 +122,9 @@ class TestVisualQueryGeneration:
     def test_generate_complex_query(self):
         """Test generating a complex query with aggregations and filters"""
 
-        config_data = {
+        config_data = _with_pivot_request({
             "config": {
                 "table_name": "sales_data",
-                "selected_columns": ["region"],
-                "aggregations": [
-                    {
-                        "column": "amount",
-                        "function": "SUM",
-                        "alias": "total_sales",
-                    }
-                ],
                 "filters": [
                     {
                         "column": "status",
@@ -135,20 +133,10 @@ class TestVisualQueryGeneration:
                         "logic_operator": "AND",
                     }
                 ],
-                "order_by": [
-                    {
-                        "column": "total_sales",
-                        "direction": "DESC",
-                        "priority": 0,
-                    }
-                ],
-                "group_by": ["region"],
                 "limit": 100,
-                "is_distinct": False,
-            },
+                },
             "preview": False,
-            "include_metadata": True,
-        }
+            })
 
         expected_sql = (
             'SELECT "region", SUM("amount") AS "total_sales" '
@@ -157,18 +145,16 @@ class TestVisualQueryGeneration:
         )
 
         generation_result = GeneratedVisualQuery(
-            mode=VisualQueryMode.REGULAR,
+            mode=VisualQueryMode.PIVOT,
             base_sql=expected_sql,
             final_sql=expected_sql,
             pivot_sql=None,
             warnings=["复杂查询可能需要较长时间"],
-            metadata={"mode": VisualQueryMode.REGULAR.value},
+            metadata={"mode": VisualQueryMode.PIVOT.value},
         )
 
         with patch('routers.visual_query.validate_query_config') as mock_validate, \
-             patch('routers.visual_query.generate_visual_query_sql') as mock_generate, \
-             patch('routers.visual_query.with_duckdb_connection') as mock_pool, \
-             patch('routers.visual_query.estimate_query_performance') as mock_estimate:
+             patch('routers.visual_query.generate_visual_query_sql') as mock_generate:
 
             mock_validate.return_value = Mock(
                 is_valid=True,
@@ -178,12 +164,6 @@ class TestVisualQueryGeneration:
             )
 
             mock_generate.return_value = generation_result
-            bind_mock_duckdb_pool(mock_pool, Mock())
-
-            mock_estimate.return_value = Mock(
-                estimated_rows=50,
-                estimated_time=1.2,
-            )
 
             response = client.post("/api/visual-query/generate", json=config_data)
 
@@ -191,7 +171,7 @@ class TestVisualQueryGeneration:
             inner = api_data(response.json())
             assert inner["sql"] == expected_sql
             assert len(inner["warnings"]) > 0
-            assert inner["metadata"]["estimated_rows"] == 50
+            assert inner["metadata"]["complexity_score"] == 8
 
 
 class TestVisualQueryPreview:
@@ -199,32 +179,27 @@ class TestVisualQueryPreview:
     
     def test_preview_query_success(self):
         """Test successful query preview"""
-        config_data = {
+        config_data = _with_pivot_request({
             "config": {
                 "table_name": "test_table",
-                "selected_columns": ["name", "age"],
-                "aggregations": [],
                 "filters": [],
-                "order_by": [],
-                "is_distinct": False
-            },
+                },
             "limit": 10
-        }
+        })
         
         preview_sql = 'SELECT "name", "age" FROM "test_table"'
         generation_result = GeneratedVisualQuery(
-            mode=VisualQueryMode.REGULAR,
+            mode=VisualQueryMode.PIVOT,
             base_sql=preview_sql,
             final_sql=preview_sql,
             pivot_sql=None,
             warnings=[],
-            metadata={"mode": VisualQueryMode.REGULAR.value},
+            metadata={"mode": VisualQueryMode.PIVOT.value},
         )
 
         with patch('routers.visual_query.validate_query_config') as mock_validate, \
              patch('routers.visual_query.generate_visual_query_sql') as mock_generate, \
-             patch('routers.visual_query.with_duckdb_connection') as mock_pool, \
-             patch('routers.visual_query.estimate_query_performance') as mock_estimate:
+             patch('routers.visual_query.with_duckdb_connection') as mock_pool:
 
             mock_validate.return_value = Mock(
                 is_valid=True,
@@ -249,8 +224,6 @@ class TestVisualQueryPreview:
                 pd.DataFrame({'total_rows': [1000]}),
             ]
 
-            mock_estimate.return_value = Mock(estimated_time=0.2)
-
             response = client.post("/api/visual-query/preview", json=config_data)
 
             assert response.status_code == 200
@@ -260,31 +233,19 @@ class TestVisualQueryPreview:
             assert len(inner["data"]) == 3
             assert inner["row_count"] == 1000
             assert inner["returned_rows"] == 3
-            assert inner["estimated_time"] == 0.2
     
     def test_preview_query_validation_error(self):
         """Test preview with validation errors - Pydantic rejects invalid config"""
-        config_data = {
+        config_data = _with_pivot_request({
             "config": {
-                "table_name": "test_table",
-                "selected_columns": [],
-                "aggregations": [
-                    {
-                        "column": "",  # Invalid empty column - Pydantic validation error
-                        "function": "SUM"
-                    }
-                ],
+                "table_name": "",
                 "filters": [],
-                "order_by": [],
-                "is_distinct": False
-            },
-            "limit": 10
-        }
-        
-        # FastAPI/Pydantic validation rejects empty aggregation column with 422
+                },
+            "limit": 10,
+        })
+
         response = client.post("/api/visual-query/preview", json=config_data)
-        
-        # Pydantic validation now returns 422 for invalid configuration
+
         assert response.status_code == 422
 
 
@@ -445,15 +406,10 @@ class TestErrorHandling:
         """Test handling of invalid field types"""
         config_data = {
             "config": {
-                "table_name": 123,  # Should be string
-                "selected_columns": "not_a_list",  # Should be list
-                "aggregations": [],
+                "table_name": 123,
                 "filters": [],
-                "order_by": [],
-                "is_distinct": "not_a_boolean"  # Should be boolean
             },
             "preview": False,
-            "include_metadata": True
         }
         
         response = client.post("/api/visual-query/generate", json=config_data)

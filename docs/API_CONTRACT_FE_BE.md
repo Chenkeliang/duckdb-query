@@ -147,7 +147,7 @@
 
 ## 7. 透视查询与收藏（`visualQueryApi.ts`）
 
-> **2026-05**：工作台已移除「可视化查询」Tab；`POST /api/visual-query/*` 仅保留 **透视模式**（`mode: pivot`）与 SQL 收藏。常规可视化构建器端点（`distinct-values` / `validate` / `column-stats`）已删除。
+> **2026-05**：工作台已移除「可视化查询」Tab；`POST /api/visual-query/*` 仅 **透视**（`mode: pivot` + 必填 `pivot_config`）。`VisualQueryConfig` 仅 `table_name`、`filters`、`limit`。预览响应不再含 `estimated_time`；请求无 `include_metadata`。`mode: regular` 返回 422。构建器与 `regular_query_generator`、中文 label 字典、未用聚合枚举已删除。
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|

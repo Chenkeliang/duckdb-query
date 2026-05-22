@@ -1,5 +1,5 @@
+/** 与后端 `VisualQueryMode` 对齐；前端仅使用 PIVOT（透视 Tab） */
 export enum VisualQueryMode {
-    VISUAL = "visual",
     PIVOT = "pivot",
 }
 
@@ -10,11 +10,6 @@ export enum AggregationFunction {
     MIN = "min",
     MAX = "max",
     COUNT_DISTINCT = "count_distinct",
-}
-
-export enum SortDirection {
-    ASC = "asc",
-    DESC = "desc",
 }
 
 export interface PivotValueConfig {
@@ -40,19 +35,11 @@ export interface FilterConfig {
     value: any;
 }
 
-export interface SortConfig {
-    column: string;
-    direction: SortDirection;
-}
-
+/** 透视 API 请求体中的 config（与 buildPivotQueryPayload 一致） */
 export interface VisualQueryConfig {
     table_name: string;
     filters?: FilterConfig[];
-    order_by?: SortConfig[];
     limit?: number;
-    // For standard visual query mode (non-pivot)
-    selected_columns?: string[];
-    aggregations?: any[];
 }
 
 export interface GeneratedVisualQuery {
@@ -73,7 +60,6 @@ export interface VisualQueryPreviewPayload {
     row_count: number;
     /** 本响应实际返回的行数（LIMIT 之后）；旧后端缺省时由前端用 data.length 兜底 */
     returned_rows?: number;
-    estimated_time?: number | null;
     sql?: string | null;
     base_sql?: string | null;
     pivot_sql?: string | null;
@@ -81,6 +67,3 @@ export interface VisualQueryPreviewPayload {
     errors: string[];
     warnings: string[];
 }
-
-/** @deprecated 使用 VisualQueryPreviewPayload；保留别名供旧引用 */
-export type PreviewResponse = VisualQueryPreviewPayload;

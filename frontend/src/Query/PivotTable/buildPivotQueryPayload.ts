@@ -77,9 +77,7 @@ export function buildPivotQueryPayload(params: {
 
     const config: VisualQueryConfig = {
         table_name: tableName,
-        selected_columns: [],
         filters: [],
-        order_by: [],
         limit: maxQueryRows,
     };
 

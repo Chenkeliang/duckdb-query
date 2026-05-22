@@ -13,7 +13,6 @@ import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import pandas as pd
 from core.common.config_manager import config_manager
 from core.common.timezone_utils import get_current_time, get_current_time_iso
 from core.data.file_datasource_manager import (
@@ -21,7 +20,6 @@ from core.data.file_datasource_manager import (
     create_table_from_dataframe,
     file_datasource_manager,
 )
-from core.database.duckdb_engine import create_varchar_table_from_dataframe
 from core.services.task_manager import TaskStatus, task_manager
 from fastapi import APIRouter, BackgroundTasks, Body
 from fastapi.responses import FileResponse, JSONResponse
@@ -101,66 +99,6 @@ def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) 
                 details={"field": "attach_databases.alias", "alias": alias},
             )
         aliases.add(alias)
-
-
-def _ensure_database_connection(datasource_id: str, datasource_type: str):
-    from core.common.connection_alias import normalize_connection_id
-    from core.database.database_manager import db_manager
-
-    datasource_id = normalize_connection_id(datasource_id)
-    connection = db_manager.get_connection(datasource_id)
-    if connection:
-        return connection
-
-    try:
-        db_manager.list_connections()
-    except Exception as load_error:
-        logger.debug(f"Failed to load database connection configuration: {load_error}")
-
-    connection = db_manager.get_connection(datasource_id)
-    if connection:
-        return connection
-
-    # 如果此时还未找到，说明连接不存在
-    raise ValueError(f"Data source connection not found: {datasource_id}")
-
-    return db_manager.get_connection(datasource_id)
-
-
-def _fetch_external_query_result(datasource: Dict[str, Any], sql: str) -> pd.DataFrame:
-    """
-    [已废弃] 直连外部库拉取 DataFrame。阶段 C 起异步任务统一 ATTACH，请勿新增调用。
-    """
-    logger.warning(
-        "DEPRECATED: _fetch_external_query_result is no longer used by async tasks; "
-        "use ATTACH + federated SQL instead. datasource_id=%s",
-        datasource.get("id") if isinstance(datasource, dict) else None,
-    )
-    if not isinstance(datasource, dict):
-        raise ValueError("Invalid data source configuration")
-
-    datasource_type = (datasource.get("type") or "").lower()
-    if datasource_type not in SUPPORTED_EXTERNAL_TYPES:
-        raise ValueError(f"Unsupported data source type: {datasource_type}")
-
-    from core.common.connection_alias import normalize_connection_id
-
-    raw_id = datasource.get("id")
-    if not raw_id:
-        raise ValueError("Missing external data source ID")
-
-    datasource_id = normalize_connection_id(str(raw_id))
-    connection = _ensure_database_connection(datasource_id, datasource_type)
-    if not connection:
-        raise ValueError(f"Failed to establish data source connection: {datasource_id}")
-
-    from core.database.database_manager import db_manager
-
-    result_df = db_manager.execute_query(datasource_id, sql)
-    if result_df is None or result_df.empty:
-        raise ValueError("Query result is empty, cannot create async task")
-
-    return result_df
 
 
 def _attach_external_databases(

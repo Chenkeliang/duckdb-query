@@ -38,33 +38,8 @@ from core.database.federated_attach import (
     resolve_attach_configs,
 )
 from core.database.duckdb_pool import interruptible_connection
-from core.services.visual_query_generator import (
-    _build_where_clause,
-    _quote_identifier,
-    estimate_query_performance,
-    estimate_set_operation_rows,
-    generate_set_operation_sql,
-    generate_visual_query_sql,
-    get_column_statistics,
-    validate_query_config,
-)
 from fastapi import APIRouter, Body, Header
 from models.query_models import QueryRequest
-from models.visual_query_models import (
-    ColumnProfilePayload,
-    ColumnTypeReference,
-    PreviewRequest,
-    ResolvedTypeCast,
-    SetOperationConfig,
-    SetOperationExportRequest,
-    SetOperationRequest,
-    SetOperationType,
-    TypeConflictModel,
-    UnionOperationRequest,
-    VisualQueryConfig,
-    VisualQueryRequest,
-    VisualQueryValidationRequest,
-)
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import create_engine
 from core.common.exceptions import (

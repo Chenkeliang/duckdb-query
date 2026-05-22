@@ -32,8 +32,6 @@ interface CommandPaletteProps {
   onOpenChange: (open: boolean) => void
   onNavigate?: (path: string) => void
   onAction?: (action: string, params?: unknown) => void
-  /** @deprecated 使用 TanStack Query 自动获取表列表 */
-  tables?: Array<{ name: string; rowCount?: number }>
 }
 
 export function CommandPalette({
@@ -41,7 +39,6 @@ export function CommandPalette({
   onOpenChange,
   onNavigate,
   onAction,
-  tables: propTables,
 }: CommandPaletteProps) {
   const { t } = useTranslation("common")
   
@@ -62,13 +59,7 @@ export function CommandPalette({
       .replace(/\+/g, '')
   }, [getShortcutForAction])
   
-  // 优先使用 props 传入的表列表，否则使用 TanStack Query 获取的
-  const tables = React.useMemo(() => {
-    if (propTables && propTables.length > 0) {
-      return propTables.map(t => ({ name: t.name, row_count: t.rowCount }))
-    }
-    return queryTables
-  }, [propTables, queryTables])
+  const tables = queryTables
 
   const runCommand = React.useCallback(
     (command: () => void) => {

@@ -176,5 +176,9 @@ logs/
 
 # Cursor IDE files
 .cursorrules
+.cursor/
+.claude/
+hooks/
+CLAUDE.md
 # runtime file data sources cache
 data/file_datasources.json

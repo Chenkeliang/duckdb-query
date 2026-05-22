@@ -142,7 +142,6 @@ export {
     fetchDuckDBTableSummaries,
     getDuckDBTableDetail,
     deleteDuckDBTable,
-    deleteDuckDBTableEnhanced,
     refreshDuckDBTableMetadata,
     getExternalTableDetail,
 } from './tableApi';

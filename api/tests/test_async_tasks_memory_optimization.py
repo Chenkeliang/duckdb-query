@@ -35,6 +35,11 @@ from core.common.timezone_utils import get_storage_time
 client = TestClient(app)
 
 
+def api_data(body: dict) -> dict:
+    assert body["success"] is True, body
+    return body["data"]
+
+
 def setup_mock_duckdb_connection(mock_get_pool: MagicMock) -> Mock:
     """创建一个模拟的DuckDB连接池并返回连接对象"""
     mock_con = Mock()
@@ -214,14 +219,14 @@ class TestAsyncQueryMemoryOptimization:
         # 测试任务不存在的情况
         mock_task_manager.get_task.return_value = None
 
-        with pytest.raises(Exception, match="生成下载文件失败: 任务 .* 不存在"):
+        with pytest.raises(Exception, match="Failed to generate download file.*does not exist"):
             generate_download_file(task_id, "csv")
 
         # 测试任务未完成的情况
         mock_task = make_async_task(task_id, status=TaskStatus.RUNNING)
         mock_task_manager.get_task.return_value = mock_task
 
-        with pytest.raises(Exception, match="生成下载文件失败: 任务 .* 未完成"):
+        with pytest.raises(Exception, match="Failed to generate download file.*not completed"):
             generate_download_file(task_id, "csv")
 
         # 测试缺少结果信息的情况
@@ -229,7 +234,7 @@ class TestAsyncQueryMemoryOptimization:
         mock_task.result_info = None
         mock_task_manager.get_task.return_value = mock_task
 
-        with pytest.raises(Exception, match="生成下载文件失败: 任务 .* 缺少结果信息"):
+        with pytest.raises(Exception, match="Failed to generate download file.*missing result"):
             generate_download_file(task_id, "csv")
 
         # 测试缺少表名的情况
@@ -237,7 +242,7 @@ class TestAsyncQueryMemoryOptimization:
         mock_task.result_info = {"table_name": None}
         mock_task_manager.get_task.return_value = mock_task
 
-        with pytest.raises(Exception, match="生成下载文件失败: 任务 .* 缺少表名信息"):
+        with pytest.raises(Exception, match="Failed to generate download file.*missing table name"):
             generate_download_file(task_id, "csv")
 
     @patch("core.database.duckdb_pool.get_connection_pool")
@@ -293,9 +298,7 @@ class TestAsyncQueryMemoryOptimization:
             response = client.post("/api/async-tasks", json=query_data)
 
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["task_id"] == "test_task_123"
+            assert api_data(response.json())["task_id"] == "test_task_123"
 
         # 测试获取任务列表
         with patch("routers.async_tasks.task_manager") as mock_task_manager:
@@ -305,9 +308,9 @@ class TestAsyncQueryMemoryOptimization:
             response = client.get("/api/async-tasks")
 
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["count"] == 0
+            listed = api_data(response.json())
+            assert listed["total"] == 0
+            assert listed["items"] == []
 
         # 测试获取任务详情
         with patch("routers.async_tasks.task_manager") as mock_task_manager:
@@ -322,9 +325,7 @@ class TestAsyncQueryMemoryOptimization:
             response = client.get("/api/async-tasks/test_task_123")
 
             assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["task"]["task_id"] == "test_task_123"
+            assert api_data(response.json())["task"]["task_id"] == "test_task_123"
 
     def test_download_file_generation_api(self):
         """测试按需文件生成API端点"""
@@ -491,7 +492,10 @@ class TestErrorHandling:
         )
 
         # 执行文件生成
-        with pytest.raises(Exception, match="生成下载文件失败: 表 .* 不存在或已删除"):
+        with pytest.raises(
+            Exception,
+            match="Failed to generate download file.*does not exist or has been deleted",
+        ):
             generate_download_file(task_id, "csv")
 
 

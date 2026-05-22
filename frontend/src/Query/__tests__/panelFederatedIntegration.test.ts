@@ -173,10 +173,9 @@ describe('Panel Federated Query Integration', () => {
   });
 
   /**
-   * PivotTablePanel Integration
-   * External table warning (no federated support)
+   * PivotPanel：外部表走联邦 ATTACH + visual-query（非旧 PivotTablePanel）
    */
-  describe('PivotTablePanel - External Table Warning', () => {
+  describe('PivotPanel - external table source', () => {
     it('should identify external tables for warning display', () => {
       const selectedTable: SelectedTable = {
         name: 'users',
@@ -188,7 +187,6 @@ describe('Panel Federated Query Integration', () => {
         },
       };
       
-      // PivotTablePanel checks if source is external to show warning
       const isExternal = selectedTable.source === 'external';
       
       expect(isExternal).toBe(true);

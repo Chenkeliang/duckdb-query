@@ -21,15 +21,10 @@ def test_validation_error_422_standard_envelope():
         json={
             "config": {
                 "table_name": "",
-                "selected_columns": [],
-                "aggregations": [],
                 "filters": [],
-                "order_by": [],
-                "is_distinct": False,
-            },
+                },
             "preview": False,
-            "include_metadata": False,
-        },
+            },
     )
     assert response.status_code == 422
     body = response.json()
@@ -188,14 +183,9 @@ def test_visual_query_generate_invalid_config_standard_error():
             json={
                 "config": {
                     "table_name": "t",
-                    "selected_columns": ["a"],
-                    "aggregations": [],
                     "filters": [],
-                    "order_by": [],
-                    "is_distinct": False,
+                    },
                 },
-                "include_metadata": False,
-            },
         )
     assert response.status_code == 400
     body = response.json()
@@ -219,8 +209,8 @@ def test_set_operations_generate_failure_standard_error():
                 "config": {
                     "operation_type": "UNION",
                     "tables": [
-                        {"table_name": "users", "selected_columns": ["id"]},
-                        {"table_name": "customers", "selected_columns": ["id"]},
+                        {"table_name": "users", },
+                        {"table_name": "customers", },
                     ],
                     "use_by_name": False,
                 },

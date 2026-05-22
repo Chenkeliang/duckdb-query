@@ -63,19 +63,6 @@ class TestEndToEndWorkflows:
         config_data = {
             "config": {
                 "table_name": "test_employees",
-                "selected_columns": ["department", "city"],
-                "aggregations": [
-                    {
-                        "column": "salary",
-                        "function": "AVG",
-                        "alias": "avg_salary"
-                    },
-                    {
-                        "column": "id",
-                        "function": "COUNT",
-                        "alias": "employee_count"
-                    }
-                ],
                 "filters": [
                     {
                         "column": "status",
@@ -90,23 +77,10 @@ class TestEndToEndWorkflows:
                         "logic_operator": "AND"
                     }
                 ],
-                "order_by": [
-                    {
-                        "column": "avg_salary",
-                        "direction": "DESC",
-                        "priority": 0
-                    }
-                ],
-                "group_by": ["department", "city"],
                 "limit": 50,
-                "is_distinct": False
-            },
+                },
             "preview": False,
-            "include_metadata": True
-        }
-        
-        with patch('routers.visual_query.estimate_query_performance') as mock_estimate:
-            mock_estimate.return_value = Mock(estimated_rows=100, estimated_time=0.5)
+            }
             response = client.post("/api/visual-query/generate", json=config_data)
         assert response.status_code == 200
         
@@ -138,15 +112,11 @@ class TestEndToEndWorkflows:
         }).reset_index().head(10)
         preview_result.columns = ['department', 'city', 'avg_salary', 'employee_count']
 
-        with patch('routers.visual_query.execute_query') as mock_execute, \
-             patch('routers.visual_query.estimate_query_performance') as mock_preview_estimate:
-
+        with patch('routers.visual_query.execute_query') as mock_execute:
             mock_execute.side_effect = [
                 preview_result,
                 pd.DataFrame({'total_rows': [25]}),
             ]
-
-            mock_preview_estimate.return_value = Mock(estimated_time=0.2)
 
             response = client.post("/api/visual-query/preview", json=preview_data)
         assert response.status_code == 200
@@ -237,8 +207,6 @@ class TestBackwardCompatibility:
         config_data = {
             "config": {
                 "table_name": "test_table",
-                "selected_columns": ["name", "age"],
-                "aggregations": [],
                 "filters": [
                     {
                         "column": "age",
@@ -247,19 +215,10 @@ class TestBackwardCompatibility:
                         "logic_operator": "AND"
                     }
                 ],
-                "order_by": [
-                    {
-                        "column": "age",
-                        "direction": "DESC",
-                        "priority": 0
-                    }
-                ],
                 "limit": 20,
-                "is_distinct": False
-            },
+                },
             "preview": False,
-            "include_metadata": False
-        }
+            }
         
         response = client.post("/api/visual-query/generate", json=config_data)
         assert response.status_code == 200
@@ -366,29 +325,11 @@ class TestPerformanceAndScaling:
         config_data = {
             "config": {
                 "table_name": "large_table",
-                "selected_columns": ["category"],
-                "aggregations": [
-                    {
-                        "column": "value",
-                        "function": "SUM",
-                        "alias": "total_value"
-                    }
-                ],
                 "filters": [],
-                "order_by": [
-                    {
-                        "column": "total_value",
-                        "direction": "DESC",
-                        "priority": 0
-                    }
-                ],
-                "group_by": ["category"],
                 "limit": 100,
-                "is_distinct": False
-            },
+                },
             "preview": False,
-            "include_metadata": True
-        }
+            }
         
         # Mock performance estimation
         mock_duckdb_connection.execute.return_value.fetchdf.return_value = pd.DataFrame({

@@ -98,9 +98,6 @@ export async function deleteDuckDBTable(tableName: string): Promise<NormalizedRe
     }
 }
 
-/** @deprecated Use deleteDuckDBTable */
-export const deleteDuckDBTableEnhanced = deleteDuckDBTable;
-
 /**
  * Refresh DuckDB table metadata cache
  */
