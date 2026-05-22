@@ -9,9 +9,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from fastapi import HTTPException
-
-
 async def get_external_table_detail(
     connection_id: str,
     table_name: str,
@@ -24,8 +21,6 @@ async def get_external_table_detail(
     from routers.database_tables import get_table_details
 
     result = await get_table_details(connection_id, table_name, schema)
-    if isinstance(result, HTTPException):
-        raise result
     # get_table_details 可能返回 JSONResponse 或 dict
     if hasattr(result, "body"):
         return result

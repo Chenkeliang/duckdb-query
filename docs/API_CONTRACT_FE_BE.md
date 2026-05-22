@@ -30,6 +30,8 @@
 |------|--------------|----------|
 | 422 | `VALIDATION_ERROR` | Pydantic 请求体（`details.errors[]`） |
 | 400 | `VALIDATION_ERROR` | 空 SQL、粘贴/分块校验、路径不在挂载白名单、表名冲突、无效快捷键 `action_id` |
+| 400 | `INVALID_TABLE_NAME` / `INVALID_ALIAS` / `INVALID_LIMIT` / `INVALID_OFFSET` / `MISSING_*` | `core.common.validators` 参数校验（`details.field`） |
+| 403 | `PROTECTED_SCHEMA` / `RESERVED_NAME` / `PATH_NOT_ALLOWED` / `SYMLINK_NOT_ALLOWED` | 表名/路径安全校验 |
 | 400 | `URL_INVALID` | `GET /api/url_info` / `POST /api/read_from_url` 无法访问或格式无效 URL |
 | 400 | `VISUAL_QUERY_INVALID` | 可视化 generate / preview 业务配置校验失败 |
 | 400 | `CONNECTION_TEST_FAILED` | `POST .../databases/test`、保存后测试失败、`refresh` 测试失败 |
