@@ -116,6 +116,39 @@ def test_async_task_duplicate_attach_alias_standard_error():
     assert "detail" not in body
 
 
+def test_sql_favorite_get_not_found_standard_error():
+    """GET /api/sql-favorites/{id} 不存在须 FAVORITE_NOT_FOUND。"""
+    response = client.get("/api/sql-favorites/nonexistent-favorite-id-xyz")
+    assert response.status_code == 404
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "FAVORITE_NOT_FOUND"
+    assert "detail" not in body
+
+
+def test_sql_favorite_get_success_standard_envelope():
+    """GET /api/sql-favorites/{id} 成功须返回 favorite 包装。"""
+    favorite = {
+        "id": "fav-test-1",
+        "name": "Test Query",
+        "sql": "SELECT 1",
+        "type": "duckdb",
+        "description": "",
+        "tags": [],
+        "usage_count": 0,
+    }
+    with patch(
+        "routers.sql_favorites.metadata_manager.get_sql_favorite",
+        return_value=favorite,
+    ):
+        response = client.get("/api/sql-favorites/fav-test-1")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["favorite"]["id"] == "fav-test-1"
+    assert body["messageCode"] == "FAVORITE_RETRIEVED"
+
+
 def test_sql_favorite_not_found_standard_error():
     """DELETE 不存在的收藏须 FAVORITE_NOT_FOUND 标准信封。"""
     response = client.delete("/api/sql-favorites/nonexistent-favorite-id-xyz")
@@ -123,6 +156,16 @@ def test_sql_favorite_not_found_standard_error():
     body = response.json()
     assert body["success"] is False
     assert body["error"]["code"] == "FAVORITE_NOT_FOUND"
+    assert "detail" not in body
+
+
+def test_query_cancel_not_found_standard_error():
+    """POST /api/query/cancel/{id} 无活跃查询须 404 QUERY_NOT_FOUND。"""
+    response = client.post("/api/query/cancel/nonexistent-request-id-xyz")
+    assert response.status_code == 404
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "QUERY_NOT_FOUND"
     assert "detail" not in body
 
 

@@ -5,10 +5,13 @@
 
 import logging
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
 
 from core.database.connection_registry import connection_registry
-from utils.response_helpers import create_success_response, create_error_response, MessageCode
+from utils.response_helpers import (
+    MessageCode,
+    create_success_response,
+    error_json_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +47,9 @@ async def cancel_sync_query(request_id: str):
         )
 
     logger.warning("Query %s not found or already completed", request_id)
-    # 返回 404 错误
-    return JSONResponse(
-        status_code=404,
-        content=create_error_response(
-            code="QUERY_NOT_FOUND",
-            message="Query does not exist or has already completed",
-            details={"request_id": request_id}
-        )
+    return error_json_response(
+        404,
+        MessageCode.QUERY_NOT_FOUND,
+        "Query does not exist or has already completed",
+        details={"request_id": request_id},
     )

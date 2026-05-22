@@ -85,6 +85,30 @@ async def get_sql_favorites():
         )
 
 
+@router.get("/api/sql-favorites/{favorite_id}", tags=["SQL Favorites"])
+async def get_sql_favorite(favorite_id: str):
+    """获取单个 SQL 收藏"""
+    try:
+        favorite = metadata_manager.get_sql_favorite(favorite_id)
+        if not favorite:
+            _raise_favorite_not_found(favorite_id)
+
+        return create_success_response(
+            data={"favorite": favorite},
+            message_code=MessageCode.FAVORITE_RETRIEVED,
+        )
+    except BaseAPIException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get SQL favorite %s: %s", favorite_id, e, exc_info=True)
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get SQL favorite: {str(e)}",
+            details={"favorite_id": favorite_id},
+        )
+
+
 @router.post("/api/sql-favorites", tags=["SQL Favorites"])
 async def create_sql_favorite(request: CreateSQLFavoriteRequest = Body(...)):
     """创建新的SQL收藏"""

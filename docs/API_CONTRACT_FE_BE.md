@@ -36,6 +36,8 @@
 | 400 | `SECURITY_ERROR` | 服务器浏览路径为符号链接 |
 | 403 | `AUTHORIZATION_ERROR` | 服务器目录无读权限 |
 | 404 | `RESOURCE_NOT_FOUND` | 数据源 id、分块上传会话、DuckDB 表、联邦 `attach_databases[].connection_id` |
+| 404 | `FAVORITE_NOT_FOUND` | SQL 收藏 id 不存在 |
+| 404 | `QUERY_NOT_FOUND` | 同步查询取消时无对应 `X-Request-ID` 会话 |
 | 413 | `FILE_TOO_LARGE` | 分块 `init` 超过 `max_file_size` |
 | 499 | `QUERY_CANCELLED` | 同步 DuckDB / 联邦查询取消（`X-Request-ID`） |
 | 500 | `QUERY_FAILED` | DuckDB `execute` / 联邦 SQL 执行失败 |
@@ -52,7 +54,7 @@
 |------|------|--------|-------------|----------|
 | POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；499 `QUERY_CANCELLED`；500 `QUERY_FAILED`（§1.1） |
 | POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；404 `connection_id`；503 ATTACH；499 / 500 同 execute |
-| POST | `/api/query/cancel/{request_id}` | 对象 | `request_id` | `cancelSyncQuery` |
+| POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；404 `QUERY_NOT_FOUND`（无活跃同步查询） |
 | POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求） | `saveQueryToDuckDB` |
 | GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at` | `getDuckDBTables` |
 | GET | `/api/duckdb/tables/{name}` | 对象 | 表详情 / `table` 包装 | `getDuckDBTableDetail` |
@@ -133,7 +135,7 @@
 | POST | `/api/visual-query/distinct-values` | 对象 | Top-N 去重；400 校验；499 取消；500 `QUERY_FAILED` |
 | POST | `/api/visual-query/validate` | 对象 | 配置校验（`is_valid` 在 `data`）；400 解析失败；500 服务异常 |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
-| GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（**仓库内暂无对应 GET 路由**，调用会 404） |
+| GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（`data.favorite`）；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites` | 对象 | `createSqlFavorite`；400 `FAVORITE_NAME_EXISTS` |
 | PUT | `/api/sql-favorites/{id}` | 对象 | `updateSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | DELETE | `/api/sql-favorites/{id}` | 对象 | `deleteSqlFavorite`；404 `FAVORITE_NOT_FOUND` |

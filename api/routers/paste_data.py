@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from core.common.exceptions import BaseAPIException, ValidationError as APIValidationError
@@ -228,8 +228,6 @@ async def save_paste_data(request: PasteDataRequest):
         )
 
     except BaseAPIException:
-        raise
-    except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to save pasted data: {str(e)}")

@@ -3,7 +3,7 @@ import logging
 import os
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, field_validator
 
 from core.common.exceptions import (

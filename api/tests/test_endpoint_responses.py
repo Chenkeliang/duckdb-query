@@ -138,24 +138,12 @@ class TestSqlFavoritesEndpoints:
         assert_list_response(data, "FAVORITES_RETRIEVED")
 
     def test_get_favorite_not_found(self):
-        """Test GET /api/sql-favorites/{id} returns error for non-existent favorite.
-        
-        Note: There is no GET endpoint for single favorite, so this test verifies
-        that the API returns an appropriate error (404 or 405).
-        """
+        """Test GET /api/sql-favorites/{id} returns standard error for missing favorite."""
         response = client.get("/api/sql-favorites/nonexistent-id")
-        # Since there's no GET endpoint for single favorite, expect 404 or 405
-        assert response.status_code in [404, 405, 400, 500]
-        
-        # If it's a 405 (Method Not Allowed), that's expected behavior
-        # If it returns a JSON response with success field, verify error format
-        try:
-            data = response.json()
-            if "success" in data:
-                assert_error_response(data)
-        except Exception:
-            # Non-JSON response is acceptable for 404/405
-            pass
+        assert response.status_code == 404
+        data = response.json()
+        assert_error_response(data)
+        assert data["error"]["code"] == "FAVORITE_NOT_FOUND"
 
 
 class TestDataSourceEndpoints:
