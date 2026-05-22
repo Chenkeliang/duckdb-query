@@ -557,13 +557,14 @@ class TestVisualQueryValidation:
             "is_distinct": False
         }
         
-        # This test validates that invalid configs are rejected
-        # Due to Pydantic validation in VisualQueryConfig, the endpoint returns 
-        # is_valid=False with validation errors
+        # Pydantic 在解析 config 阶段失败，返回 400 标准错误信封
         response = client.post("/api/visual-query/validate", json=config_data)
-        
-        assert response.status_code == 200
-        assert len(api_errors(response.json())) > 0
+
+        assert response.status_code == 400
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "VALIDATION_ERROR"
+        assert len(api_errors(body)) > 0
     
     def test_validate_config_exception(self):
         """Test validation with exception handling"""
@@ -581,10 +582,12 @@ class TestVisualQueryValidation:
             mock_validate.side_effect = Exception("Validation service unavailable")
             
             response = client.post("/api/visual-query/validate", json=config_data)
-            
-            assert response.status_code == 200
-            errors = api_errors(response.json())
-            assert "Failed to validate configuration" in errors[0]
+
+            assert response.status_code == 500
+            body = response.json()
+            assert body["success"] is False
+            assert body["error"]["code"] == "OPERATION_FAILED"
+            assert "Failed to validate configuration" in body["error"]["message"]
 
 
 class TestErrorHandling:

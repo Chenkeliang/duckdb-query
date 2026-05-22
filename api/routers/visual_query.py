@@ -20,7 +20,12 @@ from core.services.visual_query_generator import (
     get_column_statistics,
     validate_query_config,
 )
-from fastapi import APIRouter, Body, Header, HTTPException
+from core.common.exceptions import (
+    BaseAPIException,
+    ResourceNotFoundError,
+    ValidationError as APIValidationError,
+)
+from fastapi import APIRouter, Body, Header
 from models.visual_query_models import (
     ColumnProfilePayload,
     ColumnTypeReference,
@@ -34,8 +39,8 @@ from models.visual_query_models import (
 from pydantic import BaseModel, Field, ValidationError
 from utils.response_helpers import (
     MessageCode,
-    create_error_response,
     create_success_response,
+    error_json_response,
 )
 from routers.query_sql_utils import ensure_query_has_limit, remove_auto_added_limit
 
@@ -269,9 +274,10 @@ async def generate_visual_query(request: VisualQueryRequest):
         validation_result = validate_query_config(request.config)
 
         if not validation_result.is_valid:
-            return create_error_response(
-                code=MessageCode.VISUAL_QUERY_INVALID.value,
-                message="Visual query configuration is invalid",
+            return error_json_response(
+                400,
+                MessageCode.VISUAL_QUERY_INVALID,
+                "Visual query configuration is invalid",
                 details={
                     "errors": validation_result.errors,
                     "warnings": validation_result.warnings,
@@ -331,9 +337,10 @@ async def generate_visual_query(request: VisualQueryRequest):
 
     except Exception as exc:
         logger.error("Failed to generate visual query: %s", exc, exc_info=True)
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to generate query: {str(exc)}",
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to generate query: {str(exc)}",
             details={"mode": request.mode},
         )
 
@@ -350,9 +357,10 @@ async def preview_visual_query(
         validation_result = validate_query_config(request.config)
 
         if not validation_result.is_valid:
-            return create_error_response(
-                code=MessageCode.VISUAL_QUERY_INVALID.value,
-                message="Visual query configuration is invalid",
+            return error_json_response(
+                400,
+                MessageCode.VISUAL_QUERY_INVALID,
+                "Visual query configuration is invalid",
                 details={
                     "errors": validation_result.errors,
                     "warnings": validation_result.warnings,
@@ -438,12 +446,18 @@ async def preview_visual_query(
 
     except duckdb.InterruptException:
         logger.info(f"Visual query preview {query_id} was cancelled by user")
-        raise HTTPException(status_code=499, detail="Query cancelled by client")
+        return error_json_response(
+            499,
+            MessageCode.QUERY_CANCELLED,
+            "Query cancelled by client",
+            details={"query_id": query_id},
+        )
     except Exception as exc:
         logger.error("Failed to preview visual query: %s", exc, exc_info=True)
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to preview query: {str(exc)}",
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to preview query: {str(exc)}",
             details={"mode": request.mode},
         )
 
@@ -466,9 +480,10 @@ async def get_distinct_values(
     try:
         validation_result = validate_query_config(req.config)
         if not validation_result.is_valid:
-            return create_error_response(
-                code=MessageCode.VALIDATION_ERROR.value,
-                message="Query configuration validation failed",
+            return error_json_response(
+                400,
+                MessageCode.VALIDATION_ERROR,
+                "Query configuration validation failed",
                 details={
                     "errors": validation_result.errors,
                     "warnings": validation_result.warnings,
@@ -495,7 +510,7 @@ async def get_distinct_values(
         if order_by == "metric" and req.metric:
             agg = (req.metric.agg or "").upper()
             if agg not in ["SUM", "COUNT", "AVG", "MIN", "MAX"]:
-                raise HTTPException(status_code=400, detail="Unsupported aggregation function")
+                raise APIValidationError("Unsupported aggregation function")
             metric_col = _quote_identifier(req.metric.column)
             sql = (
                 f"{base_cte} SELECT {target_col} AS v, COUNT(*) AS c, {agg}({metric_col}) AS m "
@@ -553,14 +568,20 @@ async def get_distinct_values(
         )
     except duckdb.InterruptException:
         logger.info(f"Distinct values query {query_id} was cancelled by user")
-        raise HTTPException(status_code=499, detail="Query cancelled by client")
-    except HTTPException:
+        return error_json_response(
+            499,
+            MessageCode.QUERY_CANCELLED,
+            "Query cancelled by client",
+            details={"query_id": query_id},
+        )
+    except BaseAPIException:
         raise
     except Exception as exc:
         logger.error("Failed to get column distinct values: %s", exc, exc_info=True)
-        return create_error_response(
-            code=MessageCode.QUERY_FAILED.value,
-            message=str(exc),
+        return error_json_response(
+            500,
+            MessageCode.QUERY_FAILED,
+            str(exc),
             details={"errors": [str(exc)]},
         )
 
@@ -579,7 +600,7 @@ async def get_visual_query_column_stats(table_name: str, column_name: str):
         )
 
         if table_name not in available_names:
-            raise HTTPException(status_code=404, detail=f"Table {table_name} does not exist")
+            raise ResourceNotFoundError("Table", table_name)
 
         stats = get_column_statistics(table_name, column_name, con)
         stats_dict = (
@@ -591,11 +612,15 @@ async def get_visual_query_column_stats(table_name: str, column_name: str):
             message_code=MessageCode.QUERY_SUCCESS,
         )
 
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as exc:
         logger.error("Failed to get column statistics: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get column statistics: {str(exc)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get column statistics: {str(exc)}",
+        )
 
 
 @router.post("/api/visual-query/validate", tags=["Visual Query"])
@@ -612,16 +637,18 @@ async def validate_visual_query_config_endpoint(payload: Dict[str, Any] = Body(.
             )
     except ValidationError as exc:
         logger.error("Failed to parse validation request: %s", exc)
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message="Invalid request format",
+        return error_json_response(
+            400,
+            MessageCode.VALIDATION_ERROR,
+            "Invalid request format",
             details={"errors": ["Invalid request format"]},
         )
     except Exception as exc:
         logger.error("Validation request parsing exception: %s", exc, exc_info=True)
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=f"Failed to parse configuration: {str(exc)}",
+        return error_json_response(
+            400,
+            MessageCode.VALIDATION_ERROR,
+            f"Failed to parse configuration: {str(exc)}",
             details={"errors": [f"Failed to parse configuration: {str(exc)}"]},
         )
 
@@ -662,8 +689,9 @@ async def validate_visual_query_config_endpoint(payload: Dict[str, Any] = Body(.
 
     except Exception as exc:
         logger.error("Failed to validate visual query configuration: %s", exc, exc_info=True)
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=f"Failed to validate configuration: {str(exc)}",
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to validate configuration: {str(exc)}",
             details={"errors": [f"Failed to validate configuration: {str(exc)}"]},
         )

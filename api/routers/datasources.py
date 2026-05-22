@@ -13,11 +13,9 @@ from core.common.exceptions import (
     ResourceNotFoundError,
     ValidationError as APIValidationError,
 )
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Query
 from utils.response_helpers import (
     MessageCode,
-    create_error_response,
     create_list_response,
     create_success_response,
     error_json_response,
@@ -59,11 +57,7 @@ async def test_database_connection(request: dict):
     try:
         from core.database.database_manager import db_manager
         from models.query_models import ConnectionTestRequest, DataSourceType
-        from utils.response_helpers import (
-            MessageCode,
-            create_error_response,
-            create_success_response,
-        )
+        from utils.response_helpers import MessageCode, create_success_response
 
         # 构建测试请求
         test_request_params = request.get("params", {})
@@ -104,10 +98,10 @@ async def test_database_connection(request: dict):
                 message="Connection test successful",
             )
         else:
-            # 测试失败：返回标准错误响应，外层 success=false，并携带测试详情
-            error_response = create_error_response(
-                code=MessageCode.CONNECTION_TEST_FAILED,
-                message=result.message or "Connection test failed",
+            return error_json_response(
+                400,
+                MessageCode.CONNECTION_TEST_FAILED,
+                result.message or "Connection test failed",
                 details={
                     "connection_test": {
                         "success": False,
@@ -116,21 +110,15 @@ async def test_database_connection(request: dict):
                     }
                 },
             )
-            return JSONResponse(status_code=400, content=error_response)
 
     except Exception as e:
         logger.error(f"Test database connection failed: {e}")
-
-        # 使用统一的错误响应格式
-        from utils.response_helpers import create_error_response
-
-        error_response = create_error_response(
-            code="CONNECTION_TEST_FAILED",
-            message=f"Connection test failed: {str(e)}",
+        return error_json_response(
+            500,
+            MessageCode.CONNECTION_TEST_FAILED,
+            f"Connection test failed: {str(e)}",
             details={"error": str(e)},
         )
-
-        return JSONResponse(status_code=500, content=error_response)
 
 
 @router.post("/databases/{id}/refresh", tags=["Unified Data Sources"])
@@ -204,37 +192,12 @@ async def refresh_database_connection(id: str):
         # 保存更新
         db_manager.connections[conn_id] = connection
 
-        from utils.response_helpers import (
-            MessageCode,
-            create_error_response,
-            create_success_response,
-        )
-
         if not success:
-            return JSONResponse(
-                status_code=400,
-                content=create_error_response(
-                    code=MessageCode.CONNECTION_TEST_FAILED,
-                    message=message or "Connection test failed",
-                    details={
-                        "connection": {
-                            "id": connection.id,
-                            "name": connection.name,
-                            "type": connection.type.value,
-                            "status": connection.status.value,
-                        },
-                        "test_result": {
-                            "success": test_result.success,
-                            "message": test_result.message,
-                        },
-                        "refresh_success": success,
-                    },
-                ),
-            )
-
-        return JSONResponse(
-            content=create_success_response(
-                data={
+            return error_json_response(
+                400,
+                MessageCode.CONNECTION_TEST_FAILED,
+                message or "Connection test failed",
+                details={
                     "connection": {
                         "id": connection.id,
                         "name": connection.name,
@@ -247,12 +210,27 @@ async def refresh_database_connection(id: str):
                     },
                     "refresh_success": success,
                 },
-                message_code=MessageCode.CONNECTION_REFRESHED,
-                message=message,
             )
+
+        return create_success_response(
+            data={
+                "connection": {
+                    "id": connection.id,
+                    "name": connection.name,
+                    "type": connection.type.value,
+                    "status": connection.status.value,
+                },
+                "test_result": {
+                    "success": test_result.success,
+                    "message": test_result.message,
+                },
+                "refresh_success": success,
+            },
+            message_code=MessageCode.CONNECTION_REFRESHED,
+            message=message,
         )
 
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Refresh database connection failed: {e}")
@@ -266,12 +244,7 @@ async def refresh_database_connection(id: str):
 async def _handle_save_connection(db_conn, test_connection: bool = True):
     """处理连接保存的公共逻辑（含测试和响应构造）"""
     from core.database.database_manager import db_manager
-    from fastapi.responses import JSONResponse
-    from utils.response_helpers import (
-        MessageCode,
-        create_error_response,
-        create_success_response,
-    )
+    from utils.response_helpers import MessageCode, create_success_response
 
     # 执行核心逻辑：添加/更新 + 测试 + 清理 old engine + 持久化
     success, test_result = db_manager.add_connection(
@@ -308,12 +281,11 @@ async def _handle_save_connection(db_conn, test_connection: bool = True):
                 "test_result": response_data["test_result"],
             }
 
-            return JSONResponse(
-                content=create_error_response(
-                    code=MessageCode.CONNECTION_TEST_FAILED,
-                    message=f"Configuration saved, but connection test failed: {test_result.message}",
-                    details=error_details,
-                )
+            return error_json_response(
+                400,
+                MessageCode.CONNECTION_TEST_FAILED,
+                f"Configuration saved, but connection test failed: {test_result.message}",
+                details=error_details,
             )
 
         # 正常成功（测试通过 或 跳过测试）
@@ -322,14 +294,12 @@ async def _handle_save_connection(db_conn, test_connection: bool = True):
             if test_connection
             else MessageCode.CONNECTION_UPDATED
         )
-        return JSONResponse(
-            content=create_success_response(
-                data=response_data,
-                message_code=message_code,
-                message=test_result.message
-                if (test_result and test_result.message)
-                else "Connection configuration saved",
-            )
+        return create_success_response(
+            data=response_data,
+            message_code=message_code,
+            message=test_result.message
+            if (test_result and test_result.message)
+            else "Connection configuration saved",
         )
     else:
         # 保存失败（通常是系统/IO错误）
@@ -367,8 +337,6 @@ async def create_database_connection(
         return await _handle_save_connection(db_conn, test_connection)
 
     except BaseAPIException:
-        raise
-    except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Create database connection failed: {e}")
@@ -419,7 +387,7 @@ async def update_database_connection(
 
         return await _handle_save_connection(updated_conn, test_connection)
 
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Update database connection failed: {e}")
@@ -462,8 +430,6 @@ async def list_database_datasources(
 
     except Exception as e:
         logger.error(f"List database datasources failed: {e}")
-        from utils.response_helpers import create_error_response
-
         return error_json_response(
             500,
             MessageCode.OPERATION_FAILED,
@@ -503,8 +469,6 @@ async def list_file_datasources(
 
     except Exception as e:
         logger.error(f"List file datasources failed: {e}")
-        from utils.response_helpers import create_error_response
-
         return error_json_response(
             500,
             MessageCode.OPERATION_FAILED,
@@ -555,8 +519,6 @@ async def list_datasources(
 
     except Exception as e:
         logger.error(f"List datasources failed: {e}")
-        from utils.response_helpers import create_error_response
-
         return error_json_response(
             500,
             MessageCode.OPERATION_FAILED,
@@ -574,12 +536,6 @@ async def get_datasource(id: str):
     - DuckDB 表: table_{table_name}
     """
     try:
-        from utils.response_helpers import (
-            MessageCode,
-            create_error_response,
-            create_success_response,
-        )
-
         datasource = await datasource_aggregator.get_datasource(id)
 
         if not datasource:
@@ -592,8 +548,6 @@ async def get_datasource(id: str):
         )
 
     except BaseAPIException:
-        raise
-    except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Get datasource {id} failed: {e}")
@@ -629,17 +583,13 @@ async def delete_datasource(id: str):
 
         logger.info(f"Delete datasource: {id}")
 
-        return JSONResponse(
-            content=create_success_response(
-                data={"id": id, "name": datasource.name},
-                message_code=MessageCode.DATASOURCE_DELETED,
-                message=f"Datasource deleted: {datasource.name}",
-            )
+        return create_success_response(
+            data={"id": id, "name": datasource.name},
+            message_code=MessageCode.DATASOURCE_DELETED,
+            message=f"Datasource deleted: {datasource.name}",
         )
 
     except BaseAPIException:
-        raise
-    except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Delete datasource {id} failed: {e}")

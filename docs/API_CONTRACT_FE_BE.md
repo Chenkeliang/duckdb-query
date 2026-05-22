@@ -31,6 +31,8 @@
 | 422 | `VALIDATION_ERROR` | Pydantic 请求体（`details.errors[]`） |
 | 400 | `VALIDATION_ERROR` | 空 SQL、粘贴/分块校验、路径不在挂载白名单、表名冲突、无效快捷键 `action_id` |
 | 400 | `URL_INVALID` | `GET /api/url_info` / `POST /api/read_from_url` 无法访问或格式无效 URL |
+| 400 | `VISUAL_QUERY_INVALID` | 可视化 generate / preview 业务配置校验失败 |
+| 400 | `CONNECTION_TEST_FAILED` | `POST .../databases/test`、保存后测试失败、`refresh` 测试失败 |
 | 400 | `SECURITY_ERROR` | 服务器浏览路径为符号链接 |
 | 403 | `AUTHORIZATION_ERROR` | 服务器目录无读权限 |
 | 404 | `RESOURCE_NOT_FOUND` | 数据源 id、分块上传会话、DuckDB 表、联邦 `attach_databases[].connection_id` |
@@ -78,11 +80,11 @@
 | GET | `/api/datasources/databases/list` | **列表** | `listDatabaseDataSources` |
 | GET | `/api/datasources/files/list` | **列表** | `listFileDataSources` |
 | GET | `/api/datasources/{id}` | 对象 | `getDatabaseConnection`；404 `RESOURCE_NOT_FOUND`（§1.1） |
-| POST | `/api/datasources/databases` | 对象 | `createDatabaseConnection` |
-| PUT | `/api/datasources/databases/{id}` | 对象 | `updateDatabaseConnection` |
+| POST | `/api/datasources/databases` | 对象 | `createDatabaseConnection`；400 `CONNECTION_TEST_FAILED`（保存成功但测试失败） |
+| PUT | `/api/datasources/databases/{id}` | 对象 | `updateDatabaseConnection`；404；400 `CONNECTION_TEST_FAILED` |
 | DELETE | `/api/datasources/{id}` | 对象 | `deleteDatabaseConnection`（id 可带 `db_` 前缀）；404/500（§1.1） |
-| POST | `/api/datasources/databases/test` | 对象 | `testDatabaseConnection`, `testConnection` |
-| POST | `/api/datasources/databases/{id}/refresh` | 对象 | `refreshDatabaseConnection` |
+| POST | `/api/datasources/databases/test` | 对象 | `testDatabaseConnection`, `testConnection`；400 `CONNECTION_TEST_FAILED` |
+| POST | `/api/datasources/databases/{id}/refresh` | 对象 | `refreshDatabaseConnection`；404；400 `CONNECTION_TEST_FAILED` |
 
 ## 5. 文件与导入（`fileApi.ts`）
 
@@ -125,8 +127,11 @@
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/visual-query/generate` | 对象 | `generateVisualQuery`, `generatePivotVisualQuery` |
-| POST | `/api/visual-query/preview` | 对象 | `previewVisualQuery`, `previewPivotVisualQuery` |
+| POST | `/api/visual-query/generate` | 对象 | `generateVisualQuery`, `generatePivotVisualQuery`；400 `VISUAL_QUERY_INVALID`；500 `OPERATION_FAILED` |
+| POST | `/api/visual-query/preview` | 对象 | `previewVisualQuery`, `previewPivotVisualQuery`；400 `VISUAL_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
+| GET | `/api/visual-query/column-stats/{table}/{column}` | 对象 | 列统计；404 `RESOURCE_NOT_FOUND`；500 `OPERATION_FAILED` |
+| POST | `/api/visual-query/distinct-values` | 对象 | Top-N 去重；400 校验；499 取消；500 `QUERY_FAILED` |
+| POST | `/api/visual-query/validate` | 对象 | 配置校验（`is_valid` 在 `data`）；400 解析失败；500 服务异常 |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
 | GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（**仓库内暂无对应 GET 路由**，调用会 404） |
 | POST | `/api/sql-favorites` | 对象 | `createSqlFavorite`；400 `FAVORITE_NAME_EXISTS` |

@@ -2,6 +2,7 @@
 
 import os
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -122,6 +123,68 @@ def test_sql_favorite_not_found_standard_error():
     body = response.json()
     assert body["success"] is False
     assert body["error"]["code"] == "FAVORITE_NOT_FOUND"
+    assert "detail" not in body
+
+
+def test_visual_query_generate_invalid_config_standard_error():
+    """generate 业务校验失败须 400 VISUAL_QUERY_INVALID（非 200 裸错误体）。"""
+    from core.services.visual_query_generator import ValidationResult
+
+    invalid = ValidationResult(
+        is_valid=False,
+        errors=["table_name is required"],
+        warnings=[],
+        complexity_score=0,
+    )
+    with patch(
+        "routers.visual_query.validate_query_config",
+        return_value=invalid,
+    ):
+        response = client.post(
+            "/api/visual-query/generate",
+            json={
+                "config": {
+                    "table_name": "t",
+                    "selected_columns": ["a"],
+                    "aggregations": [],
+                    "filters": [],
+                    "order_by": [],
+                    "is_distinct": False,
+                },
+                "include_metadata": False,
+            },
+        )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "VISUAL_QUERY_INVALID"
+    assert "detail" not in body
+
+
+def test_datasource_connection_test_failure_standard_error():
+    """POST /api/datasources/databases/test 失败须 400 CONNECTION_TEST_FAILED。"""
+    mock_result = MagicMock(success=False, message="Connection refused", details=None)
+    with patch(
+        "core.database.database_manager.db_manager.test_connection",
+        return_value=mock_result,
+    ):
+        response = client.post(
+            "/api/datasources/databases/test",
+            json={
+                "type": "mysql",
+                "params": {
+                    "host": "127.0.0.1",
+                    "port": 3306,
+                    "username": "u",
+                    "password": "p",
+                    "database": "db",
+                },
+            },
+        )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "CONNECTION_TEST_FAILED"
     assert "detail" not in body
 
 
