@@ -31,7 +31,7 @@ flowchart TB
 
   subgraph routers [api/routers]
     duckdb_q[duckdb_query.py]
-    query_py[query.py / visual_query / set_operations]
+    query_py[join_query.py / visual_query / set_operations]
     async_r[async_tasks.py]
     ingest_r[data_sources chunked server url paste]
   end

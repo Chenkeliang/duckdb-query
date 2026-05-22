@@ -808,7 +808,7 @@ def execute_async_query(
         logger.info(f"Starting async query task: {task_id}")
 
         # 智能移除系统自动添加的LIMIT
-        from routers.query import remove_auto_added_limit
+        from routers.query_sql_utils import remove_auto_added_limit
 
         clean_sql = remove_auto_added_limit(sql)
         if clean_sql != sql.strip():
@@ -1068,7 +1068,7 @@ def execute_async_federated_query(
         logger.info(f"Databases to ATTACH: {attach_databases}")
 
         # 智能移除系统自动添加的LIMIT
-        from routers.query import remove_auto_added_limit
+        from routers.query_sql_utils import remove_auto_added_limit
 
         clean_sql = remove_auto_added_limit(sql)
         if clean_sql != sql.strip():

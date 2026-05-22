@@ -138,7 +138,9 @@ duckdb-query/
 | `api/utils/response_helpers.py` | 统一响应格式 |
 | `api/core/common/timezone_utils.py` | 时区工具 |
 | `api/routers/async_tasks.py` | 异步任务 API |
-| `api/routers/duckdb_query.py` | DuckDB 查询 API |
+| `api/routers/file_ingestion.py` | 文件入湖（上传、Excel） |
+| `api/routers/join_query.py` | 多表 JOIN、`/api/query`、结果入湖 |
+| `api/routers/duckdb_query.py` | DuckDB / 联邦 SQL 执行 |
 
 ### 2.1 前后端契约与 PR 模板
 

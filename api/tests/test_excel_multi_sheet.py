@@ -1,9 +1,10 @@
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
+import duckdb
 import pandas as pd
 import pytest
-from core.database.duckdb_engine import get_db_connection
 from core.data.excel_import_manager import cleanup_pending_excel
 from fastapi.testclient import TestClient
 from main import app
@@ -34,7 +35,7 @@ def test_excel_upload_inspect_import(tmp_path, header_rows):
     with (
         patch("routers.file_ingestion.schedule_cleanup"),
         patch(
-            "core.file_datasource_manager.file_datasource_manager.save_file_datasource",
+            "core.data.file_datasource_manager.file_datasource_manager.save_file_datasource",
             return_value=True,
         ),
     ):
@@ -52,7 +53,8 @@ def test_excel_upload_inspect_import(tmp_path, header_rows):
             )
 
     assert upload_resp.status_code == 200
-    upload_data = upload_resp.json()
+    upload_body = upload_resp.json()
+    upload_data = upload_body.get("data", upload_body)
     assert upload_data.get("pending_excel")
     file_id = upload_data["pending_excel"]["file_id"]
 
@@ -87,23 +89,30 @@ def test_excel_upload_inspect_import(tmp_path, header_rows):
         ],
     }
 
-    with patch(
-        "core.file_datasource_manager.file_datasource_manager.save_file_datasource",
-        return_value=True,
+    mem_con = duckdb.connect(":memory:")
+
+    @contextmanager
+    def _mem_duckdb():
+        yield mem_con
+
+    with (
+        patch(
+            "core.data.file_datasource_manager.file_datasource_manager.save_file_datasource",
+            return_value=True,
+        ),
+        patch("routers.file_ingestion.with_duckdb_connection", _mem_duckdb),
     ):
         import_resp = client.post("/api/data-sources/excel/import", json=payload)
 
     assert import_resp.status_code == 200
-    import_data = import_resp.json()
-    assert import_data.get("success") is True
-
-    con = get_db_connection()
-    try:
-        for result in import_data.get("results", []):
-            table_name = result["target_table"]
-            assert "header_rows" in result
-            assert "header_row_index" in result
-            count = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
-            assert count > 0  # Verify data was imported
-    finally:
-        cleanup_pending_excel(file_id)
+    import_body = import_resp.json()
+    assert import_body.get("success") is True
+    import_payload = import_body.get("data", import_body)
+    for result in import_payload.get("results", []):
+        assert result.get("success") is True
+        table_name = result["target_table"]
+        assert result.get("row_count", 0) > 0
+        count = mem_con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+        assert count == result["row_count"]
+    mem_con.close()
+    cleanup_pending_excel(file_id)

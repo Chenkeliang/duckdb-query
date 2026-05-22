@@ -168,7 +168,7 @@ flowchart TB
 
 | 规则 | 现状 |
 |------|------|
-| `with_duckdb_connection()` | `duckdb_query.py` 新路径遵守；**`query.py` 大量 `get_db_connection()`** |
+| `with_duckdb_connection()` | `duckdb_query.py` 新路径遵守；**`join_query.py` 仍有部分 `get_db_connection()`** |
 | 统一响应 | `duckdb_query.py` 部分错误仍 `JSONResponse` |
 | 时区 | 新代码多用 `timezone_utils`；旧路由需逐文件核对 |
 
@@ -219,7 +219,7 @@ flowchart TB
 1. 去掉 `TableSource.external` 兜底，仅 `federated` + `duckdb`。
 2. Set 运算是否走后端 `set-operations`（减少 SQL 生成重复）。
 3. Visual 查询支持联邦表或明确「仅 DuckDB」产品文案。
-4. `query.py` 连接与响应格式迁移。
+4. `join_query.py` 连接与响应格式迁移。
 
 ---
 

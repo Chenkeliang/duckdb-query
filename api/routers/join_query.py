@@ -1,4 +1,9 @@
 # pylint: disable=too-many-lines,no-member,too-many-public-methods,too-many-locals,too-many-statements,too-many-arguments,duplicate-code,broad-exception-caught,logging-fstring-interpolation,import-outside-toplevel,broad-exception-raised,redefined-outer-name,reimported,raise-missing-from,too-many-nested-blocks,no-else-return,unused-variable,import-error,line-too-long,bare-except,consider-using-in,unused-argument,f-string-without-interpolation,using-constant-test,unused-import
+"""
+多表 JOIN 与查询结果入湖（`/api/query`、`/api/save_query_to_duckdb`）。
+
+DuckDB/联邦 SQL 执行见 `duckdb_query.py`；可视化 / 集合运算见 `visual_query.py`、`set_operations.py`。
+"""
 import json
 import logging
 import os

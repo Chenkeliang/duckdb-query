@@ -1,5 +1,5 @@
 # pylint: disable=too-many-lines,broad-exception-caught,logging-fstring-interpolation,import-outside-toplevel,line-too-long,unused-argument
-"""Visual query HTTP routes (extracted from query.py)."""
+"""Visual query HTTP routes (extracted from join_query.py)."""
 import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple

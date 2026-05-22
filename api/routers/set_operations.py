@@ -1,5 +1,5 @@
 # pylint: disable=too-many-lines,broad-exception-caught,logging-fstring-interpolation,import-outside-toplevel,line-too-long,unused-argument,bare-except
-"""Set operations HTTP routes (extracted from query.py)."""
+"""Set operations HTTP routes (extracted from join_query.py)."""
 import logging
 import os
 import uuid

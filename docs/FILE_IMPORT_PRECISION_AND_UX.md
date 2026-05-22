@@ -69,7 +69,7 @@ DuckDB 1.4 推荐做法（按场景）：
 5. **导入进度**：多 Sheet 并行/串行进度条（与分块上传进度一致）。
 
 相关前端：`frontend/src/DataSource/UploadPanel.tsx`、`ExcelSheetSelector.tsx`。  
-相关后端：`api/core/data/excel_import_manager.py`、`api/routers/data_sources.py`（inspect/import 端点）。
+相关后端：`api/core/data/excel_import_manager.py`、`api/routers/file_ingestion.py`（inspect/import 端点）。
 
 ---
 

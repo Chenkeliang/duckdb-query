@@ -16,7 +16,7 @@ from middleware import RequestIdMiddleware
 
 from routers import (
     file_ingestion,  # 文件入湖：/api/upload、/api/data-sources/excel/*
-    query,  # 联邦 JOIN：/api/query；save_query_to_duckdb
+    join_query,  # 联邦 JOIN：/api/query；save_query_to_duckdb
     paste_data,
     duckdb_query,  # DuckDB / 联邦 SQL：/api/duckdb/*
     chunked_upload,
@@ -126,7 +126,7 @@ app.add_middleware(RequestIdMiddleware)
 app.include_router(datasources.router)
 app.include_router(file_ingestion.router)
 app.include_router(duckdb_query.router)
-app.include_router(query.router)
+app.include_router(join_query.router)
 app.include_router(visual_query.router)
 app.include_router(set_operations.router)
 app.include_router(paste_data.router)

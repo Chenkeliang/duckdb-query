@@ -54,7 +54,9 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Routers["🔀 路由层"]
-        R1[query.py]
+        R1[join_query.py]
+        R1b[duckdb_query.py]
+        R1c[file_ingestion.py]
         R2[async_tasks.py]
         R3[datasources.py]
         R4[database_tables.py]

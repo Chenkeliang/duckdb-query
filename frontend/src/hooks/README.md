@@ -166,7 +166,7 @@ function TableList() {
 function ComponentA() {
   const [tables, setTables] = useState([]);
   useEffect(() => {
-    fetch('/api/duckdb_tables').then(r => r.json()).then(setTables);
+    fetch('/api/duckdb/tables').then(r => r.json()).then(setTables);
   }, []);
   return <div>{tables.length}</div>;
 }
@@ -174,7 +174,7 @@ function ComponentA() {
 function ComponentB() {
   const [tables, setTables] = useState([]);
   useEffect(() => {
-    fetch('/api/duckdb_tables').then(r => r.json()).then(setTables); // 重复请求！
+    fetch('/api/duckdb/tables').then(r => r.json()).then(setTables); // 重复请求！
   }, []);
   return <ul>{tables.map(t => <li>{t.name}</li>)}</ul>;
 }
@@ -182,7 +182,7 @@ function ComponentB() {
 function ComponentC() {
   const [tables, setTables] = useState([]);
   useEffect(() => {
-    fetch('/api/duckdb_tables').then(r => r.json()).then(setTables); // 又一次重复请求！
+    fetch('/api/duckdb/tables').then(r => r.json()).then(setTables); // 又一次重复请求！
   }, []);
   return <select>{tables.map(t => <option>{t.name}</option>)}</select>;
 }
@@ -223,7 +223,7 @@ function MyComponent() {
 function MyComponent() {
   const [tables, setTables] = useState([]);
   useEffect(() => {
-    fetch('/api/duckdb_tables').then(r => r.json()).then(setTables);
+    fetch('/api/duckdb/tables').then(r => r.json()).then(setTables);
   }, []); // 每次挂载都请求
   return <div>{tables.length}</div>;
 }
@@ -295,7 +295,7 @@ const [loading, setLoading] = useState(false);
 
 useEffect(() => {
   setLoading(true);
-  fetch('/api/duckdb_tables')
+  fetch('/api/duckdb/tables')
     .then(res => res.json())
     .then(setData)
     .finally(() => setLoading(false));

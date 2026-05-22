@@ -239,7 +239,8 @@ api/
 │   ├── async_tasks.py            # 异步任务
 │   ├── duckdb_query.py           # DuckDB 查询
 │   ├── datasources.py            # 数据源管理
-│   ├── data_sources.py           # 文件上传
+│   ├── file_ingestion.py         # 文件入湖（上传、Excel）
+│   ├── join_query.py             # 多表 JOIN /api/query
 │   ├── paste_data.py             # 粘贴数据
 │   ├── url_reader.py             # URL 导入
 │   └── settings.py               # 设置
@@ -392,7 +393,8 @@ source_id = sanitize_identifier(
 | `api/routers/async_tasks.py` | 异步任务 API | ✅ 最新 |
 | `api/routers/duckdb_query.py` | DuckDB 查询 API | ✅ 最新 |
 | `api/routers/datasources.py` | 数据源 API | ✅ 最新 |
-| `api/routers/data_sources.py` | 文件上传 API | ✅ 最新 |
+| `api/routers/file_ingestion.py` | 文件入湖 API | ✅ 最新 |
+| `api/routers/join_query.py` | JOIN 查询 API | ✅ 最新 |
 | `api/routers/paste_data.py` | 粘贴数据 API | ✅ 最新 |
 
 ## 🔗 相关文档

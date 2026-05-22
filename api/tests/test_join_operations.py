@@ -28,7 +28,7 @@ from models.query_models import (
     QueryRequest,
 )
 from core.database.duckdb_engine import generate_improved_column_aliases
-from routers.query import build_join_chain, build_multi_table_join_query
+from routers.join_query import build_join_chain, build_multi_table_join_query
 from routers.query_sql_utils import get_join_type_sql
 
 client = TestClient(app, raise_server_exceptions=False)
@@ -258,7 +258,7 @@ class TestJoinQueryGenerator:
         # CROSS JOIN不应该有ON条件
         assert "ON" not in join_chain
 
-    @patch("routers.query.get_db_connection")
+    @patch("routers.join_query.get_db_connection")
     def test_build_multi_table_join_query_simple(self, mock_get_db):
         """测试构建简单多表JOIN查询"""
         # 模拟数据库连接
@@ -292,7 +292,7 @@ class TestJoinQueryGenerator:
         assert 'INNER JOIN "orders"' in query
         assert 'ON "users"."id" = "orders"."user_id"' in query
 
-    @patch("routers.query.get_db_connection")
+    @patch("routers.join_query.get_db_connection")
     def test_build_multi_table_join_query_with_where(self, mock_get_db):
         """测试构建带WHERE条件的多表JOIN查询"""
         # 模拟数据库连接
@@ -329,7 +329,7 @@ class TestJoinQueryGenerator:
         assert "INNER JOIN" in query
         assert "LIMIT 100" in query
 
-    @patch("routers.query.get_db_connection")
+    @patch("routers.join_query.get_db_connection")
     def test_build_multi_table_join_query_no_joins(self, mock_get_db):
         """测试构建无JOIN条件的多表查询（CROSS JOIN）"""
         # 模拟数据库连接
@@ -351,7 +351,7 @@ class TestJoinQueryGenerator:
         assert '"users"' in query
         assert 'CROSS JOIN "orders"' in query
 
-    @patch("routers.query.get_db_connection")
+    @patch("routers.join_query.get_db_connection")
     def test_build_multi_table_join_query_single_table(self, mock_get_db):
         """测试构建单表查询"""
         # 模拟数据库连接
@@ -400,7 +400,7 @@ class TestJoinAPI:
             "limit": 10,
         }
 
-        with patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.get_db_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
             mock_get_db.return_value = mock_con
@@ -469,7 +469,7 @@ class TestJoinAPI:
             "limit": 5,
         }
 
-        with patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.get_db_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
             mock_get_db.return_value = mock_con
@@ -518,7 +518,7 @@ class TestJoinAPI:
             "limit": 5,
         }
 
-        with patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.get_db_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
             mock_get_db.return_value = mock_con
@@ -568,7 +568,7 @@ class TestJoinAPI:
             "joins": [],
         }
 
-        with patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.get_db_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
             mock_get_db.return_value = mock_con
@@ -624,7 +624,7 @@ class TestJoinIntegration:
             "limit": 10,
         }
 
-        with patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.get_db_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
             mock_get_db.return_value = mock_con
@@ -714,7 +714,7 @@ class TestJoinErrorHandling:
             "joins": [],
         }
 
-        with patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.get_db_connection") as mock_get_db:
             # 模拟数据库连接错误
             mock_get_db.side_effect = Exception("Database connection failed")
 
@@ -750,7 +750,7 @@ class TestJoinErrorHandling:
             ],
         }
 
-        with patch("routers.query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.get_db_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
             mock_get_db.return_value = mock_con

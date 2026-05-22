@@ -17,11 +17,13 @@
 | 文件 | 主要端点 | 前端 API |
 |------|----------|----------|
 | `duckdb_query.py` | `/api/duckdb/execute`、`/federated-query`、`/tables/*` | `queryApi.ts`、`tableApi.ts` |
-| `query.py` | `/api/query`（JOIN）、`/api/save_query_to_duckdb` | JOIN 工作台、`saveQueryToDuckDB` |
+| `join_query.py` | `/api/query`（JOIN）、`/api/save_query_to_duckdb` | JOIN 工作台、`saveQueryToDuckDB` |
 | `visual_query.py` | `/api/visual-query/*` | `visualQueryApi.ts` |
 | `set_operations.py` | `/api/set-operations/*` | `setOperationsApi.ts` |
 | `query_cancel.py` | `/api/query/cancel/{id}` | `cancelSyncQuery` |
 | `query_sql_utils.py` | （无路由，共享 SQL 工具） | — |
+
+> 曾用名 `query.py`（与 `duckdb_query` 易混），已改为 `join_query.py`；**URL 未改**。
 
 ## 外部库元数据
 
@@ -43,10 +45,10 @@
 
 | 文件 | 职责 |
 |------|------|
-| `query.py` | 多表 JOIN 构建、`/api/query`、`save_query_to_duckdb` |
+| `join_query.py` | 多表 JOIN 构建、`/api/query`、`save_query_to_duckdb` |
 | `duckdb_query.py` | DuckDB/联邦执行、表元数据、连接池 |
 
-合并会导致单文件过大；若仅嫌 `query` 名太泛，可后续改名为 `join_query.py`（须改测试 import）。
+合并会导致单文件过大；执行与 JOIN 构建分文件便于评审与测试。
 
 ## 已移除
 
