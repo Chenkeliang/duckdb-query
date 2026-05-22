@@ -161,6 +161,35 @@ def test_visual_query_generate_invalid_config_standard_error():
     assert "detail" not in body
 
 
+def test_set_operations_generate_failure_standard_error():
+    """集合运算 generate 执行失败须 500 OPERATION_FAILED（非 200 错误体）。"""
+    with patch(
+        "routers.set_operations.get_db_connection",
+        side_effect=Exception("Database connection failed"),
+    ), patch(
+        "routers.set_operations.generate_set_operation_sql",
+        return_value="SELECT 1",
+    ):
+        response = client.post(
+            "/api/set-operations/generate",
+            json={
+                "config": {
+                    "operation_type": "UNION",
+                    "tables": [
+                        {"table_name": "users", "selected_columns": ["id"]},
+                        {"table_name": "customers", "selected_columns": ["id"]},
+                    ],
+                    "use_by_name": False,
+                },
+            },
+        )
+    assert response.status_code == 500
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "OPERATION_FAILED"
+    assert "detail" not in body
+
+
 def test_datasource_connection_test_failure_standard_error():
     """POST /api/datasources/databases/test 失败须 400 CONNECTION_TEST_FAILED。"""
     mock_result = MagicMock(success=False, message="Connection refused", details=None)

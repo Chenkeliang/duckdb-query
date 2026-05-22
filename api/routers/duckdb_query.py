@@ -42,13 +42,11 @@ from core.common.exceptions import (
     ResourceNotFoundError,
     ValidationError as APIValidationError,
 )
-from fastapi import APIRouter, Body, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Body, File, Form, Header, UploadFile
 from models.query_models import FederatedQueryRequest, FederatedQueryResponse
 from pydantic import BaseModel
 from utils.response_helpers import (
     MessageCode,
-    create_error_response,
     create_list_response,
     create_success_response,
     error_json_response,
@@ -518,26 +516,22 @@ async def execute_duckdb_query(
 
     except duckdb.InterruptException as e:
         logger.info(f"Query {query_id} was cancelled by user")
-        return JSONResponse(
-            status_code=499,
-            content=create_error_response(
-                code=MessageCode.QUERY_CANCELLED,
-                message="Query cancelled",
-                details={"query_id": query_id, "error": str(e)},
-            ),
+        return error_json_response(
+            499,
+            MessageCode.QUERY_CANCELLED,
+            "Query cancelled",
+            details={"query_id": query_id, "error": str(e)},
         )
     except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"DuckDB query execution failed: {str(e)}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
-        return JSONResponse(
-            status_code=500,
-            content=create_error_response(
-                code=MessageCode.QUERY_FAILED,
-                message=f"Query execution failed: {str(e)}",
-                details={"query_id": query_id},
-            ),
+        return error_json_response(
+            500,
+            MessageCode.QUERY_FAILED,
+            f"Query execution failed: {str(e)}",
+            details={"query_id": query_id},
         )
 
 
@@ -925,24 +919,20 @@ async def execute_federated_query(
                     pass
         except:
             pass
-        return JSONResponse(
-            status_code=499,
-            content=create_error_response(
-                code=MessageCode.QUERY_CANCELLED,
-                message="Query cancelled by client",
-                details={"query_id": query_id},
-            ),
+        return error_json_response(
+            499,
+            MessageCode.QUERY_CANCELLED,
+            "Query cancelled by client",
+            details={"query_id": query_id},
         )
     except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Federated query execution failed: {str(e)}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
-        return JSONResponse(
-            status_code=500,
-            content=create_error_response(
-                code=MessageCode.QUERY_FAILED,
-                message=f"Federated query failed: {str(e)}",
-                details={"query_id": query_id},
-            ),
+        return error_json_response(
+            500,
+            MessageCode.QUERY_FAILED,
+            f"Federated query failed: {str(e)}",
+            details={"query_id": query_id},
         )

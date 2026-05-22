@@ -15,7 +15,7 @@ import uuid
 from typing import Dict, Any, Optional
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks
 from pydantic import BaseModel
 
 from core.common.exceptions import (
@@ -380,8 +380,6 @@ async def init_upload(
 
     except BaseAPIException:
         raise
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("Failed to initialize upload: %s", e)
         return error_json_response(
@@ -463,8 +461,6 @@ async def upload_chunk(
         )
 
     except BaseAPIException:
-        raise
-    except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to upload chunk: %s", e)
@@ -568,8 +564,6 @@ async def complete_upload(
         )
 
     except BaseAPIException:
-        raise
-    except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to complete upload: %s", e)
@@ -685,8 +679,6 @@ async def cancel_upload(upload_id: str):
         )
 
     except BaseAPIException:
-        raise
-    except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to cancel upload: %s", e)

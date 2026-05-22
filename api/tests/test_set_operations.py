@@ -667,10 +667,11 @@ class TestSetOperationErrorHandling:
 
             response = client.post("/api/set-operations/generate", json=request_data)
 
-            assert response.status_code == 200
+            assert response.status_code == 500
             data = response.json()
             assert data["success"] is False
-            assert data.get("error") is not None
+            assert data["error"]["code"] == "OPERATION_FAILED"
+            assert "detail" not in data
 
 
 if __name__ == "__main__":

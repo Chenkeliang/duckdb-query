@@ -50,8 +50,8 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| POST | `/api/duckdb/execute` | 对象 | `columns`, `data`, `row_count`, `execution_time_ms`, `sql_executed`, `preview_limit_applied?` | `executeDuckDBSQL` |
-| POST | `/api/duckdb/federated-query` | 对象 | 同上 + `attached_databases`, `sql_query`, `preview_limit_applied?`；404 `connection_id` 不存在；503 ATTACH 失败（§1.1） | `executeFederatedQuery` |
+| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；499 `QUERY_CANCELLED`；500 `QUERY_FAILED`（§1.1） |
+| POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；404 `connection_id`；503 ATTACH；499 / 500 同 execute |
 | POST | `/api/query/cancel/{request_id}` | 对象 | `request_id` | `cancelSyncQuery` |
 | POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求） | `saveQueryToDuckDB` |
 | GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at` | `getDuckDBTables` |
@@ -154,8 +154,11 @@
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/set-operations/generate` | 对象 | `generateSetOperation` → `SetOperationsPanel`（TanStack Query 展示 SQL） |
-| POST | `/api/set-operations/preview` | 对象 | `previewSetOperation` → `SetOperationsPanel`「预览」按钮 |
+| POST | `/api/set-operations/generate` | 对象 | `generateSetOperation`；400 `VALIDATION_ERROR`；500 `OPERATION_FAILED` |
+| POST | `/api/set-operations/preview` | 对象 | `previewSetOperation`；400 / 500（同上） |
+| POST | `/api/set-operations/validate` | 对象 | 配置校验（`is_valid` 在 `data`）；500 服务异常 |
+| POST | `/api/set-operations/execute` | 对象 | 完整执行；400 / 500 |
+| POST | `/api/set-operations/export` | 对象 | 异步导出任务；500 `OPERATION_FAILED` |
 
 执行时前端在 generate 返回的 SQL 后追加 `LIMIT`（与 `maxQueryRows` 一致）；**preview** 端点 LIMIT 由后端 `max_query_rows` 控制，结果写入结果面板。
 

@@ -23,8 +23,8 @@ from models.visual_query_models import (
 )
 from utils.response_helpers import (
     MessageCode,
-    create_error_response,
     create_success_response,
+    error_json_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,16 +78,18 @@ async def generate_set_operation_query(request: SetOperationRequest):
 
     except ValueError as e:
         logger.warning(f"Failed to generate set operation query: {str(e)}")
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=str(e),
+        return error_json_response(
+            400,
+            MessageCode.VALIDATION_ERROR,
+            str(e),
             details={"errors": [str(e)]},
         )
     except Exception as e:
         logger.error(f"Failed to generate set operation query: {str(e)}")
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to generate query: {str(e)}",
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to generate query: {str(e)}",
             details={"errors": [f"Failed to generate query: {str(e)}"]},
         )
 
@@ -133,16 +135,18 @@ async def preview_set_operation(request: SetOperationRequest):
 
     except ValueError as e:
         logger.warning(f"Failed to preview set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=str(e),
+        return error_json_response(
+            400,
+            MessageCode.VALIDATION_ERROR,
+            str(e),
             details={"errors": [str(e)]},
         )
     except Exception as e:
         logger.error(f"Failed to preview set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to preview: {str(e)}",
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to preview: {str(e)}",
             details={"errors": [f"Failed to preview: {str(e)}"]},
         )
 
@@ -218,9 +222,10 @@ async def validate_set_operation(request: SetOperationRequest):
 
     except Exception as e:
         logger.error(f"Failed to validate set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=f"Failed to validate: {str(e)}",
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to validate: {str(e)}",
             details={"errors": [f"Failed to validate: {str(e)}"]},
         )
 
@@ -381,16 +386,18 @@ async def execute_set_operation(request: SetOperationRequest):
 
     except ValueError as e:
         logger.warning(f"Failed to execute set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=str(e),
+        return error_json_response(
+            400,
+            MessageCode.VALIDATION_ERROR,
+            str(e),
             details={"errors": [str(e)]},
         )
     except Exception as e:
         logger.error(f"Failed to execute set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to execute: {str(e)}",
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to execute: {str(e)}",
             details={"errors": [f"Failed to execute: {str(e)}"]},
         )
 
@@ -450,16 +457,18 @@ async def simple_union_operation(request: UnionOperationRequest):
 
     except ValueError as e:
         logger.warning(f"Failed to simplify UNION operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.VALIDATION_ERROR.value,
-            message=str(e),
+        return error_json_response(
+            400,
+            MessageCode.VALIDATION_ERROR,
+            str(e),
             details={"errors": [str(e)]},
         )
     except Exception as e:
         logger.error(f"Failed to simplify UNION operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to operate: {str(e)}",
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to operate: {str(e)}",
             details={"errors": [f"Failed to operate: {str(e)}"]},
         )
 
@@ -636,8 +645,9 @@ async def export_set_operation(request: SetOperationExportRequest):
 
     except Exception as e:
         logger.error(f"Failed to export set operation: {str(e)}")
-        return create_error_response(
-            code=MessageCode.OPERATION_FAILED.value,
-            message=f"Failed to create export task: {str(e)}",
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to create export task: {str(e)}",
             details={"error": str(e)},
         )
