@@ -303,32 +303,6 @@ async def import_server_file(payload: ServerFileImportRequest):
             f"Import failed: {str(exc)}",
         )
 
-    # 使用 UTC naive 时间用于数据库存储
-    current_time = get_storage_time()
-
-    table_metadata = {
-        "source_id": table_name,
-        "filename": os.path.basename(real_path),
-        "file_path": _to_display_path(real_path, mount),
-        "file_type": file_type,
-        "row_count": metadata.get("row_count", 0),
-        "column_count": metadata.get("column_count", 0),
-        "columns": metadata.get("columns", []),
-        "column_profiles": metadata.get("column_profiles", []),
-        "upload_time": current_time,
-        "created_at": current_time,
-        "updated_at": current_time,
-        "metadata": {
-            "schema_version": 2,
-            "mount_label": mount["label"],
-            "source_type": "server_directory",
-        },
-    }
-    try:
-        file_datasource_manager.save_file_datasource(table_metadata)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logger.warning("Failed to save file datasource metadata (ignored): %s", exc, exc_info=True)
-
     return create_success_response(
         data={
             "table_name": table_name,
@@ -336,7 +310,7 @@ async def import_server_file(payload: ServerFileImportRequest):
             "column_count": metadata.get("column_count", 0),
             "columns": metadata.get("columns", []),
             "file_type": file_type,
-            "file_path": table_metadata["file_path"],
+            "file_path": _to_display_path(real_path, mount),
             "mount_label": mount["label"],
         },
         message_code=MessageCode.SERVER_FILE_IMPORTED,

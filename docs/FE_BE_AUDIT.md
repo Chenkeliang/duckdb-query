@@ -99,8 +99,8 @@
 | ~~`GET /api/available_tables`~~ | 无后端 |
 | ~~`GET /api/tables/all`~~ | 无后端 |
 | ~~`GET /api/file_preview/{filename}`~~ | 无后端 |
-| ~~`POST /api/tables/distinct-values`~~ | 后端为 `POST /api/visual-query/distinct-values` |
-| ~~`GET /api/tables/{t}/columns/{c}/statistics`~~ | 后端为 `GET /api/visual-query/column-stats/{t}/{c}` |
+| ~~`POST /api/tables/distinct-values`~~ | 已移除（原 `POST /api/visual-query/distinct-values` 随可视化构建器下线） |
+| ~~`GET /api/tables/{t}/columns/{c}/statistics`~~ | 已移除（原 `GET /api/visual-query/column-stats/...`） |
 
 ### 3.5 后端有能力、前端未走 `@/api` 或本地拼 SQL
 
@@ -108,7 +108,7 @@
 |------|------|
 | `POST /api/set-operations/*` | ✅ `setOperationsApi.ts` 全端点封装；面板仍用 `generate` + `preview` + `onExecute`（SQL 路径） |
 | `POST /api/upload/init|chunk|complete` | 分块上传后端完整；前端当前主要 `POST /api/upload` |
-| `POST /api/visual-query/distinct-values|validate` | ✅ `getVisualQueryDistinctValues` / `validateVisualQueryOnServer` / `getVisualQueryColumnStats` |
+| ~~`POST /api/visual-query/distinct-values|validate`~~ | 已移除；透视仅 `generate`/`preview`（`mode: pivot`）见 `visualQueryApi.ts` |
 | `POST /api/duckdb/migrate/created_at` | 运维向，无前端 |
 
 ### 3.6 重复端点（同一资源多套 URL）
@@ -144,7 +144,7 @@ flowchart TB
 
 | 项目 | 状态 |
 |------|------|
-| `TableSource.type`：`duckdb \| external \| federated` | `external` 仍在 `useQueryWorkspace` 兜底拼 attach |
+| `TableSource.type`：`duckdb \| federated` | 外部表元数据仍为 `SelectedTable.source === 'external'` |
 | `executeExternalSQL` / `executeSQL` / `performQuery` | 仅 `api/index.ts` 导出，**无** `frontend/src` 业务 import |
 | 引号策略 | 已改为按需引号（`sqlUtils.needsQuoting`） |
 | 可视化查询 | `QueryBuilder` 对外部表禁止执行（`canExecute = !isExternal`） |
@@ -216,8 +216,8 @@ flowchart TB
 
 ### P2 — 架构与体验
 
-1. 去掉 `TableSource.external` 兜底，仅 `federated` + `duckdb`。
-2. Set 运算是否走后端 `set-operations`（减少 SQL 生成重复）。
+1. ~~去掉 `TableSource.external` 兜底~~：✅ 执行路径仅 `federated` + `duckdb`（`SelectedTable.source` 仍为 `external` 表元数据）。
+2. ~~Set 运算是否走后端 `set-operations`~~：✅ 已接 `generate`/`preview`；JOIN 简单 DuckDB 场景已接 `performJoinQuery`。
 3. Visual 查询支持联邦表或明确「仅 DuckDB」产品文案。
 4. ~~入湖 router 连接池~~：✅ `chunked_upload` / `server_files` 已迁；`paste_data` 等若仍有直连再查。
 

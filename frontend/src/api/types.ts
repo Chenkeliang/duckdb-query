@@ -245,47 +245,6 @@ export interface TableDetail {
   sample_data?: Record<string, unknown>[];
 }
 
-// ==================== Visual Query Types ====================
-
-export interface VisualQueryConfig {
-  tables: VisualQueryTable[];
-  joins?: VisualQueryJoin[];
-  columns?: VisualQueryColumn[];
-  filters?: VisualQueryFilter[];
-  groupBy?: string[];
-  orderBy?: VisualQueryOrderBy[];
-  limit?: number;
-}
-
-export interface VisualQueryTable {
-  name: string;
-  alias?: string;
-  schema?: string;
-}
-
-export interface VisualQueryJoin {
-  type: "INNER" | "LEFT" | "RIGHT" | "FULL";
-  table: string;
-  on: string;
-}
-
-export interface VisualQueryColumn {
-  name: string;
-  alias?: string;
-  aggregate?: "SUM" | "AVG" | "COUNT" | "MIN" | "MAX";
-}
-
-export interface VisualQueryFilter {
-  column: string;
-  operator: string;
-  value: unknown;
-}
-
-export interface VisualQueryOrderBy {
-  column: string;
-  direction: "ASC" | "DESC";
-}
-
 // ==================== SQL Favorites Types ====================
 
 export interface SqlFavorite {

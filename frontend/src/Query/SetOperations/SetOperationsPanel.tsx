@@ -18,6 +18,7 @@ import {
   isSameConnection,
   DATABASE_TYPE_ICONS,
 } from '@/utils/tableUtils';
+import { getSourceFromSelectedTable } from '@/utils/sqlUtils';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
 import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
@@ -257,16 +258,14 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
 
   // 获取表源信息
   const tableSource = React.useMemo((): TableSource | undefined => {
-    if (sourceAnalysis.hasExternal && sourceAnalysis.currentSource) {
-      return {
-        type: 'external',
-        connectionId: sourceAnalysis.currentSource.id,
-        connectionName: sourceAnalysis.currentSource.name,
-        databaseType: sourceAnalysis.currentSource.type,
-      };
+    if (sourceAnalysis.hasExternal) {
+      const externalTables = activeTables.filter(isExternalTable);
+      if (externalTables.length > 0) {
+        return getSourceFromSelectedTable(externalTables[0]);
+      }
     }
     return { type: 'duckdb' };
-  }, [sourceAnalysis]);
+  }, [sourceAnalysis.hasExternal, activeTables]);
 
   // 是否是 BY NAME 模式（不需要列数量一致）
   const isByNameMode = byName && (operationType === 'UNION' || operationType === 'UNION ALL');

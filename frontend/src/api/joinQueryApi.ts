@@ -1,7 +1,7 @@
 /**
  * Multi-table JOIN API — POST /api/query（join_query.py）
  *
- * Join 工作台当前以本地 SQL + executeFederatedQuery 为主；本模块供结构化 JOIN 请求与测试对齐契约。
+ * Join 工作台：DuckDB 简单 JOIN 走 `performJoinQuery`；联邦/筛选/表达式仍本地 SQL + `onExecute`。
  */
 
 import { apiClient, handleApiError, normalizeResponse } from './client';

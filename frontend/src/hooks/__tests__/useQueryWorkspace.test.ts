@@ -265,45 +265,31 @@ describe('useQueryWorkspace - Property Tests', () => {
 });
 
 
-describe('External query routing - Property Tests', () => {
-  /**
-   * Property 3: External Query Execution Routing
-   * For any query execution with source.type='external', the system should route
-   * to external SQL execution with correct datasource parameters
-   * **Validates: Requirements 3.1, 3.2, 3.3**
-   */
-  
+describe('Federated query routing - Property Tests', () => {
   describe('Query source routing', () => {
-    /**
-     * Property: External source should route to external execution
-     */
-    it('should route external source to external execution', () => {
+    it('should route federated source to federated execution', () => {
       fc.assert(
         fc.property(
-          fc.string({ minLength: 1, maxLength: 200 }), // SQL
-          fc.string({ minLength: 1, maxLength: 50 }),  // connectionId
-          databaseTypeArb,                              // databaseType
+          fc.string({ minLength: 1, maxLength: 200 }),
+          fc.string({ minLength: 1, maxLength: 50 }),
+          databaseTypeArb,
           (sql, connectionId, databaseType) => {
             const source = {
-              type: 'external' as const,
+              type: 'federated' as const,
               connectionId,
               databaseType,
             };
-            
-            // Simulate the routing logic from useQueryWorkspace
-            const shouldRouteToExternal = source.type === 'external';
-            
-            return shouldRouteToExternal === true;
+
+            const shouldRouteToFederated = source.type === 'federated';
+
+            return shouldRouteToFederated === true;
           }
         ),
         { numRuns: 100 }
       );
     });
 
-    /**
-     * Property: DuckDB source should not route to external execution
-     */
-    it('should not route DuckDB source to external execution', () => {
+    it('should not route DuckDB source to federated execution', () => {
       fc.assert(
         fc.property(
           fc.string({ minLength: 1, maxLength: 200 }),
@@ -311,9 +297,9 @@ describe('External query routing - Property Tests', () => {
             const source = {
               type: 'duckdb' as const,
             };
-            
-            const shouldRouteToExternal = source.type === 'external';
-            return shouldRouteToExternal === false;
+
+            const shouldRouteToFederated = source.type === 'federated';
+            return shouldRouteToFederated === false;
           }
         ),
         { numRuns: 100 }
@@ -339,18 +325,15 @@ describe('External query routing - Property Tests', () => {
     });
   });
 
-  describe('External datasource parameter construction', () => {
-    /**
-     * Property: Connection ID should be passed correctly
-     */
-    it('should pass connection ID to external SQL execution', () => {
+  describe('Federated attach parameter construction', () => {
+    it('should pass connection ID to federated execution', () => {
       fc.assert(
         fc.property(
           fc.string({ minLength: 1, maxLength: 50 }),
           databaseTypeArb,
           (connectionId, databaseType) => {
             const source = {
-              type: 'external' as const,
+              type: 'federated' as const,
               connectionId,
               databaseType,
             };
@@ -378,22 +361,20 @@ describe('External query routing - Property Tests', () => {
           fc.option(databaseTypeArb, { nil: undefined }),
           (connectionId, databaseType) => {
             const source = {
-              type: 'external' as const,
+              type: 'federated' as const,
               connectionId,
               databaseType,
             };
-            
-            // Simulate the datasource construction
+
             const datasource = {
               id: source.connectionId,
               type: source.databaseType || 'mysql',
             };
-            
+
             if (databaseType) {
               return datasource.type === databaseType;
-            } else {
-              return datasource.type === 'mysql';
             }
+            return datasource.type === 'mysql';
           }
         ),
         { numRuns: 100 }
@@ -413,17 +394,16 @@ describe('External query routing - Property Tests', () => {
           databaseTypeArb,
           (sql, connectionId, databaseType) => {
             const source = {
-              type: 'external' as const,
+              type: 'federated' as const,
               connectionId,
               databaseType,
             };
-            
-            // Simulate lastQuery state update
+
             const lastQuery = { sql, source };
-            
+
             return (
               lastQuery.sql === sql &&
-              lastQuery.source.type === 'external' &&
+              lastQuery.source.type === 'federated' &&
               lastQuery.source.connectionId === connectionId &&
               lastQuery.source.databaseType === databaseType
             );

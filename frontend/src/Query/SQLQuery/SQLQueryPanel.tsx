@@ -28,7 +28,11 @@ import { cn } from '@/lib/utils';
 import type { TableSource } from '@/hooks/useQueryWorkspace';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { normalizeSelectedTable } from '@/utils/tableUtils';
-import { generateDatabaseAlias, generateExternalTableReference } from '@/utils/sqlUtils';
+import {
+  generateDatabaseAlias,
+  generateExternalTableReference,
+  getSourceFromSelectedTable,
+} from '@/utils/sqlUtils';
 
 export interface SQLQueryPanelProps {
   /** 初始 SQL */
@@ -139,13 +143,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     if (!currentSource || currentSource.type === 'duckdb') {
       if (externalTables.length > 0) {
         const ext = externalTables[0];
-        currentSource = {
-          type: 'external',
-          connectionId: ext.connection?.id,
-          connectionName: ext.connection?.name,
-          databaseType: ext.connection?.type,
-          schema: ext.schema,
-        };
+        currentSource = getSourceFromSelectedTable(ext);
       }
     }
 

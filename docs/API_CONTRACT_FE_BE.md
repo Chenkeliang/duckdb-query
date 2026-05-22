@@ -25,7 +25,7 @@
 | `uploadApi.ts` | §5 | 本地上传与分块（从 `fileApi` 再导出） |
 | `fileApi.ts` | §5 | URL / Excel / 服务器文件 / 粘贴 |
 | `asyncTaskApi.ts` | §6 | 异步任务、连接池状态、错误统计 |
-| `visualQueryApi.ts` | §7 | 可视化 generate/preview、SQL 收藏、应用配置 |
+| `visualQueryApi.ts` | §7 | 透视 generate/preview、SQL 收藏、应用配置（已移除可视化构建器 Tab） |
 | `settingsShortcutsApi.ts` | §8 | 快捷键 |
 | `setOperationsApi.ts` | §9 | 集合运算 generate / preview / validate / execute / export 等 |
 | `joinQueryApi.ts` | §9.1 | 结构化多表 JOIN：`performJoinQuery` |
@@ -145,15 +145,14 @@
 | GET | `/api/errors/statistics` | 对象 | `getErrorStatistics` |
 | POST | `/api/errors/clear` | 对象 | `clearOldErrors`（query: `days`） |
 
-## 7. 可视化查询与收藏（`visualQueryApi.ts`）
+## 7. 透视查询与收藏（`visualQueryApi.ts`）
+
+> **2026-05**：工作台已移除「可视化查询」Tab；`POST /api/visual-query/*` 仅保留 **透视模式**（`mode: pivot`）与 SQL 收藏。常规可视化构建器端点（`distinct-values` / `validate` / `column-stats`）已删除。
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/visual-query/generate` | 对象 | `generateVisualQuery`, `generatePivotVisualQuery`；400 `VISUAL_QUERY_INVALID`；500 `OPERATION_FAILED` |
-| POST | `/api/visual-query/preview` | 对象 | `previewVisualQuery`, `previewPivotVisualQuery`；400 `VISUAL_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
-| GET | `/api/visual-query/column-stats/{table}/{column}` | 对象 | `getVisualQueryColumnStats`；404 `RESOURCE_NOT_FOUND`；500 `OPERATION_FAILED` |
-| POST | `/api/visual-query/distinct-values` | 对象 | `getVisualQueryDistinctValues`；400 校验；499 取消；500 `QUERY_FAILED` |
-| POST | `/api/visual-query/validate` | 对象 | `validateVisualQueryOnServer`；400 解析失败；500 服务异常 |
+| POST | `/api/visual-query/generate` | 对象 | `generatePivotVisualQuery`（`mode: pivot`）；400 `VISUAL_QUERY_INVALID`；500 `OPERATION_FAILED` |
+| POST | `/api/visual-query/preview` | 对象 | `previewPivotVisualQuery`；400 `VISUAL_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
 | GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（`data.favorite`）；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites` | 对象 | `createSqlFavorite`；400 `FAVORITE_NAME_EXISTS` |
@@ -161,8 +160,6 @@
 | DELETE | `/api/sql-favorites/{id}` | 对象 | `deleteSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites/{id}/use` | 对象 | `incrementFavoriteUsage`；404 `FAVORITE_NOT_FOUND` |
 | GET | `/api/app-config/features` | 对象 | `getAppConfig` |
-
-**纯前端**：`validateVisualQueryConfig` 无 HTTP（本地规则）；服务端校验用 `validateVisualQueryOnServer`。
 
 ## 8. 设置（`settingsShortcutsApi.ts`）
 
@@ -191,7 +188,7 @@
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `sql`, `row_count` |
+| POST | `/api/query` | 对象 | `performJoinQuery`（Join 工作台 DuckDB 简单场景）；`data`: `data`, `columns`, `sql`, `row_count` |
 | POST | `/api/save_query_to_duckdb` | 对象 | 见 §2 `saveQueryToDuckDB` |
 
 ## 10. 已移除的历史端点（勿再使用）

@@ -4,7 +4,7 @@ import { Code, GitMerge, Layers, Table2, Clock, Star } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { QueryBuilder, SQLPreview } from "../VisualQuery";
+import { SQLPreview } from "../components/SQLPreview";
 import { SQLQueryPanel } from "../SQLQuery";
 import { JoinQueryPanel } from "../JoinQuery";
 import { SetOperationsPanel } from "../SetOperations";
@@ -13,18 +13,10 @@ import { GlobalHistoryPanel } from "../History/GlobalHistoryPanel";
 import { SavedQueriesPanel } from "../Bookmarks/SavedQueriesPanel";
 import { useGlobalHistory } from "../hooks/useGlobalHistory";
 import { useSavedQueries } from "../hooks/useSavedQueries";
-import type { QueryConfig } from "../VisualQuery";
 import type { SelectedTable } from "@/types/SelectedTable";
-import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
 import type { TableSource, UseQueryWorkspaceReturn } from "@/hooks/useQueryWorkspace";
-import type { SqlDialect } from "@/utils/sqlUtils";
 import {
-  getDialectFromSource,
-  getSourceFromSelectedTable,
-  quoteIdent,
-  quoteQualifiedTable,
   generateDatabaseAlias,
-  generateExternalTableReference,
   parseSQLTableReferences,
   buildAttachDatabasesFromParsedRefs
 } from "@/utils/sqlUtils";
@@ -55,7 +47,6 @@ const queryModes: QueryMode[] = [
   { id: 'join', labelKey: 'query.tabs.join', icon: GitMerge },
   { id: 'set', labelKey: 'query.tabs.set', icon: Layers },
   { id: 'pivot', labelKey: 'query.tabs.pivot', icon: Table2 },
-  // { id: 'visual', labelKey: 'query.tabs.visual', icon: LayoutGrid }, // 暂时隐藏
 ];
 
 interface QueryTabsProps {
@@ -99,16 +90,18 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
   const { connections } = useDatabaseConnections();
 
   // SQL 预览状态
-  const [previewOpen, setPreviewOpen] = React.useState(false);
-  const [previewSQL, setPreviewSQL] = React.useState<string | null>(null);
+  const [loadedSqlPreview, setLoadedSqlPreview] = React.useState<string | undefined>(undefined);
+  const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false);
+  const [previewDialogSql, setPreviewDialogSql] = React.useState<string | null>(null);
   const [previewSource, setPreviewSource] = React.useState<TableSource | undefined>(undefined);
-  const [isExecuting, setIsExecuting] = React.useState(false);
+  const [isPreviewExecuting, setIsPreviewExecuting] = React.useState(false);
 
   // ... (createWrappedExecute and handleJoinExecute definitions skipped for brevity, they are unchanged)
 
   const handleLoadSQL = async (sql: string, _type: string = 'sql') => {
     onTabChange('sql');
-    setPreviewSQL(sql);
+    setLoadedSqlPreview(sql);
+    setPreviewDialogSql(sql);
 
     // 1. 尝试解析 SQL 中的联邦查询注释 (优先级最高, 因为它明确指出了意图)
     // 格式: -- 联邦查询: db1, db2
@@ -148,8 +141,23 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
       setPreviewSource(undefined);
     }
 
-    setPreviewOpen(true);
+    setPreviewDialogOpen(true);
   };
+
+  const handlePreviewDialogExecute = React.useCallback(
+    async (sql: string) => {
+      setIsPreviewExecuting(true);
+      try {
+        await onExecute(sql, previewSource);
+        setPreviewDialogOpen(false);
+      } finally {
+        setIsPreviewExecuting(false);
+      }
+    },
+    [onExecute, previewSource]
+  );
+
+  const sqlPanelPreview = externalPreviewSQL ?? loadedSqlPreview;
 
   // 创建包装后的执行函数，自动记录到全局历史
   const createWrappedExecute = React.useCallback(
@@ -208,56 +216,14 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
 
 
 
-  // ... (handleVisualQueryExecute, handlePreview, handleExecuteFromPreview 保持不变) ...
-  const handleVisualQueryExecute = React.useCallback(
-    async (config: QueryConfig) => {
-      const source = config.table ? getSourceFromSelectedTable(config.table) : undefined;
-      const dialect = getDialectFromSource(source);
-
-      const sql = buildSQLFromConfig(config, dialect);
-      if (sql) {
-        setIsExecuting(true);
-        try {
-          await onExecute(sql, source);
-        } finally {
-          setIsExecuting(false);
-        }
-      }
-    },
-    [onExecute]
-  );
-
-  const handlePreview = React.useCallback((config: QueryConfig) => {
-    const source = config.table ? getSourceFromSelectedTable(config.table) : undefined;
-    const dialect = getDialectFromSource(source);
-    const sql = buildSQLFromConfig(config, dialect);
-    setPreviewSQL(sql);
-    setPreviewSource(source);
-    setPreviewOpen(true);
-  }, []);
-
-  const handleExecuteFromPreview = React.useCallback(
-    async (sql: string) => {
-      setIsExecuting(true);
-      try {
-        await onExecute(sql, previewSource);
-        setPreviewOpen(false);
-      } finally {
-        setIsExecuting(false);
-      }
-    },
-    [onExecute, previewSource]
-  );
-
-
   return (
     <>
       <SQLPreview
-        sql={previewSQL}
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        onExecute={handleExecuteFromPreview}
-        isExecuting={isExecuting}
+        sql={previewDialogSql}
+        open={previewDialogOpen}
+        onOpenChange={setPreviewDialogOpen}
+        onExecute={handlePreviewDialogExecute}
+        isExecuting={isPreviewExecuting}
       />
 
       <GlobalHistoryPanel
@@ -325,7 +291,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
               onExecute={onExecute}
               editorMinHeight="150px"
               editorMaxHeight="300px"
-              previewSQL={externalPreviewSQL}
+              previewSQL={sqlPanelPreview}
             />
           </KeepAliveTabContent>
 
@@ -333,6 +299,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
             <JoinQueryPanel
               selectedTables={selectedTables}
               onExecute={handleJoinExecute}
+              onDisplayPreview={onDisplayPreview}
               onRemoveTable={onRemoveTable}
               onCancel={onCancel}
               isCancelling={isCancelling}
@@ -355,14 +322,6 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
             />
           </KeepAliveTabContent>
 
-          <KeepAliveTabContent value="visual" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
-            <QueryBuilder
-              selectedTable={selectedTables.length > 0 ? selectedTables[0] : null}
-              onExecute={handleVisualQueryExecute}
-              onPreview={handlePreview}
-              isExecuting={isExecuting}
-            />
-          </KeepAliveTabContent>
         </div>
       </Tabs>
     </>
@@ -414,134 +373,3 @@ const KeepAliveTabContent: React.FC<KeepAliveTabContentProps> = ({
     </div>
   );
 };
-
-/**
- * 转义 SQL 字符串值，防止 SQL 注入
- */
-function escapeSQLString(value: string): string {
-  return value.replace(/'/g, "''");
-}
-
-/**
- * 转义 SQL 标识符（表名、列名）
- */
-// 从 QueryConfig 生成 SQL（简化版本，完整版在 useQueryBuilder 中）
-function buildSQLFromConfig(config: QueryConfig, dialect: SqlDialect): string | null {
-  if (!config.table) return null;
-
-  const parts: string[] = [];
-  const normalizedTable = normalizeSelectedTable(config.table);
-  const tableName = getTableName(config.table);
-  const isExternalTable = normalizedTable.source === "external";
-  const fromTableName = isExternalTable
-    ? generateExternalTableReference(config.table).qualifiedName
-    : quoteQualifiedTable({ name: tableName, schema: normalizedTable.schema }, dialect);
-  const baseTableRef = isExternalTable
-    ? fromTableName
-    : quoteIdent(tableName, dialect);
-
-  // SELECT
-  const selectParts: string[] = [];
-  if (config.columns.length > 0) {
-    // 如果有 JOIN，需要为列添加表前缀以避免歧义
-    if (config.joins && config.joins.length > 0) {
-      selectParts.push(...config.columns.map((col) => `${baseTableRef}.${quoteIdent(col, dialect)}`));
-    } else {
-      selectParts.push(...config.columns.map((col) => quoteIdent(col, dialect)));
-    }
-  }
-  config.aggregations?.forEach((agg) => {
-    const colName = quoteIdent(agg.column, dialect);
-    // 如果有 JOIN，聚合列也需要表前缀
-    const qualifiedCol = config.joins && config.joins.length > 0
-      ? `${baseTableRef}.${colName}`
-      : colName;
-    let aggExpr =
-      agg.function === "COUNT_DISTINCT"
-        ? `COUNT(DISTINCT ${qualifiedCol})`
-        : `${agg.function}(${qualifiedCol})`;
-    if (agg.alias) aggExpr += ` AS ${quoteIdent(agg.alias, dialect)}`;
-    selectParts.push(aggExpr);
-  });
-  if (selectParts.length === 0) selectParts.push("*");
-  parts.push(`SELECT ${selectParts.join(", ")}`);
-
-  // FROM
-  parts.push(`FROM ${fromTableName}`);
-
-  // JOIN
-  config.joins?.forEach((join) => {
-    if (join.targetTable && join.sourceColumn && join.targetColumn) {
-      const targetTableQuoted = quoteIdent(join.targetTable, dialect);
-      const sourceCol = quoteIdent(join.sourceColumn, dialect);
-      const targetCol = quoteIdent(join.targetColumn, dialect);
-      parts.push(
-        `${join.joinType || "LEFT"} JOIN ${targetTableQuoted} ON ${baseTableRef}.${sourceCol} = ${targetTableQuoted}.${targetCol}`
-      );
-    }
-  });
-
-  // WHERE
-  if (config.filters && config.filters.length > 0) {
-    const whereParts: string[] = [];
-    config.filters.forEach((filter, index) => {
-      let condition = index > 0 ? ` ${filter.logicOperator} ` : "";
-      const col = quoteIdent(filter.column, dialect);
-      // 如果有 JOIN，WHERE 条件中的列也需要表前缀
-      const qualifiedCol = config.joins && config.joins.length > 0
-        ? `${baseTableRef}.${col}`
-        : col;
-      switch (filter.operator) {
-        case "IS NULL":
-          condition += `${qualifiedCol} IS NULL`;
-          break;
-        case "IS NOT NULL":
-          condition += `${qualifiedCol} IS NOT NULL`;
-          break;
-        case "BETWEEN":
-          condition += `${qualifiedCol} BETWEEN '${escapeSQLString(String(filter.value))}' AND '${escapeSQLString(String(filter.value2 ?? ''))}'`;
-          break;
-        case "IN": {
-          const values = String(filter.value).split(',').map((v) => `'${escapeSQLString(v.trim())}'`);
-          condition += `${qualifiedCol} IN (${values.join(', ')})`;
-          break;
-        }
-        default:
-          condition += `${qualifiedCol} ${filter.operator} '${escapeSQLString(String(filter.value))}'`;
-      }
-      whereParts.push(condition);
-    });
-    parts.push(`WHERE ${whereParts.join("")}`);
-  }
-
-  // GROUP BY
-  if (config.groupBy && config.groupBy.length > 0) {
-    // 如果有 JOIN，GROUP BY 中的列也需要表前缀
-    const groupByParts = config.groupBy.map((col) => {
-      const quotedCol = quoteIdent(col, dialect);
-      return config.joins && config.joins.length > 0
-        ? `${baseTableRef}.${quotedCol}`
-        : quotedCol;
-    });
-    parts.push(`GROUP BY ${groupByParts.join(", ")}`);
-  }
-
-  // ORDER BY
-  if (config.orderBy && config.orderBy.length > 0) {
-    const orderByParts = config.orderBy.map((s) => {
-      const quotedCol = quoteIdent(s.column, dialect);
-      const qualifiedCol = config.joins && config.joins.length > 0
-        ? `${baseTableRef}.${quotedCol}`
-        : quotedCol;
-      return `${qualifiedCol} ${s.direction}`;
-    });
-    parts.push(`ORDER BY ${orderByParts.join(", ")}`);
-  }
-
-  // LIMIT
-  if (config.limit) {
-    parts.push(`LIMIT ${config.limit}`);
-  }
-
-  return parts.join("\n");
-}

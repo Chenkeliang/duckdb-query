@@ -12,25 +12,15 @@ import {
 } from '@/components/ui/dialog';
 
 export interface SQLPreviewProps {
-  /** 生成的 SQL */
   sql: string | null;
-  /** 是否打开 */
   open: boolean;
-  /** 关闭回调 */
   onOpenChange: (open: boolean) => void;
-  /** 执行 SQL 回调 */
   onExecute?: (sql: string) => void;
-  /** 是否正在执行 */
   isExecuting?: boolean;
-  /** 是否允许编辑 */
   allowEdit?: boolean;
 }
 
-/**
- * SQL 预览对话框组件
- *
- * 显示生成的 SQL，支持复制、编辑和执行
- */
+/** SQL 预览对话框（收藏/历史加载等） */
 export const SQLPreview: React.FC<SQLPreviewProps> = ({
   sql,
   open,
@@ -44,17 +34,14 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editedSQL, setEditedSQL] = useState(sql || '');
 
-  // 当 SQL 变化时更新编辑内容
   React.useEffect(() => {
     setEditedSQL(sql || '');
     setIsEditing(false);
   }, [sql]);
 
-  // 复制 SQL
   const handleCopy = useCallback(async () => {
     const textToCopy = isEditing ? editedSQL : sql;
     if (!textToCopy) return;
-
     try {
       await navigator.clipboard.writeText(textToCopy);
       setCopied(true);
@@ -64,7 +51,6 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
     }
   }, [sql, editedSQL, isEditing]);
 
-  // 执行 SQL
   const handleExecute = useCallback(() => {
     const sqlToExecute = isEditing ? editedSQL : sql;
     if (sqlToExecute && onExecute) {
@@ -72,10 +58,8 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
     }
   }, [sql, editedSQL, isEditing, onExecute]);
 
-  // 切换编辑模式
   const toggleEdit = useCallback(() => {
     if (isEditing) {
-      // 退出编辑模式，恢复原始 SQL
       setEditedSQL(sql || '');
     }
     setIsEditing(!isEditing);
@@ -90,15 +74,11 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
             {t('query.preview.title', 'SQL 预览')}
           </DialogTitle>
           <DialogDescription>
-            {t(
-              'query.preview.description',
-              '查看生成的 SQL 语句，可以复制或直接执行'
-            )}
+            {t('query.preview.description', '查看 SQL，可复制或直接执行')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden flex flex-col gap-4">
-          {/* 工具栏 */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {allowEdit && (
@@ -143,7 +123,6 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
             </div>
           </div>
 
-          {/* SQL 内容 */}
           <div className="flex-1 overflow-auto">
             {isEditing ? (
               <textarea
@@ -172,16 +151,6 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
               </pre>
             )}
           </div>
-
-          {/* 提示信息 */}
-          {isEditing && (
-            <p className="text-xs text-muted-foreground">
-              {t(
-                'query.preview.editHint',
-                '提示：编辑后的 SQL 将用于执行，但不会更新可视化配置'
-              )}
-            </p>
-          )}
         </div>
       </DialogContent>
     </Dialog>

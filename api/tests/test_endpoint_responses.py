@@ -206,32 +206,6 @@ class TestQueryEndpoints:
             if "success" in data:
                 assert_error_response(data)
 
-    def test_visual_query_validate_empty_config(self):
-        """Test POST /api/visual-query/validate with empty config.
-        
-        Note: An empty config may result in validation error or success with
-        validation warnings. Both are acceptable as long as the response
-        follows the standard format.
-        """
-        response = client.post(
-            "/api/visual-query/validate",
-            json={"tables": [], "columns": []}
-        )
-        
-        data = response.json()
-        # Response should follow standard format (either success or error)
-        if response.status_code == 200:
-            if data.get("success") is True:
-                assert_success_response(data)
-            else:
-                # Error response with 200 status (validation error)
-                assert_error_response(data)
-        else:
-            # Non-200 status should be error response
-            if "success" in data:
-                assert_error_response(data)
-
-
 class TestResponseTimestamp:
     """Tests for response timestamp format."""
 

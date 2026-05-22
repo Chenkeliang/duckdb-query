@@ -184,20 +184,23 @@ export function useFederatedQueryDetection(
     const hasManual = manualDatabases.length > 0;
 
     if (hasExternalFromSelected || hasExternalFromSQL || hasManual) {
-      // 获取第一个外部连接的信息
       const firstAttach = mergedResult.attachDatabases[0];
       if (firstAttach) {
         const connection = connections.find((c) => c.id === firstAttach.connectionId);
         if (connection) {
           return {
-            type: 'external',
+            type: 'federated',
             connectionId: connection.id,
             connectionName: connection.name,
             databaseType: connection.type,
+            attachDatabases: mergedResult.attachDatabases,
           };
         }
       }
-      return { type: 'external' };
+      return {
+        type: 'federated',
+        attachDatabases: mergedResult.attachDatabases,
+      };
     }
 
     return { type: 'duckdb' };

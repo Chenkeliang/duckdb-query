@@ -99,7 +99,7 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
 
   // 执行导入
   const handleImport = useCallback(async () => {
-    if (!source || source.type !== 'external') {
+    if (!source || source.type !== 'federated') {
       showErrorToast(t, 'INVALID_REQUEST', t('query.import.externalOnly', 'Only external database query results can be imported to DuckDB'));
       return;
     }

@@ -188,16 +188,10 @@ export {
     type SetOperationExportResult,
 } from './setOperationsApi';
 
-// ==================== Visual Query & Favorites API ====================
+// ==================== Pivot API & SQL Favorites ====================
 export {
-    generateVisualQuery,
     generatePivotVisualQuery,
-    previewVisualQuery,
     previewPivotVisualQuery,
-    getVisualQueryDistinctValues,
-    validateVisualQueryOnServer,
-    getVisualQueryColumnStats,
-    validateVisualQueryConfig,
     listSqlFavorites,
     getSqlFavorite,
     createSqlFavorite,
@@ -206,9 +200,4 @@ export {
     incrementFavoriteUsage,
     getAppConfig,
     type AppConfigResponse,
-    type VisualQueryDistinctValuesPayload,
-    type VisualQueryDistinctValuesResult,
-    type VisualQueryServerValidatePayload,
-    type VisualQueryServerValidateResult,
-    type VisualQueryColumnStatsResult,
 } from './visualQueryApi';

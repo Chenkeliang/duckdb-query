@@ -61,8 +61,8 @@ export function quoteQualifiedTable(
 }
 
 export function getDialectFromSource(source?: TableSource): SqlDialect {
-  if (source?.type === "external") {
-    return source.databaseType ?? "mysql";
+  if (source?.type === "federated" && source.databaseType) {
+    return source.databaseType;
   }
   return "duckdb";
 }
@@ -71,22 +71,21 @@ export function getSourceFromSelectedTable(table: SelectedTable): TableSource {
   const normalized = normalizeSelectedTable(table);
   if (normalized.source === "external" && normalized.connection) {
     const { attachDatabase } = generateExternalTableReference(table);
-    if (attachDatabase) {
-      return {
-        type: "federated",
-        connectionId: normalized.connection.id,
-        connectionName: normalized.connection.name,
-        databaseType: normalized.connection.type,
-        schema: normalized.schema,
-        attachDatabases: [attachDatabase],
-      };
-    }
+    const alias =
+      attachDatabase?.alias ??
+      `${normalized.connection.type}_${normalized.connection.name}`.replace(/\W+/g, "_");
     return {
-      type: "external",
+      type: "federated",
       connectionId: normalized.connection.id,
       connectionName: normalized.connection.name,
       databaseType: normalized.connection.type,
       schema: normalized.schema,
+      attachDatabases: [
+        attachDatabase ?? {
+          alias,
+          connectionId: normalized.connection.id,
+        },
+      ],
     };
   }
   return { type: "duckdb" };

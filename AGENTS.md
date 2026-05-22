@@ -91,7 +91,6 @@ duckdb-query/
 │       │   └── ...
 │       ├── Query/                    # 查询相关组件
 │       │   ├── SQLQuery/             # SQL 查询编辑器
-│       │   ├── VisualQuery/          # 可视化查询构建器
 │       │   ├── JoinQuery/            # 连接查询
 │       │   ├── PivotTable/           # 透视表
 │       │   ├── SetOperations/        # 集合操作

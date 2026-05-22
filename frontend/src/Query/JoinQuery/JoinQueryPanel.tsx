@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, StopCircle, Loader2, Star, Timer } from 'lucide-react';
+import { GitMerge, Play, Eye, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, StopCircle, Loader2, Star, Timer } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -24,7 +24,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { parseFederatedQueryError } from '@/api';
+import { parseFederatedQueryError, performJoinQuery } from '@/api';
+import type { TableSource, UseQueryWorkspaceReturn } from '@/hooks/useQueryWorkspace';
+import { showErrorToast } from '@/utils/toastHelpers';
+import {
+  buildJoinQueryPayload,
+  canUseServerJoinPath,
+} from './buildJoinQueryPayload';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useAppConfig } from '@/hooks/useAppConfig';
 import { useTypeConflict, type ColumnPair } from '@/hooks/useTypeConflict';
@@ -45,6 +51,7 @@ import {
   extractAttachDatabases,
   formatTableReference,
   createTableReference,
+  getSourceFromSelectedTable,
 } from '@/utils/sqlUtils';
 import {
   FilterBar,
@@ -131,13 +138,12 @@ interface TableColumn {
   type: string;
 }
 
-// 使用统一的 TableSource 类型
-import type { TableSource } from '@/hooks/useQueryWorkspace';
 export type { TableSource };
 
 interface JoinQueryPanelProps {
   selectedTables?: SelectedTable[];
   onExecute?: (sql: string, source?: TableSource) => Promise<void>;
+  onDisplayPreview?: UseQueryWorkspaceReturn['displayQueryPreview'];
   onRemoveTable?: (table: SelectedTable) => void;
   /** 取消回调 */
   onCancel?: () => void;
@@ -683,6 +689,7 @@ const EmptyState: React.FC = () => {
 export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   selectedTables = [],
   onExecute,
+  onDisplayPreview,
   onRemoveTable,
   onCancel,
   isCancelling = false,
@@ -690,6 +697,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   const { t } = useTranslation('common');
   const { maxQueryRows } = useAppConfig();
   const [isExecuting, setIsExecuting] = React.useState(false);
+  const [isPreviewing, setIsPreviewing] = React.useState(false);
   const [localIsCancelling, setLocalIsCancelling] = React.useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
   const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
@@ -739,16 +747,14 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
 
   // 获取表源信息
   const tableSource = React.useMemo((): TableSource | undefined => {
-    if (sourceAnalysis.hasExternal && sourceAnalysis.currentSource) {
-      return {
-        type: 'external',
-        connectionId: sourceAnalysis.currentSource.id,
-        connectionName: sourceAnalysis.currentSource.name,
-        databaseType: sourceAnalysis.currentSource.type,
-      };
+    if (sourceAnalysis.hasExternal) {
+      const externalTables = activeTables.filter(isExternalTable);
+      if (externalTables.length > 0) {
+        return getSourceFromSelectedTable(externalTables[0]);
+      }
     }
     return { type: 'duckdb' };
-  }, [sourceAnalysis]);
+  }, [sourceAnalysis.hasExternal, activeTables]);
 
   // 每个表的选中列
   const [selectedColumns, setSelectedColumns] = React.useState<Record<string, string[]>>({});
@@ -1092,6 +1098,41 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     return true;
   }, [activeTables.length, hasValidJoinConditions]);
 
+  const normalizedJoinConfigs = React.useMemo(
+    () => joinConfigs.map(normalizeJoinConfig),
+    [joinConfigs]
+  );
+
+  const canUseServerJoin = React.useMemo(
+    () =>
+      canUseServerJoinPath(
+        activeTables,
+        normalizedJoinConfigs,
+        filterTree,
+        attachDatabases
+      ),
+    [activeTables, normalizedJoinConfigs, filterTree, attachDatabases]
+  );
+
+  const buildServerPayload = React.useCallback(
+    (isPreview: boolean) =>
+      buildJoinQueryPayload({
+        activeTables,
+        joinConfigs: normalizedJoinConfigs,
+        filterTree,
+        resolvedTypes,
+        maxQueryRows,
+        isPreview,
+      }),
+    [
+      activeTables,
+      normalizedJoinConfigs,
+      filterTree,
+      resolvedTypes,
+      maxQueryRows,
+    ]
+  );
+
   // 生成 SQL
   const generateSQL = (): string | null => {
     if (activeTables.length === 0) return null;
@@ -1390,35 +1431,84 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     connectionName?: string;
   } | null>(null);
 
-  // 执行查询
+  const runServerJoin = async (isPreview: boolean) => {
+    const payload = buildServerPayload(isPreview);
+    if (!payload) {
+      return false;
+    }
+    const source: TableSource =
+      attachDatabases.length > 0
+        ? { type: 'federated', attachDatabases }
+        : tableSource || { type: 'duckdb' };
+    const startTime = Date.now();
+    const result = await performJoinQuery(payload);
+    const previewHandler = onDisplayPreview;
+    if (previewHandler) {
+      previewHandler(
+        {
+          data: result.data,
+          columns: result.columns,
+          row_count: result.row_count,
+          execTime: Date.now() - startTime,
+          preview_limit_applied: isPreview ? maxQueryRows : null,
+        },
+        result.sql,
+        source
+      );
+      return true;
+    }
+    if (onExecute && result.sql) {
+      await onExecute(result.sql, source);
+      return true;
+    }
+    return false;
+  };
+
+  const handlePreview = async () => {
+    if (!canUseServerJoin || !onDisplayPreview) return;
+    if (hasConflicts && !allResolved) {
+      setShowTypeConflictDialog(true);
+      return;
+    }
+    setIsPreviewing(true);
+    setFederatedError(null);
+    try {
+      await runServerJoin(true);
+    } catch (error) {
+      showErrorToast(t, error as Error, t('query.join.previewFailed', '关联查询预览失败'));
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
+  // 执行查询：DuckDB 简单 JOIN 走服务端；联邦/筛选/表达式仍本地 SQL
   const handleExecute = async () => {
-    // 如果有未解决的类型冲突，打开对话框
     if (hasConflicts && !allResolved) {
       setShowTypeConflictDialog(true);
       return;
     }
 
-    const sql = generateSQL();
-    if (!sql || !canExecute) return;
-
-    if (!onExecute) return;
+    if (!canExecute) return;
 
     setIsExecuting(true);
     setFederatedError(null);
 
     try {
-      // 构建数据源信息
-      const source: TableSource = attachDatabases.length > 0
-        ? {
-          type: 'federated',
-          attachDatabases,
-        }
-        : tableSource || { type: 'duckdb' };
+      if (canUseServerJoin) {
+        const ran = await runServerJoin(false);
+        if (ran) return;
+      }
 
-      // 通过统一的 onExecute 回调执行查询
+      const sql = generateSQL();
+      if (!sql || !onExecute) return;
+
+      const source: TableSource =
+        attachDatabases.length > 0
+          ? { type: 'federated', attachDatabases }
+          : tableSource || { type: 'duckdb' };
+
       await onExecute(sql, source);
     } catch (error) {
-      // 解析联邦查询错误
       const parsedError = parseFederatedQueryError(error as Error);
       setFederatedError({
         type: parsedError.type,
@@ -1476,16 +1566,32 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
                 {t('query.cancel', '取消')}
               </Button>
             ) : (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleExecute}
-                disabled={!canExecute || isExecuting}
-                className="gap-1.5"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                {t('query.execute', '执行')}
-              </Button>
+              <>
+                {canUseServerJoin && onDisplayPreview ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePreview}
+                    disabled={!canExecute || isExecuting || isPreviewing}
+                    className="gap-1.5"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    {isPreviewing
+                      ? t('query.join.previewing', '预览中…')
+                      : t('query.join.preview', '预览')}
+                  </Button>
+                ) : null}
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleExecute}
+                  disabled={!canExecute || isExecuting || isPreviewing}
+                  className="gap-1.5"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  {t('query.execute', '执行')}
+                </Button>
+              </>
             )}
 
             {/* 异步执行按钮 */}

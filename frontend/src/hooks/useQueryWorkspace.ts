@@ -38,7 +38,7 @@ export interface AttachDatabase {
  * 表数据源信息（用于查询执行和导入）
  */
 export interface TableSource {
-  type: 'duckdb' | 'external' | 'federated';
+  type: 'duckdb' | 'federated';
   connectionId?: string;
   connectionName?: string;
   databaseType?: DatabaseType;
@@ -138,7 +138,6 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     join: [],
     set: [],
     pivot: [],
-    visual: [],
   });
 
   // 当前查询模式
@@ -222,8 +221,8 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       setSelectedTables((prev) => {
         const currentTables = prev[currentTab] || [];
 
-        // 单选模式（sql, pivot, visual）
-        if (currentTab === "sql" || currentTab === "pivot" || currentTab === "visual") {
+        // 单选模式（sql, pivot）
+        if (currentTab === "sql" || currentTab === "pivot") {
           return {
             ...prev,
             [currentTab]: [normalized],
@@ -303,11 +302,9 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
           preview_limit_applied?: number | null;
         };
 
-        if (querySource.type === 'federated' || querySource.type === 'external') {
-          // 联邦查询（包括单外部表查询，统一使用 ATTACH 模式）
-          const attachDatabases = querySource.attachDatabases || [];
+        if (querySource.type === 'federated') {
+          const attachDatabases = [...(querySource.attachDatabases ?? [])];
 
-          // 如果是旧的 external 类型但没有 attachDatabases，尝试构建
           if (attachDatabases.length === 0 && querySource.connectionId) {
             attachDatabases.push({
               alias: querySource.connectionName || `db_${querySource.connectionId}`,

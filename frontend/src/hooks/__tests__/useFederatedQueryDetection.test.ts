@@ -128,7 +128,7 @@ describe('useFederatedQueryDetection', () => {
       expect(result.current.requiresFederatedQuery).toBe(true);
       expect(result.current.attachDatabases).toHaveLength(1);
       expect(result.current.attachDatabases[0].connectionId).toBe('conn-1');
-      expect(result.current.tableSource.type).toBe('external');
+      expect(result.current.tableSource.type).toBe('federated');
     });
 
     it('should handle unrecognized prefixes', () => {
@@ -470,9 +470,9 @@ describe('useFederatedQueryDetection', () => {
         vi.advanceTimersByTime(10);
       });
 
-      expect(result.current.tableSource.type).toBe('external');
+      expect(result.current.tableSource.type).toBe('federated');
 
-      if (result.current.tableSource.type === 'external') {
+      if (result.current.tableSource.type === 'federated') {
         expect(result.current.tableSource.connectionId).toBe('conn-1');
         expect(result.current.tableSource.connectionName).toBe('mysql_orders');
         expect(result.current.tableSource.databaseType).toBe('mysql');

@@ -222,83 +222,6 @@ class TestEndToEndWorkflows:
         table = metadata_response["data"]["table"]
         assert table["table_name"] == "test_employees"
         assert table["row_count"] == 1000
-        
-        # Step 2: Get specific column statistics
-        response = client.get("/api/visual-query/column-stats/test_employees/salary")
-        assert response.status_code == 200
-        
-        stats_response = response.json()
-        assert stats_response["success"] is True
-        assert stats_response["data"]["statistics"]["column_name"] == "salary"
-    
-    def test_visual_query_validation_workflow(self):
-        """Test query validation workflow"""
-        # Test valid configuration
-        valid_config = {
-            "table_name": "test_table",
-            "selected_columns": ["col1", "col2"],
-            "aggregations": [
-                {
-                    "column": "amount",
-                    "function": "SUM",
-                    "alias": "total"
-                }
-            ],
-            "filters": [
-                {
-                    "column": "status",
-                    "operator": "=",
-                    "value": "active",
-                    "logic_operator": "AND"
-                }
-            ],
-            "order_by": [
-                {
-                    "column": "total",
-                    "direction": "DESC",
-                    "priority": 0
-                }
-            ],
-            "group_by": ["col1", "col2"],
-            "is_distinct": False
-        }
-        
-        # Mock the validation dependencies
-        with patch('routers.visual_query._load_backend_column_profiles') as mock_profiles, \
-             patch('routers.visual_query._detect_aggregation_conflicts') as mock_conflicts:
-            mock_profiles.return_value = {}
-            mock_conflicts.return_value = ([], {})
-            
-            response = client.post("/api/visual-query/validate", json=valid_config)
-            assert response.status_code == 200
-            
-            validation_response = response.json()
-            assert validation_response["success"] is True
-            assert validation_response["data"]["is_valid"] is True
-        
-        # Test invalid configuration - Pydantic validates before endpoint logic
-        # Empty table_name and empty aggregation column will fail Pydantic validation
-        invalid_config = {
-            "table_name": "",  # Invalid - Pydantic rejects
-            "selected_columns": [],
-            "aggregations": [
-                {
-                    "column": "",  # Invalid - Pydantic rejects
-                    "function": "SUM"
-                }
-            ],
-            "filters": [],
-            "order_by": [],
-            "is_distinct": False
-        }
-        
-        response = client.post("/api/visual-query/validate", json=invalid_config)
-        assert response.status_code == 200
-        
-        validation_response = response.json()
-        assert validation_response["success"] is False
-        err = validation_response.get("error", {}).get("details", {})
-        assert len(err.get("errors", [])) > 0
 
 
 @pytest.mark.skip(reason="Integration tests require real database tables; run with pytest -m integration")
@@ -482,37 +405,5 @@ class TestPerformanceAndScaling:
         if inner.get("metadata"):
             assert "estimated_rows" in inner["metadata"]
     
-    def test_complex_query_performance_warnings(self):
-        """Test performance warnings for complex queries"""
-        # Create very complex configuration
-        complex_config = {
-            "table_name": "complex_table",
-            "selected_columns": ["col1", "col2", "col3"],
-            "aggregations": [
-                {"column": f"metric_{i}", "function": "SUM", "alias": f"sum_{i}"}
-                for i in range(10)  # Many aggregations
-            ],
-            "filters": [
-                {"column": f"filter_{i}", "operator": "=", "value": f"value_{i}", "logic_operator": "AND"}
-                for i in range(15)  # Many filters
-            ],
-            "order_by": [
-                {"column": f"sum_{i}", "direction": "DESC", "priority": i}
-                for i in range(5)  # Multiple sorts
-            ],
-            "group_by": ["col1", "col2", "col3"],
-            "is_distinct": False
-        }
-        
-        response = client.post("/api/visual-query/validate", json=complex_config)
-        assert response.status_code == 200
-        
-        validation_response = response.json()
-        assert validation_response["success"] is True
-
-        inner = validation_response["data"]
-        assert len(inner["warnings"]) > 0
-
-
 if __name__ == "__main__":
     pytest.main([__file__])

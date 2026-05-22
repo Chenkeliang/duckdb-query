@@ -72,7 +72,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const [gridColumns, setGridColumns] = useState<DataGridColumnInfo[]>([]);
   const dataGridRef = useRef<DataGridApi>(null);
 
-  const showImportButton = source?.type === 'external' && !!currentSQL;
+  const showImportButton =
+    source?.type === 'federated' && !!source.connectionId && !!currentSQL;
 
   const { columns: gridColumnDefs } = useDataGridColumns({
     data,
@@ -96,7 +97,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   }, []);
 
   const handleImportClick = useCallback(() => {
-    if (!source || source.type !== 'external') return;
+    if (!source || source.type !== 'federated') return;
     if (!currentSQL) return;
 
     if (!source.connectionId) {

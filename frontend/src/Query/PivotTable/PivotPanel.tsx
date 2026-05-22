@@ -269,7 +269,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                 onOpenChange={setAsyncDialogOpen}
                 sql={sql?.trim() ?? ''}
                 datasource={
-                    selectedTable && getSourceFromSelectedTable(selectedTable)?.type === 'external' ? {
+                    selectedTable && getSourceFromSelectedTable(selectedTable)?.type === 'federated' ? {
                         id: (getSourceFromSelectedTable(selectedTable) as any).connectionId!,
                         type: (getSourceFromSelectedTable(selectedTable) as any).databaseType!,
                         name: (getSourceFromSelectedTable(selectedTable) as any).connectionName,
