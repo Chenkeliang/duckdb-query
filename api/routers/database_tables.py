@@ -678,10 +678,8 @@ async def list_schema_tables(connection_id: str, schema: str):
 
 @router.get("/api/datasources/databases/{connection_id}/tables/detail", tags=["Database Management"])
 async def get_table_details_alias(connection_id: str, table_name: str, schema: str | None = None):
-    """Canonical 外部表详情路径。"""
-    from core.services.catalog_service import get_external_table_detail
-
-    return await get_external_table_detail(connection_id, table_name, schema)
+    """Canonical 外部表详情路径（与 legacy get_table_details 同一实现）。"""
+    return await get_table_details(connection_id, table_name, schema)
 
 
 @router.get(

@@ -38,7 +38,7 @@ flowchart TB
 
   subgraph services [api/core/services]
     ingest_svc[file_ingestion_service.py]
-    catalog_svc[catalog_service.py]
+    db_tables[database_tables.py]
   end
 
   subgraph core [api/core]
@@ -67,7 +67,7 @@ flowchart TB
 | Ingestion | §3 | `file_ingestion_service` | `fileApi.ts`, `UploadPanel` |
 | QueryExecution | §4 | `duckdb_query`, `query_cancel` | `queryApi.ts`, `useQueryRunner` |
 | QueryAsync | §5 | `async_tasks`, `task_manager` | `asyncTaskApi.ts` |
-| Catalog | §6 | `catalog_service`, `datasources`, `database_tables` | `databaseSchemasApi`, `dataSourceApi` |
+| Catalog | §6 | `datasources`, `database_tables`（canonical + legacy 别名） | `databaseSchemasApi`, `dataSourceApi`, `tableApi` |
 | DuckDBCatalog | §6.3 | `duckdb_query` | `tableApi`, `useDuckDBTables` |
 | VisualBuilder | §7 | `visual_query` router + `visual_query_generator` | `visualQueryApi` |
 | SetOps | §7 | `set_operations` router | `setOperationsApi` |

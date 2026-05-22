@@ -15,36 +15,23 @@ from core.security.encryption import password_encryptor
 from middleware import RequestIdMiddleware
 
 from routers import (
-    data_sources,
-    query,
+    data_sources,  # 文件入湖：/api/upload、/api/data-sources/excel/*
+    query,  # 联邦 JOIN：/api/query；废弃代理：/api/execute_sql
     paste_data,
-    duckdb_query,
+    duckdb_query,  # DuckDB / 联邦 SQL：/api/duckdb/*
     chunked_upload,
     url_reader,
     server_files,
-    async_tasks,  # 异步任务路由
-    database_tables,  # 数据库表管理路由
-    sql_favorites,  # SQL收藏路由
-    datasources,  # 统一数据源管理路由
-    settings,  # 用户设置路由（快捷键等）
-    query_cancel,  # 查询取消路由
+    async_tasks,
+    database_tables,  # 外部库元数据（含 legacy 别名路径）
+    sql_favorites,
+    datasources,  # 统一数据源：/api/datasources/*
+    settings,
+    query_cancel,
+    visual_query,  # /api/visual-query/*
+    set_operations,  # /api/set-operations/*
 )
-from routers import config_api  # 配置暴露路由
-
-# 尝试导入可能存在的其他路由模块
-try:
-    from routers import enhanced_data_sources
-
-    enhanced_data_sources_available = True
-except ImportError:
-    enhanced_data_sources_available = False
-
-try:
-    from routers import query_proxy
-
-    query_proxy_available = True
-except ImportError:
-    query_proxy_available = False
+from routers import config_api
 from core.database.database_manager import db_manager
 from models.query_models import DatabaseConnection, DataSourceType
 from core.data.file_datasource_manager import reload_all_file_datasources_to_duckdb
@@ -135,28 +122,23 @@ app.add_middleware(
 # RequestId 中间件（查询取消功能支持）
 app.add_middleware(RequestIdMiddleware)
 
-# Include routers
-app.include_router(datasources.router)  # 统一数据源管理路由（新）
+# Include routers（职责说明见 api/routers/README.md）
+app.include_router(datasources.router)
 app.include_router(data_sources.router)
+app.include_router(duckdb_query.router)
 app.include_router(query.router)
-app.include_router(paste_data.router)  # 数据粘贴板路由
-app.include_router(duckdb_query.router)  # DuckDB自定义SQL查询路由
-app.include_router(chunked_upload.router)  # 分块文件上传路由
-app.include_router(url_reader.router)  # URL文件读取路由
-app.include_router(server_files.router)  # 服务器目录读取/导入路由
-app.include_router(async_tasks.router)  # 异步任务路由
-app.include_router(database_tables.router)  # 数据库表管理路由
-app.include_router(sql_favorites.router)  # SQL收藏路由
-app.include_router(config_api.router)  # 配置暴露路由
-app.include_router(settings.router)  # 用户设置路由（快捷键等）
-app.include_router(query_cancel.router)  # 查询取消路由
-
-# 条件性注册可能存在的其他路由
-if enhanced_data_sources_available:
-    app.include_router(enhanced_data_sources.router)  # DuckDB原生扩展路由
-
-if query_proxy_available:
-    app.include_router(query_proxy.router)  # 查询代理路由
+app.include_router(visual_query.router)
+app.include_router(set_operations.router)
+app.include_router(paste_data.router)
+app.include_router(chunked_upload.router)
+app.include_router(url_reader.router)
+app.include_router(server_files.router)
+app.include_router(async_tasks.router)
+app.include_router(database_tables.router)
+app.include_router(sql_favorites.router)
+app.include_router(config_api.router)
+app.include_router(settings.router)
+app.include_router(query_cancel.router)
 
 
 @app.get("/", tags=["Default"])

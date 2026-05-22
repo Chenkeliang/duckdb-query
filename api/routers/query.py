@@ -1327,18 +1327,3 @@ async def delete_duckdb_table_legacy(table_name: str):
     from routers.duckdb_query import delete_duckdb_table
 
     return await delete_duckdb_table(table_name)
-
-
-# ==================== 集合操作API端点 ====================
-
-
-# ==================== 集合操作API端点 ====================
-
-
-
-# Visual / set-operation routes (paths unchanged)
-from routers.set_operations import router as set_operations_router
-from routers.visual_query import router as visual_query_router
-
-router.include_router(visual_query_router)
-router.include_router(set_operations_router)
