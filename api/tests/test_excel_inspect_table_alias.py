@@ -19,7 +19,7 @@ def test_excel_inspect_default_names_use_upload_alias(tmp_path, header_rows):
         pd.DataFrame({"b": [2]}).to_excel(writer, sheet_name="Data", index=False)
 
     alias = "my_book"
-    with patch("routers.data_sources.schedule_cleanup"):
+    with patch("routers.file_ingestion.schedule_cleanup"):
         with open(excel_path, "rb") as handle:
             upload_resp = client.post(
                 "/api/upload",

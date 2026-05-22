@@ -1,9 +1,9 @@
 # pylint: disable=duplicate-code
 """
-File Data Sources API Router
+文件入湖路由（本地上传 + Excel）。
 
-This module handles file uploads and Excel imports.
-Database connection endpoints have been moved to datasources.py (unified API).
+- 路径：`/api/upload`、`/api/data-sources/excel/*`
+- 与 `datasources.py`（`/api/datasources/*` 连接/列表 CRUD）职责不同，勿合并单文件。
 """
 import logging
 import os

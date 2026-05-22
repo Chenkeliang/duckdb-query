@@ -1,8 +1,8 @@
 # pylint: disable=duplicate-code,missing-response-helper-import
 """
-统一数据源管理 API
+统一数据源管理 API（`/api/datasources/*`）。
 
-提供统一的数据源列表、查询、删除等功能
+库连接 CRUD、测试/刷新、统一列表与删除。文件上传与 Excel 在 `file_ingestion.py`，勿与本模块合并。
 """
 
 import logging

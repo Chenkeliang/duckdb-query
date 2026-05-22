@@ -15,7 +15,7 @@ from core.security.encryption import password_encryptor
 from middleware import RequestIdMiddleware
 
 from routers import (
-    data_sources,  # 文件入湖：/api/upload、/api/data-sources/excel/*
+    file_ingestion,  # 文件入湖：/api/upload、/api/data-sources/excel/*
     query,  # 联邦 JOIN：/api/query；save_query_to_duckdb
     paste_data,
     duckdb_query,  # DuckDB / 联邦 SQL：/api/duckdb/*
@@ -124,7 +124,7 @@ app.add_middleware(RequestIdMiddleware)
 
 # Include routers（职责说明见 api/routers/README.md）
 app.include_router(datasources.router)
-app.include_router(data_sources.router)
+app.include_router(file_ingestion.router)
 app.include_router(duckdb_query.router)
 app.include_router(query.router)
 app.include_router(visual_query.router)

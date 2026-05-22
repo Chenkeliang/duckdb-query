@@ -7,8 +7,10 @@
 
 | 文件 | URL 前缀 | 职责 |
 |------|----------|------|
-| `data_sources.py` | `/api/upload`、`/api/data-sources/excel/*` | **文件入湖**（上传、Excel） |
+| `file_ingestion.py` | `/api/upload`、`/api/data-sources/excel/*` | **文件入湖**（上传、Excel） |
 | `datasources.py` | `/api/datasources/*` | **数据源 CRUD**（库连接、统一列表/删除） |
+
+> 曾用名 `data_sources.py`（与 `datasources` 易混），已重命名；**URL 未改**，前端 `fileApi.ts` 无需改动。
 
 ## 查询相关
 
@@ -27,7 +29,24 @@
 
 ## 入湖（多入口 → `file_ingestion_service`）
 
-`data_sources.py`、`chunked_upload.py`、`url_reader.py`、`server_files.py`、`paste_data.py`
+| 文件 | 入口场景 |
+|------|----------|
+| `file_ingestion.py` | 浏览器上传、Excel inspect/import |
+| `chunked_upload.py` | 大文件分块 |
+| `url_reader.py` | 远程 URL |
+| `server_files.py` | 服务器目录挂载 |
+| `paste_data.py` | 粘贴板 |
+
+可合并成一个大 router 文件，但会超过 1500 行且 CI/评审成本高；**共享逻辑已在 `core/services/file_ingestion_service.py`**，多文件只是 HTTP 入口分栏。
+
+## 查询执行（不宜合并单文件）
+
+| 文件 | 职责 |
+|------|------|
+| `query.py` | 多表 JOIN 构建、`/api/query`、`save_query_to_duckdb` |
+| `duckdb_query.py` | DuckDB/联邦执行、表元数据、连接池 |
+
+合并会导致单文件过大；若仅嫌 `query` 名太泛，可后续改名为 `join_query.py`（须改测试 import）。
 
 ## 已移除
 
