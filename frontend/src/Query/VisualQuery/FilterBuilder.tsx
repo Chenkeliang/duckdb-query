@@ -1,6 +1,6 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, GripVertical } from 'lucide-react';
+import { Plus, Trash2, GripVertical, ListFilter, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useTableColumns } from '@/hooks/useTableColumns';
+import { useVisualQueryDistinctValues } from '@/hooks/useVisualQueryDistinctValues';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type { FilterConfig, FilterOperator } from './QueryBuilder';
 
 // 操作符选项
@@ -160,6 +167,9 @@ export const FilterBuilder: React.FC<FilterBuilderProps> = ({
               <FilterRow
                 key={filter.id}
                 filter={filter}
+                filterId={filter.id}
+                tableName={tableName}
+                allFilters={filters}
                 columns={columns}
                 isFirst={index === 0}
                 onUpdate={(updates) => handleUpdateFilter(filter.id, updates)}
@@ -197,6 +207,9 @@ export const FilterBuilder: React.FC<FilterBuilderProps> = ({
 // 单个过滤条件行
 interface FilterRowProps {
   filter: FilterConfig;
+  filterId: string;
+  tableName: string;
+  allFilters: FilterConfig[];
   columns: Array<{ column_name: string; data_type: string }>;
   isFirst: boolean;
   onUpdate: (updates: Partial<FilterConfig>) => void;
@@ -205,8 +218,13 @@ interface FilterRowProps {
   validation: { isValid: boolean; message?: string };
 }
 
+const SUGGEST_OPERATORS: FilterOperator[] = ['=', 'IN', 'LIKE', 'ILIKE'];
+
 const FilterRow: React.FC<FilterRowProps> = ({
   filter,
+  filterId,
+  tableName,
+  allFilters,
   columns,
   isFirst,
   onUpdate,
@@ -215,9 +233,30 @@ const FilterRow: React.FC<FilterRowProps> = ({
   validation,
 }) => {
   const { t } = useTranslation('common');
+  const [suggestEnabled, setSuggestEnabled] = useState(false);
   const operatorInfo = OPERATORS.find((op) => op.value === filter.operator);
   const requiresValue = operatorInfo?.requiresValue ?? true;
   const isBetween = filter.operator === 'BETWEEN';
+  const canSuggest =
+    SUGGEST_OPERATORS.includes(filter.operator) && Boolean(filter.column);
+
+  const peerFilters = useMemo(
+    () => allFilters.filter((f) => f.id !== filterId),
+    [allFilters, filterId]
+  );
+
+  const {
+    data: distinctData,
+    isFetching: distinctLoading,
+    isError: distinctError,
+  } = useVisualQueryDistinctValues({
+    tableName,
+    column: filter.column,
+    filters: peerFilters,
+    enabled: suggestEnabled && canSuggest,
+  });
+
+  const distinctOptions = distinctData?.values ?? [];
 
   return (
     <div className={cn(
@@ -292,6 +331,65 @@ const FilterRow: React.FC<FilterRowProps> = ({
             disabled={disabled}
             className="flex-1 min-w-24"
           />
+          {canSuggest && (
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (open) setSuggestEnabled(true);
+              }}
+            >
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  disabled={disabled}
+                  className="shrink-0"
+                  aria-label={t('query.filter.distinctSuggest', '唯一值建议')}
+                >
+                  {distinctLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ListFilter className="h-4 w-4" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="max-h-60 overflow-auto">
+                {distinctError ? (
+                  <DropdownMenuItem disabled>
+                    {t('query.filter.distinctFailed', '无法加载唯一值')}
+                  </DropdownMenuItem>
+                ) : distinctOptions.length === 0 ? (
+                  <DropdownMenuItem disabled>
+                    {distinctLoading
+                      ? t('common.loading', '加载中…')
+                      : t('query.filter.distinctEmpty', '无可用值')}
+                  </DropdownMenuItem>
+                ) : (
+                  distinctOptions.map((value) => (
+                    <DropdownMenuItem
+                      key={value}
+                      onClick={() => {
+                        if (filter.operator === 'IN') {
+                          const current = String(filter.value ?? '').trim();
+                          const parts = current
+                            ? current.split(',').map((v) => v.trim())
+                            : [];
+                          if (!parts.includes(value)) {
+                            parts.push(value);
+                          }
+                          onUpdate({ value: parts.join(', ') });
+                        } else {
+                          onUpdate({ value });
+                        }
+                      }}
+                    >
+                      {value}
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           {isBetween && (
             <>
               <span className="text-muted-foreground text-sm">~</span>

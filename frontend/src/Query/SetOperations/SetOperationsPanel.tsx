@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { generateSetOperation, previewSetOperation, validateSetOperation } from '@/api';
-import { Layers, Play, Eye, X, Database, Table, Trash2, AlertTriangle, Star, Timer } from 'lucide-react';
+import { Layers, Play, Eye, X, Database, Table, Trash2, AlertTriangle, Star, Timer, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,8 @@ import {
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
 import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
+import { SetOperationExportDialog } from './SetOperationExportDialog';
+import { SetOperationSaveTableDialog } from './SetOperationSaveTableDialog';
 import {
   Tooltip,
   TooltipContent,
@@ -222,6 +224,8 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   const [isPreviewing, setIsPreviewing] = React.useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
   const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
+  const [saveTableDialogOpen, setSaveTableDialogOpen] = React.useState(false);
 
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
   const [internalTables, setInternalTables] = React.useState<SelectedTable[]>([]);
@@ -605,7 +609,52 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
               {t('query.execute', '执行')}
             </Button>
 
-            {/* 异步执行按钮 */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSaveTableDialogOpen(true)}
+                    disabled={!canGenerateServerSql || isExecuting || serverValidationBlocked}
+                    className="gap-1.5 shrink-0"
+                    aria-label={t('query.set.saveTable', '保存为表')}
+                  >
+                    <Database className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">
+                      {t('query.set.saveTable', '保存为表')}
+                    </span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('query.set.saveTableHint', '完整结果写入 DuckDB 新表')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setExportDialogOpen(true)}
+                    disabled={!canGenerateServerSql || isExecuting || serverValidationBlocked}
+                    className="gap-1.5 shrink-0"
+                    aria-label={t('query.set.export', '导出文件')}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">
+                      {t('query.set.export', '导出')}
+                    </span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('query.set.exportHint', '后台导出 CSV / Excel / Parquet')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -624,7 +673,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{t('query.sql.asyncExecuteHint', '后台执行，结果保存到表')}</p>
+                  <p>{t('query.sql.asyncExecuteHint', '按当前 SQL 异步写入 DuckDB 表')}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -855,6 +904,19 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
         onSuccess={() => {
           setAsyncDialogOpen(false);
         }}
+      />
+
+      <SetOperationExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        getPayload={buildSetOperationRequest}
+      />
+
+      <SetOperationSaveTableDialog
+        open={saveTableDialogOpen}
+        onOpenChange={setSaveTableDialogOpen}
+        getPayload={buildSetOperationRequest}
+        defaultTableName="set_op_result"
       />
     </div>
   );
