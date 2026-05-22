@@ -2,7 +2,9 @@
 
 import os
 import sys
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
+
+from tests.pool_mock import bind_mock_duckdb_pool
 
 import pandas as pd
 from fastapi.testclient import TestClient
@@ -19,7 +21,8 @@ def test_duckdb_table_detail_not_found_envelope():
     mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
         {"name": ["other_table"]}
     )
-    with patch("routers.duckdb_query.get_db_connection", return_value=mock_con):
+    with patch("routers.duckdb_query.with_duckdb_connection") as mock_pool:
+        bind_mock_duckdb_pool(mock_pool, mock_con)
         response = client.get("/api/duckdb/tables/detail/__missing_table__")
     assert response.status_code == 404
     body = response.json()
@@ -28,7 +31,7 @@ def test_duckdb_table_detail_not_found_envelope():
 
 
 def test_duckdb_execute_empty_sql_validation():
-    with patch("routers.duckdb_query.get_db_connection"):
+    with patch("routers.duckdb_query.with_duckdb_connection", MagicMock()):
         response = client.post(
             "/api/duckdb/execute",
             json={"sql": "   ", "is_preview": True},

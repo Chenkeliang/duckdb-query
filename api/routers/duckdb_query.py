@@ -30,7 +30,7 @@ from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     build_attach_sql,
     create_persistent_table,
-    get_db_connection,
+    with_duckdb_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.security.encryption import password_encryptor
@@ -128,109 +128,107 @@ class DuckDBQueryResponse(BaseModel):
 async def list_duckdb_tables_summary():
     """获取DuckDB中所有可用表的概要信息"""
     try:
-        con = get_db_connection()
+        with with_duckdb_connection() as con:
+            tables_df = con.execute("SHOW TABLES").fetchdf()
 
-        # 获取所有表
-        tables_df = con.execute("SHOW TABLES").fetchdf()
-
-        if tables_df.empty:
-            return create_list_response(
-                items=[],
-                total=0,
-                message_code=MessageCode.TABLES_RETRIEVED,
-                message="No tables available in DuckDB. Please upload a file or connect to a database first.",
-            )
-
-        # 获取每个表的概要信息
-        table_info = []
-        for _, row in tables_df.iterrows():
-            table_name = row["name"]
-            if table_name.lower().startswith("system_"):
-                continue
-            try:
-                # 获取列数量
-                schema_df = con.execute(f'DESCRIBE "{table_name}"').fetchdf()
-                column_count = len(schema_df) if not schema_df.empty else 0
-
-                # 获取行数
-                count_result = con.execute(
-                    f'SELECT COUNT(*) as count FROM "{table_name}"'
-                ).fetchone()
-                row_count = int(count_result[0]) if count_result else 0
-
-                metadata = file_datasource_manager.get_file_datasource(table_name)
-                raw_created_at = metadata.get("created_at") if metadata else None
-                if isinstance(raw_created_at, datetime):
-                    created_at = raw_created_at.isoformat()
-                elif raw_created_at is not None:
-                    created_at = str(raw_created_at)
-                else:
-                    created_at = None
-
-                table_info.append(
-                    {
-                        "table_name": table_name,
-                        "column_count": column_count,
-                        "row_count": row_count,
-                        "created_at": created_at,
-                    }
-                )
-            except Exception as table_error:
-                logger.warning(f"Failed to get table {table_name} info: {str(table_error)}")
-
-                # 尝试从元数据获取列信息
-                metadata = file_datasource_manager.get_file_datasource(table_name)
-                raw_created_at = metadata.get("created_at") if metadata else None
-                if isinstance(raw_created_at, datetime):
-                    created_at = raw_created_at.isoformat()
-                elif raw_created_at is not None:
-                    created_at = str(raw_created_at)
-                else:
-                    created_at = None
-
-                # 尝试获取行数
-                row_count = 0
-                if metadata:
-                    row_count = metadata.get("row_count", 0)
-
-                table_info.append(
-                    {
-                        "table_name": table_name,
-                        "column_count": metadata.get("column_count") if metadata else 0,
-                        "row_count": row_count,
-                        "created_at": created_at,
-                        "error": str(table_error),
-                    }
+            if tables_df.empty:
+                return create_list_response(
+                    items=[],
+                    total=0,
+                    message_code=MessageCode.TABLES_RETRIEVED,
+                    message="No tables available in DuckDB. Please upload a file or connect to a database first.",
                 )
 
-        # 按创建时间排序：最新的在前，没有创建时间的在最后
-        from dateutil import parser as date_parser
-
-        def sort_key(table):
-            created_at = table.get("created_at")
-            if created_at is None:
-                return datetime(1900, 1, 1)
-            # 如果是字符串，转换为 datetime
-            if isinstance(created_at, str):
+            # 获取每个表的概要信息
+            table_info = []
+            for _, row in tables_df.iterrows():
+                table_name = row["name"]
+                if table_name.lower().startswith("system_"):
+                    continue
                 try:
-                    parsed = date_parser.parse(created_at)
-                    return parsed.replace(tzinfo=None)
-                except Exception:
+                    # 获取列数量
+                    schema_df = con.execute(f'DESCRIBE "{table_name}"').fetchdf()
+                    column_count = len(schema_df) if not schema_df.empty else 0
+
+                    # 获取行数
+                    count_result = con.execute(
+                        f'SELECT COUNT(*) as count FROM "{table_name}"'
+                    ).fetchone()
+                    row_count = int(count_result[0]) if count_result else 0
+
+                    metadata = file_datasource_manager.get_file_datasource(table_name)
+                    raw_created_at = metadata.get("created_at") if metadata else None
+                    if isinstance(raw_created_at, datetime):
+                        created_at = raw_created_at.isoformat()
+                    elif raw_created_at is not None:
+                        created_at = str(raw_created_at)
+                    else:
+                        created_at = None
+
+                    table_info.append(
+                        {
+                            "table_name": table_name,
+                            "column_count": column_count,
+                            "row_count": row_count,
+                            "created_at": created_at,
+                        }
+                    )
+                except Exception as table_error:
+                    logger.warning(f"Failed to get table {table_name} info: {str(table_error)}")
+
+                    # 尝试从元数据获取列信息
+                    metadata = file_datasource_manager.get_file_datasource(table_name)
+                    raw_created_at = metadata.get("created_at") if metadata else None
+                    if isinstance(raw_created_at, datetime):
+                        created_at = raw_created_at.isoformat()
+                    elif raw_created_at is not None:
+                        created_at = str(raw_created_at)
+                    else:
+                        created_at = None
+
+                    # 尝试获取行数
+                    row_count = 0
+                    if metadata:
+                        row_count = metadata.get("row_count", 0)
+
+                    table_info.append(
+                        {
+                            "table_name": table_name,
+                            "column_count": metadata.get("column_count") if metadata else 0,
+                            "row_count": row_count,
+                            "created_at": created_at,
+                            "error": str(table_error),
+                        }
+                    )
+
+            # 按创建时间排序：最新的在前，没有创建时间的在最后
+            from dateutil import parser as date_parser
+
+            def sort_key(table):
+                created_at = table.get("created_at")
+                if created_at is None:
                     return datetime(1900, 1, 1)
-            # 如果已经是 datetime，移除时区信息
-            if hasattr(created_at, "replace"):
-                return (
-                    created_at.replace(tzinfo=None) if created_at.tzinfo else created_at
-                )
-            return datetime(1900, 1, 1)
+                # 如果是字符串，转换为 datetime
+                if isinstance(created_at, str):
+                    try:
+                        parsed = date_parser.parse(created_at)
+                        return parsed.replace(tzinfo=None)
+                    except Exception:
+                        return datetime(1900, 1, 1)
+                # 如果已经是 datetime，移除时区信息
+                if hasattr(created_at, "replace"):
+                    return (
+                        created_at.replace(tzinfo=None) if created_at.tzinfo else created_at
+                    )
+                return datetime(1900, 1, 1)
 
-        table_info.sort(key=sort_key, reverse=True)  # 降序排列，最新的在前
+            table_info.sort(key=sort_key, reverse=True)  # 降序排列，最新的在前
 
-        return create_list_response(
-            items=table_info,
-            total=len(table_info),
-            message_code=MessageCode.TABLES_RETRIEVED,
-        )
+            return create_list_response(
+                items=table_info,
+                total=len(table_info),
+                message_code=MessageCode.TABLES_RETRIEVED,
+            )
 
     except Exception as e:
         logger.error(f"Failed to get DuckDB table info: {str(e)}")
@@ -252,18 +250,18 @@ def _ensure_table_exists(con, table_name: str) -> None:
 async def get_duckdb_table_detail(table_name: str):
     """获取指定表的列级详细信息"""
     try:
-        con = get_db_connection()
-        _ensure_table_exists(con, table_name)
-        metadata = get_table_metadata(table_name, con)
-        metadata_dict = (
-            metadata.model_dump()
-            if hasattr(metadata, "model_dump")
-            else metadata.dict()
-        )
-        return create_success_response(
-            data={"table": metadata_dict},
-            message_code=MessageCode.TABLE_RETRIEVED,
-        )
+        with with_duckdb_connection() as con:
+            _ensure_table_exists(con, table_name)
+            metadata = get_table_metadata(table_name, con)
+            metadata_dict = (
+                metadata.model_dump()
+                if hasattr(metadata, "model_dump")
+                else metadata.dict()
+            )
+            return create_success_response(
+                data={"table": metadata_dict},
+                message_code=MessageCode.TABLE_RETRIEVED,
+            )
     except BaseAPIException:
         raise
     except Exception as exc:
@@ -285,18 +283,18 @@ async def get_duckdb_table(table_name: str):
 async def refresh_duckdb_table_metadata(table_name: str):
     """刷新指定表的元数据缓存并返回最新详细信息"""
     try:
-        con = get_db_connection()
-        _ensure_table_exists(con, table_name)
-        metadata = get_table_metadata(table_name, con, use_cache=False)
-        metadata_dict = (
-            metadata.model_dump()
-            if hasattr(metadata, "model_dump")
-            else metadata.dict()
-        )
-        return create_success_response(
-            data={"table": metadata_dict, "refreshed": True},
-            message_code=MessageCode.TABLE_REFRESHED,
-        )
+        with with_duckdb_connection() as con:
+            _ensure_table_exists(con, table_name)
+            metadata = get_table_metadata(table_name, con, use_cache=False)
+            metadata_dict = (
+                metadata.model_dump()
+                if hasattr(metadata, "model_dump")
+                else metadata.dict()
+            )
+            return create_success_response(
+                data={"table": metadata_dict, "refreshed": True},
+                message_code=MessageCode.TABLE_REFRESHED,
+            )
     except BaseAPIException:
         raise
     except Exception as exc:
@@ -332,12 +330,11 @@ async def execute_duckdb_query(
         if not sql_query:
             raise APIValidationError("SQL query cannot be empty")
 
-        # 先获取可用表（这个操作很快，不需要可中断）
-        con = get_db_connection()
-        available_tables_df = con.execute("SHOW TABLES").fetchdf()
-        available_tables = (
-            available_tables_df["name"].tolist() if len(available_tables_df) > 0 else []
-        )
+        with with_duckdb_connection() as con:
+            available_tables_df = con.execute("SHOW TABLES").fetchdf()
+            available_tables = (
+                available_tables_df["name"].tolist() if len(available_tables_df) > 0 else []
+            )
 
         # 检查是否是简单的SELECT查询（不需要表）
         sql_upper = sql_query.upper().strip()
@@ -443,49 +440,50 @@ async def execute_duckdb_query(
                         except Exception as save_error:
                             logger.warning(f"Failed to save query result as table: {str(save_error)}")
         else:
-            # 无 request_id 时使用普通连接（向后兼容）
-            result_df = con.execute(sql_query).fetchdf()
+            with with_duckdb_connection() as con:
+                result_df = con.execute(sql_query).fetchdf()
 
-            saved_table = None
-            if request.save_as_table:
-                table_name = request.save_as_table.strip()
-                if table_name:
-                    try:
-                        save_sql = sql_query.rstrip(";")
-                        if limit:
-                            save_sql = save_sql.replace(f" LIMIT {limit}", "")
-                        create_sql = (
-                            f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
-                        )
-                        con.execute(create_sql)
-                        saved_table = table_name
-                        logger.info(f"Query result saved as table: {table_name}")
-
-                        # 保存表元数据（含创建时间）
+                saved_table = None
+                if request.save_as_table:
+                    table_name = request.save_as_table.strip()
+                    if table_name:
                         try:
-                            metadata_snapshot = build_table_metadata_snapshot(
-                                con, table_name
+                            save_sql = sql_query.rstrip(";")
+                            if limit:
+                                save_sql = save_sql.replace(f" LIMIT {limit}", "")
+                            create_sql = (
+                                f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
                             )
-                            table_metadata = {
-                                "source_id": table_name,
-                                "filename": f"sql_query_result",
-                                "file_path": f"duckdb://{table_name}",
-                                "file_type": "duckdb_sql_query",
-                                "created_at": get_current_time_iso(),
-                                "source_sql": save_sql,
-                                "schema_version": 2,
-                                **metadata_snapshot,
-                            }
-                            file_datasource_manager.save_file_datasource(table_metadata)
-                            logger.info(
-                                f"SQL save_as_table metadata saved: {table_name}"
-                            )
-                        except Exception as meta_error:
+                            con.execute(create_sql)
+                            saved_table = table_name
+                            logger.info(f"Query result saved as table: {table_name}")
+
+                            try:
+                                metadata_snapshot = build_table_metadata_snapshot(
+                                    con, table_name
+                                )
+                                table_metadata = {
+                                    "source_id": table_name,
+                                    "filename": f"sql_query_result",
+                                    "file_path": f"duckdb://{table_name}",
+                                    "file_type": "duckdb_sql_query",
+                                    "created_at": get_current_time_iso(),
+                                    "source_sql": save_sql,
+                                    "schema_version": 2,
+                                    **metadata_snapshot,
+                                }
+                                file_datasource_manager.save_file_datasource(table_metadata)
+                                logger.info(
+                                    f"SQL save_as_table metadata saved: {table_name}"
+                                )
+                            except Exception as meta_error:
+                                logger.warning(
+                                    f"Failed to save table metadata (non-fatal): {str(meta_error)}"
+                                )
+                        except Exception as save_error:
                             logger.warning(
-                                f"Failed to save table metadata (non-fatal): {str(meta_error)}"
+                                f"Failed to save query result as table: {str(save_error)}"
                             )
-                    except Exception as save_error:
-                        logger.warning(f"Failed to save query result as table: {str(save_error)}")
 
         execution_time = (time.time() - start_time) * 1000
 
@@ -552,35 +550,33 @@ async def execute_duckdb_sql(
 async def delete_duckdb_table(table_name: str):
     """删除指定的DuckDB表"""
     try:
-        con = get_db_connection()
+        with with_duckdb_connection() as con:
+            tables_df = con.execute("SHOW TABLES").fetchdf()
+            available_tables = tables_df["name"].tolist() if not tables_df.empty else []
 
-        # 检查表是否存在
-        tables_df = con.execute("SHOW TABLES").fetchdf()
-        available_tables = tables_df["name"].tolist() if not tables_df.empty else []
+            if table_name not in available_tables:
+                raise ResourceNotFoundError("Table", table_name)
 
-        if table_name not in available_tables:
-            raise ResourceNotFoundError("Table", table_name)
+            # 删除表
+            drop_sql = f'DROP TABLE IF EXISTS "{table_name}"'
+            con.execute(drop_sql)
 
-        # 删除表
-        drop_sql = f'DROP TABLE IF EXISTS "{table_name}"'
-        con.execute(drop_sql)
+            logger.info(f"Successfully deleted DuckDB table: {table_name}")
 
-        logger.info(f"Successfully deleted DuckDB table: {table_name}")
+            # 同时尝试删除文件数据源记录
+            try:
+                from core.data.file_datasource_manager import file_datasource_manager
 
-        # 同时尝试删除文件数据源记录
-        try:
-            from core.data.file_datasource_manager import file_datasource_manager
+                file_datasource_manager.delete_file_datasource(table_name)
+                logger.info(f"Deleted file datasource record: {table_name}")
+            except Exception as e:
+                logger.warning(f"Failed to delete file datasource record: {str(e)}")
 
-            file_datasource_manager.delete_file_datasource(table_name)
-            logger.info(f"Deleted file datasource record: {table_name}")
-        except Exception as e:
-            logger.warning(f"Failed to delete file datasource record: {str(e)}")
-
-        return create_success_response(
-            data={"deleted_table": table_name},
-            message_code=MessageCode.TABLE_DELETED,
-            message=f"Table '{table_name}' has been successfully deleted",
-        )
+            return create_success_response(
+                data={"deleted_table": table_name},
+                message_code=MessageCode.TABLE_DELETED,
+                message=f"Table '{table_name}' has been successfully deleted",
+            )
 
     except BaseAPIException:
         raise
@@ -643,8 +639,6 @@ async def migrate_created_at_field():
     """迁移 created_at 字段：为现有表填充创建时间"""
     try:
         from datetime import datetime
-
-        from core.database.duckdb_engine import with_duckdb_connection
 
         with with_duckdb_connection() as conn:
             # 检查需要迁移的记录数
@@ -870,17 +864,15 @@ async def execute_federated_query(
             with interruptible_connection(query_id, sql_query) as conn:
                 result_df = execute_in_connection(conn)
         else:
-            # 向后兼容
-            con = get_db_connection()
-            try:
-                result_df = execute_in_connection(con)
-            finally:
-                # 确保 DETACH 清理（在异常情况下）
-                for alias in attached_aliases:
-                    try:
-                        con.execute(f'DETACH "{alias}"')
-                    except:
-                        pass
+            with with_duckdb_connection() as con:
+                try:
+                    result_df = execute_in_connection(con)
+                finally:
+                    for alias in attached_aliases:
+                        try:
+                            con.execute(f'DETACH "{alias}"')
+                        except Exception:
+                            pass
 
         execution_time = (time.time() - start_time) * 1000
 
@@ -910,14 +902,14 @@ async def execute_federated_query(
         logger.info(f"Federated query {query_id} was cancelled by user")
         # 取消时也尝试清理 ATTACH
         try:
-            con = get_db_connection()
-            for alias in attached_aliases:
-                try:
-                    con.execute(f'DETACH "{alias}"')
-                    logger.info(f"Cleanup DETACH after cancellation: {alias}")
-                except:
-                    pass
-        except:
+            with with_duckdb_connection() as con:
+                for alias in attached_aliases:
+                    try:
+                        con.execute(f'DETACH "{alias}"')
+                        logger.info(f"Cleanup DETACH after cancellation: {alias}")
+                    except Exception:
+                        pass
+        except Exception:
             pass
         return error_json_response(
             499,

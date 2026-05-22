@@ -20,6 +20,7 @@ from models.visual_query_models import (
     VisualQueryMode,
 )
 from core.services.visual_query_generator import GeneratedVisualQuery
+from tests.pool_mock import bind_mock_duckdb_pool
 
 client = TestClient(app)
 
@@ -351,12 +352,11 @@ class TestTableMetadata:
     
     def test_get_table_metadata_success(self):
         """Test successful table metadata retrieval"""
-        with patch('routers.duckdb_query.get_db_connection') as mock_db, \
+        with patch('routers.duckdb_query.with_duckdb_connection') as mock_db, \
              patch('routers.duckdb_query.get_table_metadata') as mock_metadata:
             
-            # Mock database connection
             mock_con = Mock()
-            mock_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_db, mock_con)
             
             # Mock available tables
             import pandas as pd
@@ -409,10 +409,9 @@ class TestTableMetadata:
     
     def test_get_table_metadata_table_not_found(self):
         """Test table metadata for non-existent table"""
-        with patch('routers.duckdb_query.get_db_connection') as mock_db:
-            # Mock database connection
+        with patch('routers.duckdb_query.with_duckdb_connection') as mock_db:
             mock_con = Mock()
-            mock_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_db, mock_con)
             
             # Mock empty tables list
             import pandas as pd
@@ -430,11 +429,11 @@ class TestTableMetadata:
 
     def test_refresh_table_metadata_success(self):
         """Refreshing metadata should bypass cache."""
-        with patch('routers.duckdb_query.get_db_connection') as mock_db, \
+        with patch('routers.duckdb_query.with_duckdb_connection') as mock_db, \
              patch('routers.duckdb_query.get_table_metadata') as mock_metadata:
 
             mock_con = Mock()
-            mock_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_db, mock_con)
 
             import pandas as pd
             mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({
@@ -464,9 +463,9 @@ class TestTableMetadata:
 
     def test_refresh_table_metadata_table_not_found(self):
         """Refreshing metadata should 404 when table does not exist."""
-        with patch('routers.duckdb_query.get_db_connection') as mock_db:
+        with patch('routers.duckdb_query.with_duckdb_connection') as mock_db:
             mock_con = Mock()
-            mock_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_db, mock_con)
 
             import pandas as pd
             mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({
