@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { useDuckDBTables } from "@/hooks/useDuckDBTables";
 import { useTableColumns } from "@/hooks/useTableColumns";
 import { SelectedTable } from "@/types/SelectedTable";
-import { normalizeSelectedTable } from "@/utils/tableUtils";
+import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
 
 interface PivotSidebarProps {
     selectedTable: SelectedTable | null;
@@ -86,7 +86,7 @@ export const PivotSidebar: React.FC<PivotSidebarProps> = ({
                         {t("pivot.dataSource", "数据源")}
                     </label>
                     <Select
-                        value={selectedTable ? selectedTable.name : ""}
+                        value={selectedTable ? getTableName(selectedTable) : ""}
                         onValueChange={handleTableChange}
                     >
                         <SelectTrigger>

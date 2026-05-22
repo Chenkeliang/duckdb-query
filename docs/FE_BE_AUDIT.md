@@ -217,7 +217,7 @@ flowchart TB
 ### P2 — 架构与体验
 
 1. ~~去掉 `TableSource.external` 兜底~~：✅ 执行路径仅 `federated` + `duckdb`（`SelectedTable.source` 仍为 `external` 表元数据）。
-2. ~~Set 运算是否走后端 `set-operations`~~：✅ 已接 `generate`/`preview`；JOIN 简单 DuckDB 场景已接 `performJoinQuery`。
+2. ~~Set 运算 / JOIN / 透视后端路径~~：✅ Set `generate`/`preview`；JOIN `performJoinQuery`（含 `attach_databases`）；透视 `visual-query` + `attach_databases`。
 3. ~~Visual 查询支持联邦表~~：✅ 透视 Tab 走后端 `visual-query` + `attach_databases`；多透视列仍本地 SQL。
 4. ~~入湖 router 连接池~~：✅ `chunked_upload` / `server_files` 已迁；`paste_data` 等若仍有直连再查。
 
