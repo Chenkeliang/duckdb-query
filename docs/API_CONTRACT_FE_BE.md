@@ -29,7 +29,8 @@
 | HTTP | `error.code` | 典型场景 |
 |------|--------------|----------|
 | 422 | `VALIDATION_ERROR` | Pydantic 请求体（`details.errors[]`） |
-| 400 | `VALIDATION_ERROR` | 空 SQL、粘贴/分块校验、路径不在挂载白名单、表名冲突 |
+| 400 | `VALIDATION_ERROR` | 空 SQL、粘贴/分块校验、路径不在挂载白名单、表名冲突、无效快捷键 `action_id` |
+| 400 | `URL_INVALID` | `GET /api/url_info` / `POST /api/read_from_url` 无法访问或格式无效 URL |
 | 400 | `SECURITY_ERROR` | 服务器浏览路径为符号链接 |
 | 403 | `AUTHORIZATION_ERROR` | 服务器目录无读权限 |
 | 404 | `RESOURCE_NOT_FOUND` | 数据源 id、分块上传会话、DuckDB 表、联邦 `attach_databases[].connection_id` |
@@ -37,7 +38,9 @@
 | 499 | `QUERY_CANCELLED` | 同步 DuckDB / 联邦查询取消（`X-Request-ID`） |
 | 500 | `QUERY_FAILED` | DuckDB `execute` / 联邦 SQL 执行失败 |
 | 503 | `DATABASE_CONNECTION_ERROR` | 联邦查询 ATTACH 外部库失败 |
-| 500 | `OPERATION_FAILED` | 数据源 CRUD 列表、粘贴保存、分块完成、服务器导入、迁移/错误统计 |
+| 500 | `OPERATION_FAILED` | 数据源 CRUD 列表、粘贴保存、分块完成、服务器导入、迁移/错误统计、快捷键列表加载失败 |
+| 500 | `URL_READ_FAILED` | `POST /api/read_from_url` 处理失败 |
+| 500 | `SHORTCUT_UPDATE_FAILED` / `SHORTCUT_RESET_FAILED` | 快捷键更新 / 重置持久化失败 |
 
 §4–§5 端点错误码以本表为准；成功体形状不变。
 
@@ -94,12 +97,11 @@
 | POST | `/api/data-sources/excel/import` | JSON body | `importExcelSheets`；404 `FILE_NOT_FOUND`；500 `EXCEL_IMPORT_FAILED` |
 | POST | `/api/server-files/import` | JSON body | `importServerFile` |
 | POST | `/api/server-files/excel/import` | JSON body | `importServerExcelSheets` |
-| POST | `/api/read_from_url` | JSON `import_mode?` | `readFromUrl` |
+| POST | `/api/read_from_url` | JSON `import_mode?` | `readFromUrl`；400 `URL_INVALID`；500 `URL_READ_FAILED`（§1.1） |
 | POST | `/api/upload/chunk` | — | `uploadChunk` |
 | DELETE | `/api/upload/cancel/{upload_id}` | — | `cancelChunkedUpload`；404 会话（§1.1） |
 | — | `uploadFileAuto` | 同上 | 文件 &gt; 8MB 走分块，否则 `POST /api/upload` |
-| POST | `/api/read_from_url` | — | `readFromUrl` |
-| GET | `/api/url_info` | — | `getUrlInfo` |
+| GET | `/api/url_info` | — | `getUrlInfo`；400 `URL_INVALID`（§1.1） |
 | POST | `/api/data-sources/excel/inspect` | — | `inspectExcelSheets`；404 `FILE_NOT_FOUND` |
 | GET | `/api/server-files/mounted` | — | `getServerMounts` |
 | GET | `/api/server-files/browse` | — | `browseServerDirectory`；404/400/403（§1.1） |
@@ -139,9 +141,9 @@
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| GET | `/api/settings/shortcuts` | 对象 | `fetchShortcutsConfig`（`shortcuts`, `defaults`） |
-| PUT | `/api/settings/shortcuts/{action_id}` | 对象 | `updateShortcutSetting` |
-| POST | `/api/settings/shortcuts/reset` | 对象 | `resetShortcutsSetting` |
+| GET | `/api/settings/shortcuts` | 对象 | `fetchShortcutsConfig`（`shortcuts`, `defaults`）；500 `OPERATION_FAILED` |
+| PUT | `/api/settings/shortcuts/{action_id}` | 对象 | `updateShortcutSetting`；400 无效 `action_id`；500 `SHORTCUT_UPDATE_FAILED` |
+| POST | `/api/settings/shortcuts/reset` | 对象 | `resetShortcutsSetting`；400 无效 `action_id`；500 `SHORTCUT_RESET_FAILED` |
 
 ## 9. 集合运算（`setOperationsApi.ts`）
 

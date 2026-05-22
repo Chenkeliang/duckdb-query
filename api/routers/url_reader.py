@@ -1,5 +1,5 @@
 # pylint: disable=duplicate-code
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, HttpUrl
 import requests
 import tempfile
@@ -16,10 +16,11 @@ from core.services.file_ingestion_service import (
     resolve_unique_table_name,
     save_file_metadata,
 )
+from core.common.exceptions import BaseAPIException, ValidationError as APIValidationError
 from utils.response_helpers import (
     create_success_response,
-    create_error_response,
     MessageCode,
+    error_json_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -145,9 +146,9 @@ async def read_from_url(request: URLReadRequest):
                     )
                     response.raise_for_status()
                 except requests.RequestException as download_error:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Unable to download file: {str(download_error)}",
+                    raise APIValidationError(
+                        f"Unable to download file: {str(download_error)}",
+                        details={"url": converted_url},
                     ) from download_error
 
                 with tempfile.NamedTemporaryFile(
@@ -199,10 +200,21 @@ async def read_from_url(request: URLReadRequest):
             message=f"Successfully read file from URL and created table: {table_name}",
         )
 
-    except HTTPException:
+    except BaseAPIException:
         raise
+    except ValueError as e:
+        return error_json_response(
+            400,
+            MessageCode.URL_INVALID,
+            str(e),
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error occurred while processing file: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.URL_READ_FAILED,
+            f"Error occurred while processing file: {str(e)}",
+            details={"url": str(request.url)},
+        )
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
@@ -243,6 +255,16 @@ async def get_url_info(url: str):
         )
 
     except requests.RequestException as e:
-        raise HTTPException(status_code=400, detail=f"Unable to access URL: {str(e)}")
+        return error_json_response(
+            400,
+            MessageCode.URL_INVALID,
+            f"Unable to access URL: {str(e)}",
+            details={"url": url},
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error occurred while getting URL info: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Error occurred while getting URL info: {str(e)}",
+            details={"url": url},
+        )

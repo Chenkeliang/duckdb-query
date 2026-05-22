@@ -6,15 +6,15 @@ Settings API - 用户设置管理
 import logging
 from datetime import datetime
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter
 from pydantic import BaseModel
 
+from core.common.exceptions import BaseAPIException, ValidationError as APIValidationError
 from core.database.duckdb_pool import get_connection_pool
 from utils.response_helpers import (
     create_success_response,
-    create_error_response,
     MessageCode,
+    error_json_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -119,12 +119,10 @@ async def get_shortcuts():
         
     except Exception as e:
         logger.error(f"Failed to get shortcuts configuration: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=create_error_response(
-                code="SHORTCUTS_LOAD_FAILED",
-                message=f"Failed to get shortcuts configuration: {str(e)}"
-            )
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get shortcuts configuration: {str(e)}",
         )
 
 
@@ -136,12 +134,9 @@ async def update_shortcut(action_id: str, data: ShortcutUpdate):
     try:
         # 验证 action_id 是否有效
         if action_id not in DEFAULT_SHORTCUTS:
-            raise HTTPException(
-                status_code=400,
-                detail=create_error_response(
-                    code="INVALID_ACTION_ID",
-                    message=f"Invalid action ID: {action_id}"
-                )
+            raise APIValidationError(
+                f"Invalid action ID: {action_id}",
+                details={"action_id": action_id, "field": "action_id"},
             )
         
         ensure_shortcuts_table()
@@ -169,16 +164,15 @@ async def update_shortcut(action_id: str, data: ShortcutUpdate):
             message="Shortcut updated successfully"
         )
         
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Failed to update shortcut: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content=create_error_response(
-                code="SHORTCUT_UPDATE_FAILED",
-                message=f"Failed to update shortcut: {str(e)}"
-            )
+        return error_json_response(
+            500,
+            "SHORTCUT_UPDATE_FAILED",
+            f"Failed to update shortcut: {str(e)}",
+            details={"action_id": action_id},
         )
 
 
@@ -197,12 +191,9 @@ async def reset_shortcuts(data: ShortcutReset):
             if data.action_id:
                 # 验证 action_id 是否有效
                 if data.action_id not in DEFAULT_SHORTCUTS:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=create_error_response(
-                            code="INVALID_ACTION_ID",
-                            message=f"Invalid action ID: {data.action_id}"
-                        )
+                    raise APIValidationError(
+                        f"Invalid action ID: {data.action_id}",
+                        details={"action_id": data.action_id, "field": "action_id"},
                     )
                 
                 # 删除单个快捷键记录（恢复为默认值）
@@ -225,14 +216,12 @@ async def reset_shortcuts(data: ShortcutReset):
             message=message
         )
         
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Failed to reset shortcut: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content=create_error_response(
-                code="SHORTCUT_RESET_FAILED",
-                message=f"Failed to reset shortcuts: {str(e)}"
-            )
+        return error_json_response(
+            500,
+            "SHORTCUT_RESET_FAILED",
+            f"Failed to reset shortcuts: {str(e)}",
         )

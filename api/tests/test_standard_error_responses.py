@@ -125,6 +125,33 @@ def test_sql_favorite_not_found_standard_error():
     assert "detail" not in body
 
 
+def test_settings_invalid_action_id_standard_error():
+    """PUT /api/settings/shortcuts/{id} 无效 action_id 须 VALIDATION_ERROR。"""
+    response = client.put(
+        "/api/settings/shortcuts/not_a_real_action",
+        json={"shortcut": "Cmd+X"},
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert "detail" not in body
+    assert "Invalid action ID" in body["error"]["message"]
+
+
+def test_url_info_unreachable_standard_error():
+    """GET /api/url_info 不可达 URL 须 URL_INVALID 标准信封。"""
+    response = client.get(
+        "/api/url_info",
+        params={"url": "http://127.0.0.1:1/nonexistent-file.csv"},
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "URL_INVALID"
+    assert "detail" not in body
+
+
 def test_execute_sql_missing_datasource_id_standard_error():
     """execute_sql 外部库缺 datasource id 须返回标准 VALIDATION_ERROR。"""
     response = client.post(
