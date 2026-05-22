@@ -1,6 +1,6 @@
 """数据库表管理API端点，支持MySQL和PostgreSQL"""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 # pylint: disable=bad-indentation
 import logging
 from core.common.exceptions import (
@@ -445,15 +445,20 @@ async def get_database_tables(connection_id: str):
                 conn.close()
 
         else:
-            raise HTTPException(
-                status_code=400, detail=f"Unsupported database type: {db_type}"
+            raise APIValidationError(
+                f"Unsupported database type: {db_type}",
+                details={"connection_id": connection_id, "db_type": db_type},
             )
 
+    except BaseAPIException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get database '{connection_id}' table info: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get database '{connection_id}' table info: {str(e)}",
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get database '{connection_id}' table info: {str(e)}",
+            details={"connection_id": connection_id},
         )
 
 
@@ -545,14 +550,20 @@ async def list_connection_schemas(connection_id: str):
                 conn.close()
 
         else:
-            raise HTTPException(
-                status_code=400, detail=f"Unsupported database type: {db_type}"
+            raise APIValidationError(
+                f"Unsupported database type: {db_type}",
+                details={"connection_id": connection_id, "db_type": db_type},
             )
 
+    except BaseAPIException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get schemas: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get schemas: {str(e)}"
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get schemas: {str(e)}",
+            details={"connection_id": connection_id},
         )
 
 
@@ -588,9 +599,13 @@ async def list_schema_tables(connection_id: str, schema: str):
 
         # 只支持 PostgreSQL
         if db_type != "postgresql":
-            raise HTTPException(
-                status_code=400,
-                detail=f"This endpoint only supports PostgreSQL, current type: {db_type}",
+            raise APIValidationError(
+                f"This endpoint only supports PostgreSQL, current type: {db_type}",
+                details={
+                    "connection_id": connection_id,
+                    "db_type": db_type,
+                    "schema": schema,
+                },
             )
 
         # PostgreSQL: 查询指定 schema 下的表
@@ -599,8 +614,9 @@ async def list_schema_tables(connection_id: str, schema: str):
         db_config = connection.params
         username = db_config.get("user") or db_config.get("username")
         if not username:
-            raise HTTPException(
-                status_code=400, detail="Missing username parameter (user or username)"
+            raise APIValidationError(
+                "Missing username parameter (user or username)",
+                details={"connection_id": connection_id, "field": "username"},
             )
 
         password = db_config.get("password", "")
@@ -647,9 +663,16 @@ async def list_schema_tables(connection_id: str, schema: str):
         finally:
             conn.close()
 
+    except BaseAPIException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get table list: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get table list: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get table list: {str(e)}",
+            details={"connection_id": connection_id, "schema": schema},
+        )
 
 
 

@@ -67,6 +67,16 @@ def test_upload_invalid_import_mode_standard_envelope():
     assert "detail" not in body
 
 
+def test_database_tables_unknown_connection_envelope():
+    missing_id = f"db_{uuid.uuid4().hex}"
+    response = client.get(f"/api/database_tables/{missing_id}")
+    assert response.status_code == 404
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "RESOURCE_NOT_FOUND"
+    assert "detail" not in body
+
+
 def test_chunked_upload_cancel_missing_session_envelope():
     response = client.delete(f"/api/upload/cancel/{uuid.uuid4()}")
     assert response.status_code == 404
