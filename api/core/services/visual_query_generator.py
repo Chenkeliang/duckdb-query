@@ -483,7 +483,10 @@ def _is_textual_json_type(data_type: str) -> bool:
 
 
 def _build_from_clause(config: VisualQueryConfig) -> str:
-    clause = f'FROM {_quote_identifier(config.table_name)}'
+    from core.database.federated_attach import format_qualified_table_reference
+
+    table_ref = format_qualified_table_reference(config.table_name)
+    clause = f"FROM {table_ref}"
     for idx, json_cfg in enumerate(getattr(config, "json_tables", []) or []):
         clause += _build_json_table_join_clause(json_cfg, idx)
     return clause

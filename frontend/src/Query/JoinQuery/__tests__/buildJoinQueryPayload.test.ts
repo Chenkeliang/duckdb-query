@@ -44,11 +44,32 @@ describe('buildJoinQueryPayload', () => {
         expect(payload?.joins[0].conditions[0].left_column).toBe('id');
     });
 
-    it('rejects federated attach path', () => {
+    it('allows federated attach path with qualified source ids', () => {
+        const externalTables = [
+            {
+                name: 'orders',
+                source: 'external' as const,
+                connection: { id: '1', name: 'prod', type: 'mysql' as const },
+            },
+            {
+                name: 'users',
+                source: 'external' as const,
+                connection: { id: '1', name: 'prod', type: 'mysql' as const },
+            },
+        ];
+        const attach = [{ alias: 'mysql_prod', connectionId: '1' }];
         expect(
-            canUseServerJoinPath(tables, joinConfigs, createEmptyGroup(), [
-                { alias: 'mysql_db', connectionId: '1' },
-            ])
-        ).toBe(false);
+            canUseServerJoinPath(externalTables, joinConfigs, createEmptyGroup(), attach)
+        ).toBe(true);
+        const payload = buildJoinQueryPayload({
+            activeTables: externalTables,
+            joinConfigs,
+            filterTree: createEmptyGroup(),
+            resolvedTypes: {},
+            maxQueryRows: 100,
+            attachDatabases: attach,
+        });
+        expect(payload?.attach_databases?.length).toBe(1);
+        expect(payload?.sources[0].id).toContain('.');
     });
 });

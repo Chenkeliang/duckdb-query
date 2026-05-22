@@ -152,7 +152,7 @@
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
 | POST | `/api/visual-query/generate` | 对象 | `generatePivotVisualQuery`（`mode: pivot`）；400 `VISUAL_QUERY_INVALID`；500 `OPERATION_FAILED` |
-| POST | `/api/visual-query/preview` | 对象 | `previewPivotVisualQuery`；400 `VISUAL_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
+| POST | `/api/visual-query/preview` | 对象 | `previewPivotVisualQuery`（可选 `attach_databases` 联邦透视）；400 `VISUAL_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
 | GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（`data.favorite`）；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites` | 对象 | `createSqlFavorite`；400 `FAVORITE_NAME_EXISTS` |
@@ -188,7 +188,7 @@
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/query` | 对象 | `performJoinQuery`（Join 工作台 DuckDB 简单场景）；`data`: `data`, `columns`, `sql`, `row_count` |
+| POST | `/api/query` | 对象 | `performJoinQuery`（Join 工作台；`attach_databases` 联邦多表）；`data`: `data`, `columns`, `sql`, `row_count` |
 | POST | `/api/save_query_to_duckdb` | 对象 | 见 §2 `saveQueryToDuckDB` |
 
 ## 10. 已移除的历史端点（勿再使用）

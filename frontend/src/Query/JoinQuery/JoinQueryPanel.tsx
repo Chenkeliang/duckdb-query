@@ -1123,6 +1123,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         resolvedTypes,
         maxQueryRows,
         isPreview,
+        attachDatabases,
       }),
     [
       activeTables,
@@ -1130,6 +1131,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       filterTree,
       resolvedTypes,
       maxQueryRows,
+      attachDatabases,
     ]
   );
 

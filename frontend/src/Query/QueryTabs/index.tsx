@@ -319,6 +319,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
             <PivotPanel
               selectedTables={selectedTables}
               onExecute={handlePivotExecute}
+              onDisplayPreview={onDisplayPreview}
             />
           </KeepAliveTabContent>
 

@@ -16,15 +16,21 @@ import type {
 } from '@/types/visualQuery';
 import { VisualQueryMode } from '@/types/visualQuery';
 
+export interface PivotQueryApiOptions {
+    attachDatabases?: { alias: string; connection_id: string }[];
+}
+
 export async function generatePivotVisualQuery(
     config: VisualQueryConfig,
-    pivotConfig: PivotConfig
+    pivotConfig: PivotConfig,
+    options: PivotQueryApiOptions = {}
 ): Promise<GeneratedVisualQuery> {
     try {
         const response = await apiClient.post('/api/visual-query/generate', {
             config,
             mode: VisualQueryMode.PIVOT,
             pivot_config: pivotConfig,
+            attach_databases: options.attachDatabases,
         });
         const normalized = normalizeResponse<{
             sql: string;
@@ -50,7 +56,8 @@ export async function generatePivotVisualQuery(
 export async function previewPivotVisualQuery(
     config: VisualQueryConfig,
     pivotConfig: PivotConfig,
-    limit: number
+    limit: number,
+    options: PivotQueryApiOptions = {}
 ): Promise<VisualQueryPreviewPayload> {
     try {
         const response = await apiClient.post('/api/visual-query/preview', {
@@ -58,6 +65,7 @@ export async function previewPivotVisualQuery(
             mode: VisualQueryMode.PIVOT,
             pivot_config: pivotConfig,
             limit,
+            attach_databases: options.attachDatabases,
         });
         const normalized = normalizeResponse<VisualQueryPreviewPayload>(response);
         const body = normalized.data;

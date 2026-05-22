@@ -31,6 +31,12 @@ from core.database.duckdb_engine import (
     generate_improved_column_aliases,
     with_duckdb_connection,
 )
+from core.database.federated_attach import (
+    attach_databases_on_connection,
+    detach_databases_on_connection,
+    format_qualified_table_reference,
+    resolve_attach_configs,
+)
 from core.database.duckdb_pool import interruptible_connection
 from core.services.visual_query_generator import (
     _build_where_clause,
@@ -99,7 +105,7 @@ def safe_alias(table, col):
     return f'"{alias}"'
 
 
-def build_multi_table_join_query(query_request, con):
+def build_multi_table_join_query(query_request, con, *, federated_attach: bool = False):
     """
     Build multi-table JOIN query
     Support complex JOIN operations for multiple data sources
@@ -117,26 +123,28 @@ def build_multi_table_join_query(query_request, con):
         source_id = sources[0].id.strip('"')
         return f'SELECT * FROM "{source_id}"'
 
-    # Verify all tables are registered
-    available_tables = con.execute("SHOW TABLES").fetchdf()
-    available_table_names = available_tables["name"].tolist()
+    if not federated_attach:
+        available_tables = con.execute("SHOW TABLES").fetchdf()
+        available_table_names = available_tables["name"].tolist()
 
-    for source in sources:
-        table_id = source.id.strip('"')
-        if table_id not in available_table_names:
-            raise ValueError(
-                f"Table '{table_id}' not registered in DuckDB. Available tables: {', '.join(available_table_names)}"
-            )
+        for source in sources:
+            table_id = source.id.strip('"')
+            if table_id not in available_table_names:
+                raise ValueError(
+                    f"Table '{table_id}' not registered in DuckDB. Available tables: {', '.join(available_table_names)}"
+                )
 
-    # Add columns info for each source (if not already present)
-    for source in sources:
-        if not hasattr(source, "columns") or source.columns is None:
-            try:
-                # Get table column information
-                cols_df = con.execute(f"PRAGMA table_info('{source.id}')").fetchdf()
-                source.columns = cols_df["name"].tolist()
-            except Exception as e:
-                logger.error(f"Failed to get column information for table {source.id}: {e}")
+        for source in sources:
+            if not hasattr(source, "columns") or source.columns is None:
+                try:
+                    cols_df = con.execute(f"PRAGMA table_info('{source.id}')").fetchdf()
+                    source.columns = cols_df["name"].tolist()
+                except Exception as e:
+                    logger.error(f"Failed to get column information for table {source.id}: {e}")
+                    source.columns = []
+    else:
+        for source in sources:
+            if not hasattr(source, "columns") or source.columns is None:
                 source.columns = []
 
     # Use improved column alias generation logic
@@ -312,13 +320,20 @@ def build_multi_table_join_query(query_request, con):
     return query
 
 
+def _source_table_sql(source_id: str) -> str:
+    return format_qualified_table_reference(source_id.strip('"'))
+
+
+def _join_column_ref(table_id: str, column: str) -> str:
+    return f'{_source_table_sql(table_id)}."{column.replace(chr(34), chr(34) * 2)}"'
+
+
 def build_join_chain(sources, joins, table_columns):
     """
     Build JOIN chain, support multi-table connections and multi-field associations
     """
     if not joins:
-        first_source_id = sources[0].id.strip('"')
-        return f'"{first_source_id}"'
+        return _source_table_sql(sources[0].id)
 
     # Create table mapping
     source_map = {source.id.strip('"'): source for source in sources}
@@ -331,8 +346,7 @@ def build_join_chain(sources, joins, table_columns):
     left_table = first_join.left_source_id.strip('"')
     right_table = first_join.right_source_id.strip('"')
 
-    # Start building query
-    from_clause = f'"{left_table}"'
+    from_clause = _source_table_sql(left_table)
     joined_tables.add(left_table)
 
     # Collect JOIN conditions for all same table pairs
@@ -379,7 +393,7 @@ def build_join_chain(sources, joins, table_columns):
             continue
 
         join_type_sql = get_join_type_sql(join_type)
-        from_clause += f' {join_type_sql} "{table_to_join}"'
+        from_clause += f" {join_type_sql} {_source_table_sql(table_to_join)}"
 
         # Add all JOIN conditions (including multi-field associations)
         if join_type.lower() != "cross" and all_conditions:
@@ -388,9 +402,8 @@ def build_join_chain(sources, joins, table_columns):
                 left_table_id = left_id
                 right_table_id = right_id
 
-                # Intelligent data type conversion and cleaning
-                base_left_col = f'"{left_table_id}"."{condition.left_column}"'
-                base_right_col = f'"{right_table_id}"."{condition.right_column}"'
+                base_left_col = _join_column_ref(left_table_id, condition.left_column)
+                base_right_col = _join_column_ref(right_table_id, condition.right_column)
 
                 left_col = base_left_col
                 right_col = base_right_col
@@ -442,10 +455,18 @@ async def perform_query(
         )
 
     # TODO: Use interruptible_connection to wrap query execution for cancellation support
+    federated_attach = bool(query_request.attach_databases)
     with with_duckdb_connection() as con:
+        attached_aliases: List[str] = []
         try:
-            # 确保文件存在并可访问
+            if federated_attach:
+                attach_configs = resolve_attach_configs(query_request.attach_databases)
+                attached_aliases = attach_databases_on_connection(con, attach_configs)
+
+            # 确保文件存在并可访问（联邦 ATTACH 模式跳过物化注册）
             for source in query_request.sources:
+                if federated_attach:
+                    continue
                 if source.type == "file":
                     original_path = source.params["path"]
 
@@ -717,8 +738,9 @@ async def perform_query(
 
             # 构建查询 - 确保表名使用双引号括起来
             if len(query_request.joins) > 0:
-                # 多表JOIN查询 - 使用改进的多表JOIN支持
-                query = build_multi_table_join_query(query_request, con)
+                query = build_multi_table_join_query(
+                    query_request, con, federated_attach=federated_attach
+                )
             else:
                 # Single table query - 使用build_single_table_query来处理表名
                 query = build_single_table_query(query_request)
@@ -781,6 +803,9 @@ async def perform_query(
                 message=error_message,
                 details={"sql": getattr(query_request, "sql", None)},
             )
+        finally:
+            if attached_aliases:
+                detach_databases_on_connection(con, attached_aliases)
 
 
 @router.post("/api/save_query_to_duckdb", tags=["Query"])

@@ -10,7 +10,8 @@ import type {
 } from '@/api/joinQueryApi';
 import type { AttachDatabase } from '@/utils/sqlUtils';
 import type { SelectedTable } from '@/types/SelectedTable';
-import { getTableName } from '@/utils/tableUtils';
+import { getTableName, isExternalTable } from '@/utils/tableUtils';
+import { generateExternalTableReference } from '@/utils/sqlUtils';
 import { generateConflictKey } from '@/utils/duckdbTypes';
 import {
     cloneTreeWithoutOnConditions,
@@ -80,9 +81,6 @@ export function canUseServerJoinPath(
     if (activeTables.length < 2 || joinConfigs.length < activeTables.length - 1) {
         return false;
     }
-    if (attachDatabases.length > 0) {
-        return false;
-    }
     if (hasWhereFilters(filterTree)) {
         return false;
     }
@@ -101,6 +99,7 @@ export function buildJoinQueryPayload(params: {
     resolvedTypes: Record<string, string>;
     maxQueryRows: number;
     isPreview?: boolean;
+    attachDatabases?: AttachDatabase[];
 }): JoinQueryPerformRequest | null {
     const {
         activeTables,
@@ -109,13 +108,28 @@ export function buildJoinQueryPayload(params: {
         resolvedTypes,
         maxQueryRows,
         isPreview = true,
+        attachDatabases = [],
     } = params;
 
-    if (!canUseServerJoinPath(activeTables, joinConfigs, filterTree, [])) {
+    const attachForPayload = attachDatabases.map((db) => ({
+        alias: db.alias,
+        connection_id: db.connectionId,
+    }));
+
+    if (!canUseServerJoinPath(activeTables, joinConfigs, filterTree, attachDatabases)) {
         return null;
     }
 
     const sources: JoinQueryDataSource[] = activeTables.map((table) => {
+        if (isExternalTable(table)) {
+            const { qualifiedName } = generateExternalTableReference(table);
+            return {
+                id: qualifiedName,
+                type: 'duckdb',
+                table_name: qualifiedName,
+                params: { table_name: qualifiedName },
+            };
+        }
         const tableName = getTableName(table);
         return {
             id: tableName,
@@ -131,8 +145,8 @@ export function buildJoinQueryPayload(params: {
         if (!config) {
             return null;
         }
-        const leftName = getTableName(activeTables[i]);
-        const rightName = getTableName(activeTables[i + 1]);
+        const leftName = sources[i]?.id ?? getTableName(activeTables[i]);
+        const rightName = sources[i + 1]?.id ?? getTableName(activeTables[i + 1]);
         const conditions: JoinQueryCondition[] = config.conditions
             .filter((c) => c.leftColumn?.trim() && c.rightColumn?.trim())
             .map((c) => {
@@ -170,5 +184,6 @@ export function buildJoinQueryPayload(params: {
         where_conditions: whereClause?.trim() || undefined,
         limit: maxQueryRows,
         is_preview: isPreview,
+        attach_databases: attachForPayload.length > 0 ? attachForPayload : undefined,
     };
 }

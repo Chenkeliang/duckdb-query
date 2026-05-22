@@ -10,6 +10,8 @@ from enum import Enum
 from typing import List, Optional, Dict, Any, Union, Literal, ClassVar, Set
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from models.query_models import AttachDatabase
+
 
 
 class AggregationFunction(str, Enum):
@@ -762,6 +764,9 @@ class VisualQueryRequest(BaseModel):
     resolved_casts: List[ResolvedTypeCast] = Field(
         default_factory=list, description="可视化查询生成时应用的 TRY_CAST 设置"
     )
+    attach_databases: Optional[List[AttachDatabase]] = Field(
+        None, description="联邦透视/预览需 ATTACH 的外部库"
+    )
 
 
 class VisualQueryResponse(BaseModel):
@@ -830,6 +835,9 @@ class PreviewRequest(BaseModel):
     )
     resolved_casts: List[ResolvedTypeCast] = Field(
         default_factory=list, description="预览阶段应用的 TRY_CAST 设置"
+    )
+    attach_databases: Optional[List[AttachDatabase]] = Field(
+        None, description="联邦预览需 ATTACH 的外部库"
     )
 
 

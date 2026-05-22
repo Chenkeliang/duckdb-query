@@ -7,6 +7,7 @@ import duckdb
 
 from core.database.duckdb_engine import execute_query, with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
+from core.database.federated_attach import execute_sql_with_attach
 from core.services.visual_query_generator import (
     estimate_query_performance,
     generate_visual_query_sql,
@@ -165,13 +166,29 @@ async def preview_visual_query(
 
             preview_limit = config_manager.get_app_config().max_query_rows or 10
         preview_sql = ensure_query_has_limit(generation.final_sql, preview_limit)
+        attach_list = getattr(request, "attach_databases", None) or None
 
-        # Execute query using interruptible connection
-        if query_id:
+        if attach_list:
+            preview_df = execute_sql_with_attach(
+                preview_sql,
+                attach_databases=attach_list,
+                query_id=query_id,
+            )
+            total_rows = len(preview_df)
+            try:
+                count_sql = _build_preview_count_sql(generation.final_sql)
+                count_df = execute_sql_with_attach(
+                    count_sql,
+                    attach_databases=attach_list,
+                    query_id=None,
+                )
+                if not count_df.empty:
+                    total_rows = int(count_df.iloc[0][0])
+            except Exception as count_exc:
+                logger.warning("Failed to calculate preview total rows: %s", count_exc)
+        elif query_id:
             with interruptible_connection(query_id, preview_sql) as conn:
                 preview_df = conn.execute(preview_sql).fetchdf()
-
-                # Calculate total rows (in same connection context)
                 total_rows = len(preview_df)
                 try:
                     count_sql = _build_preview_count_sql(generation.final_sql)
@@ -183,13 +200,12 @@ async def preview_visual_query(
         else:
             with with_duckdb_connection() as con:
                 preview_df = execute_query(preview_sql, con)
-
                 total_rows = len(preview_df)
                 try:
                     count_sql = _build_preview_count_sql(generation.final_sql)
                     count_df = execute_query(count_sql, con)
                     if not count_df.empty:
-                        total_rows = int(count_df.iloc[0, 0])
+                        total_rows = int(count_df.iloc[0][0])
                 except Exception as count_exc:
                     logger.warning("Failed to calculate preview total rows: %s", count_exc)
 
