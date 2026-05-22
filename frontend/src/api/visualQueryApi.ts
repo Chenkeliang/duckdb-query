@@ -140,8 +140,114 @@ export async function previewPivotVisualQuery(
     }
 }
 
+export interface VisualQueryDistinctValuesPayload {
+    config: Record<string, unknown>;
+    column: string;
+    limit?: number;
+    order_by?: 'frequency' | 'metric';
+    metric?: { agg: string; column: string };
+    base_limit?: number;
+}
+
+export interface VisualQueryDistinctValueItem {
+    value: string;
+    count: number;
+    metric?: number | null;
+}
+
+export interface VisualQueryDistinctValuesResult {
+    values: string[];
+    stats: {
+        distinct_count: number | null;
+        topN: VisualQueryDistinctValueItem[];
+    };
+    errors?: string[];
+    warnings?: string[];
+}
+
+export interface VisualQueryServerValidatePayload {
+    config: Record<string, unknown>;
+    column_profiles?: Record<string, unknown>[];
+    resolved_casts?: { column: string; cast: string }[];
+}
+
+export interface VisualQueryServerValidateResult {
+    is_valid: boolean;
+    errors: string[];
+    warnings: string[];
+    complexity_score?: number;
+    conflicts?: Record<string, unknown>[];
+    suggested_casts?: Record<string, string>;
+}
+
+export interface VisualQueryColumnStatsResult {
+    statistics: Record<string, unknown>;
+}
+
 /**
- * Validate visual query configuration
+ * POST /api/visual-query/distinct-values — Top-N 去重（可选 X-Request-ID 取消）
+ */
+export async function getVisualQueryDistinctValues(
+    payload: VisualQueryDistinctValuesPayload,
+    options: { requestId?: string } = {}
+): Promise<VisualQueryDistinctValuesResult> {
+    try {
+        const headers = options.requestId
+            ? { 'X-Request-ID': options.requestId }
+            : undefined;
+        const response = await apiClient.post(
+            '/api/visual-query/distinct-values',
+            payload,
+            headers ? { headers } : undefined
+        );
+        const normalized = normalizeResponse<VisualQueryDistinctValuesResult>(response);
+        return normalized.data;
+    } catch (error) {
+        throw handleApiError(error as never, '唯一值查询失败');
+    }
+}
+
+/**
+ * POST /api/visual-query/validate — 服务端配置校验（含聚合类型冲突）
+ */
+export async function validateVisualQueryOnServer(
+    payload: VisualQueryServerValidatePayload | Record<string, unknown>
+): Promise<VisualQueryServerValidateResult> {
+    try {
+        const body =
+            'config' in payload && payload.config != null
+                ? payload
+                : { config: payload };
+        const response = await apiClient.post('/api/visual-query/validate', body);
+        const normalized = normalizeResponse<VisualQueryServerValidateResult>(response);
+        return normalized.data;
+    } catch (error) {
+        throw handleApiError(error as never, '可视化查询配置校验失败');
+    }
+}
+
+/**
+ * GET /api/visual-query/column-stats/{table}/{column}
+ */
+export async function getVisualQueryColumnStats(
+    tableName: string,
+    columnName: string
+): Promise<VisualQueryColumnStatsResult> {
+    try {
+        const encodedTable = encodeURIComponent(tableName);
+        const encodedColumn = encodeURIComponent(columnName);
+        const response = await apiClient.get(
+            `/api/visual-query/column-stats/${encodedTable}/${encodedColumn}`
+        );
+        const normalized = normalizeResponse<VisualQueryColumnStatsResult>(response);
+        return normalized.data;
+    } catch (error) {
+        throw handleApiError(error as never, '列统计获取失败');
+    }
+}
+
+/**
+ * Validate visual query configuration (client-side only, no HTTP)
  */
 export async function validateVisualQueryConfig(
     config: VisualQueryConfig

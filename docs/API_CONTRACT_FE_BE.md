@@ -27,7 +27,7 @@
 | `asyncTaskApi.ts` | §6 | 异步任务、连接池状态、错误统计 |
 | `visualQueryApi.ts` | §7 | 可视化 generate/preview、SQL 收藏、应用配置 |
 | `settingsShortcutsApi.ts` | §8 | 快捷键 |
-| `setOperationsApi.ts` | §9 | 仅 `generate` + `preview`（见 §9 后端扩展端点） |
+| `setOperationsApi.ts` | §9 | 集合运算 generate / preview / validate / execute / export 等 |
 
 ## 1. 标准成功体
 
@@ -150,9 +150,9 @@
 |------|------|--------|----------|
 | POST | `/api/visual-query/generate` | 对象 | `generateVisualQuery`, `generatePivotVisualQuery`；400 `VISUAL_QUERY_INVALID`；500 `OPERATION_FAILED` |
 | POST | `/api/visual-query/preview` | 对象 | `previewVisualQuery`, `previewPivotVisualQuery`；400 `VISUAL_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
-| GET | `/api/visual-query/column-stats/{table}/{column}` | 对象 | 列统计；404 `RESOURCE_NOT_FOUND`；500 `OPERATION_FAILED` |
-| POST | `/api/visual-query/distinct-values` | 对象 | Top-N 去重；400 校验；499 取消；500 `QUERY_FAILED` |
-| POST | `/api/visual-query/validate` | 对象 | 配置校验（`is_valid` 在 `data`）；400 解析失败；500 服务异常 |
+| GET | `/api/visual-query/column-stats/{table}/{column}` | 对象 | `getVisualQueryColumnStats`；404 `RESOURCE_NOT_FOUND`；500 `OPERATION_FAILED` |
+| POST | `/api/visual-query/distinct-values` | 对象 | `getVisualQueryDistinctValues`；400 校验；499 取消；500 `QUERY_FAILED` |
+| POST | `/api/visual-query/validate` | 对象 | `validateVisualQueryOnServer`；400 解析失败；500 服务异常 |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
 | GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（`data.favorite`）；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites` | 对象 | `createSqlFavorite`；400 `FAVORITE_NAME_EXISTS` |
@@ -161,15 +161,7 @@
 | POST | `/api/sql-favorites/{id}/use` | 对象 | `incrementFavoriteUsage`；404 `FAVORITE_NOT_FOUND` |
 | GET | `/api/app-config/features` | 对象 | `getAppConfig` |
 
-**纯前端**：`validateVisualQueryConfig` 无 HTTP。
-
-**后端有、当前 `visualQueryApi.ts` 未封装**（Join/筛选等组件若需请补 API 模块）：
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/visual-query/distinct-values` | Top-N 去重（可取消） |
-| POST | `/api/visual-query/validate` | 服务端配置校验 |
-| GET | `/api/visual-query/column-stats/{table}/{column}` | 列统计（`tableApi` / 面板若直连须对齐此路径） |
+**纯前端**：`validateVisualQueryConfig` 无 HTTP（本地规则）；服务端校验用 `validateVisualQueryOnServer`。
 
 ## 8. 设置（`settingsShortcutsApi.ts`）
 
@@ -185,20 +177,12 @@
 |------|------|--------|----------|
 | POST | `/api/set-operations/generate` | 对象 | `generateSetOperation`；400 `VALIDATION_ERROR`；500 `OPERATION_FAILED` |
 | POST | `/api/set-operations/preview` | 对象 | `previewSetOperation`；400 / 500（同上） |
-| POST | `/api/set-operations/validate` | 对象 | 配置校验（`is_valid` 在 `data`）；500 服务异常 |
-| POST | `/api/set-operations/execute` | 对象 | 完整执行；400 / 500 |
-| POST | `/api/set-operations/export` | 对象 | 异步导出任务；500 `OPERATION_FAILED` |
+| POST | `/api/set-operations/validate` | 对象 | `validateSetOperation`；500 服务异常 |
+| POST | `/api/set-operations/execute` | 对象 | `executeSetOperation`（`save_as_table` / `preview`）；400 / 500 |
+| POST | `/api/set-operations/simple-union` | 对象 | `simpleUnionSetOperation` |
+| POST | `/api/set-operations/export` | 对象 | `exportSetOperation`；500 `OPERATION_FAILED` |
 
-**`setOperationsApi.ts` 已封装**：`generateSetOperation`、`previewSetOperation` → 上表前两行。
-
-**后端有、前端未封装**（工作台若直接调 HTTP 须先补 `setOperationsApi.ts`）：
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/set-operations/validate` | 配置校验 |
-| POST | `/api/set-operations/execute` | 完整执行 / 保存为表 |
-| POST | `/api/set-operations/simple-union` | 简化 UNION |
-| POST | `/api/set-operations/export` | 异步导出 |
+**`setOperationsApi.ts` 已封装**：`generate`、`preview`、`validate`、`execute`、`simple-union`、`export`（上表全部）。
 
 执行时前端在 generate 返回的 SQL 后追加 `LIMIT`（与 `maxQueryRows` 一致）；**preview** 端点 LIMIT 由后端 `max_query_rows` 控制，结果写入结果面板。
 

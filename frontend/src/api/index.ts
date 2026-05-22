@@ -159,11 +159,22 @@ export {
 export {
     generateSetOperation,
     previewSetOperation,
+    validateSetOperation,
+    executeSetOperation,
+    simpleUnionSetOperation,
+    exportSetOperation,
     type SetOperationTypeApi,
     type SetOperationConfigPayload,
     type SetOperationRequestPayload,
     type SetOperationGenerateResult,
     type SetOperationPreviewResult,
+    type SetOperationValidateResult,
+    type SetOperationExecuteResult,
+    type SimpleUnionSetOperationPayload,
+    type SimpleUnionSetOperationResult,
+    type SetOperationExportFormat,
+    type SetOperationExportPayload,
+    type SetOperationExportResult,
 } from './setOperationsApi';
 
 // ==================== Visual Query & Favorites API ====================
@@ -172,6 +183,9 @@ export {
     generatePivotVisualQuery,
     previewVisualQuery,
     previewPivotVisualQuery,
+    getVisualQueryDistinctValues,
+    validateVisualQueryOnServer,
+    getVisualQueryColumnStats,
     validateVisualQueryConfig,
     listSqlFavorites,
     getSqlFavorite,
@@ -181,4 +195,9 @@ export {
     incrementFavoriteUsage,
     getAppConfig,
     type AppConfigResponse,
+    type VisualQueryDistinctValuesPayload,
+    type VisualQueryDistinctValuesResult,
+    type VisualQueryServerValidatePayload,
+    type VisualQueryServerValidateResult,
+    type VisualQueryColumnStatsResult,
 } from './visualQueryApi';

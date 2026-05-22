@@ -106,9 +106,9 @@
 
 | 后端 | 说明 |
 |------|------|
-| `POST /api/set-operations/*`（7 个） | `SetOperationsPanel` 本地生成 SQL + `onExecute`，未封装到 `frontend/src/api` |
+| `POST /api/set-operations/*` | ✅ `setOperationsApi.ts` 全端点封装；面板仍用 `generate` + `preview` + `onExecute`（SQL 路径） |
 | `POST /api/upload/init|chunk|complete` | 分块上传后端完整；前端当前主要 `POST /api/upload` |
-| `POST /api/visual-query/distinct-values|validate` | 未在 `visualQueryApi.ts` 暴露 |
+| `POST /api/visual-query/distinct-values|validate` | ✅ `getVisualQueryDistinctValues` / `validateVisualQueryOnServer` / `getVisualQueryColumnStats` |
 | `POST /api/duckdb/migrate/created_at` | 运维向，无前端 |
 
 ### 3.6 重复端点（同一资源多套 URL）
