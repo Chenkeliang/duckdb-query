@@ -74,6 +74,8 @@ duckdb-query/
 │       │   ├── fileApi.ts            # 文件 API
 │       │   ├── asyncTaskApi.ts       # 异步任务 API
 │       │   ├── visualQueryApi.ts     # 可视化查询 / 收藏 / 应用配置 API
+│       │   ├── setOperationsApi.ts   # 集合运算 API
+│       │   ├── joinQueryApi.ts       # 多表 JOIN（POST /api/query）
 │       │   └── index.ts              # 统一导出（@/api）
 │       ├── hooks/                    # 共享 Hooks（TanStack Query）⭐
 │       │   ├── useDuckDBTables.ts    # DuckDB 表列表
@@ -124,6 +126,8 @@ duckdb-query/
 | `frontend/src/api/client.ts` | `apiClient`、`normalizeResponse`、错误归一化 |
 | `frontend/src/api/queryApi.ts` | DuckDB / 联邦执行、`cancelSyncQuery` 等 |
 | `frontend/src/api/visualQueryApi.ts` | 可视化预览 / 生成 SQL、收藏、应用配置 |
+| `frontend/src/api/joinQueryApi.ts` | 结构化 JOIN：`performJoinQuery` |
+| `frontend/src/api/setOperationsApi.ts` | 集合运算 generate / validate / execute 等 |
 | `frontend/src/api/databaseSchemasApi.ts` | 外部库 schemas / 表 / 表详情 |
 | `frontend/src/api/settingsShortcutsApi.ts` | 快捷键配置 API |
 | `docs/API_CONTRACT_FE_BE.md` | 端点契约表（与后端路由、`normalizeResponse` 对齐） |
