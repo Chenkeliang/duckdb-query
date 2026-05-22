@@ -26,7 +26,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { executeDuckDBSQL, getExternalDatabaseTableDetails } from '@/api';
+import { executeDuckDBSQL, getExternalTableDetail } from '@/api';
 import type { SelectedTableObject } from '@/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
 import { invalidateDataSources } from '@/hooks/useDataSources';
@@ -92,14 +92,19 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
 
     try {
       if (isExternal && table.connection?.id) {
-        const tableData = await getExternalDatabaseTableDetails(
+        const tableData = await getExternalTableDetail(
           table.connection.id,
           table.name,
-          table.schema ?? null
+          table.schema ?? undefined
         );
-        setStructureData((tableData?.columns as unknown[]) || []);
-        setIndexData((tableData?.indexes as unknown[]) || []);
-        setTableComment(tableData?.table_comment ?? null);
+        const extended = tableData as {
+          columns?: unknown[];
+          indexes?: unknown[];
+          table_comment?: string | null;
+        };
+        setStructureData(extended.columns ?? []);
+        setIndexData(extended.indexes ?? []);
+        setTableComment(extended.table_comment ?? null);
       } else {
         // DuckDB: 查询表结构 - 使用双引号包裹表名以支持特殊字符
         // 注意：DESCRIBE 语句不需要 LIMIT，所以 is_preview 设为 false

@@ -22,7 +22,8 @@ REQUIRED_PATHS = [
     "/api/sql-favorites/{favorite_id}",
     "/api/query/cancel/{request_id}",
     "/api/datasources/databases/{connection_id}/tables/detail",
-    "/api/database_tables/{connection_id}",
+    "/api/datasources/databases/{connection_id}/tables",
+    "/api/datasources/databases/{connection_id}/schemas",
 ]
 
 

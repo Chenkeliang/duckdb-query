@@ -23,10 +23,10 @@
 
 ## 外部库元数据（canonical + legacy 别名）
 
-`database_tables.py` 同时注册：
+`database_tables.py`：
 
-- **推荐**：`/api/datasources/databases/{id}/tables|schemas|tables/detail`
-- **兼容**：`/api/database_tables/{id}`、`/api/database_table_details/{id}/{table}` 等（`deprecated=True`）
+- **Canonical（前端 `databaseSchemasApi` / `tableApi` 已统一）**：`/api/datasources/databases/{id}/tables|schemas|.../tables/detail`
+- **Legacy**：`/api/database_tables/{id}`、`/api/databases/{id}/schemas`、`/api/database_table_details/...` — 均 `deprecated=True`，实现委托同一函数，仅供旧客户端/单测
 
 ## 入湖（多入口 → `file_ingestion_service`）
 

@@ -7,6 +7,7 @@
  */
 
 import { apiClient, handleApiError, normalizeResponse } from './client';
+import { normalizeConnectionId } from './databaseSchemasApi';
 import type { TableInfo, TableDetail, NormalizedResponse } from './types';
 
 type DuckDBTableListItem = {
@@ -128,6 +129,7 @@ export async function getExternalTableDetail(
     schema?: string
 ): Promise<TableDetail> {
     try {
+        const id = normalizeConnectionId(connectionId);
         const params = new URLSearchParams();
         params.append('table_name', tableName);
         if (schema) {
@@ -135,7 +137,7 @@ export async function getExternalTableDetail(
         }
 
         const response = await apiClient.get(
-            `/api/datasources/databases/${connectionId}/tables/detail?${params.toString()}`
+            `/api/datasources/databases/${id}/tables/detail?${params.toString()}`
         );
         const normalized = normalizeResponse<TableDetail | { table?: TableDetail }>(response);
 

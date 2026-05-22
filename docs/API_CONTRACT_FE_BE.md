@@ -69,11 +69,13 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| GET | `/api/databases/{id}/schemas` | **列表** | `items[]`: `{ name, table_count? }` | `listConnectionSchemas`；404 连接不存在 |
-| GET | `/api/databases/{id}/schemas/{schema}/tables` | **列表** | `listSchemaTablesForConnection`；400 非 PostgreSQL / 缺用户名 |
-| GET | `/api/database_tables/{id}` | 对象 | `tables[]`（非 `items`） | `listConnectionTablesFlat`；404 / 400 不支持库类型 |
-| GET | `/api/datasources/databases/{id}/tables/detail` | 对象 | 表详情 canonical（`table_name`, `schema?`）；经 `CatalogService` | `getExternalTableDetail` |
-| GET | `/api/database_table_details/{id}/{table}` | 对象 | 同上（**deprecated**，代理 canonical） | `getExternalDatabaseTableDetails` |
+| GET | `/api/datasources/databases/{id}/schemas` | **列表** | `items[]`: `{ name, table_count? }` | `listConnectionSchemas`（**前端已用**） |
+| GET | `/api/datasources/databases/{id}/schemas/{schema}/tables` | **列表** | `listSchemaTablesForConnection` |
+| GET | `/api/datasources/databases/{id}/tables` | 对象 | `tables[]`（非 `items`） | `listConnectionTablesFlat`（**前端已用**） |
+| GET | `/api/datasources/databases/{id}/tables/detail` | 对象 | `table_name`, `columns`, `indexes?`, `table_comment?` | `getExternalTableDetail`；`ContextMenu` / `useTableColumns` |
+| GET | `/api/databases/{id}/schemas` 等 | — | **deprecated** 别名，同 canonical | 无前端引用 |
+| GET | `/api/database_tables/{id}` | — | **deprecated** 别名 | 无前端引用 |
+| GET | `/api/database_table_details/{id}/{table}` | — | **deprecated** 别名 | 无前端引用（`getExternalDatabaseTableDetails` 已转调 canonical） |
 
 ## 4. 数据源连接（`dataSourceApi.ts`）
 

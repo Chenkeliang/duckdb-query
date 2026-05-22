@@ -4,7 +4,8 @@
 
 import { apiClient, handleApiError, normalizeResponse } from './client';
 
-function normalizeConnectionId(connectionId: string): string {
+/** 外部库 API 路径使用裸 connection id（无 db_ 前缀）。 */
+export function normalizeConnectionId(connectionId: string): string {
   return connectionId.startsWith('db_') ? connectionId.slice(3) : connectionId;
 }
 
@@ -20,12 +21,12 @@ export interface ConnectionTableItem {
 }
 
 /**
- * GET /api/databases/{connection_id}/schemas — 列表响应
+ * GET /api/datasources/databases/{connection_id}/schemas — 列表响应
  */
 export async function listConnectionSchemas(connectionId: string): Promise<ConnectionSchemaItem[]> {
   const id = normalizeConnectionId(connectionId);
   try {
-    const response = await apiClient.get(`/api/databases/${id}/schemas`);
+    const response = await apiClient.get(`/api/datasources/databases/${id}/schemas`);
     const normalized = normalizeResponse<{ items?: ConnectionSchemaItem[] }>(response);
     return (normalized.items ?? []) as ConnectionSchemaItem[];
   } catch (error) {
@@ -34,7 +35,7 @@ export async function listConnectionSchemas(connectionId: string): Promise<Conne
 }
 
 /**
- * GET /api/databases/{id}/schemas/{schema}/tables — 列表响应
+ * GET /api/datasources/databases/{id}/schemas/{schema}/tables — 列表响应
  */
 export async function listSchemaTablesForConnection(
   connectionId: string,
@@ -43,7 +44,7 @@ export async function listSchemaTablesForConnection(
   const id = normalizeConnectionId(connectionId);
   try {
     const response = await apiClient.get(
-      `/api/databases/${id}/schemas/${encodeURIComponent(schema)}/tables`
+      `/api/datasources/databases/${id}/schemas/${encodeURIComponent(schema)}/tables`
     );
     const normalized = normalizeResponse<{
       items?: Array<{ name: string; type?: string; row_count?: number }>;
@@ -60,12 +61,12 @@ export async function listSchemaTablesForConnection(
 }
 
 /**
- * GET /api/database_tables/{id} — 对象载荷，`data.tables`（非 items）
+ * GET /api/datasources/databases/{id}/tables — 对象载荷，`data.tables`（非 items）
  */
 export async function listConnectionTablesFlat(connectionId: string): Promise<ConnectionTableItem[]> {
   const id = normalizeConnectionId(connectionId);
   try {
-    const response = await apiClient.get(`/api/database_tables/${id}`);
+    const response = await apiClient.get(`/api/datasources/databases/${id}/tables`);
     const normalized = normalizeResponse<{
       tables?: Array<{ table_name?: string; name?: string; row_count?: number }>;
     }>(response);
@@ -87,23 +88,22 @@ export interface ExternalTableDetailsPayload {
 }
 
 /**
- * GET /api/database_table_details/{connection_id}/{table_name}?schema=
+ * @deprecated 请使用 `getExternalTableDetail`（`tableApi.ts`）。保留为兼容别名。
  */
 export async function getExternalDatabaseTableDetails(
   connectionId: string,
   tableName: string,
   schema?: string | null
 ): Promise<ExternalTableDetailsPayload> {
-  const id = normalizeConnectionId(connectionId);
-  const params = new URLSearchParams();
-  if (schema) params.set('schema', schema);
-  const qs = params.toString();
-  const path = `/api/database_table_details/${id}/${encodeURIComponent(tableName)}${qs ? `?${qs}` : ''}`;
-  try {
-    const response = await apiClient.get(path);
-    const normalized = normalizeResponse<ExternalTableDetailsPayload>(response);
-    return normalized.data as ExternalTableDetailsPayload;
-  } catch (error) {
-    throw handleApiError(error as never, '获取表结构失败');
-  }
+  const { getExternalTableDetail } = await import('./tableApi');
+  const detail = await getExternalTableDetail(connectionId, tableName, schema ?? undefined);
+  const extended = detail as ExternalTableDetailsPayload & {
+    indexes?: unknown[];
+    table_comment?: string | null;
+  };
+  return {
+    columns: extended.columns ?? [],
+    indexes: extended.indexes,
+    table_comment: extended.table_comment ?? null,
+  };
 }

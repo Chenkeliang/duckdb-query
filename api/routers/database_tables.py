@@ -87,7 +87,11 @@ async def get_database_tables_alias(connection_id: str):
     return await get_database_tables(connection_id)
 
 
-@router.get("/api/database_tables/{connection_id}", tags=["Database Management"])
+@router.get(
+    "/api/database_tables/{connection_id}",
+    tags=["Database Management"],
+    deprecated=True,
+)
 async def get_database_tables(connection_id: str):
     """获取指定数据库连接的所有表信息"""
     try:
@@ -469,7 +473,11 @@ async def list_connection_schemas_alias(connection_id: str):
     return await list_connection_schemas(connection_id)
 
 
-@router.get("/api/databases/{connection_id}/schemas", tags=["Database Management"])
+@router.get(
+    "/api/databases/{connection_id}/schemas",
+    tags=["Database Management"],
+    deprecated=True,
+)
 async def list_connection_schemas(connection_id: str):
     """获取指定数据库连接下的所有 schemas（仅 PostgreSQL）
     
@@ -577,6 +585,7 @@ async def list_schema_tables_alias(connection_id: str, schema: str):
 @router.get(
     "/api/databases/{connection_id}/schemas/{schema}/tables",
     tags=["Database Management"],
+    deprecated=True,
 )
 async def list_schema_tables(connection_id: str, schema: str):
     """获取指定 schema 下的所有表（仅 PostgreSQL）
