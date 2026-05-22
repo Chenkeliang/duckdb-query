@@ -25,7 +25,7 @@ from core.common.exceptions import (
     ValidationError as APIValidationError,
 )
 from core.common.config_manager import config_manager
-from core.database.duckdb_engine import get_db_connection, with_duckdb_connection
+from core.database.duckdb_engine import with_duckdb_connection
 from core.data.excel_import_manager import sanitize_identifier
 from core.data.file_datasource_manager import (
     create_table_from_dataframe,
@@ -256,43 +256,43 @@ def _load_stream_into_duckdb(
     session: Dict[str, Any], fifo_path: str, final_file_path: str
 ) -> Dict[str, Any]:
     file_extension = session.get("file_extension") or session["file_name"].lower().split(".")[-1]
-    con = get_db_connection()
-    desired_name = session.get("table_alias") or session["file_name"].split(".")[0]
-    source_id = _generate_unique_table_name(con, desired_name)
+    with with_duckdb_connection() as con:
+        desired_name = session.get("table_alias") or session["file_name"].split(".")[0]
+        source_id = _generate_unique_table_name(con, desired_name)
 
-    metadata = create_table_from_dataframe(
-        con,
-        source_id,
-        fifo_path,
-        file_extension,
-        import_mode=session.get("import_mode", "auto"),
-    )
+        metadata = create_table_from_dataframe(
+            con,
+            source_id,
+            fifo_path,
+            file_extension,
+            import_mode=session.get("import_mode", "auto"),
+        )
 
-    table_metadata = {
-        "source_id": source_id,
-        "filename": session["file_name"],
-        "file_path": final_file_path,
-        "file_type": file_extension,
-        "row_count": metadata.get("row_count", 0),
-        "column_count": metadata.get("column_count", 0),
-        "columns": metadata.get("columns", []),
-        "column_profiles": metadata.get("column_profiles", []),
-        "schema_version": 2,
-        "created_at": get_current_time_iso(),
-    }
+        table_metadata = {
+            "source_id": source_id,
+            "filename": session["file_name"],
+            "file_path": final_file_path,
+            "file_type": file_extension,
+            "row_count": metadata.get("row_count", 0),
+            "column_count": metadata.get("column_count", 0),
+            "columns": metadata.get("columns", []),
+            "column_profiles": metadata.get("column_profiles", []),
+            "schema_version": 2,
+            "created_at": get_current_time_iso(),
+        }
 
-    file_datasource_manager.save_file_datasource(table_metadata)
-    logger.info("Streaming file datasource saved successfully: %s", source_id)
+        file_datasource_manager.save_file_datasource(table_metadata)
+        logger.info("Streaming file datasource saved successfully: %s", source_id)
 
-    return {
-        "source_id": source_id,
-        "filename": session["file_name"],
-        "file_size": 0,
-        "row_count": metadata.get("row_count", 0),
-        "column_count": metadata.get("column_count", 0),
-        "columns": metadata.get("columns", []),
-        "preview_data": [{"提示": "预览数据已禁用以提高性能"}],
-    }
+        return {
+            "source_id": source_id,
+            "filename": session["file_name"],
+            "file_size": 0,
+            "row_count": metadata.get("row_count", 0),
+            "column_count": metadata.get("column_count", 0),
+            "columns": metadata.get("columns", []),
+            "preview_data": [{"提示": "预览数据已禁用以提高性能"}],
+        }
 
 
 @router.post("/api/upload/init", tags=["Chunked Upload"])

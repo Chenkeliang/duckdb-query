@@ -203,14 +203,14 @@ flowchart TB
 
 ### P0 — 影响 Docker 现网功能
 
-1. **URL 导入**：前端改为 `POST /api/read_from_url`、`GET /api/url_info`，或后端增加 alias 路由；更新契约表。
-2. 自测：`UploadPanel` 提交公网 CSV URL。
+1. ~~**URL 导入**~~：✅ 前端 `fileApi.ts` 已使用 `POST /api/read_from_url`、`GET /api/url_info`（见 `fileApi.urlImport.test.ts`）。
+2. 自测：`UploadPanel` 提交公网 CSV URL（需 Docker/公网环境人工验证）。
 
 ### P1 — 收敛与防再发
 
-1. 删除或 `@deprecated`：`executeExternalSQL`、`executeSQL`、`performQuery`、`saveQueryResultAsDatasource` 及无后端路径的 tableApi 函数。
+1. ~~废弃裸 SQL API~~：✅ 前端已无 `executeExternalSQL` / `performQuery` 等；`tableApi` 走 `/api/duckdb/tables`。
 2. `asyncTaskApi`：连接池路径改为 `/api/duckdb/pool/*`（若将来做管理页）。
-3. `useDuckDBTables`：迁到 `GET /api/duckdb/tables`，废弃 `duckdb_tables`。
+3. ~~`useDuckDBTables`~~：✅ `tableApi.ts` 已用 `GET /api/duckdb/tables`。
 4. 异步任务：评估去掉 `_fetch_external_query_result`，统一 ATTACH。
 5. 扩充 `API_CONTRACT_FE_BE.md` 至与 `frontend/src/api` 一一对应。
 
@@ -219,7 +219,7 @@ flowchart TB
 1. 去掉 `TableSource.external` 兜底，仅 `federated` + `duckdb`。
 2. Set 运算是否走后端 `set-operations`（减少 SQL 生成重复）。
 3. Visual 查询支持联邦表或明确「仅 DuckDB」产品文案。
-4. 其余零散模块（如 `paste_data`、测试工具）若仍直连 `get_db_connection` 再逐步收敛。
+4. ~~入湖 router 连接池~~：✅ `chunked_upload` / `server_files` 已迁；`paste_data` 等若仍有直连再查。
 
 ---
 

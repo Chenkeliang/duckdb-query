@@ -21,10 +21,7 @@ from core.data.file_datasource_manager import (
     create_table_from_dataframe,
     file_datasource_manager,
 )
-from core.database.duckdb_engine import (
-    create_varchar_table_from_dataframe,
-    get_db_connection,
-)
+from core.database.duckdb_engine import create_varchar_table_from_dataframe
 from core.services.task_manager import TaskStatus, task_manager
 from fastapi import APIRouter, BackgroundTasks, Body
 from fastapi.responses import FileResponse, JSONResponse

@@ -34,9 +34,9 @@
 | 文件 | 入口场景 |
 |------|----------|
 | `file_ingestion.py` | 浏览器上传、Excel inspect/import |
-| `chunked_upload.py` | 大文件分块 |
-| `url_reader.py` | 远程 URL |
-| `server_files.py` | 服务器目录挂载 |
+| `chunked_upload.py` | 大文件分块（`with_duckdb_connection`） |
+| `url_reader.py` | 远程 URL（`read_from_url` / `url_info`） |
+| `server_files.py` | 服务器目录挂载（`with_duckdb_connection`） |
 | `paste_data.py` | 粘贴板 |
 
 可合并成一个大 router 文件，但会超过 1500 行且 CI/评审成本高；**共享逻辑已在 `core/services/file_ingestion_service.py`**，多文件只是 HTTP 入口分栏。
