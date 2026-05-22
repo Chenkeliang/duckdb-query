@@ -8,7 +8,7 @@ from typing import Any
 
 import pandas as pd
 from core.common.utils import normalize_dataframe_output
-from core.database.duckdb_engine import get_db_connection
+from core.database.duckdb_engine import with_duckdb_connection
 from core.services.visual_query_generator import (
     estimate_set_operation_rows,
     generate_set_operation_sql,
@@ -45,9 +45,8 @@ async def generate_set_operation_query(request: SetOperationRequest):
         # 生成SQL查询
         sql = generate_set_operation_sql(config)
 
-        # 估算结果rows
-        con = get_db_connection()
-        estimated_rows = estimate_set_operation_rows(config, con)
+        with with_duckdb_connection() as con:
+            estimated_rows = estimate_set_operation_rows(config, con)
 
         # 构建元数据
         metadata = {
@@ -112,14 +111,10 @@ async def preview_set_operation(request: SetOperationRequest):
         preview_limit = config_manager.get_app_config().max_query_rows
         preview_sql = f"{sql} LIMIT {preview_limit}"
 
-        # 执行预览查询
-        con = get_db_connection()
-        result_df = con.execute(preview_sql).fetchdf()
-
-        preview_data = normalize_dataframe_output(result_df)
-
-        # 获取总rows估算
-        estimated_rows = estimate_set_operation_rows(config, con)
+        with with_duckdb_connection() as con:
+            result_df = con.execute(preview_sql).fetchdf()
+            preview_data = normalize_dataframe_output(result_df)
+            estimated_rows = estimate_set_operation_rows(config, con)
 
         return create_success_response(
             data={
@@ -160,50 +155,41 @@ async def validate_set_operation(request: SetOperationRequest):
     """
     try:
         config = request.config
-        con = get_db_connection()
 
         errors = []
         warnings = []
 
-        # 检查所有表是否存在
-        for table in config.tables:
-            try:
-                # 检查表是否存在
-                check_sql = f'SELECT COUNT(*) FROM "{table.table_name}"'
-                con.execute(check_sql).fetchone()
-            except Exception as e:
-                errors.append(f"Table {table.table_name} does not exist或无法访问: {str(e)}")
+        with with_duckdb_connection() as con:
+            for table in config.tables:
+                try:
+                    check_sql = f'SELECT COUNT(*) FROM "{table.table_name}"'
+                    con.execute(check_sql).fetchone()
+                except Exception as e:
+                    errors.append(
+                        f"Table {table.table_name} does not exist或无法访问: {str(e)}"
+                    )
 
-        # 检查列兼容性
-        if not config.use_by_name:
-            # 位置模式：检查列数量是否匹配
-            if len(config.tables) >= 2:
-                first_table = config.tables[0]
-                first_columns = first_table.selected_columns or []
+            if not config.use_by_name:
+                if len(config.tables) >= 2:
+                    first_table = config.tables[0]
+                    first_columns = first_table.selected_columns or []
 
-                for i, table in enumerate(config.tables[1:], 1):
-                    table_columns = table.selected_columns or []
-                    if len(first_columns) != len(table_columns):
-                        errors.append(
-                            f"Table {table.table_name} 的列数量({len(table_columns)}) "
-                            f"与第一个Table {first_table.table_name} 的列数量({len(first_columns)})不匹配"
-                        )
+                    for i, table in enumerate(config.tables[1:], 1):
+                        table_columns = table.selected_columns or []
+                        if len(first_columns) != len(table_columns):
+                            errors.append(
+                                f"Table {table.table_name} 的列数量({len(table_columns)}) "
+                                f"与第一个Table {first_table.table_name} 的列数量({len(first_columns)})不匹配"
+                            )
 
-        # BY NAME模式验证
-        if config.use_by_name:
-            # DuckDB的BY NAME模式会自动按列名匹配，不需要手动列映射
-            pass
+            if config.use_by_name and config.operation_type not in [
+                SetOperationType.UNION,
+                SetOperationType.UNION_ALL,
+            ]:
+                errors.append("只有UNION和UNION ALL支持BY NAME模式")
 
-        # 检查操作类型支持
-        if config.use_by_name and config.operation_type not in [
-            SetOperationType.UNION,
-            SetOperationType.UNION_ALL,
-        ]:
-            errors.append("只有UNION和UNION ALL支持BY NAME模式")
-
-        # 性能警告
-        if len(config.tables) > 5:
-            warnings.append("表数量较多，查询性能可能较慢")
+            if len(config.tables) > 5:
+                warnings.append("表数量较多，查询性能可能较慢")
 
         is_valid = len(errors) == 0
         return create_success_response(
@@ -251,138 +237,136 @@ async def execute_set_operation(request: SetOperationRequest):
             # 保存到表模式：生成完整查询
             sql = generate_set_operation_sql(config)
 
-        # 执行查询
-        con = get_db_connection()
+        with with_duckdb_connection() as con:
+            if request.preview:
+                # 预览模式：使用配置的max_query_rows限制
+                from core.common.config_manager import config_manager
 
-        if request.preview:
-            # 预览模式：使用配置的max_query_rows限制
-            from core.common.config_manager import config_manager
+                limit = config_manager.get_app_config().max_query_rows
+                preview_sql = f"{sql} LIMIT {limit}"
+                result_df = con.execute(preview_sql).fetchdf()
+                columns = [
+                    {"name": col, "type": str(result_df[col].dtype)}
+                    for col in result_df.columns
+                ]
+                data = normalize_dataframe_output(result_df)
 
-            limit = config_manager.get_app_config().max_query_rows
-            preview_sql = f"{sql} LIMIT {limit}"
-            result_df = con.execute(preview_sql).fetchdf()
-            columns = [
-                {"name": col, "type": str(result_df[col].dtype)}
-                for col in result_df.columns
-            ]
-            data = normalize_dataframe_output(result_df)
-
-            return create_success_response(
-                data={
-                    "data": data,
-                    "row_count": len(data),
-                    "column_count": len(columns),
-                    "columns": columns,
-                    "sql": sql,
-                    "sqlQuery": sql,
-                    "originalDatasource": {
-                        "type": "set_operation",
-                        "operation": config.operation_type,
-                        "tables": [source.table_name for source in config.tables],
+                return create_success_response(
+                    data={
+                        "data": data,
+                        "row_count": len(data),
+                        "column_count": len(columns),
+                        "columns": columns,
+                        "sql": sql,
+                        "sqlQuery": sql,
+                        "originalDatasource": {
+                            "type": "set_operation",
+                            "operation": config.operation_type,
+                            "tables": [source.table_name for source in config.tables],
+                        },
+                        "isSetOperation": True,
+                        "setOperationConfig": config.model_dump()
+                        if hasattr(config, "model_dump")
+                        else config.dict(),
+                        "errors": [],
+                        "warnings": [],
                     },
-                    "isSetOperation": True,
-                    "setOperationConfig": config.model_dump()
-                    if hasattr(config, "model_dump")
-                    else config.dict(),
-                    "errors": [],
-                    "warnings": [],
-                },
-                message_code=MessageCode.SET_OPERATION_PREVIEWED,
-            )
-        elif request.save_as_table:
-            # 保存到表模式：直接创建表，不使用fetchdf避免内存溢出
-            table_name = request.save_as_table.strip()
-            logger.info(f"Starting to save set operation result to table: {table_name}")
+                    message_code=MessageCode.SET_OPERATION_PREVIEWED,
+                )
+            elif request.save_as_table:
+                # 保存到表模式：直接创建表，不使用fetchdf避免内存溢出
+                table_name = request.save_as_table.strip()
+                logger.info(f"Starting to save set operation result to table: {table_name}")
 
-            # 检查表名是否already exists
-            existing_tables = con.execute("SHOW TABLES").fetchdf()
-            existing_table_names = (
-                existing_tables["name"].tolist() if not existing_tables.empty else []
-            )
+                # 检查表名是否already exists
+                existing_tables = con.execute("SHOW TABLES").fetchdf()
+                existing_table_names = (
+                    existing_tables["name"].tolist() if not existing_tables.empty else []
+                )
 
-            if table_name in existing_table_names:
-                logger.warning(f"Table {table_name} already exists，will be replaced")
+                if table_name in existing_table_names:
+                    logger.warning(f"Table {table_name} already exists，will be replaced")
 
-            # 直接创建表，不使用fetchdf
-            create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql})'
-            logger.info(f"Executing create table SQL: {create_sql}")
-            con.execute(create_sql)
+                # 直接创建表，不使用fetchdf
+                create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql})'
+                logger.info(f"Executing create table SQL: {create_sql}")
+                con.execute(create_sql)
 
-            # 获取统计信息（不使用fetchdf）
-            row_count_result = con.execute(
-                f'SELECT COUNT(*) FROM "{table_name}"'
-            ).fetchone()
-            row_count = row_count_result[0] if row_count_result else 0
+                # 获取统计信息（不使用fetchdf）
+                row_count_result = con.execute(
+                    f'SELECT COUNT(*) FROM "{table_name}"'
+                ).fetchone()
+                row_count = row_count_result[0] if row_count_result else 0
 
-            # 获取列信息（使用LIMIT 1避免大数据集问题）
-            sample_sql = f'SELECT * FROM "{table_name}" LIMIT 1'
-            sample_df = con.execute(sample_sql).fetchdf()
-            columns = [
-                {"name": col, "type": str(sample_df[col].dtype)}
-                for col in sample_df.columns
-            ]
+                # 获取列信息（使用LIMIT 1避免大数据集问题）
+                sample_sql = f'SELECT * FROM "{table_name}" LIMIT 1'
+                sample_df = con.execute(sample_sql).fetchdf()
+                columns = [
+                    {"name": col, "type": str(sample_df[col].dtype)}
+                    for col in sample_df.columns
+                ]
 
-            logger.info(f"Table {table_name} created successfully，rows: {row_count}")
+                logger.info(f"Table {table_name} created successfully，rows: {row_count}")
 
-            return create_success_response(
-                data={
-                    "saved_table": table_name,
-                    "table_alias": table_name,
-                    "row_count": row_count,
-                    "column_count": len(columns),
-                    "columns": columns,
-                    "sql": sql,
-                    "sqlQuery": sql,
-                    "originalDatasource": {
-                        "type": "set_operation",
-                        "operation": config.operation_type,
-                        "tables": [source.table_name for source in config.tables],
+                return create_success_response(
+                    data={
+                        "saved_table": table_name,
+                        "table_alias": table_name,
+                        "row_count": row_count,
+                        "column_count": len(columns),
+                        "columns": columns,
+                        "sql": sql,
+                        "sqlQuery": sql,
+                        "originalDatasource": {
+                            "type": "set_operation",
+                            "operation": config.operation_type,
+                            "tables": [source.table_name for source in config.tables],
+                        },
+                        "isSetOperation": True,
+                        "setOperationConfig": config.model_dump()
+                        if hasattr(config, "model_dump")
+                        else config.dict(),
+                        "errors": [],
+                        "warnings": [],
                     },
-                    "isSetOperation": True,
-                    "setOperationConfig": config.model_dump()
-                    if hasattr(config, "model_dump")
-                    else config.dict(),
-                    "errors": [],
-                    "warnings": [],
-                },
-                message_code=MessageCode.SET_OPERATION_EXECUTED,
-                message=f"Set operation result has been saved to table: {table_name}, total {row_count:,} rows.",
-            )
-        else:
-            # 默认行为：执行集合操作预览，使用配置的max_query_rows限制
-            from core.common.config_manager import config_manager
+                    message_code=MessageCode.SET_OPERATION_EXECUTED,
+                    message=f"Set operation result has been saved to table: {table_name}, total {row_count:,} rows.",
+                )
+            else:
+                # 默认行为：执行集合操作预览，使用配置的max_query_rows限制
+                from core.common.config_manager import config_manager
 
-            limit = config_manager.get_app_config().max_query_rows
-            preview_sql = f"{sql} LIMIT {limit}"
-            result_df = con.execute(preview_sql).fetchdf()
-            columns = [
-                {"name": col, "type": str(result_df[col].dtype)}
-                for col in result_df.columns
-            ]
-            data = normalize_dataframe_output(result_df)
+                limit = config_manager.get_app_config().max_query_rows
+                preview_sql = f"{sql} LIMIT {limit}"
+                result_df = con.execute(preview_sql).fetchdf()
+                columns = [
+                    {"name": col, "type": str(result_df[col].dtype)}
+                    for col in result_df.columns
+                ]
+                data = normalize_dataframe_output(result_df)
 
-            return create_success_response(
-                data={
-                    "data": data,
-                    "row_count": len(data),
-                    "column_count": len(columns),
-                    "columns": columns,
-                    "sql": sql,
-                    "sqlQuery": sql,
-                    "originalDatasource": {
-                        "type": "set_operation",
-                        "operation": config.operation_type,
-                        "tables": [source.table_name for source in config.tables],
+                return create_success_response(
+                    data={
+                        "data": data,
+                        "row_count": len(data),
+                        "column_count": len(columns),
+                        "columns": columns,
+                        "sql": sql,
+                        "sqlQuery": sql,
+                        "originalDatasource": {
+                            "type": "set_operation",
+                            "operation": config.operation_type,
+                            "tables": [source.table_name for source in config.tables],
+                        },
+                        "isSetOperation": True,
+                        "setOperationConfig": config.model_dump()
+                        if hasattr(config, "model_dump")
+                        else config.dict(),
+                        "errors": [],
+                        "warnings": [],
                     },
-                    "isSetOperation": True,
-                    "setOperationConfig": config.model_dump()
-                    if hasattr(config, "model_dump")
-                    else config.dict(),
-                    "errors": [],
-                    "warnings": [],
-                },
-                message_code=MessageCode.SET_OPERATION_EXECUTED,
-            )
+                    message_code=MessageCode.SET_OPERATION_EXECUTED,
+                )
 
     except ValueError as e:
         logger.warning(f"Failed to execute set operation: {str(e)}")
@@ -439,8 +423,8 @@ async def simple_union_operation(request: UnionOperationRequest):
         sql = generate_set_operation_sql(config)
 
         # 估算结果rows
-        con = get_db_connection()
-        estimated_rows = estimate_set_operation_rows(config, con)
+        with with_duckdb_connection() as con:
+            estimated_rows = estimate_set_operation_rows(config, con)
 
         return create_success_response(
             data={
@@ -559,63 +543,55 @@ async def export_set_operation(request: SetOperationExportRequest):
                     },
                 )
 
-                # 获取数据库连接
-                con = get_db_connection()
-
-                # 更新任务状态
-                task_manager.update_task(
-                    task_id, {"progress": 30, "message": "正在执行查询..."}
-                )
-
-                if export_format == "excel":
-                    # Excel需要特殊处理：先导出为CSV，然后转换为Excel
-                    csv_path = file_path.replace(".xlsx", ".csv")
-                    copy_sql = f"COPY ({sql}) TO '{csv_path}' (FORMAT {copy_format}, {copy_options})"
-
-                    logger.info(f"Executing CSV export: {copy_sql}")
-                    con.execute(copy_sql)
-
-                    # 更新任务状态
+                with with_duckdb_connection() as con:
                     task_manager.update_task(
-                        task_id, {"progress": 70, "message": "正在转换为Excel格式..."}
+                        task_id, {"progress": 30, "message": "正在执行查询..."}
                     )
 
-                    # 将CSV转换为Excel
+                    if export_format == "excel":
+                        csv_path = file_path.replace(".xlsx", ".csv")
+                        copy_sql = (
+                            f"COPY ({sql}) TO '{csv_path}' (FORMAT {copy_format}, {copy_options})"
+                        )
 
-                    df = pd.read_csv(csv_path)
-                    df.to_excel(file_path, index=False)
+                        logger.info(f"Executing CSV export: {copy_sql}")
+                        con.execute(copy_sql)
 
-                    # 删除临时CSV文件
+                        task_manager.update_task(
+                            task_id, {"progress": 70, "message": "正在转换为Excel格式..."}
+                        )
 
-                    os.remove(csv_path)
+                        df = pd.read_csv(csv_path)
+                        df.to_excel(file_path, index=False)
+                        os.remove(csv_path)
 
-                else:
-                    # 直接使用DuckDB COPY命令
-                    copy_sql = f"COPY ({sql}) TO '{file_path}' (FORMAT {copy_format}, {copy_options})"
+                    else:
+                        copy_sql = (
+                            f"COPY ({sql}) TO '{file_path}' (FORMAT {copy_format}, {copy_options})"
+                        )
 
-                    logger.info(f"Executing export: {copy_sql}")
-                    con.execute(copy_sql)
+                        logger.info(f"Executing export: {copy_sql}")
+                        con.execute(copy_sql)
 
-                # 检查文件是否created successfully
+                    if not os.path.exists(file_path):
+                        raise RuntimeError("Export file not created")
 
-                if not os.path.exists(file_path):
-                    raise RuntimeError("Export file not created")
+                    file_size = os.path.getsize(file_path)
 
-                file_size = os.path.getsize(file_path)
+                    task_manager.update_task(
+                        task_id,
+                        {
+                            "status": "completed",
+                            "progress": 100,
+                            "message": f"导出完成，文件size: {file_size / 1024 / 1024:.2f} MB",
+                            "file_size": file_size,
+                            "download_url": f"/api/async-tasks/{task_id}/download",
+                        },
+                    )
 
-                # 更新任务状态为完成
-                task_manager.update_task(
-                    task_id,
-                    {
-                        "status": "completed",
-                        "progress": 100,
-                        "message": f"导出完成，文件size: {file_size / 1024 / 1024:.2f} MB",
-                        "file_size": file_size,
-                        "download_url": f"/api/async-tasks/{task_id}/download",
-                    },
-                )
-
-                logger.info(f"Set operation export completed: {filename}, size: {file_size} bytes")
+                    logger.info(
+                        f"Set operation export completed: {filename}, size: {file_size} bytes"
+                    )
 
             except Exception as e:
                 logger.error(f"Export taskFailed to execute: {str(e)}")

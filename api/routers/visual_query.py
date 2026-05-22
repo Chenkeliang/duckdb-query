@@ -10,7 +10,7 @@ from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
     file_datasource_manager,
 )
-from core.database.duckdb_engine import execute_query, get_db_connection
+from core.database.duckdb_engine import execute_query, with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
 from core.services.visual_query_generator import (
     _build_where_clause,
@@ -136,12 +136,12 @@ def _load_backend_column_profiles(table_name: str) -> Dict[str, Dict[str, Any]]:
                 str(profile.get("name", "")).lower(): profile for profile in profiles
             }
 
-        con = get_db_connection()
-        snapshot = build_table_metadata_snapshot(con, table_name)
-        return {
-            str(profile.get("name", "")).lower(): profile
-            for profile in snapshot.get("column_profiles", [])
-        }
+        with with_duckdb_connection() as con:
+            snapshot = build_table_metadata_snapshot(con, table_name)
+            return {
+                str(profile.get("name", "")).lower(): profile
+                for profile in snapshot.get("column_profiles", [])
+            }
     except Exception as exc:
         logger.warning("Failed to load backend column metadata: %s", exc)
         return {}
@@ -301,8 +301,8 @@ async def generate_visual_query(request: VisualQueryRequest):
 
         if request.include_metadata:
             try:
-                con = get_db_connection()
-                estimate = estimate_query_performance(request.config, con)
+                with with_duckdb_connection() as con:
+                    estimate = estimate_query_performance(request.config, con)
                 metadata = {
                     "estimated_rows": estimate.estimated_rows,
                     "estimated_time": estimate.estimated_time,
@@ -399,27 +399,26 @@ async def preview_visual_query(
                 except Exception as count_exc:
                     logger.warning("Failed to calculate preview total rows: %s", count_exc)
         else:
-            # Backward compatibility
-            con = get_db_connection()
-            preview_df = execute_query(preview_sql, con)
+            with with_duckdb_connection() as con:
+                preview_df = execute_query(preview_sql, con)
 
-            total_rows = len(preview_df)
-            try:
-                count_sql = _build_preview_count_sql(generation.final_sql)
-                count_df = execute_query(count_sql, con)
-                if not count_df.empty:
-                    total_rows = int(count_df.iloc[0, 0])
-            except Exception as count_exc:
-                logger.warning("Failed to calculate preview total rows: %s", count_exc)
+                total_rows = len(preview_df)
+                try:
+                    count_sql = _build_preview_count_sql(generation.final_sql)
+                    count_df = execute_query(count_sql, con)
+                    if not count_df.empty:
+                        total_rows = int(count_df.iloc[0, 0])
+                except Exception as count_exc:
+                    logger.warning("Failed to calculate preview total rows: %s", count_exc)
 
         data = preview_df.to_dict("records")
         columns = [str(col) for col in preview_df.columns.tolist()]
 
         estimated_time = None
         try:
-            con = get_db_connection()
-            estimate = estimate_query_performance(request.config, con)
-            estimated_time = estimate.estimated_time
+            with with_duckdb_connection() as con:
+                estimate = estimate_query_performance(request.config, con)
+                estimated_time = estimate.estimated_time
         except Exception as perf_exc:
             logger.debug("Failed to estimate preview performance: %s", perf_exc)
 
@@ -531,12 +530,14 @@ async def get_distinct_values(
                 distinct_sql = f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base WHERE {target_col} IS NOT NULL"
                 distinct_df = conn.execute(distinct_sql).fetchdf()
         else:
-            # Backward compatibility
-            con = get_db_connection()
-            df = execute_query(sql, con)
+            with with_duckdb_connection() as con:
+                df = execute_query(sql, con)
 
-            distinct_sql = f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base WHERE {target_col} IS NOT NULL"
-            distinct_df = execute_query(distinct_sql, con)
+                distinct_sql = (
+                    f"{base_cte} SELECT COUNT(DISTINCT {target_col}) FROM base "
+                    f"WHERE {target_col} IS NOT NULL"
+                )
+                distinct_df = execute_query(distinct_sql, con)
 
         values = []
         topN = []
@@ -593,24 +594,24 @@ async def get_distinct_values(
 async def get_visual_query_column_stats(table_name: str, column_name: str):
     """Get column statistics"""
     try:
-        con = get_db_connection()
-        available_tables = con.execute("SHOW TABLES").fetchdf()
-        available_names = (
-            available_tables["name"].tolist() if not available_tables.empty else []
-        )
+        with with_duckdb_connection() as con:
+            available_tables = con.execute("SHOW TABLES").fetchdf()
+            available_names = (
+                available_tables["name"].tolist() if not available_tables.empty else []
+            )
 
-        if table_name not in available_names:
-            raise ResourceNotFoundError("Table", table_name)
+            if table_name not in available_names:
+                raise ResourceNotFoundError("Table", table_name)
 
-        stats = get_column_statistics(table_name, column_name, con)
-        stats_dict = (
-            stats.model_dump() if hasattr(stats, "model_dump") else stats.dict()
-        )
+            stats = get_column_statistics(table_name, column_name, con)
+            stats_dict = (
+                stats.model_dump() if hasattr(stats, "model_dump") else stats.dict()
+            )
 
-        return create_success_response(
-            data={"statistics": stats_dict},
-            message_code=MessageCode.QUERY_SUCCESS,
-        )
+            return create_success_response(
+                data={"statistics": stats_dict},
+                message_code=MessageCode.QUERY_SUCCESS,
+            )
 
     except BaseAPIException:
         raise

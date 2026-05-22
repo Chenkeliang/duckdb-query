@@ -207,7 +207,7 @@ def test_visual_query_generate_invalid_config_standard_error():
 def test_set_operations_generate_failure_standard_error():
     """集合运算 generate 执行失败须 500 OPERATION_FAILED（非 200 错误体）。"""
     with patch(
-        "routers.set_operations.get_db_connection",
+        "routers.set_operations.with_duckdb_connection",
         side_effect=Exception("Database connection failed"),
     ), patch(
         "routers.set_operations.generate_set_operation_sql",

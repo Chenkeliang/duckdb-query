@@ -67,7 +67,7 @@ class TestVisualQueryGeneration:
 
         with patch('routers.visual_query.validate_query_config') as mock_validate, \
              patch('routers.visual_query.generate_visual_query_sql') as mock_generate, \
-             patch('routers.visual_query.get_db_connection') as mock_get_db, \
+             patch('routers.visual_query.with_duckdb_connection') as mock_pool, \
              patch('routers.visual_query.estimate_query_performance') as mock_estimate:
 
             mock_validate.return_value = Mock(
@@ -78,7 +78,7 @@ class TestVisualQueryGeneration:
             )
 
             mock_generate.return_value = generation_result
-            mock_get_db.return_value = Mock()
+            bind_mock_duckdb_pool(mock_pool, Mock())
 
             mock_estimate.return_value = Mock(
                 estimated_rows=100,
@@ -167,7 +167,7 @@ class TestVisualQueryGeneration:
 
         with patch('routers.visual_query.validate_query_config') as mock_validate, \
              patch('routers.visual_query.generate_visual_query_sql') as mock_generate, \
-             patch('routers.visual_query.get_db_connection') as mock_get_db, \
+             patch('routers.visual_query.with_duckdb_connection') as mock_pool, \
              patch('routers.visual_query.estimate_query_performance') as mock_estimate:
 
             mock_validate.return_value = Mock(
@@ -178,7 +178,7 @@ class TestVisualQueryGeneration:
             )
 
             mock_generate.return_value = generation_result
-            mock_get_db.return_value = Mock()
+            bind_mock_duckdb_pool(mock_pool, Mock())
 
             mock_estimate.return_value = Mock(
                 estimated_rows=50,
@@ -223,7 +223,7 @@ class TestVisualQueryPreview:
 
         with patch('routers.visual_query.validate_query_config') as mock_validate, \
              patch('routers.visual_query.generate_visual_query_sql') as mock_generate, \
-             patch('routers.visual_query.get_db_connection') as mock_get_db, \
+             patch('routers.visual_query.with_duckdb_connection') as mock_pool, \
              patch('routers.visual_query.estimate_query_performance') as mock_estimate:
 
             mock_validate.return_value = Mock(
@@ -243,7 +243,7 @@ class TestVisualQueryPreview:
             })
 
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_pool, mock_con)
             mock_con.execute.return_value.fetchdf.side_effect = [
                 preview_data,
                 pd.DataFrame({'total_rows': [1000]}),
@@ -293,19 +293,18 @@ class TestColumnStatistics:
     
     def test_get_column_statistics_success(self):
         """Test successful column statistics retrieval"""
-        with patch('routers.visual_query.get_db_connection') as mock_db, \
+        with patch('routers.visual_query.with_duckdb_connection') as mock_db, \
              patch('routers.visual_query.get_column_statistics') as mock_stats:
             
             # Mock database connection
             mock_con = Mock()
-            mock_db.return_value = mock_con
-            
-            # Mock available tables
+            bind_mock_duckdb_pool(mock_db, mock_con)
+
             import pandas as pd
             mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({
                 'name': ['test_table']
             })
-            
+
             # Mock column statistics
             from models.visual_query_models import ColumnStatistics
             mock_stats.return_value = ColumnStatistics(
@@ -330,11 +329,10 @@ class TestColumnStatistics:
     
     def test_get_column_statistics_table_not_found(self):
         """Test column statistics for non-existent table"""
-        with patch('routers.visual_query.get_db_connection') as mock_db:
-            # Mock database connection
+        with patch('routers.visual_query.with_duckdb_connection') as mock_db:
             mock_con = Mock()
-            mock_db.return_value = mock_con
-            
+            bind_mock_duckdb_pool(mock_db, mock_con)
+
             # Mock empty tables list
             import pandas as pd
             mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({

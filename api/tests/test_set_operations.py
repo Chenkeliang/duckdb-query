@@ -17,6 +17,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch, MagicMock
 import pandas as pd
+from tests.pool_mock import bind_mock_duckdb_pool
 import json
 from pydantic import ValidationError
 
@@ -278,7 +279,7 @@ class TestSetOperationAPI:
 
         with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
             "routers.set_operations.estimate_set_operation_rows"
-        ) as mock_estimate, patch("routers.set_operations.get_db_connection") as mock_get_db:
+        ) as mock_estimate, patch("routers.set_operations.with_duckdb_connection") as mock_get_db:
 
             # 模拟查询生成
             mock_generate.return_value = (
@@ -288,7 +289,7 @@ class TestSetOperationAPI:
 
             # 模拟数据库连接
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             response = client.post("/api/set-operations/generate", json=request_data)
 
@@ -344,7 +345,7 @@ class TestSetOperationAPI:
 
         with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
             "routers.set_operations.estimate_set_operation_rows"
-        ) as mock_estimate, patch("routers.set_operations.get_db_connection") as mock_get_db:
+        ) as mock_estimate, patch("routers.set_operations.with_duckdb_connection") as mock_get_db:
 
             # 模拟查询生成
             mock_generate.return_value = "SELECT id, name FROM users UNION SELECT id, name FROM customers LIMIT 10"
@@ -352,7 +353,7 @@ class TestSetOperationAPI:
 
             # 模拟数据库连接和查询结果
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # 模拟预览数据
             preview_data = pd.DataFrame(
@@ -393,7 +394,7 @@ class TestSetOperationAPI:
 
         with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
             "routers.set_operations.estimate_set_operation_rows"
-        ) as mock_estimate, patch("routers.set_operations.get_db_connection") as mock_get_db, patch(
+        ) as mock_estimate, patch("routers.set_operations.with_duckdb_connection") as mock_get_db, patch(
             "core.common.config_manager.config_manager.get_app_config",
             return_value=Mock(max_query_rows=88),
         ):
@@ -403,7 +404,7 @@ class TestSetOperationAPI:
             mock_estimate.return_value = 1000
 
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             preview_frame = pd.DataFrame({"id": [1], "name": ["Alice"]})
             mock_con.execute.return_value.fetchdf.return_value = preview_frame
@@ -438,10 +439,10 @@ class TestSetOperationAPI:
             "include_metadata": False,
         }
 
-        with patch("routers.set_operations.get_db_connection") as mock_get_db:
+        with patch("routers.set_operations.with_duckdb_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # 模拟表存在检查
             mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
@@ -477,7 +478,7 @@ class TestSetOperationAPI:
         }
 
         with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
-            "routers.set_operations.get_db_connection"
+            "routers.set_operations.with_duckdb_connection"
         ) as mock_get_db:
 
             # 模拟查询生成
@@ -487,7 +488,7 @@ class TestSetOperationAPI:
 
             # 模拟数据库连接和查询结果
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # 模拟执行结果
             result_data = pd.DataFrame(
@@ -511,7 +512,7 @@ class TestSetOperationAPI:
 
         with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
             "routers.set_operations.estimate_set_operation_rows"
-        ) as mock_estimate, patch("routers.set_operations.get_db_connection") as mock_get_db:
+        ) as mock_estimate, patch("routers.set_operations.with_duckdb_connection") as mock_get_db:
 
             # 模拟查询生成
             mock_generate.return_value = (
@@ -521,7 +522,7 @@ class TestSetOperationAPI:
 
             # 模拟数据库连接
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             response = client.post(
                 "/api/set-operations/simple-union", json=request_data
@@ -562,7 +563,7 @@ class TestSetOperationIntegration:
 
         with patch("routers.set_operations.generate_set_operation_sql") as mock_generate, patch(
             "routers.set_operations.estimate_set_operation_rows"
-        ) as mock_estimate, patch("routers.set_operations.get_db_connection") as mock_get_db:
+        ) as mock_estimate, patch("routers.set_operations.with_duckdb_connection") as mock_get_db:
 
             # 模拟查询生成
             mock_generate.return_value = (
@@ -572,7 +573,7 @@ class TestSetOperationIntegration:
 
             # 模拟数据库连接
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # 步骤1：生成查询
             response = client.post(
@@ -661,7 +662,7 @@ class TestSetOperationErrorHandling:
             }
         }
 
-        with patch("routers.set_operations.get_db_connection") as mock_get_db:
+        with patch("routers.set_operations.with_duckdb_connection") as mock_get_db:
             # 模拟数据库连接错误
             mock_get_db.side_effect = Exception("Database connection failed")
 

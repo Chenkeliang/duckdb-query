@@ -168,7 +168,7 @@ flowchart TB
 
 | 规则 | 现状 |
 |------|------|
-| `with_duckdb_connection()` | `join_query.py`、`duckdb_query.py` 已迁移；联邦/同步取消路径仍用 `interruptible_connection` |
+| `with_duckdb_connection()` | 主查询路由（`join_query` / `duckdb_query` / `visual_query` / `set_operations`）已迁移；带 `X-Request-ID` 的预览/联邦仍用 `interruptible_connection` |
 | 统一响应 | `duckdb_query.py` 部分错误仍 `JSONResponse` |
 | 时区 | 新代码多用 `timezone_utils`；旧路由需逐文件核对 |
 
@@ -219,7 +219,7 @@ flowchart TB
 1. 去掉 `TableSource.external` 兜底，仅 `federated` + `duckdb`。
 2. Set 运算是否走后端 `set-operations`（减少 SQL 生成重复）。
 3. Visual 查询支持联邦表或明确「仅 DuckDB」产品文案。
-4. `visual_query` / `set_operations` 等路由连接池迁移（如仍用 `get_db_connection`）。
+4. 其余零散模块（如 `paste_data`、测试工具）若仍直连 `get_db_connection` 再逐步收敛。
 
 ---
 
