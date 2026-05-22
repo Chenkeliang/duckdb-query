@@ -154,7 +154,7 @@ const DropZone: React.FC<{
             <div className="flex items-center gap-2 mb-2 text-xs font-medium text-muted-foreground">
                 {icon}
                 <span>{title}</span>
-                {badge && <Badge variant="outline" className="text-[10px] px-1 h-4">{badge}</Badge>}
+                {badge && <Badge variant="outline" className="text-xs px-1 h-4">{badge}</Badge>}
             </div>
             <div className="flex flex-wrap gap-1.5 min-h-[40px]">
                 {React.Children.count(children) === 0 ? (
@@ -382,7 +382,7 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                         <div className="bg-muted/30 px-3 py-2 border-b border-border text-xs font-medium text-muted-foreground flex items-center justify-between">
                             <span>{t("common:query.pivot.tablePreview", "表格结构预览")}</span>
                             {columns.length > 0 && values.length > 0 && (
-                                <span className="text-[10px] text-purple-500">
+                                <span className="text-xs text-purple-500">
                                     {t("common:query.pivot.pivotMode", "透视模式")}: [{columns[0]}] → {values.map(v => `${v.aggregation}(${v.column})`).join(", ")}
                                 </span>
                             )}
@@ -394,13 +394,13 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                     {columns.length > 0 && (
                                         <tr className="bg-purple-500/5">
                                             <th
-                                                className="border-b border-r border-border px-3 py-1.5 text-left text-[10px] text-muted-foreground"
+                                                className="border-b border-r border-border px-3 py-1.5 text-left text-xs text-muted-foreground"
                                                 colSpan={rows.length || 1}
                                             >
                                                 {t("common:query.pivot.rowDimension", "行维度")}
                                             </th>
                                             <th
-                                                className="border-b border-border px-3 py-1.5 text-center text-[10px] text-purple-600 dark:text-purple-400"
+                                                className="border-b border-border px-3 py-1.5 text-center text-xs text-purple-600 dark:text-purple-400"
                                                 colSpan={3}
                                             >
                                                 ← {t("common:query.pivot.pivotColumnValues", "透视列")}: <strong>{columns[0]}</strong> {t("common:query.pivot.uniqueValues", "的唯一值")} →
@@ -425,11 +425,11 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                             <>
                                                 <th className="border-b border-border px-3 py-2 text-center font-medium text-purple-600 dark:text-purple-400">
                                                     [{columns[0]}]=A<br />
-                                                    <span className="text-[10px] text-green-600">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
+                                                    <span className="text-xs text-green-600">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
                                                 </th>
                                                 <th className="border-b border-border px-3 py-2 text-center font-medium text-purple-600 dark:text-purple-400">
                                                     [{columns[0]}]=B<br />
-                                                    <span className="text-[10px] text-green-600">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
+                                                    <span className="text-xs text-green-600">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
                                                 </th>
                                                 <th className="border-b border-border px-3 py-2 text-center text-muted-foreground">
                                                     ...
@@ -498,7 +498,7 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                 </tbody>
                             </table>
                         </div>
-                        <div className="bg-muted/20 px-3 py-1.5 border-t border-border text-[10px] text-muted-foreground">
+                        <div className="bg-muted/20 px-3 py-1.5 border-t border-border text-xs text-muted-foreground">
                             {columns.length > 0
                                 ? t("common:query.pivot.previewHintPivot", "透视表预览：[透视列]的每个唯一值将成为单独的列")
                                 : t("common:query.pivot.previewHint", "聚合查询预览：按行字段分组后计算聚合值")}

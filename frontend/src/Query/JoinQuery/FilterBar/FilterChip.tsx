@@ -152,7 +152,7 @@ export const FilterChip: React.FC<FilterChipProps> = ({
                         {/* Placement 标记 */}
                         <span
                             className={`
-                                text-[9px] font-bold uppercase px-1 py-0 rounded
+                                text-xs font-bold uppercase px-1 py-0 rounded
                                 ${placement === 'on'
                                     ? 'bg-accent text-accent-foreground'
                                     : 'bg-muted text-muted-foreground'

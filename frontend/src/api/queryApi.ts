@@ -6,7 +6,7 @@
  * Updated to use normalizeResponse for standard API response handling.
  */
 
-import { apiClient, handleApiError, getFederatedQueryTimeout, normalizeResponse, extractMessage } from './client';
+import { apiClient, handleApiError, getFederatedQueryTimeout, normalizeResponse, extractMessage, extractMessageCode } from './client';
 import type {
     QueryResponse,
     DataSource,
@@ -167,13 +167,28 @@ export function parseFederatedQueryError(error: Error & { response?: { data?: un
     host?: string;
 } {
     const respData = error.response?.data;
+    const code = extractMessageCode(respData) || error.code;
     const detailStr =
         extractMessage(respData) ||
         (respData as Record<string, unknown> | undefined)?.message ||
         error.message ||
         '';
 
-    // ATTACH error
+    if (code === 'DATABASE_CONNECTION_ERROR' || code === 'RESOURCE_NOT_FOUND') {
+        return {
+            type: 'connection',
+            message: detailStr || '数据库连接失败',
+        };
+    }
+
+    if (code === 'VALIDATION_ERROR') {
+        return {
+            type: 'query',
+            message: detailStr || '请求参数无效',
+        };
+    }
+
+    // ATTACH error (legacy message fallback)
     if (detailStr.includes('ATTACH') || detailStr.includes('attach')) {
         const match = detailStr.match(/ATTACH.*?['"]([^'"]+)['"]/i);
         return {

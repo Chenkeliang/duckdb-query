@@ -331,7 +331,7 @@ const DatabaseForm = ({
                     placeholder={hasStoredPassword ? t("page.datasource.connection.hint.passwordSavedPlaceholder", "••••••（已保存，留空使用已保存密码）") : "••••••"}
                   />
                   {hasStoredPassword && !password && (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {t("page.datasource.connection.hint.passwordSaved", "密码已保存；留空会使用已保存密码测试/连接。如需修改，请输入新密码。")}
                     </p>
                   )}
@@ -360,7 +360,7 @@ const DatabaseForm = ({
                       onChange={e => setSchema(e.target.value)}
                       placeholder="public"
                     />
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {t("page.datasource.connection.schemaHelper")}
                     </p>
                   </div>
@@ -448,7 +448,7 @@ const DatabaseForm = ({
                                     {entry.name}
                                   </span>
                                   {!isDir && (
-                                    <span className="text-[10px] text-muted-fg ml-2">
+                                    <span className="text-xs text-muted-fg ml-2">
                                       {(entry.extension || "").toUpperCase()}
                                     </span>
                                   )}

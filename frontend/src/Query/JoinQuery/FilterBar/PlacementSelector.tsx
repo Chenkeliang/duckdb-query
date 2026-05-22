@@ -80,7 +80,7 @@ export const PlacementSelector: React.FC<PlacementSelectorProps> = ({
                         <span className="font-medium text-sm">
                             {t('query.filter.placement.on', 'ON 子句')}
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-normal text-left">
+                        <span className="text-xs text-muted-foreground font-normal text-left">
                             {t('query.filter.placement.onHint', '在 JOIN 时过滤')}
                         </span>
                     </div>
@@ -102,7 +102,7 @@ export const PlacementSelector: React.FC<PlacementSelectorProps> = ({
                         <span className="font-medium text-sm">
                             {t('query.filter.placement.where', 'WHERE 子句')}
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-normal text-left">
+                        <span className="text-xs text-muted-foreground font-normal text-left">
                             {t('query.filter.placement.whereHint', '在结果中过滤')}
                         </span>
                     </div>

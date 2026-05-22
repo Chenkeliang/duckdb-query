@@ -50,7 +50,7 @@ const TypeBadge = ({ type }: { type: string }) => {
     }
 
     return (
-        <Badge variant="outline" className={cn("text-[10px] px-1 py-0 h-5 font-normal", colorClass)}>
+        <Badge variant="outline" className={cn("text-xs px-1 py-0 h-5 font-normal", colorClass)}>
             {displayType}
         </Badge>
     );

@@ -48,7 +48,7 @@ export function RemoteUrlCard({
             onChange={e => onUrlChange(e.target.value)}
             placeholder="https://example.com/data.csv"
           />
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {t("page.datasource.remoteUrlHelper")}
           </p>
         </div>

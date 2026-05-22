@@ -675,7 +675,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
 
           {/* 外部数据库指示器 */}
           {sourceAnalysis.hasExternal && sourceAnalysis.currentSource && (
-            <Badge variant="outline" className="text-warning border-warning/50 text-[10px] h-5 px-1.5 gap-1">
+            <Badge variant="outline" className="text-warning border-warning/50 text-xs h-5 px-1.5 gap-1">
               <span className="opacity-70">{DATABASE_TYPE_ICONS[sourceAnalysis.currentSource.type] || '📊'}</span>
               {sourceAnalysis.currentSource.name}
             </Badge>

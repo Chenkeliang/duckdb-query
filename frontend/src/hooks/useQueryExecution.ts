@@ -206,7 +206,6 @@ export function useQueryExecution<T = unknown>(): UseQueryExecutionReturn<T> {
                 type LooseBody = {
                     success?: boolean;
                     message?: string;
-                    detail?: string;
                     messageCode?: string;
                     cancelled?: boolean;
                     data?: unknown;

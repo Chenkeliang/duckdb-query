@@ -168,7 +168,7 @@ export function ServerBrowseCard({
                         <Server className="h-3 w-3 text-muted-fg" />
                         {entry.name}
                       </span>
-                      <span className="text-[10px] text-muted-fg">
+                      <span className="text-xs text-muted-fg">
                         {isDir
                           ? t("page.datasource.serverTypeFolder")
                           : (entry.extension || "").toUpperCase()}

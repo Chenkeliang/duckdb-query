@@ -44,7 +44,7 @@ const DraggableField = ({ field, type }: { field: string; type: string }) => {
         >
             <GripVertical className="h-4 w-4 text-muted-foreground/50" />
             <span className="flex-1 truncate font-medium">{field}</span>
-            <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-normal text-muted-foreground">
+            <Badge variant="outline" className="text-xs h-5 px-1.5 font-normal text-muted-foreground">
                 {type}
             </Badge>
         </div>

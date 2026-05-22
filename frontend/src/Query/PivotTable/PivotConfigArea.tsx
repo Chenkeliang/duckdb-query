@@ -118,7 +118,7 @@ const DropZone = ({
         <div className="flex-1 flex flex-col gap-2 min-w-[200px]">
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                 {title}
-                <Badge variant="outline" className="text-[10px] h-4 px-1">{items.length}</Badge>
+                <Badge variant="outline" className="text-xs h-4 px-1">{items.length}</Badge>
             </div>
             <div
                 ref={setNodeRef}

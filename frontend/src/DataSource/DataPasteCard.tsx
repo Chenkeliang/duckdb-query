@@ -369,7 +369,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
                   onChange={e => setTableName(e.target.value)}
                   placeholder={t("page.datasource.paste.tableNamePlaceholder")}
                 />
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {t("page.datasource.paste.tableNameHelper")}
                 </p>
               </div>
@@ -383,7 +383,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
                   />
                   {t("page.datasource.paste.unifyAsString")}
                 </label>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {t("page.datasource.paste.unifyAsStringDesc")}
                 </p>
               </div>
