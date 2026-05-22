@@ -83,6 +83,7 @@
   "FILE_NOT_FOUND": "File not found",
   "FILE_TOO_LARGE": "File too large",
   "FILE_TYPE_NOT_SUPPORTED": "File type not supported",
+  "SECURITY_ERROR": "File security validation failed",
 
   "CHUNKED_UPLOAD_INIT": "Chunked upload initialized successfully",
   "CHUNKED_UPLOAD_CHUNK": "Chunk uploaded successfully",

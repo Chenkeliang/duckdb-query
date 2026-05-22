@@ -88,10 +88,10 @@
 
 | 方法 | 路径 | `import_mode` | 前端入口 |
 |------|------|---------------|----------|
-| POST | `/api/upload` | Form | `uploadFile`, `uploadFileEnhanced` |
+| POST | `/api/upload` | Form | `uploadFile`, `uploadFileEnhanced`；400 `VALIDATION_ERROR`/`SECURITY_ERROR`/`FILE_TYPE_NOT_SUPPORTED` |
 | POST | `/api/upload/init` | Form | `initChunkedUpload`；413 `FILE_TOO_LARGE`（§1.1） |
 | POST | `/api/upload/complete` | 会话 | `completeChunkedUpload`；404 会话 / 400 未完成（§1.1） |
-| POST | `/api/data-sources/excel/import` | JSON body | `importExcelSheets` |
+| POST | `/api/data-sources/excel/import` | JSON body | `importExcelSheets`；404 `FILE_NOT_FOUND`；500 `EXCEL_IMPORT_FAILED` |
 | POST | `/api/server-files/import` | JSON body | `importServerFile` |
 | POST | `/api/server-files/excel/import` | JSON body | `importServerExcelSheets` |
 | POST | `/api/read_from_url` | JSON `import_mode?` | `readFromUrl` |
@@ -100,7 +100,7 @@
 | — | `uploadFileAuto` | 同上 | 文件 &gt; 8MB 走分块，否则 `POST /api/upload` |
 | POST | `/api/read_from_url` | — | `readFromUrl` |
 | GET | `/api/url_info` | — | `getUrlInfo` |
-| POST | `/api/data-sources/excel/inspect` | — | `inspectExcelSheets`；`data.sheets[].default_table_name` 来自 pending `default_table_prefix` |
+| POST | `/api/data-sources/excel/inspect` | — | `inspectExcelSheets`；404 `FILE_NOT_FOUND` |
 | GET | `/api/server-files/mounted` | — | `getServerMounts` |
 | GET | `/api/server-files/browse` | — | `browseServerDirectory`；404/400/403（§1.1） |
 | POST | `/api/server-files/excel/inspect` | JSON `table_alias?` | `inspectServerExcelSheets` |

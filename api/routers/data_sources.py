@@ -17,7 +17,6 @@ from fastapi import (
     Body,
     File,
     Form,
-    HTTPException,
     UploadFile,
 )
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -34,6 +33,11 @@ from core.services.file_ingestion_service import (
     inspect_pending_excel,
     prepare_excel_pending,
 )
+from core.common.exceptions import (
+    BaseAPIException,
+    SecurityError,
+    ValidationError as APIValidationError,
+)
 from core.security.security import security_validator
 from core.services.resource_manager import save_upload_file, schedule_cleanup
 from models.query_models import FileUploadResponse
@@ -42,6 +46,7 @@ from utils.response_helpers import (
     create_error_response,
     create_list_response,
     create_success_response,
+    error_json_response,
 )
 
 router = APIRouter()
@@ -134,7 +139,7 @@ async def upload_file(
         try:
             normalize_import_mode(import_mode)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise APIValidationError(str(exc), details={"field": "import_mode"}) from exc
 
         # 读取文件内容
         file_content = await file.read()
@@ -157,9 +162,9 @@ async def upload_file(
                 os.remove(temp_file_path)
             except:
                 pass
-            raise HTTPException(
-                status_code=400,
-                detail=f"File validation failed: {'; '.join(validation_result['errors'])}",
+            raise SecurityError(
+                f"File validation failed: {'; '.join(validation_result['errors'])}",
+                details={"errors": validation_result["errors"]},
             )
 
         # Log warnings
@@ -175,9 +180,10 @@ async def upload_file(
                 os.remove(temp_file_path)
             except:
                 pass
-            raise HTTPException(
+            raise BaseAPIException(
+                message="Unsupported file type. Supported formats: CSV, Excel, JSON, Parquet",
                 status_code=400,
-                detail=f"Unsupported file type. Supported formats: CSV, Excel, JSON, Parquet",
+                error_code=MessageCode.FILE_TYPE_NOT_SUPPORTED.value,
             )
 
         # 创建临时目录
@@ -238,9 +244,12 @@ async def upload_file(
                     persist_path=save_path,
                 )
             except Exception as e:
-                raise HTTPException(
-                    status_code=500, detail=f"Failed to persist to DuckDB: {str(e)}"
-                ) from e
+                return error_json_response(
+                    500,
+                    MessageCode.EXCEL_IMPORT_FAILED,
+                    f"Failed to persist to DuckDB: {str(e)}",
+                    details={"filename": file.filename},
+                )
 
         source_id = ingest_result.table_name
         row_count = ingest_result.row_count
@@ -275,12 +284,16 @@ async def upload_file(
             preview_data=preview_info["preview_data"],
         )
 
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"File upload processing failed: {str(e)}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"File upload processing failed: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"File upload processing failed: {str(e)}",
+        )
 
 
 @router.post("/api/data-sources/excel/inspect", tags=["Data Sources"])
@@ -293,12 +306,20 @@ async def inspect_excel(request: ExcelInspectRequest):
             message_code=MessageCode.EXCEL_SHEETS_INSPECTED,
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise BaseAPIException(
+            message=str(e),
+            status_code=404,
+            error_code=MessageCode.FILE_NOT_FOUND.value,
+            details={"file_id": request.file_id},
+        ) from e
     except Exception as e:
         logger.error(f"Failed to inspect Excel file: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to read Excel file: {str(e)}"
-        ) from e
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to read Excel file: {str(e)}",
+            details={"file_id": request.file_id},
+        )
 
 
 @router.post("/api/data-sources/excel/import", tags=["Data Sources"])
@@ -313,10 +334,20 @@ async def import_excel(request: ExcelImportRequest):
                 import_mode=request.import_mode,
             )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise BaseAPIException(
+            message=str(e),
+            status_code=404,
+            error_code=MessageCode.FILE_NOT_FOUND.value,
+            details={"file_id": request.file_id},
+        ) from e
     except Exception as e:
         logger.error(f"Excel import failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Excel import failed: {str(e)}") from e
+        return error_json_response(
+            500,
+            MessageCode.EXCEL_IMPORT_FAILED,
+            f"Excel import failed: {str(e)}",
+            details={"file_id": request.file_id},
+        )
 
     return create_success_response(
         data={

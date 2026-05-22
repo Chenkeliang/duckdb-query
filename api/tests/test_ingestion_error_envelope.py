@@ -42,6 +42,31 @@ def test_paste_data_empty_table_name_validation_envelope():
     assert "Table name" in body["error"]["message"]
 
 
+def test_excel_inspect_missing_file_standard_envelope():
+    response = client.post(
+        "/api/data-sources/excel/inspect",
+        json={"file_id": "nonexistent-pending-excel-id"},
+    )
+    assert response.status_code == 404
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "FILE_NOT_FOUND"
+    assert "detail" not in body
+
+
+def test_upload_invalid_import_mode_standard_envelope():
+    response = client.post(
+        "/api/upload",
+        data={"import_mode": "not-a-valid-mode"},
+        files={"file": ("test.csv", b"a,b\n1,2", "text/csv")},
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert "detail" not in body
+
+
 def test_chunked_upload_cancel_missing_session_envelope():
     response = client.delete(f"/api/upload/cancel/{uuid.uuid4()}")
     assert response.status_code == 404

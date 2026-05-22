@@ -83,6 +83,7 @@
   "FILE_NOT_FOUND": "文件不存在",
   "FILE_TOO_LARGE": "文件太大",
   "FILE_TYPE_NOT_SUPPORTED": "文件类型不支持",
+  "SECURITY_ERROR": "文件安全校验未通过",
 
   "CHUNKED_UPLOAD_INIT": "分块上传初始化成功",
   "CHUNKED_UPLOAD_CHUNK": "分块上传成功",
