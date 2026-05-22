@@ -37,7 +37,7 @@ from core.services.visual_query_generator import (
     get_column_statistics,
     validate_query_config,
 )
-from fastapi import APIRouter, Body, Header, HTTPException
+from fastapi import APIRouter, Body, Header
 from models.query_models import QueryRequest
 from models.visual_query_models import (
     ColumnProfilePayload,
@@ -58,6 +58,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import create_engine
 from core.common.exceptions import (
     BaseAPIException,
+    DatabaseConnectionError,
     ResourceNotFoundError,
     ValidationError as APIValidationError,
 )
@@ -759,8 +760,6 @@ async def perform_query(
             },
             message_code=MessageCode.QUERY_SUCCESS,
         )
-    except HTTPException:
-        raise
     except BaseAPIException:
         raise
     except Exception as e:
@@ -826,9 +825,21 @@ async def execute_sql(
             x_request_id,
         )
 
+    sql_query = request.get("sql", "") if isinstance(request, dict) else ""
+    datasource = request.get("datasource", {}) if isinstance(request, dict) else {}
+    if not isinstance(datasource, dict):
+        datasource = {}
+
+    ds_type = datasource.get("type")
+    if ds_type in ("mysql", "postgresql", "sqlite", "duckdb"):
+        if not str(sql_query).strip():
+            raise APIValidationError(
+                "Database type datasource requires custom SQL query statement"
+            )
+        if not datasource.get("id"):
+            raise APIValidationError("Missing datasource ID")
+
     con = get_db_connection()
-    sql_query = request.get("sql", "")
-    datasource = request.get("datasource", {})
     is_preview = request.get("is_preview", True)  # 默认为预览模式
 
     try:
@@ -915,16 +926,15 @@ async def execute_sql(
         ]:
             # 数据库类型的数据源需要用户提供自定义SQL查询
             if not sql_query.strip():
-                raise HTTPException(
-                    status_code=400,
-                    detail="Database type datasource requires custom SQL query statement",
+                raise APIValidationError(
+                    "Database type datasource requires custom SQL query statement"
                 )
 
             # 使用数据库管理器执行查询
 
             datasource_id = datasource.get("id")
             if not datasource_id:
-                raise HTTPException(status_code=400, detail="Missing datasource ID")
+                raise APIValidationError("Missing datasource ID")
 
             # 确保数据库连接存在，如果does not exist则创建
             try:
@@ -948,9 +958,7 @@ async def execute_sql(
                             break
 
                     if not config:
-                        raise HTTPException(
-                            status_code=404, detail=f"Datasource configuration not found: {datasource_id}"
-                        )
+                        raise ResourceNotFoundError("Datasource configuration", datasource_id)
 
                     # 创建连接
                     db_connection = DatabaseConnection(
@@ -963,18 +971,21 @@ async def execute_sql(
 
                     success = db_manager.add_connection(db_connection)
                     if not success:
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Failed to create database connection: {datasource_id}",
+                        raise DatabaseConnectionError(
+                            f"Failed to create database connection: {datasource_id}",
+                            datasource_id,
                         )
 
                     logger.info(f"Successfully created database connection: {datasource_id}")
 
-            except HTTPException:
+            except BaseAPIException:
                 raise
             except Exception as e:
                 logger.error(f"Failed to create database connection: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
+                raise DatabaseConnectionError(
+                    f"Database connection failed: {str(e)}",
+                    datasource_id,
+                ) from e
 
             # 在原始数据库上执行SQL查询
             try:
@@ -1034,8 +1045,11 @@ async def execute_sql(
 
             except Exception as db_error:
                 logger.error(f"Database query failed: {str(db_error)}")
-                raise HTTPException(
-                    status_code=500, detail=f"Database query failed: {str(db_error)}"
+                return error_json_response(
+                    500,
+                    MessageCode.QUERY_FAILED,
+                    f"Database query failed: {str(db_error)}",
+                    details={"sql": sql_query},
                 )
 
         # 如果不是数据库类型，则在DuckDB中执行查询
@@ -1059,12 +1073,17 @@ async def execute_sql(
                 },
                 message_code=MessageCode.QUERY_SUCCESS,
             )
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"SQL execution failed: {str(e)}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"SQL execution failed: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.QUERY_FAILED,
+            f"SQL execution failed: {str(e)}",
+            details={"sql": sql_query},
+        )
 
 
 @router.post("/api/save_query_to_duckdb", tags=["Query"])
@@ -1087,10 +1106,10 @@ async def save_query_to_duckdb(request: dict = Body(...)):
 
         # 参数验证
         if not table_alias or not table_alias.strip():
-            raise HTTPException(status_code=400, detail="Please provide DuckDB table alias")
+            raise APIValidationError("Please provide DuckDB table alias")
 
         if not sql_query or not sql_query.strip():
-            raise HTTPException(status_code=400, detail="Please provide SQL query statement")
+            raise APIValidationError("Please provide SQL query statement")
 
         # 验证数据源，提供默认值防止None错误
         datasource_id = datasource.get("id", "duckdb_internal")
@@ -1146,8 +1165,11 @@ async def save_query_to_duckdb(request: dict = Body(...)):
 
             except Exception as db_error:
                 logger.error(f"External database query failed: {str(db_error)}")
-                raise HTTPException(
-                    status_code=500, detail=f"External database query failed: {str(db_error)}"
+                return error_json_response(
+                    500,
+                    MessageCode.QUERY_FAILED,
+                    f"External database query failed: {str(db_error)}",
+                    details={"sql": sql_query, "datasource_id": datasource_id},
                 )
         else:
             # 处理DuckDB内部查询
@@ -1174,13 +1196,16 @@ async def save_query_to_duckdb(request: dict = Body(...)):
 
             except Exception as duckdb_error:
                 logger.error(f"DuckDB query failed: {str(duckdb_error)}")
-                raise HTTPException(
-                    status_code=500, detail=f"DuckDB query failed: {str(duckdb_error)}"
+                return error_json_response(
+                    500,
+                    MessageCode.QUERY_FAILED,
+                    f"DuckDB query failed: {str(duckdb_error)}",
+                    details={"sql": sql_query},
                 )
 
         # 验证查询结果
         if result_df is None or result_df.empty:
-            raise HTTPException(status_code=400, detail="Query result is empty, cannot save")
+            raise APIValidationError("Query result is empty, cannot save")
 
         # 获取DuckDB连接并创建持久化表
         try:
@@ -1264,16 +1289,23 @@ async def save_query_to_duckdb(request: dict = Body(...)):
 
         except Exception as duckdb_error:
             logger.error(f"DuckDB operation failed: {str(duckdb_error)}")
-            raise HTTPException(
-                status_code=500, detail=f"DuckDB operation failed: {str(duckdb_error)}"
+            return error_json_response(
+                500,
+                MessageCode.OPERATION_FAILED,
+                f"DuckDB operation failed: {str(duckdb_error)}",
+                details={"table_alias": table_alias},
             )
 
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Failed to save to DuckDB: {str(e)}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Failed to save to DuckDB: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to save to DuckDB: {str(e)}",
+        )
 
 
 @router.get("/api/duckdb_tables", tags=["Query"], deprecated=True)

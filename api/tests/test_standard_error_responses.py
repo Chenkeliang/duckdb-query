@@ -58,3 +58,35 @@ def test_datasource_not_found_has_no_top_level_detail():
     assert body["success"] is False
     assert "detail" not in body
     assert body["error"]["code"] == "RESOURCE_NOT_FOUND"
+
+
+def test_save_query_to_duckdb_missing_table_alias_standard_error():
+    """save_query_to_duckdb 缺表名须返回标准 VALIDATION_ERROR 信封。"""
+    response = client.post(
+        "/api/save_query_to_duckdb",
+        json={
+            "sql": "SELECT 1",
+            "datasource": {"id": "duckdb_internal", "type": "duckdb"},
+        },
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert "detail" not in body
+
+
+def test_execute_sql_missing_datasource_id_standard_error():
+    """execute_sql 外部库缺 datasource id 须返回标准 VALIDATION_ERROR。"""
+    response = client.post(
+        "/api/execute_sql",
+        json={
+            "sql": "SELECT 1",
+            "datasource": {"type": "mysql"},
+        },
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert "detail" not in body
