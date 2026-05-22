@@ -48,6 +48,17 @@ export {
     type FederatedQueryError,
 } from './queryApi';
 
+// ==================== Join Query API ====================
+export {
+    performJoinQuery,
+    type JoinQueryPerformRequest,
+    type JoinQueryPerformResult,
+    type JoinQueryDataSource,
+    type JoinQueryJoin,
+    type JoinQueryCondition,
+    type JoinQueryAttachDatabase,
+} from './joinQueryApi';
+
 // ==================== Data Source API ====================
 export {
     listDatabaseConnections,

@@ -28,6 +28,7 @@
 | `visualQueryApi.ts` | §7 | 可视化 generate/preview、SQL 收藏、应用配置 |
 | `settingsShortcutsApi.ts` | §8 | 快捷键 |
 | `setOperationsApi.ts` | §9 | 集合运算 generate / preview / validate / execute / export 等 |
+| `joinQueryApi.ts` | §9.1 | 结构化多表 JOIN：`performJoinQuery` |
 
 ## 1. 标准成功体
 
@@ -186,11 +187,11 @@
 
 执行时前端在 generate 返回的 SQL 后追加 `LIMIT`（与 `maxQueryRows` 一致）；**preview** 端点 LIMIT 由后端 `max_query_rows` 控制，结果写入结果面板。
 
-## 9.1 多表 JOIN（`join_query.py`，无独立 `frontend/src/api` 模块）
+## 9.1 多表 JOIN（`joinQueryApi.ts`）
 
-| 方法 | 路径 | 成功体 | 说明 |
+| 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/query` | 对象 | 多表 JOIN 执行；Join 工作台经联邦/SQL 路径消费 |
+| POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `sql`, `row_count` |
 | POST | `/api/save_query_to_duckdb` | 对象 | 见 §2 `saveQueryToDuckDB` |
 
 ## 10. 已移除的历史端点（勿再使用）

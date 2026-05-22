@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { generateSetOperation, previewSetOperation } from '@/api';
+import { generateSetOperation, previewSetOperation, validateSetOperation } from '@/api';
 import { Layers, Play, Eye, X, Database, Table, Trash2, AlertTriangle, Star, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -308,16 +308,6 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
     return { isValid: true, tableIndex: 0, tableCount: 0, baseCount: 0 };
   }, [activeTables, selectedColumns, isByNameMode]);
 
-  // 检查是否可以执行
-  const canExecute = React.useMemo(() => {
-    if (activeTables.length < 2) return false;
-    if (sourceAnalysis.mixed) return false;
-    // 集合操作面板仅支持 DuckDB 表；外部表需先导入到 DuckDB
-    if (sourceAnalysis.hasExternal) return false;
-    if (!columnValidation.isValid) return false;
-    return true;
-  }, [activeTables.length, sourceAnalysis, columnValidation.isValid]);
-
   // 获取每个表的列信息 - 使用 useTableColumns Hook
   // 为每个表单独调用 Hook（最多支持 10 个表）
   const table0Columns = useTableColumns(activeTables[0] || null);
@@ -477,6 +467,39 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   );
 
   const {
+    data: serverValidation,
+    isFetching: isValidatingServer,
+  } = useQuery({
+    queryKey: ['set-operation-validate', ...setOpQueryKey] as const,
+    queryFn: async () => {
+      const payload = buildSetOperationRequest();
+      if (!payload) return null;
+      return validateSetOperation(payload);
+    },
+    enabled: canGenerateServerSql,
+    staleTime: 30_000,
+  });
+
+  const serverValidationBlocked =
+    serverValidation != null && serverValidation.is_valid === false;
+
+  const canExecute = React.useMemo(() => {
+    if (activeTables.length < 2) return false;
+    if (sourceAnalysis.mixed) return false;
+    if (sourceAnalysis.hasExternal) return false;
+    if (!columnValidation.isValid) return false;
+    if (serverValidationBlocked) return false;
+    if (isValidatingServer) return false;
+    return true;
+  }, [
+    activeTables.length,
+    sourceAnalysis,
+    columnValidation.isValid,
+    serverValidationBlocked,
+    isValidatingServer,
+  ]);
+
+  const {
     data: generatedBaseSql,
     isFetching: isGeneratingSql,
     error: generateSqlError,
@@ -488,7 +511,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
       const result = await generateSetOperation(payload);
       return result.sql?.trim() ?? '';
     },
-    enabled: canGenerateServerSql,
+    enabled: canGenerateServerSql && !serverValidationBlocked,
     staleTime: 30_000,
   });
 
@@ -556,7 +579,13 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
               variant="outline"
               size="sm"
               onClick={handlePreview}
-              disabled={!canGenerateServerSql || isPreviewing || isExecuting}
+              disabled={
+                !canGenerateServerSql ||
+                isPreviewing ||
+                isExecuting ||
+                isValidatingServer ||
+                serverValidationBlocked
+              }
               className="gap-1.5 shrink-0"
             >
               <Eye className="w-3.5 h-3.5" />
@@ -707,6 +736,33 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
             </AlertDescription>
           </Alert>
         )}
+
+        {/* 服务端校验错误 */}
+        {serverValidationBlocked && serverValidation?.errors?.length ? (
+          <Alert className="mb-4 border-destructive/50 bg-destructive/10">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <AlertDescription className="text-destructive">
+              <ul className="list-disc pl-4 space-y-1">
+                {serverValidation.errors.map((msg) => (
+                  <li key={msg}>{msg}</li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {serverValidation?.warnings?.length ? (
+          <Alert className="mb-4 border-warning/50 bg-warning/10">
+            <AlertTriangle className="h-4 w-4 text-warning" />
+            <AlertDescription className="text-warning">
+              <ul className="list-disc pl-4 space-y-1">
+                {serverValidation.warnings.map((msg) => (
+                  <li key={msg}>{msg}</li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
         {/* 列一致性警告 */}
         {!columnValidation.isValid && (
