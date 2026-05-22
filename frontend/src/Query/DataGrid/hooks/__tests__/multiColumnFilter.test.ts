@@ -179,4 +179,33 @@ describe('多列筛选', () => {
     // 应该返回 2 行：null 和 undefined 都被转换为 '(空)'
     expect(result.current.filteredData).toHaveLength(2);
   });
+
+  it('高基数列：部分勾选值列表应对已加载行生效', () => {
+    const manyIds = Array.from({ length: 120 }, (_, i) => ({
+      order_id: `L${1000 + i}`,
+      qty: 1,
+    }));
+
+    const { result } = renderHook(() =>
+      useDataGrid({
+        data: manyIds,
+        initialFilters: [
+          {
+            id: 'order_id',
+            value: {
+              selectedValues: ['L1000', 'L1001', 'L1002'],
+              mode: 'include',
+            },
+          },
+        ],
+      })
+    );
+
+    expect(result.current.filteredData).toHaveLength(3);
+    expect(result.current.filteredData.map((r) => r.order_id)).toEqual([
+      'L1000',
+      'L1001',
+      'L1002',
+    ]);
+  });
 });

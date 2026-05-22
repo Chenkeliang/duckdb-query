@@ -3,7 +3,7 @@
  * 自动检测数据列的类型（数值、日期、布尔、字符串）
  */
 
-import { useMemo, useCallback } from 'react';
+import { useCallback } from 'react';
 
 export type ColumnType = 'number' | 'date' | 'boolean' | 'string';
 

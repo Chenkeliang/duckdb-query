@@ -1,6 +1,5 @@
 /**
- * 结果面板工具栏组件
- * 显示统计信息和操作按钮
+ * 结果面板工具栏（TanStack DataGrid）
  */
 
 import React, { useState } from 'react';
@@ -13,7 +12,6 @@ import {
   Minimize2,
   ChevronDown,
   Eye,
-  Copy,
   EyeOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -23,8 +21,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
 import {
   Popover,
@@ -33,80 +29,31 @@ import {
 } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Check } from 'lucide-react';
-import type { GridStats, ColumnVisibility } from './hooks/useGridStats';
-
-/** DataGrid 列可见性信息 */
-export interface DataGridColumnInfo {
-  field: string;
-  visible: boolean;
-}
+import type { DataGridColumnInfo, ResultPanelGridStats as GridStats } from './types';
 
 export interface ResultToolbarProps {
-  /** 统计信息 */
   stats: GridStats;
-  /** 执行时间（毫秒） */
   executionTime?: number;
-  /** 列可见性列表（AG Grid） */
-  columns: ColumnVisibility[];
-  /** 切换列可见性（AG Grid） */
-  onToggleColumn: (field: string, visible: boolean) => void;
-  /** 显示所有列（AG Grid） */
-  onShowAllColumns: () => void;
-  /** 重置列（AG Grid） */
-  onResetColumns: () => void;
-  /** 自动调整列宽（AG Grid） */
-  onAutoSizeColumns: () => void;
-  /** 适应容器宽度（AG Grid） */
-  onSizeColumnsToFit: () => void;
-  /** 刷新数据 */
-  onRefresh?: () => void;
-  /** 导出数据（AG Grid） */
-  onExport?: (format: 'csv' | 'json') => void;
-  /** 复制选中的行（AG Grid） */
-  onCopySelected?: () => void;
-  /** 全屏切换 */
-  onToggleFullscreen?: () => void;
-  /** 是否全屏 */
-  isFullscreen?: boolean;
-  /** 是否正在加载 */
-  loading?: boolean;
-  /** 是否禁用 */
-  disabled?: boolean;
-  /** 导入到 DuckDB */
-  onImportToDuckDB?: () => void;
-  /** 是否显示导入按钮 */
-  showImportButton?: boolean;
-  /** 是否使用新的 DataGrid */
-  useNewDataGrid?: boolean;
-  /** DataGrid 模式：选中单元格数 */
   selectedCells?: number;
-  /** 切换 DataGrid 模式 */
-  onToggleDataGrid?: () => void;
-  /** DataGrid 列可见性信息 */
-  dataGridColumns?: DataGridColumnInfo[];
-  /** DataGrid 切换列可见性 */
-  onDataGridToggleColumn?: (field: string) => void;
-  /** DataGrid 显示所有列 */
-  onDataGridShowAllColumns?: () => void;
-  /** DataGrid 导出 CSV */
-  onDataGridExportCSV?: () => void;
-  /** DataGrid 导出 Excel */
-  onDataGridExportExcel?: () => void;
-  /** DataGrid 导出 JSON */
-  onDataGridExportJSON?: () => void;
-  /** DataGrid 自动列宽 */
-  onDataGridAutoFitColumns?: () => void;
-  /** DataGrid 适应宽度 */
-  onDataGridFitToWidth?: () => void;
-  /** DataGrid 重置列 */
-  onDataGridResetColumns?: () => void;
-  /** 预览行上限（服务端自动 LIMIT）；与当前总行数相等时提示可能截断 */
+  gridColumns?: DataGridColumnInfo[];
+  onToggleColumn?: (field: string) => void;
+  onShowAllColumns?: () => void;
+  onResetColumns?: () => void;
+  onAutoFitColumns?: () => void;
+  onFitToWidth?: () => void;
+  onExportCsv?: () => void;
+  onExportExcel?: () => void;
+  onExportJson?: () => void;
+  onRefresh?: () => void;
+  onToggleFullscreen?: () => void;
+  isFullscreen?: boolean;
+  loading?: boolean;
+  disabled?: boolean;
+  onImportToDuckDB?: () => void;
+  showImportButton?: boolean;
   previewLimitApplied?: number | null;
 }
 
-/**
- * 格式化执行时间
- */
 function formatExecutionTime(ms: number): string {
   if (ms < 1000) {
     return `${ms.toFixed(0)}ms`;
@@ -114,111 +61,70 @@ function formatExecutionTime(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-/**
- * 格式化数字（添加千分位）
- */
 function formatNumber(num: number): string {
   return new Intl.NumberFormat('zh-CN').format(num);
 }
 
-/**
- * 结果面板工具栏
- */
 export const ResultToolbar: React.FC<ResultToolbarProps> = ({
   stats,
   executionTime,
-  columns,
+  selectedCells = 0,
+  gridColumns,
   onToggleColumn,
   onShowAllColumns,
   onResetColumns,
-  onAutoSizeColumns,
-  onSizeColumnsToFit,
+  onAutoFitColumns,
+  onFitToWidth,
+  onExportCsv,
+  onExportExcel,
+  onExportJson,
   onRefresh,
-  onExport,
-  onCopySelected,
   onToggleFullscreen,
   isFullscreen = false,
   loading = false,
   disabled = false,
   onImportToDuckDB,
   showImportButton = false,
-  useNewDataGrid = false,
-  selectedCells = 0,
-  onToggleDataGrid,
-  dataGridColumns,
-  onDataGridToggleColumn,
-  onDataGridShowAllColumns,
-  onDataGridExportCSV,
-  onDataGridExportExcel,
-  onDataGridExportJSON,
-  onDataGridAutoFitColumns,
-  onDataGridFitToWidth,
-  onDataGridResetColumns,
   previewLimitApplied,
 }) => {
   const { t } = useTranslation('common');
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
-
-  // 计算 DataGrid 隐藏列数量
-  const dataGridHiddenCount = dataGridColumns?.filter(c => !c.visible).length || 0;
+  const hiddenCount = gridColumns?.filter((c) => !c.visible).length || 0;
+  const hasExport = !!(onExportCsv || onExportExcel || onExportJson);
 
   return (
     <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
-      {/* 左侧：统计信息 */}
       <div className="flex items-center gap-4 text-sm text-muted-foreground">
-        {/* 行数统计 */}
         <span>
           {stats.filteredRows !== stats.totalRows ? (
             <>
-              <span className="font-medium text-foreground">
-                {formatNumber(stats.filteredRows)}
-              </span>
+              <span className="font-medium text-foreground">{formatNumber(stats.filteredRows)}</span>
               <span className="mx-1">/</span>
               <span>{formatNumber(stats.totalRows)}</span>
               <span className="ml-1">{t('query.result.rows', '行')}</span>
             </>
           ) : (
             <>
-              <span className="font-medium text-foreground">
-                {formatNumber(stats.totalRows)}
-              </span>
+              <span className="font-medium text-foreground">{formatNumber(stats.totalRows)}</span>
               <span className="ml-1">{t('query.result.rows', '行')}</span>
             </>
           )}
         </span>
 
-        {previewLimitApplied != null &&
-          stats.totalRows > 0 &&
-          stats.totalRows === previewLimitApplied && (
-            <span className="hidden sm:inline border-l border-border pl-3 text-xs text-muted-foreground max-w-md truncate">
-              {t('query.result.previewCapHint', {
-                max: formatNumber(previewLimitApplied),
-              })}
-            </span>
-          )}
-
-        {/* 列数统计 */}
-        <span>
-          <span className="font-medium text-foreground">
-            {stats.visibleColumnCount}
+        {previewLimitApplied != null && stats.totalRows > 0 && stats.totalRows === previewLimitApplied && (
+          <span className="hidden sm:inline border-l border-border pl-3 text-xs text-muted-foreground max-w-md truncate">
+            {t('query.result.previewCapHint', { max: formatNumber(previewLimitApplied) })}
           </span>
+        )}
+
+        <span>
+          <span className="font-medium text-foreground">{stats.visibleColumnCount}</span>
           <span className="mx-1">/</span>
           <span>{stats.columnCount}</span>
           <span className="ml-1">{t('query.result.columns', '列')}</span>
         </span>
 
-        {/* 选中行数（AG Grid） */}
-        {!useNewDataGrid && stats.selectedRows > 0 && (
-          <span>
-            <span className="font-medium text-primary">
-              {formatNumber(stats.selectedRows)}
-            </span>
-            <span className="ml-1">{t('query.result.selected', '已选')}</span>
-          </span>
-        )}
-
-        {/* 选中单元格数（DataGrid） */}
-        {useNewDataGrid && selectedCells > 0 && (
+        {selectedCells > 0 && (
           <span>
             <span className="mr-1">{t('query.result.selected', '已选')}</span>
             <span className="font-medium text-primary">{formatNumber(selectedCells)}</span>
@@ -226,108 +132,28 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           </span>
         )}
 
-        {/* 执行时间 */}
         {executionTime !== undefined && (
-          <span className="text-muted-foreground">
-            {formatExecutionTime(executionTime)}
-          </span>
+          <span className="text-muted-foreground">{formatExecutionTime(executionTime)}</span>
         )}
       </div>
 
-      {/* 右侧：操作按钮 */}
       <div className="flex items-center gap-1">
-        {/* 复制选中按钮 - 只在 AG Grid 有选中行时显示 */}
-        {!useNewDataGrid && onCopySelected && stats.selectedRows > 0 && (
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2"
-              onClick={onCopySelected}
-              disabled={disabled}
-            >
-              <Copy className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">
-                {t('result.copySelected', '复制选中')}
-              </span>
-            </Button>
-            <Separator orientation="vertical" className="h-4" />
-          </>
-        )}
-
-        {/* 列可见性控制（AG Grid 模式） */}
-        {!useNewDataGrid && (
-          <DropdownMenu open={columnMenuOpen} onOpenChange={setColumnMenuOpen}>
-            <DropdownMenuTrigger
-              className="inline-flex items-center justify-center h-8 px-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-              disabled={disabled}
-            >
-              <Columns className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">
-                {t('query.result.columns', '列')}
-              </span>
-              <ChevronDown className="h-3 w-3 ml-1" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 max-h-80 overflow-y-auto">
-              {/* 列操作 */}
-              <DropdownMenuItem onClick={onShowAllColumns}>
-                <Eye className="h-4 w-4 mr-2" />
-                {t('query.result.showAllColumns', '显示所有列')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onResetColumns}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                {t('query.result.resetColumns', '重置列')}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onAutoSizeColumns}>
-                {t('query.result.autoSizeColumns', '自动列宽')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onSizeColumnsToFit}>
-                {t('query.result.fitColumns', '适应宽度')}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-
-              {/* 列列表 */}
-              {columns.map((col) => (
-                <DropdownMenuCheckboxItem
-                  key={col.field}
-                  checked={col.visible}
-                  onCheckedChange={(checked) => onToggleColumn(col.field, checked)}
-                >
-                  {col.headerName}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-
-        {/* 列可见性控制（DataGrid 模式） - 使用 Popover 避免点击关闭 */}
-        {useNewDataGrid && dataGridColumns && dataGridColumns.length > 0 && (
-          <Popover open={columnMenuOpen} onOpenChange={setColumnMenuOpen} modal={true}>
+        {gridColumns && gridColumns.length > 0 && (
+          <Popover open={columnMenuOpen} onOpenChange={setColumnMenuOpen} modal>
             <PopoverTrigger asChild>
-              <button
-                className="inline-flex items-center justify-center h-8 px-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-                disabled={disabled}
-              >
+              <Button variant="ghost" size="sm" className="h-8 px-2" disabled={disabled}>
                 <Columns className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">
-                  {t('query.result.columns', '列')}
-                </span>
-                {dataGridHiddenCount > 0 && (
+                <span className="hidden sm:inline">{t('query.result.columns', '列')}</span>
+                {hiddenCount > 0 && (
                   <span className="ml-1 text-xs text-muted-foreground">
-                    ({dataGridHiddenCount} {t('query.result.hidden', '隐藏')})
+                    ({hiddenCount} {t('query.result.hidden', '隐藏')})
                   </span>
                 )}
                 <ChevronDown className="h-3 w-3 ml-1" />
-              </button>
+              </Button>
             </PopoverTrigger>
-            <PopoverContent
-              className="w-56 p-0"
-              align="end"
-              onOpenAutoFocus={(e) => e.preventDefault()}
-            >
+            <PopoverContent className="w-56 p-0" align="end" onOpenAutoFocus={(e) => e.preventDefault()}>
               <div className="p-2 space-y-1">
-                {/* 显示所有列 */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -335,16 +161,14 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    onDataGridShowAllColumns?.();
+                    onShowAllColumns?.();
                   }}
-                  disabled={dataGridHiddenCount === 0}
+                  disabled={hiddenCount === 0}
                 >
                   <Eye className="h-3.5 w-3.5 mr-2" />
                   {t('query.result.showAllColumns', '显示所有列')}
                 </Button>
-
-                {/* 重置列 */}
-                {onDataGridResetColumns && (
+                {onResetColumns && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -352,7 +176,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      onDataGridResetColumns();
+                      onResetColumns();
                     }}
                   >
                     <RefreshCw className="h-3.5 w-3.5 mr-2" />
@@ -360,12 +184,9 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
                   </Button>
                 )}
               </div>
-
               <Separator />
-
               <div className="p-2 space-y-1">
-                {/* 自动列宽 */}
-                {onDataGridAutoFitColumns && (
+                {onAutoFitColumns && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -373,16 +194,14 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      onDataGridAutoFitColumns();
+                      onAutoFitColumns();
                     }}
                   >
                     <Maximize2 className="h-3.5 w-3.5 mr-2" />
                     {t('query.result.autoSizeColumns', '自动列宽')}
                   </Button>
                 )}
-
-                {/* 适应宽度 */}
-                {onDataGridFitToWidth && (
+                {onFitToWidth && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -390,36 +209,35 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      onDataGridFitToWidth();
+                      onFitToWidth();
                     }}
                   >
                     {t('query.result.fitColumns', '适应宽度')}
                   </Button>
                 )}
               </div>
-
               <Separator />
-
-              {/* 列列表 */}
               <ScrollArea className="h-64">
                 <div className="p-2 space-y-0.5">
-                  {dataGridColumns.map((col) => (
-                    <button
+                  {gridColumns.map((col) => (
+                    <Button
                       key={col.field}
-                      className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-xs text-left hover:bg-accent transition-colors"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-full justify-start gap-2 px-2 text-xs font-normal"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        onDataGridToggleColumn?.(col.field);
+                        onToggleColumn?.(col.field);
                       }}
                     >
                       {col.visible ? (
-                        <Check className="h-3.5 w-3.5 text-primary" />
+                        <Check className="h-3.5 w-3.5 text-primary shrink-0" />
                       ) : (
-                        <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                        <EyeOff className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       )}
-                      <span className="truncate flex-1">{col.field}</span>
-                    </button>
+                      <span className="truncate flex-1 text-left">{col.field}</span>
+                    </Button>
                   ))}
                 </div>
               </ScrollArea>
@@ -427,7 +245,6 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           </Popover>
         )}
 
-        {/* 刷新按钮 */}
         {onRefresh && (
           <Button
             variant="ghost"
@@ -440,7 +257,6 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           </Button>
         )}
 
-        {/* 导入到 DuckDB 按钮 - 仅当数据来自外部数据库时显示 */}
         {showImportButton && onImportToDuckDB && (
           <>
             <Separator orientation="vertical" className="h-4" />
@@ -457,56 +273,29 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           </>
         )}
 
-        {/* 导出按钮（AG Grid 模式） */}
-        {!useNewDataGrid && onExport && (
+        {hasExport && (
           <DropdownMenu>
             <DropdownMenuTrigger
               className="inline-flex items-center justify-center h-8 px-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
               disabled={disabled || stats.totalRows === 0}
             >
               <Download className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">
-                {t('query.result.export', '导出')}
-              </span>
+              <span className="hidden sm:inline">{t('query.result.export', '导出')}</span>
               <ChevronDown className="h-3 w-3 ml-1" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onExport('csv')}>
-                {t('query.result.exportCSV', '导出 CSV')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onExport('json')}>
-                {t('query.result.exportJSON', '导出 JSON')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-
-        {/* 导出按钮（DataGrid 模式） */}
-        {useNewDataGrid && (onDataGridExportCSV || onDataGridExportExcel || onDataGridExportJSON) && (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className="inline-flex items-center justify-center h-8 px-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-              disabled={disabled || stats.totalRows === 0}
-            >
-              <Download className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">
-                {t('query.result.export', '导出')}
-              </span>
-              <ChevronDown className="h-3 w-3 ml-1" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {onDataGridExportCSV && (
-                <DropdownMenuItem onClick={onDataGridExportCSV}>
+              {onExportCsv && (
+                <DropdownMenuItem onClick={onExportCsv}>
                   {t('query.result.exportCSV', '导出 CSV')}
                 </DropdownMenuItem>
               )}
-              {onDataGridExportExcel && (
-                <DropdownMenuItem onClick={onDataGridExportExcel}>
+              {onExportExcel && (
+                <DropdownMenuItem onClick={onExportExcel}>
                   {t('query.result.exportExcel', '导出 Excel')}
                 </DropdownMenuItem>
               )}
-              {onDataGridExportJSON && (
-                <DropdownMenuItem onClick={onDataGridExportJSON}>
+              {onExportJson && (
+                <DropdownMenuItem onClick={onExportJson}>
                   {t('query.result.exportJSON', '导出 JSON')}
                 </DropdownMenuItem>
               )}
@@ -514,7 +303,6 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           </DropdownMenu>
         )}
 
-        {/* 全屏按钮 */}
         {onToggleFullscreen && (
           <Button
             variant="ghost"
@@ -523,28 +311,8 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
             onClick={onToggleFullscreen}
             disabled={disabled}
           >
-            {isFullscreen ? (
-              <Minimize2 className="h-4 w-4" />
-            ) : (
-              <Maximize2 className="h-4 w-4" />
-            )}
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
-        )}
-
-        {/* DataGrid 切换按钮（实验性功能） */}
-        {onToggleDataGrid && (
-          <>
-            <Separator orientation="vertical" className="h-4" />
-            <Button
-              variant={useNewDataGrid ? 'default' : 'outline'}
-              size="sm"
-              className="h-8 px-2 text-xs"
-              onClick={onToggleDataGrid}
-              title={useNewDataGrid ? 'Switch to AG Grid' : 'Switch to TanStack DataGrid (Beta)'}
-            >
-              {useNewDataGrid ? 'DataGrid' : 'AG Grid'}
-            </Button>
-          </>
         )}
       </div>
     </div>

@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
-import { DUCKDB_TABLES_QUERY_KEY } from '@/hooks/useDuckDBTables';
+import { invalidateAfterTableCreate } from '@/utils/cacheInvalidation';
 import { saveQueryToDuckDB } from '@/api';
 import type { TableSource } from '@/hooks/useQueryWorkspace';
 
@@ -35,8 +35,6 @@ export interface ImportToDuckDBDialogProps {
   source?: TableSource;
   /** 默认表名 */
   defaultTableName?: string;
-  /** 导入成功回调 */
-  onImportSuccess?: (tableName: string, rowCount: number) => void;
 }
 
 /**
@@ -82,7 +80,6 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
   sql,
   source,
   defaultTableName,
-  onImportSuccess,
 }) => {
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
@@ -141,8 +138,7 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
         throw new Error(result.message || 'Import failed');
       }
 
-      // Refresh DuckDB table list
-      await queryClient.invalidateQueries({ queryKey: DUCKDB_TABLES_QUERY_KEY });
+      await invalidateAfterTableCreate(queryClient);
 
       showSuccessToast(
         t,
@@ -153,7 +149,6 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
         })
       );
 
-      onImportSuccess?.(tableName, 0);
       onOpenChange(false);
     } catch (error) {
       console.error('Import failed:', error);
@@ -169,7 +164,7 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
     } finally {
       setIsImporting(false);
     }
-  }, [tableName, sql, source, queryClient, onImportSuccess, onOpenChange, t]);
+  }, [tableName, sql, source, queryClient, onOpenChange, t]);
 
   // 重置状态当对话框打开时
   React.useEffect(() => {

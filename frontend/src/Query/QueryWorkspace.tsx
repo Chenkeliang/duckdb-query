@@ -19,12 +19,7 @@ import { invalidateAfterTableDelete } from "@/utils/cacheInvalidation";
 import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import type { SelectedTable } from "@/types/SelectedTable";
 import { normalizeSelectedTable } from "@/utils/tableUtils";
-import {
-  getSourceFromSelectedTable,
-  quoteQualifiedTable,
-  generateExternalTableReference,
-  type AttachDatabase,
-} from "@/utils/sqlUtils";
+import { generateExternalTableReference } from "@/utils/sqlUtils";
 import type { TableSource } from "@/hooks/useQueryWorkspace";
 
 interface QueryWorkspaceProps {
@@ -37,6 +32,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
   const { t } = useTranslation("common");
   const queryClient = useQueryClient();
   const [autoOpenImportDialog, setAutoOpenImportDialog] = React.useState(false);
+
   const {
     selectedTables,
     currentTab,
@@ -51,6 +47,11 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
     isCancelling,
   } = useQueryRunner();
   const { maxQueryRows } = useAppConfig();
+
+  const handleResultRefresh = React.useCallback(() => {
+    if (!lastQuery?.sql) return;
+    void handleQueryExecute(lastQuery.sql, lastQuery.source);
+  }, [lastQuery, handleQueryExecute]);
 
   // 预览表数据
   // 统一使用 ATTACH 模式：外部表生成带别名前缀的 SQL，通过联邦查询 API 执行
@@ -223,8 +224,6 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
                 isCancelling={isCancelling}
                 onDisplayPreview={displayQueryPreview}
                 onRemoveTable={handleRemoveTable}
-                onCancel={cancelQuery}
-                isCancelling={isCancelling}
                 previewSQL={previewSQL}
               />
             </Panel>
@@ -267,11 +266,11 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
                   columns={queryResults?.columns ?? null}
                   loading={queryResults?.loading ?? false}
                   error={queryResults?.error ?? null}
-                  rowCount={queryResults?.rowCount}
                   execTime={queryResults?.execTime}
                   previewLimitApplied={queryResults?.previewLimitApplied}
                   source={lastQuery?.source}
                   currentSQL={lastQuery?.sql}
+                  onRefresh={lastQuery?.sql ? handleResultRefresh : undefined}
                   autoOpenImportDialog={autoOpenImportDialog}
                   onAutoOpenImportDialogConsumed={() => setAutoOpenImportDialog(false)}
                 />

@@ -27,26 +27,11 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
-// Mock AGGridWrapper
-vi.mock('../AGGridWrapper', () => ({
-  AGGridWrapper: ({ rowData }: { rowData: unknown[] }) => (
-    <div data-testid="ag-grid-mock">
-      {rowData?.map((row: Record<string, unknown>, i: number) => (
-        <div key={i} data-testid="grid-row">
-          {Object.values(row).map((v, j) => (
-            <span key={j}>{String(v)}</span>
-          ))}
-        </div>
-      ))}
-    </div>
-  ),
-}));
-
 // Mock DataGridWrapper
 vi.mock('../DataGridWrapper', () => ({
-  DataGridWrapper: ({ rowData }: { rowData: unknown[] }) => (
+  DataGridWrapper: ({ rowData }: { rowData: Record<string, unknown>[] | null }) => (
     <div data-testid="data-grid-mock">
-      {rowData?.map((row: Record<string, unknown>, i: number) => (
+      {rowData?.map((row, i) => (
         <div key={i} data-testid="grid-row">
           {Object.values(row).map((v, j) => (
             <span key={j}>{String(v)}</span>
@@ -62,32 +47,14 @@ vi.mock('../ResultToolbar', () => ({
   ResultToolbar: () => <div data-testid="result-toolbar">Toolbar</div>,
 }));
 
-// Mock ColumnFilterCommand
-vi.mock('../ColumnFilterCommand', () => ({
-  ColumnFilterCommand: () => null,
-}));
-
 // Mock ImportToDuckDBDialog
 vi.mock('../ImportToDuckDBDialog', () => ({
   ImportToDuckDBDialog: () => null,
 }));
 
 // Mock hooks
-vi.mock('../hooks/useAGGridConfig', () => ({
-  useAGGridConfig: () => ({ columnDefs: [] }),
-}));
-
-vi.mock('../hooks', () => ({
-  useGridStats: () => ({
-    stats: { totalRows: 0, filteredRows: 0, selectedRows: 0, columnCount: 0, visibleColumnCount: 0 },
-    columns: [],
-    toggleColumn: vi.fn(),
-    showAllColumns: vi.fn(),
-    resetColumns: vi.fn(),
-    autoSizeColumns: vi.fn(),
-    sizeColumnsToFit: vi.fn(),
-  }),
-  useGridCopy: () => ({ copySelectedRows: vi.fn() }),
+vi.mock('../hooks/useDataGridColumns', () => ({
+  useDataGridColumns: () => ({ columns: [] }),
 }));
 
 // 导入组件

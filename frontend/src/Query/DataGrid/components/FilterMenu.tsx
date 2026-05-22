@@ -28,7 +28,7 @@ import {
 import { toast } from 'sonner';
 import { useColumnFilter } from '../hooks/useColumnFilter';
 import type { ConditionFilter, ConditionFilterType, ColumnFilterValue, UniqueValueItem } from '../types';
-import { getSelectedValuesSize, hasSelectedValue } from '../types';
+import { getSelectedValuesSize, hasSelectedValue, toSelectedValuesSet } from '../types';
 
 export interface FilterMenuProps {
   /** 列名 */
@@ -121,7 +121,7 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({
       return;
     }
 
-    // 无已应用筛选：低基数列默认全选（Excel/AG Grid 行为）；高基数列默认空（更鼓励条件过滤）
+    // 无已应用筛选：低基数列默认全选（Excel 式）；高基数列默认空（更鼓励条件过滤）
     setConditionValue('');
     setConditionFilter(null);
     if (!isHighCardinality) {
@@ -147,10 +147,19 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({
     return uniqueValues.filter(v => v.label.toLowerCase().includes(lower));
   }, [uniqueValues, searchValue]);
 
+  const applyValueListFilter = (vf: ColumnFilterValue) => {
+    const filterToApply = {
+      selectedValues: Array.from(toSelectedValuesSet(vf.selectedValues)),
+      mode: vf.mode,
+    };
+    onFilterChange?.(column, filterToApply);
+    setOpen(false);
+  };
+
   const handleApply = () => {
     const trimmedCondition = conditionValue.trim();
 
-    // 高基数列优先使用条件过滤（不会受 TopN 值列表限制）
+    // 高基数列：优先条件筛选（覆盖 TopN 列表语义）
     if (isHighCardinality && trimmedCondition) {
       const condition: ConditionFilter = { type: conditionType, value: trimmedCondition };
       setConditionFilter(condition);
@@ -159,33 +168,48 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({
       return;
     }
 
-    // 高基数列：禁止仅用值列表应用筛选（列表仅为 TopN，无法代表全表）
+    const next = applyFilter();
+
+    // 高基数列 + 值列表：允许对「当前已加载行」做部分勾选筛选
     if (isHighCardinality && !trimmedCondition) {
-      const draft = applyFilter();
-      const hasValueList =
-        draft &&
-        typeof draft === 'object' &&
-        'selectedValues' in draft &&
-        getSelectedValuesSize((draft as ColumnFilterValue).selectedValues) > 0;
-      if (hasValueList) {
+      if (!next || typeof next !== 'object' || !('selectedValues' in next)) {
+        onClearFilter?.(column);
+        setOpen(false);
+        return;
+      }
+
+      const vf = next as ColumnFilterValue;
+      const selectedSize = getSelectedValuesSize(vf.selectedValues);
+      const visibleCount = uniqueValues.length;
+
+      if (selectedSize === 0) {
+        onClearFilter?.(column);
+        setOpen(false);
+        return;
+      }
+
+      // 包含模式且勾满 TopN：与「未筛选」等价，避免误以为已覆盖全表唯一值
+      if (vf.mode === 'include' && selectedSize >= visibleCount) {
         toast.info(
           t(
-            'dataGrid.highCardinalityValueListBlocked',
-            '该列不同取值过多，请使用上方条件筛选。勾选列表仅含高频前若干条，无法覆盖全表。'
+            'dataGrid.highCardinalitySelectAllBlocked',
+            '该列取值过多，列表仅展示高频前若干条。请取消部分勾选，或改用上方条件筛选。'
           )
         );
         return;
       }
+
+      applyValueListFilter(vf);
+      return;
     }
 
-    const next = applyFilter();
     if (!next) {
       onClearFilter?.(column);
       setOpen(false);
       return;
     }
 
-    // 低基数列：如果等同“不过滤”，则清除筛选（用于正确显示图标状态）
+    // 低基数列：等同「不过滤」时清除（用于筛选图标状态）
     if (!isHighCardinality && typeof next === 'object' && 'selectedValues' in next) {
       const vf = next as ColumnFilterValue;
       const selectedSize = getSelectedValuesSize(vf.selectedValues);
@@ -198,20 +222,17 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({
         setOpen(false);
         return;
       }
+
+      applyValueListFilter(vf);
+      return;
     }
 
-    // 确保 Set 被转换为数组以便序列化和状态管理
     if (typeof next === 'object' && next !== null && 'selectedValues' in next) {
-      const vf = next as ColumnFilterValue;
-      const filterToApply = {
-        selectedValues: Array.from(vf.selectedValues),
-        mode: vf.mode,
-      };
-      onFilterChange?.(column, filterToApply);
+      applyValueListFilter(next as ColumnFilterValue);
     } else {
       onFilterChange?.(column, next);
+      setOpen(false);
     }
-    setOpen(false);
   };
 
   const handleReset = () => {
@@ -343,7 +364,7 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({
               <X className="h-4 w-4 mr-1" />
               {t('dataGrid.clearFilter', '清除筛选')}
             </Button>
-            <Button size="sm" onClick={handleApply}>
+            <Button type="button" size="sm" onClick={handleApply}>
               <Check className="h-4 w-4 mr-1" />
               {t('common.apply', '应用')}
             </Button>

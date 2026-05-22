@@ -15,7 +15,7 @@
 3. 运行与测试  
 4. 前端开发规范  
 5. UI / 样式规范（**禁止自定义**）  
-6. AG Grid v34 规范  
+6. 查询结果表格（TanStack DataGrid）  
 7. 状态管理与数据获取  
 8. 后端开发规范  
 9. API 与响应规范  
@@ -33,7 +33,7 @@
 | 前端框架 | React 18 + Vite + TypeScript |
 | UI 组件 | shadcn/ui + Tailwind CSS |
 | 状态管理 | TanStack Query 5.x + React Hooks |
-| 表格 | AG Grid v34 Community + TanStack Table |
+| 表格 | TanStack Table + DataGrid（查询结果区） |
 | 后端框架 | FastAPI + Python 3.11+ |
 | 数据库 | DuckDB（本地）+ MySQL/PostgreSQL/SQLite（联邦查询） |
 | 国际化 | react-i18next |
@@ -133,7 +133,7 @@ duckdb-query/
 | `frontend/src/hooks/useDataSources.ts` | 数据源列表 Hook |
 | `frontend/src/hooks/useDatabaseConnections.ts` | 数据库连接 Hook |
 | `frontend/src/utils/cacheInvalidation.ts` | 缓存失效工具 |
-| `frontend/src/Query/ResultPanel/AGGridWrapper.tsx` | AG Grid 封装组件 |
+| `frontend/src/Query/ResultPanel/DataGridWrapper.tsx` | 查询结果 DataGrid 封装 |
 | `frontend/src/Query/DataGrid/DataGrid.tsx` | TanStack DataGrid 组件 |
 | `api/utils/response_helpers.py` | 统一响应格式 |
 | `api/core/common/timezone_utils.py` | 时区工具 |
@@ -320,22 +320,12 @@ await invalidateAllDataCaches(queryClient);
 
 ---
 
-## 6. AG Grid v34 规范
+## 6. 查询结果表格（TanStack DataGrid）
 
-### 6.1 只用官方 Alpine CSS 主题
-```tsx
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
-```
-
-### 6.2 必须禁用 Theming API
-```ts
-gridOptions.theme = 'legacy';
-```
-
-### 6.3 配置对象稳定性
-- `gridOptions` 和 `defaultColDef` 必须用 `useMemo` 包裹
-- 事件回调中的 `setState` 必须做浅比较
+- 结果区**仅**使用 `ResultPanel` → `DataGridWrapper` → `Query/DataGrid/DataGrid.tsx`（TanStack Table + 虚拟滚动）
+- 列定义经 `useDataGridColumns` 生成（类型检测、数值/日期/布尔格式化）
+- 禁止再引入 `ag-grid-community` / `ag-grid-react`
+- 列配置与 `columns` 引用须 `useMemo` 稳定化，避免无意义重渲染
 
 ---
 

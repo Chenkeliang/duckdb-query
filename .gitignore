@@ -99,6 +99,8 @@ api/postgresql_configs.json
 api/mysql_datasources.json
 api/temp_files/*
 !api/temp_files/.gitkeep
+api/core/temp_files/*
+!api/core/temp_files/.gitkeep
 api/exports/*
 !api/exports/.gitkeep
 api/host_documents/

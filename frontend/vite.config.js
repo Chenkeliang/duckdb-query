@@ -27,14 +27,8 @@ export default defineConfig({
             if (id.includes("codemirror")) {
               return "codemirror";
             }
-            if (id.includes("ag-grid")) {
-              return "ag-grid";
-            }
             if (id.includes("monaco-editor")) {
               return "monaco-editor";
-            }
-            if (id.includes("@mui") || id.includes("@emotion")) {
-              return "mui";
             }
             if (id.includes("lucide-react")) {
               return "icons";

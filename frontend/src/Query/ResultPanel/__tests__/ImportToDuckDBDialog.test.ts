@@ -92,7 +92,10 @@ describe('ImportToDuckDBDialog - Property Tests', () => {
             const datasource = buildDatasource(source);
             
             // The ID should not start with db_ (unless baseId itself starts with db_)
-            return !datasource.id.startsWith('db_') || baseId.startsWith('db_');
+            return (
+              datasource.id != null &&
+              (!datasource.id.startsWith('db_') || baseId.startsWith('db_'))
+            );
           }
         ),
         { numRuns: 100 }

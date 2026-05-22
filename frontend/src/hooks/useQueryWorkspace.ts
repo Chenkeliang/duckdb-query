@@ -64,8 +64,6 @@ export interface QueryResult {
   loading: boolean;
   /** 错误信息 */
   error: Error | null;
-  /** 行数 */
-  rowCount?: number;
   /** 执行时间（毫秒） */
   execTime?: number;
   /**
@@ -205,7 +203,6 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       columns: columns,
       loading: false,
       error: null,
-      rowCount: rawData.length,
       execTime: response.execTime || response.execution_time_ms,
       previewLimitApplied:
         response.preview_limit_applied === undefined
