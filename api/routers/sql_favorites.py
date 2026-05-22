@@ -2,15 +2,17 @@ import logging
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, Body
 from pydantic import BaseModel
 
+from core.common.exceptions import BaseAPIException
 from core.database.metadata_manager import metadata_manager
 from core.common.timezone_utils import get_current_time
 from utils.response_helpers import (
     create_success_response,
     create_list_response,
     MessageCode,
+    error_json_response,
 )
 
 router = APIRouter()
@@ -46,6 +48,24 @@ class UpdateSQLFavoriteRequest(BaseModel):
     tags: Optional[List[str]] = None
 
 
+def _raise_favorite_not_found(favorite_id: str) -> None:
+    raise BaseAPIException(
+        message=f"SQL favorite not found: {favorite_id}",
+        status_code=404,
+        error_code=MessageCode.FAVORITE_NOT_FOUND.value,
+        details={"favorite_id": favorite_id},
+    )
+
+
+def _raise_duplicate_name(name: str) -> None:
+    raise BaseAPIException(
+        message=f"Favorite name already exists: {name}",
+        status_code=400,
+        error_code="FAVORITE_NAME_EXISTS",
+        details={"field": "name", "name": name},
+    )
+
+
 @router.get("/api/sql-favorites", tags=["SQL Favorites"])
 async def get_sql_favorites():
     """获取所有SQL收藏"""
@@ -58,21 +78,21 @@ async def get_sql_favorites():
         )
     except Exception as e:
         logger.error("Failed to get SQL favorites: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get SQL favorites: {str(e)}") from e
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get SQL favorites: {str(e)}",
+        )
 
 
 @router.post("/api/sql-favorites", tags=["SQL Favorites"])
 async def create_sql_favorite(request: CreateSQLFavoriteRequest = Body(...)):
     """创建新的SQL收藏"""
     try:
-        # 检查名称是否已存在
-        # 注意：这里做了一个全量扫描，性能较差，但考虑到收藏数量通常很少，暂时可以接受
-        # 理想情况下应该在数据库层面做唯一约束检查
         existing_favorites = metadata_manager.list_sql_favorites()
         if any(fav["name"] == request.name for fav in existing_favorites):
-            raise HTTPException(status_code=400, detail="Favorite name already exists")
+            _raise_duplicate_name(request.name)
 
-        # 创建新的收藏项
         new_id = str(uuid.uuid4())
         current_time = get_current_time()
 
@@ -90,17 +110,25 @@ async def create_sql_favorite(request: CreateSQLFavoriteRequest = Body(...)):
 
         success = metadata_manager.save_sql_favorite(new_favorite)
         if not success:
-            raise HTTPException(status_code=500, detail="Failed to save to database")
+            return error_json_response(
+                500,
+                MessageCode.OPERATION_FAILED,
+                "Failed to save to database",
+            )
 
         return create_success_response(
             data={"favorite": new_favorite},
             message_code=MessageCode.FAVORITE_CREATED,
         )
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error("Failed to create SQL favorite: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create SQL favorite: {str(e)}") from e
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to create SQL favorite: {str(e)}",
+        )
 
 
 @router.put("/api/sql-favorites/{favorite_id}", tags=["SQL Favorites"])
@@ -109,19 +137,16 @@ async def update_sql_favorite(
 ):
     """更新SQL收藏"""
     try:
-        # 检查是否存在
         existing = metadata_manager.get_sql_favorite(favorite_id)
         if not existing:
-            raise HTTPException(status_code=404, detail="SQL favorite not found")
+            _raise_favorite_not_found(favorite_id)
 
-        # 检查名称是否与其他收藏冲突
         if request.name and request.name != existing["name"]:
             all_favorites = metadata_manager.list_sql_favorites()
             for fav in all_favorites:
                 if fav["id"] != favorite_id and fav["name"] == request.name:
-                    raise HTTPException(status_code=400, detail="Favorite name already exists")
+                    _raise_duplicate_name(request.name)
 
-        # 构建更新数据
         updates = {}
         if request.name is not None:
             updates["name"] = request.name
@@ -138,70 +163,97 @@ async def update_sql_favorite(
 
         success = metadata_manager.update_sql_favorite(favorite_id, updates)
         if not success:
-            raise HTTPException(status_code=500, detail="Failed to update database")
+            return error_json_response(
+                500,
+                MessageCode.OPERATION_FAILED,
+                "Failed to update database",
+                details={"favorite_id": favorite_id},
+            )
 
-        # 获取更新后的完整数据返回
         updated_favorite = metadata_manager.get_sql_favorite(favorite_id)
         return create_success_response(
             data={"favorite": updated_favorite},
             message_code=MessageCode.FAVORITE_UPDATED,
         )
 
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error("Failed to update SQL favorite: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to update SQL favorite: {str(e)}") from e
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to update SQL favorite: {str(e)}",
+            details={"favorite_id": favorite_id},
+        )
 
 
 @router.delete("/api/sql-favorites/{favorite_id}", tags=["SQL Favorites"])
 async def delete_sql_favorite(favorite_id: str):
     """删除SQL收藏"""
     try:
-        # 检查是否存在
         existing = metadata_manager.get_sql_favorite(favorite_id)
         if not existing:
-            raise HTTPException(status_code=404, detail="SQL favorite not found")
+            _raise_favorite_not_found(favorite_id)
 
         success = metadata_manager.delete_sql_favorite(favorite_id)
         if not success:
-            raise HTTPException(status_code=500, detail="Failed to delete from database")
+            return error_json_response(
+                500,
+                MessageCode.OPERATION_FAILED,
+                "Failed to delete from database",
+                details={"favorite_id": favorite_id},
+            )
 
         return create_success_response(
             data={"id": favorite_id},
             message_code=MessageCode.FAVORITE_DELETED,
         )
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error("Failed to delete SQL favorite: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to delete SQL favorite: {str(e)}") from e
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to delete SQL favorite: {str(e)}",
+            details={"favorite_id": favorite_id},
+        )
 
 
 @router.post("/api/sql-favorites/{favorite_id}/use", tags=["SQL Favorites"])
 async def increment_favorite_usage(favorite_id: str):
     """增加SQL收藏的使用次数"""
     try:
-        # 获取当前信息
         existing = metadata_manager.get_sql_favorite(favorite_id)
         if not existing:
-            raise HTTPException(status_code=404, detail="SQL favorite not found")
+            _raise_favorite_not_found(favorite_id)
 
-        # 计算新次数
         current_count = existing.get("usage_count", 0)
         new_count = current_count + 1
 
-        # 更新数据库
-        success = metadata_manager.update_sql_favorite(favorite_id, {"usage_count": new_count})
+        success = metadata_manager.update_sql_favorite(
+            favorite_id, {"usage_count": new_count}
+        )
         if not success:
-            raise HTTPException(status_code=500, detail="Failed to update usage count")
+            return error_json_response(
+                500,
+                MessageCode.OPERATION_FAILED,
+                "Failed to update usage count",
+                details={"favorite_id": favorite_id},
+            )
 
         return create_success_response(
             data={"usage_count": new_count},
             message_code=MessageCode.FAVORITE_USAGE_INCREMENTED,
         )
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error("Failed to update usage count: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to update usage count: {str(e)}") from e
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to update usage count: {str(e)}",
+            details={"favorite_id": favorite_id},
+        )

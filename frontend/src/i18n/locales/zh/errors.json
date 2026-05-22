@@ -109,6 +109,7 @@
   "FAVORITE_DELETED": "收藏已删除",
   "FAVORITE_USAGE_INCREMENTED": "收藏使用次数已更新",
   "FAVORITE_NOT_FOUND": "收藏不存在",
+  "FAVORITE_NAME_EXISTS": "收藏名称已存在",
 
   "SERVER_MOUNTS_RETRIEVED": "获取挂载点列表成功",
   "SERVER_DIRECTORY_BROWSED": "目录浏览成功",

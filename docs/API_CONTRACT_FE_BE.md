@@ -126,11 +126,11 @@
 | POST | `/api/visual-query/generate` | 对象 | `generateVisualQuery`, `generatePivotVisualQuery` |
 | POST | `/api/visual-query/preview` | 对象 | `previewVisualQuery`, `previewPivotVisualQuery` |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
-| GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite` |
-| POST | `/api/sql-favorites` | 对象 | `createSqlFavorite` |
-| PUT | `/api/sql-favorites/{id}` | 对象 | `updateSqlFavorite` |
-| DELETE | `/api/sql-favorites/{id}` | 对象 | `deleteSqlFavorite` |
-| POST | `/api/sql-favorites/{id}/use` | 对象 | `incrementFavoriteUsage` |
+| GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（**仓库内暂无对应 GET 路由**，调用会 404） |
+| POST | `/api/sql-favorites` | 对象 | `createSqlFavorite`；400 `FAVORITE_NAME_EXISTS` |
+| PUT | `/api/sql-favorites/{id}` | 对象 | `updateSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
+| DELETE | `/api/sql-favorites/{id}` | 对象 | `deleteSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
+| POST | `/api/sql-favorites/{id}/use` | 对象 | `incrementFavoriteUsage`；404 `FAVORITE_NOT_FOUND` |
 | GET | `/api/app-config/features` | 对象 | `getAppConfig` |
 
 **纯前端**：`validateVisualQueryConfig` 无 HTTP。**后端有、未封装**：`POST /api/visual-query/distinct-values`、`POST /api/visual-query/validate`。

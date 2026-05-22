@@ -109,6 +109,7 @@
   "FAVORITE_DELETED": "Favorite deleted",
   "FAVORITE_USAGE_INCREMENTED": "Favorite usage count updated",
   "FAVORITE_NOT_FOUND": "Favorite not found",
+  "FAVORITE_NAME_EXISTS": "Favorite name already exists",
 
   "SERVER_MOUNTS_RETRIEVED": "Server mounts retrieved successfully",
   "SERVER_DIRECTORY_BROWSED": "Directory browsed successfully",

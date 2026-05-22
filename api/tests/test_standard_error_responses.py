@@ -115,6 +115,16 @@ def test_async_task_duplicate_attach_alias_standard_error():
     assert "detail" not in body
 
 
+def test_sql_favorite_not_found_standard_error():
+    """DELETE 不存在的收藏须 FAVORITE_NOT_FOUND 标准信封。"""
+    response = client.delete("/api/sql-favorites/nonexistent-favorite-id-xyz")
+    assert response.status_code == 404
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "FAVORITE_NOT_FOUND"
+    assert "detail" not in body
+
+
 def test_execute_sql_missing_datasource_id_standard_error():
     """execute_sql 外部库缺 datasource id 须返回标准 VALIDATION_ERROR。"""
     response = client.post(
