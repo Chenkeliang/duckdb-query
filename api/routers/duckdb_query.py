@@ -858,6 +858,7 @@ async def execute_federated_query(
 
         return result_df
 
+    result_df = None
     try:
         # 使用可中断连接（如果有 query_id）
         if query_id:

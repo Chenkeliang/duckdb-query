@@ -639,11 +639,9 @@ def _generate_pivot_transformation_sql(
         if not max_values or max_values <= 0:
             return None
         try:
-            from core.database.duckdb_engine import get_db_connection  # type: ignore
+            from core.database.duckdb_engine import with_duckdb_connection  # type: ignore
 
             target_col = pivot_config.columns[0]
-            con = get_db_connection()
-            # Use a CTE to reference the same base SQL; avoid trailing semicolon
             introspect_sql = (
                 f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)\n"
                 f"SELECT DISTINCT {_quote_identifier(target_col)} AS v\n"
@@ -651,7 +649,8 @@ def _generate_pivot_transformation_sql(
                 f"WHERE {_quote_identifier(target_col)} IS NOT NULL\n"
                 f"LIMIT {int(max_values)}"
             )
-            df = con.execute(introspect_sql).fetchdf()
+            with with_duckdb_connection() as con:
+                df = con.execute(introspect_sql).fetchdf()
             values: List[str] = []
             if df is not None and not df.empty:
                 for raw in df["v"].tolist():

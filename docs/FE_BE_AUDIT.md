@@ -212,7 +212,7 @@ flowchart TB
 2. `asyncTaskApi`：连接池路径改为 `/api/duckdb/pool/*`（若将来做管理页）。
 3. ~~`useDuckDBTables`~~：✅ `tableApi.ts` 已用 `GET /api/duckdb/tables`。
 4. 异步任务：评估去掉 `_fetch_external_query_result`，统一 ATTACH。
-5. 扩充 `API_CONTRACT_FE_BE.md` 至与 `frontend/src/api` 一一对应。
+5. ~~扩充 `API_CONTRACT_FE_BE.md`~~：✅ 已增 §0.1 模块索引、§9.1 JOIN、`uploadApi` 说明及后端未封装端点表。
 
 ### P2 — 架构与体验
 

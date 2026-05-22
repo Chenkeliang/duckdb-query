@@ -13,6 +13,22 @@
 
 两种模式共用 `frontend/src/api/*`；**无**路径重写。用户查询主路径为 `POST /api/duckdb/execute` 与 `POST /api/duckdb/federated-query`，**不是** `POST /api/execute_sql`。
 
+### 0.1 前端模块索引（`frontend/src/api/index.ts`）
+
+| 模块文件 | 契约章节 | 说明 |
+|----------|----------|------|
+| `client.ts` | §1 | `apiClient`、`normalizeResponse`、错误归一化 |
+| `queryApi.ts` | §2 | DuckDB / 联邦执行、取消、`save_query_to_duckdb` |
+| `tableApi.ts` | §2、§3 | DuckDB 表；外部表详情 |
+| `databaseSchemasApi.ts` | §3 | 连接 schemas / 表列表 |
+| `dataSourceApi.ts` | §4 | 数据源 CRUD / 测试 / 刷新 |
+| `uploadApi.ts` | §5 | 本地上传与分块（从 `fileApi` 再导出） |
+| `fileApi.ts` | §5 | URL / Excel / 服务器文件 / 粘贴 |
+| `asyncTaskApi.ts` | §6 | 异步任务、连接池状态、错误统计 |
+| `visualQueryApi.ts` | §7 | 可视化 generate/preview、SQL 收藏、应用配置 |
+| `settingsShortcutsApi.ts` | §8 | 快捷键 |
+| `setOperationsApi.ts` | §9 | 仅 `generate` + `preview`（见 §9 后端扩展端点） |
+
 ## 1. 标准成功体
 
 | 形式 | `HTTP` | JSON 根字段 |
@@ -89,7 +105,9 @@
 | POST | `/api/datasources/databases/test` | 对象 | `testDatabaseConnection`, `testConnection`；400 `CONNECTION_TEST_FAILED` |
 | POST | `/api/datasources/databases/{id}/refresh` | 对象 | `refreshDatabaseConnection`；404；400 `CONNECTION_TEST_FAILED` |
 
-## 5. 文件与导入（`fileApi.ts`）
+## 5. 文件与导入（`fileApi.ts` / `uploadApi.ts`）
+
+`uploadApi.ts` 封装：`uploadFile`、`uploadFileAuto`、`initChunkedUpload`、`uploadChunk`、`completeChunkedUpload`、`cancelChunkedUpload`（阈值 `CHUNKED_UPLOAD_THRESHOLD_BYTES`）。其余入湖能力在 `fileApi.ts`。
 
 **`import_mode`（可选，默认 `auto`）**：`auto` = 先 `all_varchar` / 字面量读入再 `promote_table_column_types_from_varchar`（ID 列保持 VARCHAR，不升为 DOUBLE）；`literal` = 全列 VARCHAR、不 promote。  
 请求字段名：`import_mode`（Form 或 JSON）。前端类型：`FileImportMode`（`fileApi.ts`），上传面板 `UploadPanel` 状态 `importMode`。
@@ -143,7 +161,15 @@
 | POST | `/api/sql-favorites/{id}/use` | 对象 | `incrementFavoriteUsage`；404 `FAVORITE_NOT_FOUND` |
 | GET | `/api/app-config/features` | 对象 | `getAppConfig` |
 
-**纯前端**：`validateVisualQueryConfig` 无 HTTP。**后端有、未封装**：`POST /api/visual-query/distinct-values`、`POST /api/visual-query/validate`。
+**纯前端**：`validateVisualQueryConfig` 无 HTTP。
+
+**后端有、当前 `visualQueryApi.ts` 未封装**（Join/筛选等组件若需请补 API 模块）：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/visual-query/distinct-values` | Top-N 去重（可取消） |
+| POST | `/api/visual-query/validate` | 服务端配置校验 |
+| GET | `/api/visual-query/column-stats/{table}/{column}` | 列统计（`tableApi` / 面板若直连须对齐此路径） |
 
 ## 8. 设置（`settingsShortcutsApi.ts`）
 
@@ -163,7 +189,25 @@
 | POST | `/api/set-operations/execute` | 对象 | 完整执行；400 / 500 |
 | POST | `/api/set-operations/export` | 对象 | 异步导出任务；500 `OPERATION_FAILED` |
 
+**`setOperationsApi.ts` 已封装**：`generateSetOperation`、`previewSetOperation` → 上表前两行。
+
+**后端有、前端未封装**（工作台若直接调 HTTP 须先补 `setOperationsApi.ts`）：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/set-operations/validate` | 配置校验 |
+| POST | `/api/set-operations/execute` | 完整执行 / 保存为表 |
+| POST | `/api/set-operations/simple-union` | 简化 UNION |
+| POST | `/api/set-operations/export` | 异步导出 |
+
 执行时前端在 generate 返回的 SQL 后追加 `LIMIT`（与 `maxQueryRows` 一致）；**preview** 端点 LIMIT 由后端 `max_query_rows` 控制，结果写入结果面板。
+
+## 9.1 多表 JOIN（`join_query.py`，无独立 `frontend/src/api` 模块）
+
+| 方法 | 路径 | 成功体 | 说明 |
+|------|------|--------|----------|
+| POST | `/api/query` | 对象 | 多表 JOIN 执行；Join 工作台经联邦/SQL 路径消费 |
+| POST | `/api/save_query_to_duckdb` | 对象 | 见 §2 `saveQueryToDuckDB` |
 
 ## 10. 已移除的历史端点（勿再使用）
 
