@@ -13,7 +13,7 @@ import sys
 import os
 import pytest
 import pandas as pd
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 from fastapi.testclient import TestClient
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -32,6 +32,14 @@ from routers.join_query import build_join_chain, build_multi_table_join_query
 from routers.query_sql_utils import get_join_type_sql
 
 client = TestClient(app, raise_server_exceptions=False)
+
+
+def _bind_mock_duckdb_pool(mock_patch, mock_con):
+    """Mock with_duckdb_connection() context manager for tests."""
+    mock_cm = MagicMock()
+    mock_cm.__enter__.return_value = mock_con
+    mock_cm.__exit__.return_value = False
+    mock_patch.return_value = mock_cm
 
 
 class TestJoinModels:
@@ -258,12 +266,12 @@ class TestJoinQueryGenerator:
         # CROSS JOIN不应该有ON条件
         assert "ON" not in join_chain
 
-    @patch("routers.join_query.get_db_connection")
+    @patch("routers.join_query.with_duckdb_connection")
     def test_build_multi_table_join_query_simple(self, mock_get_db):
         """测试构建简单多表JOIN查询"""
         # 模拟数据库连接
         mock_con = Mock()
-        mock_get_db.return_value = mock_con
+        _bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
         mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
@@ -292,12 +300,12 @@ class TestJoinQueryGenerator:
         assert 'INNER JOIN "orders"' in query
         assert 'ON "users"."id" = "orders"."user_id"' in query
 
-    @patch("routers.join_query.get_db_connection")
+    @patch("routers.join_query.with_duckdb_connection")
     def test_build_multi_table_join_query_with_where(self, mock_get_db):
         """测试构建带WHERE条件的多表JOIN查询"""
         # 模拟数据库连接
         mock_con = Mock()
-        mock_get_db.return_value = mock_con
+        _bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
         mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
@@ -329,12 +337,12 @@ class TestJoinQueryGenerator:
         assert "INNER JOIN" in query
         assert "LIMIT 100" in query
 
-    @patch("routers.join_query.get_db_connection")
+    @patch("routers.join_query.with_duckdb_connection")
     def test_build_multi_table_join_query_no_joins(self, mock_get_db):
         """测试构建无JOIN条件的多表查询（CROSS JOIN）"""
         # 模拟数据库连接
         mock_con = Mock()
-        mock_get_db.return_value = mock_con
+        _bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
         mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
@@ -351,12 +359,12 @@ class TestJoinQueryGenerator:
         assert '"users"' in query
         assert 'CROSS JOIN "orders"' in query
 
-    @patch("routers.join_query.get_db_connection")
+    @patch("routers.join_query.with_duckdb_connection")
     def test_build_multi_table_join_query_single_table(self, mock_get_db):
         """测试构建单表查询"""
         # 模拟数据库连接
         mock_con = Mock()
-        mock_get_db.return_value = mock_con
+        _bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
         mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
@@ -400,10 +408,10 @@ class TestJoinAPI:
             "limit": 10,
         }
 
-        with patch("routers.join_query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            _bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # Mock 需要返回正确的调用序列:
             # 1. SHOW TABLES (build_multi_table_join_query 中)
@@ -469,10 +477,10 @@ class TestJoinAPI:
             "limit": 5,
         }
 
-        with patch("routers.join_query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            _bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # Mock 需要返回正确的调用序列:
             # 1. SHOW TABLES
@@ -518,10 +526,10 @@ class TestJoinAPI:
             "limit": 5,
         }
 
-        with patch("routers.join_query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            _bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # Mock 需要返回正确的调用序列:
             # 1. SHOW TABLES
@@ -568,10 +576,10 @@ class TestJoinAPI:
             "joins": [],
         }
 
-        with patch("routers.join_query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            _bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # 模拟表不存在
             mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
@@ -624,10 +632,10 @@ class TestJoinIntegration:
             "limit": 10,
         }
 
-        with patch("routers.join_query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            _bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # Mock 需要返回正确的调用序列:
             # 1. SHOW TABLES
@@ -714,9 +722,10 @@ class TestJoinErrorHandling:
             "joins": [],
         }
 
-        with patch("routers.join_query.get_db_connection") as mock_get_db:
-            # 模拟数据库连接错误
-            mock_get_db.side_effect = Exception("Database connection failed")
+        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
+            mock_get_db.return_value.__enter__.side_effect = Exception(
+                "Database connection failed"
+            )
 
             response = client.post("/api/query", json=request_data)
 
@@ -750,10 +759,10 @@ class TestJoinErrorHandling:
             ],
         }
 
-        with patch("routers.join_query.get_db_connection") as mock_get_db:
+        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
             # 模拟数据库连接
             mock_con = Mock()
-            mock_get_db.return_value = mock_con
+            _bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # Mock 需要返回正确的调用序列:
             # 1. SHOW TABLES

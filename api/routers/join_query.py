@@ -29,7 +29,7 @@ from core.database.duckdb_engine import (
     create_varchar_table_from_dataframe,
     execute_query,
     generate_improved_column_aliases,
-    get_db_connection,
+    with_duckdb_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.services.visual_query_generator import (
@@ -441,348 +441,346 @@ async def perform_query(
             "Query request must contain at least one data source"
         )
 
-    # Always get valid connection
     # TODO: Use interruptible_connection to wrap query execution for cancellation support
-    con = get_db_connection()
+    with with_duckdb_connection() as con:
+        try:
+            # 确保文件存在并可访问
+            for source in query_request.sources:
+                if source.type == "file":
+                    original_path = source.params["path"]
 
-    try:
-        # 确保文件存在并可访问
-        for source in query_request.sources:
-            if source.type == "file":
-                original_path = source.params["path"]
-
-                # 标准化文件路径，支持多种路径格式
-                possible_paths = [
-                    original_path,  # 原始路径
-                    os.path.join(
-                        "api", "temp_files", os.path.basename(original_path)
-                    ),  # api/temp_files/filename
-                    os.path.join(
-                        os.path.dirname(os.path.dirname(__file__)),
-                        "temp_files",
-                        os.path.basename(original_path),
-                    ),  # 绝对路径
-                ]
-
-                # 如果是相对路径，尝试不同的基础路径
-                if original_path.startswith("temp_files/"):
-                    filename = original_path.replace("temp_files/", "")
-                    possible_paths.extend(
-                        [
-                            os.path.join("api", "temp_files", filename),
-                            os.path.join(
-                                os.path.dirname(os.path.dirname(__file__)),
-                                "temp_files",
-                                filename,
-                            ),
-                        ]
-                    )
-
-                # 找到实际存在的文件路径
-                file_path = None
-                for path in possible_paths:
-                    if os.path.exists(path):
-                        file_path = path
-                        break
-
-                if not file_path:
-                    logger.error(f"File does not exist, attempted paths: {possible_paths}")
-                    raise ValueError(f"File does not exist: {original_path}")
-
-                # 更新source中的路径为实际找到的路径
-                source.params["path"] = file_path
-
-                logger.info(f"Registering datasource: {source.id}, path: {file_path}")
-
-                # 根据文件扩展名选择合适的读取方法
-                file_extension = file_path.lower().split(".")[-1]
-
-                if file_extension in ["xlsx", "xls"]:
-                    # Excel文件处理
-                    try:
-                        con.execute("INSTALL excel;")
-                        con.execute("LOAD excel;")
-                        duckdb_query = f"SELECT * FROM read_xlsx('{file_path}') LIMIT 1"
-                        con.execute(duckdb_query).fetchdf()
-                        # 先创建临时表
-                        temp_table = f"temp_{source.id}_{int(time.time())}"
-                        con.execute(
-                            f"CREATE TABLE \"{temp_table}\" AS SELECT * FROM read_xlsx('{file_path}')"
-                        )
-
-                        # 获取列信息并转换为VARCHAR
-                        columns_info = con.execute(
-                            f'DESCRIBE "{temp_table}"'
-                        ).fetchall()
-                        cast_columns = []
-                        for col_name, col_type, *_ in columns_info:
-                            cast_columns.append(
-                                f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"'
-                            )
-
-                        cast_sql = ", ".join(cast_columns)
-
-                        # 创建最终的VARCHAR表
-                        con.execute(f'DROP TABLE IF EXISTS "{source.id}"')
-                        con.execute(
-                            f'CREATE TABLE "{source.id}" AS SELECT {cast_sql} FROM "{temp_table}"'
-                        )
-
-                        # 删除临时表
-                        con.execute(f'DROP TABLE "{temp_table}"')
-                        logger.info(f"Registered Excel table using DuckDB read_xlsx: {source.id}")
-                    except Exception as duckdb_exc:
-                        logger.warning(
-                            f"DuckDB read_xlsx failed, falling back to pandas: {duckdb_exc}"
-                        )
-                        df = pd.read_excel(file_path, dtype=str)
-                        con.register(source.id, df)
-                        logger.info(
-                            f"Registered table using pandas.read_excel: {source.id}, shape: {df.shape}"
-                        )
-
-                elif file_extension in {"csv", "json", "jsonl", "parquet", "pq"}:
-                    try:
-                        normalized_ext = (
-                            "parquet" if file_extension == "pq" else file_extension
-                        )
-                        load_file_to_duckdb(
-                            con,
-                            source.id,
-                            file_path,
-                            normalized_ext,
-                        )
-                        logger.info(
-                            "Loaded file via DuckDB native: %s -> Table %s",
-                            file_path,
-                            source.id,
-                        )
-                    except Exception as load_error:
-                        logger.error(
-                            "File %s load failed: %s", file_path, load_error, exc_info=True
-                        )
-                        raise
-                else:
-                    logger.warning(f"Unknown file type: {file_extension}, trying pandas read")
-                    try:
-                        df = pd.read_csv(file_path, dtype=str)
-                        create_varchar_table_from_dataframe(source.id, df, con)
-                        logger.info(
-                            f"Created persistent table using pandas.read_csv: {source.id}, shape: {df.shape}"
-                        )
-                    except Exception:
-                        df = pd.read_excel(file_path, dtype=str)
-                        create_varchar_table_from_dataframe(source.id, df, con)
-                        logger.info(
-                            f"Registered table using pandas.read_excel: {source.id}, shape: {df.shape}"
-                        )
-
-            elif source.type in ["mysql", "postgresql", "sqlite"]:
-                # 处理数据库数据源 - 支持三种模式：connectionId、数据源名称、直接连接参数
-                connection_id = source.params.get("connectionId")
-                datasource_name = source.params.get("datasource_name")
-
-                if connection_id:
-                    # 模式1：使用预先保存的数据库连接
-                    logger.info(
-                        f"Processing database datasource: {source.id}, connection_id: {connection_id}"
-                    )
-
-                    try:
-                        db_connection = db_manager.get_connection(connection_id)
-                        if not db_connection:
-                            raise ValueError(f"Database connection not found: {connection_id}")
-
-                        if hasattr(db_connection.params, "query"):
-                            query = db_connection.params.get(
-                                "query", "SELECT * FROM dy_order LIMIT 1000"
-                            )
-                        else:
-                            query = "SELECT * FROM dy_order LIMIT 1000"
-
-                        df = db_manager.execute_query(connection_id, query)
-                        create_varchar_table_from_dataframe(source.id, df, con)
-                        logger.info(
-                            f"Created persistent database table: {source.id}, shape: {df.shape}"
-                        )
-
-                    except Exception as db_error:
-                        logger.error(f"Failed to process database connection: {db_error}")
-                        raise ValueError(
-                            f"Database connection processing failed: {source.id}, error: {str(db_error)}"
-                        )
-
-                elif datasource_name:
-                    # 模式2：使用数据源名称（安全模式）- 从配置文件读取连接信息
-                    logger.info(
-                        f"Processing secure datasource: {source.id}, datasource_name: {datasource_name}"
-                    )
-
-                    try:
-                        # 读取MySQL配置文件
-                        mysql_config_file = os.path.join(
+                    # 标准化文件路径，支持多种路径格式
+                    possible_paths = [
+                        original_path,  # 原始路径
+                        os.path.join(
+                            "api", "temp_files", os.path.basename(original_path)
+                        ),  # api/temp_files/filename
+                        os.path.join(
                             os.path.dirname(os.path.dirname(__file__)),
-                            "config/mysql-configs.json",
-                        )
-                        if not os.path.exists(mysql_config_file):
-                            raise ValueError("MySQL config file does not exist")
+                            "temp_files",
+                            os.path.basename(original_path),
+                        ),  # 绝对路径
+                    ]
 
-                        with open(mysql_config_file, "r", encoding="utf-8") as f:
-                            configs = json.load(f)
-
-                        # 查找对应的配置
-                        mysql_config = None
-                        for config in configs:
-                            if config["id"] == datasource_name:
-                                mysql_config = config["params"]
-                                break
-
-                        if not mysql_config:
-                            raise ValueError(f"Datasource configuration not found: {datasource_name}")
-
-                        # 获取查询语句
-                        query = source.params.get(
-                            "query",
-                            mysql_config.get(
-                                "query", "SELECT * FROM dy_order LIMIT 1000"
-                            ),
+                    # 如果是相对路径，尝试不同的基础路径
+                    if original_path.startswith("temp_files/"):
+                        filename = original_path.replace("temp_files/", "")
+                        possible_paths.extend(
+                            [
+                                os.path.join("api", "temp_files", filename),
+                                os.path.join(
+                                    os.path.dirname(os.path.dirname(__file__)),
+                                    "temp_files",
+                                    filename,
+                                ),
+                            ]
                         )
 
-                        # 创建连接字符串
-                        connection_str = f"mysql+pymysql://{mysql_config['user']}:{mysql_config['password']}@{mysql_config['host']}:{mysql_config['port']}/{mysql_config['database']}?charset=utf8mb4"
+                    # 找到实际存在的文件路径
+                    file_path = None
+                    for path in possible_paths:
+                        if os.path.exists(path):
+                            file_path = path
+                            break
 
-                        # 执行查询
-                        engine = create_engine(connection_str)
-                        df = pd.read_sql(query, engine)
+                    if not file_path:
+                        logger.error(f"File does not exist, attempted paths: {possible_paths}")
+                        raise ValueError(f"File does not exist: {original_path}")
 
-                        # 注册到DuckDB
-                        con.register(source.id, df)
+                    # 更新source中的路径为实际找到的路径
+                    source.params["path"] = file_path
+
+                    logger.info(f"Registering datasource: {source.id}, path: {file_path}")
+
+                    # 根据文件扩展名选择合适的读取方法
+                    file_extension = file_path.lower().split(".")[-1]
+
+                    if file_extension in ["xlsx", "xls"]:
+                        # Excel文件处理
+                        try:
+                            con.execute("INSTALL excel;")
+                            con.execute("LOAD excel;")
+                            duckdb_query = f"SELECT * FROM read_xlsx('{file_path}') LIMIT 1"
+                            con.execute(duckdb_query).fetchdf()
+                            # 先创建临时表
+                            temp_table = f"temp_{source.id}_{int(time.time())}"
+                            con.execute(
+                                f"CREATE TABLE \"{temp_table}\" AS SELECT * FROM read_xlsx('{file_path}')"
+                            )
+
+                            # 获取列信息并转换为VARCHAR
+                            columns_info = con.execute(
+                                f'DESCRIBE "{temp_table}"'
+                            ).fetchall()
+                            cast_columns = []
+                            for col_name, col_type, *_ in columns_info:
+                                cast_columns.append(
+                                    f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"'
+                                )
+
+                            cast_sql = ", ".join(cast_columns)
+
+                            # 创建最终的VARCHAR表
+                            con.execute(f'DROP TABLE IF EXISTS "{source.id}"')
+                            con.execute(
+                                f'CREATE TABLE "{source.id}" AS SELECT {cast_sql} FROM "{temp_table}"'
+                            )
+
+                            # 删除临时表
+                            con.execute(f'DROP TABLE "{temp_table}"')
+                            logger.info(f"Registered Excel table using DuckDB read_xlsx: {source.id}")
+                        except Exception as duckdb_exc:
+                            logger.warning(
+                                f"DuckDB read_xlsx failed, falling back to pandas: {duckdb_exc}"
+                            )
+                            df = pd.read_excel(file_path, dtype=str)
+                            con.register(source.id, df)
+                            logger.info(
+                                f"Registered table using pandas.read_excel: {source.id}, shape: {df.shape}"
+                            )
+
+                    elif file_extension in {"csv", "json", "jsonl", "parquet", "pq"}:
+                        try:
+                            normalized_ext = (
+                                "parquet" if file_extension == "pq" else file_extension
+                            )
+                            load_file_to_duckdb(
+                                con,
+                                source.id,
+                                file_path,
+                                normalized_ext,
+                            )
+                            logger.info(
+                                "Loaded file via DuckDB native: %s -> Table %s",
+                                file_path,
+                                source.id,
+                            )
+                        except Exception as load_error:
+                            logger.error(
+                                "File %s load failed: %s", file_path, load_error, exc_info=True
+                            )
+                            raise
+                    else:
+                        logger.warning(f"Unknown file type: {file_extension}, trying pandas read")
+                        try:
+                            df = pd.read_csv(file_path, dtype=str)
+                            create_varchar_table_from_dataframe(source.id, df, con)
+                            logger.info(
+                                f"Created persistent table using pandas.read_csv: {source.id}, shape: {df.shape}"
+                            )
+                        except Exception:
+                            df = pd.read_excel(file_path, dtype=str)
+                            create_varchar_table_from_dataframe(source.id, df, con)
+                            logger.info(
+                                f"Registered table using pandas.read_excel: {source.id}, shape: {df.shape}"
+                            )
+
+                elif source.type in ["mysql", "postgresql", "sqlite"]:
+                    # 处理数据库数据源 - 支持三种模式：connectionId、数据源名称、直接连接参数
+                    connection_id = source.params.get("connectionId")
+                    datasource_name = source.params.get("datasource_name")
+
+                    if connection_id:
+                        # 模式1：使用预先保存的数据库连接
                         logger.info(
-                            f"Registered secure datasource table: {source.id}, shape: {df.shape}"
+                            f"Processing database datasource: {source.id}, connection_id: {connection_id}"
                         )
 
-                    except Exception as secure_db_error:
-                        logger.error(f"Failed to process secure datasource: {secure_db_error}")
-                        raise ValueError(
-                            f"Secure datasource processing failed: {source.id}, error: {str(secure_db_error)}"
-                        )
-                else:
-                    # 模式3：直接使用连接参数（兼容旧版本，但不推荐）
-                    logger.warning(f"Using direct connection parameter mode (not recommended): {source.id}")
+                        try:
+                            db_connection = db_manager.get_connection(connection_id)
+                            if not db_connection:
+                                raise ValueError(f"Database connection not found: {connection_id}")
 
-                    try:
-                        # 获取连接参数
-                        host = source.params.get("host", "localhost")
-                        port = source.params.get(
-                            "port", 3306 if source.type == "mysql" else 5432
-                        )
-                        user = source.params.get("user", "")
-                        password = source.params.get("password", "")
-                        database = source.params.get("database", "")
-                        query = source.params.get("query", "SELECT 1 as test")
+                            if hasattr(db_connection.params, "query"):
+                                query = db_connection.params.get(
+                                    "query", "SELECT * FROM dy_order LIMIT 1000"
+                                )
+                            else:
+                                query = "SELECT * FROM dy_order LIMIT 1000"
 
-                        if not all([host, user, database, query]):
-                            raise ValueError(f"Incomplete database connection parameters: {source.id}")
+                            df = db_manager.execute_query(connection_id, query)
+                            create_varchar_table_from_dataframe(source.id, df, con)
+                            logger.info(
+                                f"Created persistent database table: {source.id}, shape: {df.shape}"
+                            )
 
-                        # 创建连接字符串
-                        if source.type == "mysql":
-                            connection_str = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}?charset=utf8mb4"
-                        elif source.type == "postgresql":
-                            connection_str = f"postgresql://{user}:{password}@{host}:{port}/{database}"
-                        elif source.type == "sqlite":
-                            connection_str = f"sqlite:///{database}"
-                        else:
-                            raise ValueError(f"Unsupported database type: {source.type}")
+                        except Exception as db_error:
+                            logger.error(f"Failed to process database connection: {db_error}")
+                            raise ValueError(
+                                f"Database connection processing failed: {source.id}, error: {str(db_error)}"
+                            )
 
-                        # 创建引擎并执行查询
-                        engine = create_engine(connection_str)
-                        df = pd.read_sql(query, engine)
-
-                        # 创建持久化表到DuckDB
-                        create_varchar_table_from_dataframe(source.id, df, con)
+                    elif datasource_name:
+                        # 模式2：使用数据源名称（安全模式）- 从配置文件读取连接信息
                         logger.info(
-                            f"Created persistent direct connection database table: {source.id}, shape: {df.shape}"
+                            f"Processing secure datasource: {source.id}, datasource_name: {datasource_name}"
                         )
 
-                    except Exception as direct_db_error:
-                        logger.error(f"Failed to connect to database directly: {direct_db_error}")
-                        raise ValueError(
-                            f"Direct database connection failed: {source.id}, error: {str(direct_db_error)}"
+                        try:
+                            # 读取MySQL配置文件
+                            mysql_config_file = os.path.join(
+                                os.path.dirname(os.path.dirname(__file__)),
+                                "config/mysql-configs.json",
+                            )
+                            if not os.path.exists(mysql_config_file):
+                                raise ValueError("MySQL config file does not exist")
+
+                            with open(mysql_config_file, "r", encoding="utf-8") as f:
+                                configs = json.load(f)
+
+                            # 查找对应的配置
+                            mysql_config = None
+                            for config in configs:
+                                if config["id"] == datasource_name:
+                                    mysql_config = config["params"]
+                                    break
+
+                            if not mysql_config:
+                                raise ValueError(f"Datasource configuration not found: {datasource_name}")
+
+                            # 获取查询语句
+                            query = source.params.get(
+                                "query",
+                                mysql_config.get(
+                                    "query", "SELECT * FROM dy_order LIMIT 1000"
+                                ),
+                            )
+
+                            # 创建连接字符串
+                            connection_str = f"mysql+pymysql://{mysql_config['user']}:{mysql_config['password']}@{mysql_config['host']}:{mysql_config['port']}/{mysql_config['database']}?charset=utf8mb4"
+
+                            # 执行查询
+                            engine = create_engine(connection_str)
+                            df = pd.read_sql(query, engine)
+
+                            # 注册到DuckDB
+                            con.register(source.id, df)
+                            logger.info(
+                                f"Registered secure datasource table: {source.id}, shape: {df.shape}"
+                            )
+
+                        except Exception as secure_db_error:
+                            logger.error(f"Failed to process secure datasource: {secure_db_error}")
+                            raise ValueError(
+                                f"Secure datasource processing failed: {source.id}, error: {str(secure_db_error)}"
+                            )
+                    else:
+                        # 模式3：直接使用连接参数（兼容旧版本，但不推荐）
+                        logger.warning(f"Using direct connection parameter mode (not recommended): {source.id}")
+
+                        try:
+                            # 获取连接参数
+                            host = source.params.get("host", "localhost")
+                            port = source.params.get(
+                                "port", 3306 if source.type == "mysql" else 5432
+                            )
+                            user = source.params.get("user", "")
+                            password = source.params.get("password", "")
+                            database = source.params.get("database", "")
+                            query = source.params.get("query", "SELECT 1 as test")
+
+                            if not all([host, user, database, query]):
+                                raise ValueError(f"Incomplete database connection parameters: {source.id}")
+
+                            # 创建连接字符串
+                            if source.type == "mysql":
+                                connection_str = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}?charset=utf8mb4"
+                            elif source.type == "postgresql":
+                                connection_str = f"postgresql://{user}:{password}@{host}:{port}/{database}"
+                            elif source.type == "sqlite":
+                                connection_str = f"sqlite:///{database}"
+                            else:
+                                raise ValueError(f"Unsupported database type: {source.type}")
+
+                            # 创建引擎并执行查询
+                            engine = create_engine(connection_str)
+                            df = pd.read_sql(query, engine)
+
+                            # 创建持久化表到DuckDB
+                            create_varchar_table_from_dataframe(source.id, df, con)
+                            logger.info(
+                                f"Created persistent direct connection database table: {source.id}, shape: {df.shape}"
+                            )
+
+                        except Exception as direct_db_error:
+                            logger.error(f"Failed to connect to database directly: {direct_db_error}")
+                            raise ValueError(
+                                f"Direct database connection failed: {source.id}, error: {str(direct_db_error)}"
+                            )
+
+            # 获取当前可用的表
+            available_tables = con.execute("SHOW TABLES").fetchdf()
+            available_table_names = (
+                available_tables["name"].tolist() if not available_tables.empty else []
+            )
+            logger.info(f"Current tables in DuckDB: {available_tables.to_string()}")
+
+            # 构建查询 - 确保表名使用双引号括起来
+            if len(query_request.joins) > 0:
+                # 多表JOIN查询 - 使用改进的多表JOIN支持
+                query = build_multi_table_join_query(query_request, con)
+            else:
+                # Single table query - 使用build_single_table_query来处理表名
+                query = build_single_table_query(query_request)
+
+                # 验证表是否存在（从查询中提取实际表名）
+
+                table_match = re.search(r'FROM "([^"]+)"', query)
+                if table_match:
+                    actual_table_name = table_match.group(1)
+                    if actual_table_name not in available_table_names:
+                        logger.error(
+                            "Table '%s' does not exist. Available: %s",
+                            actual_table_name,
+                            ", ".join(available_table_names),
                         )
+                        raise ResourceNotFoundError("Table", actual_table_name)
 
-        # 获取当前可用的表
-        available_tables = con.execute("SHOW TABLES").fetchdf()
-        available_table_names = (
-            available_tables["name"].tolist() if not available_tables.empty else []
-        )
-        logger.info(f"Current tables in DuckDB: {available_tables.to_string()}")
+            # 根据is_preview标志决定是否添加LIMIT
+            if query_request.is_preview:
+                from core.common.config_manager import config_manager
 
-        # 构建查询 - 确保表名使用双引号括起来
-        if len(query_request.joins) > 0:
-            # 多表JOIN查询 - 使用改进的多表JOIN支持
-            query = build_multi_table_join_query(query_request, con)
-        else:
-            # Single table query - 使用build_single_table_query来处理表名
-            query = build_single_table_query(query_request)
+                limit = config_manager.get_app_config().max_query_rows
+                query = ensure_query_has_limit(query, limit)
+                logger.info(f"Preview mode, applied LIMIT {limit}")
 
-            # 验证表是否存在（从查询中提取实际表名）
+            logger.info(f"Executing query: {query}")
 
-            table_match = re.search(r'FROM "([^"]+)"', query)
-            if table_match:
-                actual_table_name = table_match.group(1)
-                if actual_table_name not in available_table_names:
-                    logger.error(
-                        "Table '%s' does not exist. Available: %s",
-                        actual_table_name,
-                        ", ".join(available_table_names),
-                    )
-                    raise ResourceNotFoundError("Table", actual_table_name)
+            # 执行查询
+            result_df = execute_query(query, con)
+            logger.info(f"Query completed, result shape: {result_df.shape}")
 
-        # 根据is_preview标志决定是否添加LIMIT
-        if query_request.is_preview:
-            from core.common.config_manager import config_manager
+            data_records = normalize_dataframe_output(result_df)
+            columns_list = [str(col) for col in result_df.columns.tolist()]
 
-            limit = config_manager.get_app_config().max_query_rows
-            query = ensure_query_has_limit(query, limit)
-            logger.info(f"Preview mode, applied LIMIT {limit}")
+            return create_success_response(
+                data={
+                    "data": data_records,
+                    "columns": columns_list,
+                    "index": result_df.index.tolist(),
+                    "sql": query,
+                    "row_count": len(data_records),
+                },
+                message_code=MessageCode.QUERY_SUCCESS,
+            )
+        except BaseAPIException:
+            raise
+        except Exception as e:
+            error_message = str(e)
+            logger.error("Query failed: %s", error_message)
+            logger.error("Stack trace: %s", traceback.format_exc())
 
-        logger.info(f"Executing query: {query}")
+            from core.common.error_codes import analyze_error_type, get_http_status_code
 
-        # 执行查询
-        result_df = execute_query(query, con)
-        logger.info(f"Query completed, result shape: {result_df.shape}")
+            error_code = analyze_error_type(error_message)
+            status_code = get_http_status_code(error_code)
 
-        data_records = normalize_dataframe_output(result_df)
-        columns_list = [str(col) for col in result_df.columns.tolist()]
-
-        return create_success_response(
-            data={
-                "data": data_records,
-                "columns": columns_list,
-                "index": result_df.index.tolist(),
-                "sql": query,
-                "row_count": len(data_records),
-            },
-            message_code=MessageCode.QUERY_SUCCESS,
-        )
-    except BaseAPIException:
-        raise
-    except Exception as e:
-        error_message = str(e)
-        logger.error("Query failed: %s", error_message)
-        logger.error("Stack trace: %s", traceback.format_exc())
-
-        from core.common.error_codes import analyze_error_type, get_http_status_code
-
-        error_code = analyze_error_type(error_message)
-        status_code = get_http_status_code(error_code)
-
-        return error_json_response(
-            status_code=status_code,
-            code=error_code,
-            message=error_message,
-            details={"sql": getattr(query_request, "sql", None)},
-        )
+            return error_json_response(
+                status_code=status_code,
+                code=error_code,
+                message=error_message,
+                details={"sql": getattr(query_request, "sql", None)},
+            )
 
 
 @router.post("/api/save_query_to_duckdb", tags=["Query"])
@@ -873,25 +871,25 @@ async def save_query_to_duckdb(request: dict = Body(...)):
         else:
             # 处理DuckDB内部查询
             try:
-                con = get_db_connection()
+                with with_duckdb_connection() as con:
 
-                # 智能清理SQL：移除系统自动添加的LIMIT，保留所有用户条件和逻辑
-                clean_sql = sql_query.strip()
-                logger.info(f"Original SQL: {clean_sql}")
+                    # 智能清理SQL：移除系统自动添加的LIMIT，保留所有用户条件和逻辑
+                    clean_sql = sql_query.strip()
+                    logger.info(f"Original SQL: {clean_sql}")
 
-                # 智能检测并移除系统自动添加的LIMIT（保留用户原始LIMIT和所有WHERE/JOIN/ORDER BY等条件）
-                clean_sql = remove_auto_added_limit(clean_sql)
+                    # 智能检测并移除系统自动添加的LIMIT（保留用户原始LIMIT和所有WHERE/JOIN/ORDER BY等条件）
+                    clean_sql = remove_auto_added_limit(clean_sql)
 
-                if clean_sql != sql_query.strip():
-                    logger.info(
-                        f"DuckDB query removed auto-added LIMIT, kept all user conditions: {clean_sql}"
-                    )
-                else:
-                    logger.info(f"SQL needs no cleaning or contains user original LIMIT: {clean_sql}")
+                    if clean_sql != sql_query.strip():
+                        logger.info(
+                            f"DuckDB query removed auto-added LIMIT, kept all user conditions: {clean_sql}"
+                        )
+                    else:
+                        logger.info(f"SQL needs no cleaning or contains user original LIMIT: {clean_sql}")
 
-                logger.info(f"Executing complete query in DuckDB: {clean_sql}")
-                result_df = execute_query(clean_sql, con)
-                logger.info(f"DuckDB query execution completed, result shape: {result_df.shape}")
+                    logger.info(f"Executing complete query in DuckDB: {clean_sql}")
+                    result_df = execute_query(clean_sql, con)
+                    logger.info(f"DuckDB query execution completed, result shape: {result_df.shape}")
 
             except Exception as duckdb_error:
                 logger.error(f"DuckDB query failed: {str(duckdb_error)}")
@@ -906,94 +904,93 @@ async def save_query_to_duckdb(request: dict = Body(...)):
         if result_df is None or result_df.empty:
             raise APIValidationError("Query result is empty, cannot save")
 
-        # 获取DuckDB连接并创建持久化表
-        try:
-            con = get_db_connection()
-
-            # 检查表名是否already exists
-            existing_tables = con.execute("SHOW TABLES").fetchdf()
-            existing_table_names = (
-                existing_tables["name"].tolist() if not existing_tables.empty else []
-            )
-
-            if table_alias in existing_table_names:
-                logger.warning(f"Table {table_alias} already exists, will be overwritten")
-                con.execute(f'DROP TABLE IF EXISTS "{table_alias}"')
-
-            # 使用改进的函数创建表
-            success = create_varchar_table_from_dataframe(table_alias, result_df, con)
-
-            if not success:
-                raise Exception("Failed to persist query result to DuckDB")
-
-            logger.info(f"Data has been persisted to DuckDB table: {table_alias}")
-
-            # 验证表是否成功创建
+        with with_duckdb_connection() as con:
             try:
-                verification_result = con.execute(
-                    f'SELECT COUNT(*) as count FROM "{table_alias}"'
-                ).fetchdf()
-                actual_count = verification_result.iloc[0]["count"]
-                logger.info(f"Table {table_alias} verification successful, rows: {actual_count}")
-            except Exception as verify_error:
-                logger.warning(f"Table verification failed: {str(verify_error)}")
+                existing_tables = con.execute("SHOW TABLES").fetchdf()
+                existing_table_names = (
+                    existing_tables["name"].tolist() if not existing_tables.empty else []
+                )
 
-            # 使用统一的时区配置
-            try:
-                from core.common.timezone_utils import get_current_time_iso
-                from core.data.file_datasource_manager import file_datasource_manager
+                if table_alias in existing_table_names:
+                    logger.warning(f"Table {table_alias} already exists, will be overwritten")
+                    con.execute(f'DROP TABLE IF EXISTS "{table_alias}"')
 
-                file_info = {
-                    "source_id": table_alias,
-                    "filename": f"{table_alias}_query_result",
-                    "file_path": f"query_result_{table_alias}",  # 虚拟路径，实际数据在DuckDB中
-                    "file_type": "duckdb_table",
-                    "created_at": get_current_time_iso(),  # 使用统一的时区配置
-                    "columns": result_df.columns.tolist(),
-                    "row_count": len(result_df),
-                    "column_count": len(result_df.columns),
-                    "source_sql": sql_query,
-                    "source_datasource": datasource_id,
-                }
+                success = create_varchar_table_from_dataframe(table_alias, result_df, con)
 
-                # 保存到文件数据源管理器
-                file_datasource_manager.save_file_datasource(file_info)
-                logger.info(f"Created file datasource configuration for query result table: {table_alias}")
+                if not success:
+                    raise Exception("Failed to persist query result to DuckDB")
 
-            except Exception as config_error:
-                logger.warning(f"Failed to create file datasource configuration: {str(config_error)}")
+                logger.info(f"Data has been persisted to DuckDB table: {table_alias}")
 
-            return create_success_response(
-                data={
-                    "table_alias": table_alias,
-                    "row_count": len(result_df),
-                    "columns": result_df.columns.tolist(),
-                    "source_sql": sql_query,
-                    "source_datasource": datasource_id,
-                    "created_at": get_current_time_iso(),
-                    "datasource": {
-                        "id": table_alias,
-                        "name": table_alias,
-                        "type": "duckdb",
-                        "table_name": table_alias,
+                try:
+                    verification_result = con.execute(
+                        f'SELECT COUNT(*) as count FROM "{table_alias}"'
+                    ).fetchdf()
+                    actual_count = verification_result.iloc[0]["count"]
+                    logger.info(
+                        f"Table {table_alias} verification successful, rows: {actual_count}"
+                    )
+                except Exception as verify_error:
+                    logger.warning(f"Table verification failed: {str(verify_error)}")
+
+                try:
+                    from core.common.timezone_utils import get_current_time_iso
+                    from core.data.file_datasource_manager import file_datasource_manager
+
+                    file_info = {
+                        "source_id": table_alias,
+                        "filename": f"{table_alias}_query_result",
+                        "file_path": f"query_result_{table_alias}",
+                        "file_type": "duckdb_table",
+                        "created_at": get_current_time_iso(),
+                        "columns": result_df.columns.tolist(),
                         "row_count": len(result_df),
                         "column_count": len(result_df.columns),
-                        "created_at": get_current_time_iso(),
-                        "updated_at": get_current_time_iso(),
-                    },
-                },
-                message_code=MessageCode.TABLE_CREATED,
-                message=f"Query result has been saved as DuckDB table: {table_alias}",
-            )
+                        "source_sql": sql_query,
+                        "source_datasource": datasource_id,
+                    }
 
-        except Exception as duckdb_error:
-            logger.error(f"DuckDB operation failed: {str(duckdb_error)}")
-            return error_json_response(
-                500,
-                MessageCode.OPERATION_FAILED,
-                f"DuckDB operation failed: {str(duckdb_error)}",
-                details={"table_alias": table_alias},
-            )
+                    file_datasource_manager.save_file_datasource(file_info)
+                    logger.info(
+                        f"Created file datasource configuration for query result table: {table_alias}"
+                    )
+
+                except Exception as config_error:
+                    logger.warning(
+                        f"Failed to create file datasource configuration: {str(config_error)}"
+                    )
+
+                return create_success_response(
+                    data={
+                        "table_alias": table_alias,
+                        "row_count": len(result_df),
+                        "columns": result_df.columns.tolist(),
+                        "source_sql": sql_query,
+                        "source_datasource": datasource_id,
+                        "created_at": get_current_time_iso(),
+                        "datasource": {
+                            "id": table_alias,
+                            "name": table_alias,
+                            "type": "duckdb",
+                            "table_name": table_alias,
+                            "row_count": len(result_df),
+                            "column_count": len(result_df.columns),
+                            "created_at": get_current_time_iso(),
+                            "updated_at": get_current_time_iso(),
+                        },
+                    },
+                    message_code=MessageCode.TABLE_CREATED,
+                    message=f"Query result has been saved as DuckDB table: {table_alias}",
+                )
+
+            except Exception as duckdb_error:
+                logger.error(f"DuckDB operation failed: {str(duckdb_error)}")
+                return error_json_response(
+                    500,
+                    MessageCode.OPERATION_FAILED,
+                    f"DuckDB operation failed: {str(duckdb_error)}",
+                    details={"table_alias": table_alias},
+                )
 
     except BaseAPIException:
         raise

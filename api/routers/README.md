@@ -45,8 +45,8 @@
 
 | 文件 | 职责 |
 |------|------|
-| `join_query.py` | 多表 JOIN 构建、`/api/query`、`save_query_to_duckdb` |
-| `duckdb_query.py` | DuckDB/联邦执行、表元数据、连接池 |
+| `join_query.py` | 多表 JOIN 构建、`/api/query`、`save_query_to_duckdb`（`with_duckdb_connection`） |
+| `duckdb_query.py` | DuckDB/联邦执行、表元数据（部分仍 `get_db_connection`） |
 
 合并会导致单文件过大；执行与 JOIN 构建分文件便于评审与测试。
 

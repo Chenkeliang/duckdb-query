@@ -168,7 +168,7 @@ flowchart TB
 
 | 规则 | 现状 |
 |------|------|
-| `with_duckdb_connection()` | `duckdb_query.py` 新路径遵守；**`join_query.py` 仍有部分 `get_db_connection()`** |
+| `with_duckdb_connection()` | `join_query.py` 已迁移；**`duckdb_query.py` 仍有多处 `get_db_connection()`** |
 | 统一响应 | `duckdb_query.py` 部分错误仍 `JSONResponse` |
 | 时区 | 新代码多用 `timezone_utils`；旧路由需逐文件核对 |
 
@@ -178,7 +178,7 @@ flowchart TB
 
 | 项 | 说明 |
 |----|------|
-| `hooks/README.md` | 仍示例裸 `fetch('/api/duckdb_tables')`，违反 AGENTS |
+| `hooks/README.md` | ✅ 示例已改为 `useDuckDBTables` / `/api/duckdb/tables` |
 | QueryKey | `['schemas', id]` 等与 kebab 规范混用 |
 | 结果表格 | `AGGridWrapper` + `DataGrid` 双栈，AG Grid 待移除 |
 | `as any` | `QueryWorkspace`、`ContextMenu` 等仍有 |
@@ -219,7 +219,7 @@ flowchart TB
 1. 去掉 `TableSource.external` 兜底，仅 `federated` + `duckdb`。
 2. Set 运算是否走后端 `set-operations`（减少 SQL 生成重复）。
 3. Visual 查询支持联邦表或明确「仅 DuckDB」产品文案。
-4. `join_query.py` 连接与响应格式迁移。
+4. `duckdb_query.py` 连接池迁移（`join_query.py` 已完成）。
 
 ---
 
