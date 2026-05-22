@@ -26,14 +26,20 @@ from core.database.duckdb_engine import (
     get_db_connection,
 )
 from core.services.task_manager import TaskStatus, task_manager
-from fastapi import APIRouter, BackgroundTasks, Body, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Body
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
+from core.common.exceptions import (
+    BaseAPIException,
+    ResourceNotFoundError,
+    ValidationError as APIValidationError,
+)
 from utils.response_helpers import (
     MessageCode,
     create_error_response,
     create_list_response,
     create_success_response,
+    error_json_response,
 )
 
 # 配置日志
@@ -62,7 +68,7 @@ def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) 
         attach_databases: 需要 ATTACH 的外部数据库列表
 
     Raises:
-        HTTPException: 当验证失败时抛出 400 错误
+        APIValidationError: 当验证失败时
 
     Note:
         空数组视为普通查询（非联邦查询），不会抛出错误
@@ -78,36 +84,24 @@ def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) 
     for db in attach_databases:
         # 验证 alias 不为空
         if not db.alias or not db.alias.strip():
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": "VALIDATION_ERROR",
-                    "message": "Database alias cannot be empty",
-                    "field": "attach_databases.alias",
-                },
+            raise APIValidationError(
+                "Database alias cannot be empty",
+                details={"field": "attach_databases.alias"},
             )
 
         # 验证 connection_id 不为空
         if not db.connection_id or not db.connection_id.strip():
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": "VALIDATION_ERROR",
-                    "message": "Connection ID cannot be empty",
-                    "field": "attach_databases.connection_id",
-                },
+            raise APIValidationError(
+                "Connection ID cannot be empty",
+                details={"field": "attach_databases.connection_id"},
             )
 
         # 验证别名不重复
         alias = db.alias.strip()
         if alias in aliases:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": "VALIDATION_ERROR",
-                    "message": f"Duplicate database alias: {alias}",
-                    "field": "attach_databases.alias",
-                },
+            raise APIValidationError(
+                f"Duplicate database alias: {alias}",
+                details={"field": "attach_databases.alias", "alias": alias},
             )
         aliases.add(alias)
 
@@ -345,13 +339,9 @@ async def submit_async_query(
     """
     try:
         if not request.sql.strip():
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": "VALIDATION_ERROR",
-                    "message": "SQL query cannot be empty",
-                    "field": "sql",
-                },
+            raise APIValidationError(
+                "SQL query cannot be empty",
+                details={"field": "sql"},
             )
 
         attach_list, is_federated = resolve_attach_databases_for_async(
@@ -411,11 +401,15 @@ async def submit_async_query(
             message_code=MessageCode.TASK_SUBMITTED,
         )
 
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Failed to submit async query task: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to submit task: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to submit task: {str(e)}",
+        )
 
 
 @router.get("/api/async-tasks", tags=["Async Tasks"])
@@ -444,7 +438,11 @@ async def list_async_tasks(
         )
     except Exception as e:
         logger.error(f"Failed to get async task list: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get task list: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to get task list: {str(e)}",
+        )
 
 
 @router.get(
@@ -458,7 +456,7 @@ async def get_async_task(task_id: str):
     try:
         task = task_manager.get_task(task_id)
         if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise ResourceNotFoundError("Task", task_id)
 
         # 解析任务查询中的格式信息
         import json
@@ -476,11 +474,16 @@ async def get_async_task(task_id: str):
             data={"task": task_dict},
             message_code=MessageCode.TASK_RETRIEVED,
         )
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Failed to get async task detail: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch task detail: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to fetch task detail: {str(e)}",
+            details={"task_id": task_id},
+        )
 
 
 @router.post(
@@ -499,22 +502,32 @@ async def cancel_async_task(task_id: str, request: CancelTaskRequest):
             # 检查任务是否存在
             task = task_manager.get_task(task_id)
             if not task:
-                raise HTTPException(status_code=404, detail="Task not found")
+                raise ResourceNotFoundError("Task", task_id)
             # 任务存在但状态不允许取消（已完成或已失败）
-            raise HTTPException(
+            raise BaseAPIException(
+                message=(
+                    f"Task status does not allow cancellation. "
+                    f"Current status: {task.status.value}"
+                ),
                 status_code=400,
-                detail=f"Task status does not allow cancellation. Current status: {task.status.value}",
+                error_code=MessageCode.TASK_CANCEL_NOT_ALLOWED.value,
+                details={"task_id": task_id, "status": task.status.value},
             )
         return create_success_response(
             data={"task_id": task_id},
             message_code=MessageCode.TASK_CANCELLED,
             message="Cancellation request submitted",
         )
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Failed to cancel task {task_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to cancel task: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to cancel task: {str(e)}",
+            details={"task_id": task_id},
+        )
 
 
 def _extract_task_payload(task) -> Dict[str, Any]:
@@ -582,15 +595,16 @@ async def retry_async_task(
     try:
         task = task_manager.get_task(task_id)
         if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise ResourceNotFoundError("Task", task_id)
 
         payload = _extract_task_payload(task)
         logger.info(f"Retrying task {task_id}, extracted payload: {payload}")
 
         sql = (request.override_sql or payload.get("sql") or "").strip()
         if not sql:
-            raise HTTPException(
-                status_code=400, detail="Original task missing SQL, cannot retry"
+            raise APIValidationError(
+                "Original task missing SQL, cannot retry",
+                details={"task_id": task_id, "field": "sql"},
             )
 
         task_type = payload.get("task_type", "query")
@@ -659,12 +673,17 @@ async def retry_async_task(
             message_code=MessageCode.TASK_RETRY_SUCCESS,
             message="Task has been resubmitted",
         )
-    except HTTPException:
+    except BaseAPIException:
         raise
     except Exception as e:
         logger.error(f"Failed to retry task {task_id}: {str(e)}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Failed to retry task: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to retry task: {str(e)}",
+            details={"task_id": task_id},
+        )
 
 
 @router.post("/api/async-tasks/cleanup-stuck", tags=["Async Tasks"])
@@ -681,7 +700,11 @@ async def cleanup_stuck_tasks():
         )
     except Exception as e:
         logger.error(f"Failed to clean stuck tasks: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Cleanup failed: {str(e)}",
+        )
 
 
 @router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
@@ -695,9 +718,9 @@ async def generate_and_download_file(task_id: str, request: dict = Body(...)):
 
         # 验证格式参数
         if format not in ["csv", "parquet"]:
-            raise HTTPException(
-                status_code=400,
-                detail="Unsupported format, only csv and parquet are allowed",
+            raise APIValidationError(
+                "Unsupported format, only csv and parquet are allowed",
+                details={"field": "format", "allowed": ["csv", "parquet"]},
             )
 
         # 生成下载文件
@@ -705,7 +728,7 @@ async def generate_and_download_file(task_id: str, request: dict = Body(...)):
 
         # 检查文件是否存在
         if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="Generated file not found")
+            raise ResourceNotFoundError("Generated file", task_id)
 
         # 确定文件名和媒体类型
         file_name = os.path.basename(file_path)
@@ -718,12 +741,24 @@ async def generate_and_download_file(task_id: str, request: dict = Body(...)):
             filename=file_name,
         )
 
+    except BaseAPIException:
+        raise
     except ValueError as e:
         logger.warning(f"Failed to generate download file: {task_id}, error: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        return error_json_response(
+            400,
+            MessageCode.VALIDATION_ERROR,
+            str(e),
+            details={"task_id": task_id},
+        )
     except Exception as e:
         logger.error(f"Failed to generate download file: {task_id}, error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate download file: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to generate download file: {str(e)}",
+            details={"task_id": task_id},
+        )
 
 
 def execute_async_query(

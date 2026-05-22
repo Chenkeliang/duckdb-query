@@ -111,11 +111,11 @@
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
 | GET | `/api/async-tasks` | **列表** | `listAsyncTasks`（`limit`, `offset`, `order_by`） |
-| GET | `/api/async-tasks/{id}` | 对象 | `getAsyncTask` |
-| POST | `/api/async-tasks` | 对象 | `submitAsyncQuery`（`task_id`；可 `attach_databases` 或由 `datasource` 推导） |
-| POST | `/api/async-tasks/{id}/cancel` | 对象 | `cancelAsyncTask` |
-| POST | `/api/async-tasks/{id}/retry` | 对象 | `retryAsyncTask` |
-| POST | `/api/async-tasks/{id}/download` | **blob** | `downloadAsyncResult`（体：`format`） |
+| GET | `/api/async-tasks/{id}` | 对象 | `getAsyncTask`；404 `RESOURCE_NOT_FOUND` |
+| POST | `/api/async-tasks` | 对象 | `submitAsyncQuery`（`task_id`；可 `attach_databases` 或由 `datasource` 推导）；400 空 SQL / attach 校验 |
+| POST | `/api/async-tasks/{id}/cancel` | 对象 | `cancelAsyncTask`；404 任务不存在；400 `TASK_CANCEL_NOT_ALLOWED` |
+| POST | `/api/async-tasks/{id}/retry` | 对象 | `retryAsyncTask`；404 / 400 缺 SQL |
+| POST | `/api/async-tasks/{id}/download` | **blob** 或 JSON 错误体 | `downloadAsyncResult`（体：`format`）；400 格式；404 文件 |
 | GET | `/api/errors/statistics` | 对象 | `getErrorStatistics` |
 | POST | `/api/errors/clear` | 对象 | `clearOldErrors`（query: `days`） |
 

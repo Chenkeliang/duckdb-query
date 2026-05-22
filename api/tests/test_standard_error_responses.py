@@ -76,6 +76,45 @@ def test_save_query_to_duckdb_missing_table_alias_standard_error():
     assert "detail" not in body
 
 
+def test_async_task_empty_sql_standard_error():
+    """POST /api/async-tasks 空 SQL 须返回标准 VALIDATION_ERROR。"""
+    response = client.post("/api/async-tasks", json={"sql": "   "})
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert "detail" not in body
+
+
+def test_async_task_not_found_standard_error():
+    """GET /api/async-tasks/{id} 不存在任务须 RESOURCE_NOT_FOUND。"""
+    response = client.get("/api/async-tasks/nonexistent-task-id-xyz")
+    assert response.status_code == 404
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "RESOURCE_NOT_FOUND"
+    assert "detail" not in body
+
+
+def test_async_task_duplicate_attach_alias_standard_error():
+    """联邦 attach 重复 alias 须 VALIDATION_ERROR。"""
+    response = client.post(
+        "/api/async-tasks",
+        json={
+            "sql": "SELECT 1",
+            "attach_databases": [
+                {"alias": "db1", "connection_id": "conn_a"},
+                {"alias": "db1", "connection_id": "conn_b"},
+            ],
+        },
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert "detail" not in body
+
+
 def test_execute_sql_missing_datasource_id_standard_error():
     """execute_sql 外部库缺 datasource id 须返回标准 VALIDATION_ERROR。"""
     response = client.post(
