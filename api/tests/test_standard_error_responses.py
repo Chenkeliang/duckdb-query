@@ -287,15 +287,9 @@ def test_url_info_unreachable_standard_error():
     assert "detail" not in body
 
 
-def test_execute_sql_missing_datasource_id_standard_error():
-    """execute_sql 外部库缺 datasource id 须返回标准 VALIDATION_ERROR。"""
-    response = client.post(
-        "/api/execute_sql",
-        json={
-            "sql": "SELECT 1",
-            "datasource": {"type": "mysql"},
-        },
-    )
+def test_duckdb_execute_empty_sql_standard_error():
+    """POST /api/duckdb/execute 空 SQL 须返回标准 VALIDATION_ERROR。"""
+    response = client.post("/api/duckdb/execute", json={"sql": "   "})
     assert response.status_code == 400
     body = response.json()
     assert body["success"] is False

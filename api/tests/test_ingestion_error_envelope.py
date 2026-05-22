@@ -69,7 +69,7 @@ def test_upload_invalid_import_mode_standard_envelope():
 
 def test_database_tables_unknown_connection_envelope():
     missing_id = f"db_{uuid.uuid4().hex}"
-    response = client.get(f"/api/database_tables/{missing_id}")
+    response = client.get(f"/api/datasources/databases/{missing_id}/tables")
     assert response.status_code == 404
     body = response.json()
     assert body["success"] is False

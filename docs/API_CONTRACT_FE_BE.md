@@ -73,9 +73,6 @@
 | GET | `/api/datasources/databases/{id}/schemas/{schema}/tables` | **列表** | `listSchemaTablesForConnection` |
 | GET | `/api/datasources/databases/{id}/tables` | 对象 | `tables[]`（非 `items`） | `listConnectionTablesFlat`（**前端已用**） |
 | GET | `/api/datasources/databases/{id}/tables/detail` | 对象 | `table_name`, `columns`, `indexes?`, `table_comment?` | `getExternalTableDetail`；`ContextMenu` / `useTableColumns` |
-| GET | `/api/databases/{id}/schemas` 等 | — | **deprecated** 别名，同 canonical | 无前端引用 |
-| GET | `/api/database_tables/{id}` | — | **deprecated** 别名 | 无前端引用 |
-| GET | `/api/database_table_details/{id}/{table}` | — | **deprecated** 别名 | 无前端引用（`getExternalDatabaseTableDetails` 已转调 canonical） |
 
 ## 4. 数据源连接（`dataSourceApi.ts`）
 
@@ -168,13 +165,18 @@
 
 执行时前端在 generate 返回的 SQL 后追加 `LIMIT`（与 `maxQueryRows` 一致）；**preview** 端点 LIMIT 由后端 `max_query_rows` 控制，结果写入结果面板。
 
-## 10. 已废弃 / 无前端引用
+## 10. 已移除的历史端点（勿再使用）
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/execute_sql` | **deprecated**；纯 DuckDB SQL 请求代理到 `POST /api/duckdb/execute`；其余场景请用 §2 |
-| GET | `/api/duckdb_tables` | **deprecated**；委托 `GET /api/duckdb/tables` |
-| DELETE | `/api/duckdb_tables/{name}` | **deprecated**；委托 `DELETE /api/duckdb/tables/{name}` |
+以下路径已从后端删除；请用 §2 / §3 canonical 路径替代：
+
+| 原路径 | 替代 |
+|--------|------|
+| `POST /api/execute_sql` | `POST /api/duckdb/execute` 或 `POST /api/duckdb/federated-query` |
+| `GET /api/duckdb_tables` | `GET /api/duckdb/tables` |
+| `DELETE /api/duckdb_tables/{name}` | `DELETE /api/duckdb/tables/{name}` |
+| `GET /api/database_tables/{id}` | `GET /api/datasources/databases/{id}/tables` |
+| `GET /api/database_table_details/{id}/{table}` | `GET /api/datasources/databases/{id}/tables/detail` |
+| `GET /api/databases/{id}/schemas` | `GET /api/datasources/databases/{id}/schemas` |
 
 ## 11. 易混字段说明
 

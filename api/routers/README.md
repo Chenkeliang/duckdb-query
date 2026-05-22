@@ -15,18 +15,15 @@
 | 文件 | 主要端点 | 前端 API |
 |------|----------|----------|
 | `duckdb_query.py` | `/api/duckdb/execute`、`/federated-query`、`/tables/*` | `queryApi.ts`、`tableApi.ts` |
-| `query.py` | `/api/query`（JOIN）、`/api/save_query_to_duckdb`；**deprecated** `/api/execute_sql` | JOIN 工作台、`saveQueryToDuckDB` |
+| `query.py` | `/api/query`（JOIN）、`/api/save_query_to_duckdb` | JOIN 工作台、`saveQueryToDuckDB` |
 | `visual_query.py` | `/api/visual-query/*` | `visualQueryApi.ts` |
 | `set_operations.py` | `/api/set-operations/*` | `setOperationsApi.ts` |
 | `query_cancel.py` | `/api/query/cancel/{id}` | `cancelSyncQuery` |
 | `query_sql_utils.py` | （无路由，共享 SQL 工具） | — |
 
-## 外部库元数据（canonical + legacy 别名）
+## 外部库元数据
 
-`database_tables.py`：
-
-- **Canonical（前端 `databaseSchemasApi` / `tableApi` 已统一）**：`/api/datasources/databases/{id}/tables|schemas|.../tables/detail`
-- **Legacy**：`/api/database_tables/{id}`、`/api/databases/{id}/schemas`、`/api/database_table_details/...` — 均 `deprecated=True`，实现委托同一函数，仅供旧客户端/单测
+`database_tables.py` 仅注册 canonical：`/api/datasources/databases/{id}/tables|schemas|.../tables/detail`（前端 `databaseSchemasApi` / `tableApi`）。
 
 ## 入湖（多入口 → `file_ingestion_service`）
 

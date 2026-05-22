@@ -82,16 +82,6 @@ def _safe_decode_row(row):
 
 
 @router.get("/api/datasources/databases/{connection_id}/tables", tags=["Database Management"])
-async def get_database_tables_alias(connection_id: str):
-    """获取指定数据库连接的所有表信息（别名）"""
-    return await get_database_tables(connection_id)
-
-
-@router.get(
-    "/api/database_tables/{connection_id}",
-    tags=["Database Management"],
-    deprecated=True,
-)
 async def get_database_tables(connection_id: str):
     """获取指定数据库连接的所有表信息"""
     try:
@@ -468,16 +458,6 @@ async def get_database_tables(connection_id: str):
 
 
 @router.get("/api/datasources/databases/{connection_id}/schemas", tags=["Database Management"])
-async def list_connection_schemas_alias(connection_id: str):
-    """获取指定数据库连接的所有 schemas（别名）"""
-    return await list_connection_schemas(connection_id)
-
-
-@router.get(
-    "/api/databases/{connection_id}/schemas",
-    tags=["Database Management"],
-    deprecated=True,
-)
 async def list_connection_schemas(connection_id: str):
     """获取指定数据库连接下的所有 schemas（仅 PostgreSQL）
     
@@ -576,16 +556,9 @@ async def list_connection_schemas(connection_id: str):
 
 
 
-@router.get("/api/datasources/databases/{connection_id}/schemas/{schema}/tables", tags=["Database Management"])
-async def list_schema_tables_alias(connection_id: str, schema: str):
-    """获取指定 schema 下的所有表（别名）"""
-    return await list_schema_tables(connection_id, schema)
-
-
 @router.get(
-    "/api/databases/{connection_id}/schemas/{schema}/tables",
+    "/api/datasources/databases/{connection_id}/schemas/{schema}/tables",
     tags=["Database Management"],
-    deprecated=True,
 )
 async def list_schema_tables(connection_id: str, schema: str):
     """获取指定 schema 下的所有表（仅 PostgreSQL）
@@ -686,16 +659,6 @@ async def list_schema_tables(connection_id: str, schema: str):
 
 
 @router.get("/api/datasources/databases/{connection_id}/tables/detail", tags=["Database Management"])
-async def get_table_details_alias(connection_id: str, table_name: str, schema: str | None = None):
-    """Canonical 外部表详情路径（与 legacy get_table_details 同一实现）。"""
-    return await get_table_details(connection_id, table_name, schema)
-
-
-@router.get(
-    "/api/database_table_details/{connection_id}/{table_name}",
-    tags=["Database Management"],
-    deprecated=True,
-)
 async def get_table_details(connection_id: str, table_name: str, schema: str | None = None):
     """获取指定表的详细信息，包括字段详情和示例数据"""
     try:

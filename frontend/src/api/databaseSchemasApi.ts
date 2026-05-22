@@ -87,23 +87,3 @@ export interface ExternalTableDetailsPayload {
   table_comment?: string | null;
 }
 
-/**
- * @deprecated 请使用 `getExternalTableDetail`（`tableApi.ts`）。保留为兼容别名。
- */
-export async function getExternalDatabaseTableDetails(
-  connectionId: string,
-  tableName: string,
-  schema?: string | null
-): Promise<ExternalTableDetailsPayload> {
-  const { getExternalTableDetail } = await import('./tableApi');
-  const detail = await getExternalTableDetail(connectionId, tableName, schema ?? undefined);
-  const extended = detail as ExternalTableDetailsPayload & {
-    indexes?: unknown[];
-    table_comment?: string | null;
-  };
-  return {
-    columns: extended.columns ?? [],
-    indexes: extended.indexes,
-    table_comment: extended.table_comment ?? null,
-  };
-}

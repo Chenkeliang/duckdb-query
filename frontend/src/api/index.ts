@@ -141,7 +141,6 @@ export {
     listConnectionSchemas,
     listSchemaTablesForConnection,
     listConnectionTablesFlat,
-    getExternalDatabaseTableDetails,
     type ConnectionSchemaItem,
     type ConnectionTableItem,
     type ExternalTableDetailsPayload,

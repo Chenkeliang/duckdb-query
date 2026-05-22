@@ -16,7 +16,7 @@ from middleware import RequestIdMiddleware
 
 from routers import (
     data_sources,  # 文件入湖：/api/upload、/api/data-sources/excel/*
-    query,  # 联邦 JOIN：/api/query；废弃代理：/api/execute_sql
+    query,  # 联邦 JOIN：/api/query；save_query_to_duckdb
     paste_data,
     duckdb_query,  # DuckDB / 联邦 SQL：/api/duckdb/*
     chunked_upload,
