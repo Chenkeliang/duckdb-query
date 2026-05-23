@@ -14,6 +14,8 @@ REQUIRED_PATHS = [
     "/api/duckdb/execute",
     "/api/duckdb/federated-query",
     "/api/query",
+    "/api/pivot-query/generate",
+    "/api/pivot-query/preview",
     "/api/visual-query/generate",
     "/api/visual-query/preview",
     "/api/set-operations/generate",

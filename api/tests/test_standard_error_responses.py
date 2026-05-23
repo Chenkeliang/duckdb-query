@@ -17,7 +17,7 @@ client = TestClient(app, raise_server_exceptions=False)
 def test_validation_error_422_standard_envelope():
     """Pydantic 422 须返回 success=false + error.code。"""
     response = client.post(
-        "/api/visual-query/generate",
+        "/api/pivot-query/generate",
         json={
             "config": {
                 "table_name": "",
@@ -174,11 +174,11 @@ def test_visual_query_generate_invalid_config_standard_error():
         warnings=[],
     )
     with patch(
-        "routers.visual_query.validate_query_config",
+        "routers.pivot_query.validate_query_config",
         return_value=invalid,
     ):
         response = client.post(
-            "/api/visual-query/generate",
+            "/api/pivot-query/generate",
             json={
                 "config": {
                     "table_name": "t",

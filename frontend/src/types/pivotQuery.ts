@@ -1,4 +1,4 @@
-/** 与后端 `VisualQueryMode` 对齐；HTTP 路径仍为 `/api/visual-query/*` */
+/** 与后端 `VisualQueryMode` 对齐；HTTP 路径 `/api/pivot-query/*` */
 export enum PivotQueryMode {
     PIVOT = "pivot",
 }

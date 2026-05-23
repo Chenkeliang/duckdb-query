@@ -28,7 +28,7 @@ from routers import (
     datasources,  # 统一数据源：/api/datasources/*
     settings,
     query_cancel,
-    visual_query,  # /api/visual-query/*
+    pivot_query,  # /api/pivot-query/* (+ deprecated /api/visual-query/*)
     set_operations,  # /api/set-operations/*
 )
 from routers import config_api
@@ -127,7 +127,7 @@ app.include_router(datasources.router)
 app.include_router(file_ingestion.router)
 app.include_router(duckdb_query.router)
 app.include_router(join_query.router)
-app.include_router(visual_query.router)
+app.include_router(pivot_query.router)
 app.include_router(set_operations.router)
 app.include_router(paste_data.router)
 app.include_router(chunked_upload.router)

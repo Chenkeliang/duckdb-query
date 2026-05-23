@@ -1,5 +1,5 @@
 /**
- * 透视查询 + SQL 收藏 + 应用配置（HTTP `/api/visual-query/*` 等）
+ * 透视查询 + SQL 收藏 + 应用配置（`POST /api/pivot-query/*` 等）
  */
 
 import { apiClient, handleApiError, normalizeResponse } from './client';
@@ -26,7 +26,7 @@ export async function generatePivotQuery(
     options: PivotQueryApiOptions = {}
 ): Promise<GeneratedPivotQuery> {
     try {
-        const response = await apiClient.post('/api/visual-query/generate', {
+        const response = await apiClient.post('/api/pivot-query/generate', {
             config,
             pivot_config: pivotConfig,
             attach_databases: options.attachDatabases,
@@ -59,7 +59,7 @@ export async function previewPivotQuery(
     options: PivotQueryApiOptions = {}
 ): Promise<PivotQueryPreviewPayload> {
     try {
-        const response = await apiClient.post('/api/visual-query/preview', {
+        const response = await apiClient.post('/api/pivot-query/preview', {
             config,
             pivot_config: pivotConfig,
             limit,

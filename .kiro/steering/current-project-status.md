@@ -165,9 +165,9 @@ await invalidateAfterDatabaseChange(queryClient);
 
 | 组件 | 状态 | 使用场景 | 说明 |
 |------|------|----------|------|
-| **AGGridWrapper** | ⚠️ Deprecated | 现有功能维护 | 标记为废弃，但仍可用 |
-| **DataGrid** | ✅ 推荐 | 新功能开发 | 基于 TanStack Table |
-| **DataGridWrapper** | ✅ 推荐 | AG Grid 迁移 | 提供 AG Grid 兼容接口 |
+| **DataGrid** | ✅ 现行 | 查询结果展示 | TanStack Table |
+| **DataGridWrapper** | ✅ 现行 | `ResultPanel` | 结果区封装 |
+| ~~AG Grid~~ | 已移除 | — | 依赖已从 `package.json` 删除 |
 
 ### 8. 文件组织规范
 

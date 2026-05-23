@@ -34,7 +34,7 @@ def api_errors(body: dict) -> list:
     return (details or {}).get("errors") or [body.get("message") or err.get("message", "")]
 
 
-# HTTP `/api/visual-query/*` 仅接受 pivot（与前端 PivotPanel 一致）
+# HTTP `/api/pivot-query/*` 仅接受 pivot（与前端 PivotPanel 一致）
 PIVOT_REQUEST_FIELDS = {
     "pivot_config": {
         "rows": ["col1"],
@@ -71,8 +71,8 @@ class TestVisualQueryGeneration:
             metadata={"mode": VisualQueryMode.PIVOT.value},
         )
 
-        with patch('routers.visual_query.validate_query_config') as mock_validate, \
-             patch('routers.visual_query.generate_visual_query_sql') as mock_generate:
+        with patch('routers.pivot_query.validate_query_config') as mock_validate, \
+             patch('routers.pivot_query.generate_pivot_query_sql') as mock_generate:
 
             mock_validate.return_value = Mock(
                 is_valid=True,
@@ -82,7 +82,7 @@ class TestVisualQueryGeneration:
 
             mock_generate.return_value = generation_result
 
-            response = client.post("/api/visual-query/generate", json=config_data)
+            response = client.post("/api/pivot-query/generate", json=config_data)
 
             assert response.status_code == 200
             inner = api_data(response.json())
@@ -92,7 +92,7 @@ class TestVisualQueryGeneration:
     def test_missing_pivot_config_rejected(self):
         """缺少 pivot_config 时由 Pydantic 返回 422。"""
         response = client.post(
-            "/api/visual-query/generate",
+            "/api/pivot-query/generate",
             json={
                 "config": {
                     "table_name": "test_table",
@@ -113,7 +113,7 @@ class TestVisualQueryGeneration:
             }
         
         # FastAPI/Pydantic validation rejects empty table_name with 422
-        response = client.post("/api/visual-query/generate", json=config_data)
+        response = client.post("/api/pivot-query/generate", json=config_data)
         
         # Pydantic validation now returns 422 for invalid configuration
         assert response.status_code == 422
@@ -152,8 +152,8 @@ class TestVisualQueryGeneration:
             metadata={"mode": VisualQueryMode.PIVOT.value},
         )
 
-        with patch('routers.visual_query.validate_query_config') as mock_validate, \
-             patch('routers.visual_query.generate_visual_query_sql') as mock_generate:
+        with patch('routers.pivot_query.validate_query_config') as mock_validate, \
+             patch('routers.pivot_query.generate_pivot_query_sql') as mock_generate:
 
             mock_validate.return_value = Mock(
                 is_valid=True,
@@ -163,7 +163,7 @@ class TestVisualQueryGeneration:
 
             mock_generate.return_value = generation_result
 
-            response = client.post("/api/visual-query/generate", json=config_data)
+            response = client.post("/api/pivot-query/generate", json=config_data)
 
             assert response.status_code == 200
             inner = api_data(response.json())
@@ -195,9 +195,9 @@ class TestVisualQueryPreview:
             metadata={"mode": VisualQueryMode.PIVOT.value},
         )
 
-        with patch('routers.visual_query.validate_query_config') as mock_validate, \
-             patch('routers.visual_query.generate_visual_query_sql') as mock_generate, \
-             patch('routers.visual_query.with_duckdb_connection') as mock_pool:
+        with patch('routers.pivot_query.validate_query_config') as mock_validate, \
+             patch('routers.pivot_query.generate_pivot_query_sql') as mock_generate, \
+             patch('routers.pivot_query.with_duckdb_connection') as mock_pool:
 
             mock_validate.return_value = Mock(
                 is_valid=True,
@@ -221,7 +221,7 @@ class TestVisualQueryPreview:
                 pd.DataFrame({'total_rows': [1000]}),
             ]
 
-            response = client.post("/api/visual-query/preview", json=config_data)
+            response = client.post("/api/pivot-query/preview", json=config_data)
 
             assert response.status_code == 200
             envelope = response.json()
@@ -241,7 +241,7 @@ class TestVisualQueryPreview:
             "limit": 10,
         })
 
-        response = client.post("/api/visual-query/preview", json=config_data)
+        response = client.post("/api/pivot-query/preview", json=config_data)
 
         assert response.status_code == 422
 
@@ -381,7 +381,7 @@ class TestErrorHandling:
     def test_malformed_json_request(self):
         """Test handling of malformed JSON requests"""
         response = client.post(
-            "/api/visual-query/generate",
+            "/api/pivot-query/generate",
             content="invalid json",
             headers={"Content-Type": "application/json"}
         )
@@ -395,7 +395,7 @@ class TestErrorHandling:
             # Missing 'config' field
         }
         
-        response = client.post("/api/visual-query/generate", json=config_data)
+        response = client.post("/api/pivot-query/generate", json=config_data)
         
         assert response.status_code == 422  # Validation error
     
@@ -409,7 +409,7 @@ class TestErrorHandling:
             "preview": False,
         }
         
-        response = client.post("/api/visual-query/generate", json=config_data)
+        response = client.post("/api/pivot-query/generate", json=config_data)
         
         assert response.status_code == 422  # Validation error
 

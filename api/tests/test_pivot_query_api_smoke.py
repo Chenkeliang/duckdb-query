@@ -1,4 +1,4 @@
-"""Smoke tests for pivot-only /api/visual-query endpoints."""
+"""Smoke tests for pivot-only /api/pivot-query endpoints."""
 
 from unittest.mock import Mock, patch
 
@@ -34,16 +34,39 @@ def test_pivot_generate_success_envelope():
         metadata={"strategy": "native"},
     )
     with patch(
-        "routers.visual_query.validate_query_config",
+        "routers.pivot_query.validate_query_config",
         return_value=ValidationResult(is_valid=True, errors=[], warnings=[]),
     ), patch(
-        "routers.visual_query.generate_visual_query_sql",
+        "routers.pivot_query.generate_pivot_query_sql",
         return_value=generation,
     ):
-        response = client.post("/api/visual-query/generate", json=PIVOT_BODY)
+        response = client.post("/api/pivot-query/generate", json=PIVOT_BODY)
 
     assert response.status_code == 200
     body = response.json()
     assert body["success"] is True
     assert body["data"]["mode"] == "pivot"
     assert "PIVOT" in body["data"]["sql"] or "pivot_result" in body["data"]["sql"]
+
+
+def test_legacy_visual_query_generate_still_works():
+    """Deprecated /api/visual-query/generate remains registered."""
+    generation = GeneratedVisualQuery(
+        mode=VisualQueryMode.PIVOT,
+        base_sql='SELECT 1',
+        final_sql='SELECT 1',
+        pivot_sql=None,
+        warnings=[],
+        metadata={},
+    )
+    with patch(
+        "routers.pivot_query.validate_query_config",
+        return_value=ValidationResult(is_valid=True, errors=[], warnings=[]),
+    ), patch(
+        "routers.pivot_query.generate_pivot_query_sql",
+        return_value=generation,
+    ):
+        response = client.post("/api/visual-query/generate", json=PIVOT_BODY)
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True

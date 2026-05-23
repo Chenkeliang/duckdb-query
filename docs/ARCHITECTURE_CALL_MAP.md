@@ -185,7 +185,7 @@ sequenceDiagram
 
 | 能力 | HTTP | Router 模块 | 前端 |
 |------|------|-------------|------|
-| Pivot | `/api/visual-query/*` | `routers/visual_query.py` | `pivotQueryApi` |
+| Pivot | `/api/pivot-query/*` | `routers/pivot_query.py` | `pivotQueryApi` |
 | SetOps | `/api/set-operations/*` | `routers/set_operations.py` | `setOperationsApi` |
 
 集合运算生成 SQL 后，前端常再调 `executeDuckDBSQL` 执行。

@@ -147,8 +147,8 @@ flowchart TB
 | `TableSource.type`：`duckdb \| federated` | 外部表元数据仍为 `SelectedTable.source === 'external'` |
 | `executeExternalSQL` / `executeSQL` / `performQuery` | 仅 `api/index.ts` 导出，**无** `frontend/src` 业务 import |
 | 引号策略 | 已改为按需引号（`sqlUtils.needsQuoting`） |
-| 透视表 | `PivotPanel` → `/api/visual-query/*`（`mode: pivot`）；构建器 Tab 已移除 |
-| 集合运算 | 客户端拼 SQL，不调用后端 set-operations API |
+| 透视表 | `PivotPanel` → `/api/pivot-query/*`；构建器 Tab 已移除 |
+| 集合运算 | ✅ `SetOperationsPanel` → `setOperationsApi`（`generate` / `preview` / `validate`） |
 
 ---
 
@@ -180,7 +180,7 @@ flowchart TB
 |----|------|
 | `hooks/README.md` | ✅ 示例已改为 `useDuckDBTables` / `/api/duckdb/tables` |
 | QueryKey | `['schemas', id]` 等与 kebab 规范混用 |
-| 结果表格 | `AGGridWrapper` + `DataGrid` 双栈，AG Grid 待移除 |
+| 结果表格 | ✅ `ResultPanel` → `DataGridWrapper`（TanStack Table）；AG Grid 已移除 |
 | `as any` | `QueryWorkspace`、`ContextMenu` 等仍有 |
 | 契约维护 | ✅ 全量表见 `API_CONTRACT_FE_BE.md`；改 API 须先更新该表 |
 

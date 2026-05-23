@@ -18,7 +18,7 @@
 |------|----------|----------|
 | `duckdb_query.py` | `/api/duckdb/execute`、`/federated-query`、`/tables/*` | `queryApi.ts`、`tableApi.ts` |
 | `join_query.py` | `/api/query`（JOIN）、`/api/save_query_to_duckdb` | JOIN 工作台、`saveQueryToDuckDB` |
-| `visual_query.py` | `/api/visual-query/*`（`with_duckdb_connection` + 可中断预览） | `pivotQueryApi.ts` |
+| `pivot_query.py` | `/api/pivot-query/*`（+ deprecated `/api/visual-query/*`） | `pivotQueryApi.ts` |
 | `set_operations.py` | `/api/set-operations/*`（`with_duckdb_connection`） | `setOperationsApi.ts` |
 | `query_cancel.py` | `/api/query/cancel/{id}` | `cancelSyncQuery` |
 | `query_sql_utils.py` | （无路由，共享 SQL 工具） | — |

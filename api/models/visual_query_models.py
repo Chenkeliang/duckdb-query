@@ -1,5 +1,5 @@
 """
-Pivot / visual-query API models (POST /api/visual-query/*).
+Pivot API models (POST /api/pivot-query/*; Pydantic 名保留 Visual* 前缀).
 
 Set-operation models live in ``set_operation_models.py``.
 """

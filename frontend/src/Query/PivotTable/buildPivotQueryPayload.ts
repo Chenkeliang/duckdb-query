@@ -1,5 +1,5 @@
 /**
- * 透视配置 → POST /api/visual-query（mode=pivot）请求体
+ * 透视配置 → POST /api/pivot-query 请求体
  */
 
 import type { FilterConfig, PivotConfig, PivotQueryConfig } from '@/types/pivotQuery';

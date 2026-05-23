@@ -1,5 +1,5 @@
 # pylint: disable=duplicate-code
-"""Pivot SQL generation and config validation (HTTP /api/visual-query)."""
+"""Pivot SQL generation and config validation (HTTP /api/pivot-query)."""
 
 import logging
 from dataclasses import dataclass
@@ -50,14 +50,13 @@ class GeneratedVisualQuery:
     metadata: Dict[str, Any]
 
 
-def generate_visual_query_sql(
+def generate_pivot_query_sql(
     config: VisualQueryConfig,
     pivot_config: PivotConfig,
     app_config: Optional[Any] = None,
     resolved_casts: Optional[Dict[str, str]] = None,
 ) -> GeneratedVisualQuery:
-    """Generate pivot SQL."""
-
+    """Generate pivot SQL (HTTP /api/pivot-query/*)."""
     warnings: List[str] = []
     mode = VisualQueryMode.PIVOT
 
@@ -497,3 +496,6 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
             errors=[f"configuration验证failed: {str(e)}"],
             warnings=[],
         )
+
+
+generate_visual_query_sql = generate_pivot_query_sql
