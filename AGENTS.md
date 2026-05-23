@@ -110,7 +110,8 @@ duckdb-query/
 │       └── i18n/                     # 国际化
 ├── config/                           # 配置文件
 ├── docs/                             # 文档
-│   └── API_CONTRACT_FE_BE.md         # 前后端 API 契约真相表（按域 / 端点 / data 语义）
+│   ├── API_CONTRACT_FE_BE.md         # 前后端 API 契约真相表（按域 / 端点 / data 语义）
+│   └── archive/                      # 已废止文档（勿作实现依据）
 ├── .github/                          # CI / PR 模板
 │   └── pull_request_template.md      # PR：契约与验证勾选
 └── docker-compose.yml
