@@ -112,7 +112,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
     } catch (error) {
       showErrorToast(
         t,
-        (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED",
+        error as Error,
         t('dataSource.refreshFailed', { message: (error as Error).message })
       );
     }

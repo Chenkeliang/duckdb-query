@@ -163,6 +163,16 @@ export interface ApiError extends Error {
     details?: Record<string, unknown>;
 }
 
+/** Resolve API error code from thrown values (ApiError, axios-enhanced errors, etc.). */
+export function getApiErrorCode(error: unknown, fallback = 'OPERATION_FAILED'): string {
+    if (error && typeof error === 'object') {
+        const e = error as ApiError;
+        if (typeof e.code === 'string' && e.code) return e.code;
+        if (typeof e.messageCode === 'string' && e.messageCode) return e.messageCode;
+    }
+    return fallback;
+}
+
 /**
  * Check if response is a standard success response
  */

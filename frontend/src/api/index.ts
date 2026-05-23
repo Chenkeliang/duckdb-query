@@ -25,6 +25,7 @@ export {
     getFederatedQueryTimeout,
     extractMessage,
     extractMessageCode,
+    getApiErrorCode,
     normalizeResponse,
     handleApiError,
     isStandardSuccess,

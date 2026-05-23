@@ -331,11 +331,7 @@ const AppInner: React.FC = () => {
             );
           }
         } catch (err) {
-          const error = err as any;
-          const code =
-            error?.code || error?.messageCode || "CONNECTION_TEST_FAILED";
-          const message = error?.message || t("page.datasource.list.testFail");
-          showErrorToast(t, code, message);
+          showErrorToast(t, err as Error, t("page.datasource.list.testFail"));
         } finally {
           setTestingDb(false);
         }
@@ -355,11 +351,7 @@ const AppInner: React.FC = () => {
             });
           }
         } catch (err) {
-          const error = err as any;
-          const code = error?.code || error?.messageCode || "OPERATION_FAILED";
-          const message =
-            error?.message || t("page.datasource.list.errorUnknown");
-          showErrorToast(t, code, message);
+          showErrorToast(t, err as Error, t("page.datasource.list.errorUnknown"));
         } finally {
           setSavingDb(false);
         }
@@ -379,11 +371,7 @@ const AppInner: React.FC = () => {
             });
           }
         } catch (err) {
-          const error = err as any;
-          const code = error?.code || error?.messageCode || "OPERATION_FAILED";
-          const message =
-            error?.message || t("page.datasource.list.errorUnknown");
-          showErrorToast(t, code, message);
+          showErrorToast(t, err as Error, t("page.datasource.list.errorUnknown"));
         } finally {
           setSavingDb(false);
         }

@@ -24,6 +24,10 @@
 | [`frontend/MIGRATION_TO_TANSTACK_QUERY.md`](frontend/MIGRATION_TO_TANSTACK_QUERY.md) | TanStack Query 模式 |
 | [`frontend/AG_GRID_MIGRATION_GUIDE.md`](frontend/AG_GRID_MIGRATION_GUIDE.md) | 结果区 DataGrid 入口说明 |
 
+## Lint
+
+[`lint-rules/README.md`](lint-rules/README.md) → 根目录 [`lint-rules/`](../lint-rules/)
+
 ## 配置与其它
 
 | 文档 | 用途 |

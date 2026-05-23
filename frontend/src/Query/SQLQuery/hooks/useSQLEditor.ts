@@ -189,11 +189,11 @@ export const useSQLEditor = ({
 
       // 如果是取消操作引发的错误，不显示 toast（通常已有 "查询已取消" 的提示）
       if (!error.message?.toLowerCase().includes("canceled")) {
-        const code =
-          (error as any)?.code || (error as any)?.messageCode || "QUERY_FAILED";
-        const msg =
-          error?.message || t("query.sql.executionFailed", { message: "" });
-        showErrorToast(t, code, msg);
+        showErrorToast(
+          t,
+          error,
+          error?.message || t("query.sql.executionFailed", { message: "" })
+        );
       }
       onError?.(error, variables.sqlToExecute);
     }

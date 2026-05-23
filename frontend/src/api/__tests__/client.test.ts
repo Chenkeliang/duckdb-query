@@ -13,6 +13,7 @@ import {
   isStandardError,
   extractMessage,
   extractMessageCode,
+  getApiErrorCode,
   parseBlobError,
 } from '../client';
 import type { StandardSuccess, StandardList, StandardError } from '../types';
@@ -236,6 +237,20 @@ describe('extractMessage', () => {
   it('should return empty string for null/undefined', () => {
     expect(extractMessage(null)).toBe('');
     expect(extractMessage(undefined)).toBe('');
+  });
+});
+
+describe('getApiErrorCode', () => {
+  it('should prefer code then messageCode', () => {
+    const err = Object.assign(new Error('fail'), {
+      code: 'QUERY_FAILED',
+      messageCode: 'OTHER',
+    });
+    expect(getApiErrorCode(err, 'OPERATION_FAILED')).toBe('QUERY_FAILED');
+  });
+
+  it('should return fallback for unknown errors', () => {
+    expect(getApiErrorCode(new Error('x'), 'OPERATION_FAILED')).toBe('OPERATION_FAILED');
   });
 });
 

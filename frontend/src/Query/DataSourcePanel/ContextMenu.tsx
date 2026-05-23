@@ -120,7 +120,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
     } catch (error) {
       showErrorToast(
         t,
-        (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED",
+        error as Error,
         t('dataSource.getStructureFailed', { error: (error as Error).message })
       );
       setShowStructure(false);
@@ -149,7 +149,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
     } catch (error) {
       showErrorToast(
         t,
-        (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED",
+        error as Error,
         t('dataSource.refreshFailed', { error: (error as Error).message })
       );
     } finally {
@@ -174,7 +174,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
     } catch (error) {
       showErrorToast(
         t,
-        (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED",
+        error as Error,
         t('dataSource.deleteFailed', { error: (error as Error).message })
       );
     }

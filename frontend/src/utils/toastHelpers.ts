@@ -5,7 +5,7 @@
  * 
  * @example
  * ```typescript
- * import { showSuccessToast, showErrorToast } from '@/new/utils/toastHelpers';
+ * import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
  * 
  * // 使用 messageCode
  * showSuccessToast(t, 'TABLE_CREATED', '表创建成功');

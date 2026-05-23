@@ -77,8 +77,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
       try {
         await handleQueryExecute(sql, source);
       } catch (error) {
-        const code = (error as any)?.code || (error as any)?.messageCode || "QUERY_FAILED";
-        showErrorToast(t, code, t('query.previewFailed', { message: (error as Error).message }));
+        showErrorToast(t, error as Error, t('query.previewFailed', { message: (error as Error).message }));
       }
     },
     [handleQueryExecute, t]
@@ -113,8 +112,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
         await handleQueryExecute(sql, source);
         setAutoOpenImportDialog(true);
       } catch (error) {
-        const code = (error as any)?.code || (error as any)?.messageCode || "QUERY_FAILED";
-        showErrorToast(t, code, t("query.import.error", `导入失败: ${(error as Error).message}`));
+        showErrorToast(t, error as Error, t("query.import.error", `导入失败: ${(error as Error).message}`));
       }
     },
     [handleQueryExecute, t]
@@ -128,8 +126,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
         await invalidateAfterTableDelete(queryClient);
         showSuccessToast(t, 'TABLE_DELETED', t('query.tableDeleted', { table: tableName }));
       } catch (error) {
-        const code = (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED";
-        showErrorToast(t, code, t('query.deleteFailed', { message: (error as Error).message }));
+        showErrorToast(t, error as Error, t('query.deleteFailed', { message: (error as Error).message }));
         throw error; // 重新抛出以便调用方知道失败了
       }
     },

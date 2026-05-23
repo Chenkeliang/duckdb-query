@@ -79,9 +79,8 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       await invalidateAfterTableDelete(queryClient);
       showSuccessToast(t, 'TABLE_DELETED', t('dataSource.tableDeletedRefreshed'));
     } catch (error) {
-      const code = (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED";
       // 删除失败时显示错误，不触发缓存失效
-      showErrorToast(t, code, t('dataSource.deleteFailed', { error: (error as Error).message }));
+      showErrorToast(t, error as Error, t('dataSource.deleteFailed', { error: (error as Error).message }));
     }
   };
 
@@ -124,8 +123,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       onRefresh?.();
       showSuccessToast(t, 'DATASOURCES_REFRESHED', t('dataSource.refreshed'));
     } catch (error) {
-      const code = (error as any)?.code || (error as any)?.messageCode || "OPERATION_FAILED";
-      showErrorToast(t, code, t('dataSource.refreshFailed', { error: (error as Error).message }));
+      showErrorToast(t, error as Error, t('dataSource.refreshFailed', { error: (error as Error).message }));
     }
   }, [queryClient, onRefresh, t]);
 
