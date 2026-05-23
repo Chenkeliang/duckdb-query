@@ -1,5 +1,5 @@
 /**
- * 透视表简单筛选（列 / 操作符 / 值）→ VisualQueryConfig.filters
+ * 透视表简单筛选（列 / 操作符 / 值）→ PivotQueryConfig.filters
  */
 
 import * as React from "react";
@@ -15,7 +15,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import type { FilterConfig } from "@/types/visualQuery";
+import type { FilterConfig } from "@/types/pivotQuery";
 
 const OPERATORS = [
     { value: "=", labelKey: "filter.operator.equals" },

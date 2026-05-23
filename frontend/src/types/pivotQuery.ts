@@ -1,5 +1,5 @@
-/** 与后端 `VisualQueryMode` 对齐；前端仅使用 PIVOT（透视 Tab） */
-export enum VisualQueryMode {
+/** 与后端 `VisualQueryMode` 对齐；HTTP 路径仍为 `/api/visual-query/*` */
+export enum PivotQueryMode {
     PIVOT = "pivot",
 }
 
@@ -32,18 +32,18 @@ export interface PivotConfig {
 export interface FilterConfig {
     column: string;
     operator: string;
-    value: any;
+    value: unknown;
 }
 
-/** 透视 API 请求体中的 config（与 buildPivotQueryPayload 一致） */
-export interface VisualQueryConfig {
+/** POST /api/visual-query 请求体中的 config */
+export interface PivotQueryConfig {
     table_name: string;
     filters?: FilterConfig[];
     limit?: number;
 }
 
-export interface GeneratedVisualQuery {
-    mode: VisualQueryMode;
+export interface GeneratedPivotQuery {
+    mode: PivotQueryMode;
     base_sql: string;
     final_sql: string;
     pivot_sql?: string;
@@ -52,17 +52,15 @@ export interface GeneratedVisualQuery {
     estimated_rows?: number;
 }
 
-export interface VisualQueryPreviewPayload {
+export interface PivotQueryPreviewPayload {
     data: Record<string, unknown>[] | null;
     columns: string[] | null;
-    /** 与查询匹配的总行数估计（COUNT），可能大于本次返回行数 */
     row_count: number;
-    /** 本响应实际返回的行数（LIMIT 之后）；旧后端缺省时由前端用 data.length 兜底 */
     returned_rows?: number;
     sql?: string | null;
     base_sql?: string | null;
     pivot_sql?: string | null;
-    mode: VisualQueryMode;
+    mode: PivotQueryMode;
     errors: string[];
     warnings: string[];
 }

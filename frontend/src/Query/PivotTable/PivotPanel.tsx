@@ -24,8 +24,8 @@ import { useAppConfig } from "@/hooks/useAppConfig";
 import type { SelectedTable } from "@/types/SelectedTable";
 import type { TableSource, UseQueryWorkspaceReturn } from "@/hooks/useQueryWorkspace";
 import {
-    generatePivotVisualQuery,
-    previewPivotVisualQuery,
+    generatePivotQuery,
+    previewPivotQuery,
 } from "@/api";
 import { showErrorToast } from "@/utils/toastHelpers";
 import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
@@ -122,7 +122,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                 alias: db.alias,
                 connection_id: db.connectionId,
             }));
-            return generatePivotVisualQuery(
+            return generatePivotQuery(
                 pivotPayload.config,
                 pivotPayload.pivotConfig,
                 { attachDatabases }
@@ -222,7 +222,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                 alias: db.alias,
                 connection_id: db.connectionId,
             }));
-            const result = await previewPivotVisualQuery(
+            const result = await previewPivotQuery(
                 pivotPayload.config,
                 pivotPayload.pivotConfig,
                 maxQueryRows,

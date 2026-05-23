@@ -69,7 +69,7 @@ flowchart TB
 | QueryAsync | §5 | `async_tasks`, `task_manager` | `asyncTaskApi.ts` |
 | Catalog | §6 | `datasources`, `database_tables`（canonical + legacy 别名） | `databaseSchemasApi`, `dataSourceApi`, `tableApi` |
 | DuckDBCatalog | §6.3 | `duckdb_query` | `tableApi`, `useDuckDBTables` |
-| 透视表 Pivot | §7 | `visual_query` router + `pivot_query_generator` | `visualQueryApi` |
+| 透视表 Pivot | §7 | `visual_query` router + `pivot_query_generator` | `pivotQueryApi` |
 | SetOps | §7 | `set_operations` router | `setOperationsApi` |
 
 ---
@@ -185,7 +185,7 @@ sequenceDiagram
 
 | 能力 | HTTP | Router 模块 | 前端 |
 |------|------|-------------|------|
-| Visual | `/api/visual-query/*` | `routers/visual_query.py` | `visualQueryApi` |
+| Pivot | `/api/visual-query/*` | `routers/visual_query.py` | `pivotQueryApi` |
 | SetOps | `/api/set-operations/*` | `routers/set_operations.py` | `setOperationsApi` |
 
 集合运算生成 SQL 后，前端常再调 `executeDuckDBSQL` 执行。

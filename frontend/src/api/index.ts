@@ -189,8 +189,8 @@ export {
 
 // ==================== Pivot API & SQL Favorites ====================
 export {
-    generatePivotVisualQuery,
-    previewPivotVisualQuery,
+    generatePivotQuery,
+    previewPivotQuery,
     listSqlFavorites,
     getSqlFavorite,
     createSqlFavorite,
@@ -199,4 +199,4 @@ export {
     incrementFavoriteUsage,
     getAppConfig,
     type AppConfigResponse,
-} from './visualQueryApi';
+} from './pivotQueryApi';

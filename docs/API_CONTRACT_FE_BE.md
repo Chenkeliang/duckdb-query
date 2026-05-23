@@ -25,7 +25,7 @@
 | `uploadApi.ts` | §5 | 本地上传与分块（从 `fileApi` 再导出） |
 | `fileApi.ts` | §5 | URL / Excel / 服务器文件 / 粘贴 |
 | `asyncTaskApi.ts` | §6 | 异步任务、连接池状态、错误统计 |
-| `visualQueryApi.ts` | §7 | 透视 generate/preview、SQL 收藏、应用配置（已移除可视化构建器 Tab） |
+| `pivotQueryApi.ts` | §7 | 透视 generate/preview、SQL 收藏、应用配置（HTTP 仍为 `/api/visual-query/*`） |
 | `settingsShortcutsApi.ts` | §8 | 快捷键 |
 | `setOperationsApi.ts` | §9 | 集合运算 generate / preview / validate / execute / export 等 |
 | `joinQueryApi.ts` | §9.1 | 结构化多表 JOIN：`performJoinQuery` |
@@ -145,14 +145,14 @@
 | GET | `/api/errors/statistics` | 对象 | `getErrorStatistics` |
 | POST | `/api/errors/clear` | 对象 | `clearOldErrors`（query: `days`） |
 
-## 7. 透视查询与收藏（`visualQueryApi.ts`）
+## 7. 透视查询与收藏（`pivotQueryApi.ts`）
 
 > **2026-05**：工作台已移除「可视化查询」Tab；`POST /api/visual-query/*` 仅 **透视**（必填 `pivot_config`，请求体无 `mode` 字段；响应 `data.mode` 仍为 `pivot`）。`VisualQueryConfig` 仅 `table_name`、`filters`、`limit`；`FilterConfig` 仅 `column` / `operator` / `value`（及 `value2` 用于 BETWEEN）/ `logic_operator`。透视 Tab：`PivotFilters` → `config.filters`。响应 `metadata` 不含 `complexity_score`。集合操作模型见 `set_operation_models.py`。
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/visual-query/generate` | 对象 | `generatePivotVisualQuery`（`pivot_config` 必填）；400 `VISUAL_QUERY_INVALID`；500 `OPERATION_FAILED` |
-| POST | `/api/visual-query/preview` | 对象 | `previewPivotVisualQuery`（`pivot_config` 必填；可选 `attach_databases`）；400 `VISUAL_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
+| POST | `/api/visual-query/generate` | 对象 | `generatePivotQuery`（`pivot_config` 必填）；400 `VISUAL_QUERY_INVALID`；500 `OPERATION_FAILED` |
+| POST | `/api/visual-query/preview` | 对象 | `previewPivotQuery`（`pivot_config` 必填；可选 `attach_databases`）；400 `VISUAL_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
 | GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（`data.favorite`）；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites` | 对象 | `createSqlFavorite`；400 `FAVORITE_NAME_EXISTS` |

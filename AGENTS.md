@@ -73,7 +73,7 @@ duckdb-query/
 │       │   ├── settingsShortcutsApi.ts # 设置：快捷键 API
 │       │   ├── fileApi.ts            # 文件 API
 │       │   ├── asyncTaskApi.ts       # 异步任务 API
-│       │   ├── visualQueryApi.ts     # 可视化查询 / 收藏 / 应用配置 API
+│       │   ├── pivotQueryApi.ts      # 透视 generate/preview、SQL 收藏、应用配置 API
 │       │   ├── setOperationsApi.ts   # 集合运算 API
 │       │   ├── joinQueryApi.ts       # 多表 JOIN（POST /api/query）
 │       │   └── index.ts              # 统一导出（@/api）
@@ -125,7 +125,7 @@ duckdb-query/
 | `frontend/src/api/types.ts` | 共享类型定义（StandardSuccess, StandardError 等） |
 | `frontend/src/api/client.ts` | `apiClient`、`normalizeResponse`、错误归一化 |
 | `frontend/src/api/queryApi.ts` | DuckDB / 联邦执行、`cancelSyncQuery` 等 |
-| `frontend/src/api/visualQueryApi.ts` | 可视化预览 / 生成 SQL、收藏、应用配置 |
+| `frontend/src/api/pivotQueryApi.ts` | 透视 generate/preview、SQL 收藏、应用配置 |
 | `frontend/src/api/joinQueryApi.ts` | 结构化 JOIN：`performJoinQuery` |
 | `frontend/src/api/setOperationsApi.ts` | 集合运算 generate / validate / execute 等 |
 | `frontend/src/api/databaseSchemasApi.ts` | 外部库 schemas / 表 / 表详情 |
@@ -592,7 +592,7 @@ python -m pytest tests -q
 | 层级 | 路径 |
 |------|------|
 | 前端 UI | `frontend/src/Query/PivotTable/`（`PivotPanel`、`PivotTableDesigner`、`buildPivotQueryPayload`） |
-| 前端 API | `frontend/src/api/visualQueryApi.ts` 的 `generatePivotVisualQuery` / `previewPivotVisualQuery` |
+| 前端 API | `frontend/src/api/pivotQueryApi.ts` 的 `generatePivotQuery` / `previewPivotQuery` |
 | 后端路由 | `api/routers/visual_query.py`（`/api/visual-query/generate`、`/preview`） |
 | SQL 生成 | `api/core/services/pivot_query_generator.py`、`visual_query_sql_common.py` |
 | 表元数据 | `api/core/services/table_metadata_service.py` |

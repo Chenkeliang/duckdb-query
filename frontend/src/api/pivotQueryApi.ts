@@ -1,5 +1,5 @@
 /**
- * Pivot query + SQL favorites + app config（原「可视化查询构建器」已移除，仅保留透视与收藏）
+ * 透视查询 + SQL 收藏 + 应用配置（HTTP `/api/visual-query/*` 等）
  */
 
 import { apiClient, handleApiError, normalizeResponse } from './client';
@@ -9,22 +9,22 @@ import type {
     NormalizedResponse,
 } from './types';
 import type {
-    VisualQueryConfig,
+    PivotQueryConfig,
     PivotConfig,
-    VisualQueryPreviewPayload,
-    GeneratedVisualQuery,
-} from '@/types/visualQuery';
-import { VisualQueryMode } from '@/types/visualQuery';
+    PivotQueryPreviewPayload,
+    GeneratedPivotQuery,
+} from '../types/pivotQuery';
+import { PivotQueryMode } from '../types/pivotQuery';
 
 export interface PivotQueryApiOptions {
     attachDatabases?: { alias: string; connection_id: string }[];
 }
 
-export async function generatePivotVisualQuery(
-    config: VisualQueryConfig,
+export async function generatePivotQuery(
+    config: PivotQueryConfig,
     pivotConfig: PivotConfig,
     options: PivotQueryApiOptions = {}
-): Promise<GeneratedVisualQuery> {
+): Promise<GeneratedPivotQuery> {
     try {
         const response = await apiClient.post('/api/visual-query/generate', {
             config,
@@ -40,7 +40,7 @@ export async function generatePivotVisualQuery(
         }>(response);
         const d = normalized.data;
         return {
-            mode: VisualQueryMode.PIVOT,
+            mode: PivotQueryMode.PIVOT,
             base_sql: d.base_sql,
             final_sql: d.sql,
             pivot_sql: d.pivot_sql ?? undefined,
@@ -52,12 +52,12 @@ export async function generatePivotVisualQuery(
     }
 }
 
-export async function previewPivotVisualQuery(
-    config: VisualQueryConfig,
+export async function previewPivotQuery(
+    config: PivotQueryConfig,
     pivotConfig: PivotConfig,
     limit: number,
     options: PivotQueryApiOptions = {}
-): Promise<VisualQueryPreviewPayload> {
+): Promise<PivotQueryPreviewPayload> {
     try {
         const response = await apiClient.post('/api/visual-query/preview', {
             config,
@@ -65,7 +65,7 @@ export async function previewPivotVisualQuery(
             limit,
             attach_databases: options.attachDatabases,
         });
-        const normalized = normalizeResponse<VisualQueryPreviewPayload>(response);
+        const normalized = normalizeResponse<PivotQueryPreviewPayload>(response);
         const body = normalized.data;
         if (body.returned_rows == null && Array.isArray(body.data)) {
             return { ...body, returned_rows: body.data.length };

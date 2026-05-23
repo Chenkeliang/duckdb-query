@@ -2,8 +2,8 @@
  * 透视配置 → POST /api/visual-query（mode=pivot）请求体
  */
 
-import type { FilterConfig, PivotConfig, VisualQueryConfig } from '@/types/visualQuery';
-import { AggregationFunction } from '@/types/visualQuery';
+import type { FilterConfig, PivotConfig, PivotQueryConfig } from '@/types/pivotQuery';
+import { AggregationFunction } from '@/types/pivotQuery';
 import type { AttachDatabase } from '@/utils/sqlUtils';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { getTableName, normalizeSelectedTable } from '@/utils/tableUtils';
@@ -68,7 +68,7 @@ export function buildPivotQueryPayload(params: {
     values: PivotPanelValueConfig[];
     maxQueryRows: number;
     filters?: FilterConfig[];
-}): { config: VisualQueryConfig; pivotConfig: PivotConfig; attachDatabases: AttachDatabase[] } | null {
+}): { config: PivotQueryConfig; pivotConfig: PivotConfig; attachDatabases: AttachDatabase[] } | null {
     const { table, rows, columns, values, maxQueryRows, filters = [] } = params;
     if (!canUseServerPivotPath(table, rows, values) || shouldUseLocalPivotSql(columns)) {
         return null;
@@ -76,7 +76,7 @@ export function buildPivotQueryPayload(params: {
 
     const { tableName, attachDatabases } = buildPivotTableRef(table);
 
-    const config: VisualQueryConfig = {
+    const config: PivotQueryConfig = {
         table_name: tableName,
         filters,
         limit: maxQueryRows,

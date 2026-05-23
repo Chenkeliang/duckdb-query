@@ -5,7 +5,7 @@ import {
     getPivotQueryKey,
     shouldUseLocalPivotSql,
 } from '../buildPivotQueryPayload';
-import { AggregationFunction } from '@/types/visualQuery';
+import { AggregationFunction } from '@/types/pivotQuery';
 
 describe('buildPivotQueryPayload', () => {
     const duckdbTable = { name: 'sales', source: 'duckdb' as const };

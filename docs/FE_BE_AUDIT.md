@@ -108,7 +108,7 @@
 |------|------|
 | `POST /api/set-operations/*` | ✅ `setOperationsApi.ts` 全端点封装；面板仍用 `generate` + `preview` + `onExecute`（SQL 路径） |
 | `POST /api/upload/init|chunk|complete` | 分块上传后端完整；前端当前主要 `POST /api/upload` |
-| ~~`POST /api/visual-query/distinct-values|validate`~~ | 已移除；透视仅 `generate`/`preview`（`mode: pivot`）见 `visualQueryApi.ts` |
+| ~~`POST /api/visual-query/distinct-values|validate`~~ | 已移除；透视仅 `generate`/`preview`（`mode: pivot`）见 `pivotQueryApi.ts` |
 | `POST /api/duckdb/migrate/created_at` | 运维向，无前端 |
 
 ### 3.6 重复端点（同一资源多套 URL）

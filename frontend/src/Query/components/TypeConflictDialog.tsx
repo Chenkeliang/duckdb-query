@@ -9,7 +9,7 @@
  * - TRY_CAST NULL 值警告
  * - 快捷键支持（Enter 确认, Escape 取消, Ctrl+A 应用所有推荐）
  * 
- * 可用于：JoinQueryPanel、VisualQuery、SetOperations 等
+ * 可用于：JoinQueryPanel、PivotTable、SetOperations 等
  */
 
 import * as React from 'react';

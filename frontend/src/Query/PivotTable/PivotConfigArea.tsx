@@ -16,7 +16,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { PivotValueConfig, AggregationFunction } from "@/types/visualQuery";
+import { PivotValueConfig, AggregationFunction } from "@/types/pivotQuery";
 
 // Props for the main area
 interface PivotConfigAreaProps {

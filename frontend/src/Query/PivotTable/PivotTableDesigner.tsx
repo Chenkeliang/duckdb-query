@@ -34,7 +34,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AggregationFunction } from "@/types/visualQuery";
+import { AggregationFunction } from "@/types/pivotQuery";
 
 // Types
 interface PivotValueConfig {

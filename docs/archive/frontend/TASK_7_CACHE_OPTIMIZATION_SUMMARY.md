@@ -1,4 +1,6 @@
-# Task 7: 缓存和刷新优化 - 完成总结
+# Task 7: 缓存和刷新优化 - 完成总结（已归档）
+
+> **废止说明**：历史任务记录；现行约定见 `AGENTS.md` §4.5 与 `frontend/src/utils/cacheInvalidation.ts`。
 
 ## 📋 任务概述
 

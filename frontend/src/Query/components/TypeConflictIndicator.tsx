@@ -6,7 +6,7 @@
  * - 未解决冲突：显示警告图标 + tooltip
  * - 已解决冲突：显示成功图标 + tooltip
  * 
- * 可用于：JoinQueryPanel、VisualQuery、SetOperations 等
+ * 可用于：JoinQueryPanel、PivotTable、SetOperations 等
  */
 
 import * as React from 'react';
