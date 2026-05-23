@@ -64,7 +64,9 @@ flowchart LR
 
     subgraph Services["⚙️ 服务层"]
         S1[task_manager.py]
-        S2[visual_query_generator.py]
+        S2[pivot_query_generator.py]
+        S2b[table_metadata_service.py]
+        S2c[set_operation_generator.py]
         S3[cleanup_scheduler.py]
     end
 
