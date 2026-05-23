@@ -195,7 +195,7 @@ export function isStandardError(response: unknown): response is StandardError {
 /**
  * Normalize API response to a consistent format
  *
- * Handles both new standard format and legacy formats.
+ * Handles standard envelope and minimal legacy `{ success, data }` (no messageCode/timestamp).
  *
  * @param response - Axios response object
  * @returns Normalized response with data, messageCode, etc.

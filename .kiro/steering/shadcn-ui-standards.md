@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ['frontend/src/new/**/*.tsx', 'frontend/src/new/**/*.jsx']
+fileMatchPattern: ['frontend/src/**/*.tsx', 'frontend/src/**/*.jsx']
 ---
 
 # Shadcn/UI 组件使用标准
@@ -15,50 +15,30 @@ fileMatchPattern: ['frontend/src/new/**/*.tsx', 'frontend/src/new/**/*.jsx']
 
 ## 📁 目录结构规范
 
-### ✅ 正确的结构
+### ✅ 正确的结构（现行）
 ```
 frontend/src/
-├── new/                            # 新布局（shadcn/ui）
-│   ├── components/
-│   │   └── ui/                     # shadcn/ui 组件（仅新布局使用）
-│   │       ├── button.tsx
-│   │       ├── card.tsx
-│   │       ├── input.tsx
-│   │       ├── form.tsx
-│   │       ├── command.tsx
-│   │       └── ...
-│   ├── Layout/
-│   │   ├── Sidebar.tsx
-│   │   ├── Header.tsx
-│   │   └── PageShell.tsx
-│   └── DataSource/
-│       ├── DatabaseForm.tsx
-│       └── UploadPanel.tsx
-│
-└── components/                     # 旧布局（MUI）
-    ├── QueryBuilder/
-    └── Results/
+├── components/ui/          # shadcn/ui（唯一 UI 组件库）
+├── Query/                  # 查询工作台（SQL / Join / Set / Pivot）
+├── DataSource/
+├── Layout/
+├── hooks/
+└── api/
 ```
 
-### ❌ 禁止的结构
-```
-frontend/src/
-├── components/
-│   ├── ui/                         # ❌ shadcn/ui 在全局目录
-│   │   └── button.tsx
-│   ├── QueryBuilder/               # ❌ 新旧混淆
-│   └── Results/
-```
+### ❌ 禁止
+- `@mui/material`、自定义 CSS 主题文件（见 `AGENTS.md` §5）
+- 已废止路径 `@/new/*`、`frontend/src/new/`
 
 ## 🔒 导入规范
 
-### 新布局组件导入（必须遵守）
+### 组件导入（必须遵守）
 ```tsx
 // ✅ 正确：使用 shadcn/ui 组件
-import { Button } from '@/new/components/ui/button';
-import { Card } from '@/new/components/ui/card';
-import { Input } from '@/new/components/ui/input';
-import { Form } from '@/new/components/ui/form';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Form } from '@/components/ui/form';
 
 // ✅ 正确：使用 lucide-react 图标
 import { Home, Database, Settings } from 'lucide-react';
@@ -70,20 +50,11 @@ import { cn } from '@/lib/utils';
 import { Button } from '@mui/material';  // ❌ 禁止
 ```
 
-### 旧布局组件导入（保持不变）
-```jsx
-// ✅ 正确：继续使用 MUI
-import { Button, TextField } from '@mui/material';
-
-// ❌ 错误：不要在旧布局中使用 shadcn/ui
-import { Button } from '@/new/components/ui/button';  // ❌ 禁止
-```
-
 ## 🎨 Shadcn/UI 组件使用规范
 
 ### 1. Button 组件
 ```tsx
-import { Button } from '@/new/components/ui/button';
+import { Button } from '@/components/ui/button';
 
 // 主按钮
 <Button variant="default">确认</Button>
@@ -106,7 +77,7 @@ import { Button } from '@/new/components/ui/button';
 
 ### 2. Card 组件
 ```tsx
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/new/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 
 <Card>
   <CardHeader>
@@ -124,8 +95,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 
 ### 3. Form 组件（配合 react-hook-form）
 ```tsx
-import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription, FormMessage } from '@/new/components/ui/form';
-import { Input } from '@/new/components/ui/input';
+import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { useForm } from 'react-hook-form';
 
 const form = useForm();
@@ -152,7 +123,7 @@ const form = useForm();
 
 ### 4. Command 组件（命令面板）
 ```tsx
-import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/new/components/ui/command';
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 
 <Command>
   <CommandInput placeholder="搜索..." />
@@ -168,7 +139,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 
 ### 5. Dialog 组件
 ```tsx
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/new/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 <Dialog>
   <DialogTrigger asChild>
@@ -186,7 +157,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 
 ### 6. Select 组件
 ```tsx
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/new/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 <Select>
   <SelectTrigger>
@@ -201,7 +172,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 ### 7. Tooltip 组件
 ```tsx
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/new/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 <TooltipProvider>
   <Tooltip>
@@ -308,12 +279,12 @@ const response: ApiResponse<Table[]> = await fetchTables();
 ### 1. 禁止混用组件库
 ```tsx
 // ❌ 错误：在新布局中混用 MUI
-import { Button } from '@/new/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { TextField } from '@mui/material';  // ❌ 禁止
 
 // ✅ 正确：统一使用 shadcn/ui
-import { Button } from '@/new/components/ui/button';
-import { Input } from '@/new/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 ```
 
 ### 2. 禁止直接修改 shadcn/ui 组件
@@ -354,7 +325,7 @@ export function PrimaryButton(props: ButtonProps) {
 ### 组件使用
 - [ ] 是否使用了正确的 shadcn/ui 组件？
 - [ ] 是否避免了混用 MUI 组件？
-- [ ] 是否使用了正确的导入路径（`@/new/components/ui/*`）？
+- [ ] 是否使用了正确的导入路径（`@/components/ui/*`）？
 
 ### TypeScript
 - [ ] 是否定义了 Props 类型？
@@ -436,7 +407,7 @@ try {
 
 ---
 
-**版本**: 1.0  
-**创建时间**: 2024-12-02  
-**适用范围**: `frontend/src/new/` 目录下所有组件  
+**版本**: 1.1  
+**最后更新**: 2026-05-23  
+**适用范围**: `frontend/src/**`（`components/ui` + 业务组件）  
 **状态**: ✅ 标准规范

@@ -1,4 +1,4 @@
-"""Shared SQL helpers for join-query and visual-query routers."""
+"""Shared SQL helpers for join-query and pivot-query routers."""
 
 from __future__ import annotations
 

@@ -248,14 +248,13 @@ export function useFederatedQuery(
           rows?: unknown[];
           columns?: Array<{ name: string; type: string }>;
           row_count?: number;
-          rowCount?: number;
         };
 
         return {
           success: true,
           data: result.data || result.rows || [],
           columns: result.columns || [],
-          rowCount: result.row_count || result.rowCount,
+          rowCount: result.row_count ?? (result.data?.length ?? 0),
         };
       } catch (error) {
         const parsedError = parseFederatedQueryError(error as Error);

@@ -29,21 +29,21 @@ import { z } from 'zod';
 import { getDuckDBTables, executeDuckDBSQL } from '@/api';
 
 // 4. UI 组件
-import { Button } from '@/new/components/ui/button';
-import { Card, CardHeader, CardContent } from '@/new/components/ui/card';
-import { Dialog } from '@/new/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Dialog } from '@/components/ui/dialog';
 
 // 5. 业务组件
-import { DataSourcePanel } from '@/new/Query/DataSourcePanel';
-import { ResultPanel } from '@/new/Query/ResultPanel';
+import { DataSourcePanel } from '@/Query/DataSourcePanel';
+import { ResultPanel } from '@/Query/ResultPanel';
 
 // 6. Hooks
-import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
-import { useDataSources } from '@/new/hooks/useDataSources';
+import { useDuckDBTables } from '@/hooks/useDuckDBTables';
+import { useDataSources } from '@/hooks/useDataSources';
 
 // 7. 工具函数
-import { cn } from '@/new/utils/cn';
-import { formatDate } from '@/new/utils/dateUtils';
+import { cn } from '@/utils/cn';
+import { formatDate } from '@/utils/dateUtils';
 
 // 8. 类型定义
 import type { Table } from '@/types/table';
@@ -57,11 +57,11 @@ import './styles.css';
 
 ```typescript
 // ❌ 错误：顺序混乱
-import { Button } from '@/new/components/ui/button';
+import { Button } from '@/components/ui/button';
 import React from 'react';
 import { getDuckDBTables } from '@/api';
 import { useQuery } from '@tanstack/react-query';
-import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
+import { useDuckDBTables } from '@/hooks/useDuckDBTables';
 import './styles.css';
 import { toast } from 'sonner';
 ```
@@ -70,8 +70,8 @@ import { toast } from 'sonner';
 // ❌ 错误：组之间没有空行
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Button } from '@/new/components/ui/button';
-import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
+import { Button } from '@/components/ui/button';
+import { useDuckDBTables } from '@/hooks/useDuckDBTables';
 ```
 
 ```typescript
@@ -93,12 +93,12 @@ import { toast } from 'sonner';
 
 import { getDuckDBTables } from '@/api';
 
-import { Button } from '@/new/components/ui/button';
-import { Card } from '@/new/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 
-import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
+import { useDuckDBTables } from '@/hooks/useDuckDBTables';
 
-import { cn } from '@/new/utils/cn';
+import { cn } from '@/utils/cn';
 
 import type { Table } from '@/types/table';
 
@@ -109,7 +109,7 @@ import './styles.css';
 // ✅ 正确：简单组件
 import React from 'react';
 
-import { Button } from '@/new/components/ui/button';
+import { Button } from '@/components/ui/button';
 
 function MyButton() {
   return <Button>点击</Button>;
@@ -177,10 +177,10 @@ function MyButton() {
   { "pattern": "react", "group": "react", "position": "before" },
   { "pattern": "react-*", "group": "react", "position": "before" },
   { "pattern": "@tanstack/**", "group": "external", "position": "before" },
-  { "pattern": "@/new/components/ui/**", "group": "components", "position": "before" },
-  { "pattern": "@/new/components/**", "group": "components", "position": "after" },
-  { "pattern": "@/new/hooks/**", "group": "hooks", "position": "before" },
-  { "pattern": "@/new/utils/**", "group": "utils", "position": "before" },
+  { "pattern": "@/components/ui/**", "group": "components", "position": "before" },
+  { "pattern": "@/components/**", "group": "components", "position": "after" },
+  { "pattern": "@/hooks/**", "group": "hooks", "position": "before" },
+  { "pattern": "@/utils/**", "group": "utils", "position": "before" },
   { "pattern": "@/api", "group": "internal", "position": "before" },
   { "pattern": "@/api/**", "group": "internal", "position": "before" },
   { "pattern": "@/types/**", "group": "types", "position": "before" },
@@ -210,9 +210,9 @@ import React, { useState, useCallback } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
 
-import { Button } from '@/new/components/ui/button';
+import { Button } from '@/components/ui/button';
 
-import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
+import { useDuckDBTables } from '@/hooks/useDuckDBTables';
 
 function MyComponent() {
   // ...
@@ -225,7 +225,7 @@ function MyComponent() {
 // ✅ 工具函数通常只需要少量导入
 import { format } from 'date-fns';
 
-import { cn } from '@/new/utils/cn';
+import { cn } from '@/utils/cn';
 
 export function formatDate(date: Date) {
   // ...
@@ -256,9 +256,9 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 
-import { Button } from '@/new/components/ui/button';
+import { Button } from '@/components/ui/button';
 
-import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
+import { useDuckDBTables } from '@/hooks/useDuckDBTables';
 
 describe('MyComponent', () => {
   // ...

@@ -70,11 +70,10 @@ class MessageCode(str, Enum):
     QUERY_SAVED = "QUERY_SAVED"
     EXPORT_SUCCESS = "EXPORT_SUCCESS"
 
-    # ==================== 可视化查询相关 ====================
-    VISUAL_QUERY_GENERATED = "VISUAL_QUERY_GENERATED"
-    VISUAL_QUERY_PREVIEWED = "VISUAL_QUERY_PREVIEWED"
-    VISUAL_QUERY_VALIDATED = "VISUAL_QUERY_VALIDATED"
-    VISUAL_QUERY_INVALID = "VISUAL_QUERY_INVALID"
+    # ==================== 透视查询相关 ====================
+    PIVOT_QUERY_GENERATED = "PIVOT_QUERY_GENERATED"
+    PIVOT_QUERY_PREVIEWED = "PIVOT_QUERY_PREVIEWED"
+    PIVOT_QUERY_INVALID = "PIVOT_QUERY_INVALID"
 
     # ==================== 集合操作相关 ====================
     SET_OPERATION_GENERATED = "SET_OPERATION_GENERATED"
@@ -223,11 +222,10 @@ DEFAULT_MESSAGES = {
     MessageCode.QUERY_SAVED: "查询结果已保存",
     MessageCode.EXPORT_SUCCESS: "导出成功",
 
-    # ==================== 可视化查询相关 ====================
-    MessageCode.VISUAL_QUERY_GENERATED: "可视化查询生成成功",
-    MessageCode.VISUAL_QUERY_PREVIEWED: "可视化查询预览成功",
-    MessageCode.VISUAL_QUERY_VALIDATED: "可视化查询验证通过",
-    MessageCode.VISUAL_QUERY_INVALID: "可视化查询配置无效",
+    # ==================== 透视查询相关 ====================
+    MessageCode.PIVOT_QUERY_GENERATED: "透视查询生成成功",
+    MessageCode.PIVOT_QUERY_PREVIEWED: "透视查询预览成功",
+    MessageCode.PIVOT_QUERY_INVALID: "透视查询配置无效",
 
     # ==================== 集合操作相关 ====================
     MessageCode.SET_OPERATION_GENERATED: "集合操作生成成功",

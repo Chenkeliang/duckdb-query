@@ -109,9 +109,9 @@ duckdb-query/
 │       │   └── tailwind.css          # Tailwind 主题变量
 │       └── i18n/                     # 国际化
 ├── config/                           # 配置文件
-├── docs/                             # 文档
-│   ├── API_CONTRACT_FE_BE.md         # 前后端 API 契约真相表（按域 / 端点 / data 语义）
-│   └── archive/                      # 已废止文档（勿作实现依据）
+├── docs/                             # 文档（索引见 docs/README.md）
+│   ├── API_CONTRACT_FE_BE.md         # 前后端 API 契约（按域 / 端点 / data 语义）
+│   └── frontend/QUERY_EXECUTION_FLOW.md
 ├── .github/                          # CI / PR 模板
 │   └── pull_request_template.md      # PR：契约与验证勾选
 └── docker-compose.yml
@@ -593,12 +593,13 @@ python -m pytest tests -q
 |------|------|
 | 前端 UI | `frontend/src/Query/PivotTable/`（`PivotPanel`、`PivotTableDesigner`、`buildPivotQueryPayload`） |
 | 前端 API | `frontend/src/api/pivotQueryApi.ts` 的 `generatePivotQuery` / `previewPivotQuery` |
-| 后端路由 | `api/routers/pivot_query.py`（`/api/pivot-query/generate`、`/preview`；legacy `/api/visual-query/*` deprecated） |
-| SQL 生成 | `api/core/services/pivot_query_generator.py`、`visual_query_sql_common.py` |
+| 后端路由 | `api/routers/pivot_query.py`（`POST /api/pivot-query/generate`、`/preview`） |
+| SQL 生成 | `api/core/services/pivot_query_generator.py`、`pivot_query_sql_common.py` |
+| 透视模型 | `api/models/pivot_query_models.py` |
 | 表元数据 | `api/core/services/table_metadata_service.py` |
 | 集合运算 SQL | `api/core/services/set_operation_generator.py` |
 
-已移除 **Visual 构建器**（`frontend/src/Query/VisualQuery/`、HTTP `mode=regular`、`/api/visual-query/validate` 等）及后端 `regular_query_generator`、构建器专用 Pydantic 字段。透视路径见 `PivotTable/*` 与 `POST /api/pivot-query/*`。
+已移除 **Visual 构建器**（`frontend/src/Query/VisualQuery/`、`mode=regular`、`/api/visual-query/*` 等）及 `regular_query_generator`。透视路径见 `PivotTable/*` 与 `POST /api/pivot-query/*`。
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

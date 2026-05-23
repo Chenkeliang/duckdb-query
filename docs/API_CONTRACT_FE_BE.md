@@ -2,7 +2,7 @@
 
 > **维护规则**：增删响应字段时先更新本表，再改 Pydantic / TypeScript 与调用方（与 [`AGENTS.md`](../AGENTS.md) §9.5 顺序一致）。  
 > **环境说明**：若网关或代理改写 JSON，以浏览器 Network 实际响应为准；本表以仓库内 FastAPI 路由与 `create_success_response` / `create_list_response` 为准。  
-> **调用图**：阶段 A [`API_URL_IMPORT_CALL_MAP.md`](API_URL_IMPORT_CALL_MAP.md)、B [`API_PHASE_B_CALL_MAP.md`](API_PHASE_B_CALL_MAP.md)、C [`API_PHASE_C_CALL_MAP.md`](API_PHASE_C_CALL_MAP.md)。
+> **调用图**：见 [`ARCHITECTURE_CALL_MAP.md`](ARCHITECTURE_CALL_MAP.md)、[`frontend/QUERY_EXECUTION_FLOW.md`](frontend/QUERY_EXECUTION_FLOW.md)。
 
 ## 0. 部署与 API 入口
 
@@ -25,7 +25,7 @@
 | `uploadApi.ts` | §5 | 本地上传与分块（从 `fileApi` 再导出） |
 | `fileApi.ts` | §5 | URL / Excel / 服务器文件 / 粘贴 |
 | `asyncTaskApi.ts` | §6 | 异步任务、连接池状态、错误统计 |
-| `pivotQueryApi.ts` | §7 | 透视 generate/preview、SQL 收藏、应用配置（`POST /api/pivot-query/*`；`/api/visual-query/*` 已 deprecated） |
+| `pivotQueryApi.ts` | §7 | 透视 generate/preview、SQL 收藏、应用配置（`POST /api/pivot-query/*`） |
 | `settingsShortcutsApi.ts` | §8 | 快捷键 |
 | `setOperationsApi.ts` | §9 | 集合运算 generate / preview / validate / execute / export 等 |
 | `joinQueryApi.ts` | §9.1 | 结构化多表 JOIN：`performJoinQuery` |
@@ -50,7 +50,7 @@
 | 400 | `INVALID_TABLE_NAME` / `INVALID_ALIAS` / `INVALID_LIMIT` / `INVALID_OFFSET` / `MISSING_*` | `core.common.validators` 参数校验（`details.field`） |
 | 403 | `PROTECTED_SCHEMA` / `RESERVED_NAME` / `PATH_NOT_ALLOWED` / `SYMLINK_NOT_ALLOWED` | 表名/路径安全校验 |
 | 400 | `URL_INVALID` | `GET /api/url_info` / `POST /api/read_from_url` 无法访问或格式无效 URL |
-| 400 | `VISUAL_QUERY_INVALID` | 可视化 generate / preview 业务配置校验失败 |
+| 400 | `PIVOT_QUERY_INVALID` | 透视 generate / preview 业务配置校验失败 |
 | 400 | `CONNECTION_TEST_FAILED` | `POST .../databases/test`、保存后测试失败、`refresh` 测试失败 |
 | 400 | `SECURITY_ERROR` | 服务器浏览路径为符号链接 |
 | 403 | `AUTHORIZATION_ERROR` | 服务器目录无读权限 |
@@ -147,14 +147,12 @@
 
 ## 7. 透视查询与收藏（`pivotQueryApi.ts`）
 
-> **2026-05**：工作台已移除「可视化查询」Tab。主路径 `POST /api/pivot-query/*` 仅 **透视**（必填 `pivot_config`；响应 `data.mode` 为 `pivot`）。`config` 仅 `table_name`、`filters`、`limit`；`FilterConfig` 为 `column` / `operator` / `value`（`value2` 用于 BETWEEN）/ `logic_operator`。`/api/visual-query/*` 保留为 deprecated 别名。集合操作模型见 `set_operation_models.py`。
+> **2026-05**：工作台已移除「可视化查询」Tab。`POST /api/pivot-query/*` 仅 **透视**（必填 `pivot_config`；响应 `data.mode` 为 `pivot`）。`config` 仅 `table_name`、`filters`、`limit`；`FilterConfig` 为 `column` / `operator` / `value`（`value2` 用于 BETWEEN）/ `logic_operator`。集合操作模型见 `set_operation_models.py`。
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/pivot-query/generate` | 对象 | `generatePivotQuery`（`pivot_config` 必填）；400 `VISUAL_QUERY_INVALID`；500 `OPERATION_FAILED` |
-| POST | `/api/pivot-query/preview` | 对象 | `previewPivotQuery`（`pivot_config` 必填；可选 `attach_databases`）；400 `VISUAL_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
-| POST | `/api/visual-query/generate` | 对象 | **Deprecated** — 同 generate；请迁移至 `/api/pivot-query/generate` |
-| POST | `/api/visual-query/preview` | 对象 | **Deprecated** — 同 preview；请迁移至 `/api/pivot-query/preview` |
+| POST | `/api/pivot-query/generate` | 对象 | `generatePivotQuery`（`pivot_config` 必填）；400 `PIVOT_QUERY_INVALID`；500 `OPERATION_FAILED` |
+| POST | `/api/pivot-query/preview` | 对象 | `previewPivotQuery`（`pivot_config` 必填；可选 `attach_databases`）；400 `PIVOT_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
 | GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（`data.favorite`）；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites` | 对象 | `createSqlFavorite`；400 `FAVORITE_NAME_EXISTS` |

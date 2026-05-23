@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from threading import RLock
 from typing import Callable, Dict, Optional
 
-from models.visual_query_models import TableMetadata
+from models.pivot_query_models import TableMetadata
 
 try:  # pragma: no cover - config manager may be unavailable in certain test setups
     from core.common.config_manager import config_manager  # type: ignore

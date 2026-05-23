@@ -23,12 +23,12 @@ from routers import (
     url_reader,
     server_files,
     async_tasks,
-    database_tables,  # 外部库元数据（含 legacy 别名路径）
+    database_tables,  # 外部库元数据：/api/datasources/databases/*
     sql_favorites,
     datasources,  # 统一数据源：/api/datasources/*
     settings,
     query_cancel,
-    pivot_query,  # /api/pivot-query/* (+ deprecated /api/visual-query/*)
+    pivot_query,  # /api/pivot-query/*
     set_operations,  # /api/set-operations/*
 )
 from routers import config_api
@@ -92,8 +92,8 @@ async def app_lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="DuckQuery · DuckDB Visual Analytics API",
-    description="Interactive API for DuckDB-powered data ingestion, cross-source joins, and analytics with native DuckDB extensions.",
+    title="DuckQuery · DuckDB Query API",
+    description="API for DuckDB ingestion, federated SQL, JOIN/pivot/set-operation builders, and async analytics.",
     version="2.1.0",
     lifespan=app_lifespan,
 )
@@ -149,7 +149,7 @@ async def root():
         "features": [
             "DuckDB-native execution with multi-database federation (MySQL, PostgreSQL, SQLite)",
             "High-performance file ingestion (CSV, Excel, JSON, Parquet)",
-            "Visual + SQL driven JOIN operations and type-aware validation",
+            "SQL, JOIN, pivot, and set-operation query builders with type-aware validation",
             "Asynchronous task execution and result export",
             "Connection management & credential security",
         ],

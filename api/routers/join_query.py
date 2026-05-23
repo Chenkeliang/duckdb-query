@@ -2,7 +2,7 @@
 """
 多表 JOIN 与查询结果入湖（`/api/query`、`/api/save_query_to_duckdb`）。
 
-DuckDB/联邦 SQL 执行见 `duckdb_query.py`；可视化 / 集合运算见 `visual_query.py`、`set_operations.py`。
+DuckDB/联邦 SQL 执行见 `duckdb_query.py`；透视 / 集合运算见 `pivot_query.py`、`set_operations.py`。
 """
 import json
 import logging

@@ -69,7 +69,7 @@
 ### 实施文档（8个）
 
 1. **实施计划** (`lint-rules/IMPLEMENTATION_PLAN.md`)
-2. **实施总结** (`lint-rules/IMPLEMENTATION_SUMMARY.md`)
+2. **README** (`lint-rules/README.md`)
 3. **快速入门** (`lint-rules/QUICK_START.md`)
 4. **测试报告** (`lint-rules/TEST_REPORT.md`)
 5. **高优先级规则完成报告** (`lint-rules/HIGH_PRIORITY_RULES_COMPLETION.md`)
@@ -235,7 +235,7 @@ toast.success(t('messages.deleteSuccess'));
 ### 遇到问题？
 
 1. 查看 [快速入门指南](../../lint-rules/QUICK_START.md)
-2. 查看 [实施总结](../../lint-rules/IMPLEMENTATION_SUMMARY.md)
+2. 查看 [Lint 规则 README](../../lint-rules/README.md)
 3. 查看对应的规范文档
 4. 提交 Issue 到项目仓库
 

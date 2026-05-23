@@ -1,12 +1,12 @@
 """Smoke tests for pivot-only /api/pivot-query endpoints."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from core.services.pivot_query_generator import GeneratedVisualQuery, ValidationResult
+from core.services.pivot_query_generator import GeneratedPivotQuery, ValidationResult
 from main import app
-from models.visual_query_models import VisualQueryMode
+from models.pivot_query_models import PivotQueryMode
 
 client = TestClient(app)
 
@@ -25,11 +25,11 @@ PIVOT_BODY = {
 
 
 def test_pivot_generate_success_envelope():
-    generation = GeneratedVisualQuery(
-        mode=VisualQueryMode.PIVOT,
+    generation = GeneratedPivotQuery(
+        mode=PivotQueryMode.PIVOT,
         base_sql='SELECT "region", "amount" FROM "sales"',
         final_sql='WITH base AS (SELECT "region", "amount" FROM "sales") SELECT * FROM pivot_result;',
-        pivot_sql="SELECT * FROM base PIVOT(SUM(\"amount\") FOR \"year\")",
+        pivot_sql='SELECT * FROM base PIVOT(SUM("amount") FOR "year")',
         warnings=[],
         metadata={"strategy": "native"},
     )
@@ -47,26 +47,3 @@ def test_pivot_generate_success_envelope():
     assert body["success"] is True
     assert body["data"]["mode"] == "pivot"
     assert "PIVOT" in body["data"]["sql"] or "pivot_result" in body["data"]["sql"]
-
-
-def test_legacy_visual_query_generate_still_works():
-    """Deprecated /api/visual-query/generate remains registered."""
-    generation = GeneratedVisualQuery(
-        mode=VisualQueryMode.PIVOT,
-        base_sql='SELECT 1',
-        final_sql='SELECT 1',
-        pivot_sql=None,
-        warnings=[],
-        metadata={},
-    )
-    with patch(
-        "routers.pivot_query.validate_query_config",
-        return_value=ValidationResult(is_valid=True, errors=[], warnings=[]),
-    ), patch(
-        "routers.pivot_query.generate_pivot_query_sql",
-        return_value=generation,
-    ):
-        response = client.post("/api/visual-query/generate", json=PIVOT_BODY)
-
-    assert response.status_code == 200
-    assert response.json()["success"] is True

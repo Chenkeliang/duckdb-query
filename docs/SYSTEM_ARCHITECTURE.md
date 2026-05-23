@@ -109,8 +109,8 @@ flowchart TB
     subgraph QueryTypes["🔍 查询类型"]
         direction LR
         SQL[SQLQueryPanel]
-        Visual[VisualQueryPanel]
         Join[JoinQueryPanel]
+        SetOps[SetOperationsPanel]
         Pivot[PivotPanel]
     end
 
@@ -367,7 +367,7 @@ flowchart TB
 | **前端框架** | React 18 + Vite + TypeScript | 现代化 SPA 架构 |
 | **UI 组件** | shadcn/ui + Tailwind CSS | 一致性设计系统 |
 | **状态管理** | TanStack Query 5.x | 服务端状态缓存 |
-| **表格组件** | AG Grid v34 + TanStack Table | 高性能数据展示 |
+| **表格组件** | TanStack Table（`Query/DataGrid`） | 查询结果虚拟滚动与选区 |
 | **后端框架** | FastAPI + Python 3.11+ | 异步 API 服务 |
 | **核心数据库** | DuckDB | OLAP 分析引擎 |
 | **外部数据库** | MySQL / PostgreSQL / SQLite | 联邦查询支持 |

@@ -7,7 +7,7 @@ The feature will use a standard SPA + API architecture. The frontend provides a 
 graph TD
     User[User] -->|Drag & Drop| Frontend[PivotWorkbench UI]
     Frontend -->|PivotRequest| API[Backend API]
-    API -->|Generate SQL| Generator[VisualQueryGenerator]
+    API -->|Generate SQL| Generator[PivotQueryGenerator]
     Generator -->|Execute| DuckDB[DuckDB Engine]
     DuckDB -->|Result Set| API
     API -->|JSON Data| Frontend
@@ -16,10 +16,10 @@ graph TD
 
 ## Backend Design
 ### 1. API Endpoint
-**Endpoint**: `POST /api/query/visual-generation`
-**Mode**: `VisualQueryMode.PIVOT`
+**Endpoint**: `POST /api/pivot-query/generate` | `POST /api/pivot-query/preview`
+**Mode**: `PivotQueryMode.PIVOT`
 
-**Request Model (`VisualQueryRequest`)**:
+**Request Model (`PivotQueryRequest`)**:
 Re-use existing models but focus on `pivot_config`:
 ```python
 class PivotConfig(BaseModel):
@@ -29,7 +29,7 @@ class PivotConfig(BaseModel):
     # ... filters, sorting, etc.
 ```
 
-### 2. SQL Generation (`pivot_query_generator.py` + `visual_query_sql_common.py`)
+### 2. SQL Generation (`pivot_query_generator.py` + `pivot_query_sql_common.py`)
 **Current Legacy Logic**:
 - Checks for `manual_column_values` (IN list).
 - If missing, executes a "Limit N" query to sample values.
@@ -77,7 +77,7 @@ class PivotConfig(BaseModel):
   ```typescript
   useQuery({
     queryKey: [...],
-    queryFn: () => api.generateVisualQuery(config),
+    queryFn: () => api.generatePivotQuery(config),
     staleTime: 5 * 60 * 1000, // 5 mins
   })
   ```
@@ -90,7 +90,7 @@ class PivotConfig(BaseModel):
   - **Theme**: `className="ag-theme-alpine-dark legacy"` (Strict requirement).
   - **Memoization**: All objects passed to grid (`defaultColDef`, `gridOptions`) MUST be wrapped in `useMemo` to verify referential stability.
 - **Dynamic Columns**:
-  - `columnDefs` are generated on-the-fly (`useEffect` or `useMemo`) based on the `VisualQueryResponse` metadata or data keys.
+  - `columnDefs` are generated on-the-fly (`useEffect` or `useMemo`) based on pivot API response metadata or data keys.
 - **Virtualization**: AG Grid handles this natively; ensure container has explicit height.
 
 ### 4. Styling & i18n
@@ -102,7 +102,7 @@ class PivotConfig(BaseModel):
   ```
 
 ## Security & Limits (Backend)
-- **SQL Injection**: All table and column names will be sanitized/quoted using `_quote_identifier` in `pivot_query_generator.py` / `visual_query_sql_common.py`.
+- **SQL Injection**: All table and column names will be sanitized/quoted using `_quote_identifier` in `pivot_query_generator.py` / `pivot_query_sql_common.py`.
 - **Result Limits**:
   - **Rows**: Limit to 10,000 rows by default.
   - **Columns**: Dynamic pivot can generate many columns; Limit to 1,000 columns.

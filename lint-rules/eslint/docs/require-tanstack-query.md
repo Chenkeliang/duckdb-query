@@ -71,7 +71,7 @@ function MyComponent() {
 
 ```tsx
 // ✅ 正确：使用共享 Hook
-import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
+import { useDuckDBTables } from '@/hooks/useDuckDBTables';
 
 function MyComponent() {
   const { tables, isLoading, error } = useDuckDBTables();
@@ -186,7 +186,7 @@ function MyComponent({ userId }: { userId: string }) {
 
 - [TanStack Query 官方文档](https://tanstack.com/query/latest)
 - [项目 TanStack Query 使用标准](.kiro/steering/tanstack-query-standards.md)
-- [前端 Hooks 使用指南](frontend/src/new/hooks/README.md)
+- [前端 Hooks 使用指南](../../../frontend/src/hooks/README.md)
 
 ## 版本
 

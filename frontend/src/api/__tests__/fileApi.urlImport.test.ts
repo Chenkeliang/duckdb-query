@@ -1,6 +1,6 @@
 /**
  * URL 导入 API 与后端 url_reader 路由/字段对齐（防回归）
- * @see docs/API_URL_IMPORT_CALL_MAP.md
+ * @see docs/API_CONTRACT_FE_BE.md §5
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

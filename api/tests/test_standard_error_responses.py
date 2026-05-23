@@ -164,8 +164,8 @@ def test_query_cancel_not_found_standard_error():
     assert "detail" not in body
 
 
-def test_visual_query_generate_invalid_config_standard_error():
-    """generate 业务校验失败须 400 VISUAL_QUERY_INVALID（非 200 裸错误体）。"""
+def test_pivot_query_generate_invalid_config_standard_error():
+    """generate 业务校验失败须 400 PIVOT_QUERY_INVALID（非 200 裸错误体）。"""
     from core.services.pivot_query_generator import ValidationResult
 
     invalid = ValidationResult(
@@ -194,7 +194,7 @@ def test_visual_query_generate_invalid_config_standard_error():
     assert response.status_code == 400
     body = response.json()
     assert body["success"] is False
-    assert body["error"]["code"] == "VISUAL_QUERY_INVALID"
+    assert body["error"]["code"] == "PIVOT_QUERY_INVALID"
     assert "detail" not in body
 
 

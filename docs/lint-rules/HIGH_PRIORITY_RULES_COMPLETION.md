@@ -219,7 +219,7 @@ pylint --load-plugins=duckquery_pylint \
 ### 实施文档
 
 - [实施计划](../../lint-rules/IMPLEMENTATION_PLAN.md)
-- [实施总结](../../lint-rules/IMPLEMENTATION_SUMMARY.md)
+- [Lint 规则 README](../../lint-rules/README.md)
 - [快速入门](../../lint-rules/QUICK_START.md)
 - [测试报告](../../lint-rules/TEST_REPORT.md)
 

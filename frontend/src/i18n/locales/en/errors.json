@@ -53,10 +53,9 @@
   "ASYNC_TASK_COMPLETED": "Async task completed",
   "DATASOURCES_REFRESHED": "Data sources refreshed",
 
-  "VISUAL_QUERY_GENERATED": "Visual query generated successfully",
-  "VISUAL_QUERY_PREVIEWED": "Visual query preview successful",
-  "VISUAL_QUERY_VALIDATED": "Visual query validation passed",
-  "VISUAL_QUERY_INVALID": "Visual query configuration invalid",
+  "PIVOT_QUERY_GENERATED": "Pivot query generated successfully",
+  "PIVOT_QUERY_PREVIEWED": "Pivot query preview successful",
+  "PIVOT_QUERY_INVALID": "Pivot query configuration invalid",
 
   "SET_OPERATION_GENERATED": "Set operation generated successfully",
   "SET_OPERATION_PREVIEWED": "Set operation preview successful",

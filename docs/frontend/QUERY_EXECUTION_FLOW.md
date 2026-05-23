@@ -9,7 +9,7 @@
 
 契约全表：[`docs/API_CONTRACT_FE_BE.md`](../API_CONTRACT_FE_BE.md)。
 
-**已废弃（勿作用户路径）**：`POST /api/execute_sql`、`GET/DELETE /api/duckdb_tables*`。同步查询仅使用 § 统一架构 中的两个端点。
+**已移除（勿再实现）**：`POST /api/execute_sql`、`GET/DELETE /api/duckdb_tables*`。同步查询仅使用 § 统一架构 中的两个端点。
 
 ---
 
@@ -242,7 +242,7 @@ export function generateDatabaseAlias(connection: DatabaseConnection): string {
 
 ## 异步查询
 
-外部库异步任务与同步一致：优先 `attach_databases`；仅传 `datasource` 时后端自动推导 ATTACH（见 [`API_PHASE_C_CALL_MAP.md`](../API_PHASE_C_CALL_MAP.md)）。入口：`POST /api/async-tasks`（`asyncTaskApi.submitAsyncQuery`）。
+外部库异步任务与同步一致：优先 `attach_databases`；仅传 `datasource` 时后端自动推导 ATTACH（`async_tasks.resolve_attach_databases_for_async`）。入口：`POST /api/async-tasks`（`asyncTaskApi.submitAsyncQuery`）。
 
 ## 可视化查询（外部表）
 
@@ -265,6 +265,6 @@ export function generateDatabaseAlias(connection: DatabaseConnection): string {
 
 ## 版本历史
 
-- **v2.1** (2026-05-21): 文档对齐契约表；明确废弃 `execute_sql` / `duckdb_tables`；异步 ATTACH 单轨
+- **v2.1** (2026-05-21): 文档对齐契约表；`execute_sql` / `duckdb_tables` 路由已删除；异步 ATTACH 单轨
 - **v2.0** (2024-12-19): 统一使用 ATTACH 模式，移除单独的外部数据库查询 API
 - **v1.0** (2024-12-04): 初始版本，区分外部查询和联邦查询

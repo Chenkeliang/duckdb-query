@@ -62,7 +62,6 @@ export {
     separateConditionsByPlacement,
     cloneTreeWithoutOnConditions,
     getConditionsForTable,
-    generateConditionsSQL,
     getOnConditionsTreeForTable,
     getDefaultPlacement,
     canPlaceInOrGroup,

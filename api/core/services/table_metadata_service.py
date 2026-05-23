@@ -6,7 +6,7 @@ import logging
 import math
 from typing import List, Optional
 
-from models.visual_query_models import ColumnStatistics, TableMetadata
+from models.pivot_query_models import ColumnStatistics, TableMetadata
 from core.database.table_metadata_cache import table_metadata_cache
 
 logger = logging.getLogger(__name__)

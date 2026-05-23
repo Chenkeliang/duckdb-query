@@ -3,7 +3,7 @@
  *
  * Functions for managing DuckDB tables and external database tables.
  *
- * @see docs/API_PHASE_B_CALL_MAP.md
+ * @see docs/API_CONTRACT_FE_BE.md §3
  */
 
 import { apiClient, handleApiError, normalizeResponse } from './client';

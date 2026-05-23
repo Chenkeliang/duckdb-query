@@ -173,7 +173,7 @@ describe('Panel Federated Query Integration', () => {
   });
 
   /**
-   * PivotPanel：外部表走联邦 ATTACH + visual-query（非旧 PivotTablePanel）
+   * PivotPanel：外部表走联邦 ATTACH + pivot-query API
    */
   describe('PivotPanel - external table source', () => {
     it('should identify external tables for warning display', () => {

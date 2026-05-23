@@ -882,20 +882,6 @@ export function getConditionsForTable(
 }
 
 /**
- * 生成条件数组的 SQL（用于 ON 子句附加条件）
- * 注意：此函数会丢失 AND/OR 树结构，仅用于简单场景
- * 如需保留 OR 逻辑，请使用 cloneTreeForTableOnConditions + generateFilterSQL
- * 
- * @param conditions 条件数组
- * @returns SQL 字符串
- * @deprecated 请使用 getOnConditionsTreeForTable + generateFilterSQL 以保留 OR 逻辑
- */
-export function generateConditionsSQL(conditions: FilterCondition[]): string {
-    if (conditions.length === 0) return '';
-    return conditions.map(c => generateFilterSQL(c)).join(' AND ');
-}
-
-/**
  * 克隆树，仅保留指定表的 ON 条件
  * 保留 AND/OR 逻辑结构，以支持 OR 条件
  * 

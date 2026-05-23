@@ -325,7 +325,7 @@ interface ReadFromUrlRequestBody {
     import_mode?: FileImportMode;
 }
 
-/** `POST /api/read_from_url` 成功时 `data` 形状（见 docs/API_URL_IMPORT_CALL_MAP.md） */
+/** `POST /api/read_from_url` 成功时 `data` 形状（见 docs/API_CONTRACT_FE_BE.md §5） */
 interface ReadFromUrlData {
     table_name: string;
     row_count?: number;
@@ -339,7 +339,7 @@ interface ReadFromUrlData {
 /**
  * Read data from URL and import to DuckDB
  *
- * @see docs/API_URL_IMPORT_CALL_MAP.md
+ * @see docs/API_CONTRACT_FE_BE.md §5
  */
 export async function readFromUrl(
     url: string,
@@ -377,7 +377,7 @@ interface UrlInfoData {
 /**
  * Get URL file information (without importing)
  *
- * @see docs/API_URL_IMPORT_CALL_MAP.md
+ * @see docs/API_CONTRACT_FE_BE.md §5
  */
 export async function getUrlInfo(url: string): Promise<{
     success: boolean;

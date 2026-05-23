@@ -1,4 +1,4 @@
-# Contributing to DuckQuery · DuckDB Visual Analytics
+# Contributing to DuckQuery · DuckDB Query Workbench
 
 感谢关注 DuckQuery！为了帮助社区协作，请在提交 Issue、Pull Request 前阅读以下指南。
 

@@ -53,4 +53,4 @@ inclusion: always
 - 异步任务: [api/routers/async_tasks.py](mdc:api/routers/async_tasks.py)
 - JOIN 查询: [api/routers/join_query.py](mdc:api/routers/join_query.py)
 - SQL 执行: [api/routers/duckdb_query.py](mdc:api/routers/duckdb_query.py)
-- 数据模型: [api/models/visual_query_models.py](mdc:api/models/visual_query_models.py)
+- 数据模型: [api/models/pivot_query_models.py](mdc:api/models/pivot_query_models.py)

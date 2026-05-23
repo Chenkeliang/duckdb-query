@@ -1,10 +1,9 @@
 # 前后端全面评估报告
 
 > **评估日期**：2026-05-21  
-> **部署形态**：见 [`FE_BE_OPTIMAL_PLAN.md`](./FE_BE_OPTIMAL_PLAN.md) §1（Docker 推荐 + 本地 dev）。无独立线上网关。  
-> **方法**：静态扫描 `api/routers/*.py` 与 `frontend/src/api/*.ts`、业务引用 grep、对照 README/`quick-start.sh` 与契约文档。  
-> **Remediation**：最优分阶段方案见 [`FE_BE_OPTIMAL_PLAN.md`](./FE_BE_OPTIMAL_PLAN.md)。  
-> **阶段 A–D（2026-05-21）**：URL 导入、前端 API 收敛、后端 ATTACH 单轨、契约表扩写已完成；下文「已修复」项以删除线或 ✅ 标注。
+> **部署形态**：Docker 推荐 + 本地 dev（见 `README.md`、`quick-start.sh`）；无独立线上网关。  
+> **方法**：静态扫描 `api/routers/*.py` 与 `frontend/src/api/*.ts`、业务引用 grep、对照契约 [`API_CONTRACT_FE_BE.md`](./API_CONTRACT_FE_BE.md)。  
+> **阶段 A–D（2026-05）**：URL 导入、前端 API 收敛、后端 ATTACH 单轨、契约表扩写已完成；下文「已修复」项以删除线或 ✅ 标注。
 
 ---
 
@@ -13,8 +12,8 @@
 | 维度 | 结论 |
 |------|------|
 | **主查询路径** | ✅ 同步：`executeDuckDBSQL` + `executeFederatedQuery`（ATTACH），与 v2.0/v2.1 文档一致 |
-| **P0 断链** | ✅ URL 导入已对齐（`API_URL_IMPORT_CALL_MAP.md`、阶段 A） |
-| **遗留双轨** | ✅ 异步新任务统一 ATTACH（阶段 C）；`execute_sql` / `duckdb_tables` 标 **deprecated**，无前端引用 |
+| **P0 断链** | ✅ URL 导入已对齐（契约 §5、`fileApi.readFromUrl`） |
+| **遗留双轨** | ✅ 异步新任务统一 ATTACH（阶段 C）；`execute_sql` / `duckdb_tables` 等 legacy HTTP 已移除，无前端引用 |
 | **契约表** | ✅ [`API_CONTRACT_FE_BE.md`](./API_CONTRACT_FE_BE.md) 按域覆盖 `frontend/src/api/*` 在用路径（阶段 D） |
 | **死代码 API** | ✅ 阶段 B 已从 `queryApi` / `index.ts` 移除 `execute_sql`、`performQuery` 等 |
 | **响应规范** | ✅ 主路由已用 `error_json_response` / `create_success_response`；边缘脚本或历史文档可能仍提及 `HTTPException` |
@@ -77,7 +76,7 @@
 | `POST /api/read_from_url` | 同左 | `UploadPanel` → `readFromUrl` |
 | `GET /api/url_info` | 同左 | `getUrlInfo`（无 UI，已对齐字段） |
 
-请求体：`header`（非 `has_header`）。详见 [`API_URL_IMPORT_CALL_MAP.md`](./API_URL_IMPORT_CALL_MAP.md)。
+请求体：`header`（非 `has_header`）。详见 [`API_CONTRACT_FE_BE.md`](./API_CONTRACT_FE_BE.md) §5。
 
 ### 3.3 P1：路径/资源名不一致（调用即失败）
 
@@ -115,8 +114,8 @@
 
 | 能力 | Legacy | 现行/并列 | 前端实际 |
 |------|--------|-----------|----------|
-| DuckDB 表列表 | `GET /api/duckdb_tables` (**deprecated**) | `GET /api/duckdb/tables` | ✅ **`getDuckDBTables()` → 新路径** |
-| 删 DuckDB 表 | `DELETE /api/duckdb_tables/{name}` (**deprecated**) | `DELETE /api/duckdb/tables/{name}` | ✅ **`deleteDuckDBTable` 仅新路径** |
+| DuckDB 表列表 | ~~`GET /api/duckdb_tables`~~（已移除） | `GET /api/duckdb/tables` | ✅ **`getDuckDBTables()`** |
+| 删 DuckDB 表 | ~~`DELETE /api/duckdb_tables/{name}`~~（已移除） | `DELETE /api/duckdb/tables/{name}` | ✅ **`deleteDuckDBTable`** |
 | 外部 schemas | — | `/api/databases/...` 与 `/api/datasources/databases/...` | `databaseSchemasApi` 用 **databases** |
 | 外部表列表 | `GET /api/database_tables/{id}` | `.../schemas/{schema}/tables` | 无 schema 时用扁平接口 |
 
@@ -135,9 +134,7 @@ flowchart TB
     WS -->|本地表| DUCK
     WS -->|attach_databases| FED
   end
-  subgraph legacy [遗留 - deprecated 无前端]
-    EX[POST /api/execute_sql]
-    EX -.->|deprecated| EX
+  subgraph async_path [异步任务]
     ASYNC[async_tasks] --> FED
   end
 ```
@@ -159,7 +156,7 @@ flowchart TB
 | 标准成功体 | 多数新路由使用 `create_success_response` / `create_list_response` |
 | 错误 | 大量 `raise HTTPException(detail=...)`，与 `StandardError` 形状不统一 |
 | `normalizeResponse` | `client.ts` 仍含 **legacy** 分支（兼容旧 success/error 嵌套） |
-| 字段命名 | ✅ `execute_sql` 已补 `row_count`（主）+ `rowCount`（兼容）；现行查询用 `row_count` |
+| 字段命名 | ✅ 查询 API 统一 `row_count`；前端历史记录等 UI 字段仍名 `rowCount`（非 HTTP 字段） |
 | 列表载荷 | 部分端点 `data.items`，部分 `data.tables[]`（契约表已注明 database_tables） |
 
 ---
@@ -168,7 +165,7 @@ flowchart TB
 
 | 规则 | 现状 |
 |------|------|
-| `with_duckdb_connection()` | 主查询路由（`join_query` / `duckdb_query` / `visual_query` / `set_operations`）已迁移；带 `X-Request-ID` 的预览/联邦仍用 `interruptible_connection` |
+| `with_duckdb_connection()` | 主查询路由（`join_query` / `duckdb_query` / `pivot_query` / `set_operations`）已迁移；带 `X-Request-ID` 的预览/联邦仍用 `interruptible_connection` |
 | 统一响应 | `duckdb_query.py` 部分错误仍 `JSONResponse` |
 | 时区 | 新代码多用 `timezone_utils`；旧路由需逐文件核对 |
 
@@ -190,16 +187,14 @@ flowchart TB
 
 | 文档 | 问题 |
 |------|------|
-| `.kiro/specs/api-standardization-refactor/requirements.md` | ✅ 已加废止注（按需引号为准，见 `sqlUtils.needsQuoting`） |
-| `.kiro/specs/*` 中 `frontend/src/new/` | ✅  steering / lint 文档已标注路径废止 → 现用 `frontend/src/` |
+| `.kiro/specs/` | ✅ 历史任务 spec 已删除；仅保留 `pivot-table/` |
+| `frontend/src/new/` | ✅ 目录已不存在；现用 `frontend/src/` |
 | `API_CONTRACT_FE_BE.md` | ✅ 阶段 D 按域扩写 |
 | `QUERY_EXECUTION_FLOW.md` | ✅ v2.1：部署表 + 废弃端点 + 异步 ATTACH |
 
 ---
 
 ## 10. 修复优先级（建议）
-
-> 详细分阶段方案见 [`FE_BE_OPTIMAL_PLAN.md`](./FE_BE_OPTIMAL_PLAN.md)。
 
 ### P0 — 影响 Docker 现网功能
 
@@ -212,14 +207,14 @@ flowchart TB
 2. `asyncTaskApi`：连接池路径改为 `/api/duckdb/pool/*`（若将来做管理页）。
 3. ~~`useDuckDBTables`~~：✅ `tableApi.ts` 已用 `GET /api/duckdb/tables`。
 4. ~~异步任务：去掉 `_fetch_external_query_result`~~：✅ 已删除死代码；异步路径仅 ATTACH。
-5. ~~REGULAR 生成器拆分~~：✅ 已拆为 `pivot_query_generator` / `table_metadata_service` / `set_operation_generator`；`visual_query_sql_common.py` 仅 pivot 所需。
+5. ~~REGULAR 生成器拆分~~：✅ 已拆为 `pivot_query_generator` / `table_metadata_service` / `set_operation_generator`；`pivot_query_sql_common.py` 仅 pivot 所需。
 5. ~~扩充 `API_CONTRACT_FE_BE.md`~~：✅ 已增 §0.1 模块索引、§9.1 JOIN、`uploadApi` 说明及后端未封装端点表。
 
 ### P2 — 架构与体验
 
 1. ~~去掉 `TableSource.external` 兜底~~：✅ 执行路径仅 `federated` + `duckdb`（`SelectedTable.source` 仍为 `external` 表元数据）。
-2. ~~Set 运算 / JOIN / 透视后端路径~~：✅ Set `generate`/`preview`；JOIN `performJoinQuery`（含 `attach_databases`）；透视 `visual-query` + `attach_databases`。
-3. ~~Visual 查询支持联邦表~~：✅ 透视 Tab 走后端 `visual-query` + `attach_databases`；多透视列仍本地 SQL。
+2. ~~Set 运算 / JOIN / 透视后端路径~~：✅ Set `generate`/`preview`；JOIN `performJoinQuery`（含 `attach_databases`）；透视 `pivot-query` + `attach_databases`。
+3. ~~Visual 查询支持联邦表~~：✅ 透视 Tab 走后端 `pivot-query` + `attach_databases`；多透视列仍本地 SQL。
 4. ~~入湖 router 连接池~~：✅ `chunked_upload` / `server_files` 已迁；`paste_data` 等若仍有直连再查。
 
 ---

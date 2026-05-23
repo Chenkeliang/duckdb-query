@@ -3,8 +3,8 @@ inclusion: always
 ---
 # 当前项目状态约束规则（2026-01 更新）
 
-> **最后更新**: 2026-01-19  
-> **版本**: 2.1  
+> **最后更新**: 2026-05-23  
+> **版本**: 2.2  
 > **状态**: ✅ 已验证与代码一致
 
 ## 🎯 项目当前状态
@@ -16,7 +16,7 @@ inclusion: always
 - ✅ **API 模块化**: 统一的 TypeScript API 模块 (`frontend/src/api/`)
 - ✅ **TanStack Query**: 统一的数据获取和缓存管理
 - ✅ **Shadcn/UI**: 统一使用 shadcn/ui + Tailwind CSS
-- ✅ **双表格组件**: AG Grid (稳定) + TanStack DataGrid (新)
+- ✅ **结果表格**: TanStack DataGrid（`Query/DataGrid` + `DataGridWrapper`）
 
 #### 后端架构
 - ✅ **连接池管理**: `DuckDBConnectionPool` 统一管理数据库连接
@@ -34,8 +34,7 @@ inclusion: always
 | TypeScript | 5.x | 类型系统 |
 | Vite | 5.x | 构建工具 |
 | TanStack Query | 5.x | 数据获取与缓存 |
-| TanStack Table | 8.x | 表格组件（DataGrid） |
-| AG Grid | v34 Community | 表格组件（稳定版） |
+| TanStack Table | 8.x | 查询结果 DataGrid |
 | Shadcn/UI | Latest | UI 组件库 |
 | Tailwind CSS | 3.x | 样式框架 |
 | Lucide React | Latest | 图标库 |
@@ -66,9 +65,8 @@ inclusion: always
 | **布局组件** | `frontend/src/Layout/` | ✅ 完成 | Sidebar, Header, PageShell |
 | **查询工作台** | `frontend/src/Query/` | ✅ 完成 | 多种查询模式 |
 | **数据源管理** | `frontend/src/DataSource/` | ✅ 完成 | 数据库连接、文件上传 |
-| **AG Grid 封装** | `frontend/src/Query/ResultPanel/AGGridWrapper.tsx` | ⚠️ 稳定 | 标记为 deprecated |
-| **TanStack DataGrid** | `frontend/src/Query/DataGrid/` | ✅ 完成 | 新表格组件 |
-| **DataGrid 包装器** | `frontend/src/Query/ResultPanel/DataGridWrapper.tsx` | ✅ 完成 | AG Grid 兼容接口 |
+| **TanStack DataGrid** | `frontend/src/Query/DataGrid/` | ✅ 完成 | 结果表格 |
+| **DataGrid 包装器** | `frontend/src/Query/ResultPanel/DataGridWrapper.tsx` | ✅ 完成 | 查询结果区封装 |
 
 #### 后端核心模块
 
@@ -376,8 +374,7 @@ source_id = sanitize_identifier(
 | `frontend/src/hooks/useDatabaseConnections.ts` | 数据库连接 Hook | ✅ 最新 |
 | `frontend/src/utils/cacheInvalidation.ts` | 缓存失效工具 | ✅ 最新 |
 | `frontend/src/Query/DataGrid/DataGrid.tsx` | TanStack DataGrid | ✅ 最新 |
-| `frontend/src/Query/ResultPanel/AGGridWrapper.tsx` | AG Grid 封装 | ⚠️ Deprecated |
-| `frontend/src/Query/ResultPanel/DataGridWrapper.tsx` | DataGrid 包装器 | ✅ 最新 |
+| `frontend/src/Query/ResultPanel/DataGridWrapper.tsx` | 结果区 DataGrid 包装 | ✅ 最新 |
 
 ### 后端关键文件
 

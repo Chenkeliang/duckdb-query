@@ -14,11 +14,11 @@ from core.services.pivot_query_generator import (
     generate_pivot_query_sql,
     validate_query_config,
 )
-from models.visual_query_models import (
-    PreviewRequest,
+from models.pivot_query_models import (
+    PivotPreviewRequest,
     ResolvedTypeCast,
-    VisualQueryMode,
-    VisualQueryRequest,
+    PivotQueryMode,
+    PivotQueryRequest,
 )
 from routers.query_sql_utils import ensure_query_has_limit
 from utils.response_helpers import (
@@ -30,7 +30,7 @@ from utils.response_helpers import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-PIVOT_MODE = VisualQueryMode.PIVOT
+PIVOT_MODE = PivotQueryMode.PIVOT
 PIVOT_TAGS = ["Pivot Query"]
 
 
@@ -54,7 +54,7 @@ def _build_preview_count_sql(sql: str) -> str:
     return f"SELECT COUNT(*) AS total_rows FROM ({cleaned}) AS preview_count"
 
 
-async def _generate_pivot_query(request: VisualQueryRequest):
+async def _generate_pivot_query(request: PivotQueryRequest):
     """Generate pivot query SQL."""
     try:
         validation_result = validate_query_config(request.config)
@@ -62,7 +62,7 @@ async def _generate_pivot_query(request: VisualQueryRequest):
         if not validation_result.is_valid:
             return error_json_response(
                 400,
-                MessageCode.VISUAL_QUERY_INVALID,
+                MessageCode.PIVOT_QUERY_INVALID,
                 "Pivot query configuration is invalid",
                 details={
                     "errors": validation_result.errors,
@@ -93,7 +93,7 @@ async def _generate_pivot_query(request: VisualQueryRequest):
                 "metadata": metadata,
                 "mode": PIVOT_MODE,
             },
-            message_code=MessageCode.VISUAL_QUERY_GENERATED,
+            message_code=MessageCode.PIVOT_QUERY_GENERATED,
         )
 
     except Exception as exc:
@@ -106,7 +106,7 @@ async def _generate_pivot_query(request: VisualQueryRequest):
 
 
 async def _preview_pivot_query(
-    request: PreviewRequest,
+    request: PivotPreviewRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
     """Preview pivot query results."""
@@ -118,7 +118,7 @@ async def _preview_pivot_query(
         if not validation_result.is_valid:
             return error_json_response(
                 400,
-                MessageCode.VISUAL_QUERY_INVALID,
+                MessageCode.PIVOT_QUERY_INVALID,
                 "Pivot query configuration is invalid",
                 details={
                     "errors": validation_result.errors,
@@ -203,7 +203,7 @@ async def _preview_pivot_query(
                 "errors": [],
                 "warnings": combined_warnings,
             },
-            message_code=MessageCode.VISUAL_QUERY_PREVIEWED,
+            message_code=MessageCode.PIVOT_QUERY_PREVIEWED,
         )
 
     except duckdb.InterruptException:
@@ -224,36 +224,13 @@ async def _preview_pivot_query(
 
 
 @router.post("/api/pivot-query/generate", tags=PIVOT_TAGS)
-async def generate_pivot_query_route(request: VisualQueryRequest):
+async def generate_pivot_query_route(request: PivotQueryRequest):
     return await _generate_pivot_query(request)
 
 
 @router.post("/api/pivot-query/preview", tags=PIVOT_TAGS)
 async def preview_pivot_query_route(
-    request: PreviewRequest,
-    x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
-):
-    return await _preview_pivot_query(request, x_request_id)
-
-
-@router.post(
-    "/api/visual-query/generate",
-    tags=PIVOT_TAGS,
-    deprecated=True,
-    summary="[Deprecated] Use POST /api/pivot-query/generate",
-)
-async def generate_visual_query_legacy(request: VisualQueryRequest):
-    return await _generate_pivot_query(request)
-
-
-@router.post(
-    "/api/visual-query/preview",
-    tags=PIVOT_TAGS,
-    deprecated=True,
-    summary="[Deprecated] Use POST /api/pivot-query/preview",
-)
-async def preview_visual_query_legacy(
-    request: PreviewRequest,
+    request: PivotPreviewRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
     return await _preview_pivot_query(request, x_request_id)

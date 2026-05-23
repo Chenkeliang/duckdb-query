@@ -24,7 +24,6 @@ import {
     separateConditionsByPlacement,
     cloneTreeWithoutOnConditions,
     getConditionsForTable,
-    generateConditionsSQL,
     getDefaultPlacement,
     canPlaceInOrGroup,
     groupContainsOnConditions,
@@ -631,25 +630,6 @@ describe('Placement Functions', () => {
             const cond = createCondition('users', 'id', '=', 1);
             const result = getConditionsForTable([cond], 'orders');
             expect(result).toHaveLength(0);
-        });
-    });
-
-    describe('generateConditionsSQL', () => {
-        it('生成 AND 连接的条件 SQL', () => {
-            const cond1 = createCondition('orders', 'status', '=', 'active');
-            const cond2 = createCondition('orders', 'amount', '>', 100);
-
-            const sql = generateConditionsSQL([cond1, cond2]);
-            expect(sql).toBe('"orders"."status" = \'active\' AND "orders"."amount" > 100');
-        });
-
-        it('空条件返回空字符串', () => {
-            expect(generateConditionsSQL([])).toBe('');
-        });
-
-        it('单条件直接返回', () => {
-            const cond = createCondition('users', 'id', '=', 1);
-            expect(generateConditionsSQL([cond])).toBe('"users"."id" = 1');
         });
     });
 

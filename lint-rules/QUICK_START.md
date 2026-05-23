@@ -64,7 +64,7 @@ cd api && pylint .                 # 后端
 import { Button } from '@mui/material';
 
 // ✅ 正确
-import { Button } from '@/new/components/ui/button';
+import { Button } from '@/components/ui/button';
 ```
 
 #### ❌ 错误 2: useEffect 中调用 API
@@ -79,7 +79,7 @@ useEffect(() => {
 }, []);
 
 // ✅ 正确
-import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
+import { useDuckDBTables } from '@/hooks/useDuckDBTables';
 const { tables } = useDuckDBTables();
 ```
 

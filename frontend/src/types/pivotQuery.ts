@@ -1,4 +1,4 @@
-/** 与后端 `VisualQueryMode` 对齐；HTTP 路径 `/api/pivot-query/*` */
+/** 与后端 `PivotQueryMode` 对齐；HTTP 路径 `/api/pivot-query/*` */
 export enum PivotQueryMode {
     PIVOT = "pivot",
 }
@@ -35,7 +35,7 @@ export interface FilterConfig {
     value: unknown;
 }
 
-/** POST /api/visual-query 请求体中的 config */
+/** POST /api/pivot-query 请求体中的 config */
 export interface PivotQueryConfig {
     table_name: string;
     filters?: FilterConfig[];

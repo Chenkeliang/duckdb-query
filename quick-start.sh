@@ -212,7 +212,7 @@ start_services() {
 
 # 主函数
 main() {
-    echo "🦆 DuckQuery · DuckDB Visual Analytics - Quick Start"
+    echo "🦆 DuckQuery · DuckDB Query Workbench - Quick Start"
     echo "=================================="
     
     check_docker

@@ -39,9 +39,9 @@
 
 ```typescript
 // 旧路径
-import { Button } from '@/new/components/ui/button';
-import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
-import { invalidateAfterTableCreate } from '@/new/utils/cacheInvalidation';
+import { Button } from '@/components/ui/button';
+import { useDuckDBTables } from '@/hooks/useDuckDBTables';
+import { invalidateAfterTableCreate } from '@/utils/cacheInvalidation';
 
 // 新路径
 import { Button } from '@/components/ui/button';

@@ -2,7 +2,7 @@
 
 > **更新时间**：2026-05-21  
 > **用途**：改入湖、查询、元数据、异步任务前先看本文链路；端点字段以 [`API_CONTRACT_FE_BE.md`](API_CONTRACT_FE_BE.md) 为准。  
-> **阶段调用图**：URL [`API_URL_IMPORT_CALL_MAP.md`](API_URL_IMPORT_CALL_MAP.md)、阶段 B/C [`API_PHASE_B_CALL_MAP.md`](API_PHASE_B_CALL_MAP.md)、[`API_PHASE_C_CALL_MAP.md`](API_PHASE_C_CALL_MAP.md)。
+> **查询与导入路径**：见 [`frontend/QUERY_EXECUTION_FLOW.md`](frontend/QUERY_EXECUTION_FLOW.md)；URL 导入见本表 §5 与契约 §5。
 
 ---
 
@@ -31,7 +31,7 @@ flowchart TB
 
   subgraph routers [api/routers]
     duckdb_q[duckdb_query.py]
-    query_py[join_query.py / visual_query / set_operations]
+    query_py[join_query.py / pivot_query / set_operations]
     async_r[async_tasks.py]
     ingest_r[data_sources chunked server url paste]
   end
@@ -69,7 +69,7 @@ flowchart TB
 | QueryAsync | §5 | `async_tasks`, `task_manager` | `asyncTaskApi.ts` |
 | Catalog | §6 | `datasources`, `database_tables`（canonical + legacy 别名） | `databaseSchemasApi`, `dataSourceApi`, `tableApi` |
 | DuckDBCatalog | §6.3 | `duckdb_query` | `tableApi`, `useDuckDBTables` |
-| 透视表 Pivot | §7 | `visual_query` router + `pivot_query_generator` | `pivotQueryApi` |
+| 透视表 Pivot | §7 | `pivot_query` router + `pivot_query_generator` | `pivotQueryApi` |
 | SetOps | §7 | `set_operations` router | `setOperationsApi` |
 
 ---
@@ -209,4 +209,4 @@ sequenceDiagram
 1. 新增 `/api/...`：先 [`API_CONTRACT_FE_BE.md`](API_CONTRACT_FE_BE.md)，再 router → service → `frontend/src/api/*`。  
 2. 入湖逻辑只改 `file_ingestion_service` + `core/data`，不在 5 个 router 复制编排。  
 3. 查询执行前端优先走 `useQueryRunner`，避免 Panel 直接调 API。  
-4. 历史 spec 见 [`docs/archive/README.md`](archive/README.md)，不作实现依据。
+4. 功能规格见 [`.kiro/specs/pivot-table/`](../.kiro/specs/pivot-table/)（仅透视）；其余历史 spec 已删除。

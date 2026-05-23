@@ -1,6 +1,6 @@
 /**
  * DuckDB 表 API 路径与后端 duckdb_query 对齐
- * @see docs/API_PHASE_B_CALL_MAP.md
+ * @see docs/API_CONTRACT_FE_BE.md §3
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

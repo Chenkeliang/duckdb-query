@@ -1,4 +1,4 @@
-"""ATTACH 外部库并在单连接内执行 SQL（供 visual-query / join-query 复用）。"""
+"""ATTACH 外部库并在单连接内执行 SQL（供 pivot-query / join-query 复用）。"""
 
 from __future__ import annotations
 

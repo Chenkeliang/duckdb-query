@@ -53,10 +53,9 @@
   "ASYNC_TASK_COMPLETED": "异步任务完成",
   "DATASOURCES_REFRESHED": "数据源已刷新",
 
-  "VISUAL_QUERY_GENERATED": "可视化查询生成成功",
-  "VISUAL_QUERY_PREVIEWED": "可视化查询预览成功",
-  "VISUAL_QUERY_VALIDATED": "可视化查询验证通过",
-  "VISUAL_QUERY_INVALID": "可视化查询配置无效",
+  "PIVOT_QUERY_GENERATED": "透视查询生成成功",
+  "PIVOT_QUERY_PREVIEWED": "透视查询预览成功",
+  "PIVOT_QUERY_INVALID": "透视查询配置无效",
 
   "SET_OPERATION_GENERATED": "集合操作生成成功",
   "SET_OPERATION_PREVIEWED": "集合操作预览成功",

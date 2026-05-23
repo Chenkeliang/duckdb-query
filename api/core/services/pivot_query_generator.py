@@ -5,14 +5,14 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from models.visual_query_models import (
-    VisualQueryConfig,
+from models.pivot_query_models import (
+    PivotQueryConfig,
     FilterOperator,
-    VisualQueryMode,
+    PivotQueryMode,
     PivotConfig,
     PivotValueConfig,
 )
-from core.services.visual_query_sql_common import (
+from core.services.pivot_query_sql_common import (
     _build_from_clause,
     _build_where_clause,
     _deduplicate_preserve_order,
@@ -39,10 +39,10 @@ class ValidationResult:
 
 
 @dataclass
-class GeneratedVisualQuery:
-    """Result structure for generated visual analysis SQL."""
+class GeneratedPivotQuery:
+    """Result structure for generated pivot SQL."""
 
-    mode: VisualQueryMode
+    mode: PivotQueryMode
     base_sql: str
     final_sql: str
     pivot_sql: Optional[str]
@@ -51,14 +51,14 @@ class GeneratedVisualQuery:
 
 
 def generate_pivot_query_sql(
-    config: VisualQueryConfig,
+    config: PivotQueryConfig,
     pivot_config: PivotConfig,
     app_config: Optional[Any] = None,
     resolved_casts: Optional[Dict[str, str]] = None,
-) -> GeneratedVisualQuery:
+) -> GeneratedPivotQuery:
     """Generate pivot SQL (HTTP /api/pivot-query/*)."""
     warnings: List[str] = []
-    mode = VisualQueryMode.PIVOT
+    mode = PivotQueryMode.PIVOT
 
     if app_config is None and config_manager is not None:
         try:
@@ -102,7 +102,7 @@ def generate_pivot_query_sql(
     }
     metadata.update(pivot_result.get("metadata", {}))
 
-    return GeneratedVisualQuery(
+    return GeneratedPivotQuery(
         mode=mode,
         base_sql=base_sql,
         final_sql=pivot_result["final_sql"],
@@ -113,7 +113,7 @@ def generate_pivot_query_sql(
 
 
 def _generate_pivot_base_sql(
-    config: VisualQueryConfig,
+    config: PivotQueryConfig,
     pivot_config: PivotConfig,
     casts_map: Optional[Dict[str, str]] = None,
 ) -> str:
@@ -458,7 +458,7 @@ def _inject_pivot_totals(
 
 
 
-def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
+def validate_query_config(config: PivotQueryConfig) -> ValidationResult:
     """Validate pivot base-query configuration (table + filters)."""
     errors: List[str] = []
     warnings: List[str] = []
@@ -496,6 +496,3 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
             errors=[f"configuration验证failed: {str(e)}"],
             warnings=[],
         )
-
-
-generate_visual_query_sql = generate_pivot_query_sql

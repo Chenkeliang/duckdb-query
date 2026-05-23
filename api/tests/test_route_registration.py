@@ -16,8 +16,6 @@ REQUIRED_PATHS = [
     "/api/query",
     "/api/pivot-query/generate",
     "/api/pivot-query/preview",
-    "/api/visual-query/generate",
-    "/api/visual-query/preview",
     "/api/set-operations/generate",
     "/api/set-operations/preview",
     "/api/sql-favorites",
@@ -42,3 +40,9 @@ def test_frontend_critical_routes_registered():
     registered = _collect_route_paths()
     missing = [p for p in REQUIRED_PATHS if p not in registered]
     assert not missing, f"Missing routes: {missing}"
+
+
+def test_legacy_visual_query_routes_removed():
+    registered = _collect_route_paths()
+    assert "/api/visual-query/generate" not in registered
+    assert "/api/visual-query/preview" not in registered

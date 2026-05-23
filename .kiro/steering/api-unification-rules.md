@@ -40,12 +40,14 @@ inclusion: always
 | **数据库连接** | `/api/datasources/databases/test` | POST | ✅ 推荐 | 测试新连接 |
 | **数据库连接** | `/api/datasources/databases/{id}/refresh` | POST | ✅ 推荐 | 刷新连接 |
 
-#### 废弃端点（向后兼容）
+#### 已移除的历史端点（勿用）
 
-| 端点 | 状态 | 替代端点 | 说明 |
-|------|------|----------|------|
-| `/api/duckdb_tables` | ⚠️ 废弃 | `/api/duckdb/tables` | 保留向后兼容 |
-| `/api/duckdb_tables/{name}` | ⚠️ 废弃 | `/api/duckdb/tables/{name}` | 保留向后兼容 |
+| 端点 | 状态 | 替代端点 |
+|------|------|----------|
+| `/api/duckdb_tables` | 已删除 | `/api/duckdb/tables` |
+| `/api/duckdb_tables/{name}` | 已删除 | `/api/duckdb/tables/{name}` |
+| `/api/visual-query/*` | 已删除 | `/api/pivot-query/*` |
+| `POST /api/execute_sql` | 已删除 | `/api/duckdb/execute` 或 `federated-query` |
 
 ### 2. 前端 API 调用统一
 
@@ -122,7 +124,7 @@ frontend/src/api/
 
 ```typescript
 // ✅ 正确：使用 TanStack Query Hook
-import { useDuckDBTables } from '@/new/hooks/useDuckDBTables';
+import { useDuckDBTables } from '@/hooks/useDuckDBTables';
 
 function MyComponent() {
   const { tables, isLoading, isFetching, refresh } = useDuckDBTables();
@@ -166,18 +168,18 @@ function MyComponent() {
 
 | Hook | 用途 | 文件 |
 |------|------|------|
-| `useDuckDBTables` | DuckDB 表列表 | `frontend/src/new/hooks/useDuckDBTables.ts` |
-| `useDataSources` | 数据源列表 | `frontend/src/new/hooks/useDataSources.ts` |
-| `useDatabaseConnections` | 数据库连接列表 | `frontend/src/new/hooks/useDatabaseConnections.ts` |
-| `useTableColumns` | 表列信息 | `frontend/src/new/hooks/useTableColumns.ts` |
-| `useSchemas` | 数据库 Schema 列表 | `frontend/src/new/hooks/useSchemas.ts` |
-| `useSchemaTables` | Schema 下的表列表 | `frontend/src/new/hooks/useSchemaTables.ts` |
+| `useDuckDBTables` | DuckDB 表列表 | `frontend/src/hooks/useDuckDBTables.ts` |
+| `useDataSources` | 数据源列表 | `frontend/src/hooks/useDataSources.ts` |
+| `useDatabaseConnections` | 数据库连接列表 | `frontend/src/hooks/useDatabaseConnections.ts` |
+| `useTableColumns` | 表列信息 | `frontend/src/hooks/useTableColumns.ts` |
+| `useSchemas` | 数据库 Schema 列表 | `frontend/src/hooks/useSchemas.ts` |
+| `useSchemaTables` | Schema 下的表列表 | `frontend/src/hooks/useSchemaTables.ts` |
 
 ### 4. 缓存管理统一
 
 #### 缓存失效工具函数
 
-所有缓存失效操作必须使用 `frontend/src/new/utils/cacheInvalidation.ts` 中的函数：
+所有缓存失效操作必须使用 `frontend/src/utils/cacheInvalidation.ts` 中的函数：
 
 ```typescript
 import { useQueryClient } from '@tanstack/react-query';
@@ -187,7 +189,7 @@ import {
   invalidateAfterTableDelete,
   invalidateAfterTableCreate,
   invalidateAfterDatabaseChange,
-} from '@/new/utils/cacheInvalidation';
+} from '@/utils/cacheInvalidation';
 
 const queryClient = useQueryClient();
 
@@ -270,8 +272,9 @@ try {
 ### 前端
 
 ```typescript
-// ❌ 禁止：直接使用旧端点
-fetch('/api/duckdb_tables');
+// ❌ 禁止：裸 fetch 本后端 API（须 @/api + apiClient）
+// 以下路径已删除，勿再实现：
+// fetch('/api/duckdb_tables');
 
 // ❌ 禁止：使用 useState + useEffect 管理服务端数据
 const [tables, setTables] = useState([]);
@@ -324,8 +327,8 @@ return {"success": True, "data": data}  # 应使用 create_success_response
 
 | 模块 | 旧方式 | 新方式 | 状态 |
 |------|--------|--------|------|
-| 表列表 | `fetch('/api/duckdb_tables')` | `useDuckDBTables()` | ✅ 完成 |
-| 表删除 | `fetch('/api/duckdb_tables/{name}', {method: 'DELETE'})` | `deleteDuckDBTableEnhanced()` | ✅ 完成 |
+| 表列表 | ~~`GET /api/duckdb_tables`~~（已删） | `useDuckDBTables()` → `GET /api/duckdb/tables` | ✅ 完成 |
+| 表删除 | ~~`DELETE /api/duckdb_tables/{name}`~~（已删） | `deleteDuckDBTable()` | ✅ 完成 |
 | 查询执行 | `fetch('/api/duckdb/execute')` | `executeDuckDBSQL()` | ✅ 完成 |
 | 数据源列表 | `fetch('/api/datasources')` | `useDataSources()` | ✅ 完成 |
 | 数据库连接 | `fetch('/api/datasources/databases')` | `useDatabaseConnections()` | ✅ 完成 |
@@ -334,8 +337,8 @@ return {"success": True, "data": data}  # 应使用 create_success_response
 
 | 端点 | 旧端点 | 新端点 | 状态 |
 |------|--------|--------|------|
-| 表列表 | `/api/duckdb_tables` | `/api/duckdb/tables` | ✅ 新端点已实现 |
-| 表删除 | `/api/duckdb_tables/{name}` | `/api/duckdb/tables/{name}` | ✅ 新端点已实现 |
+| 表列表 | ~~`/api/duckdb_tables`~~（已删除） | `/api/duckdb/tables` | ✅ 仅新端点 |
+| 表删除 | ~~`/api/duckdb_tables/{name}`~~（已删除） | `/api/duckdb/tables/{name}` | ✅ 仅新端点 |
 | 查询执行 | - | `/api/duckdb/execute` | ✅ 已实现 |
 | 联邦查询 | - | `/api/duckdb/federated-query` | ✅ 已实现 |
 
@@ -344,9 +347,9 @@ return {"success": True, "data": data}  # 应使用 create_success_response
 ### 前端
 
 - API 模块: `frontend/src/api/`
-- TanStack Query Hooks: `frontend/src/new/hooks/`
-- 缓存失效工具: `frontend/src/new/utils/cacheInvalidation.ts`
-- Hooks 使用指南: `frontend/src/new/hooks/README.md`
+- TanStack Query Hooks: `frontend/src/hooks/`
+- 缓存失效工具: `frontend/src/utils/cacheInvalidation.ts`
+- Hooks 使用指南: `frontend/src/hooks/README.md`
 
 ### 后端
 

@@ -26,7 +26,7 @@ const [error, setError] = useState(null);
 
 useEffect(() => {
   setLoading(true);
-  fetch('/api/duckdb_tables')
+  fetch('/api/duckdb/tables')  // ❌ 仍应避免裸 fetch，请用 useDuckDBTables + @/api
     .then(res => res.json())
     .then(setTables)
     .catch(setError)

@@ -278,7 +278,7 @@ try {
 ### Lint 规则
 
 - [Lint 规则总览](../../lint-rules/README.md)
-- [Lint 规则实施总结](../../lint-rules/IMPLEMENTATION_SUMMARY.md)
+- [Lint 规则 README](../../lint-rules/README.md)
 - [Lint 规则测试报告](../../lint-rules/TEST_REPORT.md)
 
 ## 🤝 反馈与改进

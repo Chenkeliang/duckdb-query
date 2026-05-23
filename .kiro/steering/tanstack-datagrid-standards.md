@@ -1,17 +1,17 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: ['frontend/src/new/Query/DataGrid/**/*.ts', 'frontend/src/new/Query/DataGrid/**/*.tsx', 'frontend/src/new/Query/ResultPanel/DataGridWrapper.tsx']
+fileMatchPattern: ['frontend/src/Query/DataGrid/**/*.ts', 'frontend/src/Query/DataGrid/**/*.tsx', 'frontend/src/Query/ResultPanel/DataGridWrapper.tsx']
 ---
 
 # TanStack DataGrid 使用标准
 
-> **最后更新**: 2026-01-08  
-> **版本**: 1.0  
-> **状态**: ✅ 已验证与代码一致
+> **最后更新**: 2026-05-23  
+> **版本**: 1.1  
+> **状态**: ✅ 已验证与代码一致（AG Grid 已移除）
 
 ## 🎯 组件概述
 
-TanStack DataGrid 是基于 TanStack Table + @tanstack/react-virtual 构建的高性能数据网格组件，作为 AG Grid 的轻量级替代方案。
+TanStack DataGrid 是基于 TanStack Table + `@tanstack/react-virtual` 的查询结果表格，为项目**唯一**结果区网格实现。
 
 ### 核心特性
 
@@ -24,26 +24,17 @@ TanStack DataGrid 是基于 TanStack Table + @tanstack/react-virtual 构建的�
 - ✅ **列宽调整**: 拖拽调整列宽
 - ✅ **列可见性**: 隐藏/显示列（会话级别）
 - ✅ **数据导出**: 支持 CSV/JSON 格式导出
-- ✅ **轻量级**: 包体积远小于 AG Grid
+- ✅ **轻量级**: 无 AG Grid 依赖
 - ✅ **类型安全**: 完整的 TypeScript 支持
 
-### 与 AG Grid 对比
+### 历史说明
 
-| 特性 | TanStack DataGrid | AG Grid Community |
-|------|-------------------|-------------------|
-| 包体积 | ~50KB | ~500KB |
-| 虚拟滚动 | ✅ 行列双向 | ✅ 仅行 |
-| 单元格选区 | ✅ 单矩形 | ❌ 需 Enterprise |
-| 列筛选 | ✅ 自定义 | ✅ 内置 |
-| 数据导出 | ✅ CSV/JSON | ✅ CSV |
-| 主题定制 | ✅ Tailwind | ⚠️ CSS 变量 |
-| TypeScript | ✅ 原生支持 | ✅ 支持 |
-| 学习曲线 | 低 | 中 |
+AG Grid 已于 2026-05 移除；见 [`docs/frontend/AG_GRID_MIGRATION_GUIDE.md`](../../docs/frontend/AG_GRID_MIGRATION_GUIDE.md)。
 
 ## 📁 组件结构
 
 ```
-frontend/src/new/Query/DataGrid/
+frontend/src/Query/DataGrid/
 ├── DataGrid.tsx                    # 主组件
 ├── README.md                       # 组件文档
 ├── types.ts                        # 类型定义
@@ -86,7 +77,7 @@ frontend/src/new/Query/DataGrid/
 ### 最简示例
 
 ```tsx
-import { DataGrid } from '@/new/Query/DataGrid';
+import { DataGrid } from '@/Query/DataGrid';
 
 function MyComponent() {
   const data = [
@@ -107,8 +98,8 @@ function MyComponent() {
 ### 完整示例
 
 ```tsx
-import { DataGrid } from '@/new/Query/DataGrid';
-import type { ColumnDef, CellSelection } from '@/new/Query/DataGrid/types';
+import { DataGrid } from '@/Query/DataGrid';
+import type { ColumnDef, CellSelection } from '@/Query/DataGrid/types';
 import type { ColumnFiltersState, SortingState } from '@tanstack/react-table';
 
 function MyComponent() {
@@ -359,7 +350,7 @@ const columns: ColumnDef[] = [
 ### 使用 useGridExport Hook
 
 ```tsx
-import { useGridExport } from '@/new/Query/DataGrid/hooks';
+import { useGridExport } from '@/Query/DataGrid/hooks';
 
 function MyComponent() {
   const { exportCSV, exportJSON } = useGridExport({
@@ -398,7 +389,7 @@ function MyComponent() {
 ### 使用 useColumnVisibility Hook
 
 ```tsx
-import { useColumnVisibility } from '@/new/Query/DataGrid/hooks';
+import { useColumnVisibility } from '@/Query/DataGrid/hooks';
 
 function MyComponent() {
   const {
@@ -437,8 +428,8 @@ function MyComponent() {
 
 ```tsx
 import { useRef } from 'react';
-import { DataGrid } from '@/new/Query/DataGrid';
-import type { DataGridRef } from '@/new/Query/DataGrid/DataGrid';
+import { DataGrid } from '@/Query/DataGrid';
+import type { DataGridRef } from '@/Query/DataGrid/DataGrid';
 
 function MyComponent() {
   const gridRef = useRef<DataGridRef>(null);
@@ -490,17 +481,17 @@ interface DataGridRef {
 }
 ```
 
-## 🔌 DataGridWrapper - AG Grid 兼容层
+## 🔌 DataGridWrapper
 
 ### 用途
 
-DataGridWrapper 提供与 AGGridWrapper 兼容的接口，使得从 AG Grid 迁移到 TanStack DataGrid 更加平滑。
+`DataGridWrapper` 封装 TanStack `DataGrid`，供查询结果区统一使用（AG Grid 已移除）。
 
 ### 使用示例
 
 ```tsx
-import { DataGridWrapper } from '@/new/Query/ResultPanel/DataGridWrapper';
-import type { DataGridApi } from '@/new/Query/ResultPanel/DataGridWrapper';
+import { DataGridWrapper } from '@/Query/ResultPanel/DataGridWrapper';
+import type { DataGridApi } from '@/Query/ResultPanel/DataGridWrapper';
 
 function MyComponent() {
   const gridApiRef = useRef<DataGridApi>(null);
@@ -692,9 +683,9 @@ setData([...data, newRow]);
 
 ## 📚 相关文档
 
-- [DataGrid README](../../frontend/src/new/Query/DataGrid/README.md)
-- [多列筛选修复文档](../../frontend/src/new/Query/DataGrid/docs/MULTI_COLUMN_FILTER_FIX.md)
-- [DataGrid 示例](../../frontend/src/new/Query/DataGrid/examples/DataGridExample.tsx)
+- [DataGrid README](../../frontend/src/Query/DataGrid/README.md)
+- [多列筛选修复文档](../../frontend/src/Query/DataGrid/docs/MULTI_COLUMN_FILTER_FIX.md)
+- [DataGrid 示例](../../frontend/src/Query/DataGrid/examples/DataGridExample.tsx)
 - [当前项目状态](./current-project-status.md)
 - [前端开发约束](./frontend-constraints.md)
 
