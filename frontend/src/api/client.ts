@@ -5,7 +5,7 @@
  * Preserves all existing axios features (interceptors, timeouts, progress, etc.)
  */
 
-import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios';
 import type { StandardSuccess, StandardList, StandardError, NormalizedResponse } from './types';
 
 // Environment-based base URL
@@ -42,7 +42,13 @@ const normalizeAxiosError = (error: AxiosError): AxiosError & ApiError => {
     const respData = error.response?.data;
     const message = extractMessage(respData) || error.message || 'OPERATION_FAILED';
     const code = extractMessageCode(respData) || error.code || 'OPERATION_FAILED';
-    const details = (respData as Record<string, unknown> | undefined)?.error?.details;
+    const errorPayload = (respData as Record<string, unknown> | undefined)?.error;
+    const details =
+        errorPayload &&
+        typeof errorPayload === 'object' &&
+        'details' in errorPayload
+            ? (errorPayload as { details?: Record<string, unknown> }).details
+            : undefined;
 
     const enhanced = error as AxiosError & ApiError;
     enhanced.message = message;
@@ -357,7 +363,7 @@ export async function parseBlobError(blob: Blob): Promise<StandardError | null> 
  * @param defaultMessage - Default message if extraction fails
  * @throws ApiError with code, messageCode, and details
  */
-export const handleApiError = (error: AxiosError, defaultMessage = 'OPERATION_FAILED'): never => {
+export const handleApiError = (error: AxiosError, defaultMessage = 'OPERATION_FAILED'): void => {
     // Network error
     if (error.code === 'ECONNABORTED') {
         const err = new Error('TIMEOUT_ERROR') as ApiError;
@@ -436,6 +442,7 @@ export const handleApiError = (error: AxiosError, defaultMessage = 'OPERATION_FA
         default:
             throwWithMessage(defaultMessage);
     }
+    throwWithMessage(defaultMessage);
 };
 
 export default apiClient;

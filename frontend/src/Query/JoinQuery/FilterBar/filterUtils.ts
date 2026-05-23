@@ -278,11 +278,6 @@ function splitByLogic(expr: string, logic: 'AND' | 'OR'): string[] {
     let inString = false;
     let stringChar = '';
 
-    // 正则匹配逻辑关键字（忽略大小写，需要两边有空格或边界）
-    const logicRegex = logic === 'OR'
-        ? /\s+OR\s+/gi
-        : /\s+AND\s+/gi;
-
     for (let i = 0; i < expr.length; i++) {
         const char = expr[i];
 

@@ -1,14 +1,26 @@
-import React from "react";
 import { useTranslation } from "react-i18next";
 
-const statusStyles = {
+const statusStyles: Record<string, string> = {
   active: "text-success border-success-border bg-success-bg",
   ready: "text-success border-success-border bg-success-bg",
   idle: "text-muted-foreground border-border bg-surface",
-  error: "text-error border-error-border bg-error-bg"
+  error: "text-error border-error-border bg-error-bg",
 };
 
-const SavedConnections = ({ items = [], onRefresh }) => {
+export interface SavedConnectionListItem {
+  id?: string;
+  name?: string;
+  host?: string;
+  status?: string;
+  statusLabel?: string;
+}
+
+export interface SavedConnectionsProps {
+  items?: SavedConnectionListItem[];
+  onRefresh?: () => void;
+}
+
+const SavedConnections = ({ items = [], onRefresh }: SavedConnectionsProps) => {
   const { t } = useTranslation("common");
 
   return (
@@ -34,7 +46,7 @@ const SavedConnections = ({ items = [], onRefresh }) => {
             {t("page.datasource.list.empty")}
           </div>
         ) : (
-          items.map(item => {
+          items.map((item) => {
             const key = (item.status || "idle").toLowerCase();
             const badge =
               statusStyles[key] ||

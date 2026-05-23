@@ -72,7 +72,7 @@ export const useDataSources = (filters?: Record<string, unknown>) => {
   // 修复：正确读取 data.data.items 路径
   const items = query.data?.data?.items ?? [];
   const dataSources: DataSource[] = Array.isArray(items)
-    ? items.map((item: Record<string, unknown>) => ({
+    ? (items as Record<string, unknown>[]).map((item) => ({
       id: stripDbPrefix(item.id as string),
       name: item.name as string,
       type: item.type as string,

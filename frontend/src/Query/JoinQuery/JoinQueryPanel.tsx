@@ -692,7 +692,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   onDisplayPreview,
   onRemoveTable,
   onCancel,
-  isCancelling = false,
+  isCancelling: _isCancelling = false,
 }) => {
   const { t } = useTranslation('common');
   const { maxQueryRows } = useAppConfig();
@@ -793,7 +793,6 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   ].slice(0, activeTables.length);
 
   // 计算加载和错误状态
-  const isLoadingColumns = tableColumnsResults.some((result) => result.isLoading);
   const hasColumnErrors = tableColumnsResults.some((result) => result.isError);
   const columnErrorMessages = tableColumnsResults
     .filter((result) => result.isError && result.error)
@@ -888,7 +887,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     resolveConflict,
     resolveAllWithRecommendations,
     resolvedTypes,
-    getConflict,
+    getConflict: _getConflict,
   } = useTypeConflict(columnPairs);
 
   // 类型冲突对话框状态

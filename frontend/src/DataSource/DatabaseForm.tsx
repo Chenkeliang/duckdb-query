@@ -232,7 +232,7 @@ const DatabaseForm = ({
     try {
       const data = await browseServerDirectory(path);
       // Filter for .db, .sqlite, .sqlite3 files
-      const entries = (data?.entries || []).filter((entry: any) => {
+      const entries = (data?.items || []).filter((entry: { type?: string; extension?: string }) => {
         if (entry.type === "directory") return true;
         const ext = entry.extension?.toLowerCase();
         return ext === "db" || ext === "sqlite" || ext === "sqlite3";

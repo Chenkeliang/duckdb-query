@@ -290,7 +290,7 @@ export function buildFilteredSubquery(
     tableSourceInfo: TableSourceInfo,
     whereSQL: string,
     selectedColumns: string[] | null = null,
-    dialect: 'duckdb' | 'mysql' | 'postgres' = 'duckdb'
+    dialect: 'duckdb' | 'mysql' | 'postgresql' = 'duckdb'
 ): SubqueryBuildResult {
     const { fullRef, alias } = tableSourceInfo;
 

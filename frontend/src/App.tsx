@@ -8,8 +8,8 @@ import React, {
   ErrorInfo
 } from "react";
 import { toast } from "sonner";
-import { extractMessage, extractMessageCode } from "@/api";
 import { useAppShell } from "./hooks/useAppShell";
+import type { DatabaseConnectParams } from "./hooks/useAppActions";
 import {
   showSuccessToast,
   showErrorToast,
@@ -69,13 +69,6 @@ interface HeaderGlobalProps {
   locale: string;
   onLocaleChange: () => void;
   onOpenGithub: () => void;
-}
-
-interface DatabaseConnectionParams {
-  useStoredPassword?: boolean;
-  id?: string;
-  type?: string;
-  params?: Record<string, unknown>;
 }
 
 // Lazy Fallback Component
@@ -150,7 +143,7 @@ const AppInner: React.FC = () => {
 
   const { t, i18n } = useTranslation("common");
   const locale = i18n.language || "zh";
-  const [isMobile, setIsMobile] = useState<boolean>(false);
+  const [, setIsMobile] = useState<boolean>(false);
   const [dataSourceTab, setDataSourceTab] = useState<DataSourceTabId>("upload");
   const [queryWorkbenchTab, setQueryWorkbenchTab] = useState<QueryTabId>(
     "query"
@@ -159,7 +152,7 @@ const AppInner: React.FC = () => {
   const [
     selectedConfig,
     setSelectedConfig
-  ] = useState<DatabaseConnectionParams | null>(null);
+  ] = useState<DatabaseConnectParams | null>(null);
   const [testingDb, setTestingDb] = useState<boolean>(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState<boolean>(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -301,7 +294,7 @@ const AppInner: React.FC = () => {
     if (currentTab === "datasource") {
       const uploadPanel = <UploadPanel />;
 
-      const handleTestConnection = async (params: DatabaseConnectionParams) => {
+      const handleTestConnection = async (params: DatabaseConnectParams) => {
         try {
           setTestingDb(true);
           // [Fix] Removed refreshDatabaseConnection dynamic import and logic
@@ -348,7 +341,7 @@ const AppInner: React.FC = () => {
         }
       };
 
-      const handleSaveConnection = async (params: DatabaseConnectionParams) => {
+      const handleSaveConnection = async (params: DatabaseConnectParams) => {
         try {
           setSavingDb(true);
           const response = await connectDatabase(params);
@@ -372,7 +365,7 @@ const AppInner: React.FC = () => {
         }
       };
 
-      const handleSaveConfig = async (params: DatabaseConnectionParams) => {
+      const handleSaveConfig = async (params: DatabaseConnectParams) => {
         try {
           setSavingDb(true);
           const response = await saveDatabase(params);
@@ -409,8 +402,13 @@ const AppInner: React.FC = () => {
 
       const savedConnectionsPanel = (
         <SavedConnectionsList
-          onSelect={(config: DatabaseConnectionParams) =>
-            setSelectedConfig(config)
+          onSelect={(conn) =>
+            setSelectedConfig({
+              id: conn.id,
+              type: conn.type,
+              name: conn.name,
+              params: conn.params,
+            })
           }
         />
       );
@@ -439,7 +437,7 @@ const AppInner: React.FC = () => {
       return (
         <QueryWorkbenchPage
           activeTab={queryWorkbenchTab}
-          onTabChange={setQueryWorkbenchTab}
+          onTabChange={(tab) => setQueryWorkbenchTab(tab as QueryTabId)}
           previewSQL={previewQuery}
           onPreviewSQL={(sql: string) => {
             setPreviewQuery(sql);
@@ -484,7 +482,7 @@ const AppInner: React.FC = () => {
             </h1>
             <DataSourceTabs
               value={dataSourceTab}
-              onChange={setDataSourceTab}
+              onChange={(tab) => setDataSourceTab(tab as DataSourceTabId)}
               tabs={dataSourceHeaderTabs}
             />
           </div>
@@ -500,7 +498,7 @@ const AppInner: React.FC = () => {
             </h1>
             <DataSourceTabs
               value={queryWorkbenchTab}
-              onChange={setQueryWorkbenchTab}
+              onChange={(tab) => setQueryWorkbenchTab(tab as QueryTabId)}
               tabs={[
                 { id: "query", label: t("workspace.queryMode"), icon: Search },
                 { id: "tasks", label: t("nav.asynctasks"), icon: Clock }

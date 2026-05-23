@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -13,6 +13,7 @@ import {
   getServerMounts,
   browseServerDirectory,
   importServerFile,
+  type ApiError,
   type FileImportMode,
 } from "@/api";
 import ExcelSheetSelector from "./ExcelSheetSelector";
@@ -22,6 +23,10 @@ import { RemoteUrlCard } from "./upload/RemoteUrlCard";
 import { ServerBrowseCard } from "./upload/ServerBrowseCard";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import { invalidateAfterFileUpload } from "@/utils/cacheInvalidation";
+import type {
+  ServerFileEntry,
+  ServerMount,
+} from "./upload/ServerBrowseCard";
 
 // 类型定义
 interface PendingExcel {
@@ -36,6 +41,35 @@ interface ServerExcelPending {
   filename: string;
 }
 
+export interface DataSourceSavedPayload {
+  id: string;
+  type: string;
+  name: string;
+  row_count?: number;
+  columns?: unknown[];
+}
+
+export interface UploadPanelProps {
+  onDataSourceSaved?: (payload: DataSourceSavedPayload) => void;
+}
+
+const toServerFileEntry = (item: {
+  name: string;
+  path: string;
+  type: string;
+}): ServerFileEntry => ({
+  path: item.path,
+  name: item.name,
+  type: item.type,
+  extension: item.name.includes(".") ? item.name.split(".").pop() : undefined,
+  suggested_table_name: stemFromFilename(item.name),
+});
+
+const formatBrowseError = (err: unknown, fallback: string): string => {
+  const apiErr = err as ApiError;
+  return apiErr.messageCode || apiErr.code || apiErr.message || fallback;
+};
+
 /**
  * 数据源视图 A：智能文件上传（本地文件 + URL + 服务器目录）。
  * 视觉与布局参考 docs/datasource_preview.html 的 #view-file。
@@ -46,7 +80,7 @@ interface ServerExcelPending {
  * - Input for form fields
  * - Label for field labels
  */
-const UploadPanel = ({ onDataSourceSaved }) => {
+const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
   const { t } = useTranslation("common");
   const queryClient = useQueryClient();
   const { maxFileSize, maxFileSizeDisplay } = useAppConfig();
@@ -56,7 +90,7 @@ const UploadPanel = ({ onDataSourceSaved }) => {
   /** 远程 URL 专用（必填） */
   const [remoteAlias, setRemoteAlias] = useState("");
   const [importMode, setImportMode] = useState<FileImportMode>("auto");
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -73,14 +107,15 @@ const UploadPanel = ({ onDataSourceSaved }) => {
   ] = useState<ServerExcelPending | null>(null);
 
   // 服务器目录状态
-  const [serverMounts, setServerMounts] = useState([]);
+  const [serverMounts, setServerMounts] = useState<ServerMount[]>([]);
   const [serverMountLoading, setServerMountLoading] = useState(false);
   const [selectedMount, setSelectedMount] = useState("");
   const [currentPath, setCurrentPath] = useState(""); // 当前浏览路径
-  const [serverEntries, setServerEntries] = useState([]);
+  const [serverEntries, setServerEntries] = useState<ServerFileEntry[]>([]);
   const [serverLoading, setServerLoading] = useState(false);
   const [serverError, setServerError] = useState("");
-  const [serverSelectedFile, setServerSelectedFile] = useState(null);
+  const [serverSelectedFile, setServerSelectedFile] =
+    useState<ServerFileEntry | null>(null);
   const [serverAlias, setServerAlias] = useState("");
   const [serverImporting, setServerImporting] = useState(false);
 
@@ -141,11 +176,12 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       // 精细化缓存失效：仅刷新文件相关缓存
       await invalidateAfterFileUpload(queryClient);
 
+      const fileId = response.file_id ?? "";
       onDataSourceSaved?.({
-        id: response.file_id,
+        id: fileId,
         type: "duckdb",
         name: t("page.datasource.duckdbTable", {
-          table: response.file_id
+          table: fileId
         }),
         row_count: response.row_count,
         columns: response.columns || []
@@ -213,7 +249,7 @@ const UploadPanel = ({ onDataSourceSaved }) => {
     }
   };
 
-  const loadServerDirectory = async path => {
+  const loadServerDirectory = async (path: string) => {
     if (!path) return;
     setServerLoading(true);
     setServerError("");
@@ -221,13 +257,10 @@ const UploadPanel = ({ onDataSourceSaved }) => {
     setCurrentPath(path); // 记录当前路径
     try {
       const data = await browseServerDirectory(path);
-      setServerEntries(data?.entries || []);
+      setServerEntries((data?.items || []).map(toServerFileEntry));
     } catch (err) {
       setServerError(
-        err?.messageCode ||
-        err?.code ||
-        err?.message ||
-        "page.datasource.serverBrowseFail"
+        formatBrowseError(err, "page.datasource.serverBrowseFail")
       );
     } finally {
       setServerLoading(false);
@@ -240,7 +273,9 @@ const UploadPanel = ({ onDataSourceSaved }) => {
     try {
       const data = await getServerMounts();
       const mounts = data?.mounts || [];
-      setServerMounts(mounts);
+      setServerMounts(
+        mounts.map((mount) => ({ path: mount.path, label: mount.name }))
+      );
       if (mounts.length > 0) {
         const first = mounts[0];
         setSelectedMount(first.path);
@@ -248,17 +283,21 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       }
     } catch (err) {
       setServerError(
-        err?.messageCode ||
-        err?.code ||
-        err?.message ||
-        "page.datasource.serverBrowseFail"
+        formatBrowseError(err, "page.datasource.serverBrowseFail")
       );
     } finally {
       setServerMountLoading(false);
     }
   };
 
-  const handleExcelImported = async result => {
+  const handleExcelImported = async (result: {
+    success?: boolean;
+    file_id?: string;
+    table_name?: string;
+    row_count?: number;
+    columns?: unknown[];
+    message?: string;
+  }) => {
     try {
       if (!result?.success) {
         console.error("Excel import failed:", result);
@@ -276,11 +315,12 @@ const UploadPanel = ({ onDataSourceSaved }) => {
       await invalidateAfterFileUpload(queryClient);
 
       // 调用成功回调
+      const tableName = result.table_name ?? result.file_id ?? "";
       onDataSourceSaved?.({
-        id: result.table_name,
+        id: tableName,
         type: "duckdb",
         name: t("page.datasource.duckdbTable", {
-          table: result.table_name
+          table: tableName
         }),
         row_count: result.row_count,
         columns: result.columns || []
@@ -362,11 +402,12 @@ const UploadPanel = ({ onDataSourceSaved }) => {
           result?.message || t("page.datasource.importSuccess")
         );
         await invalidateAfterFileUpload(queryClient);
+        const importedTable = result.table_name ?? "";
         onDataSourceSaved?.({
-          id: result.table_name,
+          id: importedTable,
           type: "duckdb",
           name: t("page.datasource.duckdbTable", {
-            table: result.table_name
+            table: importedTable
           }),
           row_count: result.row_count,
           columns: result.columns || []

@@ -41,12 +41,6 @@ function formatTimestamp(timestamp: number, t: (key: string, fallback: string) =
     });
 }
 
-function truncateSQL(sql: string, maxLength: number = 100): string {
-    const singleLine = sql.replace(/\s+/g, ' ').trim();
-    if (singleLine.length <= maxLength) return singleLine;
-    return singleLine.substring(0, maxLength) + '...';
-}
-
 const TypeBadge = ({ type }: { type: string }) => {
     const colors: Record<string, string> = {
         sql: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',

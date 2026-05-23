@@ -6,7 +6,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseShortcut,
-  formatShortcut,
   matchesShortcut,
   DEFAULT_SHORTCUTS,
 } from '../defaultShortcuts';
@@ -150,7 +149,8 @@ describe('Customization Indicator', () => {
     const defaultShortcut = 'Cmd+K';
     const customShortcut = 'Cmd+Shift+K';
     
-    expect(defaultShortcut === defaultShortcut).toBe(true); // Not customized
-    expect(customShortcut === defaultShortcut).toBe(false); // Customized
+    const isCustomized = (current: string, defaults: string) => current !== defaults;
+    expect(isCustomized(defaultShortcut, defaultShortcut)).toBe(false);
+    expect(isCustomized(customShortcut, defaultShortcut)).toBe(true);
   });
 });

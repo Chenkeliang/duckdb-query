@@ -227,7 +227,9 @@ describe('Panel Federated Query Integration', () => {
       ];
       
       // SetOperationsPanel checks if any table is external
-      const hasExternalTable = selectedTables.some(t => t.source === 'external');
+      const hasExternalTable = selectedTables.some(
+        (t) => typeof t !== 'string' && t.source === 'external'
+      );
       
       expect(hasExternalTable).toBe(true);
     });
@@ -238,7 +240,9 @@ describe('Panel Federated Query Integration', () => {
         { name: 'archived_users', source: 'duckdb' },
       ];
       
-      const hasExternalTable = selectedTables.some(t => t.source === 'external');
+      const hasExternalTable = selectedTables.some(
+        (t) => typeof t !== 'string' && t.source === 'external'
+      );
       
       expect(hasExternalTable).toBe(false);
     });

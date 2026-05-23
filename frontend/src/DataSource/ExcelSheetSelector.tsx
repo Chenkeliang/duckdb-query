@@ -43,6 +43,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 interface PendingInfo {
   file_id: string;
   original_filename: string;
+  table_alias?: string | null;
   default_table_prefix?: string;
 }
 

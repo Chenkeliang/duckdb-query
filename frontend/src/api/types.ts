@@ -120,7 +120,7 @@ export interface DataSource {
   name?: string;
 }
 
-export type DatabaseType = "mysql" | "postgresql" | "sqlite";
+export type DatabaseType = "mysql" | "postgresql" | "sqlite" | "sqlserver";
 
 export interface DatabaseConnection {
   id: string;
@@ -175,6 +175,7 @@ export interface UploadResponse {
   table_name?: string;
   message?: string;
   row_count?: number;
+  column_count?: number;
   columns?: unknown[];
   requires_sheet_selection?: boolean;
   pending_excel?: {
@@ -223,7 +224,10 @@ export interface TaskResult {
 export interface CreateTaskRequest {
   sql: string;
   name?: string;
+  custom_table_name?: string;
+  task_type?: string;
   datasource?: DataSource;
+  attach_databases?: Array<{ alias: string; connection_id: string }>;
   output_format?: "csv" | "parquet";
 }
 

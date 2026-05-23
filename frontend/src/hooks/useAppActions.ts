@@ -15,10 +15,10 @@ import {
   invalidateAllDataCaches,
   invalidateAfterDatabaseChange
 } from "@/utils/cacheInvalidation";
-import { testDatabaseConnection, createDatabaseConnection } from "@/api";
+import { testDatabaseConnection, createDatabaseConnection, type ApiError } from "@/api";
 
 export interface DatabaseConnectParams {
-  type: "mysql" | "postgresql" | "sqlite";
+  type: "mysql" | "postgresql" | "sqlite" | "sqlserver";
   id?: string;
   name?: string;
   params: {
@@ -145,26 +145,27 @@ export function useAppActions(): UseAppActionsReturn {
           message: createResult.message || "数据库连接成功",
           connection: createResult.data?.connection
         };
-      } catch (error) {
+      } catch (error: unknown) {
+        const apiError = error as ApiError;
         // 处理 "保存成功但测试失败" 的特殊情况
         // 后端返回标准错误响应，code=CONNECTION_TEST_FAILED，但 details 中包含 connection
         if (
-          error?.messageCode === "CONNECTION_TEST_FAILED" &&
-          error?.details?.connection
+          apiError?.messageCode === "CONNECTION_TEST_FAILED" &&
+          apiError?.details?.connection
         ) {
           // 即使测试失败，只要保存成功了，我们也应该刷新列表
           await invalidateAfterDatabaseChange(queryClient);
 
           return {
             success: false, // 标记为失败，触发红色 Toast
-            message: error?.message || "配置已保存，但连接测试失败",
-            connection: error.details.connection
+            message: apiError?.message || "配置已保存，但连接测试失败",
+            connection: apiError.details.connection
           };
         }
 
         return {
           success: false,
-          message: error?.message || "连接失败"
+          message: apiError?.message || "连接失败"
         };
       }
     },
@@ -194,18 +195,19 @@ export function useAppActions(): UseAppActionsReturn {
           message: result.message || "配置保存成功",
           connection: result.data?.connection
         };
-      } catch (error) {
+      } catch (error: unknown) {
+        const apiError = error as ApiError;
         // 虽然这里使用了 test: false，但如果后端依然返回了测试失败错误（防御性编程）
         // 我们依然应该刷新列表并显示警告，而不是直接失败
         if (
-          error?.messageCode === "CONNECTION_TEST_FAILED" &&
-          error?.details?.connection
+          apiError?.messageCode === "CONNECTION_TEST_FAILED" &&
+          apiError?.details?.connection
         ) {
           await invalidateAfterDatabaseChange(queryClient);
           return {
             success: false,
-            message: error?.message || "配置已保存，但连接测试失败",
-            connection: error.details.connection
+            message: apiError?.message || "配置已保存，但连接测试失败",
+            connection: apiError.details.connection
           };
         }
 

@@ -1,4 +1,3 @@
-import React from "react";
 import { useTranslation } from "react-i18next";
 import { FileType, Link2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";

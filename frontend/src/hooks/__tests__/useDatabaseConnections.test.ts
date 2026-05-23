@@ -5,7 +5,7 @@
  * **Validates: Requirements 2.1, 2.2, 2.3, 2.4**
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'vitest';
 import * as fc from 'fast-check';
 
 // 导入要测试的转换逻辑

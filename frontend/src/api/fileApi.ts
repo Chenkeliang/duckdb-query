@@ -7,7 +7,7 @@
  */
 
 import { apiClient, uploadClient, handleApiError, normalizeResponse } from './client';
-import type { UploadResponse, UploadProgress, NormalizedResponse } from './types';
+import type { UploadResponse, UploadProgress } from './types';
 
 // ==================== Types ====================
 
@@ -174,7 +174,7 @@ export interface ChunkedUploadFileInfo {
 
 function mapChunkedFileInfoToUploadResponse(
     fileInfo: ChunkedUploadFileInfo
-): UploadResponse & Record<string, unknown> {
+): UploadResponse {
     if (fileInfo.pending_excel) {
         return {
             success: true,
@@ -254,7 +254,7 @@ export async function uploadFileChunked(
     file: File,
     tableAlias: string | null = null,
     options: UploadOptions = {}
-): Promise<UploadResponse & Record<string, unknown>> {
+): Promise<UploadResponse> {
     const { onProgress } = options;
     let uploadId: string | null = null;
     try {
@@ -301,7 +301,7 @@ export async function uploadFileAuto(
     file: File,
     tableAlias: string | null = null,
     options: UploadOptions = {}
-): Promise<UploadResponse & Record<string, unknown>> {
+): Promise<UploadResponse> {
     if (file.size > CHUNKED_UPLOAD_THRESHOLD_BYTES) {
         return uploadFileChunked(file, tableAlias, options);
     }

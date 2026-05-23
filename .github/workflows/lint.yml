@@ -29,6 +29,9 @@ jobs:
       
       - name: Run ESLint
         run: cd frontend && npm run lint
+
+      - name: Run TypeScript check
+        run: cd frontend && npm run typecheck
       
       - name: Upload ESLint results
         if: failure()

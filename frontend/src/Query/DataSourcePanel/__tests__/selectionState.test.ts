@@ -5,7 +5,7 @@
  * **Validates: Requirements 5.1, 5.2, 5.3, 5.4**
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'vitest';
 import * as fc from 'fast-check';
 import { 
   isTableSelected, 

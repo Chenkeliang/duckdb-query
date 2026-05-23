@@ -6,7 +6,7 @@
  * Updated to use normalizeResponse for standard API response handling.
  */
 
-import { apiClient, normalizeResponse, extractMessage, extractMessageCode } from './client';
+import { apiClient, normalizeResponse } from './client';
 import type {
     DatabaseConnection,
     DatabaseConnectionParams,
@@ -16,13 +16,15 @@ import type {
 
 // ==================== Types ====================
 
-export type DatabaseType = 'mysql' | 'postgresql' | 'sqlite';
+export type DatabaseType = 'mysql' | 'postgresql' | 'sqlite' | 'sqlserver';
 
 export interface CreateConnectionRequest {
     id?: string;
     type: DatabaseType;
     name: string;
     params: DatabaseConnectionParams;
+    /** 使用已存储密码测试/连接（不传新 password 时） */
+    useStoredPassword?: boolean;
 }
 
 export interface UpdateConnectionRequest {
@@ -285,7 +287,7 @@ export async function testDatabaseConnection(
             message,
             messageCode,
             latency_ms: latencyMs,
-            details: connectionTest,
+            details: connectionTest as unknown as Record<string, unknown>,
         };
     } catch (error) {
         throw error;
@@ -319,14 +321,14 @@ export async function testConnection(
             return {
                 success: connectionTest.success === true,
                 message: connectionTest.message || (connectionTest.success ? '连接成功' : '连接失败'),
-                details: connectionTest,
+                details: connectionTest as unknown as Record<string, unknown>,
             };
         }
 
         return {
             success: true,
             message: normalized.message || '连接成功',
-            details: data,
+            details: (data ?? {}) as Record<string, unknown>,
         };
     } catch (error) {
         return {

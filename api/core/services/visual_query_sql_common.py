@@ -117,13 +117,15 @@ def _quote_identifier(identifier: str) -> str:
     return f'"{safe}"'
 
 def _build_from_clause(config: VisualQueryConfig) -> str:
-
+    table_ref = (config.table_name or "").strip()
+    if not table_ref:
+        raise ValueError("table_name is required")
+    # 简单表名直接引用，避免导入 federated_attach（会拉起 DuckDB 连接）
+    if "." not in table_ref:
+        return f"FROM {_quote_identifier(table_ref.strip('\"'))}"
     from core.database.federated_attach import format_qualified_table_reference
 
-
-    table_ref = format_qualified_table_reference(config.table_name)
-
-    return f"FROM {table_ref}"
+    return f"FROM {format_qualified_table_reference(table_ref)}"
 
 
 def _deduplicate_preserve_order(items: List[str]) -> List[str]:

@@ -29,6 +29,7 @@ pydantic_core==2.41.4
 Pygments==2.19.2
 PyMySQL==1.1.2
 pytest==8.4.2
+hypothesis==6.142.1
 python-dateutil==2.9.0.post0
 python-magic==0.4.27
 python-multipart==0.0.20

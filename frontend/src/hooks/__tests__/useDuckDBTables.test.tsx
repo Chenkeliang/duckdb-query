@@ -10,6 +10,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useDuckDBTables, invalidateDuckDBTables, DUCKDB_TABLES_QUERY_KEY } from '../useDuckDBTables';
 import * as apiClient from '@/api';
+import type { TableInfo } from '@/api';
 
 // Mock API client
 vi.mock('@/api');
@@ -41,7 +42,7 @@ describe('useDuckDBTables', () => {
       { name: 'table2', type: 'TABLE', row_count: 200 },
     ];
 
-    vi.mocked(apiClient.getDuckDBTables).mockResolvedValue(mockTables);
+    vi.mocked(apiClient.getDuckDBTables).mockResolvedValue(mockTables as TableInfo[]);
 
     const { result } = renderHook(() => useDuckDBTables(), {
       wrapper: createWrapper(),
@@ -95,7 +96,7 @@ describe('useDuckDBTables', () => {
       { name: 'table1', type: 'TABLE', row_count: 100 },
     ];
 
-    vi.mocked(apiClient.getDuckDBTables).mockResolvedValue(mockTables);
+    vi.mocked(apiClient.getDuckDBTables).mockResolvedValue(mockTables as TableInfo[]);
 
     const { result } = renderHook(() => useDuckDBTables(), {
       wrapper: createWrapper(),
@@ -121,7 +122,7 @@ describe('useDuckDBTables', () => {
       { name: 'table1', type: 'TABLE', row_count: 100 },
     ];
 
-    vi.mocked(apiClient.getDuckDBTables).mockResolvedValue(mockTables);
+    vi.mocked(apiClient.getDuckDBTables).mockResolvedValue(mockTables as TableInfo[]);
 
     const queryClient = new QueryClient();
     const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -152,7 +153,7 @@ describe('useDuckDBTables', () => {
       { name: 'table1', type: 'TABLE', row_count: 100 },
     ];
 
-    vi.mocked(apiClient.getDuckDBTables).mockResolvedValue(mockTables);
+    vi.mocked(apiClient.getDuckDBTables).mockResolvedValue(mockTables as TableInfo[]);
 
     const wrapper = createWrapper();
 
@@ -175,7 +176,7 @@ describe('useDuckDBTables', () => {
   });
 
   it('应该返回空数组当数据为 null 或 undefined', async () => {
-    vi.mocked(apiClient.getDuckDBTables).mockResolvedValue(null);
+    vi.mocked(apiClient.getDuckDBTables).mockResolvedValue([]);
 
     const { result } = renderHook(() => useDuckDBTables(), {
       wrapper: createWrapper(),

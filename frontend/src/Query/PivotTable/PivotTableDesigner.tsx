@@ -173,7 +173,7 @@ const DropZone: React.FC<{
 const AggDropdown: React.FC<{
     value: AggregationFunction;
     onChange: (agg: AggregationFunction) => void;
-}> = ({ value, onChange }) => {
+}> = ({ value: _value, onChange }) => {
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>

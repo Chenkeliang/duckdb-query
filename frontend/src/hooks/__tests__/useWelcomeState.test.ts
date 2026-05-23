@@ -4,6 +4,7 @@
  * 测试欢迎页显示逻辑和 7 天规则
  */
 
+import { NULL_STORAGE_VALUE } from '@/test/setup';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWelcomeState, WELCOME_STORAGE_KEY } from '../useWelcomeState';
@@ -12,7 +13,7 @@ import { useWelcomeState, WELCOME_STORAGE_KEY } from '../useWelcomeState';
 const localStorageMock = (() => {
     let store: Record<string, string> = {};
     return {
-        getItem: vi.fn((key: string) => store[key] ?? null),
+        getItem: vi.fn((key: string): string | null => store[key] ?? null),
         setItem: vi.fn((key: string, value: string) => {
             store[key] = value;
         }),
@@ -38,7 +39,7 @@ describe('useWelcomeState', () => {
 
     describe('初始化', () => {
         it('首次访问应该显示欢迎页', () => {
-            localStorageMock.getItem.mockReturnValue(null);
+            localStorageMock.getItem.mockReturnValue(NULL_STORAGE_VALUE);
 
             const { result } = renderHook(() => useWelcomeState());
 
@@ -91,7 +92,7 @@ describe('useWelcomeState', () => {
 
     describe('closeWelcome', () => {
         it('应该关闭欢迎页', () => {
-            localStorageMock.getItem.mockReturnValue(null);
+            localStorageMock.getItem.mockReturnValue(NULL_STORAGE_VALUE);
 
             const { result } = renderHook(() => useWelcomeState());
 
@@ -105,7 +106,7 @@ describe('useWelcomeState', () => {
         });
 
         it('应该保存关闭时间到 localStorage', () => {
-            localStorageMock.getItem.mockReturnValue(null);
+            localStorageMock.getItem.mockReturnValue(NULL_STORAGE_VALUE);
 
             const { result } = renderHook(() => useWelcomeState());
 
@@ -136,7 +137,7 @@ describe('useWelcomeState', () => {
         });
 
         it('closeWelcome 时 localStorage 错误不应该崩溃', () => {
-            localStorageMock.getItem.mockReturnValue(null);
+            localStorageMock.getItem.mockReturnValue(NULL_STORAGE_VALUE);
             localStorageMock.setItem.mockImplementation(() => {
                 throw new Error('localStorage quota exceeded');
             });

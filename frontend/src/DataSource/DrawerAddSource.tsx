@@ -1,15 +1,21 @@
-import React from "react";
+import type { ReactNode } from "react";
+
+export interface DrawerAddSourceProps {
+  open?: boolean;
+  onClose?: () => void;
+  title?: string;
+  children?: ReactNode;
+}
 
 /**
  * Placeholder drawer component; replace with shadcn Dialog/Drawer.
- * Props allow integration without breaking current layout.
  */
 const DrawerAddSource = ({
   open = false,
   onClose,
   title = "Add Data Source",
-  children
-}) => {
+  children,
+}: DrawerAddSourceProps) => {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-modal-backdrop bg-black/50 backdrop-blur-sm">

@@ -141,8 +141,7 @@ export const useTableColumns = (table: SelectedTable | null): UseTableColumnsRes
       } else {
         // DuckDB 表：使用 getDuckDBTableDetail API
         const response = await getDuckDBTableDetail(tableName);
-        const tableData = response?.table || response;
-        return transformDuckDBColumns(tableData?.columns);
+        return transformDuckDBColumns(response?.columns);
       }
     },
     enabled: !!normalized && !!tableName,
@@ -194,8 +193,7 @@ export const useMultipleTableColumns = (tables: SelectedTable[]) => {
           return transformExternalColumns(response?.columns);
         } else {
           const response = await getDuckDBTableDetail(tableName);
-          const tableData = response?.table || response;
-          return transformDuckDBColumns(tableData?.columns);
+          return transformDuckDBColumns(response?.columns);
         }
       },
       enabled: !!tableName,

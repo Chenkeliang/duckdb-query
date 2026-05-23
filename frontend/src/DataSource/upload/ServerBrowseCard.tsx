@@ -1,4 +1,3 @@
-import React from "react";
 import { useTranslation } from "react-i18next";
 import { FileType, HardDrive, Server } from "lucide-react";
 import type { FileImportMode } from "@/api";

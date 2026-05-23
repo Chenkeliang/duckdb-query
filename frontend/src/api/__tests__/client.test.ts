@@ -4,7 +4,7 @@
  * 测试 normalizeResponse、handleApiError 等核心函数
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { AxiosResponse } from 'axios';
 import {
   normalizeResponse,
@@ -13,7 +13,6 @@ import {
   isStandardError,
   extractMessage,
   extractMessageCode,
-  handleApiError,
   parseBlobError,
 } from '../client';
 import type { StandardSuccess, StandardList, StandardError } from '../types';

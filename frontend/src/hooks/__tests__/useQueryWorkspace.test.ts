@@ -5,7 +5,7 @@
  * **Validates: Requirements 1.1, 1.2, 1.3, 1.4**
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'vitest';
 import * as fc from 'fast-check';
 import type { SelectedTableObject, DatabaseType } from '../../types/SelectedTable';
 import { normalizeSelectedTable } from '../../utils/tableUtils';
@@ -273,16 +273,14 @@ describe('Federated query routing - Property Tests', () => {
           fc.string({ minLength: 1, maxLength: 200 }),
           fc.string({ minLength: 1, maxLength: 50 }),
           databaseTypeArb,
-          (sql, connectionId, databaseType) => {
+          (_sql, connectionId, databaseType) => {
             const source = {
               type: 'federated' as const,
               connectionId,
               databaseType,
             };
 
-            const shouldRouteToFederated = source.type === 'federated';
-
-            return shouldRouteToFederated === true;
+            return source.type === 'federated';
           }
         ),
         { numRuns: 100 }
@@ -293,13 +291,12 @@ describe('Federated query routing - Property Tests', () => {
       fc.assert(
         fc.property(
           fc.string({ minLength: 1, maxLength: 200 }),
-          (sql) => {
+          (_sql) => {
             const source = {
               type: 'duckdb' as const,
             };
 
-            const shouldRouteToFederated = source.type === 'federated';
-            return shouldRouteToFederated === false;
+            return source.type === 'duckdb';
           }
         ),
         { numRuns: 100 }
@@ -313,7 +310,7 @@ describe('Federated query routing - Property Tests', () => {
       fc.assert(
         fc.property(
           fc.string({ minLength: 1, maxLength: 200 }),
-          (sql) => {
+          (_sql) => {
             const source = undefined;
             const querySource = source || { type: 'duckdb' as const };
             

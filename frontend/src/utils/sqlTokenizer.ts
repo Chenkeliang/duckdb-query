@@ -238,7 +238,7 @@ export class SQLTokenizer {
   /**
    * 读取引号标识符
    */
-  private readQuotedIdentifier(openQuote: string, closeQuote: string): Token {
+  private readQuotedIdentifier(_openQuote: string, closeQuote: string): Token {
     const startPos = this.pos;
     this.pos++; // 跳过开始引号
     let value = '';

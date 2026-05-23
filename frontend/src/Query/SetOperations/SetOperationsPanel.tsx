@@ -339,9 +339,6 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   ].slice(0, activeTables.length);
 
   // 计算加载和错误状态
-  const isLoadingColumns = tableColumnsResults.some((result) => result.isLoading);
-  const hasColumnErrors = tableColumnsResults.some((result) => result.isError);
-
   // 构建表列映射 - 使用稳定的 key 来避免无限循环
   const tableColumnsMapKey = tableColumnsResults
     .map((r, i) => activeTables[i] ? `${getTableName(activeTables[i])}:${r.columns.length}` : '')

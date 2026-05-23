@@ -24,7 +24,7 @@ import {
   Alert,
   AlertDescription,
 } from '@/components/ui/alert';
-import { submitAsyncQuery } from '@/api';
+import { submitAsyncQuery, type CreateTaskRequest, type DataSource } from '@/api';
 import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
 
 // 异步任务查询 key
@@ -138,13 +138,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
   // 提交异步任务
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const payload: {
-        sql: string;
-        custom_table_name?: string;
-        task_type: string;
-        datasource?: { id: string; type: string; name?: string };
-        attach_databases?: Array<{ alias: string; connection_id: string }>;
-      } = {
+      const payload: CreateTaskRequest = {
         sql,
         task_type: 'query',
       };
@@ -154,12 +148,15 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
       }
 
       if (datasource) {
-        payload.datasource = datasource;
+        payload.datasource = {
+          id: datasource.id,
+          type: datasource.type as DataSource['type'],
+          name: datasource.name,
+        };
       }
 
-      // 添加联邦查询的附加数据库配置
       if (attachDatabases && attachDatabases.length > 0) {
-        payload.attach_databases = attachDatabases.map(db => ({
+        payload.attach_databases = attachDatabases.map((db) => ({
           alias: db.alias,
           connection_id: db.connectionId,
         }));

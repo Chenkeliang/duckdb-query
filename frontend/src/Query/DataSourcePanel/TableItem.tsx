@@ -115,7 +115,7 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
   searchQuery = '',
   disabled = false,
   level = 0,
-}, ref) => {
+}, _ref) => {
   const iconAndBadge = React.useMemo(() => getTableIconAndBadge(table), [table]);
 
   // 高亮搜索匹配的文本

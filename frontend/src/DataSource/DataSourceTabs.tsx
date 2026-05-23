@@ -1,20 +1,32 @@
-import React from "react";
+import type { LucideIcon } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+export interface DataSourceTabItem {
+  id: string;
+  label: string;
+  icon?: LucideIcon;
+}
+
+export interface DataSourceTabsProps {
+  value?: string;
+  onChange?: (tab: string) => void;
+  tabs?: DataSourceTabItem[];
+}
 
 /**
  * Header 内的数据源视图二级 Tab（数据库管理 / 文件上传 / 数据粘贴板）。
- * 视觉参考 datasource_preview.html Header 区域的小标签。
- * 
- * Now using shadcn/ui Tabs component.
  */
-const DataSourceTabs = ({ value = "upload", onChange, tabs }) => {
-  const items = Array.isArray(tabs) ? tabs : [];
-  if (!items.length) return null;
+const DataSourceTabs = ({
+  value = "upload",
+  onChange,
+  tabs = [],
+}: DataSourceTabsProps) => {
+  if (!tabs.length) return null;
 
   return (
     <Tabs value={value} onValueChange={onChange}>
       <TabsList>
-        {items.map(tab => {
+        {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <TabsTrigger key={tab.id} value={tab.id} className="gap-2">

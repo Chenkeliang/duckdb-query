@@ -18,7 +18,6 @@ import {
   createTableReference,
   quoteIdent,
   needsQuoting,
-  type AttachDatabase,
   type DatabaseConnection,
   type TableReference,
 } from '../sqlUtils';

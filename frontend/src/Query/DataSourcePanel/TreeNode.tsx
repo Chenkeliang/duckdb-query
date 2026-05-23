@@ -45,7 +45,7 @@ const getStatusIndicatorClass = (status?: string): string => {
 };
 
 export const TreeNode: React.FC<TreeNodeProps> = ({
-  id, // 保留 id prop，虽然未使用但为了接口完整性
+  id: _id, // 保留 id prop，虽然未使用但为了接口完整性
   label,
   icon,
   level,

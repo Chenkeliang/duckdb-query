@@ -34,7 +34,6 @@ import {
     getDialectFromSource,
     getSourceFromSelectedTable,
 } from "@/utils/sqlUtils";
-import { AggregationFunction } from "@/types/visualQuery";
 import {
     buildPivotQueryPayload,
     canUseServerPivotPath,
@@ -198,7 +197,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                     : []);
             onDisplayPreview(
                 {
-                    data: result.data,
+                    data: result.data ?? undefined,
                     columns: previewColumns,
                     row_count: result.row_count,
                     execTime: Date.now() - startTime,

@@ -44,7 +44,7 @@ function determineQueryType(
   const parsedRefs = parseSQLTableReferences(sql);
   
   // 2. Build attachDatabases from SQL parsing
-  const { attachDatabases: fromSQL, unrecognizedPrefixes } = buildAttachDatabasesFromParsedRefs(
+  const { attachDatabases: fromSQL } = buildAttachDatabasesFromParsedRefs(
     parsedRefs,
     connections
   );

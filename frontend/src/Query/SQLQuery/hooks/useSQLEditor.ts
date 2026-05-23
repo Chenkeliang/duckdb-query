@@ -6,7 +6,7 @@
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { executeDuckDBSQL } from "@/api";
+import { executeDuckDBSQL, type QueryResponse } from "@/api";
 import { invalidateAllDataCaches } from "@/utils/cacheInvalidation";
 import { formatSQLDataGrip } from "@/utils/sqlFormatter";
 import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
@@ -34,7 +34,7 @@ export interface UseSQLEditorOptions {
   onExecuteSQL?: (
     sql: string,
     options?: { saveAsTable?: string; isPreview?: boolean }
-  ) => Promise<unknown>;
+  ) => Promise<QueryResponse>;
   /** 执行成功回调 */
   onSuccess?: (data: any, sql: string) => void;
   /** 执行失败回调 */

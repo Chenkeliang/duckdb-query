@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { useDuckDBTables } from "@/hooks/useDuckDBTables";
 import { useTableColumns } from "@/hooks/useTableColumns";
 import { SelectedTable } from "@/types/SelectedTable";
-import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
+import { getTableName } from "@/utils/tableUtils";
 
 interface PivotSidebarProps {
     selectedTable: SelectedTable | null;
@@ -74,7 +74,7 @@ export const PivotSidebar: React.FC<PivotSidebarProps> = ({
     const handleTableChange = (tableName: string) => {
         const table = duckdbTables.find(t => t.name === tableName);
         if (table) {
-            onTableSelect(table); // SelectedTable interface match
+            onTableSelect({ name: table.name, source: "duckdb" });
         }
     };
 

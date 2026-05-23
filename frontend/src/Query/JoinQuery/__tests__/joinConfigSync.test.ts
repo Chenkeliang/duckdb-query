@@ -5,7 +5,7 @@
  * **Validates: Requirements 7.1, 7.2**
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'vitest';
 import * as fc from 'fast-check';
 
 // 类型定义
@@ -24,11 +24,6 @@ interface TableColumn {
 
 // Arbitraries
 const joinTypeArb = fc.constantFrom<JoinType>('INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN');
-
-const tableColumnArb: fc.Arbitrary<TableColumn> = fc.record({
-  name: fc.string({ minLength: 1, maxLength: 30 }).filter(s => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s)),
-  type: fc.constantFrom('INTEGER', 'VARCHAR', 'BOOLEAN', 'TIMESTAMP', 'DOUBLE'),
-});
 
 const joinConfigArb: fc.Arbitrary<JoinConfig> = fc.record({
   leftColumn: fc.string({ minLength: 1, maxLength: 30 }).filter(s => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s)),

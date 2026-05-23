@@ -76,7 +76,7 @@ export function canUseServerJoinPath(
     activeTables: SelectedTable[],
     joinConfigs: JoinPanelJoinConfig[],
     filterTree: FilterGroup,
-    attachDatabases: AttachDatabase[]
+    _attachDatabases: AttachDatabase[]
 ): boolean {
     if (activeTables.length < 2 || joinConfigs.length < activeTables.length - 1) {
         return false;

@@ -14,7 +14,7 @@ import type { TypeConflict } from '@/hooks/useTypeConflict';
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, defaultValue: string, params?: Record<string, string>) => {
+    t: (_key: string, defaultValue: string, params?: Record<string, string>) => {
       if (params) {
         let result = defaultValue;
         Object.entries(params).forEach(([k, v]) => {

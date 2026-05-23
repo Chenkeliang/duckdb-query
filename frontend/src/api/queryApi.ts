@@ -168,9 +168,10 @@ export function parseFederatedQueryError(error: Error & { response?: { data?: un
 } {
     const respData = error.response?.data;
     const code = extractMessageCode(respData) || error.code;
+    const rawMessage = (respData as Record<string, unknown> | undefined)?.message;
     const detailStr =
         extractMessage(respData) ||
-        (respData as Record<string, unknown> | undefined)?.message ||
+        (typeof rawMessage === 'string' ? rawMessage : '') ||
         error.message ||
         '';
 

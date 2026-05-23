@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { NULL_STORAGE_VALUE } from '@/test/setup';
 import { useGithubStars } from '../useGithubStars';
 
 const CACHE_KEY = 'duck-query-github-stars';
@@ -14,7 +15,7 @@ const CACHE_KEY = 'duck-query-github-stars';
 const localStorageMock = (() => {
     let store: Record<string, string> = {};
     return {
-        getItem: vi.fn((key: string) => store[key] ?? null),
+        getItem: vi.fn((key: string): string | null => store[key] ?? null),
         setItem: vi.fn((key: string, value: string) => {
             store[key] = value;
         }),
@@ -110,7 +111,7 @@ describe('useGithubStars', () => {
 
     describe('API 请求', () => {
         it('无缓存时应该请求 API', async () => {
-            localStorageMock.getItem.mockReturnValue(null);
+            localStorageMock.getItem.mockReturnValue(NULL_STORAGE_VALUE);
 
             mockFetch.mockResolvedValue({
                 ok: true,
@@ -132,7 +133,7 @@ describe('useGithubStars', () => {
         });
 
         it('API 失败时应该静默处理', async () => {
-            localStorageMock.getItem.mockReturnValue(null);
+            localStorageMock.getItem.mockReturnValue(NULL_STORAGE_VALUE);
 
             mockFetch.mockResolvedValue({
                 ok: false,
@@ -149,7 +150,7 @@ describe('useGithubStars', () => {
         });
 
         it('网络错误时应该静默处理', async () => {
-            localStorageMock.getItem.mockReturnValue(null);
+            localStorageMock.getItem.mockReturnValue(NULL_STORAGE_VALUE);
 
             mockFetch.mockRejectedValue(new Error('Network error'));
 
@@ -165,7 +166,7 @@ describe('useGithubStars', () => {
 
     describe('缓存写入', () => {
         it('API 成功后应该缓存结果', async () => {
-            localStorageMock.getItem.mockReturnValue(null);
+            localStorageMock.getItem.mockReturnValue(NULL_STORAGE_VALUE);
 
             mockFetch.mockResolvedValue({
                 ok: true,
@@ -185,7 +186,7 @@ describe('useGithubStars', () => {
         });
 
         it('缓存写入失败不应该崩溃', async () => {
-            localStorageMock.getItem.mockReturnValue(null);
+            localStorageMock.getItem.mockReturnValue(NULL_STORAGE_VALUE);
             localStorageMock.setItem.mockImplementation(() => {
                 throw new Error('quota exceeded');
             });

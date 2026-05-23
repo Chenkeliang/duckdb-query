@@ -9,7 +9,7 @@ import { FederatedQueryStatusBar } from '../FederatedQueryStatusBar';
 // Mock i18next
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, defaultValue: string, params?: Record<string, unknown>) => {
+    t: (_key: string, defaultValue: string, params?: Record<string, unknown>) => {
       if (params?.count !== undefined) {
         return defaultValue.replace('{{count}}', String(params.count));
       }

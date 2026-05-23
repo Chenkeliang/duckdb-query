@@ -14,7 +14,6 @@ import {
   createTableReference,
   quoteIdent,
 } from '@/utils/sqlUtils';
-import { getTableName, normalizeSelectedTable } from '@/utils/tableUtils';
 
 // 生成有效的数据库类型
 const databaseTypeArb = fc.constantFrom('mysql', 'postgresql', 'sqlite') as fc.Arbitrary<

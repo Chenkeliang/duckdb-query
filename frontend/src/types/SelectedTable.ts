@@ -70,6 +70,7 @@ export const DATABASE_TYPE_ICONS: Record<DatabaseType, string> = {
   mysql: '🐬',
   postgresql: '🐘',
   sqlite: '📄',
+  sqlserver: '🗄️',
 };
 
 /**
@@ -79,4 +80,5 @@ export const DATABASE_TYPE_LABELS: Record<DatabaseType, string> = {
   mysql: 'MySQL',
   postgresql: 'PostgreSQL',
   sqlite: 'SQLite',
+  sqlserver: 'SQL Server',
 };

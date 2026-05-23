@@ -4,6 +4,7 @@
  * 测试主题状态管理、DOM 同步和事件派发
  */
 
+import { NULL_STORAGE_VALUE } from '@/test/setup';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useThemePreference, THEME_STORAGE_KEY } from '../useThemePreference';
@@ -12,7 +13,7 @@ import { useThemePreference, THEME_STORAGE_KEY } from '../useThemePreference';
 const localStorageMock = (() => {
     let store: Record<string, string> = {};
     return {
-        getItem: vi.fn((key: string) => store[key] ?? null),
+        getItem: vi.fn((key: string): string | null => store[key] ?? null),
         setItem: vi.fn((key: string, value: string) => {
             store[key] = value;
         }),
@@ -79,7 +80,7 @@ describe('useThemePreference', () => {
         });
 
         it('应该跟随系统偏好（深色）', () => {
-            localStorageMock.getItem.mockReturnValue(null);
+            localStorageMock.getItem.mockReturnValue(NULL_STORAGE_VALUE);
             matchMediaMock.mockReturnValue({ matches: true });
 
             const { result } = renderHook(() => useThemePreference());
@@ -88,7 +89,7 @@ describe('useThemePreference', () => {
         });
 
         it('应该跟随系统偏好（浅色）', () => {
-            localStorageMock.getItem.mockReturnValue(null);
+            localStorageMock.getItem.mockReturnValue(NULL_STORAGE_VALUE);
             matchMediaMock.mockReturnValue({ matches: false });
 
             const { result } = renderHook(() => useThemePreference());

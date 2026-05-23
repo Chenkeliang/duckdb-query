@@ -10,6 +10,7 @@ import { renderHook, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAppActions } from '../useAppActions';
 import * as apiClient from '@/api';
+import type { DatabaseConnection, NormalizedResponse } from '@/api';
 import * as cacheInvalidation from '@/utils/cacheInvalidation';
 
 // Mock dependencies
@@ -17,11 +18,22 @@ vi.mock('@/api');
 vi.mock('@/utils/cacheInvalidation');
 
 /** 与 `createDatabaseConnection` → `normalizeResponse` 解包形状一致 */
-function mockNormalizedCreate(connection: { id: string }, message = 'ok') {
+function mockNormalizedCreate(
+    connection: Partial<DatabaseConnection> & { id: string },
+    message = 'ok'
+): NormalizedResponse<{ connection?: DatabaseConnection }> {
     return {
         message,
         messageCode: 'OPERATION_SUCCESS',
-        data: { connection },
+        data: {
+            connection: {
+                id: connection.id,
+                name: connection.name ?? 'test-connection',
+                type: connection.type ?? 'mysql',
+                status: connection.status ?? 'active',
+                params: connection.params ?? {},
+            },
+        },
         timestamp: new Date().toISOString(),
         raw: {},
     };
