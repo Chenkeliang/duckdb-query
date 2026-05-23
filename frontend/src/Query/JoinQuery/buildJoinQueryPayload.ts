@@ -7,7 +7,7 @@ import type {
     JoinQueryDataSource,
     JoinQueryJoin,
     JoinQueryPerformRequest,
-} from '@/api/joinQueryApi';
+} from '@/api';
 import type { AttachDatabase } from '@/utils/sqlUtils';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { getTableName, isExternalTable } from '@/utils/tableUtils';

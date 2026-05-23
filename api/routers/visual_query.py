@@ -85,7 +85,6 @@ async def generate_visual_query(request: VisualQueryRequest):
         combined_warnings.extend(generation.warnings)
 
         metadata: Optional[Dict[str, Any]] = dict(generation.metadata or {})
-        metadata["complexity_score"] = validation_result.complexity_score
 
         return create_success_response(
             data={

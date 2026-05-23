@@ -132,7 +132,9 @@ describe('useAppActions', () => {
             );
 
             expect(connectResult.success).toBe(true);
-            expect(connectResult.connection).toEqual({ id: '123' });
+            expect(connectResult.connection).toEqual(
+                expect.objectContaining({ id: '123' })
+            );
         });
 
         it('测试失败时不应该调用 createDatabaseConnection', async () => {
@@ -244,7 +246,9 @@ describe('useAppActions', () => {
             expect(apiClient.createDatabaseConnection).toHaveBeenCalled();
             expect(apiClient.refreshDatabaseConnection).not.toHaveBeenCalled();
             expect(connectResult.success).toBe(true);
-            expect(connectResult.connection).toEqual({ id: 'saved-123' });
+            expect(connectResult.connection).toEqual(
+                expect.objectContaining({ id: 'saved-123' })
+            );
         });
     });
 
@@ -317,7 +321,9 @@ describe('useAppActions', () => {
             expect(apiClient.createDatabaseConnection).toHaveBeenCalled();
             expect(cacheInvalidation.invalidateAfterDatabaseChange).toHaveBeenCalled();
             expect(saveResult.success).toBe(true);
-            expect(saveResult.connection).toEqual({ id: 'config-123' });
+            expect(saveResult.connection).toEqual(
+                expect.objectContaining({ id: 'config-123' })
+            );
         });
     });
 

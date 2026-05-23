@@ -15,8 +15,8 @@ import {
   extractAttachDatabases,
   generateDatabaseAlias,
   formatTableReference,
-  createTableReference,
   quoteIdent,
+  createTableReference,
   needsQuoting,
   type DatabaseConnection,
   type TableReference,
@@ -218,9 +218,11 @@ describe('Federated Query SQL Utils', () => {
 
           const sql = formatTableReference(tableRef, 'duckdb');
 
-          // 简单标识符：无引号，alias.table
-          expect(sql).toBe(`${alias}.${tableName}`);
-          expect(sql.startsWith(`${alias}.`)).toBe(true);
+          const expected = [alias, tableName]
+            .map((p) => quoteIdent(p, 'duckdb'))
+            .join('.');
+          expect(sql).toBe(expected);
+          expect(sql.startsWith(`${quoteIdent(alias, 'duckdb')}.`)).toBe(true);
         }),
         { numRuns: 100 }
       );
@@ -238,7 +240,10 @@ describe('Federated Query SQL Utils', () => {
 
           const sql = formatTableReference(tableRef, 'duckdb');
 
-          expect(sql).toBe(`${alias}.${schema}.${tableName}`);
+          const expected = [alias, schema, tableName]
+            .map((p) => quoteIdent(p, 'duckdb'))
+            .join('.');
+          expect(sql).toBe(expected);
         }),
         { numRuns: 100 }
       );
@@ -262,7 +267,7 @@ describe('Federated Query SQL Utils', () => {
 
           const sql = formatTableReference(tableRef, 'duckdb');
 
-          expect(sql).toBe(tableName);
+          expect(sql).toBe(quoteIdent(tableName, 'duckdb'));
           expect(sql.split('.').length).toBe(1);
         }),
         { numRuns: 100 }
@@ -280,7 +285,10 @@ describe('Federated Query SQL Utils', () => {
 
           const sql = formatTableReference(tableRef, 'duckdb');
 
-          expect(sql).toBe(`${schema}.${tableName}`);
+          const expected = [schema, tableName]
+            .map((p) => quoteIdent(p, 'duckdb'))
+            .join('.');
+          expect(sql).toBe(expected);
         }),
         { numRuns: 100 }
       );

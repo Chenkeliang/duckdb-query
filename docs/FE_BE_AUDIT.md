@@ -17,7 +17,7 @@
 | **遗留双轨** | ✅ 异步新任务统一 ATTACH（阶段 C）；`execute_sql` / `duckdb_tables` 标 **deprecated**，无前端引用 |
 | **契约表** | ✅ [`API_CONTRACT_FE_BE.md`](./API_CONTRACT_FE_BE.md) 按域覆盖 `frontend/src/api/*` 在用路径（阶段 D） |
 | **死代码 API** | ✅ 阶段 B 已从 `queryApi` / `index.ts` 移除 `execute_sql`、`performQuery` 等 |
-| **响应规范** | ⚠️ 仍混用 `HTTPException`；`execute_sql` 已补 `row_count`（主）+ `rowCount`（兼容） |
+| **响应规范** | ✅ 主路由已用 `error_json_response` / `create_success_response`；边缘脚本或历史文档可能仍提及 `HTTPException` |
 
 ---
 
@@ -83,8 +83,8 @@
 
 | 前端 | 后端 | 业务是否使用 |
 |------|------|--------------|
-| `GET /api/connection-pool/status` | `GET /api/duckdb/pool/status` | 否（仅 `asyncTaskApi` 导出） |
-| `POST /api/connection-pool/reset` | `POST /api/duckdb/pool/reset` | 否 |
+| `GET /api/duckdb/pool/status` | 同左 | `asyncTaskApi.getConnectionPoolStatus`（管理/诊断，无 UI 强依赖） |
+| `POST /api/duckdb/pool/reset` | 同左 | `asyncTaskApi.resetConnectionPool` |
 | `POST /api/duckdb/tables/{name}/refresh` | `POST /api/duckdb/table/{name}/refresh` | 否（刷新菜单只做 cache invalidate） |
 | `POST /api/duckdb/upload-file` | （无）主上传为 `POST /api/upload` | 否 |
 | `GET /api/features` | （无）配置为 `GET /api/app-config/features` | 否（`useAppConfig` 用正确路径） |

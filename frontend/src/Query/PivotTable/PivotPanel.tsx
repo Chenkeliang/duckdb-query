@@ -41,6 +41,7 @@ import {
     shouldUseLocalPivotSql,
     type PivotPanelValueConfig,
 } from "./buildPivotQueryPayload";
+import { PivotFilters, pivotFiltersToApi, type PivotFilterRow } from "./PivotFilters";
 
 interface PivotPanelProps {
     selectedTables: SelectedTable[];
@@ -62,6 +63,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     const [rows, setRows] = React.useState<string[]>([]);
     const [columns, setColumns] = React.useState<string[]>([]);
     const [values, setValues] = React.useState<PivotPanelValueConfig[]>([]);
+    const [filterRows, setFilterRows] = React.useState<PivotFilterRow[]>([]);
     const [isExecuting, setIsExecuting] = React.useState(false);
     const [isPreviewing, setIsPreviewing] = React.useState(false);
     const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
@@ -74,11 +76,17 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         setRows([]);
         setColumns([]);
         setValues([]);
+        setFilterRows([]);
     }, []);
 
     React.useEffect(() => {
         resetConfig();
     }, [tableName, resetConfig]);
+
+    const apiFilters = React.useMemo(
+        () => pivotFiltersToApi(filterRows),
+        [filterRows]
+    );
 
     const useServerPivot = canUseServerPivotPath(selectedTable, rows, values)
         && !shouldUseLocalPivotSql(columns);
@@ -92,12 +100,19 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                       columns,
                       values,
                       maxQueryRows,
+                      filters: apiFilters,
                   })
                 : null,
-        [selectedTable, useServerPivot, rows, columns, values, maxQueryRows]
+        [selectedTable, useServerPivot, rows, columns, values, maxQueryRows, apiFilters]
     );
 
-    const pivotQueryKey = getPivotQueryKey(selectedTable, rows, columns, values);
+    const pivotQueryKey = getPivotQueryKey(
+        selectedTable,
+        rows,
+        columns,
+        values,
+        apiFilters
+    );
 
     const { data: serverGenerated, isFetching: isGeneratingSql } = useQuery({
         queryKey: pivotQueryKey,
@@ -117,12 +132,33 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         staleTime: 30_000,
     });
 
+    const buildLocalWhereClause = React.useCallback(
+        (dialect: ReturnType<typeof getDialectFromSource>): string | null => {
+            if (apiFilters.length === 0) return null;
+            const clauses = apiFilters.map((f) => {
+                const col = quoteIdent(f.column, dialect);
+                if (f.operator === "IS NULL") return `${col} IS NULL`;
+                if (f.operator === "IS NOT NULL") return `${col} IS NOT NULL`;
+                const val =
+                    f.value === null || f.value === undefined
+                        ? "NULL"
+                        : typeof f.value === "number"
+                          ? String(f.value)
+                          : `'${String(f.value).replace(/'/g, "''")}'`;
+                return `${col} ${f.operator} ${val}`;
+            });
+            return clauses.length ? `WHERE ${clauses.join(" AND ")}` : null;
+        },
+        [apiFilters]
+    );
+
     const generateLocalSQL = React.useCallback((): string | null => {
         if (!selectedTable || rows.length === 0 || values.length === 0) return null;
 
         const source = getSourceFromSelectedTable(selectedTable);
         const dialect = getDialectFromSource(source);
         const normalized = normalizeSelectedTable(selectedTable);
+        const whereClause = buildLocalWhereClause(dialect);
 
         const fullTableName = normalized.schema
             ? `${quoteIdent(normalized.schema, dialect)}.${quoteIdent(normalized.name, dialect)}`
@@ -142,6 +178,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
             parts.push(`  USING ${aggExpressions}`);
             parts.push(`  GROUP BY ${rowColumns.join(", ")}`);
             parts.push(")");
+            if (whereClause) parts.push(whereClause);
             parts.push(`LIMIT ${maxQueryRows}`);
             return parts.join("\n");
         }
@@ -157,11 +194,12 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         const parts: string[] = [];
         parts.push(`SELECT ${selectParts.join(", ")}`);
         parts.push(`FROM ${fullTableName}`);
+        if (whereClause) parts.push(whereClause);
         parts.push(`GROUP BY ${rowColumns.join(", ")}`);
         parts.push(`ORDER BY ${rowColumns.join(", ")}`);
         parts.push(`LIMIT ${maxQueryRows}`);
         return parts.join("\n");
-    }, [selectedTable, rows, columns, values, maxQueryRows]);
+    }, [selectedTable, rows, columns, values, maxQueryRows, buildLocalWhereClause]);
 
     const sql =
         (useServerPivot && serverGenerated?.final_sql?.trim()) ||
@@ -310,6 +348,13 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                     onColumnsChange={setColumns}
                     onValuesChange={setValues}
                     isLoading={columnsLoading}
+                />
+
+                <PivotFilters
+                    columnNames={tableColumns.map((c) => c.name)}
+                    filters={filterRows}
+                    onChange={setFilterRows}
+                    disabled={columnsLoading || !selectedTable}
                 />
 
                 {sql && (

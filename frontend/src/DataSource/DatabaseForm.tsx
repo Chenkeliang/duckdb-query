@@ -257,6 +257,12 @@ const DatabaseForm = ({
   return (
     <Card className="shadow-sm">
       <CardContent className="p-8 space-y-6">
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "page.datasource.connection.supportedTypesHint",
+            "新建连接支持 MySQL、PostgreSQL、SQLite。列表中的 SQL Server 等为历史/外部类型，暂不可在此表单新建。"
+          )}
+        </p>
         {/* 顶部数据库类型切换 Tabs */}
         <Tabs value={type} onValueChange={setType}>
           <TabsList className="grid w-full grid-cols-3">

@@ -12,6 +12,7 @@ import { renderHook, act } from '@testing-library/react';
 import fc from 'fast-check';
 import { useFederatedQuery } from '../useFederatedQuery';
 import type { SelectedTableObject } from '@/types/SelectedTable';
+import { DEFAULT_MAX_QUERY_ROWS } from '@/constants/queryLimits';
 
 // 生成有效的数据库类型
 const databaseTypeArb = fc.constantFrom('mysql', 'postgresql', 'sqlite') as fc.Arbitrary<
@@ -288,8 +289,8 @@ describe('useFederatedQuery Hook', () => {
       const sql = result.current.generateSelectSQL({});
 
       expect(sql).toContain('SELECT *');
-      expect(sql).toContain('FROM "users"');
-      expect(sql).toContain('LIMIT 1000');
+      expect(sql).toContain('FROM users');
+      expect(sql).toContain(`LIMIT ${DEFAULT_MAX_QUERY_ROWS}`);
     });
 
     it('should generate valid SQL for multiple tables', () => {
@@ -303,8 +304,8 @@ describe('useFederatedQuery Hook', () => {
       const sql = result.current.generateSelectSQL({});
 
       expect(sql).toContain('SELECT *');
-      expect(sql).toContain('FROM "users"');
-      expect(sql).toContain('CROSS JOIN "orders"');
+      expect(sql).toContain('FROM users');
+      expect(sql).toContain('CROSS JOIN orders');
     });
   });
 });

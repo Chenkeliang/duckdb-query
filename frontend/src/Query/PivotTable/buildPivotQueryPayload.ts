@@ -2,7 +2,7 @@
  * 透视配置 → POST /api/visual-query（mode=pivot）请求体
  */
 
-import type { PivotConfig, VisualQueryConfig } from '@/types/visualQuery';
+import type { FilterConfig, PivotConfig, VisualQueryConfig } from '@/types/visualQuery';
 import { AggregationFunction } from '@/types/visualQuery';
 import type { AttachDatabase } from '@/utils/sqlUtils';
 import type { SelectedTable } from '@/types/SelectedTable';
@@ -67,8 +67,9 @@ export function buildPivotQueryPayload(params: {
     columns: string[];
     values: PivotPanelValueConfig[];
     maxQueryRows: number;
+    filters?: FilterConfig[];
 }): { config: VisualQueryConfig; pivotConfig: PivotConfig; attachDatabases: AttachDatabase[] } | null {
-    const { table, rows, columns, values, maxQueryRows } = params;
+    const { table, rows, columns, values, maxQueryRows, filters = [] } = params;
     if (!canUseServerPivotPath(table, rows, values) || shouldUseLocalPivotSql(columns)) {
         return null;
     }
@@ -77,7 +78,7 @@ export function buildPivotQueryPayload(params: {
 
     const config: VisualQueryConfig = {
         table_name: tableName,
-        filters: [],
+        filters,
         limit: maxQueryRows,
     };
 
@@ -98,14 +99,19 @@ export function getPivotQueryKey(
     table: SelectedTable | null,
     rows: string[],
     columns: string[],
-    values: PivotPanelValueConfig[]
+    values: PivotPanelValueConfig[],
+    filters: FilterConfig[] = []
 ): (string | number | undefined)[] {
     const name = table ? getTableName(table) : '';
+    const filterKey = filters
+        .map((f) => `${f.column}:${f.operator}:${String(f.value ?? "")}`)
+        .join(";");
     return [
         'pivot-sql',
         name,
         rows.join(','),
         columns.join(','),
         values.map((v) => `${v.column}:${v.aggregation}`).join('|'),
+        filterKey,
     ];
 }

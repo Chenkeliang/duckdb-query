@@ -147,7 +147,7 @@
 
 ## 7. 透视查询与收藏（`visualQueryApi.ts`）
 
-> **2026-05**：工作台已移除「可视化查询」Tab；`POST /api/visual-query/*` 仅 **透视**（必填 `pivot_config`，请求体无 `mode` 字段；响应 `data.mode` 仍为 `pivot`）。`VisualQueryConfig` 仅 `table_name`、`filters`、`limit`。实现见 `pivot_query_generator.py` / `table_metadata_service.py` / `set_operation_generator.py`。
+> **2026-05**：工作台已移除「可视化查询」Tab；`POST /api/visual-query/*` 仅 **透视**（必填 `pivot_config`，请求体无 `mode` 字段；响应 `data.mode` 仍为 `pivot`）。`VisualQueryConfig` 仅 `table_name`、`filters`、`limit`。透视 Tab UI：`PivotFilters` → `config.filters`。响应 `metadata` 不含 `complexity_score`（校验仍在服务端内部使用）。实现见 `pivot_query_generator.py` / `table_metadata_service.py` / `set_operation_generator.py`。
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|

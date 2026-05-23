@@ -1,0 +1,54 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  backend-test:
+    name: Backend Pytest
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          cd api
+          pip install -r requirements.txt
+
+      - name: Run pytest
+        env:
+          DUCKDB_DATA_DIR: ${{ runner.temp }}/duckquery-test/duckdb
+          DUCKDB_DATABASE_PATH: ${{ runner.temp }}/duckquery-test/duckdb/main.db
+        run: |
+          mkdir -p "$DUCKDB_DATA_DIR"
+          cd api
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          python -m pytest tests -q --tb=short
+
+  frontend-test:
+    name: Frontend Vitest
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: cd frontend && npm ci
+
+      - name: Run Vitest
+        run: cd frontend && npm test

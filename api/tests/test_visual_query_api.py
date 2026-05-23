@@ -88,7 +88,7 @@ class TestVisualQueryGeneration:
             assert response.status_code == 200
             inner = api_data(response.json())
             assert inner["sql"] == 'SELECT "col1", "col2" FROM "test_table"'
-            assert inner["metadata"]["complexity_score"] == 1
+            assert "complexity_score" not in (inner.get("metadata") or {})
 
     def test_missing_pivot_config_rejected(self):
         """缺少 pivot_config 时由 Pydantic 返回 422。"""
@@ -171,7 +171,7 @@ class TestVisualQueryGeneration:
             inner = api_data(response.json())
             assert inner["sql"] == expected_sql
             assert len(inner["warnings"]) > 0
-            assert inner["metadata"]["complexity_score"] == 8
+            assert "complexity_score" not in (inner.get("metadata") or {})
 
 
 class TestVisualQueryPreview:

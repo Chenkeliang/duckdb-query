@@ -29,7 +29,7 @@ class PivotConfig(BaseModel):
     # ... filters, sorting, etc.
 ```
 
-### 2. SQL Generation (`visual_query_generator.py`)
+### 2. SQL Generation (`pivot_query_generator.py` + `visual_query_sql_common.py`)
 **Current Legacy Logic**:
 - Checks for `manual_column_values` (IN list).
 - If missing, executes a "Limit N" query to sample values.
@@ -47,7 +47,7 @@ class PivotConfig(BaseModel):
 - **Fallback**: If multiple column dimensions or specific sorting is required, revert to `IN` list or multiple `PIVOT` steps if supported. For V1, we prioritize the standard single-column pivot or let DuckDB handle it.
 
 **Implementation Plan**:
-1.  Modify `_generate_pivot_transformation_sql` in `visual_query_generator.py`.
+1.  Modify pivot SQL helpers in `pivot_query_generator.py`.
 2.  If `manual_column_values` is empty, generate a dynamic PIVOT statement.
 3.  Ensure `_autosample_native_in_values` is bypassed in this dynamic mode.
 

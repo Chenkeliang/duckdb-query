@@ -48,8 +48,7 @@ export interface GeneratedVisualQuery {
     final_sql: string;
     pivot_sql?: string;
     warnings: string[];
-    metadata: Record<string, any>;
-    complexity_score?: number;
+    metadata: Record<string, unknown>;
     estimated_rows?: number;
 }
 
