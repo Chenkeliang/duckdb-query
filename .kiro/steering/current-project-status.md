@@ -181,7 +181,9 @@ frontend/src/
 │   ├── tableApi.ts               # 表 API
 │   ├── fileApi.ts                # 文件 API
 │   ├── asyncTaskApi.ts           # 异步任务 API
-│   ├── visualQueryApi.ts         # 可视化查询 API
+│   ├── pivotQueryApi.ts          # 透视查询 API（`/api/pivot-query/*`）
+│   ├── databaseSchemasApi.ts     # 外部库 schemas / 表
+│   ├── settingsShortcutsApi.ts   # 快捷键配置
 │   └── index.ts                  # 统一导出
 ├── hooks/                        # TanStack Query Hooks
 │   ├── useDuckDBTables.ts        # DuckDB 表列表

@@ -25,9 +25,10 @@
 ## Verification & Testing
 - [x] **Backend Tests** <!-- id: 300 -->
     - [x] `generate_pivot_query_sql`、API smoke、路由注册
-- [x] **Frontend Tests（部分）** <!-- id: 301 -->
+- [x] **Frontend Tests** <!-- id: 301 -->
     - [x] `buildPivotQueryPayload.test.ts`
-    - [ ] 拖拽交互、完整 API mock 集成（可选）
+    - [x] `pivotQueryApi.test.ts`（generate / preview 路径与解包）
+    - [ ] 拖拽交互 E2E（可选）
 - [ ] **E2E** <!-- id: 302 -->
     - Docker 下：选表 → 配置透视 → 生成/预览 → 结果列正确
 

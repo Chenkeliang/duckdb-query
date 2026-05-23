@@ -34,6 +34,7 @@
 |------|------|
 | [`CONFIGURATION.md`](CONFIGURATION.md) / [`CONFIGURATION_ZH.md`](CONFIGURATION_ZH.md) | 运行配置 |
 | [`FILE_IMPORT_PRECISION_AND_UX.md`](FILE_IMPORT_PRECISION_AND_UX.md) | 文件导入行为 |
+| [`ARTICLE_AI_RECONCILIATION.md`](ARTICLE_AI_RECONCILIATION.md) | 产品/对账场景介绍（非技术契约） |
 
 ## Kiro
 

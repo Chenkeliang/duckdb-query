@@ -28,7 +28,13 @@ import {
 import { toast } from 'sonner';
 import { useColumnFilter } from '../hooks/useColumnFilter';
 import type { ConditionFilter, ConditionFilterType, ColumnFilterValue, UniqueValueItem } from '../types';
-import { getSelectedValuesSize, hasSelectedValue, toSelectedValuesSet } from '../types';
+import {
+  getSelectedValuesSize,
+  hasSelectedValue,
+  toSelectedValuesSet,
+  isColumnFilterValue,
+  isConditionFilter,
+} from '../types';
 
 export interface FilterMenuProps {
   /** 列名 */
@@ -82,22 +88,14 @@ export const FilterMenu: React.FC<FilterMenuProps> = ({
       return { valueFilter: null, condition: null };
     }
 
-    if ('selectedValues' in value) {
-      const mode = (value as any).mode === 'exclude' ? 'exclude' : 'include';
-      const raw = (value as any).selectedValues as unknown;
-      const normalized =
-        raw instanceof Set
-          ? new Set(Array.from(raw as Set<unknown>).map(String))
-          : Array.isArray(raw)
-            ? new Set(raw.map(String))
-            : new Set<string>();
+    if (isColumnFilterValue(value)) {
+      const mode = value.mode === 'exclude' ? 'exclude' : 'include';
+      const normalized = toSelectedValuesSet(value.selectedValues);
       return { valueFilter: { selectedValues: normalized, mode }, condition: null };
     }
 
-    if ('type' in value && 'value' in value) {
-      const type = (value as any).type as ConditionFilterType;
-      const v = String((value as any).value ?? '');
-      return { valueFilter: null, condition: { type, value: v } };
+    if (isConditionFilter(value)) {
+      return { valueFilter: null, condition: { type: value.type, value: value.value } };
     }
 
     return { valueFilter: null, condition: null };

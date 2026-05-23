@@ -261,12 +261,14 @@ export function normalizeResponse<T = unknown>(response: AxiosResponse): Normali
         if (p.success === true) {
             const legacyCode = (p.messageCode as string) || 'OPERATION_SUCCESS';
             const legacyData = (p.data ?? payload) as Record<string, unknown> | undefined;
+            const connectionTest = legacyData?.connection_test as { success?: boolean } | undefined;
+            const testResult = legacyData?.test_result as { success?: boolean } | undefined;
             const innerFailure =
                 (typeof legacyCode === 'string' && legacyCode.endsWith('_FAILED')) ||
                 (legacyData &&
-                    ((legacyData as any).connection_test?.success === false ||
-                        (legacyData as any).refresh_success === false ||
-                        (legacyData as any).test_result?.success === false));
+                    (connectionTest?.success === false ||
+                        legacyData.refresh_success === false ||
+                        testResult?.success === false));
             if (innerFailure) {
                 const err = new Error(extractMessage(payload) || 'OPERATION_FAILED') as ApiError;
                 err.code = legacyCode.endsWith('_FAILED') ? legacyCode : 'OPERATION_FAILED';

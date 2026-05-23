@@ -91,6 +91,24 @@ export function toSelectedValuesSet(values: Set<string> | string[] | undefined |
   return new Set();
 }
 
+const CONDITION_FILTER_TYPES: ConditionFilterType[] = ['contains', 'equals', 'startsWith', 'endsWith'];
+
+export function isColumnFilterValue(value: unknown): value is ColumnFilterValue {
+  if (!value || typeof value !== 'object' || !('selectedValues' in value)) return false;
+  const selected = (value as ColumnFilterValue).selectedValues;
+  return selected instanceof Set || Array.isArray(selected);
+}
+
+export function isConditionFilter(value: unknown): value is ConditionFilter {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as ConditionFilter;
+  return (
+    typeof v.type === 'string' &&
+    CONDITION_FILTER_TYPES.includes(v.type as ConditionFilterType) &&
+    typeof v.value === 'string'
+  );
+}
+
 // ============ 列定义 ============
 
 export interface CellRendererProps {

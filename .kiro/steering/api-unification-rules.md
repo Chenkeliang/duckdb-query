@@ -99,7 +99,9 @@ frontend/src/api/
 ├── dataSourceApi.ts       # 数据源相关 API
 ├── fileApi.ts             # 文件相关 API
 ├── asyncTaskApi.ts        # 异步任务相关 API
-├── visualQueryApi.ts      # 可视化查询相关 API
+├── pivotQueryApi.ts       # 透视查询（`/api/pivot-query/*`）及 SQL 收藏、应用配置
+├── databaseSchemasApi.ts  # 外部库 schemas / 表列表 / 表详情
+├── settingsShortcutsApi.ts # 设置：快捷键
 └── index.ts               # 统一导出
 ```
 
