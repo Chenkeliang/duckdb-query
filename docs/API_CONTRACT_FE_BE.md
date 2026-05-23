@@ -208,8 +208,8 @@
 
 | 字段 | 含义 |
 |------|------|
-| `row_count`（visual preview） | 与生成 SQL 匹配的**估算总行**，可能大于 LIMIT |
-| `returned_rows`（visual preview） | 本响应**实际返回行数** |
+| `row_count`（pivot preview） | 与生成 SQL 匹配的**估算总行**，可能大于 LIMIT |
+| `returned_rows`（pivot preview） | 本响应**实际返回行数** |
 | `row_count`（duckdb execute） | 当前结果集行数（与返回 `data` 长度一致） |
 | `preview_limit_applied` | 预览且服务端自动追加 LIMIT 时为整数，否则 `null` |
 | `header`（URL 导入请求体） | 是否有表头；**不是** `has_header` |

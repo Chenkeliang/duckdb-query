@@ -216,7 +216,7 @@ await invalidateAfterDatabaseChange(queryClient);
 | 场景 | 刷新函数 | 调用位置 |
 |------|----------|----------|
 | SQL saveAsTable | `invalidateAllDataCaches()` | `useSQLEditor.ts` |
-| 透视 / 可视化 saveAsTable | `invalidateAfterTableCreate()` | `PivotPanel` 等 |
+| 透视 saveAsTable | `invalidateAfterTableCreate()` | `PivotPanel` 等 |
 | 粘贴数据创建表 | `invalidateAfterTableCreate()` | `DataPasteCard.tsx` |
 | 文件上传 | `invalidateAfterFileUpload()` | `UploadPanel.tsx` |
 | 表删除 | `invalidateAfterTableDelete()` | `ContextMenu.tsx` |
@@ -362,7 +362,7 @@ return {"success": True, "data": data}  # 应使用 create_success_response
 
 ## 🔗 相关文档
 
-- [当前项目状态](./current-project-status.md)
+- [AGENTS.md](../../AGENTS.md)
 - [TanStack Query 使用标准](./tanstack-query-standards.md)
 - [数据源刷新模式](./data-source-refresh-patterns.md)
 - [API 响应格式标准](./api-response-format-standard.md)

@@ -244,11 +244,12 @@ export function generateDatabaseAlias(connection: DatabaseConnection): string {
 
 外部库异步任务与同步一致：优先 `attach_databases`；仅传 `datasource` 时后端自动推导 ATTACH（`async_tasks.resolve_attach_databases_for_async`）。入口：`POST /api/async-tasks`（`asyncTaskApi.submitAsyncQuery`）。
 
-## 可视化查询（外部表）
+## 透视查询（Pivot）
 
-- 表源：`getSourceFromSelectedTable` → `type: 'federated'` + `attachDatabases`（与 SQL 面板一致）。
-- SQL：`QueryTabs.buildSQLFromConfig` 对外部表使用 `generateExternalTableReference().qualifiedName`。
-- 限制：可视化 **JOIN** 仍禁用；过滤/聚合/排序可用。执行经 `handleQueryExecute` → `executeFederatedQuery`。
+- UI：`QueryTabs` → `PivotPanel`（`frontend/src/Query/PivotTable/`）。
+- API：`generatePivotQuery` / `previewPivotQuery`（`pivotQueryApi.ts`）→ `POST /api/pivot-query/generate|preview`。
+- 请求体：`config`（`table_name`、`filters`、`limit`）+ `pivot_config`；外部库可传 `attach_databases`（与 SQL 联邦一致）。
+- 结果：预览数据经 `ResultPanel` → `DataGridWrapper`（TanStack DataGrid）。契约见 [`API_CONTRACT_FE_BE.md`](../API_CONTRACT_FE_BE.md) §7。
 
 ## 集合运算
 
@@ -265,6 +266,7 @@ export function generateDatabaseAlias(connection: DatabaseConnection): string {
 
 ## 版本历史
 
+- **v2.2** (2026-05-21): 移除可视化构建器描述；补充透视 `pivot-query` 路径
 - **v2.1** (2026-05-21): 文档对齐契约表；`execute_sql` / `duckdb_tables` 路由已删除；异步 ATTACH 单轨
 - **v2.0** (2024-12-19): 统一使用 ATTACH 模式，移除单独的外部数据库查询 API
 - **v1.0** (2024-12-04): 初始版本，区分外部查询和联邦查询

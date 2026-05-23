@@ -1,8 +1,8 @@
 # API 响应格式标准
 
 > **版本**: 2.0  
-> **最后更新**: 2026-05-21（422 校验、`error_json_response`、`ResourceNotFoundError` 收敛中）  
-> **状态**: ✅ 已实施  
+> **最后更新**: 2026-05-21  
+> **状态**: ✅ 已实施（422 校验、`error_json_response` 主路径已统一）  
 > **相关规范文档**: 详细规范请参考 [.kiro/steering/api-response-format-standard.md](../.kiro/steering/api-response-format-standard.md)
 
 ## 概述

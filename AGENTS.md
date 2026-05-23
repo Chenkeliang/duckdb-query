@@ -110,7 +110,8 @@ duckdb-query/
 │       └── i18n/                     # 国际化
 ├── config/                           # 配置文件
 ├── docs/                             # 文档（索引见 docs/README.md）
-│   ├── API_CONTRACT_FE_BE.md         # 前后端 API 契约（按域 / 端点 / data 语义）
+│   ├── API_CONTRACT_FE_BE.md         # 前后端 API 契约
+│   ├── ARCHITECTURE_CALL_MAP.md      # 分域调用图
 │   └── frontend/QUERY_EXECUTION_FLOW.md
 ├── .github/                          # CI / PR 模板
 │   └── pull_request_template.md      # PR：契约与验证勾选
@@ -131,7 +132,7 @@ duckdb-query/
 | `frontend/src/api/databaseSchemasApi.ts` | 外部库 schemas / 表 / 表详情 |
 | `frontend/src/api/settingsShortcutsApi.ts` | 快捷键配置 API |
 | `docs/API_CONTRACT_FE_BE.md` | 端点契约表（与后端路由、`normalizeResponse` 对齐） |
-| `docs/ARCHITECTURE_CALL_MAP.md` | 全局分域调用图（入湖 / 查询 / 元数据 / 异步 / 可视化） |
+| `docs/ARCHITECTURE_CALL_MAP.md` | 全局分域调用图（入湖 / 查询 / 元数据 / 异步 / 透视） |
 | `.github/pull_request_template.md` | PR 自检：契约 / lint / pytest |
 | `frontend/src/hooks/useDuckDBTables.ts` | DuckDB 表列表 Hook |
 | `frontend/src/hooks/useDataSources.ts` | 数据源列表 Hook |

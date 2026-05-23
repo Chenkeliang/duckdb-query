@@ -29,7 +29,7 @@ TanStack DataGrid 是基于 TanStack Table + `@tanstack/react-virtual` 的查询
 
 ### 历史说明
 
-AG Grid 已于 2026-05 移除；见 [`docs/frontend/AG_GRID_MIGRATION_GUIDE.md`](../../docs/frontend/AG_GRID_MIGRATION_GUIDE.md)。
+AG Grid 已于 **2026-05** 移除；查询结果仅使用本目录下的 TanStack DataGrid（`ResultPanel` → `DataGridWrapper`）。
 
 ## 📁 组件结构
 
@@ -66,10 +66,8 @@ frontend/src/Query/DataGrid/
 │   ├── columnTypes.ts              # 列类型检测
 │   ├── formatters.ts               # 值格式化
 │   └── index.ts                    # 统一导出
-├── examples/                       # 示例
-│   └── DataGridExample.tsx         # 使用示例
-└── docs/                           # 文档
-    └── MULTI_COLUMN_FILTER_FIX.md  # 多列筛选修复文档
+└── examples/                       # 示例
+    └── DataGridExample.tsx         # 使用示例
 ```
 
 ## 🔧 基本使用
@@ -684,9 +682,9 @@ setData([...data, newRow]);
 ## 📚 相关文档
 
 - [DataGrid README](../../frontend/src/Query/DataGrid/README.md)
-- [多列筛选修复文档](../../frontend/src/Query/DataGrid/docs/MULTI_COLUMN_FILTER_FIX.md)
+- [查询执行与结果展示](../../docs/frontend/QUERY_EXECUTION_FLOW.md)
 - [DataGrid 示例](../../frontend/src/Query/DataGrid/examples/DataGridExample.tsx)
-- [当前项目状态](./current-project-status.md)
+- [AGENTS.md](../../AGENTS.md)
 - [前端开发约束](./frontend-constraints.md)
 
 ---

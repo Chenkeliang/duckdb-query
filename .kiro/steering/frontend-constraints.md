@@ -337,7 +337,7 @@ const tables = await getDuckDBTables();
 | 组件 | 路径 | 用途 |
 |------|------|------|
 | **布局** | `frontend/src/Layout/` | Sidebar, Header, PageShell |
-| **查询工作台** | `frontend/src/Query/` | SQL/可视化/连接查询 |
+| **查询工作台** | `frontend/src/Query/` | SQL / JOIN / 集合运算 / 透视 |
 | **结果面板** | `frontend/src/Query/ResultPanel/` | 查询结果展示 |
 | **数据源面板** | `frontend/src/Query/DataSourcePanel/` | 数据源树形面板 |
 | **数据源管理** | `frontend/src/DataSource/` | 数据源管理页面 |
@@ -370,7 +370,7 @@ const tables = await getDuckDBTables();
 
 ## 🔗 相关文档
 
-- [当前项目状态](./current-project-status.md)
+- [AGENTS.md](../../AGENTS.md)
 - [TanStack Query 使用标准](./tanstack-query-standards.md)
 - [API 统一化规则](./api-unification-rules.md)
 - [TypeScript API 模块标准](./typescript-api-module-standards.md)
