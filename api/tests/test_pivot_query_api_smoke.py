@@ -35,7 +35,7 @@ def test_pivot_generate_success_envelope():
     )
     with patch(
         "routers.visual_query.validate_query_config",
-        return_value=ValidationResult(is_valid=True, errors=[], warnings=[], complexity_score=1),
+        return_value=ValidationResult(is_valid=True, errors=[], warnings=[]),
     ), patch(
         "routers.visual_query.generate_visual_query_sql",
         return_value=generation,

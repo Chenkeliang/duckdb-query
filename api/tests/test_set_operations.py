@@ -22,7 +22,7 @@ import json
 from pydantic import ValidationError
 
 from main import app
-from models.visual_query_models import (
+from models.set_operation_models import (
     SetOperationType,
     SetOperationConfig,
     SetOperationRequest,

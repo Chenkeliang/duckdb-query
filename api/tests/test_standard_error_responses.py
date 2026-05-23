@@ -172,7 +172,6 @@ def test_visual_query_generate_invalid_config_standard_error():
         is_valid=False,
         errors=["table_name is required"],
         warnings=[],
-        complexity_score=0,
     )
     with patch(
         "routers.visual_query.validate_query_config",

@@ -289,7 +289,6 @@ class TestValidation:
 
         assert result.is_valid is True
         assert len(result.errors) == 0
-        assert result.complexity_score > 0
 
     def test_empty_table_name(self):
         """Test validation with empty table name"""

@@ -78,7 +78,6 @@ class TestVisualQueryGeneration:
                 is_valid=True,
                 errors=[],
                 warnings=[],
-                complexity_score=1,
             )
 
             mock_generate.return_value = generation_result
@@ -160,7 +159,6 @@ class TestVisualQueryGeneration:
                 is_valid=True,
                 errors=[],
                 warnings=["复杂查询可能需要较长时间"],
-                complexity_score=8,
             )
 
             mock_generate.return_value = generation_result
@@ -205,7 +203,6 @@ class TestVisualQueryPreview:
                 is_valid=True,
                 errors=[],
                 warnings=[],
-                complexity_score=2,
             )
 
             mock_generate.return_value = generation_result

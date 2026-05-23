@@ -182,7 +182,8 @@ logs/
 .cursorrules
 .cursor/
 .claude/
-hooks/
+# Git hook scripts at repo root only (do not ignore frontend/src/hooks)
+/hooks/
 CLAUDE.md
 # runtime file data sources cache
 data/file_datasources.json

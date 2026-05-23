@@ -36,7 +36,6 @@ class ValidationResult:
     is_valid: bool
     errors: List[str]
     warnings: List[str]
-    complexity_score: int = 0
 
 
 @dataclass
@@ -464,7 +463,6 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
     """Validate pivot base-query configuration (table + filters)."""
     errors: List[str] = []
     warnings: List[str] = []
-    complexity_score = 0
 
     try:
         if not config.table_name or not config.table_name.strip():
@@ -473,16 +471,15 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
         for filter_config in config.filters:
             if not filter_config.column or not filter_config.column.strip():
                 errors.append("筛选条件必须指定column名")
-            elif filter_config.operator not in [
+            elif filter_config.operator not in (
                 FilterOperator.IS_NULL,
                 FilterOperator.IS_NOT_NULL,
-            ]:
+            ):
                 if filter_config.value is None:
                     errors.append(f"筛选条件 '{filter_config.column}' 需要指定值")
             if filter_config.operator == FilterOperator.BETWEEN:
                 if filter_config.value2 is None:
                     errors.append("BETWEEN操作符需要指定两个值")
-            complexity_score += 1
 
         if len(config.filters) > 10:
             warnings.append("筛选条件过多可能影响query性能")
@@ -491,7 +488,6 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
             is_valid=len(errors) == 0,
             errors=errors,
             warnings=warnings,
-            complexity_score=complexity_score,
         )
 
     except Exception as e:
@@ -500,5 +496,4 @@ def validate_query_config(config: VisualQueryConfig) -> ValidationResult:
             is_valid=False,
             errors=[f"configuration验证failed: {str(e)}"],
             warnings=[],
-            complexity_score=0,
         )

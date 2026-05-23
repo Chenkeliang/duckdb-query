@@ -4,7 +4,7 @@
 import logging
 from typing import List
 
-from models.visual_query_models import (
+from models.set_operation_models import (
     SetOperationConfig,
     SetOperationType,
     TableConfig,

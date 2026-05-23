@@ -14,7 +14,7 @@ from core.services.set_operation_generator import (
     generate_set_operation_sql,
 )
 from fastapi import APIRouter
-from models.visual_query_models import (
+from models.set_operation_models import (
     SetOperationConfig,
     SetOperationExportRequest,
     SetOperationRequest,

@@ -1,13 +1,12 @@
 """
-Visual Query Models
+Pivot / visual-query API models (POST /api/visual-query/*).
 
-Pydantic models for visual query configuration and validation.
-Supports Chinese display labels and comprehensive validation logic.
+Set-operation models live in ``set_operation_models.py``.
 """
 
-# pylint: disable=no-member,too-many-lines,duplicate-code,not-an-iterable,unused-variable
+# pylint: disable=no-member,duplicate-code,not-an-iterable,unused-variable
 from enum import Enum
-from typing import List, Optional, Dict, Any, Union, Literal, ClassVar, Set
+from typing import List, Optional, Dict, Union, Literal, ClassVar, Set
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from models.query_models import AttachDatabase
@@ -49,14 +48,6 @@ class LogicOperator(str, Enum):
     OR = "OR"
 
 
-class FilterValueType(str, Enum):
-    """Types of filter value comparisons"""
-
-    CONSTANT = "constant"
-    COLUMN = "column"
-    EXPRESSION = "expression"
-
-
 class VisualQueryMode(str, Enum):
     """Visual analysis modes (pivot Tab only)."""
 
@@ -64,9 +55,9 @@ class VisualQueryMode(str, Enum):
 
 
 class FilterConfig(BaseModel):
-    """Configuration for filter conditions"""
+    """Pivot filter: column, operator, and constant value(s)."""
 
-    column: Optional[str] = Field(None, description="Column name to filter")
+    column: str = Field(..., description="Column name to filter")
     operator: FilterOperator = Field(..., description="Filter operator")
     value: Optional[Union[str, int, float]] = Field(None, description="Filter value")
     value2: Optional[Union[str, int, float]] = Field(
@@ -75,94 +66,24 @@ class FilterConfig(BaseModel):
     logic_operator: LogicOperator = Field(
         LogicOperator.AND, description="Logic operator for combining with other filters"
     )
-    value_type: FilterValueType = Field(
-        FilterValueType.CONSTANT,
-        description="类型：常量、列或者表达式",
-    )
-    right_column: Optional[str] = Field(
-        None, description="The column name used when comparing column vs column"
-    )
-    expression: Optional[str] = Field(
-        None, description="Expression used when value_type == expression"
-    )
-    expression_result_type: Optional[
-        Literal["number", "string", "boolean", "date"]
-    ] = Field(
-        None,
-        description="Optional result type hint for expression value_type",
-    )
-    cast: Optional[str] = Field(
-        None,
-        description="TRY_CAST target applied to the filter expression or column",
-    )
 
     @field_validator("column")
     @classmethod
-    def validate_column(cls, v):
-        if v is None:
-            return None
-        if not v.strip():
+    def validate_column(cls, v: str) -> str:
+        if not v or not v.strip():
             raise ValueError("Column name cannot be empty")
         return v.strip()
-    @field_validator("cast")
-    @classmethod
-    def validate_cast(cls, v):
-        if v is None:
-            return None
-        cleaned = v.strip()
-        if not cleaned:
-            return None
-        return cleaned.upper()
 
     @model_validator(mode="after")
     def validate_filter_values(self):
-        operator = self.operator
-        value = self.value
-        value2 = self.value2
-
-        # Check if value is required for the operator
-        if operator in [FilterOperator.IS_NULL, FilterOperator.IS_NOT_NULL]:
-            # These operators don't need values
-            pass
-        elif operator == FilterOperator.BETWEEN:
-            if value is None or value2 is None:
+        if self.operator in (FilterOperator.IS_NULL, FilterOperator.IS_NOT_NULL):
+            return self
+        if self.operator == FilterOperator.BETWEEN:
+            if self.value is None or self.value2 is None:
                 raise ValueError("BETWEEN operator requires both value and value2")
-        else:
-            if (
-                self.value_type == FilterValueType.CONSTANT
-                and value is None
-                and not (self.value_type == FilterValueType.EXPRESSION and self.expression)
-            ):
-                raise ValueError(f"Operator {operator} requires a value")
-
-        return self
-
-    @model_validator(mode="after")
-    def validate_value_type(self):
-        value_type = self.value_type
-
-        if value_type == FilterValueType.COLUMN:
-            if not self.right_column or not str(self.right_column).strip():
-                raise ValueError("Column comparison requires right_column")
-            if self.operator in {FilterOperator.BETWEEN, FilterOperator.LIKE, FilterOperator.ILIKE}:
-                raise ValueError(
-                    f"Operator {self.operator.value} does not support column-to-column comparison"
-                )
-            if not self.column or not str(self.column).strip():
-                raise ValueError("Column comparison requires column")
-        elif value_type == FilterValueType.EXPRESSION:
-            if not self.expression or not str(self.expression).strip():
-                raise ValueError("Expression comparison requires expression text")
-            if self.operator in {FilterOperator.IS_NULL, FilterOperator.IS_NOT_NULL}:
-                raise ValueError("IS NULL / IS NOT NULL does not support expression type")
-            if self.operator == FilterOperator.BETWEEN:
-                raise ValueError("BETWEEN does not support expression comparison")
-            # 表达式可以在没有 column 的情况下直接使用
-        else:
-            # CONSTANT
-            if not self.column or not str(self.column).strip():
-                raise ValueError("Constant comparison requires column name")
-
+            return self
+        if self.value is None:
+            raise ValueError(f"Operator {self.operator} requires a value")
         return self
 
 
@@ -367,184 +288,3 @@ class PreviewRequest(BaseModel):
     attach_databases: Optional[List[AttachDatabase]] = Field(
         None, description="联邦预览需 ATTACH 的外部库"
     )
-
-
-# ==================== 集合操作相关模型 ====================
-
-
-class SetOperationType(str, Enum):
-    """支持的集合操作类型"""
-
-    UNION = "UNION"
-    UNION_ALL = "UNION ALL"
-    UNION_BY_NAME = "UNION BY NAME"
-    UNION_ALL_BY_NAME = "UNION ALL BY NAME"
-    EXCEPT = "EXCEPT"
-    INTERSECT = "INTERSECT"
-
-
-class ColumnMapping(BaseModel):
-    """列映射配置，用于BY NAME模式"""
-
-    source_column: str = Field(..., description="源表列名")
-    target_column: str = Field(..., description="目标列名")
-
-    @field_validator("source_column")
-    @classmethod
-    def validate_source_column(cls, v):
-        if not v or not v.strip():
-            raise ValueError("Source column name cannot be empty")
-        return v.strip()
-
-    @field_validator("target_column")
-    @classmethod
-    def validate_target_column(cls, v):
-        if not v or not v.strip():
-            raise ValueError("Target column name cannot be empty")
-        return v.strip()
-
-
-class TableConfig(BaseModel):
-    """表配置，用于集合操作"""
-
-    table_name: str = Field(..., description="表名")
-    selected_columns: List[str] = Field(default_factory=list, description="选择的列")
-    column_mappings: Optional[List[ColumnMapping]] = Field(
-        None, description="列映射（BY NAME模式使用）"
-    )
-    alias: Optional[str] = Field(None, description="表别名")
-
-    @field_validator("table_name")
-    @classmethod
-    def validate_table_name(cls, v):
-        if not v or not v.strip():
-            raise ValueError("Table name cannot be empty")
-        return v.strip()
-
-    @field_validator("selected_columns")
-    @classmethod
-    def validate_selected_columns(cls, v):
-        # 移除空字符串并去除空白
-        return [col.strip() for col in v if col and col.strip()]
-
-    @field_validator("alias")
-    @classmethod
-    def validate_alias(cls, v):
-        if v is not None and not v.strip():
-            raise ValueError("Alias cannot be empty string")
-        return v.strip() if v else None
-
-
-class SetOperationConfig(BaseModel):
-    """集合操作配置"""
-
-    operation_type: SetOperationType = Field(..., description="集合操作类型")
-    tables: List[TableConfig] = Field(..., description="参与操作的表列表")
-    use_by_name: bool = Field(False, description="是否使用BY NAME模式")
-
-    @field_validator("tables")
-    @classmethod
-    def validate_tables(cls, v):
-        if not v or len(v) < 2:
-            raise ValueError("Set operation requires at least two tables")
-        return v
-
-    @model_validator(mode="after")
-    def validate_operation_config(self):
-        """验证操作配置"""
-        operation_type = self.operation_type
-        use_by_name = self.use_by_name
-        tables = self.tables
-
-        # 验证BY NAME模式
-        if use_by_name:
-            if operation_type not in [
-                SetOperationType.UNION,
-                SetOperationType.UNION_ALL,
-            ]:
-                raise ValueError("Only UNION and UNION ALL support BY NAME mode")
-
-        # 验证列兼容性（非BY NAME模式）
-        if not use_by_name:
-            self._validate_column_compatibility(tables)
-
-        return self
-
-    def _validate_column_compatibility(self, tables: List[TableConfig]):
-        """验证列兼容性（位置模式）"""
-        if not tables:
-            return
-
-        first_table = tables[0]
-        first_columns = first_table.selected_columns or []
-
-        for i, table in enumerate(tables[1:], 1):
-            table_columns = table.selected_columns or []
-
-            if len(first_columns) != len(table_columns):
-                raise ValueError(
-                    f"Table {table.table_name} column count ({len(table_columns)}) "
-                    f"does not match first table {first_table.table_name} column count ({len(first_columns)})"
-                )
-
-
-class SetOperationRequest(BaseModel):
-    """集合操作请求模型"""
-
-    config: SetOperationConfig = Field(..., description="集合操作配置")
-    preview: bool = Field(False, description="是否为预览请求")
-    save_as_table: Optional[str] = Field(None, description="保存为表名（可选）")
-    include_metadata: bool = Field(True, description="是否包含元数据")
-
-    @model_validator(mode="after")
-    def validate_request(self):
-        """验证请求"""
-        config = self.config
-
-        # 验证表数量
-        if len(config.tables) < 2:
-            raise ValueError("Set operation requires at least two tables")
-
-        if len(config.tables) > 10:
-            raise ValueError("Set operation supports at most 10 tables")
-
-        return self
-
-
-class UnionOperationRequest(BaseModel):
-    """UNION操作请求模型（简化版）"""
-
-    tables: List[str] = Field(..., description="表名列表")
-    operation_type: SetOperationType = Field(
-        SetOperationType.UNION, description="操作类型"
-    )
-    use_by_name: bool = Field(False, description="是否使用BY NAME模式")
-    column_mappings: Optional[Dict[str, List[ColumnMapping]]] = Field(
-        None, description="列映射（按表名分组）"
-    )
-
-    @field_validator("tables")
-    @classmethod
-    def validate_tables(cls, v):
-        if not v or len(v) < 2:
-            raise ValueError("At least two tables are required")
-        return [table.strip() for table in v if table and table.strip()]
-
-
-# 集合操作中文标签映射
-SET_OPERATION_LABELS = {
-    SetOperationType.UNION: "并集",
-    SetOperationType.UNION_ALL: "并集(保留重复)",
-    SetOperationType.UNION_BY_NAME: "按列名并集",
-    SetOperationType.UNION_ALL_BY_NAME: "按列名并集(保留重复)",
-    SetOperationType.EXCEPT: "差集",
-    SetOperationType.INTERSECT: "交集",
-}
-
-
-class SetOperationExportRequest(BaseModel):
-    """集合操作导出请求模型"""
-
-    config: SetOperationConfig
-    format: Literal["excel", "csv", "parquet"] = Field(..., description="导出格式")
-    filename: Optional[str] = Field(None, description="自定义文件名（可选）")
