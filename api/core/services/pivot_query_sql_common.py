@@ -30,7 +30,8 @@ def _build_from_clause(config: PivotQueryConfig) -> str:
     if not table_ref:
         raise ValueError("table_name is required")
     if "." not in table_ref:
-        return f"FROM {_quote_identifier(table_ref.strip('\"'))}"
+        bare_table = table_ref.strip('"')
+        return f"FROM {_quote_identifier(bare_table)}"
     from core.database.federated_attach import format_qualified_table_reference
 
     return f"FROM {format_qualified_table_reference(table_ref)}"
