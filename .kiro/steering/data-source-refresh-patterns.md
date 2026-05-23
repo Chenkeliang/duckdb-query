@@ -40,7 +40,7 @@ import {
 | 场景 | 文件 | 刷新函数 |
 |------|------|----------|
 | SQL saveAsTable | `useSQLEditor.ts` | `invalidateAllDataCaches()` |
-| 可视化查询 saveAsTable | `useQueryBuilder.ts` | `invalidateAfterTableCreate()` |
+| 透视 saveAsTable | `PivotPanel` 等 | `invalidateAfterTableCreate()` |
 | 粘贴数据创建表 | `DataPasteCard.tsx` | `invalidateAfterTableCreate()` |
 | 文件上传 | `UploadPanel.tsx` | `invalidateAfterFileUpload()` |
 | 表删除 | `ContextMenu.tsx` | `invalidateAfterTableDelete()` |

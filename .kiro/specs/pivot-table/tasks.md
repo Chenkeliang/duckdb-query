@@ -2,7 +2,7 @@
 
 ## Backend Tasks
 - [x] **Verify & Optimize API** <!-- id: 100 -->
-    - [x] Check `visual_query_generator.py` for current Pivot logic.
+    - [x] Check `pivot_query_generator.py` for current Pivot logic.
     - [x] **Refactor**: Implement `Dynamic PIVOT` logic (remove mandatory `IN` clause constraint).
     - [x] **Security**: Verify `_quote_identifier` usage for all dynamic column paths.
     - [x] **Limits**: Add default `LIMIT 10000` to generated SQL to prevent browser crash.

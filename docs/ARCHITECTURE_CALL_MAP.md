@@ -137,14 +137,12 @@ sequenceDiagram
 flowchart LR
   SQLEditor[useSQLEditor]
   JoinPanel[JoinQueryPanel]
-  VisualQB[useQueryBuilder]
-  Runner[useQueryRunner]
+  PivotPanel[PivotPanel]
   QW[useQueryWorkspace]
 
-  SQLEditor --> Runner
-  JoinPanel --> Runner
-  VisualQB --> Runner
-  Runner --> QW
+  SQLEditor --> QW
+  JoinPanel --> QW
+  PivotPanel --> QW
   QW --> queryApi[executeDuckDBSQL / executeFederatedQuery]
 ```
 

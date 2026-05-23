@@ -220,26 +220,6 @@
       "deselectAll": "取消全选",
       "selectedCount": "已选择 {{count}} 列"
     },
-    "builder": {
-      "title": "可视化查询",
-      "selectTable": "选择表",
-      "selectColumns": "选择列",
-      "addFilter": "添加过滤条件",
-      "execute": "执行查询",
-      "preview": "预览 SQL",
-      "tabBasic": "基础",
-      "tabJoin": "关联",
-      "tabFilter": "过滤",
-      "tabAggregate": "聚合",
-      "tabSort": "排序",
-      "filterPlaceholder": "过滤器构建器（待实现）",
-      "filterCount": "当前过滤条件: {{count}}",
-      "aggregatePlaceholder": "聚合构建器（待实现）",
-      "aggregateCount": "当前聚合: {{count}}",
-      "sortPlaceholder": "排序构建器（待实现）",
-      "sortCount": "当前排序: {{count}}",
-      "externalNotSupported": "外部数据库表暂不支持可视化查询。请先将外部表导入到 DuckDB 后再使用此功能。"
-    },
     "result": {
       "noData": "暂无数据",
       "noDataHint": "执行查询以查看结果",
@@ -367,16 +347,6 @@
         "whereHint": "在结果中过滤"
       },
       "dragToSort": "拖拽排序"
-    },
-    "validation": {
-      "noTable": "请选择一个表",
-      "noColumns": "请选择至少一列或添加聚合函数",
-      "filterNoColumn": "过滤条件 {{index}} 未选择列",
-      "filterNoValue": "过滤条件 {{index}} 未设置值",
-      "filterNoBetweenValue": "过滤条件 {{index}} BETWEEN 需要两个值",
-      "aggNoColumn": "聚合 {{index}} 未选择列",
-      "aggNoGroupBy": "使用聚合函数时，非聚合列应添加到 GROUP BY",
-      "sortNoColumn": "排序 {{index}} 未选择列"
     },
     "sql": {
       "execute": "执行",

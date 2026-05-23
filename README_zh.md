@@ -67,7 +67,7 @@ git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && 
 | 📂 **查询任意文件** | 拖拽 CSV/Excel/Parquet/JSON 到浏览器，即刻生成表。 |
 | 🗄️ **连接外部数据库** | 添加 MySQL/PostgreSQL 连接，与本地文件一起查询。 |
 | 🔗 **跨数据源 JOIN** | `SELECT * FROM 本地表 JOIN mysql_db.users ON ...` |
-| 📊 **可视化构建器** | 无需 SQL，选表即可完成 JOIN、透视表、合并操作。 |
+| 📊 **透视 / JOIN / 集合** | SQL 编辑器 + JOIN 工作台 + 透视表 + 集合运算（无独立「可视化构建器」Tab）。 |
 | 🌐 **从 URL 导入** | 输入 CSV/Parquet/JSON 链接，自动导入 DuckDB。 |
 | 🌙 **深色模式 & 多语言** | 一键切换主题和语言（中文/English）。 |
 

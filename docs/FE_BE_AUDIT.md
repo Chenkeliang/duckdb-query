@@ -147,7 +147,7 @@ flowchart TB
 | `TableSource.type`：`duckdb \| federated` | 外部表元数据仍为 `SelectedTable.source === 'external'` |
 | `executeExternalSQL` / `executeSQL` / `performQuery` | 仅 `api/index.ts` 导出，**无** `frontend/src` 业务 import |
 | 引号策略 | 已改为按需引号（`sqlUtils.needsQuoting`） |
-| 可视化查询 | `QueryBuilder` 对外部表禁止执行（`canExecute = !isExternal`） |
+| 透视表 | `PivotPanel` → `/api/visual-query/*`（`mode: pivot`）；构建器 Tab 已移除 |
 | 集合运算 | 客户端拼 SQL，不调用后端 set-operations API |
 
 ---

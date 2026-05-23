@@ -212,7 +212,7 @@ await invalidateAfterDatabaseChange(queryClient);
 | 场景 | 刷新函数 | 调用位置 |
 |------|----------|----------|
 | SQL saveAsTable | `invalidateAllDataCaches()` | `useSQLEditor.ts` |
-| 可视化查询 saveAsTable | `invalidateAfterTableCreate()` | `useQueryBuilder.ts` |
+| 透视 / 可视化 saveAsTable | `invalidateAfterTableCreate()` | `PivotPanel` 等 |
 | 粘贴数据创建表 | `invalidateAfterTableCreate()` | `DataPasteCard.tsx` |
 | 文件上传 | `invalidateAfterFileUpload()` | `UploadPanel.tsx` |
 | 表删除 | `invalidateAfterTableDelete()` | `ContextMenu.tsx` |

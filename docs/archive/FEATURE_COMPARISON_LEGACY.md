@@ -1,7 +1,10 @@
-# Query Workbench 功能对比检查
+# Query Workbench 功能对比检查（已归档）
 
-## 文档说明
-本文档用于对比**真实项目**中的查询构建器功能与**HTML Demo**（`query_workbench_fixed.html`）中的实现，确保重要功能不遗漏。
+> **废止说明（2026-05）**：本文描述已删除的 `frontend/src/components/QueryBuilder/` 与「可视化构建器」Tab，**勿用于当前实现**。现行能力见 `frontend/src/Query/`（SQL、Join、Set、Pivot）及 [`../API_CONTRACT_FE_BE.md`](../API_CONTRACT_FE_BE.md)。
+
+## 文档说明（历史）
+
+本文档用于对比**旧版**查询构建器功能与 **HTML Demo**（`query_workbench_fixed.html`）中的实现。
 
 ---
 

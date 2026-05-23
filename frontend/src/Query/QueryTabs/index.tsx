@@ -28,7 +28,7 @@ import { useDatabaseConnections } from "@/hooks/useDatabaseConnections";
  * 职责：
  * - 显示 5 个查询模式 Tab
  * - 处理 Tab 切换
- * - 渲染对应的查询构建器
+ * - 渲染对应的查询面板（SQL / Join / Set / Pivot）
  * - 提供全局功能入口：历史记录、收藏夹
  * 
  * 样式：

@@ -214,26 +214,6 @@
       "deselectAll": "Deselect all",
       "selectedCount": "{{count}} columns selected"
     },
-    "builder": {
-      "title": "Visual Query",
-      "selectTable": "Select table",
-      "selectColumns": "Select columns",
-      "addFilter": "Add filter",
-      "execute": "Execute query",
-      "preview": "Preview SQL",
-      "tabBasic": "Basic",
-      "tabJoin": "Join",
-      "tabFilter": "Filter",
-      "tabAggregate": "Aggregate",
-      "tabSort": "Sort",
-      "filterPlaceholder": "Filter builder (coming soon)",
-      "filterCount": "Current filters: {{count}}",
-      "aggregatePlaceholder": "Aggregate builder (coming soon)",
-      "aggregateCount": "Current aggregations: {{count}}",
-      "sortPlaceholder": "Sort builder (coming soon)",
-      "sortCount": "Current sorts: {{count}}",
-      "externalNotSupported": "Visual query is not supported for external tables. Please import the external table into DuckDB first."
-    },
     "result": {
       "noData": "No data",
       "noDataHint": "Execute a query to see results",
@@ -361,16 +341,6 @@
         "whereHint": "Filter in results"
       },
       "dragToSort": "Drag to sort"
-    },
-    "validation": {
-      "noTable": "Please select a table",
-      "noColumns": "Please select at least one column or add an aggregation",
-      "filterNoColumn": "Filter {{index}} has no column selected",
-      "filterNoValue": "Filter {{index}} has no value set",
-      "filterNoBetweenValue": "Filter {{index}} BETWEEN requires two values",
-      "aggNoColumn": "Aggregation {{index}} has no column selected",
-      "aggNoGroupBy": "When using aggregations, non-aggregated columns should be in GROUP BY",
-      "sortNoColumn": "Sort {{index}} has no column selected"
     },
     "sql": {
       "execute": "Execute",

@@ -102,7 +102,7 @@ class PivotConfig(BaseModel):
   ```
 
 ## Security & Limits (Backend)
-- **SQL Injection**: All table and column names will be sanitized/quoted using `_quote_identifier` in `visual_query_generator.py`.
+- **SQL Injection**: All table and column names will be sanitized/quoted using `_quote_identifier` in `pivot_query_generator.py` / `visual_query_sql_common.py`.
 - **Result Limits**:
   - **Rows**: Limit to 10,000 rows by default.
   - **Columns**: Dynamic pivot can generate many columns; Limit to 1,000 columns.

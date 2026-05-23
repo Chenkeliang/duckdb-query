@@ -2,7 +2,8 @@
 
 > **版本**: 2.5 (最终版 - 完善覆盖范围与配置化)  
 > **创建时间**: 2026-01-15  
-> **状态**: 📐 设计完成
+> **状态**: 📐 设计完成  
+> **2026-05 注**：`visual_query_generator` 已拆为 `pivot_query_generator` / `table_metadata_service` / `set_operation_generator`；集合操作模型在 `models/set_operation_models.py`。
 
 ---
 

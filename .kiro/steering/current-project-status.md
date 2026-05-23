@@ -198,9 +198,8 @@ frontend/src/
 │   └── ...
 ├── Query/                        # 查询工作台
 │   ├── SQLQuery/                 # SQL 查询
-│   ├── VisualQuery/              # 可视化查询
 │   ├── JoinQuery/                # 连接查询
-│   ├── PivotTable/               # 透视表
+│   ├── PivotTable/               # 透视表（原 Visual 构建器已移除）
 │   ├── SetOperations/            # 集合操作
 │   ├── ResultPanel/              # 结果面板
 │   ├── DataGrid/                 # TanStack DataGrid
