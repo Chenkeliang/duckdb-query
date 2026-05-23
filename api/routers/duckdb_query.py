@@ -35,7 +35,7 @@ from core.database.duckdb_engine import (
 from core.database.duckdb_pool import interruptible_connection
 from core.security.encryption import password_encryptor
 from core.services.resource_manager import save_upload_file
-from core.services.visual_query_generator import get_table_metadata
+from core.services.table_metadata_service import get_table_metadata
 from core.common.exceptions import (
     BaseAPIException,
     DatabaseConnectionError,

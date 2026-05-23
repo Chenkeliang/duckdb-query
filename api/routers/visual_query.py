@@ -8,7 +8,7 @@ import duckdb
 from core.database.duckdb_engine import execute_query, with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import execute_sql_with_attach
-from core.services.visual_query_generator import (
+from core.services.pivot_query_generator import (
     generate_visual_query_sql,
     validate_query_config,
 )
@@ -19,6 +19,8 @@ from models.visual_query_models import (
     VisualQueryMode,
     VisualQueryRequest,
 )
+
+PIVOT_MODE = VisualQueryMode.PIVOT
 from utils.response_helpers import (
     MessageCode,
     create_success_response,
@@ -51,33 +53,12 @@ def _build_preview_count_sql(sql: str) -> str:
     return f"SELECT COUNT(*) AS total_rows FROM ({cleaned}) AS preview_count"
 
 
-def _reject_non_pivot_request(request: VisualQueryRequest | PreviewRequest):
-    """HTTP API 仅支持透视 Tab。"""
-    if request.mode != VisualQueryMode.PIVOT:
-        return error_json_response(
-            400,
-            MessageCode.VISUAL_QUERY_INVALID,
-            "Only pivot mode is supported; the visual query builder was removed",
-            details={"mode": request.mode, "supported_mode": VisualQueryMode.PIVOT.value},
-        )
-    if request.pivot_config is None:
-        return error_json_response(
-            400,
-            MessageCode.VISUAL_QUERY_INVALID,
-            "pivot_config is required when mode is pivot",
-        )
-    return None
-
-
 # ==================== Visual Query API Endpoints ====================
 
 
 @router.post("/api/visual-query/generate", tags=["Visual Query"])
 async def generate_visual_query(request: VisualQueryRequest):
-    """Generate pivot query SQL (mode=pivot only)."""
-    rejected = _reject_non_pivot_request(request)
-    if rejected is not None:
-        return rejected
+    """Generate pivot query SQL."""
     try:
         validation_result = validate_query_config(request.config)
 
@@ -89,7 +70,6 @@ async def generate_visual_query(request: VisualQueryRequest):
                 details={
                     "errors": validation_result.errors,
                     "warnings": validation_result.warnings,
-                    "mode": request.mode,
                 },
             )
 
@@ -97,7 +77,6 @@ async def generate_visual_query(request: VisualQueryRequest):
 
         generation = generate_visual_query_sql(
             request.config,
-            mode=request.mode,
             pivot_config=request.pivot_config,
             resolved_casts=resolved_casts_map,
         )
@@ -116,7 +95,7 @@ async def generate_visual_query(request: VisualQueryRequest):
                 "errors": [],
                 "warnings": combined_warnings,
                 "metadata": metadata,
-                "mode": request.mode,
+                "mode": PIVOT_MODE,
             },
             message_code=MessageCode.VISUAL_QUERY_GENERATED,
         )
@@ -127,7 +106,6 @@ async def generate_visual_query(request: VisualQueryRequest):
             500,
             MessageCode.OPERATION_FAILED,
             f"Failed to generate query: {str(exc)}",
-            details={"mode": request.mode},
         )
 
 
@@ -136,10 +114,7 @@ async def preview_visual_query(
     request: PreviewRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
-    """Preview pivot query results (mode=pivot only)."""
-    rejected = _reject_non_pivot_request(request)
-    if rejected is not None:
-        return rejected
+    """Preview pivot query results."""
     query_id = f"sync:{x_request_id}" if x_request_id else None
 
     try:
@@ -153,7 +128,6 @@ async def preview_visual_query(
                 details={
                     "errors": validation_result.errors,
                     "warnings": validation_result.warnings,
-                    "mode": request.mode,
                 },
             )
 
@@ -161,7 +135,6 @@ async def preview_visual_query(
 
         generation = generate_visual_query_sql(
             request.config,
-            mode=request.mode,
             pivot_config=request.pivot_config,
             resolved_casts=resolved_casts_map,
         )
@@ -231,7 +204,7 @@ async def preview_visual_query(
                 "sql": preview_sql,
                 "base_sql": generation.base_sql,
                 "pivot_sql": generation.pivot_sql,
-                "mode": request.mode,
+                "mode": PIVOT_MODE,
                 "errors": [],
                 "warnings": combined_warnings,
             },
@@ -252,5 +225,4 @@ async def preview_visual_query(
             500,
             MessageCode.OPERATION_FAILED,
             f"Failed to preview query: {str(exc)}",
-            details={"mode": request.mode},
         )

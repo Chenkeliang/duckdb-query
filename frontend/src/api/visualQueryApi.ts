@@ -28,7 +28,6 @@ export async function generatePivotVisualQuery(
     try {
         const response = await apiClient.post('/api/visual-query/generate', {
             config,
-            mode: VisualQueryMode.PIVOT,
             pivot_config: pivotConfig,
             attach_databases: options.attachDatabases,
         });
@@ -62,7 +61,6 @@ export async function previewPivotVisualQuery(
     try {
         const response = await apiClient.post('/api/visual-query/preview', {
             config,
-            mode: VisualQueryMode.PIVOT,
             pivot_config: pivotConfig,
             limit,
             attach_databases: options.attachDatabases,

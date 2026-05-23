@@ -316,12 +316,7 @@ class VisualQueryRequest(BaseModel):
     """Request model for visual query generation"""
 
     config: VisualQueryConfig = Field(..., description="Visual query configuration")
-    pivot_config: Optional["PivotConfig"] = Field(
-        None, description="Optional pivot configuration when mode is pivot"
-    )
-    mode: VisualQueryMode = Field(
-        VisualQueryMode.PIVOT, description="Visual analysis mode (API: pivot only)"
-    )
+    pivot_config: PivotConfig = Field(..., description="Pivot configuration")
     resolved_casts: List[ResolvedTypeCast] = Field(
         default_factory=list, description="可视化查询生成时应用的 TRY_CAST 设置"
     )
@@ -362,12 +357,7 @@ class PreviewRequest(BaseModel):
     """Request model for data preview"""
 
     config: VisualQueryConfig = Field(..., description="Visual query configuration")
-    pivot_config: Optional[PivotConfig] = Field(
-        None, description="Optional pivot configuration when previewing pivot mode"
-    )
-    mode: VisualQueryMode = Field(
-        VisualQueryMode.PIVOT, description="Visual analysis mode (API: pivot only)"
-    )
+    pivot_config: PivotConfig = Field(..., description="Pivot configuration")
     limit: Optional[int] = Field(
         None, description="Number of rows to preview (default from config)"
     )

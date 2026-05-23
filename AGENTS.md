@@ -593,7 +593,7 @@ python -m pytest tests -q
 | 前端 UI | `frontend/src/Query/PivotTable/`（`PivotPanel`、`PivotTableDesigner`、`buildPivotQueryPayload`） |
 | 前端 API | `frontend/src/api/visualQueryApi.ts` 的 `generatePivotVisualQuery` / `previewPivotVisualQuery` |
 | 后端路由 | `api/routers/visual_query.py`（`/api/visual-query/generate`、`/preview`） |
-| SQL 生成 | `api/core/services/visual_query_generator.py`（pivot 分支）、`visual_query_sql_common.py` |
+| SQL 生成 | `api/core/services/pivot_query_generator.py`、`visual_query_sql_common.py`（`visual_query_generator.py` 为兼容 re-export） |
 
 已移除 **Visual 构建器**（`frontend/src/Query/VisualQuery/`、HTTP `mode=regular`、`/api/visual-query/validate` 等）及后端 `regular_query_generator`、构建器专用 Pydantic 字段。透视路径见 `PivotTable/*` 与 `POST /api/visual-query/*`。
 

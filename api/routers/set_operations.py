@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 from core.common.utils import normalize_dataframe_output
 from core.database.duckdb_engine import with_duckdb_connection
-from core.services.visual_query_generator import (
+from core.services.set_operation_generator import (
     estimate_set_operation_rows,
     generate_set_operation_sql,
 )

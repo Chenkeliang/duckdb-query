@@ -147,12 +147,12 @@
 
 ## 7. 透视查询与收藏（`visualQueryApi.ts`）
 
-> **2026-05**：工作台已移除「可视化查询」Tab；`POST /api/visual-query/*` 仅 **透视**（`mode: pivot` + 必填 `pivot_config`）。`VisualQueryConfig` 仅 `table_name`、`filters`、`limit`。预览响应不再含 `estimated_time`；请求无 `include_metadata`。`mode: regular` 返回 422。构建器与 `regular_query_generator`、中文 label 字典、未用聚合枚举已删除。
+> **2026-05**：工作台已移除「可视化查询」Tab；`POST /api/visual-query/*` 仅 **透视**（必填 `pivot_config`，请求体无 `mode` 字段；响应 `data.mode` 仍为 `pivot`）。`VisualQueryConfig` 仅 `table_name`、`filters`、`limit`。实现见 `pivot_query_generator.py` / `table_metadata_service.py` / `set_operation_generator.py`。
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/visual-query/generate` | 对象 | `generatePivotVisualQuery`（`mode: pivot`）；400 `VISUAL_QUERY_INVALID`；500 `OPERATION_FAILED` |
-| POST | `/api/visual-query/preview` | 对象 | `previewPivotVisualQuery`（可选 `attach_databases` 联邦透视）；400 `VISUAL_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
+| POST | `/api/visual-query/generate` | 对象 | `generatePivotVisualQuery`（`pivot_config` 必填）；400 `VISUAL_QUERY_INVALID`；500 `OPERATION_FAILED` |
+| POST | `/api/visual-query/preview` | 对象 | `previewPivotVisualQuery`（`pivot_config` 必填；可选 `attach_databases`）；400 `VISUAL_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
 | GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（`data.favorite`）；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites` | 对象 | `createSqlFavorite`；400 `FAVORITE_NAME_EXISTS` |

@@ -16,7 +16,7 @@ from models.visual_query_models import (
     FilterOperator,
     VisualQueryMode,
 )
-from core.services.visual_query_generator import GeneratedVisualQuery
+from core.services.pivot_query_generator import GeneratedVisualQuery
 from tests.pool_mock import bind_mock_duckdb_pool
 
 client = TestClient(app)
@@ -36,7 +36,6 @@ def api_errors(body: dict) -> list:
 
 # HTTP `/api/visual-query/*` 仅接受 pivot（与前端 PivotPanel 一致）
 PIVOT_REQUEST_FIELDS = {
-    "mode": "pivot",
     "pivot_config": {
         "rows": ["col1"],
         "columns": [],
@@ -91,16 +90,17 @@ class TestVisualQueryGeneration:
             assert inner["sql"] == 'SELECT "col1", "col2" FROM "test_table"'
             assert inner["metadata"]["complexity_score"] == 1
 
-    def test_reject_regular_mode(self):
-        """mode=regular 已由 Pydantic 枚举拒绝（构建器已移除）。"""
-        body = _with_pivot_request({
-            "config": {
-                "table_name": "test_table",
-                "filters": [],
+    def test_missing_pivot_config_rejected(self):
+        """缺少 pivot_config 时由 Pydantic 返回 422。"""
+        response = client.post(
+            "/api/visual-query/generate",
+            json={
+                "config": {
+                    "table_name": "test_table",
+                    "filters": [],
                 },
-        })
-        body["mode"] = "regular"
-        response = client.post("/api/visual-query/generate", json=body)
+            },
+        )
         assert response.status_code == 422
     
     def test_generate_query_with_validation_errors(self):

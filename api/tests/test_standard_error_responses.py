@@ -166,7 +166,7 @@ def test_query_cancel_not_found_standard_error():
 
 def test_visual_query_generate_invalid_config_standard_error():
     """generate 业务校验失败须 400 VISUAL_QUERY_INVALID（非 200 裸错误体）。"""
-    from core.services.visual_query_generator import ValidationResult
+    from core.services.pivot_query_generator import ValidationResult
 
     invalid = ValidationResult(
         is_valid=False,
@@ -184,8 +184,13 @@ def test_visual_query_generate_invalid_config_standard_error():
                 "config": {
                     "table_name": "t",
                     "filters": [],
-                    },
                 },
+                "pivot_config": {
+                    "rows": ["r"],
+                    "columns": [],
+                    "values": [{"column": "v", "aggregation": "COUNT"}],
+                },
+            },
         )
     assert response.status_code == 400
     body = response.json()

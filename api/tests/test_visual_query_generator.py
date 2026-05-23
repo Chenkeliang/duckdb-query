@@ -9,12 +9,14 @@ from contextlib import contextmanager
 from unittest.mock import Mock, patch
 import pandas as pd
 
-from core.services.visual_query_generator import (
+from core.services.pivot_query_generator import (
     generate_visual_query_sql,
     validate_query_config,
+    ValidationResult,
+)
+from core.services.table_metadata_service import (
     get_column_statistics,
     get_table_metadata,
-    ValidationResult,
 )
 from models.visual_query_models import (
     VisualQueryConfig,
@@ -52,7 +54,7 @@ class TestVisualQueryModeGeneration:
             manual_column_values=["2022", "2023"],
         )
 
-        with patch("core.services.visual_query_generator.config_manager") as mock_manager:
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
             mock_manager.get_app_config.return_value = Mock(
                 enable_pivot_tables=True,
                 pivot_table_extension="pivot_table",
@@ -60,7 +62,6 @@ class TestVisualQueryModeGeneration:
 
             result = generate_visual_query_sql(
                 config,
-                VisualQueryMode.PIVOT,
                 pivot_config=pivot_config,
             )
 
@@ -91,7 +92,7 @@ class TestVisualQueryModeGeneration:
             strategy="native",
         )
 
-        with patch("core.services.visual_query_generator.config_manager") as mock_manager:
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
             mock_manager.get_app_config.return_value = Mock(
                 enable_pivot_tables=True,
                 pivot_table_extension="pivot_table",
@@ -99,7 +100,6 @@ class TestVisualQueryModeGeneration:
 
             result = generate_visual_query_sql(
                 config,
-                VisualQueryMode.PIVOT,
                 pivot_config=pivot_config,
             )
 
@@ -133,7 +133,7 @@ class TestVisualQueryModeGeneration:
             strategy="native",
         )
 
-        with patch("core.services.visual_query_generator.config_manager") as mock_manager:
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
             mock_manager.get_app_config.return_value = Mock(
                 enable_pivot_tables=True,
                 pivot_table_extension="pivot_table",
@@ -141,7 +141,6 @@ class TestVisualQueryModeGeneration:
 
             result = generate_visual_query_sql(
                 config,
-                VisualQueryMode.PIVOT,
                 pivot_config=pivot_config,
             )
 
@@ -184,7 +183,7 @@ class TestVisualQueryModeGeneration:
             con.execute.return_value = mock_execute
             yield con
 
-        with patch("core.services.visual_query_generator.config_manager") as mock_manager, \
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager, \
             patch(
                 "core.database.duckdb_engine.with_duckdb_connection",
                 side_effect=fake_duckdb_connection,
@@ -196,7 +195,6 @@ class TestVisualQueryModeGeneration:
 
             result = generate_visual_query_sql(
                 config,
-                VisualQueryMode.PIVOT,
                 pivot_config=pivot_config,
             )
 
@@ -223,18 +221,17 @@ class TestVisualQueryModeGeneration:
             ],
         )
 
-        with patch("core.services.visual_query_generator.config_manager") as mock_manager:
-            mock_manager.get_app_config.return_value = Mock(
-                enable_pivot_tables=False,
-                pivot_table_extension="pivot_table",
-            )
+        disabled_app_config = Mock(
+            enable_pivot_tables=False,
+            pivot_table_extension="pivot_table",
+        )
 
-            with pytest.raises(ValueError):
-                generate_visual_query_sql(
-                    config,
-                    VisualQueryMode.PIVOT,
-                    pivot_config=pivot_config,
-                )
+        with pytest.raises(ValueError):
+            generate_visual_query_sql(
+                config,
+                pivot_config=pivot_config,
+                app_config=disabled_app_config,
+            )
 
 
     def test_generate_visual_query_sql_pivot_dynamic_strategy(self):
@@ -256,7 +253,7 @@ class TestVisualQueryModeGeneration:
             # No manual values, NO limit -> should trigger dynamic
         )
 
-        with patch("core.services.visual_query_generator.config_manager") as mock_manager:
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
             mock_manager.get_app_config.return_value = Mock(
                 enable_pivot_tables=True,
                 pivot_table_extension="pivot_table",
@@ -264,7 +261,6 @@ class TestVisualQueryModeGeneration:
 
             result = generate_visual_query_sql(
                 config,
-                VisualQueryMode.PIVOT,
                 pivot_config=pivot_config,
             )
 
@@ -361,7 +357,7 @@ class TestValidation:
 class TestColumnStatistics:
     """Test column statistics functionality"""
 
-    @patch("core.services.visual_query_generator.logger")
+    @patch("core.services.table_metadata_service.logger")
     def test_get_column_statistics_success(self, mock_logger):
         """Test successful column statistics retrieval"""
         # Mock DuckDB connection
@@ -414,7 +410,7 @@ class TestColumnStatistics:
 class TestTableMetadata:
     """Test table metadata functionality"""
 
-    @patch("core.services.visual_query_generator.get_column_statistics")
+    @patch("core.services.table_metadata_service.get_column_statistics")
     def test_get_table_metadata_success(self, mock_get_column_stats):
         """Test successful table metadata retrieval"""
         mock_con = Mock()
@@ -458,139 +454,7 @@ class TestTableMetadata:
         assert result.columns[0].column_name == "col1"
         assert result.columns[1].column_name == "col2"
 
-    @patch("core.services.visual_query_generator.get_column_statistics")
-    def test_get_table_metadata_uses_cache(self, mock_get_column_stats):
-        """Calling get_table_metadata twice should hit DuckDB once when cache enabled."""
-        table_metadata_cache.invalidate()
-        mock_con = Mock()
-
-        mock_con.execute.return_value.fetchdf.side_effect = [
-            pd.DataFrame({"row_count": [50]}),
-            pd.DataFrame(
-                {
-                    "column_name": ["col1"],
-                    "column_type": ["INTEGER"],
-                }
-            ),
-        ]
-
-        mock_get_column_stats.return_value = ColumnStatistics(
-            column_name="col1",
-            data_type="INTEGER",
-            null_count=0,
-            distinct_count=5,
-            sample_values=["1", "2"],
-        )
-
-        result_one = get_table_metadata("cached_table", mock_con)
-        result_two = get_table_metadata("cached_table", mock_con)
-
-        assert result_one is result_two
-        assert mock_con.execute.call_count == 2
-        table_metadata_cache.invalidate("cached_table")
-
-
-class TestColumnStatistics:
-    """Test column statistics functionality"""
-
-    @patch("core.services.visual_query_generator.logger")
-    def test_get_column_statistics_success(self, mock_logger):
-        """Test successful column statistics retrieval"""
-        # Mock DuckDB connection
-        mock_con = Mock()
-
-        # Mock DESCRIBE table result
-        describe_df = pd.DataFrame(
-            {"column_name": ["test_column"], "column_type": ["INTEGER"]}
-        )
-        mock_con.execute.return_value.fetchdf.side_effect = [
-            describe_df,  # DESCRIBE result
-            pd.DataFrame(
-                {  # Statistics result
-                    "total_count": [1000],
-                    "non_null_count": [950],
-                    "null_count": [50],
-                    "distinct_count": [100],
-                }
-            ),
-            pd.DataFrame(
-                {"min_val": [1], "max_val": [100], "avg_val": [50.5]}  # Min/Max result
-            ),
-            pd.DataFrame({"sample_value": [1, 2, 3, 4, 5]}),  # Sample values - use 'sample_value' column name
-        ]
-
-        result = get_column_statistics("test_table", "test_column", mock_con)
-
-        assert isinstance(result, ColumnStatistics)
-        assert result.column_name == "test_column"
-        assert result.data_type == "INTEGER"
-        assert result.null_count == 50
-        assert result.distinct_count == 100
-        assert result.min_value == 1
-        assert result.max_value == 100
-        assert result.avg_value == 50.5
-        assert len(result.sample_values) == 5
-
-    def test_get_column_statistics_column_not_found(self):
-        """Test column statistics when column doesn't exist"""
-        mock_con = Mock()
-
-        # Mock empty DESCRIBE result
-        describe_df = pd.DataFrame({"column_name": [], "column_type": []})
-        mock_con.execute.return_value.fetchdf.return_value = describe_df
-
-        with pytest.raises(ValueError, match="does not exist in table"):
-            get_column_statistics("test_table", "nonexistent", mock_con)
-
-
-class TestTableMetadata:
-    """Test table metadata functionality"""
-
-    @patch("core.services.visual_query_generator.get_column_statistics")
-    def test_get_table_metadata_success(self, mock_get_column_stats):
-        """Test successful table metadata retrieval"""
-        mock_con = Mock()
-
-        # Mock row count result
-        mock_con.execute.return_value.fetchdf.side_effect = [
-            pd.DataFrame({"row_count": [1000]}),  # Row count
-            pd.DataFrame(
-                {  # Column info
-                    "column_name": ["col1", "col2"],
-                    "column_type": ["INTEGER", "VARCHAR"],
-                }
-            ),
-        ]
-
-        # Mock column statistics
-        mock_get_column_stats.side_effect = [
-            ColumnStatistics(
-                column_name="col1",
-                data_type="INTEGER",
-                null_count=10,
-                distinct_count=100,
-                sample_values=["1", "2", "3"],
-            ),
-            ColumnStatistics(
-                column_name="col2",
-                data_type="VARCHAR",
-                null_count=5,
-                distinct_count=200,
-                sample_values=["a", "b", "c"],
-            ),
-        ]
-
-        result = get_table_metadata("test_table", mock_con)
-
-        assert isinstance(result, TableMetadata)
-        assert result.table_name == "test_table"
-        assert result.row_count == 1000
-        assert result.column_count == 2
-        assert len(result.columns) == 2
-        assert result.columns[0].column_name == "col1"
-        assert result.columns[1].column_name == "col2"
-
-    @patch("core.services.visual_query_generator.get_column_statistics")
+    @patch("core.services.table_metadata_service.get_column_statistics")
     def test_get_table_metadata_uses_cache(self, mock_get_column_stats):
         """Calling get_table_metadata twice should hit DuckDB once when cache enabled."""
         table_metadata_cache.invalidate()
