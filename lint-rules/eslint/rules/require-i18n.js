@@ -55,18 +55,11 @@ module.exports = {
   },
 
   create(context) {
+    const { isLintScopedFrontend } = require('../utils/frontend-scope');
     const filename = context.getFilename();
     const sourceCode = context.getSourceCode();
-    
-    // 只检查新布局目录
-    const isNewLayout = filename.includes('/src/new/') || filename.includes('\\src\\new\\');
-    
-    // 排除测试文件
-    const isTestFile = filename.includes('__tests__') || 
-                       filename.includes('.test.') || 
-                       filename.includes('.spec.');
-    
-    if (!isNewLayout || isTestFile) {
+
+    if (!isLintScopedFrontend(filename)) {
       return {};
     }
 
@@ -141,17 +134,6 @@ module.exports = {
         data: {
           text: extractedText,
         },
-        suggest: [
-          {
-            messageId: 'suggestion',
-            data: { key: suggestedKey },
-            fix: null, // 不自动修复，需要手动添加翻译
-          },
-          !hasI18nImport && {
-            messageId: 'missingI18nImport',
-            fix: null,
-          },
-        ].filter(Boolean),
       });
     }
 

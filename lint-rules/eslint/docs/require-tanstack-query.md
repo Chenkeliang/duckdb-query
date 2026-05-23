@@ -84,7 +84,7 @@ function MyComponent() {
 
 ```tsx
 // ✅ 正确：在共享 Hook 中使用 useQuery
-// frontend/src/new/hooks/useDuckDBTables.ts
+// frontend/src/hooks/useDuckDBTables.ts
 import { useQuery } from '@tanstack/react-query';
 import { getDuckDBTables } from '@/api';
 

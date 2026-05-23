@@ -26,7 +26,7 @@ ruleTester.run('require-i18n', rule, {
           return <div>{t('welcome.title')}</div>;
         }
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
     },
 
     // ✅ 英文文本（不检查）
@@ -36,7 +36,7 @@ ruleTester.run('require-i18n', rule, {
           return <div>Welcome</div>;
         }
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
     },
 
     // ✅ 测试文件（不检查）
@@ -48,7 +48,7 @@ ruleTester.run('require-i18n', rule, {
           });
         });
       `,
-      filename: 'frontend/src/new/__tests__/MyComponent.test.tsx',
+      filename: 'frontend/src/Query/__tests__/MyComponent.test.tsx',
     },
 
     // ✅ 旧布局（不检查）
@@ -68,7 +68,7 @@ ruleTester.run('require-i18n', rule, {
           return <div>DuckDB</div>;
         }
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
       options: [{ allowList: ['DuckDB'] }],
     },
 
@@ -80,7 +80,7 @@ ruleTester.run('require-i18n', rule, {
           return <div>Test</div>;
         }
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
     },
   ],
 
@@ -92,7 +92,7 @@ ruleTester.run('require-i18n', rule, {
           return <div>欢迎使用</div>;
         }
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
       errors: [
         {
           messageId: 'chineseTextFound',
@@ -108,7 +108,7 @@ ruleTester.run('require-i18n', rule, {
           return <Button>提交</Button>;
         }
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
       errors: [
         {
           messageId: 'chineseTextFound',
@@ -124,7 +124,7 @@ ruleTester.run('require-i18n', rule, {
           return <Input placeholder="请输入内容" />;
         }
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
       errors: [
         {
           messageId: 'chineseTextFound',
@@ -138,7 +138,7 @@ ruleTester.run('require-i18n', rule, {
       code: `
         const message = "操作成功";
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
       errors: [
         {
           messageId: 'chineseTextFound',
@@ -152,7 +152,7 @@ ruleTester.run('require-i18n', rule, {
       code: `
         const greeting = \`你好，\${name}\`;
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
       errors: [
         {
           messageId: 'chineseTextFound',
@@ -169,7 +169,7 @@ ruleTester.run('require-i18n', rule, {
           description: "系统设置页面"
         };
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
       errors: [
         {
           messageId: 'chineseTextFound',
@@ -188,7 +188,7 @@ ruleTester.run('require-i18n', rule, {
         toast.success('保存成功');
         toast.error('保存失败');
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
       errors: [
         {
           messageId: 'chineseTextFound',
@@ -206,7 +206,7 @@ ruleTester.run('require-i18n', rule, {
       code: `
         console.log('调试信息');
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
       options: [{ checkConsole: true }],
       errors: [
         {
@@ -221,7 +221,7 @@ ruleTester.run('require-i18n', rule, {
       code: `
         const text = "中";
       `,
-      filename: 'frontend/src/new/MyComponent.tsx',
+      filename: 'frontend/src/Query/MyComponent.tsx',
       options: [{ minChineseChars: 1 }],
       errors: [
         {

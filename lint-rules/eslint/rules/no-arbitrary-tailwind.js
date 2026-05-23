@@ -44,9 +44,7 @@ module.exports = {
   create(context) {
     const options = context.options[0] || {};
     const allowedPaths = options.allowedPaths || [
-      '**/components/**', // 旧布局
-      '**/*.test.*',      // 测试文件
-      '**/__tests__/**'   // 测试目录
+      '**/frontend/src/components/ui/**', // shadcn 基元
     ];
     const allowedProperties = options.allowedProperties || [
       'width',   // 动态宽度可能需要
@@ -57,16 +55,10 @@ module.exports = {
       'bottom'
     ];
 
+    const { isLintScopedFrontend } = require('../utils/frontend-scope');
     const filename = context.getFilename();
-    
-    // 检查是否在新布局中
-    const isNewLayout = filename.includes('/src/new/') && 
-                       !allowedPaths.some(pattern => {
-                         const regex = new RegExp(pattern.replace(/\*/g, '.*'));
-                         return regex.test(filename);
-                       });
 
-    if (!isNewLayout) {
+    if (!isLintScopedFrontend(filename, allowedPaths)) {
       return {};
     }
 

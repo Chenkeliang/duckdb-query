@@ -23,12 +23,10 @@ module.exports = {
   },
 
   create(context) {
+    const { isLintScopedFrontend } = require('../utils/frontend-scope');
     const filename = context.getFilename();
-    
-    // 只检查新布局目录
-    const isNewLayout = filename.includes('/src/new/') || filename.includes('\\src\\new\\');
-    
-    if (!isNewLayout) {
+
+    if (!isLintScopedFrontend(filename)) {
       return {};
     }
 
