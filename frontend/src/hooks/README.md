@@ -1,6 +1,6 @@
 # TanStack Query Hooks 使用指南
 
-本目录包含基于 TanStack Query 的数据查询 hooks，遵循项目的 [TanStack Query 使用标准规范](../../../../.kiro/steering/tanstack-query-standards.md)。
+本目录包含基于 TanStack Query 的数据查询 hooks，遵循 [`AGENTS.md`](../../../AGENTS.md) §4.4、§7。
 
 ## 📋 可用 Hooks
 
@@ -324,7 +324,7 @@ const handleUpload = async (file) => {
 ## 📚 参考资源
 
 - [TanStack Query 官方文档](https://tanstack.com/query/latest)
-- [项目 TanStack Query 使用标准规范](../../../../.kiro/steering/tanstack-query-standards.md)
+- [`AGENTS.md`](../../../AGENTS.md) §4.4、§7
 - [缓存失效工具函数](../utils/cacheInvalidation.ts)
 
 ## 🎉 优势总结

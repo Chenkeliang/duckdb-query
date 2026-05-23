@@ -304,7 +304,7 @@ describe('MyComponent', () => {
 
 ## 参考资源
 
-- [前端开发约束](.kiro/steering/frontend-constraints.md)
+- [`AGENTS.md`](../../../AGENTS.md) §4.2 — 导入约束
 - [TypeScript 最佳实践](https://www.typescriptlang.org/docs/handbook/declaration-files/do-s-and-don-ts.html)
 
 ## 版本

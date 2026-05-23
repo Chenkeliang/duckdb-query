@@ -3,7 +3,7 @@
 > **版本**: 2.0  
 > **最后更新**: 2026-05-21  
 > **状态**: ✅ 已实施（422 校验、`error_json_response` 主路径已统一）  
-> **相关规范文档**: 详细规范请参考 [.kiro/steering/api-response-format-standard.md](../.kiro/steering/api-response-format-standard.md)
+> **相关规范**: 完整约束见 [`AGENTS.md`](../AGENTS.md) §9。
 
 ## 概述
 
@@ -243,12 +243,10 @@ function MyComponent() {
 | `frontend/src/api/types.ts` | 前端类型定义（StandardSuccess, StandardError） |
 | `frontend/src/i18n/locales/*/errors.json` | i18n 翻译文件 |
 
-## 相关规范文档
+## 相关文档
 
-- [API 响应格式标准（详细版）](../.kiro/steering/api-response-format-standard.md) - 完整的规范文档
-- [国际化强制规范](../.kiro/steering/i18n-enforcement-standards.md) - MessageCode 和 i18n 机制
-- [前端开发约束](../.kiro/steering/frontend-constraints.md) - 前端 API 调用规范
-- [后端开发约束](../.kiro/steering/backend-constraints.md) - 后端响应格式规范
+- [`AGENTS.md`](../AGENTS.md) §9 — API 与响应规范（权威）
+- [`API_CONTRACT_FE_BE.md`](API_CONTRACT_FE_BE.md) — 端点与 `data` 字段
 
 ## 测试
 

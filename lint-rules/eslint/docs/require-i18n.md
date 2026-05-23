@@ -454,7 +454,7 @@ npm run lint
 - [react-i18next 官方文档](https://react.i18next.com/)
 - [i18next 官方文档](https://www.i18next.com/)
 - [项目 i18n 使用指南](../../../frontend/src/i18n/README.md)
-- [前端开发约束](../../../.kiro/steering/frontend-constraints.md)
+- [`AGENTS.md`](../../../AGENTS.md) §4、§5 — 前端与 i18n 约束
 
 ## 📊 规则统计
 

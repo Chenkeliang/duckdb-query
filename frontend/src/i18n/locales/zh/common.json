@@ -45,7 +45,6 @@
   },
   "nav": {
     "datasource": "数据源 (Data Sources)",
-    "unifiedquery": "统一查询 (Unified Query)",
     "queryworkbench": "查询工作台 (Query Workbench)",
     "tablemanagement": "数据表管理",
     "asynctasks": "异步任务",
@@ -274,7 +273,7 @@
       "selectTableFirst": "请先选择一个表",
       "noFilters": "暂无过滤条件",
       "modes": {
-        "visual": "可视化",
+        "visual": "表单",
         "sql": "SQL"
       },
       "logic": {
@@ -297,7 +296,7 @@
         "confirm": "确定",
         "cancel": "取消",
         "clearAll": "清空所有条件",
-        "applyAndSwitch": "应用并切换到可视化",
+        "applyAndSwitch": "应用并切换到表单模式",
         "remove": "移除"
       },
       "error": {
@@ -425,8 +424,7 @@
       "edit": "编辑",
       "editing": "编辑中",
       "noSQL": "暂无 SQL",
-      "placeholder": "输入 SQL...",
-      "editHint": "提示：编辑后的 SQL 将用于执行，但不会更新可视化配置"
+      "placeholder": "输入 SQL..."
     },
     "export": {
       "title": "导出数据",
@@ -595,8 +593,7 @@
       "sql": "SQL 查询",
       "join": "JOIN 查询",
       "set": "集合操作",
-      "pivot": "透视表",
-      "visual": "可视化查询"
+      "pivot": "透视表"
     },
     "federated": {
       "attachedDatabases": "{{count}} 个外部数据库",
@@ -904,28 +901,6 @@
         "error": "异常",
         "unknown": "未知"
       }
-    },
-    "unifiedquery": {
-      "intro1": "图形化查询：像用Excel筛选+排序一样，一键选字段、加条件、排结果（无需写SQL），生成数据分析结果",
-      "intro2": "SQL编辑器：可通过内部数据进行查询已上传数据表以及外部数据库加载至内部数据中，支持DUCKDB完整SQL语法",
-      "intro3": "跨数据融合：像ExcelVLOOKUP一样，一键把上传的多种类型数据，通过共同字段（如订单号、用户ID）横向合并宽表",
-      "intro4": "跨数据汇总：像Excel复制粘贴多张报表一样，一键把多份相似表格(1月、2月销售数据)垂直堆叠一份信息，支持字段不同的合并",
-      "intro5": "数据预览导出：页面最大支持1万条数据预览，支持异步任务产出新表再分析，导出支持CSV/Parquet格式",
-      "resultVisual": "可视化查询结果",
-      "resultSet": "集合操作结果",
-      "resultQuery": "查询结果"
-    },
-    "table": {
-      "intro1": "数据管理：管理DuckDB内部表、外部数据库表",
-      "intro2": "表管理：查看表结构，一键复制表名，删除不需要的表",
-      "intro3": "分组展示：异步结果表、普通表、临时表分组清晰展示",
-      "tabDuck": "DuckDB管理",
-      "tabExternal": "外部数据库",
-      "groupAria": "数据表管理分组"
-    },
-    "async": {
-      "intro1": "后台运行：异步任务长耗时查询在后台运行",
-      "intro2": "结果处理：自动更新进度；完成后可下载（CSV/Parquet）或保存为新表"
     }
   },
   "settings": {

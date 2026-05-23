@@ -388,7 +388,7 @@ GitHub Actions
 - [ESLint 开发指南](https://eslint.org/docs/developer-guide/)
 - [Pylint 自定义检查器](https://pylint.pycqa.org/en/latest/how_tos/custom_checkers.html)
 - [Astroid 文档](https://pylint.pycqa.org/projects/astroid/en/latest/)
-- [项目规范文档](../.kiro/steering/)
+- [`AGENTS.md`](../AGENTS.md)
 
 ## 📝 维护指南
 

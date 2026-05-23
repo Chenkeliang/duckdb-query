@@ -2,7 +2,7 @@
  * 筛选条件容器组件
  * FilterBar Component
  * 
- * 双模筛选器的主容器，支持可视化模式和 SQL 模式切换
+ * 双模筛选器的主容器，支持表单模式与 SQL 模式切换
  */
 
 import * as React from 'react';
@@ -90,7 +90,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         setMode('sql');
     };
 
-    // 切换到可视化模式
+    // 切换到表单模式（由 SQL 解析为条件树）
     const switchToVisualMode = () => {
         if (!sqlContent.trim()) {
             onFilterChange(createEmptyGroup());
@@ -286,7 +286,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                             onClick={() => mode === 'sql' && switchToVisualMode()}
                         >
                             <Sparkles className="h-3 w-3" />
-                            <span className="text-xs">{t('query.filter.modes.visual', '可视化')}</span>
+                            <span className="text-xs">{t('query.filter.modes.visual', '表单')}</span>
                         </Button>
                         <Button
                             variant={mode === 'sql' ? 'secondary' : 'ghost'}
@@ -384,7 +384,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                             onClick={switchToVisualMode}
                             disabled={disabled}
                         >
-                            {t('query.filter.action.applyAndSwitch', '应用并切换到可视化')}
+                            {t('query.filter.action.applyAndSwitch', '应用并切换到表单模式')}
                         </Button>
                     </div>
                 </div>

@@ -239,7 +239,7 @@ disable=
 - [完整规则文档](./README.md)
 - [前端规则详解](./eslint/docs/)
 - [后端规则详解](./pylint/docs/)
-- [项目规范文档](../.kiro/steering/)
+- [`AGENTS.md`](../AGENTS.md)
 
 ## 🤝 需要帮助？
 

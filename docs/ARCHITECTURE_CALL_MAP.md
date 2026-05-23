@@ -209,4 +209,4 @@ sequenceDiagram
 1. 新增 `/api/...`：先 [`API_CONTRACT_FE_BE.md`](API_CONTRACT_FE_BE.md)，再 router → service → `frontend/src/api/*`。  
 2. 入湖逻辑只改 `file_ingestion_service` + `core/data`，不在 5 个 router 复制编排。  
 3. 查询执行前端优先走 `useQueryRunner`，避免 Panel 直接调 API。  
-4. 功能规格见 [`.kiro/specs/pivot-table/`](../.kiro/specs/pivot-table/)（仅透视）；其余历史 spec 已删除。
+4. 功能规格见 [`docs/specs/pivot-table/`](specs/pivot-table/)（仅透视）。

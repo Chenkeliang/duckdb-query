@@ -296,7 +296,7 @@ await invalidateAllDataCaches(queryClient);
 | 场景 | 刷新函数 |
 |------|----------|
 | SQL saveAsTable | `invalidateAllDataCaches()` |
-| 可视化查询 saveAsTable | `invalidateAfterTableCreate()` |
+| 透视 saveAsTable | `invalidateAfterTableCreate()` |
 | 粘贴数据创建表 | `invalidateAfterTableCreate()` |
 | 文件上传/导入 | `invalidateAfterFileUpload()` |
 | 表删除 | `invalidateAfterTableDelete()` |

@@ -144,7 +144,7 @@ class MyChecker(BaseChecker):
 
 ## 📚 相关文档
 
-- [项目规范文档](../.kiro/steering/)
+- [`AGENTS.md`](../AGENTS.md)
 - [ESLint 官方文档](https://eslint.org/docs/developer-guide/working-with-rules)
 - [Pylint 官方文档](https://pylint.pycqa.org/en/latest/how_tos/custom_checkers.html)
 

@@ -1,10 +1,10 @@
 # no-arbitrary-tailwind
 
-禁止在新布局中使用 Tailwind CSS arbitrary values。
+禁止在业务前端代码中使用 Tailwind CSS arbitrary values。
 
 ## 规则详情
 
-此规则禁止在新布局 (`frontend/src/new/`) 中使用 Tailwind CSS 的 arbitrary values（方括号语法），强制使用标准 Tailwind 类或 shadcn/ui 语义类。
+此规则禁止在 **`frontend/src/**`**（与 [`AGENTS.md`](../../../AGENTS.md) §5 一致）中使用 Tailwind 的 arbitrary values（方括号语法），强制使用标准 Tailwind 类或 shadcn/ui 语义类。`frontend/src/new/` 已废止，不再作为范围说明。
 
 ### 为什么需要这个规则？
 
@@ -240,9 +240,8 @@ module.exports = {
 
 ## 何时不使用此规则
 
-- 在旧布局 (`frontend/src/components/`) 中
-- 在测试文件中
-- 在需要动态计算值的特殊场景中（但应优先考虑 inline style）
+- 在 `allowedPaths` 配置豁免的路径（如部分 `components/ui`、测试文件）
+- 在需要动态尺寸/定位的场景（优先 `style={{ width, height, top, left }}`）
 
 ## 相关规则
 
@@ -251,8 +250,7 @@ module.exports = {
 ## 参考资源
 
 - [Tailwind CSS 官方文档](https://tailwindcss.com/)
-- [Shadcn/UI 使用标准](.kiro/steering/shadcn-ui-standards.md)
-- [前端开发约束](.kiro/steering/frontend-constraints.md)
+- [`AGENTS.md`](../../../AGENTS.md) §5 — UI / Tailwind 约束
 
 ## 版本
 
