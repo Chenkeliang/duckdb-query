@@ -212,7 +212,7 @@ flowchart TB
 2. `asyncTaskApi`：连接池路径改为 `/api/duckdb/pool/*`（若将来做管理页）。
 3. ~~`useDuckDBTables`~~：✅ `tableApi.ts` 已用 `GET /api/duckdb/tables`。
 4. ~~异步任务：去掉 `_fetch_external_query_result`~~：✅ 已删除死代码；异步路径仅 ATTACH。
-5. ~~REGULAR 生成器拆分~~：✅ 已删除 `regular_query_generator.py`；`visual_query_sql_common.py` 仅 pivot 所需；`visual_query_generator.py` 保留 pivot / 集合运算 / 元数据。
+5. ~~REGULAR 生成器拆分~~：✅ 已拆为 `pivot_query_generator` / `table_metadata_service` / `set_operation_generator`；`visual_query_sql_common.py` 仅 pivot 所需。
 5. ~~扩充 `API_CONTRACT_FE_BE.md`~~：✅ 已增 §0.1 模块索引、§9.1 JOIN、`uploadApi` 说明及后端未封装端点表。
 
 ### P2 — 架构与体验

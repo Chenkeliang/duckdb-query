@@ -69,7 +69,7 @@ flowchart TB
 | QueryAsync | §5 | `async_tasks`, `task_manager` | `asyncTaskApi.ts` |
 | Catalog | §6 | `datasources`, `database_tables`（canonical + legacy 别名） | `databaseSchemasApi`, `dataSourceApi`, `tableApi` |
 | DuckDBCatalog | §6.3 | `duckdb_query` | `tableApi`, `useDuckDBTables` |
-| VisualBuilder | §7 | `visual_query` router + `visual_query_generator` | `visualQueryApi` |
+| 透视表 Pivot | §7 | `visual_query` router + `pivot_query_generator` | `visualQueryApi` |
 | SetOps | §7 | `set_operations` router | `setOperationsApi` |
 
 ---

@@ -1,7 +1,7 @@
 /**
  * PivotPanel - 透视表（配置 → 后端 generate/preview → 执行）
  *
- * DuckDB / 联邦表：优先 `POST /api/visual-query`（mode=pivot）+ ATTACH；
+ * DuckDB / 联邦表：优先 `POST /api/visual-query/generate|preview` + ATTACH；
  * 多透视列等场景回退本地 DuckDB PIVOT SQL。
  */
 

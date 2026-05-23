@@ -22,7 +22,7 @@
     "core.file_utils": "core.data.file_utils",
     "core.task_manager": "core.services.task_manager",
     "core.task_utils": "core.services.task_utils",
-    "core.visual_query_generator": "core.services.visual_query_generator",
+    "core.visual_query_generator": "core.services.pivot_query_generator",
     "core.cleanup_scheduler": "core.services.cleanup_scheduler",
     "core.resource_manager": "core.services.resource_manager"
 }

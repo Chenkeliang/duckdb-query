@@ -121,7 +121,7 @@ def main():
     files_to_process = [
         "api/core/services/task_manager.py",
         "api/core/database/database_manager.py",
-        "api/core/services/visual_query_generator.py",
+        "api/core/services/pivot_query_generator.py",
         "api/core/database/metadata_manager.py",
         "api/core/common/config_manager.py",
     ]
