@@ -16,6 +16,11 @@ def _make_table_name(prefix: str) -> str:
     return f"test_{prefix}_{uuid4().hex[:8]}"
 
 
+def _assert_preserved_text_dtype(series: pd.Series) -> None:
+    """Pandas 2 常用 object；Pandas 3 可能为 StringDtype，语义均为文本列。"""
+    assert pd.api.types.is_string_dtype(series) or series.dtype == object
+
+
 def test_is_identifier_column_name():
     assert is_identifier_column_name("order_id")
     assert is_identifier_column_name("SKU_CODE")
@@ -31,7 +36,7 @@ def test_coerce_preserves_long_integer_codes():
         }
     )
     out = coerce_dataframe_numeric_columns_safe(df)
-    assert out["order_id"].dtype == object
+    _assert_preserved_text_dtype(out["order_id"])
     assert out["order_id"].iloc[0] == "1234567890123456789"
     assert out["qty"].iloc[0] in ("1", 1)
     assert str(out["price"].iloc[0]) in ("12.50", "12.5")
@@ -94,5 +99,5 @@ def test_excel_load_preserves_long_id_in_object_column(tmp_path):
     wb.save(xlsx_path)
 
     df = load_excel_sheet_dataframe(str(xlsx_path), ws.title, header_rows=1)
-    assert df["order_id"].dtype == object
+    _assert_preserved_text_dtype(df["order_id"])
     assert str(df["order_id"].iloc[0]) == "1234567890123456789"

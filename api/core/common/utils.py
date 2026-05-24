@@ -101,7 +101,7 @@ def normalize_dataframe_output(df: pd.DataFrame) -> List[Dict[str, Any]]:
     if not numeric_cols.empty:
         normalized[numeric_cols.columns] = numeric_cols.replace([np.inf, -np.inf], np.nan)
 
-    object_cols = normalized.select_dtypes(include=["object"]).columns.tolist()
+    object_cols = normalized.select_dtypes(include=["object", "string"]).columns.tolist()
     object_cols_backup = {col: normalized[col].copy() for col in object_cols}
 
     try:
