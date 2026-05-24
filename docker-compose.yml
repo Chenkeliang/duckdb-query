@@ -1,5 +1,5 @@
-# Docker Compose 开发环境配置
-# 简化版 - 直接在根目录使用
+# Docker Compose 全栈（前端 3000 / API 8001）
+# 推荐: ./quick-start.sh ；镜像变量见 .env 或 .env.docker.cn.example
 
 services:
   # 后端API服务
@@ -52,6 +52,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:24-alpine}
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginx:stable-alpine}
     container_name: dataquery-frontend
     ports:
       - "3000:80"

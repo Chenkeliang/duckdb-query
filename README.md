@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Python-3.12+-3776AB.svg?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black" alt="React">
   <img src="https://img.shields.io/badge/DuckDB-Powered-FFBF00.svg?logo=duckdb&logoColor=white" alt="DuckDB">
 </p>
@@ -67,7 +67,7 @@ Open **http://localhost:3000** and start querying.
 | 📂 **Query any file** | Drag CSV/Excel/Parquet/JSON into the browser. Instant table. |
 | 🗄️ **Connect databases** | Add MySQL/PostgreSQL. Query alongside local files. |
 | 🔗 **Cross-source JOIN** | `SELECT * FROM local_csv JOIN mysql_db.users ON ...` |
-| 📊 **Visual Builder** | No SQL needed, select tables to build JOINs, Pivots, and Unions. |
+| 📊 **Pivot / JOIN / Set ops** | SQL editor + JOIN workbench + pivot + set operations (no separate “visual builder” tab). |
 | 🌐 **Import from URL** | Enter a CSV/Parquet/JSON link, auto-import to DuckDB. |
 | 🌙 **Dark Mode & i18n** | Switch themes and languages (EN/中文) instantly. |
 
@@ -97,9 +97,9 @@ Files are imported as **native DuckDB tables** for lightning-fast queries. Exter
 ### Docker (Recommended)
 
 ```bash
+git clone https://github.com/Chenkeliang/duckdb-query.git
+cd duckdb-query
 ./quick-start.sh
-# Or manually:
-docker-compose up -d --build
 ```
 
 | Service | URL |
@@ -107,13 +107,29 @@ docker-compose up -d --build
 | Frontend | http://localhost:3000 |
 | API Docs | http://localhost:8001/docs |
 
+**Data**: Tables and connections live on the host in **`./data`** (bind mount). Re-running `./quick-start.sh` or `docker compose up -d --build` **does not** delete `./data`; log lines saying `Removed` refer to old containers, not your database files.
+
+**Slow or failed pulls from docker.io** (e.g. `node:24-alpine`):
+
+- The script defaults to DaoCloud mirror images; on first run it may copy `.env.docker.cn.example` → `.env`.
+- Or: `cp .env.docker.cn.example .env` then `docker compose up -d --build`.
+- If Docker Hub works reliably: `USE_DOCKER_HUB=1 ./quick-start.sh`.
+
+**Rebuild frontend only** (keeps `./data`):
+
+```bash
+docker compose up -d --build frontend
+```
+
+**Stop services** (still keeps `./data`): `docker compose down` (avoid `down -v` unless you intend to wipe named volumes).
+
 ### Local Development
 
 ```bash
-# Backend
+# Backend (default http://localhost:8000 , docs at /docs)
 cd api && pip install -r requirements.txt && uvicorn main:app --reload
 
-# Frontend
+# Frontend (default http://localhost:5173 , /api proxied to backend)
 cd frontend && npm install && npm run dev
 ```
 
@@ -122,7 +138,7 @@ cd frontend && npm install && npm run dev
 | Frontend (Vite) | http://localhost:5173 | `/api/*` proxied to backend |
 | Backend | http://localhost:8000 | Direct (e.g. `/docs`) |
 
-**Query APIs (user path)**: DuckDB local → `POST /api/duckdb/execute`; external / federated → `POST /api/duckdb/federated-query` with ATTACH. Do **not** use legacy `POST /api/execute_sql`. Full endpoint list: [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md). Execution flow: [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md).
+**Query APIs**: DuckDB local → `POST /api/duckdb/execute`; external / federated → `POST /api/duckdb/federated-query` with ATTACH. Do **not** use legacy `POST /api/execute_sql`. See [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md) and [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md).
 
 ---
 
@@ -134,7 +150,7 @@ DuckQuery works out-of-the-box. For advanced setups, edit `config/app-config.jso
 |---------|---------|-------------|
 | `duckdb_memory_limit` | `8GB` | Max RAM for DuckDB |
 | `server_data_mounts` | `[]` | Mount host directories for direct file access |
-| `cors_origins` | `[localhost:3000]` | Allowed frontend origins |
+| `cors_origins` | `3000`, `5173` | Allowed frontend origins |
 
 👉 **[Full Configuration Reference →](docs/CONFIGURATION.md)**
 
@@ -206,6 +222,12 @@ cd frontend && npm run dev -- --port 3000
 ```json
 "cors_origins": ["http://localhost:3000", "http://localhost:5173", "http://localhost:YOUR_PORT"]
 ```
+</details>
+
+<details>
+<summary><b>Will Docker redeploy delete my tables?</b></summary>
+
+No. DuckDB files are on the host under **`./data`**. `docker compose up -d --build` only recreates containers. `docker compose down` stops containers but **does not** remove `./data`. Avoid `docker compose down -v` unless you mean to wipe volumes. For WAL issues see `./scripts/repair-duckdb-wal.sh`.
 </details>
 
 ---

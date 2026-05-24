@@ -1,13 +1,17 @@
+# Global build args (must be before any FROM)
+ARG NODE_IMAGE=node:24-alpine
+ARG NGINX_IMAGE=nginx:stable-alpine
+
 # build stage
-FROM docker.io/node:24-alpine as build
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 
 # 复制package文件
-COPY package.json ./
+COPY package.json package-lock.json ./
 
 # 安装依赖（包括开发依赖，因为需要vite构建）
 RUN npm config set registry https://registry.npmmirror.com
-RUN npm install
+RUN npm ci
 
 # 复制源代码
 COPY . .
@@ -19,7 +23,7 @@ ENV VITE_API_URL=""
 RUN npm run build
 
 # production stage
-FROM docker.io/nginx:stable-alpine as production
+FROM ${NGINX_IMAGE} AS production
 
 # 复制构建产物
 COPY --from=build /app/dist /usr/share/nginx/html

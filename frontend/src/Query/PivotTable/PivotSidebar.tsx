@@ -55,7 +55,7 @@ export const PivotSidebar: React.FC<PivotSidebarProps> = ({
     selectedTable,
     onTableSelect,
 }) => {
-    const { t } = useTranslation("pivot");
+    const { t } = useTranslation("common");
     const { tables: duckdbTables } = useDuckDBTables();
     const [searchTerm, setSearchTerm] = React.useState("");
 
@@ -83,14 +83,14 @@ export const PivotSidebar: React.FC<PivotSidebarProps> = ({
             <div className="p-4 space-y-4 border-b">
                 <div className="space-y-2">
                     <label className="text-sm font-medium text-muted-foreground">
-                        {t("pivot.dataSource", "数据源")}
+                        {t("query.pivot.dataSource", "数据源")}
                     </label>
                     <Select
                         value={selectedTable ? getTableName(selectedTable) : ""}
                         onValueChange={handleTableChange}
                     >
                         <SelectTrigger>
-                            <SelectValue placeholder="选择数据表" />
+                            <SelectValue placeholder={t("query.pivot.selectTable", "选择数据表")} />
                         </SelectTrigger>
                         <SelectContent>
                             {duckdbTables.map((table) => (
@@ -109,7 +109,7 @@ export const PivotSidebar: React.FC<PivotSidebarProps> = ({
                     <div className="relative">
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
-                            placeholder={t("pivot.search", "搜索字段...")}
+                            placeholder={t("query.pivot.search", "搜索字段…")}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="pl-8 h-9"
@@ -122,10 +122,12 @@ export const PivotSidebar: React.FC<PivotSidebarProps> = ({
                 {!selectedTable ? (
                     <div className="h-full flex flex-col items-center justify-center p-4 text-center text-muted-foreground text-sm">
                         <Table2 className="h-10 w-10 mb-2 opacity-20" />
-                        <p>{t("pivot.empty", "请先选择数据表")}</p>
+                        <p>{t("query.pivot.empty", "请先选择数据表")}</p>
                     </div>
                 ) : isLoading ? (
-                    <div className="p-4 text-sm text-muted-foreground">Loading schema...</div>
+                    <div className="p-4 text-sm text-muted-foreground">
+                        {t("query.pivot.loadingSchema", "加载列信息…")}
+                    </div>
                 ) : (
                     <ScrollArea className="h-full">
                         <div className="p-2 space-y-0.5">
@@ -134,7 +136,7 @@ export const PivotSidebar: React.FC<PivotSidebarProps> = ({
                             ))}
                             {filteredColumns.length === 0 && (
                                 <div className="p-4 text-center text-xs text-muted-foreground">
-                                    未找到字段
+                                    {t("query.pivot.noFieldsFound", "未找到字段")}
                                 </div>
                             )}
                         </div>

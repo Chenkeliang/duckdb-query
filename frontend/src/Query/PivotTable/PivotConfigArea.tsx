@@ -104,7 +104,7 @@ const DropZone = ({
     title,
     items,
     children,
-    placeholder
+    placeholder,
 }: {
     id: string;
     title: string;
@@ -112,6 +112,7 @@ const DropZone = ({
     children: React.ReactNode;
     placeholder?: string;
 }) => {
+    const { t } = useTranslation("common");
     const { setNodeRef, isOver } = useDroppable({ id });
 
     return (
@@ -130,7 +131,7 @@ const DropZone = ({
                 {children}
                 {items.length === 0 && (
                     <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground/40 pointer-events-none">
-                        {placeholder || "Drag fields here"}
+                        {placeholder || t("query.pivot.dragFieldsPlaceholder", "拖放字段到此处")}
                     </div>
                 )}
             </div>
@@ -147,7 +148,7 @@ export const PivotConfigArea: React.FC<PivotConfigAreaProps> = ({
     onRemoveValue,
     onUpdateValueAgg,
 }) => {
-    const { t } = useTranslation("pivot");
+    const { t } = useTranslation("common");
 
     // Helper to render value item extra (agg dropdown)
     const renderAggDropdown = (val: PivotValueConfig, idx: number) => {
@@ -185,7 +186,7 @@ export const PivotConfigArea: React.FC<PivotConfigAreaProps> = ({
 
             {/* Rows Zone */}
             <SortableContext id="rows-context" items={rows} strategy={horizontalListSortingStrategy}>
-                <DropZone id="zone-rows" title={t("pivot.rows", "Rows")} items={rows} placeholder={t("pivot.dropZone.rows")}>
+                <DropZone id="zone-rows" title={t("query.pivot.rows", "行字段")} items={rows} placeholder={t("query.pivot.dropRowHint", "拖入行分组字段")}>
                     {rows.map((row) => (
                         <SortableItem
                             key={row}
@@ -201,9 +202,9 @@ export const PivotConfigArea: React.FC<PivotConfigAreaProps> = ({
             <SortableContext id="cols-context" items={columns} strategy={horizontalListSortingStrategy}>
                 <DropZone
                     id="zone-columns"
-                    title={`${t("pivot.columns", "Columns")} (1 max)`}
+                    title={t("query.pivot.columnsTitleMax", "透视列（限 1 个）")}
                     items={columns}
-                    placeholder={t("pivot.dropZone.columnsSingle", "拖入一个字段作为透视列 (仅支持单列)")}
+                    placeholder={t("query.pivot.dropColumnHint", "拖入透视列字段")}
                 >
                     {columns.map((col) => (
                         <SortableItem
@@ -223,7 +224,7 @@ export const PivotConfigArea: React.FC<PivotConfigAreaProps> = ({
                 items={values.map((v, i) => `${v.column}-${i}`)}
                 strategy={horizontalListSortingStrategy}
             >
-                <DropZone id="zone-values" title={t("pivot.values", "Values")} items={values.map(v => v.column)} placeholder={t("pivot.dropZone.values")}>
+                <DropZone id="zone-values" title={t("query.pivot.values", "聚合值")} items={values.map(v => v.column)} placeholder={t("query.pivot.dropValueHint", "拖入聚合值字段")}>
                     {values.map((val, idx) => {
                         const id = `${val.column}-${idx}`;
                         return (

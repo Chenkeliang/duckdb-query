@@ -496,7 +496,11 @@
       "externalTable": "外部表",
       "columnLoadError": "无法获取列信息",
       "noColumns": "无可用列",
-      "columnLoadWarning": "部分表的列信息加载失败，可能影响查询结果。"
+      "columnLoadWarning": "部分表的列信息加载失败，可能影响查询结果。",
+      "sqlAliasLabel": "AS",
+      "sqlAliasInput": "表别名",
+      "sqlAliasInvalid": "仅支持字母、数字、下划线，且不能以数字开头",
+      "sqlAliasDuplicate": "别名不能重复"
     },
     "typeConflict": {
       "detected": "检测到 {{count}} 个类型冲突",
@@ -580,8 +584,24 @@
       "pivotMode": "透视模式",
       "rowDimension": "行维度",
       "pivotColumnValues": "透视列",
-      "uniqueValues": "的唯一值"
+      "uniqueValues": "的唯一值",
+      "filters": "筛选",
+      "addFilter": "添加条件",
+      "filtersEmpty": "可选：限制透视前的行（WHERE）",
+      "filterColumn": "列",
+      "filterOperator": "操作符",
+      "filterValue": "值",
+      "preview": "预览",
+      "previewing": "预览中…",
+      "clear": "清空",
+      "search": "搜索字段…",
+      "empty": "请先选择数据表",
+      "noFieldsFound": "未找到字段",
+      "loadingSchema": "加载列信息…",
+      "columnsTitleMax": "透视列（限 1 个）",
+      "dragFieldsPlaceholder": "拖放字段到此处"
     },
+    "generating": "生成中…",
     "execute": "执行",
     "sqlPreview": "SQL 预览",
     "success": "查询成功，返回 {{count}} 行数据",
@@ -742,6 +762,7 @@
         "fetchFailed": "获取工作表信息失败",
         "importFailed": "导入失败"
       },
+      "uploadSuccess": "文件上传成功，请选择要导入的工作表",
       "uploadSuccessTable": "文件上传成功，已创建表: {{table}}",
       "uploadFail": "文件上传失败",
       "enterUrl": "请输入文件URL",

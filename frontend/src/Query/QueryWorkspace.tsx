@@ -45,6 +45,9 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
     displayPreview: displayQueryPreview,
     cancel: cancelQuery,
     isCancelling,
+    joinRestoreRequest,
+    restoreJoinWorkspace,
+    clearJoinRestoreRequest,
   } = useQueryRunner();
   const { maxQueryRows } = useAppConfig();
 
@@ -216,6 +219,9 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
                 activeTab={currentTab}
                 onTabChange={handleTabChange}
                 selectedTables={selectedTables[currentTab] || []}
+                joinRestoreRequest={joinRestoreRequest}
+                restoreJoinWorkspace={restoreJoinWorkspace}
+                onClearJoinRestoreRequest={clearJoinRestoreRequest}
                 onExecute={handleQueryExecute}
                 onCancel={cancelQuery}
                 isCancelling={isCancelling}

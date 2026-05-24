@@ -9,12 +9,13 @@ import { EditorView, keymap, placeholder as placeholderExt } from '@codemirror/v
 import { EditorState, Compartment } from '@codemirror/state';
 import { sql, SQLDialect, StandardSQL } from '@codemirror/lang-sql';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { autocompletion, completionKeymap } from '@codemirror/autocomplete';
+import { completionKeymap } from '@codemirror/autocomplete';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { lintKeymap } from '@codemirror/lint';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { cn } from '@/lib/utils';
+import { buildSqlAutocompletion, triggerCompletionIfFocused } from './sqlColumnCompletion';
 
 export interface SQLEditorProps {
   /** SQL 内容 */
@@ -37,6 +38,10 @@ export interface SQLEditorProps {
   tables?: string[];
   /** 列名映射（表名 -> 列名列表，用于自动补全） */
   columns?: Record<string, string[]>;
+  /** 当前 SQL 涉及表的列名（用于 WHERE 等位置的列前缀补全，含中文列名） */
+  columnNameHints?: string[];
+  /** FROM 主表名（提升 schema 补全对当前表的列识别） */
+  defaultTable?: string;
   /** 是否自动聚焦 */
   autoFocus?: boolean;
 }
@@ -62,6 +67,8 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   maxHeight = '400px',
   tables = [],
   columns = {},
+  columnNameHints = [],
+  defaultTable,
   autoFocus = false,
 }) => {
   const { t } = useTranslation('common');
@@ -70,6 +77,22 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   const themeCompartment = useRef(new Compartment());
   const readOnlyCompartment = useRef(new Compartment());
   const sqlCompartment = useRef(new Compartment());
+  const columnHintsRef = useRef<string[]>(columnNameHints);
+  const defaultTableRef = useRef(defaultTable);
+  const schemaRef = useRef<Record<string, string[]>>({});
+
+  const buildSqlExtensions = () => [
+    sql({
+      dialect: duckDBDialect,
+      upperCaseKeywords: false,
+    }),
+    buildSqlAutocompletion({
+      schema: schemaRef.current,
+      dialect: duckDBDialect,
+      defaultTable: defaultTableRef.current,
+      getColumnNames: () => columnHintsRef.current,
+    }),
+  ];
 
   // 使用 ref 保存最新的 onExecute 回调，避免闭包陷阱
   // 因为 CodeMirror 的 keymap 初始化后不会随组件 props 更新而重建
@@ -77,6 +100,14 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   useEffect(() => {
     onExecuteRef.current = onExecute;
   }, [onExecute]);
+
+  useEffect(() => {
+    columnHintsRef.current = columnNameHints;
+  }, [columnNameHints]);
+
+  useEffect(() => {
+    defaultTableRef.current = defaultTable;
+  }, [defaultTable]);
 
   // 检测深色模式
   const isDarkMode = useMemo(() => {
@@ -94,6 +125,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
     tables.forEach((table) => {
       result[table] = columns[table] || [];
     });
+    schemaRef.current = result;
     return result;
   }, [tables, columns]);
 
@@ -144,23 +176,8 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
         highlightSelectionMatches(),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 
-        // SQL 语言支持（使用 Compartment 以便动态更新 schema）
-        sqlCompartment.current.of(
-          sql({
-            dialect: duckDBDialect,
-            schema: schema,
-            upperCaseKeywords: false,
-          })
-        ),
-
-        // 自动补全 - 启用输入时自动触发
-        autocompletion({
-          activateOnTyping: true,
-          defaultKeymap: true,
-          maxRenderedOptions: 50,
-          // 降低触发阈值，输入 1 个字符就开始提示
-          activateOnTypingDelay: 100,
-        }),
+        // SQL 语法 + 列名/表名/关键字补全（Compartment 动态更新 schema）
+        sqlCompartment.current.of(buildSqlExtensions()),
 
         // 快捷键
         keymap.of([
@@ -291,21 +308,22 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
     });
   }, [readOnly]);
 
-  // 同步 schema 变化（表名和列名自动补全）
+  // 同步 schema / 列名 / 默认表（补全配置）
   useEffect(() => {
     const view = editorRef.current;
     if (!view) return;
 
+    schemaRef.current = schema;
     view.dispatch({
-      effects: sqlCompartment.current.reconfigure(
-        sql({
-          dialect: duckDBDialect,
-          schema: schema,
-          upperCaseKeywords: false,
-        })
-      ),
+      effects: sqlCompartment.current.reconfigure(buildSqlExtensions()),
     });
-  }, [schema]);
+  }, [schema, defaultTable]);
+
+  // 列名加载完成后，聚焦时重新弹出补全（如已输入「手机」）
+  useEffect(() => {
+    if (columnNameHints.length === 0) return;
+    triggerCompletionIfFocused(editorRef.current);
+  }, [columnNameHints]);
 
 
 

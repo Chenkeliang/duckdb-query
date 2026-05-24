@@ -490,7 +490,11 @@
       "externalTable": "External table",
       "columnLoadError": "Failed to load column info",
       "noColumns": "No columns available",
-      "columnLoadWarning": "Failed to load column info for some tables, which may affect query results."
+      "columnLoadWarning": "Failed to load column info for some tables, which may affect query results.",
+      "sqlAliasLabel": "AS",
+      "sqlAliasInput": "Table alias",
+      "sqlAliasInvalid": "Use letters, digits, or underscores; cannot start with a digit",
+      "sqlAliasDuplicate": "Alias must be unique"
     },
     "typeConflict": {
       "detected": "{{count}} type conflict(s) detected",
@@ -574,8 +578,24 @@
       "pivotMode": "Pivot Mode",
       "rowDimension": "Row Dimension",
       "pivotColumnValues": "Pivot Column",
-      "uniqueValues": "unique values"
+      "uniqueValues": "unique values",
+      "filters": "Filters",
+      "addFilter": "Add condition",
+      "filtersEmpty": "Optional: filter rows before pivot (WHERE)",
+      "filterColumn": "Column",
+      "filterOperator": "Operator",
+      "filterValue": "Value",
+      "preview": "Preview",
+      "previewing": "Previewing…",
+      "clear": "Clear",
+      "search": "Search fields…",
+      "empty": "Select a data table first",
+      "noFieldsFound": "No fields found",
+      "loadingSchema": "Loading columns…",
+      "columnsTitleMax": "Pivot column (max 1)",
+      "dragFieldsPlaceholder": "Drag fields here"
     },
+    "generating": "Generating…",
     "execute": "Execute",
     "sqlPreview": "SQL Preview",
     "success": "Query successful, returned {{count}} rows",
@@ -735,6 +755,7 @@
         "fetchFailed": "Failed to fetch sheet info",
         "importFailed": "Import failed"
       },
+      "uploadSuccess": "File uploaded successfully. Please select worksheets to import.",
       "uploadSuccessTable": "File uploaded, table created: {{table}}",
       "uploadFail": "File upload failed",
       "enterUrl": "Please enter file URL",

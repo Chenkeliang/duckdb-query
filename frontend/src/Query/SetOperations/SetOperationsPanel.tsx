@@ -572,8 +572,8 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
       {/* 头部工具栏 */}
       {/* 头部工具栏 - 双行布局 */}
       {/* 头部工具栏 - 单行紧凑布局 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0 bg-muted/30">
-        <div className="flex items-center gap-3 overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border shrink-0 bg-muted/30">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
           <div className="flex items-center gap-2 shrink-0">
             <Button
               variant="outline"
@@ -696,51 +696,50 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
               <Star className="w-3.5 h-3.5" />
               {t('query.bookmark.save', '收藏')}
             </Button>
-
-            <div className="w-[1px] h-4 bg-border mx-1 shrink-0" />
-
-            {/* 操作类型切换按钮 */}
-            <div className="flex bg-muted p-0.5 rounded-md h-8 gap-0.5 shrink-0">
-              {SET_OPERATIONS.map((op) => (
-                <button
-                  key={op.value}
-                  onClick={() => setOperationType(op.value)}
-                  title={op.tooltip}
-                  className={`px-2.5 text-xs font-medium rounded transition-colors ${operationType === op.value
-                    ? 'bg-surface text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                >
-                  {op.label}
-                </button>
-              ))}
-            </div>
-            {/* BY NAME 复选框 */}
-            <label
-              className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ml-1 shrink-0 ${currentOpSupportsByName ? 'text-foreground' : 'text-muted-foreground opacity-50 cursor-not-allowed'
-                }`}
-              title={t('query.set.byNameTooltip', '按列名匹配合并（DuckDB 特性），不要求列数量一致')}
-            >
-              <input
-                type="checkbox"
-                className="accent-primary w-3.5 h-3.5"
-                checked={byName}
-                onChange={(e) => setByName(e.target.checked)}
-                disabled={!currentOpSupportsByName}
-              />
-              <span className="whitespace-nowrap">BY NAME</span>
-            </label>
           </div>
-
-          <div className="w-[1px] h-4 bg-border mx-1 shrink-0 hidden xl:block" />
-
-          {/* 提示信息 - 留在左侧 */}
-          <span className="text-muted-foreground text-xs border-l border-border/50 pl-2 hidden xl:inline-block truncate max-w-[200px]">
-            {t('query.set.hint', '双击左侧数据源添加表')}
-          </span>
         </div>
 
-        <div className="flex items-center shrink-0 ml-4 gap-2">
+        {/* 运算类型独立区域，避免被左侧长工具栏挤没 */}
+        <div className="flex shrink-0 items-center gap-1 border-l border-border pl-2">
+          <div
+            className="flex h-8 max-w-56 overflow-x-auto rounded-md bg-muted p-0.5 gap-0.5"
+            role="tablist"
+            aria-label={t('query.set.operationType', '集合运算类型')}
+          >
+            {SET_OPERATIONS.map((op) => (
+              <button
+                key={op.value}
+                type="button"
+                role="tab"
+                aria-selected={operationType === op.value}
+                onClick={() => setOperationType(op.value)}
+                title={op.tooltip}
+                className={`shrink-0 whitespace-nowrap px-2.5 text-xs font-medium rounded transition-colors ${operationType === op.value
+                  ? 'bg-surface text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+                  }`}
+              >
+                {op.label}
+              </button>
+            ))}
+          </div>
+          <label
+            className={`flex shrink-0 items-center gap-1.5 text-xs cursor-pointer select-none ${currentOpSupportsByName ? 'text-foreground' : 'text-muted-foreground opacity-50 cursor-not-allowed'
+              }`}
+            title={t('query.set.byNameTooltip', '按列名匹配合并（DuckDB 特性），不要求列数量一致')}
+          >
+            <input
+              type="checkbox"
+              className="accent-primary w-3.5 h-3.5"
+              checked={byName}
+              onChange={(e) => setByName(e.target.checked)}
+              disabled={!currentOpSupportsByName}
+            />
+            <span className="whitespace-nowrap">BY NAME</span>
+          </label>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
           {/* 标题 - 移至右侧 */}
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background/50 text-xs text-muted-foreground hidden lg:flex">
             <Layers className="w-3.5 h-3.5" />

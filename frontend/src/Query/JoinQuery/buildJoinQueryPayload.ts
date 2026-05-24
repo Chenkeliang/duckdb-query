@@ -18,6 +18,7 @@ import {
     generateFilterSQL,
     type FilterGroup,
 } from './FilterBar';
+import { buildJoinTableAliasMap } from './joinTableAliasUtils';
 
 export type JoinPanelJoinType =
     | 'INNER JOIN'
@@ -76,9 +77,15 @@ export function canUseServerJoinPath(
     activeTables: SelectedTable[],
     joinConfigs: JoinPanelJoinConfig[],
     filterTree: FilterGroup,
-    _attachDatabases: AttachDatabase[]
+    _attachDatabases: AttachDatabase[],
+    tableAliasOverrides: Record<string, string> = {}
 ): boolean {
     if (activeTables.length < 2 || joinConfigs.length < activeTables.length - 1) {
+        return false;
+    }
+    const tableNames = activeTables.map(getTableName);
+    const aliasMap = buildJoinTableAliasMap(tableNames, tableAliasOverrides);
+    if (tableNames.some((name, index) => (aliasMap[name] ?? name) !== name)) {
         return false;
     }
     if (hasWhereFilters(filterTree)) {
@@ -100,6 +107,7 @@ export function buildJoinQueryPayload(params: {
     maxQueryRows: number;
     isPreview?: boolean;
     attachDatabases?: AttachDatabase[];
+    tableAliasOverrides?: Record<string, string>;
 }): JoinQueryPerformRequest | null {
     const {
         activeTables,
@@ -109,6 +117,7 @@ export function buildJoinQueryPayload(params: {
         maxQueryRows,
         isPreview = true,
         attachDatabases = [],
+        tableAliasOverrides = {},
     } = params;
 
     const attachForPayload = attachDatabases.map((db) => ({
@@ -116,9 +125,12 @@ export function buildJoinQueryPayload(params: {
         connection_id: db.connectionId,
     }));
 
-    if (!canUseServerJoinPath(activeTables, joinConfigs, filterTree, attachDatabases)) {
+    if (!canUseServerJoinPath(activeTables, joinConfigs, filterTree, attachDatabases, tableAliasOverrides)) {
         return null;
     }
+
+    const tableNames = activeTables.map(getTableName);
+    const aliasMap = buildJoinTableAliasMap(tableNames, tableAliasOverrides);
 
     const sources: JoinQueryDataSource[] = activeTables.map((table) => {
         if (isExternalTable(table)) {
@@ -172,6 +184,8 @@ export function buildJoinQueryPayload(params: {
             right_source_id: rightName,
             join_type: mapJoinType(config.joinType),
             conditions,
+            alias_left: aliasMap[leftName] ?? leftName,
+            alias_right: aliasMap[rightName] ?? rightName,
         });
     }
 

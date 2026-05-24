@@ -31,6 +31,20 @@ import {
   buildJoinQueryPayload,
   canUseServerJoinPath,
 } from './buildJoinQueryPayload';
+import {
+  buildJoinTableAliasMap,
+  collectDuplicateAliases,
+  isValidSqlTableAlias,
+  remapFilterTreeTableNames,
+  resolveJoinTableAlias,
+} from './joinTableAliasUtils';
+import {
+  appendJoinWorkspaceToSql,
+  applyJoinWorkspaceSnapshot,
+  buildJoinWorkspaceSnapshot,
+  type JoinWorkspacePersistence,
+} from './joinWorkspaceSnapshot';
+import type { JoinRestoreRequest } from '@/hooks/useQueryWorkspace';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useAppConfig } from '@/hooks/useAppConfig';
 import { useTypeConflict, type ColumnPair } from '@/hooks/useTypeConflict';
@@ -149,6 +163,10 @@ interface JoinQueryPanelProps {
   onCancel?: () => void;
   /** 是否正在取消 */
   isCancelling?: boolean;
+  /** 供 QueryTabs 在收藏/历史写入时采集工作台快照 */
+  persistenceRef?: React.MutableRefObject<JoinWorkspacePersistence | null>;
+  joinRestoreRequest?: JoinRestoreRequest | null;
+  onClearJoinRestoreRequest?: () => void;
 }
 
 const JOIN_TYPES: { value: JoinType; label: string }[] = [
@@ -162,6 +180,9 @@ const JOIN_TYPES: { value: JoinType; label: string }[] = [
 interface TableCardProps {
   table: SelectedTable;
   isPrimary?: boolean;
+  sqlAlias: string;
+  sqlAliasError?: string;
+  onSqlAliasChange: (value: string) => void;
   columns: TableColumn[];
   selectedColumns: string[];
   onColumnToggle: (column: string) => void;
@@ -174,6 +195,9 @@ interface TableCardProps {
 const TableCard: React.FC<TableCardProps> = ({
   table,
   isPrimary,
+  sqlAlias,
+  sqlAliasError,
+  onSqlAliasChange,
   columns,
   selectedColumns,
   onColumnToggle,
@@ -230,37 +254,55 @@ const TableCard: React.FC<TableCardProps> = ({
     <>
       <div className={`bg-surface border rounded-xl shrink-0 min-w-64 max-w-72 ${isExternal ? 'border-warning/50' : 'border-border'}`}>
         {/* 头部 */}
-        <div className="p-3 border-b border-border flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            {isExternal ? (
-              <span className="text-sm shrink-0">{dbIcon}</span>
-            ) : (
-              <Table className={`w-4 h-4 shrink-0 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
-            )}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="font-medium text-sm truncate block">{tableName}</span>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-[400px] z-[100]">
-                  <p className="font-mono text-xs break-all">{tableName}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            {isPrimary && (
-              <span className="text-xs px-1.5 py-0.5 bg-primary/20 text-primary rounded shrink-0">
-                {t('query.join.primaryTable', '主表')}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center shrink-0">
+        <div className="p-3 border-b border-border flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              {isExternal ? (
+                <span className="text-sm shrink-0">{dbIcon}</span>
+              ) : (
+                <Table className={`w-4 h-4 shrink-0 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
+              )}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="font-medium text-sm truncate block">{tableName}</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[400px] z-[100]">
+                    <p className="font-mono text-xs break-all">{tableName}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {isPrimary && (
+                <span className="text-xs px-1.5 py-0.5 bg-primary/20 text-primary rounded shrink-0">
+                  {t('query.join.primaryTable', '主表')}
+                </span>
+              )}
+            </div>
             <button
+              type="button"
               onClick={onRemove}
-              className="text-muted-foreground hover:text-error p-1 rounded hover:bg-error/10"
+              className="text-muted-foreground hover:text-error p-1 rounded hover:bg-error/10 shrink-0"
               title={t('query.join.remove', '移除')}
             >
               <X className="w-4 h-4" />
             </button>
+          </div>
+          <div className="flex items-center gap-1.5 pl-6">
+            <span className="text-xs text-muted-foreground shrink-0">
+              {t('query.join.sqlAliasLabel', 'AS')}
+            </span>
+            <Input
+              value={sqlAlias}
+              onChange={(e) => onSqlAliasChange(e.target.value)}
+              className={`h-7 w-20 px-2 text-xs font-mono ${sqlAliasError ? 'border-error' : ''}`}
+              aria-label={t('query.join.sqlAliasInput', '表别名')}
+              spellCheck={false}
+            />
+            {sqlAliasError && (
+              <span className="text-xs text-error truncate" title={sqlAliasError}>
+                {sqlAliasError}
+              </span>
+            )}
           </div>
         </div>
 
@@ -693,6 +735,9 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   onRemoveTable,
   onCancel,
   isCancelling: _isCancelling = false,
+  persistenceRef,
+  joinRestoreRequest,
+  onClearJoinRestoreRequest,
 }) => {
   const { t } = useTranslation('common');
   const { maxQueryRows } = useAppConfig();
@@ -761,6 +806,9 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
 
   // JOIN 配置（表之间的连接）
   const [joinConfigs, setJoinConfigs] = React.useState<JoinConfig[]>([]);
+
+  /** 用户自定义 SQL 表别名（key = getTableName）；空字符串表示使用默认 t1/t2… */
+  const [tableAliasOverrides, setTableAliasOverrides] = React.useState<Record<string, string>>({});
 
   // 筛选条件树（FilterBar）
   const [filterTree, setFilterTree] = React.useState<FilterGroup>(() => createEmptyGroup());
@@ -842,6 +890,54 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     .map(getTableName)
     .sort()
     .join(',');
+
+  const activeTableNamesList = React.useMemo(
+    () => activeTables.map(getTableName),
+    [activeTables]
+  );
+
+  const joinTableAliasMap = React.useMemo(
+    () => buildJoinTableAliasMap(activeTableNamesList, tableAliasOverrides),
+    [activeTableNamesList, tableAliasOverrides]
+  );
+
+  const duplicateSqlAliases = React.useMemo(
+    () => collectDuplicateAliases(activeTableNamesList, tableAliasOverrides),
+    [activeTableNamesList, tableAliasOverrides]
+  );
+
+  const getSqlAliasValidationError = React.useCallback(
+    (tableName: string, index: number): string | undefined => {
+      const raw = tableAliasOverrides[tableName]?.trim() ?? '';
+      if (!raw) {
+        return undefined;
+      }
+      if (!isValidSqlTableAlias(raw)) {
+        return t(
+          'query.join.sqlAliasInvalid',
+          '仅支持字母、数字、下划线，且不能以数字开头'
+        );
+      }
+      const resolved = joinTableAliasMap[tableName] ?? resolveJoinTableAlias(tableName, index, joinTableAliasMap);
+      if (duplicateSqlAliases.includes(resolved)) {
+        return t('query.join.sqlAliasDuplicate', '别名不能重复');
+      }
+      return undefined;
+    },
+    [tableAliasOverrides, joinTableAliasMap, duplicateSqlAliases, t]
+  );
+
+  const handleTableAliasChange = React.useCallback((tableName: string, value: string) => {
+    setTableAliasOverrides((prev) => {
+      const next = { ...prev };
+      if (!value.trim()) {
+        delete next[tableName];
+      } else {
+        next[tableName] = value;
+      }
+      return next;
+    });
+  }, []);
 
   // 构建列对用于类型冲突检测
   const columnPairs = React.useMemo<ColumnPair[]>(() => {
@@ -926,6 +1022,18 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       }
 
       return hasChanges || Object.keys(updated).length !== Object.keys(prev).length ? updated : prev;
+    });
+
+    setTableAliasOverrides((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const key of Object.keys(next)) {
+        if (!activeTableNames.has(key)) {
+          delete next[key];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
     });
 
     // 初始化 JOIN 配置 - 支持扩展和收缩
@@ -1089,18 +1197,27 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     return true;
   }, [activeTables.length, joinConfigs]);
 
+  const normalizedJoinConfigs = React.useMemo(
+    () => joinConfigs.map(normalizeJoinConfig),
+    [joinConfigs]
+  );
+
+  const hasSqlAliasErrors = React.useMemo(
+    () =>
+      activeTableNamesList.some((name, index) =>
+        Boolean(getSqlAliasValidationError(name, index))
+      ),
+    [activeTableNamesList, getSqlAliasValidationError]
+  );
+
   // 检查是否可以执行
   // 现在支持跨数据库联邦查询，但必须有有效的关联条件
   const canExecute = React.useMemo(() => {
     if (activeTables.length < 2) return false;
     if (!hasValidJoinConditions) return false;
+    if (hasSqlAliasErrors) return false;
     return true;
-  }, [activeTables.length, hasValidJoinConditions]);
-
-  const normalizedJoinConfigs = React.useMemo(
-    () => joinConfigs.map(normalizeJoinConfig),
-    [joinConfigs]
-  );
+  }, [activeTables.length, hasValidJoinConditions, hasSqlAliasErrors]);
 
   const canUseServerJoin = React.useMemo(
     () =>
@@ -1108,9 +1225,10 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         activeTables,
         normalizedJoinConfigs,
         filterTree,
-        attachDatabases
+        attachDatabases,
+        tableAliasOverrides
       ),
-    [activeTables, normalizedJoinConfigs, filterTree, attachDatabases]
+    [activeTables, normalizedJoinConfigs, filterTree, attachDatabases, tableAliasOverrides]
   );
 
   const buildServerPayload = React.useCallback(
@@ -1123,6 +1241,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         maxQueryRows,
         isPreview,
         attachDatabases,
+        tableAliasOverrides,
       }),
     [
       activeTables,
@@ -1131,6 +1250,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       resolvedTypes,
       maxQueryRows,
       attachDatabases,
+      tableAliasOverrides,
     ]
   );
 
@@ -1147,16 +1267,18 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       return formatTableReference(ref, dialect);
     };
 
-    // 获取表别名（用于列引用）
     const getTableAlias = (table: SelectedTable): string => {
-      const ref = createTableReference(table, attachDatabases);
-      // 对于外部表，使用数据库别名；对于 DuckDB 表，使用表名
-      if (ref.isExternal && ref.alias) {
-        // 外部表：使用 alias.table 或 alias.schema.table 的最后部分作为别名
-        return ref.name;
-      }
-      return ref.name;
+      const tableName = getTableName(table);
+      const index = activeTables.findIndex((t) => getTableName(t) === tableName);
+      return resolveJoinTableAlias(
+        tableName,
+        index >= 0 ? index : 0,
+        joinTableAliasMap
+      );
     };
+
+    const filterSqlFromTree = (tree: FilterGroup) =>
+      generateFilterSQL(remapFilterTreeTableNames(tree, joinTableAliasMap));
 
     const parts: string[] = [];
 
@@ -1228,7 +1350,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
               logic: 'AND',
               children: filterGroup.conditions
             };
-            const whereSQL = generateFilterSQL(tempGroup);
+            const whereSQL = filterSqlFromTree(tempGroup);
 
             if (whereSQL) {
               const subqueryResult = buildFilteredSubquery(tableInfo, whereSQL);
@@ -1355,7 +1477,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         // 左表：只有在未被优化时才添加 ON 条件
         const leftTableOptimized = optimizedTableRefs.has(leftTableName);
         if (!leftTableOptimized && leftTableOnTree.children.length > 0) {
-          const leftOnSQL = generateFilterSQL(leftTableOnTree);
+          const leftOnSQL = filterSqlFromTree(leftTableOnTree);
           if (leftOnSQL) {
             combinedOnConditions.push(leftOnSQL);
             console.log('[JoinQueryPanel] generateSQL appended ON conditions for left table', leftTableName, ':', leftOnSQL);
@@ -1366,7 +1488,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
 
         // 右表：只有在未被优化时才添加 ON 条件
         if (!rightTableOptimization && rightTableOnTree.children.length > 0) {
-          const rightOnSQL = generateFilterSQL(rightTableOnTree);
+          const rightOnSQL = filterSqlFromTree(rightTableOnTree);
           if (rightOnSQL) {
             combinedOnConditions.push(rightOnSQL);
             console.log('[JoinQueryPanel] generateSQL appended ON conditions for right table', rightTableName, ':', rightOnSQL);
@@ -1390,11 +1512,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         const leftTableOptimized = optimizedTableRefs.has(leftTableName);
 
         if (!leftTableOptimized && leftTableOnTree.children.length > 0) {
-          const leftOnSQL = generateFilterSQL(leftTableOnTree);
+          const leftOnSQL = filterSqlFromTree(leftTableOnTree);
           if (leftOnSQL) combinedOnConditions.push(leftOnSQL);
         }
         if (!rightTableOptimization && rightTableOnTree.children.length > 0) {
-          const rightOnSQL = generateFilterSQL(rightTableOnTree);
+          const rightOnSQL = filterSqlFromTree(rightTableOnTree);
           if (rightOnSQL) combinedOnConditions.push(rightOnSQL);
         }
 
@@ -1414,7 +1536,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     // 使用移除了 ON 条件的树生成 WHERE 子句
     const whereOnlyTree = cloneTreeWithoutOnConditions(filterTree);
     console.log('[JoinQueryPanel] generateSQL whereOnlyTree:', JSON.stringify(whereOnlyTree));
-    const whereClause = generateFilterSQL(whereOnlyTree);
+    const whereClause = filterSqlFromTree(whereOnlyTree);
     console.log('[JoinQueryPanel] generateSQL whereClause:', whereClause);
     if (whereClause && whereClause.trim()) {
       parts.push(`WHERE ${whereClause}`);
@@ -1542,6 +1664,51 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   }, [onCancel]);
 
   const sql = generateSQL();
+
+  const getJoinSnapshot = React.useCallback(
+    () =>
+      buildJoinWorkspaceSnapshot({
+        activeTables,
+        tableOrder,
+        tableAliasOverrides,
+        joinConfigs: normalizedJoinConfigs,
+        selectedColumns,
+        filterTree,
+      }),
+    [
+      activeTables,
+      tableOrder,
+      tableAliasOverrides,
+      normalizedJoinConfigs,
+      selectedColumns,
+      filterTree,
+    ]
+  );
+
+  React.useEffect(() => {
+    if (!persistenceRef) return;
+    persistenceRef.current = { getSnapshot: getJoinSnapshot };
+    return () => {
+      persistenceRef.current = null;
+    };
+  }, [persistenceRef, getJoinSnapshot]);
+
+  React.useEffect(() => {
+    if (!joinRestoreRequest) return;
+    applyJoinWorkspaceSnapshot(joinRestoreRequest.snapshot, {
+      setTableOrder,
+      setTableAliasOverrides,
+      setJoinConfigs,
+      setSelectedColumns,
+      setFilterTree,
+    });
+    onClearJoinRestoreRequest?.();
+  }, [joinRestoreRequest?.token, onClearJoinRestoreRequest]);
+
+  const saveFavoriteSql = React.useMemo(() => {
+    if (!sql) return '';
+    return appendJoinWorkspaceToSql(sql, getJoinSnapshot());
+  }, [sql, getJoinSnapshot]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface">
@@ -1745,6 +1912,9 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
                   <TableCard
                     table={table}
                     isPrimary={index === 0}
+                    sqlAlias={joinTableAliasMap[tableName] ?? ''}
+                    sqlAliasError={getSqlAliasValidationError(tableName, index)}
+                    onSqlAliasChange={(value) => handleTableAliasChange(tableName, value)}
                     columns={columns}
                     selectedColumns={selectedColumns[tableName] || []}
                     onColumnToggle={(col) => handleColumnToggle(tableName, col)}
@@ -1834,7 +2004,8 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       <SaveQueryDialog
         open={isSaveDialogOpen}
         onOpenChange={setIsSaveDialogOpen}
-        sql={sql || ''}
+        sql={saveFavoriteSql}
+        type="join"
       />
 
       {/* 异步任务对话框 */}

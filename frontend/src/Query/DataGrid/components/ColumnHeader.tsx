@@ -6,6 +6,7 @@ import * as React from 'react';
 import { useCallback } from 'react';
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { shouldBlockHeaderSort } from '../columnResizeSortGuard';
 import { FilterMenu } from './FilterMenu';
 
 export interface ColumnHeaderProps {
@@ -67,9 +68,10 @@ export const ColumnHeader: React.FC<ColumnHeaderProps> = ({
   const displayName = headerName || field;
 
   const handleSortClick = (e: React.MouseEvent) => {
-    if (sortable) {
-      onSortClick?.(field, e.ctrlKey || e.metaKey);
+    if (!sortable || shouldBlockHeaderSort()) {
+      return;
     }
+    onSortClick?.(field, e.ctrlKey || e.metaKey);
   };
 
   const handleResizeMouseDown = (e: React.MouseEvent) => {
@@ -96,23 +98,36 @@ export const ColumnHeader: React.FC<ColumnHeaderProps> = ({
 
   return (
     <div
-      className={cn(
-        'dq-data-grid-header-cell group relative',
-        sortable && 'cursor-pointer',
-        className
-      )}
+      className={cn('dq-data-grid-header-cell group relative', className)}
       style={{ width, minWidth: width, maxWidth: width }}
-      onClick={handleSortClick}
     >
-      {/* 列名 */}
-      <span className="flex-1 truncate">{displayName}</span>
-
-      {/* 排序图标 */}
-      {SortIcon}
+      {/* 仅列名 + 排序图标区域触发排序，避免拖列宽/点筛选误触 */}
+      <div
+        className={cn(
+          'flex min-w-0 flex-1 items-center gap-1',
+          sortable && 'cursor-pointer'
+        )}
+        onClick={sortable ? handleSortClick : undefined}
+        role={sortable ? 'button' : undefined}
+        tabIndex={sortable ? 0 : undefined}
+        onKeyDown={
+          sortable
+            ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleSortClick(e as unknown as React.MouseEvent);
+                }
+              }
+            : undefined
+        }
+      >
+        <span className="flex-1 truncate">{displayName}</span>
+        {SortIcon}
+      </div>
 
       {/* 筛选图标 */}
       {filterable && (
-        <div onClick={(e) => e.stopPropagation()}>
+        <div>
           <FilterMenu
             column={field}
             data={data}
@@ -129,7 +144,11 @@ export const ColumnHeader: React.FC<ColumnHeaderProps> = ({
         <div
           className="dq-data-grid-resize-handle"
           onMouseDown={handleResizeMouseDown}
+          onClick={(e) => e.stopPropagation()}
           onDoubleClick={handleResizeDoubleClick}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={displayName}
         />
       )}
     </div>

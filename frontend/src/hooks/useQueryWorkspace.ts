@@ -15,6 +15,7 @@ import type {
   DatabaseType
 } from '../types/SelectedTable';
 import { normalizeSelectedTable } from '../utils/tableUtils';
+import type { JoinWorkspaceSnapshot } from '@/Query/JoinQuery/joinWorkspaceSnapshot';
 
 /**
  * 查询工作台状态管理 Hook
@@ -73,6 +74,11 @@ export interface QueryResult {
   previewLimitApplied?: number | null;
 }
 
+export interface JoinRestoreRequest {
+  token: number;
+  snapshot: JoinWorkspaceSnapshot;
+}
+
 export interface UseQueryWorkspaceReturn {
   /** 每个 Tab 的选中表（使用 SelectedTable 对象） */
   selectedTables: Record<string, SelectedTable[]>;
@@ -107,6 +113,11 @@ export interface UseQueryWorkspaceReturn {
   isCancelling: boolean;
   /** 查询是否已被取消 */
   isCancelled: boolean;
+  /** 待恢复的 JOIN 工作台快照（由 QueryTabs / JoinQueryPanel 消费） */
+  joinRestoreRequest: JoinRestoreRequest | null;
+  /** 从收藏/历史恢复 JOIN 工作台（表列表 + 内部状态） */
+  restoreJoinWorkspace: (snapshot: JoinWorkspaceSnapshot) => void;
+  clearJoinRestoreRequest: () => void;
 }
 
 /**
@@ -142,6 +153,8 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   // 当前查询模式
   const [currentTab, setCurrentTab] = useState<string>("sql");
+
+  const [joinRestoreRequest, setJoinRestoreRequest] = useState<JoinRestoreRequest | null>(null);
 
   // 查询结果
   const [queryResults, setQueryResults] = useState<QueryResult | null>(null);
@@ -263,6 +276,19 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     },
     [currentTab]
   );
+
+  const restoreJoinWorkspace = useCallback((snapshot: JoinWorkspaceSnapshot) => {
+    setSelectedTables((prev) => ({
+      ...prev,
+      join: snapshot.tables,
+    }));
+    setJoinRestoreRequest({ token: Date.now(), snapshot });
+    setCurrentTab('join');
+  }, []);
+
+  const clearJoinRestoreRequest = useCallback(() => {
+    setJoinRestoreRequest(null);
+  }, []);
 
   // Tab 切换处理
   const handleTabChange = useCallback((tab: string) => {
@@ -446,6 +472,9 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     cancelQuery,
     isCancelling,
     isCancelled,
+    joinRestoreRequest,
+    restoreJoinWorkspace,
+    clearJoinRestoreRequest,
   };
 };
 

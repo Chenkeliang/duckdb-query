@@ -171,9 +171,10 @@
   right: 0;
   top: 0;
   bottom: 0;
-  width: 4px;
+  width: 8px;
   cursor: col-resize;
   background: transparent;
+  z-index: 1;
 }
 
 .dq-data-grid-resize-handle:hover,

@@ -14,6 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useSavedQueries, SavedQuery } from '../hooks/useSavedQueries';
+import { extractJoinWorkspaceFromSql } from '@/Query/JoinQuery/joinWorkspaceSnapshot';
 
 export interface SavedQueriesPanelProps {
     open: boolean;
@@ -89,7 +90,11 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
 
     // Helper to localize SQL comments
     const formatSqlPreview = (sql: string) => {
-        return sql.replace(/-- 联邦查询:/g, `-- ${t('query.sql.federatedQuery', '联邦查询')}:`);
+        const { sql: withoutWorkspace } = extractJoinWorkspaceFromSql(sql);
+        return withoutWorkspace.replace(
+            /-- 联邦查询:/g,
+            `-- ${t('query.sql.federatedQuery', '联邦查询')}:`
+        );
     };
 
     const handleLoad = async (item: SavedQuery) => {

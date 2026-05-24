@@ -25,3 +25,16 @@
 |------|------|
 | [`lint-rules/README.md`](lint-rules/README.md) | → 根目录 `lint-rules/` |
 | [`assets/`](assets/) | README / OG 图 |
+
+### Docker 一键启动
+
+```bash
+./quick-start.sh
+```
+
+| 服务 | 地址 |
+|------|------|
+| 前端 | http://localhost:3000 |
+| API 文档 | http://localhost:8001/docs |
+
+数据目录为宿主机 `./data`（重建容器不会删除已导入表）。国内网络见根目录 [README](../README_zh.md) 中 Docker 镜像说明。

@@ -14,7 +14,7 @@ import { useSQLEditor } from './hooks/useSQLEditor';
 import { useDuckDBTables } from '@/hooks/useDuckDBTables';
 import { useSchemaTables } from '@/hooks/useSchemaTables';
 import { useAppConfig } from '@/hooks/useAppConfig';
-import { useTableColumns } from '@/hooks/useTableColumns';
+import { useSqlColumnAutocomplete } from '@/hooks/useSqlColumnAutocomplete';
 import { useFederatedQueryDetection } from '@/hooks/useFederatedQueryDetection';
 import { useEnhancedAutocomplete } from '@/hooks/useEnhancedAutocomplete';
 import { useGlobalHistory } from '@/Query/hooks/useGlobalHistory';
@@ -27,11 +27,11 @@ import { SaveQueryDialog } from '@/Query/Bookmarks/SaveQueryDialog';
 import { cn } from '@/lib/utils';
 import type { TableSource } from '@/hooks/useQueryWorkspace';
 import type { SelectedTable } from '@/types/SelectedTable';
-import { normalizeSelectedTable } from '@/utils/tableUtils';
+import { getTableName, normalizeSelectedTable } from '@/utils/tableUtils';
 import {
-  generateDatabaseAlias,
   generateExternalTableReference,
   getSourceFromSelectedTable,
+  parseSQLTableReferences,
 } from '@/utils/sqlUtils';
 
 export interface SQLQueryPanelProps {
@@ -202,48 +202,24 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     enhancedTableNames,
   ]);
 
-  // 获取当前选中表的列信息 - 使用统一的 useTableColumns Hook
-  // 支持 DuckDB 表和外部表
-  const tableForColumns = useMemo(() => {
-    if (selectedTables.length === 0) return null;
-    return selectedTables[0]; // 使用第一个选中的表
-  }, [selectedTables]);
+  // 按左侧选中表 + SQL 中 FROM/JOIN 解析出的表拉取列，供 CodeMirror schema 与列前缀补全
+  const duckdbTableNameList = useMemo(
+    () => duckdbTables.map((t) => t.name),
+    [duckdbTables]
+  );
+  const { columnMap: autocompleteColumns, flatColumnNames } = useSqlColumnAutocomplete({
+    sql,
+    selectedTables,
+    duckdbTableNames: duckdbTableNameList,
+  });
 
-  const { columns: tableColumns } = useTableColumns(tableForColumns);
-
-  // 构建列信息映射（表名 -> 列名列表）
-  // CodeMirror 用 schema 的 key 匹配表引用：外部/联邦下常为 alias.schema.table，仅填短表名会导致列无法提示
-  const autocompleteColumns = useMemo(() => {
-    const columnMap: Record<string, string[]> = {};
-
-    if (!tableColumns?.length || selectedTables.length === 0) {
-      return columnMap;
+  const completionDefaultTable = useMemo(() => {
+    if (selectedTables.length > 0) {
+      return getTableName(selectedTables[0]);
     }
-
-    const names = tableColumns.map((col) => col.name).filter(Boolean);
-    if (names.length === 0) {
-      return columnMap;
-    }
-
-    const norm = normalizeSelectedTable(selectedTables[0]);
-    const register = (key: string | null | undefined) => {
-      if (key) {
-        columnMap[key] = names;
-      }
-    };
-
-    register(norm.name);
-
-    if (norm.source === 'external' && norm.connection) {
-      const alias = generateDatabaseAlias(norm.connection);
-      if (norm.schema) {
-        register(`${alias}.${norm.schema}.${norm.name}`);
-      }
-      register(`${alias}.${norm.name}`);
-    }
-
-    return columnMap;
-  }, [tableColumns, selectedTables]);
+    const refs = parseSQLTableReferences(sql);
+    return refs[0]?.tableName;
+  }, [sql, selectedTables]);
 
   // 计算当前选中表的唯一标识（用于检测表变化）
   const currentTableKey = useMemo(() => {
@@ -489,6 +465,8 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
           maxHeight={editorMaxHeight}
           tables={autocompleteTables}
           columns={autocompleteColumns}
+          columnNameHints={flatColumnNames}
+          defaultTable={completionDefaultTable}
           autoFocus
         />
       </div>

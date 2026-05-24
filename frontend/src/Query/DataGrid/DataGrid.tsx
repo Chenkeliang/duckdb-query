@@ -36,6 +36,7 @@ import {
 } from './components';
 import type { CellSelection, CellPosition, ColumnDef, CopyFormat, SelectionRange } from './types';
 import { DATAGRID_CONFIG, getGridCellStyle, smartSampleColumn } from './types';
+import { blockHeaderSortBriefly } from './columnResizeSortGuard';
 
 export interface DataGridProps {
   /** 行数据 */
@@ -336,6 +337,7 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      blockHeaderSortBriefly();
     };
 
     document.addEventListener('mousemove', handleMouseMove);

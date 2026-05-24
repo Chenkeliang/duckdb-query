@@ -208,7 +208,7 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     onValuesChange,
     isLoading,
 }) => {
-    const { t } = useTranslation(["pivot", "common"]);
+    const { t } = useTranslation("common");
     const [activeId, setActiveId] = React.useState<string | null>(null);
     const [activeData, setActiveData] = React.useState<any>(null);
 
@@ -297,15 +297,15 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                 {/* Field Palette */}
                 <div className="bg-muted/30 border border-border rounded-lg p-3">
                     <div className="text-xs font-medium text-muted-foreground mb-2">
-                        {t("common:query.pivot.availableFields", "可用字段")}
+                        {t("query.pivot.availableFields", "可用字段")}
                     </div>
                     <div className="flex flex-wrap gap-1.5 min-h-[32px]">
                         {isLoading ? (
-                            <span className="text-xs text-muted-foreground">{t("common:common.loading", "加载中...")}</span>
+                            <span className="text-xs text-muted-foreground">{t("common.loading", "加载中...")}</span>
                         ) : paletteFields.length === 0 && availableFields.length > 0 ? (
-                            <span className="text-xs text-muted-foreground">{t("common:query.pivot.allFieldsConfigured", "所有字段已配置")}</span>
+                            <span className="text-xs text-muted-foreground">{t("query.pivot.allFieldsConfigured", "所有字段已配置")}</span>
                         ) : paletteFields.length === 0 ? (
-                            <span className="text-xs text-muted-foreground">{t("common:query.pivot.selectTableHint", "请先选择数据表")}</span>
+                            <span className="text-xs text-muted-foreground">{t("query.pivot.selectTableHint", "请先选择数据表")}</span>
                         ) : (
                             paletteFields.map(f => <DraggableField key={f.name} field={f.name} type={f.type} />)
                         )}
@@ -317,9 +317,9 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                     {/* Rows Zone */}
                     <DropZone
                         id="zone-rows"
-                        title={t("common:query.pivot.rows", "行字段")}
+                        title={t("query.pivot.rows", "行字段")}
                         icon={<Rows3 className="h-3.5 w-3.5" />}
-                        placeholder={t("common:query.pivot.dropRowHint", "拖入行分组字段")}
+                        placeholder={t("query.pivot.dropRowHint", "拖入行分组字段")}
                     >
                         {rows.map(r => (
                             <ConfiguredField
@@ -335,10 +335,10 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                     {/* Columns Zone */}
                     <DropZone
                         id="zone-columns"
-                        title={t("common:query.pivot.columns", "透视列")}
+                        title={t("query.pivot.columns", "透视列")}
                         icon={<Columns3 className="h-3.5 w-3.5" />}
-                        placeholder={t("common:query.pivot.dropColumnHint", "拖入透视列字段")}
-                        badge={t("common:query.pivot.maxOne", "限1个")}
+                        placeholder={t("query.pivot.dropColumnHint", "拖入透视列字段")}
+                        badge={t("query.pivot.maxOne", "限1个")}
                     >
                         {columns.map(c => (
                             <ConfiguredField
@@ -354,9 +354,9 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                     {/* Values Zone */}
                     <DropZone
                         id="zone-values"
-                        title={t("common:query.pivot.values", "聚合值")}
+                        title={t("query.pivot.values", "聚合值")}
                         icon={<Calculator className="h-3.5 w-3.5" />}
-                        placeholder={t("common:query.pivot.dropValueHint", "拖入聚合值字段")}
+                        placeholder={t("query.pivot.dropValueHint", "拖入聚合值字段")}
                     >
                         {values.map((v, i) => (
                             <ConfiguredField
@@ -380,10 +380,10 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                 {hasConfig && (
                     <div className="border border-border rounded-lg overflow-hidden">
                         <div className="bg-muted/30 px-3 py-2 border-b border-border text-xs font-medium text-muted-foreground flex items-center justify-between">
-                            <span>{t("common:query.pivot.tablePreview", "表格结构预览")}</span>
+                            <span>{t("query.pivot.tablePreview", "表格结构预览")}</span>
                             {columns.length > 0 && values.length > 0 && (
                                 <span className="text-xs text-purple-500">
-                                    {t("common:query.pivot.pivotMode", "透视模式")}: [{columns[0]}] → {values.map(v => `${v.aggregation}(${v.column})`).join(", ")}
+                                    {t("query.pivot.pivotMode", "透视模式")}: [{columns[0]}] → {values.map(v => `${v.aggregation}(${v.column})`).join(", ")}
                                 </span>
                             )}
                         </div>
@@ -397,13 +397,13 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                                 className="border-b border-r border-border px-3 py-1.5 text-left text-xs text-muted-foreground"
                                                 colSpan={rows.length || 1}
                                             >
-                                                {t("common:query.pivot.rowDimension", "行维度")}
+                                                {t("query.pivot.rowDimension", "行维度")}
                                             </th>
                                             <th
                                                 className="border-b border-border px-3 py-1.5 text-center text-xs text-purple-600 dark:text-purple-400"
                                                 colSpan={3}
                                             >
-                                                ← {t("common:query.pivot.pivotColumnValues", "透视列")}: <strong>{columns[0]}</strong> {t("common:query.pivot.uniqueValues", "的唯一值")} →
+                                                ← {t("query.pivot.pivotColumnValues", "透视列")}: <strong>{columns[0]}</strong> {t("query.pivot.uniqueValues", "的唯一值")} →
                                             </th>
                                         </tr>
                                     )}
@@ -416,7 +416,7 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                             </th>
                                         )) : (
                                             <th className="border-b border-r border-border px-3 py-2 text-left text-muted-foreground italic">
-                                                ({t("common:query.pivot.noRows", "无行字段")})
+                                                ({t("query.pivot.noRows", "无行字段")})
                                             </th>
                                         )}
                                         {/* Column headers */}
@@ -444,7 +444,7 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                             ))
                                         ) : (
                                             <th className="border-b border-border px-3 py-2 text-center text-muted-foreground italic">
-                                                ({t("common:query.pivot.noValues", "无聚合值")})
+                                                ({t("query.pivot.noValues", "无聚合值")})
                                             </th>
                                         )}
                                     </tr>
@@ -500,8 +500,8 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                         </div>
                         <div className="bg-muted/20 px-3 py-1.5 border-t border-border text-xs text-muted-foreground">
                             {columns.length > 0
-                                ? t("common:query.pivot.previewHintPivot", "透视表预览：[透视列]的每个唯一值将成为单独的列")
-                                : t("common:query.pivot.previewHint", "聚合查询预览：按行字段分组后计算聚合值")}
+                                ? t("query.pivot.previewHintPivot", "透视表预览：[透视列]的每个唯一值将成为单独的列")
+                                : t("query.pivot.previewHint", "聚合查询预览：按行字段分组后计算聚合值")}
                         </div>
                     </div>
                 )}

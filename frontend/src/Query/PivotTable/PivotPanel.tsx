@@ -54,7 +54,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     onExecute,
     onDisplayPreview,
 }) => {
-    const { t } = useTranslation(["pivot", "common"]);
+    const { t } = useTranslation("common");
     const { maxQueryRows } = useAppConfig();
 
     const selectedTable = selectedTables.length > 0 ? selectedTables[0] : null;
@@ -245,7 +245,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                 tableSource
             );
         } catch (err) {
-            showErrorToast(t, err as Error, t("common:query.pivot.previewFailed", "透视预览失败"));
+            showErrorToast(t, err as Error, t("query.previewFailed", "预览失败"));
         } finally {
             setIsPreviewing(false);
         }
@@ -276,8 +276,8 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                             >
                                 <Eye className="w-3.5 h-3.5" />
                                 {isPreviewing
-                                    ? t("common:query.pivot.previewing", "预览中…")
-                                    : t("common:query.pivot.preview", "预览")}
+                                    ? t("query.pivot.previewing", "预览中…")
+                                    : t("query.pivot.preview", "预览")}
                             </Button>
                         ) : null}
                         <Button
@@ -288,7 +288,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                             className="gap-1.5"
                         >
                             <Play className="w-3.5 h-3.5 fill-current" />
-                            {t("common:query.execute", "执行")}
+                            {t("query.execute", "执行")}
                         </Button>
 
                         <TooltipProvider>
@@ -300,16 +300,16 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                                         onClick={() => setAsyncDialogOpen(true)}
                                         disabled={!canRun || isExecuting}
                                         className="gap-1.5"
-                                        aria-label={t("common:query.sql.asyncExecute", "异步执行")}
+                                        aria-label={t("query.sql.asyncExecute", "异步执行")}
                                     >
                                         <Timer className="w-3.5 h-3.5" />
                                         <span className="hidden sm:inline">
-                                            {t("common:query.sql.asyncExecute", "异步执行")}
+                                            {t("query.sql.asyncExecute", "异步执行")}
                                         </span>
                                     </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    <p>{t("common:query.sql.asyncExecuteHint", "后台执行，结果保存到表")}</p>
+                                    <p>{t("query.sql.asyncExecuteHint", "后台执行，结果保存到表")}</p>
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
@@ -324,7 +324,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                             className="text-muted-foreground hover:text-foreground gap-1.5"
                         >
                             <Trash2 className="w-3.5 h-3.5" />
-                            {t("common:common.clear", "清空")}
+                            {t("common.clear", "清空")}
                         </Button>
                     </div>
                 </div>
@@ -332,7 +332,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                 <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background/50 text-xs text-muted-foreground">
                         <Table2 className="w-3.5 h-3.5" />
-                        <span>{t("common:query.pivot.title", "透视表")}</span>
+                        <span>{t("query.pivot.title", "透视表")}</span>
                         {selectedTable && <span className="ml-1">· {tableName}</span>}
                     </div>
                 </div>
@@ -360,10 +360,10 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                 {sql && (
                     <div className="bg-muted/30 border border-border rounded-xl p-4">
                         <h3 className="text-sm font-semibold mb-3">
-                            {t("common:query.sqlPreview", "SQL 预览")}
+                            {t("query.sqlPreview", "SQL 预览")}
                             {isGeneratingSql ? (
                                 <span className="text-muted-foreground font-normal ml-2">
-                                    {t("common:query.generating", "生成中…")}
+                                    {t("query.generating", "生成中…")}
                                 </span>
                             ) : null}
                         </h3>

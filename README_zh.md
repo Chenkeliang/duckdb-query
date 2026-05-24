@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Python-3.12+-3776AB.svg?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black" alt="React">
   <img src="https://img.shields.io/badge/DuckDB-Powered-FFBF00.svg?logo=duckdb&logoColor=white" alt="DuckDB">
 </p>
@@ -97,9 +97,9 @@ git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && 
 ### Docker 启动（推荐）
 
 ```bash
+git clone https://github.com/Chenkeliang/duckdb-query.git
+cd duckdb-query
 ./quick-start.sh
-# 或手动执行：
-docker-compose up -d --build
 ```
 
 | 服务 | 地址 |
@@ -107,15 +107,33 @@ docker-compose up -d --build
 | 前端界面 | http://localhost:3000 |
 | API 文档 | http://localhost:8001/docs |
 
+**数据位置**：表与连接配置在宿主机 **`./data`**（Docker 卷绑定）。`./quick-start.sh` 重建容器时**不会**删除 `./data`；日志里的 `Removed` 一般指旧容器被替换，不是删库。
+
+**国内拉取镜像超时**（`node:24-alpine` 连接 docker.io 失败时）：
+
+- 脚本默认使用 DaoCloud 镜像；首次运行会自动从 `.env.docker.cn.example` 生成 `.env`。
+- 也可手动：`cp .env.docker.cn.example .env` 后执行 `docker compose up -d --build`。
+- 能稳定访问 Docker Hub 时：`USE_DOCKER_HUB=1 ./quick-start.sh`。
+
+**仅重建前端**（保留 `./data`）：
+
+```bash
+docker compose up -d --build frontend
+```
+
+**完全停止服务**（仍保留 `./data`）：`docker compose down`（请勿随意使用 `down -v`）。
+
 ### 本地开发
 
 ```bash
-# 后端
+# 后端（默认 http://localhost:8000 ，文档 /docs）
 cd api && pip install -r requirements.txt && uvicorn main:app --reload
 
-# 前端
+# 前端（默认 http://localhost:5173 ，/api 由 Vite 代理到后端）
 cd frontend && npm install && npm run dev
 ```
+
+本地查询走 `POST /api/duckdb/execute`（本地表）与 `POST /api/duckdb/federated-query`（外部库 ATTACH），勿使用旧版 `POST /api/execute_sql`。端点清单见 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)，执行流程见 [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md)。
 
 ---
 
@@ -127,9 +145,9 @@ DuckQuery 开箱即用。如需高级配置，编辑 `config/app-config.json`：
 |--------|--------|------|
 | `duckdb_memory_limit` | `8GB` | DuckDB 最大内存 |
 | `server_data_mounts` | `[]` | 挂载宿主机目录用于直接读取文件 |
-| `cors_origins` | `[localhost:3000]` | 允许的前端访问源 |
+| `cors_origins` | `3000`、`5173` | 允许的前端访问源 |
 
-👉 **[完整配置参考 →](docs/configuration_zh.md)**
+👉 **[完整配置参考 →](docs/CONFIGURATION_ZH.md)**
 
 ---
 
@@ -199,6 +217,12 @@ cd frontend && npm run dev -- --port 3000
 ```json
 "cors_origins": ["http://localhost:3000", "http://localhost:5173", "http://localhost:你的端口"]
 ```
+</details>
+
+<details>
+<summary><b>Docker 重新部署会删掉我的表吗？</b></summary>
+
+不会。DuckDB 文件在宿主机 **`./data`**，`docker compose up -d --build` 只替换容器。`docker compose down` 停止容器，也**不删** `./data`。请勿对生产数据执行 `docker compose down -v`（若将来引入命名卷）。WAL 异常时可参考 `./scripts/repair-duckdb-wal.sh`。
 </details>
 
 ---

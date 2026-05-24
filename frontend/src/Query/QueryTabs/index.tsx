@@ -14,7 +14,14 @@ import { SavedQueriesPanel } from "../Bookmarks/SavedQueriesPanel";
 import { useGlobalHistory } from "../hooks/useGlobalHistory";
 import { useSavedQueries } from "../hooks/useSavedQueries";
 import type { SelectedTable } from "@/types/SelectedTable";
-import type { TableSource, UseQueryWorkspaceReturn } from "@/hooks/useQueryWorkspace";
+import type {
+  JoinRestoreRequest,
+  TableSource,
+  UseQueryWorkspaceReturn,
+} from "@/hooks/useQueryWorkspace";
+import type { JoinWorkspacePersistence } from "@/Query/JoinQuery/joinWorkspaceSnapshot";
+import { extractJoinWorkspaceFromSql } from "@/Query/JoinQuery/joinWorkspaceSnapshot";
+import type { GlobalHistoryItem } from "../hooks/useGlobalHistory";
 import {
   generateDatabaseAlias,
   parseSQLTableReferences,
@@ -62,6 +69,9 @@ interface QueryTabsProps {
   isCancelling?: boolean;
   /** 预览 SQL（来自异步任务等） */
   previewSQL?: string;
+  joinRestoreRequest?: JoinRestoreRequest | null;
+  restoreJoinWorkspace?: (snapshot: JoinRestoreRequest['snapshot']) => void;
+  onClearJoinRestoreRequest?: () => void;
 }
 
 // 注意：不再使用 wrapExecute，直接传递 onExecute 以保留 source 参数
@@ -77,7 +87,11 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
   onCancel,
   isCancelling,
   previewSQL: externalPreviewSQL,
+  joinRestoreRequest,
+  restoreJoinWorkspace,
+  onClearJoinRestoreRequest,
 }) => {
+  const joinPersistenceRef = React.useRef<JoinWorkspacePersistence | null>(null);
   const { t } = useTranslation('common');
 
   // 全局功能状态
@@ -98,15 +112,35 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
 
   // ... (createWrappedExecute and handleJoinExecute definitions skipped for brevity, they are unchanged)
 
-  const handleLoadSQL = async (sql: string, _type: string = 'sql') => {
+  const handleLoadSQL = async (
+    sql: string,
+    type: string = 'sql',
+    options?: { joinSnapshot?: GlobalHistoryItem['joinSnapshot'] }
+  ) => {
+    if (type === 'join' && options?.joinSnapshot && restoreJoinWorkspace) {
+      restoreJoinWorkspace(options.joinSnapshot);
+      setHistoryOpen(false);
+      setBookmarksOpen(false);
+      return;
+    }
+
+    const { sql: sqlBody, snapshot } = extractJoinWorkspaceFromSql(sql);
+
+    if (type === 'join' && snapshot && restoreJoinWorkspace) {
+      restoreJoinWorkspace(snapshot);
+      setHistoryOpen(false);
+      setBookmarksOpen(false);
+      return;
+    }
+
     onTabChange('sql');
-    setLoadedSqlPreview(sql);
-    setPreviewDialogSql(sql);
+    setLoadedSqlPreview(sqlBody);
+    setPreviewDialogSql(sqlBody);
 
     // 1. 尝试解析 SQL 中的联邦查询注释 (优先级最高, 因为它明确指出了意图)
     // 格式: -- 联邦查询: db1, db2
     let attachDatabases: { alias: string; connectionId: string }[] = [];
-    const federatedMatch = sql.match(/-- 联邦查询: (.+)/);
+    const federatedMatch = sqlBody.match(/-- 联邦查询: (.+)/);
 
     if (federatedMatch) {
       const dbAliases = federatedMatch[1].split(',').map(s => s.trim());
@@ -124,7 +158,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
     if (attachDatabases.length === 0) {
       // 使用已导入的 parser (sqlUtils)
       try {
-        const parsedRefs = parseSQLTableReferences(sql);
+        const parsedRefs = parseSQLTableReferences(sqlBody);
         const autoDetected = buildAttachDatabasesFromParsedRefs(parsedRefs, connections);
         attachDatabases = autoDetected.attachDatabases;
       } catch (e) {
@@ -165,18 +199,22 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
       async (sql: string, source?: TableSource) => {
         if (!onExecute) return;
         const startTime = Date.now();
+        const joinSnapshot =
+          type === 'join' ? joinPersistenceRef.current?.getSnapshot() : undefined;
         try {
           await onExecute(sql, source);
           addToHistory({
             type,
             sql,
             executionTime: Date.now() - startTime,
+            ...(joinSnapshot ? { joinSnapshot } : {}),
           });
         } catch (err) {
           addToHistory({
             type,
             sql,
             error: (err as Error)?.message || String(err),
+            ...(joinSnapshot ? { joinSnapshot } : {}),
           });
           throw err; // 重新抛出，让 Panel 处理错误 UI
         }
@@ -232,7 +270,9 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
         history={history}
         onDelete={deleteHistoryItem}
         onClear={clearHistory}
-        onLoad={(item) => handleLoadSQL(item.sql)}
+        onLoad={(item: GlobalHistoryItem) =>
+          handleLoadSQL(item.sql, item.type, { joinSnapshot: item.joinSnapshot })
+        }
       />
 
       <SavedQueriesPanel
@@ -303,6 +343,9 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
               onRemoveTable={onRemoveTable}
               onCancel={onCancel}
               isCancelling={isCancelling}
+              persistenceRef={joinPersistenceRef}
+              joinRestoreRequest={joinRestoreRequest}
+              onClearJoinRestoreRequest={onClearJoinRestoreRequest}
             />
           </KeepAliveTabContent>
 

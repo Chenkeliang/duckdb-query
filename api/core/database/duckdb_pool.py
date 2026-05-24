@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 # getting应用configuration
 from core.common.config_manager import config_manager
+from core.database.duckdb_recovery import try_recover_database_after_wal_error
 
 
 class ConnectionState(Enum):
@@ -75,6 +76,20 @@ class DuckDBConnectionPool:
         for _ in range(self.min_connections):
             self._create_connection()
 
+    def _connect_duckdb(self, db_path: str):
+        """打开 DuckDB；WAL 损坏时尝试隔离 .wal 后重试一次。"""
+        paths = config_manager.get_duckdb_paths()
+        try:
+            return duckdb.connect(database=db_path)
+        except Exception as first_error:
+            msg = str(first_error)
+            if try_recover_database_after_wal_error(paths.database_path, msg):
+                logger.warning(
+                    "Retrying DuckDB connect after WAL quarantine: %s", db_path
+                )
+                return duckdb.connect(database=db_path)
+            raise
+
     def _create_connection(self) -> Optional[int]:
         """creating新connection"""
         try:
@@ -86,7 +101,7 @@ class DuckDBConnectionPool:
             temp_dir = str(paths.temp_dir)
 
             # creatingconnection
-            connection = duckdb.connect(database=db_path)
+            connection = self._connect_duckdb(db_path)
 
             # 应用优化设置
             self._configure_connection(connection, app_config, temp_dir)
@@ -479,7 +494,19 @@ class SystemDBConnection:
                 paths = config_manager.get_duckdb_paths()
                 db_path = str(paths.system_database_path)
                 logger.info(f"Creating system database connection: {db_path}")
-                self._connection = duckdb.connect(database=db_path)
+                try:
+                    self._connection = duckdb.connect(database=db_path)
+                except Exception as first_error:
+                    if try_recover_database_after_wal_error(
+                        paths.system_database_path, str(first_error)
+                    ):
+                        logger.warning(
+                            "Retrying system DB connect after WAL quarantine: %s",
+                            db_path,
+                        )
+                        self._connection = duckdb.connect(database=db_path)
+                    else:
+                        raise
                 # 应用基本configuration
                 app_config = config_manager.get_app_config()
                 if app_config.duckdb_memory_limit:

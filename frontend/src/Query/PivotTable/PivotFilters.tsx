@@ -18,15 +18,15 @@ import {
 import type { FilterConfig } from "@/types/pivotQuery";
 
 const OPERATORS = [
-    { value: "=", labelKey: "filter.operator.equals" },
-    { value: "!=", labelKey: "filter.operator.notEquals" },
-    { value: ">", labelKey: "filter.operator.greaterThan" },
-    { value: ">=", labelKey: "filter.operator.greaterThanOrEqual" },
-    { value: "<", labelKey: "filter.operator.lessThan" },
-    { value: "<=", labelKey: "filter.operator.lessThanOrEqual" },
-    { value: "LIKE", labelKey: "filter.operator.like" },
-    { value: "IS NULL", labelKey: "filter.operator.isNull" },
-    { value: "IS NOT NULL", labelKey: "filter.operator.isNotNull" },
+    { value: "=", labelKey: "query.filter.operators.eq" },
+    { value: "!=", labelKey: "query.filter.operators.neq" },
+    { value: ">", labelKey: "query.filter.operators.gt" },
+    { value: ">=", labelKey: "query.filter.operators.gte" },
+    { value: "<", labelKey: "query.filter.operators.lt" },
+    { value: "<=", labelKey: "query.filter.operators.lte" },
+    { value: "LIKE", labelKey: "query.filter.operators.like" },
+    { value: "IS NULL", labelKey: "query.filter.operators.isNull" },
+    { value: "IS NOT NULL", labelKey: "query.filter.operators.isNotNull" },
 ] as const;
 
 export interface PivotFilterRow {
@@ -190,7 +190,7 @@ export const PivotFilters: React.FC<PivotFiltersProps> = ({
                                     className="h-8 w-8 shrink-0"
                                     onClick={() => removeRow(row.id)}
                                     disabled={disabled}
-                                    aria-label={t("actions.remove", "删除")}
+                                    aria-label={t("query.filter.action.remove", "删除")}
                                 >
                                     <X className="h-4 w-4" />
                                 </Button>
