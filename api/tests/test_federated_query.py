@@ -57,7 +57,7 @@ class TestFederatedQueryRequestModel:
         with pytest.raises(ValidationError) as exc_info:
             FederatedQueryRequest(sql="")
         
-        assert "SQL 查询语句不能为空" in str(exc_info.value)
+        assert "SQL query cannot be empty" in str(exc_info.value)
 
     def test_whitespace_only_sql_raises_validation_error(self):
         """测试只有空白字符的 SQL 抛出验证错误"""
@@ -66,7 +66,7 @@ class TestFederatedQueryRequestModel:
         with pytest.raises(ValidationError) as exc_info:
             FederatedQueryRequest(sql="   ")
         
-        assert "SQL 查询语句不能为空" in str(exc_info.value)
+        assert "SQL query cannot be empty" in str(exc_info.value)
 
     def test_sql_is_trimmed(self):
         """测试 SQL 被自动去除首尾空白"""
@@ -132,7 +132,7 @@ class TestFederatedQueryResponseModel:
         assert response.row_count == 1
         assert response.execution_time_ms == 100.5
         assert response.attached_databases == ["db1"]
-        assert response.message == "查询成功"
+        assert response.message == "Query successful"
 
     def test_default_values(self):
         """测试默认值"""

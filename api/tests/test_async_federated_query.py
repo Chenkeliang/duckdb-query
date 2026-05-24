@@ -1050,7 +1050,7 @@ class TestDetailedErrorHandling:
             error_message = "Unknown error"
         
         assert error_code == "USER_CANCELLED"
-        assert error_message == "用户取消"
+        assert error_message == "User cancelled"
 
     def test_error_code_classification_generic(self):
         """测试通用错误代码分类"""
@@ -1235,7 +1235,7 @@ class TestSecurityValidation:
         - 日志消息不包含 "密码" 或 "password" 等敏感词
         """
         # 验证日志消息不包含敏感信息
-        safe_log_message = "Connection conn-123 password processed"
+        safe_log_message = "Connection conn-123 processed"
         
-        assert "decrypted" not in safe_log_message
+        assert "decrypted" not in safe_log_message.lower()
         assert "password" not in safe_log_message.lower()

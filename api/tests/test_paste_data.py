@@ -39,14 +39,15 @@ def test_paste_data_creates_typed_table():
     }
 
     response = client.post("/api/paste-data", json=payload)
-    data = response.json()
+    body = response.json()
+    result = body["data"]
 
     try:
         assert response.status_code == 200
-        assert data["success"] is True
-        assert data["table_name"] == table_name
-        assert data["rows_saved"] == 1
-        assert data["createdAt"] == data["created_at"]
+        assert body["success"] is True
+        assert result["table_name"] == table_name
+        assert result["rows_saved"] == 1
+        assert result["createdAt"] == result["created_at"]
 
         with with_duckdb_connection() as con:
             pragma_rows = con.execute(
@@ -94,11 +95,11 @@ def test_paste_data_defaults_for_empty_cells():
     }
 
     response = client.post("/api/paste-data", json=payload)
-    data = response.json()
+    body = response.json()
 
     try:
         assert response.status_code == 200
-        assert data["rows_saved"] == 1
+        assert body["data"]["rows_saved"] == 1
 
         with with_duckdb_connection() as con:
             stored_row = con.execute(f'SELECT * FROM "{table_name}"').fetchone()
