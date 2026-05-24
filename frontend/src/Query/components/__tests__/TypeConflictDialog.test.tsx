@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TypeConflictDialog } from '../TypeConflictDialog';
 import type { TypeConflict } from '@/hooks/useTypeConflict';
 
@@ -218,13 +218,15 @@ describe('TypeConflictDialog', () => {
   });
 
   describe('SQL preview', () => {
-    it('should display SQL preview when provided', () => {
+    it('should display SQL preview when provided', async () => {
       const sqlPreview = 'SELECT * FROM orders JOIN users ON TRY_CAST(orders.id AS VARCHAR) = TRY_CAST(users.order_id AS VARCHAR)';
       
       render(<TypeConflictDialog {...defaultProps} sqlPreview={sqlPreview} />);
       
       expect(screen.getByText('SQL 预览')).toBeInTheDocument();
-      expect(screen.getByText(sqlPreview)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId('type-conflict-sql-preview')).toHaveTextContent(sqlPreview);
+      });
     });
 
     it('should not display SQL preview when not provided', () => {

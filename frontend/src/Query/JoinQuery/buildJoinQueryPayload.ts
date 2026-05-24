@@ -18,7 +18,10 @@ import {
     generateFilterSQL,
     type FilterGroup,
 } from './FilterBar';
-import { buildJoinTableAliasMap } from './joinTableAliasUtils';
+import {
+    buildJoinTableAliasMap,
+    collectDuplicateAliases,
+} from './joinTableAliasUtils';
 
 export type JoinPanelJoinType =
     | 'INNER JOIN'
@@ -84,8 +87,7 @@ export function canUseServerJoinPath(
         return false;
     }
     const tableNames = activeTables.map(getTableName);
-    const aliasMap = buildJoinTableAliasMap(tableNames, tableAliasOverrides);
-    if (tableNames.some((name) => (aliasMap[name] ?? name) !== name)) {
+    if (collectDuplicateAliases(tableNames, tableAliasOverrides).length > 0) {
         return false;
     }
     if (hasWhereFilters(filterTree)) {

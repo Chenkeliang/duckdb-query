@@ -225,6 +225,7 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
               compact
               minHeight="4rem"
               maxHeight="8rem"
+              data-testid="type-conflict-sql-preview"
             />
           </div>
         )}

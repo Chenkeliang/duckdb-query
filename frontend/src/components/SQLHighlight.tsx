@@ -24,6 +24,7 @@ export interface SQLHighlightProps {
   compact?: boolean;
   /** 弹窗等大段预览：允许滚轮滚动（默认 false 以免挡住列表点击） */
   scrollable?: boolean;
+  'data-testid'?: string;
 }
 
 export const SQLHighlight: React.FC<SQLHighlightProps> = ({
@@ -33,6 +34,7 @@ export const SQLHighlight: React.FC<SQLHighlightProps> = ({
   maxHeight = '300px',
   compact = false,
   scrollable = false,
+  'data-testid': dataTestId,
 }) => {
   const layoutOptions = compact
     ? {
@@ -120,6 +122,7 @@ export const SQLHighlight: React.FC<SQLHighlightProps> = ({
   return (
     <div
       ref={containerRef}
+      data-testid={dataTestId}
       className={cn(
         'border border-border rounded-lg h-full',
         scrollable ? 'overflow-hidden pointer-events-auto' : 'overflow-hidden pointer-events-none',
