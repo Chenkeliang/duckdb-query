@@ -1,5 +1,5 @@
 # 开发环境 Dockerfile
-FROM docker.io/node:18-alpine
+FROM docker.io/node:22-alpine
 
 # 设置工作目录
 WORKDIR /app

@@ -420,7 +420,7 @@ async def list_database_datasources(
         logger.info(f"List database datasources: total {len(datasources)}")
 
         # 转换为字典列表
-        items = [ds.dict() for ds in datasources]
+        items = [ds.model_dump() for ds in datasources]
 
         return create_list_response(
             items=items,
@@ -459,7 +459,7 @@ async def list_file_datasources(
         logger.info(f"List file datasources: total {len(datasources)}")
 
         # 转换为字典列表
-        items = [ds.dict() for ds in datasources]
+        items = [ds.model_dump() for ds in datasources]
 
         return create_list_response(
             items=items,
@@ -509,7 +509,7 @@ async def list_datasources(
         )
 
         # 转换为字典列表
-        items = [ds.dict() for ds in datasources]
+        items = [ds.model_dump() for ds in datasources]
 
         return create_list_response(
             items=items,
@@ -544,7 +544,7 @@ async def get_datasource(id: str):
         logger.info(f"Get datasource: {id}")
 
         return create_success_response(
-            data=datasource.dict(), message_code=MessageCode.DATASOURCE_RETRIEVED
+            data=datasource.model_dump(), message_code=MessageCode.DATASOURCE_RETRIEVED
         )
 
     except BaseAPIException:
