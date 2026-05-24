@@ -8,6 +8,7 @@ import { Settings } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { ShortcutSettings } from './shortcuts';
 import { CacheSettings } from './CacheSettings';
+import { QueryResultSettings } from './QueryResultSettings';
 
 export interface SettingsPageProps {
   // 可以添加 props
@@ -26,6 +27,9 @@ export function SettingsPage({}: SettingsPageProps) {
         <div className="max-w-4xl mx-auto space-y-6">
           {/* 快捷键设置 */}
           <ShortcutSettings />
+
+          {/* 查询结果 */}
+          <QueryResultSettings />
 
           {/* 缓存设置 */}
           <CacheSettings />

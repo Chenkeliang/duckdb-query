@@ -61,9 +61,6 @@ function formatExecutionTime(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-function formatNumber(num: number): string {
-  return new Intl.NumberFormat('zh-CN').format(num);
-}
 
 export const ResultToolbar: React.FC<ResultToolbarProps> = ({
   stats,
@@ -87,8 +84,12 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
   showImportButton = false,
   previewLimitApplied,
 }) => {
-  const { t } = useTranslation('common');
+  const { t, i18n } = useTranslation('common');
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
+  const formatNumber = React.useCallback(
+    (num: number) => new Intl.NumberFormat(i18n.language).format(num),
+    [i18n.language]
+  );
   const hiddenCount = gridColumns?.filter((c) => !c.visible).length || 0;
   const hasExport = !!(onExportCsv || onExportExcel || onExportJson);
 

@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { SQLHighlight } from '@/components/SQLHighlight';
 import type { SQLHistoryItem } from './hooks/useSQLEditor';
 
 export interface SQLHistoryProps {
@@ -78,17 +79,6 @@ function formatTimestamp(timestamp: number): string {
     month: 'short',
     day: 'numeric',
   });
-}
-
-/**
- * 截断 SQL 显示
- */
-function truncateSQL(sql: string, maxLength: number = 100): string {
-  const singleLine = sql.replace(/\s+/g, ' ').trim();
-  if (singleLine.length <= maxLength) {
-    return singleLine;
-  }
-  return singleLine.substring(0, maxLength) + '...';
 }
 
 /**
@@ -155,10 +145,13 @@ export const SQLHistory: React.FC<SQLHistoryProps> = ({
                     )}
                     onClick={() => onLoad(item.id)}
                   >
-                    {/* SQL 预览 */}
-                    <div className="font-mono text-sm text-foreground mb-2 line-clamp-2">
-                      {truncateSQL(item.sql)}
-                    </div>
+                    <SQLHighlight
+                      sql={item.sql}
+                      compact
+                      minHeight="2.75rem"
+                      maxHeight="5rem"
+                      className="mb-2 rounded-md border-border/60"
+                    />
 
                     {/* 元信息 */}
                     <div className="flex items-center justify-between text-xs text-muted-foreground">

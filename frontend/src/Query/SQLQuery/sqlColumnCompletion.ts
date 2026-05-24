@@ -1,4 +1,4 @@
-import { EditorState, type Extension } from '@codemirror/state';
+import { type Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import {
   autocompletion,
@@ -6,7 +6,7 @@ import {
   startCompletion,
   type Completion,
   type CompletionContext,
-  type CompletionResult,
+  type CompletionSource,
 } from '@codemirror/autocomplete';
 import {
   keywordCompletionSource,
@@ -32,12 +32,11 @@ function applyColumnName(name: string): string {
  */
 export function createColumnPrefixCompleter(
   getColumnNames: () => string[]
-): (context: CompletionContext) => CompletionResult | null {
+): CompletionSource {
   let cachedKey = '';
-  let cachedSource: ((context: CompletionContext) => CompletionResult | null) | null =
-    null;
+  let cachedSource: CompletionSource | null = null;
 
-  return (context: CompletionContext): CompletionResult | null => {
+  return (context: CompletionContext) => {
     const columns = getColumnNames();
     if (columns.length === 0) return null;
 
@@ -54,7 +53,8 @@ export function createColumnPrefixCompleter(
       cachedSource = completeFromList(completions);
     }
 
-    const result = cachedSource?.(context) ?? null;
+    const raw = cachedSource?.(context) ?? null;
+    const result = raw && !(raw instanceof Promise) ? raw : null;
     if (result) {
       const typed = context.state.sliceDoc(result.from, context.pos).replace(/^"/, '');
       if (typed.length > 0) {

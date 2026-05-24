@@ -212,9 +212,16 @@
       "selectedCount": "{{count}} columns selected"
     },
     "result": {
+      "tabLabel": "Result_{{n}}",
+      "defaultTitle": "Query result",
+      "closeTab": "Close",
+      "closeOthers": "Close others",
+      "closeToLeft": "Close to the left",
+      "closeToRight": "Close to the right",
       "noData": "No data",
       "noDataHint": "Execute a query to see results",
       "loading": "Loading...",
+      "refreshing": "Refreshing...",
       "error": "Query failed",
       "rowCount": "{{count}} rows",
       "execTime": "Execution time: {{time}}ms",
@@ -920,6 +927,16 @@
   "settings": {
     "title": "Settings",
     "comingSoon": "More settings features coming soon...",
+    "queryResult": {
+      "title": "Query results",
+      "description": "Like DataGrip: keep a separate result tab for each successful SQL run.",
+      "retainLabel": "Retain query results",
+      "on": "On",
+      "off": "Off",
+      "retainHint": "When on, up to {{max}} tabs (Result_1, Result_2, …). When off, a single result pane titled by table name(s).",
+      "saveSuccess": "Query result settings saved",
+      "saveFailed": "Failed to save query result settings"
+    },
     "cache": {
       "title": "Cache Settings",
       "description": "Configure cache duration for query data",

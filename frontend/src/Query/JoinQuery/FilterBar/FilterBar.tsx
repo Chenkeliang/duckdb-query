@@ -19,6 +19,7 @@ import {
 import { FilterChip } from './FilterChip';
 import { LogicConnector } from './LogicConnector';
 import { GroupChip } from './GroupChip';
+import { RawSqlFilterChip } from './RawSqlFilterChip';
 import { FilterPopover } from './FilterPopover';
 import { DraggableFilterList } from './DraggableFilterList';
 import type {
@@ -208,30 +209,16 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             case 'raw':
                 return (
                     <React.Fragment key={node.id}>
-                        <TooltipProvider>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <div className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-md">
-                                        <Code className="h-3 w-3" />
-                                        <span className="font-mono max-w-[150px] truncate">{node.sql}</span>
-                                        {!disabled && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-4 w-4 hover:bg-amber-200 dark:hover:bg-amber-800"
-                                                onClick={() => handleDeleteCondition(node.id)}
-                                            >
-                                                <X className="h-3 w-3" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p className="text-xs">{t('query.filter.rawSqlBlock', '原始 SQL（无法解析）')}</p>
-                                    <pre className="font-mono text-xs mt-1">{node.sql}</pre>
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
+                        <RawSqlFilterChip
+                            sql={node.sql}
+                            showCodeIcon
+                            truncateAt={24}
+                            disabled={disabled}
+                            onDelete={
+                              disabled ? undefined : () => handleDeleteCondition(node.id)
+                            }
+                            className="max-w-[180px]"
+                        />
                         {!isLast && (
                             <LogicConnector
                                 logic={filterTree.logic}

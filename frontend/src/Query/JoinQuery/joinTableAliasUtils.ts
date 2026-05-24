@@ -2,7 +2,7 @@
  * JOIN 工作台表级 SQL 别名（AS）工具
  */
 
-import type { FilterCondition, FilterGroup, FilterNode } from './FilterBar/types';
+import type { FilterGroup, FilterNode } from './FilterBar/types';
 
 const SQL_ALIAS_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 

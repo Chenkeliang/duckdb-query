@@ -140,6 +140,10 @@ duckdb-query/
 | `frontend/src/utils/cacheInvalidation.ts` | 缓存失效工具 |
 | `frontend/src/Query/ResultPanel/DataGridWrapper.tsx` | 查询结果 DataGrid 封装 |
 | `frontend/src/Query/DataGrid/DataGrid.tsx` | TanStack DataGrid 组件 |
+| `frontend/src/Query/SQLQuery/sqlDialect.ts` | DuckDB SQL 方言（CodeMirror 词表，勿用 `StandardSQL.spec.keywords`） |
+| `frontend/src/Query/SQLQuery/sqlEditorTheme.ts` | SQL 编辑器浅色/深色主题整包 |
+| `frontend/src/Query/SQLQuery/sqlHighlightStyles.ts` | SQL 语法高亮（keyword / 标识符等） |
+| `frontend/src/components/SQLHighlight.tsx` | 只读 SQL 高亮（历史、JOIN 筛选、异步任务等） |
 | `api/utils/response_helpers.py` | 统一响应格式 |
 | `api/core/common/timezone_utils.py` | 时区工具 |
 | `api/routers/async_tasks.py` | 异步任务 API |
@@ -220,6 +224,22 @@ import { extractMessage } from '@/api/client'; // ❌ 禁止业务文件深路�
 ```
 
 **允许的 `fetch`（须在代码中注释说明）**：仅访问**第三方** URL（如 GitHub）。本后端动态路径仍须 `apiClient`（见 `useQueryExecution`）。
+
+### 4.2.1 SQL 编辑器（CodeMirror 6）
+
+| 组件 | 路径 | 说明 |
+|------|------|------|
+| 可编辑 | `frontend/src/Query/SQLQuery/SQLEditor.tsx` | 查询工作台主 SQL 输入 |
+| 只读预览 | `frontend/src/components/SQLHighlight.tsx` | 历史、JOIN/透视/集合 SQL 预览、Tooltip 等 |
+| 方言 | `frontend/src/Query/SQLQuery/sqlDialect.ts` | **唯一** DuckDB 方言定义入口 |
+| 主题 | `sqlEditorTheme.ts` + `sqlHighlightStyles.ts` | 浅/深两套独立整包，`Compartment` 切换 |
+
+**方言与语法高亮（强制）**
+
+- `SQLEditor` 与 `SQLHighlight` 必须使用 `duckDBDialect`（`import { duckDBDialect } from '@/Query/SQLQuery/sqlDialect'` 或经 `SQLQuery` 模块导出）。
+- ❌ **禁止** `StandardSQL.spec.keywords` / `StandardSQL.spec.types` 拼接：`StandardSQL = SQLDialect.define({})` 的 `spec` 不含词表，会导致 `SELECT` 等被解析为 `Identifier`，关键字与表名同色。
+- ✅ 扩展 DuckDB 词表时基于 `PostgreSQL.spec.keywords`（见 `sqlDialect.ts`），或 `sql({ dialect: StandardSQL })` 且仅用于无自定义方言的场景。
+- 只读 SQL 展示优先 `SQLHighlight`，避免 `<pre className="font-mono">` 无高亮（JOIN `RawSqlFilterChip` 已统一）。
 
 ### 4.3 TypeScript 与表单
 - Props 必须定义接口/类型

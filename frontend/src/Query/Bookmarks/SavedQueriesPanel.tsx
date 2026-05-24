@@ -13,6 +13,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { SQLSnippet } from '@/components/SQLSnippet';
 import { useSavedQueries, SavedQuery } from '../hooks/useSavedQueries';
 import { extractJoinWorkspaceFromSql } from '@/Query/JoinQuery/joinWorkspaceSnapshot';
 
@@ -97,8 +98,8 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
         );
     };
 
-    const handleLoad = async (item: SavedQuery) => {
-        await useQuery(item.id); // 增加计数
+    const handleLoad = (item: SavedQuery) => {
+        void useQuery(item.id);
         onLoad(item.sql, item.type);
         onOpenChange(false);
     };
@@ -165,9 +166,11 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                                             <TypeBadge type={item.type} />
                                         </div>
 
-                                        <div className="font-mono text-xs text-muted-foreground bg-muted/50 p-3 rounded-md border border-border/50 mb-3 line-clamp-3">
-                                            {formatSqlPreview(item.sql)}
-                                        </div>
+                                        <SQLSnippet
+                                            sql={formatSqlPreview(item.sql)}
+                                            maxHeight="9rem"
+                                            className="mb-3"
+                                        />
 
                                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                                             <div className="flex items-center gap-3">

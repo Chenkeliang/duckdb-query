@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { SQLHighlight } from '@/components/SQLHighlight';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -223,9 +224,12 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
           {/* SQL 预览 */}
           <div className="space-y-2">
             <Label>{t('query.import.sqlPreview', 'SQL 预览')}</Label>
-            <div className="p-2 bg-muted rounded-md text-xs font-mono max-h-24 overflow-auto">
-              {sql.length > 200 ? `${sql.slice(0, 200)}...` : sql}
-            </div>
+            <SQLHighlight
+              sql={sql.length > 200 ? `${sql.slice(0, 200)}...` : sql}
+              compact
+              minHeight="4rem"
+              maxHeight="6rem"
+            />
           </div>
         </div>
 

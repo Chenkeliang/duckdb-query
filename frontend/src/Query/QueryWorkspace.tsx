@@ -38,10 +38,21 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
     currentTab,
     queryResults,
     lastQuery,
+    isResultLoading,
+    retainQueryResults,
+    resultTabs,
+    activeResultTabId,
+    singleResultSlotLabel,
     handleTableSelect,
     handleRemoveTable,
     handleTabChange,
     execute: handleQueryExecute,
+    refreshResultTab,
+    selectResultTab,
+    closeResultTabById,
+    closeOtherResultTabsById,
+    closeResultTabsToLeftOf,
+    closeResultTabsToRightOf,
     displayPreview: displayQueryPreview,
     cancel: cancelQuery,
     isCancelling,
@@ -50,11 +61,6 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
     clearJoinRestoreRequest,
   } = useQueryRunner();
   const { maxQueryRows } = useAppConfig();
-
-  const handleResultRefresh = React.useCallback(() => {
-    if (!lastQuery?.sql) return;
-    void handleQueryExecute(lastQuery.sql, lastQuery.source);
-  }, [lastQuery, handleQueryExecute]);
 
   // 预览表数据
   // 统一使用 ATTACH 模式：外部表生成带别名前缀的 SQL，通过联邦查询 API 执行
@@ -267,13 +273,35 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
                 <ResultPanel
                   data={queryResults?.data ?? null}
                   columns={queryResults?.columns ?? null}
-                  loading={queryResults?.loading ?? false}
+                  loading={
+                    retainQueryResults
+                      ? (queryResults?.loading ?? false)
+                      : (queryResults?.loading ?? false) || isResultLoading
+                  }
                   error={queryResults?.error ?? null}
                   execTime={queryResults?.execTime}
                   previewLimitApplied={queryResults?.previewLimitApplied}
                   source={lastQuery?.source}
                   currentSQL={lastQuery?.sql}
-                  onRefresh={lastQuery?.sql ? handleResultRefresh : undefined}
+                  onRefreshTab={
+                    activeResultTabId
+                      ? (tabId) => void refreshResultTab(tabId)
+                      : undefined
+                  }
+                  onRefresh={
+                    !retainQueryResults && lastQuery?.sql
+                      ? () => void refreshResultTab()
+                      : undefined
+                  }
+                  retainQueryResults={retainQueryResults}
+                  resultTabs={resultTabs}
+                  activeResultTabId={activeResultTabId}
+                  onSelectResultTab={selectResultTab}
+                  onCloseResultTab={closeResultTabById}
+                  onCloseOtherResultTabs={closeOtherResultTabsById}
+                  onCloseResultTabsToLeft={closeResultTabsToLeftOf}
+                  onCloseResultTabsToRight={closeResultTabsToRightOf}
+                  singleResultSlotLabel={singleResultSlotLabel}
                   autoOpenImportDialog={autoOpenImportDialog}
                   onAutoOpenImportDialogConsumed={() => setAutoOpenImportDialog(false)}
                 />

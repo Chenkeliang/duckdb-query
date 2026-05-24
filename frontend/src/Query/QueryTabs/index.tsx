@@ -22,12 +22,8 @@ import type {
 import type { JoinWorkspacePersistence } from "@/Query/JoinQuery/joinWorkspaceSnapshot";
 import { extractJoinWorkspaceFromSql } from "@/Query/JoinQuery/joinWorkspaceSnapshot";
 import type { GlobalHistoryItem } from "../hooks/useGlobalHistory";
-import {
-  generateDatabaseAlias,
-  parseSQLTableReferences,
-  buildAttachDatabasesFromParsedRefs
-} from "@/utils/sqlUtils";
 import { useDatabaseConnections } from "@/hooks/useDatabaseConnections";
+import { detectFederatedPreviewSource } from "./detectFederatedPreviewSource";
 
 /**
  * 查询模式 Tab 组件
@@ -112,7 +108,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
 
   // ... (createWrappedExecute and handleJoinExecute definitions skipped for brevity, they are unchanged)
 
-  const handleLoadSQL = async (
+  const handleLoadSQL = (
     sql: string,
     type: string = 'sql',
     options?: { joinSnapshot?: GlobalHistoryItem['joinSnapshot'] }
@@ -136,47 +132,18 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
     onTabChange('sql');
     setLoadedSqlPreview(sqlBody);
     setPreviewDialogSql(sqlBody);
-
-    // 1. 尝试解析 SQL 中的联邦查询注释 (优先级最高, 因为它明确指出了意图)
-    // 格式: -- 联邦查询: db1, db2
-    let attachDatabases: { alias: string; connectionId: string }[] = [];
-    const federatedMatch = sqlBody.match(/-- 联邦查询: (.+)/);
-
-    if (federatedMatch) {
-      const dbAliases = federatedMatch[1].split(',').map(s => s.trim());
-      attachDatabases = dbAliases.map(alias => {
-        // ... (Same matching logic as before)
-        const exactMatch = connections.find(c => generateDatabaseAlias(c) === alias);
-        if (exactMatch) return { alias, connectionId: exactMatch.id };
-        const partialMatch = connections.find(c => alias.startsWith(generateDatabaseAlias(c)));
-        if (partialMatch) return { alias, connectionId: partialMatch.id };
-        return { alias, connectionId: 'unknown' };
-      }).filter(db => db.connectionId !== 'unknown');
-    }
-
-    // 2. 如果没有注释或注释解析为空，尝试自动分析 SQL (更健壮的方式)
-    if (attachDatabases.length === 0) {
-      // 使用已导入的 parser (sqlUtils)
-      try {
-        const parsedRefs = parseSQLTableReferences(sqlBody);
-        const autoDetected = buildAttachDatabasesFromParsedRefs(parsedRefs, connections);
-        attachDatabases = autoDetected.attachDatabases;
-      } catch (e) {
-        console.error("Failed to auto-detect federated sources:", e);
-      }
-    }
-
-    if (attachDatabases.length > 0) {
-      setPreviewSource({
-        type: 'federated',
-        attachDatabases
-      });
-    } else {
-      setPreviewSource(undefined);
-    }
-
+    setPreviewSource(undefined);
     setPreviewDialogOpen(true);
+    setHistoryOpen(false);
+    setBookmarksOpen(false);
   };
+
+  // 联邦数据源推断较慢，弹窗打开后再算，避免阻塞 Dialog 显示
+  React.useEffect(() => {
+    if (!previewDialogOpen || !previewDialogSql) return;
+    const source = detectFederatedPreviewSource(previewDialogSql, connections);
+    setPreviewSource(source);
+  }, [previewDialogOpen, previewDialogSql, connections]);
 
   const handlePreviewDialogExecute = React.useCallback(
     async (sql: string) => {

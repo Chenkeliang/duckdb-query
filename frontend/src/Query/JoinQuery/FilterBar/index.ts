@@ -91,3 +91,6 @@ export { DraggableFilterList } from './DraggableFilterList';
 export type { DraggableFilterListProps } from './DraggableFilterList';
 
 export { PlacementSelector } from './PlacementSelector';
+
+export { RawSqlFilterChip } from './RawSqlFilterChip';
+export type { RawSqlFilterChipProps } from './RawSqlFilterChip';

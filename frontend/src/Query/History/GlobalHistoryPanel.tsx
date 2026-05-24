@@ -13,6 +13,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { SQLSnippet } from '@/components/SQLSnippet';
 import type { GlobalHistoryItem } from '../hooks/useGlobalHistory';
 
 export interface GlobalHistoryPanelProps {
@@ -138,9 +139,11 @@ export const GlobalHistoryPanel: React.FC<GlobalHistoryPanelProps> = ({
                                             </span>
                                         </div>
 
-                                        <div className="font-mono text-sm text-foreground mb-2 bg-muted/30 p-2 rounded border border-border/50 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
-                                            {item.sql}
-                                        </div>
+                                        <SQLSnippet
+                                            sql={item.sql}
+                                            maxHeight="8rem"
+                                            className="mb-2"
+                                        />
 
                                         <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
                                             <div className="flex items-center gap-3">

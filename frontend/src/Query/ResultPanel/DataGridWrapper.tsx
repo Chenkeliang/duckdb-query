@@ -47,6 +47,8 @@ export interface DataGridApi {
   autoFitAllColumns: () => void;
   fitToWidth: () => void;
   resetColumns: () => void;
+  getScrollTop: () => number;
+  setScrollTop: (top: number) => void;
 }
 
 const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGridWrapperProps> = (
@@ -134,6 +136,8 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
       autoFitAllColumns: () => dataGridInnerRef.current?.autoFitAllColumns(),
       fitToWidth: () => dataGridInnerRef.current?.fitToWidth(),
       resetColumns: () => dataGridInnerRef.current?.resetColumns(),
+      getScrollTop: () => dataGridInnerRef.current?.getScrollTop() ?? 0,
+      setScrollTop: (top: number) => dataGridInnerRef.current?.setScrollTop(top),
     }),
     [exportCSV, exportJSON, exportExcel, columnVisibilityInfo, toggleColumn, showAllColumns]
   );

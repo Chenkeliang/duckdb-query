@@ -24,10 +24,12 @@ describe('createColumnPrefixCompleter', () => {
       },
     } as Parameters<typeof completer>[0];
 
-    const result = completer(context);
-    expect(result).not.toBeNull();
-    expect(result?.options.map((o) => o.label)).toContain('手机号');
-    const labels = result?.options.map((o) => o.label) ?? [];
+    const raw = completer(context);
+    expect(raw).not.toBeNull();
+    expect(raw).not.toBeInstanceOf(Promise);
+    if (!raw || raw instanceof Promise) return;
+    expect(raw.options.map((o) => o.label)).toContain('手机号');
+    const labels = raw.options.map((o) => o.label);
     expect(labels.every((l) => String(l).startsWith('手机') || String(l).includes('手机'))).toBe(
       true
     );

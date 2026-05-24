@@ -85,7 +85,7 @@ export function canUseServerJoinPath(
     }
     const tableNames = activeTables.map(getTableName);
     const aliasMap = buildJoinTableAliasMap(tableNames, tableAliasOverrides);
-    if (tableNames.some((name, index) => (aliasMap[name] ?? name) !== name)) {
+    if (tableNames.some((name) => (aliasMap[name] ?? name) !== name)) {
         return false;
     }
     if (hasWhereFilters(filterTree)) {

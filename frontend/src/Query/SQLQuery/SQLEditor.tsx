@@ -7,11 +7,13 @@ import React, { useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EditorView, keymap, placeholder as placeholderExt } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
-import { sql, SQLDialect, StandardSQL } from '@codemirror/lang-sql';
+import { sql } from '@codemirror/lang-sql';
+import { duckDBDialect } from './sqlDialect';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { completionKeymap } from '@codemirror/autocomplete';
-import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
-import { oneDark } from '@codemirror/theme-one-dark';
+import { getSqlEditorIsDarkMode, sqlEditorThemeExtensions } from './sqlEditorTheme';
+import { createSqlEditorLayoutTheme } from './sqlEditorLayoutTheme';
+import { useSqlEditorDarkMode } from './useSqlEditorDarkMode';
 import { lintKeymap } from '@codemirror/lint';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { cn } from '@/lib/utils';
@@ -46,13 +48,6 @@ export interface SQLEditorProps {
   autoFocus?: boolean;
 }
 
-// DuckDB SQL 方言配置
-const duckDBDialect = SQLDialect.define({
-  keywords: StandardSQL.spec.keywords + ' COPY EXPORT IMPORT PIVOT UNPIVOT QUALIFY SAMPLE TABLESAMPLE',
-  types: StandardSQL.spec.types + ' HUGEINT UTINYINT USMALLINT UINTEGER UBIGINT',
-  builtin: 'read_csv read_parquet read_json list_value struct_pack',
-});
-
 /**
  * SQL 编辑器组件
  */
@@ -72,9 +67,11 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   autoFocus = false,
 }) => {
   const { t } = useTranslation('common');
+  const isDarkMode = useSqlEditorDarkMode();
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<EditorView | null>(null);
   const themeCompartment = useRef(new Compartment());
+  const layoutCompartment = useRef(new Compartment());
   const readOnlyCompartment = useRef(new Compartment());
   const sqlCompartment = useRef(new Compartment());
   const columnHintsRef = useRef<string[]>(columnNameHints);
@@ -84,7 +81,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   const buildSqlExtensions = () => [
     sql({
       dialect: duckDBDialect,
-      upperCaseKeywords: false,
+      upperCaseKeywords: true,
     }),
     buildSqlAutocompletion({
       schema: schemaRef.current,
@@ -108,14 +105,6 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   useEffect(() => {
     defaultTableRef.current = defaultTable;
   }, [defaultTable]);
-
-  // 检测深色模式
-  const isDarkMode = useMemo(() => {
-    if (typeof document !== 'undefined') {
-      return document.documentElement.classList.contains('dark');
-    }
-    return false;
-  }, []);
 
   // 构建自动补全的 schema
   // CodeMirror SQL 的 schema 格式: { tableName: [columnName1, columnName2, ...] }
@@ -174,10 +163,6 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
         // 基础功能
         history(),
         highlightSelectionMatches(),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-
-        // SQL 语法 + 列名/表名/关键字补全（Compartment 动态更新 schema）
-        sqlCompartment.current.of(buildSqlExtensions()),
 
         // 快捷键
         keymap.of([
@@ -192,8 +177,13 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
         // 占位符
         placeholderExt(placeholderText),
 
-        // 主题
-        themeCompartment.current.of(isDarkMode ? oneDark : []),
+        layoutCompartment.current.of(
+          createSqlEditorLayoutTheme({ minHeight, maxHeight })
+        ),
+
+        sqlCompartment.current.of(buildSqlExtensions()),
+
+        themeCompartment.current.of(sqlEditorThemeExtensions(getSqlEditorIsDarkMode())),
 
         // 只读模式
         readOnlyCompartment.current.of(EditorState.readOnly.of(readOnly)),
@@ -205,32 +195,6 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
           }
         }),
 
-        // 样式
-        EditorView.theme({
-          '&': {
-            height: '100%',
-            minHeight,
-            maxHeight,
-            fontSize: '14px',
-            fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
-          },
-          '.cm-scroller': {
-            overflow: 'auto',
-          },
-          '.cm-content': {
-            padding: '8px 0',
-          },
-          '.cm-line': {
-            padding: '0 8px',
-          },
-          '&.cm-focused': {
-            outline: 'none',
-          },
-          '.cm-placeholder': {
-            color: 'var(--muted-foreground)',
-            fontStyle: 'italic',
-          },
-        }),
       ],
     });
 
@@ -269,19 +233,32 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
     }
   }, [value]);
 
+  useEffect(() => {
+    const view = editorRef.current;
+    if (!view) return;
+
+    view.dispatch({
+      effects: layoutCompartment.current.reconfigure(
+        createSqlEditorLayoutTheme({ minHeight, maxHeight })
+      ),
+    });
+  }, [minHeight, maxHeight]);
+
   // 同步主题变化
   useEffect(() => {
     const view = editorRef.current;
     if (!view) return;
 
     const checkTheme = () => {
-      const isDark = document.documentElement.classList.contains('dark');
       view.dispatch({
-        effects: themeCompartment.current.reconfigure(isDark ? oneDark : []),
+        effects: themeCompartment.current.reconfigure(
+          sqlEditorThemeExtensions(getSqlEditorIsDarkMode())
+        ),
       });
     };
 
-    // 监听主题变化
+    checkTheme();
+
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.attributeName === 'class') {
@@ -331,7 +308,8 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
     <div
       ref={containerRef}
       className={cn(
-        'border border-border rounded-md overflow-hidden bg-background',
+        'border border-border rounded-md overflow-hidden',
+        isDarkMode ? 'bg-transparent' : 'bg-background',
         'focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background',
         className
       )}

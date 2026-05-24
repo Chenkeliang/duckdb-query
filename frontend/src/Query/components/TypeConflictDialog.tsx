@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { SQLHighlight } from '@/components/SQLHighlight';
 import { cn } from '@/lib/utils';
 import { DUCKDB_CAST_TYPES } from '@/utils/duckdbTypes';
 import type { TypeConflict } from '@/hooks/useTypeConflict';
@@ -219,9 +220,12 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
             <label className="text-sm font-medium">
               {t('query.typeConflict.sqlPreview', 'SQL 预览')}
             </label>
-            <pre className="bg-muted border border-border rounded-lg p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap max-h-32 text-foreground">
-              {sqlPreview}
-            </pre>
+            <SQLHighlight
+              sql={sqlPreview}
+              compact
+              minHeight="4rem"
+              maxHeight="8rem"
+            />
           </div>
         )}
 

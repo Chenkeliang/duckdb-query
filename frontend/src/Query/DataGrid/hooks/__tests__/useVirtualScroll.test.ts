@@ -18,9 +18,12 @@ const virtualizers = vi.hoisted(() => {
   return { rowVirtualizer, columnVirtualizer };
 });
 
+const useVirtualizerMock = vi.fn((options: { horizontal?: boolean }) =>
+  options?.horizontal ? virtualizers.columnVirtualizer : virtualizers.rowVirtualizer
+);
+
 vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: (options: any) =>
-    options?.horizontal ? virtualizers.columnVirtualizer : virtualizers.rowVirtualizer,
+  useVirtualizer: (options: { horizontal?: boolean }) => useVirtualizerMock(options),
 }));
 
 import { useVirtualScroll } from '../useVirtualScroll';
@@ -30,6 +33,7 @@ describe('useVirtualScroll', () => {
   const originalCaf = globalThis.cancelAnimationFrame;
 
   beforeEach(() => {
+    useVirtualizerMock.mockClear();
     virtualizers.columnVirtualizer.measure.mockClear();
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       cb(0);
@@ -41,6 +45,49 @@ describe('useVirtualScroll', () => {
   afterEach(() => {
     globalThis.requestAnimationFrame = originalRaf;
     globalThis.cancelAnimationFrame = originalCaf;
+  });
+
+  it('always invokes column useVirtualizer even when below threshold (hooks stability)', () => {
+    const scrollEl = document.createElement('div');
+    const scrollContainerRef = { current: scrollEl };
+
+    renderHook(() =>
+      useVirtualScroll({
+        rowCount: 1,
+        columnCount: 10,
+        rowHeight: 32,
+        enableColumnVirtualization: false,
+        scrollContainerRef,
+      })
+    );
+
+    expect(useVirtualizerMock).toHaveBeenCalledTimes(2);
+    expect(useVirtualizerMock.mock.calls.some((call) => call[0]?.horizontal === true)).toBe(
+      true
+    );
+  });
+
+  it('survives rerender when column count crosses virtualization threshold', () => {
+    const scrollEl = document.createElement('div');
+    const scrollContainerRef = { current: scrollEl };
+
+    const { rerender } = renderHook(
+      ({ columnCount }: { columnCount: number }) =>
+        useVirtualScroll({
+          rowCount: 5,
+          columnCount,
+          rowHeight: 32,
+          scrollContainerRef,
+        }),
+      { initialProps: { columnCount: 10 } }
+    );
+
+    rerender({ columnCount: 60 });
+
+    const horizontalCalls = useVirtualizerMock.mock.calls.filter(
+      (call) => call[0]?.horizontal === true
+    );
+    expect(horizontalCalls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('re-measures column virtualizer when column widths change', () => {

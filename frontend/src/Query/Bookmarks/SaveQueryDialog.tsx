@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { SQLHighlight } from '@/components/SQLHighlight';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -92,9 +93,12 @@ export const SaveQueryDialog: React.FC<SaveQueryDialogProps> = ({
                     </div>
                     <div className="grid gap-2">
                         <Label>{t('query.bookmark.saveDialog.sqlPreview')}</Label>
-                        <div className="text-xs font-mono bg-muted p-2 rounded border max-h-[100px] overflow-auto text-muted-foreground whitespace-pre-wrap">
-                            {sql}
-                        </div>
+                        <SQLHighlight
+                            sql={sql}
+                            compact
+                            minHeight="4rem"
+                            maxHeight="6.25rem"
+                        />
                     </div>
                 </div>
                 <DialogFooter>

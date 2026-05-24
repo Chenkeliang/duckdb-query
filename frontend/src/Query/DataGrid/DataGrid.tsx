@@ -91,6 +91,9 @@ export interface DataGridRef {
   showAllColumns: () => void;
   /** 切换列可见性 */
   toggleColumnVisibility: (field: string) => void;
+  /** 纵向滚动位置（用于结果 Tab 刷新后恢复） */
+  getScrollTop: () => number;
+  setScrollTop: (top: number) => void;
 }
 
 /**
@@ -441,6 +444,12 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
     resetColumns,
     showAllColumns,
     toggleColumnVisibility,
+    getScrollTop: () => scrollContainerRef.current?.scrollTop ?? 0,
+    setScrollTop: (top: number) => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = top;
+      }
+    },
   }), [handleAutoFitAllColumns, handleFitToWidth, resetColumns, showAllColumns, toggleColumnVisibility]);
 
   // 复制列名

@@ -218,9 +218,16 @@
       "selectedCount": "已选择 {{count}} 列"
     },
     "result": {
+      "tabLabel": "结果_{{n}}",
+      "defaultTitle": "查询结果",
+      "closeTab": "关闭",
+      "closeOthers": "关闭其他",
+      "closeToLeft": "关闭左侧",
+      "closeToRight": "关闭右侧",
       "noData": "暂无数据",
       "noDataHint": "执行查询以查看结果",
       "loading": "加载中...",
+      "refreshing": "刷新中...",
       "error": "查询失败",
       "rowCount": "共 {{count}} 行",
       "execTime": "执行时间: {{time}}ms",
@@ -927,6 +934,16 @@
   "settings": {
     "title": "设置",
     "comingSoon": "更多设置功能正在开发中...",
+    "queryResult": {
+      "title": "查询结果",
+      "description": "类似 DataGrip：开启后每次成功的 SQL 执行会保留独立结果 Tab，便于对比历史结果。",
+      "retainLabel": "保留查询结果",
+      "on": "已开启",
+      "off": "已关闭",
+      "retainHint": "开启后最多保留 {{max}} 个结果 Tab（结果_1、结果_2…）；关闭时仅显示一个结果区，标题为表名。",
+      "saveSuccess": "查询结果设置已保存",
+      "saveFailed": "保存查询结果设置失败"
+    },
     "cache": {
       "title": "缓存设置",
       "description": "配置查询数据的缓存有效期",

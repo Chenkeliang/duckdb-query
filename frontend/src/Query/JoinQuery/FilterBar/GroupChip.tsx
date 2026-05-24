@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/tooltip';
 import { FilterChip } from './FilterChip';
 import { LogicConnector } from './LogicConnector';
+import { RawSqlFilterChip } from './RawSqlFilterChip';
 import type { FilterGroup, FilterNode, FilterCondition, ColumnInfo } from './types';
 
 export interface GroupChipProps {
@@ -96,63 +97,12 @@ const NodeRenderer: React.FC<{
                 );
             case 'raw':
                 return (
-                    <RawSqlChip sql={node.sql} onDelete={onDelete} disabled={disabled} />
+                    <RawSqlFilterChip sql={node.sql} onDelete={onDelete} disabled={disabled} />
                 );
             default:
                 return null;
         }
     };
-
-/**
- * Raw SQL 芯片
- */
-const RawSqlChip: React.FC<{
-    sql: string;
-    onDelete?: () => void;
-    disabled?: boolean;
-}> = ({ sql, onDelete, disabled }) => {
-    const { t } = useTranslation('common');
-
-    return (
-        <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <div className={`
-            inline-flex items-center gap-1
-            px-2 py-1
-            text-xs
-            bg-amber-100 dark:bg-amber-900/30
-            text-amber-800 dark:text-amber-200
-            border border-amber-300 dark:border-amber-700
-            rounded-md
-            ${disabled ? 'opacity-50' : ''}
-          `}>
-                        <span className="font-mono max-w-[200px] truncate">
-                            {sql.length > 30 ? sql.slice(0, 27) + '...' : sql}
-                        </span>
-                        {!disabled && onDelete && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-4 w-4 hover:bg-amber-200 dark:hover:bg-amber-800"
-                                onClick={onDelete}
-                                aria-label={t('query.filter.deleteCondition', '删除')}
-                            >
-                                <X className="h-3 w-3" />
-                            </Button>
-                        )}
-                    </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-[400px]">
-                    <p className="text-xs text-muted-foreground mb-1">
-                        {t('query.filter.rawSqlBlock', '原始 SQL 块（无法解析）')}
-                    </p>
-                    <pre className="font-mono text-xs whitespace-pre-wrap">{sql}</pre>
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-    );
-};
 
 export const GroupChip: React.FC<GroupChipProps> = ({
     node,

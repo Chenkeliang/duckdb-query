@@ -1,6 +1,5 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { useMutation } from "@tanstack/react-query";
 import {
   executeDuckDBSQL,
   executeFederatedQuery,
@@ -16,63 +15,31 @@ import type {
 } from '../types/SelectedTable';
 import { normalizeSelectedTable } from '../utils/tableUtils';
 import type { JoinWorkspaceSnapshot } from '@/Query/JoinQuery/joinWorkspaceSnapshot';
+import type {
+  AttachDatabase,
+  LastQuery,
+  QueryResult,
+  ResultTabEntry,
+  TableSource,
+} from '@/types/queryWorkspace';
+import { loadQueryResultSettings } from '@/utils/queryResultSettingsStorage';
+import {
+  appendResultTab,
+  closeOtherResultTabs,
+  closeResultTab,
+  closeResultTabsToLeft,
+  closeResultTabsToRight,
+  deriveSingleResultSlotLabel,
+  pickAdjacentActiveTabId,
+} from '@/Query/ResultPanel/resultTabUtils';
 
-/**
- * 查询工作台状态管理 Hook
- *
- * 职责：
- * - 管理选中的表（每个查询模式独立）
- * - 管理当前查询模式
- * - 管理查询结果
- * - 提供表选择、Tab 切换、查询执行等操作
- */
-
-/**
- * 附加数据库信息（用于联邦查询）
- */
-export interface AttachDatabase {
-  connectionId: string;
-  alias: string;
-}
-
-/**
- * 表数据源信息（用于查询执行和导入）
- */
-export interface TableSource {
-  type: 'duckdb' | 'federated';
-  connectionId?: string;
-  connectionName?: string;
-  databaseType?: DatabaseType;
-  schema?: string;
-  /** 联邦查询需要附加的数据库列表 */
-  attachDatabases?: AttachDatabase[];
-}
-
-/**
- * 最后执行的查询信息（用于导入功能）
- */
-export interface LastQuery {
-  sql: string;
-  source: TableSource;
-}
-
-export interface QueryResult {
-  /** 转换后的对象数组数据 */
-  data: Record<string, unknown>[] | null;
-  /** 列名列表 */
-  columns: string[] | null;
-  /** 是否正在加载 */
-  loading: boolean;
-  /** 错误信息 */
-  error: Error | null;
-  /** 执行时间（毫秒） */
-  execTime?: number;
-  /**
-   * 预览时服务端自动追加的 LIMIT（与 max_query_rows 一致）；
-   * 若返回行数等于该值，结果可能被截断。
-   */
-  previewLimitApplied?: number | null;
-}
+export type {
+  AttachDatabase,
+  TableSource,
+  LastQuery,
+  QueryResult,
+  ResultTabEntry,
+};
 
 export interface JoinRestoreRequest {
   token: number;
@@ -80,22 +47,28 @@ export interface JoinRestoreRequest {
 }
 
 export interface UseQueryWorkspaceReturn {
-  /** 每个 Tab 的选中表（使用 SelectedTable 对象） */
   selectedTables: Record<string, SelectedTable[]>;
-  /** 当前 Tab */
   currentTab: string;
-  /** 查询结果 */
   queryResults: QueryResult | null;
-  /** 最后执行的查询信息（用于导入） */
+  /** 新查询执行中（多 Tab 模式下不清空当前表格，仅用于工具栏 loading） */
+  isResultLoading: boolean;
   lastQuery: LastQuery | null;
-  /** 选择表 */
+  retainQueryResults: boolean;
+  resultTabs: ResultTabEntry[];
+  activeResultTabId: string | null;
+  singleResultSlotLabel: string;
   handleTableSelect: (table: SelectedTable) => void;
-  /** 移除表 */
   handleRemoveTable: (table: SelectedTable) => void;
-  /** 切换 Tab */
   handleTabChange: (tab: string) => void;
-  /** 执行查询 */
   handleQueryExecute: (sql: string, source?: TableSource) => Promise<void>;
+  refreshActiveResult: () => Promise<void>;
+  /** 仅刷新指定结果 Tab（默认当前选中 Tab） */
+  refreshResultTab: (tabId?: string) => Promise<void>;
+  selectResultTab: (id: string) => void;
+  closeResultTabById: (id: string) => void;
+  closeOtherResultTabsById: (id: string) => void;
+  closeResultTabsToLeftOf: (id: string) => void;
+  closeResultTabsToRightOf: (id: string) => void;
   displayQueryPreview: (
     response: {
       data?: unknown[];
@@ -107,22 +80,14 @@ export interface UseQueryWorkspaceReturn {
     sql?: string,
     source?: TableSource
   ) => void;
-  /** 取消当前查询 */
   cancelQuery: () => Promise<void>;
-  /** 是否正在取消 */
   isCancelling: boolean;
-  /** 查询是否已被取消 */
   isCancelled: boolean;
-  /** 待恢复的 JOIN 工作台快照（由 QueryTabs / JoinQueryPanel 消费） */
   joinRestoreRequest: JoinRestoreRequest | null;
-  /** 从收藏/历史恢复 JOIN 工作台（表列表 + 内部状态） */
   restoreJoinWorkspace: (snapshot: JoinWorkspaceSnapshot) => void;
   clearJoinRestoreRequest: () => void;
 }
 
-/**
- * 比较两个 SelectedTable 是否相同
- */
 const isSameTable = (a: SelectedTable, b: SelectedTable): boolean => {
   const normalizedA = normalizeSelectedTable(a);
   const normalizedB = normalizeSelectedTable(b);
@@ -140,10 +105,17 @@ const isSameTable = (a: SelectedTable, b: SelectedTable): boolean => {
   return true;
 };
 
+const emptyResult: QueryResult = {
+  data: null,
+  columns: null,
+  loading: false,
+  error: null,
+};
+
 export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   const { t } = useTranslation('common');
+  const retainQueryResults = loadQueryResultSettings().retainQueryResults;
 
-  // 每个查询模式的选中表（使用 SelectedTable 对象）
   const [selectedTables, setSelectedTables] = useState<Record<string, SelectedTable[]>>({
     sql: [],
     join: [],
@@ -151,35 +123,25 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     pivot: [],
   });
 
-  // 当前查询模式
   const [currentTab, setCurrentTab] = useState<string>("sql");
-
   const [joinRestoreRequest, setJoinRestoreRequest] = useState<JoinRestoreRequest | null>(null);
 
-  // 查询结果
-  const [queryResults, setQueryResults] = useState<QueryResult | null>(null);
+  const [resultTabs, setResultTabs] = useState<ResultTabEntry[]>([]);
+  const [activeResultTabId, setActiveResultTabId] = useState<string | null>(null);
+  const resultTabSequenceRef = useRef(0);
 
-  // 最后执行的查询信息（用于导入功能）
-  const [lastQuery, setLastQuery] = useState<LastQuery | null>(null);
+  const [singleResult, setSingleResult] = useState<QueryResult | null>(null);
+  const [singleLastQuery, setSingleLastQuery] = useState<LastQuery | null>(null);
+  const [singleResultSlotLabel, setSingleResultSlotLabel] = useState('');
 
-  // 取消状态管理
+  const [isResultLoading, setIsResultLoading] = useState(false);
+
   const [isCancelling, setIsCancelling] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
   const currentRequestIdRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // DuckDB 查询执行 mutation
-  const duckdbMutation = useMutation({
-    mutationFn: async (sql: string) => {
-      const startTime = Date.now();
-      const response = await executeDuckDBSQL(sql);
-      const execTime = Date.now() - startTime;
-      return { ...response, execTime };
-    },
-  });
-
-  // 处理查询结果
-  const processQueryResult = useCallback((
+  const buildQueryResult = useCallback((
     response: {
       data?: unknown[];
       columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
@@ -188,14 +150,13 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       preview_limit_applied?: number | null;
       row_count?: number;
     }
-  ) => {
+  ): QueryResult => {
     const rawCols = response.columns || [];
     const columns = rawCols.map((col) =>
       typeof col === 'string' ? col : String((col as { name: string }).name)
     );
     const rawData = response.data || [];
 
-    // 检测数据格式：如果第一行是对象，则已经是对象数组；否则是二维数组
     let objectData: Record<string, unknown>[];
 
     if (rawData.length > 0 && typeof rawData[0] === 'object' && !Array.isArray(rawData[0])) {
@@ -210,9 +171,9 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       });
     }
 
-    const resultData: QueryResult = {
+    return {
       data: objectData,
-      columns: columns,
+      columns,
       loading: false,
       error: null,
       execTime: response.execTime || response.execution_time_ms,
@@ -221,12 +182,294 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
           ? null
           : response.preview_limit_applied,
     };
+  }, []);
 
-    setQueryResults(resultData);
-    showSuccessToast(t, 'QUERY_SUCCESS', t('query.success', { count: rawData.length }));
-  }, [t]);
+  const runSqlQuery = useCallback(
+    async (
+      sql: string,
+      source: TableSource,
+      requestId: string
+    ): Promise<{
+      data?: unknown[];
+      columns?: string[] | ColumnInfo[];
+      execTime?: number;
+      preview_limit_applied?: number | null;
+    }> => {
+      if (source.type === 'federated') {
+        const attachDatabases = [...(source.attachDatabases ?? [])];
 
-  // 表选择处理
+        if (attachDatabases.length === 0 && source.connectionId) {
+          attachDatabases.push({
+            alias: source.connectionName || `db_${source.connectionId}`,
+            connectionId: source.connectionId,
+          });
+        }
+
+        if (attachDatabases.length === 0) {
+          throw new Error('Federated query requires attach databases');
+        }
+
+        const startTime = Date.now();
+        const result = await executeFederatedQuery({
+          sql,
+          attachDatabases,
+          isPreview: false,
+          requestId,
+          signal: abortControllerRef.current?.signal,
+        });
+        const execTime = Date.now() - startTime;
+        return {
+          data: result.data || [],
+          columns: result.columns || [],
+          execTime,
+          preview_limit_applied: result.preview_limit_applied ?? null,
+        };
+      }
+
+      const startTime = Date.now();
+      const result = await executeDuckDBSQL(sql, {
+        requestId,
+        signal: abortControllerRef.current?.signal,
+      });
+      const execTime = Date.now() - startTime;
+      return { ...result, execTime };
+    },
+    []
+  );
+
+  const commitSuccessfulResult = useCallback(
+    (sql: string, source: TableSource, response: Parameters<typeof buildQueryResult>[0]) => {
+      const result = buildQueryResult(response);
+      const query: LastQuery = { sql, source };
+      const slotLabel = deriveSingleResultSlotLabel(sql);
+
+      if (retainQueryResults) {
+        resultTabSequenceRef.current += 1;
+        const id = crypto.randomUUID();
+        const label = t('query.result.tabLabel', { n: resultTabSequenceRef.current });
+        const entry: ResultTabEntry = { id, label, query, result };
+        setResultTabs((prev) => appendResultTab(prev, entry));
+        setActiveResultTabId(id);
+      } else {
+        setSingleResult(result);
+        setSingleLastQuery(query);
+        setSingleResultSlotLabel(slotLabel || t('query.result.defaultTitle', '查询结果'));
+      }
+
+      setIsResultLoading(false);
+      const rowCount = response.data?.length ?? 0;
+      showSuccessToast(t, 'QUERY_SUCCESS', t('query.success', { count: rowCount }));
+    },
+    [buildQueryResult, retainQueryResults, t]
+  );
+
+  const updateActiveTabResult = useCallback(
+    (
+      sql: string,
+      source: TableSource,
+      response: Parameters<typeof buildQueryResult>[0],
+      tabId: string
+    ) => {
+      const result = buildQueryResult(response);
+      const query: LastQuery = { sql, source };
+
+      if (retainQueryResults) {
+        setResultTabs((prev) =>
+          prev.map((tab) =>
+            tab.id === tabId ? { ...tab, query, result } : tab
+          )
+        );
+      } else {
+        setSingleResult(result);
+        setSingleLastQuery(query);
+        setSingleResultSlotLabel(
+          deriveSingleResultSlotLabel(sql) || t('query.result.defaultTitle', '查询结果')
+        );
+      }
+
+      setIsResultLoading(false);
+      const rowCount = response.data?.length ?? 0;
+      showSuccessToast(t, 'QUERY_SUCCESS', t('query.success', { count: rowCount }));
+    },
+    [buildQueryResult, retainQueryResults, t]
+  );
+
+  const activeTabEntry = useMemo(
+    () => resultTabs.find((tab) => tab.id === activeResultTabId) ?? null,
+    [resultTabs, activeResultTabId]
+  );
+
+  const queryResults = useMemo((): QueryResult | null => {
+    if (retainQueryResults) {
+      // 多 Tab：各 Tab 自带 loading；切换 Tab 时不受其他 Tab 刷新影响
+      return activeTabEntry?.result ?? null;
+    }
+    if (singleResult) {
+      return singleResult;
+    }
+    if (isResultLoading) {
+      return { ...emptyResult, loading: true };
+    }
+    return null;
+  }, [retainQueryResults, isResultLoading, activeTabEntry, singleResult]);
+
+  const lastQuery = useMemo((): LastQuery | null => {
+    if (retainQueryResults) {
+      return activeTabEntry?.query ?? null;
+    }
+    return singleLastQuery;
+  }, [retainQueryResults, activeTabEntry, singleLastQuery]);
+
+  const beginQueryExecution = useCallback(
+    (options?: { refresh?: boolean; tabId?: string }) => {
+      const requestId = crypto.randomUUID();
+      currentRequestIdRef.current = requestId;
+      abortControllerRef.current = new AbortController();
+      setIsCancelled(false);
+
+      if (retainQueryResults && options?.refresh && options.tabId) {
+        setResultTabs((prev) =>
+          prev.map((tab) =>
+            tab.id === options.tabId
+              ? {
+                  ...tab,
+                  result: { ...tab.result, loading: true, error: null },
+                }
+              : tab
+          )
+        );
+      } else {
+        setIsResultLoading(true);
+        if (!retainQueryResults) {
+          setSingleResult({
+            data: null,
+            columns: null,
+            loading: true,
+            error: null,
+          });
+        }
+      }
+
+      return requestId;
+    },
+    [retainQueryResults]
+  );
+
+  const executeQuery = useCallback(
+    async (
+      sql: string,
+      source?: TableSource,
+      options?: { refresh?: boolean; tabId?: string }
+    ) => {
+      const querySource: TableSource = source || { type: 'duckdb' };
+      const requestId = beginQueryExecution(options);
+
+      try {
+        const response = await runSqlQuery(sql, querySource, requestId);
+
+        if (currentRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        if (options?.refresh && options.tabId) {
+          updateActiveTabResult(sql, querySource, response, options.tabId);
+        } else {
+          commitSuccessfulResult(sql, querySource, response);
+        }
+      } catch (error) {
+        if (currentRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        setIsResultLoading(false);
+
+        if (retainQueryResults && options?.refresh && options.tabId) {
+          setResultTabs((prev) =>
+            prev.map((tab) =>
+              tab.id === options.tabId
+                ? {
+                    ...tab,
+                    result: {
+                      ...tab.result,
+                      loading: false,
+                      error: error as Error,
+                    },
+                  }
+                : tab
+            )
+          );
+        } else if (!retainQueryResults) {
+          setSingleResult({
+            data: null,
+            columns: null,
+            loading: false,
+            error: error as Error,
+          });
+        }
+
+        showErrorToast(t, undefined, t('query.error', { message: (error as Error).message }));
+      }
+    },
+    [beginQueryExecution, commitSuccessfulResult, retainQueryResults, runSqlQuery, t, updateActiveTabResult]
+  );
+
+  const handleQueryExecute = useCallback(
+    async (sql: string, source?: TableSource) => {
+      await executeQuery(sql, source);
+    },
+    [executeQuery]
+  );
+
+  const refreshResultTab = useCallback(
+    async (tabId?: string) => {
+      const targetId = tabId ?? activeResultTabId;
+      if (!targetId) return;
+
+      const tab = resultTabs.find((entry) => entry.id === targetId);
+      if (!tab?.query?.sql) return;
+
+      await executeQuery(tab.query.sql, tab.query.source, {
+        refresh: true,
+        tabId: targetId,
+      });
+    },
+    [activeResultTabId, executeQuery, resultTabs]
+  );
+
+  const refreshActiveResult = useCallback(async () => {
+    await refreshResultTab(activeResultTabId ?? undefined);
+  }, [activeResultTabId, refreshResultTab]);
+
+  const selectResultTab = useCallback((id: string) => {
+    setActiveResultTabId(id);
+  }, []);
+
+  const closeResultTabById = useCallback((id: string) => {
+    setResultTabs((prev) => {
+      const next = closeResultTab(prev, id);
+      setActiveResultTabId((current) => {
+        if (current !== id) return current;
+        return pickAdjacentActiveTabId(prev, id);
+      });
+      return next;
+    });
+  }, []);
+
+  const closeOtherResultTabsById = useCallback((id: string) => {
+    setResultTabs((prev) => closeOtherResultTabs(prev, id));
+    setActiveResultTabId(id);
+  }, []);
+
+  const closeResultTabsToLeftOf = useCallback((id: string) => {
+    setResultTabs((prev) => closeResultTabsToLeft(prev, id));
+    setActiveResultTabId(id);
+  }, []);
+
+  const closeResultTabsToRightOf = useCallback((id: string) => {
+    setResultTabs((prev) => closeResultTabsToRight(prev, id));
+    setActiveResultTabId(id);
+  }, []);
+
   const handleTableSelect = useCallback(
     (table: SelectedTable) => {
       const normalized = normalizeSelectedTable(table);
@@ -234,7 +477,6 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       setSelectedTables((prev) => {
         const currentTables = prev[currentTab] || [];
 
-        // 单选模式（sql, pivot）
         if (currentTab === "sql" || currentTab === "pivot") {
           return {
             ...prev,
@@ -242,35 +484,31 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
           };
         }
 
-        // 多选模式（join, set）
-        const existingIndex = currentTables.findIndex(t => isSameTable(t, normalized));
+        const existingIndex = currentTables.findIndex((tbl) => isSameTable(tbl, normalized));
 
         if (existingIndex >= 0) {
-          // 取消选择
           return {
             ...prev,
             [currentTab]: currentTables.filter((_, i) => i !== existingIndex),
           };
-        } else {
-          // 添加选择
-          return {
-            ...prev,
-            [currentTab]: [...currentTables, normalized],
-          };
         }
+
+        return {
+          ...prev,
+          [currentTab]: [...currentTables, normalized],
+        };
       });
     },
     [currentTab]
   );
 
-  // 移除表处理
   const handleRemoveTable = useCallback(
     (table: SelectedTable) => {
       setSelectedTables((prev) => {
         const currentTables = prev[currentTab] || [];
         return {
           ...prev,
-          [currentTab]: currentTables.filter((t) => !isSameTable(t, table)),
+          [currentTab]: currentTables.filter((tbl) => !isSameTable(tbl, table)),
         };
       });
     },
@@ -290,127 +528,18 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     setJoinRestoreRequest(null);
   }, []);
 
-  // Tab 切换处理
   const handleTabChange = useCallback((tab: string) => {
     setCurrentTab(tab);
   }, []);
 
-  // 查询执行处理
-  // 统一使用两种模式：
-  // 1. DuckDB 本地查询：直接执行
-  // 2. 联邦查询（包括外部表）：通过 ATTACH 机制执行
-  const handleQueryExecute = useCallback(
-    async (sql: string, source?: TableSource) => {
-      // 默认为 DuckDB 数据源
-      const querySource: TableSource = source || { type: 'duckdb' };
-
-      // 生成请求 ID 并设置取消相关状态
-      const requestId = crypto.randomUUID();
-      currentRequestIdRef.current = requestId;
-      abortControllerRef.current = new AbortController();
-      setIsCancelled(false);
-      console.log('[useQueryWorkspace] Starting query with requestId:', requestId);
-
-      // 设置加载状态
-      setQueryResults({
-        data: null,
-        columns: null,
-        loading: true,
-        error: null,
-      });
-
-      try {
-        let response: {
-          data?: unknown[];
-          columns?: string[] | ColumnInfo[];
-          execTime?: number;
-          execution_time_ms?: number;
-          preview_limit_applied?: number | null;
-        };
-
-        if (querySource.type === 'federated') {
-          const attachDatabases = [...(querySource.attachDatabases ?? [])];
-
-          if (attachDatabases.length === 0 && querySource.connectionId) {
-            attachDatabases.push({
-              alias: querySource.connectionName || `db_${querySource.connectionId}`,
-              connectionId: querySource.connectionId,
-            });
-          }
-
-          if (attachDatabases.length === 0) {
-            throw new Error('Federated query requires attach databases');
-          }
-
-          const startTime = Date.now();
-          const result = await executeFederatedQuery({
-            sql,
-            attachDatabases,
-            isPreview: false,
-            requestId,
-            signal: abortControllerRef.current?.signal,
-          });
-          const execTime = Date.now() - startTime;
-          response = {
-            data: result.data || [],
-            columns: result.columns || [],
-            execTime,
-            preview_limit_applied: result.preview_limit_applied ?? null,
-          };
-        } else {
-          // DuckDB 本地查询 - 直接调用 API 以传递 requestId 和 signal
-          const startTime = Date.now();
-          const result = await executeDuckDBSQL(sql, {
-            requestId,
-            signal: abortControllerRef.current?.signal,
-          });
-          const execTime = Date.now() - startTime;
-          response = { ...result, execTime };
-        }
-
-        // 检查请求是否已被取消（通过比较 requestId）
-        // 如果 currentRequestIdRef 已被清除或与当前请求不同，说明已取消
-        if (currentRequestIdRef.current !== requestId) {
-          console.log('[useQueryWorkspace] Query was cancelled, ignoring result');
-          return;
-        }
-
-        // 保存最后执行的查询信息（用于导入）
-        setLastQuery({ sql, source: querySource });
-
-        // 处理结果
-        processQueryResult(response);
-      } catch (error) {
-        // 检查是否是取消导致的错误
-        if (currentRequestIdRef.current !== requestId) {
-          console.log('[useQueryWorkspace] Query was cancelled, ignoring error');
-          return;
-        }
-
-        setQueryResults({
-          data: null,
-          columns: null,
-          loading: false,
-          error: error as Error,
-        });
-        showErrorToast(t, undefined, t('query.error', { message: (error as Error).message }));
-      }
-    },
-    [duckdbMutation, processQueryResult, t]
-  );
-
-  // 取消当前查询
   const cancelQuery = useCallback(async () => {
-    console.log('[useQueryWorkspace] cancelQuery called, currentRequestId:', currentRequestIdRef.current);
     setIsCancelling(true);
 
-    // 本地中止请求
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
 
-    // 调用后端取消 API（如果有 requestId）
     if (currentRequestIdRef.current) {
       try {
         await cancelSyncQuery(currentRequestIdRef.current);
@@ -422,16 +551,34 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
     setIsCancelled(true);
     setIsCancelling(false);
-    setQueryResults(prev => prev ? {
-      ...prev,
-      loading: false,
-      error: new Error(t('query.cancelled')),
-    } : null);
+    setIsResultLoading(false);
+
+    if (retainQueryResults && activeResultTabId) {
+      setResultTabs((prev) =>
+        prev.map((tab) =>
+          tab.id === activeResultTabId
+            ? {
+                ...tab,
+                result: {
+                  ...tab.result,
+                  loading: false,
+                  error: new Error(t('query.cancelled')),
+                },
+              }
+            : tab
+        )
+      );
+    } else if (!retainQueryResults) {
+      setSingleResult((prev) =>
+        prev
+          ? { ...prev, loading: false, error: new Error(t('query.cancelled')) }
+          : null
+      );
+    }
 
     toast.info(t('query.cancelled'));
-  }, [t]);
+  }, [activeResultTabId, retainQueryResults, t]);
 
-  /** 将预览结果写入结果面板（集合运算预览等） */
   const displayQueryPreview = useCallback(
     (
       response: {
@@ -444,10 +591,28 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       sql?: string,
       source: TableSource = { type: 'duckdb' }
     ) => {
-      if (sql) {
-        setLastQuery({ sql, source });
+      if (!sql) {
+        const built = buildQueryResult({
+          ...response,
+          columns:
+            response.columns ??
+            (response.data?.length
+              ? Object.keys(response.data[0] as Record<string, unknown>)
+              : []),
+        });
+        if (retainQueryResults && activeResultTabId) {
+          setResultTabs((prev) =>
+            prev.map((tab) =>
+              tab.id === activeResultTabId ? { ...tab, result: built } : tab
+            )
+          );
+        } else {
+          setSingleResult(built);
+        }
+        return;
       }
-      processQueryResult({
+
+      commitSuccessfulResult(sql, source, {
         ...response,
         columns:
           response.columns ??
@@ -456,18 +621,30 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
             : []),
       });
     },
-    [processQueryResult]
+    [activeResultTabId, buildQueryResult, commitSuccessfulResult, retainQueryResults]
   );
 
   return {
     selectedTables,
     currentTab,
     queryResults,
+    isResultLoading,
     lastQuery,
+    retainQueryResults,
+    resultTabs,
+    activeResultTabId,
+    singleResultSlotLabel,
     handleTableSelect,
     handleRemoveTable,
     handleTabChange,
     handleQueryExecute,
+    refreshActiveResult,
+    refreshResultTab,
+    selectResultTab,
+    closeResultTabById,
+    closeOtherResultTabsById,
+    closeResultTabsToLeftOf,
+    closeResultTabsToRightOf,
     displayQueryPreview,
     cancelQuery,
     isCancelling,
@@ -478,5 +655,4 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   };
 };
 
-// 重新导出类型以便其他组件使用
 export type { SelectedTable, SelectedTableObject, DatabaseType };

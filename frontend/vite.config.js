@@ -15,10 +15,6 @@ export default defineConfig({
   worker: {
     format: "es",
   },
-  // Monaco Editor 优化
-  optimizeDeps: {
-    include: ["@monaco-editor/react", "monaco-editor"],
-  },
   build: {
     rollupOptions: {
       output: {
@@ -26,9 +22,6 @@ export default defineConfig({
           if (id.includes("node_modules")) {
             if (id.includes("codemirror")) {
               return "codemirror";
-            }
-            if (id.includes("monaco-editor")) {
-              return "monaco-editor";
             }
             if (id.includes("lucide-react")) {
               return "icons";

@@ -16,6 +16,14 @@ export type { SQLToolbarProps } from './SQLToolbar';
 export { SQLHistory } from './SQLHistory';
 export type { SQLHistoryProps } from './SQLHistory';
 
+export { duckDBDialect } from './sqlDialect';
+export {
+  getSqlEditorIsDarkMode,
+  sqlEditorDarkTheme,
+  sqlEditorLightTheme,
+  sqlEditorThemeExtensions,
+} from './sqlEditorTheme';
+
 // Hooks
 export { useSQLEditor } from './hooks/useSQLEditor';
 export type { 

@@ -102,29 +102,27 @@ export function useVirtualScroll({
     initialRect: { width: 0, height: 400 },
   });
 
-  // 列虚拟化（可选）
-  const columnVirtualizer = shouldVirtualizeColumns
-    ? useVirtualizer({
-      horizontal: true,
-      count: columnCount,
-      getScrollElement: () => scrollContainerRef.current,
-      estimateSize: getColumnWidth,
-      overscan: columnOverscan,
-      // 使用 initialRect 避免初始渲染时的 flushSync
-      initialRect: { width: 800, height: 0 },
-    })
-    : null;
+  // 列虚拟化：必须无条件调用 hook（列数跨阈值时不能增减 hook 数量，否则 React #311）
+  const columnVirtualizerInstance = useVirtualizer({
+    horizontal: true,
+    count: columnCount,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: getColumnWidth,
+    overscan: columnOverscan,
+    initialRect: { width: 800, height: 0 },
+  });
+  const columnVirtualizer = shouldVirtualizeColumns ? columnVirtualizerInstance : null;
 
   // 列宽变化时需要触发 columnVirtualizer 重新测量，否则 start/size 仍使用旧 cache，
   // 会导致表头与单元格位置不一致（看起来像“串列/重叠”）。
   useEffect(() => {
-    if (!columnVirtualizer) return;
+    if (!shouldVirtualizeColumns) return;
 
     const raf = globalThis.requestAnimationFrame;
     const caf = globalThis.cancelAnimationFrame;
 
     if (typeof raf !== 'function') {
-      columnVirtualizer.measure();
+      columnVirtualizerInstance.measure();
       return;
     }
 
@@ -135,7 +133,7 @@ export function useVirtualScroll({
     }
 
     columnMeasureRafRef.current = raf(() => {
-      columnVirtualizer.measure();
+      columnVirtualizerInstance.measure();
       columnMeasureRafRef.current = null;
     });
 
@@ -147,7 +145,7 @@ export function useVirtualScroll({
         columnMeasureRafRef.current = null;
       }
     };
-  }, [columnVirtualizer, columnWidths]);
+  }, [shouldVirtualizeColumns, columnVirtualizerInstance, columnWidths]);
 
   // 可见行
   const virtualRows = rowVirtualizer.getVirtualItems();

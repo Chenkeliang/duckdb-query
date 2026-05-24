@@ -1,7 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Copy, Check, Code2, Play, Edit3 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,6 +9,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { SQLHighlight } from '@/components/SQLHighlight';
+import { SQLEditor } from '@/Query/SQLQuery/SQLEditor';
+import { cn } from '@/lib/utils';
 
 export interface SQLPreviewProps {
   sql: string | null;
@@ -33,11 +35,25 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedSQL, setEditedSQL] = useState(sql || '');
+  /** 先展示可滚动的纯文本，下一帧再挂 CodeMirror，避免阻塞弹窗打开 */
+  const [highlightReady, setHighlightReady] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setEditedSQL(sql || '');
     setIsEditing(false);
-  }, [sql]);
+  }, [sql, open]);
+
+  useEffect(() => {
+    if (!open || !sql || isEditing) {
+      setHighlightReady(false);
+      return;
+    }
+    const frame = requestAnimationFrame(() => setHighlightReady(true));
+    return () => {
+      cancelAnimationFrame(frame);
+      setHighlightReady(false);
+    };
+  }, [open, sql, isEditing]);
 
   const handleCopy = useCallback(async () => {
     const textToCopy = isEditing ? editedSQL : sql;
@@ -67,8 +83,8 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-screen flex flex-col">
-        <DialogHeader>
+      <DialogContent className="max-w-3xl max-h-[min(90vh,900px)] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Code2 className="h-5 w-5" />
             {t('query.preview.title', 'SQL 预览')}
@@ -78,8 +94,8 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col gap-4">
-          <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 min-h-0 flex-1">
+          <div className="flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               {allowEdit && (
                 <Button
@@ -112,7 +128,7 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
                 <Button
                   size="sm"
                   onClick={handleExecute}
-                  disabled={isExecuting || !sql}
+                  disabled={isExecuting || !(isEditing ? editedSQL : sql)}
                 >
                   <Play className="h-4 w-4 mr-1" />
                   {isExecuting
@@ -123,32 +139,45 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto">
+          <div
+            className={cn(
+              'flex-1 min-h-[12rem] max-h-[min(60vh,32rem)] min-w-0',
+              'rounded-lg border border-border overflow-hidden'
+            )}
+          >
             {isEditing ? (
-              <textarea
+              <SQLEditor
                 value={editedSQL}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  setEditedSQL(e.target.value)
-                }
-                className={cn(
-                  'w-full min-h-72 p-4 font-mono text-sm resize-none',
-                  'bg-input border border-border rounded-lg',
-                  'text-foreground placeholder:text-muted-foreground',
-                  'focus:outline-none focus:ring-2 focus:ring-primary'
-                )}
+                onChange={setEditedSQL}
+                minHeight="100%"
+                maxHeight="100%"
+                className="h-full"
                 placeholder={t('query.preview.placeholder', '输入 SQL...')}
               />
+            ) : sql ? (
+              highlightReady ? (
+                <SQLHighlight
+                  sql={sql}
+                  scrollable
+                  minHeight="12rem"
+                  maxHeight="min(60vh, 32rem)"
+                  className="h-full border-0 rounded-lg"
+                />
+              ) : (
+                <pre
+                  className={cn(
+                    'h-full min-h-48 max-h-[min(60vh,32rem)] overflow-auto',
+                    'p-3 text-sm font-mono whitespace-pre-wrap break-words',
+                    'bg-muted/30 text-foreground rounded-lg'
+                  )}
+                >
+                  {sql}
+                </pre>
+              )
             ) : (
-              <pre
-                className={cn(
-                  'p-4 bg-muted rounded-lg overflow-auto',
-                  'font-mono text-sm whitespace-pre-wrap break-words',
-                  'min-h-72 max-h-96',
-                  'text-foreground border border-border'
-                )}
-              >
-                {sql || t('query.preview.noSQL', '暂无 SQL')}
-              </pre>
+              <p className="text-sm text-muted-foreground p-4">
+                {t('query.preview.noSQL', '暂无 SQL')}
+              </p>
             )}
           </div>
         </div>

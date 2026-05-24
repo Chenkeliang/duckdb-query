@@ -17,6 +17,7 @@ import {
   Download,
   Database,
 } from 'lucide-react';
+import { SQLHighlight } from '@/components/SQLHighlight';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -318,8 +319,15 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
                             {task.sql ? truncateSQL(task.sql) : '-'}
                           </span>
                         </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-md">
-                          <pre className="text-xs whitespace-pre-wrap">{task.sql}</pre>
+                        <TooltipContent side="bottom" className="max-w-md p-2">
+                          {task.sql ? (
+                            <SQLHighlight
+                              sql={task.sql}
+                              minHeight="4rem"
+                              maxHeight="12rem"
+                              className="border-0 rounded-md min-w-[280px]"
+                            />
+                          ) : null}
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
