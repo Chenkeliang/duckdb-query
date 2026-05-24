@@ -1,5 +1,5 @@
 # build stage
-FROM docker.io/node:22-alpine as build
+FROM docker.io/node:24-alpine as build
 WORKDIR /app
 
 # 复制package文件
