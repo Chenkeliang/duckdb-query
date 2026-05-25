@@ -71,5 +71,8 @@ describe('buildJoinQueryPayload', () => {
         });
         expect(payload?.attach_databases?.length).toBe(1);
         expect(payload?.sources[0].id).toContain('.');
+        expect(payload?.joins[0].alias_left).toBe('t1');
+        expect(payload?.joins[0].alias_right).toBe('t2');
+        expect(payload?.joins[0].alias_left).not.toContain('.');
     });
 });

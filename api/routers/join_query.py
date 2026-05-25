@@ -34,6 +34,7 @@ from core.database.duckdb_engine import (
 from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
+    federated_source_sql_alias,
     format_qualified_table_reference,
     resolve_attach_configs,
 )
@@ -80,7 +81,13 @@ def safe_alias(table, col):
     return f'"{alias}"'
 
 
-def build_multi_table_join_query(query_request, con, *, federated_attach: bool = False):
+def build_multi_table_join_query(
+    query_request,
+    con,
+    *,
+    federated_attach: bool = False,
+    attach_aliases: Optional[set[str]] = None,
+):
     """
     Build multi-table JOIN query
     Support complex JOIN operations for multiple data sources
@@ -92,6 +99,14 @@ def build_multi_table_join_query(query_request, con, *, federated_attach: bool =
 
     if not sources:
         raise ValueError("At least one data source is required")
+
+    attach_alias_set = attach_aliases if federated_attach and attach_aliases else None
+
+    def table_ref_id(source_id: str) -> str:
+        sid = source_id.strip('"')
+        if attach_alias_set:
+            return federated_source_sql_alias(sid, attach_alias_set)
+        return sid
 
     if len(sources) == 1:
         # Single table query
@@ -132,23 +147,23 @@ def build_multi_table_join_query(query_request, con, *, federated_attach: bool =
     if joins:
         involved_tables = set()
         for join in joins:
-            involved_tables.add(join.left_source_id.strip('"'))
-            involved_tables.add(join.right_source_id.strip('"'))
+            involved_tables.add(table_ref_id(join.left_source_id))
+            involved_tables.add(table_ref_id(join.right_source_id))
 
         for source in sources:
-            table_id = source.id.strip('"')
-            if table_id in involved_tables and source.columns:
+            ref_id = table_ref_id(source.id)
+            if ref_id in involved_tables and source.columns:
                 for col in source.columns:
                     # Support two column formats: string or dict containing 'name' key
                     col_name = (
                         col.get("name", str(col)) if isinstance(col, dict) else str(col)
                     )
                     alias = column_aliases[source.id].get(col_name, col_name)
-                    select_fields.append(f'"{table_id}"."{col_name}" AS "{alias}"')
+                    select_fields.append(f'"{ref_id}"."{col_name}" AS "{alias}"')
     else:
         # If no JOIN, include all columns from all tables
         for source in sources:
-            table_id = source.id.strip('"')
+            ref_id = table_ref_id(source.id)
             if source.columns:
                 for col in source.columns:
                     # Support two column formats: string or dict containing 'name' key
@@ -156,7 +171,7 @@ def build_multi_table_join_query(query_request, con, *, federated_attach: bool =
                         col.get("name", str(col)) if isinstance(col, dict) else str(col)
                     )
                     alias = column_aliases[source.id].get(col_name, col_name)
-                    select_fields.append(f'"{table_id}"."{col_name}" AS "{alias}"')
+                    select_fields.append(f'"{ref_id}"."{col_name}" AS "{alias}"')
 
     # Add association result columns
     join_result_fields = []
@@ -165,14 +180,14 @@ def build_multi_table_join_query(query_request, con, *, federated_attach: bool =
         table_prefixes = {}
         prefix_index = 0
         for source in sources:
-            table_id = source.id.strip('"')
+            ref_id = table_ref_id(source.id)
             prefix = chr(65 + prefix_index)  # A=65, B=66, C=67...
-            table_prefixes[table_id] = prefix
+            table_prefixes[ref_id] = prefix
             prefix_index += 1
 
         for i, join in enumerate(joins):
-            left_table = join.left_source_id.strip('"')
-            right_table = join.right_source_id.strip('"')
+            left_table = table_ref_id(join.left_source_id)
+            right_table = table_ref_id(join.right_source_id)
 
             # Generate association result column name
             left_prefix = table_prefixes.get(left_table, left_table)
@@ -193,10 +208,12 @@ def build_multi_table_join_query(query_request, con, *, federated_attach: bool =
                 else:
                     # If no conditions, use first column for check
                     right_cols = (
-                        [col for col in sources if col.id.strip('"') == right_table][
-                            0
-                        ].columns
-                        if any(col.id.strip('"') == right_table for col in sources)
+                        [
+                            col
+                            for col in sources
+                            if table_ref_id(col.id) == right_table
+                        ][0].columns
+                        if any(table_ref_id(col.id) == right_table for col in sources)
                         else []
                     )
                     right_key_col = (
@@ -212,10 +229,12 @@ def build_multi_table_join_query(query_request, con, *, federated_attach: bool =
                 else:
                     # If no conditions, use first column for check
                     left_cols = (
-                        [col for col in sources if col.id.strip('"') == left_table][
-                            0
-                        ].columns
-                        if any(col.id.strip('"') == left_table for col in sources)
+                        [
+                            col
+                            for col in sources
+                            if table_ref_id(col.id) == left_table
+                        ][0].columns
+                        if any(table_ref_id(col.id) == left_table for col in sources)
                         else []
                     )
                     left_key_col = (
@@ -234,17 +253,21 @@ def build_multi_table_join_query(query_request, con, *, federated_attach: bool =
                 else:
                     # If no conditions, use first column for check
                     left_cols = (
-                        [col for col in sources if col.id.strip('"') == left_table][
-                            0
-                        ].columns
-                        if any(col.id.strip('"') == left_table for col in sources)
+                        [
+                            col
+                            for col in sources
+                            if table_ref_id(col.id) == left_table
+                        ][0].columns
+                        if any(table_ref_id(col.id) == left_table for col in sources)
                         else []
                     )
                     right_cols = (
-                        [col for col in sources if col.id.strip('"') == right_table][
-                            0
-                        ].columns
-                        if any(col.id.strip('"') == right_table for col in sources)
+                        [
+                            col
+                            for col in sources
+                            if table_ref_id(col.id) == right_table
+                        ][0].columns
+                        if any(table_ref_id(col.id) == right_table for col in sources)
                         else []
                     )
                     left_key_col = (
@@ -275,15 +298,16 @@ def build_multi_table_join_query(query_request, con, *, federated_attach: bool =
     # Build FROM and JOIN clauses
     if not joins:
         # No JOIN conditions, use CROSS JOIN
-        first_source_id = sources[0].id.strip('"')
-        from_clause = f'"{first_source_id}"'
+        from_clause = _source_table_sql(sources[0].id, attach_alias_set)
         for source in sources[1:]:
-            source_id = source.id.strip('"')
-            from_clause += f' CROSS JOIN "{source_id}"'
+            from_clause += f" CROSS JOIN {_source_table_sql(source.id, attach_alias_set)}"
     else:
         # Build JOIN chain
         from_clause = build_join_chain(
-            sources, joins, {source.id.strip('"'): source.columns for source in sources}
+            sources,
+            joins,
+            {source.id.strip('"'): source.columns for source in sources},
+            attach_alias_set,
         )
 
     query = f"SELECT {select_clause} FROM {from_clause}"
@@ -295,20 +319,40 @@ def build_multi_table_join_query(query_request, con, *, federated_attach: bool =
     return query
 
 
-def _source_table_sql(source_id: str) -> str:
-    return format_qualified_table_reference(source_id.strip('"'))
+def _source_table_sql(
+    source_id: str, attach_aliases: Optional[set[str]] = None
+) -> str:
+    qualified = format_qualified_table_reference(source_id.strip('"'))
+    if attach_aliases:
+        alias = federated_source_sql_alias(source_id, attach_aliases)
+        safe_alias = alias.replace('"', '""')
+        return f'{qualified} AS "{safe_alias}"'
+    return qualified
 
 
-def _join_column_ref(table_id: str, column: str) -> str:
-    return f'{_source_table_sql(table_id)}."{column.replace(chr(34), chr(34) * 2)}"'
+def _join_column_ref(
+    table_id: str, column: str, attach_aliases: Optional[set[str]] = None
+) -> str:
+    safe_col = column.replace(chr(34), chr(34) * 2)
+    if attach_aliases:
+        alias = federated_source_sql_alias(table_id, attach_aliases)
+        safe_alias = alias.replace('"', '""')
+        return f'"{safe_alias}"."{safe_col}"'
+    return f'{_source_table_sql(table_id)}."{safe_col}"'
 
 
-def build_join_chain(sources, joins, table_columns):
+def build_join_chain(sources, joins, table_columns, attach_aliases=None):
     """
     Build JOIN chain, support multi-table connections and multi-field associations
     """
     if not joins:
-        return _source_table_sql(sources[0].id)
+        return _source_table_sql(sources[0].id, attach_aliases)
+
+    def ref_id(source_id: str) -> str:
+        sid = source_id.strip('"')
+        if attach_aliases:
+            return federated_source_sql_alias(sid, attach_aliases)
+        return sid
 
     # Create table mapping
     source_map = {source.id.strip('"'): source for source in sources}
@@ -318,18 +362,20 @@ def build_join_chain(sources, joins, table_columns):
 
     # Start building from first JOIN
     first_join = joins[0]
-    left_table = first_join.left_source_id.strip('"')
-    right_table = first_join.right_source_id.strip('"')
+    left_table = ref_id(first_join.left_source_id)
+    right_table = ref_id(first_join.right_source_id)
 
-    from_clause = _source_table_sql(left_table)
+    from_clause = _source_table_sql(first_join.left_source_id, attach_aliases)
     joined_tables.add(left_table)
 
     # Collect JOIN conditions for all same table pairs
     join_conditions_map = {}
 
     for join in joins:
-        left_id = join.left_source_id.strip('"')
-        right_id = join.right_source_id.strip('"')
+        left_id = ref_id(join.left_source_id)
+        right_id = ref_id(join.right_source_id)
+        left_source_id = join.left_source_id.strip('"')
+        right_source_id = join.right_source_id.strip('"')
 
         # Create JOIN key for merging JOIN conditions of same table pairs
         join_key = tuple(sorted([left_id, right_id]))
@@ -338,6 +384,8 @@ def build_join_chain(sources, joins, table_columns):
             join_conditions_map[join_key] = {
                 "left_table": left_id,
                 "right_table": right_id,
+                "left_source_id": left_source_id,
+                "right_source_id": right_source_id,
                 "join_type": join.join_type,
                 "conditions": [],
             }
@@ -368,17 +416,28 @@ def build_join_chain(sources, joins, table_columns):
             continue
 
         join_type_sql = get_join_type_sql(join_type)
-        from_clause += f" {join_type_sql} {_source_table_sql(table_to_join)}"
+        table_to_join_source = (
+            join_info["right_source_id"]
+            if table_to_join == right_id
+            else join_info["left_source_id"]
+        )
+        from_clause += (
+            f" {join_type_sql} {_source_table_sql(table_to_join_source, attach_aliases)}"
+        )
 
         # Add all JOIN conditions (including multi-field associations)
         if join_type.lower() != "cross" and all_conditions:
             conditions = []
             for condition in all_conditions:
-                left_table_id = left_id
-                right_table_id = right_id
+                left_table_id = join_info["left_source_id"]
+                right_table_id = join_info["right_source_id"]
 
-                base_left_col = _join_column_ref(left_table_id, condition.left_column)
-                base_right_col = _join_column_ref(right_table_id, condition.right_column)
+                base_left_col = _join_column_ref(
+                    left_table_id, condition.left_column, attach_aliases
+                )
+                base_right_col = _join_column_ref(
+                    right_table_id, condition.right_column, attach_aliases
+                )
 
                 left_col = base_left_col
                 right_col = base_right_col
@@ -712,9 +771,20 @@ async def perform_query(
             logger.info(f"Current tables in DuckDB: {available_tables.to_string()}")
 
             # 构建查询 - 确保表名使用双引号括起来
+            attach_alias_set = None
+            if federated_attach and query_request.attach_databases:
+                attach_alias_set = {
+                    db.alias.strip()
+                    for db in query_request.attach_databases
+                    if getattr(db, "alias", None)
+                }
+
             if len(query_request.joins) > 0:
                 query = build_multi_table_join_query(
-                    query_request, con, federated_attach=federated_attach
+                    query_request,
+                    con,
+                    federated_attach=federated_attach,
+                    attach_aliases=attach_alias_set,
                 )
             else:
                 # Single table query - 使用build_single_table_query来处理表名

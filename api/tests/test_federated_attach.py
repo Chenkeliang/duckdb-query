@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from core.database.federated_attach import (
     _is_database_already_attached_error,
     attach_databases_on_connection,
+    federated_source_sql_alias,
     format_qualified_table_reference,
 )
 
@@ -15,6 +16,13 @@ def test_format_qualified_table_reference_simple():
 
 def test_format_qualified_table_reference_dotted():
     assert format_qualified_table_reference("mysql_db.orders") == '"mysql_db"."orders"'
+
+
+def test_federated_source_sql_alias():
+    assert (
+        federated_source_sql_alias("mysql_sorder.iget_order", {"mysql_sorder"})
+        == "iget_order"
+    )
 
 
 def test_format_qualified_table_reference_three_part():

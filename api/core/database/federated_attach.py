@@ -131,6 +131,21 @@ def execute_sql_with_attach(
         return _run(conn)
 
 
+def federated_source_sql_alias(table_ref: str, attach_aliases: set[str]) -> str:
+    """
+    ATTACH 后 DuckDB 可见的短表名（一般为物理表名，不含 attach 前缀）。
+
+    例：mysql_sorder.iget_order + attach mysql_sorder → iget_order
+    """
+    trimmed = (table_ref or "").strip().strip('"')
+    if not trimmed:
+        raise ValueError("Table reference cannot be empty")
+    parts = [part.strip().strip('"') for part in trimmed.split(".") if part.strip()]
+    if len(parts) >= 2 and parts[0] in attach_aliases:
+        return parts[-1]
+    return parts[-1] if parts else trimmed
+
+
 def format_qualified_table_reference(table_ref: str) -> str:
     """将 `alias.schema.table` 或 `table` 格式化为带引号的 SQL 表引用。"""
     trimmed = (table_ref or "").strip().strip('"')

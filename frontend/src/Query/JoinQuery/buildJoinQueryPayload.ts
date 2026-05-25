@@ -159,8 +159,10 @@ export function buildJoinQueryPayload(params: {
         if (!config) {
             return null;
         }
-        const leftName = sources[i]?.id ?? getTableName(activeTables[i]);
-        const rightName = sources[i + 1]?.id ?? getTableName(activeTables[i + 1]);
+        const leftTableName = getTableName(activeTables[i]);
+        const rightTableName = getTableName(activeTables[i + 1]);
+        const leftName = sources[i]?.id ?? leftTableName;
+        const rightName = sources[i + 1]?.id ?? rightTableName;
         const conditions: JoinQueryCondition[] = config.conditions
             .filter((c) => c.leftColumn?.trim() && c.rightColumn?.trim())
             .map((c) => {
@@ -186,8 +188,8 @@ export function buildJoinQueryPayload(params: {
             right_source_id: rightName,
             join_type: mapJoinType(config.joinType),
             conditions,
-            alias_left: aliasMap[leftName] ?? leftName,
-            alias_right: aliasMap[rightName] ?? rightName,
+            alias_left: aliasMap[leftTableName] ?? leftTableName,
+            alias_right: aliasMap[rightTableName] ?? rightTableName,
         });
     }
 
