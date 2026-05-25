@@ -1,6 +1,6 @@
 """federated_attach 工具测试"""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from core.database.federated_attach import (
     _is_database_already_attached_error,
@@ -30,11 +30,23 @@ def test_is_database_already_attached_error():
     assert _is_database_already_attached_error(Exception("connection refused")) is False
 
 
-def test_attach_databases_on_connection_reuses_existing_alias():
+@patch(
+    "core.database.federated_attach.build_attach_sql",
+    return_value="ATTACH DATABASE 'dummy' AS mysql_sorder (TYPE mysql)",
+)
+def test_attach_databases_on_connection_reuses_existing_alias(_mock_build_attach):
     conn = MagicMock()
-    conn.execute.side_effect = [
-        Exception('database with name "mysql_sorder" already exists'),
-    ]
+
+    def execute_side_effect(sql: str):
+        if sql.startswith('DETACH'):
+            return None
+        raise Exception(
+            'Binder Error: Failed to attach database: database with name '
+            '"mysql_sorder" already exists'
+        )
+
+    conn.execute.side_effect = execute_side_effect
+
     attached = attach_databases_on_connection(
         conn,
         [("mysql_sorder", {"type": "mysql", "host": "h", "database": "d"})],
