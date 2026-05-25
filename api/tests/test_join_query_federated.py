@@ -14,14 +14,14 @@ def test_build_multi_table_join_query_federated_short_table_aliases():
             type="duckdb",
             table_name="mysql_sorder.iget_order_detail",
             params={"table_name": "mysql_sorder.iget_order_detail"},
-            columns=["order_id"],
+            columns=[{"name": "order_id", "type": "VARCHAR"}],
         ),
         DataSource(
             id="mysql_sorder.iget_order",
             type="duckdb",
             table_name="mysql_sorder.iget_order",
             params={"table_name": "mysql_sorder.iget_order"},
-            columns=["order_id"],
+            columns=[{"name": "order_id", "type": "VARCHAR"}],
         ),
     ]
     join = Join(
