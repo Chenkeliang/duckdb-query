@@ -22,15 +22,21 @@ from core.common.timezone_utils import (
     get_current_time_iso,
 )
 from core.common.utils import normalize_dataframe_output
+from core.common.sql_mysql_quotes import (
+    normalize_mysql_double_quoted_strings_for_duckdb,
+)
 from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
     file_datasource_manager,
 )
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
-    build_attach_sql,
     create_persistent_table,
     with_duckdb_connection,
+)
+from core.database.federated_attach import (
+    attach_databases_on_connection,
+    detach_databases_on_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.security.encryption import password_encryptor
@@ -785,8 +791,10 @@ async def execute_federated_query(
             )
             attach_configs.append((attach_db.alias, db_config))
 
-    # 处理 SQL 查询
-    sql_query = request.sql.strip()
+    # 处理 SQL 查询（MySQL 风格双引号字符串 → DuckDB 单引号）
+    sql_query = normalize_mysql_double_quoted_strings_for_duckdb(
+        request.sql.strip()
+    )
     sql_upper = sql_query.upper()
 
     limit = None
@@ -801,34 +809,10 @@ async def execute_federated_query(
         """在连接内执行 ATTACH/QUERY/DETACH"""
         nonlocal attached_aliases, warnings
 
-        # 1. ATTACH 所有外部数据库
-        for alias, db_config in attach_configs:
-            try:
-                attach_sql = build_attach_sql(alias, db_config)
-                # 打印完整的 ATTACH SQL（密码已在 build_attach_sql 中处理）
-                # 为安全起见，再次屏蔽密码
-                masked_sql = attach_sql
-                if "password" in attach_sql.lower():
-                    import re
-
-                    masked_sql = re.sub(
-                        r"password\s*[=:]\s*'[^']*'",
-                        "password='***'",
-                        attach_sql,
-                        flags=re.IGNORECASE,
-                    )
-                logger.info(f"Executing ATTACH: {alias}")
-                logger.info(f"ATTACH SQL: {masked_sql}")
-                conn.execute(attach_sql)
-                attached_aliases.append(alias)
-                logger.info(f"Successfully ATTACH database: {alias}")
-            except Exception as attach_error:
-                logger.error(f"ATTACH database {alias} failed: {attach_error}")
-                raise DatabaseConnectionError(
-                    f"Failed to connect to external database '{alias}': {str(attach_error)}",
-                ) from attach_error
-
-        logger.info(f"Attached databases: {attached_aliases}")
+        # 1. ATTACH 所有外部数据库（连接池复用时会容忍已挂载别名）
+        if attach_configs:
+            attached_aliases = attach_databases_on_connection(conn, attach_configs)
+            logger.info(f"Attached databases: {attached_aliases}")
 
         # 2. 执行用户 SQL
         result_df = conn.execute(sql_query).fetchdf()
@@ -849,12 +833,8 @@ async def execute_federated_query(
                     warnings.append(f"Failed to save result as table: {str(save_error)}")
 
         # 4. DETACH 清理
-        for alias in attached_aliases:
-            try:
-                conn.execute(f'DETACH "{alias}"')
-                logger.info(f"Successfully DETACH database: {alias}")
-            except Exception as detach_error:
-                logger.warning(f"DETACH {alias} failed: {detach_error}")
+        if attached_aliases:
+            detach_databases_on_connection(conn, attached_aliases)
 
         return result_df
 

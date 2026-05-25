@@ -46,6 +46,19 @@ DuckQuery 使用统一的查询执行模式：
 
 **重要**：引号**不是**联邦查询的识别手段。是否走 `/api/duckdb/federated-query` 由 `attach_databases`、SQL 解析出的 `alias.table` 前缀、选中外部表等决定，与 SQL 中带不带引号无关。
 
+### MySQL / DataGrip 双引号字符串（兼容层）
+
+DuckDB **不能**像 MySQL（非 `ANSI_QUOTES`）那样把 `"literal"` 当字符串；双引号在 DuckDB 里表示**标识符**。
+
+为贴近 DataGrip 手写习惯，联邦查询在**执行前**会做一层归一化（前端 `normalizeMysqlDoubleQuotedStringsForDuckdb`、后端 `normalize_mysql_double_quoted_strings_for_duckdb`）：
+
+| 场景 | 行为 |
+|------|------|
+| `IN ("A", "B")`、`= "x"` 等 | `"…"` → `'…'` |
+| `"schema"."table"` | 保留双引号（限定标识符） |
+
+仍建议新 SQL 优先使用单引号字符串；兼容层不覆盖 `AS "alias"` 等全部 MySQL 方言。
+
 ```typescript
 // frontend/src/utils/sqlUtils.ts
 export function needsQuoting(identifier: string): boolean { /* … */ }

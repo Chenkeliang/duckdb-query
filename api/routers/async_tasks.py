@@ -124,6 +124,7 @@ def _attach_external_databases(
 
     from core.database.database_manager import db_manager
     from core.database.duckdb_engine import build_attach_sql
+    from core.database.federated_attach import _is_database_already_attached_error
     from core.security.encryption import password_encryptor
 
     attached = []
@@ -166,10 +167,23 @@ def _attach_external_databases(
                 db_config["password"] = password_encryptor.decrypt_password(password)
                 logger.debug(f"Connection {connection_id} password processed")
 
-            # 执行 ATTACH
+            try:
+                con.execute(f'DETACH "{alias}"')
+            except Exception:
+                pass
+
             attach_sql = build_attach_sql(alias, db_config)
             logger.info(f"Executing ATTACH: {alias} (connection_id: {connection_id})")
-            con.execute(attach_sql)
+            try:
+                con.execute(attach_sql)
+            except Exception as attach_error:
+                if _is_database_already_attached_error(attach_error):
+                    logger.warning(
+                        "Database %s still attached after pre-DETACH, reusing",
+                        alias,
+                    )
+                else:
+                    raise
             attached.append(alias)
             logger.info(f"Successfully ATTACH database: {alias}")
 
@@ -1005,7 +1019,13 @@ def execute_async_federated_query(
         # 智能移除系统自动添加的LIMIT
         from routers.query_sql_utils import remove_auto_added_limit
 
-        clean_sql = remove_auto_added_limit(sql)
+        from core.common.sql_mysql_quotes import (
+            normalize_mysql_double_quoted_strings_for_duckdb,
+        )
+
+        clean_sql = normalize_mysql_double_quoted_strings_for_duckdb(
+            remove_auto_added_limit(sql)
+        )
         if clean_sql != sql.strip():
             logger.info(f"Federated query removed auto-added LIMIT: {sql} -> {clean_sql}")
         else:

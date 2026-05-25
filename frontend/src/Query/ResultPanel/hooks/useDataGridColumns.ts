@@ -4,6 +4,10 @@
 
 import React, { useMemo } from 'react';
 import type { ColumnDef } from '../../DataGrid/types';
+import {
+  columnMostlyHttpUrls,
+  createUrlCellRenderer,
+} from '../../DataGrid/utils/urlCell';
 import { useColumnTypeDetection, type ColumnType } from './useColumnTypeDetection';
 
 export interface UseDataGridColumnsOptions {
@@ -150,7 +154,9 @@ export function useDataGridColumns({
           col.cellRenderer = ({ value }) => booleanCellRenderer(value);
           break;
         default:
-          if (typeInfo?.nullable) {
+          if (columnMostlyHttpUrls(data, field, sampleSize)) {
+            col.cellRenderer = createUrlCellRenderer();
+          } else if (typeInfo?.nullable) {
             col.valueFormatter = (value) =>
               value === null || value === undefined ? 'NULL' : String(value);
           }

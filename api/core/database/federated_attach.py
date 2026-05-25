@@ -17,6 +17,11 @@ from core.security.encryption import password_encryptor
 logger = logging.getLogger(__name__)
 
 
+def _is_database_already_attached_error(error: Exception) -> bool:
+    """DuckDB 连接池复用时，残留 ATTACH 会触发 Binder already exists。"""
+    return "already exists" in str(error).lower()
+
+
 def resolve_attach_configs(
     attach_databases: Optional[List[Any]],
 ) -> List[Tuple[str, Dict[str, Any]]]:
@@ -59,12 +64,25 @@ def attach_databases_on_connection(
     """在已有连接上 ATTACH，返回成功 alias 列表。"""
     attached: List[str] = []
     for alias, db_config in attach_configs:
+        # 连接池复用：先尝试卸掉同名库，避免「already exists」
+        try:
+            conn.execute(f'DETACH "{alias}"')
+        except Exception as detach_error:
+            logger.debug("Pre-ATTACH DETACH %s skipped: %s", alias, detach_error)
+
         try:
             attach_sql = build_attach_sql(alias, db_config)
             logger.info("Executing ATTACH: %s", alias)
             conn.execute(attach_sql)
             attached.append(alias)
         except Exception as attach_error:
+            if _is_database_already_attached_error(attach_error):
+                logger.warning(
+                    "Database %s still attached after pre-DETACH, reusing",
+                    alias,
+                )
+                attached.append(alias)
+                continue
             logger.error("ATTACH database %s failed: %s", alias, attach_error)
             raise DatabaseConnectionError(
                 f"Failed to connect to external database '{alias}': {attach_error}",
@@ -86,8 +104,14 @@ def execute_sql_with_attach(
     query_id: Optional[str] = None,
 ) -> pd.DataFrame:
     """在 DuckDB 连接上 ATTACH → 执行 SQL → DETACH。"""
+    from core.common.sql_mysql_quotes import (
+        normalize_mysql_double_quoted_strings_for_duckdb,
+    )
+
     attach_configs = resolve_attach_configs(attach_databases)
-    cleaned_sql = sql.rstrip().rstrip(";")
+    cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(
+        sql.rstrip().rstrip(";")
+    )
 
     def _run(conn: Any) -> pd.DataFrame:
         attached: List[str] = []

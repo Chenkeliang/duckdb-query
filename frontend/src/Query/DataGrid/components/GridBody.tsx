@@ -8,13 +8,15 @@ import { GridRow } from './GridRow';
 import { GridCell } from './GridCell';
 import { SelectionOverlay } from './SelectionOverlay';
 import type { VirtualItem } from '@tanstack/react-virtual';
-import type { SelectionRange } from '../types';
+import type { ColumnDef, SelectionRange } from '../types';
 
 export interface GridBodyProps {
   /** 行数据 */
   data: Record<string, unknown>[];
   /** 列字段名列表 */
   columns: string[];
+  /** 按字段名索引的列定义（含 cellRenderer / valueFormatter） */
+  columnDefsByField?: Record<string, ColumnDef>;
   /** 列宽数组 */
   columnWidths: number[];
   /** 行高 */
@@ -48,6 +50,7 @@ export interface GridBodyProps {
 export const GridBody: React.FC<GridBodyProps> = ({
   data,
   columns,
+  columnDefsByField = {},
   columnWidths,
   rowHeight,
   virtualRows,
@@ -121,10 +124,24 @@ export const GridBody: React.FC<GridBodyProps> = ({
             >
               {visibleColumns.map((col) => {
                 const value = rowData[col.field];
+                const columnDef = columnDefsByField[col.field];
                 const isSelected = isCellSelected(virtualRow.index, col.index);
                 const isFocused =
                   focusPosition?.rowIndex === virtualRow.index &&
                   focusPosition?.colIndex === col.index;
+
+                let cellContent: React.ReactNode | undefined;
+                if (columnDef?.cellRenderer) {
+                  cellContent = columnDef.cellRenderer({
+                    value,
+                    row: rowData,
+                    column: columnDef,
+                    rowIndex: virtualRow.index,
+                    colIndex: col.index,
+                  });
+                } else if (columnDef?.valueFormatter) {
+                  cellContent = columnDef.valueFormatter(value);
+                }
 
                 return (
                   <GridCell
@@ -139,7 +156,9 @@ export const GridBody: React.FC<GridBodyProps> = ({
                     height={rowHeight}
                     onMouseDown={onCellMouseDown}
                     onMouseEnter={onCellMouseEnter}
-                  />
+                  >
+                    {cellContent}
+                  </GridCell>
                 );
               })}
             </GridRow>

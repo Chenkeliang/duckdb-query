@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils';
 import { isNullValue, isNumericValue } from '../utils/formatters';
 
 export interface GridCellProps {
+  /** 自定义单元格内容（优先于 value 文本） */
+  children?: React.ReactNode;
   /** 单元格值 */
   value: unknown;
   /** 行索引 */
@@ -34,6 +36,7 @@ export interface GridCellProps {
 }
 
 export const GridCell: React.FC<GridCellProps> = React.memo(({
+  children,
   value,
   rowIndex,
   colIndex,
@@ -64,6 +67,7 @@ export const GridCell: React.FC<GridCellProps> = React.memo(({
 
   // 格式化显示值
   const displayValue = isNull ? 'NULL' : String(value);
+  const content = children ?? displayValue;
 
   return (
     <div
@@ -91,7 +95,11 @@ export const GridCell: React.FC<GridCellProps> = React.memo(({
       onDoubleClick={handleDoubleClick}
       onMouseEnter={handleMouseEnter}
     >
-      <span className="truncate">{displayValue}</span>
+      {typeof content === 'string' || typeof content === 'number' ? (
+        <span className="truncate">{content}</span>
+      ) : (
+        content
+      )}
     </div>
   );
 });

@@ -264,16 +264,31 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
     return state;
   }, [columnFilters]);
 
+  const columnDefsByField = useMemo((): Record<string, ColumnDef> => {
+    const map: Record<string, ColumnDef> = {};
+    if (propColumns?.length) {
+      for (const col of propColumns) {
+        map[col.field] = col;
+      }
+    }
+    return map;
+  }, [propColumns]);
+
   // 列定义（用于 GridHeader）
   const columnDefs = useMemo<ColumnDef[]>(() => {
-    return visibleColumns.map((field: string) => ({
-      field,
-      headerName: field,
-      sortable: enableSorting,
-      filterable: enableFiltering,
-      resizable: true,
-    }));
-  }, [visibleColumns, enableSorting, enableFiltering]);
+    return visibleColumns.map((field: string) => {
+      const fromProp = columnDefsByField[field];
+      return {
+        field,
+        headerName: fromProp?.headerName ?? field,
+        sortable: fromProp?.sortable ?? enableSorting,
+        filterable: fromProp?.filterable ?? enableFiltering,
+        resizable: fromProp?.resizable ?? true,
+        width: fromProp?.width,
+        type: fromProp?.type,
+      };
+    });
+  }, [visibleColumns, columnDefsByField, enableSorting, enableFiltering]);
 
   // 排序点击
   const handleSortClick = useCallback((field: string, multi: boolean) => {
@@ -693,6 +708,7 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
           <GridBody
             data={filteredData}
             columns={visibleColumns}
+            columnDefsByField={columnDefsByField}
             columnWidths={columnWidths}
             rowHeight={rowHeight}
             virtualRows={virtualRows}

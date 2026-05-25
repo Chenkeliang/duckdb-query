@@ -6,6 +6,7 @@
  * Updated to use normalizeResponse for standard API response handling.
  */
 
+import { normalizeMysqlDoubleQuotedStringsForDuckdb } from '@/utils/mysqlStringQuotesForDuckdb';
 import { apiClient, handleApiError, getFederatedQueryTimeout, normalizeResponse, extractMessage, extractMessageCode } from './client';
 import type {
     QueryResponse,
@@ -111,8 +112,10 @@ export async function executeFederatedQuery(options: FederatedQueryOptions): Pro
     } = options;
 
     try {
+        const normalizedSql = normalizeMysqlDoubleQuotedStringsForDuckdb(sql);
+
         const requestBody: Record<string, unknown> = {
-            sql,
+            sql: normalizedSql,
             is_preview: isPreview,
         };
 
