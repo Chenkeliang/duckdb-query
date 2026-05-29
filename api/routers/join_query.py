@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import duckdb
 import pandas as pd
 from core.common.timezone_utils import get_current_time
+from core.common.exceptions import ValidationError as APIValidationError
 from core.common.utils import describe_query_column_types, normalize_dataframe_output
 from core.common.validators import validate_table_name
 from core.data.file_datasource_manager import (
@@ -342,6 +343,7 @@ def build_multi_table_join_query(
     query = f"SELECT {select_clause} FROM {from_clause}"
 
     if query_request.where_conditions:
+        _assert_safe_predicate(query_request.where_conditions, field="where_conditions")
         query += f" WHERE {query_request.where_conditions}"
 
     # Add LIMIT
@@ -349,6 +351,25 @@ def build_multi_table_join_query(
         query += f" LIMIT {query_request.limit}"
 
     return query
+
+
+def _assert_safe_predicate(predicate: str, *, field: str) -> None:
+    """确保谓词片段是单条 SELECT 的 WHERE 表达式，阻止语句堆叠注入。
+
+    用 DuckDB 解析器判定 `SELECT 1 WHERE <predicate>` 是否仍是单条 SELECT；
+    解析器正确处理字符串字面量，故谓词内合法的 ';' 不会误判。
+    """
+    parser = duckdb.connect()
+    try:
+        statements = parser.extract_statements(f"SELECT 1 WHERE {predicate}")
+    except Exception as exc:
+        raise APIValidationError(f"Invalid {field} predicate: {exc}")
+    finally:
+        parser.close()
+    if len(statements) != 1 or statements[0].type != duckdb.StatementType.SELECT:
+        raise APIValidationError(
+            f"Invalid {field}: only a single boolean expression is allowed"
+        )
 
 
 def _source_pushdown_where(source: Any) -> Optional[str]:
@@ -419,6 +440,8 @@ def _source_table_sql(
 ) -> str:
     qualified = format_qualified_table_reference(source_id.strip('"'))
     predicate = pushdown_where if pushdown_where is not None else _source_pushdown_where(source)
+    if predicate:
+        _assert_safe_predicate(predicate, field="pushdown_where")
     if attach_aliases:
         alias = federated_source_sql_alias(source_id, attach_aliases)
         safe_alias = alias.replace('"', '""')

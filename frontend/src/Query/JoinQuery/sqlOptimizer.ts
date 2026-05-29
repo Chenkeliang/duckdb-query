@@ -239,9 +239,8 @@ export function extractOnFiltersGroupedByTable(
     });
 
     // Analyze each group for optimization eligibility
-    for (const [tableName, group] of groups) {
+    for (const group of groups.values()) {
         if (group.hasOrLogic) {
-            console.warn(`[SQL Optimizer] Skipping optimization for table '${tableName}' due to OR logic`);
             group.canOptimize = false;
         }
         // Note: combinedSQL will be generated later when we know the filter format
@@ -353,7 +352,7 @@ export function analyzeTablesForOptimization(
     tables: Array<{ name: string; alias: string; fullRef: string }>,
     filterTree: FilterGroup,
     attachDatabases: AttachDatabase[],
-    generateConditionSQL: (conditions: FilterCondition[]) => string
+    _generateConditionSQL: (conditions: FilterCondition[]) => string
 ): OptimizationResult {
     const optimizedTableRefs = new Map<string, SubqueryBuildResult>();
     const reports: OptimizationReport[] = [];

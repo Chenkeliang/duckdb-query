@@ -34,6 +34,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _ensure_read_only(sql: str) -> None:
+    """解析 SQL 并拒绝任何非 SELECT 语句（防止经导出端点执行写操作）。
+
+    用 DuckDB 解析器判定语句类型，替代易绕过/易误杀的关键字黑名单。
+    """
+    parser = duckdb.connect()
+    try:
+        statements = parser.extract_statements(sql)
+    except Exception as exc:
+        raise APIValidationError(f"Invalid SQL: {exc}")
+    finally:
+        parser.close()
+
+    if not statements or any(
+        stmt.type != duckdb.StatementType.SELECT for stmt in statements
+    ):
+        raise APIValidationError(
+            "Only read-only SELECT queries are allowed for export"
+        )
+
+
 class QueryResultExportRequest(BaseModel):
     sql: str = Field(..., min_length=1)
     format: Literal["parquet", "csv"] = "parquet"
@@ -50,26 +71,7 @@ async def export_query_results(
     if not sql_query:
         raise APIValidationError("SQL cannot be empty")
 
-    import re
-
-    sql_upper = sql_query.upper()
-    forbidden = (
-        "DROP",
-        "DELETE",
-        "TRUNCATE",
-        "INSERT",
-        "UPDATE",
-        "ALTER",
-        "CREATE",
-        "COPY",
-    )
-    if re.search(
-        r"\b(" + "|".join(forbidden) + r")\b",
-        sql_upper,
-    ):
-        raise APIValidationError(
-            "Only read-only SELECT queries are allowed for export"
-        )
+    _ensure_read_only(sql_query)
 
     exports_dir = str(config_manager.get_exports_dir())
     os.makedirs(exports_dir, exist_ok=True)
@@ -109,9 +111,19 @@ async def export_query_results(
         explain_threshold = max(
             config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
         )
-        with with_duckdb_connection() as metrics_con:
+        # 仅在确实需要 EXPLAIN 时才额外获取连接，避免每次导出多占一个池连接
+        if explain_threshold and elapsed_ms >= explain_threshold:
+            with with_duckdb_connection() as metrics_con:
+                log_query_duration(
+                    metrics_con,
+                    copy_sql,
+                    elapsed_ms,
+                    row_count,
+                    explain_threshold_ms=explain_threshold,
+                )
+        else:
             log_query_duration(
-                metrics_con,
+                None,
                 copy_sql,
                 elapsed_ms,
                 row_count,

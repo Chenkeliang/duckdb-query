@@ -87,6 +87,66 @@ def test_export_returns_actual_row_count():
             _remove_export(file_id)
 
 
+def test_export_allows_select_with_keyword_in_string_literal():
+    # 字符串字面量里含 "update" 不应被读写防护误杀（旧关键字黑名单会误杀）
+    file_id = None
+    try:
+        resp = client.post(
+            "/api/query-results/export",
+            json={"sql": "SELECT 'please update soon' AS note", "format": "csv"},
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()["data"]
+        assert data["row_count_estimate"] == 1
+        file_id = data["file_id"]
+    finally:
+        if file_id:
+            _remove_export(file_id)
+
+
+def test_export_rejects_write_statement():
+    resp = client.post(
+        "/api/query-results/export",
+        json={"sql": "DELETE FROM some_table_xyz", "format": "csv"},
+    )
+    assert resp.status_code == 400
+
+
+def test_export_skips_metrics_connection_when_no_explain(monkeypatch):
+    monkeypatch.setattr(
+        config_manager.get_app_config(), "duckdb_auto_explain_threshold_ms", 0
+    )
+    table = f"export_metrics_{uuid.uuid4().hex[:8]}"
+    with with_duckdb_connection() as con:
+        con.execute(f'CREATE TABLE "{table}" AS SELECT * FROM range(2) AS r(i)')
+
+    enters = {"n": 0}
+    real_ctx = with_duckdb_connection
+
+    @contextmanager
+    def _counting():
+        enters["n"] += 1
+        with real_ctx() as con:
+            yield con
+
+    monkeypatch.setattr(query_export, "with_duckdb_connection", _counting)
+
+    file_id = None
+    try:
+        resp = client.post(
+            "/api/query-results/export",
+            json={"sql": f'SELECT * FROM "{table}"', "format": "csv"},
+        )
+        assert resp.status_code == 200, resp.text
+        file_id = resp.json()["data"]["file_id"]
+        assert enters["n"] == 1, f"导出应只取一次连接，实际 {enters['n']} 次"
+    finally:
+        with real_ctx() as con:
+            con.execute(f'DROP TABLE IF EXISTS "{table}"')
+        if file_id:
+            _remove_export(file_id)
+
+
 def test_export_runs_user_query_once(monkeypatch):
     table = f"export_probe_{uuid.uuid4().hex[:8]}"
     with with_duckdb_connection() as con:

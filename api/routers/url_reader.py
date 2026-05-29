@@ -55,6 +55,45 @@ class URLReadRequest(BaseModel):
     prefer_native: bool = True
 
 
+def _assert_public_url(url: str) -> None:
+    """拒绝指向内部地址的 URL（loopback / link-local 云元数据 / 多播 / 保留段）。
+
+    自托管工具默认仍允许常规局域网私网段（10/172.16/192.168），仅拦截
+    永远不应作为数据源、且是 SSRF 主要目标的地址（如 169.254.169.254）。
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    host = urlparse(url).hostname
+    if not host:
+        raise APIValidationError(
+            "Invalid URL host",
+            details={"url": url, "code": "SSRF_BLOCKED"},
+        )
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError as exc:
+        raise APIValidationError(
+            f"Cannot resolve host: {host}",
+            details={"url": url, "code": "SSRF_BLOCKED"},
+        ) from exc
+
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (
+            ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise APIValidationError(
+                f"Access to internal address is not allowed: {ip}",
+                details={"url": url, "code": "SSRF_BLOCKED"},
+            )
+
+
 def normalize_remote_url(url: str) -> str:
     """对常见远程地址做规范化（当前仅处理 GitHub blob→raw）"""
     url_str = str(url)
@@ -74,6 +113,7 @@ async def read_from_url(request: URLReadRequest):
     temp_file_path = None
     try:
         converted_url = normalize_remote_url(str(request.url))
+        _assert_public_url(converted_url)
         app_config = config_manager.get_app_config()
 
         url_str = converted_url.lower()

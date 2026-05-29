@@ -3,9 +3,67 @@
 from unittest.mock import Mock
 
 import pandas as pd
+import pytest
 
+from core.common.exceptions import ValidationError as APIValidationError
 from models.query_models import DataSource, Join, JoinCondition, JoinType, QueryRequest
 from routers.join_query import build_multi_table_join_query, load_federated_table_columns
+
+
+def _two_federated_sources(detail_params=None, order_params=None):
+    return [
+        DataSource(
+            id="mysql_sorder.iget_order_detail",
+            type="duckdb",
+            table_name="mysql_sorder.iget_order_detail",
+            params={"table_name": "mysql_sorder.iget_order_detail", **(detail_params or {})},
+            columns=[{"name": "order_id", "type": "VARCHAR"}],
+        ),
+        DataSource(
+            id="mysql_sorder.iget_order",
+            type="duckdb",
+            table_name="mysql_sorder.iget_order",
+            params={"table_name": "mysql_sorder.iget_order", **(order_params or {})},
+            columns=[{"name": "order_id", "type": "VARCHAR"}],
+        ),
+    ]
+
+
+def _left_join():
+    return Join(
+        left_source_id="mysql_sorder.iget_order_detail",
+        right_source_id="mysql_sorder.iget_order",
+        join_type=JoinType.LEFT,
+        conditions=[
+            JoinCondition(left_column="order_id", right_column="order_id", operator="=")
+        ],
+    )
+
+
+def test_build_rejects_stacked_pushdown_where():
+    sources = _two_federated_sources(
+        detail_params={"pushdown_where": "\"order_id\" = '1'; DROP TABLE evil"}
+    )
+    request = QueryRequest(sources=sources, joins=[_left_join()], limit=100, is_preview=False)
+    with pytest.raises(APIValidationError):
+        build_multi_table_join_query(
+            request, Mock(), federated_attach=True, attach_aliases={"mysql_sorder"}
+        )
+
+
+def test_build_rejects_stacked_where_conditions():
+    sources = _two_federated_sources()
+    request = QueryRequest(
+        sources=sources,
+        joins=[_left_join()],
+        limit=100,
+        is_preview=False,
+        where_conditions="1=1; DROP TABLE evil",
+    )
+    with pytest.raises(APIValidationError):
+        build_multi_table_join_query(
+            request, Mock(), federated_attach=True, attach_aliases={"mysql_sorder"}
+        )
 
 
 def test_build_multi_table_join_query_federated_short_table_aliases():

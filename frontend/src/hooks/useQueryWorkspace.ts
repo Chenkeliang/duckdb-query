@@ -73,6 +73,7 @@ export interface UseQueryWorkspaceReturn {
     response: {
       data?: unknown[];
       columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
+      column_types?: Array<{ name: string; duckdb_type: string }>;
       row_count?: number;
       execTime?: number;
       preview_limit_applied?: number | null;
@@ -194,6 +195,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     ): Promise<{
       data?: unknown[];
       columns?: string[] | ColumnInfo[];
+      column_types?: Array<{ name: string; duckdb_type: string }>;
       execTime?: number;
       preview_limit_applied?: number | null;
     }> => {

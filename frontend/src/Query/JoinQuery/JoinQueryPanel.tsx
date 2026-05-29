@@ -153,6 +153,327 @@ interface TableColumn {
   type: string;
 }
 
+/** 条件是否有效：列模式需列名，表达式模式需表达式 */
+export const isJoinConditionValid = (c: JoinCondition): boolean => {
+  const leftValid = c.leftMode === 'expression'
+    ? !!c.leftExpression?.trim()
+    : !!c.leftColumn;
+  const rightValid = c.rightMode === 'expression'
+    ? !!c.rightExpression?.trim()
+    : !!c.rightColumn;
+  return leftValid && rightValid;
+};
+
+export interface JoinPreviewSqlParams {
+  activeTables: SelectedTable[];
+  attachDatabases: ReturnType<typeof extractAttachDatabases>;
+  joinTableAliasMap: Record<string, string>;
+  selectedColumns: Record<string, string[]>;
+  joinConfigs: JoinConfig[];
+  tableColumnsMap: Record<string, TableColumn[]>;
+  resolvedTypes: Record<string, string>;
+  filterTree: FilterGroup;
+  maxQueryRows: number;
+  /** 已翻译的“请选择关联条件”注释文案 */
+  selectConditionComment: string;
+}
+
+/**
+ * 纯函数：根据 JOIN 面板状态生成预览 SQL。
+ * 抽出为模块级纯函数，便于单元测试，并让组件侧 useMemo 的依赖与入参一一对应。
+ */
+export function buildJoinPreviewSql(params: JoinPreviewSqlParams): string | null {
+  const {
+    activeTables,
+    attachDatabases,
+    joinTableAliasMap,
+    selectedColumns,
+    joinConfigs,
+    tableColumnsMap,
+    resolvedTypes,
+    filterTree,
+    maxQueryRows,
+    selectConditionComment,
+  } = params;
+
+  if (activeTables.length === 0) return null;
+
+  // 联邦查询使用 DuckDB 方言
+  const dialect = 'duckdb';
+
+  // 获取表引用（支持联邦查询的 alias.schema.table 格式）
+  const getFullTableRef = (table: SelectedTable): string => {
+    const ref = createTableReference(table, attachDatabases);
+    return formatTableReference(ref, dialect);
+  };
+
+  const getTableAlias = (table: SelectedTable): string => {
+    const tableName = getTableName(table);
+    const index = activeTables.findIndex((tbl) => getTableName(tbl) === tableName);
+    return resolveJoinTableAlias(
+      tableName,
+      index >= 0 ? index : 0,
+      joinTableAliasMap
+    );
+  };
+
+  const filterSqlFromTree = (tree: FilterGroup) =>
+    generateFilterSQL(remapFilterTreeTableNames(tree, joinTableAliasMap));
+
+  const parts: string[] = [];
+
+  // 如果是联邦查询，添加注释说明数据库来源
+  if (attachDatabases.length > 0) {
+    parts.push(`-- 联邦查询: ${attachDatabases.map(db => db.alias).join(', ')}`);
+    parts.push('');
+  }
+
+  // SELECT - 收集所有选中的列
+  const selectParts: string[] = [];
+  activeTables.forEach((table) => {
+    const tableName = getTableName(table);
+    const tableAlias = getTableAlias(table);
+    const cols = selectedColumns[tableName] || [];
+    cols.forEach((col) => {
+      selectParts.push(`${quoteIdent(tableAlias, dialect)}.${quoteIdent(col, dialect)}`);
+    });
+  });
+  if (selectParts.length === 0) {
+    parts.push('SELECT *');
+  } else {
+    parts.push(`SELECT ${selectParts.join(', ')}`)
+  }
+
+  // ====================================================================
+  // 联邦查询优化：分析哪些远端表可以使用子查询优化
+  // ====================================================================
+  const optimizationReports: OptimizationReport[] = [];
+  const optimizedTableRefs = new Map<string, { subquerySQL: string; alias: string }>();
+
+  // 只有在联邦查询场景下才进行优化分析
+  if (attachDatabases.length > 0) {
+    try {
+      // 提取 ON 条件并按表分组
+      const onFilterGroups = extractOnFiltersGroupedByTable(filterTree);
+
+      // 分析每个表
+      for (const table of activeTables) {
+        const tableName = getTableName(table);
+        const tableAlias = getTableAlias(table);
+        const fullRef = getFullTableRef(table);
+
+        // 转换 attachDatabases 为 sqlOptimizer 兼容格式
+        // 注意：AttachDatabase 只有 alias 和 connectionId，type 通过 alias 前缀推断
+        const optimizerAttachDbs: OptimizerAttachDatabase[] = attachDatabases.map(db => ({
+          alias: db.alias,
+          type: db.alias.split('_')[0] || 'mysql', // 从别名前缀推断类型
+          connectionId: db.connectionId
+        }));
+
+        const tableInfo = getTableSourceInfo(tableName, tableAlias, fullRef, optimizerAttachDbs);
+        const filterGroup = onFilterGroups.get(tableName) || onFilterGroups.get(tableAlias);
+        const decision = checkOptimizationEligibility(tableInfo, filterGroup);
+
+        optimizationReports.push({
+          tableName: fullRef,
+          wasOptimized: decision.shouldOptimize,
+          reason: decision.reason
+        });
+
+        // 如果可以优化，生成子查询
+        if (decision.shouldOptimize && filterGroup && filterGroup.conditions.length > 0) {
+          // 从 FilterCondition 生成 WHERE SQL
+          // 创建一个临时的 FilterGroup 来生成 SQL
+          const tempGroup: FilterGroup = {
+            id: 'temp',
+            type: 'group',
+            logic: 'AND',
+            children: filterGroup.conditions
+          };
+          const whereSQL = generateFilterSQLForSubquery(tempGroup);
+
+          if (whereSQL) {
+            const pickedCols = selectedColumns[tableName] ?? selectedColumns[tableAlias];
+            const subqueryResult = buildFilteredSubquery(
+              tableInfo,
+              whereSQL,
+              pickedCols?.length ? pickedCols : null
+            );
+            optimizedTableRefs.set(tableName, subqueryResult);
+            optimizedTableRefs.set(tableAlias, subqueryResult);
+          }
+        }
+      }
+
+      // 生成优化警告注释（如果有回退）
+      const optimizationWarnings = generateOptimizationComments(optimizationReports);
+      if (optimizationWarnings.length > 0) {
+        // 在 parts 开头（SELECT 之前）插入警告
+        parts.unshift(...optimizationWarnings, '');
+      }
+
+    } catch (error) {
+      console.error('[SQL Optimizer] Error during optimization:', error);
+      // 优化失败时回退，不影响原有逻辑
+    }
+  }
+
+  // FROM - 主表 (可能使用子查询)
+  const firstTableName = getTableName(activeTables[0]);
+  const firstTableRef = getFullTableRef(activeTables[0]);
+  const firstTableAlias = getTableAlias(activeTables[0]);
+
+  const firstTableOptimization = optimizedTableRefs.get(firstTableName);
+  if (firstTableOptimization) {
+    // 使用优化后的子查询
+    parts.push(`FROM ${firstTableOptimization.subquerySQL} AS ${quoteIdent(firstTableAlias, dialect)}`);
+  } else {
+    // 使用原始表引用
+    parts.push(`FROM ${firstTableRef} AS ${quoteIdent(firstTableAlias, dialect)}`);
+  }
+
+  // JOIN - 其他表 (可能使用子查询)
+  for (let i = 1; i < activeTables.length; i++) {
+    const rawConfig = joinConfigs[i - 1];
+    const leftTableName = getTableName(activeTables[i - 1]);
+    const rightTableName = getTableName(activeTables[i]);
+    const rightTableRef = getFullTableRef(activeTables[i]);
+    const leftTableAlias = getTableAlias(activeTables[i - 1]);
+    const rightTableAlias = getTableAlias(activeTables[i]);
+
+    // 检查右表是否已被优化（使用子查询）
+    const rightTableOptimization = optimizedTableRefs.get(rightTableName);
+    // 决定使用子查询还是原始表引用
+    const actualRightTableRef = rightTableOptimization
+      ? rightTableOptimization.subquerySQL
+      : rightTableRef;
+
+    // 如果没有配置，使用默认的 LEFT JOIN
+    const config: JoinConfig = rawConfig ? normalizeJoinConfig(rawConfig) : {
+      joinType: 'LEFT JOIN',
+      conditions: [{
+        leftColumn: tableColumnsMap[leftTableName]?.[0]?.name || '',
+        rightColumn: tableColumnsMap[rightTableName]?.[0]?.name || '',
+        operator: '=',
+        leftMode: 'column',
+        rightMode: 'column',
+      }],
+    };
+
+    // 生成多条件 ON 子句
+    // 验证条件：列模式需要列名，表达式模式需要表达式
+    const validConditions = config.conditions.filter(isJoinConditionValid);
+
+    if (validConditions.length > 0) {
+      const onClause = validConditions
+        .map((c) => {
+          // 生成左侧引用
+          let leftRef: string;
+          if (c.leftMode === 'expression' && c.leftExpression?.trim()) {
+            // 表达式模式：直接使用用户输入的表达式
+            leftRef = c.leftExpression.trim();
+          } else {
+            // 列模式：使用表别名.列名
+            leftRef = `${quoteIdent(leftTableAlias, dialect)}.${quoteIdent(c.leftColumn, dialect)}`;
+          }
+
+          // 生成右侧引用
+          let rightRef: string;
+          if (c.rightMode === 'expression' && c.rightExpression?.trim()) {
+            rightRef = c.rightExpression.trim();
+          } else {
+            rightRef = `${quoteIdent(rightTableAlias, dialect)}.${quoteIdent(c.rightColumn, dialect)}`;
+          }
+
+          // 检查是否有类型冲突需要 TRY_CAST（仅对列模式生效）
+          if (c.leftMode !== 'expression' && c.rightMode !== 'expression') {
+            const conflictKey = generateConflictKey(
+              leftTableName,
+              c.leftColumn,
+              rightTableName,
+              c.rightColumn
+            );
+            const castType = resolvedTypes[conflictKey];
+            if (castType) {
+              return `TRY_CAST(${leftRef} AS ${castType}) ${c.operator} TRY_CAST(${rightRef} AS ${castType})`;
+            }
+          }
+
+          return `${leftRef} ${c.operator} ${rightRef}`;
+        })
+        .join(' AND ');
+      parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${onClause}`);
+
+      // 附加用户在 FilterBar 中设置的 ON 条件（placement='on' 的筛选条件）
+      // 但如果表已被优化，跳过这些条件（它们已在子查询 WHERE 中）
+      const leftTableOnTree = getOnConditionsTreeForTable(filterTree, leftTableName);
+      const rightTableOnTree = getOnConditionsTreeForTable(filterTree, rightTableName);
+
+      // 合并左右表的 ON 条件（只包含未被优化的表的条件）
+      const combinedOnConditions: string[] = [];
+
+      // 左表：只有在未被优化时才添加 ON 条件
+      const leftTableOptimized = optimizedTableRefs.has(leftTableName);
+      if (!leftTableOptimized && leftTableOnTree.children.length > 0) {
+        const leftOnSQL = filterSqlFromTree(leftTableOnTree);
+        if (leftOnSQL) {
+          combinedOnConditions.push(leftOnSQL);
+        }
+      }
+
+      // 右表：只有在未被优化时才添加 ON 条件
+      if (!rightTableOptimization && rightTableOnTree.children.length > 0) {
+        const rightOnSQL = filterSqlFromTree(rightTableOnTree);
+        if (rightOnSQL) {
+          combinedOnConditions.push(rightOnSQL);
+        }
+      }
+
+      if (combinedOnConditions.length > 0) {
+        // 更新最后一个 parts 条目，追加 AND 条件
+        parts[parts.length - 1] = parts[parts.length - 1] + ' AND ' + combinedOnConditions.join(' AND ');
+      }
+    } else {
+      // 即使没有有效条件，也生成 JOIN 子句（使用 CROSS JOIN 或带空条件的 JOIN）
+      // 这样用户可以看到 JOIN 结构并手动选择条件
+      const leftTableOnTree = getOnConditionsTreeForTable(filterTree, leftTableName);
+      const rightTableOnTree = getOnConditionsTreeForTable(filterTree, rightTableName);
+
+      // 合并左右表的 ON 条件（只包含未被优化的表的条件）
+      const combinedOnConditions: string[] = [];
+      const leftTableOptimized = optimizedTableRefs.has(leftTableName);
+
+      if (!leftTableOptimized && leftTableOnTree.children.length > 0) {
+        const leftOnSQL = filterSqlFromTree(leftTableOnTree);
+        if (leftOnSQL) combinedOnConditions.push(leftOnSQL);
+      }
+      if (!rightTableOptimization && rightTableOnTree.children.length > 0) {
+        const rightOnSQL = filterSqlFromTree(rightTableOnTree);
+        if (rightOnSQL) combinedOnConditions.push(rightOnSQL);
+      }
+
+      if (combinedOnConditions.length > 0) {
+        // 有筛选器中的 ON 条件，使用它们作为 ON 子句
+        parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${combinedOnConditions.join(' AND ')}`);
+      } else {
+        // 没有任何 ON 条件，使用 1=1
+        parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* ${selectConditionComment} */`);
+      }
+    }
+  }
+
+  // WHERE - 使用移除了 ON 条件的树生成 WHERE 子句
+  const whereOnlyTree = cloneTreeWithoutOnConditions(filterTree);
+  const whereClause = filterSqlFromTree(whereOnlyTree);
+  if (whereClause && whereClause.trim()) {
+    parts.push(`WHERE ${whereClause}`);
+  }
+
+  // 使用配置的 max_query_rows 而不是硬编码的 1000
+  parts.push(`LIMIT ${maxQueryRows}`);
+  return parts.join('\n');
+}
+
 export type { TableSource };
 
 interface JoinQueryPanelProps {
@@ -880,9 +1201,6 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         });
       });
     });
-    // DEBUG: 打印可用列信息
-    console.log('[JoinQueryPanel] availableColumns:', columns.length, 'columns from', Object.keys(tableColumnsMap).length, 'tables');
-    console.log('[JoinQueryPanel] tableColumnsMap:', tableColumnsMap);
     return columns;
   }, [tableColumnsMap, tableColumnsMapKey]);
 
@@ -1182,16 +1500,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       if (!config) return false;
 
       const normalizedConfig = normalizeJoinConfig(config);
-      const hasValidCondition = normalizedConfig.conditions.some((c) => {
-        // 列模式需要列名，表达式模式需要表达式
-        const leftValid = c.leftMode === 'expression'
-          ? c.leftExpression?.trim()
-          : c.leftColumn;
-        const rightValid = c.rightMode === 'expression'
-          ? c.rightExpression?.trim()
-          : c.rightColumn;
-        return leftValid && rightValid;
-      });
+      const hasValidCondition = normalizedConfig.conditions.some(isJoinConditionValid);
 
       if (!hasValidCondition) return false;
     }
@@ -1260,303 +1569,34 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     ]
   );
 
-  // 生成 SQL
-  const generateSQL = (): string | null => {
-    if (activeTables.length === 0) return null;
-
-    // 联邦查询使用 DuckDB 方言
-    const dialect = 'duckdb';
-
-    // 获取表引用（支持联邦查询的 alias.schema.table 格式）
-    const getFullTableRef = (table: SelectedTable): string => {
-      const ref = createTableReference(table, attachDatabases);
-      return formatTableReference(ref, dialect);
-    };
-
-    const getTableAlias = (table: SelectedTable): string => {
-      const tableName = getTableName(table);
-      const index = activeTables.findIndex((t) => getTableName(t) === tableName);
-      return resolveJoinTableAlias(
-        tableName,
-        index >= 0 ? index : 0,
-        joinTableAliasMap
-      );
-    };
-
-    const filterSqlFromTree = (tree: FilterGroup) =>
-      generateFilterSQL(remapFilterTreeTableNames(tree, joinTableAliasMap));
-
-    const parts: string[] = [];
-
-    // 如果是联邦查询，添加注释说明数据库来源
-    if (attachDatabases.length > 0) {
-      parts.push(`-- 联邦查询: ${attachDatabases.map(db => db.alias).join(', ')}`);
-      parts.push('');
-    }
-
-    // SELECT - 收集所有选中的列
-    const selectParts: string[] = [];
-    activeTables.forEach((table) => {
-      const tableName = getTableName(table);
-      const tableAlias = getTableAlias(table);
-      const cols = selectedColumns[tableName] || [];
-      cols.forEach((col) => {
-        selectParts.push(`${quoteIdent(tableAlias, dialect)}.${quoteIdent(col, dialect)}`);
-      });
-    });
-    if (selectParts.length === 0) {
-      parts.push('SELECT *');
-    } else {
-      parts.push(`SELECT ${selectParts.join(', ')}`)
-    }
-
-    // ====================================================================
-    // 联邦查询优化：分析哪些远端表可以使用子查询优化
-    // ====================================================================
-    const optimizationReports: OptimizationReport[] = [];
-    const optimizedTableRefs = new Map<string, { subquerySQL: string; alias: string }>();
-
-    // 只有在联邦查询场景下才进行优化分析
-    if (attachDatabases.length > 0) {
-      try {
-        // 提取 ON 条件并按表分组
-        const onFilterGroups = extractOnFiltersGroupedByTable(filterTree);
-
-        // 分析每个表
-        for (const table of activeTables) {
-          const tableName = getTableName(table);
-          const tableAlias = getTableAlias(table);
-          const fullRef = getFullTableRef(table);
-
-          // 转换 attachDatabases 为 sqlOptimizer 兼容格式
-          // 注意：AttachDatabase 只有 alias 和 connectionId，type 通过 alias 前缀推断
-          const optimizerAttachDbs: OptimizerAttachDatabase[] = attachDatabases.map(db => ({
-            alias: db.alias,
-            type: db.alias.split('_')[0] || 'mysql', // 从别名前缀推断类型
-            connectionId: db.connectionId
-          }));
-
-          const tableInfo = getTableSourceInfo(tableName, tableAlias, fullRef, optimizerAttachDbs);
-          const filterGroup = onFilterGroups.get(tableName) || onFilterGroups.get(tableAlias);
-          const decision = checkOptimizationEligibility(tableInfo, filterGroup);
-
-          optimizationReports.push({
-            tableName: fullRef,
-            wasOptimized: decision.shouldOptimize,
-            reason: decision.reason
-          });
-
-          // 如果可以优化，生成子查询
-          if (decision.shouldOptimize && filterGroup && filterGroup.conditions.length > 0) {
-            // 从 FilterCondition 生成 WHERE SQL
-            // 创建一个临时的 FilterGroup 来生成 SQL
-            const tempGroup: FilterGroup = {
-              id: 'temp',
-              type: 'group',
-              logic: 'AND',
-              children: filterGroup.conditions
-            };
-            const whereSQL = generateFilterSQLForSubquery(tempGroup);
-
-            if (whereSQL) {
-              const pickedCols = selectedColumns[tableName] ?? selectedColumns[tableAlias];
-              const subqueryResult = buildFilteredSubquery(
-                tableInfo,
-                whereSQL,
-                pickedCols?.length ? pickedCols : null
-              );
-              optimizedTableRefs.set(tableName, subqueryResult);
-              optimizedTableRefs.set(tableAlias, subqueryResult);
-              console.log(`[SQL Optimizer] Optimized table ${fullRef} with subquery WHERE: ${whereSQL}`);
-            }
-          }
-        }
-
-        // 生成优化警告注释（如果有回退）
-        const optimizationWarnings = generateOptimizationComments(optimizationReports);
-        if (optimizationWarnings.length > 0) {
-          // 在 parts 开头（SELECT 之前）插入警告
-          parts.unshift(...optimizationWarnings, '');
-        }
-
-      } catch (error) {
-        console.error('[SQL Optimizer] Error during optimization:', error);
-        // 优化失败时回退，不影响原有逻辑
-      }
-    }
-
-    // FROM - 主表 (可能使用子查询)
-    const firstTableName = getTableName(activeTables[0]);
-    const firstTableRef = getFullTableRef(activeTables[0]);
-    const firstTableAlias = getTableAlias(activeTables[0]);
-
-    const firstTableOptimization = optimizedTableRefs.get(firstTableName);
-    if (firstTableOptimization) {
-      // 使用优化后的子查询
-      parts.push(`FROM ${firstTableOptimization.subquerySQL} AS ${quoteIdent(firstTableAlias, dialect)}`);
-    } else {
-      // 使用原始表引用
-      parts.push(`FROM ${firstTableRef} AS ${quoteIdent(firstTableAlias, dialect)}`);
-    }
-
-    // JOIN - 其他表 (可能使用子查询)
-    for (let i = 1; i < activeTables.length; i++) {
-      const rawConfig = joinConfigs[i - 1];
-      const leftTableName = getTableName(activeTables[i - 1]);
-      const rightTableName = getTableName(activeTables[i]);
-      const rightTableRef = getFullTableRef(activeTables[i]);
-      const leftTableAlias = getTableAlias(activeTables[i - 1]);
-      const rightTableAlias = getTableAlias(activeTables[i]);
-
-      // 检查右表是否已被优化（使用子查询）
-      const rightTableOptimization = optimizedTableRefs.get(rightTableName);
-      // 决定使用子查询还是原始表引用
-      const actualRightTableRef = rightTableOptimization
-        ? rightTableOptimization.subquerySQL
-        : rightTableRef;
-
-      // 如果没有配置，使用默认的 LEFT JOIN
-      const config = rawConfig ? normalizeJoinConfig(rawConfig) : {
-        joinType: 'LEFT JOIN' as JoinType,
-        conditions: [{
-          leftColumn: tableColumnsMap[leftTableName]?.[0]?.name || '',
-          rightColumn: tableColumnsMap[rightTableName]?.[0]?.name || '',
-          operator: '=' as const,
-        }],
-      };
-
-      // 生成多条件 ON 子句
-      // 验证条件：列模式需要列名，表达式模式需要表达式
-      const validConditions = config.conditions.filter((c) => {
-        const leftValid = c.leftMode === 'expression'
-          ? c.leftExpression?.trim()
-          : c.leftColumn;
-        const rightValid = c.rightMode === 'expression'
-          ? c.rightExpression?.trim()
-          : c.rightColumn;
-        return leftValid && rightValid;
-      });
-
-      if (validConditions.length > 0) {
-        const onClause = validConditions
-          .map((c) => {
-            // 生成左侧引用
-            let leftRef: string;
-            if (c.leftMode === 'expression' && c.leftExpression?.trim()) {
-              // 表达式模式：直接使用用户输入的表达式
-              leftRef = c.leftExpression.trim();
-            } else {
-              // 列模式：使用表别名.列名
-              leftRef = `${quoteIdent(leftTableAlias, dialect)}.${quoteIdent(c.leftColumn, dialect)}`;
-            }
-
-            // 生成右侧引用
-            let rightRef: string;
-            if (c.rightMode === 'expression' && c.rightExpression?.trim()) {
-              rightRef = c.rightExpression.trim();
-            } else {
-              rightRef = `${quoteIdent(rightTableAlias, dialect)}.${quoteIdent(c.rightColumn, dialect)}`;
-            }
-
-            // 检查是否有类型冲突需要 TRY_CAST（仅对列模式生效）
-            if (c.leftMode !== 'expression' && c.rightMode !== 'expression') {
-              const conflictKey = generateConflictKey(
-                leftTableName,
-                c.leftColumn,
-                rightTableName,
-                c.rightColumn
-              );
-              const castType = resolvedTypes[conflictKey];
-              if (castType) {
-                return `TRY_CAST(${leftRef} AS ${castType}) ${c.operator} TRY_CAST(${rightRef} AS ${castType})`;
-              }
-            }
-
-            return `${leftRef} ${c.operator} ${rightRef}`;
-          })
-          .join(' AND ');
-        parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${onClause}`);
-
-        // 附加用户在 FilterBar 中设置的 ON 条件（placement='on' 的筛选条件）
-        // 但如果表已被优化，跳过这些条件（它们已在子查询 WHERE 中）
-        const leftTableOnTree = getOnConditionsTreeForTable(filterTree, leftTableName);
-        const rightTableOnTree = getOnConditionsTreeForTable(filterTree, rightTableName);
-
-        // 合并左右表的 ON 条件（只包含未被优化的表的条件）
-        const combinedOnConditions: string[] = [];
-
-        // 左表：只有在未被优化时才添加 ON 条件
-        const leftTableOptimized = optimizedTableRefs.has(leftTableName);
-        if (!leftTableOptimized && leftTableOnTree.children.length > 0) {
-          const leftOnSQL = filterSqlFromTree(leftTableOnTree);
-          if (leftOnSQL) {
-            combinedOnConditions.push(leftOnSQL);
-            console.log('[JoinQueryPanel] generateSQL appended ON conditions for left table', leftTableName, ':', leftOnSQL);
-          }
-        } else if (leftTableOptimized && leftTableOnTree.children.length > 0) {
-          console.log('[SQL Optimizer] Skipping ON conditions for optimized left table', leftTableName, '(moved to subquery WHERE)');
-        }
-
-        // 右表：只有在未被优化时才添加 ON 条件
-        if (!rightTableOptimization && rightTableOnTree.children.length > 0) {
-          const rightOnSQL = filterSqlFromTree(rightTableOnTree);
-          if (rightOnSQL) {
-            combinedOnConditions.push(rightOnSQL);
-            console.log('[JoinQueryPanel] generateSQL appended ON conditions for right table', rightTableName, ':', rightOnSQL);
-          }
-        } else if (rightTableOptimization && rightTableOnTree.children.length > 0) {
-          console.log('[SQL Optimizer] Skipping ON conditions for optimized right table', rightTableName, '(moved to subquery WHERE)');
-        }
-
-        if (combinedOnConditions.length > 0) {
-          // 更新最后一个 parts 条目，追加 AND 条件
-          parts[parts.length - 1] = parts[parts.length - 1] + ' AND ' + combinedOnConditions.join(' AND ');
-        }
-      } else {
-        // 即使没有有效条件，也生成 JOIN 子句（使用 CROSS JOIN 或带空条件的 JOIN）
-        // 这样用户可以看到 JOIN 结构并手动选择条件
-        const leftTableOnTree = getOnConditionsTreeForTable(filterTree, leftTableName);
-        const rightTableOnTree = getOnConditionsTreeForTable(filterTree, rightTableName);
-
-        // 合并左右表的 ON 条件（只包含未被优化的表的条件）
-        const combinedOnConditions: string[] = [];
-        const leftTableOptimized = optimizedTableRefs.has(leftTableName);
-
-        if (!leftTableOptimized && leftTableOnTree.children.length > 0) {
-          const leftOnSQL = filterSqlFromTree(leftTableOnTree);
-          if (leftOnSQL) combinedOnConditions.push(leftOnSQL);
-        }
-        if (!rightTableOptimization && rightTableOnTree.children.length > 0) {
-          const rightOnSQL = filterSqlFromTree(rightTableOnTree);
-          if (rightOnSQL) combinedOnConditions.push(rightOnSQL);
-        }
-
-        if (combinedOnConditions.length > 0) {
-          // 有筛选器中的 ON 条件，使用它们作为 ON 子句
-          parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON ${combinedOnConditions.join(' AND ')}`);
-        } else {
-          // 没有任何 ON 条件，使用 1=1
-          parts.push(`${config.joinType} ${actualRightTableRef} AS ${quoteIdent(rightTableAlias, dialect)} ON 1=1 /* ${t('query.join.selectConditionComment', '请选择关联条件')} */`);
-        }
-      }
-    }
-
-    // WHERE - 生成筛选条件
-    // onConditions 已在 JOIN 循环前声明，这里直接使用
-
-    // 使用移除了 ON 条件的树生成 WHERE 子句
-    const whereOnlyTree = cloneTreeWithoutOnConditions(filterTree);
-    console.log('[JoinQueryPanel] generateSQL whereOnlyTree:', JSON.stringify(whereOnlyTree));
-    const whereClause = filterSqlFromTree(whereOnlyTree);
-    console.log('[JoinQueryPanel] generateSQL whereClause:', whereClause);
-    if (whereClause && whereClause.trim()) {
-      parts.push(`WHERE ${whereClause}`);
-    }
-
-    // 使用配置的 max_query_rows 而不是硬编码的 1000
-    parts.push(`LIMIT ${maxQueryRows}`);
-    return parts.join('\n');
-  };
+  // 生成 SQL（委托给纯函数 buildJoinPreviewSql，依赖与入参一一对应）
+  const generateSQL = React.useCallback(
+    (): string | null =>
+      buildJoinPreviewSql({
+        activeTables,
+        attachDatabases,
+        joinTableAliasMap,
+        selectedColumns,
+        joinConfigs,
+        tableColumnsMap,
+        resolvedTypes,
+        filterTree,
+        maxQueryRows,
+        selectConditionComment: t('query.join.selectConditionComment', '请选择关联条件'),
+      }),
+    [
+      activeTables,
+      attachDatabases,
+      joinTableAliasMap,
+      selectedColumns,
+      joinConfigs,
+      tableColumnsMap,
+      resolvedTypes,
+      filterTree,
+      maxQueryRows,
+      t,
+    ]
+  );
 
   // 联邦查询错误状态
   const [federatedError, setFederatedError] = React.useState<{
@@ -1699,7 +1739,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     setLocalIsCancelling(false);
   }, [onCancel]);
 
-  const sql = generateSQL();
+  const sql = React.useMemo(() => generateSQL(), [generateSQL]);
 
   const getJoinSnapshot = React.useCallback(
     () =>

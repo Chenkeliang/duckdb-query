@@ -8,7 +8,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { useTableColumns } from '@/hooks/useTableColumns';
 import { useAppConfig } from '@/hooks/useAppConfig';
-import { showErrorToast } from '@/utils/toastHelpers';
 import type { SelectedTable } from '@/types/SelectedTable';
 import {
   normalizeSelectedTable,
