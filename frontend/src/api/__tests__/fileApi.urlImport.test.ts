@@ -69,6 +69,7 @@ describe('readFromUrl', () => {
       delimiter: ';',
       encoding: 'utf-8',
       import_mode: 'auto',
+      prefer_native: true,
     });
     expect(result.table_name).toBe('t1');
     expect(result.success).toBe(true);
