@@ -498,6 +498,7 @@
       "attachedDatabasesTitle": "将连接的数据库:",
       "federatedQueryInfo": "此查询将连接 {{count}} 个外部数据库进行联邦查询。",
       "federatedError": "连接 {{name}} 失败: {{message}}",
+      "tableLimitExceeded": "JOIN 最多支持 {{max}} 张表，已超过上限，多出的表无法参与查询，请移除后再试。",
       "addCondition": "添加条件",
       "removeCondition": "移除条件",
       "externalTable": "外部表",

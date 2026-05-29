@@ -492,6 +492,7 @@
       "attachedDatabasesTitle": "Databases to connect:",
       "federatedQueryInfo": "This query will connect {{count}} external database(s) for federated query.",
       "federatedError": "Connection to {{name}} failed: {{message}}",
+      "tableLimitExceeded": "JOIN supports at most {{max}} tables; the limit is exceeded and extra tables cannot be queried. Please remove some and try again.",
       "addCondition": "Add condition",
       "removeCondition": "Remove condition",
       "externalTable": "External table",

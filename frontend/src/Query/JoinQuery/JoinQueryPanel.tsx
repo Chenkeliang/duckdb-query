@@ -101,6 +101,9 @@ import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
  * - 支持外部数据库表（同一连接内）
  */
 
+/** JOIN 面板支持的最大表数量（受 useTableColumns 固定调用次数限制，见下方 hook 调用处） */
+const MAX_JOIN_TABLES = 10;
+
 type JoinType = 'INNER JOIN' | 'LEFT JOIN' | 'RIGHT JOIN' | 'FULL JOIN';
 
 /** 条件侧模式 */
@@ -1137,7 +1140,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   const [filterTree, setFilterTree] = React.useState<FilterGroup>(() => createEmptyGroup());
 
   // 获取每个表的列信息 - 使用 useTableColumns Hook
-  // 为每个表单独调用 Hook（最多支持 10 个表）
+  // React Hooks 规则要求调用次数固定，故为每个表单独调用（最多 MAX_JOIN_TABLES 个表）
   const table0Columns = useTableColumns(activeTables[0] || null);
   const table1Columns = useTableColumns(activeTables[1] || null);
   const table2Columns = useTableColumns(activeTables[2] || null);
@@ -1168,6 +1171,9 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   const columnErrorMessages = tableColumnsResults
     .filter((result) => result.isError && result.error)
     .map((result) => result.error?.message || '未知错误');
+
+  // 超过最大表数量限制（第 11 张及以后无法获取列信息）
+  const exceedsTableLimit = activeTables.length > MAX_JOIN_TABLES;
 
   // 构建表列映射 - 使用稳定的 key 来避免无限循环
   const tableColumnsMapKey = tableColumnsResults
@@ -1945,6 +1951,20 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
                 })
                 : federatedError.message
               }
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* 超过最大表数量限制提示 */}
+        {exceedsTableLimit && (
+          <Alert className="mb-4 border-warning/50 bg-warning/10">
+            <AlertTriangle className="h-4 w-4 text-warning" />
+            <AlertDescription className="text-warning">
+              {t(
+                'query.join.tableLimitExceeded',
+                'JOIN 最多支持 {{max}} 张表，已超过上限，多出的表无法参与查询，请移除后再试。',
+                { max: MAX_JOIN_TABLES }
+              )}
             </AlertDescription>
           </Alert>
         )}
