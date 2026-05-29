@@ -395,7 +395,7 @@ class TestSetOperationAPI:
             "routers.set_operations.estimate_set_operation_rows"
         ) as mock_estimate, patch("routers.set_operations.with_duckdb_connection") as mock_get_db, patch(
             "core.common.config_manager.config_manager.get_app_config",
-            return_value=Mock(max_query_rows=88),
+            return_value=Mock(max_query_rows=88, duckdb_auto_explain_threshold_ms=0),
         ):
             mock_generate.return_value = (
                 "SELECT id, name FROM users UNION SELECT id, name FROM customers"

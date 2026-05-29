@@ -16,11 +16,14 @@ import { generateConflictKey } from '@/utils/duckdbTypes';
 import {
     cloneTreeWithoutOnConditions,
     generateFilterSQL,
+    generateFilterSQLForSubquery,
+    getOnConditionsTreeForTable,
     type FilterGroup,
 } from './FilterBar';
 import {
     buildJoinTableAliasMap,
     collectDuplicateAliases,
+    remapFilterTreeTableNames,
 } from './joinTableAliasUtils';
 
 export type JoinPanelJoinType =
@@ -55,12 +58,6 @@ function mapJoinType(joinType: JoinPanelJoinType): string {
     return JOIN_TYPE_MAP[joinType] ?? 'inner';
 }
 
-function hasWhereFilters(filterTree: FilterGroup): boolean {
-    const whereOnly = cloneTreeWithoutOnConditions(filterTree);
-    const clause = generateFilterSQL(whereOnly);
-    return Boolean(clause?.trim());
-}
-
 function usesExpressionConditions(configs: JoinPanelJoinConfig[]): boolean {
     return configs.some((config) =>
         config.conditions.some(
@@ -74,12 +71,12 @@ function usesExpressionConditions(configs: JoinPanelJoinConfig[]): boolean {
 }
 
 /**
- * 是否可走服务端 `/api/query`（仅 DuckDB 已注册表、列模式 ON、无 WHERE 筛选树）。
+ * 是否可走服务端 `/api/query`（列模式 ON、无表达式 JOIN；WHERE 经 where_conditions 下发）。
  */
 export function canUseServerJoinPath(
     activeTables: SelectedTable[],
     joinConfigs: JoinPanelJoinConfig[],
-    filterTree: FilterGroup,
+    _filterTree: FilterGroup,
     _attachDatabases: AttachDatabase[],
     tableAliasOverrides: Record<string, string> = {}
 ): boolean {
@@ -90,15 +87,68 @@ export function canUseServerJoinPath(
     if (collectDuplicateAliases(tableNames, tableAliasOverrides).length > 0) {
         return false;
     }
-    if (hasWhereFilters(filterTree)) {
-        return false;
-    }
     if (usesExpressionConditions(joinConfigs)) {
         return false;
     }
     return joinConfigs.every((config) =>
         config.conditions.some((c) => c.leftColumn?.trim() && c.rightColumn?.trim())
     );
+}
+
+function buildPushdownWhere(
+    filterTree: FilterGroup,
+    tableName: string
+): string | undefined {
+    const onTree = getOnConditionsTreeForTable(filterTree, tableName);
+    if (onTree.children.length === 0) {
+        return undefined;
+    }
+    const sql = generateFilterSQLForSubquery(onTree).trim();
+    return sql || undefined;
+}
+
+/** Filter WHERE 列前缀：与后端 federated_source_sql_alias / joinTableAliasMap 一致 */
+function buildFilterAliasMap(
+    activeTables: SelectedTable[],
+    tableAliasOverrides: Record<string, string>,
+    attachDatabases: AttachDatabase[]
+): Record<string, string> {
+    const tableNames = activeTables.map(getTableName);
+    const joinAliasMap = buildJoinTableAliasMap(tableNames, tableAliasOverrides);
+    const attachAliasSet = new Set(attachDatabases.map((db) => db.alias));
+
+    const map: Record<string, string> = {};
+    activeTables.forEach((table) => {
+        const name = getTableName(table);
+        if (isExternalTable(table) && attachDatabases.length > 0) {
+            const { qualifiedName } = generateExternalTableReference(table);
+            const parts = qualifiedName.split('.').filter(Boolean);
+            if (parts.length >= 2 && attachAliasSet.has(parts[0])) {
+                map[name] = parts[parts.length - 1];
+            } else {
+                map[name] = parts[parts.length - 1] ?? name;
+            }
+        } else {
+            map[name] = joinAliasMap[name] ?? name;
+        }
+    });
+    return map;
+}
+
+function resolveSourceColumns(
+    tableName: string,
+    selectedColumns: Record<string, string[]>,
+    tableColumnsMap: Record<string, { name: string }[]>
+): { name: string }[] | undefined {
+    const picked = selectedColumns[tableName];
+    if (picked?.length) {
+        return picked.map((name) => ({ name }));
+    }
+    const all = tableColumnsMap[tableName];
+    if (all?.length) {
+        return all.map((col) => ({ name: col.name }));
+    }
+    return undefined;
 }
 
 export function buildJoinQueryPayload(params: {
@@ -110,6 +160,8 @@ export function buildJoinQueryPayload(params: {
     isPreview?: boolean;
     attachDatabases?: AttachDatabase[];
     tableAliasOverrides?: Record<string, string>;
+    selectedColumns?: Record<string, string[]>;
+    tableColumnsMap?: Record<string, { name: string }[]>;
 }): JoinQueryPerformRequest | null {
     const {
         activeTables,
@@ -120,6 +172,8 @@ export function buildJoinQueryPayload(params: {
         isPreview = true,
         attachDatabases = [],
         tableAliasOverrides = {},
+        selectedColumns = {},
+        tableColumnsMap = {},
     } = params;
 
     const attachForPayload = attachDatabases.map((db) => ({
@@ -135,21 +189,33 @@ export function buildJoinQueryPayload(params: {
     const aliasMap = buildJoinTableAliasMap(tableNames, tableAliasOverrides);
 
     const sources: JoinQueryDataSource[] = activeTables.map((table) => {
+        const tableName = getTableName(table);
+        const columns = resolveSourceColumns(
+            tableName,
+            selectedColumns,
+            tableColumnsMap
+        );
+        const pushdownWhere = buildPushdownWhere(filterTree, tableName);
+        const baseParams = (name: string) => ({
+            table_name: name,
+            ...(pushdownWhere ? { pushdown_where: pushdownWhere } : {}),
+        });
         if (isExternalTable(table)) {
             const { qualifiedName } = generateExternalTableReference(table);
             return {
                 id: qualifiedName,
                 type: 'duckdb',
                 table_name: qualifiedName,
-                params: { table_name: qualifiedName },
+                params: baseParams(qualifiedName),
+                ...(columns ? { columns } : {}),
             };
         }
-        const tableName = getTableName(table);
         return {
             id: tableName,
             type: 'duckdb',
             table_name: tableName,
-            params: { table_name: tableName },
+            params: baseParams(tableName),
+            ...(columns ? { columns } : {}),
         };
     });
 
@@ -193,8 +259,15 @@ export function buildJoinQueryPayload(params: {
         });
     }
 
+    const filterAliasMap = buildFilterAliasMap(
+        activeTables,
+        tableAliasOverrides,
+        attachDatabases
+    );
     const whereOnlyTree = cloneTreeWithoutOnConditions(filterTree);
-    const whereClause = generateFilterSQL(whereOnlyTree);
+    const whereClause = generateFilterSQL(
+        remapFilterTreeTableNames(whereOnlyTree, filterAliasMap)
+    );
 
     return {
         sources,

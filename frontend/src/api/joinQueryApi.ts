@@ -4,7 +4,8 @@
  * Join 工作台：DuckDB 简单 JOIN 走 `performJoinQuery`；联邦/筛选/表达式仍本地 SQL + `onExecute`。
  */
 
-import { apiClient, handleApiError, normalizeResponse } from './client';
+import { apiClient, getFederatedQueryTimeout, handleApiError, normalizeResponse } from './client';
+import type { DuckdbColumnType } from './types';
 
 export interface JoinQueryDataSource {
     id: string;
@@ -52,6 +53,7 @@ export interface JoinQueryPerformRequest {
 export interface JoinQueryPerformResult {
     data: Record<string, unknown>[];
     columns: string[];
+    column_types?: DuckdbColumnType[];
     index?: number[];
     sql: string;
     row_count: number;
@@ -62,7 +64,7 @@ export interface JoinQueryPerformResult {
  */
 export async function performJoinQuery(
     payload: JoinQueryPerformRequest,
-    options: { requestId?: string } = {}
+    options: { requestId?: string; signal?: AbortSignal } = {}
 ): Promise<JoinQueryPerformResult> {
     try {
         const headers = options.requestId
@@ -71,7 +73,11 @@ export async function performJoinQuery(
         const response = await apiClient.post(
             '/api/query',
             payload,
-            headers ? { headers } : undefined
+            {
+                ...(headers ? { headers } : {}),
+                timeout: getFederatedQueryTimeout(),
+                signal: options.signal,
+            }
         );
         const normalized = normalizeResponse<JoinQueryPerformResult>(response);
         return normalized.data;

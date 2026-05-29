@@ -5,6 +5,18 @@ from core.common.config_manager import config_manager
 router = APIRouter()
 
 
+def _remote_storage_configured(app_config) -> bool:
+    settings = getattr(app_config, "duckdb_remote_settings", None) or {}
+    if not isinstance(settings, dict):
+        return False
+    return bool(
+        settings.get("s3_access_key_id")
+        or settings.get("s3_secret_access_key")
+        or settings.get("s3_endpoint")
+        or settings.get("s3_region")
+    )
+
+
 def format_file_size(size_bytes: int) -> str:
     """将字节数转换为人类可读的格式"""
     if size_bytes >= 1024 * 1024 * 1024:
@@ -39,6 +51,10 @@ async def get_app_features():
             "max_file_size": max_file_size,
             "max_file_size_display": format_file_size(max_file_size),
             "federated_query_timeout": int(getattr(app_config, "federated_query_timeout", 300)),
+            "json_import_column_type": str(
+                getattr(app_config, "json_import_column_type", "auto") or "auto"
+            ),
+            "remote_storage_configured": _remote_storage_configured(app_config),
         },
         message_code=MessageCode.APP_FEATURES_RETRIEVED,
     )

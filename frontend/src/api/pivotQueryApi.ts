@@ -163,6 +163,8 @@ export interface AppConfigResponse {
     max_file_size: number;
     max_file_size_display: string;
     federated_query_timeout?: number;
+    json_import_column_type?: string;
+    remote_storage_configured?: boolean;
 }
 
 export async function getAppConfig(): Promise<{

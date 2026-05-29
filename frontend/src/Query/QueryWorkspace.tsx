@@ -273,6 +273,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
                 <ResultPanel
                   data={queryResults?.data ?? null}
                   columns={queryResults?.columns ?? null}
+                  duckdbColumnTypes={queryResults?.duckdbColumnTypes}
                   loading={
                     retainQueryResults
                       ? (queryResults?.loading ?? false)

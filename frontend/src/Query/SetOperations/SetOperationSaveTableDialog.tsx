@@ -2,7 +2,7 @@
  * 集合运算保存为 DuckDB 表
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Database, Loader2 } from 'lucide-react';
@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  cancelSyncQuery,
   executeSetOperation,
   type SetOperationRequestPayload,
 } from '@/api';
@@ -61,6 +62,7 @@ export const SetOperationSaveTableDialog: React.FC<SetOperationSaveTableDialogPr
   const queryClient = useQueryClient();
   const [tableName, setTableName] = useState(defaultTableName);
   const [tableNameError, setTableNameError] = useState<string | undefined>();
+  const requestIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -79,12 +81,17 @@ export const SetOperationSaveTableDialog: React.FC<SetOperationSaveTableDialogPr
       if (!validation.valid) {
         throw new Error(validation.error);
       }
-      return executeSetOperation({
-        ...base,
-        preview: false,
-        save_as_table: tableName.trim(),
-        include_metadata: false,
-      });
+      const requestId = crypto.randomUUID();
+      requestIdRef.current = requestId;
+      return executeSetOperation(
+        {
+          ...base,
+          preview: false,
+          save_as_table: tableName.trim(),
+          include_metadata: false,
+        },
+        { requestId }
+      );
     },
     onSuccess: (result) => {
       const saved = result.saved_table ?? result.table_alias ?? tableName.trim();
@@ -120,11 +127,22 @@ export const SetOperationSaveTableDialog: React.FC<SetOperationSaveTableDialogPr
     saveMutation.mutate();
   }, [tableName, saveMutation]);
 
+  const handleDialogOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen && saveMutation.isPending && requestIdRef.current) {
+        void cancelSyncQuery(requestIdRef.current);
+        requestIdRef.current = null;
+      }
+      onOpenChange(nextOpen);
+    },
+    [onOpenChange, saveMutation.isPending]
+  );
+
   const canSubmit =
     getPayload() != null && !tableNameError && tableName.trim() && !saveMutation.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -152,7 +170,10 @@ export const SetOperationSaveTableDialog: React.FC<SetOperationSaveTableDialogPr
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            onClick={() => handleDialogOpenChange(false)}
+          >
             {t('common.cancel', '取消')}
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>

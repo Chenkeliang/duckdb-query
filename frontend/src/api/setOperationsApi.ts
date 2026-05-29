@@ -27,6 +27,7 @@ export interface SetOperationRequestPayload {
     preview?: boolean;
     save_as_table?: string;
     include_metadata?: boolean;
+    attach_databases?: { alias: string; connection_id: string }[];
 }
 
 export interface SetOperationValidateResult {
@@ -162,10 +163,25 @@ export async function validateSetOperation(
  * POST /api/set-operations/execute — 完整执行或保存为 DuckDB 表
  */
 export async function executeSetOperation(
-    payload: SetOperationRequestPayload
+    payload: SetOperationRequestPayload,
+    options?: { requestId?: string; signal?: AbortSignal }
 ): Promise<SetOperationExecuteResult> {
     try {
-        const response = await apiClient.post('/api/set-operations/execute', payload);
+        const config: {
+            headers?: Record<string, string>;
+            signal?: AbortSignal;
+        } = {};
+        if (options?.requestId) {
+            config.headers = { 'X-Request-ID': options.requestId };
+        }
+        if (options?.signal) {
+            config.signal = options.signal;
+        }
+        const response = await apiClient.post(
+            '/api/set-operations/execute',
+            payload,
+            Object.keys(config).length > 0 ? config : undefined
+        );
         const normalized = normalizeResponse<SetOperationExecuteResult>(response);
         return normalized.data;
     } catch (error) {

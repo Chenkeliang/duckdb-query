@@ -36,6 +36,7 @@ export {
 export {
     // SQL 生成
     generateFilterSQL,
+    generateFilterSQLForSubquery,
     // SQL 解析
     parseFilterSQL,
     parseFilterSQLWithTimeout,

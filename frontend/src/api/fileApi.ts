@@ -12,7 +12,7 @@ import type { UploadResponse, UploadProgress } from './types';
 // ==================== Types ====================
 
 /** 与后端 `import_mode` 一致：auto=先文本再安全定型，literal=全部 VARCHAR */
-export type FileImportMode = 'auto' | 'literal';
+export type FileImportMode = 'auto' | 'literal' | 'variant';
 
 export interface UploadOptions {
     tableAlias?: string;
@@ -30,6 +30,8 @@ export interface UrlImportOptions {
     delimiter?: string;
     encoding?: string;
     importMode?: FileImportMode;
+    /** false：对 http(s) 跳过 DuckDB/httpfs 直读，走下载后 ingest */
+    preferNative?: boolean;
 }
 
 export interface ExcelSheet {
@@ -323,6 +325,7 @@ interface ReadFromUrlRequestBody {
     delimiter?: string;
     encoding?: string;
     import_mode?: FileImportMode;
+    prefer_native?: boolean;
 }
 
 /** `POST /api/read_from_url` 成功时 `data` 形状（见 docs/API_CONTRACT_FE_BE.md §5） */
@@ -354,6 +357,7 @@ export async function readFromUrl(
             delimiter: options.delimiter,
             encoding: options.encoding,
             import_mode: options.importMode ?? 'auto',
+            prefer_native: options.preferNative ?? true,
         };
         const response = await apiClient.post('/api/read_from_url', body);
         const normalized = normalizeResponse<ReadFromUrlData>(response);

@@ -14,6 +14,7 @@
  */
 
 import { FilterGroup, FilterCondition, FilterNode } from './FilterBar/types';
+import { generateFilterSQLForSubquery } from './FilterBar/filterUtils';
 import { quoteIdent } from '@/utils/sqlUtils';
 
 // =============================================================================
@@ -381,8 +382,13 @@ export function analyzeTablesForOptimization(
             });
 
             if (decision.shouldOptimize && filterGroup) {
-                // Generate WHERE SQL for the subquery
-                const whereSQL = generateConditionSQL(filterGroup.conditions);
+                const tempGroup: FilterGroup = {
+                    id: 'temp',
+                    type: 'group',
+                    logic: 'AND',
+                    children: filterGroup.conditions,
+                };
+                const whereSQL = generateFilterSQLForSubquery(tempGroup);
 
                 if (whereSQL) {
                     const subqueryResult = buildFilteredSubquery(tableInfo, whereSQL);

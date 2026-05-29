@@ -145,6 +145,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     response: {
       data?: unknown[];
       columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
+      column_types?: Array<{ name: string; duckdb_type: string }>;
       execTime?: number;
       execution_time_ms?: number;
       preview_limit_applied?: number | null;
@@ -174,6 +175,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     return {
       data: objectData,
       columns,
+      duckdbColumnTypes: response.column_types,
       loading: false,
       error: null,
       execTime: response.execTime || response.execution_time_ms,
@@ -221,6 +223,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         return {
           data: result.data || [],
           columns: result.columns || [],
+          column_types: result.column_types,
           execTime,
           preview_limit_applied: result.preview_limit_applied ?? null,
         };
@@ -584,6 +587,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       response: {
         data?: unknown[];
         columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
+        column_types?: Array<{ name: string; duckdb_type: string }>;
         row_count?: number;
         execTime?: number;
         preview_limit_applied?: number | null;

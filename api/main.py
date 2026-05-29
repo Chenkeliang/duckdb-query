@@ -30,6 +30,7 @@ from routers import (
     query_cancel,
     pivot_query,  # /api/pivot-query/*
     set_operations,  # /api/set-operations/*
+    query_export,  # /api/query-results/export
 )
 from routers import config_api
 from core.database.database_manager import db_manager
@@ -129,6 +130,7 @@ app.include_router(duckdb_query.router)
 app.include_router(join_query.router)
 app.include_router(pivot_query.router)
 app.include_router(set_operations.router)
+app.include_router(query_export.router)
 app.include_router(paste_data.router)
 app.include_router(chunked_upload.router)
 app.include_router(url_reader.router)

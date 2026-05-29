@@ -57,7 +57,7 @@ const DATETIME_TYPES = new Set([
  * 复杂类型（需要精确匹配）
  */
 const COMPLEX_TYPES = new Set([
-  'ENUM', 'LIST', 'ARRAY', 'MAP', 'STRUCT', 'UNION', 'JSON', 'BLOB', 'BYTEA', 'UUID',
+  'ENUM', 'LIST', 'ARRAY', 'MAP', 'STRUCT', 'UNION', 'JSON', 'VARIANT', 'BLOB', 'BYTEA', 'UUID',
 ]);
 
 /**

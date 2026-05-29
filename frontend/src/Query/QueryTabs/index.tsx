@@ -320,7 +320,6 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
             <SetOperationsPanel
               selectedTables={selectedTables}
               onExecute={handleSetExecute}
-              onDisplayPreview={onDisplayPreview}
               onRemoveTable={onRemoveTable}
             />
           </KeepAliveTabContent>

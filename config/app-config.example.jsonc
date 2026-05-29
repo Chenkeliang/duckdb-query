@@ -52,7 +52,10 @@
   // 自动 Explain 阈值 (毫秒) / Auto Explain Threshold (ms)
   // 超过此时间的查询将自动记录执行计划 / Queries slower than this will trigger EXPLAIN
   // 0 = 禁用 / 0 = Disabled
+  // 生产可设 5000：慢查询自动 EXPLAIN 写入日志
   "duckdb_auto_explain_threshold_ms": 0,
+  // JSON/JSONL 默认入湖：auto | variant（各列 VARIANT）
+  "json_import_column_type": "auto",
   // 预加载扩展 / Preloaded Extensions
   "duckdb_extensions": [
     "excel",

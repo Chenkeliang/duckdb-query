@@ -87,7 +87,7 @@ export function LocalUploadCard({
               const file = e.target.files?.[0];
               if (file) onFileSelect(file);
             }}
-            accept=".csv,.xlsx,.xls,.json,.parquet,.pq"
+            accept=".csv,.xlsx,.xls,.json,.jsonl,.parquet,.pq"
           />
           <Upload className="h-8 w-8 text-muted-fg" />
           <p className="text-foreground font-medium text-sm">

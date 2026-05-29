@@ -44,6 +44,7 @@ export interface ResultToolbarProps {
   onExportCsv?: () => void;
   onExportExcel?: () => void;
   onExportJson?: () => void;
+  onExportParquet?: () => void;
   onRefresh?: () => void;
   onToggleFullscreen?: () => void;
   isFullscreen?: boolean;
@@ -75,6 +76,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
   onExportCsv,
   onExportExcel,
   onExportJson,
+  onExportParquet,
   onRefresh,
   onToggleFullscreen,
   isFullscreen = false,
@@ -91,7 +93,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
     [i18n.language]
   );
   const hiddenCount = gridColumns?.filter((c) => !c.visible).length || 0;
-  const hasExport = !!(onExportCsv || onExportExcel || onExportJson);
+  const hasExport = !!(onExportCsv || onExportExcel || onExportJson || onExportParquet);
 
   return (
     <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
@@ -298,6 +300,11 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
               {onExportJson && (
                 <DropdownMenuItem onClick={onExportJson}>
                   {t('query.result.exportJSON', '导出 JSON')}
+                </DropdownMenuItem>
+              )}
+              {onExportParquet && (
+                <DropdownMenuItem onClick={onExportParquet}>
+                  {t('query.result.exportParquetServer', '导出 Parquet（服务端）')}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>

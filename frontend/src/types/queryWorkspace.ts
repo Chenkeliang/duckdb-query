@@ -19,9 +19,15 @@ export interface LastQuery {
   source: TableSource;
 }
 
+export interface DuckdbColumnType {
+  name: string;
+  duckdb_type: string;
+}
+
 export interface QueryResult {
   data: Record<string, unknown>[] | null;
   columns: string[] | null;
+  duckdbColumnTypes?: DuckdbColumnType[];
   loading: boolean;
   error: Error | null;
   execTime?: number;

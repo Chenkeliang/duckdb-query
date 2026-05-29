@@ -8,7 +8,7 @@ import decimal
 import numpy as np
 import pandas as pd
 from datetime import datetime, date
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 DATETIME_OUTPUT_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
@@ -86,6 +86,53 @@ def handle_non_serializable_data(obj: Any) -> Any:
     这是jsonable_encoder的别名，保持向后兼容
     """
     return jsonable_encoder(obj)
+
+
+def duckdb_column_types_from_dataframe(
+    con: Any,
+    df: pd.DataFrame,
+) -> List[Dict[str, str]]:
+    """将结果 DataFrame 注册为临时视图后 DESCRIBE，得到 DuckDB 列类型。"""
+    if df is None or len(df.columns) == 0:
+        return []
+
+    from uuid import uuid4
+
+    temp = f"__coltypes_{uuid4().hex}"
+    try:
+        con.register(temp, df)
+        rows = con.execute(f'DESCRIBE "{temp}"').fetchall()
+        return [{"name": str(row[0]), "duckdb_type": str(row[1])} for row in rows]
+    except Exception:
+        return [
+            {"name": str(col), "duckdb_type": str(df[col].dtype)}
+            for col in df.columns
+        ]
+    finally:
+        try:
+            con.unregister(temp)
+        except Exception:
+            pass
+
+
+def describe_query_column_types(
+    con: Any,
+    sql: str,
+    fallback_df: Optional[pd.DataFrame] = None,
+) -> List[Dict[str, str]]:
+    """对查询 SQL 执行 DESCRIBE，失败时回退到 DataFrame 注册描述。"""
+    cleaned = (sql or "").strip().rstrip(";")
+    if not cleaned:
+        return []
+    try:
+        rows = con.execute(f"DESCRIBE ({cleaned})").fetchall()
+        if rows:
+            return [{"name": str(row[0]), "duckdb_type": str(row[1])} for row in rows]
+    except Exception:
+        pass
+    if fallback_df is not None:
+        return duckdb_column_types_from_dataframe(con, fallback_df)
+    return []
 
 
 def normalize_dataframe_output(df: pd.DataFrame) -> List[Dict[str, Any]]:

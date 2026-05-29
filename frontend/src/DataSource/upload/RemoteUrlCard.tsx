@@ -9,6 +9,8 @@ export interface RemoteUrlCardProps {
   url: string;
   remoteAlias: string;
   urlLoading: boolean;
+  remoteStorageConfigured?: boolean;
+  jsonImportColumnType?: string;
   onUrlChange: (url: string) => void;
   onRemoteAliasChange: (alias: string) => void;
   onImport: () => void;
@@ -18,11 +20,15 @@ export function RemoteUrlCard({
   url,
   remoteAlias,
   urlLoading,
+  remoteStorageConfigured = false,
+  jsonImportColumnType = "auto",
   onUrlChange,
   onRemoteAliasChange,
   onImport,
 }: RemoteUrlCardProps) {
   const { t } = useTranslation("common");
+  const isS3Url = /^s3:\/\//i.test(url.trim());
+  const showS3ConfigHint = isS3Url && !remoteStorageConfigured;
 
   return (
     <Card className="shadow-sm">
@@ -50,6 +56,16 @@ export function RemoteUrlCard({
           <p className="text-xs text-muted-foreground">
             {t("page.datasource.remoteUrlHelper")}
           </p>
+          {showS3ConfigHint ? (
+            <p className="text-xs text-amber-600 dark:text-amber-500">
+              {t("page.datasource.s3ConfigRequired")}
+            </p>
+          ) : null}
+          {jsonImportColumnType === "variant" ? (
+            <p className="text-xs text-muted-foreground">
+              {t("page.datasource.jsonVariantDefaultHint")}
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-2">

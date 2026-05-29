@@ -71,8 +71,8 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；499 `QUERY_CANCELLED`；500 `QUERY_FAILED`（§1.1） |
-| POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；404 `connection_id`；503 ATTACH；499 / 500 同 execute |
+| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`）, `data`, `row_count`, `preview_limit_applied?`；499 / 500 |
+| POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`；404 `connection_id`；503 ATTACH；499 / 500 |
 | POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；404 `QUERY_NOT_FOUND`（无活跃同步查询） |
 | POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求） | `saveQueryToDuckDB` |
 | GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at` | `getDuckDBTables` |
@@ -110,7 +110,8 @@
 
 `uploadApi.ts` 封装：`uploadFile`、`uploadFileAuto`、`initChunkedUpload`、`uploadChunk`、`completeChunkedUpload`、`cancelChunkedUpload`（阈值 `CHUNKED_UPLOAD_THRESHOLD_BYTES`）。其余入湖能力在 `fileApi.ts`。
 
-**`import_mode`（可选，默认 `auto`）**：`auto` = 先 `all_varchar` / 字面量读入再 `promote_table_column_types_from_varchar`（ID 列保持 VARCHAR，不升为 DOUBLE）；`literal` = 全列 VARCHAR、不 promote。  
+**`import_mode`（可选，默认 `auto`）**：`auto` = 先 `all_varchar` / 字面量读入再 `promote_table_column_types_from_varchar`（ID 列保持 VARCHAR，不升为 DOUBLE）；`literal` = 全列 VARCHAR、不 promote；`variant` = JSON/JSONL 各列 VARIANT。  
+当 `import_mode=auto` 且文件类型为 `json`/`jsonl` 时，若 app-config `json_import_column_type=variant`，服务端解析为 `variant`（`resolve_import_mode`）。  
 请求字段名：`import_mode`（Form 或 JSON）。前端类型：`FileImportMode`（`fileApi.ts`），上传面板 `UploadPanel` 状态 `importMode`。
 
 | 方法 | 路径 | `import_mode` | 前端入口 |
@@ -121,7 +122,7 @@
 | POST | `/api/data-sources/excel/import` | JSON body | `importExcelSheets`；404 `FILE_NOT_FOUND`；500 `EXCEL_IMPORT_FAILED` |
 | POST | `/api/server-files/import` | JSON body | `importServerFile` |
 | POST | `/api/server-files/excel/import` | JSON body | `importServerExcelSheets` |
-| POST | `/api/read_from_url` | JSON `import_mode?` | `readFromUrl`；400 `URL_INVALID`；500 `URL_READ_FAILED`（§1.1） |
+| POST | `/api/read_from_url` | JSON `import_mode?`, `prefer_native?`（默认 true，false 时对 http(s) 跳过 DuckDB/httpfs 直读） | `readFromUrl`；s3:// 禁止 requests 回退；400 `URL_INVALID`；500 `URL_READ_FAILED`（§1.1） |
 | POST | `/api/upload/chunk` | — | `uploadChunk` |
 | DELETE | `/api/upload/cancel/{upload_id}` | — | `cancelChunkedUpload`；404 会话（§1.1） |
 | — | `uploadFileAuto` | 同上 | 文件 &gt; 8MB 走分块，否则 `POST /api/upload` |
@@ -159,7 +160,7 @@
 | PUT | `/api/sql-favorites/{id}` | 对象 | `updateSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | DELETE | `/api/sql-favorites/{id}` | 对象 | `deleteSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites/{id}/use` | 对象 | `incrementFavoriteUsage`；404 `FAVORITE_NOT_FOUND` |
-| GET | `/api/app-config/features` | 对象 | `getAppConfig` |
+| GET | `/api/app-config/features` | 对象 | `getAppConfig`；含 `json_import_column_type`, `remote_storage_configured`（是否配置 `duckdb_remote_settings`） |
 
 ## 8. 设置（`settingsShortcutsApi.ts`）
 
@@ -171,6 +172,8 @@
 
 ## 9. 集合运算（`setOperationsApi.ts`）
 
+BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIOR_ZH.md)。请求体可含 `attach_databases`（联邦表 UNION/INTERSECT/EXCEPT）。
+
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
 | POST | `/api/set-operations/generate` | 对象 | `generateSetOperation`；400 `VALIDATION_ERROR`；500 `OPERATION_FAILED` |
@@ -180,6 +183,15 @@
 | POST | `/api/set-operations/simple-union` | 对象 | `simpleUnionSetOperation` |
 | POST | `/api/set-operations/export` | 对象 | `exportSetOperation`；500 `OPERATION_FAILED` |
 
+## 9.1 查询结果服务端导出（`queryExportApi.ts`）
+
+| 方法 | 路径 | 成功 `data` | 前端 |
+|------|------|-------------|------|
+| POST | `/api/query-results/export` | `file_id`, `download_url`, `format`, `row_count_estimate?` | `exportQueryResults` |
+| GET | `/api/query-results/export/{file_id}/download` | 文件流 | `getQueryExportDownloadUrl` + 浏览器下载 |
+
+请求：`{ sql, format: "parquet"|"csv", attach_databases? }`；支持 `X-Request-ID` 取消（499 `QUERY_CANCELLED`）。
+
 **`setOperationsApi.ts` 已封装**：`generate`、`preview`、`validate`、`execute`、`simple-union`、`export`（上表全部）。
 
 执行时前端在 generate 返回的 SQL 后追加 `LIMIT`（与 `maxQueryRows` 一致）；**preview** 端点 LIMIT 由后端 `max_query_rows` 控制，结果写入结果面板。
@@ -188,7 +200,7 @@
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/query` | 对象 | `performJoinQuery`（Join 工作台；`attach_databases` 联邦多表）；`data`: `data`, `columns`, `sql`, `row_count` |
+| POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `column_types[]`, `sql`, `row_count` |
 | POST | `/api/save_query_to_duckdb` | 对象 | 见 §2 `saveQueryToDuckDB` |
 
 ## 10. 已移除的历史端点（勿再使用）

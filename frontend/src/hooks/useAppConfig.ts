@@ -22,6 +22,8 @@ export interface AppConfig {
   maxFileSize: number;
   maxFileSizeDisplay: string;
   federatedQueryTimeout: number; // ms
+  jsonImportColumnType: string;
+  remoteStorageConfigured: boolean;
 }
 
 // Query Key
@@ -35,6 +37,8 @@ const DEFAULT_CONFIG: AppConfig = {
   maxFileSize: 500 * 1024 * 1024, // 500MB
   maxFileSizeDisplay: '500MB',
   federatedQueryTimeout: 300000, // 5 minutes
+  jsonImportColumnType: 'auto',
+  remoteStorageConfigured: false,
 };
 
 // 获取应用配置的 API 函数
@@ -48,6 +52,8 @@ async function fetchAppConfig(): Promise<AppConfig> {
     maxFileSize: result.config.max_file_size,
     maxFileSizeDisplay: result.config.max_file_size_display,
     federatedQueryTimeout: (result.config.federated_query_timeout || 300) * 1000,
+    jsonImportColumnType: result.config.json_import_column_type || 'auto',
+    remoteStorageConfigured: Boolean(result.config.remote_storage_configured),
   };
 
   // 更新 API Client 的超时设置
@@ -80,6 +86,8 @@ export function useAppConfig() {
     maxQueryRows: config.maxQueryRows,
     maxFileSize: config.maxFileSize,
     maxFileSizeDisplay: config.maxFileSizeDisplay,
+    jsonImportColumnType: config.jsonImportColumnType,
+    remoteStorageConfigured: config.remoteStorageConfigured,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,

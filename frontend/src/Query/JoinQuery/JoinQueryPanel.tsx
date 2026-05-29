@@ -24,7 +24,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { parseFederatedQueryError, performJoinQuery } from '@/api';
+import { cancelSyncQuery, parseFederatedQueryError, performJoinQuery } from '@/api';
 import type { TableSource, UseQueryWorkspaceReturn } from '@/hooks/useQueryWorkspace';
 import { showErrorToast } from '@/utils/toastHelpers';
 import {
@@ -71,6 +71,7 @@ import {
   FilterBar,
   createEmptyGroup,
   generateFilterSQL,
+  generateFilterSQLForSubquery,
   cloneTreeWithoutOnConditions,
   getOnConditionsTreeForTable,
   type FilterGroup,
@@ -747,6 +748,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
   const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
   const abortControllerRef = React.useRef<AbortController | null>(null);
+  const joinRequestIdRef = React.useRef<string | null>(null);
 
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
   const [internalTables, setInternalTables] = React.useState<SelectedTable[]>([]);
@@ -1242,6 +1244,8 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         isPreview,
         attachDatabases,
         tableAliasOverrides,
+        selectedColumns,
+        tableColumnsMap,
       }),
     [
       activeTables,
@@ -1251,6 +1255,8 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       maxQueryRows,
       attachDatabases,
       tableAliasOverrides,
+      selectedColumns,
+      tableColumnsMap,
     ]
   );
 
@@ -1350,10 +1356,15 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
               logic: 'AND',
               children: filterGroup.conditions
             };
-            const whereSQL = filterSqlFromTree(tempGroup);
+            const whereSQL = generateFilterSQLForSubquery(tempGroup);
 
             if (whereSQL) {
-              const subqueryResult = buildFilteredSubquery(tableInfo, whereSQL);
+              const pickedCols = selectedColumns[tableName] ?? selectedColumns[tableAlias];
+              const subqueryResult = buildFilteredSubquery(
+                tableInfo,
+                whereSQL,
+                pickedCols?.length ? pickedCols : null
+              );
               optimizedTableRefs.set(tableName, subqueryResult);
               optimizedTableRefs.set(tableAlias, subqueryResult);
               console.log(`[SQL Optimizer] Optimized table ${fullRef} with subquery WHERE: ${whereSQL}`);
@@ -1564,13 +1575,29 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         ? { type: 'federated', attachDatabases }
         : tableSource || { type: 'duckdb' };
     const startTime = Date.now();
-    const result = await performJoinQuery(payload);
+    const requestId =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `join-${Date.now()}`;
+    abortControllerRef.current = new AbortController();
+    joinRequestIdRef.current = requestId;
+    let result;
+    try {
+      result = await performJoinQuery(payload, {
+        requestId,
+        signal: abortControllerRef.current.signal,
+      });
+    } finally {
+      joinRequestIdRef.current = null;
+      abortControllerRef.current = null;
+    }
     const previewHandler = onDisplayPreview;
     if (previewHandler) {
       previewHandler(
         {
           data: result.data,
           columns: result.columns,
+          column_types: result.column_types,
           row_count: result.row_count,
           execTime: Date.now() - startTime,
           preview_limit_applied: isPreview ? maxQueryRows : null,
@@ -1645,21 +1672,30 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   };
 
   // 本地取消处理
-  const handleCancel = React.useCallback(() => {
+  const handleCancel = React.useCallback(async () => {
     setLocalIsCancelling(true);
 
-    // 中止本地请求
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
 
-    // 调用父组件的取消回调（如果有的话）
+    const requestId = joinRequestIdRef.current;
+    if (requestId) {
+      try {
+        await cancelSyncQuery(requestId);
+      } catch {
+        // 查询可能已结束，忽略取消失败
+      }
+      joinRequestIdRef.current = null;
+    }
+
     if (onCancel) {
       onCancel();
     }
 
     setIsExecuting(false);
+    setIsPreviewing(false);
     setLocalIsCancelling(false);
   }, [onCancel]);
 

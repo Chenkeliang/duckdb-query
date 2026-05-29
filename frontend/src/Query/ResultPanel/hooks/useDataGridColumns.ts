@@ -9,11 +9,14 @@ import {
   createUrlCellRenderer,
 } from '../../DataGrid/utils/urlCell';
 import { useColumnTypeDetection, type ColumnType } from './useColumnTypeDetection';
+import type { DuckdbColumnType } from '@/types/queryWorkspace';
 
 export interface UseDataGridColumnsOptions {
   data: Record<string, unknown>[] | null;
   /** 后端返回的列顺序；未提供时从首行对象键推断 */
   fieldOrder?: string[] | null;
+  /** DuckDB DESCRIBE 列类型（含 VARIANT） */
+  duckdbColumnTypes?: DuckdbColumnType[];
   sampleSize?: number;
   columnOverrides?: Record<string, Partial<ColumnDef>>;
   enableFilters?: boolean;
@@ -67,6 +70,31 @@ function formatDateValue(value: unknown): string {
   }).format(date);
 }
 
+function isVariantDuckdbType(duckdbType: string): boolean {
+  return duckdbType.toUpperCase().includes('VARIANT');
+}
+
+function formatVariantCellDisplay(value: unknown): string {
+  if (value === null || value === undefined) {
+    return 'NULL';
+  }
+  const raw = String(value);
+  const trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      const compact = JSON.stringify(parsed);
+      return compact.length > 280 ? `${compact.slice(0, 277)}…` : compact;
+    } catch {
+      return raw.length > 280 ? `${raw.slice(0, 277)}…` : raw;
+    }
+  }
+  return raw.length > 280 ? `${raw.slice(0, 277)}…` : raw;
+}
+
 function booleanCellRenderer(value: unknown): React.ReactNode {
   if (value === null || value === undefined) {
     return React.createElement('span', { className: 'text-muted-foreground' }, 'NULL');
@@ -83,6 +111,7 @@ function booleanCellRenderer(value: unknown): React.ReactNode {
 export function useDataGridColumns({
   data,
   fieldOrder,
+  duckdbColumnTypes,
   sampleSize = 100,
   columnOverrides = {},
   enableFilters = true,
@@ -99,6 +128,25 @@ export function useDataGridColumns({
     if (!data?.length) return {};
     return detectColumnTypes(data, sampleSize);
   }, [data, sampleSize, detectColumnTypes]);
+
+  const duckdbTypeByField = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const entry of duckdbColumnTypes ?? []) {
+      if (entry.name) {
+        map[entry.name] = entry.duckdb_type;
+      }
+    }
+    return map;
+  }, [duckdbColumnTypes]);
+
+  const duckdbTypesKey = useMemo(
+    () =>
+      Object.keys(duckdbTypeByField)
+        .sort()
+        .map((k) => `${k}:${duckdbTypeByField[k]}`)
+        .join('\u0002'),
+    [duckdbTypeByField]
+  );
 
   const columnTypesKey = useMemo(
     () =>
@@ -129,6 +177,8 @@ export function useDataGridColumns({
 
     return fields.map((field) => {
       const typeInfo = columnTypesRaw[field];
+      const duckdbType = duckdbTypeByField[field];
+      const isVariantCol = duckdbType ? isVariantDuckdbType(duckdbType) : false;
       const type: ColumnType = typeInfo?.type || 'string';
       const override = columnOverrides[field] || {};
 
@@ -143,30 +193,45 @@ export function useDataGridColumns({
         ...override,
       };
 
-      switch (type) {
-        case 'number':
-          col.valueFormatter = formatNumberValue;
-          break;
-        case 'date':
-          col.valueFormatter = formatDateValue;
-          break;
-        case 'boolean':
-          col.cellRenderer = ({ value }) => booleanCellRenderer(value);
-          break;
-        default:
-          if (columnMostlyHttpUrls(data, field, sampleSize)) {
-            col.cellRenderer = createUrlCellRenderer();
-          } else if (typeInfo?.nullable) {
-            col.valueFormatter = (value) =>
-              value === null || value === undefined ? 'NULL' : String(value);
-          }
-          break;
+      if (isVariantCol) {
+        col.width = 200;
+        col.cellRenderer = ({ value }) => {
+          const text = formatVariantCellDisplay(value);
+          return React.createElement(
+            'span',
+            {
+              className: 'font-mono text-xs whitespace-pre-wrap break-all',
+              title: value === null || value === undefined ? undefined : String(value),
+            },
+            text
+          );
+        };
+      } else {
+        switch (type) {
+          case 'number':
+            col.valueFormatter = formatNumberValue;
+            break;
+          case 'date':
+            col.valueFormatter = formatDateValue;
+            break;
+          case 'boolean':
+            col.cellRenderer = ({ value }) => booleanCellRenderer(value);
+            break;
+          default:
+            if (columnMostlyHttpUrls(data, field, sampleSize)) {
+              col.cellRenderer = createUrlCellRenderer();
+            } else if (typeInfo?.nullable) {
+              col.valueFormatter = (value) =>
+                value === null || value === undefined ? 'NULL' : String(value);
+            }
+            break;
+        }
       }
 
       return col;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- schemaKey/columnTypesKey 指纹
-  }, [fields, schemaKey, columnTypesKey, columnOverrides, enableFilters, enableSorting]);
+  }, [fields, schemaKey, columnTypesKey, duckdbTypesKey, columnOverrides, enableFilters, enableSorting]);
 
   return { columns };
 }

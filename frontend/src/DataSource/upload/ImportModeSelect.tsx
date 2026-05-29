@@ -22,6 +22,7 @@ export function ImportModeSelect({ id, value, onChange }: ImportModeSelectProps)
       >
         <option value="auto">{t("page.datasource.importModeAuto")}</option>
         <option value="literal">{t("page.datasource.importModeLiteral")}</option>
+        <option value="variant">{t("page.datasource.importModeVariant", "VARIANT（嵌套 JSON）")}</option>
       </select>
     </div>
   );

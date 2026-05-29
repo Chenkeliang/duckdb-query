@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import duckdb
 import pandas as pd
 from core.common.timezone_utils import get_current_time
-from core.common.utils import normalize_dataframe_output
+from core.common.utils import describe_query_column_types, normalize_dataframe_output
 from core.common.validators import validate_table_name
 from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
@@ -79,6 +79,28 @@ def safe_alias(table, col):
     if not re.match(r"^[a-zA-Z_]", alias):
         alias = f"col_{alias}"
     return f'"{alias}"'
+
+
+def load_federated_table_columns(
+    con: Any,
+    source_id: str,
+    attach_aliases: set[str],
+) -> List[Dict[str, str]]:
+    """ATTACH 后通过 DESCRIBE 拉取列名，供未传 columns 的联邦 JOIN 构建 SELECT。"""
+    qualified = format_qualified_table_reference(source_id.strip('"'))
+    try:
+        cols_df = con.execute(f"DESCRIBE {qualified}").fetchdf()
+        if cols_df is None or cols_df.empty:
+            return []
+        name_col = (
+            "column_name"
+            if "column_name" in cols_df.columns
+            else cols_df.columns[0]
+        )
+        return [{"name": str(name)} for name in cols_df[name_col].tolist()]
+    except Exception as exc:
+        logger.warning("DESCRIBE %s failed: %s", qualified, exc)
+        return []
 
 
 def build_multi_table_join_query(
@@ -298,9 +320,16 @@ def build_multi_table_join_query(
     # Build FROM and JOIN clauses
     if not joins:
         # No JOIN conditions, use CROSS JOIN
-        from_clause = _source_table_sql(sources[0].id, attach_alias_set)
+        from_clause = _source_table_sql(
+            sources[0].id,
+            attach_alias_set,
+            source=sources[0],
+            joins=joins,
+        )
         for source in sources[1:]:
-            from_clause += f" CROSS JOIN {_source_table_sql(source.id, attach_alias_set)}"
+            from_clause += (
+                f" CROSS JOIN {_source_table_sql(source.id, attach_alias_set, source=source, joins=joins)}"
+            )
     else:
         # Build JOIN chain
         from_clause = build_join_chain(
@@ -312,6 +341,9 @@ def build_multi_table_join_query(
 
     query = f"SELECT {select_clause} FROM {from_clause}"
 
+    if query_request.where_conditions:
+        query += f" WHERE {query_request.where_conditions}"
+
     # Add LIMIT
     if query_request.limit:
         query += f" LIMIT {query_request.limit}"
@@ -319,13 +351,90 @@ def build_multi_table_join_query(
     return query
 
 
+def _source_pushdown_where(source: Any) -> Optional[str]:
+    """联邦 JOIN：单表 ON 筛选下推到子查询 WHERE（来自 params.pushdown_where）。"""
+    if source is None or not getattr(source, "params", None):
+        return None
+    raw = source.params.get("pushdown_where")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def _source_ids_match(
+    source_id: str, other_id: str, attach_aliases: Optional[set[str]]
+) -> bool:
+    left = source_id.strip('"')
+    right = other_id.strip('"')
+    if left == right:
+        return True
+    if attach_aliases:
+        return federated_source_sql_alias(left, attach_aliases) == federated_source_sql_alias(
+            right, attach_aliases
+        )
+    return False
+
+
+def _federated_subquery_select_list(
+    source: Any,
+    source_id: str,
+    joins: Optional[List[Any]],
+    attach_aliases: set[str],
+) -> str:
+    """子查询只拉取选中列 + JOIN 键，避免 SELECT * 从 MySQL 拖全表列。"""
+    column_names: set[str] = set()
+    if source is not None and getattr(source, "columns", None):
+        for col in source.columns:
+            if isinstance(col, dict):
+                name = col.get("name") or col.get("column_name")
+            else:
+                name = str(col)
+            if name:
+                column_names.add(str(name))
+
+    if joins:
+        for join in joins:
+            if _source_ids_match(source_id, join.left_source_id, attach_aliases):
+                for condition in join.conditions or []:
+                    column_names.add(condition.left_column)
+            if _source_ids_match(source_id, join.right_source_id, attach_aliases):
+                for condition in join.conditions or []:
+                    column_names.add(condition.right_column)
+
+    if not column_names:
+        return "*"
+    return ", ".join(
+        f'"{name.replace(chr(34), chr(34) * 2)}"' for name in sorted(column_names)
+    )
+
+
 def _source_table_sql(
-    source_id: str, attach_aliases: Optional[set[str]] = None
+    source_id: str,
+    attach_aliases: Optional[set[str]] = None,
+    *,
+    source: Any = None,
+    pushdown_where: Optional[str] = None,
+    joins: Optional[List[Any]] = None,
 ) -> str:
     qualified = format_qualified_table_reference(source_id.strip('"'))
+    predicate = pushdown_where if pushdown_where is not None else _source_pushdown_where(source)
     if attach_aliases:
         alias = federated_source_sql_alias(source_id, attach_aliases)
         safe_alias = alias.replace('"', '""')
+        select_list = _federated_subquery_select_list(
+            source, source_id, joins, attach_aliases
+        )
+        if predicate:
+            return (
+                f"(SELECT {select_list} FROM {qualified} WHERE {predicate}) "
+                f'AS "{safe_alias}"'
+            )
+        if select_list != "*":
+            return (
+                f"(SELECT {select_list} FROM {qualified}) "
+                f'AS "{safe_alias}"'
+            )
         return f'{qualified} AS "{safe_alias}"'
     return qualified
 
@@ -346,7 +455,9 @@ def build_join_chain(sources, joins, table_columns, attach_aliases=None):
     Build JOIN chain, support multi-table connections and multi-field associations
     """
     if not joins:
-        return _source_table_sql(sources[0].id, attach_aliases)
+        return _source_table_sql(
+            sources[0].id, attach_aliases, source=sources[0], joins=joins
+        )
 
     def ref_id(source_id: str) -> str:
         sid = source_id.strip('"')
@@ -365,7 +476,12 @@ def build_join_chain(sources, joins, table_columns, attach_aliases=None):
     left_table = ref_id(first_join.left_source_id)
     right_table = ref_id(first_join.right_source_id)
 
-    from_clause = _source_table_sql(first_join.left_source_id, attach_aliases)
+    from_clause = _source_table_sql(
+        first_join.left_source_id,
+        attach_aliases,
+        source=source_map.get(first_join.left_source_id.strip('"')),
+        joins=joins,
+    )
     joined_tables.add(left_table)
 
     # Collect JOIN conditions for all same table pairs
@@ -421,8 +537,9 @@ def build_join_chain(sources, joins, table_columns, attach_aliases=None):
             if table_to_join == right_id
             else join_info["left_source_id"]
         )
+        join_source = source_map.get(table_to_join_source.strip('"'))
         from_clause += (
-            f" {join_type_sql} {_source_table_sql(table_to_join_source, attach_aliases)}"
+            f" {join_type_sql} {_source_table_sql(table_to_join_source, attach_aliases, source=join_source, joins=joins)}"
         )
 
         # Add all JOIN conditions (including multi-field associations)
@@ -488,9 +605,13 @@ async def perform_query(
             "Query request must contain at least one data source"
         )
 
-    # TODO: Use interruptible_connection to wrap query execution for cancellation support
     federated_attach = bool(query_request.attach_databases)
-    with with_duckdb_connection() as con:
+    conn_ctx = (
+        interruptible_connection(query_id, "")
+        if query_id
+        else with_duckdb_connection()
+    )
+    with conn_ctx as con:
         attached_aliases: List[str] = []
         try:
             if federated_attach:
@@ -763,12 +884,33 @@ async def perform_query(
                                 f"Direct database connection failed: {source.id}, error: {str(direct_db_error)}"
                             )
 
-            # 获取当前可用的表
-            available_tables = con.execute("SHOW TABLES").fetchdf()
-            available_table_names = (
-                available_tables["name"].tolist() if not available_tables.empty else []
-            )
-            logger.info(f"Current tables in DuckDB: {available_tables.to_string()}")
+            available_table_names: List[str] = []
+            if not federated_attach:
+                available_tables = con.execute("SHOW TABLES").fetchdf()
+                available_table_names = (
+                    available_tables["name"].tolist()
+                    if not available_tables.empty
+                    else []
+                )
+                logger.info(
+                    "Current tables in DuckDB: %s",
+                    available_tables.to_string(),
+                )
+            else:
+                for source in query_request.sources:
+                    pushdown = _source_pushdown_where(source)
+                    if pushdown:
+                        logger.info(
+                            "Federated pushdown for %s: %s",
+                            source.id,
+                            pushdown[:200],
+                        )
+                    else:
+                        logger.warning(
+                            "Federated source %s has no pushdown_where; "
+                            "full table scan may be slow",
+                            source.id,
+                        )
 
             # 构建查询 - 确保表名使用双引号括起来
             attach_alias_set = None
@@ -778,6 +920,13 @@ async def perform_query(
                     for db in query_request.attach_databases
                     if getattr(db, "alias", None)
                 }
+
+            if federated_attach and attach_alias_set:
+                for source in query_request.sources:
+                    if not source.columns:
+                        source.columns = load_federated_table_columns(
+                            con, source.id, attach_alias_set
+                        )
 
             if len(query_request.joins) > 0:
                 query = build_multi_table_join_query(
@@ -793,7 +942,7 @@ async def perform_query(
                 # 验证表是否存在（从查询中提取实际表名）
 
                 table_match = re.search(r'FROM "([^"]+)"', query)
-                if table_match:
+                if table_match and not federated_attach:
                     actual_table_name = table_match.group(1)
                     if actual_table_name not in available_table_names:
                         logger.error(
@@ -803,13 +952,18 @@ async def perform_query(
                         )
                         raise ResourceNotFoundError("Table", actual_table_name)
 
-            # 根据is_preview标志决定是否添加LIMIT
-            if query_request.is_preview:
-                from core.common.config_manager import config_manager
+            from core.common.config_manager import config_manager
 
-                limit = config_manager.get_app_config().max_query_rows
-                query = ensure_query_has_limit(query, limit)
-                logger.info(f"Preview mode, applied LIMIT {limit}")
+            max_rows = config_manager.get_app_config().max_query_rows
+            if query_request.is_preview:
+                query = ensure_query_has_limit(query, max_rows)
+                logger.info(f"Preview mode, applied LIMIT {max_rows}")
+            elif federated_attach and " LIMIT " not in query.upper():
+                query = ensure_query_has_limit(query, max_rows)
+                logger.info(
+                    "Federated join without LIMIT, applied max_query_rows=%s",
+                    max_rows,
+                )
 
             logger.info(f"Executing query: {query}")
 
@@ -819,16 +973,26 @@ async def perform_query(
 
             data_records = normalize_dataframe_output(result_df)
             columns_list = [str(col) for col in result_df.columns.tolist()]
+            column_types = describe_query_column_types(con, query, result_df)
 
             return create_success_response(
                 data={
                     "data": data_records,
                     "columns": columns_list,
+                    "column_types": column_types,
                     "index": result_df.index.tolist(),
                     "sql": query,
                     "row_count": len(data_records),
                 },
                 message_code=MessageCode.QUERY_SUCCESS,
+            )
+        except duckdb.InterruptException as e:
+            logger.info("Join query %s cancelled by user", query_id)
+            return error_json_response(
+                499,
+                MessageCode.QUERY_CANCELLED,
+                "Query cancelled",
+                details={"query_id": query_id, "error": str(e)},
             )
         except BaseAPIException:
             raise

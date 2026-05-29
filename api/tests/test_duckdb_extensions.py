@@ -27,7 +27,14 @@ class TestDefaultExtensionConfiguration:
         config = AppConfig()
         
         # 验证默认扩展列表
-        expected_extensions = ["excel", "json", "parquet", "mysql", "postgres"]
+        expected_extensions = [
+            "excel",
+            "json",
+            "parquet",
+            "httpfs",
+            "mysql",
+            "postgres",
+        ]
         assert config.duckdb_extensions == expected_extensions
         
         # 验证联邦查询扩展存在
@@ -51,6 +58,18 @@ class TestDefaultExtensionConfiguration:
         config = AppConfig(duckdb_extensions=[])
         
         assert config.duckdb_extensions == []
+
+
+class TestSpatialExtensionOptional:
+    """spatial 扩展（镜像/Dockerfile 预装）"""
+
+    def test_spatial_point_construct(self):
+        duckdb = pytest.importorskip("duckdb")
+        con = duckdb.connect()
+        con.execute("INSTALL spatial")
+        con.execute("LOAD spatial")
+        result = con.execute("SELECT ST_Point(1, 2)").fetchone()
+        assert result is not None
 
 
 class TestBuildAttachSQL:

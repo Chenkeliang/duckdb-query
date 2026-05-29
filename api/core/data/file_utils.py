@@ -346,6 +346,48 @@ def _detect_csv_encoding(file_path: str) -> Optional[str]:
     return None
 
 
+def _load_json_file_as_variant(
+    connection,
+    table_name: str,
+    file_path: str,
+    file_type: str,
+    *,
+    drop_existing: bool = True,
+) -> Dict[str, Any]:
+    """JSON/JSONL 入湖：各列 CAST 为 DuckDB VARIANT。"""
+    quoted_table = _quote_identifier(table_name)
+    stage_table = f"__json_variant_stage_{uuid4().hex}"
+    quoted_stage = _quote_identifier(stage_table)
+    format_value = "newline_delimited" if file_type == "jsonl" else "auto"
+
+    if drop_existing:
+        connection.execute(f"DROP TABLE IF EXISTS {quoted_table}")
+
+    connection.execute(
+        f"""
+        CREATE TEMP TABLE {quoted_stage} AS
+        SELECT * FROM read_json_auto(?, format='{format_value}', maximum_depth=10)
+        """,
+        [file_path],
+    )
+    columns_df = connection.execute(f"PRAGMA table_info({quoted_stage})").fetchall()
+    column_names = [row[1] for row in columns_df]
+    if not column_names:
+        raise ValueError("JSON file produced no columns for VARIANT import")
+
+    select_parts = []
+    for col in column_names:
+        safe = col.replace('"', '""')
+        select_parts.append(f'CAST("{safe}" AS VARIANT) AS "{safe}"')
+    select_sql = ", ".join(select_parts)
+    connection.execute(
+        f"CREATE TABLE {quoted_table} AS SELECT {select_sql} FROM {quoted_stage}"
+    )
+    connection.execute(f"DROP TABLE IF EXISTS {quoted_stage}")
+    logger.info("Loaded %s as VARIANT columns into %s", file_path, table_name)
+    return {"fallback_used": False, "engine": "duckdb_variant"}
+
+
 def load_file_to_duckdb(
     connection,
     table_name: str,
@@ -372,6 +414,9 @@ def load_file_to_duckdb(
         raise ValueError("load_file_to_duckdb requires valid DuckDB connection")
 
     normalized_type = (file_type or detect_file_type(file_path) or "").lower()
+    from core.data.import_mode import resolve_import_mode
+
+    import_mode = resolve_import_mode(import_mode, file_type=normalized_type)
 
     native_readers = {
         "csv": ("read_csv_auto", {"HEADER": True, "SAMPLE_SIZE": -1}),
@@ -404,6 +449,18 @@ def load_file_to_duckdb(
 
     if reader_options:
         merged_options.update(reader_options)
+
+    if normalized_type in ("json", "jsonl"):
+        from core.data.import_mode import is_variant_json_import
+
+        if is_variant_json_import(import_mode):
+            return _load_json_file_as_variant(
+                connection,
+                table_name,
+                file_path,
+                normalized_type,
+                drop_existing=drop_existing,
+            )
 
     if normalized_type == "csv":
         from core.data.import_mode import (

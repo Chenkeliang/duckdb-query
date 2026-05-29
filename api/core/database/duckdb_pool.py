@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # getting应用configuration
 from core.common.config_manager import config_manager
 from core.database.duckdb_recovery import try_recover_database_after_wal_error
+from core.database.duckdb_storage import connect_duckdb_database
 
 
 class ConnectionState(Enum):
@@ -77,17 +78,17 @@ class DuckDBConnectionPool:
             self._create_connection()
 
     def _connect_duckdb(self, db_path: str):
-        """打开 DuckDB；WAL 损坏时尝试隔离 .wal 后重试一次。"""
+        """打开 DuckDB（storage latest）；WAL 损坏时尝试隔离 .wal 后重试一次。"""
         paths = config_manager.get_duckdb_paths()
         try:
-            return duckdb.connect(database=db_path)
+            return connect_duckdb_database(db_path)
         except Exception as first_error:
             msg = str(first_error)
             if try_recover_database_after_wal_error(paths.database_path, msg):
                 logger.warning(
                     "Retrying DuckDB connect after WAL quarantine: %s", db_path
                 )
-                return duckdb.connect(database=db_path)
+                return connect_duckdb_database(db_path)
             raise
 
     def _create_connection(self) -> Optional[int]:
@@ -495,7 +496,7 @@ class SystemDBConnection:
                 db_path = str(paths.system_database_path)
                 logger.info(f"Creating system database connection: {db_path}")
                 try:
-                    self._connection = duckdb.connect(database=db_path)
+                    self._connection = connect_duckdb_database(db_path)
                 except Exception as first_error:
                     if try_recover_database_after_wal_error(
                         paths.system_database_path, str(first_error)
@@ -504,7 +505,7 @@ class SystemDBConnection:
                             "Retrying system DB connect after WAL quarantine: %s",
                             db_path,
                         )
-                        self._connection = duckdb.connect(database=db_path)
+                        self._connection = connect_duckdb_database(db_path)
                     else:
                         raise
                 # 应用基本configuration

@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { generateSetOperation, previewSetOperation, validateSetOperation } from '@/api';
-import { Layers, Play, Eye, X, Database, Table, Trash2, AlertTriangle, Star, Timer, Download } from 'lucide-react';
+import { generateSetOperation, validateSetOperation } from '@/api';
+import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star, Timer, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,11 @@ import {
   isSameConnection,
   DATABASE_TYPE_ICONS,
 } from '@/utils/tableUtils';
-import { getSourceFromSelectedTable } from '@/utils/sqlUtils';
+import {
+  extractAttachDatabases,
+  generateExternalTableReference,
+  getSourceFromSelectedTable,
+} from '@/utils/sqlUtils';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
 import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
@@ -49,13 +53,12 @@ interface TableColumn {
 }
 
 // 使用统一的 TableSource 类型
-import type { TableSource, UseQueryWorkspaceReturn } from '@/hooks/useQueryWorkspace';
+import type { TableSource } from '@/hooks/useQueryWorkspace';
 export type { TableSource };
 
 interface SetOperationsPanelProps {
   selectedTables?: SelectedTable[];
   onExecute?: (sql: string, source?: TableSource) => Promise<void>;
-  onDisplayPreview?: UseQueryWorkspaceReturn['displayQueryPreview'];
   onRemoveTable?: (table: SelectedTable) => void;
 }
 
@@ -89,8 +92,7 @@ const TableCard: React.FC<TableCardProps> = ({
   isEmpty,
 }) => {
   const { t } = useTranslation('common');
-  const displayColumns = columns.slice(0, 6);
-  const moreCount = columns.length - 6;
+  const checkboxRef = React.useRef<HTMLInputElement>(null);
 
   const normalized = normalizeSelectedTable(table);
   const tableName = normalized.name;
@@ -98,6 +100,33 @@ const TableCard: React.FC<TableCardProps> = ({
   const dbIcon = isExternal && normalized.connection
     ? DATABASE_TYPE_ICONS[normalized.connection.type] || '📊'
     : null;
+
+  const allSelected =
+    columns.length > 0 && columns.every((col) => selectedColumns.includes(col.name));
+  const someSelected =
+    columns.some((col) => selectedColumns.includes(col.name)) && !allSelected;
+
+  React.useEffect(() => {
+    if (checkboxRef.current) {
+      checkboxRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
+
+  const handleSelectAll = () => {
+    if (allSelected) {
+      columns.forEach((col) => {
+        if (selectedColumns.includes(col.name)) {
+          onColumnToggle(col.name);
+        }
+      });
+    } else {
+      columns.forEach((col) => {
+        if (!selectedColumns.includes(col.name)) {
+          onColumnToggle(col.name);
+        }
+      });
+    }
+  };
 
   return (
     <div className={`bg-surface border rounded-xl shrink-0 min-w-64 max-w-72 ${isExternal ? 'border-warning/50' : 'border-border'}`}>
@@ -150,8 +179,25 @@ const TableCard: React.FC<TableCardProps> = ({
             {t('query.set.noColumns', '无可用列')}
           </div>
         ) : (
-          <div className="space-y-0.5 max-h-40 overflow-auto">
-            {displayColumns.map((col) => (
+          <div className="space-y-0.5 max-h-48 overflow-auto">
+            <label className="flex items-center gap-2 text-xs px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer border-b border-border/50 mb-1 sticky top-0 bg-surface z-10">
+              <input
+                ref={checkboxRef}
+                type="checkbox"
+                className="accent-primary w-3 h-3 cursor-pointer"
+                checked={allSelected}
+                onChange={handleSelectAll}
+              />
+              <span className="flex-1 font-medium text-muted-foreground">
+                {allSelected
+                  ? t('query.join.deselectAll', '取消全选')
+                  : t('query.join.selectAll', '全选')}
+              </span>
+              <span className="text-xs text-muted-foreground/70">
+                {selectedColumns.length}/{columns.length}
+              </span>
+            </label>
+            {columns.map((col) => (
               <label
                 key={col.name}
                 className="flex items-center gap-2 text-xs px-2 py-1 rounded hover:bg-muted/50 cursor-pointer"
@@ -166,11 +212,6 @@ const TableCard: React.FC<TableCardProps> = ({
                 <span className="text-muted-foreground text-xs">{col.type}</span>
               </label>
             ))}
-            {moreCount > 0 && (
-              <div className="text-xs text-muted-foreground text-center py-1">
-                +{moreCount} {t('query.set.moreColumns', '更多字段')}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -216,13 +257,11 @@ const EmptyState: React.FC = () => {
 export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   selectedTables = [],
   onExecute,
-  onDisplayPreview,
   onRemoveTable,
 }) => {
   const { t } = useTranslation('common');
   const { maxQueryRows } = useAppConfig();
   const [isExecuting, setIsExecuting] = React.useState(false);
-  const [isPreviewing, setIsPreviewing] = React.useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
   const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
   const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
@@ -432,28 +471,41 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
     setSelectedColumns({});
   };
 
+  const attachDatabases = React.useMemo(
+    () => extractAttachDatabases(activeTables),
+    [activeTables]
+  );
+
   const canGenerateServerSql =
     activeTables.length >= 2 &&
-    !sourceAnalysis.hasExternal &&
+    !sourceAnalysis.mixed &&
     columnValidation.isValid;
 
   const buildSetOperationRequest = React.useCallback(() => {
     if (activeTables.length < 2) return null;
+    const attachForPayload = attachDatabases.map((db) => ({
+      alias: db.alias,
+      connection_id: db.connectionId,
+    }));
     return {
       config: {
         operation_type: operationType,
         use_by_name: isByNameMode,
         tables: activeTables.map((table) => {
-          const tableName = getTableName(table);
+          const tableName = isExternalTable(table)
+            ? generateExternalTableReference(table).qualifiedName
+            : getTableName(table);
           return {
             table_name: tableName,
-            selected_columns: selectedColumns[tableName] || [],
+            selected_columns: selectedColumns[getTableName(table)] || [],
           };
         }),
       },
+      attach_databases:
+        attachForPayload.length > 0 ? attachForPayload : undefined,
       include_metadata: false,
     };
-  }, [activeTables, operationType, isByNameMode, selectedColumns]);
+  }, [activeTables, operationType, isByNameMode, selectedColumns, attachDatabases]);
 
   const setOpQueryKey = React.useMemo(
     () => [
@@ -486,7 +538,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   const canExecute = React.useMemo(() => {
     if (activeTables.length < 2) return false;
     if (sourceAnalysis.mixed) return false;
-    if (sourceAnalysis.hasExternal) return false;
+    if (sourceAnalysis.mixed) return false;
     if (!columnValidation.isValid) return false;
     if (serverValidationBlocked) return false;
     if (isValidatingServer) return false;
@@ -531,74 +583,17 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
     }
   };
 
-  const handlePreview = async () => {
-    if (!onDisplayPreview || !canGenerateServerSql) return;
-    const payload = buildSetOperationRequest();
-    if (!payload) return;
-
-    setIsPreviewing(true);
-    const startTime = Date.now();
-    try {
-      const result = await previewSetOperation(payload);
-      const limitMatch = result.sql?.match(/LIMIT\s+(\d+)\s*$/i);
-      const columns =
-        result.data?.length > 0
-          ? Object.keys(result.data[0] as Record<string, unknown>)
-          : [];
-      onDisplayPreview(
-        {
-          data: result.data,
-          columns,
-          row_count: result.row_count,
-          execTime: Date.now() - startTime,
-          preview_limit_applied: limitMatch
-            ? parseInt(limitMatch[1], 10)
-            : null,
-        },
-        result.sql,
-        { type: 'duckdb' }
-      );
-    } catch (err) {
-      showErrorToast(t, err as Error, t('query.set.previewFailed', '集合运算预览失败'));
-    } finally {
-      setIsPreviewing(false);
-    }
-  };
-
   const sql = sqlForExecute;
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface">
-      {/* 头部工具栏 */}
-      {/* 头部工具栏 - 双行布局 */}
-      {/* 头部工具栏 - 单行紧凑布局 */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border shrink-0 bg-muted/30">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePreview}
-              disabled={
-                !canGenerateServerSql ||
-                isPreviewing ||
-                isExecuting ||
-                isValidatingServer ||
-                serverValidationBlocked
-              }
-              className="gap-1.5 shrink-0"
-            >
-              <Eye className="w-3.5 h-3.5" />
-              {isPreviewing
-                ? t('query.set.previewing', '预览中…')
-                : t('query.set.preview', '预览')}
-            </Button>
-
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border shrink-0 bg-muted/30">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
             <Button
               variant="default"
               size="sm"
               onClick={handleExecute}
-              disabled={!canExecute || isExecuting || isPreviewing}
+              disabled={!canExecute || isExecuting}
               className="gap-1.5 shrink-0"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
@@ -696,13 +691,11 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
               <Star className="w-3.5 h-3.5" />
               {t('query.bookmark.save', '收藏')}
             </Button>
-          </div>
         </div>
 
-        {/* 运算类型独立区域，避免被左侧长工具栏挤没 */}
-        <div className="flex shrink-0 items-center gap-1 border-l border-border pl-2">
+        <div className="flex shrink-0 items-center gap-2 border-l border-border pl-2">
           <div
-            className="flex h-8 max-w-56 overflow-x-auto rounded-md bg-muted p-0.5 gap-0.5"
+            className="flex h-8 flex-wrap rounded-md bg-muted p-0.5 gap-0.5"
             role="tablist"
             aria-label={t('query.set.operationType', '集合运算类型')}
           >
@@ -739,8 +732,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
           </label>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          {/* 标题 - 移至右侧 */}
+        <div className="flex shrink-0 items-center gap-2 ml-auto">
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background/50 text-xs text-muted-foreground hidden lg:flex">
             <Layers className="w-3.5 h-3.5" />
             <span className="whitespace-nowrap">{t('query.set.title', '集合操作')}</span>
@@ -758,14 +750,13 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
 
       {/* 内容区域 */}
       <div className="flex-1 overflow-auto p-6">
-        {/* 外部表不支持提示 */}
-        {sourceAnalysis.hasExternal && (
+        {sourceAnalysis.mixed && (
           <Alert className="mb-4 border-warning/50 bg-warning/10">
             <AlertTriangle className="h-4 w-4 text-warning" />
             <AlertDescription className="text-warning">
               {t(
-                'query.set.externalNotSupported',
-                '外部数据库表暂不支持集合操作。请先将外部表导入到 DuckDB 后再进行 UNION / INTERSECT / EXCEPT。'
+                'query.set.mixedSources',
+                '不能混用 DuckDB 本地表与外部库表。请只选择同一来源的表。'
               )}
             </AlertDescription>
           </Alert>
@@ -864,7 +855,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
                 <span className="text-primary">SQL</span>
                 {isGeneratingSql
                   ? t('query.set.generatingSql', '生成中…')
-                  : t('query.sqlPreview', '预览')}
+                  : t('query.set.generatedSql', '生成的 SQL')}
               </label>
               <button
                 className="text-xs text-primary hover:underline"

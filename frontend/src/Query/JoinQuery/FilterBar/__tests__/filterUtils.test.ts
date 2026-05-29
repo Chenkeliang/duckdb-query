@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     generateFilterSQL,
+    generateFilterSQLForSubquery,
     parseFilterSQL,
     escapeSqlIdentifier,
     escapeSqlString,
@@ -33,6 +34,22 @@ import type { FilterGroup, FilterCondition, PlacementContext } from '../types';
 // ============================================
 // SQL 生成测试
 // ============================================
+
+describe('generateFilterSQLForSubquery', () => {
+    it('子查询 WHERE 不含表别名前缀', () => {
+        const condition = createCondition(
+            'iget_order_detail',
+            'update_time',
+            '>=',
+            '2026-05-20 00:00:00',
+            undefined,
+            'on'
+        );
+        expect(generateFilterSQLForSubquery(condition)).toBe(
+            '"update_time" >= \'2026-05-20 00:00:00\''
+        );
+    });
+});
 
 describe('generateFilterSQL', () => {
     describe('空条件', () => {

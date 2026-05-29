@@ -76,6 +76,73 @@ function generateConditionSQL(cond: FilterCondition): string {
 }
 
 /**
+ * 单表子查询 WHERE：只引用列名，不带表/别名前缀（别名在子查询 AS 之后才生效）
+ */
+function generateConditionSQLColumnOnly(cond: FilterCondition): string {
+    const col = escapeSqlIdentifier(cond.column);
+
+    switch (cond.operator) {
+        case 'IS NULL':
+            return `${col} IS NULL`;
+        case 'IS NOT NULL':
+            return `${col} IS NOT NULL`;
+        case 'IN':
+        case 'NOT IN': {
+            const vals = formatMultiValue(cond.value);
+            return `${col} ${cond.operator} (${vals})`;
+        }
+        case 'BETWEEN': {
+            const val1 = formatSingleValue(cond.value);
+            const val2 = formatSingleValue(cond.value2 ?? null);
+            return `${col} BETWEEN ${val1} AND ${val2}`;
+        }
+        case 'LIKE':
+        case 'NOT LIKE':
+            return `${col} ${cond.operator} ${formatSingleValue(cond.value)}`;
+        default:
+            return `${col} ${cond.operator} ${formatSingleValue(cond.value)}`;
+    }
+}
+
+function generateGroupSQLColumnOnly(group: FilterGroup): string {
+    if (group.children.length === 0) {
+        return '';
+    }
+    if (group.children.length === 1) {
+        return generateFilterSQLForSubquery(group.children[0]);
+    }
+
+    const parts = group.children
+        .map((child) => generateFilterSQLForSubquery(child))
+        .filter(Boolean);
+
+    if (parts.length === 0) {
+        return '';
+    }
+    if (parts.length === 1) {
+        return parts[0];
+    }
+
+    return `(${parts.join(` ${group.logic} `)})`;
+}
+
+/**
+ * 联邦子查询内 WHERE 子句（列名限定，不含 t1/t2 等 JOIN 别名）
+ */
+export function generateFilterSQLForSubquery(node: FilterNode): string {
+    switch (node.type) {
+        case 'condition':
+            return generateConditionSQLColumnOnly(node);
+        case 'group':
+            return generateGroupSQLColumnOnly(node);
+        case 'raw':
+            return node.sql;
+        default:
+            return '';
+    }
+}
+
+/**
  * 生成分组的 SQL
  */
 function generateGroupSQL(group: FilterGroup): string {

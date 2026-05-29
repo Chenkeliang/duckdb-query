@@ -89,10 +89,17 @@ export interface QueryRequest {
   save_as_table?: string;
 }
 
+/** DuckDB 列类型（查询结果 `column_types`） */
+export interface DuckdbColumnType {
+  name: string;
+  duckdb_type: string;
+}
+
 export interface QueryResponse {
   success: boolean;
   data?: Record<string, unknown>[];
   columns?: ColumnInfo[];
+  column_types?: DuckdbColumnType[];
   row_count?: number;
   /** 预览模式下服务端自动追加的 LIMIT 数值；未追加时为 null */
   preview_limit_applied?: number | null;

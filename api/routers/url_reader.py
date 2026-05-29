@@ -6,10 +6,10 @@ import tempfile
 import os
 import time
 import logging
-from typing import Optional
+from typing import Dict, Optional
 from core.common.config_manager import config_manager
 from core.database.duckdb_engine import with_duckdb_connection
-from core.data.import_mode import normalize_import_mode
+from core.data.import_mode import normalize_import_mode, resolve_import_mode
 from core.services.file_ingestion_service import (
     build_file_metadata,
     ingest_tabular_file,
@@ -32,6 +32,18 @@ router = APIRouter()
 NATIVE_REMOTE_TYPES = {"csv", "json", "jsonl", "parquet", "pq"}
 
 
+def _requests_proxies() -> Optional[Dict[str, str]]:
+    """从环境变量构建 requests 代理（HTTP_PROXY / HTTPS_PROXY）。"""
+    http_proxy = os.getenv("HTTP_PROXY") or os.getenv("http_proxy")
+    https_proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+    proxies: Dict[str, str] = {}
+    if http_proxy:
+        proxies["http"] = http_proxy
+    if https_proxy:
+        proxies["https"] = https_proxy
+    return proxies or None
+
+
 class URLReadRequest(BaseModel):
     url: HttpUrl
     table_alias: str
@@ -40,6 +52,7 @@ class URLReadRequest(BaseModel):
     delimiter: Optional[str] = ","
     header: Optional[bool] = True
     import_mode: Optional[str] = "auto"
+    prefer_native: bool = True
 
 
 def normalize_remote_url(url: str) -> str:
@@ -78,9 +91,10 @@ async def read_from_url(request: URLReadRequest):
             # 没有明确扩展名时，尝试通过 HEAD 请求检测 Content-Type
             try:
                 head_response = requests.head(
-                    converted_url, 
+                    converted_url,
                     timeout=app_config.url_reader_head_timeout,
-                    allow_redirects=True
+                    allow_redirects=True,
+                    proxies=_requests_proxies(),
                 )
                 content_type = head_response.headers.get("content-type", "").lower()
                 
@@ -99,7 +113,9 @@ async def read_from_url(request: URLReadRequest):
             except Exception as head_err:
                 logger.warning(f"HEAD request failed, using default CSV: {head_err}")
                 file_type = "csv"
-        import_mode = normalize_import_mode(request.import_mode or "auto")
+        import_mode = resolve_import_mode(
+            request.import_mode or "auto", file_type=file_type
+        )
 
         reader_options = None
         if file_type == "csv":
@@ -112,7 +128,7 @@ async def read_from_url(request: URLReadRequest):
                 reader_options["ENCODING"] = request.encoding
 
         metadata = None
-        native_attempted = file_type in NATIVE_REMOTE_TYPES
+        native_attempted = bool(request.prefer_native) and file_type in NATIVE_REMOTE_TYPES
 
         with with_duckdb_connection() as conn:
             table_name = resolve_unique_table_name(
@@ -140,9 +156,17 @@ async def read_from_url(request: URLReadRequest):
                     )
 
             if metadata is None:
+                if converted_url.lower().startswith("s3://"):
+                    raise APIValidationError(
+                        "S3 URL requires httpfs and duckdb_remote_settings; "
+                        "HTTP download fallback is disabled for s3:// URLs",
+                        details={"url": converted_url, "code": "REMOTE_READ_FAILED"},
+                    )
                 try:
                     response = requests.get(
-                        converted_url, timeout=app_config.url_reader_timeout
+                        converted_url,
+                        timeout=app_config.url_reader_timeout,
+                        proxies=_requests_proxies(),
                     )
                     response.raise_for_status()
                 except requests.RequestException as download_error:

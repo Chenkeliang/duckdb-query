@@ -21,7 +21,7 @@ from core.common.timezone_utils import (
     format_storage_time_for_response,
     get_current_time_iso,
 )
-from core.common.utils import normalize_dataframe_output
+from core.common.utils import describe_query_column_types, normalize_dataframe_output
 from core.common.sql_mysql_quotes import (
     normalize_mysql_double_quoted_strings_for_duckdb,
 )
@@ -399,13 +399,19 @@ async def execute_duckdb_query(
         logger.info(f"Executing DuckDB query: {sql_query}")
         logger.info(f"Available tables: {available_tables}")
 
+        metrics_conn = None
+        query_column_types = []
+        saved_table = None
         # 使用可中断连接执行查询（如果有 query_id）
         if query_id:
             with interruptible_connection(query_id, sql_query) as conn:
+                metrics_conn = conn
                 result_df = conn.execute(sql_query).fetchdf()
+                query_column_types = describe_query_column_types(
+                    conn, sql_query, result_df
+                )
 
                 # 可选：保存查询结果为新表（在同一连接上下文内）
-                saved_table = None
                 if request.save_as_table:
                     table_name = request.save_as_table.strip()
                     if table_name:
@@ -447,9 +453,12 @@ async def execute_duckdb_query(
                             logger.warning(f"Failed to save query result as table: {str(save_error)}")
         else:
             with with_duckdb_connection() as con:
+                metrics_conn = con
                 result_df = con.execute(sql_query).fetchdf()
+                query_column_types = describe_query_column_types(
+                    con, sql_query, result_df
+                )
 
-                saved_table = None
                 if request.save_as_table:
                     table_name = request.save_as_table.strip()
                     if table_name:
@@ -493,9 +502,25 @@ async def execute_duckdb_query(
 
         execution_time = (time.time() - start_time) * 1000
 
+        if metrics_conn is not None:
+            from core.common.config_manager import config_manager
+            from core.database.query_metrics import log_query_duration
+
+            explain_threshold = max(
+                config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
+            )
+            log_query_duration(
+                metrics_conn,
+                sql_query,
+                execution_time,
+                len(result_df),
+                explain_threshold_ms=explain_threshold,
+            )
+
         # 构建响应
         response_payload = {
             "columns": result_df.columns.tolist(),
+            "column_types": query_column_types,
             "data": normalize_dataframe_output(result_df),
             "row_count": len(result_df),
             "execution_time_ms": execution_time,
@@ -505,12 +530,6 @@ async def execute_duckdb_query(
             # 仅当预览模式且服务端自动追加了 LIMIT 时有值，供前端判断是否可能截断
             "preview_limit_applied": limit,
         }
-
-        # 性能日志
-        if execution_time > 1000:  # 超过1秒的查询
-            logger.warning(f"Slow query detected: {execution_time:.2f}ms")
-        else:
-            logger.info(f"Query execution completed, time: {execution_time:.2f}ms")
 
         return create_success_response(
             data=response_payload,
@@ -839,15 +858,25 @@ async def execute_federated_query(
         return result_df
 
     result_df = None
+    metrics_conn = None
+    query_column_types = []
     try:
         # 使用可中断连接（如果有 query_id）
         if query_id:
             with interruptible_connection(query_id, sql_query) as conn:
+                metrics_conn = conn
                 result_df = execute_in_connection(conn)
+                query_column_types = describe_query_column_types(
+                    conn, sql_query, result_df
+                )
         else:
             with with_duckdb_connection() as con:
+                metrics_conn = con
                 try:
                     result_df = execute_in_connection(con)
+                    query_column_types = describe_query_column_types(
+                        con, sql_query, result_df
+                    )
                 finally:
                     for alias in attached_aliases:
                         try:
@@ -857,8 +886,23 @@ async def execute_federated_query(
 
         execution_time = (time.time() - start_time) * 1000
 
+        if metrics_conn is not None:
+            from core.database.query_metrics import log_query_duration
+
+            explain_threshold = max(
+                config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
+            )
+            log_query_duration(
+                metrics_conn,
+                sql_query,
+                execution_time,
+                len(result_df),
+                explain_threshold_ms=explain_threshold,
+            )
+
         response_data = {
             "columns": result_df.columns.tolist(),
+            "column_types": query_column_types,
             "data": normalize_dataframe_output(result_df),
             "row_count": len(result_df),
             "execution_time_ms": execution_time,
@@ -867,11 +911,6 @@ async def execute_federated_query(
             "warnings": warnings if warnings else None,
             "preview_limit_applied": limit,
         }
-
-        if execution_time > 1000:
-            logger.warning(f"Slow query detected: federated query took {execution_time:.2f}ms")
-        else:
-            logger.info(f"Federated query execution completed, time: {execution_time:.2f}ms")
 
         return create_success_response(
             data=response_data,

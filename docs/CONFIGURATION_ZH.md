@@ -141,6 +141,73 @@ volumes:
   "pool_min_connections": 2,
   "pool_max_connections": 10,
   "db_read_timeout": 30,
-  "federated_query_timeout": 300
+  "federated_query_timeout": 300,
+  "duckdb_auto_explain_threshold_ms": 0,
+  "json_import_column_type": "auto"
 }
 ```
+
+---
+
+## 查询行为说明
+
+JOIN / 集合运算的预览、LIMIT、BY NAME 语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIOR_ZH.md)。
+
+---
+
+## 慢查询与 Profiling
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `duckdb_enable_profiling` | string | `"query_tree"` | 连接级 `SET enable_profiling` |
+| `duckdb_profiling_output` | string \| null | `null` | Profiling 输出文件（Docker 须挂载卷，如 `/app/data/duckdb/profiling.json`） |
+| `duckdb_auto_explain_threshold_ms` | integer | `0` | 超过该毫秒数在日志中输出 `EXPLAIN`；`0` 关闭；生产可设 `5000` |
+
+环境变量：`DUCKDB_AUTO_EXPLAIN_THRESHOLD_MS`。
+
+---
+
+## JSON / VARIANT 入湖
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `json_import_column_type` | string | `"auto"` | `auto`：DuckDB 推断类型；`variant`：各列 `VARIANT`（上传 `import_mode=variant` 优先） |
+
+**DuckDB 存储格式**：应用连接 `main.db` / `system.db` 时使用 `storage_compatibility_version=latest`（见 `api/core/database/duckdb_storage.py`），新库为 v1.5.x 存储，可持久化 `VARIANT` 列。
+
+### 从旧版 main.db 迁移到 latest（表/数据不多时）
+
+旧库多为 `v1.0.0+` / `v1.4.x` 存储，**不能**直接写入 `VARIANT` 表，需一次性迁移：
+
+1. **停止** API（`uvicorn` / 容器），避免 `.db` 被占用。
+2. 确认 Python 包为 **`duckdb==1.5.3`**（`cd api && pip install -r requirements.txt`）。
+3. 预览：
+   ```bash
+   cd api
+   python scripts/migrate_storage_to_latest.py --dry-run
+   ```
+4. 执行（会备份到 `data/duckdb/backup_storage_migration_<时间戳>/` 后替换库文件）：
+   ```bash
+   python scripts/migrate_storage_to_latest.py
+   ```
+   或跳过交互：`python scripts/migrate_storage_to_latest.py --yes`
+5. **重启** 服务；在 UI 上传 JSON 或设置 `json_import_column_type=variant` 验证。
+
+仅迁移主库或系统库：`--only main` / `--only system`。
+
+迁移逻辑：只读打开旧库 → 用 `latest` 建新文件 → 逐表 `CREATE TABLE AS SELECT` → 备份旧文件并替换。
+
+---
+
+## 企业网络与扩展
+
+| 机制 | 说明 |
+|------|------|
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | `docker-compose.yml` 从宿主机透传；`url_reader` 的 **requests 回退下载** 会使用代理 |
+| `DUCKDB_EXTENSION_DIRECTORY` | 扩展持久化目录，默认 `/app/data/duckdb/extensions`（与 `./data` 卷一致） |
+| `DUCKDB_REMOTE_SETTINGS` | JSON 字符串，合并进 `duckdb_remote_settings`（S3/OSS 密钥，勿写入镜像） |
+| `duckdb_extensions` | 默认含 `httpfs`；镜像构建预装 `mysql`、`postgres`、`httpfs`、`spatial` 等 |
+
+**说明**：DuckDB **httpfs** 是否走系统代理取决于 DuckDB 1.5.3 运行时行为，须在目标环境用 `s3://` 或 HTTPS URL 实测。应用层仅保证 Python `requests` 回退路径读代理。
+
+S3 数据路径走网络与 `duckdb_remote_settings`，**不**依赖 `server_data_mounts` 宿主机目录挂载。

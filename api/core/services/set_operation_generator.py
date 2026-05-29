@@ -2,7 +2,7 @@
 """Set-operation SQL generation."""
 
 import logging
-from typing import List
+from typing import List, Optional, Set
 
 from models.set_operation_models import (
     SetOperationConfig,
@@ -13,6 +13,20 @@ from models.set_operation_models import (
 logger = logging.getLogger(__name__)
 
 
+def format_set_table_reference(
+    table_name: str, attach_aliases: Optional[Set[str]] = None
+) -> str:
+    """联邦表名 alias.schema_table → \"alias\".\"table\"。"""
+    if attach_aliases and "." in table_name:
+        schema, table_part = table_name.split(".", 1)
+        if schema in attach_aliases:
+            safe_schema = schema.replace('"', '""')
+            safe_table = table_part.replace('"', '""')
+            return f'"{safe_schema}"."{safe_table}"'
+    safe_name = table_name.replace('"', '""')
+    return f'"{safe_name}"'
+
+
 class SetOperationQueryGenerator:
     """集合操作query生成器"""
 
@@ -21,7 +35,10 @@ class SetOperationQueryGenerator:
         self.logger = logging.getLogger(__name__)
 
     def build_set_operation_query(
-        self, config: SetOperationConfig, preview_limit: int = None
+        self,
+        config: SetOperationConfig,
+        preview_limit: int = None,
+        attach_aliases: Optional[Set[str]] = None,
     ) -> str:
         """
         构建集合操作query
@@ -44,7 +61,9 @@ class SetOperationQueryGenerator:
             # 生成各个子query
             subqueries = []
             for table in tables:
-                subquery = self._build_table_subquery(table, use_by_name, preview_limit)
+                subquery = self._build_table_subquery(
+                    table, use_by_name, preview_limit, attach_aliases
+                )
                 subqueries.append(f"({subquery})")
 
             # 组合集合操作query
@@ -68,7 +87,11 @@ class SetOperationQueryGenerator:
             raise ValueError(f"Failed to build set operation query: {str(e)}")
 
     def _build_table_subquery(
-        self, table: TableConfig, use_by_name: bool, limit: int = None
+        self,
+        table: TableConfig,
+        use_by_name: bool,
+        limit: int = None,
+        attach_aliases: Optional[Set[str]] = None,
     ) -> str:
         """
         构建单table子query
@@ -86,10 +109,10 @@ class SetOperationQueryGenerator:
         column_mappings = table.column_mappings
         alias = table.alias
 
-        # 构建table名（带别名）
-        table_ref = f'"{table_name}"'
+        table_ref = format_set_table_reference(table_name, attach_aliases)
         if alias:
-            table_ref += f' AS "{alias}"'
+            safe_alias = alias.replace('"', '""')
+            table_ref += f' AS "{safe_alias}"'
 
         if use_by_name:
             # BY NAME模式：DuckDB会自动按column名匹配，使用SELECT *即可
@@ -169,7 +192,12 @@ class SetOperationQueryGenerator:
                     f"does not match first table {first_table.table_name} column count ({len(first_columns)})"
                 )
 
-    def estimate_result_rows(self, config: SetOperationConfig, connection=None) -> int:
+    def estimate_result_rows(
+        self,
+        config: SetOperationConfig,
+        connection=None,
+        attach_aliases: Optional[Set[str]] = None,
+    ) -> int:
         """
         估算集合操作result行数
 
@@ -192,7 +220,10 @@ class SetOperationQueryGenerator:
                 # UNION: 去重后的行数，通常小于所有table行数之和
                 total_rows = 0
                 for table in tables:
-                    count_sql = f'SELECT COUNT(*) FROM "{table.table_name}"'
+                    ref = format_set_table_reference(
+                        table.table_name, attach_aliases
+                    )
+                    count_sql = f"SELECT COUNT(*) FROM {ref}"
                     rows = connection.execute(count_sql).fetchone()[0]
                     total_rows += rows
                 # 粗略估算：假设去重率为20%
@@ -202,7 +233,10 @@ class SetOperationQueryGenerator:
                 # UNION ALL: 所有table行数之和
                 total_rows = 0
                 for table in tables:
-                    count_sql = f'SELECT COUNT(*) FROM "{table.table_name}"'
+                    ref = format_set_table_reference(
+                        table.table_name, attach_aliases
+                    )
+                    count_sql = f"SELECT COUNT(*) FROM {ref}"
                     rows = connection.execute(count_sql).fetchone()[0]
                     total_rows += rows
                 return total_rows
@@ -210,8 +244,11 @@ class SetOperationQueryGenerator:
             elif operation_type == SetOperationType.EXCEPT:
                 # EXCEPT: 第一个table减去其他table，result行数通常较小
                 if len(tables) >= 2:
+                    first_ref = format_set_table_reference(
+                        tables[0].table_name, attach_aliases
+                    )
                     first_table_rows = connection.execute(
-                        f'SELECT COUNT(*) FROM "{tables[0].table_name}"'
+                        f"SELECT COUNT(*) FROM {first_ref}"
                     ).fetchone()[0]
                     # 粗略估算：假设差集为第一个table的10%
                     return int(first_table_rows * 0.1)
@@ -220,8 +257,11 @@ class SetOperationQueryGenerator:
             elif operation_type == SetOperationType.INTERSECT:
                 # INTERSECT: 交集，result行数通常最小
                 if len(tables) >= 2:
+                    first_ref = format_set_table_reference(
+                        tables[0].table_name, attach_aliases
+                    )
                     first_table_rows = connection.execute(
-                        f'SELECT COUNT(*) FROM "{tables[0].table_name}"'
+                        f"SELECT COUNT(*) FROM {first_ref}"
                     ).fetchone()[0]
                     # 粗略估算：假设交集为第一个table的5%
                     return int(first_table_rows * 0.05)
@@ -265,7 +305,9 @@ set_operation_generator = SetOperationQueryGenerator()
 
 
 def generate_set_operation_sql(
-    config: SetOperationConfig, preview_limit: int = None
+    config: SetOperationConfig,
+    preview_limit: int = None,
+    attach_aliases: Optional[Set[str]] = None,
 ) -> str:
     """
     生成集合操作SQLquery
@@ -277,10 +319,16 @@ def generate_set_operation_sql(
     Returns:
         str: 生成的SQLquery
     """
-    return set_operation_generator.build_set_operation_query(config, preview_limit)
+    return set_operation_generator.build_set_operation_query(
+        config, preview_limit, attach_aliases
+    )
 
 
-def estimate_set_operation_rows(config: SetOperationConfig, connection=None) -> int:
+def estimate_set_operation_rows(
+    config: SetOperationConfig,
+    connection=None,
+    attach_aliases: Optional[Set[str]] = None,
+) -> int:
     """
     估算集合操作result行数
 
@@ -291,4 +339,6 @@ def estimate_set_operation_rows(config: SetOperationConfig, connection=None) -> 
     Returns:
         int: 预估result行数
     """
-    return set_operation_generator.estimate_result_rows(config, connection)
+    return set_operation_generator.estimate_result_rows(
+        config, connection, attach_aliases
+    )

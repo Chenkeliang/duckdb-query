@@ -16,5 +16,6 @@ export const duckDBDialect = SQLDialect.define({
   types:
     PostgreSQL.spec.types +
     ' hugeint utinyint usmallint uinteger ubigint',
-  builtin: 'read_csv read_parquet read_json list_value struct_pack',
+  builtin:
+    'read_csv read_parquet read_json read_json_auto json_extract typeof list_value struct_pack ST_Point ST_AsText ST_GeomFromText ST_Intersects ST_Within ST_Distance',
 });

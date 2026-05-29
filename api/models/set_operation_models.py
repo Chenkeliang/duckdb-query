@@ -3,6 +3,7 @@
 from enum import Enum
 from typing import Dict, List, Literal, Optional
 
+from models.query_models import AttachDatabase
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -123,6 +124,9 @@ class SetOperationRequest(BaseModel):
     preview: bool = Field(False, description="是否为预览请求")
     save_as_table: Optional[str] = Field(None, description="保存为表名（可选）")
     include_metadata: bool = Field(True, description="是否包含元数据")
+    attach_databases: Optional[List[AttachDatabase]] = Field(
+        None, description="联邦 ATTACH 配置（外部库表集合运算）"
+    )
 
     @model_validator(mode="after")
     def validate_request(self):

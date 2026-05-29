@@ -83,7 +83,12 @@ const formatBrowseError = (err: unknown, fallback: string): string => {
 const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
   const { t } = useTranslation("common");
   const queryClient = useQueryClient();
-  const { maxFileSize, maxFileSizeDisplay } = useAppConfig();
+  const {
+    maxFileSize,
+    maxFileSizeDisplay,
+    jsonImportColumnType,
+    remoteStorageConfigured,
+  } = useAppConfig();
 
   /** 本地上传专用；与远程/服务器别名互不影响 */
   const [uploadAlias, setUploadAlias] = useState("");
@@ -509,6 +514,8 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
             url={url}
             remoteAlias={remoteAlias}
             urlLoading={urlLoading}
+            remoteStorageConfigured={remoteStorageConfigured}
+            jsonImportColumnType={jsonImportColumnType}
             onUrlChange={next => {
               setUrl(next);
               if (next.trim() && !remoteAlias.trim()) {

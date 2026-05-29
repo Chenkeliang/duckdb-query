@@ -1328,11 +1328,11 @@ def cleanup_old_files():
         cutoff_time = datetime.now() - timedelta(hours=24)
         cleaned_count = task_manager.cleanup_expired_exports(cutoff_time)
 
-        # 清理exports目录中的旧文件
+        # 清理exports目录中的旧文件（含异步 task-* 与同步导出的 {uuid} 文件）
         if os.path.exists(EXPORTS_DIR):
             for file_path in glob.glob(
-                os.path.join(EXPORTS_DIR, "task-*.csv")
-            ) + glob.glob(os.path.join(EXPORTS_DIR, "task-*.parquet")):
+                os.path.join(EXPORTS_DIR, "*.csv")
+            ) + glob.glob(os.path.join(EXPORTS_DIR, "*.parquet")):
                 try:
                     # 检查文件修改时间
                     file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))

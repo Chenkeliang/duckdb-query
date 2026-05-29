@@ -5,6 +5,10 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Database, AlertCircle, Loader2 } from 'lucide-react';
+import {
+  exportQueryResults,
+  getQueryExportDownloadUrl,
+} from '@/api/queryExportApi';
 import { showErrorToast, cleanErrorMessage } from '@/utils/toastHelpers';
 
 import { DataGridWrapper } from './DataGridWrapper';
@@ -17,10 +21,12 @@ import type { TableSource } from '@/types/queryWorkspace';
 import { ResultTabsBar } from './ResultTabsBar';
 import { ResultTabGridPane } from './ResultTabGridPane';
 import type { ResultTabEntry } from './resultTabUtils';
+import type { DuckdbColumnType } from '@/types/queryWorkspace';
 
 export interface ResultPanelProps {
   data: Record<string, unknown>[] | null;
   columns?: string[] | null;
+  duckdbColumnTypes?: DuckdbColumnType[];
   loading?: boolean;
   error?: Error | null;
   executionTime?: number;
@@ -48,6 +54,8 @@ export interface ResultPanelProps {
   onCloseResultTabsToRight?: (id: string) => void;
   /** 未开启保留时的单槽标题 */
   singleResultSlotLabel?: string;
+  /** 联邦导出时 ATTACH 配置 */
+  attachDatabases?: { alias: string; connectionId: string }[];
 }
 
 const emptyStats = {
@@ -60,6 +68,7 @@ const emptyStats = {
 export const ResultPanel: React.FC<ResultPanelProps> = ({
   data,
   columns,
+  duckdbColumnTypes,
   loading = false,
   error = null,
   executionTime,
@@ -83,6 +92,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   onCloseResultTabsToLeft,
   onCloseResultTabsToRight,
   singleResultSlotLabel,
+  attachDatabases,
 }) => {
   const actualExecTime = executionTime ?? execTime;
   const { t } = useTranslation('common');
@@ -130,6 +140,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const { columns: gridColumnDefs } = useDataGridColumns({
     data,
     fieldOrder: columns,
+    duckdbColumnTypes,
     sampleSize: 100,
     enableFilters: true,
     enableSorting: true,
@@ -180,6 +191,40 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const toolbarExecTime = useMultiTabGrids ? activeTabExecTime : actualExecTime;
   const toolbarLoading = useMultiTabGrids ? activeTabLoading : loading;
 
+  const handleExportParquetServer = useCallback(async () => {
+    const sql = useMultiTabGrids
+      ? activeTab?.query.sql?.trim()
+      : currentSQL?.trim();
+    if (!sql) {
+      showErrorToast(t, 'EXPORT_NO_SQL', t('query.result.exportNoSql', '无 SQL 可导出'));
+      return;
+    }
+    try {
+      const result = await exportQueryResults({
+        sql,
+        format: 'parquet',
+        attach_databases: attachDatabases?.map((db) => ({
+          alias: db.alias,
+          connection_id: db.connectionId,
+        })),
+      });
+      const url = getQueryExportDownloadUrl(result.download_url);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      showErrorToast(
+        t,
+        err instanceof Error ? err : 'EXPORT_FAILED',
+        t('query.result.exportParquetFailed', 'Parquet 导出失败')
+      );
+    }
+  }, [
+    useMultiTabGrids,
+    activeTab?.query.sql,
+    currentSQL,
+    attachDatabases,
+    t,
+  ]);
+
   const handleRefreshActiveTab = useCallback(() => {
     if (useMultiTabGrids && activeResultTabId && onRefreshTab) {
       onRefreshTab(activeResultTabId);
@@ -201,6 +246,9 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     onExportCsv: () => getActiveGridApi()?.exportDataAsCsv(),
     onExportExcel: () => getActiveGridApi()?.exportDataAsExcel(),
     onExportJson: () => getActiveGridApi()?.exportDataAsJson(),
+    onExportParquet: currentSQL || activeTab?.query.sql
+      ? handleExportParquetServer
+      : undefined,
     onRefresh:
       useMultiTabGrids && activeResultTabId && activeTab?.query.sql
         ? handleRefreshActiveTab

@@ -127,6 +127,9 @@ class AppConfig:
     duckdb_auto_explain_threshold_ms: int = 0
     """慢query阈值，超过后自动记录EXPLAIN，0table示关闭"""
 
+    json_import_column_type: str = "auto"
+    """JSON/JSONL 入湖默认类型策略：auto（DuckDB 推断）或 variant（各列 VARIANT）"""
+
     exports_dir: str = None
     """导出file目录，默认在运行根目录的exports"""
 
@@ -187,7 +190,14 @@ class AppConfig:
 
         # 设置默认DuckDB扩展（包含联邦query扩展）
         if self.duckdb_extensions is None:
-            self.duckdb_extensions = ["excel", "json", "parquet", "mysql", "postgres"]
+            self.duckdb_extensions = [
+                "excel",
+                "json",
+                "parquet",
+                "httpfs",
+                "mysql",
+                "postgres",
+            ]
 
         if self.server_data_mounts is None:
             self.server_data_mounts = []
@@ -581,6 +591,26 @@ class ConfigManager:
                 config_data["pivot_table_extension"] = (
                     pivot_extension.strip() or "pivot_table"
                 )
+
+            remote_env = os.getenv("DUCKDB_REMOTE_SETTINGS")
+            if remote_env:
+                try:
+                    import json as _json
+
+                    parsed_remote = _json.loads(remote_env)
+                    if isinstance(parsed_remote, dict):
+                        base_remote = config_data.get("duckdb_remote_settings") or {}
+                        if isinstance(base_remote, dict):
+                            config_data["duckdb_remote_settings"] = {
+                                **base_remote,
+                                **parsed_remote,
+                            }
+                        else:
+                            config_data["duckdb_remote_settings"] = parsed_remote
+                except ValueError as parse_err:
+                    logger.warning(
+                        "Invalid DUCKDB_REMOTE_SETTINGS JSON: %s", parse_err
+                    )
 
             self._app_config = AppConfig(**config_data)
             logger.info("Application configuration loaded successfully")

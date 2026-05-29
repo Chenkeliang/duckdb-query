@@ -15,6 +15,12 @@ services:
       - PYTHONUNBUFFERED=1
       - ENV=development
       - CONFIG_DIR=/app/config
+      # 企业代理（按需设置宿主机环境变量后透传）
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - NO_PROXY=${NO_PROXY:-}
+      # 扩展持久化目录（与 ./data 卷一致）
+      - DUCKDB_EXTENSION_DIRECTORY=${DUCKDB_EXTENSION_DIRECTORY:-/app/data/duckdb/extensions}
     volumes:
       - ./api:/app
       - ./data:/app/data

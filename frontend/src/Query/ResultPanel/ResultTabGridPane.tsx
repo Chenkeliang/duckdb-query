@@ -37,13 +37,14 @@ export const ResultTabGridPane: React.FC<ResultTabGridPaneProps> = ({
 }) => {
   const { t } = useTranslation('common');
   const { result } = tab;
-  const { data, columns, loading, error } = result;
+  const { data, columns, duckdbColumnTypes, loading, error } = result;
   const gridRef = useRef<DataGridApi>(null);
   const scrollTopRef = useRef(0);
 
   const { columns: gridColumnDefs } = useDataGridColumns({
     data,
     fieldOrder: columns,
+    duckdbColumnTypes,
     sampleSize: 100,
     enableFilters: true,
     enableSorting: true,

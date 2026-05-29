@@ -3,7 +3,7 @@ import {
     buildJoinQueryPayload,
     canUseServerJoinPath,
 } from '../buildJoinQueryPayload';
-import { createEmptyGroup } from '../FilterBar';
+import { createEmptyGroup, createCondition } from '../FilterBar';
 
 describe('buildJoinQueryPayload', () => {
     const tables = [
@@ -42,6 +42,56 @@ describe('buildJoinQueryPayload', () => {
         expect(payload?.sources).toHaveLength(2);
         expect(payload?.joins[0].join_type).toBe('inner');
         expect(payload?.joins[0].conditions[0].left_column).toBe('id');
+    });
+
+    it('includes pushdown_where for ON filters on federated sources', () => {
+        const filterTree = createEmptyGroup();
+        filterTree.children.push(
+            createCondition(
+                'orders',
+                'update_time',
+                '>=',
+                '2026-05-20 00:00:00',
+                undefined,
+                'on'
+            )
+        );
+        const externalTables = [
+            {
+                name: 'orders',
+                source: 'external' as const,
+                connection: { id: '1', name: 'prod', type: 'mysql' as const },
+            },
+            {
+                name: 'users',
+                source: 'external' as const,
+                connection: { id: '1', name: 'prod', type: 'mysql' as const },
+            },
+        ];
+        const payload = buildJoinQueryPayload({
+            activeTables: externalTables,
+            joinConfigs,
+            filterTree,
+            resolvedTypes: {},
+            maxQueryRows: 100,
+            attachDatabases: [{ alias: 'mysql_prod', connectionId: '1' }],
+        });
+        expect(payload?.sources[0].params?.pushdown_where).toBe(
+            '"update_time" >= \'2026-05-20 00:00:00\''
+        );
+    });
+
+    it('includes selected columns on sources when provided', () => {
+        const payload = buildJoinQueryPayload({
+            activeTables: tables,
+            joinConfigs,
+            filterTree: createEmptyGroup(),
+            resolvedTypes: {},
+            maxQueryRows: 1000,
+            selectedColumns: { users: ['id', 'name'], orders: ['user_id'] },
+        });
+        expect(payload?.sources[0].columns).toEqual([{ name: 'id' }, { name: 'name' }]);
+        expect(payload?.sources[1].columns).toEqual([{ name: 'user_id' }]);
     });
 
     it('allows federated attach path with qualified source ids', () => {

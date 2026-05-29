@@ -263,8 +263,10 @@ describe('sqlOptimizer', () => {
                 fullRef: 'mysql_db.orders',
                 attachAlias: 'mysql_db',
             };
-            const result = buildFilteredSubquery(tableInfo, "status = 'active'");
-            expect(result.subquerySQL).toBe("(SELECT * FROM mysql_db.orders WHERE status = 'active')");
+            const result = buildFilteredSubquery(tableInfo, '"update_time" >= \'2026-05-20\'');
+            expect(result.subquerySQL).toBe(
+                "(SELECT * FROM mysql_db.orders WHERE \"update_time\" >= '2026-05-20')"
+            );
             expect(result.alias).toBe('orders');
         });
 

@@ -34,7 +34,11 @@ from core.data.file_datasource_manager import (
     file_datasource_manager,
 )
 from core.data.file_utils import detect_file_type
-from core.data.import_mode import normalize_import_mode, should_promote_column_types
+from core.data.import_mode import (
+    normalize_import_mode,
+    resolve_import_mode,
+    should_promote_column_types,
+)
 from core.data.ingestion_precision import promote_table_column_types_from_varchar
 
 logger = logging.getLogger(__name__)
@@ -144,7 +148,7 @@ def ingest_tabular_file(
     reader_options: Optional[Dict[str, Any]] = None,
 ) -> TabularIngestResult:
     """将 CSV/JSON/Parquet 等文件载入 DuckDB 并写入 file_datasource 元数据。"""
-    normalize_import_mode(import_mode)
+    import_mode = resolve_import_mode(import_mode, file_type=file_type)
     desired = table_alias or os.path.splitext(
         os.path.basename(file_path)
     )[0]
@@ -387,6 +391,7 @@ def ingest_server_tabular(
     import_mode: str = "auto",
 ) -> TabularIngestResult:
     file_type = detect_file_type(real_path)
+    import_mode = resolve_import_mode(import_mode, file_type=file_type)
     table_name = sanitize_identifier(
         table_alias or os.path.splitext(os.path.basename(real_path))[0],
         allow_leading_digit=bool(table_alias),

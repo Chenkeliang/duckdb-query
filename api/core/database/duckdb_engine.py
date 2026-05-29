@@ -398,20 +398,15 @@ def execute_query(query, con=None):
         execution_time = (time.time() - start_time) * 1000
         row_count = len(result)
 
-        if execution_time > 1000:
-            logger.warning(
-                "Slow query detected: %.2fms elapsed, %d rows returned", execution_time, row_count
-            )
-        else:
-            logger.debug("Query completed: %.2fms, %d rows returned", execution_time, row_count)
+        from core.database.query_metrics import log_query_duration
 
-        if explain_threshold and execution_time >= explain_threshold:
-            try:
-                plan_rows = connection.execute(f"EXPLAIN {query}").fetchall()
-                plan_text = "\n".join(str(row[0]) for row in plan_rows)
-                logger.warning("Slow query execution plan:\n%s", plan_text)
-            except Exception as explain_error:
-                logger.debug("Failed to generate execution plan: %s", explain_error)
+        log_query_duration(
+            connection,
+            query,
+            execution_time,
+            row_count,
+            explain_threshold_ms=explain_threshold,
+        )
 
         return result
 

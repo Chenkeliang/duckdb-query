@@ -3,17 +3,26 @@
 import logging
 import os
 import uuid
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Any
+from typing import Any, Iterator, Optional, Set
 
+import duckdb
 import pandas as pd
 from core.common.utils import normalize_dataframe_output
 from core.database.duckdb_engine import with_duckdb_connection
+from core.database.duckdb_pool import interruptible_connection
+from core.database.federated_attach import (
+    attach_databases_on_connection,
+    detach_databases_on_connection,
+    resolve_attach_configs,
+)
+from core.services.set_operation_generator import format_set_table_reference
 from core.services.set_operation_generator import (
     estimate_set_operation_rows,
     generate_set_operation_sql,
 )
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 from models.set_operation_models import (
     SetOperationConfig,
     SetOperationExportRequest,
@@ -29,7 +38,56 @@ from utils.response_helpers import (
 
 logger = logging.getLogger(__name__)
 
+
+def _timed_execute_fetch(con: Any, sql: str) -> pd.DataFrame:
+    """执行 SQL 并记录慢查询 / 自动 EXPLAIN。"""
+    import time
+
+    from core.common.config_manager import config_manager
+    from core.database.query_metrics import log_query_duration
+
+    start = time.time()
+    result_df = con.execute(sql).fetchdf()
+    elapsed_ms = (time.time() - start) * 1000
+    explain_threshold = max(
+        config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
+    )
+    log_query_duration(
+        con,
+        sql,
+        elapsed_ms,
+        len(result_df),
+        explain_threshold_ms=explain_threshold,
+    )
+    return result_df
+
 router = APIRouter()
+
+
+@contextmanager
+def _set_operation_connection(
+    request: SetOperationRequest,
+    query_id: Optional[str] = None,
+) -> Iterator[tuple[Any, Optional[Set[str]]]]:
+    """DuckDB 连接；有 attach_databases 时 ATTACH 并在退出时 DETACH。"""
+    conn_ctx = (
+        interruptible_connection(query_id, "")
+        if query_id
+        else with_duckdb_connection()
+    )
+    with conn_ctx as con:
+        attached_aliases: list[str] = []
+        alias_set: Optional[Set[str]] = None
+        try:
+            if request.attach_databases:
+                attach_configs = resolve_attach_configs(request.attach_databases)
+                attached_aliases = attach_databases_on_connection(con, attach_configs)
+                alias_set = {alias.strip() for alias in attached_aliases if alias}
+            yield con, alias_set
+        finally:
+            if attached_aliases:
+                detach_databases_on_connection(con, attached_aliases)
+
 
 @router.post("/api/set-operations/generate", tags=["Set Operations"])
 async def generate_set_operation_query(request: SetOperationRequest):
@@ -42,11 +100,11 @@ async def generate_set_operation_query(request: SetOperationRequest):
     try:
         config = request.config
 
-        # 生成SQL查询
-        sql = generate_set_operation_sql(config)
-
-        with with_duckdb_connection() as con:
-            estimated_rows = estimate_set_operation_rows(config, con)
+        with _set_operation_connection(request) as (con, alias_set):
+            sql = generate_set_operation_sql(config, attach_aliases=alias_set)
+            estimated_rows = estimate_set_operation_rows(
+                config, con, alias_set
+            )
 
         # 构建元数据
         metadata = {
@@ -103,18 +161,18 @@ async def preview_set_operation(request: SetOperationRequest):
     try:
         config = request.config
 
-        # 生成SQL查询
-        sql = generate_set_operation_sql(config)
-
         from core.common.config_manager import config_manager
 
         preview_limit = config_manager.get_app_config().max_query_rows
-        preview_sql = f"{sql} LIMIT {preview_limit}"
 
-        with with_duckdb_connection() as con:
-            result_df = con.execute(preview_sql).fetchdf()
+        with _set_operation_connection(request) as (con, alias_set):
+            sql = generate_set_operation_sql(config, attach_aliases=alias_set)
+            preview_sql = f"{sql} LIMIT {preview_limit}"
+            result_df = _timed_execute_fetch(con, preview_sql)
             preview_data = normalize_dataframe_output(result_df)
-            estimated_rows = estimate_set_operation_rows(config, con)
+            estimated_rows = estimate_set_operation_rows(
+                config, con, alias_set
+            )
 
         return create_success_response(
             data={
@@ -159,10 +217,13 @@ async def validate_set_operation(request: SetOperationRequest):
         errors = []
         warnings = []
 
-        with with_duckdb_connection() as con:
+        with _set_operation_connection(request) as (con, alias_set):
             for table in config.tables:
                 try:
-                    check_sql = f'SELECT COUNT(*) FROM "{table.table_name}"'
+                    table_ref = format_set_table_reference(
+                        table.table_name, alias_set
+                    )
+                    check_sql = f"SELECT COUNT(*) FROM {table_ref}"
                     con.execute(check_sql).fetchone()
                 except Exception as e:
                     errors.append(
@@ -217,34 +278,38 @@ async def validate_set_operation(request: SetOperationRequest):
 
 
 @router.post("/api/set-operations/execute", tags=["Set Operations"])
-async def execute_set_operation(request: SetOperationRequest):
+async def execute_set_operation(
+    request: SetOperationRequest,
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
+):
     """
     执行集合操作查询
 
     执行完整的集合操作并返回结果
     """
+    query_id = f"sync:{x_request_id}" if x_request_id else None
     try:
         config = request.config
 
-        # 生成SQL查询，根据模式决定是否应用子查询限制
-        if request.preview or (not request.save_as_table):
-            # 预览模式或默认执行：在子查询级别应用限制，避免大数据集内存问题
-            from core.common.config_manager import config_manager
+        from core.common.config_manager import config_manager
 
-            limit = config_manager.get_app_config().max_query_rows
-            sql = generate_set_operation_sql(config, preview_limit=limit)
-        else:
-            # 保存到表模式：生成完整查询
-            sql = generate_set_operation_sql(config)
+        limit = config_manager.get_app_config().max_query_rows
 
-        with with_duckdb_connection() as con:
+        with _set_operation_connection(request, query_id) as (con, alias_set):
+            if request.preview or (not request.save_as_table):
+                sql = generate_set_operation_sql(
+                    config, preview_limit=limit, attach_aliases=alias_set
+                )
+            else:
+                sql = generate_set_operation_sql(config, attach_aliases=alias_set)
+
             if request.preview:
                 # 预览模式：使用配置的max_query_rows限制
                 from core.common.config_manager import config_manager
 
                 limit = config_manager.get_app_config().max_query_rows
                 preview_sql = f"{sql} LIMIT {limit}"
-                result_df = con.execute(preview_sql).fetchdf()
+                result_df = _timed_execute_fetch(con, preview_sql)
                 columns = [
                     {"name": col, "type": str(result_df[col].dtype)}
                     for col in result_df.columns
@@ -300,7 +365,7 @@ async def execute_set_operation(request: SetOperationRequest):
 
                 # 获取列信息（使用LIMIT 1避免大数据集问题）
                 sample_sql = f'SELECT * FROM "{table_name}" LIMIT 1'
-                sample_df = con.execute(sample_sql).fetchdf()
+                sample_df = _timed_execute_fetch(con, sample_sql)
                 columns = [
                     {"name": col, "type": str(sample_df[col].dtype)}
                     for col in sample_df.columns
@@ -338,7 +403,7 @@ async def execute_set_operation(request: SetOperationRequest):
 
                 limit = config_manager.get_app_config().max_query_rows
                 preview_sql = f"{sql} LIMIT {limit}"
-                result_df = con.execute(preview_sql).fetchdf()
+                result_df = _timed_execute_fetch(con, preview_sql)
                 columns = [
                     {"name": col, "type": str(result_df[col].dtype)}
                     for col in result_df.columns
@@ -368,6 +433,14 @@ async def execute_set_operation(request: SetOperationRequest):
                     message_code=MessageCode.SET_OPERATION_EXECUTED,
                 )
 
+    except duckdb.InterruptException as e:
+        logger.info("Set operation %s cancelled by user", query_id)
+        return error_json_response(
+            499,
+            MessageCode.QUERY_CANCELLED,
+            "Query cancelled",
+            details={"query_id": query_id, "error": str(e)},
+        )
     except ValueError as e:
         logger.warning(f"Failed to execute set operation: {str(e)}")
         return error_json_response(
@@ -422,7 +495,7 @@ async def simple_union_operation(request: UnionOperationRequest):
         # 生成SQL查询
         sql = generate_set_operation_sql(config)
 
-        # 估算结果rows
+        # 估算结果rows（简化 UNION 不支持 attach，无别名）
         with with_duckdb_connection() as con:
             estimated_rows = estimate_set_operation_rows(config, con)
 
