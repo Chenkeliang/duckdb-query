@@ -45,7 +45,7 @@ import {
   type JoinWorkspacePersistence,
 } from './joinWorkspaceSnapshot';
 import type { JoinRestoreRequest } from '@/hooks/useQueryWorkspace';
-import { useTableColumns } from '@/hooks/useTableColumns';
+import { useMultipleTableColumns } from '@/hooks/useTableColumns';
 import { useAppConfig } from '@/hooks/useAppConfig';
 import { useTypeConflict, type ColumnPair } from '@/hooks/useTypeConflict';
 import { TypeConflictDialog } from '@/Query/components/TypeConflictDialog';
@@ -100,9 +100,6 @@ import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
  * - 支持从左侧数据源面板双击添加表
  * - 支持外部数据库表（同一连接内）
  */
-
-/** JOIN 面板支持的最大表数量（受 useTableColumns 固定调用次数限制，见下方 hook 调用处） */
-const MAX_JOIN_TABLES = 10;
 
 type JoinType = 'INNER JOIN' | 'LEFT JOIN' | 'RIGHT JOIN' | 'FULL JOIN';
 
@@ -1139,41 +1136,14 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   // 筛选条件树（FilterBar）
   const [filterTree, setFilterTree] = React.useState<FilterGroup>(() => createEmptyGroup());
 
-  // 获取每个表的列信息 - 使用 useTableColumns Hook
-  // React Hooks 规则要求调用次数固定，故为每个表单独调用（最多 MAX_JOIN_TABLES 个表）
-  const table0Columns = useTableColumns(activeTables[0] || null);
-  const table1Columns = useTableColumns(activeTables[1] || null);
-  const table2Columns = useTableColumns(activeTables[2] || null);
-  const table3Columns = useTableColumns(activeTables[3] || null);
-  const table4Columns = useTableColumns(activeTables[4] || null);
-  const table5Columns = useTableColumns(activeTables[5] || null);
-  const table6Columns = useTableColumns(activeTables[6] || null);
-  const table7Columns = useTableColumns(activeTables[7] || null);
-  const table8Columns = useTableColumns(activeTables[8] || null);
-  const table9Columns = useTableColumns(activeTables[9] || null);
-
-  // 组合所有结果
-  const tableColumnsResults = [
-    table0Columns,
-    table1Columns,
-    table2Columns,
-    table3Columns,
-    table4Columns,
-    table5Columns,
-    table6Columns,
-    table7Columns,
-    table8Columns,
-    table9Columns,
-  ].slice(0, activeTables.length);
+  // 获取每个表的列信息 - 用 useQueries 并行获取（支持任意表数量，无固定上限）
+  const tableColumnsResults = useMultipleTableColumns(activeTables);
 
   // 计算加载和错误状态
   const hasColumnErrors = tableColumnsResults.some((result) => result.isError);
   const columnErrorMessages = tableColumnsResults
     .filter((result) => result.isError && result.error)
     .map((result) => result.error?.message || '未知错误');
-
-  // 超过最大表数量限制（第 11 张及以后无法获取列信息）
-  const exceedsTableLimit = activeTables.length > MAX_JOIN_TABLES;
 
   // 构建表列映射 - 使用稳定的 key 来避免无限循环
   const tableColumnsMapKey = tableColumnsResults
@@ -1951,20 +1921,6 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
                 })
                 : federatedError.message
               }
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* 超过最大表数量限制提示 */}
-        {exceedsTableLimit && (
-          <Alert className="mb-4 border-warning/50 bg-warning/10">
-            <AlertTriangle className="h-4 w-4 text-warning" />
-            <AlertDescription className="text-warning">
-              {t(
-                'query.join.tableLimitExceeded',
-                'JOIN 最多支持 {{max}} 张表，已超过上限，多出的表无法参与查询，请移除后再试。',
-                { max: MAX_JOIN_TABLES }
-              )}
             </AlertDescription>
           </Alert>
         )}

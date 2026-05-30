@@ -6,7 +6,7 @@ import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star, Timer, D
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { useTableColumns } from '@/hooks/useTableColumns';
+import { useMultipleTableColumns } from '@/hooks/useTableColumns';
 import { useAppConfig } from '@/hooks/useAppConfig';
 import type { SelectedTable } from '@/types/SelectedTable';
 import {
@@ -349,32 +349,8 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
     return { isValid: true, tableIndex: 0, tableCount: 0, baseCount: 0 };
   }, [activeTables, selectedColumns, isByNameMode]);
 
-  // 获取每个表的列信息 - 使用 useTableColumns Hook
-  // 为每个表单独调用 Hook（最多支持 10 个表）
-  const table0Columns = useTableColumns(activeTables[0] || null);
-  const table1Columns = useTableColumns(activeTables[1] || null);
-  const table2Columns = useTableColumns(activeTables[2] || null);
-  const table3Columns = useTableColumns(activeTables[3] || null);
-  const table4Columns = useTableColumns(activeTables[4] || null);
-  const table5Columns = useTableColumns(activeTables[5] || null);
-  const table6Columns = useTableColumns(activeTables[6] || null);
-  const table7Columns = useTableColumns(activeTables[7] || null);
-  const table8Columns = useTableColumns(activeTables[8] || null);
-  const table9Columns = useTableColumns(activeTables[9] || null);
-
-  // 组合所有结果
-  const tableColumnsResults = [
-    table0Columns,
-    table1Columns,
-    table2Columns,
-    table3Columns,
-    table4Columns,
-    table5Columns,
-    table6Columns,
-    table7Columns,
-    table8Columns,
-    table9Columns,
-  ].slice(0, activeTables.length);
+  // 获取每个表的列信息 - 用 useQueries 并行获取（支持任意表数量，无固定上限）
+  const tableColumnsResults = useMultipleTableColumns(activeTables);
 
   // 计算加载和错误状态
   // 构建表列映射 - 使用稳定的 key 来避免无限循环

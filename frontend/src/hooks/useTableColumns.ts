@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getDuckDBTableDetail, getExternalTableDetail } from '@/api';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { normalizeSelectedTable, getTableName } from '@/utils/tableUtils';
@@ -165,45 +165,61 @@ export const useTableColumns = (table: SelectedTable | null): UseTableColumnsRes
 
 /**
  * 批量获取多个表的列信息
- * 
- * 用于需要同时获取多个表列信息的场景（如 JoinQueryPanel）
- * 
+ *
+ * 用 react-query 的 useQueries 一次性发起任意数量的并行查询（单次 Hook 调用，
+ * 不受 Hooks 规则限制，支持动态表数量）。返回结果数组与入参 tables 顺序对齐，
+ * 每项形状与 useTableColumns 一致，可直接替换“逐表调用 + slice”的样板。
+ *
  * @param tables - 表数组
- * @returns 每个表的列信息查询结果
+ * @returns 与 tables 对齐的列信息结果数组
  */
-export const useMultipleTableColumns = (tables: SelectedTable[]) => {
-  // 为每个表创建查询配置
-  const queries = tables.map((table) => {
-    const normalized = normalizeSelectedTable(table);
-    const tableName = getTableName(table);
-    const isExternal = normalized.source === 'external';
-    const connectionId = normalized.connection?.id;
-    const schema = normalized.schema;
+export const useMultipleTableColumns = (
+  tables: SelectedTable[]
+): UseTableColumnsResult[] => {
+  const results = useQueries({
+    queries: tables.map((table) => {
+      const normalized = normalizeSelectedTable(table);
+      const tableName = getTableName(table);
+      const isExternal = normalized.source === 'external';
+      const connectionId = normalized.connection?.id;
+      const schema = normalized.schema;
 
-    return {
-      queryKey: [
-        ...TABLE_COLUMNS_QUERY_KEY,
-        tableName,
-        isExternal ? connectionId : 'duckdb',
-        schema,
-      ] as const,
-      queryFn: async (): Promise<TableColumn[]> => {
-        if (isExternal && connectionId) {
-          const response = await getExternalTableDetail(connectionId, tableName, schema);
-          return transformExternalColumns(response?.columns);
-        } else {
-          const response = await getDuckDBTableDetail(tableName);
-          return transformDuckDBColumns(response?.columns);
-        }
-      },
-      enabled: !!tableName,
-      staleTime: 5 * 60 * 1000,
-      gcTime: 10 * 60 * 1000,
-      retry: 2,
-    };
+      return {
+        queryKey: [
+          ...TABLE_COLUMNS_QUERY_KEY,
+          tableName,
+          isExternal ? connectionId : 'duckdb',
+          schema,
+        ] as const,
+        queryFn: async (): Promise<TableColumn[]> => {
+          if (isExternal && connectionId) {
+            const response = await getExternalTableDetail(connectionId, tableName, schema);
+            return transformExternalColumns(response?.columns);
+          } else {
+            const response = await getDuckDBTableDetail(tableName);
+            return transformDuckDBColumns(response?.columns);
+          }
+        },
+        enabled: !!tableName,
+        staleTime: 5 * 60 * 1000,
+        gcTime: 10 * 60 * 1000,
+        retry: 2,
+        retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 10000),
+      };
+    }),
   });
 
-  return queries;
+  return results.map((query) => {
+    const columns = query.data || [];
+    return {
+      columns,
+      isLoading: query.isLoading,
+      isError: query.isError,
+      error: query.error,
+      isEmpty: !query.isLoading && columns.length === 0,
+      refetch: query.refetch,
+    };
+  });
 };
 
 /**
