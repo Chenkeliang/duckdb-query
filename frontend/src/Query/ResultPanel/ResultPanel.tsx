@@ -10,6 +10,7 @@ import {
   getQueryExportDownloadUrl,
 } from '@/api/queryExportApi';
 import { showErrorToast, cleanErrorMessage } from '@/utils/toastHelpers';
+import { parseDuckDbErrorSuggestion } from '@/utils/sqlErrorHelper';
 
 import { DataGridWrapper } from './DataGridWrapper';
 import type { DataGridApi } from './DataGridWrapper';
@@ -333,6 +334,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   }
 
   if (error) {
+    const suggestion = parseDuckDbErrorSuggestion(error.message);
     return (
       <div className={`flex flex-col h-full ${className}`}>
         {resultTabsBar}
@@ -343,6 +345,13 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
             <AlertCircle className="h-10 w-10" />
             <span className="font-medium">{t('query.result.error', '查询失败')}</span>
             <span className="text-sm text-muted-foreground">{cleanErrorMessage(error.message)}</span>
+            {suggestion && (
+              <span className="text-sm text-warning">
+                {t('query.result.didYouMean', '你是不是想找：{{names}}？', {
+                  names: suggestion.candidates.map((c) => `"${c}"`).join(', '),
+                })}
+              </span>
+            )}
           </div>
         </div>
       </div>

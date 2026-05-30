@@ -224,6 +224,7 @@
       "loading": "Loading...",
       "refreshing": "Refreshing...",
       "error": "Query failed",
+      "didYouMean": "Did you mean: {{names}}?",
       "rowCount": "{{count}} rows",
       "execTime": "Execution time: {{time}}ms",
       "rows": "rows",
