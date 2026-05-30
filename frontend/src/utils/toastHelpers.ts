@@ -23,6 +23,13 @@ import type { TFunction } from 'i18next';
 import type { ApiError } from '@/api';
 
 /**
+ * 错误 Toast 默认持续时间（毫秒）。
+ * 全局 Toaster 默认 2s 对错误信息（尤其是较长的 DuckDB 报错）太短、容易看不到；
+ * 错误用更长的时长 + 关闭按钮（已全局开启），做到“弱提示但看得见”，而非打扰式弹窗。
+ */
+const DEFAULT_ERROR_TOAST_DURATION = 6000;
+
+/**
  * 显示成功 Toast
  * 
  * 优先使用 messageCode 进行 i18n 翻译，如果翻译不存在则使用 fallbackMessage
@@ -125,7 +132,7 @@ export function showErrorToast(
     message = errorMessage || fallbackMessage || t('common:error', '操作失败');
   }
 
-  toast.error(message, { duration });
+  toast.error(message, { duration: duration ?? DEFAULT_ERROR_TOAST_DURATION });
 }
 
 /**

@@ -13,6 +13,7 @@
 import * as React from 'react';
 import { useRef, useCallback, useMemo, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import type { ColumnFiltersState, SortingState, ColumnFilter } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
@@ -188,11 +189,17 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
     onSelectionChange,
   });
 
-  // 复制功能
+  // 复制功能（轻量反馈：成功用短时长 toast，失败用更长时长，均为角落提示而非弹窗）
   const { copySelection, copyColumnName } = useGridCopy({
     data: filteredData,
     columns: visibleColumns,
     selection,
+    onCopySuccess: () => {
+      toast.success(t('dataGrid.copied', '已复制到剪贴板'), { duration: 1500 });
+    },
+    onCopyError: () => {
+      toast.error(t('dataGrid.copyFailed', '复制失败，请重试'), { duration: 6000 });
+    },
   });
 
   // 统计信息

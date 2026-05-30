@@ -6,7 +6,6 @@ import {
   Code2,
   Table,
   Upload,
-  Download,
   RefreshCw,
   Settings,
   Moon,
@@ -143,13 +142,6 @@ export function CommandPalette({
             <Upload className="mr-2 h-4 w-4" />
             <span>{t("actions.uploadFile", "Upload File")}</span>
             <CommandShortcut>{formatShortcutDisplay('uploadFile')}</CommandShortcut>
-          </CommandItem>
-          <CommandItem
-            onSelect={() => runCommand(() => onAction?.("export"))}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            <span>{t("actions.exportData", "Export Data")}</span>
-            <CommandShortcut>⌘E</CommandShortcut>
           </CommandItem>
           <CommandItem
             onSelect={() => runCommand(() => onAction?.("refresh"))}

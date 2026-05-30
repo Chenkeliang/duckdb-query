@@ -23,6 +23,7 @@
     "selectedCells": "{{count}} cells selected",
     "cellUnit": "cells",
     "copied": "Copied to clipboard",
+    "copyFailed": "Copy failed, please retry",
     "largeCopyWarningTitle": "Selection too large",
     "largeCopyWarningMessage": "Selection contains about {{count}}0,000 cells, which may cause browser lag. Consider reducing the range or using export.",
     "largeCopyConfirm": "Continue copying",

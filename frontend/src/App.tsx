@@ -7,7 +7,6 @@ import React, {
   ReactNode,
   ErrorInfo
 } from "react";
-import { toast } from "sonner";
 import { useAppShell } from "./hooks/useAppShell";
 import type { DatabaseConnectParams } from "./hooks/useAppActions";
 import {
@@ -245,14 +244,12 @@ const AppInner: React.FC = () => {
   const handleCommandAction = (action: string, params?: unknown) => {
     switch (action) {
       case "selectTable":
-        console.log("Select table:", params);
+        // 从命令面板选表 → 跳到查询工作台（带表名以便后续使用）
+        setCurrentTab("queryworkbench");
         break;
       case "upload":
         setCurrentTab("datasource");
         setDataSourceTab("upload");
-        break;
-      case "export":
-        toast.info(t("common.comingSoon", "Coming soon"));
         break;
       case "refresh":
         refreshData();
@@ -269,7 +266,7 @@ const AppInner: React.FC = () => {
         toggleLocale();
         break;
       case "settings":
-        toast.info(t("common.comingSoon", "Coming soon"));
+        setCurrentTab("settings");
         break;
       case "help":
         window.open("https://github.com/chenkeliang/duckdb-query", "_blank");

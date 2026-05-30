@@ -23,6 +23,7 @@
     "selectedCells": "已选 {{count}} 个单元格",
     "cellUnit": "个单元格",
     "copied": "已复制到剪贴板",
+    "copyFailed": "复制失败，请重试",
     "largeCopyWarningTitle": "选区过大",
     "largeCopyWarningMessage": "选区约 {{count}} 万单元格，可能导致浏览器卡顿。建议缩小范围或使用导出功能。",
     "largeCopyConfirm": "继续复制",

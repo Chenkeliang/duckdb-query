@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 import duckdb
 from fastapi import APIRouter, Header
 
+from core.common.utils import normalize_dataframe_output
 from core.database.duckdb_engine import execute_query, with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import execute_sql_with_attach
@@ -183,7 +184,7 @@ async def _preview_pivot_query(
                 except Exception as count_exc:
                     logger.warning("Failed to calculate preview total rows: %s", count_exc)
 
-        data = preview_df.to_dict("records")
+        data = normalize_dataframe_output(preview_df)
         columns = [str(col) for col in preview_df.columns.tolist()]
 
         combined_warnings = list(validation_result.warnings or [])
