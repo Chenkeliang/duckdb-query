@@ -931,6 +931,28 @@
   "settings": {
     "title": "Settings",
     "comingSoon": "More settings features coming soon...",
+    "ai": {
+      "title": "AI / Models",
+      "description": "Configure AI providers (cloud or local). Keys are stored server-side only; off by default.",
+      "enable": "Enable AI",
+      "loadFailed": "Failed to load AI settings",
+      "defaultProvider": "Default provider",
+      "pick": "Select",
+      "type": "Type",
+      "models": "Models (comma-separated)",
+      "baseUrl": "Base URL",
+      "apiKey": "API Key",
+      "keyKeep": "Configured {{mask}}, leave blank to keep",
+      "keyEnter": "Enter key",
+      "test": "Test",
+      "addProvider": "Add provider",
+      "save": "Save",
+      "saved": "AI settings saved",
+      "saveFailed": "Save failed",
+      "testOk": "Connection OK",
+      "testFail": "Connection failed",
+      "testFailSave": "Connection failed; please save settings first"
+    },
     "queryResult": {
       "title": "Query results",
       "description": "Like DataGrip: keep a separate result tab for each successful SQL run.",
