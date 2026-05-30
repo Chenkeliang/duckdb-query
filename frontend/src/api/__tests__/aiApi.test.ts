@@ -7,7 +7,7 @@ vi.mock('../client', () => ({
 }));
 
 import { apiClient } from '../client';
-import { getAiSettings, saveAiSettings, testProvider, errorFix } from '../aiApi';
+import { getAiSettings, saveAiSettings, testProvider, errorFix, explainSql, nlToSql } from '../aiApi';
 
 describe('aiApi', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -42,5 +42,29 @@ describe('aiApi', () => {
     });
     expect(out.fixed_sql).toBe('SELECT 1');
     expect(out.safe).toBe(true);
+  });
+
+  it('explainSql POSTs /api/ai/explain-sql and unwraps explanation', async () => {
+    (apiClient.post as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { data: { explanation: '这条 SQL 取所有订单' } },
+    });
+    const out = await explainSql('SELECT * FROM orders', { locale: 'zh' });
+    expect(apiClient.post).toHaveBeenCalledWith('/api/ai/explain-sql', {
+      sql: 'SELECT * FROM orders', locale: 'zh',
+    });
+    expect(out.explanation).toBe('这条 SQL 取所有订单');
+  });
+
+  it('nlToSql POSTs /api/ai/nl-to-sql with tables and unwraps result', async () => {
+    (apiClient.post as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { data: { sql: 'SELECT 1', used_tables: ['orders'], safe: true } },
+    });
+    const out = await nlToSql('多少订单', { tables: ['orders'], locale: 'zh' });
+    expect(apiClient.post).toHaveBeenCalledWith('/api/ai/nl-to-sql', {
+      question: '多少订单', tables: ['orders'], locale: 'zh',
+    });
+    expect(out.sql).toBe('SELECT 1');
+    expect(out.safe).toBe(true);
+    expect(out.used_tables).toEqual(['orders']);
   });
 });

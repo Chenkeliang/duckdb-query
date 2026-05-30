@@ -74,3 +74,44 @@ export async function errorFix(
     throw handleApiError(e as never, 'AI 修复失败');
   }
 }
+
+export interface ExplainSqlResult {
+  explanation: string;
+}
+
+export async function explainSql(
+  sql: string,
+  opts?: { locale?: 'zh' | 'en' }
+): Promise<ExplainSqlResult> {
+  try {
+    const res = await apiClient.post('/api/ai/explain-sql', {
+      sql,
+      locale: opts?.locale ?? 'zh',
+    });
+    return normalizeResponse<ExplainSqlResult>(res).data;
+  } catch (e) {
+    throw handleApiError(e as never, 'AI 解释失败');
+  }
+}
+
+export interface NlToSqlResult {
+  sql: string;
+  used_tables: string[];
+  safe: boolean;
+}
+
+export async function nlToSql(
+  question: string,
+  opts?: { tables?: string[]; locale?: 'zh' | 'en' }
+): Promise<NlToSqlResult> {
+  try {
+    const res = await apiClient.post('/api/ai/nl-to-sql', {
+      question,
+      tables: opts?.tables ?? [],
+      locale: opts?.locale ?? 'zh',
+    });
+    return normalizeResponse<NlToSqlResult>(res).data;
+  } catch (e) {
+    throw handleApiError(e as never, 'AI 生成 SQL 失败');
+  }
+}
