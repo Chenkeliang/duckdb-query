@@ -194,6 +194,21 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
     () => createWrappedExecute('join'),
     [createWrappedExecute]
   );
+
+  // 仅记录历史、不重跑：服务端/联邦 JOIN 走 onDisplayPreview 展示已取结果，
+  // 绕过了 createWrappedExecute 的历史包装，需在执行成功后单独补记。
+  const recordJoinHistory = React.useCallback(
+    (sql: string, executionTime: number) => {
+      const joinSnapshot = joinPersistenceRef.current?.getSnapshot();
+      addToHistory({
+        type: 'join',
+        sql,
+        executionTime,
+        ...(joinSnapshot ? { joinSnapshot } : {}),
+      });
+    },
+    [addToHistory]
+  );
   const handleSetExecute = React.useMemo(
     () => createWrappedExecute('set'),
     [createWrappedExecute]
@@ -307,6 +322,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
               selectedTables={selectedTables}
               onExecute={handleJoinExecute}
               onDisplayPreview={onDisplayPreview}
+              onRecordHistory={recordJoinHistory}
               onRemoveTable={onRemoveTable}
               onCancel={onCancel}
               isCancelling={isCancelling}

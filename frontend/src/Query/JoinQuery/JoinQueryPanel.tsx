@@ -530,6 +530,12 @@ interface JoinQueryPanelProps {
   selectedTables?: SelectedTable[];
   onExecute?: (sql: string, source?: TableSource) => Promise<void>;
   onDisplayPreview?: UseQueryWorkspaceReturn['displayQueryPreview'];
+  /**
+   * 记录到全局查询历史（仅记录，不重跑）。
+   * 服务端/联邦 JOIN 走 onDisplayPreview 展示已取到的结果，绕过了 onExecute 的历史包装器，
+   * 需要用它在执行（非预览）成功后补记历史。
+   */
+  onRecordHistory?: (sql: string, executionTime: number) => void;
   onRemoveTable?: (table: SelectedTable) => void;
   /** 取消回调 */
   onCancel?: () => void;
@@ -1104,6 +1110,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   selectedTables = [],
   onExecute,
   onDisplayPreview,
+  onRecordHistory,
   onRemoveTable,
   onCancel,
   isCancelling: _isCancelling = false,
@@ -1671,6 +1678,10 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         result.sql,
         source
       );
+      // 执行（非预览）成功后补记历史：该分支绕过了 onExecute 的历史包装器
+      if (!isPreview && result.sql) {
+        onRecordHistory?.(result.sql, Date.now() - startTime);
+      }
       return true;
     }
     if (onExecute && result.sql) {
