@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
 
 from core.common.exceptions import ResourceNotFoundError
@@ -18,6 +19,7 @@ from utils.response_helpers import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class AISettingsPayload(BaseModel):
@@ -90,6 +92,10 @@ def _ai_error_response(exc: Exception):
 def _build_schema_text(tables: list[str]) -> str:
     if not tables:
         return ""
+    if len(tables) > 10:
+        logger.info(
+            "schema text truncated to first 10 of %d tables for AI context", len(tables)
+        )
     lines: list[str] = []
     with with_duckdb_connection() as con:
         for name in tables[:10]:

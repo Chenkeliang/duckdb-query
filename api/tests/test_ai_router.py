@@ -178,3 +178,12 @@ def test_nl_to_sql_route_returns_safe_select(tmp_path, monkeypatch):
     assert data["safe"] is True
     assert data["sql"] == "SELECT count(*) FROM orders"
     assert data["used_tables"] == ["orders"]
+
+
+def test_build_schema_text_logs_when_truncating(caplog):
+    import logging
+    names = [f"_no_such_t{i}" for i in range(12)]  # >10 触发截断
+    with caplog.at_level(logging.INFO):
+        ai_router._build_schema_text(names)
+    assert any("truncat" in r.getMessage().lower() for r in caplog.records), \
+        "tables 超过 10 个时应记录截断提示，避免静默丢弃"
