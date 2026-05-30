@@ -307,7 +307,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                 {trigger || defaultTrigger}
             </PopoverTrigger>
             <PopoverContent
-                className="w-80 max-h-[80vh] overflow-y-auto"
+                className="w-80 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto"
                 align="start"
                 sideOffset={5}
                 collisionPadding={16}
