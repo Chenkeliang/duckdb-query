@@ -60,6 +60,20 @@ def with_duckdb_connection():
         yield connection
 
 
+# MySQL 连接断开类错误标记（联邦查询经 DuckDB mysql 扩展时出现）
+_FEDERATED_CONNECTION_LOST_MARKERS = (
+    "server has gone away",
+    "lost connection",
+    "broken pipe",
+)
+
+
+def _is_federated_connection_lost(err: Exception) -> bool:
+    """是否为 MySQL 联邦连接断开错误（可通过清缓存重连自愈）。"""
+    msg = str(err).lower()
+    return any(marker in msg for marker in _FEDERATED_CONNECTION_LOST_MARKERS)
+
+
 @contextmanager
 def _use_connection(connection=None):
     """内部工具：优先使用传入连接，否则从连接池获取"""
@@ -389,11 +403,33 @@ def execute_query(query, con=None):
         try:
             result = connection.execute(query).fetchdf()
         except Exception as err:
-            execution_time = (time.time() - start_time) * 1000
-            logger.error(
-                "DuckDB query execution failed (elapsed %.2fms): %s", execution_time, err, exc_info=True
-            )
-            raise
+            # 联邦查询连接失效自愈：mysql 扩展按 DSN 进程级缓存连接，空闲后被
+            # 中间设备/wait_timeout 静默掐断，复用即「Server has gone away」，
+            # DETACH 清不掉。清空扩展连接缓存后重试一次（会重建新连接）。
+            if _is_federated_connection_lost(err):
+                logger.warning(
+                    "Federated MySQL connection lost (%s); clearing cache and retrying once",
+                    err,
+                )
+                try:
+                    connection.execute("CALL mysql_clear_cache()")
+                except Exception as clear_err:  # pylint: disable=broad-except
+                    logger.warning("mysql_clear_cache failed: %s", clear_err)
+                try:
+                    result = connection.execute(query).fetchdf()
+                except Exception as retry_err:
+                    execution_time = (time.time() - start_time) * 1000
+                    logger.error(
+                        "DuckDB query retry after cache clear failed (elapsed %.2fms): %s",
+                        execution_time, retry_err, exc_info=True,
+                    )
+                    raise
+            else:
+                execution_time = (time.time() - start_time) * 1000
+                logger.error(
+                    "DuckDB query execution failed (elapsed %.2fms): %s", execution_time, err, exc_info=True
+                )
+                raise
 
         execution_time = (time.time() - start_time) * 1000
         row_count = len(result)
