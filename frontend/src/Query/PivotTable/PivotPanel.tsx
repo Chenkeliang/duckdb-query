@@ -367,7 +367,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                                 </span>
                             ) : null}
                         </h3>
-                        <SQLHighlight sql={sql} minHeight="80px" maxHeight="200px" />
+                        <SQLHighlight sql={sql} minHeight="80px" maxHeight="200px" scrollable />
                     </div>
                 )}
             </div>

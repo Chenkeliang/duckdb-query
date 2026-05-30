@@ -844,7 +844,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
                 <AlertDescription>{(generateSqlError as Error).message}</AlertDescription>
               </Alert>
             ) : sql ? (
-              <SQLHighlight sql={sql} minHeight="120px" maxHeight="300px" />
+              <SQLHighlight sql={sql} minHeight="120px" maxHeight="300px" scrollable />
             ) : null}
           </div>
         )}

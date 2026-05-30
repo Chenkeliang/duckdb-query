@@ -2032,7 +2032,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
                 {t('common.copy', '复制')}
               </button>
             </div>
-            <SQLHighlight sql={sql} minHeight="120px" maxHeight="300px" />
+            <SQLHighlight sql={sql} minHeight="120px" maxHeight="300px" scrollable />
           </div>
         )}
       </div>
