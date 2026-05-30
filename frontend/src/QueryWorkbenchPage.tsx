@@ -19,6 +19,7 @@ interface QueryWorkbenchPageProps {
   previewSQL?: string;
   /** 从任务列表预览某个结果 */
   onPreviewSQL?: (sql: string) => void;
+  onOpenAiSettings?: () => void;
 }
 
 export const QueryWorkbenchPage: React.FC<QueryWorkbenchPageProps> = ({
@@ -26,6 +27,7 @@ export const QueryWorkbenchPage: React.FC<QueryWorkbenchPageProps> = ({
   onTabChange,
   previewSQL,
   onPreviewSQL,
+  onOpenAiSettings,
 }) => {
 
   // 启动异步任务监控
@@ -34,7 +36,7 @@ export const QueryWorkbenchPage: React.FC<QueryWorkbenchPageProps> = ({
   return (
     <div className="h-full w-full">
       {activeTab === "query" ? (
-        <QueryWorkspace previewSQL={previewSQL} />
+        <QueryWorkspace previewSQL={previewSQL} onOpenAiSettings={onOpenAiSettings} />
       ) : (
         <AsyncTaskPanel
           className="h-full"

@@ -68,6 +68,7 @@ interface QueryTabsProps {
   joinRestoreRequest?: JoinRestoreRequest | null;
   restoreJoinWorkspace?: (snapshot: JoinRestoreRequest['snapshot']) => void;
   onClearJoinRestoreRequest?: () => void;
+  onOpenAiSettings?: () => void;
 }
 
 // 注意：不再使用 wrapExecute，直接传递 onExecute 以保留 source 参数
@@ -86,6 +87,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
   joinRestoreRequest,
   restoreJoinWorkspace,
   onClearJoinRestoreRequest,
+  onOpenAiSettings,
 }) => {
   const joinPersistenceRef = React.useRef<JoinWorkspacePersistence | null>(null);
   const { t } = useTranslation('common');
@@ -314,6 +316,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
               editorMinHeight="150px"
               editorMaxHeight="300px"
               previewSQL={sqlPanelPreview}
+              onOpenAiSettings={onOpenAiSettings}
             />
           </KeepAliveTabContent>
 

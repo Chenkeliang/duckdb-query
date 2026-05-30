@@ -26,9 +26,10 @@ interface QueryWorkspaceProps {
   defaultLayout?: number[];
   /** 预览 SQL（来自异步任务等） */
   previewSQL?: string;
+  onOpenAiSettings?: () => void;
 }
 
-export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) => {
+export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOpenAiSettings }) => {
   const { t } = useTranslation("common");
   const queryClient = useQueryClient();
   const [autoOpenImportDialog, setAutoOpenImportDialog] = React.useState(false);
@@ -234,6 +235,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL }) =>
                 onDisplayPreview={displayQueryPreview}
                 onRemoveTable={handleRemoveTable}
                 previewSQL={previewSQL}
+                onOpenAiSettings={onOpenAiSettings}
               />
             </Panel>
 

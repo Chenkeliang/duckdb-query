@@ -118,7 +118,7 @@ export function AISettings() {
   };
 
   return (
-    <Card>
+    <Card id="settings-ai">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

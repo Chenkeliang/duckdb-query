@@ -428,6 +428,16 @@ const AppInner: React.FC = () => {
             setPreviewQuery(sql);
             setQueryWorkbenchTab("query");
           }}
+          onOpenAiSettings={() => {
+            setCurrentTab("settings");
+            setTimeout(
+              () =>
+                document
+                  .getElementById("settings-ai")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+              120,
+            );
+          }}
         />
       );
     }

@@ -55,6 +55,8 @@ export interface SQLQueryPanelProps {
   editorMaxHeight?: string;
   /** 预览 SQL（来自异步任务等，仅预填不自动执行） */
   previewSQL?: string;
+  /** 打开设置·AI 标签页(未配置引导用) */
+  onOpenAiSettings?: () => void;
 }
 
 /**
