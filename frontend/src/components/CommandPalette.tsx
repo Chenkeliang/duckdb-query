@@ -11,6 +11,7 @@ import {
   Moon,
   Sun,
   Languages,
+  Sparkles,
 } from "lucide-react"
 
 import {
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/command"
 import { useDuckDBTables } from "@/hooks/useDuckDBTables"
 import { useShortcuts } from "@/Settings/shortcuts"
+import { useAiEnabled } from "@/hooks/useAiEnabled"
 
 interface CommandPaletteProps {
   open: boolean
@@ -46,6 +48,9 @@ export function CommandPalette({
   
   // 获取自定义快捷键
   const { getShortcutForAction } = useShortcuts()
+
+  // AI 总开关(门控 ⌘K 的 AI 命令)
+  const aiEnabled = useAiEnabled()
   
   // 格式化快捷键显示（将 Cmd+K 转换为 ⌘K）
   const formatShortcutDisplay = React.useCallback((actionId: string): string => {
@@ -156,6 +161,18 @@ export function CommandPalette({
         
         {/* 快捷操作命令 */}
         <CommandGroup heading={t("command.quickActions", "Quick Actions")}>
+          {aiEnabled && (
+            <>
+              <CommandItem onSelect={() => runCommand(() => onAction?.("aiAsk"))}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                <span>{t("command.aiAsk", "问数")}</span>
+              </CommandItem>
+              <CommandItem onSelect={() => runCommand(() => onAction?.("aiExplain"))}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                <span>{t("command.aiExplain", "解释 SQL")}</span>
+              </CommandItem>
+            </>
+          )}
           <CommandItem
             onSelect={() => runCommand(() => onAction?.("toggleTheme"))}
           >
