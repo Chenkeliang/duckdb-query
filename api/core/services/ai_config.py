@@ -1,0 +1,62 @@
+"""AI 设置的内存形态与纯变换（加密存、掩码读、按功能解析 provider/model）。"""
+
+from __future__ import annotations
+
+import copy
+from typing import Any, Dict, Optional
+
+from core.common import crypto
+
+
+def default_ai_config() -> Dict[str, Any]:
+    return {
+        "enabled": False,
+        "default_provider": None,
+        "providers": [],
+        "features": {},
+        "timeout_seconds": 30,
+        "num_retries": 2,
+        "log_usage": True,
+        "log_full_prompts": False,
+    }
+
+
+def prepare_for_storage(incoming: Dict[str, Any]) -> Dict[str, Any]:
+    """保存前：把明文 api_key 加密。"""
+    cfg = copy.deepcopy(incoming)
+    for provider in cfg.get("providers", []):
+        key = provider.get("api_key")
+        if key:
+            provider["api_key"] = crypto.encrypt_secret(key)
+    return cfg
+
+
+def prepare_for_read(stored: Dict[str, Any]) -> Dict[str, Any]:
+    """返回前端前：把 api_key 掩码（解密出明文仅用于取尾 4 位提示）。"""
+    cfg = copy.deepcopy(stored)
+    for provider in cfg.get("providers", []):
+        token = provider.get("api_key")
+        plain = crypto.decrypt_secret(token) if token else ""
+        provider["api_key"] = crypto.mask_secret(plain)
+    return cfg
+
+
+def get_provider(cfg: Dict[str, Any], provider_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not provider_id:
+        return None
+    for provider in cfg.get("providers", []):
+        if provider.get("id") == provider_id:
+            return provider
+    return None
+
+
+def resolve_feature(cfg: Dict[str, Any], feature: str) -> Dict[str, Any]:
+    """解析某功能实际用的 provider(对象) 与 model；功能未指定则回落默认。"""
+    feat = cfg.get("features", {}).get(feature, {}) or {}
+    provider_id = feat.get("provider") or cfg.get("default_provider")
+    provider = get_provider(cfg, provider_id)
+    model = feat.get("model")
+    if not model and provider:
+        models = provider.get("models") or []
+        model = models[0] if models else None
+    return {"provider": provider, "model": model}
