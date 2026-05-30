@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from core.common.exceptions import ResourceNotFoundError
-from core.services import ai_config
-from core.services.llm_service import LLMService
+from core.database.duckdb_engine import with_duckdb_connection
+from core.services import ai_config, ai_error_doctor
+from core.services.llm_service import AIConfigError, AIDisabledError, LLMService
 from fastapi import APIRouter
 from pydantic import BaseModel
 from utils.response_helpers import (
@@ -70,3 +71,40 @@ def test_provider(provider_id: str):
         return error_json_response(
             502, MessageCode.OPERATION_FAILED, f"Provider test failed: {exc}"
         )
+
+
+class ErrorFixPayload(BaseModel):
+    sql: str
+    error: str
+    tables: list[str] = []
+    locale: str = "zh"
+
+
+def _build_schema_text(tables: list[str]) -> str:
+    if not tables:
+        return ""
+    lines: list[str] = []
+    with with_duckdb_connection() as con:
+        for name in tables[:10]:
+            try:
+                rows = con.execute(f'DESCRIBE "{name}"').fetchall()
+                cols = ", ".join(f"{r[0]} {r[1]}" for r in rows)
+                lines.append(f"{name}({cols})")
+            except Exception:  # noqa: BLE001
+                continue
+    return "\n".join(lines)
+
+
+@router.post("/api/ai/error-fix", tags=["AI"])
+def error_fix(payload: ErrorFixPayload):
+    cfg = ai_config.load_ai_settings()
+    schema_text = _build_schema_text(payload.tables)
+    try:
+        result = ai_error_doctor.explain_and_fix(
+            LLMService(cfg), payload.sql, payload.error, schema_text, payload.locale
+        )
+    except (AIDisabledError, AIConfigError) as exc:
+        return error_json_response(400, MessageCode.VALIDATION_ERROR, str(exc))
+    return create_success_response(
+        data=result, message_code=MessageCode.OPERATION_SUCCESS
+    )
