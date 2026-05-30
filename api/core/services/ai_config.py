@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import copy
+import json
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from core.common import crypto
+from core.common.config_manager import config_manager
 
 
 def default_ai_config() -> Dict[str, Any]:
@@ -60,3 +63,29 @@ def resolve_feature(cfg: Dict[str, Any], feature: str) -> Dict[str, Any]:
         models = provider.get("models") or []
         model = models[0] if models else None
     return {"provider": provider, "model": model}
+
+
+def ai_settings_path() -> Path:
+    return Path(config_manager._default_data_dir()) / "ai_settings.json"
+
+
+def load_ai_settings(path: Optional[Path] = None) -> Dict[str, Any]:
+    """读取持久化的 AI 设置（存储态，api_key 为密文）；文件不存在则返回默认。"""
+    target = path or ai_settings_path()
+    if not target.exists():
+        return default_ai_config()
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except Exception:
+        return default_ai_config()
+    merged = default_ai_config()
+    merged.update(data or {})
+    return merged
+
+
+def save_ai_settings(incoming: Dict[str, Any], path: Optional[Path] = None) -> None:
+    """保存 AI 设置：明文 api_key 加密后落盘。"""
+    target = path or ai_settings_path()
+    stored = prepare_for_storage(incoming)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    config_manager.atomic_write_json(target, stored)
