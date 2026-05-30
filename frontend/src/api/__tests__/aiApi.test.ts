@@ -7,7 +7,7 @@ vi.mock('../client', () => ({
 }));
 
 import { apiClient } from '../client';
-import { getAiSettings, saveAiSettings, testProvider } from '../aiApi';
+import { getAiSettings, saveAiSettings, testProvider, errorFix } from '../aiApi';
 
 describe('aiApi', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -30,5 +30,17 @@ describe('aiApi', () => {
     const out = await testProvider('p1');
     expect(apiClient.post).toHaveBeenCalledWith('/api/ai/providers/p1/test');
     expect(out.ok).toBe(true);
+  });
+
+  it('errorFix POSTs /api/ai/error-fix and unwraps the result', async () => {
+    (apiClient.post as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { data: { explanation: 'e', fixed_sql: 'SELECT 1', safe: true } },
+    });
+    const out = await errorFix('SELECT x', 'Binder Error', { tables: ['t'], locale: 'zh' });
+    expect(apiClient.post).toHaveBeenCalledWith('/api/ai/error-fix', {
+      sql: 'SELECT x', error: 'Binder Error', tables: ['t'], locale: 'zh',
+    });
+    expect(out.fixed_sql).toBe('SELECT 1');
+    expect(out.safe).toBe(true);
   });
 });

@@ -51,3 +51,27 @@ export async function testProvider(providerId: string): Promise<{ ok: boolean; s
     throw handleApiError(e as never, '测试供应商失败');
   }
 }
+
+export interface ErrorFixResult {
+  explanation: string;
+  fixed_sql: string | null;
+  safe: boolean;
+}
+
+export async function errorFix(
+  sql: string,
+  error: string,
+  opts?: { tables?: string[]; locale?: 'zh' | 'en' }
+): Promise<ErrorFixResult> {
+  try {
+    const res = await apiClient.post('/api/ai/error-fix', {
+      sql,
+      error,
+      tables: opts?.tables ?? [],
+      locale: opts?.locale ?? 'zh',
+    });
+    return normalizeResponse<ErrorFixResult>(res).data;
+  } catch (e) {
+    throw handleApiError(e as never, 'AI 修复失败');
+  }
+}
