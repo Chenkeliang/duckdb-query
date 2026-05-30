@@ -94,3 +94,26 @@ def test_error_fix_when_ai_disabled_is_4xx(tmp_path, monkeypatch):
     resp = client.post("/api/ai/error-fix", json={
         "sql": "SELECT 1", "error": "e", "tables": [], "locale": "zh"})
     assert resp.status_code == 400
+
+
+def test_build_schema_text_blocks_table_name_injection():
+    """恶意表名不得经 DESCRIBE 触发堆叠语句（DuckDB 会执行堆叠语句 = 注入风险）。"""
+    from core.database.duckdb_engine import with_duckdb_connection
+
+    victim = "_inj_probe_keep"
+    with with_duckdb_connection() as con:
+        con.execute(f"DROP TABLE IF EXISTS {victim}")
+        con.execute(f"CREATE TABLE {victim}(a INTEGER)")
+    try:
+        malicious = f'{victim}"; DROP TABLE {victim}; --'
+        # 不应抛错，更绝不应执行被注入的 DROP
+        ai_router._build_schema_text([malicious])
+        with with_duckdb_connection() as con:
+            survived = con.execute(
+                "SELECT count(*) FROM information_schema.tables "
+                f"WHERE table_name = '{victim}'"
+            ).fetchone()[0]
+        assert survived == 1, "表名注入执行了堆叠 DROP —— 存在 SQL 注入"
+    finally:
+        with with_duckdb_connection() as con:
+            con.execute(f"DROP TABLE IF EXISTS {victim}")

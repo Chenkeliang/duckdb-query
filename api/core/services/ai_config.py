@@ -39,7 +39,16 @@ def prepare_for_read(stored: Dict[str, Any]) -> Dict[str, Any]:
     cfg = copy.deepcopy(stored)
     for provider in cfg.get("providers", []):
         token = provider.get("api_key")
-        plain = crypto.decrypt_secret(token) if token else ""
+        if not token:
+            provider["api_key"] = ""
+            continue
+        try:
+            plain = crypto.decrypt_secret(token)
+        except Exception:
+            # 密钥轮换 / 密文损坏：不暴露明文、也绝不让读取设置 500，
+            # 给出「已设置但当前不可读」的掩码占位。
+            provider["api_key"] = "****"
+            continue
         provider["api_key"] = crypto.mask_secret(plain)
     return cfg
 

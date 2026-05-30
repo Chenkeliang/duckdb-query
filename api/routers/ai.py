@@ -87,7 +87,9 @@ def _build_schema_text(tables: list[str]) -> str:
     with with_duckdb_connection() as con:
         for name in tables[:10]:
             try:
-                rows = con.execute(f'DESCRIBE "{name}"').fetchall()
+                # 表名来自客户端：转义双引号(标识符内 " -> "")，否则可经堆叠语句注入
+                safe = name.replace('"', '""')
+                rows = con.execute(f'DESCRIBE "{safe}"').fetchall()
                 cols = ", ".join(f"{r[0]} {r[1]}" for r in rows)
                 lines.append(f"{name}({cols})")
             except Exception:  # noqa: BLE001

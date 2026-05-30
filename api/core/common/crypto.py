@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import os
 
 from cryptography.fernet import Fernet
 
+logger = logging.getLogger(__name__)
+
 _DEFAULT_SECRET = "duckdb-query-default-llm-key-secret-change-me"
+_warned_default_secret = False
+
+
+def _using_default_secret() -> bool:
+    return not os.getenv("LLM_KEY_SECRET")
 
 
 def _fernet() -> Fernet:
@@ -21,6 +29,15 @@ def _fernet() -> Fernet:
 def encrypt_secret(plaintext: str) -> str:
     if not plaintext:
         return ""
+    if _using_default_secret():
+        global _warned_default_secret
+        if not _warned_default_secret:
+            logger.warning(
+                "LLM_KEY_SECRET is not set; encrypting API keys with the built-in "
+                "default secret provides no real confidentiality. Set the "
+                "LLM_KEY_SECRET environment variable in production."
+            )
+            _warned_default_secret = True
     return _fernet().encrypt(plaintext.encode("utf-8")).decode("utf-8")
 
 

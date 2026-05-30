@@ -43,3 +43,16 @@ def test_resolve_feature_falls_back_to_default():
     resolved = ai_config.resolve_feature(cfg, "nl_to_sql")
     assert resolved["provider"]["id"] == "p1"
     assert resolved["model"] == "gpt-4o"
+
+
+def test_prepare_for_read_survives_undecryptable_key():
+    # 密钥轮换 / 密文损坏时 decrypt 会抛 InvalidToken；读取设置必须兜底掩码，绝不 500
+    stored = {
+        "enabled": True,
+        "providers": [
+            {"id": "p1", "type": "openai", "api_key": "not-a-valid-fernet-token"}
+        ],
+        "features": {},
+    }
+    public = ai_config.prepare_for_read(stored)  # 不得抛异常
+    assert public["providers"][0]["api_key"] == "****"
