@@ -188,6 +188,19 @@
     }
   },
   "query": {
+    "ai": {
+      "explain": "Explain",
+      "explainTooltip": "Explain the current SQL in plain language",
+      "explainNeedConfig": "Configure an AI provider first",
+      "explainFailed": "AI explain failed",
+      "ask": "Ask",
+      "askPlaceholder": "Describe your query in natural language…",
+      "askGuide": "To enable Ask, configure a provider under Settings · AI/Model",
+      "generate": "Generate",
+      "usedTables": "Tables used:",
+      "askFailed": "AI failed to generate SQL",
+      "notSelectWarn": "The result is not a read-only SELECT; it was inserted for review—please verify before running"
+    },
     "tableSelector": {
       "selectTable": "Select table",
       "placeholder": "Select a table...",

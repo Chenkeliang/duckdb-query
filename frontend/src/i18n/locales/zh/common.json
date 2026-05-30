@@ -194,6 +194,19 @@
     }
   },
   "query": {
+    "ai": {
+      "explain": "解释",
+      "explainTooltip": "用大白话解释当前 SQL",
+      "explainNeedConfig": "需先配置 AI 供应商",
+      "explainFailed": "AI 解释失败",
+      "ask": "问数",
+      "askPlaceholder": "用自然语言描述你的查询…",
+      "askGuide": "启用「问数」前,先到 设置 · AI/模型 配置一个供应商",
+      "generate": "生成",
+      "usedTables": "用了哪些表:",
+      "askFailed": "AI 生成 SQL 失败",
+      "notSelectWarn": "生成的不是只读 SELECT,已填入编辑器,请人工确认后再执行"
+    },
     "tableSelector": {
       "selectTable": "选择表",
       "placeholder": "选择一个表...",
