@@ -80,6 +80,12 @@ class ErrorFixPayload(BaseModel):
     locale: str = "zh"
 
 
+def _ai_error_response(exc: Exception):
+    """把 LLM 服务异常映射成 spec §4.3 的稳定错误码。"""
+    code = "ai_disabled" if isinstance(exc, AIDisabledError) else "ai_not_configured"
+    return error_json_response(400, code, str(exc))
+
+
 def _build_schema_text(tables: list[str]) -> str:
     if not tables:
         return ""
@@ -106,7 +112,7 @@ def error_fix(payload: ErrorFixPayload):
             LLMService(cfg), payload.sql, payload.error, schema_text, payload.locale
         )
     except (AIDisabledError, AIConfigError) as exc:
-        return error_json_response(400, MessageCode.VALIDATION_ERROR, str(exc))
+        return _ai_error_response(exc)
     return create_success_response(
         data=result, message_code=MessageCode.OPERATION_SUCCESS
     )

@@ -117,3 +117,25 @@ def test_build_schema_text_blocks_table_name_injection():
     finally:
         with with_duckdb_connection() as con:
             con.execute(f"DROP TABLE IF EXISTS {victim}")
+
+
+def test_error_fix_disabled_has_stable_code(tmp_path, monkeypatch):
+    # 默认 enabled=false → LLMService 抛 AIDisabledError → 稳定 code=ai_disabled
+    settings_path = tmp_path / "ai_settings.json"
+    monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)
+    resp = client.post("/api/ai/error-fix", json={
+        "sql": "SELECT 1", "error": "e", "tables": [], "locale": "zh"})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ai_disabled"
+
+
+def test_explain_not_configured_has_stable_code(tmp_path, monkeypatch):
+    # enabled=true 但无供应商 → AIConfigError → code=ai_not_configured
+    monkeypatch.setenv("LLM_KEY_SECRET", "test-secret")
+    settings_path = tmp_path / "ai_settings.json"
+    monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)
+    client.put("/api/settings/ai", json={
+        "enabled": True, "default_provider": None, "providers": [], "features": {}})
+    resp = client.post("/api/ai/explain-sql", json={"sql": "SELECT 1", "locale": "zh"})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ai_not_configured"
