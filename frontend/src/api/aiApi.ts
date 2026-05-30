@@ -12,7 +12,6 @@ export interface AiProvider {
 }
 
 export interface AiFeatureCfg {
-  enabled: boolean;
   provider?: string | null;
   model?: string | null;
 }

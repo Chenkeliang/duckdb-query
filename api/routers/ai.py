@@ -56,7 +56,7 @@ def test_provider(provider_id: str):
         **stored,
         "enabled": True,
         "default_provider": provider_id,
-        "features": {"_probe": {"enabled": True, "provider": provider_id,
+        "features": {"_probe": {"provider": provider_id,
                                 "model": models[0] if models else None}},
     }
     try:

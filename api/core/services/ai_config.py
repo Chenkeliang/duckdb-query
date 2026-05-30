@@ -19,8 +19,6 @@ def default_ai_config() -> Dict[str, Any]:
         "features": {},
         "timeout_seconds": 30,
         "num_retries": 2,
-        "log_usage": True,
-        "log_full_prompts": False,
     }
 
 
