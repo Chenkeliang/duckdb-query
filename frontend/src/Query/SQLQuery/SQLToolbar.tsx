@@ -37,6 +37,8 @@ export interface SQLToolbarProps {
   executionTime?: number;
   /** 额外内容（如状态指示器） */
   extraContent?: React.ReactNode;
+  /** 左侧按钮组尾部插槽(AI ✨ 解释按钮) */
+  aiSlot?: React.ReactNode;
   /** 自定义类名 */
   className?: string;
 }
@@ -66,6 +68,7 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
   disableExecute = false,
   executionTime,
   extraContent,
+  aiSlot,
   className,
 }) => {
   const { t } = useTranslation('common');
@@ -204,6 +207,7 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
             </Tooltip>
           )}
         </TooltipProvider>
+        {aiSlot}
       </div>
 
       {/* 右侧：状态信息 */}
