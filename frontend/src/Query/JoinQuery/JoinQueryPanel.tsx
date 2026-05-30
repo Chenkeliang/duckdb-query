@@ -164,6 +164,43 @@ export const isJoinConditionValid = (c: JoinCondition): boolean => {
   return leftValid && rightValid;
 };
 
+/**
+ * 收集每张表在 ON join 条件中用到的列（仅列模式）。
+ *
+ * 联邦下推子查询会按"选中输出列"裁剪投影；若某表的 join 键不在输出列里，
+ * 裁剪后子查询就缺这一列，外层 ON 引用它会报
+ * `Binder Error: Values list "tX" does not have a column named ...`。
+ * 因此构建下推投影时必须把这些 join 键列并回去（尤其是第一张表在 ON 左侧的键）。
+ */
+export const collectJoinKeyColumnsByTable = (
+  activeTables: SelectedTable[],
+  joinConfigs: JoinConfig[],
+): Map<string, string[]> => {
+  const sets = new Map<string, Set<string>>();
+  const add = (tableName: string, col?: string) => {
+    if (!tableName || !col) return;
+    if (!sets.has(tableName)) sets.set(tableName, new Set());
+    sets.get(tableName)!.add(col);
+  };
+
+  for (let i = 1; i < activeTables.length; i++) {
+    const rawConfig = joinConfigs[i - 1];
+    if (!rawConfig) continue;
+    const leftTableName = getTableName(activeTables[i - 1]);
+    const rightTableName = getTableName(activeTables[i]);
+    const config = normalizeJoinConfig(rawConfig);
+    for (const c of config.conditions) {
+      if (!isJoinConditionValid(c)) continue;
+      if (c.leftMode !== 'expression') add(leftTableName, c.leftColumn);
+      if (c.rightMode !== 'expression') add(rightTableName, c.rightColumn);
+    }
+  }
+
+  const out = new Map<string, string[]>();
+  for (const [tableName, cols] of sets) out.set(tableName, [...cols]);
+  return out;
+};
+
 export interface JoinPreviewSqlParams {
   activeTables: SelectedTable[];
   attachDatabases: ReturnType<typeof extractAttachDatabases>;
@@ -256,6 +293,9 @@ export function buildJoinPreviewSql(params: JoinPreviewSqlParams): string | null
       // 提取 ON 条件并按表分组
       const onFilterGroups = extractOnFiltersGroupedByTable(filterTree);
 
+      // 每张表在 ON 中用到的 join 键列：下推裁剪投影时必须保留，否则外层 ON 报错
+      const joinKeyColsByTable = collectJoinKeyColumnsByTable(activeTables, joinConfigs);
+
       // 分析每个表
       for (const table of activeTables) {
         const tableName = getTableName(table);
@@ -294,10 +334,20 @@ export function buildJoinPreviewSql(params: JoinPreviewSqlParams): string | null
 
           if (whereSQL) {
             const pickedCols = selectedColumns[tableName] ?? selectedColumns[tableAlias];
+            // 仅在裁剪投影（pickedCols 非空）时补回 join 键；为空时是 SELECT *，无需处理
+            const finalCols: string[] | null = pickedCols?.length ? [...pickedCols] : null;
+            if (finalCols) {
+              const joinKeys = joinKeyColsByTable.get(tableName) ?? joinKeyColsByTable.get(tableAlias);
+              if (joinKeys) {
+                for (const key of joinKeys) {
+                  if (!finalCols.includes(key)) finalCols.push(key);
+                }
+              }
+            }
             const subqueryResult = buildFilteredSubquery(
               tableInfo,
               whereSQL,
-              pickedCols?.length ? pickedCols : null
+              finalCols
             );
             optimizedTableRefs.set(tableName, subqueryResult);
             optimizedTableRefs.set(tableAlias, subqueryResult);
