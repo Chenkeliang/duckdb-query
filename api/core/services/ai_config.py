@@ -84,8 +84,19 @@ def load_ai_settings(path: Optional[Path] = None) -> Dict[str, Any]:
 
 
 def save_ai_settings(incoming: Dict[str, Any], path: Optional[Path] = None) -> None:
-    """保存 AI 设置：明文 api_key 加密后落盘。"""
+    """保存 AI 设置：明文 api_key 加密后落盘。
+
+    若某 provider 的 incoming api_key 为空（前端未改密钥，仅回传掩码占位），
+    保留已存的密文 key，避免把现有密钥覆盖丢失。
+    """
     target = path or ai_settings_path()
+    current = load_ai_settings(target)
     stored = prepare_for_storage(incoming)
+    existing_keys = {
+        p.get("id"): p.get("api_key") for p in current.get("providers", [])
+    }
+    for provider in stored.get("providers", []):
+        if not provider.get("api_key") and existing_keys.get(provider.get("id")):
+            provider["api_key"] = existing_keys[provider.get("id")]
     target.parent.mkdir(parents=True, exist_ok=True)
     config_manager.atomic_write_json(target, stored)
