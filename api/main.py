@@ -33,6 +33,7 @@ from routers import (
     query_export,  # /api/query-results/export
 )
 from routers import config_api
+from routers import ai as ai_router
 from core.database.database_manager import db_manager
 from models.query_models import DatabaseConnection, DataSourceType
 from core.data.file_datasource_manager import reload_all_file_datasources_to_duckdb
@@ -139,6 +140,7 @@ app.include_router(async_tasks.router)
 app.include_router(database_tables.router)
 app.include_router(sql_favorites.router)
 app.include_router(config_api.router)
+app.include_router(ai_router.router)
 app.include_router(settings.router)
 app.include_router(query_cancel.router)
 
