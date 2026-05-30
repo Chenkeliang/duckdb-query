@@ -82,7 +82,7 @@ def _safe_decode_row(row):
 
 
 @router.get("/api/datasources/databases/{connection_id}/tables", tags=["Database Management"])
-async def get_database_tables(connection_id: str):
+def get_database_tables(connection_id: str):
     """获取指定数据库连接的所有表信息"""
     try:
         # 获取应用配置
@@ -458,7 +458,7 @@ async def get_database_tables(connection_id: str):
 
 
 @router.get("/api/datasources/databases/{connection_id}/schemas", tags=["Database Management"])
-async def list_connection_schemas(connection_id: str):
+def list_connection_schemas(connection_id: str):
     """获取指定数据库连接下的所有 schemas（仅 PostgreSQL）
     
     对于 MySQL/SQLite，返回空列表（这些数据库没有 schema 概念）
@@ -560,7 +560,7 @@ async def list_connection_schemas(connection_id: str):
     "/api/datasources/databases/{connection_id}/schemas/{schema}/tables",
     tags=["Database Management"],
 )
-async def list_schema_tables(connection_id: str, schema: str):
+def list_schema_tables(connection_id: str, schema: str):
     """获取指定 schema 下的所有表（仅 PostgreSQL）
     
     对于 MySQL/SQLite，此端点不适用
@@ -659,7 +659,7 @@ async def list_schema_tables(connection_id: str, schema: str):
 
 
 @router.get("/api/datasources/databases/{connection_id}/tables/detail", tags=["Database Management"])
-async def get_table_details(connection_id: str, table_name: str, schema: str | None = None):
+def get_table_details(connection_id: str, table_name: str, schema: str | None = None):
     """获取指定表的详细信息，包括字段详情和示例数据"""
     try:
         # 获取应用配置

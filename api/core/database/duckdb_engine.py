@@ -562,6 +562,11 @@ def convert_table_to_varchar(
     将表的所有列转换为VARCHAR类型
     使用DuckDB原生功能，避免pandas
     """
+    # 无外部连接时自持一个连接贯穿 backup/describe/drop/create 全流程，
+    # 避免每步从池中各取一个连接（连接放大 + 跨连接可见性不一致）。
+    if con is None:
+        with with_duckdb_connection() as owned_con:
+            return convert_table_to_varchar(table_name, backup_table_name, owned_con)
     try:
         # 如果没有提供备份表名，先创建备份
         if not backup_table_name:
@@ -611,6 +616,9 @@ def check_and_convert_table_types(table_name: str, con=None) -> bool:
     """
     检查表的列类型，如果有非VARCHAR类型则转换
     """
+    if con is None:
+        with with_duckdb_connection() as owned_con:
+            return check_and_convert_table_types(table_name, owned_con)
     try:
         # 检查表是否存在
         with _use_connection(con) as connection:
@@ -653,6 +661,9 @@ def ensure_all_tables_varchar(con=None) -> bool:
     """
     确保所有表的列都是VARCHAR类型
     """
+    if con is None:
+        with with_duckdb_connection() as owned_con:
+            return ensure_all_tables_varchar(owned_con)
     try:
         # 获取所有表
         with _use_connection(con) as connection:

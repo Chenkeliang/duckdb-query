@@ -614,7 +614,7 @@ def build_join_chain(sources, joins, table_columns, attach_aliases=None):
 
 
 @router.post("/api/query", tags=["Query"])
-async def perform_query(
+def perform_query(
     query_request: QueryRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
@@ -1041,7 +1041,7 @@ async def perform_query(
 
 
 @router.post("/api/save_query_to_duckdb", tags=["Query"])
-async def save_query_to_duckdb(request: dict = Body(...)):
+def save_query_to_duckdb(request: dict = Body(...)):
     """将数据库查询结果保存到DuckDB作为新的数据源"""
     try:
         logger.info(f"Save query to DuckDB request: {request}")

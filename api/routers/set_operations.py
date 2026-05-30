@@ -90,7 +90,7 @@ def _set_operation_connection(
 
 
 @router.post("/api/set-operations/generate", tags=["Set Operations"])
-async def generate_set_operation_query(request: SetOperationRequest):
+def generate_set_operation_query(request: SetOperationRequest):
     """
     生成集合操作SQL查询
 
@@ -152,7 +152,7 @@ async def generate_set_operation_query(request: SetOperationRequest):
 
 
 @router.post("/api/set-operations/preview", tags=["Set Operations"])
-async def preview_set_operation(request: SetOperationRequest):
+def preview_set_operation(request: SetOperationRequest):
     """
     预览集合操作结果
 
@@ -205,7 +205,7 @@ async def preview_set_operation(request: SetOperationRequest):
 
 
 @router.post("/api/set-operations/validate", tags=["Set Operations"])
-async def validate_set_operation(request: SetOperationRequest):
+def validate_set_operation(request: SetOperationRequest):
     """
     验证集合操作配置
 
@@ -278,7 +278,7 @@ async def validate_set_operation(request: SetOperationRequest):
 
 
 @router.post("/api/set-operations/execute", tags=["Set Operations"])
-async def execute_set_operation(
+def execute_set_operation(
     request: SetOperationRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
@@ -460,7 +460,7 @@ async def execute_set_operation(
 
 
 @router.post("/api/set-operations/simple-union", tags=["Set Operations"])
-async def simple_union_operation(request: UnionOperationRequest):
+def simple_union_operation(request: UnionOperationRequest):
     """
     简化的UNION操作
 
@@ -531,7 +531,7 @@ async def simple_union_operation(request: UnionOperationRequest):
 
 
 @router.post("/api/set-operations/export", tags=["Set Operations"])
-async def export_set_operation(request: SetOperationExportRequest):
+def export_set_operation(request: SetOperationExportRequest):
     """
     集合操作异步导出 - 使用DuckDB COPY命令
 
