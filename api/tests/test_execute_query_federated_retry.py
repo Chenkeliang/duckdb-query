@@ -14,13 +14,13 @@ from core.database import duckdb_engine
 QUERY = "SELECT * FROM mysql_db.t"
 
 
-def _make_conn(main_results):
+def _make_conn(main_results, query=QUERY):
     """main_results: 按主查询 execute 顺序消费的 ('raise', exc) / ('ok', df)。"""
     calls = {"clear_cache": 0}
     main_iter = iter(main_results)
 
     def _execute(sql):
-        if sql == QUERY:
+        if sql == query:
             kind, payload = next(main_iter)
             if kind == "raise":
                 raise payload
@@ -72,3 +72,17 @@ def test_connection_lost_twice_reraises_once_retried():
     assert "Lost connection" in str(ei.value)
     # 只清一次缓存、只重试一次，不无限重试
     assert conn._calls["clear_cache"] == 1
+
+
+WRITE_QUERY = "DELETE FROM mysql_db.t WHERE id = 1"
+
+
+def test_write_query_not_retried_on_connection_lost():
+    # 写操作即使遇到连接闪断也不重试——可能已在 MySQL 落库，重试会重复应用（非幂等）
+    err = Exception("Server has gone away")
+    conn = _make_conn([("raise", err)], query=WRITE_QUERY)
+    with patch("core.database.query_metrics.log_query_duration"):
+        with pytest.raises(Exception) as ei:
+            duckdb_engine.execute_query(WRITE_QUERY, conn)
+    assert "gone away" in str(ei.value).lower()  # 原样抛出连接错误，未被重试掩盖
+    assert conn._calls["clear_cache"] == 0       # 没清缓存 = 没重试

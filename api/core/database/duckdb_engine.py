@@ -74,6 +74,23 @@ def _is_federated_connection_lost(err: Exception) -> bool:
     return any(marker in msg for marker in _FEDERATED_CONNECTION_LOST_MARKERS)
 
 
+def _is_read_only_query(query: str) -> bool:
+    """仅 SELECT 视为可安全重试（幂等）。写操作即便连接闪断也不重试，
+    避免语句已在 MySQL 落库、重试导致重复应用（非幂等）。解析失败按非只读处理。"""
+    if not query or not query.strip():
+        return False
+    parser = duckdb.connect()
+    try:
+        statements = parser.extract_statements(query)
+    except Exception:  # noqa: BLE001  无法解析时保守地不重试
+        return False
+    finally:
+        parser.close()
+    return bool(statements) and all(
+        s.type == duckdb.StatementType.SELECT for s in statements
+    )
+
+
 @contextmanager
 def _use_connection(connection=None):
     """内部工具：优先使用传入连接，否则从连接池获取"""
@@ -406,7 +423,7 @@ def execute_query(query, con=None):
             # 联邦查询连接失效自愈：mysql 扩展按 DSN 进程级缓存连接，空闲后被
             # 中间设备/wait_timeout 静默掐断，复用即「Server has gone away」，
             # DETACH 清不掉。清空扩展连接缓存后重试一次（会重建新连接）。
-            if _is_federated_connection_lost(err):
+            if _is_federated_connection_lost(err) and _is_read_only_query(query):
                 logger.warning(
                     "Federated MySQL connection lost (%s); clearing cache and retrying once",
                     err,
