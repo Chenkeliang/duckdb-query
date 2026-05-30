@@ -6,8 +6,9 @@ from typing import Any, Dict
 
 from core.common.exceptions import ResourceNotFoundError
 from core.database.duckdb_engine import with_duckdb_connection
-from core.services import ai_config, ai_error_doctor, ai_explain
+from core.services import ai_config, ai_error_doctor, ai_explain, ai_nl_to_sql, llm_context
 from core.services.llm_service import AIConfigError, AIDisabledError, LLMService
+from core.services.retriever import KeywordRetriever
 from fastapi import APIRouter
 from pydantic import BaseModel
 from utils.response_helpers import (
@@ -133,5 +134,44 @@ def explain_sql_route(payload: ExplainSqlPayload):
     except Exception as exc:  # noqa: BLE001  供应商真实调用失败(网络/Key/超时)
         return error_json_response(
             502, MessageCode.OPERATION_FAILED, f"AI explain failed: {exc}"
+        )
+    return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)
+
+
+def _list_candidate_tables() -> list[str]:
+    """main schema 下的表名,作为 KeywordRetriever 的候选池(失败则空)。"""
+    try:
+        with with_duckdb_connection() as con:
+            rows = con.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'main'"
+            ).fetchall()
+        return [r[0] for r in rows]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+class NlToSqlPayload(BaseModel):
+    question: str
+    tables: list[str] = []
+    locale: str = "zh"
+
+
+@router.post("/api/ai/nl-to-sql", tags=["AI"])
+def nl_to_sql_route(payload: NlToSqlPayload):
+    cfg = ai_config.load_ai_settings()
+    candidates = _list_candidate_tables()
+    relevant = KeywordRetriever().retrieve(payload.question, payload.tables, candidates)
+    schema_text = _build_schema_text(relevant)
+    context = llm_context.build_nl2sql_context(schema_text, locale=payload.locale)
+    try:
+        result = ai_nl_to_sql.nl_to_sql(
+            LLMService(cfg), payload.question, context, payload.locale
+        )
+    except (AIDisabledError, AIConfigError) as exc:
+        return _ai_error_response(exc)
+    except Exception as exc:  # noqa: BLE001
+        return error_json_response(
+            502, MessageCode.OPERATION_FAILED, f"AI nl-to-sql failed: {exc}"
         )
     return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)
