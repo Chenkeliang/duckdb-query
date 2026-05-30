@@ -1,0 +1,18 @@
+[
+  {
+    "question": "每个客户的订单数,最多的排前面",
+    "sql": "SELECT customer_id, count(*) AS order_count FROM orders GROUP BY customer_id ORDER BY order_count DESC"
+  },
+  {
+    "question": "最近 7 天的销售额",
+    "sql": "SELECT sum(amount) AS revenue FROM orders WHERE order_date >= CURRENT_DATE - INTERVAL 7 DAY"
+  },
+  {
+    "question": "联邦:MySQL 的用户表里活跃用户数",
+    "sql": "SELECT count(*) FROM mysqldb.main.users WHERE status = 'active'"
+  },
+  {
+    "question": "按月统计新增客户",
+    "sql": "SELECT date_trunc('month', created_at) AS m, count(*) AS n FROM customers GROUP BY m ORDER BY m"
+  }
+]
