@@ -32,6 +32,8 @@
 - **SQL 永远可见、可编辑、绝不自动执行**(尤其修复后的 SQL)。
 - **默认隐私安全**:opt-in;NL→SQL/报错医生只发 schema;总结默认只发"聚合画像"。
 - **可观测/可审计**:用量日志、"将发送给 AI 的内容"可预览。
+- **全面但不过重、交互优先**:每个功能都要有真实的交互设计与价值,不为做而做;能用既有基建(DuckDB/shadcn/CodeMirror/SQLHistory)就不引重依赖。
+- **从第一版就可扩展**:检索、供应商、功能均以接口/抽象落地,避免日后推倒重来。
 
 ---
 
@@ -108,7 +110,8 @@ UI:
   → LLM 流式生成 SQL → 落进现有 CodeMirror(可编辑, 不自动跑)
   → 信任 UX: 展示"本次用了哪些表做上下文" → 用户审 → 点运行
 ```
-- **schema-linking(v1 简化)**:用工作台**已选中的表**作为上下文(工具本就有"选中表"概念);表多/未选时退化为全部可见表名 + 关键词匹配;向量检索是后续优化。
+- **schema 感知**:每张表按其**来源(duckdb / 某个 MySQL/PG 连接)与 schema** 限定;上下文里显式标注来源,联邦多源时尤为关键(避免跨源串味、避免方言混用)。
+- **schema-linking**:优先用工作台**已选中的表**作为上下文(工具本就有"选中表"概念);表多时用 `VectorRetriever`(§6,DuckDB VSS)按问题检索相关表;未配置 embedding 时退化为 `KeywordRetriever`。
 - 落点:`SQLQueryPanel` 编辑器**上方一个"问数"输入条** + 流式指示 + "用了哪些表"chips。
 - **DuckDB 方言提示**:静态 cheatsheet(`PIVOT`/`LIST_`/`STRUCT`/`EXCLUDE`/日期函数),防止 LLM 漂成 ANSI/PG 导致**静默出错**。
 - 预期准确率(诚实):种了 few-shot 后常见模式 70–80%;新颖复杂多表 JOIN 30–50%。**故"SQL 可编辑"是硬约束**。
@@ -137,15 +140,22 @@ UI:
 
 ## 6. few-shot / 上下文语料
 
-`llm_context` 合并五类来源(对应"1+2+3+方言+联邦"):
-1. **相关表 DDL**——现有 `table-detail` API;
+`llm_context` 合并五类来源(对应"1+2+3+方言+联邦"),**全部按来源/schema 限定**(每张表标注其连接/schema,见 §5.1 schema 感知):
+1. **相关表 DDL**——现有 `table-detail` API;含来源(duckdb / mysql / postgres 连接)与 schema;
 2. **SQL 历史**——`SQLHistory` 中成功执行过的真实查询,作 few-shot(零标注、越用越准);
 3. **手工黄金样例**——`api/prompts/sql_examples.jsonc` 种子集(覆盖常见形态);
 4. **DuckDB 方言 cheatsheet**——`api/prompts/duckdb_dialect.md`(静态,源自 DuckDB 官方语法,人工精选);
-5. **本系统联邦用法**——从现有 join/联邦 SQL 构建器提炼:`alias.schema.table` 限定名、下推写法、ATTACH 约定。
+5. **联邦/ATTACH 专用样例(一等公民,重点)**——`api/prompts/federated_examples.jsonc`:这是本工具的真实风险点。必须覆盖:
+   - 限定名约定:`SELECT ... FROM mysql_db.schema.table`(ATTACH 别名 + schema + 表);
+   - **跨方言函数兼容**:DuckDB 侧函数 vs 透传到 MySQL/PG 的差异(日期/字符串/分页等),给"用什么、别用什么"的对照样例,**防止生成的 SQL 在 ATTACH 源上语法不兼容**;
+   - 多源 JOIN 的写法(本系统现有 join/联邦构建器的产物作为黄金样例来源)。
 
-检索(v1):近期历史 + 关键词/表名匹配;Top-3 拼入。向量检索后续再上。
-Prompt 预算:schema 块控制在 ~2k token;few-shot 取 3 条。
+**检索抽象(从第一版就可扩展,不留死角)**:定义 `Retriever` 接口,两实现——
+- `KeywordRetriever`:近期历史 + 表名/关键词匹配(无 embedding 时的兜底,P0 即有);
+- `VectorRetriever`:**基于 DuckDB `vss` 扩展**(embedding 存进 DuckDB 表,HNSW/`array_distance` 检索,**无需另起向量库**);embedding 走配置的供应商 embedding 模型(云或本地 Ollama)。
+- **NL→SQL(P3)默认用 `VectorRetriever`**;接口隔离保证日后换实现零改上层。
+
+Prompt 预算:schema 块 ~2k token;few-shot 取 Top-3。
 
 ---
 
@@ -192,7 +202,7 @@ LLM 调用本身在单测中 mock。
 - **P0 地基**:`llm_service`(LiteLLM + Fernet + 配置)、`routers/ai.py` 骨架、设置页供应商 Tab、SSE 管线、总开关。
 - **P1 报错医生 Stage 0**:纯确定性候选项提示(零 LLM,可先于地基独立上)。
 - **P2 报错医生 Stage 1 + 解释 SQL**:最低风险 LLM 功能(只读、schema-only、安全闸、1 重试)。
-- **P3 NL→SQL**:`llm_context` + few-shot(历史/手工/方言/联邦)+ 输入条 UX + 信任展示。
+- **P3 NL→SQL**:`Retriever` 接口 + `VectorRetriever`(DuckDB VSS)+ `llm_context`(schema 感知 + 联邦专用样例)+ 输入条 UX + "用了哪些表"信任展示。
 - **P4 总结结果**:`result_profiler` + 聚合画像总结 + 可选样本行。
 
 ---
@@ -208,8 +218,14 @@ LLM 调用本身在单测中 mock。
 
 ---
 
-## 12. 待定 / 开放问题
+## 12. 已定 / 开放问题
 
-- 向量检索(schema-linking / few-shot)何时从"关键词匹配"升级——视 NL→SQL 实测失败模式而定。
-- 是否内置一组 DuckDB few-shot 样例随仓库分发(便于冷启动)。
-- 总结结果"聚合画像"的字段集是否够用,是否需要可配。
+已定(本次评审拍板):
+- **向量检索从第一版就做**,基于 DuckDB `vss` 扩展(无新基建),以 `Retriever` 接口落地,P3 默认启用——避免日后无法扩展。
+- **联邦/ATTACH 专用样例为必做项**(§6.5),防止 ATTACH 源与 DuckDB SQL 方言不兼容。
+- **schema/来源感知**纳入上下文构建。
+- 内置一组 DuckDB + 联邦 few-shot 样例随仓库分发(`api/prompts/`),便于冷启动。
+
+仍开放:
+- `VectorRetriever` 的 embedding 模型默认选谁(云端 `text-embedding-3-small` vs 本地 Ollama embedding)——P3 实测再定,接口不受影响。
+- 总结结果"聚合画像"的字段集是否够用、是否需可配——P4 实测再定。
