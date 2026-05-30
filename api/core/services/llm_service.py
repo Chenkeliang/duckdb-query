@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-import litellm  # pylint: disable=import-error
+try:
+    import litellm  # pylint: disable=import-error
+except ImportError:  # litellm 为可选依赖：未安装时 AI 功能不可用，但应用仍能正常启动
+    litellm = None
 
 from core.common import crypto
 from core.services import ai_config
@@ -34,6 +37,11 @@ class LLMService:
     def complete(self, feature: str, messages: List[Dict[str, str]]) -> str:
         if not self._cfg.get("enabled"):
             raise AIDisabledError("AI features are disabled")
+        if litellm is None:
+            raise AIConfigError(
+                "litellm is not installed; AI features are unavailable "
+                "(install it or rebuild the image with requirements.txt)"
+            )
 
         resolved = ai_config.resolve_feature(self._cfg, feature)
         provider = resolved["provider"]

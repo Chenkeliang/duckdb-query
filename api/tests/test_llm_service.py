@@ -49,6 +49,18 @@ def test_complete_raises_when_ai_disabled(monkeypatch):
         pass
 
 
+def test_complete_raises_when_litellm_missing(monkeypatch):
+    # litellm 未安装（None）时，应用可启动，调用时给出清晰错误而非崩溃
+    cfg = _cfg(monkeypatch)
+    monkeypatch.setattr(llm_service, "litellm", None)
+    svc = llm_service.LLMService(cfg)
+    try:
+        svc.complete("explain", [{"role": "user", "content": "hi"}])
+        assert False, "should have raised"
+    except llm_service.AIConfigError:
+        pass
+
+
 def test_complete_raises_when_feature_has_no_provider(monkeypatch):
     cfg = _cfg(monkeypatch)
     cfg["default_provider"] = None
