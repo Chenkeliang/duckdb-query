@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from core.common.exceptions import ResourceNotFoundError
 from core.database.duckdb_engine import with_duckdb_connection
-from core.services import ai_config, ai_error_doctor
+from core.services import ai_config, ai_error_doctor, ai_explain
 from core.services.llm_service import AIConfigError, AIDisabledError, LLMService
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -116,3 +116,22 @@ def error_fix(payload: ErrorFixPayload):
     return create_success_response(
         data=result, message_code=MessageCode.OPERATION_SUCCESS
     )
+
+
+class ExplainSqlPayload(BaseModel):
+    sql: str
+    locale: str = "zh"
+
+
+@router.post("/api/ai/explain-sql", tags=["AI"])
+def explain_sql_route(payload: ExplainSqlPayload):
+    cfg = ai_config.load_ai_settings()
+    try:
+        result = ai_explain.explain_sql(LLMService(cfg), payload.sql, "", payload.locale)
+    except (AIDisabledError, AIConfigError) as exc:
+        return _ai_error_response(exc)
+    except Exception as exc:  # noqa: BLE001  供应商真实调用失败(网络/Key/超时)
+        return error_json_response(
+            502, MessageCode.OPERATION_FAILED, f"AI explain failed: {exc}"
+        )
+    return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)
