@@ -35,6 +35,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { listAsyncTasks, cancelAsyncTask, retryAsyncTask } from '@/api';
 import { invalidateAllDataCaches } from '@/utils/cacheInvalidation';
 import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
@@ -312,25 +317,42 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="font-mono text-xs cursor-help">
-                            {task.sql ? truncateSQL(task.sql) : '-'}
+                    {task.sql ? (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <span className="font-mono text-xs cursor-pointer hover:underline">
+                            {truncateSQL(task.sql)}
                           </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-md p-2">
-                          {task.sql ? (
-                            <SQLHighlight
-                              sql={task.sql}
-                              minHeight="4rem"
-                              maxHeight="12rem"
-                              className="border-0 rounded-md min-w-[280px]"
-                            />
-                          ) : null}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          side="bottom"
+                          align="start"
+                          className="w-[480px] max-w-[90vw] max-h-[var(--radix-popover-content-available-height)] p-2"
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs text-muted-foreground">SQL</span>
+                            <button
+                              className="text-xs text-primary hover:underline"
+                              onClick={() => {
+                                navigator.clipboard.writeText(task.sql!);
+                                showSuccessToast(t, undefined, t('common.copied', '已复制'));
+                              }}
+                            >
+                              {t('common.copy', '复制')}
+                            </button>
+                          </div>
+                          <SQLHighlight
+                            sql={task.sql}
+                            minHeight="4rem"
+                            maxHeight="24rem"
+                            scrollable
+                            className="border-0 rounded-md min-w-[280px]"
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    ) : (
+                      <span className="font-mono text-xs text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {getTaskDisplayName(task) ? (
