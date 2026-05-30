@@ -4,13 +4,17 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Database, AlertCircle, Loader2 } from 'lucide-react';
+import { Database, AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import {
   exportQueryResults,
   getQueryExportDownloadUrl,
 } from '@/api/queryExportApi';
 import { showErrorToast, cleanErrorMessage } from '@/utils/toastHelpers';
 import { parseDuckDbErrorSuggestion } from '@/utils/sqlErrorHelper';
+import { Button } from '@/components/ui/button';
+import { SQLHighlight } from '@/components/SQLHighlight';
+import { useAiEnabled } from '@/hooks/useAiEnabled';
+import { errorFix, type ErrorFixResult } from '@/api/aiApi';
 
 import { DataGridWrapper } from './DataGridWrapper';
 import type { DataGridApi } from './DataGridWrapper';
@@ -96,7 +100,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   attachDatabases,
 }) => {
   const actualExecTime = executionTime ?? execTime;
-  const { t } = useTranslation('common');
+  const { t, i18n } = useTranslation('common');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [dataGridStats, setDataGridStats] = useState<{
@@ -132,6 +136,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
 
   const effectiveSource = useMultiTabGrids ? activeTab?.query.source : source;
   const effectiveSQL = useMultiTabGrids ? activeTab?.query.sql : currentSQL;
+
+  // AI 报错医生（LLM 解释并修复），仅在 AI 开启时露出入口
+  const aiEnabled = useAiEnabled();
+  const [aiFix, setAiFix] = useState<ErrorFixResult | null>(null);
+  const [aiFixing, setAiFixing] = useState(false);
 
   const showImportButton =
     effectiveSource?.type === 'federated' &&
@@ -335,13 +344,26 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
 
   if (error) {
     const suggestion = parseDuckDbErrorSuggestion(error.message);
+    const runAiFix = async () => {
+      setAiFixing(true);
+      try {
+        const r = await errorFix(effectiveSQL || '', error.message, {
+          locale: i18n.language?.startsWith('zh') ? 'zh' : 'en',
+        });
+        setAiFix(r);
+      } catch (e) {
+        showErrorToast(t, e as Error, t('query.result.aiFixFailed', 'AI 修复失败'));
+      } finally {
+        setAiFixing(false);
+      }
+    };
     return (
       <div className={`flex flex-col h-full ${className}`}>
         {resultTabsBar}
         {singleSlotHeader}
         {showToolbar && <ResultToolbar {...toolbarProps} stats={emptyStats} disabled />}
         <div className="flex-1 flex items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-3 text-destructive max-w-md text-center px-4">
+          <div className="flex flex-col items-center gap-3 text-destructive max-w-lg text-center px-4">
             <AlertCircle className="h-10 w-10" />
             <span className="font-medium">{t('query.result.error', '查询失败')}</span>
             <span className="text-sm text-muted-foreground">{cleanErrorMessage(error.message)}</span>
@@ -351,6 +373,26 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
                   names: suggestion.candidates.map((c) => `"${c}"`).join(', '),
                 })}
               </span>
+            )}
+            {aiEnabled && effectiveSQL && (
+              <Button variant="outline" size="sm" disabled={aiFixing} onClick={runAiFix}>
+                {aiFixing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                <span className="ml-1">{t('query.result.aiExplainFix', 'AI 解释并修复')}</span>
+              </Button>
+            )}
+            {aiFix && (
+              <div className="w-full text-left text-foreground border rounded-lg p-3 mt-1">
+                <p className="text-sm text-muted-foreground mb-2 whitespace-pre-wrap">
+                  {aiFix.explanation}
+                </p>
+                {aiFix.fixed_sql && aiFix.safe && (
+                  <SQLHighlight sql={aiFix.fixed_sql} minHeight="48px" maxHeight="200px" />
+                )}
+              </div>
             )}
           </div>
         </div>

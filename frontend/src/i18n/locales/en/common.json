@@ -225,6 +225,8 @@
       "refreshing": "Refreshing...",
       "error": "Query failed",
       "didYouMean": "Did you mean: {{names}}?",
+      "aiExplainFix": "AI explain & fix",
+      "aiFixFailed": "AI fix failed",
       "rowCount": "{{count}} rows",
       "execTime": "Execution time: {{time}}ms",
       "rows": "rows",

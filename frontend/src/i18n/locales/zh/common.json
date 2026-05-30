@@ -231,6 +231,8 @@
       "refreshing": "刷新中...",
       "error": "查询失败",
       "didYouMean": "你是不是想找：{{names}}？",
+      "aiExplainFix": "AI 解释并修复",
+      "aiFixFailed": "AI 修复失败",
       "rowCount": "共 {{count}} 行",
       "execTime": "执行时间: {{time}}ms",
       "rows": "行",
