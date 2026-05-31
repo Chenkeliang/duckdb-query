@@ -5,7 +5,9 @@ import {
   detectTimeBoundCandidates,
   defaultTimeBoundValue,
   buildTimeBoundCondition,
+  buildTimeBoundSuggestions,
 } from '../timeBound';
+import { createEmptyGroup, createCondition } from '../FilterBar';
 
 describe('isTimeType', () => {
   it('matches TIMESTAMP variants and DATE, excludes TIME/others', () => {
@@ -81,9 +83,6 @@ describe('buildTimeBoundCondition', () => {
     expect(c.id.length).toBeGreaterThan(0);
   });
 });
-
-import { buildTimeBoundSuggestions } from '../timeBound';
-import { createEmptyGroup, createCondition } from '../FilterBar';
 
 function externalTable(name: string) {
   return { source: 'external', name, connection: { id: 'c1' } } as any;
@@ -170,5 +169,41 @@ describe('buildTimeBoundSuggestions', () => {
       joinConfigs: [],
     });
     expect(out).toEqual([]);
+  });
+
+  it('does NOT suppress orders when another table (refunds) shares a column name and is bounded', () => {
+    // orders 和 refunds 都没有 create_time 同名问题，这里给两表都加 create_time 验证表名前缀隔离
+    const cols = {
+      orders: [{ name: 'create_time', type: 'TIMESTAMP' }],
+      refunds: [{ name: 'create_time', type: 'TIMESTAMP' }],
+    };
+    const out = buildTimeBoundSuggestions({
+      activeTables: [externalTable('orders'), externalTable('refunds')],
+      tableColumnsMap: cols,
+      filterTree: createEmptyGroup(),
+      joinConfigs: [
+        { conditions: [{ rightMode: 'expression', rightExpression: 'refunds.create_time >= \'2026-01-01\'' }] },
+      ],
+    });
+    // refunds 被抑制，orders 仍应建议
+    expect(out.map((s) => s.tableName)).toEqual(['orders']);
+  });
+
+  it('does NOT suppress when a non-candidate time column (birthday) is bounded', () => {
+    const cols = {
+      members: [
+        { name: 'create_time', type: 'TIMESTAMP' },
+        { name: 'birthday', type: 'DATE' },
+      ],
+    };
+    const tree = createEmptyGroup();
+    tree.children.push(createCondition('members', 'birthday', '>=', '2000-01-01', undefined, 'where'));
+    const out = buildTimeBoundSuggestions({
+      activeTables: [externalTable('members')],
+      tableColumnsMap: cols,
+      filterTree: tree,
+      joinConfigs: [],
+    });
+    expect(out.map((s) => s.tableName)).toEqual(['members']);
   });
 });
