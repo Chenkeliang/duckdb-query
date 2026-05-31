@@ -1253,8 +1253,9 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   }, []);
 
   const handleAddAllTimeBounds = React.useCallback(() => {
+    const value = defaultTimeBoundValue();
     const nodes = timeBoundSuggestions.map((s) =>
-      buildTimeBoundCondition(s.tableName, s.recommended, defaultTimeBoundValue()),
+      buildTimeBoundCondition(s.tableName, s.recommended, value),
     );
     setFilterTree((prev) => ({ ...prev, children: [...prev.children, ...nodes] }));
   }, [timeBoundSuggestions]);
