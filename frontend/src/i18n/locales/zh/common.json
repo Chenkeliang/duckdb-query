@@ -524,7 +524,13 @@
       "sqlAliasLabel": "AS",
       "sqlAliasInput": "表别名",
       "sqlAliasInvalid": "仅支持字母、数字、下划线，且不能以数字开头",
-      "sqlAliasDuplicate": "别名不能重复"
+      "sqlAliasDuplicate": "别名不能重复",
+      "timeBound": {
+        "chip": "近30天",
+        "tooltip": "给该联邦大表的 {{column}} 加近30天范围（落 ON、下推到远端，减少抽取量、避免超时）",
+        "addAll": "全部限定近30天",
+        "pickColumn": "选择时间列"
+      }
     },
     "typeConflict": {
       "detected": "检测到 {{count}} 个类型冲突",

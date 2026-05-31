@@ -518,7 +518,13 @@
       "sqlAliasLabel": "AS",
       "sqlAliasInput": "Table alias",
       "sqlAliasInvalid": "Use letters, digits, or underscores; cannot start with a digit",
-      "sqlAliasDuplicate": "Alias must be unique"
+      "sqlAliasDuplicate": "Alias must be unique",
+      "timeBound": {
+        "chip": "Last 30 days",
+        "tooltip": "Add a last-30-days bound on {{column}} for this federated table (placed in ON, pushed down to reduce extraction and avoid timeouts)",
+        "addAll": "Bound all to last 30 days",
+        "pickColumn": "Pick time column"
+      }
     },
     "typeConflict": {
       "detected": "{{count}} type conflict(s) detected",
