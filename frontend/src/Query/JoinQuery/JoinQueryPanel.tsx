@@ -88,6 +88,13 @@ import {
 } from './sqlOptimizer';
 import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
 import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
+import { TimeBoundChip } from './TimeBoundChip';
+import {
+  buildTimeBoundSuggestions,
+  defaultTimeBoundValue,
+  buildTimeBoundCondition,
+  type TimeBoundSuggestion,
+} from './timeBound';
 
 
 /**
@@ -1221,6 +1228,37 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableColumnsMapKey]);
 
+  const timeBoundSuggestions = React.useMemo(
+    () =>
+      buildTimeBoundSuggestions({
+        activeTables,
+        tableColumnsMap,
+        filterTree,
+        joinConfigs,
+      }),
+    [activeTables, tableColumnsMap, filterTree, joinConfigs],
+  );
+
+  const timeBoundByTable = React.useMemo(() => {
+    const m: Record<string, TimeBoundSuggestion> = {};
+    timeBoundSuggestions.forEach((s) => {
+      m[s.tableName] = s;
+    });
+    return m;
+  }, [timeBoundSuggestions]);
+
+  const handleAddTimeBound = React.useCallback((tableName: string, column: string) => {
+    const node = buildTimeBoundCondition(tableName, column, defaultTimeBoundValue());
+    setFilterTree((prev) => ({ ...prev, children: [...prev.children, node] }));
+  }, []);
+
+  const handleAddAllTimeBounds = React.useCallback(() => {
+    const nodes = timeBoundSuggestions.map((s) =>
+      buildTimeBoundCondition(s.tableName, s.recommended, defaultTimeBoundValue()),
+    );
+    setFilterTree((prev) => ({ ...prev, children: [...prev.children, ...nodes] }));
+  }, [timeBoundSuggestions]);
+
   // 构建可用列信息（用于 FilterBar）
   // 使用 tableColumnsMapKey 作为依赖以确保列加载后重新计算
   const availableColumns = React.useMemo((): ColumnInfo[] => {
@@ -2036,6 +2074,14 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
                     isError={columnResult?.isError}
                     isEmpty={columnResult?.isEmpty}
                   />
+                  {timeBoundByTable[tableName] && (
+                    <TimeBoundChip
+                      tableName={tableName}
+                      recommended={timeBoundByTable[tableName].recommended}
+                      candidates={timeBoundByTable[tableName].candidates}
+                      onAdd={(col) => handleAddTimeBound(tableName, col)}
+                    />
+                  )}
                   {/* JOIN 连接器 */}
                   {index < activeTables.length - 1 && (
                     <MemoizedJoinConnector
@@ -2054,6 +2100,16 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
             })
           )}
         </div>
+
+        {timeBoundSuggestions.length >= 2 && (
+          <button
+            type="button"
+            onClick={handleAddAllTimeBounds}
+            className="mb-2 inline-flex items-center gap-1 rounded-md border border-warning/50 bg-warning/10 px-2 py-1 text-xs text-warning hover:bg-warning/20"
+          >
+            {t('query.join.timeBound.addAll', '全部限定近30天')} ({timeBoundSuggestions.length})
+          </button>
+        )}
 
         {/* 筛选条件栏 (FilterBar) */}
         {activeTables.length > 0 && (
