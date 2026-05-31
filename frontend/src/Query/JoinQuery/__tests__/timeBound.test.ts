@@ -81,3 +81,94 @@ describe('buildTimeBoundCondition', () => {
     expect(c.id.length).toBeGreaterThan(0);
   });
 });
+
+import { buildTimeBoundSuggestions } from '../timeBound';
+import { createEmptyGroup, createCondition } from '../FilterBar';
+
+function externalTable(name: string) {
+  return { source: 'external', name, connection: { id: 'c1' } } as any;
+}
+function localTable(name: string) {
+  return { source: 'duckdb', name } as any;
+}
+
+const COLS = {
+  orders: [
+    { name: 'id', type: 'BIGINT' },
+    { name: 'create_time', type: 'TIMESTAMP' },
+    { name: 'updated_at', type: 'TIMESTAMP' },
+  ],
+  refunds: [
+    { name: 'id', type: 'BIGINT' },
+    { name: 'gmt_create', type: 'TIMESTAMP' },
+  ],
+};
+
+describe('buildTimeBoundSuggestions', () => {
+  it('suggests for federated tables with audit time columns, recommended=create', () => {
+    const out = buildTimeBoundSuggestions({
+      activeTables: [externalTable('orders'), externalTable('refunds')],
+      tableColumnsMap: COLS,
+      filterTree: createEmptyGroup(),
+      joinConfigs: [],
+    });
+    expect(out).toEqual([
+      { tableName: 'orders', candidates: ['create_time', 'updated_at'], recommended: 'create_time' },
+      { tableName: 'refunds', candidates: ['gmt_create'], recommended: 'gmt_create' },
+    ]);
+  });
+
+  it('skips local (non-federated) tables', () => {
+    const out = buildTimeBoundSuggestions({
+      activeTables: [localTable('orders')],
+      tableColumnsMap: COLS,
+      filterTree: createEmptyGroup(),
+      joinConfigs: [],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('skips a table whose columns are not loaded', () => {
+    const out = buildTimeBoundSuggestions({
+      activeTables: [externalTable('orders')],
+      tableColumnsMap: {},
+      filterTree: createEmptyGroup(),
+      joinConfigs: [],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('suppresses when filterTree already bounds the table on a time column', () => {
+    const tree = createEmptyGroup();
+    tree.children.push(createCondition('orders', 'create_time', '>=', '2026-01-01 00:00:00', undefined, 'on'));
+    const out = buildTimeBoundSuggestions({
+      activeTables: [externalTable('orders')],
+      tableColumnsMap: COLS,
+      filterTree: tree,
+      joinConfigs: [],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('suppresses when a join expression already references a time column', () => {
+    const out = buildTimeBoundSuggestions({
+      activeTables: [externalTable('orders')],
+      tableColumnsMap: COLS,
+      filterTree: createEmptyGroup(),
+      joinConfigs: [
+        { conditions: [{ leftMode: 'expression', leftExpression: 'orders.create_time >= \'2026-01-01\'' }] },
+      ],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('skips self-join (duplicate table names)', () => {
+    const out = buildTimeBoundSuggestions({
+      activeTables: [externalTable('orders'), externalTable('orders')],
+      tableColumnsMap: COLS,
+      filterTree: createEmptyGroup(),
+      joinConfigs: [],
+    });
+    expect(out).toEqual([]);
+  });
+});

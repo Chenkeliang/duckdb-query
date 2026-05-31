@@ -5,7 +5,9 @@
  */
 import type { TableColumn } from '@/hooks/useTableColumns';
 import { createCondition } from './FilterBar';
-import type { FilterCondition } from './FilterBar';
+import type { FilterCondition, FilterGroup } from './FilterBar';
+import type { SelectedTable } from '@/types/SelectedTable';
+import { getTableName, isExternalTable } from '@/utils/tableUtils';
 
 /** create 系词干（小写子串匹配）。'creat' 覆盖 create/created/gmt_create。 */
 const CREATE_STEMS = ['creat', 'ctime', 'add_time', 'insert_time'];
@@ -54,4 +56,91 @@ export function buildTimeBoundCondition(
   value: string,
 ): FilterCondition {
   return createCondition(tableName, column, '>=', value, undefined, 'on');
+}
+
+const RANGE_OPS = new Set(['=', '>', '>=', '<', '<=', 'BETWEEN']);
+
+/** filterTree 内是否已有针对该表某时间列、范围类运算符的条件。 */
+function hasFilterTreeBound(
+  tree: FilterGroup,
+  tableName: string,
+  timeColNames: Set<string>,
+): boolean {
+  let found = false;
+  const walk = (node: any): void => {
+    if (found || !node) return;
+    if (node.type === 'condition') {
+      if (node.table === tableName && timeColNames.has(node.column) && RANGE_OPS.has(node.operator)) {
+        found = true;
+      }
+    } else if (node.type === 'group' && Array.isArray(node.children)) {
+      node.children.forEach(walk);
+    }
+  };
+  walk(tree);
+  return found;
+}
+
+interface ExprJoinCondition {
+  leftMode?: string;
+  rightMode?: string;
+  leftExpression?: string;
+  rightExpression?: string;
+}
+interface ExprJoinConfig {
+  conditions?: ExprJoinCondition[];
+}
+
+/** joinConfigs 的 expression 条件里是否已提及该表的某时间列（兜底用户手敲的 ON 边界）。 */
+function hasExpressionBound(joinConfigs: ExprJoinConfig[], timeColNames: Set<string>): boolean {
+  for (const cfg of joinConfigs || []) {
+    for (const c of cfg.conditions || []) {
+      const exprs = [
+        c.leftMode === 'expression' ? c.leftExpression : '',
+        c.rightMode === 'expression' ? c.rightExpression : '',
+      ];
+      for (const e of exprs) {
+        const low = (e || '').toLowerCase();
+        for (const col of timeColNames) {
+          if (low.includes(col.toLowerCase())) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+export interface TimeBoundSuggestion {
+  tableName: string;
+  candidates: string[];
+  recommended: string;
+}
+
+export interface TimeBoundContext {
+  activeTables: SelectedTable[];
+  tableColumnsMap: Record<string, TableColumn[]>;
+  filterTree: FilterGroup;
+  joinConfigs: ExprJoinConfig[];
+}
+
+/** 为联邦大表生成时间边界建议（每表 0/1 条）。 */
+export function buildTimeBoundSuggestions(ctx: TimeBoundContext): TimeBoundSuggestion[] {
+  const names = (ctx.activeTables || []).map((t) => getTableName(t));
+  const dupNames = new Set(names.filter((n, i) => names.indexOf(n) !== i));
+
+  const out: TimeBoundSuggestion[] = [];
+  (ctx.activeTables || []).forEach((table) => {
+    if (!isExternalTable(table)) return;
+    const tableName = getTableName(table);
+    if (dupNames.has(tableName)) return;
+    const columns = ctx.tableColumnsMap[tableName];
+    if (!columns || columns.length === 0) return;
+    const candidates = detectTimeBoundCandidates(columns);
+    if (candidates.length === 0) return;
+    const timeColNames = new Set(columns.filter((c) => isTimeType(c.type)).map((c) => c.name));
+    if (hasFilterTreeBound(ctx.filterTree, tableName, timeColNames)) return;
+    if (hasExpressionBound(ctx.joinConfigs, timeColNames)) return;
+    out.push({ tableName, candidates, recommended: candidates[0] });
+  });
+  return out;
 }
