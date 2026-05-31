@@ -40,4 +40,21 @@ describe('TimeBoundChip', () => {
     );
     expect(screen.getByTestId('time-bound-chip-orders').textContent).toContain('create_time');
   });
+
+  it('clicking the chip while the menu is open closes the menu and adds recommended', () => {
+    const onAdd = vi.fn();
+    render(
+      <TimeBoundChip
+        tableName="orders"
+        recommended="create_time"
+        candidates={['create_time', 'updated_at']}
+        onAdd={onAdd}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('time-bound-chip-menu-orders'));
+    expect(screen.queryByText('updated_at')).not.toBeNull(); // 菜单已打开
+    fireEvent.click(screen.getByTestId('time-bound-chip-orders'));
+    expect(onAdd).toHaveBeenCalledWith('create_time');
+    expect(screen.queryByText('updated_at')).toBeNull(); // 菜单已关闭
+  });
 });

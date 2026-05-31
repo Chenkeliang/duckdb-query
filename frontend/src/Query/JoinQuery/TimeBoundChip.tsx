@@ -28,8 +28,11 @@ export const TimeBoundChip: React.FC<TimeBoundChipProps> = ({
       <button
         type="button"
         data-testid={`time-bound-chip-${tableName}`}
-        onClick={() => onAdd(recommended)}
-        title={t('query.join.timeBound.tooltip', '给该表加近30天范围（落 ON 下推）').replace('{{column}}', recommended)}
+        onClick={() => {
+          setOpen(false);
+          onAdd(recommended);
+        }}
+        title={t('query.join.timeBound.tooltip', '给该表的 {{column}} 加近30天范围（落 ON 下推）').replace('{{column}}', recommended)}
         className="inline-flex items-center gap-1 rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-xs text-warning hover:bg-warning/20"
       >
         <Clock className="h-3 w-3" />
