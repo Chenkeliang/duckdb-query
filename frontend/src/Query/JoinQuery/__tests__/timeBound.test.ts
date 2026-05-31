@@ -4,6 +4,7 @@ import {
   classifyAuditColumn,
   detectTimeBoundCandidates,
 } from '../timeBound';
+import { defaultTimeBoundValue, buildTimeBoundCondition } from '../timeBound';
 
 describe('isTimeType', () => {
   it('matches TIMESTAMP variants and DATE, excludes TIME/others', () => {
@@ -51,5 +52,26 @@ describe('detectTimeBoundCandidates', () => {
       { name: 'birthday', type: 'DATE' },
       { name: 'pay_time', type: 'TIMESTAMP' },
     ])).toEqual([]);
+  });
+});
+
+describe('defaultTimeBoundValue', () => {
+  it('returns a bare datetime string 30 days before the given now (no quotes)', () => {
+    const now = new Date(2026, 4, 31, 13, 45, 0); // 2026-05-31 本地时间
+    expect(defaultTimeBoundValue(now, 30)).toBe('2026-05-01 00:00:00');
+  });
+});
+
+describe('buildTimeBoundCondition', () => {
+  it('builds a FilterCondition with placement=on and bare value', () => {
+    const c = buildTimeBoundCondition('orders', 'create_time', '2026-05-01 00:00:00');
+    expect(c.type).toBe('condition');
+    expect(c.table).toBe('orders');
+    expect(c.column).toBe('create_time');
+    expect(c.operator).toBe('>=');
+    expect(c.value).toBe('2026-05-01 00:00:00');
+    expect(c.placement).toBe('on');
+    expect(typeof c.id).toBe('string');
+    expect(c.id.length).toBeGreaterThan(0);
   });
 });
