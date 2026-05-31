@@ -3,8 +3,9 @@ import {
   isTimeType,
   classifyAuditColumn,
   detectTimeBoundCandidates,
+  defaultTimeBoundValue,
+  buildTimeBoundCondition,
 } from '../timeBound';
-import { defaultTimeBoundValue, buildTimeBoundCondition } from '../timeBound';
 
 describe('isTimeType', () => {
   it('matches TIMESTAMP variants and DATE, excludes TIME/others', () => {
@@ -59,6 +60,11 @@ describe('defaultTimeBoundValue', () => {
   it('returns a bare datetime string 30 days before the given now (no quotes)', () => {
     const now = new Date(2026, 4, 31, 13, 45, 0); // 2026-05-31 本地时间
     expect(defaultTimeBoundValue(now, 30)).toBe('2026-05-01 00:00:00');
+  });
+
+  it('rolls back across a month boundary', () => {
+    const now = new Date(2026, 0, 15, 9, 0, 0); // 2026-01-15
+    expect(defaultTimeBoundValue(now, 30)).toBe('2025-12-16 00:00:00');
   });
 });
 

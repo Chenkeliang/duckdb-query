@@ -41,6 +41,8 @@ export function detectTimeBoundCandidates(columns: TableColumn[]): string[] {
 /** 近 N 天的起点，格式化为裸日期串 'YYYY-MM-DD 00:00:00'（不含 SQL 引号；生成器会自动加）。 */
 export function defaultTimeBoundValue(now: Date = new Date(), days = 30): string {
   const d = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  // 归零到本地午夜，避免 DST 切换夜导致毫秒减法落在前/后一天的非零点而取错日期
+  d.setHours(0, 0, 0, 0);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} 00:00:00`;
 }
