@@ -7,7 +7,7 @@ import {
   buildTimeBoundCondition,
   buildTimeBoundSuggestions,
 } from '../timeBound';
-import { createEmptyGroup, createCondition } from '../FilterBar';
+import { createEmptyGroup, createCondition, getOnConditionsTreeForTable, generateFilterSQLForSubquery } from '../FilterBar';
 
 describe('isTimeType', () => {
   it('matches TIMESTAMP variants and DATE, excludes TIME/others', () => {
@@ -205,5 +205,26 @@ describe('buildTimeBoundSuggestions', () => {
       joinConfigs: [],
     });
     expect(out.map((s) => s.tableName)).toEqual(['members']);
+  });
+});
+
+describe('time-bound condition flows into the per-table ON subquery pushdown', () => {
+  it('getOnConditionsTreeForTable picks it up and renders into subquery WHERE', () => {
+    const tree = createEmptyGroup();
+    tree.children.push(buildTimeBoundCondition('orders', 'create_time', '2026-05-01 00:00:00'));
+
+    const onTree = getOnConditionsTreeForTable(tree, 'orders');
+    expect(onTree.children.length).toBe(1);
+
+    const sql = generateFilterSQLForSubquery(onTree);
+    expect(sql).toContain('create_time');
+    expect(sql).toMatch(/>=\s*'2026-05-01 00:00:00'/);
+  });
+
+  it('does not leak the on-placed condition to a different table', () => {
+    const tree = createEmptyGroup();
+    tree.children.push(buildTimeBoundCondition('orders', 'create_time', '2026-05-01 00:00:00'));
+    const other = getOnConditionsTreeForTable(tree, 'refunds');
+    expect(other.children.length).toBe(0);
   });
 });
