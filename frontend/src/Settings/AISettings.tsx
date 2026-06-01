@@ -137,11 +137,17 @@ export function AISettings() {
               </CardDescription>
             </div>
           </div>
-          <Switch
-            checked={s.enabled}
-            onCheckedChange={(v) => update({ enabled: v })}
-            aria-label={t('settings.ai.enable', '启用 AI')}
-          />
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-sm text-muted-foreground">
+              {t('settings.ai.enable', '启用 AI')}
+            </span>
+            <Switch
+              checked={s.enabled}
+              onCheckedChange={(v) => update({ enabled: v })}
+              aria-label={t('settings.ai.enable', '启用 AI')}
+              className="border border-border data-[state=unchecked]:bg-muted"
+            />
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -189,6 +195,7 @@ export function AISettings() {
                       size="sm"
                       onClick={() =>
                         update({
+                          enabled: true, // 顺手打开总开关，一键即用
                           default_provider: p.id,
                           providers: s.providers.map((q) =>
                             q.id === p.id ? { ...q, enabled: true } : q,
@@ -205,6 +212,7 @@ export function AISettings() {
                       checked={p.enabled}
                       onCheckedChange={(v) => updateProvider(p.id, { enabled: v })}
                       aria-label={t('settings.ai.providerEnable', '启用该供应商')}
+                      className="border border-border data-[state=unchecked]:bg-muted"
                     />
                   </span>
                   <Button
