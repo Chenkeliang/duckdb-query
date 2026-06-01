@@ -55,6 +55,23 @@ interface ChartSpec {
   - `limit 10000` 自然消失(聚合结果远小于 1 万)。
 
 > **联邦明确支持**:客户端聚合路径与数据源无关;重跑聚合路径通过上面的"同端点 + 同 attach_databases"保证 ATTACH 正确,联邦/本地一视同仁。
+
+### 4.1 各 Tab 接入 + "绝不因 limit/配置少数据"保证
+
+图表视图统一从当前结果接收 `{ columns, rows, truncated, source }`,其中 `source = { sql, attachDatabases, requiresFederated }`(用于截断时重跑)。各 Tab 提供:
+
+| Tab | source.sql | 截断时全量重跑 |
+|---|---|---|
+| **SQL 查询** | 用户原 SQL | wrap 用户 SQL |
+| **JOIN 查询** | `buildJoinPreviewSql` 生成的完整 SQL(+ attachDatabases) | wrap 它(联邦) |
+| **集合操作** | 生成的 base SQL(+ attach) | wrap 它 |
+| **透视表** | —(结果**本身已是服务端全量聚合**,小且通常不截断) | **不需重跑**,客户端直接画 |
+
+**保证**:
+- 未截断 → 已取行即全量;透视结果本就是全量聚合 → 都正确。
+- 截断 → 重跑聚合在**源头/远端全量**计算,**完全绕过 `maxQueryRows` 显示上限**,系统配置不会让图表少数据。
+- 截断且 `source.sql` 不可 wrap(多语句/非 SELECT/取不到 SQL)→ 退化为客户端对已取行聚合,并**显式标注「基于前 N 行(可能不全)」**——绝不静默少算。
+- 图表视图始终显示数据基准徽标:「全量(聚合)」/「全量(透视)」/「前 N 行」。
 - 视图里标注当前图基于「全量(聚合)」还是「前 N 行」。
 
 ## 5. AI 推荐(答 Q4)
