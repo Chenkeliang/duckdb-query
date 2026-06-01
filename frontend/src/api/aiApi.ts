@@ -3,7 +3,8 @@ import { apiClient, normalizeResponse, handleApiError } from './client';
 export type AiProviderType = 'openai' | 'anthropic' | 'ollama' | 'openai_compatible';
 
 export interface AiProvider {
-  id: string;
+  id: string;               // 稳定主键，default_provider/feature 引用它，不展示给用户编辑
+  name?: string;            // 用户可编辑的显示名（缺省回退到 id）
   type: AiProviderType;
   base_url?: string | null;
   api_key?: string;          // 写时为明文；读时后端返回掩码 ****

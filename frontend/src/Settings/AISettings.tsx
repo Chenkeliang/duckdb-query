@@ -77,7 +77,7 @@ export function AISettings() {
     update({
       providers: [
         ...s.providers,
-        { id, type: 'openai', base_url: null, api_key: '', models: [], enabled: true },
+        { id, name: '', type: 'openai', base_url: null, api_key: '', models: [], enabled: true },
       ],
     });
   };
@@ -157,7 +157,7 @@ export function AISettings() {
               <SelectContent>
                 {s.providers.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
-                    {p.id}（{p.type}）
+                    {(p.name || p.id)}（{p.type}）
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -170,11 +170,18 @@ export function AISettings() {
         {s.providers.map((p) => (
           <div key={p.id} className="rounded-lg border p-3 space-y-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-sm">{p.id}</span>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <Input
+                  value={p.name ?? ''}
+                  onChange={(e) => updateProvider(p.id, { name: e.target.value })}
+                  placeholder={t('settings.ai.providerNamePlaceholder', '供应商名称（如 得到大模型）')}
+                  className="h-8 max-w-[220px] font-medium"
+                  aria-label={t('settings.ai.providerName', '供应商名称')}
+                />
                 <Switch
                   checked={p.enabled}
                   onCheckedChange={(v) => updateProvider(p.id, { enabled: v })}
+                  aria-label={t('settings.ai.providerEnable', '启用该供应商')}
                 />
               </div>
               <div className="flex items-center gap-2">
