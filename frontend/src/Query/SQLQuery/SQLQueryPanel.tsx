@@ -134,7 +134,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       const r = await explainSql(sql, { locale: aiLocale });
       setExplanation(r.explanation);
     } catch (e) {
-      if (getApiErrorCode(e) === 'ai_not_configured') openAiSettings();
+      if (['ai_not_configured', 'ai_disabled'].includes(getApiErrorCode(e) ?? '')) openAiSettings();
       else showErrorToast(t, e as Error, t('query.ai.explainFailed', 'AI 解释失败'));
     } finally {
       setExplaining(false);
@@ -155,7 +155,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         );
       }
     } catch (e) {
-      if (getApiErrorCode(e) === 'ai_not_configured') openAiSettings();
+      if (['ai_not_configured', 'ai_disabled'].includes(getApiErrorCode(e) ?? '')) openAiSettings();
       else showErrorToast(t, e as Error, t('query.ai.askFailed', 'AI 生成 SQL 失败'));
     } finally {
       setAsking(false);

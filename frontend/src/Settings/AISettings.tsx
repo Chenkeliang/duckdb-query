@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   getAiSettings,
   saveAiSettings,
@@ -51,6 +52,7 @@ export function AISettings() {
   const [saving, setSaving] = React.useState(false);
   const [testingId, setTestingId] = React.useState<string | null>(null);
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   // 读取后：把可编辑 api_key 清空（留空=不变），掩码值另存用于占位提示
   const applyLoaded = React.useCallback((fresh: AiSettings) => {
@@ -98,6 +100,8 @@ export function AISettings() {
       await saveAiSettings(s);
       showSuccessToast(t, undefined, t('settings.ai.saved', 'AI 设置已保存'));
       applyLoaded(await getAiSettings());
+      // 让查询工作台的 useAiStatus / useAiEnabled 缓存失效，保存后立即生效（否则 staleTime 5min 内不刷新）
+      queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
     } catch (e) {
       showErrorToast(t, e as Error, t('settings.ai.saveFailed', '保存失败'));
     } finally {
