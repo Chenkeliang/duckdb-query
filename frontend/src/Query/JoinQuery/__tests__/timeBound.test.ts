@@ -7,6 +7,7 @@ import {
   buildTimeBoundCondition,
   buildTimeBoundSuggestions,
   removeTableConditions,
+  retainConditionsForTables,
 } from '../timeBound';
 import { createEmptyGroup, createCondition, getOnConditionsTreeForTable, generateFilterSQLForSubquery } from '../FilterBar';
 
@@ -265,5 +266,23 @@ describe('removeTableConditions', () => {
     const tree = createEmptyGroup();
     tree.children.push(buildTimeBoundCondition('iget_order', 'update_time', '2026-05-01 00:00:00'));
     expect(removeTableConditions(tree, 'iget_order').children.length).toBe(0);
+  });
+});
+
+describe('retainConditionsForTables', () => {
+  it('drops orphan conditions (table not in active set), keeps valid ones', () => {
+    const tree = createEmptyGroup();
+    tree.children.push(buildTimeBoundCondition('duiba_order', 'update_time', '2026-05-01 00:00:00')); // 孤儿
+    tree.children.push(buildTimeBoundCondition('iget_order', 'ctime', '2026-05-01 00:00:00'));
+    const out = retainConditionsForTables(tree, new Set(['iget_order', 'dy_order']));
+    expect(out.children.length).toBe(1);
+    expect((out.children[0] as { table: string }).table).toBe('iget_order');
+  });
+
+  it('returns the SAME reference when there is no orphan (avoids re-render loops)', () => {
+    const tree = createEmptyGroup();
+    tree.children.push(buildTimeBoundCondition('iget_order', 'ctime', '2026-05-01 00:00:00'));
+    const out = retainConditionsForTables(tree, new Set(['iget_order']));
+    expect(out).toBe(tree); // 同引用
   });
 });

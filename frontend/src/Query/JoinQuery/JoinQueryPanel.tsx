@@ -94,6 +94,7 @@ import {
   defaultTimeBoundValue,
   buildTimeBoundCondition,
   removeTableConditions,
+  retainConditionsForTables,
   type TimeBoundSuggestion,
 } from './timeBound';
 
@@ -1260,6 +1261,13 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     );
     setFilterTree((prev) => ({ ...prev, children: [...prev.children, ...nodes] }));
   }, [timeBoundSuggestions]);
+
+  // 活动表变化时，自动清掉 filterTree 里引用"已不在 join 中的表"的孤儿条件，
+  // 覆盖左侧面板换表等不经过表卡×按钮的路径（无孤儿则原引用返回，不触发重渲染）。
+  React.useEffect(() => {
+    const validNames = new Set(activeTables.map((t) => getTableName(t)));
+    setFilterTree((prev) => retainConditionsForTables(prev, validNames));
+  }, [activeTables]);
 
   // 构建可用列信息（用于 FilterBar）
   // 使用 tableColumnsMapKey 作为依赖以确保列加载后重新计算

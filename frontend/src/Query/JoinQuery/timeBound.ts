@@ -174,3 +174,30 @@ export function removeTableConditions(tree: FilterGroup, tableName: string): Fil
   };
   return prune(tree) as FilterGroup;
 }
+
+/**
+ * 只保留引用 validTables 中表的条件，丢弃"孤儿"条件（引用了已不在 join 里的表）。
+ * 无孤儿时**返回原引用**，便于在 effect 里据此跳过 setState、避免重渲染循环。
+ * 这是换表/恢复等任意路径下保持 filterTree 与活动表同步的兜底。
+ */
+export function retainConditionsForTables(tree: FilterGroup, validTables: Set<string>): FilterGroup {
+  let changed = false;
+  const walk = (node: FilterNode): FilterNode | null => {
+    if (node.type === 'condition') {
+      if (!validTables.has(node.table)) {
+        changed = true;
+        return null;
+      }
+      return node;
+    }
+    if (node.type === 'group') {
+      return {
+        ...node,
+        children: node.children.map(walk).filter((n): n is FilterNode => n !== null),
+      };
+    }
+    return node;
+  };
+  const result = walk(tree) as FilterGroup;
+  return changed ? result : tree;
+}
