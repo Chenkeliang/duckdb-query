@@ -238,8 +238,11 @@ export function AISettings() {
                     }
                   />
                   {p.type === 'openai_compatible' && (
-                    <p className="text-xs text-muted-foreground">
-                      {t('settings.ai.baseUrlHint', '填到 /v1 为止，勿带 /chat/completions')}
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {t(
+                        'settings.ai.baseUrlHint',
+                        '只填到 /v1 为止，例如 https://api.xxx.com/v1。系统会自动追加 /chat/completions，请勿自行填写该后缀，也不要出现多余的 //。',
+                      )}
                     </p>
                   )}
                 </div>
