@@ -6,6 +6,7 @@ import {
   defaultTimeBoundValue,
   buildTimeBoundCondition,
   buildTimeBoundSuggestions,
+  removeTableConditions,
 } from '../timeBound';
 import { createEmptyGroup, createCondition, getOnConditionsTreeForTable, generateFilterSQLForSubquery } from '../FilterBar';
 
@@ -20,6 +21,27 @@ describe('isTimeType', () => {
     expect(isTimeType('TIME WITH TIME ZONE')).toBe(false);
     expect(isTimeType('VARCHAR')).toBe(false);
     expect(isTimeType('BIGINT')).toBe(false);
+  });
+
+  it('matches native MySQL/PG types from federated table detail (not DuckDB-normalized)', () => {
+    expect(isTimeType('datetime')).toBe(true); // MySQL
+    expect(isTimeType('datetime(6)')).toBe(true); // MySQL with fsp
+    expect(isTimeType('timestamp')).toBe(true); // MySQL
+    expect(isTimeType('date')).toBe(true);
+    expect(isTimeType('timestamp without time zone')).toBe(true); // PG
+    expect(isTimeType('timestamp with time zone')).toBe(true); // PG
+    expect(isTimeType('time')).toBe(false);
+    expect(isTimeType('int(11)')).toBe(false);
+    expect(isTimeType('varchar(191)')).toBe(false);
+  });
+
+  it('detectTimeBoundCandidates works on native MySQL datetime columns', () => {
+    expect(detectTimeBoundCandidates([
+      { name: 'id', type: 'bigint(20)' },
+      { name: 'update_time', type: 'datetime' },
+      { name: 'create_time', type: 'datetime' },
+      { name: 'pay_time', type: 'datetime' }, // 时间型但非审计名 -> 不入候选
+    ])).toEqual(['create_time', 'update_time']);
   });
 });
 
@@ -226,5 +248,22 @@ describe('time-bound condition flows into the per-table ON subquery pushdown', (
     tree.children.push(buildTimeBoundCondition('orders', 'create_time', '2026-05-01 00:00:00'));
     const other = getOnConditionsTreeForTable(tree, 'refunds');
     expect(other.children.length).toBe(0);
+  });
+});
+
+describe('removeTableConditions', () => {
+  it('drops conditions for the removed table, keeps the rest', () => {
+    const tree = createEmptyGroup();
+    tree.children.push(buildTimeBoundCondition('iget_order', 'update_time', '2026-05-01 00:00:00'));
+    tree.children.push(buildTimeBoundCondition('note_order', 'create_time', '2026-05-01 00:00:00'));
+    const out = removeTableConditions(tree, 'iget_order');
+    expect(out.children.length).toBe(1);
+    expect((out.children[0] as { table: string }).table).toBe('note_order');
+  });
+
+  it('returns an empty group when all conditions reference the removed table', () => {
+    const tree = createEmptyGroup();
+    tree.children.push(buildTimeBoundCondition('iget_order', 'update_time', '2026-05-01 00:00:00'));
+    expect(removeTableConditions(tree, 'iget_order').children.length).toBe(0);
   });
 });

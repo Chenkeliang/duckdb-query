@@ -93,6 +93,7 @@ import {
   buildTimeBoundSuggestions,
   defaultTimeBoundValue,
   buildTimeBoundCondition,
+  removeTableConditions,
   type TimeBoundSuggestion,
 } from './timeBound';
 
@@ -1506,6 +1507,8 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     });
     // 从排序列表中移除
     setTableOrder((prev) => prev.filter((t) => t !== tableName));
+    // 移除该表残留的筛选条件（含时间边界），避免换表后引用已不存在的列
+    setFilterTree((prev) => removeTableConditions(prev, tableName));
   }, [onRemoveTable]);
 
   // 处理交换表
@@ -1555,6 +1558,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     }
     setSelectedColumns({});
     setJoinConfigs([]);
+    setFilterTree(createEmptyGroup());
   };
 
   // 计算 attach_databases（用于联邦查询）

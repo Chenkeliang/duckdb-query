@@ -14,12 +14,16 @@ const CREATE_STEMS = ['creat', 'ctime', 'add_time', 'insert_time'];
 /** update 系词干。'updat' 覆盖 update/updated；'modif' 覆盖 modify/modified/gmt_modified。 */
 const UPDATE_STEMS = ['updat', 'modif', 'mtime'];
 
-/** 是否为可做时间边界的 DuckDB 类型（TIMESTAMP* / DATE；排除 TIME）。 */
+/**
+ * 是否为可做时间边界的列类型（排除 TIME）。
+ * 注意：联邦表详情接口返回**源库原生类型**（MySQL `datetime`/`timestamp`/`date`、
+ * PG `timestamp without time zone` 等），不是 DuckDB 归一化类型，要一并覆盖。
+ */
 export function isTimeType(type: string): boolean {
   const t = (type || '').toUpperCase().replace(/\(.*\)/g, '').trim();
-  if (t === 'DATE') return true;
-  if (t.startsWith('TIMESTAMP')) return true;
-  return false;
+  if (t === 'DATE' || t === 'DATETIME') return true; // DATETIME = MySQL
+  if (t.startsWith('TIMESTAMP')) return true; // DuckDB TIMESTAMP* / MySQL timestamp / PG timestamp [without|with] time zone
+  return false; // TIME / TIME WITH TIME ZONE / YEAR 排除
 }
 
 export type AuditClass = 'create' | 'update' | null;
@@ -152,4 +156,21 @@ export function buildTimeBoundSuggestions(ctx: TimeBoundContext): TimeBoundSugge
     out.push({ tableName, candidates, recommended: candidates[0] });
   });
   return out;
+}
+
+/** 从 filterTree 移除所有引用某表的条件（表被移除/清空时调用，避免残留失效条件）。 */
+export function removeTableConditions(tree: FilterGroup, tableName: string): FilterGroup {
+  const prune = (node: FilterNode): FilterNode | null => {
+    if (node.type === 'condition') {
+      return node.table === tableName ? null : node;
+    }
+    if (node.type === 'group') {
+      return {
+        ...node,
+        children: node.children.map(prune).filter((n): n is FilterNode => n !== null),
+      };
+    }
+    return node; // raw 节点原样保留
+  };
+  return prune(tree) as FilterGroup;
 }
