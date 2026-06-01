@@ -684,6 +684,29 @@
       "expression_complex": "ON 条件包含复杂表达式，已回退",
       "multi_table_reference": "ON 条件引用多表，无法拆分到子查询",
       "fallback_error": "优化过程发生异常，已回退到原始查询"
+    },
+    "chart": {
+      "table": "表格",
+      "chart": "图表",
+      "type": "类型",
+      "dimension": "维度(X)",
+      "metric": "指标(Y)",
+      "agg": "聚合",
+      "bin": "日期分桶",
+      "suggest": "AI 推荐",
+      "fullscreen": "全屏",
+      "basisFull": "全量(聚合)",
+      "basisPivot": "全量(透视)",
+      "basisRows": "基于前 {{n}} 行(可能不全)",
+      "empty": "无可视化数据",
+      "bar": "柱状",
+      "line": "折线",
+      "area": "面积",
+      "pie": "饼图",
+      "donut": "环形",
+      "kpi": "大数字",
+      "day": "按天",
+      "month": "按月"
     }
   },
   "page": {

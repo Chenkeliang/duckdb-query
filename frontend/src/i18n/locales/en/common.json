@@ -678,6 +678,29 @@
       "expression_complex": "Complex expression in ON clause - falling back",
       "multi_table_reference": "Multi-table reference - cannot split to subquery",
       "fallback_error": "Exception during optimization - falling back"
+    },
+    "chart": {
+      "table": "Table",
+      "chart": "Chart",
+      "type": "Type",
+      "dimension": "Dimension (X)",
+      "metric": "Metric (Y)",
+      "agg": "Aggregate",
+      "bin": "Date bin",
+      "suggest": "AI suggest",
+      "fullscreen": "Fullscreen",
+      "basisFull": "Full data (aggregated)",
+      "basisPivot": "Full data (pivot)",
+      "basisRows": "Based on first {{n}} rows (may be partial)",
+      "empty": "No chartable data",
+      "bar": "Bar",
+      "line": "Line",
+      "area": "Area",
+      "pie": "Pie",
+      "donut": "Donut",
+      "kpi": "Big number",
+      "day": "By day",
+      "month": "By month"
     }
   },
   "page": {
