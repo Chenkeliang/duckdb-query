@@ -140,16 +140,18 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const effectiveSource = useMultiTabGrids ? activeTab?.query.source : source;
   const effectiveSQL = useMultiTabGrids ? activeTab?.query.sql : currentSQL;
 
-  // 图表视图：列信息（优先使用 duckdbColumnTypes 获取精确类型）
+  // 图表视图：列信息（多页用激活 tab 的,单槽用外层;优先 duckdbColumnTypes 取精确类型）
   const chartColumns = React.useMemo(() => {
-    if (duckdbColumnTypes && duckdbColumnTypes.length > 0) {
-      return duckdbColumnTypes.map((c) => ({ name: c.name, type: c.duckdb_type }));
+    const dct = useMultiTabGrids ? activeTab?.result.duckdbColumnTypes : duckdbColumnTypes;
+    const cols = useMultiTabGrids ? activeTab?.result.columns : columns;
+    if (dct && dct.length > 0) {
+      return dct.map((c) => ({ name: c.name, type: c.duckdb_type }));
     }
-    if (columns && columns.length > 0) {
-      return columns.map((name) => ({ name, type: '' }));
+    if (cols && cols.length > 0) {
+      return cols.map((name) => ({ name, type: '' }));
     }
     return [];
-  }, [duckdbColumnTypes, columns]);
+  }, [useMultiTabGrids, activeTab?.result.duckdbColumnTypes, activeTab?.result.columns, duckdbColumnTypes, columns]);
 
   // 图表视图:attach 从 effectiveSource(单槽=source / 多页=activeTab.query.source)取,
   // 二者都已传入;不依赖未被父级传递的 attachDatabases prop(否则联邦图表重跑拿不到 ATTACH)。
@@ -172,6 +174,50 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const aiEnabled = useAiEnabled();
   const [aiFix, setAiFix] = useState<ErrorFixResult | null>(null);
   const [aiFixing, setAiFixing] = useState(false);
+
+  // 图表数据源（多页用激活 tab,单槽用外层),供单/多页两条渲染路径共用
+  const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
+  const chartRows = (useMultiTabGrids ? activeTab?.result.data : data) ?? [];
+  const chartPreviewLimit = useMultiTabGrids
+    ? activeTab?.result.previewLimitApplied
+    : previewLimitApplied;
+  const chartTruncated = chartPreviewLimit != null && chartRows.length >= chartPreviewLimit;
+
+  const viewToggleBar = (
+    <div className="shrink-0 flex items-center gap-1 border-b px-3 py-1">
+      <button
+        type="button"
+        onClick={() => setResultView('table')}
+        className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+          resultView === 'table' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        {t('query.chart.table', '表格')}
+      </button>
+      <span className="text-muted-foreground/40 text-xs">|</span>
+      <button
+        type="button"
+        onClick={() => setResultView('chart')}
+        className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+          resultView === 'chart' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        {t('query.chart.chart', '图表')}
+      </button>
+    </div>
+  );
+  const chartViewEl = (
+    <div className="h-full overflow-auto p-3">
+      <ChartView
+        columns={chartColumns}
+        rows={chartRows}
+        truncated={chartTruncated}
+        source={chartSource}
+        aiEnabled={aiEnabled}
+        locale={aiLocale}
+      />
+    </div>
+  );
 
   const showImportButton =
     effectiveSource?.type === 'federated' &&
@@ -330,18 +376,21 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       <div className={`flex flex-col h-full ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : ''} ${className}`}>
         {resultTabsBar}
         {showToolbar && <ResultToolbar {...toolbarProps} />}
+        {viewToggleBar}
         <div className="relative flex-1 min-h-0">
-          {resultTabs.map((tab) => (
-            <ResultTabGridPane
-              key={tab.id}
-              tab={tab}
-              isActive={tab.id === activeResultTabId}
-              registerGridApi={registerGridApi}
-              onStatsChange={setDataGridStats}
-              onColumnVisibilityChange={handleColumnVisibilityChange}
-              emptyMessage={emptyMessage}
-            />
-          ))}
+          {resultView === 'table'
+            ? resultTabs.map((tab) => (
+                <ResultTabGridPane
+                  key={tab.id}
+                  tab={tab}
+                  isActive={tab.id === activeResultTabId}
+                  registerGridApi={registerGridApi}
+                  onStatsChange={setDataGridStats}
+                  onColumnVisibilityChange={handleColumnVisibilityChange}
+                  emptyMessage={emptyMessage}
+                />
+              ))
+            : chartViewEl}
         </div>
         {activeSql && (
           <ImportToDuckDBDialog
@@ -448,40 +497,12 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     );
   }
 
-  const truncated = previewLimitApplied != null && data != null && data.length >= previewLimitApplied;
-  const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
-
   return (
     <div className={`flex flex-col h-full ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : ''} ${className}`}>
       {resultTabsBar}
       {singleSlotHeader}
       {showToolbar && <ResultToolbar {...toolbarProps} />}
-      {/* 表格 / 图表 切换 */}
-      <div className="shrink-0 flex items-center gap-1 border-b px-3 py-1">
-        <button
-          type="button"
-          onClick={() => setResultView('table')}
-          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-            resultView === 'table'
-              ? 'text-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {t('query.chart.table', '表格')}
-        </button>
-        <span className="text-muted-foreground/40 text-xs">|</span>
-        <button
-          type="button"
-          onClick={() => setResultView('chart')}
-          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-            resultView === 'chart'
-              ? 'text-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {t('query.chart.chart', '图表')}
-        </button>
-      </div>
+      {viewToggleBar}
       <div className="relative flex-1 min-h-0">
         {resultView === 'table' ? (
           <>
@@ -506,18 +527,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
               onColumnVisibilityChange={handleColumnVisibilityChange}
             />
           </>
-        ) : (
-          <div className="h-full overflow-auto p-3">
-            <ChartView
-              columns={chartColumns}
-              rows={data}
-              truncated={truncated}
-              source={chartSource}
-              aiEnabled={aiEnabled}
-              locale={aiLocale}
-            />
-          </div>
-        )}
+        ) : chartViewEl}
       </div>
 
       {currentSQL && (
