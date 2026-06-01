@@ -27,6 +27,7 @@ import { ResultTabsBar } from './ResultTabsBar';
 import { ResultTabGridPane } from './ResultTabGridPane';
 import type { ResultTabEntry } from './resultTabUtils';
 import type { DuckdbColumnType } from '@/types/queryWorkspace';
+import { ChartView } from '@/Query/Charts/ChartView';
 
 export interface ResultPanelProps {
   data: Record<string, unknown>[] | null;
@@ -114,6 +115,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const dataGridRef = useRef<DataGridApi>(null);
   const gridApisRef = useRef<Map<string, DataGridApi>>(new Map());
 
+  const [resultView, setResultView] = useState<'table' | 'chart'>('table');
+
   const activeTab = React.useMemo(
     () => resultTabs.find((tab) => tab.id === activeResultTabId) ?? null,
     [resultTabs, activeResultTabId]
@@ -136,6 +139,34 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
 
   const effectiveSource = useMultiTabGrids ? activeTab?.query.source : source;
   const effectiveSQL = useMultiTabGrids ? activeTab?.query.sql : currentSQL;
+
+  // 图表视图：列信息（优先使用 duckdbColumnTypes 获取精确类型）
+  const chartColumns = React.useMemo(() => {
+    if (duckdbColumnTypes && duckdbColumnTypes.length > 0) {
+      return duckdbColumnTypes.map((c) => ({ name: c.name, type: c.duckdb_type }));
+    }
+    if (columns && columns.length > 0) {
+      return columns.map((name) => ({ name, type: '' }));
+    }
+    return [];
+  }, [duckdbColumnTypes, columns]);
+
+  // 图表视图：source 信息
+  const effectiveAttachDatabases = React.useMemo(() => {
+    if (useMultiTabGrids) {
+      return (activeTab?.query.source?.attachDatabases || []).map((d) => ({
+        alias: d.alias,
+        connectionId: d.connectionId,
+      }));
+    }
+    return (attachDatabases || []).map((d) => ({ alias: d.alias, connectionId: d.connectionId }));
+  }, [useMultiTabGrids, activeTab?.query.source?.attachDatabases, attachDatabases]);
+
+  const chartSource = React.useMemo(() => ({
+    sql: effectiveSQL ?? null,
+    attachDatabases: effectiveAttachDatabases,
+    requiresFederated: effectiveSource?.type === 'federated',
+  }), [effectiveSQL, effectiveAttachDatabases, effectiveSource?.type]);
 
   // AI 报错医生（LLM 解释并修复），仅在 AI 开启时露出入口
   const aiEnabled = useAiEnabled();
@@ -417,32 +448,76 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     );
   }
 
+  const truncated = previewLimitApplied != null && data != null && data.length >= previewLimitApplied;
+  const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
+
   return (
     <div className={`flex flex-col h-full ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : ''} ${className}`}>
       {resultTabsBar}
       {singleSlotHeader}
       {showToolbar && <ResultToolbar {...toolbarProps} />}
+      {/* 表格 / 图表 切换 */}
+      <div className="shrink-0 flex items-center gap-1 border-b px-3 py-1">
+        <button
+          type="button"
+          onClick={() => setResultView('table')}
+          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+            resultView === 'table'
+              ? 'text-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {t('query.chart.table', '表格')}
+        </button>
+        <span className="text-muted-foreground/40 text-xs">|</span>
+        <button
+          type="button"
+          onClick={() => setResultView('chart')}
+          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+            resultView === 'chart'
+              ? 'text-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {t('query.chart.chart', '图表')}
+        </button>
+      </div>
       <div className="relative flex-1 min-h-0">
-        {loading && data && data.length > 0 && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
-            <div className="flex flex-col items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-8 w-8 animate-spin" />
-              <span className="text-sm">{t('query.result.refreshing', '刷新中...')}</span>
-            </div>
+        {resultView === 'table' ? (
+          <>
+            {loading && data && data.length > 0 && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
+                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                  <span className="text-sm">{t('query.result.refreshing', '刷新中...')}</span>
+                </div>
+              </div>
+            )}
+            <DataGridWrapper
+              ref={dataGridRef}
+              rowData={data}
+              columns={gridColumnDefs}
+              loading={false}
+              noRowsOverlayText={t('query.result.noData', '暂无数据')}
+              enableSelection
+              enableFiltering
+              enableSorting
+              onStatsChange={setDataGridStats}
+              onColumnVisibilityChange={handleColumnVisibilityChange}
+            />
+          </>
+        ) : (
+          <div className="h-full overflow-auto p-3">
+            <ChartView
+              columns={chartColumns}
+              rows={data}
+              truncated={truncated}
+              source={chartSource}
+              aiEnabled={aiEnabled}
+              locale={aiLocale}
+            />
           </div>
         )}
-        <DataGridWrapper
-          ref={dataGridRef}
-          rowData={data}
-          columns={gridColumnDefs}
-          loading={false}
-          noRowsOverlayText={t('query.result.noData', '暂无数据')}
-          enableSelection
-          enableFiltering
-          enableSorting
-          onStatsChange={setDataGridStats}
-          onColumnVisibilityChange={handleColumnVisibilityChange}
-        />
       </div>
 
       {currentSQL && (
