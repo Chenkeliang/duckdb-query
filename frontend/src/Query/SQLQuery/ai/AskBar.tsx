@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, ArrowRight } from 'lucide-react';
+import { Sparkles, Loader2, ArrowRight, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,8 @@ export interface AskBarProps {
   usedTables?: string[];
   warning?: string;
   onSubmit: (question: string) => void;
+  /** 清空：重置输入框 + 父级的 used-tables / 警告 */
+  onClear?: () => void;
   onOpenSettings: () => void;
 }
 
@@ -20,10 +22,16 @@ export function AskBar({
   usedTables = [],
   warning,
   onSubmit,
+  onClear,
   onOpenSettings,
 }: AskBarProps) {
   const { t } = useTranslation('common');
   const [q, setQ] = useState('');
+  const hasContent = q.length > 0 || usedTables.length > 0 || Boolean(warning);
+  const clear = () => {
+    setQ('');
+    onClear?.();
+  };
 
   if (mode === 'guide') {
     return (
@@ -63,6 +71,17 @@ export function AskBar({
         <Button size="sm" disabled={loading || !q.trim()} onClick={submit}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('query.ai.generate', '生成')}
         </Button>
+        {hasContent && !loading && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clear}
+            aria-label={t('common.clear', '清空')}
+            title={t('common.clear', '清空')}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
       {warning && <div className="px-3 pb-2 text-xs text-warning">{warning}</div>}
       {usedTables.length > 0 && (

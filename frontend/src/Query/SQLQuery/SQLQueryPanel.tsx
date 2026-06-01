@@ -464,6 +464,10 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
           usedTables={usedTables}
           warning={askWarning}
           onSubmit={runAsk}
+          onClear={() => {
+            setUsedTables([]);
+            setAskWarning(undefined);
+          }}
           onOpenSettings={openAiSettings}
         />
       )}
