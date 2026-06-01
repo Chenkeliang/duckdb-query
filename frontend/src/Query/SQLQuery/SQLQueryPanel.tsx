@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import { SQLToolbar } from './SQLToolbar';
 import { useSQLEditor } from './hooks/useSQLEditor';
@@ -533,8 +533,22 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
 
       {/* P2 解释结果(工具栏下方柔和内联面板) */}
       {explanation && (
-        <div className="mx-3 mt-2 whitespace-pre-wrap rounded-lg border p-3 text-sm text-foreground">
-          {explanation}
+        <div className="mx-3 mt-2 rounded-lg border text-sm text-foreground">
+          <div className="flex items-center justify-between border-b px-3 py-1.5">
+            <span className="text-xs text-muted-foreground">
+              {t('query.ai.explainTitle', 'SQL 解释')}
+            </span>
+            <button
+              type="button"
+              onClick={() => setExplanation(null)}
+              className="rounded p-0.5 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
+              aria-label={t('common.close', '关闭')}
+              title={t('common.close', '关闭')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="whitespace-pre-wrap p-3">{explanation}</div>
         </div>
       )}
 
