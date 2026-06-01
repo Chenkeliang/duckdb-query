@@ -187,3 +187,31 @@ def test_build_schema_text_logs_when_truncating(caplog):
         ai_router._build_schema_text(names)
     assert any("truncat" in r.getMessage().lower() for r in caplog.records), \
         "tables 超过 10 个时应记录截断提示，避免静默丢弃"
+
+
+def test_chat_route_returns_content(tmp_path, monkeypatch):
+    monkeypatch.setenv("LLM_KEY_SECRET", "test-secret")
+    settings_path = tmp_path / "ai_settings.json"
+    monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)
+    client.put("/api/settings/ai", json={
+        "enabled": True, "default_provider": "p1",
+        "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
+                       "models": ["gpt-4o-mini"], "enabled": True}],
+        "features": {}})
+    fake = MagicMock()
+    fake.choices = [MagicMock(message=MagicMock(content="orders 表存放订单。"))]
+    with patch("core.services.llm_service.litellm.completion", return_value=fake):
+        resp = client.post("/api/ai/chat", json={
+            "messages": [{"role": "user", "content": "orders 表是干嘛的"}],
+            "tables": [], "locale": "zh"})
+    assert resp.status_code == 200
+    assert resp.json()["data"]["content"]
+
+
+def test_chat_when_ai_disabled_has_stable_code(tmp_path, monkeypatch):
+    settings_path = tmp_path / "ai_settings.json"
+    monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)
+    resp = client.post("/api/ai/chat", json={
+        "messages": [{"role": "user", "content": "hi"}], "tables": [], "locale": "zh"})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ai_disabled"

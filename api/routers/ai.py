@@ -7,7 +7,14 @@ from typing import Any, Dict
 
 from core.common.exceptions import ResourceNotFoundError
 from core.database.duckdb_engine import with_duckdb_connection
-from core.services import ai_config, ai_error_doctor, ai_explain, ai_nl_to_sql, llm_context
+from core.services import (
+    ai_chat,
+    ai_config,
+    ai_error_doctor,
+    ai_explain,
+    ai_nl_to_sql,
+    llm_context,
+)
 from core.services.llm_service import AIConfigError, AIDisabledError, LLMService
 from core.services.retriever import KeywordRetriever
 from fastapi import APIRouter
@@ -179,5 +186,36 @@ def nl_to_sql_route(payload: NlToSqlPayload):
     except Exception as exc:  # noqa: BLE001
         return error_json_response(
             502, MessageCode.OPERATION_FAILED, f"AI nl-to-sql failed: {exc}"
+        )
+    return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatPayload(BaseModel):
+    messages: list[ChatMessage] = []
+    tables: list[str] = []
+    locale: str = "zh"
+
+
+@router.post("/api/ai/chat", tags=["AI"])
+def chat_route(payload: ChatPayload):
+    cfg = ai_config.load_ai_settings()
+    schema_text = _build_schema_text(payload.tables)
+    try:
+        result = ai_chat.chat(
+            LLMService(cfg),
+            [m.model_dump() for m in payload.messages],
+            schema_text,
+            payload.locale,
+        )
+    except (AIDisabledError, AIConfigError) as exc:
+        return _ai_error_response(exc)
+    except Exception as exc:  # noqa: BLE001  供应商真实调用失败(网络/Key/超时)
+        return error_json_response(
+            502, MessageCode.OPERATION_FAILED, f"AI chat failed: {exc}"
         )
     return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)

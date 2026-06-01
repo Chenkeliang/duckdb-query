@@ -116,3 +116,29 @@ export async function nlToSql(
     throw handleApiError(e as never, 'AI 生成 SQL 失败');
   }
 }
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatResult {
+  content: string;
+}
+
+/** 多轮对话：发送历史消息（含最新一条 user），返回 assistant 回复。 */
+export async function chat(
+  messages: ChatMessage[],
+  opts?: { tables?: string[]; locale?: 'zh' | 'en' }
+): Promise<ChatResult> {
+  try {
+    const res = await apiClient.post('/api/ai/chat', {
+      messages,
+      tables: opts?.tables ?? [],
+      locale: opts?.locale ?? 'zh',
+    });
+    return normalizeResponse<ChatResult>(res).data;
+  } catch (e) {
+    throw handleApiError(e as never, 'AI 对话失败');
+  }
+}
