@@ -7,7 +7,7 @@
 
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, Plus, Trash2, Plug, Loader2 } from 'lucide-react';
+import { Sparkles, Plus, Trash2, Plug, Loader2, ChevronDown } from 'lucide-react';
 
 import {
   Card,
@@ -20,7 +20,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectContent,
@@ -51,6 +50,7 @@ export function AISettings() {
   const [maskedKeys, setMaskedKeys] = React.useState<Record<string, string>>({});
   const [saving, setSaving] = React.useState(false);
   const [testingId, setTestingId] = React.useState<string | null>(null);
+  const [expandedId, setExpandedId] = React.useState<string | null>(null);
 
   // 读取后：把可编辑 api_key 清空（留空=不变），掩码值另存用于占位提示
   const applyLoaded = React.useCallback((fresh: AiSettings) => {
@@ -80,6 +80,7 @@ export function AISettings() {
         { id, name: '', type: 'openai', base_url: null, api_key: '', models: [], enabled: true },
       ],
     });
+    setExpandedId(id); // 新增后自动展开编辑
   };
 
   const removeProvider = (id: string) =>
@@ -144,66 +145,90 @@ export function AISettings() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {s.providers.length > 0 && (
-          <div className="flex items-center gap-3">
-            <Label className="w-24 shrink-0">{t('settings.ai.defaultProvider', '默认供应商')}</Label>
-            <Select
-              value={s.default_provider ?? undefined}
-              onValueChange={(v) => update({ default_provider: v || null })}
-            >
-              <SelectTrigger className="max-w-xs">
-                <SelectValue placeholder={t('settings.ai.pick', '选择')} />
-              </SelectTrigger>
-              <SelectContent>
-                {s.providers.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {(p.name || p.id)}（{p.type}）
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        {s.providers.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            {t('settings.ai.empty', '还没有供应商，点下方「新增供应商」添加。')}
+          </p>
         )}
 
-        <Separator />
+        {s.providers.map((p) => {
+          const isOpen = expandedId === p.id;
+          const isDefault = s.default_provider === p.id;
+          return (
+            <div key={p.id} className="rounded-lg border">
+              {/* 行头：始终可见的紧凑列表行 */}
+              <div className="flex items-center gap-2 p-3">
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(isOpen ? null : p.id)}
+                  className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                  aria-expanded={isOpen}
+                >
+                  <ChevronDown
+                    className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+                      isOpen ? '' : '-rotate-90'
+                    }`}
+                  />
+                  <span className="font-medium text-sm truncate">{p.name || p.id}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{p.type}</span>
+                  {isDefault && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary shrink-0">
+                      {t('settings.ai.default', '默认')}
+                    </span>
+                  )}
+                  {!p.enabled && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                      {t('settings.ai.off', '已停用')}
+                    </span>
+                  )}
+                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {!isDefault && p.enabled && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => update({ default_provider: p.id })}
+                    >
+                      {t('settings.ai.setDefault', '设为默认')}
+                    </Button>
+                  )}
+                  <Switch
+                    checked={p.enabled}
+                    onCheckedChange={(v) => updateProvider(p.id, { enabled: v })}
+                    aria-label={t('settings.ai.providerEnable', '启用该供应商')}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={testingId === p.id}
+                    onClick={() => handleTest(p.id)}
+                  >
+                    {testingId === p.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plug className="h-4 w-4" />
+                    )}
+                    <span className="ml-1">{t('settings.ai.test', '测试')}</span>
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => removeProvider(p.id)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
 
-        {s.providers.map((p) => (
-          <div key={p.id} className="rounded-lg border p-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
+              {/* 编辑体：展开才显示 */}
+              {isOpen && (
+              <div className="border-t p-3 space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs">{t('settings.ai.providerName', '供应商名称')}</Label>
                 <Input
                   value={p.name ?? ''}
                   onChange={(e) => updateProvider(p.id, { name: e.target.value })}
                   placeholder={t('settings.ai.providerNamePlaceholder', '供应商名称（自定义名称）')}
-                  className="h-8 max-w-[220px] font-medium"
-                  aria-label={t('settings.ai.providerName', '供应商名称')}
-                />
-                <Switch
-                  checked={p.enabled}
-                  onCheckedChange={(v) => updateProvider(p.id, { enabled: v })}
-                  aria-label={t('settings.ai.providerEnable', '启用该供应商')}
+                  className="max-w-[280px]"
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={testingId === p.id}
-                  onClick={() => handleTest(p.id)}
-                >
-                  {testingId === p.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plug className="h-4 w-4" />
-                  )}
-                  <span className="ml-1">{t('settings.ai.test', '测试')}</span>
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => removeProvider(p.id)}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">{t('settings.ai.type', '类型')}</Label>
                 <Select
@@ -269,9 +294,12 @@ export function AISettings() {
                   }
                 />
               </div>
+              </div>
+              </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         <div className="flex items-center justify-between">
           <Button variant="outline" size="sm" onClick={addProvider}>
