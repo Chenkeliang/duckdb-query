@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, X, Trash2, Loader2, Sparkles, CornerDownLeft, MessageSquare } from 'lucide-react';
+import {
+  Send,
+  X,
+  Trash2,
+  Loader2,
+  Sparkles,
+  CornerDownLeft,
+  MessageSquare,
+  User,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { showErrorToast } from '@/utils/toastHelpers';
@@ -193,30 +202,45 @@ export function AiChatDrawer({
             )}
           </div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
-            <div
-              className={
-                m.role === 'user'
-                  ? 'max-w-[85%] rounded-lg bg-primary/15 px-3 py-2 text-sm text-foreground'
-                  : 'max-w-[92%] space-y-2 rounded-lg bg-muted px-3 py-2 text-sm text-foreground'
-              }
-            >
-              {m.role === 'assistant' ? (
-                <AssistantMarkdown
-                  content={m.content}
-                  onInsertSQL={onInsertSQL}
-                  insertLabel={t('query.ai.insertToEditor', '插入编辑器')}
-                />
-              ) : (
-                <p className="whitespace-pre-wrap">{m.content}</p>
-              )}
+        {messages.map((m, i) => {
+          const isUser = m.role === 'user';
+          return (
+            <div key={i} className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+              {/* 头像 */}
+              <div
+                className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                  isUser ? 'bg-primary text-primary-foreground' : 'bg-primary/15 text-primary'
+                }`}
+              >
+                {isUser ? <User className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
+              </div>
+              {/* 气泡 */}
+              <div
+                className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+                  isUser
+                    ? 'rounded-tr-sm bg-primary text-primary-foreground'
+                    : 'rounded-tl-sm bg-muted text-foreground'
+                }`}
+              >
+                {isUser ? (
+                  <p className="whitespace-pre-wrap">{m.content}</p>
+                ) : (
+                  <AssistantMarkdown
+                    content={m.content}
+                    onInsertSQL={onInsertSQL}
+                    insertLabel={t('query.ai.insertToEditor', '插入编辑器')}
+                  />
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {loading && (
-          <div className="flex justify-start">
-            <div className="rounded-lg bg-muted px-3 py-2">
+          <div className="flex flex-row gap-2">
+            <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <Sparkles className="h-3.5 w-3.5" />
+            </div>
+            <div className="rounded-2xl rounded-tl-sm bg-muted px-3 py-2">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             </div>
           </div>
