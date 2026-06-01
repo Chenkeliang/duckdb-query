@@ -50,8 +50,11 @@ interface ChartSpec {
   GROUP BY 1 ORDER BY 1
   LIMIT 200
   ```
-  - 通过现有 `/api/duckdb/execute` 执行;**GROUP BY 下推到远端**(MySQL/PG 自己聚合、只回 ≤200 行),正确且高效,不全量抽数;**用户原 SQL 的 WHERE/时间边界全保留**。
+  - **执行端点必须与原查询一致**:本地查询走 `executeDuckDBSQL`(`/api/duckdb/execute`);**联邦查询走 `executeFederatedQuery`,并带上原查询同一份 `attach_databases`** —— 否则包了子查询的 SQL 里 `mysql_xxx.表` 引用会因没 ATTACH 而报表不存在。复用原查询已有的 `requiresFederatedQuery`/`attachDatabases` 判定。
+  - 子查询保留用户原 SQL 的 `mysql_xxx.表` 引用 + WHERE + 时间边界 → **不全量抽数,正好吃到 timeBound**;聚合在联邦源上完成,只回 ≤200 行。
   - `limit 10000` 自然消失(聚合结果远小于 1 万)。
+
+> **联邦明确支持**:客户端聚合路径与数据源无关;重跑聚合路径通过上面的"同端点 + 同 attach_databases"保证 ATTACH 正确,联邦/本地一视同仁。
 - 视图里标注当前图基于「全量(聚合)」还是「前 N 行」。
 
 ## 5. AI 推荐(答 Q4)
