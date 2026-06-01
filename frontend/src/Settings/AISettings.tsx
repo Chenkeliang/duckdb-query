@@ -62,7 +62,10 @@ export function AISettings() {
     getAiSettings()
       .then(applyLoaded)
       .catch((e) => showErrorToast(t, e as Error, t('settings.ai.loadFailed', '获取 AI 设置失败')));
-  }, [t, applyLoaded]);
+    // 仅挂载时加载一次。带上 t/applyLoaded 会因其 identity 变化重新拉取，
+    // 把用户未保存的开关改动覆盖回服务端旧值（表现为"开了又自动关"）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!settings) return null;
   const s = settings;
