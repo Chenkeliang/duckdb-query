@@ -174,7 +174,7 @@ export function AISettings() {
                 <Input
                   value={p.name ?? ''}
                   onChange={(e) => updateProvider(p.id, { name: e.target.value })}
-                  placeholder={t('settings.ai.providerNamePlaceholder', '供应商名称（如 得到大模型）')}
+                  placeholder={t('settings.ai.providerNamePlaceholder', '供应商名称（自定义名称）')}
                   className="h-8 max-w-[220px] font-medium"
                   aria-label={t('settings.ai.providerName', '供应商名称')}
                 />
