@@ -13,6 +13,7 @@ from core.services import (
     ai_error_doctor,
     ai_explain,
     ai_nl_to_sql,
+    ai_suggest_chart,
     llm_context,
 )
 from core.services.llm_service import AIConfigError, AIDisabledError, LLMService
@@ -217,5 +218,27 @@ def chat_route(payload: ChatPayload):
     except Exception as exc:  # noqa: BLE001  供应商真实调用失败(网络/Key/超时)
         return error_json_response(
             502, MessageCode.OPERATION_FAILED, f"AI chat failed: {exc}"
+        )
+    return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)
+
+
+class SuggestChartPayload(BaseModel):
+    columns: list[Dict[str, Any]] = []
+    sample: list[Dict[str, Any]] = []
+    locale: str = "zh"
+
+
+@router.post("/api/ai/suggest-chart", tags=["AI"])
+def suggest_chart_route(payload: SuggestChartPayload):
+    cfg = ai_config.load_ai_settings()
+    try:
+        result = ai_suggest_chart.suggest_chart(
+            LLMService(cfg), payload.columns, payload.sample, payload.locale
+        )
+    except (AIDisabledError, AIConfigError) as exc:
+        return _ai_error_response(exc)
+    except Exception as exc:  # noqa: BLE001
+        return error_json_response(
+            502, MessageCode.OPERATION_FAILED, f"AI suggest-chart failed: {exc}"
         )
     return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)

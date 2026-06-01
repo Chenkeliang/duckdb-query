@@ -215,3 +215,37 @@ def test_chat_when_ai_disabled_has_stable_code(tmp_path, monkeypatch):
         "messages": [{"role": "user", "content": "hi"}], "tables": [], "locale": "zh"})
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "ai_disabled"
+
+
+def test_suggest_chart_returns_spec(tmp_path, monkeypatch):
+    monkeypatch.setenv("LLM_KEY_SECRET", "test-secret")
+    settings_path = tmp_path / "ai_settings.json"
+    monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)
+    client.put("/api/settings/ai", json={
+        "enabled": True, "default_provider": "p1",
+        "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
+                       "models": ["gpt-4o-mini"], "enabled": True}],
+        "features": {}})
+    fake = MagicMock()
+    fake.choices = [MagicMock(message=MagicMock(
+        content='{"type":"bar","x":"status","y":["amount"],"agg":"sum","reason":"按状态汇总金额"}'))]
+    with patch("core.services.llm_service.litellm.completion", return_value=fake):
+        resp = client.post("/api/ai/suggest-chart", json={
+            "columns": [{"name": "status", "type": "varchar(20)"},
+                        {"name": "amount", "type": "decimal(11,2)"}],
+            "sample": [{"status": "paid", "amount": 10}], "locale": "zh"})
+    assert resp.status_code == 200
+    d = resp.json()["data"]
+    assert d["type"] == "bar"
+    assert d["x"] == "status"
+    assert d["y"] == ["amount"]
+    assert d["agg"] == "sum"
+
+
+def test_suggest_chart_disabled_has_stable_code(tmp_path, monkeypatch):
+    settings_path = tmp_path / "ai_settings.json"
+    monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)
+    resp = client.post("/api/ai/suggest-chart", json={
+        "columns": [{"name": "x", "type": "int"}], "sample": [], "locale": "zh"})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ai_disabled"
