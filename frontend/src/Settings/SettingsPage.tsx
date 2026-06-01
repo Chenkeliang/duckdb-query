@@ -9,7 +9,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ShortcutSettings } from './shortcuts';
 import { CacheSettings } from './CacheSettings';
 import { QueryResultSettings } from './QueryResultSettings';
-import { AISettings } from './AISettings';
 
 export interface SettingsPageProps {
   // 可以添加 props
@@ -34,9 +33,6 @@ export function SettingsPage({}: SettingsPageProps) {
 
           {/* 缓存设置 */}
           <CacheSettings />
-
-          {/* AI / 模型 */}
-          <AISettings />
 
           {/* 开发中提示 */}
           <Card className="border-dashed">

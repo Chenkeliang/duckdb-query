@@ -50,7 +50,8 @@
     "tablemanagement": "数据表管理",
     "asynctasks": "异步任务",
     "switchMain": "主功能切换",
-    "settings": "设置"
+    "settings": "设置",
+    "ai": "AI 模型 (AI / Models)"
   },
   "sidebar": {
     "collapse": "收起",

@@ -24,6 +24,7 @@ import {
   Code2,
   Search,
   Clock,
+  Sparkles,
   LucideIcon
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -46,7 +47,7 @@ import Logo from "./assets/duckq-logo.svg";
 const WelcomePage = lazy(() => import("./WelcomePage"));
 
 // Types
-type TabId = "datasource" | "queryworkbench" | "settings";
+type TabId = "datasource" | "queryworkbench" | "ai" | "settings";
 type DataSourceTabId = "upload" | "database" | "paste";
 type QueryTabId = "query" | "tasks";
 
@@ -129,8 +130,13 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 const tabTitles: Record<TabId, string> = {
   datasource: "nav.datasource",
   queryworkbench: "nav.queryworkbench",
+  ai: "nav.ai",
   settings: "nav.settings"
 };
+
+const AISettingsPage = React.lazy(() =>
+  import("./Settings/AISettings").then(m => ({ default: m.AISettings }))
+);
 
 const SettingsPage = React.lazy(() =>
   import("./Settings/SettingsPage").then(m => ({ default: m.SettingsPage }))
@@ -193,7 +199,7 @@ const AppInner: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const allowedTabs: TabId[] = ["datasource", "queryworkbench", "settings"];
+    const allowedTabs: TabId[] = ["datasource", "queryworkbench", "ai", "settings"];
     if (!allowedTabs.includes(currentTab as TabId)) {
       setCurrentTab("queryworkbench");
     }
@@ -433,17 +439,20 @@ const AppInner: React.FC = () => {
             setPreviewQuery(sql);
             setQueryWorkbenchTab("query");
           }}
-          onOpenAiSettings={() => {
-            setCurrentTab("settings");
-            setTimeout(
-              () =>
-                document
-                  .getElementById("settings-ai")
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-              120,
-            );
-          }}
+          onOpenAiSettings={() => setCurrentTab("ai")}
         />
+      );
+    }
+
+    if (currentTab === "ai") {
+      return (
+        <React.Suspense fallback={<LazyFallback />}>
+          <div className="flex-1 p-6 overflow-auto">
+            <div className="max-w-4xl mx-auto">
+              <AISettingsPage />
+            </div>
+          </div>
+        </React.Suspense>
       );
     }
 
@@ -518,6 +527,7 @@ const AppInner: React.FC = () => {
   const navItems: NavItem[] = [
     { id: "datasource", label: t("nav.datasource"), icon: Database },
     { id: "queryworkbench", label: t("nav.queryworkbench"), icon: Code2 },
+    { id: "ai", label: t("nav.ai"), icon: Sparkles },
     { id: "settings", label: t("nav.settings"), icon: Settings }
   ];
 

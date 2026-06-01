@@ -50,7 +50,8 @@
     "tablemanagement": "Table Management",
     "asynctasks": "Async Tasks",
     "switchMain": "Main navigation",
-    "settings": "Settings"
+    "settings": "Settings",
+    "ai": "AI / Models"
   },
   "sidebar": {
     "collapse": "Collapse",
