@@ -182,21 +182,31 @@ export function AISettings() {
                     </span>
                   )}
                 </button>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {!isDefault && p.enabled && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {!isDefault && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => update({ default_provider: p.id })}
+                      onClick={() =>
+                        update({
+                          default_provider: p.id,
+                          providers: s.providers.map((q) =>
+                            q.id === p.id ? { ...q, enabled: true } : q,
+                          ),
+                        })
+                      }
                     >
                       {t('settings.ai.setDefault', '设为默认')}
                     </Button>
                   )}
-                  <Switch
-                    checked={p.enabled}
-                    onCheckedChange={(v) => updateProvider(p.id, { enabled: v })}
-                    aria-label={t('settings.ai.providerEnable', '启用该供应商')}
-                  />
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    {t('settings.ai.enableShort', '启用')}
+                    <Switch
+                      checked={p.enabled}
+                      onCheckedChange={(v) => updateProvider(p.id, { enabled: v })}
+                      aria-label={t('settings.ai.providerEnable', '启用该供应商')}
+                    />
+                  </span>
                   <Button
                     variant="outline"
                     size="sm"
