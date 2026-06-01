@@ -78,3 +78,28 @@ export function validateSpec(spec: ChartSpec, columns: ColumnInfo[]): ChartSpec 
   }
   return defaultSpec(columns);
 }
+
+export function stripTrailingLimit(sql: string): string {
+  return (sql || '')
+    .replace(/;\s*$/, '')
+    .replace(/\s+limit\s+\d+\s*(offset\s+\d+\s*)?$/i, '')
+    .trim();
+}
+
+function xExpr(spec: ChartSpec): string {
+  if (spec.xBin && spec.x) return `date_trunc('${spec.xBin}', "${spec.x}")`;
+  return `"${spec.x}"`;
+}
+
+/** 把用户 SQL 包成子查询做全量聚合(截断时用)。返回值由调用方按本地/联邦端点执行。 */
+export function buildChartSql(userSql: string, spec: ChartSpec): string {
+  const inner = stripTrailingLimit(userSql);
+  if (spec.type === 'kpi') {
+    const metric = spec.y[0] ? `${spec.agg}("${spec.y[0]}")` : 'count(*)';
+    return `SELECT ${metric} AS metric FROM (${inner}) AS _src`;
+  }
+  const metricSql = spec.y.length
+    ? spec.y.map((col, i) => `${spec.agg}("${col}") AS m_${i}`).join(', ')
+    : 'count(*) AS m_0';
+  return `SELECT ${xExpr(spec)} AS dim, ${metricSql} FROM (${inner}) AS _src GROUP BY 1 ORDER BY 1 LIMIT 200`;
+}

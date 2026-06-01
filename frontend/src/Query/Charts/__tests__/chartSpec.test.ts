@@ -80,3 +80,45 @@ describe('validateSpec', () => {
     expect(['sum', 'count', 'avg', 'min', 'max']).toContain(r.agg);
   });
 });
+
+import { buildChartSql, stripTrailingLimit } from '../chartSpec';
+
+describe('stripTrailingLimit', () => {
+  it('removes trailing LIMIT / LIMIT OFFSET / trailing ;', () => {
+    expect(stripTrailingLimit('SELECT * FROM t LIMIT 10000')).toBe('SELECT * FROM t');
+    expect(stripTrailingLimit('SELECT * FROM t limit 50 offset 10')).toBe('SELECT * FROM t');
+    expect(stripTrailingLimit('SELECT * FROM t;')).toBe('SELECT * FROM t');
+    expect(stripTrailingLimit('SELECT * FROM t')).toBe('SELECT * FROM t');
+  });
+});
+
+describe('buildChartSql', () => {
+  it('wraps user SQL into a GROUP BY aggregation', () => {
+    const sql = buildChartSql('SELECT * FROM orders LIMIT 10000', {
+      type: 'bar', x: 'status', y: ['amount'], agg: 'sum',
+    });
+    expect(sql).toContain('FROM (SELECT * FROM orders) AS _src');
+    expect(sql).toContain('"status" AS dim');
+    expect(sql).toMatch(/sum\("amount"\) AS m_0/);
+    expect(sql).toContain('GROUP BY 1');
+    expect(sql).toMatch(/LIMIT 200\s*$/);
+  });
+
+  it('date x uses date_trunc bin', () => {
+    const sql = buildChartSql('SELECT * FROM t', {
+      type: 'line', x: 'created_at', y: ['amount'], agg: 'sum', xBin: 'month',
+    });
+    expect(sql).toContain(`date_trunc('month', "created_at") AS dim`);
+  });
+
+  it('no y -> count(*)', () => {
+    const sql = buildChartSql('SELECT * FROM t', { type: 'bar', x: 'status', y: [], agg: 'count' });
+    expect(sql).toContain('count(*) AS m_0');
+  });
+
+  it('kpi -> single metric, no group by', () => {
+    const sql = buildChartSql('SELECT * FROM t', { type: 'kpi', x: null, y: ['amount'], agg: 'sum' });
+    expect(sql).toContain('sum("amount") AS metric');
+    expect(sql).not.toContain('GROUP BY');
+  });
+});
