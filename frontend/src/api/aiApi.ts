@@ -142,3 +142,29 @@ export async function chat(
     throw handleApiError(e as never, 'AI 对话失败');
   }
 }
+
+export interface SuggestChartResult {
+  type: 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'kpi';
+  x: string | null;
+  y: string[];
+  agg: 'sum' | 'count' | 'avg' | 'min' | 'max';
+  xBin?: 'day' | 'month' | null;
+  reason?: string;
+}
+
+export async function suggestChart(
+  columns: { name: string; type: string }[],
+  sample: Record<string, unknown>[],
+  opts?: { locale?: 'zh' | 'en' }
+): Promise<SuggestChartResult> {
+  try {
+    const res = await apiClient.post('/api/ai/suggest-chart', {
+      columns,
+      sample: sample.slice(0, 5),
+      locale: opts?.locale ?? 'zh',
+    });
+    return normalizeResponse<SuggestChartResult>(res).data;
+  } catch (e) {
+    throw handleApiError(e as never, 'AI 推荐图表失败');
+  }
+}
