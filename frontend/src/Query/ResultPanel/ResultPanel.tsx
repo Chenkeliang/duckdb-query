@@ -151,16 +151,16 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     return [];
   }, [duckdbColumnTypes, columns]);
 
-  // 图表视图：source 信息
-  const effectiveAttachDatabases = React.useMemo(() => {
-    if (useMultiTabGrids) {
-      return (activeTab?.query.source?.attachDatabases || []).map((d) => ({
+  // 图表视图:attach 从 effectiveSource(单槽=source / 多页=activeTab.query.source)取,
+  // 二者都已传入;不依赖未被父级传递的 attachDatabases prop(否则联邦图表重跑拿不到 ATTACH)。
+  const effectiveAttachDatabases = React.useMemo(
+    () =>
+      (effectiveSource?.attachDatabases || []).map((d) => ({
         alias: d.alias,
         connectionId: d.connectionId,
-      }));
-    }
-    return (attachDatabases || []).map((d) => ({ alias: d.alias, connectionId: d.connectionId }));
-  }, [useMultiTabGrids, activeTab?.query.source?.attachDatabases, attachDatabases]);
+      })),
+    [effectiveSource],
+  );
 
   const chartSource = React.useMemo(() => ({
     sql: effectiveSQL ?? null,
