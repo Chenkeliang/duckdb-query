@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, X, MessageSquare } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import { SQLToolbar } from './SQLToolbar';
 import { useSQLEditor } from './hooks/useSQLEditor';
@@ -39,7 +39,7 @@ import { getApiErrorCode } from '@/api/client';
 import { showErrorToast } from '@/utils/toastHelpers';
 import { ExplainButton } from './ai/ExplainButton';
 import { AskBar } from './ai/AskBar';
-import { AiChatDrawer } from './ai/AiChatDrawer';
+import { AiChatDrawer, ChatToggleButton } from './ai/AiChatDrawer';
 
 export interface SQLQueryPanelProps {
   /** 初始 SQL */
@@ -519,20 +519,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
                 />
               )}
               {askStatus.configured && (
-                <button
-                  type="button"
-                  onClick={() => setChatOpen((v) => !v)}
-                  title={t('query.ai.chat', '数据助手对话')}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded px-2 py-1 text-xs',
-                    chatOpen
-                      ? 'bg-primary/15 text-primary'
-                      : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
-                  )}
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  {t('query.ai.chat', '对话')}
-                </button>
+                <ChatToggleButton active={chatOpen} onClick={() => setChatOpen((v) => !v)} />
               )}
             </div>
           ) : undefined

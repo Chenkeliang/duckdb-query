@@ -1,10 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, X, Trash2, Loader2, Sparkles, CornerDownLeft } from 'lucide-react';
+import { Send, X, Trash2, Loader2, Sparkles, CornerDownLeft, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { showErrorToast } from '@/utils/toastHelpers';
 import { chat, type ChatMessage } from '@/api/aiApi';
+
+/** 工具栏「对话」开关按钮，样式与 解释/格式化/收藏 统一。 */
+export function ChatToggleButton({
+  active,
+  onClick,
+}: {
+  active: boolean;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation('common');
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={onClick}
+      title={t('query.ai.chat', '数据助手对话')}
+      className={
+        active ? 'text-primary hover:text-primary' : 'text-muted-foreground hover:text-foreground'
+      }
+    >
+      <MessageSquare className="h-4 w-4 mr-1" />
+      <span className="hidden sm:inline">{t('query.ai.chat', '对话')}</span>
+    </Button>
+  );
+}
 
 export interface AiChatDrawerProps {
   open: boolean;
