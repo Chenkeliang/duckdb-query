@@ -153,3 +153,40 @@ describe('aggregateRows', () => {
     expect(r.data.some((d) => d.dim === '其它')).toBe(true);
   });
 });
+
+describe('hardening fixes (review)', () => {
+  it('isNumericType matches DuckDB unsigned/hugeint/intN', () => {
+    ['ubigint', 'hugeint', 'utinyint', 'uinteger', 'int4', 'int8'].forEach((t) =>
+      expect(isNumericType(t)).toBe(true),
+    );
+    expect(isNumericType('interval')).toBe(false);
+  });
+
+  it('buildChartSql escapes double-quotes in column names (no injection)', () => {
+    const sql = buildChartSql('SELECT * FROM t', { type: 'bar', x: 'a"b', y: ['c"--'], agg: 'sum' });
+    expect(sql).toContain('"a""b"');
+    expect(sql).toContain('sum("c""--")');
+  });
+
+  it('buildChartSql with null x (non-kpi) uses a constant bucket, not "null"', () => {
+    const sql = buildChartSql('SELECT * FROM t', { type: 'bar', x: null, y: ['amount'], agg: 'sum' });
+    expect(sql).toContain(`'全部' AS dim`);
+    expect(sql).not.toContain('"null"');
+  });
+
+  it('validateSpec rejects illegal xBin -> fallback', () => {
+    const cols = [{ name: 'd', type: 'datetime' }, { name: 'amount', type: 'int' }];
+    const r = validateSpec({ type: 'line', x: 'd', y: ['amount'], agg: 'sum', xBin: 'week' as any }, cols);
+    expect(['day', 'month', null, undefined]).toContain(r.xBin ?? null);
+  });
+
+  it('其它 bucket uses correct combiner: min -> min of rest, avg -> dropped', () => {
+    const many = Array.from({ length: 250 }, (_, i) => ({ status: `s${i}`, amount: i }));
+    const rmin = aggregateRows(many, { type: 'bar', x: 'status', y: ['amount'], agg: 'min' });
+    const other = rmin.data.find((d) => d.dim === '其它');
+    // rest = 行尾的小值组,min 应是它们里的最小(而非求和)
+    expect(other && Number(other.amount)).toBeLessThan(50);
+    const ravg = aggregateRows(many, { type: 'bar', x: 'status', y: ['amount'], agg: 'avg' });
+    expect(ravg.data.some((d) => d.dim === '其它')).toBe(false); // avg 不合并其它
+  });
+});

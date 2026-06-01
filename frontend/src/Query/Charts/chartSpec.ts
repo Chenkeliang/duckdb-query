@@ -17,7 +17,12 @@ export interface ColumnInfo {
   type: string;
 }
 
-const NUMERIC_RE = /^(int|integer|bigint|smallint|mediumint|tinyint|decimal|numeric|double|float|real)\b/i;
+const NUMERIC_RE = /^(u?int(eger)?|u?bigint|u?smallint|mediumint|u?tinyint|u?hugeint|int[248]|decimal|numeric|double|float|real)\b/i;
+
+/** DuckDB 标识符转义:内部双引号翻倍,避免列名注入。 */
+function q(id: string): string {
+  return `"${String(id).replace(/"/g, '""')}"`;
+}
 
 export function isNumericType(type: string): boolean {
   const t = (type || '').trim().toLowerCase();
@@ -73,7 +78,8 @@ export function validateSpec(spec: ChartSpec, columns: ColumnInfo[]): ChartSpec 
   const aggOk = AGG_FNS.includes(spec?.agg);
   const xOk = spec?.type === 'kpi' || (spec?.x != null && names.has(spec.x));
   const yOk = Array.isArray(spec?.y) && spec.y.every((c) => names.has(c));
-  if (typeOk && aggOk && xOk && yOk) {
+  const binOk = spec?.xBin == null || spec.xBin === 'day' || spec.xBin === 'month';
+  if (typeOk && aggOk && xOk && yOk && binOk) {
     return spec;
   }
   return defaultSpec(columns);
@@ -87,21 +93,24 @@ export function stripTrailingLimit(sql: string): string {
 }
 
 function xExpr(spec: ChartSpec): string {
-  if (spec.xBin && spec.x) return `date_trunc('${spec.xBin}', "${spec.x}")`;
-  return `"${spec.x}"`;
+  // xBin 仅 day/month(由 validateSpec/UI 保证),x 转义防注入
+  if (spec.xBin && spec.x) return `date_trunc('${spec.xBin}', ${q(spec.x)})`;
+  return q(spec.x as string);
 }
 
 /** 把用户 SQL 包成子查询做全量聚合(截断时用)。返回值由调用方按本地/联邦端点执行。 */
 export function buildChartSql(userSql: string, spec: ChartSpec): string {
   const inner = stripTrailingLimit(userSql);
   if (spec.type === 'kpi') {
-    const metric = spec.y[0] ? `${spec.agg}("${spec.y[0]}")` : 'count(*)';
+    const metric = spec.y[0] ? `${spec.agg}(${q(spec.y[0])})` : 'count(*)';
     return `SELECT ${metric} AS metric FROM (${inner}) AS _src`;
   }
   const metricSql = spec.y.length
-    ? spec.y.map((col, i) => `${spec.agg}("${col}") AS m_${i}`).join(', ')
+    ? spec.y.map((col, i) => `${spec.agg}(${q(col)}) AS m_${i}`).join(', ')
     : 'count(*) AS m_0';
-  return `SELECT ${xExpr(spec)} AS dim, ${metricSql} FROM (${inner}) AS _src GROUP BY 1 ORDER BY 1 LIMIT 200`;
+  // 无维度(空列等退化场景)用常量单桶,避免生成 "null" 列
+  const dimExpr = spec.x ? xExpr(spec) : `'全部'`;
+  return `SELECT ${dimExpr} AS dim, ${metricSql} FROM (${inner}) AS _src GROUP BY 1 ORDER BY 1 LIMIT 200`;
 }
 
 export interface AggResult {
@@ -163,9 +172,22 @@ export function aggregateRows(rows: Array<Record<string, unknown>>, spec: ChartS
     data.sort((a, b) => Number(b[key]) - Number(a[key]));
     const top = data.slice(0, MAX_CATS);
     const rest = data.slice(MAX_CATS);
-    const other: Record<string, string | number> = { dim: '其它' };
-    for (const k of metricKeys) other[k] = rest.reduce((s, d) => s + Number(d[k] || 0), 0);
-    data = [...top, other];
+    if (spec.agg === 'avg') {
+      // 分组均值无法正确合并成总均值 → 直接截断(基准徽标已提示可能不全)
+      data = top;
+    } else {
+      const other: Record<string, string | number> = { dim: '其它' };
+      for (const k of metricKeys) {
+        const vals = rest.map((d) => Number(d[k] || 0));
+        other[k] =
+          spec.agg === 'min'
+            ? Math.min(...vals)
+            : spec.agg === 'max'
+              ? Math.max(...vals)
+              : vals.reduce((a, b) => a + b, 0); // sum / count
+      }
+      data = [...top, other];
+    }
   } else {
     data.sort((a, b) => String(a.dim).localeCompare(String(b.dim)));
   }
