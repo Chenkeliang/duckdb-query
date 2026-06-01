@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { showErrorToast } from '@/utils/toastHelpers';
 import { chat, type ChatMessage } from '@/api/aiApi';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 /** 工具栏「对话」开关按钮，样式与 解释/格式化/收藏 统一。 */
 export function ChatToggleButton({
@@ -41,21 +43,76 @@ export interface AiChatDrawerProps {
   locale?: 'zh' | 'en';
 }
 
-type Part = { type: 'text' | 'sql'; value: string };
-
-/** 把 assistant 文本拆成 文本段 / ```sql 代码块 段。 */
-function parseAssistant(content: string): Part[] {
-  const parts: Part[] = [];
-  const re = /```(?:sql)?\s*\n?([\s\S]*?)```/gi;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(content)) !== null) {
-    if (m.index > last) parts.push({ type: 'text', value: content.slice(last, m.index) });
-    parts.push({ type: 'sql', value: m[1].trim() });
-    last = m.index + m[0].length;
-  }
-  if (last < content.length) parts.push({ type: 'text', value: content.slice(last) });
-  return parts.filter((p) => p.value.trim().length > 0);
+/** assistant 文本按 Markdown 渲染；代码块带「插入编辑器」按钮。 */
+function AssistantMarkdown({
+  content,
+  onInsertSQL,
+  insertLabel,
+}: {
+  content: string;
+  onInsertSQL: (sql: string) => void;
+  insertLabel: string;
+}) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h1: ({ node: _n, ...p }) => <h3 className="mb-1 mt-2 text-sm font-semibold" {...p} />,
+        h2: ({ node: _n, ...p }) => <h3 className="mb-1 mt-2 text-sm font-semibold" {...p} />,
+        h3: ({ node: _n, ...p }) => <h3 className="mb-1 mt-2 text-sm font-semibold" {...p} />,
+        p: ({ node: _n, ...p }) => <p className="my-1 leading-relaxed" {...p} />,
+        ul: ({ node: _n, ...p }) => <ul className="my-1 list-disc space-y-0.5 pl-5" {...p} />,
+        ol: ({ node: _n, ...p }) => <ol className="my-1 list-decimal space-y-0.5 pl-5" {...p} />,
+        strong: ({ node: _n, ...p }) => <strong className="font-semibold" {...p} />,
+        a: ({ node: _n, ...p }) => (
+          <a className="text-primary underline" target="_blank" rel="noreferrer" {...p} />
+        ),
+        hr: () => <hr className="my-2 border-border" />,
+        blockquote: ({ node: _n, ...p }) => (
+          <blockquote className="border-l-2 border-border pl-2 text-muted-foreground" {...p} />
+        ),
+        table: ({ node: _n, ...p }) => (
+          <div className="my-1 overflow-auto">
+            <table className="w-full border-collapse text-xs" {...p} />
+          </div>
+        ),
+        th: ({ node: _n, ...p }) => (
+          <th className="border border-border px-2 py-1 text-left font-medium" {...p} />
+        ),
+        td: ({ node: _n, ...p }) => <td className="border border-border px-2 py-1" {...p} />,
+        pre: ({ children }) => <>{children}</>,
+        code: ({ node: _n, className, children, ...rest }) => {
+          const isBlock = /language-/.test(className || '');
+          const text = String(children).replace(/\n$/, '');
+          if (!isBlock) {
+            return (
+              <code className="rounded bg-background px-1 py-0.5 text-xs" {...rest}>
+                {children}
+              </code>
+            );
+          }
+          return (
+            <div className="my-1 rounded border border-border bg-background">
+              <pre className="overflow-auto px-2 py-1.5 text-xs">
+                <code>{text}</code>
+              </pre>
+              <div className="border-t border-border px-2 py-1 text-right">
+                <button
+                  type="button"
+                  onClick={() => onInsertSQL(text)}
+                  className="text-xs text-primary hover:underline"
+                >
+                  {insertLabel}
+                </button>
+              </div>
+            </div>
+          );
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
 }
 
 export function AiChatDrawer({
@@ -145,30 +202,15 @@ export function AiChatDrawer({
                   : 'max-w-[92%] space-y-2 rounded-lg bg-muted px-3 py-2 text-sm text-foreground'
               }
             >
-              {m.role === 'assistant'
-                ? parseAssistant(m.content).map((p, j) =>
-                    p.type === 'sql' ? (
-                      <div key={j} className="rounded border border-border bg-background">
-                        <pre className="overflow-auto px-2 py-1.5 text-xs">
-                          <code>{p.value}</code>
-                        </pre>
-                        <div className="border-t border-border px-2 py-1 text-right">
-                          <button
-                            type="button"
-                            onClick={() => onInsertSQL(p.value)}
-                            className="text-xs text-primary hover:underline"
-                          >
-                            {t('query.ai.insertToEditor', '插入编辑器')}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p key={j} className="whitespace-pre-wrap leading-relaxed">
-                        {p.value.trim()}
-                      </p>
-                    ),
-                  )
-                : <p className="whitespace-pre-wrap">{m.content}</p>}
+              {m.role === 'assistant' ? (
+                <AssistantMarkdown
+                  content={m.content}
+                  onInsertSQL={onInsertSQL}
+                  insertLabel={t('query.ai.insertToEditor', '插入编辑器')}
+                />
+              ) : (
+                <p className="whitespace-pre-wrap">{m.content}</p>
+              )}
             </div>
           </div>
         ))}
