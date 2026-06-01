@@ -10,7 +10,7 @@ import { showErrorToast } from '@/utils/toastHelpers';
 import { suggestChart } from '@/api/aiApi';
 import { executeDuckDBSQL, executeFederatedQuery } from '@/api/queryApi';
 import {
-  classifyColumns, defaultSpec, validateSpec, buildChartSql, aggregateRows,
+  classifyColumns, defaultSpec, validateSpec, buildChartSql, aggregateRows, capCategories,
   type ChartSpec, type ChartType, type AggFn, type ColumnInfo,
 } from './chartSpec';
 import { ChartCanvas } from './ChartCanvas';
@@ -73,12 +73,17 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
           setServerAgg({ data: [], metricKeys: spec.y.length ? spec.y : ['count'], kpi: Number(rs[0]?.metric ?? 0) });
         } else {
           const metricKeys = spec.y.length ? spec.y : ['count'];
-          const data = rs.map((r) => {
+          const rawData = rs.map((r) => {
             const item: Record<string, any> = { dim: r.dim };
             if (spec.y.length) spec.y.forEach((y, i) => (item[y] = Number(r[`m_${i}`])));
             else item['count'] = Number(r['m_0']);
             return item;
           });
+          // 饼/环类目过多无法读 → 封顶 12 + 其它(柱/线无需)
+          const data =
+            spec.type === 'pie' || spec.type === 'donut'
+              ? capCategories(rawData, metricKeys, spec.agg, 12)
+              : rawData;
           setServerAgg({ data, metricKeys });
         }
       })

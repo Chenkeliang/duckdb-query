@@ -200,4 +200,14 @@ describe('hardening fixes (review)', () => {
     const ravg = aggregateRows(many, { type: 'bar', x: 'status', y: ['amount'], agg: 'avg' });
     expect(ravg.data.some((d) => d.dim === '其它')).toBe(false); // avg 不合并其它
   });
+
+  it('pie/donut caps categories to 12 + 其它 (date-many unusable fix)', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ d: `c${i}`, v: i + 1 }));
+    const r = aggregateRows(many, { type: 'pie', x: 'd', y: ['v'], agg: 'sum' });
+    expect(r.data.length).toBeLessThanOrEqual(13);
+    expect(r.data.some((x) => x.dim === '其它')).toBe(true);
+    // 柱状仍用 200 上限(40 个不触顶)
+    const rbar = aggregateRows(many, { type: 'bar', x: 'd', y: ['v'], agg: 'sum' });
+    expect(rbar.data.length).toBe(40);
+  });
 });

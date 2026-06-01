@@ -145,6 +145,29 @@ function binDim(v: unknown, xBin?: 'day' | 'month' | null): string {
 }
 
 const MAX_CATS = 200;
+const MAX_PIE_CATS = 12; // 饼/环类目过多无法读,封顶 12 + 其它
+
+/** 类目超过 max 时:按首指标降序取 Top-max,其余按聚合方式合并为「其它」(avg 不可合并→截断)。 */
+export function capCategories(
+  data: Array<Record<string, string | number>>,
+  metricKeys: string[],
+  agg: AggFn,
+  max: number,
+): Array<Record<string, string | number>> {
+  if (data.length <= max) return data;
+  const key = metricKeys[0];
+  const sorted = [...data].sort((a, b) => Number(b[key]) - Number(a[key]));
+  const top = sorted.slice(0, max);
+  const rest = sorted.slice(max);
+  if (agg === 'avg') return top;
+  const other: Record<string, string | number> = { dim: '其它' };
+  for (const k of metricKeys) {
+    const vals = rest.map((d) => Number(d[k] || 0));
+    other[k] =
+      agg === 'min' ? Math.min(...vals) : agg === 'max' ? Math.max(...vals) : vals.reduce((a, b) => a + b, 0);
+  }
+  return [...top, other];
+}
 
 export function aggregateRows(rows: Array<Record<string, unknown>>, spec: ChartSpec): AggResult {
   const metricKeys = spec.y.length ? spec.y : ['count'];
@@ -174,27 +197,9 @@ export function aggregateRows(rows: Array<Record<string, unknown>>, spec: ChartS
     else item['count'] = g.count;
     return item;
   });
-  const key = metricKeys[0];
-  if (data.length > MAX_CATS) {
-    data.sort((a, b) => Number(b[key]) - Number(a[key]));
-    const top = data.slice(0, MAX_CATS);
-    const rest = data.slice(MAX_CATS);
-    if (spec.agg === 'avg') {
-      // 分组均值无法正确合并成总均值 → 直接截断(基准徽标已提示可能不全)
-      data = top;
-    } else {
-      const other: Record<string, string | number> = { dim: '其它' };
-      for (const k of metricKeys) {
-        const vals = rest.map((d) => Number(d[k] || 0));
-        other[k] =
-          spec.agg === 'min'
-            ? Math.min(...vals)
-            : spec.agg === 'max'
-              ? Math.max(...vals)
-              : vals.reduce((a, b) => a + b, 0); // sum / count
-      }
-      data = [...top, other];
-    }
+  const max = spec.type === 'pie' || spec.type === 'donut' ? MAX_PIE_CATS : MAX_CATS;
+  if (data.length > max) {
+    data = capCategories(data, metricKeys, spec.agg, max);
   } else {
     data.sort((a, b) => String(a.dim).localeCompare(String(b.dim)));
   }
