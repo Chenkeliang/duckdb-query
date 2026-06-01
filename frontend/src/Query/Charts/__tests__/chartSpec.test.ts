@@ -122,3 +122,34 @@ describe('buildChartSql', () => {
     expect(sql).not.toContain('GROUP BY');
   });
 });
+
+import { aggregateRows } from '../chartSpec';
+
+describe('aggregateRows', () => {
+  const rows = [
+    { status: 'paid', amount: 10 },
+    { status: 'paid', amount: 30 },
+    { status: 'new', amount: 5 },
+  ];
+  it('groups by x and sums each metric -> recharts data', () => {
+    const r = aggregateRows(rows, { type: 'bar', x: 'status', y: ['amount'], agg: 'sum' });
+    expect(r.metricKeys).toEqual(['amount']);
+    const paid = r.data.find((d) => d.dim === 'paid');
+    expect(paid?.amount).toBe(40);
+  });
+  it('no y -> count', () => {
+    const r = aggregateRows(rows, { type: 'bar', x: 'status', y: [], agg: 'count' });
+    expect(r.metricKeys).toEqual(['count']);
+    expect(r.data.find((d) => d.dim === 'paid')?.count).toBe(2);
+  });
+  it('kpi -> single value', () => {
+    const r = aggregateRows(rows, { type: 'kpi', x: null, y: ['amount'], agg: 'sum' });
+    expect(r.kpi).toBe(45);
+  });
+  it('caps to Top-200 by total metric, merging the rest into 其它', () => {
+    const many = Array.from({ length: 250 }, (_, i) => ({ status: `s${i}`, amount: i }));
+    const r = aggregateRows(many, { type: 'bar', x: 'status', y: ['amount'], agg: 'sum' });
+    expect(r.data.length).toBeLessThanOrEqual(201);
+    expect(r.data.some((d) => d.dim === '其它')).toBe(true);
+  });
+});

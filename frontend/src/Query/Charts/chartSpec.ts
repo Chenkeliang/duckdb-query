@@ -103,3 +103,71 @@ export function buildChartSql(userSql: string, spec: ChartSpec): string {
     : 'count(*) AS m_0';
   return `SELECT ${xExpr(spec)} AS dim, ${metricSql} FROM (${inner}) AS _src GROUP BY 1 ORDER BY 1 LIMIT 200`;
 }
+
+export interface AggResult {
+  data: Array<Record<string, string | number>>;
+  metricKeys: string[];
+  kpi?: number;
+}
+
+function applyAgg(values: number[], counts: number, agg: AggFn): number {
+  if (agg === 'count') return counts;
+  if (!values.length) return 0;
+  if (agg === 'sum') return values.reduce((a, b) => a + b, 0);
+  if (agg === 'avg') return values.reduce((a, b) => a + b, 0) / values.length;
+  if (agg === 'min') return Math.min(...values);
+  if (agg === 'max') return Math.max(...values);
+  return 0;
+}
+
+function binDim(v: unknown, xBin?: 'day' | 'month' | null): string {
+  const s = v == null ? '∅' : String(v);
+  if (!xBin) return s;
+  if (xBin === 'day') return s.slice(0, 10);
+  if (xBin === 'month') return s.slice(0, 7);
+  return s;
+}
+
+const MAX_CATS = 200;
+
+export function aggregateRows(rows: Array<Record<string, unknown>>, spec: ChartSpec): AggResult {
+  const metricKeys = spec.y.length ? spec.y : ['count'];
+  if (spec.type === 'kpi') {
+    const col = spec.y[0];
+    const vals = col ? (rows || []).map((r) => Number(r[col])).filter((n) => !Number.isNaN(n)) : [];
+    return { data: [], metricKeys, kpi: applyAgg(vals, rows?.length ?? 0, spec.agg) };
+  }
+  const groups = new Map<string, { count: number; valsByY: Record<string, number[]> }>();
+  for (const row of rows || []) {
+    const dim = binDim(spec.x ? row[spec.x] : '', spec.xBin);
+    let g = groups.get(dim);
+    if (!g) {
+      g = { count: 0, valsByY: {} };
+      spec.y.forEach((y) => (g!.valsByY[y] = []));
+      groups.set(dim, g);
+    }
+    g.count += 1;
+    for (const y of spec.y) {
+      const n = Number(row[y]);
+      if (!Number.isNaN(n)) g.valsByY[y].push(n);
+    }
+  }
+  let data = Array.from(groups.entries()).map(([dim, g]) => {
+    const item: Record<string, string | number> = { dim };
+    if (spec.y.length) for (const y of spec.y) item[y] = applyAgg(g.valsByY[y], g.count, spec.agg);
+    else item['count'] = g.count;
+    return item;
+  });
+  const key = metricKeys[0];
+  if (data.length > MAX_CATS) {
+    data.sort((a, b) => Number(b[key]) - Number(a[key]));
+    const top = data.slice(0, MAX_CATS);
+    const rest = data.slice(MAX_CATS);
+    const other: Record<string, string | number> = { dim: '其它' };
+    for (const k of metricKeys) other[k] = rest.reduce((s, d) => s + Number(d[k] || 0), 0);
+    data = [...top, other];
+  } else {
+    data.sort((a, b) => String(a.dim).localeCompare(String(b.dim)));
+  }
+  return { data, metricKeys };
+}
