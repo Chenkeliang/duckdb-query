@@ -35,6 +35,8 @@ def suggest_chart(
         '"xBin": "day"|"month"|null, "reason": short text}. '
         "x/y MUST be real column names from the list. Prefer a date column as x with line; "
         "else a text column as x with bar; numeric column as y. "
+        "NEVER use pie or donut when x is a date/time column (dates are trends -> use line). "
+        "Use pie/donut ONLY for a low-cardinality text category. "
         f"Reason in {lang}."
     )
     user = f"Columns: {cols_text}\nSample rows: {json.dumps(sample[:5], ensure_ascii=False)}"

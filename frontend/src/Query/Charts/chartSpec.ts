@@ -80,6 +80,13 @@ export function validateSpec(spec: ChartSpec, columns: ColumnInfo[]): ChartSpec 
   const yOk = Array.isArray(spec?.y) && spec.y.every((c) => names.has(c));
   const binOk = spec?.xBin == null || spec.xBin === 'day' || spec.xBin === 'month';
   if (typeOk && aggOk && xOk && yOk && binOk) {
+    // 护栏:日期维度不该用饼/环(占比图),日期是趋势 → 自动改折线
+    if ((spec.type === 'pie' || spec.type === 'donut') && spec.x) {
+      const col = (columns || []).find((c) => c.name === spec.x);
+      if (col && isDateType(col.type)) {
+        return { ...spec, type: 'line' };
+      }
+    }
     return spec;
   }
   return defaultSpec(columns);

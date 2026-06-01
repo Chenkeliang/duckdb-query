@@ -180,6 +180,17 @@ describe('hardening fixes (review)', () => {
     expect(['day', 'month', null, undefined]).toContain(r.xBin ?? null);
   });
 
+  it('coerces pie/donut on a date dimension to line (no pie of dates)', () => {
+    const cols = [{ name: 'create_time', type: 'datetime' }, { name: 'payment', type: 'decimal(11,2)' }];
+    const r = validateSpec({ type: 'pie', x: 'create_time', y: ['payment'], agg: 'sum', xBin: 'day' }, cols);
+    expect(r.type).toBe('line');
+    const r2 = validateSpec({ type: 'donut', x: 'create_time', y: ['payment'], agg: 'sum' }, cols);
+    expect(r2.type).toBe('line');
+    // 非日期维度的饼图保留
+    const r3 = validateSpec({ type: 'pie', x: 'payment', y: ['payment'], agg: 'sum' } as any, [{ name: 'payment', type: 'varchar(10)' }]);
+    expect(r3.type).toBe('pie');
+  });
+
   it('其它 bucket uses correct combiner: min -> min of rest, avg -> dropped', () => {
     const many = Array.from({ length: 250 }, (_, i) => ({ status: `s${i}`, amount: i }));
     const rmin = aggregateRows(many, { type: 'bar', x: 'status', y: ['amount'], agg: 'min' });
