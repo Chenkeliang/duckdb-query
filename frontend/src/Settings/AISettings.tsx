@@ -104,6 +104,9 @@ export function AISettings() {
   const handleTest = async (id: string) => {
     setTestingId(id);
     try {
+      // 测试针对「已保存」配置，所以先静默保存当前表单（空 key 后端会保留原密钥），
+      // 确保新加的供应商已落库，避免「资源不存在」。
+      await saveAiSettings(s);
       const r = await testProvider(id);
       if (r.ok) {
         showSuccessToast(t, undefined, t('settings.ai.testOk', '连接成功'));
@@ -111,7 +114,7 @@ export function AISettings() {
         showErrorToast(t, undefined, t('settings.ai.testFail', '连接失败'));
       }
     } catch (e) {
-      showErrorToast(t, e as Error, t('settings.ai.testFailSave', '连接失败，请先保存设置后再测试'));
+      showErrorToast(t, e as Error, t('settings.ai.testFail', '连接失败'));
     } finally {
       setTestingId(null);
     }
@@ -230,8 +233,15 @@ export function AISettings() {
                   <Input
                     value={p.base_url ?? ''}
                     onChange={(e) => updateProvider(p.id, { base_url: e.target.value || null })}
-                    placeholder="http://localhost:11434"
+                    placeholder={
+                      p.type === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com/v1'
+                    }
                   />
+                  {p.type === 'openai_compatible' && (
+                    <p className="text-xs text-muted-foreground">
+                      {t('settings.ai.baseUrlHint', '填到 /v1 为止，勿带 /chat/completions')}
+                    </p>
+                  )}
                 </div>
               )}
               <div className="space-y-1">
