@@ -19,21 +19,24 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onStartUsing }) => {
   return (
     <div className="min-h-screen bg-background font-sans leading-relaxed">
       {/* Hero Section */}
-      <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white text-center py-20 px-6 min-h-[60vh] flex items-center justify-center">
-        <div className="max-w-3xl w-full">
+      <div className="relative overflow-hidden bg-gradient-to-br from-[#0B1221] to-[#131B2E] text-white text-center py-24 px-6 min-h-[60vh] flex items-center justify-center">
+        {/* 品牌光晕(DuckDB 黄 + React 青),与社交预览图一致 */}
+        <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-[#FFBF00] opacity-[0.08] blur-3xl" />
+        <div className="pointer-events-none absolute -left-20 -bottom-24 h-72 w-72 rounded-full bg-[#61DAFB] opacity-[0.06] blur-3xl" />
+        <div className="relative max-w-3xl w-full">
           <h1 className="text-5xl font-bold mb-4 tracking-tight">
-            DuckQuery · DuckDB
+            DuckQuery <span className="text-[#FFBF00]">· DuckDB</span>
           </h1>
-          <p className="text-2xl mb-3 opacity-95 font-medium">
-            DuckDB 驱动的跨源数据可视化分析平台
+          <p className="text-2xl mb-3 font-medium text-slate-100">
+            DuckDB 驱动的 AI 跨源数据分析工作台
           </p>
-          <p className="text-lg mb-8 opacity-90 max-w-xl mx-auto">
-            不建仓、不写脚本，Excel、CSV、数据库及 DuckDB SQL 统一处理，几分钟完成分析与导出
+          <p className="text-lg mb-8 text-slate-300 max-w-xl mx-auto">
+            不建仓、不写脚本 —— Excel、CSV、MySQL/PG 一条 SQL 跨源关联,还能用大白话问数。
           </p>
-          <Button 
+          <Button
             onClick={onStartUsing}
             size="lg"
-            className="bg-white text-indigo-600 hover:bg-gray-100 font-semibold px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5"
+            className="bg-[#FFBF00] text-[#0B1221] hover:bg-[#FFD75E] font-semibold px-8 py-6 text-lg shadow-lg shadow-[#FFBF00]/20 transition-all hover:-translate-y-0.5"
           >
             开始使用 →
           </Button>
@@ -161,10 +164,10 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onStartUsing }) => {
             开源免费，持续更新维护
           </p>
           <div className="flex gap-4 justify-center flex-wrap">
-            <Button 
+            <Button
               onClick={onStartUsing}
               size="lg"
-              className="font-semibold px-8 py-6 text-lg"
+              className="bg-[#FFBF00] text-[#0B1221] hover:bg-[#FFD75E] font-semibold px-8 py-6 text-lg"
             >
               开始使用 →
             </Button>
@@ -237,7 +240,7 @@ interface UseCaseCardProps {
 const UseCaseCard: React.FC<UseCaseCardProps> = ({ icon, title, description }) => (
   <Card className="border-border shadow-sm hover:shadow-lg transition-all hover:-translate-y-1">
     <CardHeader className="pb-3">
-      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center mb-4">
+      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center mb-4 shadow-sm shadow-orange-500/20">
         {icon}
       </div>
       <CardTitle className="text-xl font-semibold text-foreground">
