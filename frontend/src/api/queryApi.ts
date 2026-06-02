@@ -7,6 +7,7 @@
  */
 
 import { normalizeMysqlDoubleQuotedStringsForDuckdb } from '@/utils/mysqlStringQuotesForDuckdb';
+import { IS_DEMO } from '@/demo/isDemo';
 import { apiClient, handleApiError, getFederatedQueryTimeout, normalizeResponse, extractMessage, extractMessageCode } from './client';
 import type {
     QueryResponse,
@@ -61,6 +62,12 @@ export async function executeDuckDBSQL(
 
     const { sql, saveAsTable = null, isPreview = true, requestId, signal } = options;
 
+    // Demo:浏览器内 DuckDB-Wasm 执行(IS_DEMO=false 时本分支连同 import 被编译期剥离)
+    if (IS_DEMO) {
+        const { runWasm } = await import('@/demo/wasmEngine');
+        return runWasm(sql);
+    }
+
     try {
         const config: Record<string, unknown> = {};
 
@@ -110,6 +117,12 @@ export async function executeFederatedQuery(options: FederatedQueryOptions): Pro
         requestId,
         signal,
     } = options;
+
+    // Demo:联邦查询(连 MySQL/PG)在浏览器内不可用;入口已被 DemoLock 锁住,这里兜底
+    if (IS_DEMO) {
+        const { demoFederatedUnsupported } = await import('@/demo/wasmEngine');
+        throw demoFederatedUnsupported();
+    }
 
     try {
         const normalizedSql = normalizeMysqlDoubleQuotedStringsForDuckdb(sql);
