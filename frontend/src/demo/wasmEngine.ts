@@ -122,6 +122,15 @@ export async function runWasm(sql: string): Promise<QueryResponse> {
   };
 }
 
+/** 列出 main schema 下的表(示例表 + 用户后续建的表),供侧栏表列表使用。 */
+export async function listWasmTables(): Promise<{ name: string }[]> {
+  const conn = await getConn();
+  const r = await conn.query(
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' ORDER BY table_name",
+  );
+  return r.toArray().map((row) => ({ name: String((row as unknown as { table_name: unknown }).table_name) }));
+}
+
 /** 联邦查询(连 MySQL/Postgres)在浏览器内不可用。 */
 export function demoFederatedUnsupported(): Error {
   return new Error('在线 Demo 不支持连接外部数据库(MySQL/Postgres),请使用自托管版');

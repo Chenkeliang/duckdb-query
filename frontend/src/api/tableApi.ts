@@ -8,6 +8,7 @@
 
 import { apiClient, handleApiError, normalizeResponse } from './client';
 import { normalizeConnectionId } from './databaseSchemasApi';
+import { IS_DEMO } from '@/demo/isDemo';
 import type { TableInfo, TableDetail, NormalizedResponse } from './types';
 
 type DuckDBTableListItem = {
@@ -37,6 +38,11 @@ async function fetchDuckDBTableListNormalized() {
  * Get all DuckDB tables (canonical: GET /api/duckdb/tables)
  */
 export async function getDuckDBTables(): Promise<TableInfo[]> {
+    // Demo:表列表来自浏览器内 wasm(示例表),正常构建此分支被剥离
+    if (IS_DEMO) {
+        const { listWasmTables } = await import('@/demo/wasmEngine');
+        return mapDuckDBTableListItems(await listWasmTables());
+    }
     try {
         const normalized = await fetchDuckDBTableListNormalized();
         const items = normalized.items ?? normalized.data?.items ?? [];

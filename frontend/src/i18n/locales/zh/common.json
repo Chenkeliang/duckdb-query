@@ -1073,5 +1073,14 @@
   },
   "command": {
     "aiChat": "数据助手对话"
+  },
+  "demo": {
+    "banner": "浏览器内 Demo(DuckDB-Wasm)· 已预置示例表,可直接写 SQL / JOIN / 出图。连数据库与 AI 需自托管版。",
+    "viewGithub": "查看 GitHub →",
+    "dataTitle": "连接数据库 / 上传文件需自托管版",
+    "dataDesc": "Demo 已预置示例表(orders / users / products),去「查询工作台」即可直接写 SQL、跨表 JOIN、出图。想上传自己的文件或连 MySQL / PostgreSQL?自托管即可解锁。",
+    "aiTitle": "AI 功能需自托管版",
+    "aiDesc": "问数对话、报错医生、AI 图表推荐需要后端与你自己的模型 Key。自托管后在「AI 模型」里填入 Key 即可启用(默认关闭、不外传)。",
+    "goQuery": "去查询示例表"
   }
 }

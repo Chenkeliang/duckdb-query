@@ -33,6 +33,9 @@ import PageShell from "./Layout/PageShell";
 import Sidebar from "./Layout/Sidebar";
 import Header from "./Layout/Header";
 import DataSourcePage from "./DataSource/DataSourcePage";
+import { IS_DEMO } from "./demo/isDemo";
+import { DemoBanner } from "./demo/DemoBanner";
+import { DemoNotice } from "./demo/DemoNotice";
 import DatabaseForm from "./DataSource/DatabaseForm";
 import UploadPanel from "./DataSource/UploadPanel";
 import DataSourceTabs from "./DataSource/DataSourceTabs";
@@ -298,6 +301,14 @@ const AppInner: React.FC = () => {
   }
 
   const renderContent = (): ReactNode => {
+    // Demo:数据源(连库/上传)需后端 → 换成自托管升级引导(正常构建此分支被剥离)
+    if (IS_DEMO && currentTab === "datasource") {
+      return <DemoNotice variant="datasource" onGoQuery={() => setCurrentTab("queryworkbench")} />;
+    }
+    if (IS_DEMO && currentTab === "ai") {
+      return <DemoNotice variant="ai" />;
+    }
+
     if (currentTab === "datasource") {
       const uploadPanel = <UploadPanel />;
 
@@ -548,6 +559,7 @@ const AppInner: React.FC = () => {
         }
         header={headerNode}
       >
+        <DemoBanner />
         {renderContent()}
       </PageShell>
 

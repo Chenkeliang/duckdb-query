@@ -1066,5 +1066,14 @@
   },
   "command": {
     "aiChat": "Data assistant chat"
+  },
+  "demo": {
+    "banner": "Browser demo (DuckDB-Wasm) · sample tables preloaded — write SQL / JOIN / chart right away. DB connections & AI need self-hosting.",
+    "viewGithub": "View on GitHub →",
+    "dataTitle": "Connecting databases / uploading files needs self-hosting",
+    "dataDesc": "This demo preloads sample tables (orders / users / products) — head to the Query Workbench to write SQL, JOIN across tables, and chart. To upload your own files or connect MySQL / PostgreSQL, self-host to unlock.",
+    "aiTitle": "AI features need self-hosting",
+    "aiDesc": "Text-to-SQL chat, the error doctor, and AI chart suggestions need a backend and your own model key. Self-host, then add your key under “AI / Models” (off by default, never shared).",
+    "goQuery": "Query the sample tables"
   }
 }
