@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <sub>写给在本地文件与在线数据库之间来回折腾的分析师和工程师 —— 不建仓、不写脚本。</sub>
+</p>
+
+<p align="center">
   <a href="https://chenkeliang.github.io/duckdb-query/">在线 Demo</a> •
   <a href="#快速开始">快速开始</a> •
   <a href="#你能做什么">你能做什么</a> •
@@ -22,6 +26,10 @@
   <img src="https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black" alt="React">
   <img src="https://img.shields.io/badge/DuckDB-Powered-FFBF00.svg?logo=duckdb&logoColor=white" alt="DuckDB">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT">
+</p>
+
+<p align="center">
+  <img src="docs/assets/og-cover.png" alt="DuckQuery —— 一条 SQL 同时查本地文件与远程数据库" width="840">
 </p>
 
 ---
@@ -245,6 +253,18 @@ cd frontend && npm run dev -- --port 3000
 
 不会。DuckDB 文件在宿主机 **`./data`**，`docker compose up -d --build` 只替换容器。`docker compose down` 停止容器，也**不删** `./data`。请勿对生产数据执行 `docker compose down -v`（若将来引入命名卷）。WAL 异常时可参考 `./scripts/repair-duckdb-wal.sh`。
 </details>
+
+---
+
+## 喜欢的话
+
+如果 DuckQuery 帮你省了一段弯路，点个 star 能让更多人找到它。
+
+<p align="center">
+  <a href="https://github.com/Chenkeliang/duckdb-query">⭐ 在 GitHub 上 Star</a> &nbsp;·&nbsp;
+  <a href="https://chenkeliang.github.io/duckdb-query/">🚀 试用在线 Demo</a> &nbsp;·&nbsp;
+  <a href="https://github.com/Chenkeliang/duckdb-query/issues">🛠 提 issue / 参与贡献</a>
+</p>
 
 ---
 

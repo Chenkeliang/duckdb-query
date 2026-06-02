@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <sub>For data analysts & engineers who juggle local files and live databases — no warehouse, no pipeline.</sub>
+</p>
+
+<p align="center">
   <a href="https://chenkeliang.github.io/duckdb-query/">Live Demo</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#what-can-you-do">What Can You Do</a> •
@@ -22,6 +26,10 @@
   <img src="https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black" alt="React">
   <img src="https://img.shields.io/badge/DuckDB-Powered-FFBF00.svg?logo=duckdb&logoColor=white" alt="DuckDB">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT">
+</p>
+
+<p align="center">
+  <img src="docs/assets/og-cover.png" alt="DuckQuery — query local files and remote databases together with one SQL" width="840">
 </p>
 
 ---
@@ -250,6 +258,18 @@ cd frontend && npm run dev -- --port 3000
 
 No. DuckDB files are on the host under **`./data`**. `docker compose up -d --build` only recreates containers. `docker compose down` stops containers but **does not** remove `./data`. Avoid `docker compose down -v` unless you mean to wipe volumes. For WAL issues see `./scripts/repair-duckdb-wal.sh`.
 </details>
+
+---
+
+## Like it?
+
+If DuckQuery saved you a detour, a star helps other people find it.
+
+<p align="center">
+  <a href="https://github.com/Chenkeliang/duckdb-query">⭐ Star on GitHub</a> &nbsp;·&nbsp;
+  <a href="https://chenkeliang.github.io/duckdb-query/">🚀 Try the live demo</a> &nbsp;·&nbsp;
+  <a href="https://github.com/Chenkeliang/duckdb-query/issues">🛠 Open an issue / contribute</a>
+</p>
 
 ---
 
