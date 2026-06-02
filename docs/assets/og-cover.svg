@@ -52,7 +52,7 @@
     <g transform="translate(716,486)">
       <rect x="0" y="0" width="238" height="52" rx="26" fill="#1C2840" stroke="#2C3B59"/>
       <circle cx="26" cy="26" r="5" fill="#61DAFB"/>
-      <text x="44" y="34">Local-first WASM</text>
+      <text x="44" y="34">Self-hosted · MIT</text>
     </g>
   </g>
 
