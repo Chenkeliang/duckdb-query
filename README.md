@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://chenkeliang.github.io/duckdb-query/">Live Demo</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#what-can-you-do">What Can You Do</a> •
   <a href="#deployment">Deployment</a> •
@@ -16,16 +17,28 @@
 </p>
 
 <p align="center">
+  <a href="https://chenkeliang.github.io/duckdb-query/"><img src="https://img.shields.io/badge/Live_Demo-Try_in_browser-F4B43C?logo=duckdb&logoColor=white" alt="Live Demo"></a>
   <img src="https://img.shields.io/badge/Python-3.12+-3776AB.svg?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black" alt="React">
   <img src="https://img.shields.io/badge/DuckDB-Powered-FFBF00.svg?logo=duckdb&logoColor=white" alt="DuckDB">
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT">
 </p>
 
 ---
 
 ## Quick Start
 
-Run the full stack (Python Backend + React Frontend) — local file access + persistent MySQL/Postgres connections.
+### Try it in your browser (no install)
+
+Run real SQL on the sample tables — or drag in your own CSV / Parquet / JSON — entirely in-browser via **DuckDB-Wasm**.
+
+👉 **[Open the live demo](https://chenkeliang.github.io/duckdb-query/)**
+
+> Connecting MySQL / Postgres and the AI features run on the backend, so they need the self-hosted version below.
+
+### Self-host (full features)
+
+Run the full stack (Python Backend + React Frontend) — local file access, persistent MySQL/Postgres connections, and AI.
 
 **Prerequisites:** Docker & Docker Compose
 

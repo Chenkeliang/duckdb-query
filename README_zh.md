@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://chenkeliang.github.io/duckdb-query/">在线 Demo</a> •
   <a href="#快速开始">快速开始</a> •
   <a href="#你能做什么">你能做什么</a> •
   <a href="#部署方式">部署方式</a> •
@@ -16,16 +17,28 @@
 </p>
 
 <p align="center">
+  <a href="https://chenkeliang.github.io/duckdb-query/"><img src="https://img.shields.io/badge/在线_Demo-浏览器内试用-F4B43C?logo=duckdb&logoColor=white" alt="Live Demo"></a>
   <img src="https://img.shields.io/badge/Python-3.12+-3776AB.svg?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black" alt="React">
   <img src="https://img.shields.io/badge/DuckDB-Powered-FFBF00.svg?logo=duckdb&logoColor=white" alt="DuckDB">
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT">
 </p>
 
 ---
 
 ## 快速开始
 
-启动全栈版本（Python 后端 + React 前端）—— 直接读写本地文件 + 连接持久化的 MySQL/Postgres。
+### 浏览器内试用（免安装）
+
+对示例表跑真 SQL,或拖入你自己的 CSV / Parquet / JSON —— 全程在浏览器内、基于 **DuckDB-Wasm**。
+
+👉 **[打开在线 Demo](https://chenkeliang.github.io/duckdb-query/)**
+
+> 连接 MySQL / Postgres 与 AI 功能跑在后端,需要下面的自托管版。
+
+### 自托管（完整功能）
+
+启动全栈版本（Python 后端 + React 前端）—— 直接读写本地文件、连接持久化的 MySQL/Postgres、以及 AI。
 
 **前置依赖：** 需要安装 Docker 和 Docker Compose
 
