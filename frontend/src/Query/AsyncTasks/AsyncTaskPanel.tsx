@@ -327,7 +327,7 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
                         <PopoverContent
                           side="bottom"
                           align="start"
-                          className="w-[480px] max-w-[90vw] max-h-[var(--radix-popover-content-available-height)] p-2"
+                          className="w-[480px] max-w-[90vw] max-h-(--radix-popover-content-available-height) p-2"
                         >
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs text-muted-foreground">SQL</span>

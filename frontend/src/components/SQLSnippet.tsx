@@ -18,7 +18,7 @@ export function SQLSnippet({
     <div
       className={cn(
         'rounded-md border border-border/50 bg-muted/40 px-2 py-1.5',
-        'text-xs font-mono text-muted-foreground whitespace-pre-wrap break-words overflow-hidden',
+        'text-xs font-mono text-muted-foreground whitespace-pre-wrap wrap-break-word overflow-hidden',
         className
       )}
       style={{ maxHeight }}

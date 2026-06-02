@@ -141,7 +141,7 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
 
           <div
             className={cn(
-              'flex-1 min-h-[12rem] max-h-[min(60vh,32rem)] min-w-0',
+              'flex-1 min-h-48 max-h-[min(60vh,32rem)] min-w-0',
               'rounded-lg border border-border overflow-hidden'
             )}
           >
@@ -167,7 +167,7 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
                 <pre
                   className={cn(
                     'h-full min-h-48 max-h-[min(60vh,32rem)] overflow-auto',
-                    'p-3 text-sm font-mono whitespace-pre-wrap break-words',
+                    'p-3 text-sm font-mono whitespace-pre-wrap wrap-break-word',
                     'bg-muted/30 text-foreground rounded-lg'
                   )}
                 >

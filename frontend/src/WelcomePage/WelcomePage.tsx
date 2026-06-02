@@ -73,10 +73,10 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onStartUsing }) => {
 
       {/* HERO */}
       <section id="top" className="relative overflow-hidden">
-        <div className="pointer-events-none absolute -right-40 -top-44 h-[36rem] w-[36rem] rounded-full bg-[#F4B43C]/10 blur-[130px]" />
+        <div className="pointer-events-none absolute -right-40 -top-44 h-144 w-xl rounded-full bg-[#F4B43C]/10 blur-[130px]" />
         <div className="relative mx-auto grid max-w-[1180px] items-center gap-12 px-6 pb-24 pt-20 lg:grid-cols-[1.05fr_.95fr] lg:gap-10">
           <div className="max-w-xl">
-            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 font-mono text-[12px] text-white/55">
+            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/3 px-3 py-1 font-mono text-[12px] text-white/55">
               <span className="h-1.5 w-1.5 rounded-full bg-[#F4B43C]" /> {t('welcome.heroEyebrow')}
             </div>
             <h1 className="text-[2.7rem] font-semibold leading-[1.04] tracking-tight md:text-[3.5rem]">
@@ -104,7 +104,7 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onStartUsing }) => {
           {/* live terminal */}
           <div className="wp-floaty">
             <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#16181C] shadow-[0_40px_90px_-40px_rgba(0,0,0,.85)]">
-              <div className="flex h-10 items-center gap-2 border-b border-white/[0.07] bg-white/[0.02] px-4">
+              <div className="flex h-10 items-center gap-2 border-b border-white/[0.07] bg-white/2 px-4">
                 <span className="h-2.5 w-2.5 rounded-full bg-white/15" /><span className="h-2.5 w-2.5 rounded-full bg-white/15" /><span className="h-2.5 w-2.5 rounded-full bg-white/15" />
                 <span className="ml-2 font-mono text-[11px] text-white/35">cross-source.sql</span>
                 <span className="ml-auto rounded border border-[#F4B43C]/25 px-1.5 py-0.5 font-mono text-[10px] text-[#F4B43C]">DuckDB-Wasm</span>
@@ -172,7 +172,7 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onStartUsing }) => {
 
           <BentoTile icon={<Lock className="h-5 w-5 text-[#F4B43C]" strokeWidth={1.5} />} title={t('welcome.localTitle')} desc={t('welcome.localDesc')} />
 
-          <div className="wp-lift flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-gradient-to-r from-[#16181C] to-[#16181C]/30 p-6 hover:border-[#F4B43C]/40 md:col-span-3">
+          <div className="wp-lift flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-linear-to-r from-[#16181C] to-[#16181C]/30 p-6 hover:border-[#F4B43C]/40 md:col-span-3">
             <div className="flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#F4B43C]/15 text-[#F4B43C]"><Play className="h-[18px] w-[18px]" /></span>
               <div><div className="font-semibold">{t('welcome.demoTitle')}</div><div className="text-[13px] text-white/45">{t('welcome.demoDesc')}</div></div>
@@ -211,7 +211,7 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onStartUsing }) => {
               </div>
             </div>
             <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-[#0E0F11]/60 px-3 py-2">
-              <input disabled placeholder={t('welcome.aiInputPlaceholder')} className="flex-1 bg-transparent text-[13px] text-white/40 outline-none placeholder:text-white/25" />
+              <input disabled placeholder={t('welcome.aiInputPlaceholder')} className="flex-1 bg-transparent text-[13px] text-white/40 outline-hidden placeholder:text-white/25" />
               <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#F4B43C] text-[#0E0F11]"><Send className="h-3.5 w-3.5" /></span>
             </div>
           </div>
@@ -263,7 +263,7 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onStartUsing }) => {
             </div>
           </div>
           <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#16181C] shadow-[0_40px_90px_-50px_rgba(0,0,0,.9)]">
-            <div className="flex h-10 items-center gap-2 border-b border-white/[0.07] bg-white/[0.02] px-4 font-mono text-[11px] text-white/35">
+            <div className="flex h-10 items-center gap-2 border-b border-white/[0.07] bg-white/2 px-4 font-mono text-[11px] text-white/35">
               <span className="h-2.5 w-2.5 rounded-full bg-white/15" /><span className="h-2.5 w-2.5 rounded-full bg-white/15" /><span className="h-2.5 w-2.5 rounded-full bg-white/15" /><span className="ml-2">terminal</span>
             </div>
             <pre className="overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-7 text-white/80"><span className="text-white/30">$</span> git clone https://github.com/Chenkeliang/duckdb-query.git{'\n'}<span className="text-white/30">$</span> cd duckdb-query && ./quick-start.sh{'\n'}<span className="text-[#F4B43C]">→ http://localhost:3000</span>  <span className="text-white/30">{t('welcome.terminalReady')}<span className="wp-caret">▌</span></span></pre>

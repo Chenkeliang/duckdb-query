@@ -307,7 +307,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                 {trigger || defaultTrigger}
             </PopoverTrigger>
             <PopoverContent
-                className="w-80 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto"
+                className="w-80 max-h-(--radix-popover-content-available-height) overflow-y-auto"
                 align="start"
                 sideOffset={5}
                 collisionPadding={16}
@@ -338,7 +338,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                                 <SelectTrigger id="filter-table">
                                     <SelectValue placeholder={t('query.filter.form.placeholder.selectTable', '选择表')} />
                                 </SelectTrigger>
-                                <SelectContent className="z-[9999]">
+                                <SelectContent className="z-9999">
                                     {tables.map(table => (
                                         <SelectItem key={table} value={table}>
                                             {table}
@@ -359,7 +359,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                                 <SelectTrigger id="filter-column">
                                     <SelectValue placeholder={t('query.filter.form.placeholder.selectColumn', '选择列')} />
                                 </SelectTrigger>
-                                <SelectContent className="z-[9999]">
+                                <SelectContent className="z-9999">
                                     {columns.map(col => (
                                         <SelectItem key={col.column} value={col.column}>
                                             <span>{col.column}</span>
@@ -385,7 +385,7 @@ export const FilterPopover: React.FC<FilterPopoverProps> = ({
                             <SelectTrigger id="filter-operator">
                                 <SelectValue />
                             </SelectTrigger>
-                            <SelectContent className="z-[9999]">
+                            <SelectContent className="z-9999">
                                 {OPERATOR_CONFIGS.map(config => (
                                     <SelectItem key={config.value} value={config.value}>
                                         <span className="font-mono mr-2">{config.symbol}</span>

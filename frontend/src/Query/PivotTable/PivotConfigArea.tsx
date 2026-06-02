@@ -182,7 +182,7 @@ export const PivotConfigArea: React.FC<PivotConfigAreaProps> = ({
     };
 
     return (
-        <div className="flex gap-4 p-4 border-b bg-background/50 backdrop-blur-sm z-10 sticky top-0">
+        <div className="flex gap-4 p-4 border-b bg-background/50 backdrop-blur-xs z-10 sticky top-0">
 
             {/* Rows Zone */}
             <SortableContext id="rows-context" items={rows} strategy={horizontalListSortingStrategy}>

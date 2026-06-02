@@ -1,303 +1,483 @@
-@tailwind base;
-@tailwind components;
+@import 'tailwindcss';
+
+@plugin 'tailwindcss-animate';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-surface: hsl(var(--surface));
+  --color-surface-hover: hsl(var(--surface-hover));
+  --color-surface-active: hsl(var(--surface-active));
+  --color-surface-elevated: hsl(var(--surface-elevated));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-border: hsl(var(--border));
+  --color-border-subtle: hsl(var(--border-subtle));
+  --color-border-strong: hsl(var(--border-strong));
+  --color-input: hsl(var(--input));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-success-bg: hsl(var(--success-bg));
+  --color-success-border: hsl(var(--success-border));
+
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-warning-bg: hsl(var(--warning-bg));
+  --color-warning-border: hsl(var(--warning-border));
+
+  --color-error: hsl(var(--error));
+  --color-error-foreground: hsl(var(--error-foreground));
+  --color-error-bg: hsl(var(--error-bg));
+  --color-error-border: hsl(var(--error-border));
+
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
+  --color-info-bg: hsl(var(--info-bg));
+  --color-info-border: hsl(var(--info-border));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-ring: hsl(var(--ring));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+  --shadow-inner: var(--shadow-inner);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --transition-duration-fast: 150ms;
+  --transition-duration-normal: 200ms;
+  --transition-duration-slow: 300ms;
+  --transition-duration-slower: 500ms;
+
+  --z-index-dropdown: 1000;
+  --z-index-sticky: 1020;
+  --z-index-fixed: 1030;
+  --z-index-modal-backdrop: 1040;
+  --z-index-modal: 1050;
+  --z-index-popover: 1060;
+  --z-index-tooltip: 1070;
+  --z-index-notification: 1080;
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-filter-fade-in: filter-fade-in 0.2s ease-out;
+  --animate-filter-fade-out: filter-fade-out 0.2s ease-out;
+  --animate-filter-slide-in: filter-slide-in 0.15s ease-out;
+  --animate-filter-pop: filter-pop 0.25s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+  @keyframes filter-fade-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes filter-fade-out {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+  @keyframes filter-slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  @keyframes filter-pop {
+    0% {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
 
 /* IDE table, result toolbar, code block and popover component styles */
-@layer components {
+@utility result-toolbar {
   /* Result toolbar */
-  .result-toolbar {
-    @apply flex items-center gap-2 px-3 h-8 bg-muted border-b border-border text-xs text-muted-foreground;
-  }
-  .result-toolbar .font-medium {
+  @apply flex items-center gap-2 px-3 h-8 bg-muted border-b border-border text-xs text-muted-foreground;
+  & .font-medium {
     @apply text-foreground;
   }
-
+}
+@utility font-medium {
+  .result-toolbar & {
+    @apply text-foreground;
+  }
+}
+@utility ide-table {
   /* IDE-like table */
-  table.ide-table {
+  &table {
     @apply w-full border-collapse text-[13px] font-mono;
   }
-  table.ide-table thead th {
+  &table thead th {
     @apply h-9 px-3 text-left border-b border-border text-muted-foreground bg-muted/20;
   }
-  table.ide-table tbody td {
+  &table tbody td {
     @apply h-8 px-3 border-b border-border-subtle text-foreground bg-surface;
   }
-  table.ide-table tbody tr:last-child td {
+  &table tbody tr:last-child td {
     @apply border-b-0;
   }
-  table.ide-table thead th:last-child,
-  table.ide-table tbody td:last-child {
+  &table thead th:last-child {
     @apply border-r-0;
   }
-
+  & table tbody td:last-child {
+    @apply border-r-0;
+  }
+}
+@utility code-block {
   /* Code block */
-  .code-block {
-    @apply bg-muted border border-border rounded-lg p-4 font-mono text-sm leading-6 overflow-x-auto text-foreground;
-  }
-
+  @apply bg-muted border border-border rounded-lg p-4 font-mono text-sm leading-6 overflow-x-auto text-foreground;
+}
+@utility dq-popover {
   /* Popover (tooltip/popover surface) */
-  .dq-popover {
-    @apply bg-surface-elevated border border-border rounded-lg shadow-2xl p-3 text-sm text-foreground;
-  }
-  .dq-popover-header {
-    @apply flex items-center justify-between mb-2;
-  }
-  .dq-popover-actions {
-    @apply flex gap-2 mt-2;
-  }
-
+  @apply bg-surface-elevated border border-border rounded-lg shadow-2xl p-3 text-sm text-foreground;
+}
+@utility dq-popover-header {
+  @apply flex items-center justify-between mb-2;
+}
+@utility dq-popover-actions {
+  @apply flex gap-2 mt-2;
+}
+@utility split-container {
   /* Split container (vertical panes) */
-  .split-container {
-    @apply flex flex-col h-full relative bg-surface;
-  }
-
+  @apply flex flex-col h-full relative bg-surface;
+}
+@utility resizer {
   /* Resizer (between top and bottom panes) */
-  .resizer {
-    @apply h-1 bg-border cursor-ns-resize relative transition-colors duration-normal;
-  }
-  .resizer:hover {
+  @apply h-1 bg-border cursor-ns-resize relative transition-colors duration-normal;
+  &:hover {
     @apply bg-primary;
   }
-
+}
+@utility collapse-btn {
   /* Collapse button inside resizer */
-  .collapse-btn {
-    @apply absolute left-1/2 -translate-x-1/2 -top-3 px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-xs border border-border shadow-xs;
-  }
-  .collapse-btn:hover {
+  @apply absolute left-1/2 -translate-x-1/2 -top-3 px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-xs border border-border shadow-xs;
+  &:hover {
     @apply bg-surface-hover text-foreground;
   }
 }
 
-/* ============================================
+@layer components {
+  /* ============================================
    TanStack DataGrid Styles (AG Grid 风格)
    ============================================ */
 
-/* DataGrid 容器 - 浅色主题 */
-.dq-data-grid {
-  --dg-background: hsl(0 0% 100%);
-  --dg-foreground: hsl(240 10% 3.9%);
-  --dg-header-background: hsl(240 5.9% 96%);
-  --dg-header-foreground: hsl(240 3.8% 46%);
-  --dg-row-odd-background: hsl(240 5.9% 98%);
-  --dg-row-hover-background: hsl(240 5.9% 96%);
-  --dg-row-selected-background: hsl(221.2 83.2% 53.3% / 0.1);
-  --dg-border-color: hsl(240 5.9% 90%);
-  --dg-cell-padding: 0 12px;
-  --dg-row-height: 32px;
-  --dg-header-height: 36px;
-  --dg-font-family: var(--font-mono);
-  --dg-font-size: 13px;
-  --dg-null-color: hsl(240 5% 64%);
-  --dg-selection-border: hsl(221.2 83.2% 53.3%);
-  --dg-selection-background: hsl(221.2 83.2% 53.3% / 0.08);
+  /* DataGrid 容器 - 浅色主题 */
+  .dq-data-grid {
+    --dg-background: hsl(0 0% 100%);
+    --dg-foreground: hsl(240 10% 3.9%);
+    --dg-header-background: hsl(240 5.9% 96%);
+    --dg-header-foreground: hsl(240 3.8% 46%);
+    --dg-row-odd-background: hsl(240 5.9% 98%);
+    --dg-row-hover-background: hsl(240 5.9% 96%);
+    --dg-row-selected-background: hsl(221.2 83.2% 53.3% / 0.1);
+    --dg-border-color: hsl(240 5.9% 90%);
+    --dg-cell-padding: 0 12px;
+    --dg-row-height: 32px;
+    --dg-header-height: 36px;
+    --dg-font-family: var(--font-mono);
+    --dg-font-size: 13px;
+    --dg-null-color: hsl(240 5% 64%);
+    --dg-selection-border: hsl(221.2 83.2% 53.3%);
+    --dg-selection-background: hsl(221.2 83.2% 53.3% / 0.08);
+  }
+
+  /* DataGrid 容器 - 深色主题 */
+  .dark .dq-data-grid {
+    --dg-background: hsl(240 10% 3.9%);
+    --dg-foreground: hsl(0 0% 92%);
+    --dg-header-background: hsl(240 10% 6%);
+    --dg-header-foreground: hsl(0 0% 75%);
+    --dg-row-odd-background: hsl(240 10% 5%);
+    --dg-row-hover-background: hsl(240 3.7% 12%);
+    --dg-row-selected-background: hsl(221.2 83.2% 53.3% / 0.15);
+    --dg-border-color: hsl(240 5% 21%);
+    --dg-null-color: hsl(240 5% 50%);
+    --dg-selection-border: hsl(24.6 95% 53.1%);
+    --dg-selection-background: hsl(24.6 95% 53.1% / 0.1);
+  }
+
+  /* DataGrid 主容器 */
+  .dq-data-grid {
+    font-family: var(--dg-font-family);
+    font-size: var(--dg-font-size);
+    background: var(--dg-background);
+    color: var(--dg-foreground);
+    border: 1px solid var(--dg-border-color);
+    border-radius: 0;
+  }
+
+  /* DataGrid 列头容器 */
+  .dq-data-grid-header {
+    background: var(--dg-header-background);
+    border-bottom: 1px solid var(--dg-border-color);
+  }
+
+  /* DataGrid 列头单元格 */
+  .dq-data-grid-header-cell {
+    height: var(--dg-header-height);
+    padding: var(--dg-cell-padding);
+    color: var(--dg-header-foreground);
+    font-weight: 400;
+    border-right: 1px solid var(--dg-border-color);
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .dq-data-grid-header-cell:last-child {
+    border-right: none;
+  }
+
+  .dq-data-grid-header-cell:hover {
+    background: var(--dg-row-hover-background);
+  }
+
+  /* DataGrid 列头排序图标 */
+  .dq-data-grid-sort-icon {
+    flex-shrink: 0;
+    opacity: 0.5;
+  }
+
+  .dq-data-grid-sort-icon.active {
+    opacity: 1;
+    color: hsl(var(--primary));
+  }
+
+  /* DataGrid 列头筛选图标 */
+  .dq-data-grid-filter-icon {
+    flex-shrink: 0;
+    opacity: 0.5;
+  }
+
+  .dq-data-grid-filter-icon.active {
+    opacity: 1;
+    color: hsl(var(--primary));
+  }
+
+  /* DataGrid 列宽调整手柄 */
+  .dq-data-grid-resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 1;
+  }
+
+  .dq-data-grid-resize-handle:hover,
+  .dq-data-grid-resize-handle:active {
+    background: hsl(var(--primary) / 0.5);
+  }
+
+  /* DataGrid 行 */
+  .dq-data-grid-row {
+    display: flex;
+    border-bottom: 1px solid var(--dg-border-color);
+  }
+
+  .dq-data-grid-row:nth-child(odd) {
+    background: var(--dg-row-odd-background);
+  }
+
+  .dq-data-grid-row:hover {
+    background: var(--dg-row-hover-background);
+  }
+
+  .dq-data-grid-row.selected {
+    background: var(--dg-row-selected-background);
+  }
+
+  /* DataGrid 单元格 */
+  .dq-data-grid-cell {
+    height: var(--dg-row-height);
+    padding: var(--dg-cell-padding);
+    border-right: 1px solid var(--dg-border-color);
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dq-data-grid-cell:last-child {
+    border-right: none;
+  }
+
+  /* DataGrid 单元格选中状态 */
+  .dq-data-grid-cell.selected {
+    background: var(--dg-selection-background);
+  }
+
+  .dq-data-grid-cell.selection-border-top {
+    box-shadow: inset 0 2px 0 0 var(--dg-selection-border);
+  }
+
+  .dq-data-grid-cell.selection-border-bottom {
+    box-shadow: inset 0 -2px 0 0 var(--dg-selection-border);
+  }
+
+  .dq-data-grid-cell.selection-border-left {
+    box-shadow: inset 2px 0 0 0 var(--dg-selection-border);
+  }
+
+  .dq-data-grid-cell.selection-border-right {
+    box-shadow: inset -2px 0 0 0 var(--dg-selection-border);
+  }
+
+  /* 组合边框 */
+  .dq-data-grid-cell.selection-border-top.selection-border-left {
+    box-shadow:
+      inset 0 2px 0 0 var(--dg-selection-border),
+      inset 2px 0 0 0 var(--dg-selection-border);
+  }
+
+  .dq-data-grid-cell.selection-border-top.selection-border-right {
+    box-shadow:
+      inset 0 2px 0 0 var(--dg-selection-border),
+      inset -2px 0 0 0 var(--dg-selection-border);
+  }
+
+  .dq-data-grid-cell.selection-border-bottom.selection-border-left {
+    box-shadow:
+      inset 0 -2px 0 0 var(--dg-selection-border),
+      inset 2px 0 0 0 var(--dg-selection-border);
+  }
+
+  .dq-data-grid-cell.selection-border-bottom.selection-border-right {
+    box-shadow:
+      inset 0 -2px 0 0 var(--dg-selection-border),
+      inset -2px 0 0 0 var(--dg-selection-border);
+  }
+
+  /* 焦点单元格 */
+  .dq-data-grid-cell.focus {
+    outline: 2px solid var(--dg-selection-border);
+    outline-offset: -2px;
+  }
+
+  /* NULL 值样式 */
+  .dq-data-grid-cell-null {
+    color: var(--dg-null-color);
+    font-style: italic;
+  }
+
+  /* 数字单元格右对齐 */
+  .dq-data-grid-cell-number {
+    justify-content: flex-end;
+    text-align: right;
+  }
+
+  /* DataGrid 底部统计栏 */
+  .dq-data-grid-footer {
+    min-height: 28px;
+    padding: 0 12px;
+    background: var(--dg-header-background);
+    border-top: 1px solid var(--dg-border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--dg-header-foreground);
+  }
 }
 
-/* DataGrid 容器 - 深色主题 */
-.dark .dq-data-grid {
-  --dg-background: hsl(240 10% 3.9%);
-  --dg-foreground: hsl(0 0% 92%);
-  --dg-header-background: hsl(240 10% 6%);
-  --dg-header-foreground: hsl(0 0% 75%);
-  --dg-row-odd-background: hsl(240 10% 5%);
-  --dg-row-hover-background: hsl(240 3.7% 12%);
-  --dg-row-selected-background: hsl(221.2 83.2% 53.3% / 0.15);
-  --dg-border-color: hsl(240 5% 21%);
-  --dg-null-color: hsl(240 5% 50%);
-  --dg-selection-border: hsl(24.6 95% 53.1%);
-  --dg-selection-background: hsl(24.6 95% 53.1% / 0.1);
+@layer utilities {
+  /* Basic global reset needed for full-bleed layout (no white frame) */
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Global Variables - Standard Tailwind CSS format */
 }
-
-/* DataGrid 主容器 */
-.dq-data-grid {
-  font-family: var(--dg-font-family);
-  font-size: var(--dg-font-size);
-  background: var(--dg-background);
-  color: var(--dg-foreground);
-  border: 1px solid var(--dg-border-color);
-  border-radius: 0;
-}
-
-/* DataGrid 列头容器 */
-.dq-data-grid-header {
-  background: var(--dg-header-background);
-  border-bottom: 1px solid var(--dg-border-color);
-}
-
-/* DataGrid 列头单元格 */
-.dq-data-grid-header-cell {
-  height: var(--dg-header-height);
-  padding: var(--dg-cell-padding);
-  color: var(--dg-header-foreground);
-  font-weight: 400;
-  border-right: 1px solid var(--dg-border-color);
-  user-select: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.dq-data-grid-header-cell:last-child {
-  border-right: none;
-}
-
-.dq-data-grid-header-cell:hover {
-  background: var(--dg-row-hover-background);
-}
-
-/* DataGrid 列头排序图标 */
-.dq-data-grid-sort-icon {
-  flex-shrink: 0;
-  opacity: 0.5;
-}
-
-.dq-data-grid-sort-icon.active {
-  opacity: 1;
-  color: hsl(var(--primary));
-}
-
-/* DataGrid 列头筛选图标 */
-.dq-data-grid-filter-icon {
-  flex-shrink: 0;
-  opacity: 0.5;
-}
-
-.dq-data-grid-filter-icon.active {
-  opacity: 1;
-  color: hsl(var(--primary));
-}
-
-/* DataGrid 列宽调整手柄 */
-.dq-data-grid-resize-handle {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 8px;
-  cursor: col-resize;
-  background: transparent;
-  z-index: 1;
-}
-
-.dq-data-grid-resize-handle:hover,
-.dq-data-grid-resize-handle:active {
-  background: hsl(var(--primary) / 0.5);
-}
-
-/* DataGrid 行 */
-.dq-data-grid-row {
-  display: flex;
-  border-bottom: 1px solid var(--dg-border-color);
-}
-
-.dq-data-grid-row:nth-child(odd) {
-  background: var(--dg-row-odd-background);
-}
-
-.dq-data-grid-row:hover {
-  background: var(--dg-row-hover-background);
-}
-
-.dq-data-grid-row.selected {
-  background: var(--dg-row-selected-background);
-}
-
-/* DataGrid 单元格 */
-.dq-data-grid-cell {
-  height: var(--dg-row-height);
-  padding: var(--dg-cell-padding);
-  border-right: 1px solid var(--dg-border-color);
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dq-data-grid-cell:last-child {
-  border-right: none;
-}
-
-/* DataGrid 单元格选中状态 */
-.dq-data-grid-cell.selected {
-  background: var(--dg-selection-background);
-}
-
-.dq-data-grid-cell.selection-border-top {
-  box-shadow: inset 0 2px 0 0 var(--dg-selection-border);
-}
-
-.dq-data-grid-cell.selection-border-bottom {
-  box-shadow: inset 0 -2px 0 0 var(--dg-selection-border);
-}
-
-.dq-data-grid-cell.selection-border-left {
-  box-shadow: inset 2px 0 0 0 var(--dg-selection-border);
-}
-
-.dq-data-grid-cell.selection-border-right {
-  box-shadow: inset -2px 0 0 0 var(--dg-selection-border);
-}
-
-/* 组合边框 */
-.dq-data-grid-cell.selection-border-top.selection-border-left {
-  box-shadow: inset 0 2px 0 0 var(--dg-selection-border), inset 2px 0 0 0 var(--dg-selection-border);
-}
-
-.dq-data-grid-cell.selection-border-top.selection-border-right {
-  box-shadow: inset 0 2px 0 0 var(--dg-selection-border), inset -2px 0 0 0 var(--dg-selection-border);
-}
-
-.dq-data-grid-cell.selection-border-bottom.selection-border-left {
-  box-shadow: inset 0 -2px 0 0 var(--dg-selection-border), inset 2px 0 0 0 var(--dg-selection-border);
-}
-
-.dq-data-grid-cell.selection-border-bottom.selection-border-right {
-  box-shadow: inset 0 -2px 0 0 var(--dg-selection-border), inset -2px 0 0 0 var(--dg-selection-border);
-}
-
-/* 焦点单元格 */
-.dq-data-grid-cell.focus {
-  outline: 2px solid var(--dg-selection-border);
-  outline-offset: -2px;
-}
-
-/* NULL 值样式 */
-.dq-data-grid-cell-null {
-  color: var(--dg-null-color);
-  font-style: italic;
-}
-
-/* 数字单元格右对齐 */
-.dq-data-grid-cell-number {
-  justify-content: flex-end;
-  text-align: right;
-}
-
-/* DataGrid 底部统计栏 */
-.dq-data-grid-footer {
-  min-height: 28px;
-  padding: 0 12px;
-  background: var(--dg-header-background);
-  border-top: 1px solid var(--dg-border-color);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  font-size: 12px;
-  color: var(--dg-header-foreground);
-}
-
-@tailwind utilities;
-
-/* Basic global reset needed for full-bleed layout (no white frame) */
-html,
-body {
-  margin: 0;
-  padding: 0;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* Global Variables - Standard Tailwind CSS format */
 @layer base {
   :root {
     /* Base colors - HSL values only (no hsl() wrapper) */

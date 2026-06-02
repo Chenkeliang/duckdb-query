@@ -270,7 +270,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
                     </div>
                   ) : structureData.length > 0 ? (
                     <table className="w-full text-sm">
-                      <thead className="bg-muted/40 sticky top-0 z-10 backdrop-blur-sm">
+                      <thead className="bg-muted/40 sticky top-0 z-10 backdrop-blur-xs">
                         <tr>
                           <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.columnName')}</th>
                           <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.columnType')}</th>
@@ -325,7 +325,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
                     </div>
                   ) : indexData.length > 0 ? (
                     <table className="w-full text-sm">
-                      <thead className="bg-muted/40 sticky top-0 z-10 backdrop-blur-sm">
+                      <thead className="bg-muted/40 sticky top-0 z-10 backdrop-blur-xs">
                         <tr>
                           <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.indexName')}</th>
                           <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('dataSource.indexType')}</th>

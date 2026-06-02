@@ -656,7 +656,7 @@ const TableCard: React.FC<TableCardProps> = ({
                   <TooltipTrigger asChild>
                     <span className="font-medium text-sm truncate block">{tableName}</span>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-[400px] z-[100]">
+                  <TooltipContent side="bottom" className="max-w-[400px] z-100">
                     <p className="font-mono text-xs break-all">{tableName}</p>
                   </TooltipContent>
                 </Tooltip>
@@ -1960,7 +1960,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
               </Tooltip>
             </TooltipProvider>
 
-            <div className="w-[1px] h-4 bg-border mx-1" />
+            <div className="w-px h-4 bg-border mx-1" />
 
             <Button
               variant="ghost"
@@ -1990,7 +1990,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
             )}
           </div>
 
-          <div className="w-[1px] h-4 bg-border mx-1" />
+          <div className="w-px h-4 bg-border mx-1" />
 
           {/* 提示信息 - 留在左侧或中间 */}
           <span className="text-muted-foreground text-xs hidden lg:inline-block">

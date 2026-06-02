@@ -298,7 +298,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
           ) : null}
 
           <textarea
-            className="min-h-[180px] w-full rounded-xl border-2 border-dashed border-border-subtle bg-surface px-3 py-3 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none"
+            className="min-h-[180px] w-full rounded-xl border-2 border-dashed border-border-subtle bg-surface px-3 py-3 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:border-border focus:outline-hidden"
             value={pastedData}
             onChange={e => setPastedData(e.target.value)}
             placeholder={t("page.datasource.paste.placeholder")}
@@ -397,7 +397,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
                       <th key={idx} className="px-3 py-2 text-left">
                         <div className="space-y-1">
                           <input
-                            className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                            className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary"
                             value={name}
                             onChange={e =>
                               updateColumnName(idx, e.target.value)

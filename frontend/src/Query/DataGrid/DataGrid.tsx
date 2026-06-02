@@ -682,7 +682,7 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
           ref={containerRef}
           className={cn(
             'dq-data-grid flex flex-col overflow-hidden',
-            'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+            'focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2',
             className
           )}
           style={{ height }}
@@ -733,7 +733,7 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
           />
 
           {/* 底部统计和列管理 */}
-          <div className="flex items-center justify-between bg-[var(--dg-header-background)] border-t border-[var(--dg-border-color)] min-h-[28px] px-3">
+          <div className="flex items-center justify-between bg-(--dg-header-background) border-t border-(--dg-border-color) min-h-[28px] px-3">
             <GridFooter
               stats={stats}
               columnFilters={columnFilters}

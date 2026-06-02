@@ -324,7 +324,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                             </Tooltip>
                         </TooltipProvider>
 
-                        <div className="w-[1px] h-4 bg-border mx-1" />
+                        <div className="w-px h-4 bg-border mx-1" />
 
                         <Button
                             variant="ghost"

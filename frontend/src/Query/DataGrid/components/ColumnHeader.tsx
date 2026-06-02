@@ -89,11 +89,11 @@ export const ColumnHeader: React.FC<ColumnHeaderProps> = ({
 
   // 排序图标
   const SortIcon = sortDirection === 'asc' ? (
-    <ArrowUp className="dq-data-grid-sort-icon active h-3 w-3 flex-shrink-0" />
+    <ArrowUp className="dq-data-grid-sort-icon active h-3 w-3 shrink-0" />
   ) : sortDirection === 'desc' ? (
-    <ArrowDown className="dq-data-grid-sort-icon active h-3 w-3 flex-shrink-0" />
+    <ArrowDown className="dq-data-grid-sort-icon active h-3 w-3 shrink-0" />
   ) : sortable ? (
-    <ArrowUpDown className="dq-data-grid-sort-icon h-3 w-3 opacity-0 group-hover:opacity-50 flex-shrink-0" />
+    <ArrowUpDown className="dq-data-grid-sort-icon h-3 w-3 opacity-0 group-hover:opacity-50 shrink-0" />
   ) : null;
 
   return (

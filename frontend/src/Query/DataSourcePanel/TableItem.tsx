@@ -39,7 +39,7 @@ const getTableIconAndBadge = (table: SelectedTableObject): { icon: React.ReactNo
   if (table.source === 'external' && table.connection?.type) {
     const label = DATABASE_TYPE_LABEL[table.connection.type] || table.connection.type.toUpperCase();
     return {
-      icon: <Database className="h-4 w-4 text-muted-foreground flex-shrink-0" />,
+      icon: <Database className="h-4 w-4 text-muted-foreground shrink-0" />,
       badge: (
         <Badge variant="outline" className="ml-1 h-4 px-1 py-0 text-xs font-medium">
           {label}
@@ -48,7 +48,7 @@ const getTableIconAndBadge = (table: SelectedTableObject): { icon: React.ReactNo
     };
   }
   return {
-    icon: <Table2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />,
+    icon: <Table2 className="h-4 w-4 text-muted-foreground shrink-0" />,
     badge: undefined,
   };
 };
@@ -91,7 +91,7 @@ const TableItemButton = forwardRef<
     onKeyDown={onKeyDown}
     className={[
       'w-full rounded-lg px-3 py-2 text-left text-sm transition-colors',
-      'hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+      'hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
       isSelected ? 'border-l-2 border-primary bg-primary/10' : 'border-l-2 border-transparent',
       disabled ? 'cursor-not-allowed opacity-50 hover:bg-transparent' : 'cursor-pointer',
       className, // Apply additional className

@@ -70,7 +70,7 @@ export const TypeConflictIndicator: React.FC<TypeConflictIndicatorProps> = ({
             type="button"
             onClick={onClick}
             className={cn(
-              'rounded transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1',
+              'rounded transition-colors focus:outline-hidden focus:ring-2 focus:ring-offset-1',
               buttonSize,
               isResolved
                 ? 'text-success hover:bg-success/10 focus:ring-success/50'

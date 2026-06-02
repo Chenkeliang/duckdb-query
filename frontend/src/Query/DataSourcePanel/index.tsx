@@ -279,7 +279,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
             size="sm"
             onClick={onCollapse}
             aria-label={t('dataSource.collapsePanel')}
-            className="flex-shrink-0"
+            className="shrink-0"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>

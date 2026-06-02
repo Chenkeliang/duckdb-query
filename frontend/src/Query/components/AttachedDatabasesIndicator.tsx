@@ -198,7 +198,7 @@ export const AttachedDatabasesIndicator: React.FC<AttachedDatabasesIndicatorProp
         <PopoverTrigger asChild>
           <button
             type="button"
-            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-primary border-primary/50 cursor-pointer hover:bg-primary/10 ${className}`}
+            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 text-primary border-primary/50 cursor-pointer hover:bg-primary/10 ${className}`}
           >
             <Link2 className="w-3 h-3 mr-1" />
             {attachDatabases.length > 0

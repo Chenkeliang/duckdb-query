@@ -361,7 +361,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                         value={sqlContent}
                         onChange={(e) => setSqlContent(e.target.value)}
                         placeholder={t('query.filter.sqlPlaceholder', '输入 WHERE 子句，例如: status = \'active\' AND amount > 100')}
-                        className="w-full h-20 p-2 text-sm font-mono border rounded-md bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="w-full h-20 p-2 text-sm font-mono border rounded-md bg-background resize-none focus:outline-hidden focus:ring-2 focus:ring-ring"
                         disabled={disabled}
                     />
                     <div className="flex justify-end">
