@@ -9,7 +9,7 @@ Ready-to-paste copy for the cold-start. 9 months at ~2 stars means the product i
 ## 0. Pre-launch checklist (do FIRST)
 
 - [ ] **Set the social preview image** — repo → Settings → General → *Social preview* → upload `docs/assets/og-cover.png`. (This makes every shared link show a real card instead of bland text.)
-- [ ] Confirm the **live demo** loads fast and has a sample dataset preloaded: https://chenkeliang.github.io/duckdb-query/
+- [ ] Verify `./quick-start.sh` works from a clean clone (this is the only real entry point — there is **no hosted demo** that runs queries; the gh-pages page is a UI shell with no backend). Either wire a real backend to it or don't link it as a "demo".
 - [ ] Add 2–3 **`good first issue`** labels so visitors have a way to contribute.
 - [ ] Pin one issue: "Roadmap / what to build next — vote here".
 - [ ] Make sure the first README screen shows the **AI** features (done) + a GIF (done).
@@ -47,17 +47,15 @@ It also has an AI layer that's opt-in and local-first:
   and suggests a fix when a query errors
 - one-click chart suggestions for a result set
 
-Two ways to try it:
-- Browser demo (DuckDB-Wasm, no install): https://chenkeliang.github.io/duckdb-query/
-- Self-host the full stack (Python + React) for real file-system + DB connections:
-  git clone … && ./quick-start.sh
+Try it (one command, self-hosted — your data never leaves your machine):
+  git clone … && ./quick-start.sh   → http://localhost:3000
+(There's a 40s demo video in the README if you just want to watch first.)
 
 Stack: DuckDB + FastAPI + React. MIT. API keys for the AI are encrypted server-side
 and the generated SQL is always shown for review, never run automatically.
 
-Honest limitations: the browser demo can't reach your real databases (that needs
-the self-hosted backend); large result sets are paginated; the AI features are off
-until you add your own model key.
+Honest limitations: it's self-hosted (no hosted SaaS yet); large result sets are
+paginated; the AI features are off until you add your own model key.
 
 I'd love feedback on the cross-source JOIN flow and the text-to-SQL guardrails.
 What would make this replace your current SQL tool?
@@ -79,7 +77,7 @@ Body: 3–4 sentences of the HN first-comment, emphasize the **no-pipeline / Duc
 ```
 DuckQuery: a visual workbench on DuckDB — ATTACH MySQL/Postgres + files, with text-to-SQL
 ```
-Body: lead with how it uses DuckDB (`ATTACH`, native file scan, Wasm demo). This audience already gets the value — focus on the DuckDB-specific implementation.
+Body: lead with how it uses DuckDB (`ATTACH` to MySQL/PG, native file scan). This audience already gets the value — focus on the DuckDB-specific implementation.
 
 **Also consider:** r/SQL, r/Database, r/selfhosted (angle: "self-hosted, local-first, your data never leaves your machine").
 
@@ -95,7 +93,7 @@ Body: lead with how it uses DuckDB (`ATTACH`, native file scan, Wasm demo). This
 - 痛点：DBeaver 连不了本地文件、Metabase 要先建仓库跑 ETL，临时跨源分析很别扭
 - 方案：基于 DuckDB，拖个 CSV 即查、ATTACH 远程库、**一条 SQL 跨源 JOIN**、免 ETL
 - AI：问数（自然语言生成 SQL，确认后才执行）、报错医生、图表推荐；本地优先、Key 服务端加密
-- 在线体验（浏览器 DuckDB-Wasm，免安装）+ 自托管一行命令
+- 自托管一行命令 `./quick-start.sh`（数据不出本机）+ README 里 40s 演示视频
 - 求反馈：你们平时怎么做临时的跨源关联？
 
 **V2EX 注意**：发「分享创造」节点，标题别标题党，正文别催 star。
@@ -114,7 +112,7 @@ query, and let AI write the SQL. Open source, runs local. 🧵
 ```
 Tweet 2: the cross-source JOIN GIF + "built on @duckdb — drag a file, ATTACH a DB, query both".
 Tweet 3: the AI bit — text-to-SQL you review before running + error doctor + charts.
-Tweet 4: "Browser demo (no install) + self-host. MIT. ⭐ if useful: <repo link>". Tag @duckdb.
+Tweet 4: "One-command self-host, your data stays local. MIT. ⭐ if useful: <repo link>". Tag @duckdb.
 
 ---
 
@@ -125,7 +123,7 @@ Open PRs / submissions to lists that send traffic for years:
 - **awesome-db-tools**, **mrkkrp/awesome-database-tools** style lists
 - "DBeaver alternatives" / "TablePlus alternatives" roundups (AlternativeTo.net listing)
 - DuckDB's community page / Discord #showcase
-- Submit the live demo to **Product Hunt** (separate launch day; use the og image as the gallery hero)
+- Submit to **Product Hunt** (separate launch day; use the og image + the demo video as the gallery — not the non-functional gh-pages link)
 
 ---
 

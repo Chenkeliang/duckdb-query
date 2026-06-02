@@ -9,11 +9,6 @@
 </p>
 
 <p align="center">
-  <a href="https://chenkeliang.github.io/duckdb-query/" target="_blank">
-    <img src="https://img.shields.io/badge/在线演示-立即体验-success?style=for-the-badge&logo=github&logoColor=white" alt="Live Demo" />
-  </a>
-
-<p align="center">
   <a href="#快速开始">快速开始</a> •
   <a href="#你能做什么">你能做什么</a> •
   <a href="#部署方式">部署方式</a> •
@@ -30,14 +25,7 @@
 
 ## 快速开始
 
-### 1. 在线演示 (无需安装)
-**想直接体验 UI？** 试试基于 DuckDB Wasm 的纯浏览器版本。
-👉 **[点击这里访问在线演示](https://chenkeliang.github.io/duckdb-query/)**
-
-### 2. Docker 部署 (完整功能)
-**想要完整体验？** 启动全栈版本（Python 后端 + React 前端）以获取：
-- 直接读写本地文件系统
-- 连接持久化数据库 (MySQL/Postgres)
+启动全栈版本（Python 后端 + React 前端）—— 直接读写本地文件 + 连接持久化的 MySQL/Postgres。
 
 **前置依赖：** 需要安装 Docker 和 Docker Compose
 
@@ -105,7 +93,7 @@ git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && 
 | 一条 SQL JOIN 文件 ↔ MySQL/PG | ✅ | ❌ | ❌ |
 | 自然语言生成 SQL（AI） | ✅ 内置 | ❌ | ⚠️ 付费/受限 |
 | 免 ETL / 免数仓 | ✅ | ✅ | ❌ |
-| 完全本地 / 可自托管 | ✅（或浏览器 WASM） | ✅ | ⚠️ 需服务端 |
+| 完全本地 / 可自托管 | ✅ | ✅ | ⚠️ 需服务端 |
 | 上手到第一条查询 | 几秒 | 几分钟 | 几小时 |
 
 基于 **DuckDB** 进程内分析引擎 —— 1 GB 的 CSV 与远程表毫秒级 JOIN，无需维护任何数据管道。

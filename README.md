@@ -9,11 +9,6 @@
 </p>
 
 <p align="center">
-  <a href="https://chenkeliang.github.io/duckdb-query/" target="_blank">
-    <img src="https://img.shields.io/badge/Live_Demo-Try_Now-success?style=for-the-badge&logo=github&logoColor=white" alt="Live Demo" />
-  </a>
-
-<p align="center">
   <a href="#quick-start">Quick Start</a> •
   <a href="#what-can-you-do">What Can You Do</a> •
   <a href="#deployment">Deployment</a> •
@@ -30,14 +25,7 @@
 
 ## Quick Start
 
-### 1. Live Demo (No Installation)
-**Just want to try the UI?** Use the browser-based version powered by DuckDB Wasm.
-👉 **[Click here to try Live Demo](https://chenkeliang.github.io/duckdb-query/)**
-
-### 2. Docker Deployment (Full Features)
-**Want the full experience?** Run the full stack (Python Backend + React Frontend) to enable:
-- Direct local file system access
-- Persistent database connections (MySQL/Postgres)
+Run the full stack (Python Backend + React Frontend) — local file access + persistent MySQL/Postgres connections.
 
 **Prerequisites:** Docker & Docker Compose
 
@@ -105,7 +93,7 @@ Most tools force a choice: a **database GUI** (DBeaver, TablePlus) that can't to
 | JOIN files ↔ MySQL/Postgres in one query | ✅ | ❌ | ❌ |
 | Text-to-SQL (AI) | ✅ built-in | ❌ | ⚠️ paid/limited |
 | No ETL / no warehouse | ✅ | ✅ | ❌ |
-| Fully local / self-hosted | ✅ (or browser WASM) | ✅ | ⚠️ server |
+| Fully local / self-hosted | ✅ | ✅ | ⚠️ server |
 | Time to first query | seconds | minutes | hours |
 
 Built on **DuckDB**, an in-process analytical engine — so a 1 GB CSV joins a remote table in milliseconds, with no data pipeline to maintain.
