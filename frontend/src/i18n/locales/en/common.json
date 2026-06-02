@@ -1074,6 +1074,14 @@
     "dataDesc": "This demo preloads sample tables (orders / users / products) — head to the Query Workbench to write SQL, JOIN across tables, and chart. To upload your own files or connect MySQL / PostgreSQL, self-host to unlock.",
     "aiTitle": "AI features need self-hosting",
     "aiDesc": "Text-to-SQL chat, the error doctor, and AI chart suggestions need a backend and your own model key. Self-host, then add your key under “AI / Models” (off by default, never shared).",
-    "goQuery": "Query the sample tables"
+    "goQuery": "Query the sample tables",
+    "importTitle": "Import data (in your browser)",
+    "importDesc": "Drop a file to parse it into a table right in your browser and query it — nothing is uploaded. Connecting MySQL / PostgreSQL or reading Excel needs self-hosting.",
+    "selfHostDb": "Connect a database / read Excel? Self-host to unlock →",
+    "uploadTitle": "Drop a file here, or click to choose",
+    "uploadHint": "CSV / TSV / Parquet / JSON · parsed in your browser, never uploaded",
+    "uploading": "Parsing in your browser…",
+    "uploadOk": "Loaded {{table}} ({{rows}} rows)",
+    "uploadFail": "Failed to parse file"
   }
 }

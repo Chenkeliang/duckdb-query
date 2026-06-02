@@ -36,6 +36,7 @@ import DataSourcePage from "./DataSource/DataSourcePage";
 import { IS_DEMO } from "./demo/isDemo";
 import { DemoBanner } from "./demo/DemoBanner";
 import { DemoNotice } from "./demo/DemoNotice";
+import { DemoUpload } from "./demo/DemoUpload";
 import DatabaseForm from "./DataSource/DatabaseForm";
 import UploadPanel from "./DataSource/UploadPanel";
 import DataSourceTabs from "./DataSource/DataSourceTabs";
@@ -301,9 +302,32 @@ const AppInner: React.FC = () => {
   }
 
   const renderContent = (): ReactNode => {
-    // Demo:数据源(连库/上传)需后端 → 换成自托管升级引导(正常构建此分支被剥离)
+    // Demo:数据源 → 浏览器内文件导入(可用)+ 连库/Excel 自托管引导(正常构建此分支被剥离)
     if (IS_DEMO && currentTab === "datasource") {
-      return <DemoNotice variant="datasource" onGoQuery={() => setCurrentTab("queryworkbench")} />;
+      return (
+        <div className="flex-1 overflow-auto p-6">
+          <div className="mx-auto max-w-xl">
+            <h2 className="mb-1 text-lg font-semibold text-foreground">
+              {t("demo.importTitle", "导入数据(浏览器内)")}
+            </h2>
+            <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+              {t(
+                "demo.importDesc",
+                "拖文件进来即在你浏览器内解析建表、可直接查询,不上传服务器。连 MySQL / PostgreSQL 或读 Excel 需自托管版。",
+              )}
+            </p>
+            <DemoUpload onLoaded={() => setCurrentTab("queryworkbench")} />
+            <a
+              href="https://github.com/Chenkeliang/duckdb-query"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-block text-xs font-medium text-primary hover:underline"
+            >
+              {t("demo.selfHostDb", "连数据库 / 读 Excel?自托管解锁 →")}
+            </a>
+          </div>
+        </div>
+      );
     }
     if (IS_DEMO && currentTab === "ai") {
       return <DemoNotice variant="ai" />;
@@ -499,11 +523,14 @@ const AppInner: React.FC = () => {
             <h1 className="text-lg font-semibold text-foreground tracking-tight">
               {t("page.datasource.manage.title")}
             </h1>
-            <DataSourceTabs
-              value={dataSourceTab}
-              onChange={(tab) => setDataSourceTab(tab as DataSourceTabId)}
-              tabs={dataSourceHeaderTabs}
-            />
+            {/* Demo:数据源子标签(连库/上传/粘贴)不适用,只保留浏览器内导入 */}
+            {!IS_DEMO && (
+              <DataSourceTabs
+                value={dataSourceTab}
+                onChange={(tab) => setDataSourceTab(tab as DataSourceTabId)}
+                tabs={dataSourceHeaderTabs}
+              />
+            )}
           </div>
         }
         {...headerGlobalProps}

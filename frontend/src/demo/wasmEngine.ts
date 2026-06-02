@@ -9,6 +9,7 @@ import * as duckdb from '@duckdb/duckdb-wasm';
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
 import type { QueryResponse } from '@/api/types';
 
+let dbPromise: Promise<AsyncDuckDB> | null = null;
 let connPromise: Promise<AsyncDuckDBConnection> | null = null;
 
 async function initDB(): Promise<AsyncDuckDB> {
@@ -42,16 +43,58 @@ CREATE TABLE orders AS SELECT * FROM (VALUES
   AS t(order_id, user_id, product_id, qty, created_at);
 `;
 
+function getDB(): Promise<AsyncDuckDB> {
+  if (!dbPromise) dbPromise = initDB();
+  return dbPromise;
+}
+
 async function getConn(): Promise<AsyncDuckDBConnection> {
   if (!connPromise) {
     connPromise = (async () => {
-      const db = await initDB();
+      const db = await getDB();
       const conn = await db.connect();
       await conn.query(SEED_SQL);
       return conn;
     })();
   }
   return connPromise;
+}
+
+/** 文件名 → 安全的表标识符([a-zA-Z0-9_],不以数字开头)。 */
+function safeIdent(fileName: string): string {
+  const base = fileName.replace(/\.[^.]+$/, '');
+  let s = base.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
+  if (!s) s = 'table';
+  if (/^[0-9]/.test(s)) s = `t_${s}`;
+  return s.slice(0, 60);
+}
+
+const READERS: Record<string, (vf: string) => string> = {
+  csv: (vf) => `read_csv_auto('${vf}', SAMPLE_SIZE=-1)`,
+  tsv: (vf) => `read_csv_auto('${vf}', SAMPLE_SIZE=-1)`,
+  txt: (vf) => `read_csv_auto('${vf}', SAMPLE_SIZE=-1)`,
+  parquet: (vf) => `read_parquet('${vf}')`,
+  json: (vf) => `read_json_auto('${vf}')`,
+  ndjson: (vf) => `read_json_auto('${vf}')`,
+};
+
+/** Demo:把本地文件读进浏览器内 DuckDB(不上传),建表后即可查询。 */
+export async function registerFile(file: File): Promise<{ table: string; rows: number }> {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const reader = READERS[ext];
+  if (!reader) {
+    throw new Error('Demo 仅支持 CSV / TSV / Parquet / JSON(Excel 请用自托管版)');
+  }
+  const db = await getDB();
+  const conn = await getConn();
+  const table = safeIdent(file.name);
+  const vf = `__demo_${table}.${ext}`;
+  await db.registerFileBuffer(vf, new Uint8Array(await file.arrayBuffer()));
+  const q = `"${table.replace(/"/g, '""')}"`;
+  await conn.query(`CREATE OR REPLACE TABLE ${q} AS SELECT * FROM ${reader(vf)}`);
+  const r = await conn.query(`SELECT count(*)::BIGINT AS n FROM ${q}`);
+  const n = Number((r.toArray()[0] as unknown as { n: unknown }).n);
+  return { table, rows: n };
 }
 
 /** Arrow 类型名 → DuckDB 风格类型名(用于网格/图表的类型识别与 column_types)。 */
