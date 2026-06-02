@@ -28,7 +28,7 @@ export function createSqlEditorLayoutTheme(options: {
       ...(minHeight ? { minHeight } : {}),
       ...(maxHeight ? { maxHeight } : {}),
       fontSize,
-      fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
+      fontFamily: 'var(--font-mono)',
     },
     '.cm-scroller': {
       overflow: 'auto',

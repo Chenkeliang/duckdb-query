@@ -84,7 +84,7 @@
   --dg-cell-padding: 0 12px;
   --dg-row-height: 32px;
   --dg-header-height: 36px;
-  --dg-font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --dg-font-family: var(--font-mono);
   --dg-font-size: 13px;
   --dg-null-color: hsl(240 5% 64%);
   --dg-selection-border: hsl(221.2 83.2% 53.3%);
@@ -293,6 +293,8 @@ html,
 body {
   margin: 0;
   padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Global Variables - Standard Tailwind CSS format */
@@ -366,11 +368,15 @@ body {
     --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
 
-    /* Typography */
+    /* Typography
+       Latin -> Inter; CJK falls back to the OS native UI font so Chinese is
+       pinned across platforms (PingFang on macOS, YaHei on Windows, Noto on Linux). */
     --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
-      "Helvetica Neue", Arial, sans-serif;
-    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
-      Consolas, "Liberation Mono", "Courier New", monospace;
+      "Helvetica Neue", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", Arial,
+      sans-serif;
+    /* One single monospace stack shared by editor, result grid and code blocks. */
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      "Liberation Mono", "Courier New", monospace;
   }
 }
 
