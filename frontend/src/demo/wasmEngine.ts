@@ -35,10 +35,10 @@ CREATE TABLE products AS SELECT * FROM (VALUES
   (103,'Mouse','Accessories',89.0),(104,'Laptop','Computer',7999.0))
   AS t(product_id, product_name, category, price);
 CREATE TABLE orders AS SELECT * FROM (VALUES
-  (1001,1,101,2,DATE '2026-05-02'),(1002,1,104,1,DATE '2026-05-05'),
-  (1003,2,102,1,DATE '2026-05-06'),(1004,3,103,3,DATE '2026-05-09'),
-  (1005,3,101,1,DATE '2026-05-11'),(1006,4,104,1,DATE '2026-05-15'),
-  (1007,5,102,2,DATE '2026-05-20'),(1008,2,103,1,DATE '2026-05-22'))
+  (1001,1,101,2,DATE '2026-05-02'),(1002,1,104,3,DATE '2026-05-05'),
+  (1003,2,102,2,DATE '2026-05-06'),(1004,3,103,4,DATE '2026-05-09'),
+  (1005,3,101,5,DATE '2026-05-11'),(1006,4,104,2,DATE '2026-05-15'),
+  (1007,5,102,3,DATE '2026-05-20'),(1008,2,103,2,DATE '2026-05-22'))
   AS t(order_id, user_id, product_id, qty, created_at);
 `;
 
@@ -54,18 +54,39 @@ async function getConn(): Promise<AsyncDuckDBConnection> {
   return connPromise;
 }
 
-/** Arrow 类型名 → DuckDB 风格类型名,使图表的数值/日期列识别正常工作。 */
+/** Arrow 类型名 → DuckDB 风格类型名(用于网格/图表的类型识别与 column_types)。 */
 function mapType(arrow: string): string {
   const s = arrow.toLowerCase();
   if (s.includes('bool')) return 'BOOLEAN';
   if (s.includes('timestamp')) return 'TIMESTAMP';
   if (s.includes('date')) return 'DATE';
+  if (s.includes('decimal') || s.includes('float') || s.includes('double')) return 'DOUBLE';
   if (s.includes('int')) return s.includes('64') ? 'BIGINT' : 'INTEGER';
-  if (s.includes('float') || s.includes('double') || s.includes('decimal')) return 'DOUBLE';
   return 'VARCHAR';
 }
 
-/** Arrow 单元格 → JSON 可序列化值(BigInt→Number/字符串,Date→ISO)。 */
+/**
+ * DECIMAL 修正:duckdb-wasm 把 DECIMAL 以「未应用 scale 的整数」对象返回
+ * (如 199.0 / DECIMAL(4,1) → 1990),需按 scale 还原为正确小数。
+ * 兼容 bigint / 对象(toJSON) / 字符串等表示。
+ */
+function decToNumber(v: unknown, scale: number): number {
+  let raw: string;
+  if (typeof v === 'bigint') raw = v.toString();
+  else {
+    try { raw = JSON.stringify(v); } catch { raw = String(v); }
+  }
+  const digits = raw.replace(/[^\d-]/g, '');
+  if (!digits || digits === '-') return 0;
+  const neg = digits.startsWith('-');
+  const d = (neg ? digits.slice(1) : digits).padStart(scale + 1, '0');
+  if (scale <= 0) return Number(`${neg ? '-' : ''}${d}`);
+  const intp = d.slice(0, d.length - scale);
+  const frac = d.slice(d.length - scale);
+  return Number(`${neg ? '-' : ''}${intp}.${frac}`);
+}
+
+/** 非 DECIMAL 单元格 → JSON 可序列化值(BigInt→Number/字符串,Date→ISO)。 */
 function cell(v: unknown): unknown {
   if (typeof v === 'bigint') return Number.isSafeInteger(Number(v)) ? Number(v) : v.toString();
   if (v instanceof Date) return v.toISOString();
@@ -77,18 +98,25 @@ export async function runWasm(sql: string): Promise<QueryResponse> {
   const conn = await getConn();
   const start = performance.now();
   const result = await conn.query(sql);
-  const fields = result.schema.fields;
-  const columns = fields.map((f) => ({ name: f.name, type: mapType(String(f.type)) }));
+  const meta = result.schema.fields.map((f) => {
+    const isDec = /decimal/i.test(String(f.type));
+    const scale = isDec ? Number((f.type as unknown as { scale?: number }).scale ?? 0) : null;
+    return { name: f.name, duckdb_type: mapType(String(f.type)), scale };
+  });
   const data = result.toArray().map((row) => {
     const r = row as unknown as Record<string, unknown>;
     const o: Record<string, unknown> = {};
-    for (const f of fields) o[f.name] = cell(r[f.name]);
+    for (const m of meta) {
+      const raw = r[m.name];
+      o[m.name] = m.scale === null ? cell(raw) : raw == null ? null : decToNumber(raw, m.scale);
+    }
     return o;
   });
   return {
     success: true,
     data,
-    columns,
+    columns: meta.map((m) => ({ name: m.name, type: m.duckdb_type })),
+    column_types: meta.map((m) => ({ name: m.name, duckdb_type: m.duckdb_type })),
     row_count: data.length,
     execution_time_ms: Math.round(performance.now() - start),
   };
