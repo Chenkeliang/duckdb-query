@@ -61,13 +61,22 @@ export interface ErrorFixResult {
 export async function errorFix(
   sql: string,
   error: string,
-  opts?: { tables?: string[]; locale?: 'zh' | 'en' }
+  opts?: {
+    tables?: string[];
+    attachDatabases?: { alias: string; connectionId: string }[];
+    locale?: 'zh' | 'en';
+  }
 ): Promise<ErrorFixResult> {
   try {
     const res = await apiClient.post('/api/ai/error-fix', {
       sql,
       error,
       tables: opts?.tables ?? [],
+      // 联邦表结构需后端 ATTACH 远端库才能取到，传 alias+connection_id
+      attach_databases: (opts?.attachDatabases ?? []).map((d) => ({
+        alias: d.alias,
+        connection_id: d.connectionId,
+      })),
       locale: opts?.locale ?? 'zh',
     });
     return normalizeResponse<ErrorFixResult>(res).data;
@@ -129,12 +138,21 @@ export interface ChatResult {
 /** 多轮对话：发送历史消息（含最新一条 user），返回 assistant 回复。 */
 export async function chat(
   messages: ChatMessage[],
-  opts?: { tables?: string[]; locale?: 'zh' | 'en' }
+  opts?: {
+    tables?: string[];
+    attachDatabases?: { alias: string; connectionId: string }[];
+    locale?: 'zh' | 'en';
+  }
 ): Promise<ChatResult> {
   try {
     const res = await apiClient.post('/api/ai/chat', {
       messages,
       tables: opts?.tables ?? [],
+      // 联邦表 schema 需后端 ATTACH 远端库才能 DESCRIBE，传 alias+connection_id
+      attach_databases: (opts?.attachDatabases ?? []).map((d) => ({
+        alias: d.alias,
+        connection_id: d.connectionId,
+      })),
       locale: opts?.locale ?? 'zh',
     });
     return normalizeResponse<ChatResult>(res).data;

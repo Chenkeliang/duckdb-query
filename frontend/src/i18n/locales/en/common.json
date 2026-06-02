@@ -200,7 +200,18 @@
       "generate": "Generate",
       "usedTables": "Tables used:",
       "askFailed": "AI failed to generate SQL",
-      "notSelectWarn": "The result is not a read-only SELECT; it was inserted for review—please verify before running"
+      "notSelectWarn": "The result is not a read-only SELECT; it was inserted for review—please verify before running",
+      "qaExplain": "Explain current SQL",
+      "qaOptimize": "Optimize",
+      "qaExplainLead": "Explain what this SQL does (in bullet points):",
+      "qaOptimizeLead": "Optimize this SQL and explain what you changed and why:",
+      "chat": "Chat",
+      "chatTitle": "Data Assistant",
+      "chatPlaceholder": "Ask the data assistant… (Enter to send)",
+      "chatHint": "Generated SQL can be inserted into the editor; never auto-executed",
+      "chatEmpty": "Ask me anything about these tables, or have me write a query. I know your selected tables’ schema.",
+      "chatFailed": "AI chat failed",
+      "insertToEditor": "Insert into editor"
     },
     "tableSelector": {
       "selectTable": "Select table",
@@ -1052,5 +1063,8 @@
     "resetError": "Failed to reset shortcut",
     "resetAllSuccess": "All shortcuts reset to defaults",
     "resetAllError": "Failed to reset shortcuts"
+  },
+  "command": {
+    "aiChat": "Data assistant chat"
   }
 }

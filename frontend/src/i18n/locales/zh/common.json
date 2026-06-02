@@ -206,7 +206,18 @@
       "generate": "生成",
       "usedTables": "用了哪些表:",
       "askFailed": "AI 生成 SQL 失败",
-      "notSelectWarn": "生成的不是只读 SELECT,已填入编辑器,请人工确认后再执行"
+      "notSelectWarn": "生成的不是只读 SELECT,已填入编辑器,请人工确认后再执行",
+      "qaExplain": "解释当前 SQL",
+      "qaOptimize": "优化建议",
+      "qaExplainLead": "请解释这段 SQL 在做什么（用中文，分点说明）：",
+      "qaOptimizeLead": "请帮我优化这段 SQL，并说明优化点和原因：",
+      "chat": "对话",
+      "chatTitle": "数据助手",
+      "chatPlaceholder": "问数据助手…（Enter 发送）",
+      "chatHint": "生成的 SQL 可一键插入编辑器，绝不自动执行",
+      "chatEmpty": "问我关于这些表的任何问题，或让我帮你写查询。我知道你选中表的结构。",
+      "chatFailed": "AI 对话失败",
+      "insertToEditor": "插入编辑器"
     },
     "tableSelector": {
       "selectTable": "选择表",
@@ -1059,5 +1070,8 @@
     "resetError": "重置快捷键失败",
     "resetAllSuccess": "所有快捷键已重置",
     "resetAllError": "重置快捷键失败"
+  },
+  "command": {
+    "aiChat": "数据助手对话"
   }
 }

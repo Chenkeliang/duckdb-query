@@ -271,8 +271,7 @@ const AppInner: React.FC = () => {
       case "toggleLanguage":
         toggleLocale();
         break;
-      case "aiAsk":
-      case "aiExplain":
+      case "aiChat":
         setCurrentTab("queryworkbench");
         setQueryWorkbenchTab("query");
         break;

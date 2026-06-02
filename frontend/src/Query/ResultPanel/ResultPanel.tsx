@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { useAiEnabled } from '@/hooks/useAiEnabled';
 import { errorFix, type ErrorFixResult } from '@/api/aiApi';
+import { parseSQLTableReferences } from '@/utils/sqlUtils';
 
 import { DataGridWrapper } from './DataGridWrapper';
 import type { DataGridApi } from './DataGridWrapper';
@@ -428,6 +429,9 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       setAiFixing(true);
       try {
         const r = await errorFix(effectiveSQL || '', error.message, {
+          // 带上 SQL 里引用的表(联邦表用限定名)+ 外部库，让医生看到真实列名
+          tables: parseSQLTableReferences(effectiveSQL || '').map((ref) => ref.fullName),
+          attachDatabases: effectiveAttachDatabases,
           locale: i18n.language?.startsWith('zh') ? 'zh' : 'en',
         });
         setAiFix(r);

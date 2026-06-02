@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { SQLEditor } from './SQLEditor';
 import { SQLToolbar } from './SQLToolbar';
 import { useSQLEditor } from './hooks/useSQLEditor';
@@ -34,11 +34,6 @@ import {
   parseSQLTableReferences,
 } from '@/utils/sqlUtils';
 import { useAiStatus } from '@/hooks/useAiStatus';
-import { explainSql, nlToSql } from '@/api/aiApi';
-import { getApiErrorCode } from '@/api/client';
-import { showErrorToast } from '@/utils/toastHelpers';
-import { ExplainButton } from './ai/ExplainButton';
-import { AskBar } from './ai/AskBar';
 import { AiChatDrawer, ChatToggleButton } from './ai/AiChatDrawer';
 
 export interface SQLQueryPanelProps {
@@ -116,53 +111,11 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     onError: onExecuteError,
   });
 
-  // ===== AI:P2 解释 + P3 问数(三态门控) =====
-  const explainStatus = useAiStatus('explain');
-  const askStatus = useAiStatus('nl_to_sql');
+  // ===== AI:统一对话(解释/优化/问数据 收敛到对话,三态门控) =====
+  const chatStatus = useAiStatus('chat');
   const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
   const openAiSettings = onOpenAiSettings ?? (() => {});
-  const [explanation, setExplanation] = useState<string | null>(null);
-  const [explaining, setExplaining] = useState(false);
-  const [asking, setAsking] = useState(false);
-  const [usedTables, setUsedTables] = useState<string[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
-  const [askWarning, setAskWarning] = useState<string | undefined>(undefined);
-
-  const runExplain = async () => {
-    if (!sql.trim()) return;
-    setExplaining(true);
-    setExplanation(null);
-    try {
-      const r = await explainSql(sql, { locale: aiLocale });
-      setExplanation(r.explanation);
-    } catch (e) {
-      if (['ai_not_configured', 'ai_disabled'].includes(getApiErrorCode(e) ?? '')) openAiSettings();
-      else showErrorToast(t, e as Error, t('query.ai.explainFailed', 'AI 解释失败'));
-    } finally {
-      setExplaining(false);
-    }
-  };
-
-  const runAsk = async (question: string) => {
-    setAsking(true);
-    setAskWarning(undefined);
-    try {
-      const tableNames = (selectedTables || []).map((tbl) => getTableName(tbl));
-      const r = await nlToSql(question, { tables: tableNames, locale: aiLocale });
-      if (r.sql) setSQL(r.sql); // 落入编辑器,绝不自动执行
-      setUsedTables(r.used_tables || []);
-      if (!r.safe) {
-        setAskWarning(
-          t('query.ai.notSelectWarn', '生成的不是只读 SELECT,已填入编辑器,请人工确认后再执行'),
-        );
-      }
-    } catch (e) {
-      if (['ai_not_configured', 'ai_disabled'].includes(getApiErrorCode(e) ?? '')) openAiSettings();
-      else showErrorToast(t, e as Error, t('query.ai.askFailed', 'AI 生成 SQL 失败'));
-    } finally {
-      setAsking(false);
-    }
-  };
 
   // 联邦查询检测 - 自动分析 SQL 中的外部表引用
   const {
@@ -458,21 +411,6 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
 
   return (
     <div className={cn('flex flex-col h-full', className)}>
-      {/* P3 问数条(总开关开才出;未配置走引导态) */}
-      {askStatus.enabled && (
-        <AskBar
-          mode={askStatus.configured ? 'ready' : 'guide'}
-          loading={asking}
-          usedTables={usedTables}
-          warning={askWarning}
-          onSubmit={runAsk}
-          onClear={() => {
-            setUsedTables([]);
-            setAskWarning(undefined);
-          }}
-          onOpenSettings={openAiSettings}
-        />
-      )}
       {/* 未识别前缀警告 */}
       {unrecognizedPrefixes.length > 0 && !dismissedWarning && (
         <div className="mx-3 mt-3">
@@ -508,20 +446,13 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         disableExecute={!sql.trim() || (tableSourceInfo.hasMixedSources && !requiresFederatedQuery)}
         executionTime={executionTime}
         aiSlot={
-          explainStatus.enabled || askStatus.configured ? (
-            <div className="flex items-center gap-1">
-              {explainStatus.enabled && (
-                <ExplainButton
-                  mode={explainStatus.configured ? 'ready' : 'guide'}
-                  loading={explaining}
-                  onExplain={runExplain}
-                  onOpenSettings={openAiSettings}
-                />
-              )}
-              {askStatus.configured && (
-                <ChatToggleButton active={chatOpen} onClick={() => setChatOpen((v) => !v)} />
-              )}
-            </div>
+          chatStatus.enabled ? (
+            <ChatToggleButton
+              active={chatOpen}
+              onClick={() =>
+                chatStatus.configured ? setChatOpen((v) => !v) : openAiSettings()
+              }
+            />
           ) : undefined
         }
         extraContent={
@@ -544,34 +475,15 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         }
       />
 
-      {/* P2 解释结果(工具栏下方柔和内联面板) */}
-      {explanation && (
-        <div className="mx-3 mt-2 rounded-lg border text-sm text-foreground">
-          <div className="flex items-center justify-between border-b px-3 py-1.5">
-            <span className="text-xs text-muted-foreground">
-              {t('query.ai.explainTitle', 'SQL 解释')}
-            </span>
-            <button
-              type="button"
-              onClick={() => setExplanation(null)}
-              className="rounded p-0.5 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
-              aria-label={t('common.close', '关闭')}
-              title={t('common.close', '关闭')}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="whitespace-pre-wrap p-3">{explanation}</div>
-        </div>
-      )}
-
-      {/* P4 数据助手对话(右侧抽屉) */}
-      {askStatus.configured && (
+      {/* 数据助手对话(右侧抽屉);解释/优化收敛为对话内的快捷动作 */}
+      {chatStatus.configured && (
         <AiChatDrawer
           open={chatOpen}
           onClose={() => setChatOpen(false)}
           selectedTables={(selectedTables || []).map((tbl) => getTableName(tbl))}
+          attachDatabases={attachDatabases}
           onInsertSQL={(s) => setSQL(s)}
+          currentSql={sql}
           locale={aiLocale}
         />
       )}

@@ -187,3 +187,9 @@ logs/
 CLAUDE.md
 # runtime file data sources cache
 data/file_datasources.json
+
+# 本地运行时数据库/扩展(联邦扩展二进制、DuckDB 数据与 WAL)，不入库
+data-test/
+*.duckdb_extension
+*.db.wal
+*.db.wal.broken.*

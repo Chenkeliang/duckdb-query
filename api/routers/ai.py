@@ -7,6 +7,13 @@ from typing import Any, Dict
 
 from core.common.exceptions import ResourceNotFoundError
 from core.database.duckdb_engine import with_duckdb_connection
+from core.database.federated_attach import (
+    attach_databases_on_connection,
+    detach_databases_on_connection,
+    format_qualified_table_reference,
+    resolve_attach_configs,
+)
+from models.query_models import AttachDatabase
 from core.services import (
     ai_chat,
     ai_config,
@@ -88,6 +95,7 @@ class ErrorFixPayload(BaseModel):
     sql: str
     error: str
     tables: list[str] = []
+    attach_databases: list[AttachDatabase] = []
     locale: str = "zh"
 
 
@@ -97,31 +105,48 @@ def _ai_error_response(exc: Exception):
     return error_json_response(400, code, str(exc))
 
 
-def _build_schema_text(tables: list[str]) -> str:
+def _build_schema_text(
+    tables: list[str], attach_databases: list[Any] | None = None
+) -> str:
     if not tables:
         return ""
     if len(tables) > 10:
         logger.info(
             "schema text truncated to first 10 of %d tables for AI context", len(tables)
         )
+    # 联邦表(如 mysql_sorder.iget_order)需要先 ATTACH 远端库，否则 DESCRIBE 取不到结构
+    attach_configs = resolve_attach_configs(attach_databases)
     lines: list[str] = []
     with with_duckdb_connection() as con:
-        for name in tables[:10]:
-            try:
-                # 表名来自客户端：转义双引号(标识符内 " -> "")，否则可经堆叠语句注入
-                safe = name.replace('"', '""')
-                rows = con.execute(f'DESCRIBE "{safe}"').fetchall()
-                cols = ", ".join(f"{r[0]} {r[1]}" for r in rows)
-                lines.append(f"{name}({cols})")
-            except Exception:  # noqa: BLE001
-                continue
+        attached: list[str] = []
+        try:
+            if attach_configs:
+                attached = attach_databases_on_connection(con, attach_configs)
+            for name in tables[:10]:
+                # 客户端常传裸表名(如 sservice),但 ATTACH 后联邦表在 alias 目录下,
+                # 需回退尝试 alias.table；已是限定名则直接用。逐段转义引号防注入。
+                candidates = [name]
+                if "." not in name and attached:
+                    candidates += [f"{alias}.{name}" for alias in attached]
+                for cand in candidates:
+                    try:
+                        ref = format_qualified_table_reference(cand)
+                        rows = con.execute(f"DESCRIBE {ref}").fetchall()
+                        cols = ", ".join(f"{r[0]} {r[1]}" for r in rows)
+                        lines.append(f"{name}({cols})")
+                        break
+                    except Exception:  # noqa: BLE001
+                        continue
+        finally:
+            if attached:
+                detach_databases_on_connection(con, attached)
     return "\n".join(lines)
 
 
 @router.post("/api/ai/error-fix", tags=["AI"])
 def error_fix(payload: ErrorFixPayload):
     cfg = ai_config.load_ai_settings()
-    schema_text = _build_schema_text(payload.tables)
+    schema_text = _build_schema_text(payload.tables, payload.attach_databases)
     try:
         result = ai_error_doctor.explain_and_fix(
             LLMService(cfg), payload.sql, payload.error, schema_text, payload.locale
@@ -199,13 +224,14 @@ class ChatMessage(BaseModel):
 class ChatPayload(BaseModel):
     messages: list[ChatMessage] = []
     tables: list[str] = []
+    attach_databases: list[AttachDatabase] = []
     locale: str = "zh"
 
 
 @router.post("/api/ai/chat", tags=["AI"])
 def chat_route(payload: ChatPayload):
     cfg = ai_config.load_ai_settings()
-    schema_text = _build_schema_text(payload.tables)
+    schema_text = _build_schema_text(payload.tables, payload.attach_databases)
     try:
         result = ai_chat.chat(
             LLMService(cfg),

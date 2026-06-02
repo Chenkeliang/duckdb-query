@@ -9,6 +9,8 @@ import {
   CornerDownLeft,
   MessageSquare,
   User,
+  BookOpen,
+  Wand2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,8 +49,12 @@ export interface AiChatDrawerProps {
   onClose: () => void;
   /** 选中表名，作为 schema 上下文 */
   selectedTables: string[];
-  /** 把 assistant 给出的 SQL 插入编辑器 */
-  onInsertSQL: (sql: string) => void;
+  /** 联邦表所属外部库；后端据此 ATTACH 后才能取到远端表结构 */
+  attachDatabases?: { alias: string; connectionId: string }[];
+  /** 把 assistant 给出的 SQL 插入编辑器；可视化构建面板(JOIN/集合/透视)无编辑器时可不传 */
+  onInsertSQL?: (sql: string) => void;
+  /** 当前编辑器/面板生成的 SQL，用于「解释/优化」快捷动作 */
+  currentSql?: string;
   locale?: 'zh' | 'en';
 }
 
@@ -59,7 +65,7 @@ function AssistantMarkdown({
   insertLabel,
 }: {
   content: string;
-  onInsertSQL: (sql: string) => void;
+  onInsertSQL?: (sql: string) => void;
   insertLabel: string;
 }) {
   return (
@@ -105,15 +111,17 @@ function AssistantMarkdown({
               <pre className="overflow-auto px-2 py-1.5 text-xs">
                 <code>{text}</code>
               </pre>
-              <div className="border-t border-border px-2 py-1 text-right">
-                <button
-                  type="button"
-                  onClick={() => onInsertSQL(text)}
-                  className="text-xs text-primary hover:underline"
-                >
-                  {insertLabel}
-                </button>
-              </div>
+              {onInsertSQL && (
+                <div className="border-t border-border px-2 py-1 text-right">
+                  <button
+                    type="button"
+                    onClick={() => onInsertSQL(text)}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {insertLabel}
+                  </button>
+                </div>
+              )}
             </div>
           );
         },
@@ -128,7 +136,9 @@ export function AiChatDrawer({
   open,
   onClose,
   selectedTables,
+  attachDatabases,
   onInsertSQL,
+  currentSql,
   locale = 'zh',
 }: AiChatDrawerProps) {
   const { t } = useTranslation('common');
@@ -143,15 +153,15 @@ export function AiChatDrawer({
 
   if (!open) return null;
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (override?: string) => {
+    const text = (override ?? input).trim();
     if (!text || loading) return;
     const next: ChatMessage[] = [...messages, { role: 'user', content: text }];
     setMessages(next);
-    setInput('');
+    if (override == null) setInput('');
     setLoading(true);
     try {
-      const r = await chat(next, { tables: selectedTables, locale });
+      const r = await chat(next, { tables: selectedTables, attachDatabases, locale });
       setMessages([...next, { role: 'assistant', content: r.content }]);
     } catch (e) {
       showErrorToast(t, e as Error, t('query.ai.chatFailed', 'AI 对话失败'));
@@ -249,6 +259,36 @@ export function AiChatDrawer({
 
       {/* 输入区 */}
       <div className="border-t border-border p-2">
+        {currentSql?.trim() && (
+          <div className="mb-1.5 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() =>
+                send(
+                  `${t('query.ai.qaExplainLead', '请解释这段 SQL 在做什么（用中文，分点说明）：')}\n\`\`\`sql\n${currentSql.trim()}\n\`\`\``,
+                )
+              }
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              <BookOpen className="h-3 w-3" />
+              {t('query.ai.qaExplain', '解释当前 SQL')}
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() =>
+                send(
+                  `${t('query.ai.qaOptimizeLead', '请帮我优化这段 SQL，并说明优化点和原因：')}\n\`\`\`sql\n${currentSql.trim()}\n\`\`\``,
+                )
+              }
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              <Wand2 className="h-3 w-3" />
+              {t('query.ai.qaOptimize', '优化建议')}
+            </button>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <Input
             value={input}
@@ -262,7 +302,7 @@ export function AiChatDrawer({
             placeholder={t('query.ai.chatPlaceholder', '问数据助手…（Enter 发送）')}
             disabled={loading}
           />
-          <Button size="sm" disabled={loading || !input.trim()} onClick={send}>
+          <Button size="sm" disabled={loading || !input.trim()} onClick={() => send()}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>

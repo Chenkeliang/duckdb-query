@@ -89,6 +89,8 @@ import {
 import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
 import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
 import { TimeBoundChip } from './TimeBoundChip';
+import { useAiStatus } from '@/hooks/useAiStatus';
+import { AiChatDrawer, ChatToggleButton } from '@/Query/SQLQuery/ai/AiChatDrawer';
 import {
   buildTimeBoundSuggestions,
   defaultTimeBoundValue,
@@ -1127,8 +1129,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   joinRestoreRequest,
   onClearJoinRestoreRequest,
 }) => {
-  const { t } = useTranslation('common');
+  const { t, i18n } = useTranslation('common');
   const { maxQueryRows } = useAppConfig();
+  const chatStatus = useAiStatus('chat');
+  const [chatOpen, setChatOpen] = React.useState(false);
+  const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
   const [isExecuting, setIsExecuting] = React.useState(false);
   const [isPreviewing, setIsPreviewing] = React.useState(false);
   const [localIsCancelling, setLocalIsCancelling] = React.useState(false);
@@ -1163,6 +1168,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       return 0;
     });
   }, [rawTables, tableOrder]);
+
+  const chatTableNames = React.useMemo(
+    () => activeTables.map((tbl) => getTableName(tbl)),
+    [activeTables]
+  );
 
   // 分析表来源
   const sourceAnalysis = React.useMemo(() => {
@@ -1974,6 +1984,10 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
               <Star className="w-3.5 h-3.5" />
               {t('query.bookmark.save', '收藏')}
             </Button>
+
+            {chatStatus.configured && (
+              <ChatToggleButton active={chatOpen} onClick={() => setChatOpen((v) => !v)} />
+            )}
           </div>
 
           <div className="w-[1px] h-4 bg-border mx-1" />
@@ -2214,6 +2228,17 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           setAsyncDialogOpen(false);
         }}
       />
+
+      {chatStatus.configured && (
+        <AiChatDrawer
+          open={chatOpen}
+          onClose={() => setChatOpen(false)}
+          selectedTables={chatTableNames}
+          attachDatabases={attachDatabases}
+          currentSql={sql ?? undefined}
+          locale={aiLocale}
+        />
+      )}
     </div>
   );
 };

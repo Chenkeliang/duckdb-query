@@ -42,6 +42,8 @@ import {
     type PivotPanelValueConfig,
 } from "./buildPivotQueryPayload";
 import { PivotFilters, pivotFiltersToApi, type PivotFilterRow } from "./PivotFilters";
+import { useAiStatus } from "@/hooks/useAiStatus";
+import { AiChatDrawer, ChatToggleButton } from "@/Query/SQLQuery/ai/AiChatDrawer";
 
 interface PivotPanelProps {
     selectedTables: SelectedTable[];
@@ -54,8 +56,16 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     onExecute,
     onDisplayPreview,
 }) => {
-    const { t } = useTranslation("common");
+    const { t, i18n } = useTranslation("common");
     const { maxQueryRows } = useAppConfig();
+
+    const chatStatus = useAiStatus("chat");
+    const [chatOpen, setChatOpen] = React.useState(false);
+    const aiLocale: "zh" | "en" = i18n.language?.startsWith("zh") ? "zh" : "en";
+    const chatTableNames = React.useMemo(
+        () => selectedTables.map((tbl) => getTableName(tbl)),
+        [selectedTables]
+    );
 
     const selectedTable = selectedTables.length > 0 ? selectedTables[0] : null;
     const tableName = selectedTable ? getTableName(selectedTable) : "";
@@ -326,6 +336,10 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                             <Trash2 className="w-3.5 h-3.5" />
                             {t("common.clear", "清空")}
                         </Button>
+
+                        {chatStatus.configured && (
+                            <ChatToggleButton active={chatOpen} onClick={() => setChatOpen((v) => !v)} />
+                        )}
                     </div>
                 </div>
 
@@ -387,6 +401,17 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                 }
                 onSuccess={() => setAsyncDialogOpen(false)}
             />
+
+            {chatStatus.configured && (
+                <AiChatDrawer
+                    open={chatOpen}
+                    onClose={() => setChatOpen(false)}
+                    selectedTables={chatTableNames}
+                    attachDatabases={pivotPayload?.attachDatabases ?? []}
+                    currentSql={sql ?? undefined}
+                    locale={aiLocale}
+                />
+            )}
         </div>
     );
 };

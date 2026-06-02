@@ -162,16 +162,10 @@ export function CommandPalette({
         {/* 快捷操作命令 */}
         <CommandGroup heading={t("command.quickActions", "Quick Actions")}>
           {aiEnabled && (
-            <>
-              <CommandItem onSelect={() => runCommand(() => onAction?.("aiAsk"))}>
-                <Sparkles className="mr-2 h-4 w-4" />
-                <span>{t("command.aiAsk", "问数")}</span>
-              </CommandItem>
-              <CommandItem onSelect={() => runCommand(() => onAction?.("aiExplain"))}>
-                <Sparkles className="mr-2 h-4 w-4" />
-                <span>{t("command.aiExplain", "解释 SQL")}</span>
-              </CommandItem>
-            </>
+            <CommandItem onSelect={() => runCommand(() => onAction?.("aiChat"))}>
+              <Sparkles className="mr-2 h-4 w-4" />
+              <span>{t("command.aiChat", "数据助手对话")}</span>
+            </CommandItem>
           )}
           <CommandItem
             onSelect={() => runCommand(() => onAction?.("toggleTheme"))}
