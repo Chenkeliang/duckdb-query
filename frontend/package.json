@@ -8,6 +8,10 @@
   "engines": {
     "node": ">=24"
   },
+  "overrides": {
+    "react-is@^19": "19.1.7",
+    "react-is-19": "npm:react-is@19.1.7"
+  },
   "keywords": [
     "duckquery",
     "duckdb",
