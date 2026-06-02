@@ -5,6 +5,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Play, Loader2, FileCode, Clock, Timer, StopCircle, Star } from 'lucide-react';
+import { IS_DEMO } from '@/demo/isDemo';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -72,6 +73,9 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
   className,
 }) => {
   const { t } = useTranslation('common');
+  // Demo:异步执行 / 收藏 需后端 → 回调置空,按钮即不渲染
+  const asyncExecute = IS_DEMO ? undefined : onAsyncExecute;
+  const save = IS_DEMO ? undefined : onSave;
 
   return (
     <div
@@ -131,13 +135,13 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
           )}
 
           {/* 异步执行按钮 */}
-          {onAsyncExecute && (
+          {asyncExecute && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={onAsyncExecute}
+                  onClick={asyncExecute}
                   disabled={disableExecute || isExecuting}
                   className="gap-1.5"
                 >
@@ -157,7 +161,7 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
           )}
 
           {/* 分隔符 - 只在两组按钮都存在时显示 */}
-          {(onAsyncExecute || isExecuting) && (onFormat || onSave) && (
+          {(asyncExecute || isExecuting) && (onFormat || save) && (
             <Separator orientation="vertical" className="h-4 mx-1" />
           )}
 
@@ -185,13 +189,13 @@ export const SQLToolbar: React.FC<SQLToolbarProps> = ({
           )}
 
           {/* 收藏按钮 */}
-          {onSave && (
+          {save && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={onSave}
+                  onClick={save}
                   disabled={isExecuting}
                   className="text-muted-foreground hover:text-yellow-500"
                 >

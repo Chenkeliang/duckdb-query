@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { listAsyncTasks } from '@/api';
+import { IS_DEMO } from '@/demo/isDemo';
 import { invalidateAllDataCaches } from '@/utils/cacheInvalidation';
 import { showSuccessToast } from '@/utils/toastHelpers';
 import { AsyncTask } from '@/Query/AsyncTasks/AsyncTaskPanel';
@@ -27,6 +28,7 @@ export function useAsyncTaskMonitor() {
         },
         refetchInterval: 5000,
         staleTime: 2000,
+        enabled: !IS_DEMO, // Demo:无后端,关闭异步任务轮询(否则每 5s 报「系统内部错误」)
     });
 
     useEffect(() => {

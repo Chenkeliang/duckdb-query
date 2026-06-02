@@ -547,7 +547,8 @@ const AppInner: React.FC = () => {
               onChange={(tab) => setQueryWorkbenchTab(tab as QueryTabId)}
               tabs={[
                 { id: "query", label: t("workspace.queryMode"), icon: Search },
-                { id: "tasks", label: t("nav.asynctasks"), icon: Clock }
+                // Demo:异步任务需后端 → 不展示该子标签
+                ...(IS_DEMO ? [] : [{ id: "tasks", label: t("nav.asynctasks"), icon: Clock }])
               ]}
             />
           </div>

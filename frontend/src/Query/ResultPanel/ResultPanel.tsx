@@ -16,6 +16,7 @@ import { SQLHighlight } from '@/components/SQLHighlight';
 import { useAiEnabled } from '@/hooks/useAiEnabled';
 import { errorFix, type ErrorFixResult } from '@/api/aiApi';
 import { parseSQLTableReferences } from '@/utils/sqlUtils';
+import { IS_DEMO } from '@/demo/isDemo';
 
 import { DataGridWrapper } from './DataGridWrapper';
 import type { DataGridApi } from './DataGridWrapper';
@@ -334,7 +335,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     onExportCsv: () => getActiveGridApi()?.exportDataAsCsv(),
     onExportExcel: () => getActiveGridApi()?.exportDataAsExcel(),
     onExportJson: () => getActiveGridApi()?.exportDataAsJson(),
-    onExportParquet: currentSQL || activeTab?.query.sql
+    // Demo:Parquet 导出走服务端 → 关闭(CSV/Excel/JSON 是客户端导出,保留)
+    onExportParquet: !IS_DEMO && (currentSQL || activeTab?.query.sql)
       ? handleExportParquetServer
       : undefined,
     onRefresh:
@@ -344,7 +346,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     onToggleFullscreen: handleToggleFullscreen,
     isFullscreen,
     loading: toolbarLoading,
-    showImportButton: !!showImportButton,
+    // Demo:结果存为 DuckDB 表走服务端 → 隐藏
+    showImportButton: !IS_DEMO && !!showImportButton,
     onImportToDuckDB: handleImportClick,
     previewLimitApplied,
   };
