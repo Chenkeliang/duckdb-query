@@ -1,6 +1,7 @@
 # 前后端 API 契约（真相表）
 
 > **维护规则**：增删响应字段时先更新本表，再改 Pydantic / TypeScript 与调用方（与 [`AGENTS.md`](../AGENTS.md) §9.5 顺序一致）。  
+> **字段级实时真相**：所有端点均带 OpenAPI `tags`，运行中的 **Swagger `/docs`**（Docker: `:8001/docs`，本地: `:8000/docs`）和 `/openapi.json` 始终与代码同步；本表负责**高层导航 + 前端模块索引**，新增端点务必在此**登记一行**(否则就像 AI 端点那样漏掉)。  
 > **环境说明**：若网关或代理改写 JSON，以浏览器 Network 实际响应为准；本表以仓库内 FastAPI 路由与 `create_success_response` / `create_list_response` 为准。  
 > **调用图**：见 [`ARCHITECTURE_CALL_MAP.md`](ARCHITECTURE_CALL_MAP.md)、[`frontend/QUERY_EXECUTION_FLOW.md`](frontend/QUERY_EXECUTION_FLOW.md)。
 
@@ -29,6 +30,7 @@
 | `settingsShortcutsApi.ts` | §8 | 快捷键 |
 | `setOperationsApi.ts` | §9 | 集合运算 generate / preview / validate / execute / export 等 |
 | `joinQueryApi.ts` | §9.1 | 结构化多表 JOIN：`performJoinQuery` |
+| `aiApi.ts` | §9.2 | AI 设置 / 供应商测试 / 报错医生 / 解释 / 问数 / 对话 / 图表推荐 |
 
 ## 1. 标准成功体
 
@@ -202,6 +204,25 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 |------|------|--------|----------|
 | POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `column_types[]`, `sql`, `row_count` |
 | POST | `/api/save_query_to_duckdb` | 对象 | 见 §2 `saveQueryToDuckDB` |
+
+## 9.2 AI（`aiApi.ts`，后端 `routers/ai.py`，OpenAPI tag `AI`）
+
+> AI **默认关闭**;供应商 `api_key` 服务端 **Fernet 加密**存储,读取接口返回掩码 `****`、从不回传明文。生成的 SQL 永远只填入编辑器、**绝不自动执行**。
+
+| 方法 | 路径 | 请求 | 成功体 | 前端入口 |
+|------|------|------|--------|----------|
+| GET | `/api/settings/ai` | — | `AiSettings`（`providers[].api_key` 掩码为 `****`） | `getAiSettings` |
+| PUT | `/api/settings/ai` | `AiSettings` | `{ saved: true }` | `saveAiSettings` |
+| POST | `/api/ai/providers/{id}/test` | — | `{ ok, sample? }` | `testProvider` |
+| POST | `/api/ai/error-fix` | `{ sql, error, tables[], attach_databases[], locale }` | `{ explanation, fixed_sql, safe }` | `errorFix` |
+| POST | `/api/ai/explain-sql` | `{ sql, locale }` | `{ explanation }` | `explainSql` |
+| POST | `/api/ai/nl-to-sql` | `{ question, tables[], locale }` | `{ sql, used_tables[], safe }`（非只读 SELECT → `safe:false`） | `nlToSql` |
+| POST | `/api/ai/chat` | `{ messages[], tables[], attach_databases[], locale }` | `{ content }` | `chat` |
+| POST | `/api/ai/suggest-chart` | `{ columns[], sample[], locale }` | `ChartSpec{ type, x, y[], agg, xBin?, reason? }` | `suggestChart` |
+
+- `attach_databases`：`[{ alias, connection_id }]`；后端据此先 ATTACH 远端库,再取**联邦表**结构(对话 / 报错医生注入 schema 用)。
+- 未配置 / 关闭时返回错误码 `ai_not_configured` / `ai_disabled`,前端据此引导去「AI 模型」设置。
+- `AiSettings`：`{ enabled, default_provider, providers[], features, timeout_seconds, num_retries }`；provider 类型 `openai | anthropic | ollama | openai_compatible`。详见 `docs/CONFIGURATION.md` → AI / LLM。
 
 ## 10. 已移除的历史端点（勿再使用）
 

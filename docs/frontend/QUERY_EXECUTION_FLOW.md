@@ -277,8 +277,15 @@ export function generateDatabaseAlias(connection: DatabaseConnection): string {
 
 ---
 
+## Demo 模式（DuckDB-Wasm）
+
+`VITE_DEMO=true` 构建下,`executeDuckDBSQL` 在 `IS_DEMO` 分支改走**浏览器内 DuckDB-Wasm**（`src/demo/wasmEngine.ts`），不发后端;`executeFederatedQuery`（连 MySQL/PG）在浏览器内不可用、入口已锁。正常 / 自托管构建此分支在**编译期被剥离**,执行流程同上文。详见 `docs/CONFIGURATION.md` → Frontend Build Flags。
+
+---
+
 ## 版本历史
 
+- **v2.3** (2026-06-02): 补充 AI 端点(契约 §9.2)、AI/LLM 配置、Demo(DuckDB-Wasm)旁路
 - **v2.2** (2026-05-21): 移除可视化构建器描述；补充透视 `pivot-query` 路径
 - **v2.1** (2026-05-21): 文档对齐契约表；`execute_sql` / `duckdb_tables` 路由已删除；异步 ATTACH 单轨
 - **v2.0** (2024-12-19): 统一使用 ATTACH 模式，移除单独的外部数据库查询 API

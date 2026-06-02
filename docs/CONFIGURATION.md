@@ -110,6 +110,28 @@ For accessing remote files from S3 or Aliyun OSS:
 
 ---
 
+## AI / LLM
+
+AI 功能(问数 Text-to-SQL、报错医生、AI 图表推荐、数据对话)**默认关闭**,且**不在本配置文件里**——在应用内「**设置 → AI 模型**」配置,持久化到 `system.db`(见 API `docs/API_CONTRACT_FE_BE.md` §9.2)。
+
+- **隐私**:供应商 `api_key` 以 **Fernet 加密**存储,读取接口返回掩码 `****`、从不回传明文;生成的 SQL 永远只填入编辑器、**绝不自动执行**。
+- **供应商类型**:`openai` / `anthropic` / `ollama` / `openai_compatible`(自定义 `base_url`)。
+- **按功能选模型**:`features.{explain | nl_to_sql | chat | suggest_chart | error_fix}` 可各指定 provider/model,缺省回落到 `default_provider`。
+- **超时 / 重试**:`timeout_seconds`(默认 30)、`num_retries`(默认 2);依赖后端 `tenacity`。
+- 调用失败返回错误码 `ai_not_configured` / `ai_disabled`,前端据此引导去设置。
+
+---
+
+## Frontend Build Flags (Vite, build-time)
+
+| Env | 作用 |
+|-----|------|
+| `VITE_DEMO=true` | 浏览器内 Demo 构建:查询走 **DuckDB-Wasm**,连库 / AI 入口锁为升级引导。**仅 gh-pages 构建设此项;自托管 / Docker 不设。** |
+| `VITE_API_URL` | 前端 API 基址(留空 = 同源)。 |
+| `VITE_BASE_URL` | 部署子路径(gh-pages 用 `/duckdb-query/`)。 |
+
+---
+
 ## Environment Variable Overrides
 
 Most settings can be overridden via environment variables:
