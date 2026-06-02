@@ -1,0 +1,62 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1221"/>
+      <stop offset="1" stop-color="#131B2E"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFBF00"/>
+      <stop offset="1" stop-color="#FFD75E"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <!-- accent glow shapes -->
+  <circle cx="1140" cy="120" r="240" fill="#FFBF00" opacity="0.06"/>
+  <circle cx="120" cy="560" r="200" fill="#61DAFB" opacity="0.05"/>
+  <rect x="0" y="0" width="10" height="640" fill="url(#accent)"/>
+
+  <!-- wordmark -->
+  <g transform="translate(96,108)">
+    <rect x="0" y="-2" width="54" height="54" rx="14" fill="url(#accent)"/>
+    <text x="27" y="36" font-size="34" font-weight="700" fill="#0B1221" text-anchor="middle">D</text>
+    <text x="74" y="38" font-size="40" font-weight="700" fill="#FFFFFF">DuckQuery</text>
+    <text x="318" y="38" font-size="20" fill="#8FA0B8">· Powered by DuckDB</text>
+  </g>
+
+  <!-- headline -->
+  <text x="96" y="250" font-size="68" font-weight="800" fill="#FFFFFF">AI Visual SQL Workbench</text>
+  <text x="96" y="328" font-size="68" font-weight="800" fill="url(#accent)">for Files &amp; Databases</text>
+
+  <!-- one-liner -->
+  <text x="98" y="392" font-size="29" fill="#C4D0E2">Query local CSV / Excel + remote MySQL / Postgres together.</text>
+  <text x="98" y="432" font-size="29" fill="#C4D0E2">Text-to-SQL chat &#183; cross-source JOINs &#183; no ETL.</text>
+
+  <!-- feature chips -->
+  <g font-size="22" fill="#E6EDF7">
+    <g transform="translate(96,486)">
+      <rect x="0" y="0" width="190" height="52" rx="26" fill="#1C2840" stroke="#2C3B59"/>
+      <circle cx="26" cy="26" r="5" fill="#FFBF00"/>
+      <text x="44" y="34">Text-to-SQL</text>
+    </g>
+    <g transform="translate(302,486)">
+      <rect x="0" y="0" width="252" height="52" rx="26" fill="#1C2840" stroke="#2C3B59"/>
+      <circle cx="26" cy="26" r="5" fill="#61DAFB"/>
+      <text x="44" y="34">Cross-source JOIN</text>
+    </g>
+    <g transform="translate(570,486)">
+      <rect x="0" y="0" width="130" height="52" rx="26" fill="#1C2840" stroke="#2C3B59"/>
+      <circle cx="26" cy="26" r="5" fill="#FFBF00"/>
+      <text x="44" y="34">Charts</text>
+    </g>
+    <g transform="translate(716,486)">
+      <rect x="0" y="0" width="238" height="52" rx="26" fill="#1C2840" stroke="#2C3B59"/>
+      <circle cx="26" cy="26" r="5" fill="#61DAFB"/>
+      <text x="44" y="34">Local-first WASM</text>
+    </g>
+  </g>
+
+  <!-- footer -->
+  <text x="96" y="598" font-size="22" fill="#7C8BA6">github.com/Chenkeliang/duckdb-query</text>
+  <text x="1184" y="598" font-size="22" fill="#7C8BA6" text-anchor="end">MIT · Self-hosted</text>
+</svg>

@@ -4,8 +4,8 @@
 
 <h1 align="center">DuckQuery</h1>
 
-  <b>文件与数据库的可视化 SQL 工作台。</b><br>
-  <b>无缝连接本地文件（Excel/CSV/JSON）与远程数据库（MySQL/PG）。打破数据孤岛，实现一站式跨源SQL查询分析。</b>
+  <b>文件与数据库的 AI 可视化 SQL 工作台。</b><br>
+  <b>用大白话提问或直接写 SQL，跨本地文件（Excel/CSV/JSON）与远程数据库（MySQL/PG）一站式分析 —— 跨源、免 ETL。</b>
 </p>
 
 <p align="center">
@@ -63,6 +63,9 @@ git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && 
 
 | 功能 | 操作方式 |
 |------|---------|
+| 🧠 **用大白话提问（问数 Text-to-SQL）** | 和数据对话，AI 起草 SQL，你确认后再执行 —— **绝不自动运行**。 |
+| 🩺 **AI 报错医生** | 查询报错时，给出中文诊断 + 修正后的 SQL（懂你的表结构，含联邦表）。 |
+| 📈 **AI 图表推荐** | 一键把结果集变成合适的图表 —— 柱 / 折线 / 饼 / 大数字。 |
 | 📥 **从任意处粘贴CSV/TSV** | 复制单元格，直接粘贴创建新表。 |
 | 📂 **查询任意文件** | 拖拽 CSV/Excel/Parquet/JSON 到浏览器，即刻生成表。 |
 | 🗄️ **连接外部数据库** | 添加 MySQL/PostgreSQL 连接，与本地文件一起查询。 |
@@ -89,6 +92,23 @@ git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && 
 ```
 
 文件被导入为 **DuckDB 原生表**，查询速度极快。外部数据库通过 DuckDB 的 `ATTACH` 机制连接。
+
+---
+
+## 为什么选 DuckQuery？
+
+多数工具让你二选一：**数据库 GUI**（DBeaver、TablePlus）碰不了本地 CSV；**BI 工具**（Metabase、Superset）又要先建仓库、跑 ETL。DuckQuery 补上中间这块 —— 同时对着文件和数据库、一条 SQL 跨源 JOIN，还能让 AI 帮你写 SQL。
+
+| | **DuckQuery** | DBeaver / TablePlus | Metabase / Superset |
+|---|:---:|:---:|:---:|
+| 查询本地 CSV / Excel / Parquet | ✅ 原生 | ⚠️ 需先导入 | ❌ |
+| 一条 SQL JOIN 文件 ↔ MySQL/PG | ✅ | ❌ | ❌ |
+| 自然语言生成 SQL（AI） | ✅ 内置 | ❌ | ⚠️ 付费/受限 |
+| 免 ETL / 免数仓 | ✅ | ✅ | ❌ |
+| 完全本地 / 可自托管 | ✅（或浏览器 WASM） | ✅ | ⚠️ 需服务端 |
+| 上手到第一条查询 | 几秒 | 几分钟 | 几小时 |
+
+基于 **DuckDB** 进程内分析引擎 —— 1 GB 的 CSV 与远程表毫秒级 JOIN，无需维护任何数据管道。
 
 ---
 

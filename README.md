@@ -4,8 +4,8 @@
 
 <h1 align="center">DuckQuery</h1>
 
-  <b>The Visual SQL Workbench for Files and Databases.</b><br>
-  <b>Seamlessly connect local files (Excel/CSV/JSON) and remote databases (MySQL/PG). Break data silos with one-stop cross-source SQL analysis.</b>
+  <b>The AI Visual SQL Workbench for Files and Databases.</b><br>
+  <b>Ask in plain English or write SQL across local files (Excel/CSV/JSON) and remote databases (MySQL/PG) — one‑stop, cross‑source, no ETL.</b>
 </p>
 
 <p align="center">
@@ -63,6 +63,9 @@ Open **http://localhost:3000** and start querying.
 
 | Action | How |
 |--------|-----|
+| 🧠 **Ask in plain English (Text-to-SQL)** | Chat with your data; the AI drafts SQL you review before running — **never auto-executed**. |
+| 🩺 **AI error doctor** | When a query fails, get a plain-English diagnosis + a fixed SQL suggestion (knows your table schema, incl. federated). |
+| 📈 **AI chart suggestions** | One click turns a result set into the right chart — bar / line / pie / KPI. |
 | 📥 **Paste CSV/TSV from anywhere** | Copy cells from any source, paste directly as a new table. |
 | 📂 **Query any file** | Drag CSV/Excel/Parquet/JSON into the browser. Instant table. |
 | 🗄️ **Connect databases** | Add MySQL/PostgreSQL. Query alongside local files. |
@@ -89,6 +92,23 @@ Open **http://localhost:3000** and start querying.
 ```
 
 Files are imported as **native DuckDB tables** for lightning-fast queries. External databases are connected via DuckDB's `ATTACH` mechanism.
+
+---
+
+## Why DuckQuery?
+
+Most tools force a choice: a **database GUI** (DBeaver, TablePlus) that can't touch your local CSVs, or a **BI tool** (Metabase, Superset) that needs a warehouse and ETL first. DuckQuery is the missing middle — point it at files *and* databases, JOIN across them in one query, and let AI write the SQL.
+
+| | **DuckQuery** | DBeaver / TablePlus | Metabase / Superset |
+|---|:---:|:---:|:---:|
+| Query local CSV / Excel / Parquet | ✅ native | ⚠️ import first | ❌ |
+| JOIN files ↔ MySQL/Postgres in one query | ✅ | ❌ | ❌ |
+| Text-to-SQL (AI) | ✅ built-in | ❌ | ⚠️ paid/limited |
+| No ETL / no warehouse | ✅ | ✅ | ❌ |
+| Fully local / self-hosted | ✅ (or browser WASM) | ✅ | ⚠️ server |
+| Time to first query | seconds | minutes | hours |
+
+Built on **DuckDB**, an in-process analytical engine — so a 1 GB CSV joins a remote table in milliseconds, with no data pipeline to maintain.
 
 ---
 
