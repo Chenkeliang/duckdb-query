@@ -38,7 +38,7 @@ describe('aiApi', () => {
     });
     const out = await errorFix('SELECT x', 'Binder Error', { tables: ['t'], locale: 'zh' });
     expect(apiClient.post).toHaveBeenCalledWith('/api/ai/error-fix', {
-      sql: 'SELECT x', error: 'Binder Error', tables: ['t'], locale: 'zh',
+      sql: 'SELECT x', error: 'Binder Error', tables: ['t'], attach_databases: [], locale: 'zh',
     });
     expect(out.fixed_sql).toBe('SELECT 1');
     expect(out.safe).toBe(true);
