@@ -42,7 +42,9 @@
     "showAllColumns": "Show all columns",
     "resetColumns": "Reset columns",
     "autoFitColumns": "Auto fit columns",
-    "fitToWidth": "Fit to width"
+    "fitToWidth": "Fit to width",
+    "filterLabel": "Filters",
+    "clearColFilter": "Clear {{col}} filter"
   },
   "nav": {
     "datasource": "Data Sources",
@@ -90,7 +92,8 @@
     "copy": "Copy",
     "copied": "Copied",
     "clear": "Clear",
-    "execute": "Execute"
+    "execute": "Execute",
+    "unknownError": "Unknown error"
   },
   "dataSource": {
     "previewTable": "Preview table: {{tableName}}",
@@ -128,7 +131,13 @@
     "refreshConnection": "Refresh Connection",
     "loadError": "Load error",
     "goToManagePage": "Please go to the data source management page to add a new data source",
-    "collapsePanel": "Collapse data source panel"
+    "collapsePanel": "Collapse data source panel",
+    "columns": "Columns",
+    "indexColumns": "Indexed columns",
+    "indexName": "Index name",
+    "indexType": "Index type",
+    "noIndexes": "No index information",
+    "unique": "Unique"
   },
   "workspace": {
     "expandDataSource": "Expand data source panel",
@@ -981,7 +990,8 @@
         "idle": "Idle",
         "error": "Error",
         "unknown": "Unknown"
-      }
+      },
+      "remoteTips3": "Imported files are created directly as DuckDB tables"
     }
   },
   "settings": {

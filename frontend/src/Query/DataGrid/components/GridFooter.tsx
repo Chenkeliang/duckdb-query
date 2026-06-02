@@ -97,7 +97,7 @@ export const GridFooter: React.FC<GridFooterProps> = ({
       {/* 中间：筛选条件标签 */}
       {hasFilters && (
         <div className="flex items-center gap-1.5 flex-1 justify-center overflow-hidden">
-          <span className="text-muted-foreground text-xs shrink-0">筛选:</span>
+          <span className="text-muted-foreground text-xs shrink-0">{t('dataGrid.filterLabel')}:</span>
           <div className="flex items-center gap-1 overflow-x-auto max-w-[50%]">
             {columnFilters.map((filter) => {
               const displayValue = formatFilterValue(filter.value);
@@ -112,7 +112,7 @@ export const GridFooter: React.FC<GridFooterProps> = ({
                     'bg-primary/10 text-primary hover:bg-primary/20',
                     'transition-colors cursor-pointer shrink-0'
                   )}
-                  title={`清除 ${filter.id} 筛选`}
+                  title={t('dataGrid.clearColFilter', { col: filter.id })}
                 >
                   <span className="font-medium">{filter.id}:</span>
                   <span className="truncate max-w-[100px]">{displayValue}</span>

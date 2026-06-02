@@ -1219,7 +1219,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   const hasColumnErrors = tableColumnsResults.some((result) => result.isError);
   const columnErrorMessages = tableColumnsResults
     .filter((result) => result.isError && result.error)
-    .map((result) => result.error?.message || '未知错误');
+    .map((result) => result.error?.message || t('common.unknownError'));
 
   // 构建表列映射 - 使用稳定的 key 来避免无限循环
   const tableColumnsMapKey = tableColumnsResults
