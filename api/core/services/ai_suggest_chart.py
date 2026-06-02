@@ -3,21 +3,13 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Dict, List
+
+# 复用报错医生里的 JSON 抽取(更健壮、避免重复;nl_to_sql 也是这么复用的)
+from core.services.ai_error_doctor import _extract_json
 
 _TYPES = {"bar", "line", "area", "pie", "donut", "kpi"}
 _AGGS = {"sum", "count", "avg", "min", "max"}
-
-
-def _extract_json(text: str) -> Dict[str, Any]:
-    t = (text or "").strip()
-    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", t, re.DOTALL)
-    raw = fence.group(1) if fence else t[t.find("{"): t.rfind("}") + 1]
-    try:
-        return json.loads(raw)
-    except Exception:  # noqa: BLE001
-        return {}
 
 
 def suggest_chart(
