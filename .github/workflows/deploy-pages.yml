@@ -38,6 +38,8 @@ jobs:
         env:
           # GitHub Pages 部署路径
           VITE_BASE_URL: /duckdb-query/
+          # 浏览器内 Demo:启用 DuckDB-Wasm 引擎 + Demo 门控(仅此构建,自托管/Docker 不设)
+          VITE_DEMO: 'true'
           NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Setup Pages
