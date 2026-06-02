@@ -49,7 +49,7 @@ It also has an AI layer that's opt-in and local-first:
 
 Try it (one command, self-hosted — your data never leaves your machine):
   git clone … && ./quick-start.sh   → http://localhost:3000
-(There's a 40s demo video in the README if you just want to watch first.)
+(README has GIFs if you'd rather watch first.)
 
 Stack: DuckDB + FastAPI + React. MIT. API keys for the AI are encrypted server-side
 and the generated SQL is always shown for review, never run automatically.
