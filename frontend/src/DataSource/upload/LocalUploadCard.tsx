@@ -38,16 +38,11 @@ export function LocalUploadCard({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <Card className="shadow-sm">
+    <Card className="rounded-xl shadow-sm">
       <CardContent className="p-6 space-y-5">
-        <div className="flex items-baseline justify-between gap-4">
-          <h3 className="text-lg font-semibold tracking-tight text-foreground">
-            {t("page.datasource.cardLocalTitle")}
-          </h3>
-          <span className="shrink-0 font-ds-mono text-xs text-muted-foreground">
-            {t("page.datasource.localTipsFormats")}
-          </span>
-        </div>
+        <p className="text-[13px] leading-relaxed text-muted-foreground">
+          {t("page.datasource.cardLocalDesc")}
+        </p>
 
         <div
           onDragOver={e => {

@@ -57,16 +57,11 @@ export function ServerBrowseCard({
   const { t } = useTranslation("common");
 
   return (
-    <Card className="shadow-sm">
-      <CardContent className="p-6 space-y-4">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {t("page.datasource.cardServerTitle")}
-          </p>
-          <h3 className="text-lg font-semibold text-foreground">
-            {t("page.datasource.cardServerDesc")}
-          </h3>
-        </div>
+    <Card className="rounded-xl shadow-sm">
+      <CardContent className="p-6 space-y-5">
+        <p className="text-[13px] leading-relaxed text-muted-foreground">
+          {t("page.datasource.cardServerDesc")}
+        </p>
 
         <div className="space-y-2">
           <label className="text-xs text-muted-foreground flex items-center gap-2">

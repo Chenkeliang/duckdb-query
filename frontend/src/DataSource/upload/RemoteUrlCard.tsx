@@ -31,20 +31,15 @@ export function RemoteUrlCard({
   const showS3ConfigHint = isS3Url && !remoteStorageConfigured;
 
   return (
-    <Card className="shadow-sm">
-      <CardContent className="p-6 space-y-4">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {t("page.datasource.cardRemoteTitle")}
-          </p>
-          <h3 className="text-lg font-semibold text-foreground">
-            {t("page.datasource.cardRemoteDesc")}
-          </h3>
-        </div>
+    <Card className="rounded-xl shadow-sm">
+      <CardContent className="p-6 space-y-5">
+        <p className="text-[13px] leading-relaxed text-muted-foreground">
+          {t("page.datasource.cardRemoteDesc")}
+        </p>
 
         <div className="space-y-2">
-          <Label htmlFor="remote-url" className="flex items-center gap-2">
-            <Link2 className="h-4 w-4" />
+          <Label htmlFor="remote-url" className="flex items-center gap-2 text-xs">
+            <Link2 className="h-3.5 w-3.5" />
             {t("page.datasource.remoteUrlLabel")}
           </Label>
           <Input
@@ -52,6 +47,7 @@ export function RemoteUrlCard({
             value={url}
             onChange={e => onUrlChange(e.target.value)}
             placeholder="https://example.com/data.csv"
+            className="font-ds-mono text-xs"
           />
           <p className="text-xs text-muted-foreground">
             {t("page.datasource.remoteUrlHelper")}
@@ -69,8 +65,8 @@ export function RemoteUrlCard({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="remote-alias" className="flex items-center gap-2">
-            <FileType className="h-4 w-4" />
+          <Label htmlFor="remote-alias" className="flex items-center gap-2 text-xs">
+            <FileType className="h-3.5 w-3.5" />
             {t("page.datasource.remoteAliasLabel")}
           </Label>
           <Input
@@ -78,6 +74,7 @@ export function RemoteUrlCard({
             value={remoteAlias}
             onChange={e => onRemoteAliasChange(e.target.value)}
             placeholder={t("page.datasource.remoteAliasPlaceholder")}
+            className="font-ds-mono text-xs"
           />
           <p className="text-xs text-muted-foreground">
             {t("page.datasource.remoteAliasHelper")}
