@@ -55,7 +55,8 @@ function connMeta(c: DatabaseConnection): { primary: string; secondary: string }
     return { primary: p.database || c.name, secondary: "" };
   }
   const hostPort = [p.host, p.port].filter(Boolean).join(":");
-  const dbUser = [p.database, p.username].filter(Boolean).join(" · ");
+  let dbUser = [p.database, p.username].filter(Boolean).join(" · ");
+  if (p.schema && p.schema !== "public") dbUser += ` (${p.schema})`;
   return { primary: hostPort, secondary: dbUser };
 }
 
