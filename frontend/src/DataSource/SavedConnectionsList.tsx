@@ -139,7 +139,7 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
   const ConnectBtn = ({ c }: { c: DatabaseConnection }) => (
     <button
       onClick={() => onSelect(c)}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/35 bg-primary/10 px-3 py-1.5 font-ds-mono text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/35 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
     >
       <Play className="h-3 w-3 fill-current" />
       {t("page.datasource.list.connect")}
@@ -224,16 +224,18 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
                   i !== configs.length - 1 && "border-b border-border"
                 )}
               >
-                <Tile c={c} size={32} />
-                <div className="w-[140px] shrink-0">
+                <Tile c={c} size={34} />
+                <div className="w-[168px] shrink-0">
                   <div className="truncate text-sm font-semibold text-foreground">{c.name || c.id}</div>
-                  <div className="font-ds-mono text-[11px] text-muted-foreground">{TYPE_META[c.type]?.label}</div>
+                  <div className="text-xs text-muted-foreground">{TYPE_META[c.type]?.label}</div>
                 </div>
-                <div className="min-w-0 flex-1 truncate font-ds-mono text-xs text-muted-foreground">
-                  {meta.primary}
-                  {meta.secondary && <span className="text-muted-foreground/60">{"  /  " + meta.secondary}</span>}
+                <div className="min-w-0 flex-1 truncate text-[13px]">
+                  <span className="text-foreground/80">{meta.secondary || meta.primary}</span>
+                  {meta.secondary && (
+                    <span className="ml-2.5 text-muted-foreground/70">{meta.primary}</span>
+                  )}
                 </div>
-                <div className="flex w-[90px] shrink-0 items-center gap-2 font-ds-mono text-[11px] text-muted-foreground">
+                <div className="flex w-[84px] shrink-0 items-center gap-2 text-xs text-muted-foreground">
                   <Dot c={c} />
                   {statusLabel(c)}
                 </div>
@@ -266,17 +268,17 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
                       {c.name || c.id}
                       <Dot c={c} />
                     </div>
-                    <div className="font-ds-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <div className="text-xs text-muted-foreground">
                       {TYPE_META[c.type]?.label} · {statusLabel(c)}
                     </div>
                   </div>
                 </div>
-                <div className="truncate font-ds-mono text-[11.5px] leading-relaxed text-muted-foreground">
-                  {meta.primary}
+                <div className="truncate text-[13px] leading-relaxed text-foreground/80">
+                  {meta.secondary || meta.primary}
                 </div>
                 {meta.secondary && (
-                  <div className="truncate font-ds-mono text-[11.5px] leading-relaxed text-muted-foreground/70">
-                    {meta.secondary}
+                  <div className="truncate text-xs leading-relaxed text-muted-foreground/70">
+                    {meta.primary}
                   </div>
                 )}
                 <div
