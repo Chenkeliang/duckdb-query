@@ -190,7 +190,6 @@ const AppInner: React.FC = () => {
     setPreviewQuery,
     refreshData,
     connectDatabase,
-    saveDatabase,
     closeWelcome
   } = actions;
 
@@ -401,32 +400,10 @@ const AppInner: React.FC = () => {
         }
       };
 
-      const handleSaveConfig = async (params: DatabaseConnectParams) => {
-        try {
-          setSavingDb(true);
-          const response = await saveDatabase(params);
-          if (response?.success) {
-            setDbDrawerOpen(false);
-            showResponseToast(t, response, {
-              successFallback: t("page.datasource.manage.saveSuccess")
-            });
-          } else {
-            showResponseToast(t, response, {
-              errorFallback: t("page.datasource.list.errorUnknown")
-            });
-          }
-        } catch (err) {
-          showErrorToast(t, err as Error, t("page.datasource.list.errorUnknown"));
-        } finally {
-          setSavingDb(false);
-        }
-      };
-
       const databasePanel = (
         <DatabaseForm
           onTest={handleTestConnection}
           onSave={handleSaveConnection}
-          onSaveConfig={handleSaveConfig}
           loading={savingDb}
           testing={testingDb}
           configToLoad={selectedConfig}

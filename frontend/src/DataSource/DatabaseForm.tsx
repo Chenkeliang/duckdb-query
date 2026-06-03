@@ -44,7 +44,6 @@ interface DatabaseFormProps {
   configToLoad?: ConfigToLoad | null;
   onTest?: (params: DatabaseConnectParams) => void;
   onSave?: (params: DatabaseConnectParams) => void;
-  onSaveConfig?: (params: DatabaseConnectParams) => void;
   loading?: boolean;
   testing?: boolean;
 }
@@ -65,7 +64,6 @@ const DatabaseForm = ({
   configToLoad,
   onTest,
   onSave,
-  onSaveConfig,
   loading = false,
   testing = false,
 }: DatabaseFormProps) => {
@@ -242,10 +240,6 @@ const DatabaseForm = ({
     onSave?.(normalizedParams);
   };
 
-  const handleSaveConfigClick = () => {
-    if (!validate()) return;
-    onSaveConfig?.(normalizedParams);
-  };
 
   // Load server mounts when SQLite tab is active
   useEffect(() => {
@@ -524,7 +518,7 @@ const DatabaseForm = ({
                           )}
                         </div>
                         {serverError && (
-                          <div className="text-xs text-error">{serverError}</div>
+                          <div className="text-xs text-muted-foreground">{serverError}</div>
                         )}
                       </div>
                     )}
@@ -571,21 +565,6 @@ const DatabaseForm = ({
                 })
               )}
             </Button>
-            {onSaveConfig ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground"
-                onClick={handleSaveConfigClick}
-                disabled={loading}
-                title={t("page.datasource.connection.saveOnlyHint", {
-                  defaultValue: "仅保存配置，不测试连接",
-                })}
-              >
-                {t("page.datasource.connection.saveOnly", { defaultValue: "仅保存不测试" })}
-              </Button>
-            ) : null}
           </div>
         </form>
     </div>
