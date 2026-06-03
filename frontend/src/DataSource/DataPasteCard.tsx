@@ -359,36 +359,37 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
       {parsedData ? (
         <Card className="shadow-sm">
           <CardContent className="p-4 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="md:col-span-2 space-y-2">
-                <Label htmlFor="table-name">
-                  {t("page.datasource.paste.tableName")}
-                </Label>
-                <Input
-                  id="table-name"
-                  value={tableName}
-                  onChange={e => setTableName(e.target.value)}
-                  placeholder={t("page.datasource.paste.tableNamePlaceholder")}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("page.datasource.paste.tableNameHelper")}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="accent-primary"
-                    checked={unifyAsString}
-                    onChange={e => toggleUnify(e.target.checked)}
-                  />
-                  {t("page.datasource.paste.unifyAsString")}
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  {t("page.datasource.paste.unifyAsStringDesc")}
-                </p>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="table-name">
+                {t("page.datasource.paste.tableName")}
+              </Label>
+              <Input
+                id="table-name"
+                value={tableName}
+                onChange={e => setTableName(e.target.value)}
+                placeholder={t("page.datasource.paste.tableNamePlaceholder")}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("page.datasource.paste.tableNameHelper")}
+              </p>
             </div>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface-elevated/40 p-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-primary"
+                checked={unifyAsString}
+                onChange={e => toggleUnify(e.target.checked)}
+              />
+              <div className="space-y-0.5">
+                <div className="text-sm text-foreground">
+                  {t("page.datasource.paste.unifyAsString")}
+                </div>
+                <div className="text-xs leading-relaxed text-muted-foreground">
+                  {t("page.datasource.paste.unifyAsStringDesc")}
+                </div>
+              </div>
+            </label>
 
             <div className="overflow-auto rounded-lg border border-border-subtle">
               <table className="min-w-full text-sm">
