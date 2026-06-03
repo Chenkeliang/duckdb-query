@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 import { getServerMounts, browseServerDirectory } from '@/api';
 import { Server, Loader2, Sparkles } from "lucide-react";
 import { parseConnectionString } from "./parseConnectionString";
@@ -157,7 +156,6 @@ const DatabaseForm = ({
     if (!name.trim()) {
       const errorMsg = t("page.datasource.connection.validation.requiredName", "请填写连接名称");
       setError(errorMsg);
-      toast.warning(errorMsg);
       return false;
     }
 
@@ -165,50 +163,38 @@ const DatabaseForm = ({
       // 检查主机地址
       if (!host.trim()) {
         const errorMsg = t("page.datasource.connection.validation.requiredHost", "请填写主机地址");
-        setError(errorMsg);
-        toast.warning(errorMsg);
-        return false;
+        setError(errorMsg);        return false;
       }
 
       // 检查端口
       if (!port.trim()) {
         const errorMsg = t("page.datasource.connection.validation.requiredPort", "请填写端口号");
-        setError(errorMsg);
-        toast.warning(errorMsg);
-        return false;
+        setError(errorMsg);        return false;
       }
 
       // 检查用户名
       if (!username.trim()) {
         const errorMsg = t("page.datasource.connection.validation.requiredUser", "请填写用户名");
-        setError(errorMsg);
-        toast.warning(errorMsg);
-        return false;
+        setError(errorMsg);        return false;
       }
 
       // 检查数据库名
       if (!database.trim()) {
         const errorMsg = t("page.datasource.connection.validation.requiredDatabase", "请填写数据库名称");
-        setError(errorMsg);
-        toast.warning(errorMsg);
-        return false;
+        setError(errorMsg);        return false;
       }
 
       // 验证端口号是否为有效数字
       const portNum = Number(port);
       if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
         const errorMsg = t("page.datasource.connection.validation.invalidPort", "端口号必须在 1-65535 之间");
-        setError(errorMsg);
-        toast.warning(errorMsg);
-        return false;
+        setError(errorMsg);        return false;
       }
     } else {
       // SQLite 检查路径
       if (!sqlitePath.trim()) {
         const errorMsg = t("page.datasource.connection.validation.requiredPath", "请填写 SQLite 数据库文件路径");
-        setError(errorMsg);
-        toast.warning(errorMsg);
-        return false;
+        setError(errorMsg);        return false;
       }
     }
 
