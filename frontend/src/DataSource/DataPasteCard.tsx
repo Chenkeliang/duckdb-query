@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
+import { Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { invalidateAfterTableCreate } from "@/utils/cacheInvalidation";
 import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
@@ -274,7 +275,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
       <Card className="shadow-sm">
         <CardContent className="p-4 space-y-4">
           <div className="space-y-2">
@@ -447,7 +448,18 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
             </div>
           </CardContent>
         </Card>
-      ) : null}
+      ) : (
+        <Card className="shadow-sm border-dashed">
+          <CardContent className="flex min-h-[280px] flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
+            <Table2 className="h-8 w-8 opacity-40" />
+            <p className="text-sm">
+              {t("page.datasource.paste.previewEmpty", {
+                defaultValue: "解析后在此预览列与类型",
+              })}
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
