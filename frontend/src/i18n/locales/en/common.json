@@ -1003,7 +1003,10 @@
         "error": "Error",
         "unknown": "Unknown"
       },
-      "remoteTips3": "Imported files are created directly as DuckDB tables"
+      "remoteTips3": "Imported files are created directly as DuckDB tables",
+      "chunkedHint": "Files over {{mb}}MB upload in chunks",
+      "uploadingPercent": "Uploading {{percent}}%",
+      "importModeVariant": "Variant (nested JSON)"
     }
   },
   "settings": {

@@ -1003,7 +1003,10 @@
         "idle": "空闲",
         "error": "异常",
         "unknown": "未知"
-      }
+      },
+      "chunkedHint": "大于 {{mb}}MB 将自动分块上传",
+      "uploadingPercent": "上传中 {{percent}}%",
+      "importModeVariant": "变体 VARIANT（嵌套 JSON）"
     }
   },
   "settings": {

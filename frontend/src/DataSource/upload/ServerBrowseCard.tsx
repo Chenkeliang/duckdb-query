@@ -4,6 +4,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { stemFromFilename } from "./uploadPathUtils";
 
 export interface ServerFileEntry {
@@ -64,10 +71,10 @@ export function ServerBrowseCard({
         </p>
 
         <div className="space-y-2">
-          <label className="text-xs text-muted-foreground flex items-center gap-2">
-            <HardDrive className="h-4 w-4 text-muted-foreground" />
+          <Label className="flex items-center gap-2 text-xs">
+            <HardDrive className="h-3.5 w-3.5" />
             {t("page.datasource.serverSelectMount")}
-          </label>
+          </Label>
           {serverMountLoading ? (
             <div className="text-xs text-muted-foreground">{t("actions.loading")}</div>
           ) : serverMounts.length === 0 ? (
@@ -76,20 +83,21 @@ export function ServerBrowseCard({
               <div>{t("page.datasource.serverMountAlert")}</div>
             </div>
           ) : (
-            <select
-              className="h-9 w-full rounded-md border border-border bg-input px-2 text-sm text-foreground"
-              value={selectedMount}
-              onChange={e => onMountChange(e.target.value)}
-            >
-              {serverMounts.map(m => (
-                <option key={m.path} value={m.path}>
-                  {m.label || m.path}
-                </option>
-              ))}
-            </select>
+            <Select value={selectedMount} onValueChange={onMountChange}>
+              <SelectTrigger className="h-9 w-full font-ds-mono text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {serverMounts.map(m => (
+                  <SelectItem key={m.path} value={m.path} className="font-ds-mono text-xs">
+                    {m.label || m.path}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
           {serverError ? (
-            <div className="text-xs text-error">
+            <div className="text-xs text-muted-foreground">
               {t(`errors:${serverError}`, { defaultValue: serverError })}
             </div>
           ) : null}
@@ -206,8 +214,8 @@ export function ServerBrowseCard({
         ) : null}
 
         <div className="space-y-2">
-          <Label htmlFor="server-alias" className="flex items-center gap-2">
-            <FileType className="h-4 w-4" />
+          <Label htmlFor="server-alias" className="flex items-center gap-2 text-xs">
+            <FileType className="h-3.5 w-3.5" />
             {t("page.datasource.serverAliasLabel")}
           </Label>
           <Input
@@ -215,6 +223,7 @@ export function ServerBrowseCard({
             value={serverAlias}
             onChange={e => onServerAliasChange(e.target.value)}
             placeholder={t("page.datasource.serverAliasPlaceholder")}
+            className="font-ds-mono text-xs"
           />
           <p className="text-xs text-muted-foreground">
             {t("page.datasource.serverAliasHelper")}
