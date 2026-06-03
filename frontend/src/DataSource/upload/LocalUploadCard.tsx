@@ -40,16 +40,11 @@ export function LocalUploadCard({
   return (
     <Card className="shadow-sm">
       <CardContent className="p-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-fg">
-              {t("page.datasource.tabLocal")}
-            </p>
-            <h3 className="text-lg font-semibold text-foreground">
-              {t("page.datasource.cardLocalTitle")}
-            </h3>
-          </div>
-          <span className="text-xs text-muted-fg">
+        <div className="flex items-baseline justify-between gap-4">
+          <h3 className="text-lg font-semibold tracking-tight text-foreground">
+            {t("page.datasource.cardLocalTitle")}
+          </h3>
+          <span className="shrink-0 font-ds-mono text-xs text-muted-foreground">
             {t("page.datasource.localTipsFormats")}
           </span>
         </div>
@@ -83,21 +78,21 @@ export function LocalUploadCard({
             }}
             accept=".csv,.xlsx,.xls,.json,.jsonl,.parquet,.pq"
           />
-          <Upload className="h-8 w-8 text-muted-fg" />
+          <Upload className="h-8 w-8 text-muted-foreground" />
           <p className="text-foreground font-medium text-sm">
             {t("page.datasource.dragHere")}
           </p>
-          <p className="text-xs text-muted-fg">
+          <p className="font-ds-mono text-xs text-muted-foreground">
             {t("page.datasource.maxSizeTemplate", { size: maxFileSizeDisplay })}
           </p>
-          <p className="text-xs text-muted-fg">
+          <p className="font-ds-mono text-xs text-muted-foreground">
             {t("page.datasource.chunkedHint", {
               mb: Math.round(CHUNKED_UPLOAD_THRESHOLD_BYTES / 1024 / 1024),
               defaultValue: `大于 {{mb}}MB 将自动分块上传`,
             })}
           </p>
           {selectedFile ? (
-            <p className="mt-1 text-xs text-muted-fg">
+            <p className="mt-1 font-ds-mono text-xs text-foreground">
               {t("page.datasource.selectedFile")}: {selectedFile.name}
             </p>
           ) : null}

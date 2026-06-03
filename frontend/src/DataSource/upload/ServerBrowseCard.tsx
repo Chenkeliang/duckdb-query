@@ -60,7 +60,7 @@ export function ServerBrowseCard({
     <Card className="shadow-sm">
       <CardContent className="p-6 space-y-4">
         <div>
-          <p className="text-sm text-muted-fg">
+          <p className="text-sm text-muted-foreground">
             {t("page.datasource.cardServerTitle")}
           </p>
           <h3 className="text-lg font-semibold text-foreground">
@@ -69,14 +69,14 @@ export function ServerBrowseCard({
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs text-muted-fg flex items-center gap-2">
-            <HardDrive className="h-4 w-4 text-muted-fg" />
+          <label className="text-xs text-muted-foreground flex items-center gap-2">
+            <HardDrive className="h-4 w-4 text-muted-foreground" />
             {t("page.datasource.serverSelectMount")}
           </label>
           {serverMountLoading ? (
-            <div className="text-xs text-muted-fg">{t("actions.loading")}</div>
+            <div className="text-xs text-muted-foreground">{t("actions.loading")}</div>
           ) : serverMounts.length === 0 ? (
-            <div className="space-y-2 text-xs text-muted-fg">
+            <div className="space-y-2 text-xs text-muted-foreground">
               <div>{t("page.datasource.serverNoMount")}</div>
               <div>{t("page.datasource.serverMountAlert")}</div>
             </div>
@@ -142,11 +142,11 @@ export function ServerBrowseCard({
 
         <div className="rounded-lg border border-border bg-surface max-h-48 overflow-auto space-y-1 text-sm">
           {serverLoading ? (
-            <div className="px-3 py-2 text-xs text-muted-fg">
+            <div className="px-3 py-2 text-xs text-muted-foreground">
               {t("actions.loading")}
             </div>
           ) : serverEntries.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-muted-fg">
+            <div className="px-3 py-2 text-xs text-muted-foreground">
               {t("page.datasource.serverNoFiles")}
             </div>
           ) : (
@@ -181,10 +181,10 @@ export function ServerBrowseCard({
                       }`}
                     >
                       <span className="flex items-center gap-2 text-xs text-foreground">
-                        <Server className="h-3 w-3 text-muted-fg" />
+                        <Server className="h-3 w-3 text-muted-foreground" />
                         {entry.name}
                       </span>
-                      <span className="text-xs text-muted-fg">
+                      <span className="text-xs text-muted-foreground">
                         {isDir
                           ? t("page.datasource.serverTypeFolder")
                           : (entry.extension || "").toUpperCase()}

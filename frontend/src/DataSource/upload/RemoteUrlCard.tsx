@@ -34,7 +34,7 @@ export function RemoteUrlCard({
     <Card className="shadow-sm">
       <CardContent className="p-6 space-y-4">
         <div>
-          <p className="text-sm text-muted-fg">
+          <p className="text-sm text-muted-foreground">
             {t("page.datasource.cardRemoteTitle")}
           </p>
           <h3 className="text-lg font-semibold text-foreground">

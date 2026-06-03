@@ -63,7 +63,7 @@ const DataSourcePage = ({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full font-ds-sans">
       <div className="flex-1 overflow-auto p-6">
         {topIntro}
         {renderBody()}

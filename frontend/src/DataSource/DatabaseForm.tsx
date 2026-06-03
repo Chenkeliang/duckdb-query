@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getServerMounts, browseServerDirectory } from '@/api';
-import { Server, Loader2, Sparkles } from "lucide-react";
+import { Server, Loader2, Sparkles, Folder, FileText } from "lucide-react";
 import { parseConnectionString } from "./parseConnectionString";
 import type { DatabaseConnectParams } from "../hooks/useAppActions";
 import { Card, CardContent } from "@/components/ui/card";
@@ -452,14 +452,14 @@ const DatabaseForm = ({
                 {(serverMountLoading || serverMounts.length > 0) && (
                   <div className="space-y-2 md:col-span-2 border border-border rounded-lg p-4 bg-surface-hover/30">
                     <label className="text-xs font-medium text-foreground flex items-center gap-2">
-                      <Server className="h-4 w-4 text-muted-fg" />
+                      <Server className="h-4 w-4 text-muted-foreground" />
                       {t("page.datasource.cardServerTitle")}
                     </label>
 
                     {serverMountLoading ? (
-                      <div className="text-xs text-muted-fg">{t("actions.loading")}</div>
+                      <div className="text-xs text-muted-foreground">{t("actions.loading")}</div>
                     ) : serverMounts.length === 0 ? (
-                      <div className="text-xs text-muted-fg">
+                      <div className="text-xs text-muted-foreground">
                         {t("page.datasource.serverNoMount")}
                       </div>
                     ) : (
@@ -482,11 +482,11 @@ const DatabaseForm = ({
 
                         <div className="rounded-lg border border-border bg-surface max-h-48 overflow-auto space-y-1 p-1">
                           {serverLoading ? (
-                            <div className="px-3 py-2 text-xs text-muted-fg">
+                            <div className="px-3 py-2 text-xs text-muted-foreground">
                               {t("actions.loading")}
                             </div>
                           ) : serverEntries.length === 0 ? (
-                            <div className="px-3 py-2 text-xs text-muted-fg">
+                            <div className="px-3 py-2 text-xs text-muted-foreground">
                               {t("page.datasource.serverNoFiles")}
                             </div>
                           ) : (
@@ -509,14 +509,14 @@ const DatabaseForm = ({
                                 >
                                   <span className="flex items-center gap-2 truncate">
                                     {isDir ? (
-                                      <span className="text-muted-fg">📁</span>
+                                      <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
                                     ) : (
-                                      <span className="text-muted-fg">📄</span>
+                                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                                     )}
                                     {entry.name}
                                   </span>
                                   {!isDir && (
-                                    <span className="text-xs text-muted-fg ml-2">
+                                    <span className="text-xs text-muted-foreground ml-2">
                                       {(entry.extension || "").toUpperCase()}
                                     </span>
                                   )}
