@@ -22,6 +22,7 @@ import { LocalUploadCard } from "./upload/LocalUploadCard";
 import { RemoteUrlCard } from "./upload/RemoteUrlCard";
 import { ServerBrowseCard } from "./upload/ServerBrowseCard";
 import { ImportModeSelect } from "./upload/ImportModeSelect";
+import { cn } from "@/lib/utils";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import { invalidateAfterFileUpload } from "@/utils/cacheInvalidation";
 import type {
@@ -96,6 +97,8 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
   /** 远程 URL 专用（必填） */
   const [remoteAlias, setRemoteAlias] = useState("");
   const [importMode, setImportMode] = useState<FileImportMode>("auto");
+  /** 文件上传方式分段：本地 / 远程 URL / 服务器目录（一次展示一种） */
+  const [uploadMethod, setUploadMethod] = useState<"local" | "url" | "server">("local");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -485,7 +488,30 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
 
   return (
     <>
-      {/* 全局导入模式：对本地 / URL / 服务器目录三种导入统一生效 */}
+      {/* 上传方式分段：本地 / 远程 URL / 服务器目录（一次展示一种，占满宽度） */}
+      <div className="mb-4 inline-flex rounded-lg border border-border bg-surface p-1">
+        {([
+          ["local", t("page.datasource.cardLocalTitle")],
+          ["url", t("page.datasource.cardRemoteTitle")],
+          ["server", t("page.datasource.cardServerTitle")],
+        ] as const).map(([m, label]) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setUploadMethod(m)}
+            className={cn(
+              "rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors",
+              uploadMethod === m
+                ? "bg-surface-elevated text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* 全局导入模式：对三种导入统一生效 */}
       <div className="mb-4 rounded-xl border border-border bg-surface p-4">
         <ImportModeSelect
           id="global-import-mode"
@@ -493,7 +519,8 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
           onChange={setImportMode}
         />
       </div>
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+      {uploadMethod === "local" && (
         <LocalUploadCard
           maxFileSizeDisplay={maxFileSizeDisplay}
           selectedFile={selectedFile}
@@ -515,47 +542,49 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
             setUploadAlias("");
           }}
         />
+      )}
 
-        <div className="flex flex-col gap-6">
-          <RemoteUrlCard
-            url={url}
-            remoteAlias={remoteAlias}
-            urlLoading={urlLoading}
-            remoteStorageConfigured={remoteStorageConfigured}
-            jsonImportColumnType={jsonImportColumnType}
-            onUrlChange={next => {
-              setUrl(next);
-              if (next.trim() && !remoteAlias.trim()) {
-                const stem = stemFromUrl(next);
-                if (stem) setRemoteAlias(stem);
-              }
-            }}
-            onRemoteAliasChange={setRemoteAlias}
-            onImport={handleUrlImport}
-          />
+      {uploadMethod === "url" && (
+        <RemoteUrlCard
+          url={url}
+          remoteAlias={remoteAlias}
+          urlLoading={urlLoading}
+          remoteStorageConfigured={remoteStorageConfigured}
+          jsonImportColumnType={jsonImportColumnType}
+          onUrlChange={next => {
+            setUrl(next);
+            if (next.trim() && !remoteAlias.trim()) {
+              const stem = stemFromUrl(next);
+              if (stem) setRemoteAlias(stem);
+            }
+          }}
+          onRemoteAliasChange={setRemoteAlias}
+          onImport={handleUrlImport}
+        />
+      )}
 
-          <ServerBrowseCard
-            serverMounts={serverMounts}
-            serverMountLoading={serverMountLoading}
-            selectedMount={selectedMount}
-            currentPath={currentPath}
-            serverEntries={serverEntries}
-            serverLoading={serverLoading}
-            serverError={serverError}
-            serverSelectedFile={serverSelectedFile}
-            serverAlias={serverAlias}
-            serverImporting={serverImporting}
-            onMountChange={path => {
-              setSelectedMount(path);
-              loadServerDirectory(path);
-            }}
-            onBrowseDirectory={loadServerDirectory}
-            onSelectFile={setServerSelectedFile}
-            onServerAliasChange={setServerAlias}
-            onImport={handleServerImport}
-          />
-        </div>
-      </div>
+      {uploadMethod === "server" && (
+        <ServerBrowseCard
+          serverMounts={serverMounts}
+          serverMountLoading={serverMountLoading}
+          selectedMount={selectedMount}
+          currentPath={currentPath}
+          serverEntries={serverEntries}
+          serverLoading={serverLoading}
+          serverError={serverError}
+          serverSelectedFile={serverSelectedFile}
+          serverAlias={serverAlias}
+          serverImporting={serverImporting}
+          onMountChange={path => {
+            setSelectedMount(path);
+            loadServerDirectory(path);
+          }}
+          onBrowseDirectory={loadServerDirectory}
+          onSelectFile={setServerSelectedFile}
+          onServerAliasChange={setServerAlias}
+          onImport={handleServerImport}
+        />
+      )}
 
       {/* Excel 工作表选择器 (文件上传) */}
       {pendingExcel && (
