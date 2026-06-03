@@ -66,7 +66,7 @@ export function ServerBrowseCard({
   return (
     <Card className="rounded-xl shadow-sm">
       <CardContent className="p-6 space-y-5">
-        <p className="text-[13px] leading-relaxed text-muted-foreground">
+        <p className="text-sm leading-relaxed text-muted-foreground">
           {t("page.datasource.cardServerDesc")}
         </p>
 

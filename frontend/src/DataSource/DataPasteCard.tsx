@@ -275,7 +275,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
   };
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Card className="shadow-sm">
         <CardContent className="p-4 space-y-4">
           <div className="space-y-2">
@@ -449,8 +449,8 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
           </CardContent>
         </Card>
       ) : (
-        <Card className="shadow-sm border-dashed">
-          <CardContent className="flex min-h-[280px] flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
+        <Card className="h-full border-dashed shadow-sm">
+          <CardContent className="flex h-full min-h-[280px] flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
             <Table2 className="h-8 w-8 opacity-40" />
             <p className="text-sm">
               {t("page.datasource.paste.previewEmpty", {
