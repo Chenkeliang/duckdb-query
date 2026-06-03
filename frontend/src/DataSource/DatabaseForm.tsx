@@ -3,18 +3,49 @@ import { useTranslation } from "react-i18next";
 import { getServerMounts, browseServerDirectory } from '@/api';
 import { Server, Loader2, Sparkles } from "lucide-react";
 import { parseConnectionString } from "./parseConnectionString";
+import type { DatabaseConnectParams } from "../hooks/useAppActions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+/** A saved connection loaded into the form for editing. */
+interface ConfigToLoad {
+  id?: string;
+  type?: string;
+  name?: string;
+  requiresPassword?: boolean;
+  params?: {
+    host?: string;
+    port?: number | string;
+    database?: string;
+    user?: string;
+    username?: string;
+    password?: string;
+    schema?: string;
+    path?: string;
+  };
+}
+
+/** A mount point / file entry from the server-side SQLite browser. */
+interface ServerMount {
+  path: string;
+  label?: string;
+}
+interface ServerEntry {
+  name: string;
+  path: string;
+  type?: string;
+  extension?: string;
+}
+
 interface DatabaseFormProps {
   defaultType?: string;
-  configToLoad?: any;
-  onTest?: (params: any) => void;
-  onSave?: (params: any) => void;
-  onSaveConfig?: (params: any) => void;
+  configToLoad?: ConfigToLoad | null;
+  onTest?: (params: DatabaseConnectParams) => void;
+  onSave?: (params: DatabaseConnectParams) => void;
+  onSaveConfig?: (params: DatabaseConnectParams) => void;
   loading?: boolean;
   testing?: boolean;
 }
@@ -110,10 +141,10 @@ const DatabaseForm = ({
   }, [configToLoad]);
 
   // SQLite server browsing states
-  const [serverMounts, setServerMounts] = useState<any[]>([]);
+  const [serverMounts, setServerMounts] = useState<ServerMount[]>([]);
   const [serverMountLoading, setServerMountLoading] = useState(false);
   const [selectedMount, setSelectedMount] = useState("");
-  const [serverEntries, setServerEntries] = useState<any[]>([]);
+  const [serverEntries, setServerEntries] = useState<ServerEntry[]>([]);
   const [serverLoading, setServerLoading] = useState(false);
   const [serverError, setServerError] = useState("");
 
@@ -133,7 +164,7 @@ const DatabaseForm = ({
         ? { path: sqlitePath }
         : {
           host: host.trim(),
-          port: Number(port) || null,
+          port: Number(port) || undefined,
           user: username.trim(),
           ...(password ? { password } : {}),
           database: database.trim(),
@@ -141,7 +172,7 @@ const DatabaseForm = ({
         };
 
     return {
-      type,
+      type: type as DatabaseConnectParams["type"],
       id: resolvedId,
       name: name.trim() || resolvedId,
       isSavedConnection: !!connectionId,
@@ -236,9 +267,9 @@ const DatabaseForm = ({
         setSelectedMount(first.path);
         await loadServerDirectory(first.path);
       }
-    } catch (err: any) {
+    } catch (err) {
       // 静默处理错误 - 如果服务器没有配置挂载点，不显示错误
-      console.debug("Server mounts not configured:", err?.message);
+      console.debug("Server mounts not configured:", err instanceof Error ? err.message : err);
       setServerMounts([]); // 确保设置为空数组
     } finally {
       setServerMountLoading(false);
@@ -258,8 +289,10 @@ const DatabaseForm = ({
         return ext === "db" || ext === "sqlite" || ext === "sqlite3";
       });
       setServerEntries(entries);
-    } catch (err: any) {
-      setServerError(err?.message || t("page.datasource.serverBrowseFail"));
+    } catch (err) {
+      setServerError(
+        (err instanceof Error ? err.message : "") || t("page.datasource.serverBrowseFail")
+      );
     } finally {
       setServerLoading(false);
     }
