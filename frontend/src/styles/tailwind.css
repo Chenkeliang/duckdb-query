@@ -70,6 +70,14 @@
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 
+  /* Data-source redesign fonts + type colors (theme-aware via --ds-* vars). */
+  --font-ds-sans: "IBM Plex Sans", var(--font-sans);
+  --font-ds-mono: "JetBrains Mono", var(--font-mono);
+  --color-ds-mysql: var(--ds-mysql);
+  --color-ds-pg: var(--ds-pg);
+  --color-ds-sqlite: var(--ds-sqlite);
+  --color-ds-live: var(--ds-live);
+
   --transition-duration-fast: 150ms;
   --transition-duration-normal: 200ms;
   --transition-duration-slow: 300ms;
@@ -557,6 +565,12 @@
     /* One single monospace stack shared by editor, result grid and code blocks. */
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
       "Liberation Mono", "Courier New", monospace;
+
+    /* Data-source type colors — light theme (deeper for white bg contrast). */
+    --ds-mysql: #3b7fd4;
+    --ds-pg: #2293aa;
+    --ds-sqlite: #3a9e72;
+    --ds-live: #2f9576;
   }
 }
 
@@ -581,6 +595,12 @@
     /* Primary */
     --primary: 24.6 95% 53.1%;
     --primary-foreground: 0 0% 100%;
+
+    /* Data-source type colors — dark theme (brighter on charcoal). */
+    --ds-mysql: #4f93e6;
+    --ds-pg: #3fb6d4;
+    --ds-sqlite: #54c98a;
+    --ds-live: #3fd07f;
 
     /* Border */
     --border: 240 5% 21%;
