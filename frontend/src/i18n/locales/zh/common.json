@@ -917,7 +917,8 @@
         "sheetInfo": {
           "rows": "行数 {{rows}} · 列数 {{cols}}",
           "target": "目标：{{table}}"
-        }
+        },
+        "previewEmpty": "解析后在此预览列与类型"
       },
       "connection": {
         "title": "添加数据库连接",
@@ -961,7 +962,12 @@
           "mysql": "MySQL",
           "postgresql": "PostgreSQL",
           "sqlite": "SQLite"
-        }
+        },
+        "parsedOk": "已识别为 {{type}} · {{host}}",
+        "parsedSqlite": "已识别为 SQLite 文件路径",
+        "pasteLabel": "粘贴连接串，自动识别（JDBC / URI）",
+        "saveOnly": "仅保存不测试",
+        "saveOnlyHint": "仅保存配置，不测试连接"
       },
       "manage": {
         "title": "数据源管理",
@@ -983,7 +989,12 @@
         "deleteConfirmDesc": "确定要删除这个数据库连接吗？",
         "unnamed": "未命名连接",
         "defaultName": "{{type}} 连接",
-        "connect": "连接"
+        "connect": "连接",
+        "online": "在线",
+        "offline": "离线",
+        "local": "本地",
+        "viewList": "列表",
+        "viewCard": "卡片"
       },
       "status": {
         "active": "活跃",

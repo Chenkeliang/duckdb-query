@@ -916,7 +916,8 @@
         "sheetInfo": {
           "rows": "Rows {{rows}} · Cols {{cols}}",
           "target": "Target: {{table}}"
-        }
+        },
+        "previewEmpty": "Columns and types will preview here after parsing"
       },
       "connection": {
         "title": "Add database connection",
@@ -960,7 +961,12 @@
           "mysql": "MySQL",
           "postgresql": "PostgreSQL",
           "sqlite": "SQLite"
-        }
+        },
+        "parsedOk": "Detected {{type}} · {{host}}",
+        "parsedSqlite": "Detected as a SQLite file path",
+        "pasteLabel": "Paste a connection string to auto-fill (JDBC / URI)",
+        "saveOnly": "Save without testing",
+        "saveOnlyHint": "Save the config without testing the connection"
       },
       "manage": {
         "title": "Data Sources",
@@ -982,7 +988,12 @@
         "deleteConfirmDesc": "Are you sure you want to delete this DB connection?",
         "unnamed": "Unnamed connection",
         "defaultName": "{{type}} connection",
-        "connect": "Connect"
+        "connect": "Connect",
+        "online": "Online",
+        "offline": "Offline",
+        "local": "Local",
+        "viewList": "List",
+        "viewCard": "Cards"
       },
       "status": {
         "active": "Active",
