@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { getServerMounts, browseServerDirectory } from '@/api';
-import { Server, Loader2 } from "lucide-react";
+import { Server, Loader2, Sparkles } from "lucide-react";
+import { parseConnectionString } from "./parseConnectionString";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,39 @@ const DatabaseForm = ({
   const [hasStoredPassword, setHasStoredPassword] = useState(false);
   const [sqlitePath, setSqlitePath] = useState("");
   const [schema, setSchema] = useState("public"); // PostgreSQL schema
+
+  // Paste-a-connection-string -> auto-fill the fields.
+  const [connStr, setConnStr] = useState("");
+  const [parsedHint, setParsedHint] = useState("");
+  const applyConnectionString = (raw: string) => {
+    setConnStr(raw);
+    const p = parseConnectionString(raw);
+    if (!p) {
+      setParsedHint("");
+      return;
+    }
+    setType(p.type);
+    if (p.type === "sqlite") {
+      if (p.database) setSqlitePath(p.database);
+      setParsedHint(
+        t("page.datasource.connection.parsedSqlite", { defaultValue: "已识别为 SQLite 文件路径" })
+      );
+      return;
+    }
+    if (p.host) setHost(p.host);
+    if (p.port) setPort(String(p.port));
+    if (p.database) setDatabase(p.database);
+    if (p.username) setUsername(p.username);
+    if (p.password) setPassword(p.password);
+    if (p.schema) setSchema(p.schema);
+    setParsedHint(
+      t("page.datasource.connection.parsedOk", {
+        type: p.type === "postgresql" ? "PostgreSQL" : "MySQL",
+        host: p.host ?? "",
+        defaultValue: `已识别为 ${p.type === "postgresql" ? "PostgreSQL" : "MySQL"} · ${p.host ?? ""}`,
+      })
+    );
+  };
 
   // Load config when configToLoad changes
   useEffect(() => {
@@ -257,12 +291,26 @@ const DatabaseForm = ({
   return (
     <Card className="shadow-sm">
       <CardContent className="p-8 space-y-6">
-        <p className="text-xs text-muted-foreground">
-          {t(
-            "page.datasource.connection.supportedTypesHint",
-            "新建连接支持 MySQL、PostgreSQL、SQLite。列表中的 SQL Server 等为历史/外部类型，暂不可在此表单新建。"
-          )}
-        </p>
+        {/* 粘贴连接串，自动识别并回填字段 */}
+        <div className="space-y-2 rounded-lg border border-border bg-surface-elevated/40 p-3">
+          <Label
+            htmlFor="conn-str"
+            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            {t("page.datasource.connection.pasteLabel", {
+              defaultValue: "粘贴连接串，自动识别（JDBC / URI）",
+            })}
+          </Label>
+          <Input
+            id="conn-str"
+            value={connStr}
+            onChange={(e) => applyConnectionString(e.target.value)}
+            placeholder="jdbc:mysql://host:3306/db  ·  postgresql://user:pass@host/db"
+            className="font-mono text-xs"
+          />
+          {parsedHint && <p className="text-xs text-success">{parsedHint}</p>}
+        </div>
         {/* 顶部数据库类型切换 Tabs */}
         <Tabs value={type} onValueChange={setType}>
           <TabsList className="grid w-full grid-cols-3">
@@ -336,11 +384,6 @@ const DatabaseForm = ({
                     onChange={e => setPassword(e.target.value)}
                     placeholder={hasStoredPassword ? t("page.datasource.connection.hint.passwordSavedPlaceholder", "••••••（已保存，留空使用已保存密码）") : "••••••"}
                   />
-                  {hasStoredPassword && !password && (
-                    <p className="text-xs text-muted-foreground">
-                      {t("page.datasource.connection.hint.passwordSaved", "密码已保存；留空会使用已保存密码测试/连接。如需修改，请输入新密码。")}
-                    </p>
-                  )}
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="database">
@@ -514,18 +557,16 @@ const DatabaseForm = ({
             {onSaveConfig ? (
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
                 onClick={handleSaveConfigClick}
                 disabled={loading}
+                title={t("page.datasource.connection.saveOnlyHint", {
+                  defaultValue: "仅保存配置，不测试连接",
+                })}
               >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    {t("page.datasource.connection.save")}
-                  </>
-                ) : (
-                  t("page.datasource.connection.save")
-                )}
+                {t("page.datasource.connection.saveOnly", { defaultValue: "仅保存不测试" })}
               </Button>
             ) : null}
           </div>
