@@ -100,6 +100,46 @@ export function ServerBrowseCard({
           ) : null}
         </div>
 
+        {/* 面包屑：当前目录路径，每段可点击回跳 */}
+        {selectedMount && serverEntries.length > 0
+          ? (() => {
+              const mount = serverMounts.find(m => m.path === selectedMount);
+              const rootLabel =
+                mount?.label || selectedMount.split("/").filter(Boolean).pop() || "/";
+              const rel =
+                currentPath && currentPath.startsWith(selectedMount)
+                  ? currentPath.slice(selectedMount.length).replace(/^\/+/, "")
+                  : "";
+              const parts = rel ? rel.split("/").filter(Boolean) : [];
+              const crumbs = [{ label: rootLabel, path: selectedMount }];
+              let acc = selectedMount;
+              for (const p of parts) {
+                acc = `${acc}/${p}`;
+                crumbs.push({ label: p, path: acc });
+              }
+              return (
+                <div className="flex flex-wrap items-center gap-1 font-mono text-xs text-muted-foreground">
+                  {crumbs.map((c, i) => (
+                    <span key={c.path} className="flex items-center gap-1">
+                      {i > 0 ? <span className="text-muted-foreground/40">/</span> : null}
+                      {i === crumbs.length - 1 ? (
+                        <span className="text-foreground">{c.label}</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onBrowseDirectory(c.path)}
+                          className="rounded px-1 hover:bg-surface-hover hover:text-foreground"
+                        >
+                          {c.label}
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              );
+            })()
+          : null}
+
         <div className="rounded-lg border border-border bg-surface max-h-48 overflow-auto space-y-1 text-sm">
           {serverLoading ? (
             <div className="px-3 py-2 text-xs text-muted-fg">
@@ -111,23 +151,6 @@ export function ServerBrowseCard({
             </div>
           ) : (
             <>
-              {currentPath && currentPath !== selectedMount ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const parentPath =
-                      currentPath.split("/").slice(0, -1).join("/") ||
-                      selectedMount;
-                    onBrowseDirectory(parentPath);
-                  }}
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left cursor-pointer hover:bg-surface-hover border-b border-border"
-                >
-                  <span className="text-xs text-primary font-medium">
-                    ← {t("page.datasource.serverGoBack", "返回上一级")}
-                  </span>
-                </button>
-              ) : null}
-
               {serverEntries
                 .filter(entry => {
                   if (entry.type === "directory") return true;
