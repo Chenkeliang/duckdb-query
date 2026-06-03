@@ -163,6 +163,7 @@ const AppInner: React.FC = () => {
     setSelectedConfig
   ] = useState<DatabaseConnectParams | null>(null);
   const [testingDb, setTestingDb] = useState<boolean>(false);
+  const [dbDrawerOpen, setDbDrawerOpen] = useState<boolean>(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState<boolean>(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
@@ -384,6 +385,7 @@ const AppInner: React.FC = () => {
           setSavingDb(true);
           const response = await connectDatabase(params);
           if (response?.success) {
+            setDbDrawerOpen(false);
             showResponseToast(t, response, {
               successFallback: t("page.datasource.manage.saveSuccess")
             });
@@ -404,6 +406,7 @@ const AppInner: React.FC = () => {
           setSavingDb(true);
           const response = await saveDatabase(params);
           if (response?.success) {
+            setDbDrawerOpen(false);
             showResponseToast(t, response, {
               successFallback: t("page.datasource.manage.saveSuccess")
             });
@@ -432,14 +435,19 @@ const AppInner: React.FC = () => {
 
       const savedConnectionsPanel = (
         <SavedConnectionsList
-          onSelect={(conn) =>
+          onNew={() => {
+            setSelectedConfig(null);
+            setDbDrawerOpen(true);
+          }}
+          onSelect={(conn) => {
             setSelectedConfig({
               id: conn.id,
               type: conn.type,
               name: conn.name,
               params: conn.params,
-            })
-          }
+            });
+            setDbDrawerOpen(true);
+          }}
         />
       );
 
@@ -455,10 +463,13 @@ const AppInner: React.FC = () => {
             { id: "paste", label: t("page.datasource.tabPaste") }
           ]}
           uploadPanel={uploadPanel}
-          databasePanel={databasePanel}
           savedConnectionsPanel={savedConnectionsPanel}
           pastePanel={pastePanel}
           savedConnectionsTabs={["database"]}
+          drawerOpen={dbDrawerOpen}
+          onCloseDrawer={() => setDbDrawerOpen(false)}
+          drawerTitle={t("page.datasource.list.newConnection", { defaultValue: "新建数据库连接" })}
+          drawerContent={databasePanel}
         />
       );
     }

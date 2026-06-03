@@ -4,7 +4,6 @@ import { getServerMounts, browseServerDirectory } from '@/api';
 import { Server, Loader2, Sparkles, Folder, FileText } from "lucide-react";
 import { parseConnectionString } from "./parseConnectionString";
 import type { DatabaseConnectParams } from "../hooks/useAppActions";
-import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -308,8 +307,7 @@ const DatabaseForm = ({
   ];
 
   return (
-    <Card className="shadow-sm">
-      <CardContent className="p-8 space-y-6">
+    <div className="space-y-6">
         {/* 粘贴连接串，自动识别并回填字段 */}
         <div className="space-y-2 rounded-lg border border-border bg-surface-elevated/40 p-3">
           <Label
@@ -590,8 +588,7 @@ const DatabaseForm = ({
             ) : null}
           </div>
         </form>
-      </CardContent>
-    </Card>
+    </div>
   );
 };
 

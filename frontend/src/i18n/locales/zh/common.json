@@ -994,7 +994,8 @@
         "offline": "离线",
         "local": "本地",
         "viewList": "列表",
-        "viewCard": "卡片"
+        "viewCard": "卡片",
+        "newConnection": "新建连接"
       },
       "status": {
         "active": "活跃",

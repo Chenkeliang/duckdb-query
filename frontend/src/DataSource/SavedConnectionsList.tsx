@@ -12,6 +12,7 @@ import {
   Loader2,
   List,
   LayoutGrid,
+  Plus,
 } from "lucide-react";
 import {
   useDatabaseConnections,
@@ -32,6 +33,8 @@ import {
 
 interface SavedConnectionsListProps {
   onSelect: (config: DatabaseConnection) => void;
+  /** Open the drawer to create a new connection. */
+  onNew?: () => void;
 }
 
 type ViewMode = "list" | "card";
@@ -60,7 +63,7 @@ function connMeta(c: DatabaseConnection): { primary: string; secondary: string }
   return { primary: hostPort, secondary: dbUser };
 }
 
-const SavedConnectionsList = ({ onSelect }: SavedConnectionsListProps) => {
+const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) => {
   const { t } = useTranslation("common");
   const queryClient = useQueryClient();
   const { connections: configs, isLoading: loading, refresh } = useDatabaseConnections();
@@ -101,9 +104,8 @@ const SavedConnectionsList = ({ onSelect }: SavedConnectionsListProps) => {
   if (loading && configs.length === 0) {
     return <div className="text-sm text-muted-foreground">{t("actions.loading")}</div>;
   }
-  if (configs.length === 0) {
-    return null;
-  }
+
+  const isEmpty = configs.length === 0;
 
   const statusLabel = (c: DatabaseConnection) =>
     c.type === "sqlite"
@@ -166,30 +168,50 @@ const SavedConnectionsList = ({ onSelect }: SavedConnectionsListProps) => {
         </h3>
         <span className="font-ds-mono text-xs text-muted-foreground">{configs.length}</span>
         <div className="flex-1" />
-        <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
-          {(["list", "card"] as ViewMode[]).map((v) => (
-            <button
-              key={v}
-              onClick={() => changeView(v)}
-              className={cn(
-                "grid h-7 w-7 place-items-center rounded-md transition-colors",
-                view === v
-                  ? "bg-surface-elevated text-foreground shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-              title={v === "list" ? t("page.datasource.list.viewList", { defaultValue: "列表" }) : t("page.datasource.list.viewCard", { defaultValue: "卡片" })}
-            >
-              {v === "list" ? <List className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
-            </button>
-          ))}
-        </div>
+        {!isEmpty && (
+          <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
+            {(["list", "card"] as ViewMode[]).map((v) => (
+              <button
+                key={v}
+                onClick={() => changeView(v)}
+                className={cn(
+                  "grid h-7 w-7 place-items-center rounded-md transition-colors",
+                  view === v
+                    ? "bg-surface-elevated text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                title={v === "list" ? t("page.datasource.list.viewList", { defaultValue: "列表" }) : t("page.datasource.list.viewCard", { defaultValue: "卡片" })}
+              >
+                {v === "list" ? <List className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+              </button>
+            ))}
+          </div>
+        )}
         <Button variant="ghost" size="sm" onClick={() => refresh()} title={t("actions.refresh")}>
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
         </Button>
+        <Button size="sm" onClick={() => onNew?.()}>
+          <Plus className="mr-1 h-4 w-4" />
+          {t("page.datasource.list.newConnection", { defaultValue: "新建连接" })}
+        </Button>
       </div>
 
+      {/* ===== EMPTY STATE ===== */}
+      {isEmpty ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-surface py-16 text-center">
+          <Database className="h-9 w-9 text-muted-foreground/40" strokeWidth={1.4} />
+          <p className="text-sm text-muted-foreground">
+            {t("page.datasource.list.empty", { defaultValue: "还没有保存的连接" })}
+          </p>
+          <Button size="sm" onClick={() => onNew?.()}>
+            <Plus className="mr-1 h-4 w-4" />
+            {t("page.datasource.list.newConnection", { defaultValue: "新建连接" })}
+          </Button>
+        </div>
+      ) : null}
+
       {/* ===== LIST VIEW ===== */}
-      {view === "list" ? (
+      {!isEmpty && (view === "list" ? (
         <div className="overflow-hidden rounded-xl border border-border bg-surface">
           {configs.map((c, i) => {
             const meta = connMeta(c);
@@ -269,7 +291,7 @@ const SavedConnectionsList = ({ onSelect }: SavedConnectionsListProps) => {
             );
           })}
         </div>
-      )}
+      ))}
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>

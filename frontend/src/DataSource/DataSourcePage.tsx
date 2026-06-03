@@ -15,6 +15,7 @@ export interface DataSourcePageProps {
   savedConnectionsTabs?: string[];
   drawerOpen?: boolean;
   onCloseDrawer?: () => void;
+  drawerTitle?: string;
   drawerContent?: ReactNode;
 }
 
@@ -29,12 +30,12 @@ const DataSourcePage = ({
   activeTab = "upload",
   topIntro,
   uploadPanel,
-  databasePanel,
   pastePanel,
   savedConnectionsPanel,
   savedConnectionsTabs = ["upload", "database", "paste"],
   drawerOpen = false,
   onCloseDrawer,
+  drawerTitle,
   drawerContent,
 }: DataSourcePageProps) => {
   const showSaved =
@@ -47,12 +48,7 @@ const DataSourcePage = ({
     }
 
     if (activeTab === "database") {
-      return (
-        <div className="space-y-8">
-          {showSaved ? <div>{savedConnectionsPanel}</div> : null}
-          <div className="space-y-4">{databasePanel}</div>
-        </div>
-      );
+      return showSaved ? <div>{savedConnectionsPanel}</div> : null;
     }
 
     if (activeTab === "paste") {
@@ -69,7 +65,7 @@ const DataSourcePage = ({
         {renderBody()}
       </div>
 
-      <DrawerAddSource open={drawerOpen} onClose={onCloseDrawer}>
+      <DrawerAddSource open={drawerOpen} onClose={onCloseDrawer} title={drawerTitle}>
         {drawerContent}
       </DrawerAddSource>
     </div>

@@ -993,7 +993,8 @@
         "offline": "Offline",
         "local": "Local",
         "viewList": "List",
-        "viewCard": "Cards"
+        "viewCard": "Cards",
+        "newConnection": "New connection"
       },
       "status": {
         "active": "Active",
