@@ -502,8 +502,8 @@
     --muted: 240 5.9% 90%;
     --muted-foreground: 240 3.8% 40%;
 
-    /* Primary */
-    --primary: 221.2 83.2% 53.3%;
+    /* Primary — amber brand, consistent with dark mode (was a leftover blue). */
+    --primary: 24.6 95% 53.1%;
     --primary-foreground: 0 0% 100%;
 
     /* Border */
@@ -542,7 +542,7 @@
     --secondary-foreground: 240 10% 3.9%;
     --accent: 240 4.8% 94%;
     --accent-foreground: 240 10% 3.9%;
-    --ring: 221.2 83.2% 53.3%;
+    --ring: 24.6 95% 53.1%;
 
     /* Radius */
     --radius: 0.5rem;
