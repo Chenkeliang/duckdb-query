@@ -488,36 +488,31 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
 
   return (
     <>
-      {/* 上传方式分段：本地 / 远程 URL / 服务器目录（一次展示一种，占满宽度） */}
-      <div className="mb-4 inline-flex rounded-lg border border-border bg-surface p-1">
-        {([
-          ["local", t("page.datasource.cardLocalTitle")],
-          ["url", t("page.datasource.cardRemoteTitle")],
-          ["server", t("page.datasource.cardServerTitle")],
-        ] as const).map(([m, label]) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setUploadMethod(m)}
-            className={cn(
-              "rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors",
-              uploadMethod === m
-                ? "bg-surface-elevated text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* 全局导入模式：对三种导入统一生效 */}
-      <div className="mb-4 rounded-xl border border-border bg-surface p-4">
-        <ImportModeSelect
-          id="global-import-mode"
-          value={importMode}
-          onChange={setImportMode}
-        />
+      {/* 顶部一行：左=上传方式分段（本地/URL/服务器），右=紧凑的数据类型设置 */}
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <div className="inline-flex rounded-lg border border-border bg-surface p-1">
+          {([
+            ["local", t("page.datasource.cardLocalTitle")],
+            ["url", t("page.datasource.cardRemoteTitle")],
+            ["server", t("page.datasource.cardServerTitle")],
+          ] as const).map(([m, label]) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setUploadMethod(m)}
+              className={cn(
+                "rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors",
+                uploadMethod === m
+                  ? "bg-surface-elevated text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex-1" />
+        <ImportModeSelect value={importMode} onChange={setImportMode} />
       </div>
 
       {uploadMethod === "local" && (
