@@ -1,7 +1,5 @@
 import { useTranslation } from "react-i18next";
 import { FileType, HardDrive, Server } from "lucide-react";
-import type { FileImportMode } from "@/api";
-import { ImportModeSelect } from "./ImportModeSelect";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,8 +30,6 @@ export interface ServerBrowseCardProps {
   serverSelectedFile: ServerFileEntry | null;
   serverAlias: string;
   serverImporting: boolean;
-  importMode: FileImportMode;
-  onImportModeChange: (mode: FileImportMode) => void;
   onMountChange: (path: string) => void;
   onBrowseDirectory: (path: string) => void;
   onSelectFile: (entry: ServerFileEntry) => void;
@@ -52,8 +48,6 @@ export function ServerBrowseCard({
   serverSelectedFile,
   serverAlias,
   serverImporting,
-  importMode,
-  onImportModeChange,
   onMountChange,
   onBrowseDirectory,
   onSelectFile,
@@ -192,12 +186,6 @@ export function ServerBrowseCard({
             </div>
           </div>
         ) : null}
-
-        <ImportModeSelect
-          id="server-import-mode"
-          value={importMode}
-          onChange={onImportModeChange}
-        />
 
         <div className="space-y-2">
           <Label htmlFor="server-alias" className="flex items-center gap-2">

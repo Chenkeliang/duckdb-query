@@ -2,8 +2,6 @@ import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Upload } from "lucide-react";
 import { CHUNKED_UPLOAD_THRESHOLD_BYTES } from "@/api";
-import type { FileImportMode } from "@/api";
-import { ImportModeSelect } from "./ImportModeSelect";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,13 +11,11 @@ export interface LocalUploadCardProps {
   maxFileSizeDisplay: string;
   selectedFile: File | null;
   uploadAlias: string;
-  importMode: FileImportMode;
   uploading: boolean;
   uploadProgress: number | null;
   dragOver: boolean;
   onFileSelect: (file: File) => void;
   onUploadAliasChange: (value: string) => void;
-  onImportModeChange: (mode: FileImportMode) => void;
   onDragOver: (over: boolean) => void;
   onUpload: () => void;
   onClear: () => void;
@@ -29,13 +25,11 @@ export function LocalUploadCard({
   maxFileSizeDisplay,
   selectedFile,
   uploadAlias,
-  importMode,
   uploading,
   uploadProgress,
   dragOver,
   onFileSelect,
   onUploadAliasChange,
-  onImportModeChange,
   onDragOver,
   onUpload,
   onClear,
@@ -123,12 +117,6 @@ export function LocalUploadCard({
             {t("page.datasource.uploadAliasHelper")}
           </p>
         </div>
-
-        <ImportModeSelect
-          id="upload-import-mode"
-          value={importMode}
-          onChange={onImportModeChange}
-        />
 
         <div className="flex flex-wrap gap-3">
           <Button onClick={onUpload} disabled={uploading || !selectedFile}>

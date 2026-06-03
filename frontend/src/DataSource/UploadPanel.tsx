@@ -21,6 +21,7 @@ import { stemFromFilename, stemFromUrl } from "./upload/uploadPathUtils";
 import { LocalUploadCard } from "./upload/LocalUploadCard";
 import { RemoteUrlCard } from "./upload/RemoteUrlCard";
 import { ServerBrowseCard } from "./upload/ServerBrowseCard";
+import { ImportModeSelect } from "./upload/ImportModeSelect";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import { invalidateAfterFileUpload } from "@/utils/cacheInvalidation";
 import type {
@@ -484,12 +485,19 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
 
   return (
     <>
+      {/* 全局导入模式：对本地 / URL / 服务器目录三种导入统一生效 */}
+      <div className="mb-4 rounded-xl border border-border bg-surface p-4">
+        <ImportModeSelect
+          id="global-import-mode"
+          value={importMode}
+          onChange={setImportMode}
+        />
+      </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <LocalUploadCard
           maxFileSizeDisplay={maxFileSizeDisplay}
           selectedFile={selectedFile}
           uploadAlias={uploadAlias}
-          importMode={importMode}
           uploading={uploading}
           uploadProgress={uploadProgress}
           dragOver={dragOver}
@@ -500,7 +508,6 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
             }
           }}
           onUploadAliasChange={setUploadAlias}
-          onImportModeChange={setImportMode}
           onDragOver={setDragOver}
           onUpload={handleUpload}
           onClear={() => {
@@ -538,8 +545,6 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
             serverSelectedFile={serverSelectedFile}
             serverAlias={serverAlias}
             serverImporting={serverImporting}
-            importMode={importMode}
-            onImportModeChange={setImportMode}
             onMountChange={path => {
               setSelectedMount(path);
               loadServerDirectory(path);
