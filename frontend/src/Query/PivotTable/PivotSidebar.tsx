@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { EmptyState } from "@/components/EmptyState";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Table2, Search } from "lucide-react";
@@ -120,10 +121,12 @@ export const PivotSidebar: React.FC<PivotSidebarProps> = ({
 
             <div className="flex-1 overflow-hidden">
                 {!selectedTable ? (
-                    <div className="h-full flex flex-col items-center justify-center p-4 text-center text-muted-foreground text-sm">
-                        <Table2 className="h-10 w-10 mb-2 opacity-20" />
-                        <p>{t("query.pivot.empty", "请先选择数据表")}</p>
-                    </div>
+                    <EmptyState
+                        compact
+                        className="h-full"
+                        icon={Table2}
+                        title={t("query.pivot.empty", "请先选择数据表")}
+                    />
                 ) : isLoading ? (
                     <div className="p-4 text-sm text-muted-foreground">
                         {t("query.pivot.loadingSchema", "加载列信息…")}

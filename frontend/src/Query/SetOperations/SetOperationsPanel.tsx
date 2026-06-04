@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { generateSetOperation, validateSetOperation } from '@/api';
 import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star, Timer, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EmptyState as UiEmptyState } from '@/components/EmptyState';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { useMultipleTableColumns } from '@/hooks/useTableColumns';
@@ -243,15 +244,13 @@ const SetConnector: React.FC<SetConnectorProps> = ({ operationType, byName }) =>
 const EmptyState: React.FC = () => {
   const { t } = useTranslation('common');
   return (
-    <div className="flex-1 flex flex-col items-center justify-center text-center py-12 border-2 border-dashed border-border rounded-xl">
-      <Layers className="w-12 h-12 text-muted-foreground mb-4" />
-      <h3 className="text-sm font-medium mb-2">
-        {t('query.set.emptyTitle', '开始集合操作')}
-      </h3>
-      <p className="text-xs text-muted-foreground max-w-xs">
-        {t('query.set.emptyDescription', '双击左侧数据源面板中的表来添加到集合操作。可以添加多个表进行 UNION / INTERSECT / EXCEPT 操作。')}
-      </p>
-    </div>
+    <UiEmptyState
+      variant="dashed"
+      className="flex-1"
+      icon={Layers}
+      title={t('query.set.emptyTitle', '开始集合操作')}
+      description={t('query.set.emptyDescription', '双击左侧数据源面板中的表来添加到集合操作。可以添加多个表进行 UNION / INTERSECT / EXCEPT 操作。')}
+    />
   );
 };
 

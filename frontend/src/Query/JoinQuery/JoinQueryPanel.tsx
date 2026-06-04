@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { GitMerge, Play, Eye, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, StopCircle, Loader2, Star, Timer } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { EmptyState as UiEmptyState } from '@/components/EmptyState';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -1105,15 +1106,13 @@ MemoizedJoinConnector.displayName = 'MemoizedJoinConnector';
 const EmptyState: React.FC = () => {
   const { t } = useTranslation('common');
   return (
-    <div className="flex-1 flex flex-col items-center justify-center text-center py-12 border-2 border-dashed border-border rounded-xl">
-      <GitMerge className="w-12 h-12 text-muted-foreground mb-4" />
-      <h3 className="text-sm font-medium mb-2">
-        {t('query.join.emptyTitle', '开始关联查询')}
-      </h3>
-      <p className="text-xs text-muted-foreground max-w-xs">
-        {t('query.join.emptyDescription', '双击左侧数据源面板中的表来添加到关联查询。第一个添加的表将作为主表。')}
-      </p>
-    </div>
+    <UiEmptyState
+      variant="dashed"
+      className="flex-1"
+      icon={GitMerge}
+      title={t('query.join.emptyTitle', '开始关联查询')}
+      description={t('query.join.emptyDescription', '双击左侧数据源面板中的表来添加到关联查询。第一个添加的表将作为主表。')}
+    />
   );
 };
 
