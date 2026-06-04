@@ -382,7 +382,7 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                         <div className="bg-muted/30 px-3 py-2 border-b border-border text-xs font-medium text-muted-foreground flex items-center justify-between">
                             <span>{t("query.pivot.tablePreview", "表格结构预览")}</span>
                             {columns.length > 0 && values.length > 0 && (
-                                <span className="text-xs text-purple-500">
+                                <span className="text-xs text-purple-500 dark:text-purple-400">
                                     {t("query.pivot.pivotMode", "透视模式")}: [{columns[0]}] → {values.map(v => `${v.aggregation}(${v.column})`).join(", ")}
                                 </span>
                             )}
@@ -425,11 +425,11 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                             <>
                                                 <th className="border-b border-border px-3 py-2 text-center font-medium text-purple-600 dark:text-purple-400">
                                                     [{columns[0]}]=A<br />
-                                                    <span className="text-xs text-green-600">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
+                                                    <span className="text-xs text-green-600 dark:text-green-400">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
                                                 </th>
                                                 <th className="border-b border-border px-3 py-2 text-center font-medium text-purple-600 dark:text-purple-400">
                                                     [{columns[0]}]=B<br />
-                                                    <span className="text-xs text-green-600">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
+                                                    <span className="text-xs text-green-600 dark:text-green-400">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
                                                 </th>
                                                 <th className="border-b border-border px-3 py-2 text-center text-muted-foreground">
                                                     ...
@@ -461,13 +461,13 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                         )}
                                         {columns.length > 0 ? (
                                             <>
-                                                <td className="border-border px-3 py-2 text-center text-green-600">123</td>
-                                                <td className="border-border px-3 py-2 text-center text-green-600">456</td>
+                                                <td className="border-border px-3 py-2 text-center text-green-600 dark:text-green-400">123</td>
+                                                <td className="border-border px-3 py-2 text-center text-green-600 dark:text-green-400">456</td>
                                                 <td className="border-border px-3 py-2 text-center">...</td>
                                             </>
                                         ) : values.length > 0 ? (
                                             values.map((_, i) => (
-                                                <td key={i} className="border-border px-3 py-2 text-center text-green-600">123</td>
+                                                <td key={i} className="border-border px-3 py-2 text-center text-green-600 dark:text-green-400">123</td>
                                             ))
                                         ) : (
                                             <td className="border-border px-3 py-2 text-center">-</td>
@@ -483,13 +483,13 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                         )}
                                         {columns.length > 0 ? (
                                             <>
-                                                <td className="border-t border-border px-3 py-2 text-center text-green-600">789</td>
-                                                <td className="border-t border-border px-3 py-2 text-center text-green-600">101</td>
+                                                <td className="border-t border-border px-3 py-2 text-center text-green-600 dark:text-green-400">789</td>
+                                                <td className="border-t border-border px-3 py-2 text-center text-green-600 dark:text-green-400">101</td>
                                                 <td className="border-t border-border px-3 py-2 text-center">...</td>
                                             </>
                                         ) : values.length > 0 ? (
                                             values.map((_, i) => (
-                                                <td key={i} className="border-t border-border px-3 py-2 text-center text-green-600">456</td>
+                                                <td key={i} className="border-t border-border px-3 py-2 text-center text-green-600 dark:text-green-400">456</td>
                                             ))
                                         ) : (
                                             <td className="border-t border-border px-3 py-2 text-center">-</td>
