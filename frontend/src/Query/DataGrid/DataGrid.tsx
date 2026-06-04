@@ -40,6 +40,9 @@ import type { CellSelection, CellPosition, ColumnDef, CopyFormat, SelectionRange
 import { DATAGRID_CONFIG, getGridCellStyle, smartSampleColumn } from './types';
 import { blockHeaderSortBriefly } from './columnResizeSortGuard';
 
+/** 自动列宽测量后追加的安全余量（px），避免文本恰好等宽时仍被省略号截断 */
+const AUTO_FIT_SAFETY_PAD = 4;
+
 export interface DataGridProps {
   /** 行数据 */
   data: Record<string, unknown>[];
@@ -417,20 +420,20 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
     // 计算列头宽度（文本 + padding + 图标）
     const headerWidth = ctx.measureText(field).width + paddingX + headerIconWidth;
 
-    // 使用智能采样获取数据样本
-    const samples = smartSampleColumn(filteredData, field);
+    // 使用智能采样获取数据样本（按实际显示文本测量，避免格式化后被截断）
+    const samples = smartSampleColumn(filteredData, field, columnDefsByField[field]?.valueFormatter);
 
     // 测量所有样本，找到最大宽度
     let maxContentWidth = headerWidth;
     for (const strValue of samples) {
-      const contentWidth = ctx.measureText(strValue).width + paddingX;
+      const contentWidth = ctx.measureText(strValue).width + paddingX + AUTO_FIT_SAFETY_PAD;
       maxContentWidth = Math.max(maxContentWidth, contentWidth);
     }
 
     // 限制宽度范围
     const newWidth = Math.min(maxColumnWidth, Math.max(minColumnWidth, Math.ceil(maxContentWidth)));
     setColumnSizing((prev: Record<string, number>) => ({ ...prev, [field]: newWidth }));
-  }, [filteredData, setColumnSizing]);
+  }, [filteredData, columnDefsByField, setColumnSizing]);
 
   // 自动调整所有列宽
   const handleAutoFitAllColumns = useCallback(() => {
@@ -450,13 +453,13 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
       // 列头宽度
       const headerWidth = ctx.measureText(field).width + paddingX + headerIconWidth;
 
-      // 智能采样
-      const samples = smartSampleColumn(filteredData, field);
+      // 智能采样（按实际显示文本测量，避免格式化后被截断）
+      const samples = smartSampleColumn(filteredData, field, columnDefsByField[field]?.valueFormatter);
 
       // 测量样本
       let maxContentWidth = headerWidth;
       for (const strValue of samples) {
-        const contentWidth = ctx.measureText(strValue).width + paddingX;
+        const contentWidth = ctx.measureText(strValue).width + paddingX + AUTO_FIT_SAFETY_PAD;
         maxContentWidth = Math.max(maxContentWidth, contentWidth);
       }
 
@@ -464,7 +467,7 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
     }
 
     setColumnSizing(newSizing);
-  }, [filteredData, visibleColumns, setColumnSizing]);
+  }, [filteredData, visibleColumns, columnDefsByField, setColumnSizing]);
 
   // 适应宽度（平均分配容器宽度）
   const handleFitToWidth = useCallback(() => {

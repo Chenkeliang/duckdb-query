@@ -248,7 +248,10 @@ export function getGridCellStyle(element?: Element | null): {
  */
 export function smartSampleColumn(
   data: Record<string, unknown>[],
-  field: string
+  field: string,
+  /** 列的显示格式化函数；提供时按「实际显示文本」测量，而非原始值
+   *  （数字千分位、日期格式化等会让显示文本比原始值更宽，否则会被截断） */
+  formatValue?: (value: unknown) => string
 ): string[] {
   const { samplingRatio, maxSamples } = DATAGRID_CONFIG.autoSize;
   const lengthGroups = new Map<number, Set<string>>();
@@ -256,7 +259,11 @@ export function smartSampleColumn(
 
   for (const row of data) {
     const value = row[field];
-    const strValue = value === null || value === undefined ? '' : String(value);
+    const strValue = formatValue
+      ? formatValue(value)
+      : value === null || value === undefined
+        ? ''
+        : String(value);
     const len = strValue.length;
 
     if (!lengthGroups.has(len)) {
