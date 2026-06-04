@@ -665,6 +665,12 @@
       "columnsTitleMax": "透视列（限 1 个）",
       "dragFieldsPlaceholder": "拖放字段到此处"
     },
+    "json": {
+      "viewerTitle": "JSON 查看器",
+      "view": "查看 JSON",
+      "copy": "复制",
+      "copied": "已复制"
+    },
     "generating": "生成中…",
     "execute": "执行",
     "sqlPreview": "SQL 预览",

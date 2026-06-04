@@ -31,3 +31,6 @@ export type { DataGridContextMenuProps } from './ContextMenu';
 
 export { SelectionOverlay } from './SelectionOverlay';
 export type { SelectionOverlayProps } from './SelectionOverlay';
+
+export { JsonCellViewerDialog } from './JsonCellViewerDialog';
+export type { JsonCellViewerDialogProps } from './JsonCellViewerDialog';

@@ -34,6 +34,7 @@ import {
   GridFooter,
   DataGridContextMenu,
   ColumnMenu,
+  JsonCellViewerDialog,
 } from './components';
 import type { CellSelection, CellPosition, ColumnDef, CopyFormat, SelectionRange } from './types';
 import { DATAGRID_CONFIG, getGridCellStyle, smartSampleColumn } from './types';
@@ -134,6 +135,15 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const [scrollLeft, setScrollLeft] = React.useState(0);
+
+  // JSON 查看器弹窗状态（单一实例，避免每个单元格持有弹窗）
+  const [jsonViewerValue, setJsonViewerValue] = React.useState<unknown>(null);
+  const handleViewJson = useCallback((value: unknown) => {
+    setJsonViewerValue(value);
+  }, []);
+  const handleCloseJsonViewer = useCallback(() => {
+    setJsonViewerValue(null);
+  }, []);
 
   // 数据管理
   const {
@@ -774,6 +784,7 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
             isCellSelected={isCellSelected}
             onCellMouseDown={handleCellMouseDown}
             onCellMouseEnter={handleCellMouseEnter}
+            onViewJson={handleViewJson}
             scrollContainerRef={scrollContainerRef}
             onScroll={handleScroll}
             className="flex-1"
@@ -807,6 +818,12 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
           </div>
         </div>
       </DataGridContextMenu>
+
+      {/* JSON 查看器弹窗（单例，渲染在网格根层级） */}
+      <JsonCellViewerDialog
+        value={jsonViewerValue}
+        onClose={handleCloseJsonViewer}
+      />
     </TooltipProvider>
   );
 };

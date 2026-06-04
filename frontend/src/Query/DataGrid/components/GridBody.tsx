@@ -39,6 +39,8 @@ export interface GridBodyProps {
   onCellMouseDown?: (rowIndex: number, colIndex: number, e: React.MouseEvent) => void;
   /** 单元格鼠标进入回调 */
   onCellMouseEnter?: (rowIndex: number, colIndex: number) => void;
+  /** JSON 查看器回调（由网格根层级提供，注入到 cellRenderer） */
+  onViewJson?: (value: unknown) => void;
   /** 滚动容器 ref */
   scrollContainerRef: React.RefObject<HTMLDivElement>;
   /** 滚动回调 */
@@ -62,6 +64,7 @@ export const GridBody: React.FC<GridBodyProps> = ({
   isCellSelected,
   onCellMouseDown,
   onCellMouseEnter,
+  onViewJson,
   scrollContainerRef,
   onScroll,
   className,
@@ -138,6 +141,7 @@ export const GridBody: React.FC<GridBodyProps> = ({
                     column: columnDef,
                     rowIndex: virtualRow.index,
                     colIndex: col.index,
+                    onViewJson,
                   });
                 } else if (columnDef?.valueFormatter) {
                   cellContent = columnDef.valueFormatter(value);

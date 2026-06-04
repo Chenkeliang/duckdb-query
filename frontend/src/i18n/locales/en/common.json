@@ -665,6 +665,12 @@
       "columnsTitleMax": "Pivot column (max 1)",
       "dragFieldsPlaceholder": "Drag fields here"
     },
+    "json": {
+      "viewerTitle": "JSON viewer",
+      "view": "View JSON",
+      "copy": "Copy",
+      "copied": "Copied"
+    },
     "generating": "Generating…",
     "execute": "Execute",
     "sqlPreview": "SQL Preview",

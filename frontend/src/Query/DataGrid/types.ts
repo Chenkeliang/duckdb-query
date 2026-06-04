@@ -117,6 +117,8 @@ export interface CellRendererProps {
   column: ColumnDef;
   rowIndex: number;
   colIndex: number;
+  /** 打开 JSON 查看器（由网格根层级注入，仅 JSON 单元格使用） */
+  onViewJson?: (value: unknown) => void;
 }
 
 export interface ColumnDef {

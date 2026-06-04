@@ -8,6 +8,10 @@ import {
   columnMostlyHttpUrls,
   createUrlCellRenderer,
 } from '../../DataGrid/utils/urlCell';
+import {
+  columnMostlyJson,
+  createJsonCellRenderer,
+} from '../../DataGrid/utils/jsonCell';
 import { useColumnTypeDetection, type ColumnType } from './useColumnTypeDetection';
 import type { DuckdbColumnType } from '@/types/queryWorkspace';
 
@@ -74,26 +78,6 @@ function isVariantDuckdbType(duckdbType: string): boolean {
   return duckdbType.toUpperCase().includes('VARIANT');
 }
 
-function formatVariantCellDisplay(value: unknown): string {
-  if (value === null || value === undefined) {
-    return 'NULL';
-  }
-  const raw = String(value);
-  const trimmed = raw.trim();
-  if (
-    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-    (trimmed.startsWith('[') && trimmed.endsWith(']'))
-  ) {
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      const compact = JSON.stringify(parsed);
-      return compact.length > 280 ? `${compact.slice(0, 277)}…` : compact;
-    } catch {
-      return raw.length > 280 ? `${raw.slice(0, 277)}…` : raw;
-    }
-  }
-  return raw.length > 280 ? `${raw.slice(0, 277)}…` : raw;
-}
 
 function booleanCellRenderer(value: unknown): React.ReactNode {
   if (value === null || value === undefined) {
@@ -194,18 +178,9 @@ export function useDataGridColumns({
       };
 
       if (isVariantCol) {
+        // VARIANT 列：用 JSON cellRenderer（支持点击查看器）
         col.width = 200;
-        col.cellRenderer = ({ value }) => {
-          const text = formatVariantCellDisplay(value);
-          return React.createElement(
-            'span',
-            {
-              className: 'font-mono text-xs whitespace-pre-wrap break-all',
-              title: value === null || value === undefined ? undefined : String(value),
-            },
-            text
-          );
-        };
+        col.cellRenderer = createJsonCellRenderer();
       } else {
         switch (type) {
           case 'number':
@@ -220,6 +195,9 @@ export function useDataGridColumns({
           default:
             if (columnMostlyHttpUrls(data, field, sampleSize)) {
               col.cellRenderer = createUrlCellRenderer();
+            } else if (columnMostlyJson(data, field, sampleSize)) {
+              // 字符串列中含 JSON：用 JSON cellRenderer
+              col.cellRenderer = createJsonCellRenderer();
             } else if (typeInfo?.nullable) {
               col.valueFormatter = (value) =>
                 value === null || value === undefined ? 'NULL' : String(value);
