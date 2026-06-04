@@ -55,9 +55,10 @@ export interface ExcelImportPayload {
 }
 
 export interface ServerMount {
-    name: string;
+    /** 后端返回的是 label（来自 server_data_mounts 配置），非 name */
+    label: string;
     path: string;
-    description?: string;
+    exists?: boolean;
 }
 
 export interface ServerFileItem {

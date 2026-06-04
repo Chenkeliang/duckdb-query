@@ -287,7 +287,7 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
       const data = await getServerMounts();
       const mounts = data?.mounts || [];
       setServerMounts(
-        mounts.map((mount) => ({ path: mount.path, label: mount.name }))
+        mounts.map((mount) => ({ path: mount.path, label: mount.label }))
       );
       if (mounts.length > 0) {
         const first = mounts[0];
