@@ -8,27 +8,19 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Clock,
-  CheckCircle,
-  XCircle,
   Loader2,
   RefreshCw,
   Play,
   StopCircle,
   Download,
   Database,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   Tooltip,
   TooltipContent,
@@ -107,28 +99,93 @@ function formatDuration(startTime: string, endTime?: string): string {
   return `${Math.floor(duration / 60000)}m ${Math.floor((duration % 60000) / 1000)}s`;
 }
 
-/**
- * 状态徽章
- */
-function StatusBadge({ status }: { status: AsyncTask['status'] }) {
+/** SQL 关键字（行内轻量高亮） */
+const SQL_KEYWORDS = new Set([
+  'SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'FULL',
+  'CROSS', 'ON', 'USING', 'GROUP', 'ORDER', 'BY', 'HAVING', 'LIMIT', 'OFFSET',
+  'UNION', 'ALL', 'DISTINCT', 'AS', 'AND', 'OR', 'NOT', 'IN', 'EXISTS', 'INSERT',
+  'INTO', 'UPDATE', 'SET', 'DELETE', 'VALUES', 'WITH', 'CASE', 'WHEN', 'THEN',
+  'ELSE', 'END', 'DESC', 'ASC',
+]);
+
+/** 是否联邦查询（SQL 带「联邦查询」注释标记） */
+function isFederatedSQL(sql?: string): boolean {
+  return !!sql && /联邦查询/.test(sql);
+}
+
+/** 去掉开头的 -- 注释行并压成单行 */
+function cleanSQL(sql: string): string {
+  return sql.replace(/^\s*(?:--[^\n]*\n?)+/, '').replace(/\s+/g, ' ').trim();
+}
+
+/** 行内 SQL 关键字高亮 */
+function renderSQLInline(sql: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const re = /[A-Za-z_][A-Za-z0-9_]*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(sql)) !== null) {
+    if (m.index > last) out.push(sql.slice(last, m.index));
+    const word = m[0];
+    if (SQL_KEYWORDS.has(word.toUpperCase())) {
+      out.push(
+        <span key={i++} className="text-blue-600 dark:text-blue-400">{word}</span>
+      );
+    } else {
+      out.push(word);
+    }
+    last = m.index + word.length;
+  }
+  if (last < sql.length) out.push(sql.slice(last));
+  return out;
+}
+
+/** 状态圆点 + 文字 */
+function StatusDot({ status }: { status: AsyncTask['status'] }) {
   const { t } = useTranslation('common');
-
-  const config = {
-    pending: { icon: Clock, variant: 'outline' as const, label: t('async.status.pending', '等待中') },
-    running: { icon: Loader2, variant: 'default' as const, label: t('async.status.running', '运行中') },
-    completed: { icon: CheckCircle, variant: 'success' as const, label: t('async.status.completed', '已完成') },
-    failed: { icon: XCircle, variant: 'error' as const, label: t('async.status.failed', '失败') },
-    cancelled: { icon: StopCircle, variant: 'outline' as const, label: t('async.status.cancelled', '已取消') },
-    cancelling: { icon: Loader2, variant: 'outline' as const, label: t('async.status.cancelling', '取消中') },
+  const meta: Record<string, { dot: string; text: string; label: string }> = {
+    pending: { dot: 'bg-muted-foreground', text: 'text-muted-foreground', label: t('async.status.pending', '等待中') },
+    running: { dot: 'bg-blue-500 animate-pulse', text: 'text-blue-600 dark:text-blue-400', label: t('async.status.running', '运行中') },
+    completed: { dot: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400', label: t('async.status.completed', '已完成') },
+    failed: { dot: 'bg-red-500', text: 'text-red-600 dark:text-red-400', label: t('async.status.failed', '失败') },
+    cancelled: { dot: 'bg-muted-foreground', text: 'text-muted-foreground', label: t('async.status.cancelled', '已取消') },
+    cancelling: { dot: 'bg-amber-500 animate-pulse', text: 'text-amber-600 dark:text-amber-400', label: t('async.status.cancelling', '取消中') },
   };
-
-  const { icon: Icon, variant, label } = config[status] || config.pending;
-
+  const m = meta[status] || meta.pending;
   return (
-    <Badge variant={variant} className="gap-1">
-      <Icon className={cn('h-3 w-3', status === 'running' && 'animate-spin')} />
-      {label}
-    </Badge>
+    <span className={cn('inline-flex items-center gap-1.5 text-xs', m.text)}>
+      <span className={cn('h-1.5 w-1.5 rounded-full', m.dot)} />
+      {m.label}
+    </span>
+  );
+}
+
+/** 操作图标按钮 */
+function ActionBtn({
+  icon: Icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClick} disabled={disabled}>
+            <Icon className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{label}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -147,6 +204,10 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
   // 下载对话框状态
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
   const [selectedTaskForDownload, setSelectedTaskForDownload] = useState<AsyncTask | null>(null);
+
+  // 分页（前端分页，数据本来就一次拉全）
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
 
   // 获取任务列表
   const {
@@ -244,12 +305,28 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
     return task.result_info?.row_count ?? task.row_count;
   }, []);
 
-  // 截断 SQL 显示
-  const truncateSQL = (sql: string, maxLength: number = 50): string => {
-    const singleLine = sql.replace(/\s+/g, ' ').trim();
-    if (singleLine.length <= maxLength) return singleLine;
-    return singleLine.substring(0, maxLength) + '...';
-  };
+  // 行内操作按钮
+  const renderActions = (task: AsyncTask) => (
+    <div className="flex items-center justify-end gap-0.5">
+      {onPreviewSQL && task.status === 'completed' && (
+        <ActionBtn icon={Play} label={t('async.previewResult', '预览结果')} onClick={() => handlePreview(task)} />
+      )}
+      {task.status === 'completed' && (
+        <ActionBtn icon={Download} label={t('async.downloadBtn', '下载')} onClick={() => handleDownload(task)} />
+      )}
+      {(task.status === 'pending' || task.status === 'running') && (
+        <ActionBtn icon={StopCircle} label={t('async.cancel', '取消')} onClick={() => handleCancel(task.task_id)} disabled={cancelMutation.isPending} />
+      )}
+      {task.status === 'failed' && (
+        <ActionBtn icon={RefreshCw} label={t('async.retry', '重试')} onClick={() => handleRetry(task.task_id)} disabled={retryMutation.isPending} />
+      )}
+    </div>
+  );
+
+  // 分页计算
+  const pageCount = Math.max(1, Math.ceil(tasks.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pagedTasks = tasks.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   return (
     <div className={cn('flex flex-col h-full', className)}>
@@ -292,194 +369,163 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
             <p>{t('async.empty', '暂无异步任务')}</p>
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[100px]">{t('async.status', '状态')}</TableHead>
-                <TableHead>{t('async.sql', 'SQL')}</TableHead>
-                <TableHead className="w-[140px]">{t('async.tableName', '结果表')}</TableHead>
-                <TableHead className="w-[100px]">{t('async.time', '时间')}</TableHead>
-                <TableHead className="w-[80px]">{t('async.rows', '行数')}</TableHead>
-                <TableHead className="w-[120px] text-right">{t('async.actions', '操作')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tasks.map((task) => (
-                <TableRow key={task.task_id}>
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      <StatusBadge status={task.status} />
-                      {task.task_type && task.task_type !== 'query' && (
-                        <Badge variant="outline" className="text-xs w-fit">
-                          {task.task_type}
-                        </Badge>
+          <table className="dq-grid-table">
+            <thead>
+              <tr>
+                <th className="w-16">{t('async.type', '类型')}</th>
+                <th>{t('async.sql', 'SQL')}</th>
+                <th className="w-[150px]">{t('async.tableName', '结果表')}</th>
+                <th className="w-20 text-right">{t('async.time', '时间')}</th>
+                <th className="w-20 text-right">{t('async.rows', '行数')}</th>
+                <th className="w-24">{t('async.status', '状态')}</th>
+                <th className="w-24 text-right">{t('async.actions', '操作')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedTasks.map((task) => {
+                const fed = isFederatedSQL(task.sql);
+                const rowCount = getTaskRowCount(task);
+                const displayName = getTaskDisplayName(task);
+                return (
+                  <tr key={task.task_id}>
+                    {/* 类型 */}
+                    <td>
+                      {fed ? (
+                        <span className="inline-block rounded-md border border-sky-500/30 bg-sky-500/15 px-1.5 py-0.5 text-[11px] font-medium text-sky-600 dark:text-sky-300">
+                          {t('async.typeFederated', '联邦')}
+                        </span>
+                      ) : (
+                        <span className="inline-block rounded-md border border-[var(--dg-border-color)] bg-[var(--dg-header-background)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--dg-header-foreground)]">
+                          {t('async.typeLocal', '本地')}
+                        </span>
                       )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {task.sql ? (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <span className="font-mono text-xs cursor-pointer hover:underline">
-                            {truncateSQL(task.sql)}
-                          </span>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          side="bottom"
-                          align="start"
-                          className="w-[480px] max-w-[90vw] max-h-(--radix-popover-content-available-height) p-2"
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs text-muted-foreground">SQL</span>
-                            <button
-                              className="text-xs text-primary hover:underline"
-                              onClick={() => {
-                                navigator.clipboard.writeText(task.sql!);
-                                showSuccessToast(t, undefined, t('common.copied', '已复制'));
-                              }}
-                            >
-                              {t('common.copy', '复制')}
-                            </button>
-                          </div>
-                          <SQLHighlight
-                            sql={task.sql}
-                            minHeight="4rem"
-                            maxHeight="24rem"
-                            scrollable
-                            className="border-0 rounded-md min-w-[280px]"
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    ) : (
-                      <span className="font-mono text-xs text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {getTaskDisplayName(task) ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="font-mono text-xs flex items-center gap-1 cursor-help">
-                              <Database className="h-3 w-3 text-muted-foreground" />
-                              <span className="truncate max-w-[100px]">
-                                {getTaskDisplayName(task)}
-                              </span>
+                    </td>
+                    {/* SQL */}
+                    <td>
+                      {task.sql ? (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <span className="block max-w-[420px] cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs hover:underline">
+                              {renderSQLInline(cleanSQL(task.sql))}
                             </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <span className="font-mono text-xs">{getTaskDisplayName(task)}</span>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {task.started_at ? (
-                      formatDuration(task.started_at, task.completed_at)
-                    ) : (
-                      formatTime(task.created_at)
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {getTaskRowCount(task) !== undefined ? getTaskRowCount(task)!.toLocaleString() : '-'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {/* 预览结果（已完成） */}
-                      {onPreviewSQL && task.status === 'completed' && (
+                          </PopoverTrigger>
+                          <PopoverContent
+                            side="bottom"
+                            align="start"
+                            className="w-[480px] max-w-[90vw] max-h-(--radix-popover-content-available-height) p-2"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-muted-foreground">SQL</span>
+                              <button
+                                className="text-xs text-primary hover:underline"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(task.sql!);
+                                  showSuccessToast(t, undefined, t('common.copied', '已复制'));
+                                }}
+                              >
+                                {t('common.copy', '复制')}
+                              </button>
+                            </div>
+                            <SQLHighlight
+                              sql={task.sql}
+                              minHeight="4rem"
+                              maxHeight="24rem"
+                              scrollable
+                              className="border-0 rounded-md min-w-[280px]"
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      ) : (
+                        <span className="font-mono text-xs text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    {/* 结果表 */}
+                    <td>
+                      {displayName ? (
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => handlePreview(task)}
-                              >
-                                <Play className="h-4 w-4" />
-                              </Button>
+                              <span className="font-mono text-xs flex items-center gap-1 cursor-help">
+                                <Database className="h-3 w-3 text-muted-foreground" />
+                                <span className="truncate max-w-[120px]">{displayName}</span>
+                              </span>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>{t('async.previewResult', '预览结果')}</p>
+                              <span className="font-mono text-xs">{displayName}</span>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
                       )}
-
-                      {/* 下载按钮（已完成） */}
-                      {task.status === 'completed' && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => handleDownload(task)}
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{t('async.downloadBtn', '下载')}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-
-                      {/* 取消按钮 */}
-                      {(task.status === 'pending' || task.status === 'running') && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => handleCancel(task.task_id)}
-                                disabled={cancelMutation.isPending}
-                              >
-                                <StopCircle className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{t('async.cancel', '取消')}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-
-                      {/* 重试按钮 */}
-                      {task.status === 'failed' && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => handleRetry(task.task_id)}
-                                disabled={retryMutation.isPending}
-                              >
-                                <RefreshCw className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{t('async.retry', '重试')}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </td>
+                    {/* 时间 */}
+                    <td className="text-right text-xs text-muted-foreground tabular-nums">
+                      {task.started_at
+                        ? formatDuration(task.started_at, task.completed_at)
+                        : formatTime(task.created_at)}
+                    </td>
+                    {/* 行数 */}
+                    <td className="text-right text-xs tabular-nums">
+                      {rowCount !== undefined ? rowCount.toLocaleString() : '-'}
+                    </td>
+                    {/* 状态 */}
+                    <td>
+                      <StatusDot status={task.status} />
+                    </td>
+                    {/* 操作 */}
+                    <td className="text-right">{renderActions(task)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </ScrollArea>
+
+      {/* 分页 */}
+      {tasks.length > 0 && (
+        <div className="flex items-center justify-between border-t border-border bg-muted/30 px-4 py-1.5 text-xs text-muted-foreground">
+          <span>
+            {t('async.totalCount', { count: tasks.length, defaultValue: '共 {{count}} 条' })}
+            <span className="mx-1.5 opacity-40">·</span>
+            <span className="tabular-nums">{safePage} / {pageCount}</span>
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="mr-1">{t('async.perPage', '每页')}</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="h-7 rounded-md border border-border bg-transparent px-1.5 text-xs"
+            >
+              {[15, 30, 50].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={safePage <= 1}
+              onClick={() => setPage(safePage - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={safePage >= pageCount}
+              onClick={() => setPage(safePage + 1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* 下载结果对话框 */}
       {selectedTaskForDownload && (

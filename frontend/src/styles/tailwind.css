@@ -250,8 +250,9 @@
    TanStack DataGrid Styles (AG Grid 风格)
    ============================================ */
 
-  /* DataGrid 容器 - 浅色主题 */
-  .dq-data-grid {
+  /* DataGrid 容器 - 浅色主题（.dq-grid-table 复用同一套 token） */
+  .dq-data-grid,
+  .dq-grid-table {
     /* 亮色主题 · Amber Line —— 浅暖表头 + 2px amber 下划线 */
     --dg-background: hsl(0 0% 100%);
     --dg-foreground: hsl(30 8% 18%);
@@ -279,7 +280,8 @@
   }
 
   /* DataGrid 容器 - 深色主题 */
-  .dark .dq-data-grid {
+  .dark .dq-data-grid,
+  .dark .dq-grid-table {
     /* 暗色主题 · Warm Ink —— 暖石灰黑 + 2px amber 下划线,与亮色 Amber Line 对称 */
     --dg-background: hsl(30 8% 6.5%);
     --dg-foreground: hsl(40 10% 90%);
@@ -492,6 +494,45 @@
     gap: 16px;
     font-size: 12px;
     color: var(--dg-footer-foreground, var(--dg-header-foreground));
+  }
+
+  /* 通用「网格风格」表格：普通 <table> 套用结果表的配色与字体 */
+  .dq-grid-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--dg-font-family);
+    font-size: var(--dg-font-size);
+    color: var(--dg-foreground);
+  }
+  .dq-grid-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--dg-header-background);
+    color: var(--dg-header-foreground);
+    font-weight: var(--dg-header-weight, 600);
+    font-size: var(--dg-header-size, 12px);
+    letter-spacing: var(--dg-header-tracking, 0.01em);
+    text-align: left;
+    padding: 7px 14px;
+    border-bottom: var(--dg-header-border-width, 2px) solid
+      var(--dg-header-border, var(--dg-border-color));
+    white-space: nowrap;
+  }
+  .dq-grid-table tbody td {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--dg-border-color);
+    white-space: nowrap;
+  }
+  .dq-grid-table tbody tr:nth-child(odd) {
+    background: var(--dg-row-odd-background);
+  }
+  .dq-grid-table tbody tr:hover td {
+    background: var(--dg-row-hover-background);
+  }
+  /* 右对齐工具类（压过 th 默认居中 / td 默认左对齐） */
+  .dq-grid-table .text-right {
+    text-align: right;
   }
 }
 
