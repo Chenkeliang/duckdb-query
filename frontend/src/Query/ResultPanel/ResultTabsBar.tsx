@@ -88,7 +88,9 @@ export const ResultTabsBar: React.FC<ResultTabsBarProps> = ({
                   className="truncate text-left"
                   onClick={() => onSelectTab(tab.id)}
                 >
-                  {tab.label}
+                  {tab.labelSeq != null
+                    ? t('query.result.tabLabel', { n: tab.labelSeq })
+                    : tab.label}
                 </button>
                 <Button
                   type="button"

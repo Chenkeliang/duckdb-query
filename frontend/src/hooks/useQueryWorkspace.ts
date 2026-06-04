@@ -253,8 +253,9 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       if (retainQueryResults) {
         resultTabSequenceRef.current += 1;
         const id = crypto.randomUUID();
-        const label = t('query.result.tabLabel', { n: resultTabSequenceRef.current });
-        const entry: ResultTabEntry = { id, label, query, result };
+        const seq = resultTabSequenceRef.current;
+        const label = t('query.result.tabLabel', { n: seq });
+        const entry: ResultTabEntry = { id, label, labelSeq: seq, query, result };
         setResultTabs((prev) => appendResultTab(prev, entry));
         setActiveResultTabId(id);
       } else {
