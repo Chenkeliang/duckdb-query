@@ -68,7 +68,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
   const [showStructure, setShowStructure] = React.useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [structureData, setStructureData] = React.useState<any[]>([]);
-  const [indexData, setIndexData] = React.useState<any[]>([]); // Added indexData state
+  const [indexData, setIndexData] = React.useState<any[]>([]); // 外部表索引（DuckDB 表无索引概念，不展示）
   const [tableComment, setTableComment] = React.useState<string | null>(null); // Added tableComment state
   const [loadingStructure, setLoadingStructure] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -114,7 +114,6 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         });
         if (result?.data) {
           setStructureData(result.data);
-          // DuckDB indexes fetching omitted for now or can be added similarly
         }
       }
     } catch (error) {
@@ -249,12 +248,14 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
                 >
                   {t('dataSource.columns')}
                 </TabsTrigger>
-                <TabsTrigger
-                  value="indexes"
-                  className="rounded-none border-b-2 border-transparent px-4 py-2 hover:text-foreground data-[state=active]:border-primary data-[state=active]:text-foreground bg-transparent shadow-none"
-                >
-                  {t('dataSource.indexes')}
-                </TabsTrigger>
+                {isExternal && (
+                  <TabsTrigger
+                    value="indexes"
+                    className="rounded-none border-b-2 border-transparent px-4 py-2 hover:text-foreground data-[state=active]:border-primary data-[state=active]:text-foreground bg-transparent shadow-none"
+                  >
+                    {t('dataSource.indexes')}
+                  </TabsTrigger>
+                )}
               </TabsList>
             </div>
 
@@ -317,6 +318,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
                 </div>
               </TabsContent>
 
+              {isExternal && (
               <TabsContent value="indexes" className="h-full m-0">
                 <div className="h-full overflow-auto border rounded-md">
                   {loadingStructure ? (
@@ -358,6 +360,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
                   )}
                 </div>
               </TabsContent>
+              )}
             </div>
             <DialogFooter className="px-6 pb-6 pt-2">
               <Button variant="outline" onClick={() => setShowStructure(false)}>
