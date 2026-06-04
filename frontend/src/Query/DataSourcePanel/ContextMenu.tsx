@@ -6,13 +6,17 @@ import {
   Eye,
   Info,
   RefreshCw,
-  Database
+  Database,
+  Download
 } from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import {
@@ -27,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { executeDuckDBSQL, getExternalTableDetail } from '@/api';
+import { exportQueryResults, getQueryExportDownloadUrl } from '@/api/queryExportApi';
 import type { SelectedTableObject } from '@/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
 import { invalidateDataSources } from '@/hooks/useDataSources';
@@ -132,6 +137,30 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
     setShowDeleteConfirm(true);
   };
 
+  const [isExporting, setIsExporting] = React.useState(false);
+
+  const handleExport = async (format: 'csv' | 'parquet') => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const result = await exportQueryResults({
+        sql: `SELECT * FROM "${table.name}"`,
+        format,
+      });
+      const url = getQueryExportDownloadUrl(result.download_url);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      showSuccessToast(t, 'OPERATION_SUCCESS', t('dataSource.exportStarted', { tableName: table.name }));
+    } catch (error) {
+      showErrorToast(
+        t,
+        error as Error,
+        t('dataSource.exportFailed', { error: (error as Error).message })
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   /**
    * 刷新表信息
    * 清除该表相关的缓存并重新获取
@@ -211,6 +240,24 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
             <Info className="mr-2 h-4 w-4" />
             <span>{t('dataSource.viewStructure')}</span>
           </ContextMenuItem>
+
+          {/* 导出 - 仅 DuckDB 表（服务端 COPY，支持 CSV / Parquet） */}
+          {!isExternal && (
+            <ContextMenuSub>
+              <ContextMenuSubTrigger>
+                <Download className="mr-2 h-4 w-4" />
+                <span>{t('dataSource.exportTable')}</span>
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent>
+                <ContextMenuItem disabled={isExporting} onClick={() => handleExport('csv')}>
+                  CSV
+                </ContextMenuItem>
+                <ContextMenuItem disabled={isExporting} onClick={() => handleExport('parquet')}>
+                  Parquet
+                </ContextMenuItem>
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+          )}
 
           {/* DuckDB 表特有选项 - 删除 */}
           {!isExternal && canDelete && onDelete && (
