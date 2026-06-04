@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import type { ColumnFiltersState, SortingState, ColumnFilter } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
-import { Loader2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 import {
@@ -670,13 +670,27 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
     return (
       <div
         className={cn(
-          'flex items-center justify-center border border-border rounded-md bg-background',
+          'flex flex-col overflow-hidden border border-border rounded-md bg-background',
           className
         )}
         style={{ height }}
       >
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        <span className="ml-2 text-muted-foreground">{t('dataGrid.loading')}</span>
+        {/* 表头骨架 */}
+        <div className="flex gap-px border-b border-border bg-muted/40 px-3 py-2.5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-3.5 flex-1" />
+          ))}
+        </div>
+        {/* 行骨架 */}
+        <div className="flex-1 space-y-2.5 p-3">
+          {Array.from({ length: 12 }).map((_, r) => (
+            <div key={r} className="flex gap-4">
+              {Array.from({ length: 6 }).map((_, c) => (
+                <Skeleton key={c} className="h-4 flex-1" />
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

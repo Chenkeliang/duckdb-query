@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, RefreshCw, ChevronLeft, Database } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -147,10 +148,14 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       {/* 表列表 */}
       <div className="flex-1 overflow-y-auto">
         {(isLoading || isLoadingConnections) ? (
-          /* Task 9.4: 加载状态样式 */
-          <div className="flex flex-col items-center justify-center p-8 space-y-3">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-muted border-t-primary"></div>
-            <p className="text-sm text-muted-foreground">{t('dataSource.loadingDataSources')}</p>
+          /* 加载骨架 */
+          <div className="space-y-1.5 p-2">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-2 px-2 py-1.5">
+                <Skeleton className="h-4 w-4 shrink-0 rounded" />
+                <Skeleton className="h-3.5" style={{ width: `${55 + ((i * 13) % 35)}%` }} />
+              </div>
+            ))}
           </div>
         ) : (
           <div className="p-2 space-y-2">

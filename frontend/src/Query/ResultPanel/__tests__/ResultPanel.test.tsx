@@ -85,7 +85,8 @@ describe('ResultPanel', () => {
         <ResultPanel data={null} loading={true} />
       </TestWrapper>
     );
-    expect(screen.getByText(/加载中/i)).toBeInTheDocument();
+    // 加载态用骨架屏（role=status，aria-label 含「加载中」）
+    expect(screen.getByRole('status', { name: /加载中/i })).toBeInTheDocument();
   });
 
   it('应该渲染错误状态', () => {

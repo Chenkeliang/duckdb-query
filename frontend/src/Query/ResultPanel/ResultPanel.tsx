@@ -32,6 +32,7 @@ import type { DuckdbColumnType } from '@/types/queryWorkspace';
 import { ChartView } from '@/Query/Charts/ChartView';
 import { useKeyboardShortcuts } from '@/Settings/shortcuts/useKeyboardShortcuts';
 import { EmptyState } from '@/components/EmptyState';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export interface ResultPanelProps {
   data: Record<string, unknown>[] | null;
@@ -409,10 +410,26 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         {renderHeaderBar(
           showToolbar ? <ResultToolbar {...toolbarProps} stats={emptyStats} disabled /> : null
         )}
-        <div className="flex-1 flex items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-8 w-8 animate-spin" />
-            <span>{t('query.result.loading', '加载中...')}</span>
+        <div
+          className="flex flex-1 flex-col overflow-hidden bg-background"
+          role="status"
+          aria-label={t('query.result.loading', '加载中...')}
+        >
+          {/* 表头骨架 */}
+          <div className="flex gap-px border-b border-border bg-muted/40 px-3 py-2.5">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-3.5 flex-1" />
+            ))}
+          </div>
+          {/* 行骨架 */}
+          <div className="flex-1 space-y-2.5 p-3">
+            {Array.from({ length: 14 }).map((_, r) => (
+              <div key={r} className="flex gap-4">
+                {Array.from({ length: 6 }).map((_, c) => (
+                  <Skeleton key={c} className="h-4 flex-1" />
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       </div>

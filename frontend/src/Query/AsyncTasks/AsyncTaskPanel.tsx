@@ -8,7 +8,6 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Clock,
-  Loader2,
   RefreshCw,
   Play,
   StopCircle,
@@ -38,6 +37,7 @@ import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
 import { useAppConfig } from '@/hooks/useAppConfig';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/EmptyState';
+import { Skeleton } from '@/components/ui/skeleton';
 import { DownloadResultDialog } from './DownloadResultDialog';
 
 export interface AsyncTask {
@@ -361,8 +361,17 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
       {/* 任务列表 */}
       <ScrollArea className="flex-1">
         {isLoading && tasks.length === 0 ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <div className="space-y-2.5 p-3">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4">
+                <Skeleton className="h-4 w-10" />
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-10" />
+                <Skeleton className="h-4 w-10" />
+                <Skeleton className="h-4 w-14" />
+              </div>
+            ))}
           </div>
         ) : tasks.length === 0 ? (
           <EmptyState icon={Clock} title={t('async.empty', '暂无异步任务')} />
