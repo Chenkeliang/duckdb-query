@@ -127,7 +127,7 @@ export interface DataSource {
   name?: string;
 }
 
-export type DatabaseType = "mysql" | "postgresql" | "sqlite" | "sqlserver";
+export type DatabaseType = "mysql" | "postgresql" | "sqlite" | "sqlserver" | "duckdb";
 
 export interface DatabaseConnection {
   id: string;

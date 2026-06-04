@@ -148,6 +148,8 @@ const DatabaseForm = ({
   const [error, setError] = useState("");
 
   const isSqlite = type === "sqlite";
+  const isDuckdb = type === "duckdb";
+  const isFileBased = isSqlite || isDuckdb;
   const isPostgreSQL = type === "postgresql";
 
   const normalizedParams = useMemo(() => {
@@ -157,7 +159,7 @@ const DatabaseForm = ({
       `${type}-${host || "localhost"}${port ? `:${port}` : ""}`;
 
     const params =
-      type === "sqlite"
+      type === "sqlite" || type === "duckdb"
         ? { path: sqlitePath }
         : {
           host: host.trim(),
@@ -187,7 +189,7 @@ const DatabaseForm = ({
       return false;
     }
 
-    if (!isSqlite) {
+    if (!isFileBased) {
       // 检查主机地址
       if (!host.trim()) {
         const errorMsg = t("page.datasource.connection.validation.requiredHost", "请填写主机地址");
@@ -275,11 +277,14 @@ const DatabaseForm = ({
     setServerError("");
     try {
       const data = await browseServerDirectory(path);
-      // Filter for .db, .sqlite, .sqlite3 files
+      // 文件后缀过滤：SQLite 用 .db/.sqlite/.sqlite3，DuckDB 用 .duckdb/.ddb/.db
+      const fileExts = isDuckdb
+        ? ["duckdb", "ddb", "db"]
+        : ["db", "sqlite", "sqlite3"];
       const entries = (data?.items || []).filter((entry: { type?: string; extension?: string }) => {
         if (entry.type === "directory") return true;
         const ext = entry.extension?.toLowerCase();
-        return ext === "db" || ext === "sqlite" || ext === "sqlite3";
+        return !!ext && fileExts.includes(ext);
       });
       setServerEntries(entries);
     } catch (err) {
@@ -297,7 +302,8 @@ const DatabaseForm = ({
       id: "postgresql",
       label: t("page.datasource.connection.dbTypes.postgresql")
     },
-    { id: "sqlite", label: t("page.datasource.connection.dbTypes.sqlite") }
+    { id: "sqlite", label: t("page.datasource.connection.dbTypes.sqlite") },
+    { id: "duckdb", label: t("page.datasource.connection.dbTypes.duckdb") }
   ];
 
   return (
@@ -324,7 +330,7 @@ const DatabaseForm = ({
         </div>
         {/* 顶部数据库类型切换 Tabs */}
         <Tabs value={type} onValueChange={setType}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             {dbTabs.map(tab => (
               <TabsTrigger key={tab.id} value={tab.id}>
                 {tab.label}
@@ -347,7 +353,7 @@ const DatabaseForm = ({
               />
             </div>
 
-            {!isSqlite ? (
+            {!isFileBased ? (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="host">
@@ -430,13 +436,17 @@ const DatabaseForm = ({
               <>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="sqlite-path">
-                    {t("page.datasource.connection.sqlitePath")}
+                    {isDuckdb
+                      ? t("page.datasource.connection.duckdbPath")
+                      : t("page.datasource.connection.sqlitePath")}
                   </Label>
                   <Input
                     id="sqlite-path"
                     value={sqlitePath}
                     onChange={e => setSqlitePath(e.target.value)}
-                    placeholder={t("page.datasource.connection.sqlitePlaceholder")}
+                    placeholder={isDuckdb
+                      ? t("page.datasource.connection.duckdbPlaceholder")
+                      : t("page.datasource.connection.sqlitePlaceholder")}
                   />
                 </div>
 

@@ -39,6 +39,7 @@ const getDatabaseIconColor = (type: string): string => {
     mysql: 'text-foreground',
     sqlite: 'text-muted-foreground',
     sqlserver: 'text-destructive',
+    duckdb: 'text-primary',
   };
   return colorMap[type] || 'text-muted-foreground';
 };
@@ -85,11 +86,14 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
     isExpanded
   );
 
-  // 对于 MySQL/SQLite，直接加载表列表
+  // 对于 MySQL/SQLite/DuckDB，直接加载表列表
   const { tables, isLoading: tablesLoading } = useSchemaTables(
     connection.id,
     '', // 空 schema 表示直接获取表
-    isExpanded && (connection.type === 'mysql' || connection.type === 'sqlite')
+    isExpanded &&
+      (connection.type === 'mysql' ||
+        connection.type === 'sqlite' ||
+        connection.type === 'duckdb')
   );
 
   const handleToggle = () => {
@@ -123,9 +127,11 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
   // PostgreSQL: 显示 schemas
   const hasSchemas = connection.type === 'postgresql' && schemas.length > 0;
 
-  // MySQL/SQLite: 直接显示表
+  // MySQL/SQLite/DuckDB: 直接显示表
   const hasTables =
-    (connection.type === 'mysql' || connection.type === 'sqlite') &&
+    (connection.type === 'mysql' ||
+      connection.type === 'sqlite' ||
+      connection.type === 'duckdb') &&
     tables.length > 0;
 
   return (

@@ -350,7 +350,7 @@ const AppInner: React.FC = () => {
           // Unified test flow: pass ID + Params. Backend handles stored password merging.
           result = await testDatabaseConnection({
             id: params.id, // Now supported by type
-            type: params.type as "mysql" | "postgresql" | "sqlite",
+            type: params.type as "mysql" | "postgresql" | "sqlite" | "duckdb",
             name: params.id || "test-connection",
             params: params.params as Record<string, unknown>
           });

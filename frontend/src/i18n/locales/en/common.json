@@ -947,8 +947,10 @@
         "port": "Port",
         "database": "Database name",
         "sqlitePath": "Database file path",
+        "duckdbPath": "DuckDB file path",
         "databasePlaceholder": "database_name",
         "sqlitePlaceholder": "/path/to/database.db",
+        "duckdbPlaceholder": "/path/to/database.duckdb",
         "username": "Username",
         "password": "Password",
         "schema": "Schema",
@@ -979,7 +981,8 @@
         "dbTypes": {
           "mysql": "MySQL",
           "postgresql": "PostgreSQL",
-          "sqlite": "SQLite"
+          "sqlite": "SQLite",
+          "duckdb": "DuckDB"
         },
         "parsedOk": "Detected {{type}} · {{host}}",
         "parsedSqlite": "Detected as a SQLite file path",

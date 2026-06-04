@@ -50,13 +50,14 @@ const TYPE_META: Record<
   postgresql: { label: "PostgreSQL", icon: Database, color: "text-ds-pg", bg: "bg-ds-pg/12" },
   sqlite: { label: "SQLite", icon: FileText, color: "text-ds-sqlite", bg: "bg-ds-sqlite/12" },
   sqlserver: { label: "SQL Server", icon: Database, color: "text-ds-pg", bg: "bg-ds-pg/12" },
+  duckdb: { label: "DuckDB", icon: FileText, color: "text-primary", bg: "bg-primary/12" },
 };
 
 /** Build the mono "host:port / database · user" (or path) meta string. */
 function connMeta(c: DatabaseConnection): { primary: string; secondary: string } {
   const p = c.params || {};
-  if (c.type === "sqlite") {
-    return { primary: p.database || c.name, secondary: "" };
+  if (c.type === "sqlite" || c.type === "duckdb") {
+    return { primary: (p as { path?: string }).path || p.database || c.name, secondary: "" };
   }
   const hostPort = [p.host, p.port].filter(Boolean).join(":");
   let dbUser = [p.database, p.username].filter(Boolean).join(" · ");

@@ -948,8 +948,10 @@
         "port": "端口",
         "database": "数据库名称",
         "sqlitePath": "数据库文件路径",
+        "duckdbPath": "DuckDB 文件路径",
         "databasePlaceholder": "database_name",
         "sqlitePlaceholder": "/path/to/database.db",
+        "duckdbPlaceholder": "/path/to/database.duckdb",
         "username": "用户名",
         "password": "密码",
         "schema": "Schema 架构",
@@ -980,7 +982,8 @@
         "dbTypes": {
           "mysql": "MySQL",
           "postgresql": "PostgreSQL",
-          "sqlite": "SQLite"
+          "sqlite": "SQLite",
+          "duckdb": "DuckDB"
         },
         "parsedOk": "已识别为 {{type}} · {{host}}",
         "parsedSqlite": "已识别为 SQLite 文件路径",

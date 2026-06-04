@@ -30,6 +30,7 @@ const DATABASE_TYPE_LABEL: Record<string, string> = {
   postgresql: 'PostgreSQL',
   sqlite: 'SQLite',
   sqlserver: 'SQL Server',
+  duckdb: 'DuckDB',
 };
 
 /**
