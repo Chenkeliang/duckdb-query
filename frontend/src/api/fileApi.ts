@@ -67,6 +67,10 @@ export interface ServerFileItem {
     type: 'file' | 'directory';
     size?: number;
     modified?: string;
+    extension?: string;
+    /** 后端权威的「可导入」标志（来自 SUPPORTED_FORMATS） */
+    supported?: boolean;
+    suggested_table_name?: string;
 }
 
 // ==================== File Upload ====================
@@ -514,11 +518,17 @@ export async function browseServerDirectory(path: string): Promise<{
 }> {
     try {
         const response = await apiClient.get(`/api/server-files/browse?path=${encodeURIComponent(path)}`);
-        const normalized = normalizeResponse<{ items?: ServerFileItem[]; current_path?: string }>(response);
+        // 后端返回的是 entries / path（旧字段 items / current_path 作兜底）
+        const normalized = normalizeResponse<{
+            entries?: ServerFileItem[];
+            items?: ServerFileItem[];
+            path?: string;
+            current_path?: string;
+        }>(response);
         return {
             success: true,
-            items: normalized.data.items ?? [],
-            current_path: normalized.data.current_path ?? path,
+            items: normalized.data.entries ?? normalized.data.items ?? [],
+            current_path: normalized.data.path ?? normalized.data.current_path ?? path,
             messageCode: normalized.messageCode,
             message: normalized.message,
         };
