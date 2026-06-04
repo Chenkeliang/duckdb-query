@@ -273,7 +273,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>{t('page.datasource.excelSheet.title')}</DialogTitle>
           <DialogDescription>
@@ -281,27 +281,28 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-4 py-4">
-          {/* 文件信息 */}
-          <div className="bg-muted rounded-lg p-4 space-y-1">
-            <p className="text-sm text-foreground">
-              <span className="text-muted-foreground">{t('page.datasource.excelSheet.file')}</span>
+        <div className="flex-1 overflow-y-auto space-y-3 py-3">
+          {/* 文件信息（一行 chip） */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">
               {sourceType === 'server' ? serverPath?.split('/').pop() : pendingInfo?.original_filename || "-"}
-            </p>
-            <p className="text-sm text-foreground">
-              <span className="text-muted-foreground">{t('page.datasource.excelSheet.source')}</span>
-              {sourceType === 'server' ? t('page.datasource.excelSheet.sourceServer') : t('page.datasource.excelSheet.sourceUpload')}
-            </p>
+            </span>
+            <span className="opacity-40">·</span>
+            <span>
+              {sourceType === 'server'
+                ? t('page.datasource.excelSheet.sourceServer')
+                : t('page.datasource.excelSheet.sourceUpload')}
+            </span>
             {namePrefix ? (
-              <p className="text-sm text-foreground">
-                <span className="text-muted-foreground">
+              <>
+                <span className="opacity-40">·</span>
+                <span className="inline-flex items-center gap-1">
                   {t('page.datasource.excelSheet.tablePrefix')}
+                  <code className="rounded bg-primary/10 px-1 font-mono text-primary">
+                    {namePrefix}
+                  </code>
                 </span>
-                {namePrefix}
-                <span className="text-muted-foreground text-xs ml-1">
-                  {t('page.datasource.excelSheet.tablePrefixHint')}
-                </span>
-              </p>
+              </>
             ) : null}
           </div>
 
@@ -322,7 +323,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
 
           {/* 工作表列表 */}
           {!loading && !error && sheetConfigs.length > 0 && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {/* 批量操作按钮 */}
               <div className="flex gap-2">
                 <Button
@@ -374,13 +375,14 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                       </div>
                     </AccordionTrigger>
 
-                    <AccordionContent className="px-4 pb-4 space-y-4">
-                      {/* 配置表单 */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor={`target-${sheet.name}`}>{t('page.datasource.excelSheet.targetTable')}</Label>
+                    <AccordionContent className="px-4 pb-3 space-y-3">
+                      {/* 配置表单：三项并一行 */}
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex-1 min-w-[200px] space-y-1">
+                          <Label className="text-xs" htmlFor={`target-${sheet.name}`}>{t('page.datasource.excelSheet.targetTable')}</Label>
                           <Input
                             id={`target-${sheet.name}`}
+                            className="h-9"
                             value={sheet.targetTable}
                             onChange={(e) =>
                               handleSheetFieldChange(
@@ -393,10 +395,11 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                           />
                         </div>
 
-                        <div className="space-y-2">
-                          <Label htmlFor={`header-rows-${sheet.name}`}>{t('page.datasource.excelSheet.headerRows')}</Label>
+                        <div className="w-24 space-y-1">
+                          <Label className="text-xs" htmlFor={`header-rows-${sheet.name}`}>{t('page.datasource.excelSheet.headerRows')}</Label>
                           <Input
                             id={`header-rows-${sheet.name}`}
+                            className="h-9"
                             type="number"
                             min="0"
                             value={sheet.headerRows}
@@ -411,12 +414,13 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                         </div>
 
                         {Number(sheet.headerRows) > 0 && (
-                          <div className="space-y-2">
-                            <Label htmlFor={`header-index-${sheet.name}`}>
+                          <div className="w-24 space-y-1">
+                            <Label className="text-xs" htmlFor={`header-index-${sheet.name}`}>
                               {t('page.datasource.excelSheet.headerRowIndex')}
                             </Label>
                             <Input
                               id={`header-index-${sheet.name}`}
+                              className="h-9"
                               type="number"
                               min="1"
                               value={sheet.headerRowIndex ?? ""}
@@ -430,26 +434,26 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                             />
                           </div>
                         )}
-
-                        {sheet.meta.has_merged_cells && (
-                          <div className="flex items-center space-x-2">
-                            <Switch
-                              id={`fill-merged-${sheet.name}`}
-                              checked={sheet.fillMerged}
-                              onCheckedChange={(checked: boolean) =>
-                                handleSheetFieldChange(
-                                  sheet.name,
-                                  "fillMerged",
-                                  checked
-                                )
-                              }
-                            />
-                            <Label htmlFor={`fill-merged-${sheet.name}`}>
-                              {t('page.datasource.excelSheet.fillMerged')}
-                            </Label>
-                          </div>
-                        )}
                       </div>
+
+                      {sheet.meta.has_merged_cells && (
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            id={`fill-merged-${sheet.name}`}
+                            checked={sheet.fillMerged}
+                            onCheckedChange={(checked: boolean) =>
+                              handleSheetFieldChange(
+                                sheet.name,
+                                "fillMerged",
+                                checked
+                              )
+                            }
+                          />
+                          <Label className="text-xs" htmlFor={`fill-merged-${sheet.name}`}>
+                            {t('page.datasource.excelSheet.fillMerged')}
+                          </Label>
+                        </div>
+                      )}
 
                       {/* 警告提示 */}
                       {sheet.meta.has_merged_cells && (
@@ -463,9 +467,9 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
 
                       {/* 数据预览 */}
                       {sheet.meta.preview && sheet.meta.preview.length > 0 && (
-                        <div className="space-y-2">
-                          <Label>{t('page.datasource.excelSheet.preview')}</Label>
-                          <div className="border border-border rounded-md overflow-auto max-h-64">
+                        <div className="space-y-1">
+                          <Label className="text-xs">{t('page.datasource.excelSheet.preview')}</Label>
+                          <div className="border border-border rounded-md overflow-auto max-h-32">
                             <Table>
                               <TableHeader>
                                 <TableRow>
