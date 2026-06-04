@@ -171,16 +171,16 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-mono text-sm font-semibold tracking-[0.01em] text-muted-foreground">
                     {t('query.typeConflict.joinCondition', 'JOIN 条件')}
                   </th>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-mono text-sm font-semibold tracking-[0.01em] text-muted-foreground">
                     {t('query.typeConflict.leftType', '左侧类型')}
                   </th>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-mono text-sm font-semibold tracking-[0.01em] text-muted-foreground">
                     {t('query.typeConflict.rightType', '右侧类型')}
                   </th>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-mono text-sm font-semibold tracking-[0.01em] text-muted-foreground">
                     {t('query.typeConflict.convertTo', '转换为')}
                   </th>
                 </tr>
