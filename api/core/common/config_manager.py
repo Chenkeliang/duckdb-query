@@ -163,9 +163,6 @@ class AppConfig:
     db_write_timeout: int = 30
     """database写入timeout时间，单位为秒"""
 
-    db_ping_timeout: int = 5
-    """databaseconnection测试timeout时间，单位为秒"""
-
     # ==================== 其他timeoutconfiguration ====================
     # 这些parameter控制各种操作的timeout行为
 
@@ -516,11 +513,6 @@ class ConfigManager:
                     "db_write_timeout": int(
                         os.getenv(
                             "DB_WRITE_TIMEOUT", config_data.get("db_write_timeout", 30)
-                        )
-                    ),
-                    "db_ping_timeout": int(
-                        os.getenv(
-                            "DB_PING_TIMEOUT", config_data.get("db_ping_timeout", 5)
                         )
                     ),
                     # connection池configuration

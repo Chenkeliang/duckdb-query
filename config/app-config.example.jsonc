@@ -1,62 +1,94 @@
+// ============================================================================
+// DuckQuery 应用配置示例 / Application config example
+//
+// 用法 / Usage:
+//   复制本文件为 config/app-config.json（去掉注释）或 config/app-config.jsonc（保留注释）。
+//   Copy this to config/app-config.json (strip comments) or app-config.jsonc (keep comments).
+//   优先级 / Precedence: app-config.json > app-config.jsonc。
+//
+// 约定 / Conventions:
+//   - null            = 使用系统默认 / use built-in default.
+//   - 单位已在每项注明 / units are noted per field (bytes / seconds / ms / hours).
+//   - [ENV]           = 该项可被同名环境变量覆盖 / can be overridden by the listed env var.
+//   - 改动后需重启后端生效 / restart the backend to apply changes.
+//   - 启动时后端会按当前字段集自动补全/裁剪本文件（删除的旧字段会被自动清除）。
+//     On startup the backend reconciles this file to the current field set (stale keys are dropped).
+// ============================================================================
 {
-  // ==================== 基础应用配置 / Basic App Config ====================
-  // 调试模式开关 / Debug mode
-  // true: 输出详细日志 / Enable verbose logging
+  // ==================== 基础应用 / Basic ====================
+
+  // 调试模式：输出详细日志 / Verbose logging. 默认 false。 [ENV: DEBUG]
   "debug": false,
-  // 跨域设置 / CORS Origins
-  // 允许的前端访问源 / Allowed frontend domains
+
+  // 允许的前端跨域来源 / Allowed CORS origins. [ENV: CORS_ORIGINS（逗号分隔）]
   "cors_origins": [
     "http://localhost:3000",
     "http://localhost:5173"
   ],
-  // 导出文件目录 / Export directory
-  // 留空使用系统默认 (project_root/exports) / Leave null for default
+
+  // 导出文件目录 / Export directory. null = <项目根>/exports。 [ENV: EXPORTS_DIR]
   "exports_dir": null,
-  // ==================== 性能与限制 / Performance & Limits ====================
-  // 最大文件上传大小 (字节) / Max file upload size (bytes)
-  // Default: 50GB
-  "max_file_size": 53687091200,
-  // 页面查询最大行数 / Max query rows for UI
-  // 超过此数量建议使用导出功能 / Use export for larger results
-  "max_query_rows": 10000,
-  // 表格预览最大数量 / Max tables in sidebar
-  "max_tables": 200,
-  // 应用时区 / App Timezone
+
+  // 应用时区 / Timezone. 默认 "Asia/Shanghai"。 [ENV: TIMEZONE]
   "timezone": "Asia/Shanghai",
-  // 表元数据缓存时间 (小时) / Table metadata cache TTL (hours)
+
+  // ==================== 性能与限制 / Limits ====================
+
+  // 最大上传文件大小（字节）/ Max upload size (bytes). 默认 50GB。 [ENV: MAX_FILE_SIZE]
+  "max_file_size": 53687091200,
+
+  // 页面查询最大返回行数 / Max rows returned to the UI. 默认 10000；
+  // 超过请用导出 / use export for more. [ENV: MAX_QUERY_ROWS]
+  // （需与 frontend/src/constants/queryLimits.ts 的 DEFAULT_MAX_QUERY_ROWS 保持一致）
+  "max_query_rows": 10000,
+
+  // 侧栏表预览最大数量 / Max tables listed in sidebar. 默认 200。
+  "max_tables": 200,
+
+  // 表元数据缓存有效期（小时）/ Table-metadata cache TTL (hours). <=0 关闭缓存。默认 24。
   "table_metadata_cache_ttl_hours": 24,
-  // ==================== DuckDB 引擎配置 / DuckDB Engine Config ====================
-  // 内存限制 / Memory limit
+
+  // ==================== DuckDB 引擎 / Engine ====================
+
+  // 内存上限 / Memory limit（支持 KB/MB/GB）。默认 "8GB"。
   "duckdb_memory_limit": "8GB",
-  // 并行线程数 / Parallel threads
-  // 建议设置为CPU核心数 / Recommended: CPU cores
+
+  // 并行线程数 / Parallel threads. 建议 = CPU 核心数。默认 8。
   "duckdb_threads": 8,
-  // 目录配置 / Directory Paths
-  // 留空使用系统默认 (data/duckdb/...) / Leave null for default structure
-  "duckdb_data_dir": null, // 数据根目录 / Data root
-  "duckdb_database_path": null, // 主数据库文件路径 / Main DB file path
-  "duckdb_temp_directory": null, // 临时目录 / Temp dir
-  "duckdb_extension_directory": null, // 扩展目录 / Extension dir
-  "duckdb_home_directory": null, // Home目录 / Home dir
-  // 性能分析 / Profiling
-  "duckdb_enable_profiling": "query_tree", // query_tree, json, no_output
+
+  // 目录配置 / Directory paths. 全部 null = 用默认结构 data/duckdb/...
+  "duckdb_data_dir": null,            // 数据根目录 / data root [ENV: DUCKDB_DATA_DIR]
+  "duckdb_database_path": null,       // 主库文件 / main DB file (默认 <data_dir>/main.db) [ENV: DUCKDB_DATABASE_PATH]
+  "duckdb_temp_directory": null,      // 溢写/临时目录 / spill & temp dir
+  "duckdb_extension_directory": null, // 扩展安装目录 / extension dir [ENV: DUCKDB_EXTENSION_DIRECTORY]
+  "duckdb_home_directory": null,      // home 目录 / home dir [ENV: DUCKDB_HOME_DIRECTORY]
+
+  // 查询性能分析格式 / Profiling format: "query_tree" | "json" | "query_tree_optimizer" | "no_output"。
+  "duckdb_enable_profiling": "query_tree",
+  // 性能分析输出文件 / Profiling output file. null = 不写文件。
   "duckdb_profiling_output": null,
-  // 优化选项 / Optimization options
-  "duckdb_prefer_range_joins": false,
-  "duckdb_enable_object_cache": true, // 启用对象缓存 / Enable object cache
-  "duckdb_preserve_insertion_order": false, // 保持插入顺序 / Preserve insertion order
-  "duckdb_enable_progress_bar": false,
-  // 调试日志 / Debug Logging
-  // 输出 SQL 执行日志 / Log SQL execution
+
+  // 优化开关 / Optimizer flags
+  "duckdb_prefer_range_joins": false,        // 优先范围 JOIN / prefer range joins. 默认 false。
+  "duckdb_enable_object_cache": true,        // 对象缓存（加速重复查询）/ object cache. 默认 true。
+  "duckdb_preserve_insertion_order": false,  // 保持插入顺序（false 更快）/ preserve insertion order. 默认 false。
+  "duckdb_enable_progress_bar": false,       // 查询进度条（生产关）/ progress bar. 默认 false。
+
+  // DuckDB 调试日志（打印 SHOW TABLES / EXPLAIN 等）/ engine debug logging. 默认 false。 [ENV: DUCKDB_DEBUG_LOGGING]
   "duckdb_debug_logging": false,
-  // 自动 Explain 阈值 (毫秒) / Auto Explain Threshold (ms)
-  // 超过此时间的查询将自动记录执行计划 / Queries slower than this will trigger EXPLAIN
-  // 0 = 禁用 / 0 = Disabled
-  // 生产可设 5000：慢查询自动 EXPLAIN 写入日志
+
+  // 慢查询自动 EXPLAIN 阈值（毫秒）/ Auto-EXPLAIN threshold (ms). 0 = 关闭；生产可设 5000。
+  // [ENV: DUCKDB_AUTO_EXPLAIN_THRESHOLD_MS]
   "duckdb_auto_explain_threshold_ms": 0,
-  // JSON/JSONL 默认入湖：auto | variant（各列 VARIANT）
+
+  // JSON/JSONL 入湖默认列类型 / JSON import column typing:
+  //   "auto"    = 由 DuckDB 推断 / inferred by DuckDB
+  //   "variant" = 各列存为 VARIANT / store columns as VARIANT
   "json_import_column_type": "auto",
-  // 预加载扩展 / Preloaded Extensions
+
+  // 启动预加载的扩展 / Auto-loaded extensions.
+  //   httpfs = 通过 http(s)/S3 读取远程文件（远程 URL / S3 入湖必需）/ required for http(s)/S3 remote reads.
+  //   mysql / postgres = 联邦查询连接外部库 / federated connections.
   "duckdb_extensions": [
     "excel",
     "json",
@@ -65,7 +97,9 @@
     "mysql",
     "postgres"
   ],
-  // 远程存储配置 (如 S3/OSS) / Remote Storage Settings
+
+  // 远程存储 SET 语句 / Remote storage settings（启动时执行；S3/OSS 时配合 httpfs）。
+  // 值需带引号，如 "'cn-hangzhou'"。 [ENV: DUCKDB_REMOTE_SETTINGS（JSON 字符串）]
   "duckdb_remote_settings": {
     // "s3_region": "'cn-hangzhou'",
     // "s3_endpoint": "'oss-cn-hangzhou.aliyuncs.com'",
@@ -74,9 +108,12 @@
     // "s3_access_key_id": "'...'",
     // "s3_secret_access_key": "'...'"
   },
-  // ==================== 数据挂载 / Data Mounts ====================
-  // 服务器本地目录挂载 / Local directory mounts
-  // 允许在前端浏览和导入这些目录下的文件 / Browse and import files from these paths
+
+  // ==================== 数据挂载 / Data mounts ====================
+
+  // 服务器本地目录挂载 / Local directory mounts：允许前端浏览并导入这些路径下的文件。
+  // Docker 下 path 必须是容器内路径（见 docker-compose 的 volumes 映射）。
+  // Under Docker, path must be the in-container path mapped by docker-compose.
   "server_data_mounts": [
     {
       "label": "Shared Data",
@@ -91,23 +128,26 @@
       "path": "/app/host_documents"
     }
   ],
-  // ==================== 连接池与超时 / Connection Pool & Timeouts ====================
-  // 连接池配置 / Pool Settings
-  "pool_min_connections": 2,
-  "pool_max_connections": 10,
-  "pool_connection_timeout": 30, // seconds
-  "pool_idle_timeout": 300, // seconds
-  "pool_max_retries": 3,
-  "pool_wait_timeout": 1.0,
-  // 数据库操作超时 / DB Operation Timeouts (seconds)
-  "db_connect_timeout": 10,
-  "db_read_timeout": 30,
-  "db_write_timeout": 30,
-  "db_ping_timeout": 5,
-  // 联邦查询超时 / Federated Query Timeout (seconds)
-  "federated_query_timeout": 300,
-  // 其他超时 / Other Timeouts
-  "url_reader_timeout": 30,
-  "url_reader_head_timeout": 10,
-  "sqlite_timeout": 10
+
+  // ==================== 连接池 / Connection pool ====================
+
+  "pool_min_connections": 2,        // 最小连接数 / min. [ENV: POOL_MIN_CONNECTIONS]
+  "pool_max_connections": 10,       // 最大连接数 / max. [ENV: POOL_MAX_CONNECTIONS]
+  "pool_connection_timeout": 30,    // 取连接超时（秒）/ acquire timeout (s). [ENV: POOL_CONNECTION_TIMEOUT]
+  "pool_idle_timeout": 300,         // 空闲回收（秒）/ idle timeout (s). [ENV: POOL_IDLE_TIMEOUT]
+  "pool_max_retries": 3,            // 取连接重试次数 / retries. [ENV: POOL_MAX_RETRIES]
+  "pool_wait_timeout": 1.0,         // 等待空闲连接超时（秒）/ wait-for-slot (s). [ENV: POOL_WAIT_TIMEOUT]
+
+  // ==================== 外部库超时 / External DB timeouts (seconds) ====================
+
+  "db_connect_timeout": 10,         // 连接超时 / connect. [ENV: DB_CONNECT_TIMEOUT]
+  "db_read_timeout": 30,            // 读超时 / read. [ENV: DB_READ_TIMEOUT]
+  "db_write_timeout": 30,           // 写超时 / write. [ENV: DB_WRITE_TIMEOUT]
+
+  // ==================== 其他超时 / Other timeouts (seconds) ====================
+
+  "url_reader_timeout": 30,         // 远程 URL 读取超时 / remote URL read. [ENV: URL_READER_TIMEOUT]
+  "url_reader_head_timeout": 10,    // 远程 URL HEAD 探测超时 / URL HEAD probe. [ENV: URL_READER_HEAD_TIMEOUT]
+  "sqlite_timeout": 10,             // SQLite 连接超时 / SQLite connect. [ENV: SQLITE_TIMEOUT]
+  "federated_query_timeout": 300    // 联邦查询前端超时（秒）/ federated query (s). 默认 300。 [ENV: FEDERATED_QUERY_TIMEOUT]
 }
