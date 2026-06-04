@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { EmptyState } from "@/components/EmptyState";
 import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import { deleteDatabaseConnection } from "@/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -198,16 +199,18 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
 
       {/* ===== EMPTY STATE ===== */}
       {isEmpty ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-surface py-16 text-center">
-          <Database className="h-9 w-9 text-muted-foreground/40" strokeWidth={1.4} />
-          <p className="text-sm text-muted-foreground">
-            {t("page.datasource.list.empty", { defaultValue: "还没有保存的连接" })}
-          </p>
-          <Button size="sm" onClick={() => onNew?.()}>
-            <Plus className="mr-1 h-4 w-4" />
-            {t("page.datasource.list.newConnection", { defaultValue: "新建连接" })}
-          </Button>
-        </div>
+        <EmptyState
+          variant="dashed"
+          icon={Database}
+          className="bg-surface py-16"
+          title={t("page.datasource.list.empty", { defaultValue: "还没有保存的连接" })}
+          action={
+            <Button size="sm" onClick={() => onNew?.()}>
+              <Plus className="mr-1 h-4 w-4" />
+              {t("page.datasource.list.newConnection", { defaultValue: "新建连接" })}
+            </Button>
+          }
+        />
       ) : null}
 
       {/* ===== LIST VIEW ===== */}
