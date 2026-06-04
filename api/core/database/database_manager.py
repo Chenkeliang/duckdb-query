@@ -230,6 +230,8 @@ class DatabaseManager:
                 return self._test_postgresql_connection(request.params, start_time)
             elif request.type == DataSourceType.SQLITE:
                 return self._test_sqlite_connection(request.params, start_time)
+            elif request.type == DataSourceType.DUCKDB:
+                return self._test_duckdb_connection(request.params, start_time)
             else:
                 return ConnectionTestResponse(
                     success=False, message=f"不支持的database类型: {request.type}"
@@ -387,6 +389,42 @@ class DatabaseManager:
                 messageCode="SQLITE_CONNECTION_FAILED",
                 latency_ms=latency,
                 error_details=str(e)
+            )
+
+    def _test_duckdb_connection(
+        self, params: Dict[str, Any], start_time: float
+    ) -> ConnectionTestResponse:
+        """测试 DuckDB 文件连接（只读打开，避免与源文件写锁冲突）"""
+        try:
+            db_path = params.get("path") or params.get("database")
+            if not db_path:
+                raise ValueError("Missing DuckDB file path (path or database)")
+
+            import duckdb
+
+            connection = duckdb.connect(db_path, read_only=True)
+            try:
+                version = connection.execute("SELECT version()").fetchone()[0]
+            finally:
+                connection.close()
+
+            latency = (time.time() - start_time) * 1000
+            return ConnectionTestResponse(
+                success=True,
+                message="DuckDB connection successful",
+                messageCode="DUCKDB_CONNECTION_SUCCESS",
+                latency_ms=latency,
+                database_info={"version": version, "type": "DuckDB"},
+            )
+
+        except Exception as e:
+            latency = (time.time() - start_time) * 1000
+            return ConnectionTestResponse(
+                success=False,
+                message=f"DuckDB connection failed: {str(e)}",
+                messageCode="DUCKDB_CONNECTION_FAILED",
+                latency_ms=latency,
+                error_details=str(e),
             )
 
     def _create_engine(self, db_type: DataSourceType, params: Dict[str, Any]):

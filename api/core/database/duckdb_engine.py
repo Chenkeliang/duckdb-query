@@ -172,7 +172,14 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
     elif db_type == 'sqlite':
         # SQLite 使用文件路径
         return f"ATTACH '{db_config['database']}' AS {alias} (TYPE sqlite)"
-    
+
+    elif db_type == 'duckdb':
+        # DuckDB 文件：原生只读挂载，零拷贝、与本地表同速（无 scanner 开销）
+        path = db_config.get('path') or db_config.get('database')
+        if not path:
+            raise ValueError("DuckDB connection missing file path (path or database)")
+        return f"ATTACH '{path}' AS {alias} (READ_ONLY)"
+
     else:
         raise ValueError(f"Unsupported database type: {db_type}")
 

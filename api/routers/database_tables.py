@@ -438,6 +438,93 @@ def get_database_tables(connection_id: str):
             finally:
                 conn.close()
 
+        elif db_type == "duckdb":
+            # DuckDB 文件：原生只读打开，直接从 information_schema 列出表（无需驱动/scanner）
+            import duckdb
+
+            db_path = db_config.get("path") or db_config.get("database")
+            if not db_path:
+                raise APIValidationError(
+                    "Missing DuckDB file path (path or database)",
+                    details={"connection_id": connection_id},
+                )
+
+            conn = duckdb.connect(db_path, read_only=True)
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_type = 'BASE TABLE'
+                      AND table_schema NOT IN ('information_schema', 'pg_catalog')
+                    ORDER BY table_name
+                    """
+                ).fetchall()
+                tables = [row[0] for row in rows]
+
+                max_tables = getattr(app_config, "max_tables", 200)
+                tables_to_process = tables[:max_tables]
+
+                table_info = []
+                for table_name in tables_to_process:
+                    try:
+                        col_rows = conn.execute(
+                            """
+                            SELECT column_name, data_type, is_nullable
+                            FROM information_schema.columns
+                            WHERE table_name = ?
+                            ORDER BY ordinal_position
+                            """,
+                            [table_name],
+                        ).fetchall()
+                        columns = [
+                            {
+                                "name": c[0],
+                                "type": c[1],
+                                "null": c[2],
+                                "key": "",
+                                "default": None,
+                                "extra": "",
+                                "comment": None,
+                            }
+                            for c in col_rows
+                        ]
+                        table_info.append(
+                            {
+                                "table_name": table_name,
+                                "table_comment": None,
+                                "columns": columns,
+                                "column_count": len(columns),
+                                "row_count": 0,
+                            }
+                        )
+                    except Exception as table_error:
+                        logger.warning(
+                            f"Failed to get table {table_name} info: {str(table_error)}"
+                        )
+                        table_info.append(
+                            {
+                                "table_name": table_name,
+                                "columns": [],
+                                "column_count": 0,
+                                "row_count": 0,
+                                "error": str(table_error),
+                            }
+                        )
+
+                return create_success_response(
+                    data={
+                        "connection_id": connection_id,
+                        "connection_name": connection.name,
+                        "database": db_path,
+                        "tables": table_info,
+                        "table_count": len(table_info),
+                    },
+                    message_code=MessageCode.TABLES_RETRIEVED,
+                )
+            finally:
+                conn.close()
+
         else:
             raise APIValidationError(
                 f"Unsupported database type: {db_type}",
