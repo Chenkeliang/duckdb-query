@@ -1,17 +1,26 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, RefreshCw, ChevronLeft, Database } from 'lucide-react';
+import { Search, RefreshCw, ChevronLeft, Database, Trash2, X } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { deleteDuckDBTable } from '@/api';
 import { useDuckDBTables, type Table } from '@/hooks/useDuckDBTables';
 import { useDatabaseConnections } from '@/hooks/useDatabaseConnections';
 import { invalidateAllDataCaches, invalidateAfterTableDelete } from '@/utils/cacheInvalidation';
 import { createDuckDBTable, isTableSelected } from '@/utils/tableUtils';
 import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
-import type { SelectedTable } from '@/types/SelectedTable';
+import type { SelectedTable, SelectedTableObject } from '@/types/SelectedTable';
 import { TreeSection } from './TreeSection';
 import { TableItem } from './TableItem';
 import { DatabaseConnectionNode } from './DatabaseConnectionNode';
@@ -129,6 +138,66 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
     }
   }, [queryClient, onRefresh, t]);
 
+  // 批量删除模式（仅普通 DuckDB 表，系统表不参与）
+  const [batchMode, setBatchMode] = React.useState(false);
+  const [selectedForDelete, setSelectedForDelete] = React.useState<Set<string>>(new Set());
+  const [showBatchConfirm, setShowBatchConfirm] = React.useState(false);
+  const [isBatchDeleting, setIsBatchDeleting] = React.useState(false);
+
+  const exitBatchMode = React.useCallback(() => {
+    setBatchMode(false);
+    setSelectedForDelete(new Set());
+  }, []);
+
+  const toggleBatchSelect = React.useCallback((table: SelectedTableObject) => {
+    setSelectedForDelete((prev) => {
+      const next = new Set(prev);
+      if (next.has(table.name)) next.delete(table.name);
+      else next.add(table.name);
+      return next;
+    });
+  }, []);
+
+  const normalTableNames = React.useMemo(
+    () => groupedTables.normal.map((tb) => tb.name),
+    [groupedTables.normal]
+  );
+  const allNormalSelected =
+    normalTableNames.length > 0 && normalTableNames.every((n) => selectedForDelete.has(n));
+
+  const toggleSelectAll = React.useCallback(() => {
+    setSelectedForDelete((prev) => {
+      const everySelected =
+        normalTableNames.length > 0 && normalTableNames.every((n) => prev.has(n));
+      return everySelected ? new Set() : new Set(normalTableNames);
+    });
+  }, [normalTableNames]);
+
+  const confirmBatchDelete = React.useCallback(async () => {
+    const names = Array.from(selectedForDelete);
+    if (names.length === 0) return;
+    setIsBatchDeleting(true);
+    try {
+      const results = await Promise.allSettled(names.map((name) => deleteDuckDBTable(name)));
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      const succeeded = names.length - failed;
+      await invalidateAfterTableDelete(queryClient);
+      if (failed === 0) {
+        showSuccessToast(t, 'TABLE_DELETED', t('dataSource.batchDeleteSuccess', { count: succeeded }));
+      } else {
+        showErrorToast(
+          t,
+          'OPERATION_PARTIAL',
+          t('dataSource.batchDeletePartial', { succeeded, failed })
+        );
+      }
+      setShowBatchConfirm(false);
+      exitBatchMode();
+    } finally {
+      setIsBatchDeleting(false);
+    }
+  }, [selectedForDelete, queryClient, t, exitBatchMode]);
+
   return (
     <div className="h-full flex flex-col bg-card border-r border-border">
       {/* 搜索栏 - 与右侧标签页高度对齐 */}
@@ -223,6 +292,9 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                           onPreview={onPreview}
                           onDelete={handleDelete}
                           searchQuery={debouncedSearch}
+                          batchMode={batchMode}
+                          batchChecked={selectedForDelete.has(table.name)}
+                          onBatchToggle={toggleBatchSelect}
                         />
                       );
                     })}
@@ -263,28 +335,96 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
 
       {/* 底部操作按钮 */}
       <div className="h-14 px-3 border-t border-border flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={isFetching || isFetchingConnections}
-          className="flex-1"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${(isFetching || isFetchingConnections) ? 'animate-spin' : ''}`} />
-          {t('common.refresh')}
-        </Button>
-        {onCollapse && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onCollapse}
-            aria-label={t('dataSource.collapsePanel')}
-            className="shrink-0"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+        {batchMode ? (
+          <>
+            <Button variant="ghost" size="sm" onClick={toggleSelectAll} className="shrink-0">
+              {allNormalSelected ? t('dataSource.deselectAll') : t('dataSource.selectAll')}
+            </Button>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {t('dataSource.selectedCount', { count: selectedForDelete.size })}
+            </span>
+            <div className="flex-1" />
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={selectedForDelete.size === 0}
+              onClick={() => setShowBatchConfirm(true)}
+              className="shrink-0"
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              {selectedForDelete.size}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exitBatchMode}
+              aria-label={t('common.cancel')}
+              className="shrink-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isFetching || isFetchingConnections}
+              className="flex-1"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${(isFetching || isFetchingConnections) ? 'animate-spin' : ''}`} />
+              {t('common.refresh')}
+            </Button>
+            {groupedTables.normal.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBatchMode(true)}
+                aria-label={t('dataSource.batchDelete')}
+                title={t('dataSource.batchDelete')}
+                className="shrink-0"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+            {onCollapse && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onCollapse}
+                aria-label={t('dataSource.collapsePanel')}
+                className="shrink-0"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            )}
+          </>
         )}
       </div>
+
+      {/* 批量删除确认 */}
+      <Dialog open={showBatchConfirm} onOpenChange={(open) => !isBatchDeleting && setShowBatchConfirm(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('dataSource.batchDeleteTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('dataSource.batchDeleteConfirm', { count: selectedForDelete.size })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-40 overflow-y-auto rounded-md border border-border bg-muted/30 p-2 text-xs font-mono text-muted-foreground whitespace-pre-line">
+            {Array.from(selectedForDelete).join('\n')}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBatchConfirm(false)} disabled={isBatchDeleting}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={confirmBatchDelete} disabled={isBatchDeleting}>
+              {isBatchDeleting ? t('common.loading') : t('common.delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -65,6 +65,10 @@ interface TableItemProps {
   searchQuery?: string;
   disabled?: boolean;
   level?: number;
+  /** 批量删除模式：显示删除勾选框，行点击切换勾选（与查询用的多选独立） */
+  batchMode?: boolean;
+  batchChecked?: boolean;
+  onBatchToggle?: (table: SelectedTableObject) => void;
 }
 
 interface TableItemButtonProps {
@@ -115,6 +119,9 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
   searchQuery = '',
   disabled = false,
   level = 0,
+  batchMode = false,
+  batchChecked = false,
+  onBatchToggle,
 }, _ref) => {
   const iconAndBadge = React.useMemo(() => getTableIconAndBadge(table), [table]);
 
@@ -147,12 +154,18 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
   };
   const handleClick = React.useCallback((e: React.MouseEvent) => {
     if (disabled) return;
+    // 批量删除模式：行点击切换删除勾选
+    if (batchMode) {
+      if ((e.target as HTMLElement).closest('[role="checkbox"]')) return;
+      onBatchToggle?.(table);
+      return;
+    }
     // 如果是多选模式且点击的是 checkbox，不处理（让 checkbox 自己处理）
     if (selectionMode === 'multiple' && (e.target as HTMLElement).closest('[role="checkbox"]')) {
       return;
     }
     onSelect(table);
-  }, [disabled, selectionMode, onSelect, table]);
+  }, [disabled, batchMode, onBatchToggle, selectionMode, onSelect, table]);
 
   const handlePreview = React.useCallback(() => {
     if (onPreview) {
@@ -168,9 +181,13 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
     if (disabled) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      onSelect(table);
+      if (batchMode) {
+        onBatchToggle?.(table);
+      } else {
+        onSelect(table);
+      }
     }
-  }, [disabled, onSelect, table]);
+  }, [disabled, batchMode, onBatchToggle, onSelect, table]);
 
   // Checkbox 回调 - 使用 useCallback 避免每次渲染创建新函数
   const handleCheckboxChange = React.useCallback(() => {
@@ -191,15 +208,22 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
     >
       {/* 使用 forwardRef 的内部组件，支持 Radix UI 的 asChild ref 传递 */}
       <TableItemButton
-        isSelected={isSelected}
+        isSelected={batchMode ? batchChecked : isSelected}
         disabled={disabled}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         className={getIndentClass(level)} // 应用缩进样式
       >
         <div className="flex items-center gap-2">
-          {/* 多选模式：显示 checkbox */}
-          {selectionMode === 'multiple' && (
+          {/* 批量删除模式：显示删除勾选框 */}
+          {batchMode ? (
+            <Checkbox
+              checked={batchChecked}
+              onCheckedChange={() => onBatchToggle?.(table)}
+              onClick={handleCheckboxClick}
+              disabled={disabled}
+            />
+          ) : selectionMode === 'multiple' && (
             <Checkbox
               checked={isSelected}
               onCheckedChange={handleCheckboxChange}
