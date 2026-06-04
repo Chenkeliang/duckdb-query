@@ -494,7 +494,7 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
     <>
       {/* 顶部一行：左=上传方式分段（本地/URL/服务器），右=紧凑的数据类型设置 */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-lg border border-border bg-surface p-1">
+        <div className="inline-flex rounded-lg bg-muted p-1 text-muted-foreground">
           {([
             ["local", t("page.datasource.cardLocalTitle")],
             ["url", t("page.datasource.cardRemoteTitle")],
@@ -505,10 +505,10 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
               type="button"
               onClick={() => setUploadMethod(m)}
               className={cn(
-                "rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors",
+                "rounded-md px-3 py-1.5 text-sm font-medium transition-all",
                 uploadMethod === m
-                  ? "bg-surface-elevated text-foreground shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-surface text-foreground shadow-sm"
+                  : "hover:text-foreground"
               )}
             >
               {label}

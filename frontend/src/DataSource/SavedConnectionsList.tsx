@@ -169,16 +169,16 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
         <span className="font-ds-mono text-xs text-muted-foreground">{configs.length}</span>
         <div className="flex-1" />
         {!isEmpty && (
-          <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
+          <div className="inline-flex rounded-lg bg-muted p-0.5 text-muted-foreground">
             {(["list", "card"] as ViewMode[]).map((v) => (
               <button
                 key={v}
                 onClick={() => changeView(v)}
                 className={cn(
-                  "grid h-7 w-7 place-items-center rounded-md transition-colors",
+                  "grid h-7 w-7 place-items-center rounded-md transition-all",
                   view === v
-                    ? "bg-surface-elevated text-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-surface text-foreground shadow-sm"
+                    : "hover:text-foreground"
                 )}
                 title={v === "list" ? t("page.datasource.list.viewList", { defaultValue: "列表" }) : t("page.datasource.list.viewCard", { defaultValue: "卡片" })}
               >
