@@ -63,10 +63,10 @@ export const ResultTabsBar: React.FC<ResultTabsBarProps> = ({
               <div
                 ref={isActive ? activeRef : null}
                 className={cn(
-                  'group flex max-w-48 shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs',
+                  'group flex max-w-48 shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium',
                   isActive
                     ? 'border-primary/40 bg-background text-foreground'
-                    : 'border-transparent bg-muted/40 text-muted-foreground hover:bg-muted'
+                    : 'border-transparent bg-muted/40 text-foreground/70 hover:bg-muted hover:text-foreground'
                 )}
               >
                 {tab.pinned && (
