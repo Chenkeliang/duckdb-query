@@ -550,31 +550,31 @@
 }
 @layer base {
   :root {
-    /* Base colors - HSL values only (no hsl() wrapper) */
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    /* Base colors · 暖白（与暗色 Warm Ink、结果表 Amber Line 同一暖调） */
+    --background: 40 30% 99%;
+    --foreground: 30 8% 16%;
 
-    /* Surface colors */
-    --surface: 0 0% 100%;
-    --surface-hover: 240 5.9% 96%;
-    --surface-active: 240 4.8% 94%;
+    /* Surface colors —— 背景暖白，面板纯白略提亮形成层次 */
+    --surface: 40 33% 99.5%;
+    --surface-hover: 36 30% 96%;
+    --surface-active: 36 24% 93.5%;
     --surface-elevated: 0 0% 100%;
 
     /* Muted */
-    --muted: 240 5.9% 90%;
-    --muted-foreground: 240 3.8% 40%;
+    --muted: 36 20% 92%;
+    --muted-foreground: 30 7% 42%;
 
     /* Primary — amber brand, consistent with dark mode (was a leftover blue). */
     --primary: 24.6 95% 53.1%;
     --primary-foreground: 0 0% 100%;
 
     /* Border */
-    --border: 240 5.9% 85%;
-    --border-subtle: 240 5.9% 90%;
-    --border-strong: 240 3.7% 15.9%;
+    --border: 36 16% 87%;
+    --border-subtle: 36 18% 91%;
+    --border-strong: 30 8% 22%;
 
     /* Input */
-    --input: 0 0% 100%;
+    --input: 40 33% 99.5%;
 
     /* State colors */
     --success: 142 76% 36%;
@@ -598,12 +598,12 @@
     --info-border: 199 89% 86%;
 
     /* Shadcn aliases */
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --secondary: 0 0% 100%;
-    --secondary-foreground: 240 10% 3.9%;
-    --accent: 240 4.8% 94%;
-    --accent-foreground: 240 10% 3.9%;
+    --card: 40 33% 99.5%;
+    --card-foreground: 30 8% 16%;
+    --secondary: 40 33% 99.5%;
+    --secondary-foreground: 30 8% 16%;
+    --accent: 36 24% 93.5%;
+    --accent-foreground: 30 8% 16%;
     --ring: 24.6 95% 53.1%;
 
     /* Radius */
@@ -640,19 +640,19 @@
 
 @layer base {
   .dark {
-    /* Dark mode - HSL values only */
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
+    /* Dark mode · Warm Ink —— 暖石灰 + 明度层叠（与结果表暖主题一脉相承） */
+    --background: 28 10% 4.5%;
+    --foreground: 40 12% 96%;
 
-    /* Surface colors */
-    --surface: 240 10% 3.9%;
-    --surface-hover: 240 3.7% 15.9%;
-    --surface-active: 240 3.7% 18%;
-    --surface-elevated: 240 10% 6%;
+    /* Surface colors —— 背景最暗 → 面板/卡片提亮 → elevated 更亮，形成层次 */
+    --surface: 30 9% 7.5%;
+    --surface-hover: 32 8% 16%;
+    --surface-active: 32 8% 19%;
+    --surface-elevated: 32 10% 12%;
 
     /* Muted */
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 75%;
+    --muted: 30 7% 14%;
+    --muted-foreground: 34 9% 72%;
 
     /* Primary */
     --primary: 24.6 95% 53.1%;
@@ -665,12 +665,12 @@
     --ds-live: #3fd07f;
 
     /* Border */
-    --border: 240 5% 21%;
-    --border-subtle: 240 5% 21%;
-    --border-strong: 0 0% 100% / 0.16;
+    --border: 32 9% 21%;
+    --border-subtle: 32 9% 17%;
+    --border-strong: 40 30% 100% / 0.16;
 
     /* Input */
-    --input: 240 10% 3.9%;
+    --input: 30 9% 8%;
 
     /* State colors */
     --success: 142 76% 46%;
@@ -694,12 +694,12 @@
     --info-border: 199 89% 20%;
 
     /* Shadcn aliases */
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --secondary: 240 10% 3.9%;
-    --secondary-foreground: 0 0% 98%;
-    --accent: 240 3.7% 18%;
-    --accent-foreground: 0 0% 98%;
+    --card: 30 9% 7.5%;
+    --card-foreground: 40 12% 96%;
+    --secondary: 30 9% 9%;
+    --secondary-foreground: 40 12% 96%;
+    --accent: 32 8% 17%;
+    --accent-foreground: 40 12% 96%;
     --ring: 24.6 95% 53.1%;
 
     /* Shadows */
