@@ -28,6 +28,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
+import { EmptyState } from '@/components/EmptyState';
+import { cn } from '@/lib/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   getAiSettings,
@@ -132,8 +134,10 @@ export function AISettings() {
     <Card id="settings-ai">
       <CardHeader>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15">
+              <Sparkles className="h-[18px] w-[18px] text-primary" />
+            </span>
             <div>
               <CardTitle>{t('settings.ai.title', 'AI / 模型')}</CardTitle>
               <CardDescription>
@@ -159,43 +163,53 @@ export function AISettings() {
       </CardHeader>
       <CardContent className="space-y-4">
         {s.providers.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            {t('settings.ai.empty', '还没有供应商，点下方「新增供应商」添加。')}
-          </p>
+          <EmptyState
+            compact
+            icon={Sparkles}
+            title={t('settings.ai.empty', '还没有供应商，点下方「新增供应商」添加。')}
+          />
         )}
 
         {s.providers.map((p) => {
           const isOpen = expandedId === p.id;
           const isDefault = s.default_provider === p.id;
           return (
-            <div key={p.id} className="rounded-lg border">
+            <div
+              key={p.id}
+              className={cn(
+                'rounded-xl border bg-background transition-all',
+                isDefault && 'border-primary/45 ring-1 ring-primary/15',
+                !p.enabled && !isDefault && 'opacity-60'
+              )}
+            >
               {/* 行头：始终可见的紧凑列表行 */}
-              <div className="flex items-center gap-2 p-3">
+              <div className="flex items-center gap-3 p-3">
                 <button
                   type="button"
                   onClick={() => setExpandedId(isOpen ? null : p.id)}
-                  className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
                   aria-expanded={isOpen}
                 >
                   <ChevronDown
-                    className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+                    className={cn(
+                      'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
                       isOpen ? '' : '-rotate-90'
-                    }`}
+                    )}
                   />
-                  <span className="font-medium text-sm truncate">{p.name || p.id}</span>
-                  <span className="text-xs text-muted-foreground shrink-0">{p.type}</span>
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-elevated font-mono text-xs font-semibold text-muted-foreground">
+                    {(p.name || p.type || '?').slice(0, 2).toLowerCase()}
+                  </span>
+                  <span className="truncate text-sm font-semibold">{p.name || p.id}</span>
+                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                    {p.type}
+                  </span>
                   {isDefault && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary shrink-0">
+                    <span className="shrink-0 rounded border border-primary/30 bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">
                       {t('settings.ai.default', '默认')}
                     </span>
                   )}
-                  {!p.enabled && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
-                      {t('settings.ai.off', '已停用')}
-                    </span>
-                  )}
                 </button>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2.5 shrink-0">
                   {!isDefault && (
                     <Button
                       variant="ghost"
@@ -213,15 +227,26 @@ export function AISettings() {
                       {t('settings.ai.setDefault', '设为默认')}
                     </Button>
                   )}
-                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    {t('settings.ai.enableShort', '启用')}
-                    <Switch
-                      checked={p.enabled}
-                      onCheckedChange={(v) => updateProvider(p.id, { enabled: v })}
-                      aria-label={t('settings.ai.providerEnable', '启用该供应商')}
-                      className="border border-border data-[state=unchecked]:bg-muted"
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 text-xs',
+                      p.enabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'h-1.5 w-1.5 rounded-full',
+                        p.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/50'
+                      )}
                     />
+                    {p.enabled ? t('settings.ai.on', '已启用') : t('settings.ai.off', '已停用')}
                   </span>
+                  <Switch
+                    checked={p.enabled}
+                    onCheckedChange={(v) => updateProvider(p.id, { enabled: v })}
+                    aria-label={t('settings.ai.providerEnable', '启用该供应商')}
+                    className="border border-border data-[state=unchecked]:bg-muted"
+                  />
                   <Button
                     variant="outline"
                     size="sm"

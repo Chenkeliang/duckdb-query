@@ -1040,7 +1040,17 @@
       "saveFailed": "保存失败",
       "testOk": "连接成功",
       "testFail": "连接失败",
-      "testFailSave": "连接失败，请先保存设置后再测试"
+      "testFailSave": "连接失败，请先保存设置后再测试",
+      "default": "默认",
+      "off": "已停用",
+      "on": "已启用",
+      "empty": "还没有供应商，点下方「新增供应商」添加。",
+      "setDefault": "设为默认",
+      "enableShort": "启用",
+      "providerEnable": "启用该供应商",
+      "providerName": "供应商名称",
+      "providerNamePlaceholder": "供应商名称（自定义名称）",
+      "baseUrlHint": "只填到 /v1 为止，例如 https://api.xxx.com/v1。系统会自动追加 /chat/completions，请勿自行填写该后缀，也不要出现多余的 //。"
     },
     "queryResult": {
       "title": "查询结果",

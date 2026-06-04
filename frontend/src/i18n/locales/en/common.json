@@ -1040,7 +1040,17 @@
       "saveFailed": "Save failed",
       "testOk": "Connection OK",
       "testFail": "Connection failed",
-      "testFailSave": "Connection failed; please save settings first"
+      "testFailSave": "Connection failed; please save settings first",
+      "default": "Default",
+      "off": "Disabled",
+      "on": "Enabled",
+      "empty": "No providers yet — click “Add provider” below.",
+      "setDefault": "Set as default",
+      "enableShort": "Enable",
+      "providerEnable": "Enable this provider",
+      "providerName": "Provider name",
+      "providerNamePlaceholder": "Provider name (custom)",
+      "baseUrlHint": "Only up to /v1, e.g. https://api.xxx.com/v1. The system appends /chat/completions automatically — don't add that suffix or any extra //."
     },
     "queryResult": {
       "title": "Query results",
