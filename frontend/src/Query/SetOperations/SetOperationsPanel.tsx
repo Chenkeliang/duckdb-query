@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { generateSetOperation, validateSetOperation } from '@/api';
-import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star, Timer, Download } from 'lucide-react';
+import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState as UiEmptyState } from '@/components/EmptyState';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -26,8 +26,6 @@ import {
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
 import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
-import { SetOperationExportDialog } from './SetOperationExportDialog';
-import { SetOperationSaveTableDialog } from './SetOperationSaveTableDialog';
 import {
   Tooltip,
   TooltipContent,
@@ -267,8 +265,6 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   const [isExecuting, setIsExecuting] = React.useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
   const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
-  const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
-  const [saveTableDialogOpen, setSaveTableDialogOpen] = React.useState(false);
 
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
   const [internalTables, setInternalTables] = React.useState<SelectedTable[]>([]);
@@ -589,52 +585,6 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setSaveTableDialogOpen(true)}
-                    disabled={!canGenerateServerSql || isExecuting || serverValidationBlocked}
-                    className="gap-1.5 shrink-0"
-                    aria-label={t('query.set.saveTable', '保存为表')}
-                  >
-                    <Database className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">
-                      {t('query.set.saveTable', '保存为表')}
-                    </span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t('query.set.saveTableHint', '完整结果写入 DuckDB 新表')}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setExportDialogOpen(true)}
-                    disabled={!canGenerateServerSql || isExecuting || serverValidationBlocked}
-                    className="gap-1.5 shrink-0"
-                    aria-label={t('query.set.export', '导出文件')}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">
-                      {t('query.set.export', '导出')}
-                    </span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t('query.set.exportHint', '后台导出 CSV / Excel / Parquet')}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
                     onClick={() => setAsyncDialogOpen(true)}
                     disabled={!canExecute || isExecuting || !sql?.trim()}
                     className="gap-1.5 shrink-0"
@@ -877,19 +827,6 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
         onSuccess={() => {
           setAsyncDialogOpen(false);
         }}
-      />
-
-      <SetOperationExportDialog
-        open={exportDialogOpen}
-        onOpenChange={setExportDialogOpen}
-        getPayload={buildSetOperationRequest}
-      />
-
-      <SetOperationSaveTableDialog
-        open={saveTableDialogOpen}
-        onOpenChange={setSaveTableDialogOpen}
-        getPayload={buildSetOperationRequest}
-        defaultTableName="set_op_result"
       />
 
       {chatStatus.configured && (

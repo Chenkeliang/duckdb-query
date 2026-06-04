@@ -8,7 +8,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Play, Eye, Trash2, Table2, Timer } from "lucide-react";
+import { Play, Trash2, Table2, Timer } from "lucide-react";
 import { AsyncTaskDialog } from "../AsyncTasks/AsyncTaskDialog";
 import {
     Tooltip,
@@ -22,12 +22,8 @@ import { PivotTableDesigner } from "./PivotTableDesigner";
 import { useTableColumns } from "@/hooks/useTableColumns";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import type { SelectedTable } from "@/types/SelectedTable";
-import type { TableSource, UseQueryWorkspaceReturn } from "@/hooks/useQueryWorkspace";
-import {
-    generatePivotQuery,
-    previewPivotQuery,
-} from "@/api";
-import { showErrorToast } from "@/utils/toastHelpers";
+import type { TableSource } from "@/hooks/useQueryWorkspace";
+import { generatePivotQuery } from "@/api";
 import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
 import {
     quoteIdent,
@@ -48,13 +44,11 @@ import { AiChatDrawer, ChatToggleButton } from "@/Query/SQLQuery/ai/AiChatDrawer
 interface PivotPanelProps {
     selectedTables: SelectedTable[];
     onExecute: (sql: string, source?: TableSource) => Promise<void>;
-    onDisplayPreview?: UseQueryWorkspaceReturn["displayQueryPreview"];
 }
 
 export const PivotPanel: React.FC<PivotPanelProps> = ({
     selectedTables,
     onExecute,
-    onDisplayPreview,
 }) => {
     const { t, i18n } = useTranslation("common");
     const { maxQueryRows } = useAppConfig();
@@ -75,7 +69,6 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     const [values, setValues] = React.useState<PivotPanelValueConfig[]>([]);
     const [filterRows, setFilterRows] = React.useState<PivotFilterRow[]>([]);
     const [isExecuting, setIsExecuting] = React.useState(false);
-    const [isPreviewing, setIsPreviewing] = React.useState(false);
     const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
 
     const { columns: tableColumns, isLoading: columnsLoading } = useTableColumns(
@@ -223,44 +216,6 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     const canRun = Boolean(sql);
     const hasConfig = rows.length > 0 || columns.length > 0 || values.length > 0;
 
-    const handlePreview = async () => {
-        if (!onDisplayPreview || !pivotPayload) return;
-        setIsPreviewing(true);
-        const startTime = Date.now();
-        try {
-            const attachDatabases = pivotPayload.attachDatabases.map((db) => ({
-                alias: db.alias,
-                connection_id: db.connectionId,
-            }));
-            const result = await previewPivotQuery(
-                pivotPayload.config,
-                pivotPayload.pivotConfig,
-                maxQueryRows,
-                { attachDatabases }
-            );
-            const previewColumns =
-                result.columns ??
-                (result.data?.length
-                    ? Object.keys(result.data[0] as Record<string, unknown>)
-                    : []);
-            onDisplayPreview(
-                {
-                    data: result.data ?? undefined,
-                    columns: previewColumns,
-                    row_count: result.row_count,
-                    execTime: Date.now() - startTime,
-                    preview_limit_applied: maxQueryRows,
-                },
-                result.sql ?? sql ?? undefined,
-                tableSource
-            );
-        } catch (err) {
-            showErrorToast(t, err as Error, t("query.previewFailed", "预览失败"));
-        } finally {
-            setIsPreviewing(false);
-        }
-    };
-
     const handleExecute = async () => {
         if (!sql) return;
         setIsExecuting(true);
@@ -276,25 +231,11 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
             <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0 bg-muted/30">
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
-                        {useServerPivot && onDisplayPreview ? (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handlePreview}
-                                disabled={!canRun || isExecuting || isPreviewing || isGeneratingSql}
-                                className="gap-1.5"
-                            >
-                                <Eye className="w-3.5 h-3.5" />
-                                {isPreviewing
-                                    ? t("query.pivot.previewing", "预览中…")
-                                    : t("query.pivot.preview", "预览")}
-                            </Button>
-                        ) : null}
                         <Button
                             variant="default"
                             size="sm"
                             onClick={handleExecute}
-                            disabled={!canRun || isExecuting || isPreviewing || isGeneratingSql}
+                            disabled={!canRun || isExecuting || isGeneratingSql}
                             className="gap-1.5"
                         >
                             <Play className="w-3.5 h-3.5 fill-current" />
