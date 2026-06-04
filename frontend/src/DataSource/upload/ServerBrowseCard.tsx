@@ -18,6 +18,8 @@ export interface ServerFileEntry {
   name: string;
   type: string;
   extension?: string;
+  /** 后端权威的「可导入」标志（来自 SUPPORTED_FORMATS） */
+  supported?: boolean;
   suggested_table_name?: string;
 }
 
@@ -157,8 +159,10 @@ export function ServerBrowseCard({
               {serverEntries
                 .filter(entry => {
                   if (entry.type === "directory") return true;
+                  // 以后端权威 supported 为准；旧后端无该字段时回退到完整扩展名列表
+                  if (typeof entry.supported === "boolean") return entry.supported;
                   const ext = (entry.extension || "").toLowerCase();
-                  return ["csv", "excel", "json", "jsonl", "parquet"].includes(
+                  return ["csv", "excel", "json", "jsonl", "parquet", "xlsx", "xls", "pq"].includes(
                     ext
                   );
                 })

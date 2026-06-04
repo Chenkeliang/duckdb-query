@@ -59,12 +59,16 @@ const toServerFileEntry = (item: {
   name: string;
   path: string;
   type: string;
+  extension?: string;
+  supported?: boolean;
+  suggested_table_name?: string;
 }): ServerFileEntry => ({
   path: item.path,
   name: item.name,
   type: item.type,
-  extension: item.name.includes(".") ? item.name.split(".").pop() : undefined,
-  suggested_table_name: stemFromFilename(item.name),
+  extension: item.extension ?? (item.name.includes(".") ? item.name.split(".").pop() : undefined),
+  supported: item.supported,
+  suggested_table_name: item.suggested_table_name ?? stemFromFilename(item.name),
 });
 
 const formatBrowseError = (err: unknown, fallback: string): string => {
