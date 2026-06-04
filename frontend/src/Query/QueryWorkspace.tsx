@@ -54,6 +54,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
     closeOtherResultTabsById,
     closeResultTabsToLeftOf,
     closeResultTabsToRightOf,
+    toggleResultTabPinById,
     displayPreview: displayQueryPreview,
     cancel: cancelQuery,
     isCancelling,
@@ -304,6 +305,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
                   onCloseOtherResultTabs={closeOtherResultTabsById}
                   onCloseResultTabsToLeft={closeResultTabsToLeftOf}
                   onCloseResultTabsToRight={closeResultTabsToRightOf}
+                  onTogglePinResultTab={toggleResultTabPinById}
                   singleResultSlotLabel={singleResultSlotLabel}
                   autoOpenImportDialog={autoOpenImportDialog}
                   onAutoOpenImportDialogConsumed={() => setAutoOpenImportDialog(false)}

@@ -6,6 +6,7 @@ import { useMemo, useRef, useCallback, useImperativeHandle, forwardRef } from 'r
 import { useTranslation } from 'react-i18next';
 import { DataGrid } from '../DataGrid';
 import type { DataGridRef } from '../DataGrid/DataGrid';
+import { useDataGridSettings } from '@/hooks/useDataGridSettings';
 import { useColumnVisibility, useGridExport } from '../DataGrid/hooks';
 import type { ColumnVisibilityState } from '../DataGrid/hooks/useColumnVisibility';
 import type { ColumnDef, CellSelection } from '../DataGrid/types';
@@ -23,6 +24,10 @@ export interface DataGridWrapperProps {
   enableSelection?: boolean;
   enableFiltering?: boolean;
   enableSorting?: boolean;
+  /** 查询耗时（毫秒），显示在底部统计栏 */
+  executionTime?: number;
+  /** 预览行上限（命中时底部提示结果被截断） */
+  previewLimitApplied?: number | null;
   onSelectionChange?: (selection: CellSelection | null) => void;
   onFilterChange?: (filters: ColumnFiltersState) => void;
   onSortChange?: (sorting: SortingState) => void;
@@ -61,6 +66,8 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
     enableSelection = true,
     enableFiltering = true,
     enableSorting = true,
+    executionTime,
+    previewLimitApplied,
     onSelectionChange,
     onFilterChange,
     onSortChange,
@@ -71,6 +78,7 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
   ref
 ) => {
   const { t } = useTranslation('common');
+  const { settings: gridSettings } = useDataGridSettings();
   const processedData = useMemo(() => rowData || [], [rowData]);
   const processedEmptyText = useMemo(
     () => noRowsOverlayText || t('dataGrid.noData', '暂无数据'),
@@ -150,6 +158,11 @@ const DataGridWrapperInner: React.ForwardRefRenderFunction<DataGridApi, DataGrid
       loading={loading}
       emptyText={processedEmptyText}
       height={height}
+      rowHeight={gridSettings.rowHeight}
+      zebraStripes={gridSettings.zebraStripes}
+      autoFitOnLoad={gridSettings.autoFitOnLoad}
+      executionTime={executionTime}
+      previewLimitApplied={previewLimitApplied}
       enableSelection={enableSelection}
       enableFiltering={enableFiltering}
       enableSorting={enableSorting}

@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ShortcutSettings } from './shortcuts';
 import { CacheSettings } from './CacheSettings';
 import { QueryResultSettings } from './QueryResultSettings';
+import { DataGridSettings } from './DataGridSettings';
 
 export interface SettingsPageProps {
   // 可以添加 props
@@ -30,6 +31,9 @@ export function SettingsPage({}: SettingsPageProps) {
 
           {/* 查询结果 */}
           <QueryResultSettings />
+
+          {/* 结果表显示 */}
+          <DataGridSettings />
 
           {/* 缓存设置 */}
           <CacheSettings />

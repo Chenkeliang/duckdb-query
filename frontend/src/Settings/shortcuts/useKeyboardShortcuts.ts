@@ -3,8 +3,8 @@
  * Uses the ShortcutContext to get current shortcut configurations
  */
 
-import { useEffect, useCallback, useRef } from 'react';
-import { useShortcuts } from './ShortcutContext';
+import { useEffect, useCallback, useRef, useContext } from 'react';
+import ShortcutContext from './ShortcutContext';
 import { matchesShortcut } from './defaultShortcuts';
 
 export type ShortcutHandlers = Record<string, () => void>;
@@ -33,7 +33,10 @@ export function useKeyboardShortcuts(
   options: UseKeyboardShortcutsOptions = {}
 ): void {
   const { enabled = true } = options;
-  const { shortcuts, isLoading } = useShortcuts();
+  // 容忍无 ShortcutProvider 的场景（如独立单测）：无 context 时视为加载中→不注册、不崩
+  const context = useContext(ShortcutContext);
+  const shortcuts = context?.shortcuts ?? {};
+  const isLoading = context?.isLoading ?? true;
   
   // Use ref to avoid stale closures
   const handlersRef = useRef(handlers);

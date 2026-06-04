@@ -31,6 +31,7 @@ import {
   closeResultTabsToRight,
   deriveSingleResultSlotLabel,
   pickAdjacentActiveTabId,
+  toggleResultTabPin,
 } from '@/Query/ResultPanel/resultTabUtils';
 
 export type {
@@ -69,6 +70,7 @@ export interface UseQueryWorkspaceReturn {
   closeOtherResultTabsById: (id: string) => void;
   closeResultTabsToLeftOf: (id: string) => void;
   closeResultTabsToRightOf: (id: string) => void;
+  toggleResultTabPinById: (id: string) => void;
   displayQueryPreview: (
     response: {
       data?: unknown[];
@@ -475,6 +477,10 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     setActiveResultTabId(id);
   }, []);
 
+  const toggleResultTabPinById = useCallback((id: string) => {
+    setResultTabs((prev) => toggleResultTabPin(prev, id));
+  }, []);
+
   const handleTableSelect = useCallback(
     (table: SelectedTable) => {
       const normalized = normalizeSelectedTable(table);
@@ -651,6 +657,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     closeOtherResultTabsById,
     closeResultTabsToLeftOf,
     closeResultTabsToRightOf,
+    toggleResultTabPinById,
     displayQueryPreview,
     cancelQuery,
     isCancelling,

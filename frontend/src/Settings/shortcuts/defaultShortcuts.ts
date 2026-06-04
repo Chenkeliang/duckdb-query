@@ -40,6 +40,13 @@ export const DEFAULT_SHORTCUTS: Record<string, ShortcutConfig> = {
     label: 'shortcuts.refreshData',
     category: 'actions',
   },
+  rerunQuery: {
+    actionId: 'rerunQuery',
+    shortcut: 'Cmd+R',
+    defaultShortcut: 'Cmd+R',
+    label: 'shortcuts.rerunQuery',
+    category: 'actions',
+  },
   refreshDataSources: {
     actionId: 'refreshDataSources',
     shortcut: 'Cmd+I',

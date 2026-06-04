@@ -68,10 +68,13 @@ export const GridCell: React.FC<GridCellProps> = React.memo(({
   // 格式化显示值
   const displayValue = isNull ? 'NULL' : String(value);
   const content = children ?? displayValue;
+  // 仅文本内容用原生 title 提供悬停看全文（截断时显示完整值，不撑高行）
+  const isText = typeof content === 'string' || typeof content === 'number';
 
   return (
     <div
       role="gridcell"
+      title={isText ? String(content) : undefined}
       tabIndex={isFocused ? 0 : -1}
       className={cn(
         'dq-data-grid-cell',
@@ -95,7 +98,7 @@ export const GridCell: React.FC<GridCellProps> = React.memo(({
       onDoubleClick={handleDoubleClick}
       onMouseEnter={handleMouseEnter}
     >
-      {typeof content === 'string' || typeof content === 'number' ? (
+      {isText ? (
         <span className="truncate">{content}</span>
       ) : (
         content

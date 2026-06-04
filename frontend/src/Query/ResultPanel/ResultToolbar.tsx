@@ -13,6 +13,8 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  Table2,
+  BarChart3,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -33,8 +35,6 @@ import type { DataGridColumnInfo, ResultPanelGridStats as GridStats } from './ty
 
 export interface ResultToolbarProps {
   stats: GridStats;
-  executionTime?: number;
-  selectedCells?: number;
   gridColumns?: DataGridColumnInfo[];
   onToggleColumn?: (field: string) => void;
   onShowAllColumns?: () => void;
@@ -45,28 +45,18 @@ export interface ResultToolbarProps {
   onExportExcel?: () => void;
   onExportJson?: () => void;
   onExportParquet?: () => void;
-  onRefresh?: () => void;
   onToggleFullscreen?: () => void;
   isFullscreen?: boolean;
-  loading?: boolean;
   disabled?: boolean;
   onImportToDuckDB?: () => void;
   showImportButton?: boolean;
-  previewLimitApplied?: number | null;
+  /** 当前结果视图（表格/图表）；提供 onResultViewChange 时在右侧显示切换 */
+  resultView?: 'table' | 'chart';
+  onResultViewChange?: (view: 'table' | 'chart') => void;
 }
-
-function formatExecutionTime(ms: number): string {
-  if (ms < 1000) {
-    return `${ms.toFixed(0)}ms`;
-  }
-  return `${(ms / 1000).toFixed(2)}s`;
-}
-
 
 export const ResultToolbar: React.FC<ResultToolbarProps> = ({
   stats,
-  executionTime,
-  selectedCells = 0,
   gridColumns,
   onToggleColumn,
   onShowAllColumns,
@@ -77,70 +67,48 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
   onExportExcel,
   onExportJson,
   onExportParquet,
-  onRefresh,
   onToggleFullscreen,
   isFullscreen = false,
-  loading = false,
   disabled = false,
   onImportToDuckDB,
   showImportButton = false,
-  previewLimitApplied,
+  resultView = 'table',
+  onResultViewChange,
 }) => {
-  const { t, i18n } = useTranslation('common');
+  const { t } = useTranslation('common');
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
-  const formatNumber = React.useCallback(
-    (num: number) => new Intl.NumberFormat(i18n.language).format(num),
-    [i18n.language]
-  );
   const hiddenCount = gridColumns?.filter((c) => !c.visible).length || 0;
   const hasExport = !!(onExportCsv || onExportExcel || onExportJson || onExportParquet);
 
   return (
-    <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
-      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-        <span>
-          {stats.filteredRows !== stats.totalRows ? (
-            <>
-              <span className="font-medium text-foreground">{formatNumber(stats.filteredRows)}</span>
-              <span className="mx-1">/</span>
-              <span>{formatNumber(stats.totalRows)}</span>
-              <span className="ml-1">{t('query.result.rows', '行')}</span>
-            </>
-          ) : (
-            <>
-              <span className="font-medium text-foreground">{formatNumber(stats.totalRows)}</span>
-              <span className="ml-1">{t('query.result.rows', '行')}</span>
-            </>
-          )}
-        </span>
-
-        {previewLimitApplied != null && stats.totalRows > 0 && stats.totalRows === previewLimitApplied && (
-          <span className="hidden sm:inline border-l border-border pl-3 text-xs text-muted-foreground max-w-md truncate">
-            {t('query.result.previewCapHint', { max: formatNumber(previewLimitApplied) })}
-          </span>
+    <div className="flex items-center gap-1">
+        {onResultViewChange && (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`h-8 px-2 ${
+                resultView === 'table' ? 'text-primary hover:text-primary' : ''
+              }`}
+              onClick={() => onResultViewChange('table')}
+            >
+              <Table2 className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">{t('query.chart.table', '表格')}</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`h-8 px-2 ${
+                resultView === 'chart' ? 'text-primary hover:text-primary' : ''
+              }`}
+              onClick={() => onResultViewChange('chart')}
+            >
+              <BarChart3 className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">{t('query.chart.chart', '图表')}</span>
+            </Button>
+            <Separator orientation="vertical" className="h-4 mx-0.5" />
+          </>
         )}
-
-        <span>
-          <span className="font-medium text-foreground">{stats.visibleColumnCount}</span>
-          <span className="mx-1">/</span>
-          <span>{stats.columnCount}</span>
-          <span className="ml-1">{t('query.result.columns', '列')}</span>
-        </span>
-
-        {selectedCells > 0 && (
-          <span>
-            <span className="mr-1">{t('query.result.selected', '已选')}</span>
-            <span className="font-medium text-primary">{formatNumber(selectedCells)}</span>
-            <span className="ml-1">{t('dataGrid.cellUnit', '个单元格')}</span>
-          </span>
-        )}
-
-        {executionTime !== undefined && (
-          <span className="text-muted-foreground">{formatExecutionTime(executionTime)}</span>
-        )}
-      </div>
-
-      <div className="flex items-center gap-1">
         {gridColumns && gridColumns.length > 0 && (
           <Popover open={columnMenuOpen} onOpenChange={setColumnMenuOpen} modal>
             <PopoverTrigger asChild>
@@ -248,18 +216,6 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           </Popover>
         )}
 
-        {onRefresh && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2"
-            onClick={onRefresh}
-            disabled={disabled || loading}
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-        )}
-
         {showImportButton && onImportToDuckDB && (
           <>
             <Separator orientation="vertical" className="h-4" />
@@ -323,7 +279,6 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           </Button>
         )}
       </div>
-    </div>
   );
 };
 

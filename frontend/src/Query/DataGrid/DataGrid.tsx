@@ -58,6 +58,14 @@ export interface DataGridProps {
   enableFiltering?: boolean;
   /** 是否启用排序 */
   enableSorting?: boolean;
+  /** 双色斑马行（默认开） */
+  zebraStripes?: boolean;
+  /** 新结果加载后按内容自动适配列宽（默认开） */
+  autoFitOnLoad?: boolean;
+  /** 查询耗时（毫秒），显示在底部统计栏 */
+  executionTime?: number;
+  /** 预览行上限（命中时底部提示结果被截断） */
+  previewLimitApplied?: number | null;
   /** 选区变化回调 */
   onSelectionChange?: (selection: CellSelection | null) => void;
   /** 筛选变化回调 */
@@ -110,6 +118,10 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
   enableSelection = true,
   enableFiltering = true,
   enableSorting = true,
+  zebraStripes = true,
+  autoFitOnLoad = true,
+  executionTime,
+  previewLimitApplied,
   onSelectionChange,
   onFilterChange,
   onSortChange,
@@ -474,6 +486,24 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
     },
   }), [handleAutoFitAllColumns, handleFitToWidth, resetColumns, showAllColumns, toggleColumnVisibility]);
 
+  // 新结果加载后默认按内容自动适配列宽（每个数据集仅一次；用户手动调整后不再覆盖）
+  // 用 ref 持有最新的适配函数，避免把 filteredData 放进触发 effect 的依赖（否则筛选时会重算并冲掉用户列宽）
+  const autoFitAllColumnsRef = useRef(handleAutoFitAllColumns);
+  useEffect(() => {
+    autoFitAllColumnsRef.current = handleAutoFitAllColumns;
+  }, [handleAutoFitAllColumns]);
+
+  const lastAutoFitDataRef = useRef<Record<string, unknown>[] | null>(null);
+  useEffect(() => {
+    if (!autoFitOnLoad) return;
+    // loading 时返回的是 spinner，网格 DOM（containerRef）尚未挂载，无法测量
+    if (loading || data.length === 0) return;
+    // data 为稳定引用（DataGridWrapper 已 memo），仅在新结果集时变化
+    if (lastAutoFitDataRef.current === data) return;
+    lastAutoFitDataRef.current = data;
+    autoFitAllColumnsRef.current();
+  }, [data, loading, autoFitOnLoad]);
+
   // 复制列名
   const handleCopyColumnName = useCallback((field: string) => {
     copyColumnName(field);
@@ -682,7 +712,10 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
           ref={containerRef}
           className={cn(
             'dq-data-grid flex flex-col overflow-hidden',
-            'focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2',
+            !zebraStripes && 'dq-no-zebra',
+            // 容器聚焦不再画整圈光圈（白色 ring-offset + 橙色 ring），
+            // 单元格选区本身已是焦点指示，避免重复的白+橙边框
+            'focus:outline-hidden',
             className
           )}
           style={{ height }}
@@ -739,6 +772,10 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
               columnFilters={columnFilters}
               onClearFilter={handleClearFilter}
               onClearAllFilters={handleClearAllFilters}
+              visibleColumnCount={visibleColumns.length}
+              columnCount={allColumns.length}
+              executionTime={executionTime}
+              previewLimitApplied={previewLimitApplied}
               className="flex-1 border-t-0 min-h-0 px-0"
             />
             {!hideColumnMenu && (

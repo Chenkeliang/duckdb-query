@@ -21,8 +21,21 @@ export interface GridFooterProps {
   onClearFilter?: (columnId: string) => void;
   /** 清除所有筛选 */
   onClearAllFilters?: () => void;
+  /** 可见列数 */
+  visibleColumnCount?: number;
+  /** 总列数 */
+  columnCount?: number;
+  /** 查询耗时（毫秒） */
+  executionTime?: number;
+  /** 预览行上限（命中时提示结果被截断） */
+  previewLimitApplied?: number | null;
   /** 自定义类名 */
   className?: string;
+}
+
+/** 格式化查询耗时 */
+function formatExecMs(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(2)} s`;
 }
 
 export const GridFooter: React.FC<GridFooterProps> = ({
@@ -30,9 +43,17 @@ export const GridFooter: React.FC<GridFooterProps> = ({
   columnFilters = [],
   onClearFilter,
   onClearAllFilters,
+  visibleColumnCount,
+  columnCount,
+  executionTime,
+  previewLimitApplied,
   className,
 }) => {
   const { t } = useTranslation();
+  const capped =
+    previewLimitApplied != null &&
+    stats.totalRows > 0 &&
+    stats.totalRows === previewLimitApplied;
 
   // 格式化筛选值显示
   const formatFilterValue = (value: unknown): string => {
@@ -80,7 +101,7 @@ export const GridFooter: React.FC<GridFooterProps> = ({
         className
       )}
     >
-      {/* 左侧：行数信息 */}
+      {/* 左侧：行数 · 列数 · 预览上限 */}
       <div className="flex items-center gap-3">
         <span>
           {stats.filteredRows !== stats.totalRows
@@ -90,6 +111,18 @@ export const GridFooter: React.FC<GridFooterProps> = ({
         {stats.filteredRows !== stats.totalRows && (
           <span className="text-muted-foreground/60">
             / {t('dataGrid.totalRows', { count: stats.totalRows })}
+          </span>
+        )}
+        {columnCount != null && (
+          <span className="text-muted-foreground/80">
+            {visibleColumnCount != null && visibleColumnCount !== columnCount
+              ? `${visibleColumnCount} / ${columnCount} ${t('dataGrid.columnUnit', '列')}`
+              : `${columnCount} ${t('dataGrid.columnUnit', '列')}`}
+          </span>
+        )}
+        {capped && (
+          <span className="text-warning/90 truncate max-w-xs">
+            {t('query.result.previewCapHint', { max: previewLimitApplied })}
           </span>
         )}
       </div>
@@ -135,7 +168,7 @@ export const GridFooter: React.FC<GridFooterProps> = ({
         </div>
       )}
 
-      {/* 右侧：选区信息 */}
+      {/* 右侧：选区信息 · 查询耗时 */}
       <div className="flex items-center gap-3">
         {stats.selectedCells > 0 && (
           <>
@@ -151,6 +184,11 @@ export const GridFooter: React.FC<GridFooterProps> = ({
               </span>
             )}
           </>
+        )}
+        {executionTime != null && (
+          <span className="text-muted-foreground/70 tabular-nums">
+            {formatExecMs(executionTime)}
+          </span>
         )}
       </div>
     </div>

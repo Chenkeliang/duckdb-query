@@ -252,37 +252,50 @@
 
   /* DataGrid 容器 - 浅色主题 */
   .dq-data-grid {
+    /* 亮色主题 · Amber Line —— 浅暖表头 + 2px amber 下划线 */
     --dg-background: hsl(0 0% 100%);
-    --dg-foreground: hsl(240 10% 3.9%);
-    --dg-header-background: hsl(240 5.9% 96%);
-    --dg-header-foreground: hsl(240 3.8% 46%);
-    --dg-row-odd-background: hsl(240 5.9% 98%);
-    --dg-row-hover-background: hsl(240 5.9% 96%);
-    --dg-row-selected-background: hsl(221.2 83.2% 53.3% / 0.1);
-    --dg-border-color: hsl(240 5.9% 90%);
+    --dg-foreground: hsl(30 8% 18%);
+    --dg-header-background: hsl(40 33% 98%);
+    --dg-header-foreground: hsl(30 7% 40%);
+    --dg-header-border: hsl(var(--primary));
+    --dg-header-border-width: 2px;
+    --dg-header-weight: 600;
+    --dg-header-size: 12px;
+    --dg-header-tracking: 0.01em;
+    --dg-row-odd-background: hsl(40 30% 99%);
+    --dg-row-hover-background: hsl(36 60% 95.5%);
+    --dg-row-selected-background: hsl(var(--primary) / 0.1);
+    --dg-border-color: hsl(36 16% 90%);
     --dg-cell-padding: 0 12px;
     --dg-row-height: 32px;
     --dg-header-height: 36px;
     --dg-font-family: var(--font-mono);
     --dg-font-size: 13px;
-    --dg-null-color: hsl(240 5% 64%);
-    --dg-selection-border: hsl(221.2 83.2% 53.3%);
-    --dg-selection-background: hsl(221.2 83.2% 53.3% / 0.08);
+    --dg-null-color: hsl(30 8% 66%);
+    --dg-selection-border: hsl(var(--primary));
+    --dg-selection-background: hsl(var(--primary) / 0.09);
+    --dg-footer-background: hsl(40 33% 98%);
+    --dg-footer-foreground: hsl(30 7% 40%);
   }
 
   /* DataGrid 容器 - 深色主题 */
   .dark .dq-data-grid {
-    --dg-background: hsl(240 10% 3.9%);
-    --dg-foreground: hsl(0 0% 92%);
-    --dg-header-background: hsl(240 10% 6%);
-    --dg-header-foreground: hsl(0 0% 75%);
-    --dg-row-odd-background: hsl(240 10% 5%);
-    --dg-row-hover-background: hsl(240 3.7% 12%);
-    --dg-row-selected-background: hsl(221.2 83.2% 53.3% / 0.15);
-    --dg-border-color: hsl(240 5% 21%);
-    --dg-null-color: hsl(240 5% 50%);
-    --dg-selection-border: hsl(24.6 95% 53.1%);
-    --dg-selection-background: hsl(24.6 95% 53.1% / 0.1);
+    /* 暗色主题 · Warm Ink —— 暖石灰黑 + 2px amber 下划线,与亮色 Amber Line 对称 */
+    --dg-background: hsl(30 8% 6.5%);
+    --dg-foreground: hsl(40 10% 90%);
+    --dg-header-background: hsl(30 8% 10%);
+    --dg-header-foreground: hsl(36 10% 72%);
+    --dg-header-border: hsl(var(--primary));
+    --dg-header-cell-border: hsl(30 7% 17%);
+    --dg-row-odd-background: hsl(30 8% 8%);
+    --dg-row-hover-background: hsl(32 9% 15%);
+    --dg-row-selected-background: hsl(var(--primary) / 0.15);
+    --dg-border-color: hsl(30 7% 18%);
+    --dg-null-color: hsl(30 6% 52%);
+    --dg-selection-border: hsl(var(--primary));
+    --dg-selection-background: hsl(var(--primary) / 0.15);
+    --dg-footer-background: hsl(30 8% 10%);
+    --dg-footer-foreground: hsl(36 8% 64%);
   }
 
   /* DataGrid 主容器 */
@@ -298,7 +311,8 @@
   /* DataGrid 列头容器 */
   .dq-data-grid-header {
     background: var(--dg-header-background);
-    border-bottom: 1px solid var(--dg-border-color);
+    border-bottom: var(--dg-header-border-width, 1px) solid
+      var(--dg-header-border, var(--dg-border-color));
   }
 
   /* DataGrid 列头单元格 */
@@ -306,8 +320,10 @@
     height: var(--dg-header-height);
     padding: var(--dg-cell-padding);
     color: var(--dg-header-foreground);
-    font-weight: 400;
-    border-right: 1px solid var(--dg-border-color);
+    font-weight: var(--dg-header-weight, 400);
+    font-size: var(--dg-header-size, var(--dg-font-size));
+    letter-spacing: var(--dg-header-tracking, 0);
+    border-right: 1px solid var(--dg-header-cell-border, var(--dg-border-color));
     user-select: none;
     display: flex;
     align-items: center;
@@ -369,6 +385,11 @@
 
   .dq-data-grid-row:nth-child(odd) {
     background: var(--dg-row-odd-background);
+  }
+
+  /* 关闭双色斑马：奇数行透明（同等优先级，hover 仍生效） */
+  .dq-data-grid.dq-no-zebra {
+    --dg-row-odd-background: transparent;
   }
 
   .dq-data-grid-row:hover {
@@ -463,14 +484,14 @@
   .dq-data-grid-footer {
     min-height: 28px;
     padding: 0 12px;
-    background: var(--dg-header-background);
+    background: var(--dg-footer-background, var(--dg-header-background));
     border-top: 1px solid var(--dg-border-color);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
     font-size: 12px;
-    color: var(--dg-header-foreground);
+    color: var(--dg-footer-foreground, var(--dg-header-foreground));
   }
 }
 

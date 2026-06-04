@@ -30,6 +30,7 @@ import { ResultTabGridPane } from './ResultTabGridPane';
 import type { ResultTabEntry } from './resultTabUtils';
 import type { DuckdbColumnType } from '@/types/queryWorkspace';
 import { ChartView } from '@/Query/Charts/ChartView';
+import { useKeyboardShortcuts } from '@/Settings/shortcuts/useKeyboardShortcuts';
 
 export interface ResultPanelProps {
   data: Record<string, unknown>[] | null;
@@ -60,6 +61,7 @@ export interface ResultPanelProps {
   onCloseOtherResultTabs?: (id: string) => void;
   onCloseResultTabsToLeft?: (id: string) => void;
   onCloseResultTabsToRight?: (id: string) => void;
+  onTogglePinResultTab?: (id: string) => void;
   /** 未开启保留时的单槽标题 */
   singleResultSlotLabel?: string;
   /** 联邦导出时 ATTACH 配置 */
@@ -99,6 +101,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   onCloseOtherResultTabs,
   onCloseResultTabsToLeft,
   onCloseResultTabsToRight,
+  onTogglePinResultTab,
   singleResultSlotLabel,
   attachDatabases,
 }) => {
@@ -185,29 +188,6 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     : previewLimitApplied;
   const chartTruncated = chartPreviewLimit != null && chartRows.length >= chartPreviewLimit;
 
-  const viewToggleBar = (
-    <div className="shrink-0 flex items-center gap-1 border-b px-3 py-1">
-      <button
-        type="button"
-        onClick={() => setResultView('table')}
-        className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-          resultView === 'table' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-        }`}
-      >
-        {t('query.chart.table', '表格')}
-      </button>
-      <span className="text-muted-foreground/40 text-xs">|</span>
-      <button
-        type="button"
-        onClick={() => setResultView('chart')}
-        className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-          resultView === 'chart' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-        }`}
-      >
-        {t('query.chart.chart', '图表')}
-      </button>
-    </div>
-  );
   const chartViewEl = (
     <div className="h-full overflow-auto p-3">
       <ChartView
@@ -275,10 +255,6 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     onAutoOpenImportDialogConsumed?.();
   }, [autoOpenImportDialog, handleImportClick, onAutoOpenImportDialogConsumed]);
 
-  const activeTabExecTime = activeTab?.result.execTime;
-  const activeTabLoading = activeTab?.result.loading ?? false;
-  const toolbarExecTime = useMultiTabGrids ? activeTabExecTime : actualExecTime;
-  const toolbarLoading = useMultiTabGrids ? activeTabLoading : loading;
 
   const handleExportParquetServer = useCallback(async () => {
     const sql = useMultiTabGrids
@@ -322,10 +298,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     onRefresh?.();
   }, [useMultiTabGrids, activeResultTabId, onRefreshTab, onRefresh]);
 
+  // Cmd+R / Ctrl+R：重跑当前结果查询（capture 阶段拦截浏览器刷新；可在 设置-键盘快捷键 中改键）
+  useKeyboardShortcuts({ rerunQuery: handleRefreshActiveTab });
+
   const toolbarProps = {
     stats: toolbarStats,
-    selectedCells: dataGridStats?.selectedCells ?? 0,
-    executionTime: toolbarExecTime,
     gridColumns,
     onToggleColumn: (field: string) => getActiveGridApi()?.toggleColumnVisibility(field),
     onShowAllColumns: () => getActiveGridApi()?.showAllColumns(),
@@ -339,20 +316,15 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     onExportParquet: !IS_DEMO && (currentSQL || activeTab?.query.sql)
       ? handleExportParquetServer
       : undefined,
-    onRefresh:
-      useMultiTabGrids && activeResultTabId && activeTab?.query.sql
-        ? handleRefreshActiveTab
-        : onRefresh,
     onToggleFullscreen: handleToggleFullscreen,
     isFullscreen,
-    loading: toolbarLoading,
     // Demo:结果存为 DuckDB 表走服务端 → 隐藏
     showImportButton: !IS_DEMO && !!showImportButton,
     onImportToDuckDB: handleImportClick,
-    previewLimitApplied,
   };
 
-  const resultTabsBar =
+  // 顶部合并栏左侧：多 Tab → 标签页（可横向滚动）；单结果 → 表名
+  const headerLeft =
     retainQueryResults && resultTabs.length > 0 && onSelectResultTab && onCloseResultTab ? (
       <ResultTabsBar
         tabs={resultTabs}
@@ -362,15 +334,29 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         onCloseOthers={onCloseOtherResultTabs ?? onCloseResultTab}
         onCloseToLeft={onCloseResultTabsToLeft ?? onCloseResultTab}
         onCloseToRight={onCloseResultTabsToRight ?? onCloseResultTab}
+        onTogglePin={onTogglePinResultTab}
       />
+    ) : !retainQueryResults && singleResultSlotLabel ? (
+      <span className="truncate px-3 text-xs font-medium text-foreground">
+        {singleResultSlotLabel}
+      </span>
     ) : null;
 
-  const singleSlotHeader =
-    !retainQueryResults && singleResultSlotLabel ? (
-      <div className="shrink-0 border-b border-border bg-muted/20 px-3 py-1.5 text-xs font-medium text-foreground truncate">
-        {singleResultSlotLabel}
+  // 顶部合并栏：左 Tab/表名（滚动）┃ 右 工具栏按钮。竖线在按钮组左侧，多 Tab 增减时位置不动
+  const renderHeaderBar = (toolbar: React.ReactNode) => {
+    if (!headerLeft && !toolbar) return null;
+    return (
+      <div className="flex items-stretch border-b border-border bg-muted/30 min-h-[40px]">
+        <div className="flex min-w-0 flex-1 items-center overflow-x-auto">{headerLeft}</div>
+        {toolbar && (
+          <div className="flex shrink-0 items-center pr-2">
+            <div className="mx-2 h-4 w-px bg-border" />
+            {toolbar}
+          </div>
+        )}
       </div>
-    ) : null;
+    );
+  };
 
   if (useMultiTabGrids) {
     const activeSql = activeTab?.query.sql;
@@ -378,9 +364,15 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
 
     return (
       <div className={`flex flex-col h-full ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : ''} ${className}`}>
-        {resultTabsBar}
-        {showToolbar && <ResultToolbar {...toolbarProps} />}
-        {viewToggleBar}
+        {renderHeaderBar(
+          showToolbar ? (
+            <ResultToolbar
+              {...toolbarProps}
+              resultView={resultView}
+              onResultViewChange={setResultView}
+            />
+          ) : null
+        )}
         <div className="relative flex-1 min-h-0">
           {resultView === 'table'
             ? resultTabs.map((tab) => (
@@ -413,9 +405,9 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   if (showInitialLoading) {
     return (
       <div className={`flex flex-col h-full ${className}`}>
-        {resultTabsBar}
-        {singleSlotHeader}
-        {showToolbar && <ResultToolbar {...toolbarProps} stats={emptyStats} disabled />}
+        {renderHeaderBar(
+          showToolbar ? <ResultToolbar {...toolbarProps} stats={emptyStats} disabled /> : null
+        )}
         <div className="flex-1 flex items-center justify-center bg-background">
           <div className="flex flex-col items-center gap-3 text-muted-foreground">
             <Loader2 className="h-8 w-8 animate-spin" />
@@ -446,9 +438,9 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     };
     return (
       <div className={`flex flex-col h-full ${className}`}>
-        {resultTabsBar}
-        {singleSlotHeader}
-        {showToolbar && <ResultToolbar {...toolbarProps} stats={emptyStats} disabled />}
+        {renderHeaderBar(
+          showToolbar ? <ResultToolbar {...toolbarProps} stats={emptyStats} disabled /> : null
+        )}
         <div className="flex-1 flex items-center justify-center bg-background">
           <div className="flex flex-col items-center gap-3 text-destructive max-w-lg text-center px-4">
             <AlertCircle className="h-10 w-10" />
@@ -490,9 +482,9 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   if (!data || data.length === 0) {
     return (
       <div className={`flex flex-col h-full ${className}`}>
-        {resultTabsBar}
-        {singleSlotHeader}
-        {showToolbar && <ResultToolbar {...toolbarProps} stats={emptyStats} />}
+        {renderHeaderBar(
+          showToolbar ? <ResultToolbar {...toolbarProps} stats={emptyStats} /> : null
+        )}
         <div className="flex-1 flex items-center justify-center bg-background">
           <div className="flex flex-col items-center gap-3 text-muted-foreground">
             <Database className="h-10 w-10" />
@@ -506,10 +498,15 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
 
   return (
     <div className={`flex flex-col h-full ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : ''} ${className}`}>
-      {resultTabsBar}
-      {singleSlotHeader}
-      {showToolbar && <ResultToolbar {...toolbarProps} />}
-      {viewToggleBar}
+      {renderHeaderBar(
+        showToolbar ? (
+          <ResultToolbar
+            {...toolbarProps}
+            resultView={resultView}
+            onResultViewChange={setResultView}
+          />
+        ) : null
+      )}
       <div className="relative flex-1 min-h-0">
         {resultView === 'table' ? (
           <>
@@ -527,6 +524,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
               columns={gridColumnDefs}
               loading={false}
               noRowsOverlayText={t('query.result.noData', '暂无数据')}
+              executionTime={actualExecTime}
+              previewLimitApplied={previewLimitApplied}
               enableSelection
               enableFiltering
               enableSorting

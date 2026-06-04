@@ -25,7 +25,23 @@ export function appendResultTab(
   if (next.length <= MAX_RESULT_TABS) {
     return next;
   }
-  return next.slice(next.length - MAX_RESULT_TABS);
+  // 超额：淘汰最旧的【未固定】Tab；若全部固定则淘汰最旧的
+  const removeIdx = next.findIndex((t) => !t.pinned);
+  return next.filter((_, i) => i !== (removeIdx === -1 ? 0 : removeIdx));
+}
+
+/** 切换固定状态；固定项稳定地排到最前 */
+export function toggleResultTabPin(
+  tabs: ResultTabEntry[],
+  tabId: string
+): ResultTabEntry[] {
+  const flipped = tabs.map((t) =>
+    t.id === tabId ? { ...t, pinned: !t.pinned } : t
+  );
+  return [
+    ...flipped.filter((t) => t.pinned),
+    ...flipped.filter((t) => !t.pinned),
+  ];
 }
 
 export function closeResultTab(
@@ -39,7 +55,7 @@ export function closeOtherResultTabs(
   tabs: ResultTabEntry[],
   tabId: string
 ): ResultTabEntry[] {
-  return tabs.filter((t) => t.id === tabId);
+  return tabs.filter((t) => t.id === tabId || t.pinned);
 }
 
 export function closeResultTabsToLeft(
@@ -48,7 +64,7 @@ export function closeResultTabsToLeft(
 ): ResultTabEntry[] {
   const index = tabs.findIndex((t) => t.id === tabId);
   if (index <= 0) return tabs;
-  return tabs.slice(index);
+  return tabs.filter((t, i) => i >= index || t.pinned);
 }
 
 export function closeResultTabsToRight(
@@ -56,8 +72,8 @@ export function closeResultTabsToRight(
   tabId: string
 ): ResultTabEntry[] {
   const index = tabs.findIndex((t) => t.id === tabId);
-  if (index < 0 || index >= tabs.length - 1) return tabs;
-  return tabs.slice(0, index + 1);
+  if (index < 0) return tabs;
+  return tabs.filter((t, i) => i <= index || t.pinned);
 }
 
 /** 关闭当前 Tab 后应激活的 Tab id（优先右侧，否则左侧） */

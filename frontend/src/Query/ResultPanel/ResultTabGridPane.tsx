@@ -37,7 +37,7 @@ export const ResultTabGridPane: React.FC<ResultTabGridPaneProps> = ({
 }) => {
   const { t } = useTranslation('common');
   const { result } = tab;
-  const { data, columns, duckdbColumnTypes, loading, error } = result;
+  const { data, columns, duckdbColumnTypes, loading, error, execTime, previewLimitApplied } = result;
   const gridRef = useRef<DataGridApi>(null);
   const scrollTopRef = useRef(0);
 
@@ -140,6 +140,8 @@ export const ResultTabGridPane: React.FC<ResultTabGridPaneProps> = ({
         columns={gridColumnDefs}
         loading={false}
         noRowsOverlayText={t('query.result.noData', '暂无数据')}
+        executionTime={execTime}
+        previewLimitApplied={previewLimitApplied}
         enableSelection
         enableFiltering
         enableSorting
