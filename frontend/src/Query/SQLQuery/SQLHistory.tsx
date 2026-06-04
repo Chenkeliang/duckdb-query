@@ -6,6 +6,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Clock, Trash2, Play, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/EmptyState';
 import {
   Sheet,
   SheetContent,
@@ -129,10 +130,7 @@ export const SQLHistory: React.FC<SQLHistoryProps> = ({
           {/* 历史列表 */}
           <ScrollArea className="h-[calc(100vh-200px)]">
             {history.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <Clock className="h-12 w-12 mb-3 opacity-50" />
-                <p>{t('query.history.empty', '暂无历史记录')}</p>
-              </div>
+              <EmptyState icon={Clock} title={t('query.history.empty', '暂无历史记录')} />
             ) : (
               <div className="space-y-2">
                 {history.map((item) => (

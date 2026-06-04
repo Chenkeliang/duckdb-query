@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Star, Trash2, Play, Search, Calendar, Hash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/EmptyState';
 import { Input } from '@/components/ui/input';
 import {
     Sheet,
@@ -140,11 +141,11 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                                 <span className="loading loading-spinner loading-md"></span>
                             </div>
                         ) : filteredFavorites.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                                <Star className="h-12 w-12 mb-3 opacity-20" />
-                                <p>{search ? t('query.bookmark.notFound', '未找到相关收藏') : t('query.bookmark.empty', '暂无收藏记录')}</p>
-                                <p className="text-xs mt-2 opacity-70">{t('query.bookmark.hint', '在编辑器中点击星标按钮添加收藏')}</p>
-                            </div>
+                            <EmptyState
+                                icon={Star}
+                                title={search ? t('query.bookmark.notFound', '未找到相关收藏') : t('query.bookmark.empty', '暂无收藏记录')}
+                                description={t('query.bookmark.hint', '在编辑器中点击星标按钮添加收藏')}
+                            />
                         ) : (
                             <div className="space-y-4">
                                 {filteredFavorites.map((item) => (

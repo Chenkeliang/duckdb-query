@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, RefreshCw, ChevronLeft, Database } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -180,26 +181,20 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
             {/* DuckDB 表 */}
             {filteredTables.length === 0 && !searchQuery ? (
               /* Task 9.4: 空状态样式 */
-              <div className="flex flex-col items-center justify-center p-8 space-y-3">
-                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-                  <Database className="w-6 h-6 text-muted-foreground" />
-                </div>
-                <div className="text-center space-y-1">
-                  <p className="text-sm font-medium text-foreground">{t('dataSource.noTables')}</p>
-                  <p className="text-xs text-muted-foreground">{t('dataSource.uploadOrConnect')}</p>
-                </div>
-              </div>
+              <EmptyState
+                compact
+                icon={Database}
+                title={t('dataSource.noTables')}
+                description={t('dataSource.uploadOrConnect')}
+              />
             ) : filteredTables.length === 0 && searchQuery ? (
               /* Task 9.4: 搜索无结果状态 */
-              <div className="flex flex-col items-center justify-center p-8 space-y-3">
-                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-                  <Search className="w-6 h-6 text-muted-foreground" />
-                </div>
-                <div className="text-center space-y-1">
-                  <p className="text-sm font-medium text-foreground">{t('dataSource.noMatchingTables')}</p>
-                  <p className="text-xs text-muted-foreground">{t('dataSource.tryDifferentKeyword')}</p>
-                </div>
-              </div>
+              <EmptyState
+                compact
+                icon={Search}
+                title={t('dataSource.noMatchingTables')}
+                description={t('dataSource.tryDifferentKeyword')}
+              />
             ) : (
               <>
                 {/* 普通表 */}

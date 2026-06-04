@@ -37,6 +37,7 @@ import { invalidateAllDataCaches } from '@/utils/cacheInvalidation';
 import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
 import { useAppConfig } from '@/hooks/useAppConfig';
 import { cn } from '@/lib/utils';
+import { EmptyState } from '@/components/EmptyState';
 import { DownloadResultDialog } from './DownloadResultDialog';
 
 export interface AsyncTask {
@@ -364,10 +365,7 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : tasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-            <Clock className="h-10 w-10 mb-3 opacity-50" />
-            <p>{t('async.empty', '暂无异步任务')}</p>
-          </div>
+          <EmptyState icon={Clock} title={t('async.empty', '暂无异步任务')} />
         ) : (
           <table className="dq-grid-table">
             <thead>

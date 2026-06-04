@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Clock, Trash2, Play, AlertCircle, CheckCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/EmptyState';
 import { Input } from '@/components/ui/input';
 import {
     Sheet,
@@ -106,10 +107,10 @@ export const GlobalHistoryPanel: React.FC<GlobalHistoryPanelProps> = ({
                 <ScrollArea className="flex-1">
                     <div className="p-6">
                         {filteredHistory.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                                <Clock className="h-12 w-12 mb-3 opacity-50" />
-                                <p>{search ? t('query.history.notFound', '未找到相关记录') : t('query.history.empty', '暂无历史记录')}</p>
-                            </div>
+                            <EmptyState
+                                icon={Clock}
+                                title={search ? t('query.history.notFound', '未找到相关记录') : t('query.history.empty', '暂无历史记录')}
+                            />
                         ) : (
                             <div className="space-y-3">
                                 {filteredHistory.map((item) => (

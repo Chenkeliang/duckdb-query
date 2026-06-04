@@ -31,6 +31,7 @@ import type { ResultTabEntry } from './resultTabUtils';
 import type { DuckdbColumnType } from '@/types/queryWorkspace';
 import { ChartView } from '@/Query/Charts/ChartView';
 import { useKeyboardShortcuts } from '@/Settings/shortcuts/useKeyboardShortcuts';
+import { EmptyState } from '@/components/EmptyState';
 
 export interface ResultPanelProps {
   data: Record<string, unknown>[] | null;
@@ -486,11 +487,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           showToolbar ? <ResultToolbar {...toolbarProps} stats={emptyStats} /> : null
         )}
         <div className="flex-1 flex items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-3 text-muted-foreground">
-            <Database className="h-10 w-10" />
-            <span>{emptyMessage || t('query.result.noData', '暂无数据')}</span>
-            <span className="text-sm">{t('query.result.noDataHint', '执行查询以查看结果')}</span>
-          </div>
+          <EmptyState
+            icon={Database}
+            title={emptyMessage || t('query.result.noData', '暂无数据')}
+            description={t('query.result.noDataHint', '执行查询以查看结果')}
+          />
         </div>
       </div>
     );
