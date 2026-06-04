@@ -37,10 +37,11 @@ const NUMBER_PATTERNS = [
 ];
 
 // 布尔值模式
+// 注意：不含 '1'/'0' —— DuckDB BOOLEAN 列返回 true/false，而 0/1 几乎总是整数
+// （计数、标志位），误判会把数值列渲染成 ✓/✗（例如 PIVOT COUNT 结果）。
 const BOOLEAN_VALUES = new Set([
   'true', 'false',
   'yes', 'no',
-  '1', '0',
   't', 'f',
   'y', 'n',
   '是', '否',
