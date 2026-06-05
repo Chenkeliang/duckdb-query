@@ -7,7 +7,8 @@ import {
   Info,
   RefreshCw,
   Database,
-  Download
+  Download,
+  BarChart3
 } from 'lucide-react';
 import {
   ContextMenu,
@@ -32,6 +33,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { executeDuckDBSQL, getExternalTableDetail } from '@/api';
 import { exportQueryResults, getQueryExportDownloadUrl } from '@/api/queryExportApi';
+import { TableProfileDialog } from './TableProfileDialog';
 import type { SelectedTableObject } from '@/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
 import { invalidateDataSources } from '@/hooks/useDataSources';
@@ -71,6 +73,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
   const [showStructure, setShowStructure] = React.useState(false);
+  const [showProfile, setShowProfile] = React.useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [structureData, setStructureData] = React.useState<any[]>([]);
   const [indexData, setIndexData] = React.useState<any[]>([]); // 外部表索引（DuckDB 表无索引概念，不展示）
@@ -241,6 +244,14 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
             <span>{t('dataSource.viewStructure')}</span>
           </ContextMenuItem>
 
+          {/* 数据画像 - 仅 DuckDB 表（SUMMARIZE） */}
+          {!isExternal && (
+            <ContextMenuItem onClick={() => setShowProfile(true)}>
+              <BarChart3 className="mr-2 h-4 w-4" />
+              <span>{t('dataSource.profile')}</span>
+            </ContextMenuItem>
+          )}
+
           {/* 导出 - 仅 DuckDB 表（服务端 COPY，支持 CSV / Parquet） */}
           {!isExternal && (
             <ContextMenuSub>
@@ -274,6 +285,13 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
           )}
         </ContextMenuContent>
       </ContextMenu>
+
+      {/* 数据画像对话框 */}
+      <TableProfileDialog
+        tableName={table.name}
+        open={showProfile}
+        onOpenChange={setShowProfile}
+      />
 
       {/* 查看结构对话框 */}
       <Dialog open={showStructure} onOpenChange={setShowStructure}>
