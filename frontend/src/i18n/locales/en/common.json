@@ -102,8 +102,6 @@
     "importToDuckDB": "Import to DuckDB",
     "viewStructure": "View Structure",
     "profile": "Data Profile",
-    "profileTitle": "Data Profile: {{tableName}}",
-    "profileDesc": "Per-column statistics (SUMMARIZE)",
     "exportTable": "Export Data",
     "exportStarted": "Exporting {{tableName}}…",
     "exportFailed": "Export failed: {{error}}",
@@ -680,6 +678,7 @@
     "success": "Query successful, returned {{count}} rows",
     "error": "Query failed: {{message}}",
     "previewFailed": "Preview failed: {{message}}",
+    "profileFailed": "Data profile failed: {{message}}",
     "tableDeleted": "Table {{table}} deleted",
     "deleteFailed": "Delete failed: {{message}}",
     "tabs": {

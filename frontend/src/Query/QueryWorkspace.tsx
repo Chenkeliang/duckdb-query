@@ -94,6 +94,20 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
     [handleQueryExecute, t]
   );
 
+  // 数据画像：SUMMARIZE 表 → 走标准执行路径，结果进结果网格（复用全部网格能力）
+  const handleProfile = React.useCallback(
+    async (table: SelectedTable) => {
+      const { qualifiedName } = generateExternalTableReference(table);
+      const sql = `SUMMARIZE ${qualifiedName}`;
+      try {
+        await handleQueryExecute(sql, { type: 'duckdb' });
+      } catch (error) {
+        showErrorToast(t, error as Error, t('query.profileFailed', { message: (error as Error).message }));
+      }
+    },
+    [handleQueryExecute, t]
+  );
+
   const handleImport = React.useCallback(
     async (table: SelectedTable) => {
       const normalized = normalizeSelectedTable(table);
@@ -209,6 +223,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
               onCollapse={toggleDataSourcePanel}
               selectionMode={currentTab === "join" || currentTab === "set" ? "multiple" : "single"}
               onPreview={handlePreview}
+              onProfile={handleProfile}
               onImport={handleImport}
               onDelete={handleDelete}
             />

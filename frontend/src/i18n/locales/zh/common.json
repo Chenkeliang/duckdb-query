@@ -116,8 +116,6 @@
     "unique": "唯一",
     "noIndexes": "暂无索引信息",
     "profile": "数据画像",
-    "profileTitle": "数据画像: {{tableName}}",
-    "profileDesc": "每列的统计画像（SUMMARIZE）",
     "exportTable": "导出数据",
     "exportStarted": "正在导出 {{tableName}}…",
     "exportFailed": "导出失败: {{error}}",
@@ -680,6 +678,7 @@
     "success": "查询成功，返回 {{count}} 行数据",
     "error": "查询失败: {{message}}",
     "previewFailed": "预览失败: {{message}}",
+    "profileFailed": "数据画像失败: {{message}}",
     "tableDeleted": "表 {{table}} 已删除",
     "deleteFailed": "删除失败: {{message}}",
     "tabs": {

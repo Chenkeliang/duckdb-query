@@ -61,6 +61,7 @@ interface TableItemProps {
   selectionMode?: 'single' | 'multiple';
   onSelect: (table: SelectedTableObject) => void;
   onPreview?: (table: SelectedTableObject) => void;
+  onProfile?: (table: SelectedTableObject) => void;
   onDelete?: (tableName: string) => void;
   onImport?: (table: SelectedTableObject) => void;
   searchQuery?: string;
@@ -115,6 +116,7 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
   selectionMode = 'single',
   onSelect,
   onPreview,
+  onProfile,
   onDelete,
   onImport,
   searchQuery = '',
@@ -174,6 +176,12 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
     }
   }, [onPreview, table]);
 
+  const handleProfile = React.useCallback(() => {
+    if (onProfile) {
+      onProfile(table);
+    }
+  }, [onProfile, table]);
+
   // 外部表不能删除（只能删除 DuckDB 表）
   const canDelete = table.source === 'duckdb';
 
@@ -204,6 +212,7 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
       table={table}
       canDelete={canDelete}
       onPreview={handlePreview}
+      onProfile={handleProfile}
       onDelete={onDelete}
       onImport={onImport}
     >

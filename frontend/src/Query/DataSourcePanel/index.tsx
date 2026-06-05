@@ -43,6 +43,7 @@ interface DataSourcePanelProps {
   onCollapse?: () => void;
   selectionMode?: 'single' | 'multiple';
   onPreview?: (table: SelectedTable) => void;
+  onProfile?: (table: SelectedTable) => void;
   onDelete?: (tableName: string) => Promise<void> | void;
   onImport?: (table: SelectedTable) => void;
 }
@@ -54,6 +55,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
   onCollapse,
   selectionMode = 'single',
   onPreview,
+  onProfile,
   onDelete,
   onImport,
 }) => {
@@ -290,6 +292,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                           selectionMode={selectionMode}
                           onSelect={onTableSelect}
                           onPreview={onPreview}
+                          onProfile={onProfile}
                           onDelete={handleDelete}
                           searchQuery={debouncedSearch}
                           batchMode={batchMode}
@@ -320,6 +323,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                           selectionMode={selectionMode}
                           onSelect={onTableSelect}
                           onPreview={onPreview}
+                          onProfile={onProfile}
                           onDelete={handleDelete}
                           searchQuery={debouncedSearch}
                         />
