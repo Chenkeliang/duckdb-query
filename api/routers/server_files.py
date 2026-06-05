@@ -50,6 +50,9 @@ class ServerFileImportRequest(BaseModel):
     path: str
     table_alias: Optional[str] = None
     import_mode: str = "auto"
+    csv_delimiter: Optional[str] = None
+    csv_has_header: Optional[bool] = None
+    csv_encoding: Optional[str] = None
 
     @field_validator("import_mode", mode="before")
     @classmethod
@@ -260,9 +263,23 @@ async def import_server_file(payload: ServerFileImportRequest):
 
         from core.services.file_ingestion_service import build_file_metadata, save_file_metadata
 
+        # Build reader_options for CSV files only
+        reader_options: Optional[dict] = None
+        if file_type == "csv":
+            opts: dict = {}
+            if payload.csv_delimiter is not None:
+                opts["delim"] = payload.csv_delimiter
+            if payload.csv_has_header is not None:
+                opts["HEADER"] = payload.csv_has_header
+            if payload.csv_encoding is not None:
+                opts["encoding"] = payload.csv_encoding
+            if opts:
+                reader_options = opts
+
         with with_duckdb_connection() as con:
             ingest_result = ingest_server_tabular(
-                con, real_path, payload.table_alias, import_mode=payload.import_mode
+                con, real_path, payload.table_alias, import_mode=payload.import_mode,
+                reader_options=reader_options,
             )
         table_name = ingest_result.table_name
         metadata = {

@@ -389,6 +389,7 @@ def ingest_server_tabular(
     real_path: str,
     table_alias: Optional[str],
     import_mode: str = "auto",
+    reader_options: Optional[Dict[str, Any]] = None,
 ) -> TabularIngestResult:
     file_type = detect_file_type(real_path)
     import_mode = resolve_import_mode(import_mode, file_type=file_type)
@@ -398,7 +399,8 @@ def ingest_server_tabular(
         prefix="table",
     )
     meta = create_table_from_file_path_typed(
-        con, table_name, real_path, file_type, import_mode=import_mode
+        con, table_name, real_path, file_type, import_mode=import_mode,
+        reader_options=reader_options,
     )
     return TabularIngestResult(
         table_name=table_name,

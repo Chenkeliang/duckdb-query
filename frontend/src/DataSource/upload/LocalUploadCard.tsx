@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CsvOptionsPanel, type CsvOptions } from "./CsvOptionsPanel";
 
 export interface LocalUploadCardProps {
   maxFileSizeDisplay: string;
@@ -14,9 +15,11 @@ export interface LocalUploadCardProps {
   uploading: boolean;
   uploadProgress: number | null;
   dragOver: boolean;
+  csvOptions: CsvOptions;
   onFileSelect: (file: File) => void;
   onUploadAliasChange: (value: string) => void;
   onDragOver: (over: boolean) => void;
+  onCsvOptionsChange: (opts: CsvOptions) => void;
   onUpload: () => void;
   onClear: () => void;
 }
@@ -28,9 +31,11 @@ export function LocalUploadCard({
   uploading,
   uploadProgress,
   dragOver,
+  csvOptions,
   onFileSelect,
   onUploadAliasChange,
   onDragOver,
+  onCsvOptionsChange,
   onUpload,
   onClear,
 }: LocalUploadCardProps) {
@@ -107,6 +112,10 @@ export function LocalUploadCard({
             {t("page.datasource.uploadAliasHelper")}
           </p>
         </div>
+
+        {selectedFile?.name.toLowerCase().endsWith(".csv") ? (
+          <CsvOptionsPanel value={csvOptions} onChange={onCsvOptionsChange} />
+        ) : null}
 
         <div className="flex flex-wrap gap-3">
           <Button onClick={onUpload} disabled={uploading || !selectedFile}>

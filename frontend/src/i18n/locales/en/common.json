@@ -1037,7 +1037,18 @@
       "remoteTips3": "Imported files are created directly as DuckDB tables",
       "chunkedHint": "Files over {{mb}}MB upload in chunks",
       "uploadingPercent": "Uploading {{percent}}%",
-      "importModeVariant": "Variant (nested JSON)"
+      "importModeVariant": "Variant (nested JSON)",
+      "csvOptions": {
+        "title": "CSV options",
+        "delimiter": "Delimiter",
+        "delimiterPlaceholder": "Auto-detect (e.g. , ; \\t |)",
+        "header": "Header",
+        "headerAuto": "Auto",
+        "headerYes": "Has header",
+        "headerNo": "No header",
+        "encoding": "Encoding",
+        "encodingAuto": "Auto-detect"
+      }
     }
   },
   "settings": {

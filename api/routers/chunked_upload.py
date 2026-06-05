@@ -260,12 +260,23 @@ def _load_stream_into_duckdb(
         desired_name = session.get("table_alias") or session["file_name"].split(".")[0]
         source_id = _generate_unique_table_name(con, desired_name)
 
+        # Build reader_options from session CSV fields (streaming path; CSV only)
+        _stream_csv_opts: Dict[str, Any] = {}
+        if file_extension == "csv":
+            if session.get("csv_delimiter") is not None:
+                _stream_csv_opts["delim"] = session["csv_delimiter"]
+            if session.get("csv_has_header") is not None:
+                _stream_csv_opts["HEADER"] = session["csv_has_header"]
+            if session.get("csv_encoding") is not None:
+                _stream_csv_opts["encoding"] = session["csv_encoding"]
+
         metadata = create_table_from_dataframe(
             con,
             source_id,
             fifo_path,
             file_extension,
             import_mode=session.get("import_mode", "auto"),
+            reader_options=_stream_csv_opts or None,
         )
 
         table_metadata = {
@@ -303,6 +314,9 @@ async def init_upload(
     file_hash: str = Form(default=None),
     table_alias: str = Form(default=None),  # 表别名支持
     import_mode: str = Form(default="auto"),
+    csv_delimiter: Optional[str] = Form(default=None),
+    csv_has_header: Optional[bool] = Form(default=None),
+    csv_encoding: Optional[str] = Form(default=None),
 ):
     """
     初始化分块上传
@@ -359,6 +373,9 @@ async def init_upload(
             "file_hash": file_hash,
             "table_alias": table_alias,  # 保存表别名
             "import_mode": import_mode,
+            "csv_delimiter": csv_delimiter,
+            "csv_has_header": csv_has_header,
+            "csv_encoding": csv_encoding,
             "chunks_dir": get_chunks_dir(upload_id),
             "file_extension": file_extension,
         }
@@ -524,12 +541,23 @@ async def complete_upload(
                         "File hash verification failed, file may be corrupted"
                     )
 
+            # Build reader_options from session CSV fields (CSV only)
+            _csv_opts: Dict[str, Any] = {}
+            if file_extension == "csv":
+                if session.get("csv_delimiter") is not None:
+                    _csv_opts["delim"] = session["csv_delimiter"]
+                if session.get("csv_has_header") is not None:
+                    _csv_opts["HEADER"] = session["csv_has_header"]
+                if session.get("csv_encoding") is not None:
+                    _csv_opts["encoding"] = session["csv_encoding"]
+
             file_info = await process_uploaded_file(
                 final_file_path,
                 session["file_name"],
                 session.get("table_alias"),
                 background_tasks=background_tasks,
                 import_mode=session.get("import_mode", "auto"),
+                reader_options=_csv_opts or None,
             )
 
         if os.path.exists(session["chunks_dir"]):
@@ -586,6 +614,7 @@ async def process_uploaded_file(
     table_alias: str = None,
     background_tasks: Optional[BackgroundTasks] = None,
     import_mode: str = "auto",
+    reader_options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Process uploaded file and load to DuckDB"""
     try:
@@ -620,6 +649,7 @@ async def process_uploaded_file(
                 import_mode=import_mode,
                 filename_for_meta=file_name,
                 persist_path=file_path,
+                reader_options=reader_options,
             )
             source_id = ingest_result.table_name
             table_info = {

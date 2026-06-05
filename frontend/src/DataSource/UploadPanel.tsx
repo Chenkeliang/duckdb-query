@@ -28,6 +28,7 @@ import { invalidateAfterFileUpload } from "@/utils/cacheInvalidation";
 import type {
   ServerFileEntry,
   ServerMount,
+  CsvOptions,
 } from "./upload/ServerBrowseCard";
 
 // 类型定义
@@ -132,6 +133,10 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
   const [serverAlias, setServerAlias] = useState("");
   const [serverImporting, setServerImporting] = useState(false);
 
+  // CSV import options — shared between local-upload and server-browse flows
+  const [localCsvOptions, setLocalCsvOptions] = useState<CsvOptions>({});
+  const [serverCsvOptions, setServerCsvOptions] = useState<CsvOptions>({});
+
   const handleUpload = async () => {
     if (!selectedFile) {
       toast.warning(t("page.datasource.pickFileFirst"));
@@ -160,6 +165,7 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
         {
           importMode,
           onProgress: (progress) => setUploadProgress(progress.percent),
+          csvOptions: localCsvOptions,
         }
       );
 
@@ -407,6 +413,9 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
         path: serverSelectedFile.path,
         table_alias: aliasValue,
         import_mode: importMode,
+        ...(serverCsvOptions.delimiter !== undefined && { csv_delimiter: serverCsvOptions.delimiter }),
+        ...(serverCsvOptions.hasHeader !== undefined && { csv_has_header: serverCsvOptions.hasHeader }),
+        ...(serverCsvOptions.encoding !== undefined && { csv_encoding: serverCsvOptions.encoding }),
       });
       if (result?.success) {
         showSuccessToast(
@@ -527,18 +536,22 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
           uploading={uploading}
           uploadProgress={uploadProgress}
           dragOver={dragOver}
+          csvOptions={localCsvOptions}
           onFileSelect={file => {
             setSelectedFile(file);
+            setLocalCsvOptions({});
             if (!uploadAlias.trim()) {
               setUploadAlias(stemFromFilename(file.name));
             }
           }}
           onUploadAliasChange={setUploadAlias}
           onDragOver={setDragOver}
+          onCsvOptionsChange={setLocalCsvOptions}
           onUpload={handleUpload}
           onClear={() => {
             setSelectedFile(null);
             setUploadAlias("");
+            setLocalCsvOptions({});
           }}
         />
       )}
@@ -574,13 +587,18 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
           serverSelectedFile={serverSelectedFile}
           serverAlias={serverAlias}
           serverImporting={serverImporting}
+          csvOptions={serverCsvOptions}
           onMountChange={path => {
             setSelectedMount(path);
             loadServerDirectory(path);
           }}
           onBrowseDirectory={loadServerDirectory}
-          onSelectFile={setServerSelectedFile}
+          onSelectFile={entry => {
+            setServerSelectedFile(entry);
+            setServerCsvOptions({});
+          }}
           onServerAliasChange={setServerAlias}
+          onCsvOptionsChange={setServerCsvOptions}
           onImport={handleServerImport}
         />
       )}

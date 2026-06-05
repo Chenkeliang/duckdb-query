@@ -14,11 +14,18 @@ import type { UploadResponse, UploadProgress } from './types';
 /** 与后端 `import_mode` 一致：auto=先文本再安全定型，literal=全部 VARCHAR */
 export type FileImportMode = 'auto' | 'literal' | 'variant';
 
+export interface CsvUploadOptions {
+    delimiter?: string;
+    hasHeader?: boolean;
+    encoding?: string;
+}
+
 export interface UploadOptions {
     tableAlias?: string;
     target?: 'duckdb' | 'memory';
     importMode?: FileImportMode;
     onProgress?: (progress: UploadProgress) => void;
+    csvOptions?: CsvUploadOptions;
 }
 
 function appendImportMode(formData: FormData, importMode?: FileImportMode): void {
@@ -117,7 +124,7 @@ export async function uploadFileEnhanced(
     file: File,
     options: UploadOptions = {}
 ): Promise<UploadResponse> {
-    const { tableAlias = null, target = 'duckdb', onProgress, importMode } = options;
+    const { tableAlias = null, target = 'duckdb', onProgress, importMode, csvOptions } = options;
 
     const formData = new FormData();
     formData.append('file', file);
@@ -128,6 +135,17 @@ export async function uploadFileEnhanced(
         formData.append('target', target);
     }
     appendImportMode(formData, importMode);
+
+    // CSV options — only appended when the user explicitly set them
+    if (csvOptions?.delimiter !== undefined) {
+        formData.append('csv_delimiter', csvOptions.delimiter);
+    }
+    if (csvOptions?.hasHeader !== undefined) {
+        formData.append('csv_has_header', String(csvOptions.hasHeader));
+    }
+    if (csvOptions?.encoding !== undefined) {
+        formData.append('csv_encoding', csvOptions.encoding);
+    }
 
     try {
         const response = await uploadClient.post('/api/upload', formData, {
@@ -204,7 +222,8 @@ export async function initChunkedUpload(
     file: File,
     tableAlias: string | null = null,
     chunkSize = DEFAULT_CHUNK_SIZE_BYTES,
-    importMode: FileImportMode = 'auto'
+    importMode: FileImportMode = 'auto',
+    csvOptions?: CsvUploadOptions
 ): Promise<ChunkedUploadInitResult> {
     const formData = new FormData();
     formData.append('file_name', file.name);
@@ -214,6 +233,15 @@ export async function initChunkedUpload(
         formData.append('table_alias', tableAlias);
     }
     appendImportMode(formData, importMode);
+    if (csvOptions?.delimiter !== undefined) {
+        formData.append('csv_delimiter', csvOptions.delimiter);
+    }
+    if (csvOptions?.hasHeader !== undefined) {
+        formData.append('csv_has_header', String(csvOptions.hasHeader));
+    }
+    if (csvOptions?.encoding !== undefined) {
+        formData.append('csv_encoding', csvOptions.encoding);
+    }
     const response = await uploadClient.post('/api/upload/init', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
     });
@@ -269,7 +297,8 @@ export async function uploadFileChunked(
             file,
             tableAlias,
             DEFAULT_CHUNK_SIZE_BYTES,
-            options.importMode ?? 'auto'
+            options.importMode ?? 'auto',
+            options.csvOptions
         );
         uploadId = init.upload_id;
         const chunkSize = init.chunk_size;
@@ -539,13 +568,16 @@ export async function browseServerDirectory(path: string): Promise<{
 
 /**
  * Import file from server
- * 
+ *
  * Returns normalized UploadResponse
  */
 export async function importServerFile(payload: {
     path: string;
     table_alias?: string;
     import_mode?: FileImportMode;
+    csv_delimiter?: string;
+    csv_has_header?: boolean;
+    csv_encoding?: string;
 }): Promise<UploadResponse> {
     try {
         const response = await apiClient.post('/api/server-files/import', payload);

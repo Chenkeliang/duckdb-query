@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { stemFromFilename } from "./uploadPathUtils";
+import { CsvOptionsPanel, type CsvOptions } from "./CsvOptionsPanel";
 
 export interface ServerFileEntry {
   path: string;
@@ -39,12 +40,16 @@ export interface ServerBrowseCardProps {
   serverSelectedFile: ServerFileEntry | null;
   serverAlias: string;
   serverImporting: boolean;
+  csvOptions: CsvOptions;
   onMountChange: (path: string) => void;
   onBrowseDirectory: (path: string) => void;
   onSelectFile: (entry: ServerFileEntry) => void;
   onServerAliasChange: (alias: string) => void;
+  onCsvOptionsChange: (opts: CsvOptions) => void;
   onImport: () => void;
 }
+
+export type { CsvOptions };
 
 export function ServerBrowseCard({
   serverMounts,
@@ -57,12 +62,16 @@ export function ServerBrowseCard({
   serverSelectedFile,
   serverAlias,
   serverImporting,
+  csvOptions,
   onMountChange,
   onBrowseDirectory,
   onSelectFile,
   onServerAliasChange,
+  onCsvOptionsChange,
   onImport,
 }: ServerBrowseCardProps) {
+  const isCsvSelected =
+    (serverSelectedFile?.extension || "").toLowerCase() === "csv";
   const { t } = useTranslation("common");
 
   return (
@@ -233,6 +242,10 @@ export function ServerBrowseCard({
             {t("page.datasource.serverAliasHelper")}
           </p>
         </div>
+
+        {isCsvSelected ? (
+          <CsvOptionsPanel value={csvOptions} onChange={onCsvOptionsChange} />
+        ) : null}
 
         <div className="flex gap-3">
           <Button

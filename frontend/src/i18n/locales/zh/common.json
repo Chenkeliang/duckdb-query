@@ -1037,7 +1037,18 @@
       },
       "chunkedHint": "大于 {{mb}}MB 将自动分块上传",
       "uploadingPercent": "上传中 {{percent}}%",
-      "importModeVariant": "变体 VARIANT（嵌套 JSON）"
+      "importModeVariant": "变体 VARIANT（嵌套 JSON）",
+      "csvOptions": {
+        "title": "CSV 高级选项",
+        "delimiter": "分隔符",
+        "delimiterPlaceholder": "自动检测（如 , ; \\t |）",
+        "header": "表头",
+        "headerAuto": "自动",
+        "headerYes": "有表头",
+        "headerNo": "无表头",
+        "encoding": "编码",
+        "encodingAuto": "自动检测"
+      }
     }
   },
   "settings": {

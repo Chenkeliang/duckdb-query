@@ -133,6 +133,9 @@ async def upload_file(
     file: UploadFile = File(...),
     table_alias: str = Form(None),
     import_mode: str = Form("auto"),
+    csv_delimiter: Optional[str] = Form(None),
+    csv_has_header: Optional[bool] = Form(None),
+    csv_encoding: Optional[str] = Form(None),
 ) -> Any:
     """上传文件并返回详细信息，支持CSV、Excel、JSON、Parquet格式"""
     try:
@@ -232,6 +235,19 @@ async def upload_file(
 
         preview_info = get_file_preview(save_path, rows=10)
 
+        # Build reader_options for CSV files only
+        reader_options: Optional[Dict[str, Any]] = None
+        if file_type == "csv":
+            opts: Dict[str, Any] = {}
+            if csv_delimiter is not None:
+                opts["delim"] = csv_delimiter
+            if csv_has_header is not None:
+                opts["HEADER"] = csv_has_header  # uppercase to override default
+            if csv_encoding is not None:
+                opts["encoding"] = csv_encoding
+            if opts:
+                reader_options = opts
+
         with with_duckdb_connection() as duckdb_con:
             try:
                 ingest_result = ingest_tabular_file(
@@ -242,6 +258,7 @@ async def upload_file(
                     import_mode=import_mode,
                     filename_for_meta=file.filename,
                     persist_path=save_path,
+                    reader_options=reader_options,
                 )
             except Exception as e:
                 return error_json_response(
