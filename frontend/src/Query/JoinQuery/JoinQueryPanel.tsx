@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitMerge, Play, Eye, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, StopCircle, Loader2, Star, Timer } from 'lucide-react';
+import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, StopCircle, Loader2, Star, Timer } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { EmptyState as UiEmptyState } from '@/components/EmptyState';
@@ -27,7 +27,6 @@ import {
 } from '@/components/ui/tooltip';
 import { cancelSyncQuery, parseFederatedQueryError, performJoinQuery } from '@/api';
 import type { TableSource, UseQueryWorkspaceReturn } from '@/hooks/useQueryWorkspace';
-import { showErrorToast } from '@/utils/toastHelpers';
 import {
   buildJoinQueryPayload,
   canUseServerJoinPath,
@@ -1134,7 +1133,6 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   const [chatOpen, setChatOpen] = React.useState(false);
   const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
   const [isExecuting, setIsExecuting] = React.useState(false);
-  const [isPreviewing, setIsPreviewing] = React.useState(false);
   const [localIsCancelling, setLocalIsCancelling] = React.useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
   const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
@@ -1751,23 +1749,6 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     return false;
   };
 
-  const handlePreview = async () => {
-    if (!canUseServerJoin || !onDisplayPreview) return;
-    if (hasConflicts && !allResolved) {
-      setShowTypeConflictDialog(true);
-      return;
-    }
-    setIsPreviewing(true);
-    setFederatedError(null);
-    try {
-      await runServerJoin(true);
-    } catch (error) {
-      showErrorToast(t, error as Error, t('query.join.previewFailed', '关联查询预览失败'));
-    } finally {
-      setIsPreviewing(false);
-    }
-  };
-
   // 执行查询：DuckDB 简单 JOIN 走服务端；联邦/筛选/表达式仍本地 SQL
   const handleExecute = async () => {
     if (hasConflicts && !allResolved) {
@@ -1832,7 +1813,6 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     }
 
     setIsExecuting(false);
-    setIsPreviewing(false);
     setLocalIsCancelling(false);
   }, [onCancel]);
 
@@ -1907,32 +1887,16 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
                 {t('query.cancel', '取消')}
               </Button>
             ) : (
-              <>
-                {canUseServerJoin && onDisplayPreview ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handlePreview}
-                    disabled={!canExecute || isExecuting || isPreviewing}
-                    className="gap-1.5"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    {isPreviewing
-                      ? t('query.join.previewing', '预览中…')
-                      : t('query.join.preview', '预览')}
-                  </Button>
-                ) : null}
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleExecute}
-                  disabled={!canExecute || isExecuting || isPreviewing}
-                  className="gap-1.5"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  {t('query.execute', '执行')}
-                </Button>
-              </>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleExecute}
+                disabled={!canExecute || isExecuting}
+                className="gap-1.5"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                {t('query.execute', '执行')}
+              </Button>
             )}
 
             {/* 异步执行按钮 */}
