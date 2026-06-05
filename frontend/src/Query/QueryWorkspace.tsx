@@ -98,7 +98,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
   const handleProfile = React.useCallback(
     async (table: SelectedTable) => {
       const { qualifiedName } = generateExternalTableReference(table);
-      const sql = `SUMMARIZE ${qualifiedName}`;
+      // 包成子查询：SUMMARIZE 是元语句不接 LIMIT，执行路径会自动追加显示 LIMIT
+      const sql = `SELECT * FROM (SUMMARIZE ${qualifiedName})`;
       try {
         await handleQueryExecute(sql, { type: 'duckdb' });
       } catch (error) {
