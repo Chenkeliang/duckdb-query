@@ -135,7 +135,16 @@ async def list_duckdb_tables_summary():
     """获取DuckDB中所有可用表的概要信息"""
     try:
         with with_duckdb_connection() as con:
-            tables_df = con.execute("SHOW TABLES").fetchdf()
+            # 一次性从 DuckDB 元数据目录取行数估计与列数，
+            # 避免逐表 DESCRIBE + COUNT(*)（N+1，且 COUNT 是全表扫描）
+            tables_df = con.execute(
+                """
+                SELECT table_name AS name, estimated_size, column_count
+                FROM duckdb_tables()
+                WHERE NOT internal AND database_name = current_database()
+                ORDER BY table_name
+                """
+            ).fetchdf()
 
             if tables_df.empty:
                 return create_list_response(
@@ -151,61 +160,30 @@ async def list_duckdb_tables_summary():
                 table_name = row["name"]
                 if table_name.lower().startswith("system_"):
                     continue
-                try:
-                    # 获取列数量
-                    schema_df = con.execute(f'DESCRIBE "{table_name}"').fetchdf()
-                    column_count = len(schema_df) if not schema_df.empty else 0
+                # 行数估计 + 列数直接来自 duckdb_tables()（无逐表扫描）
+                est = row["estimated_size"]
+                row_count = int(est) if est is not None else 0
+                column_count = (
+                    int(row["column_count"]) if row["column_count"] is not None else 0
+                )
 
-                    # 获取行数
-                    count_result = con.execute(
-                        f'SELECT COUNT(*) as count FROM "{table_name}"'
-                    ).fetchone()
-                    row_count = int(count_result[0]) if count_result else 0
+                metadata = file_datasource_manager.get_file_datasource(table_name)
+                raw_created_at = metadata.get("created_at") if metadata else None
+                if isinstance(raw_created_at, datetime):
+                    created_at = raw_created_at.isoformat()
+                elif raw_created_at is not None:
+                    created_at = str(raw_created_at)
+                else:
+                    created_at = None
 
-                    metadata = file_datasource_manager.get_file_datasource(table_name)
-                    raw_created_at = metadata.get("created_at") if metadata else None
-                    if isinstance(raw_created_at, datetime):
-                        created_at = raw_created_at.isoformat()
-                    elif raw_created_at is not None:
-                        created_at = str(raw_created_at)
-                    else:
-                        created_at = None
-
-                    table_info.append(
-                        {
-                            "table_name": table_name,
-                            "column_count": column_count,
-                            "row_count": row_count,
-                            "created_at": created_at,
-                        }
-                    )
-                except Exception as table_error:
-                    logger.warning(f"Failed to get table {table_name} info: {str(table_error)}")
-
-                    # 尝试从元数据获取列信息
-                    metadata = file_datasource_manager.get_file_datasource(table_name)
-                    raw_created_at = metadata.get("created_at") if metadata else None
-                    if isinstance(raw_created_at, datetime):
-                        created_at = raw_created_at.isoformat()
-                    elif raw_created_at is not None:
-                        created_at = str(raw_created_at)
-                    else:
-                        created_at = None
-
-                    # 尝试获取行数
-                    row_count = 0
-                    if metadata:
-                        row_count = metadata.get("row_count", 0)
-
-                    table_info.append(
-                        {
-                            "table_name": table_name,
-                            "column_count": metadata.get("column_count") if metadata else 0,
-                            "row_count": row_count,
-                            "created_at": created_at,
-                            "error": str(table_error),
-                        }
-                    )
+                table_info.append(
+                    {
+                        "table_name": table_name,
+                        "column_count": column_count,
+                        "row_count": row_count,
+                        "created_at": created_at,
+                    }
+                )
 
             # 按创建时间排序：最新的在前，没有创建时间的在最后
             from dateutil import parser as date_parser
