@@ -4,24 +4,24 @@
 
 <h1 align="center">DuckQuery</h1>
 
-  <b>The AI Visual SQL Workbench for Files and Databases.</b><br>
-  <b>Ask in plain English or write SQL across local files (Excel/CSV/JSON) and remote databases (MySQL/PG) — one‑stop, cross‑source, no ETL.</b>
+  <b>文件与数据库的 AI 可视化 SQL 工作台。</b><br>
+  <b>用大白话提问或直接写 SQL，跨本地文件（Excel/CSV/JSON）与远程数据库（MySQL/PG）一站式分析 —— 跨源、免 ETL。</b>
 </p>
 
 <p align="center">
-  <sub>For data analysts & engineers who juggle local files and live databases — no warehouse, no pipeline.</sub>
+  <sub>写给在本地文件与在线数据库之间来回折腾的分析师和工程师 —— 不建仓、不写脚本。</sub>
 </p>
 
 <p align="center">
-  <a href="https://chenkeliang.github.io/duckdb-query/">Live Demo</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#what-can-you-do">What Can You Do</a> •
-  <a href="#deployment">Deployment</a> •
-  <a href="README_zh.md">中文</a>
+  <a href="https://chenkeliang.github.io/duckdb-query/">在线 Demo</a> •
+  <a href="#快速开始">快速开始</a> •
+  <a href="#你能做什么">你能做什么</a> •
+  <a href="#部署方式">部署方式</a> •
+  <a href="README_en.md">English</a>
 </p>
 
 <p align="center">
-  <a href="https://chenkeliang.github.io/duckdb-query/"><img src="https://img.shields.io/badge/Live_Demo-Try_in_browser-F4B43C?logo=duckdb&logoColor=white" alt="Live Demo"></a>
+  <a href="https://chenkeliang.github.io/duckdb-query/"><img src="https://img.shields.io/badge/在线_Demo-浏览器内试用-F4B43C?logo=duckdb&logoColor=white" alt="Live Demo"></a>
   <img src="https://img.shields.io/badge/Python-3.12+-3776AB.svg?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black" alt="React">
   <img src="https://img.shields.io/badge/DuckDB-Powered-FFBF00.svg?logo=duckdb&logoColor=white" alt="DuckDB">
@@ -29,101 +29,101 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/og-cover.png" alt="DuckQuery — query local files and remote databases together with one SQL" width="840">
+  <img src="docs/assets/og-cover.png" alt="DuckQuery —— 一条 SQL 同时查本地文件与远程数据库" width="840">
 </p>
 
 ---
 
-## Quick Start
+## 快速开始
 
-### Try it in your browser (no install)
+### 浏览器内试用（免安装）
 
-Run real SQL on the sample tables — or drag in your own CSV / Parquet / JSON — entirely in-browser via **DuckDB-Wasm**.
+对示例表跑真 SQL,或拖入你自己的 CSV / Parquet / JSON —— 全程在浏览器内、基于 **DuckDB-Wasm**。
 
-👉 **[Open the live demo](https://chenkeliang.github.io/duckdb-query/)**
+👉 **[打开在线 Demo](https://chenkeliang.github.io/duckdb-query/)**
 
-> Connecting MySQL / Postgres and the AI features run on the backend, so they need the self-hosted version below.
+> 连接 MySQL / Postgres 与 AI 功能跑在后端,需要下面的自托管版。
 
-### Self-host (full features)
+### 自托管（完整功能）
 
-Run the full stack (Python Backend + React Frontend) — local file access, persistent MySQL/Postgres connections, and AI.
+启动全栈版本（Python 后端 + React 前端）—— 直接读写本地文件、连接持久化的 MySQL/Postgres、以及 AI。
 
-**Prerequisites:** Docker & Docker Compose
+**前置依赖：** 需要安装 Docker 和 Docker Compose
 
 ```bash
 git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && ./quick-start.sh
 ```
 
-Open **http://localhost:3000** and start querying.
+打开 **http://localhost:3000** 即可开始查询。
 
 ---
 
-## Demo
+## 演示
 
-### Data Source Upload
-![Data Source Upload](docs/assets/en_source.gif)
+### 数据源上传
+![数据源上传](docs/assets/cn_source.gif)
 
-### Query Workbench
-![Query Workbench](docs/assets/en_query.gif)
-
----
-
-## What Can You Do
-
-| Action | How |
-|--------|-----|
-| 🧠 **Ask in plain English (Text-to-SQL)** | Chat with your data; the AI drafts SQL you review before running — **never auto-executed**. |
-| 🩺 **AI error doctor** | When a query fails, get a plain-English diagnosis + a fixed SQL suggestion (knows your table schema, incl. federated). |
-| 📈 **AI chart suggestions** | One click turns a result set into the right chart — bar / line / pie / KPI. |
-| 📥 **Paste CSV/TSV from anywhere** | Copy cells from any source, paste directly as a new table. |
-| 📂 **Query any file** | Drag CSV/Excel/Parquet/JSON into the browser. Instant table. |
-| 🗄️ **Connect databases** | Add MySQL/PostgreSQL. Query alongside local files. |
-| 🔗 **Cross-source JOIN** | `SELECT * FROM local_csv JOIN mysql_db.users ON ...` |
-| 📊 **Pivot / JOIN / Set ops** | SQL editor + JOIN workbench + pivot + set operations (no separate “visual builder” tab). |
-| 🌐 **Import from URL** | Enter a CSV/Parquet/JSON link, auto-import to DuckDB. |
-| 🌙 **Dark Mode & i18n** | Switch themes and languages (EN/中文) instantly. |
+### 查询工作台
+![查询工作台](docs/assets/cn_query.gif)
 
 ---
 
-## How It Works
+## 你能做什么
+
+| 功能 | 操作方式 |
+|------|---------|
+| 🧠 **用大白话提问（问数 Text-to-SQL）** | 和数据对话，AI 起草 SQL，你确认后再执行 —— **绝不自动运行**。 |
+| 🩺 **AI 报错医生** | 查询报错时，给出中文诊断 + 修正后的 SQL（懂你的表结构，含联邦表）。 |
+| 📈 **AI 图表推荐** | 一键把结果集变成合适的图表 —— 柱 / 折线 / 饼 / 大数字。 |
+| 📥 **从任意处粘贴CSV/TSV** | 复制单元格，直接粘贴创建新表。 |
+| 📂 **查询任意文件** | 拖拽 CSV/Excel/Parquet/JSON 到浏览器，即刻生成表。 |
+| 🗄️ **连接外部数据库** | 添加 MySQL/PostgreSQL 连接，与本地文件一起查询。 |
+| 🔗 **跨数据源 JOIN** | `SELECT * FROM 本地表 JOIN mysql_db.users ON ...` |
+| 📊 **透视 / JOIN / 集合** | SQL 编辑器 + JOIN 工作台 + 透视表 + 集合运算（无独立「可视化构建器」Tab）。 |
+| 🌐 **从 URL 导入** | 输入 CSV/Parquet/JSON 链接，自动导入 DuckDB。 |
+| 🌙 **深色模式 & 多语言** | 一键切换主题和语言（中文/English）。 |
+
+---
+
+## 工作原理
 
 ```
 ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│  Your Files     │      │  DuckQuery      │      │  Your Databases │
-│  CSV/Excel/...  │ ───► │  (DuckDB Core)  │ ◄─── │  MySQL/Postgres │
+│  你的文件        │      │   DuckQuery     │      │  你的数据库      │
+│  CSV/Excel/...  │ ───► │  (DuckDB 引擎)  │ ◄─── │  MySQL/Postgres │
 └─────────────────┘      └────────┬────────┘      └─────────────────┘
                                   │
                                   ▼
                          ┌─────────────────┐
-                         │   SQL + Visual  │
-                         │   Query Results │
+                         │  SQL + 可视化    │
+                         │    查询结果      │
                          └─────────────────┘
 ```
 
-Files are imported as **native DuckDB tables** for lightning-fast queries. External databases are connected via DuckDB's `ATTACH` mechanism.
+文件被导入为 **DuckDB 原生表**，查询速度极快。外部数据库通过 DuckDB 的 `ATTACH` 机制连接。
 
 ---
 
-## Why DuckQuery?
+## 为什么选 DuckQuery？
 
-Most tools force a choice: a **database GUI** (DBeaver, TablePlus) that can't touch your local CSVs, or a **BI tool** (Metabase, Superset) that needs a warehouse and ETL first. DuckQuery is the missing middle — point it at files *and* databases, JOIN across them in one query, and let AI write the SQL.
+多数工具让你二选一：**数据库 GUI**（DBeaver、TablePlus）碰不了本地 CSV；**BI 工具**（Metabase、Superset）又要先建仓库、跑 ETL。DuckQuery 补上中间这块 —— 同时对着文件和数据库、一条 SQL 跨源 JOIN，还能让 AI 帮你写 SQL。
 
 | | **DuckQuery** | DBeaver / TablePlus | Metabase / Superset |
 |---|:---:|:---:|:---:|
-| Query local CSV / Excel / Parquet | ✅ native | ⚠️ import first | ❌ |
-| JOIN files ↔ MySQL/Postgres in one query | ✅ | ❌ | ❌ |
-| Text-to-SQL (AI) | ✅ built-in | ❌ | ⚠️ paid/limited |
-| No ETL / no warehouse | ✅ | ✅ | ❌ |
-| Fully local / self-hosted | ✅ | ✅ | ⚠️ server |
-| Time to first query | seconds | minutes | hours |
+| 查询本地 CSV / Excel / Parquet | ✅ 原生 | ⚠️ 需先导入 | ❌ |
+| 一条 SQL JOIN 文件 ↔ MySQL/PG | ✅ | ❌ | ❌ |
+| 自然语言生成 SQL（AI） | ✅ 内置 | ❌ | ⚠️ 付费/受限 |
+| 免 ETL / 免数仓 | ✅ | ✅ | ❌ |
+| 完全本地 / 可自托管 | ✅ | ✅ | ⚠️ 需服务端 |
+| 上手到第一条查询 | 几秒 | 几分钟 | 几小时 |
 
-Built on **DuckDB**, an in-process analytical engine — so a 1 GB CSV joins a remote table in milliseconds, with no data pipeline to maintain.
+基于 **DuckDB** 进程内分析引擎 —— 1 GB 的 CSV 与远程表毫秒级 JOIN，无需维护任何数据管道。
 
 ---
 
-## Deployment
+## 部署方式
 
-### Docker (Recommended)
+### Docker 启动（推荐）
 
 ```bash
 git clone https://github.com/Chenkeliang/duckdb-query.git
@@ -131,150 +131,145 @@ cd duckdb-query
 ./quick-start.sh
 ```
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:3000 |
-| API Docs | http://localhost:8001/docs |
+| 服务 | 地址 |
+|------|------|
+| 前端界面 | http://localhost:3000 |
+| API 文档 | http://localhost:8001/docs |
 
-**Data**: Tables and connections live on the host in **`./data`** (bind mount). Re-running `./quick-start.sh` or `docker compose up -d --build` **does not** delete `./data`; log lines saying `Removed` refer to old containers, not your database files.
+**数据位置**：表与连接配置在宿主机 **`./data`**（Docker 卷绑定）。`./quick-start.sh` 重建容器时**不会**删除 `./data`；日志里的 `Removed` 一般指旧容器被替换，不是删库。
 
-**Slow or failed pulls from docker.io** (e.g. `node:24-alpine`):
+**国内拉取镜像超时**（`node:24-alpine` 连接 docker.io 失败时）：
 
-- The script defaults to DaoCloud mirror images; on first run it may copy `.env.docker.cn.example` → `.env`.
-- Or: `cp .env.docker.cn.example .env` then `docker compose up -d --build`.
-- If Docker Hub works reliably: `USE_DOCKER_HUB=1 ./quick-start.sh`.
+- 脚本默认使用 DaoCloud 镜像；首次运行会自动从 `.env.docker.cn.example` 生成 `.env`。
+- 也可手动：`cp .env.docker.cn.example .env` 后执行 `docker compose up -d --build`。
+- 能稳定访问 Docker Hub 时：`USE_DOCKER_HUB=1 ./quick-start.sh`。
 
-**Rebuild frontend only** (keeps `./data`):
+**仅重建前端**（保留 `./data`）：
 
 ```bash
 docker compose up -d --build frontend
 ```
 
-**Stop services** (still keeps `./data`): `docker compose down` (avoid `down -v` unless you intend to wipe named volumes).
+**完全停止服务**（仍保留 `./data`）：`docker compose down`（请勿随意使用 `down -v`）。
 
-### Local Development
+### 本地开发
 
 ```bash
-# Backend (default http://localhost:8000 , docs at /docs)
+# 后端（默认 http://localhost:8000 ，文档 /docs）
 cd api && pip install -r requirements.txt && uvicorn main:app --reload
 
-# Frontend (default http://localhost:5173 , /api proxied to backend)
+# 前端（默认 http://localhost:5173 ，/api 由 Vite 代理到后端）
 cd frontend && npm install && npm run dev
 ```
 
-| Service | Default URL | API from browser |
-|---------|-------------|------------------|
-| Frontend (Vite) | http://localhost:5173 | `/api/*` proxied to backend |
-| Backend | http://localhost:8000 | Direct (e.g. `/docs`) |
-
-**Query APIs**: DuckDB local → `POST /api/duckdb/execute`; external / federated → `POST /api/duckdb/federated-query` with ATTACH. Do **not** use legacy `POST /api/execute_sql`. See [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md) and [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md).
+本地查询走 `POST /api/duckdb/execute`（本地表）与 `POST /api/duckdb/federated-query`（外部库 ATTACH），勿使用旧版 `POST /api/execute_sql`。端点清单见 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)，执行流程见 [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md)。
 
 ---
 
-## Configuration
+## 配置说明
 
-DuckQuery works out-of-the-box. For advanced setups, edit `config/app-config.json`:
+DuckQuery 开箱即用。如需高级配置，编辑 `config/app-config.json`：
 
-| Setting | Default | What it does |
-|---------|---------|-------------|
-| `duckdb_memory_limit` | `8GB` | Max RAM for DuckDB |
-| `server_data_mounts` | `[]` | Mount host directories for direct file access |
-| `cors_origins` | `3000`, `5173` | Allowed frontend origins |
+| 配置项 | 默认值 | 作用 |
+|--------|--------|------|
+| `duckdb_memory_limit` | `8GB` | DuckDB 最大内存 |
+| `server_data_mounts` | `[]` | 挂载宿主机目录用于直接读取文件 |
+| `cors_origins` | `3000`、`5173` | 允许的前端访问源 |
 
-👉 **[Full Configuration Reference →](docs/CONFIGURATION.md)**
+👉 **[完整配置参考 →](docs/CONFIGURATION_ZH.md)**
 
 ---
 
-## FAQ
+## 常见问题
 
 <details>
-<summary><b>Docker: How to query files without uploading?</b></summary>
+<summary><b>Docker 如何不上传文件直接查询？</b></summary>
 
-Mount your data directory in `docker-compose.yml`:
+在 `docker-compose.yml` 中挂载目录：
 ```yaml
 volumes:
-  - /your/data/path:/app/server_mounts
+  - /你的数据路径:/app/server_mounts
 ```
-Then add to `config/app-config.json`:
+然后在 `config/app-config.json` 添加：
 ```json
-"server_data_mounts": [{"label": "My Data", "path": "/app/server_mounts"}]
+"server_data_mounts": [{"label": "我的数据", "path": "/app/server_mounts"}]
 ```
 </details>
 
 <details>
-<summary><b>Local Dev: How to query files without uploading?</b></summary>
+<summary><b>本地开发如何不上传文件直接查询？</b></summary>
 
-Configure local folder in `config/app-config.json`:
+在 `config/app-config.json` 中配置本地文件夹：
 ```json
-"server_data_mounts": [{"label": "My Data", "path": "/Users/yourname/data-folder"}]
+"server_data_mounts": [{"label": "我的数据", "path": "/Users/你的用户名/数据目录"}]
 ```
-Restart the backend, then browse and import files from the "Server Directory" tab in the data source page.
+重启后端服务后，在数据源页面的"服务器目录"标签页可直接浏览和导入文件。
 </details>
 
 <details>
-<summary><b>Docker: How to change default ports?</b></summary>
+<summary><b>Docker 如何修改默认端口？</b></summary>
 
-Edit `docker-compose.yml`:
+编辑 `docker-compose.yml`：
 ```yaml
 services:
   backend:
-    ports: ["9000:8000"]  # Backend on 9000
+    ports: ["9000:8000"]  # 后端改为 9000
   frontend:
-    ports: ["8080:80"]    # Frontend on 8080
+    ports: ["8080:80"]    # 前端改为 8080
 ```
 </details>
 
 <details>
-<summary><b>Local Dev: How to change default ports?</b></summary>
+<summary><b>本地开发如何修改默认端口？</b></summary>
 
-**Backend port** (default 8000):
+**后端端口**（默认 8000）：
 ```bash
 cd api && uvicorn main:app --reload --port 9000
 ```
 
-**Frontend port** (default 5173):
-Add `port` to the `server` block in `frontend/vite.config.js`:
+**前端端口**（默认 5173）：
+在 `frontend/vite.config.js` 的 `server` 块中添加 `port`：
 ```javascript
 server: {
-  port: 3000,  // Add this line
+  port: 3000,  // 添加这一行
   proxy: {
-    // ... existing config
+    // ... 现有配置
   },
 },
 ```
-Or specify at startup:
+或启动时指定：
 ```bash
 cd frontend && npm run dev -- --port 3000
 ```
 
-**CORS Note**: Default allows `localhost:3000` and `localhost:5173`. For other ports, add to `config/app-config.json`:
+**注意跨域配置**：默认允许 `localhost:3000` 和 `localhost:5173`。如使用其他端口，需在 `config/app-config.json` 添加：
 ```json
-"cors_origins": ["http://localhost:3000", "http://localhost:5173", "http://localhost:YOUR_PORT"]
+"cors_origins": ["http://localhost:3000", "http://localhost:5173", "http://localhost:你的端口"]
 ```
 </details>
 
 <details>
-<summary><b>Will Docker redeploy delete my tables?</b></summary>
+<summary><b>Docker 重新部署会删掉我的表吗？</b></summary>
 
-No. DuckDB files are on the host under **`./data`**. `docker compose up -d --build` only recreates containers. `docker compose down` stops containers but **does not** remove `./data`. Avoid `docker compose down -v` unless you mean to wipe volumes. For WAL issues see `./scripts/repair-duckdb-wal.sh`.
+不会。DuckDB 文件在宿主机 **`./data`**，`docker compose up -d --build` 只替换容器。`docker compose down` 停止容器，也**不删** `./data`。请勿对生产数据执行 `docker compose down -v`（若将来引入命名卷）。WAL 异常时可参考 `./scripts/repair-duckdb-wal.sh`。
 </details>
 
 ---
 
-## Like it?
+## 喜欢的话
 
-If DuckQuery saved you a detour, a star helps other people find it.
+如果 DuckQuery 帮你省了一段弯路，点个 star 能让更多人找到它。
 
 <p align="center">
-  <a href="https://github.com/Chenkeliang/duckdb-query">⭐ Star on GitHub</a> &nbsp;·&nbsp;
-  <a href="https://chenkeliang.github.io/duckdb-query/">🚀 Try the live demo</a> &nbsp;·&nbsp;
-  <a href="https://github.com/Chenkeliang/duckdb-query/issues">🛠 Open an issue / contribute</a>
+  <a href="https://github.com/Chenkeliang/duckdb-query">⭐ 在 GitHub 上 Star</a> &nbsp;·&nbsp;
+  <a href="https://chenkeliang.github.io/duckdb-query/">🚀 试用在线 Demo</a> &nbsp;·&nbsp;
+  <a href="https://github.com/Chenkeliang/duckdb-query/issues">🛠 提 issue / 参与贡献</a>
 </p>
 
 ---
 
-## License
+## 许可证
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+本项目采用 MIT 许可证开源，详见 [LICENSE](LICENSE) 文件。
 
 MIT © [Chenkeliang](https://github.com/Chenkeliang)

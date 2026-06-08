@@ -37,4 +37,4 @@
 | 前端 | http://localhost:3000 |
 | API 文档 | http://localhost:8001/docs |
 
-数据目录为宿主机 `./data`（重建容器不会删除已导入表）。国内网络见根目录 [README](../README_zh.md) 中 Docker 镜像说明。
+数据目录为宿主机 `./data`（重建容器不会删除已导入表）。国内网络见根目录 [README](../README.md) 中 Docker 镜像说明。
