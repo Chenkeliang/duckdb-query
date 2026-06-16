@@ -22,7 +22,7 @@ from fastapi import (
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from core.common.timezone_utils import get_current_time_iso
-from core.data.excel_import_manager import PENDING_BASE_DIR
+from core.data.excel_import_manager import _get_pending_base_dir
 from core.data.file_datasource_manager import build_table_metadata_snapshot
 from core.data.file_utils import detect_file_type
 from core.data.import_mode import normalize_import_mode
@@ -214,7 +214,7 @@ async def upload_file(
             except Exception as e:
                 logger.warning(f"Failed to delete temporary file: {str(e)}")
 
-            pending_dir = PENDING_BASE_DIR / pending_payload.file_id
+            pending_dir = _get_pending_base_dir() / pending_payload.file_id
             schedule_cleanup(str(pending_dir), background_tasks, delay_seconds=6 * 3600)
 
             logger.info(

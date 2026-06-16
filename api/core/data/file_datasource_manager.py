@@ -254,9 +254,9 @@ class FileDatasourceManager:
         self.config_dir = config_manager.config_dir
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
-        self.data_dir = (
-            Path(__file__).resolve().parent.parent / "data" / "file_sources"
-        )
+        from core.common.paths import get_user_data_dir
+
+        self.data_dir = get_user_data_dir() / "data" / "file_sources"
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_file_hash(self, file_path: str) -> str:

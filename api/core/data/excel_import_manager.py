@@ -20,10 +20,12 @@ from core.data.ingestion_precision import coerce_dataframe_numeric_columns_safe
 
 logger = logging.getLogger(__name__)
 
-PENDING_BASE_DIR = (
-    Path(__file__).resolve().parent.parent / "temp_files" / "excel_pending"
-)
-PENDING_BASE_DIR.mkdir(parents=True, exist_ok=True)
+def _get_pending_base_dir() -> Path:
+    from core.common.paths import get_temp_dir
+
+    base = get_temp_dir() / "excel_pending"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
 
 
 @dataclass
@@ -38,7 +40,7 @@ class PendingExcelFile:
 
 
 def _metadata_path(file_id: str) -> Path:
-    return PENDING_BASE_DIR / file_id / "metadata.json"
+    return _get_pending_base_dir() / file_id / "metadata.json"
 
 
 def _ensure_unique_name(parts: List[str], index: int) -> str:
@@ -73,7 +75,7 @@ def register_excel_upload(
     source_path: str, original_filename: str, table_alias: Optional[str] = None
 ) -> PendingExcelFile:
     file_id = uuid4().hex
-    target_dir = PENDING_BASE_DIR / file_id
+    target_dir = _get_pending_base_dir() / file_id
     target_dir.mkdir(parents=True, exist_ok=True)
 
     safe_name = original_filename or f"excel_{file_id}.xlsx"
@@ -115,7 +117,7 @@ def get_pending_excel(file_id: str) -> Optional[PendingExcelFile]:
 
 
 def cleanup_pending_excel(file_id: str):
-    target_dir = PENDING_BASE_DIR / file_id
+    target_dir = _get_pending_base_dir() / file_id
     if target_dir.exists():
         shutil.rmtree(target_dir, ignore_errors=True)
 

@@ -627,9 +627,9 @@ async def process_uploaded_file(
         if file_extension in {"xlsx", "xls"}:
             pending_payload = prepare_excel_pending(file_path, file_name, table_alias)
             if background_tasks:
-                from core.data.excel_import_manager import PENDING_BASE_DIR
+                from core.data.excel_import_manager import _get_pending_base_dir
 
-                pending_dir = PENDING_BASE_DIR / pending_payload.file_id
+                pending_dir = _get_pending_base_dir() / pending_payload.file_id
                 schedule_cleanup(str(pending_dir), background_tasks, delay_seconds=6 * 3600)
 
             return {
