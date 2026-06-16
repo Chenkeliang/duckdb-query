@@ -21,13 +21,37 @@ def _base_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def _seed_extensions(bundled_dir: str, user_ext_dir) -> None:
+    """把包内预置的 DuckDB 扩展播种到可写用户目录(仅当目标缺失时拷贝)。
+
+    使预置的扩展(mysql/postgres/excel)离线即用;未预置的(如 httpfs)由 DuckDB
+    在首次用到时按需 INSTALL 到这个可写目录并缓存。包内只读,故必须用可写用户目录,
+    否则签名后的 .app 里 DuckDB 无法写缓存/装扩展。
+    """
+    import shutil
+    from pathlib import Path
+
+    src = Path(bundled_dir)
+    if not src.is_dir():
+        return
+    for ext_file in src.rglob("*.duckdb_extension"):
+        dst = user_ext_dir / ext_file.relative_to(src)
+        if not dst.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ext_file, dst)
+
+
 def apply_desktop_env() -> None:
     base = _base_dir()
-    # 只读资源(包内)
-    os.environ.setdefault("DUCKDB_EXTENSION_DIRECTORY", os.path.join(base, "extensions"))
-    # 内存自适应(笔记本友好)
-    from core.common.paths import compute_memory_limit
+    from core.common.paths import compute_memory_limit, get_user_data_dir
 
+    # 扩展目录用可写的用户目录:预置的离线可用,未预置的按需联网装到此处缓存
+    user_ext_dir = get_user_data_dir() / "duckdb_extensions"
+    user_ext_dir.mkdir(parents=True, exist_ok=True)
+    if getattr(sys, "frozen", False):
+        _seed_extensions(os.path.join(base, "extensions"), user_ext_dir)
+    os.environ.setdefault("DUCKDB_EXTENSION_DIRECTORY", str(user_ext_dir))
+    # 内存自适应(笔记本友好)
     os.environ.setdefault("DUCKDB_MEMORY_LIMIT", compute_memory_limit())
     # 桌面安全/隐私
     os.environ.setdefault("ALLOW_ARBITRARY_LOCAL_PATHS", "1")

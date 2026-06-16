@@ -14,11 +14,11 @@ import urllib.request
 from pathlib import Path
 
 DUCK_VER = "1.5.3"
-# json/parquet 为 1.5 内建自动加载,无需单独文件
+# json/parquet 为 1.5 内建自动加载,无需单独文件。
+# httpfs 不预置:仅 URL/远程访问需要,而那本就需联网,首次用到时由 DuckDB 按需 INSTALL。
 # 映射: LOAD 名 -> CDN 文件名
 EXTS = {
     "excel": "excel",
-    "httpfs": "httpfs",
     "mysql": "mysql_scanner",
     "postgres": "postgres_scanner",
 }

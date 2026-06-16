@@ -5,6 +5,12 @@ import shutil
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 litellm_datas, litellm_binaries, litellm_hidden = collect_all('litellm')
+# 体积优化:litellm 自带一整套 Next.js proxy 管理后台静态网页(~21MB),我们只把
+# litellm 当库调用 completion(),从不跑它的 proxy 服务 —— 过滤掉这些永不加载的 web 资源。
+litellm_datas = [
+    (s, d) for (s, d) in litellm_datas
+    if "proxy/_experimental/out" not in d.replace("\\", "/")
+]
 starlette_hidden = collect_submodules('starlette')
 
 a = Analysis(
