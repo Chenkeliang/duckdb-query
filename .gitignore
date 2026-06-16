@@ -193,3 +193,6 @@ data-test/
 *.duckdb_extension
 *.db.wal
 *.db.wal.broken.*
+
+# DuckDB 离线扩展预下载产物(由 fetch_duckdb_extensions.py 生成)
+api/extensions/
