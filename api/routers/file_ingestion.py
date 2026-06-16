@@ -21,6 +21,7 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from core.common.paths import get_temp_dir
 from core.common.timezone_utils import get_current_time_iso
 from core.data.excel_import_manager import _get_pending_base_dir
 from core.data.file_datasource_manager import build_table_metadata_snapshot
@@ -190,9 +191,7 @@ async def upload_file(
             )
 
         # 创建临时目录
-        temp_dir = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "temp_files"
-        )
+        temp_dir = str(get_temp_dir())
         os.makedirs(temp_dir, exist_ok=True)
 
         # 保存文件

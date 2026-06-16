@@ -25,6 +25,7 @@ from core.common.exceptions import (
     ValidationError as APIValidationError,
 )
 from core.common.config_manager import config_manager
+from core.common.paths import get_temp_dir
 from core.database.duckdb_engine import with_duckdb_connection
 from core.data.excel_import_manager import sanitize_identifier
 from core.data.file_datasource_manager import (
@@ -180,9 +181,7 @@ def _generate_unique_table_name(con, desired_name: Optional[str], user_provided:
 
 def get_upload_dir() -> str:
     """获取上传目录"""
-    upload_dir = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), "temp_files", "uploads"
-    )
+    upload_dir = os.path.join(str(get_temp_dir()), "uploads")
     os.makedirs(upload_dir, exist_ok=True)
     return upload_dir
 

@@ -50,6 +50,7 @@ from core.common.exceptions import (
     ResourceNotFoundError,
     ValidationError as APIValidationError,
 )
+from core.common.paths import get_temp_dir
 from utils.response_helpers import (
     MessageCode,
     create_error_response,
@@ -648,42 +649,23 @@ def perform_query(
                 if source.type == "file":
                     original_path = source.params["path"]
 
-                    # 标准化文件路径，支持多种路径格式
-                    possible_paths = [
-                        original_path,  # 原始路径
-                        os.path.join(
-                            "api", "temp_files", os.path.basename(original_path)
-                        ),  # api/temp_files/filename
-                        os.path.join(
-                            os.path.dirname(os.path.dirname(__file__)),
-                            "temp_files",
-                            os.path.basename(original_path),
-                        ),  # 绝对路径
-                    ]
+                    # 标准化文件路径：使用 get_temp_dir() 作为唯一可写临时目录
+                    temp_base = str(get_temp_dir())
+                    filename = os.path.basename(original_path)
+                    candidate = os.path.join(temp_base, filename)
 
-                    # 如果是相对路径，尝试不同的基础路径
-                    if original_path.startswith("temp_files/"):
-                        filename = original_path.replace("temp_files/", "")
-                        possible_paths.extend(
-                            [
-                                os.path.join("api", "temp_files", filename),
-                                os.path.join(
-                                    os.path.dirname(os.path.dirname(__file__)),
-                                    "temp_files",
-                                    filename,
-                                ),
-                            ]
-                        )
-
-                    # 找到实际存在的文件路径
-                    file_path = None
-                    for path in possible_paths:
-                        if os.path.exists(path):
-                            file_path = path
-                            break
+                    # 优先使用原始路径（如已是绝对路径），否则落到 get_temp_dir()
+                    if os.path.exists(original_path):
+                        file_path = original_path
+                    elif os.path.exists(candidate):
+                        file_path = candidate
+                    else:
+                        file_path = None
 
                     if not file_path:
-                        logger.error(f"File does not exist, attempted paths: {possible_paths}")
+                        logger.error(
+                            f"File does not exist, attempted paths: {[original_path, candidate]}"
+                        )
                         raise ValueError(f"File does not exist: {original_path}")
 
                     # 更新source中的路径为实际找到的路径
