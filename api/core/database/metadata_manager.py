@@ -470,16 +470,13 @@ class MetadataManager:
         从 JSON file导入旧的 SQL 收藏data到 DuckDB table。
         这是一个手动触发的迁移操作。
         """
-        import os
-        from pathlib import Path
         from dateutil import parser
 
-        # 确定configurationfilepath
-        if os.getenv("CONFIG_DIR"):
-            config_dir = Path(os.getenv("CONFIG_DIR"))
-        else:
-            config_dir = Path(__file__).parent.parent.parent / "config"
-        
+        # 确定configurationfilepath（CONFIG_DIR env 优先，否则 per-user 目录；冻结安全）
+        from core.common.paths import get_config_dir
+
+        config_dir = get_config_dir()
+
         favorites_file = config_dir / "sql-favorites.json"
         migrated_file = config_dir / "sql-favorites.json.migrated"
 
