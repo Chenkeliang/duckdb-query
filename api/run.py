@@ -64,9 +64,36 @@ def pick_free_loopback_port() -> tuple[socket.socket, int]:
     return sock, sock.getsockname()[1]
 
 
+def start_parent_watchdog() -> None:
+    """父进程(Tauri 壳)消失后自杀,避免后端僵尸。
+
+    Tauri 在崩溃/被 SIGKILL 时不会触发 Rust 侧的优雅 kill,故后端自己看护父进程:
+    任何方式导致父进程退出,这里都会让后端自行退出(跨平台,优先 psutil)。
+    """
+    import threading
+    import time
+
+    ppid = os.getppid()
+
+    def _watch() -> None:
+        while True:
+            time.sleep(2)
+            try:
+                import psutil  # pylint: disable=import-error
+
+                alive = psutil.pid_exists(ppid)
+            except Exception:
+                alive = os.getppid() == ppid  # Unix: 父死后 getppid() 变 1
+            if not alive:
+                os._exit(0)
+
+    threading.Thread(target=_watch, daemon=True).start()
+
+
 def main() -> None:
     multiprocessing.freeze_support()  # Windows 必需
     apply_desktop_env()
+    start_parent_watchdog()
     sock, port = pick_free_loopback_port()
     print(port, flush=True)  # 第一行 = 端口,Tauri 读 stdout
     import uvicorn  # pylint: disable=import-error

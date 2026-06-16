@@ -201,3 +201,5 @@ data-test/
 
 # DuckDB 离线扩展预下载产物(由 fetch_duckdb_extensions.py 生成)
 api/extensions/
+# Tauri sidecar(打包时由 CI 暂存的 PyInstaller onedir,勿入库)
+frontend/src-tauri/binaries/
