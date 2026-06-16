@@ -11,6 +11,8 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 from threading import Lock
 
+from core.common.paths import get_config_dir, get_user_data_dir
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -212,13 +214,11 @@ class ConfigManager:
 
         if config_dir:
             self.config_dir = Path(config_dir)
-        elif os.getenv("CONFIG_DIR"):
-            self.config_dir = Path(os.getenv("CONFIG_DIR"))
         else:
-            # 默认configuration目录 (common -> core -> api -> root -> config)
-            self.config_dir = Path(__file__).resolve().parent.parent.parent.parent / "config"
+            # CONFIG_DIR env 优先,否则 per-user 目录(冻结/桌面安全)
+            self.config_dir = get_config_dir()
 
-        self.config_dir.mkdir(exist_ok=True)
+        self.config_dir.mkdir(parents=True, exist_ok=True)
 
         # configurationfilepath (优先检测 .json，如果没有则检测 .jsonc)
         json_path = self.config_dir / "app-config.json"
@@ -336,15 +336,11 @@ class ConfigManager:
         self.load_app_config()
 
     def _resolve_project_root(self) -> Path:
-        """确定项目运行根目录"""
+        """确定项目运行根目录(env 优先,否则 per-user 可写目录)。"""
         override = os.getenv("APP_ROOT")
         if override:
             return Path(override)
-        container_root = Path("/app")
-        if container_root.exists():
-            return container_root
-        # common -> core -> api -> root
-        return Path(__file__).resolve().parent.parent.parent.parent
+        return get_user_data_dir()
 
     def _default_data_dir(self) -> Path:
         """默认data目录"""
