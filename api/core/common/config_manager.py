@@ -185,7 +185,12 @@ class AppConfig:
 
     def __post_init__(self):
         if self.cors_origins is None:
-            self.cors_origins = ["http://localhost:3000", "http://localhost:5173"]
+            self.cors_origins = [
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "tauri://localhost",        # macOS webview 源
+                "http://tauri.localhost",   # Windows webview 源
+            ]
 
         # 设置默认DuckDB扩展（包含联邦query扩展）
         if self.duckdb_extensions is None:
@@ -442,9 +447,15 @@ class ConfigManager:
                         "DEBUG", str(config_data.get("debug", False))
                     ).lower()
                     == "true",
-                    "cors_origins": os.getenv(
-                        "CORS_ORIGINS", ",".join(config_data.get("cors_origins", []))
-                    ).split(","),
+                    "cors_origins": [
+                        o
+                        for o in os.getenv(
+                            "CORS_ORIGINS",
+                            ",".join(config_data.get("cors_origins", [])),
+                        ).split(",")
+                        if o
+                    ]
+                    or None,
                     "timezone": os.getenv(
                         "TIMEZONE", config_data.get("timezone", "Asia/Shanghai")
                     ),
