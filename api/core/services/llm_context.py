@@ -6,10 +6,16 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-_PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
+_bundle = getattr(sys, "_MEIPASS", None)
+_PROMPTS_DIR = (
+    Path(_bundle) / "prompts"
+    if _bundle
+    else Path(__file__).resolve().parent.parent.parent / "prompts"
+)
 _MAX_EXAMPLES = 3
 
 
