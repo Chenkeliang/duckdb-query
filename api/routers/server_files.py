@@ -117,9 +117,24 @@ def _resolve_path(path: str) -> tuple[str, dict]:
     if not path:
         raise APIValidationError("Missing path parameter")
 
-    mounts = _get_mount_configs()
     real_path = os.path.realpath(path)
 
+    if os.getenv("ALLOW_ARBITRARY_LOCAL_PATHS") == "1":
+        # 桌面模式:用户经原生文件对话框已授权访问;仍禁止 symlink
+        if os.path.islink(path):
+            raise SecurityError(
+                "Symbolic links are not allowed",
+                details={"field": "path", "code": "SYMLINK_NOT_ALLOWED"},
+            )
+        parent = os.path.dirname(real_path)
+        return real_path, {
+            "label": "local",
+            "path": parent,
+            "real_path": parent,
+            "exists": os.path.exists(parent),
+        }
+
+    mounts = _get_mount_configs()
     for mount in mounts:
         root = mount["real_path"]
         if real_path.startswith(root):
