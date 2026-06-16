@@ -3,9 +3,7 @@ Password encryption and decryption tool using Fernet symmetric encryption.
 This module ensures that sensitive credentials are stored securely.
 """
 
-import os
 import logging
-from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger(__name__)
@@ -64,18 +62,12 @@ def _initialize_global_encryptor() -> PasswordEncryptor:
     This function handles key loading/generation upon module import.
     """
     try:
-        # 在Docker环境中优先使用环境变量CONFIG_DIR
-        config_dir_env = os.getenv("CONFIG_DIR")
-        if config_dir_env:
-            config_dir = Path(config_dir_env)
-        else:
-            # 本地开发环境的回退逻辑
-            config_dir = Path(__file__).parent.parent.parent / "config"
+        from core.common.paths import get_secret_key_path
 
-        secret_key_file = config_dir / "secret.key"
+        secret_key_file = get_secret_key_path()
         secret_key = None
 
-        config_dir.mkdir(exist_ok=True)
+        secret_key_file.parent.mkdir(parents=True, exist_ok=True)
         if secret_key_file.exists():
             with open(secret_key_file, "rb") as f:
                 secret_key = f.read()

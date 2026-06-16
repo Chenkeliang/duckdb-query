@@ -11,7 +11,6 @@ Thread Safety:
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from pathlib import Path
 from typing import Any
@@ -20,7 +19,6 @@ from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger(__name__)
 
-_SECRET_KEY_FILENAME = "secret.key"
 _DEFAULT_PASSWORD_KEYS = ("password", "secret", "token", "api_key")
 
 
@@ -37,12 +35,10 @@ class CryptoManager:
         self._lock = threading.Lock()
 
     def _get_secret_key_path(self) -> Path:
-        """Returns the path to the secret key file."""
-        config_dir = os.getenv(
-            "CONFIG_DIR",
-            str(Path(__file__).parent.parent.parent.parent / "config"),
-        )
-        return Path(config_dir) / _SECRET_KEY_FILENAME
+        """Returns the unified path to the secret key file."""
+        from core.common.paths import get_secret_key_path
+
+        return get_secret_key_path()
 
     def _get_fernet(self) -> Fernet:
         """Returns the Fernet instance, creating one if necessary.
