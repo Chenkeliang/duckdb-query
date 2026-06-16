@@ -7,12 +7,14 @@
 
 import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios';
 import type { StandardSuccess, StandardList, StandardError, NormalizedResponse } from './types';
+import { resolveBaseUrl } from '../desktop/apiBase';
 
 // Environment-based base URL
 const apiUrl = import.meta.env.VITE_API_URL || '';
-export const baseURL = (apiUrl === '' || apiUrl.includes('localhost:8000') || apiUrl.includes('your-api-url-in-production'))
+const envBase = (apiUrl === '' || apiUrl.includes('localhost:8000') || apiUrl.includes('your-api-url-in-production'))
     ? ''
     : apiUrl;
+export const baseURL = resolveBaseUrl(envBase);
 
 // Federated query timeout (5 minutes default, configurable)
 let federatedQueryTimeout = Number(import.meta.env.VITE_FEDERATED_QUERY_TIMEOUT) || 300000;
@@ -36,6 +38,16 @@ export const uploadClient: AxiosInstance = axios.create({
     baseURL,
     timeout: 600000, // 10 minutes for large files
 });
+
+/**
+ * Update the base URL on both shared axios instances at runtime.
+ * Called by the Tauri boot gate once the Python backend port is known.
+ */
+export function setApiBaseUrl(base: string): void {
+    (window as any).__API_BASE__ = base;
+    apiClient.defaults.baseURL = base;
+    uploadClient.defaults.baseURL = base;
+}
 
 // 全局错误归一化
 const normalizeAxiosError = (error: AxiosError): AxiosError & ApiError => {
