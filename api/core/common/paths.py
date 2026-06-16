@@ -39,3 +39,15 @@ def get_temp_dir() -> Path:
     """临时文件目录:TEMP_FILES_DIR env 优先,否则 <user-data>/temp_files。"""
     env = os.getenv("TEMP_FILES_DIR")
     return Path(env) if env else get_user_data_dir() / "temp_files"
+
+
+def compute_memory_limit() -> str:
+    """按物理内存 75% 设 DuckDB 上限,封顶 8GB。无 psutil 时回退 4GB。"""
+    try:
+        import psutil  # pylint: disable=import-error  # 运行时依赖；lint 环境可能未装
+
+        gb = int(psutil.virtual_memory().total * 0.75 // (1024 ** 3))
+    except Exception:
+        gb = 4
+    gb = max(1, min(gb, 8))
+    return f"{gb}GB"

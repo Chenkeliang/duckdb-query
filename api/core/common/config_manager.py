@@ -494,6 +494,10 @@ class ConfigManager:
                         "EXPORTS_DIR", config_data.get("exports_dir")
                     )
                     or None,
+                    "duckdb_memory_limit": os.getenv(
+                        "DUCKDB_MEMORY_LIMIT",
+                        config_data.get("duckdb_memory_limit", "8GB"),
+                    ),
                     # databasetimeoutconfiguration
                     "db_connect_timeout": int(
                         os.getenv(
