@@ -9,6 +9,7 @@ from typing import Any, Iterator, Optional, Set
 
 import duckdb
 import pandas as pd
+from core.common.config_manager import config_manager
 from core.common.utils import normalize_dataframe_output
 from core.database.duckdb_engine import with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
@@ -584,7 +585,9 @@ def export_set_operation(request: SetOperationExportRequest):
 
         # 构建文件路径
         filename = f"{base_filename}.{file_extension}"
-        file_path = f"/app/exports/{filename}"
+        exports_dir = str(config_manager.get_exports_dir())
+        os.makedirs(exports_dir, exist_ok=True)
+        file_path = os.path.join(exports_dir, filename)
 
         # 创建任务记录
         task_info = {
