@@ -5,7 +5,6 @@ import shutil
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 litellm_datas, litellm_binaries, litellm_hidden = collect_all('litellm')
-pyarrow_hidden = collect_submodules('pyarrow')
 starlette_hidden = collect_submodules('starlette')
 
 a = Analysis(
@@ -26,13 +25,16 @@ a = Analysis(
         'uvicorn.protocols.http.h11_impl', 'uvicorn.protocols.websockets',
         'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan', 'uvicorn.lifespan.on',
         'tiktoken_ext', 'tiktoken_ext.openai_public',
-        *starlette_hidden, *pyarrow_hidden, *litellm_hidden,
+        *starlette_hidden, *litellm_hidden,
         'pydantic.deprecated.class_validators', 'pydantic.deprecated.config', 'pydantic_core',
         'cryptography', 'cryptography.hazmat.primitives.ciphers.algorithms',
         'psycopg2', 'multipart', 'psutil',
     ],
     hookspath=[], hooksconfig={}, runtime_hooks=[],
-    excludes=['magic', 'tkinter', 'matplotlib', 'IPython', 'jupyter', 'notebook', 'PIL'],
+    # 体积优化:pyarrow 代码未用到(pandas 仅可选依赖,parquet 走 DuckDB COPY);
+    # tokenizers/hf_xet 仅本地 HF 分词用,我们走 API,litellm 缺它会回退 tiktoken/近似计数。
+    excludes=['magic', 'tkinter', 'matplotlib', 'IPython', 'jupyter', 'notebook', 'PIL',
+              'pyarrow', 'tokenizers', 'hf_xet'],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

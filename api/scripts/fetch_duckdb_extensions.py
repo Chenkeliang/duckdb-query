@@ -8,6 +8,7 @@ platform ∈ {osx_arm64, osx_amd64, windows_amd64}
 """
 
 import gzip
+import shutil
 import sys
 import urllib.request
 from pathlib import Path
@@ -28,6 +29,9 @@ _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 def main(platform: str) -> None:
     out = Path(__file__).resolve().parent.parent / "extensions" / f"v{DUCK_VER}" / platform
+    # 幂等:先清空,避免脚本迭代/重命名遗留旧文件(如 *_scanner)被一并打进包
+    if out.exists():
+        shutil.rmtree(out)
     out.mkdir(parents=True, exist_ok=True)
     for load_name, cdn_name in EXTS.items():
         url = f"https://extensions.duckdb.org/v{DUCK_VER}/{platform}/{cdn_name}.duckdb_extension.gz"
