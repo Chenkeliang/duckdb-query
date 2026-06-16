@@ -30,6 +30,11 @@ wheels/
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!api/duckquery.spec
+
+# PyInstaller build artifacts
+api/dist/
+api/build/
 
 # Installer logs
 pip-log.txt

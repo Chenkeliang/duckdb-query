@@ -13,7 +13,12 @@ import sys
 
 
 def _base_dir() -> str:
-    return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    if getattr(sys, "frozen", False):
+        # PyInstaller onedir: sys.executable is in the bundle root (e.g. dist/duckquery-api/).
+        # sys._MEIPASS is the _internal/ subdir — extensions live at the bundle root, not inside
+        # _internal/, so we use the executable's parent directory.
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 def apply_desktop_env() -> None:
