@@ -6,14 +6,21 @@ from pathlib import Path
 
 from fastapi import BackgroundTasks
 
-TEMP_DIR = Path("temp_files")
-TEMP_DIR.mkdir(exist_ok=True)
+
+def _temp_dir() -> Path:
+    """可写临时目录(惰性解析,避免 import 期对 cwd 相对路径 mkdir —— 桌面冻结时 cwd 只读会崩)。"""
+    from core.common.paths import get_temp_dir
+
+    d = get_temp_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
 
 async def save_upload_file(upload_file) -> str:
     """Saves an uploaded file to a temporary directory and returns the path."""
     # 生成SQL兼容的文件ID，使用下划线替代连字符
     file_id = str(uuid.uuid4()).replace('-', '_')
-    file_path = TEMP_DIR / f"{file_id}_{upload_file.filename}"
+    file_path = _temp_dir() / f"{file_id}_{upload_file.filename}"
     with open(file_path, "wb") as buffer:
         buffer.write(await upload_file.read())
     return str(file_path)

@@ -93,6 +93,12 @@ def start_parent_watchdog() -> None:
 def main() -> None:
     multiprocessing.freeze_support()  # Windows 必需
     apply_desktop_env()
+    # 经 LaunchServices(双击)启动时 cwd=/ 只读;切到可写用户目录,兜住任何 cwd 相对路径
+    from core.common.paths import get_user_data_dir
+
+    _wd = get_user_data_dir()
+    _wd.mkdir(parents=True, exist_ok=True)
+    os.chdir(_wd)
     start_parent_watchdog()
     sock, port = pick_free_loopback_port()
     print(port, flush=True)  # 第一行 = 端口,Tauri 读 stdout

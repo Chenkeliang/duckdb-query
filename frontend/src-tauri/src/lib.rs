@@ -67,7 +67,17 @@ fn spawn_backend(app: &AppHandle) {
     };
 
     let stdout = child.stdout.take().expect("piped stdout");
+    let stderr = child.stderr.take().expect("piped stderr");
     *app.state::<Backend>().0.lock().unwrap() = Some(child);
+
+    // Drain the backend's stderr so its pipe buffer never fills (a full ~64KB pipe
+    // would block the backend on its next log write). Also surfaces backend errors.
+    std::thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines().map_while(Result::ok) {
+            eprintln!("[backend] {line}");
+        }
+    });
 
     // Read the backend's stdout; its first numeric line is the chosen port.
     let handle = app.clone();
