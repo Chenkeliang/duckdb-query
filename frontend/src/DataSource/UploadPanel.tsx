@@ -507,10 +507,8 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
     if (!files) return;
     const paths = Array.isArray(files) ? files : [files];
     for (const p of paths) {
-      const alias =
-        serverAlias.trim() ||
-        p.split("/").pop()?.replace(/\.[^/.]+$/, "") ||
-        "";
+      // split on both separators so Windows backslash paths yield a clean basename
+      const alias = serverAlias.trim() || stemFromFilename(p.split(/[/\\]/).pop() || "");
       if (!alias) continue;
       setServerImporting(true);
       try {

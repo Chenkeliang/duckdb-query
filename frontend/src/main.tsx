@@ -108,7 +108,16 @@ async function bootstrap() {
             }).catch(() => {
                 // ignore; the event will arrive later
             });
+
+            // Give up if the backend never reports a port (spawn failed / binary
+            // missing) so we fall to the retry splash instead of hanging forever.
+            setTimeout(() => settle(''), 30000);
         });
+
+        if (!base) {
+            renderSplash('本地引擎启动失败，请重试。', true);
+            return;
+        }
 
         setApiBaseUrl(base);
 
