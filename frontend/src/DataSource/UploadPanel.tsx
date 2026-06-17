@@ -498,14 +498,6 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
     (window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__
   );
 
-  const handlePickDirectory = async () => {
-    if (!isTauri) return;
-    const dir = await tauriOpen({ directory: true, multiple: false, title: "选择本地目录" });
-    if (typeof dir === "string") {
-      await loadServerDirectory(dir);
-    }
-  };
-
   const handlePickFiles = async () => {
     if (!isTauri) return;
     const files = await tauriOpen({
@@ -657,7 +649,6 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
           onServerAliasChange={setServerAlias}
           onCsvOptionsChange={setServerCsvOptions}
           onImport={handleServerImport}
-          onPickDirectory={isTauri ? handlePickDirectory : undefined}
           onPickFiles={isTauri ? handlePickFiles : undefined}
         />
       )}

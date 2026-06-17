@@ -47,8 +47,6 @@ export interface ServerBrowseCardProps {
   onServerAliasChange: (alias: string) => void;
   onCsvOptionsChange: (opts: CsvOptions) => void;
   onImport: () => void;
-  /** Tauri desktop only: triggered when user clicks "选择本地目录…" */
-  onPickDirectory?: () => void;
   /** Tauri desktop only: triggered when user clicks "选择文件…" */
   onPickFiles?: () => void;
 }
@@ -77,7 +75,6 @@ export function ServerBrowseCard({
   onServerAliasChange,
   onCsvOptionsChange,
   onImport,
-  onPickDirectory,
   onPickFiles,
 }: ServerBrowseCardProps) {
   const isCsvSelected =
@@ -88,19 +85,16 @@ export function ServerBrowseCard({
     <Card className="rounded-xl shadow-sm">
       <CardContent className="p-6 space-y-5">
         <p className="text-sm leading-relaxed text-muted-foreground">
-          {t("page.datasource.cardServerDesc")}
+          {isTauri
+            ? t("page.datasource.desktopCardDesc")
+            : t("page.datasource.cardServerDesc")}
         </p>
 
-        {/* Tauri desktop: native OS directory/file picker buttons */}
+        {/* Tauri desktop: native OS file picker */}
         {isTauri && (
-          <div className="flex gap-2">
-            <Button variant="default" onClick={onPickDirectory}>
-              {t("page.datasource.desktopPickDirBtn")}
-            </Button>
-            <Button variant="outline" onClick={onPickFiles}>
-              {t("page.datasource.desktopPickFileBtn")}
-            </Button>
-          </div>
+          <Button variant="default" onClick={onPickFiles}>
+            {t("page.datasource.desktopPickFileBtn")}
+          </Button>
         )}
 
         <div className="space-y-2">
