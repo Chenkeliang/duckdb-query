@@ -1,0 +1,117 @@
+name: Release Desktop
+
+# Push a tag like v0.0.2 to build all three installers and attach them to a draft Release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS Apple Silicon
+          - platform: macos-15
+            rust_target: aarch64-apple-darwin
+            py_arch: arm64
+            duck_platform: osx_arm64
+            bundles: dmg
+          # macOS Intel
+          - platform: macos-15-intel
+            rust_target: x86_64-apple-darwin
+            py_arch: x64
+            duck_platform: osx_amd64
+            bundles: dmg
+          # Windows x64
+          - platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            py_arch: x64
+            duck_platform: windows_amd64
+            bundles: nsis
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- Python backend (PyInstaller onedir) ----
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: ${{ matrix.py_arch }}
+          cache: pip
+
+      - name: Install backend deps
+        run: pip install -r api/requirements.txt pyinstaller
+
+      - name: Pre-download DuckDB extensions (offline)
+        run: python api/scripts/fetch_duckdb_extensions.py ${{ matrix.duck_platform }}
+
+      - name: Build backend (PyInstaller onedir)
+        working-directory: api
+        run: pyinstaller duckquery.spec --noconfirm --distpath dist --workpath build
+
+      # ---- Stage the onedir as a Tauri bundle resource ----
+      - name: Stage sidecar (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          rm -rf frontend/src-tauri/binaries/duckquery-api
+          mkdir -p frontend/src-tauri/binaries
+          cp -R api/dist/duckquery-api frontend/src-tauri/binaries/duckquery-api
+          # Ad-hoc sign every Mach-O so the downloaded .app is not rejected as "damaged"
+          # on Apple Silicon (arm64 requires at least an ad-hoc signature to execute).
+          find frontend/src-tauri/binaries/duckquery-api \
+            \( -name '*.so' -o -name '*.dylib' -o -name 'duckquery-api' \) -type f \
+            -exec codesign --force --timestamp=none --sign - {} +
+
+      - name: Stage sidecar (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (Test-Path frontend/src-tauri/binaries/duckquery-api) { Remove-Item -Recurse -Force frontend/src-tauri/binaries/duckquery-api }
+          New-Item -ItemType Directory -Force -Path frontend/src-tauri/binaries | Out-Null
+          Copy-Item -Recurse api/dist/duckquery-api frontend/src-tauri/binaries/duckquery-api
+        shell: pwsh
+
+      # ---- Frontend + Rust + bundle ----
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./frontend/src-tauri -> target"
+
+      - name: Build & release with tauri-action
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional Apple Developer ID signing/notarization — when these secrets are
+          # absent the macOS build falls back to ad-hoc signing (signingIdentity "-" in
+          # tauri.conf.json), which still requires a one-time "Open Anyway" by the user.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: frontend
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
+          releaseName: "DuckQuery v__VERSION__"
+          releaseBody: "Desktop builds. See the README for first-run steps (macOS: 隐私与安全性 → 仍要打开; Windows: SmartScreen → 仍要运行)."
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.rust_target }} --bundles ${{ matrix.bundles }}

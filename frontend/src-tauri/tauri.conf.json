@@ -25,7 +25,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg"],
+    "targets": "all",
     "resources": ["binaries/duckquery-api"],
     "icon": [
       "icons/32x32.png",
@@ -34,6 +34,18 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "signingIdentity": "-",
+      "minimumSystemVersion": "13.0"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      },
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }
