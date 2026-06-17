@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+// @ts-ignore — only available in Tauri builds; falls back gracefully in web
+import { open as tauriOpen } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import {
   showSuccessToast,
@@ -492,6 +494,61 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
     setServerExcelPending(null);
   };
 
+  const isTauri = Boolean(
+    (window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__
+  );
+
+  const handlePickDirectory = async () => {
+    if (!isTauri) return;
+    const dir = await tauriOpen({ directory: true, multiple: false, title: "选择本地目录" });
+    if (typeof dir === "string") {
+      await loadServerDirectory(dir);
+    }
+  };
+
+  const handlePickFiles = async () => {
+    if (!isTauri) return;
+    const files = await tauriOpen({
+      multiple: true,
+      filters: [{ name: "数据文件", extensions: ["csv", "tsv", "xlsx", "xls", "json", "jsonl", "parquet"] }],
+    });
+    if (!files) return;
+    const paths = Array.isArray(files) ? files : [files];
+    for (const p of paths) {
+      const alias =
+        serverAlias.trim() ||
+        p.split("/").pop()?.replace(/\.[^/.]+$/, "") ||
+        "";
+      if (!alias) continue;
+      setServerImporting(true);
+      try {
+        const result = await importServerFile({ path: p, table_alias: alias });
+        if (result?.success) {
+          showSuccessToast(
+            t,
+            "SERVER_FILE_IMPORTED",
+            result?.message || t("page.datasource.importSuccess")
+          );
+          await invalidateAfterFileUpload(queryClient);
+          const importedTable = result.table_name ?? "";
+          onDataSourceSaved?.({
+            id: importedTable,
+            type: "duckdb",
+            name: t("page.datasource.duckdbTable", { table: importedTable }),
+            row_count: result.row_count,
+            columns: result.columns || [],
+          });
+        } else {
+          showResponseToast(t, result, { errorFallback: t("page.datasource.importFail") });
+        }
+      } catch (err) {
+        showErrorToast(t, err as Error, t("page.datasource.importFail"));
+      } finally {
+        setServerImporting(false);
+      }
+    }
+  };
+
   useEffect(() => {
     if (!serverMounts.length && !serverMountLoading) {
       loadServerMounts();
@@ -600,6 +657,8 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
           onServerAliasChange={setServerAlias}
           onCsvOptionsChange={setServerCsvOptions}
           onImport={handleServerImport}
+          onPickDirectory={isTauri ? handlePickDirectory : undefined}
+          onPickFiles={isTauri ? handlePickFiles : undefined}
         />
       )}
 

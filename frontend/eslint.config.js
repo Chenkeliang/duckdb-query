@@ -5,7 +5,9 @@ import globals from "globals";
 
 export default [
   {
-    ignores: ["dist/**", "node_modules/**", "**/dist/**"],
+    ignores: ["dist/**", "node_modules/**", "**/dist/**", "src-tauri/**"],
+  },
+  {
     linterOptions: {
       reportUnusedDisableDirectives: false
     }

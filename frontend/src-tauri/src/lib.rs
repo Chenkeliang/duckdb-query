@@ -117,6 +117,7 @@ pub fn run() {
                 let _ = w.set_focus();
             }
         }));
+        builder = builder.plugin(tauri_plugin_dialog::init());
     }
 
     builder

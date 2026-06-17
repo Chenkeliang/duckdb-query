@@ -47,9 +47,17 @@ export interface ServerBrowseCardProps {
   onServerAliasChange: (alias: string) => void;
   onCsvOptionsChange: (opts: CsvOptions) => void;
   onImport: () => void;
+  /** Tauri desktop only: triggered when user clicks "选择本地目录…" */
+  onPickDirectory?: () => void;
+  /** Tauri desktop only: triggered when user clicks "选择文件…" */
+  onPickFiles?: () => void;
 }
 
 export type { CsvOptions };
+
+const isTauri = Boolean(
+  (window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__
+);
 
 export function ServerBrowseCard({
   serverMounts,
@@ -69,6 +77,8 @@ export function ServerBrowseCard({
   onServerAliasChange,
   onCsvOptionsChange,
   onImport,
+  onPickDirectory,
+  onPickFiles,
 }: ServerBrowseCardProps) {
   const isCsvSelected =
     (serverSelectedFile?.extension || "").toLowerCase() === "csv";
@@ -81,6 +91,18 @@ export function ServerBrowseCard({
           {t("page.datasource.cardServerDesc")}
         </p>
 
+        {/* Tauri desktop: native OS directory/file picker buttons */}
+        {isTauri && (
+          <div className="flex gap-2">
+            <Button variant="default" onClick={onPickDirectory}>
+              {t("page.datasource.desktopPickDirBtn")}
+            </Button>
+            <Button variant="outline" onClick={onPickFiles}>
+              {t("page.datasource.desktopPickFileBtn")}
+            </Button>
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label className="flex items-center gap-2 text-xs">
             <HardDrive className="h-3.5 w-3.5" />
@@ -90,8 +112,14 @@ export function ServerBrowseCard({
             <div className="text-xs text-muted-foreground">{t("actions.loading")}</div>
           ) : serverMounts.length === 0 ? (
             <div className="space-y-2 text-xs text-muted-foreground">
-              <div>{t("page.datasource.serverNoMount")}</div>
-              <div>{t("page.datasource.serverMountAlert")}</div>
+              {isTauri ? (
+                <div>{t("page.datasource.desktopHint")}</div>
+              ) : (
+                <>
+                  <div>{t("page.datasource.serverNoMount")}</div>
+                  <div>{t("page.datasource.serverMountAlert")}</div>
+                </>
+              )}
             </div>
           ) : (
             <Select value={selectedMount} onValueChange={onMountChange}>
