@@ -21,6 +21,7 @@ import i18n from './i18n/config';
 import { Toaster } from '@/components/ui/sonner';
 import { QueryProvider } from './providers/QueryProvider';
 import { setApiBaseUrl } from './api/client';
+import { openExternal } from './desktop/openExternal';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -75,6 +76,17 @@ async function bootstrap() {
         renderApp();
         return;
     }
+
+    // In Tauri the webview blocks external <a> navigation; route external links
+    // (e.g. the GitHub buttons on the welcome page) to the system browser.
+    document.addEventListener('click', (e) => {
+        const anchor = (e.target as HTMLElement | null)?.closest?.('a');
+        const href = anchor?.getAttribute('href') ?? '';
+        if (/^https?:\/\//i.test(href) && !href.includes('127.0.0.1') && !href.includes('localhost')) {
+            e.preventDefault();
+            openExternal(href);
+        }
+    });
 
     // Tauri path: resolve the backend base URL before rendering.
     renderSplash('正在启动本地引擎…');

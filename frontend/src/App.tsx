@@ -48,6 +48,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { ShortcutProvider, useKeyboardShortcuts } from "./Settings/shortcuts";
 
 import Logo from "./assets/duckq-logo.svg";
+import { openExternal } from "./desktop/openExternal";
 const WelcomePage = lazy(() => import("./WelcomePage"));
 
 // Types
@@ -283,19 +284,14 @@ const AppInner: React.FC = () => {
         setCurrentTab("settings");
         break;
       case "help":
-        window.open("https://github.com/chenkeliang/duckdb-query", "_blank");
+        openExternal("https://github.com/chenkeliang/duckdb-query");
         break;
       default:
         console.log("Unknown action:", action, params);
     }
   };
 
-  const openGithub = () =>
-    window.open(
-      "https://github.com/chenkeliang/duckdb-query",
-      "_blank",
-      "noopener,noreferrer"
-    );
+  const openGithub = () => openExternal("https://github.com/chenkeliang/duckdb-query");
 
   if (showWelcome) {
     return <WelcomePage onStartUsing={closeWelcome} />;

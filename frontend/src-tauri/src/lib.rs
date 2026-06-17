@@ -26,6 +26,22 @@ fn get_api_base(port: tauri::State<ApiPort>) -> String {
     }
 }
 
+/// Open a URL in the user's default browser. The Tauri webview blocks
+/// window.open() to external origins, so the frontend routes external links
+/// (and localhost download URLs) through this command instead.
+#[tauri::command]
+fn open_external(url: String) {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return; // only http(s); ignore anything else
+    }
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(&url).spawn();
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("explorer").arg(&url).spawn();
+    #[cfg(target_os = "linux")]
+    let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+}
+
 /// Resolve the backend onedir executable across bundle and dev layouts.
 fn resolve_backend(app: &AppHandle) -> Option<PathBuf> {
     let rel = "binaries/duckquery-api/duckquery-api";
@@ -123,7 +139,7 @@ pub fn run() {
     builder
         .manage(ApiPort::default())
         .manage(Backend(Mutex::new(None)))
-        .invoke_handler(tauri::generate_handler![get_api_base])
+        .invoke_handler(tauri::generate_handler![get_api_base, open_external])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

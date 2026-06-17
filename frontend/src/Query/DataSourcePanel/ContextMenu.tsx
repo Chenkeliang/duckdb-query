@@ -32,6 +32,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { executeDuckDBSQL, getExternalTableDetail } from '@/api';
+import { openExternal } from '@/desktop/openExternal';
 import { exportQueryResults, getQueryExportDownloadUrl } from '@/api/queryExportApi';
 import type { SelectedTableObject } from '@/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
@@ -151,7 +152,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         format,
       });
       const url = getQueryExportDownloadUrl(result.download_url);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      openExternal(url);
       showSuccessToast(t, 'OPERATION_SUCCESS', t('dataSource.exportStarted', { tableName: table.name }));
     } catch (error) {
       showErrorToast(

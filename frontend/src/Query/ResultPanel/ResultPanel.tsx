@@ -11,6 +11,7 @@ import {
 } from '@/api/queryExportApi';
 import { showErrorToast, cleanErrorMessage } from '@/utils/toastHelpers';
 import { parseDuckDbErrorSuggestion } from '@/utils/sqlErrorHelper';
+import { openExternal } from '@/desktop/openExternal';
 import { Button } from '@/components/ui/button';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { useAiEnabled } from '@/hooks/useAiEnabled';
@@ -276,7 +277,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         })),
       });
       const url = getQueryExportDownloadUrl(result.download_url);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      openExternal(url);
     } catch (err) {
       showErrorToast(
         t,
