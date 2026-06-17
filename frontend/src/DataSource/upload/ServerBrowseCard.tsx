@@ -90,13 +90,13 @@ export function ServerBrowseCard({
             : t("page.datasource.cardServerDesc")}
         </p>
 
-        {/* Tauri desktop: native OS file picker */}
-        {isTauri && (
+        {/* 桌面版：原生选文件即导入;Web/Docker：挂载目录浏览 + 别名 + 导入按钮 */}
+        {isTauri ? (
           <Button variant="default" onClick={onPickFiles}>
             {t("page.datasource.desktopPickFileBtn")}
           </Button>
-        )}
-
+        ) : (
+          <>
         <div className="space-y-2">
           <Label className="flex items-center gap-2 text-xs">
             <HardDrive className="h-3.5 w-3.5" />
@@ -281,6 +281,8 @@ export function ServerBrowseCard({
               : t("page.datasource.btnImportServer")}
           </Button>
         </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
