@@ -11,6 +11,7 @@ import {
   Check,
   ArrowRight,
 } from 'lucide-react';
+import Logo from '../assets/duckq-logo.svg';
 
 interface WelcomePageProps {
   onStartUsing: () => void;
@@ -53,7 +54,7 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onStartUsing }) => {
       <header className="sticky top-0 z-40 border-b border-white/[0.07] bg-[#0E0F11]/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-[1180px] items-center gap-7 px-6">
           <a href="#top" className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#F4B43C] text-sm font-bold text-[#0E0F11]">D</span>
+            <img src={Logo} alt="DuckQuery" className="h-7 w-auto" />
             DuckQuery
           </a>
           <nav className="hidden items-center gap-6 text-[14px] text-white/55 md:flex">
