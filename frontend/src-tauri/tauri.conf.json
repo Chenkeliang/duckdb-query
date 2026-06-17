@@ -17,7 +17,9 @@
         "height": 800,
         "resizable": true,
         "fullscreen": false,
-        "theme": "Dark"
+        "theme": "Dark",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
