@@ -19,7 +19,9 @@ a = Analysis(
     binaries=litellm_binaries,
     datas=[
         *litellm_datas,
-        ('config', 'config'),              # default app-config templates
+        # NOTE: no ('config', 'config') — runtime config is resolved from
+        # get_config_dir() (CONFIG_DIR env / per-user dir), never the bundle.
+        # api/config is a runtime-generated dir, absent in a clean CI checkout.
         ('prompts', 'prompts'),            # read-only prompt templates
         *collect_data_files('openpyxl'),
     ],
