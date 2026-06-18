@@ -1,0 +1,37 @@
+# Backend image build context = repo root, but the Dockerfile only `COPY api .`.
+# Everything below is irrelevant to the backend image and was bloating the
+# build context to ~9GB (frontend 7.4G, data 1.2G, venvs ~1G). Exclude it.
+
+# Frontend (builds from its own ./frontend context)
+frontend
+
+# Runtime data / user data — never needed in the image
+data
+exports
+temp_files
+server_data
+logs
+uploads
+server_files
+
+# Python/virtualenvs and caches (incl. api/.venv used by the local git hook)
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# Node
+**/node_modules
+
+# VCS / tooling / docs
+.git
+.agents
+.claude
+docs
+*.md
+
+# DuckDB databases / WAL
+*.db
+*.db.wal*
+**/*.duckdb
