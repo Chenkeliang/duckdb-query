@@ -13,7 +13,7 @@ async def describe_table(client, cfg, *, name: str) -> Any:
 
 async def list_connections(client, cfg) -> Any:
     """List saved external database connections (MySQL/Postgres)."""
-    return await client.call("GET", "/databases/list")
+    return await client.call("GET", "/api/datasources/databases/list")
 
 
 async def list_db_objects(client, cfg, *, connection_id: str, kind: str = "tables") -> Any:
