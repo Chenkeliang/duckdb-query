@@ -218,3 +218,48 @@ def build_time_bound_suggestions(
                      f"'{default_time_bound_value(days=days)}' 可大幅减少远端扫描"),
         })
     return suggestions
+
+
+def _make_key_provider(conn):
+    def provider(local_table_sql: str, col: str, limit: int):
+        q = (f'SELECT DISTINCT "{col}" FROM {local_table_sql} '
+             f'WHERE "{col}" IS NOT NULL LIMIT {int(limit) + 1}')
+        rows = conn.execute(q).fetchall()
+        if len(rows) > limit:
+            return None                       # 超阈值 → 跳过
+        return [r[0] for r in rows]
+    return provider
+
+
+def _make_schema_provider(conn):
+    def provider(remote_ref: str):
+        rows = conn.execute(f"DESCRIBE {remote_ref}").fetchall()
+        # DuckDB DESCRIBE: (column_name, column_type, null, key, default, extra)
+        return [{"name": r[0], "type": r[1]} for r in rows]
+    return provider
+
+
+def optimize_federated_sql(conn, sql: str, attach_aliases: set[str], cfg) -> tuple[str, list[dict], list[dict]]:
+    """主入口（已 ATTACH 的连接内调用）。返回 (优化后 SQL, suggestions, warnings)。
+
+    全程 bailout：任何异常 → 返回原 SQL。优化保持结果;时间界仅作建议不改 SQL。
+    """
+    if not attach_aliases:
+        return sql, [], []
+    threshold = int(getattr(cfg, "federated_semijoin_threshold", 10000))
+    warnings: list[dict] = []
+    out_sql = sql
+    try:
+        out_sql, reports = apply_semijoin_pushdown(
+            sql, attach_aliases, key_provider=_make_key_provider(conn), threshold=threshold)
+        warnings.extend(r for r in reports if r.get("error") or r.get("pushed") is False)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("federated optimize bailout: %s", exc)
+        out_sql = sql
+    suggestions: list[dict] = []
+    try:
+        suggestions = build_time_bound_suggestions(
+            sql, attach_aliases, schema_provider=_make_schema_provider(conn))
+    except Exception as exc:  # noqa: BLE001
+        logger.info("time-bound suggestion skipped: %s", exc)
+    return out_sql, suggestions, warnings
