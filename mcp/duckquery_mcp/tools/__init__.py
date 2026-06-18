@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 from duckquery_mcp.client import BackendError, BackendNotFound, DuckQueryClient
 from duckquery_mcp.config import Config
 from duckquery_mcp.safety import tool_allowed
-from duckquery_mcp.tools import discover, query, sources
+from duckquery_mcp.tools import discover, query, sources, transform
 
 
 def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
@@ -47,3 +47,6 @@ def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
     add("write")(sources.import_excel)
     add("write")(sources.paste_data)
     add("write")(sources.read_url)
+    add("write")(transform.save_as_table)
+    add("write")(transform.pivot)
+    add("write")(transform.set_operations)
