@@ -171,6 +171,46 @@ cd frontend && npm install && npm run dev
 
 ---
 
+## MCP (drive DuckQuery from an AI CLI)
+
+DuckQuery ships a standalone **MCP server** (`duckquery-mcp`) so MCP-capable AI CLIs — **Claude Code / Cursor / Codex** — can drive it directly: ask questions in natural language, run SQL, add data sources, configure the LLM, export, and more, entirely through AI.
+
+**Prerequisite**: start any one DuckQuery backend first (desktop app / Docker / manual). The MCP server auto-discovers it (reads `runtime.json`, else probes `48001 / 8000 / 8001` and verifies `/health`).
+
+**Run (zero-install)**:
+
+```bash
+uvx duckquery-mcp
+```
+
+**Add to a CLI**:
+
+```bash
+# Claude Code
+claude mcp add duckquery -- uvx duckquery-mcp
+```
+
+```jsonc
+// Cursor / Codex mcp.json
+{ "mcpServers": { "duckquery": {
+    "command": "uvx", "args": ["duckquery-mcp"],
+    "env": { "DUCKQUERY_MCP_MODE": "normal" } } } }
+```
+
+**Tools (~24)**: query / NL-to-SQL / explain SQL, list tables & schema, add connection / local file / Excel / URL sources, configure LLM, pivot / set-operations, export — plus a generic passthrough tool for everything else.
+
+**Safety mode** `DUCKQUERY_MCP_MODE`:
+
+- `read-only` — reads only (query / schema / export); all mutating tools hidden;
+- `normal` (default) — mutations allowed, but destructive SQL and non-GET passthrough require `confirm=true`;
+- `full` — no gate.
+
+**Target a specific backend** (when several are running): `DUCKQUERY_API_BASE=http://127.0.0.1:8001`.
+
+See [`mcp/README.md`](mcp/README.md) for details.
+
+---
+
 ## Configuration
 
 DuckQuery works out-of-the-box. For advanced setups, edit `config/app-config.json`:

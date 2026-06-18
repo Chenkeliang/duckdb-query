@@ -166,6 +166,46 @@ cd frontend && npm install && npm run dev
 
 ---
 
+## MCP 接入（用 AI CLI 驱动 DuckQuery）
+
+DuckQuery 自带一个独立的 **MCP server**（`duckquery-mcp`），让 **Claude Code / Cursor / Codex** 等支持 MCP 的 AI CLI 直接驱动它——自然语言问数、跑 SQL、加数据源、配模型、导出等，全程 AI 操作。
+
+**前提**：先把任意一个 DuckQuery 后端跑起来（桌面 App / Docker / 手动），MCP 会自动发现它（优先读 `runtime.json`，否则探测 `48001 / 8000 / 8001` 并校验 `/health`）。
+
+**免安装运行**：
+
+```bash
+uvx duckquery-mcp
+```
+
+**接入 CLI**：
+
+```bash
+# Claude Code
+claude mcp add duckquery -- uvx duckquery-mcp
+```
+
+```jsonc
+// Cursor / Codex 的 mcp.json
+{ "mcpServers": { "duckquery": {
+    "command": "uvx", "args": ["duckquery-mcp"],
+    "env": { "DUCKQUERY_MCP_MODE": "normal" } } } }
+```
+
+**提供的能力**（约 24 个工具）：查询 / 自然语言问数 / 解释 SQL、列出表与表结构、加连接 / 本地文件 / Excel / URL 数据源、配置 LLM、透视 / 集合运算、导出，外加一个通用透传工具兜住其余接口。
+
+**安全档位** `DUCKQUERY_MCP_MODE`：
+
+- `read-only` — 只读（查询 / 看结构 / 导出），隐藏所有写工具；
+- `normal`（默认）— 可写，但破坏性 SQL 与非 GET 透传需 `confirm=true`；
+- `full` — 完全放开。
+
+**指定后端**（多个后端同时在跑时，强制连某一个）：`DUCKQUERY_API_BASE=http://127.0.0.1:8001`。
+
+完整说明见 [`mcp/README.md`](mcp/README.md)。
+
+---
+
 ## 配置说明
 
 DuckQuery 开箱即用。如需高级配置，编辑 `config/app-config.json`：
