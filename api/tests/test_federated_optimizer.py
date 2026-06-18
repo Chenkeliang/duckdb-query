@@ -103,3 +103,30 @@ def test_unparseable_sql_returns_original():
     out_sql, reports = apply_semijoin_pushdown(sql, {"mysql_db"}, key_provider=lambda *a: [1], threshold=100)
     assert out_sql == sql
     assert reports == [{"error": "parse_failed", "pushed": False}]
+
+
+from core.database.federated_optimizer import build_time_bound_suggestions
+
+
+def _schema(_ref):
+    return [{"name": "id", "type": "BIGINT"}, {"name": "created_at", "type": "TIMESTAMP"}]
+
+
+def test_suggests_when_no_time_predicate():
+    sql = "SELECT * FROM mysql_db.orders o JOIN local_t l ON o.id = l.oid"
+    sugg = build_time_bound_suggestions(sql, {"mysql_db"}, schema_provider=_schema)
+    assert len(sugg) == 1
+    s = sugg[0]
+    assert s["table"] == "mysql_db.orders" and s["column"] == "created_at"
+    assert s["type"] == "time_bound" and "created_at" in s["hint"]
+
+
+def test_no_suggestion_when_time_predicate_present():
+    sql = "SELECT * FROM mysql_db.orders o WHERE o.created_at >= '2026-01-01'"
+    assert build_time_bound_suggestions(sql, {"mysql_db"}, schema_provider=_schema) == []
+
+
+def test_no_suggestion_without_audit_column():
+    sql = "SELECT * FROM mysql_db.orders o"
+    flat = lambda _ref: [{"name": "id", "type": "BIGINT"}, {"name": "qty", "type": "INT"}]
+    assert build_time_bound_suggestions(sql, {"mysql_db"}, schema_provider=flat) == []

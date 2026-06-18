@@ -12,6 +12,8 @@ from typing import Callable, Optional
 import sqlglot
 from sqlglot import exp
 
+from core.database.federated_time_bound import detect_time_bound_candidates, default_time_bound_value
+
 logger = logging.getLogger(__name__)
 
 
@@ -164,3 +166,55 @@ def apply_semijoin_pushdown(
     except Exception as exc:  # noqa: BLE001 —— 改写阶段任何异常都保底放行
         logger.warning("federated optimize: rewrite failed, passthrough: %s", exc)
         return sql, [{"error": "rewrite_failed", "pushed": False}]
+
+
+SchemaProvider = Callable[[str], list]
+
+
+def _columns_with_time_predicate(tree: exp.Expression) -> set[tuple[str, str]]:
+    """已写了范围类时间谓词的 (表别名小写, 列名小写) 集合（粗判:列出现在比较里即视为已设界）。"""
+    out: set[tuple[str, str]] = set()
+    for cmp_cls in (exp.GTE, exp.GT, exp.LT, exp.LTE, exp.Between, exp.EQ):
+        for node in tree.find_all(cmp_cls):
+            for col in node.find_all(exp.Column):
+                out.add((col.table.lower(), col.name.lower()))
+    return out
+
+
+def build_time_bound_suggestions(
+    sql: str,
+    attach_aliases: set[str],
+    *,
+    schema_provider: SchemaProvider,
+    days: int = 30,
+) -> list[dict]:
+    """远端表有审计时间列且 SQL 未对它设时间谓词 → 产出建议（不改 SQL）。解析失败 → []。"""
+    try:
+        tree = sqlglot.parse_one(sql, read="duckdb")
+    except Exception:  # noqa: BLE001
+        return []
+    bounded = _columns_with_time_predicate(tree)
+    suggestions: list[dict] = []
+    seen: set[str] = set()
+    for t in tree.find_all(exp.Table):
+        lm = t.catalog or t.db or None
+        if lm not in attach_aliases or not _is_top_level_bare(t):
+            continue
+        ref = ".".join(p for p in (t.catalog, t.db, t.name) if p)
+        if ref in seen:
+            continue
+        seen.add(ref)
+        cands = detect_time_bound_candidates(schema_provider(ref))
+        alias = (t.alias or t.name).lower()
+        cands = [c for c in cands if (alias, c.lower()) not in bounded]
+        if not cands:
+            continue
+        col = cands[0]
+        suggestions.append({
+            "type": "time_bound",
+            "table": ref,
+            "column": col,
+            "hint": (f"该表有审计列 {col} 且无时间过滤;加 WHERE {alias}.{col} >= "
+                     f"'{default_time_bound_value(days=days)}' 可大幅减少远端扫描"),
+        })
+    return suggestions
