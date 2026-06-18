@@ -32,4 +32,9 @@ def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
         return deco
 
     add("read")(query.run_sql)
-    # later tasks append more add(...)(...) lines here
+    add("read")(query.federated_query)
+    add("read")(query.ask)
+    add("read")(query.explain_sql)
+    add("read")(query.suggest_chart)
+    add("read")(query.chat)
+    add("read")(query.error_fix)

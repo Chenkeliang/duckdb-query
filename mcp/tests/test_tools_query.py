@@ -41,3 +41,19 @@ async def test_run_sql_blocks_write_in_readonly(cfg):
     ro = cfg.__class__(**{**cfg.__dict__, "mode": "read-only"})
     out = await run_sql(None, ro, sql="DROP TABLE t")  # short-circuits before any HTTP call
     assert "read-only" in out["error"].lower()
+
+
+@respx.mock
+async def test_ask_generates_then_runs(cfg):
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    respx.post(f"{base}/api/ai/nl-to-sql").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"sql": "SELECT 1 AS n"}}))
+    respx.post(f"{base}/api/duckdb/execute").mock(
+        return_value=httpx.Response(200, json={"success": True,
+            "data": {"columns": ["n"], "data": [{"n": 1}], "row_count": 1}}))
+    from duckquery_mcp.tools.query import ask
+    client = DuckQueryClient(cfg)
+    out = await ask(client, cfg, question="how many?")
+    assert out["generated_sql"] == "SELECT 1 AS n"
+    assert out["rows"] == [{"n": 1}]
