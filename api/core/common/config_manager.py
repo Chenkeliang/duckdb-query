@@ -183,6 +183,9 @@ class AppConfig:
     federated_query_timeout: int = 300
     """联邦query前端请求timeout时间，单位为秒。默认 300秒 (5分钟)"""
 
+    federated_semijoin_threshold: int = 10000
+    """联邦查询半连接下推行数阈值，超过此值跳过半连接优化"""
+
     def __post_init__(self):
         if self.cors_origins is None:
             self.cors_origins = [

@@ -7,6 +7,7 @@ DuckDB自定义SQL查询路由
 import logging
 import os
 import re
+import threading
 import time
 import traceback
 import uuid
@@ -39,6 +40,9 @@ from core.database.federated_attach import (
     detach_databases_on_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
+from core.common.connection_alias import normalize_connection_id
+from core.database.connection_registry import connection_registry
+from core.database.federated_optimizer import optimize_federated_sql
 from core.security.encryption import password_encryptor
 from core.services.resource_manager import save_upload_file
 from core.services.table_metadata_service import get_table_metadata
@@ -770,7 +774,9 @@ async def execute_federated_query(
     attach_configs = []
     if request.attach_databases:
         for attach_db in request.attach_databases:
-            connection = db_manager.get_connection(attach_db.connection_id)
+            connection = db_manager.get_connection(
+                normalize_connection_id(attach_db.connection_id)
+            )
             if not connection:
                 raise ResourceNotFoundError(
                     "Database connection", attach_db.connection_id
@@ -802,6 +808,9 @@ async def execute_federated_query(
 
     logger.info(f"Executing federated query: {sql_query}")
 
+    # 捕获优化器输出（通过 dict 跨闭包传递，避免 nonlocal 嵌套问题）
+    _opt = {"sql": sql_query, "suggestions": None}
+
     def execute_in_connection(conn):
         """在连接内执行 ATTACH/QUERY/DETACH"""
         nonlocal attached_aliases, warnings
@@ -811,10 +820,20 @@ async def execute_federated_query(
             attached_aliases = attach_databases_on_connection(conn, attach_configs)
             logger.info(f"Attached databases: {attached_aliases}")
 
-        # 2. 执行用户 SQL
-        result_df = conn.execute(sql_query).fetchdf()
+        # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
+        attach_aliases = {alias for (alias, _cfg) in attach_configs}
+        opt_sql, suggestions, opt_warnings = optimize_federated_sql(
+            conn, _opt["sql"], attach_aliases, config_manager.get_app_config()
+        )
+        _opt["sql"] = opt_sql
+        _opt["suggestions"] = suggestions or None
+        if opt_warnings:
+            warnings.extend(str(w) for w in opt_warnings)
 
-        # 3. 可选：保存查询结果为新表
+        # 3. 执行用户 SQL（使用优化后的语句）
+        result_df = conn.execute(opt_sql).fetchdf()
+
+        # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
         if request.save_as_table:
             table_name = request.save_as_table.strip()
             if table_name:
@@ -829,38 +848,35 @@ async def execute_federated_query(
                     logger.warning(f"Failed to save query result as table: {str(save_error)}")
                     warnings.append(f"Failed to save result as table: {str(save_error)}")
 
-        # 4. DETACH 清理
+        # 5. DETACH 清理
         if attached_aliases:
             detach_databases_on_connection(conn, attached_aliases)
 
         return result_df
 
+    timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
+    query_id = query_id or f"fed:{uuid4().hex}"
+    timed_out = {"v": False}
+
+    def _on_timeout():
+        timed_out["v"] = True
+        connection_registry.interrupt(query_id)
+
     result_df = None
     metrics_conn = None
     query_column_types = []
     try:
-        # 使用可中断连接（如果有 query_id）
-        if query_id:
-            with interruptible_connection(query_id, sql_query) as conn:
-                metrics_conn = conn
+        with interruptible_connection(query_id, sql_query) as conn:
+            metrics_conn = conn
+            timer = threading.Timer(timeout_s, _on_timeout)
+            timer.start()
+            try:
                 result_df = execute_in_connection(conn)
                 query_column_types = describe_query_column_types(
-                    conn, sql_query, result_df
+                    conn, _opt["sql"], result_df
                 )
-        else:
-            with with_duckdb_connection() as con:
-                metrics_conn = con
-                try:
-                    result_df = execute_in_connection(con)
-                    query_column_types = describe_query_column_types(
-                        con, sql_query, result_df
-                    )
-                finally:
-                    for alias in attached_aliases:
-                        try:
-                            con.execute(f'DETACH "{alias}"')
-                        except Exception:
-                            pass
+            finally:
+                timer.cancel()
 
         execution_time = (time.time() - start_time) * 1000
 
@@ -886,6 +902,8 @@ async def execute_federated_query(
             "execution_time_ms": execution_time,
             "attached_databases": attached_aliases,
             "sql_query": sql_query,
+            "optimized_sql": _opt["sql"],
+            "suggestions": _opt["suggestions"],
             "warnings": warnings if warnings else None,
             "preview_limit_applied": limit,
         }
@@ -897,6 +915,13 @@ async def execute_federated_query(
         )
 
     except duckdb.InterruptException:
+        if timed_out["v"]:
+            logger.warning(f"Federated query {query_id} timed out after {timeout_s}s")
+            return error_json_response(
+                504, MessageCode.QUERY_TIMEOUT,
+                f"Federated query exceeded {timeout_s}s and was aborted",
+                details={"query_id": query_id, "timeout_s": timeout_s},
+            )
         logger.info(f"Federated query {query_id} was cancelled by user")
         # 取消时也尝试清理 ATTACH
         try:
