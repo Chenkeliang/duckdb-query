@@ -78,8 +78,11 @@ class DuckQueryClient:
             r.raise_for_status()
             return {"raw": r.text}
         if r.status_code >= 400:
-            detail = payload.get("detail") if isinstance(payload, dict) else None
-            raise BackendError(str(detail) if detail else f"HTTP {r.status_code}")
+            msg = None
+            if isinstance(payload, dict):
+                # FastAPI uses "detail"; DuckQuery's envelope uses "message"/"messageCode"
+                msg = payload.get("detail") or payload.get("message") or payload.get("messageCode")
+            raise BackendError(str(msg) if msg else f"HTTP {r.status_code}")
         if isinstance(payload, dict):
             if payload.get("success") is False:
                 raise BackendError(payload.get("message") or payload.get("messageCode") or "request failed")
