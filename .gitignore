@@ -167,6 +167,10 @@ ehthumbs.db
 # Local clipboard and temporary files
 .gemini-clipboard/
 
+# Backend writes a per-deployment runtime descriptor here
+# (Docker sets APP_ROOT=/app -> ./api/runtime.json). Generated, not source.
+api/runtime.json
+
 # Logs
 logs/
 *.log

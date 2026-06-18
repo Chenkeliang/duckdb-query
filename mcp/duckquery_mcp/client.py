@@ -17,6 +17,9 @@ class BackendError(Exception):
 
 def runtime_file() -> Path:
     """Mirror api/core/common/paths.get_user_data_dir() / 'runtime.json'."""
+    override = os.getenv("APP_ROOT")
+    if override:
+        return Path(override) / "runtime.json"
     home = Path(os.path.expanduser("~"))
     if sys.platform == "darwin":
         base = home / "Library" / "Application Support" / "DuckQuery"
