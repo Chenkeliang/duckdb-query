@@ -130,3 +130,16 @@ def test_no_suggestion_without_audit_column():
     sql = "SELECT * FROM mysql_db.orders o"
     flat = lambda _ref: [{"name": "id", "type": "BIGINT"}, {"name": "qty", "type": "INT"}]
     assert build_time_bound_suggestions(sql, {"mysql_db"}, schema_provider=flat) == []
+
+
+def test_left_join_preserved_remote_reversed_on_not_reduced():
+    # remote 在保留(LEFT)侧,ON 写成 local=remote(反序) → 仍不能缩 remote
+    sql = "SELECT * FROM mysql_db.orders o LEFT JOIN local_t l ON l.oid = o.id"
+    assert plan_semijoins(sql, {"mysql_db"}) == []
+
+
+def test_left_join_reduces_non_preserved_remote_reversed_on():
+    # remote 在非保留(右)侧,ON 反序(o 在左) → 仍应缩 remote
+    sql = "SELECT * FROM local_t l LEFT JOIN mysql_db.orders o ON o.id = l.oid"
+    plans = plan_semijoins(sql, {"mysql_db"})
+    assert len(plans) == 1 and plans[0].remote_alias == "o"

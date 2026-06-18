@@ -44,3 +44,11 @@ def test_time_bound_suggestion_emitted(conn):
     sql = "SELECT o.id FROM remote_db.orders o JOIN local_t l ON o.id = l.oid"
     _opt, sugg, _w = optimize_federated_sql(conn, sql, {"remote_db"}, _Cfg())
     assert any(s["column"] == "created_at" for s in sugg)
+
+
+def test_left_join_preserved_remote_returns_all_rows(conn):
+    # orders 是 LEFT 保留侧 → 必须返回全部 3 行(local 只匹配 id 2,3)
+    sql = "SELECT o.id FROM remote_db.orders o LEFT JOIN local_t l ON l.oid = o.id ORDER BY o.id"
+    baseline = conn.execute(sql).fetchall()
+    opt, _s, _w = optimize_federated_sql(conn, sql, {"remote_db"}, _Cfg())
+    assert conn.execute(opt).fetchall() == baseline == [(1,), (2,), (3,)]

@@ -110,9 +110,14 @@ def plan_semijoins(sql: str, attach_aliases: set[str], *, _tree: Optional[exp.Ex
                     cand = (lt, lc, la, rt, rc)
                 elif reducible_remote(rt) and not is_remote(lt):
                     cand = (rt, rc, ra, lt, lc)
-            elif side == "LEFT":   # A LEFT JOIN B：B(=join.this)非保留可缩
-                if reducible_remote(rt) and not is_remote(lt):
+            elif side == "LEFT":
+                # A LEFT JOIN B ON …：仅 B(=join.this,非保留侧)可缩。
+                # ON 操作数顺序任意,必须用 join.this 认非保留侧,不能靠 eq 左右位置。
+                np_alias = (join.this.alias or join.this.name).lower()
+                if ra == np_alias and reducible_remote(rt) and not is_remote(lt):
                     cand = (rt, rc, ra, lt, lc)
+                elif la == np_alias and reducible_remote(lt) and not is_remote(rt):
+                    cand = (lt, lc, la, rt, rc)
             elif side == "RIGHT":  # v1 跳过 RIGHT
                 cand = None
             if cand is None:
