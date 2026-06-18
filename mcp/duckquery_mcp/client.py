@@ -2,6 +2,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -66,3 +67,19 @@ class DuckQueryClient:
             "DuckQuery backend not found — start the DuckQuery app "
             "or set DUCKQUERY_API_BASE."
         )
+
+    async def call(self, method: str, path: str, *, json_body: Any = None,
+                   params: dict | None = None) -> Any:
+        base = await self.base()
+        r = await self._http.request(method, f"{base}{path}", json=json_body, params=params)
+        try:
+            payload = r.json()
+        except Exception:
+            r.raise_for_status()
+            return {"raw": r.text}
+        if isinstance(payload, dict):
+            if payload.get("success") is False:
+                raise BackendError(payload.get("message") or payload.get("messageCode") or "request failed")
+            if "data" in payload:
+                return payload["data"]
+        return payload
