@@ -162,7 +162,7 @@ cd api && pip install -r requirements.txt && uvicorn main:app --reload --port 48
 cd frontend && npm install && npm run dev
 ```
 
-本地查询走 `POST /api/duckdb/execute`（本地表）与 `POST /api/duckdb/federated-query`（外部库 ATTACH），勿使用旧版 `POST /api/execute_sql`。端点清单见 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)，执行流程见 [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md)。
+本地查询走 `POST /api/duckdb/execute`（本地表）与 `POST /api/duckdb/federated-query`（外部库 ATTACH），勿使用旧版 `POST /api/execute_sql`。端点清单见 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)，执行流程见 [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md)。跨源联邦 JOIN 自动做**半连接键下推**（远端只拉命中行、避免全表扫描）、审计列**时间界建议**与**超时护栏**，对调用方透明。
 
 ---
 

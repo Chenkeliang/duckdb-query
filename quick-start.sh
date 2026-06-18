@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DuckQuery 一键启动：Docker 全栈（前端 3000 / API 8001）
+# DuckQuery 一键启动：Docker 全栈（前端 48000 / API 48001）
 # 数据目录 ./data（bind mount，重建容器不会删除已导入表）
 
 set -euo pipefail

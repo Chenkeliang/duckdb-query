@@ -63,6 +63,7 @@
 | 499 | `QUERY_CANCELLED` | 同步 DuckDB / 联邦查询取消（`X-Request-ID`） |
 | 500 | `QUERY_FAILED` | DuckDB `execute` / 联邦 SQL 执行失败 |
 | 503 | `DATABASE_CONNECTION_ERROR` | 联邦查询 ATTACH 外部库失败 |
+| 504 | `QUERY_TIMEOUT` | 联邦查询超过 `federated_query_timeout`（默认 300s）被看门狗中止 |
 | 500 | `OPERATION_FAILED` | 数据源 CRUD 列表、粘贴保存、分块完成、服务器导入、迁移/错误统计、快捷键列表加载失败 |
 | 500 | `URL_READ_FAILED` | `POST /api/read_from_url` 处理失败 |
 | 500 | `SHORTCUT_UPDATE_FAILED` / `SHORTCUT_RESET_FAILED` | 快捷键更新 / 重置持久化失败 |
@@ -74,7 +75,7 @@
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
 | POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`）, `data`, `row_count`, `preview_limit_applied?`；499 / 500 |
-| POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`；404 `connection_id`；503 ATTACH；499 / 500 |
+| POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
 | POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；404 `QUERY_NOT_FOUND`（无活跃同步查询） |
 | POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求） | `saveQueryToDuckDB` |
 | GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at` | `getDuckDBTables` |

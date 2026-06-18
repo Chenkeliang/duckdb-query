@@ -167,7 +167,7 @@ cd frontend && npm install && npm run dev
 | Frontend (Vite) | http://localhost:48000 | `/api/*` proxied to backend |
 | Backend | http://localhost:48001 | Direct (e.g. `/docs`) |
 
-**Query APIs**: DuckDB local → `POST /api/duckdb/execute`; external / federated → `POST /api/duckdb/federated-query` with ATTACH. Do **not** use legacy `POST /api/execute_sql`. See [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md) and [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md).
+**Query APIs**: DuckDB local → `POST /api/duckdb/execute`; external / federated → `POST /api/duckdb/federated-query` with ATTACH. Do **not** use legacy `POST /api/execute_sql`. See [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md) and [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md). Cross-source federated JOINs automatically apply **semi-join key pushdown** (the remote side only scans matching keys, no full-table scan), **time-bound suggestions** on audit columns, and a **query-timeout guard** — all transparent to callers.
 
 ---
 
