@@ -17,7 +17,7 @@ cp config/app-config.example.json config/app-config.json
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `debug` | boolean | `false` | Enable verbose debug logging |
-| `cors_origins` | string[] | `["http://localhost:3000"]` | Allowed CORS origins for the frontend |
+| `cors_origins` | string[] | `["http://localhost:48000"]` | Allowed CORS origins for the frontend |
 | `timezone` | string | `"Asia/Shanghai"` | Default timezone for date/time operations |
 
 ---
@@ -139,7 +139,7 @@ Most settings can be overridden via environment variables:
 | Config Key | Environment Variable |
 |------------|---------------------|
 | `debug` | `DEBUG=true` |
-| `cors_origins` | `CORS_ORIGINS=http://localhost:3000,http://localhost:8080` |
+| `cors_origins` | `CORS_ORIGINS=http://localhost:48000,http://localhost:8080` |
 | `max_file_size` | `MAX_FILE_SIZE=1073741824` |
 | `duckdb_memory_limit` | `DUCKDB_MEMORY_LIMIT=16GB` |
 
@@ -150,7 +150,7 @@ Most settings can be overridden via environment variables:
 ```json
 {
   "debug": false,
-  "cors_origins": ["http://localhost:3000", "http://localhost:5173"],
+  "cors_origins": ["http://localhost:48000"],
   "max_file_size": 53687091200,
   "max_query_rows": 10000,
   "timezone": "Asia/Shanghai",

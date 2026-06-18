@@ -54,7 +54,7 @@
 git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && ./quick-start.sh
 ```
 
-打开 **http://localhost:3000** 即可开始查询。
+打开 **http://localhost:48000** 即可开始查询。
 
 ---
 
@@ -133,8 +133,8 @@ cd duckdb-query
 
 | 服务 | 地址 |
 |------|------|
-| 前端界面 | http://localhost:3000 |
-| API 文档 | http://localhost:8001/docs |
+| 前端界面 | http://localhost:48000 |
+| API 文档 | http://localhost:48001/docs |
 
 **数据位置**：表与连接配置在宿主机 **`./data`**（Docker 卷绑定）。`./quick-start.sh` 重建容器时**不会**删除 `./data`；日志里的 `Removed` 一般指旧容器被替换，不是删库。
 
@@ -155,10 +155,10 @@ docker compose up -d --build frontend
 ### 本地开发
 
 ```bash
-# 后端（默认 http://localhost:8000 ，文档 /docs）
-cd api && pip install -r requirements.txt && uvicorn main:app --reload
+# 后端（http://localhost:48001 ，文档 /docs）
+cd api && pip install -r requirements.txt && uvicorn main:app --reload --port 48001
 
-# 前端（默认 http://localhost:5173 ，/api 由 Vite 代理到后端）
+# 前端（http://localhost:48000 ，/api 由 Vite 代理到后端）
 cd frontend && npm install && npm run dev
 ```
 
@@ -213,25 +213,25 @@ volumes:
 ```yaml
 services:
   backend:
-    ports: ["9000:8000"]  # 后端改为 9000
+    ports: ["48001:8000"]  # 改左边宿主端口（默认 48001）
   frontend:
-    ports: ["8080:80"]    # 前端改为 8080
+    ports: ["48000:80"]    # 改左边宿主端口（默认 48000）
 ```
 </details>
 
 <details>
 <summary><b>本地开发如何修改默认端口？</b></summary>
 
-**后端端口**（默认 8000）：
+**后端端口**（默认 48001）：
 ```bash
-cd api && uvicorn main:app --reload --port 9000
+cd api && uvicorn main:app --reload --port 48001
 ```
 
-**前端端口**（默认 5173）：
-在 `frontend/vite.config.js` 的 `server` 块中添加 `port`：
+**前端端口**（默认 48000）：
+在 `frontend/vite.config.js` 的 `server.port` 改成你要的端口：
 ```javascript
 server: {
-  port: 3000,  // 添加这一行
+  port: 48000,  // 改这里
   proxy: {
     // ... 现有配置
   },
@@ -239,12 +239,12 @@ server: {
 ```
 或启动时指定：
 ```bash
-cd frontend && npm run dev -- --port 3000
+cd frontend && npm run dev -- --port 48000
 ```
 
-**注意跨域配置**：默认允许 `localhost:3000` 和 `localhost:5173`。如使用其他端口，需在 `config/app-config.json` 添加：
+**注意跨域配置**：默认允许 `localhost:48000`。如使用其他端口，需在 `config/app-config.json` 添加：
 ```json
-"cors_origins": ["http://localhost:3000", "http://localhost:5173", "http://localhost:你的端口"]
+"cors_origins": ["http://localhost:48000", "http://localhost:你的端口"]
 ```
 </details>
 

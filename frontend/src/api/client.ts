@@ -11,7 +11,7 @@ import { resolveBaseUrl } from '../desktop/apiBase';
 
 // Environment-based base URL
 const apiUrl = import.meta.env.VITE_API_URL || '';
-const envBase = (apiUrl === '' || apiUrl.includes('localhost:8000') || apiUrl.includes('your-api-url-in-production'))
+const envBase = (apiUrl === '' || apiUrl.includes('localhost:48001') || apiUrl.includes('your-api-url-in-production'))
     ? ''
     : apiUrl;
 export const baseURL = resolveBaseUrl(envBase);

@@ -17,7 +17,7 @@ cp config/app-config.example.json config/app-config.json
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `debug` | boolean | `false` | 开启详细调试日志 |
-| `cors_origins` | string[] | `["http://localhost:3000"]` | 允许的前端跨域源 |
+| `cors_origins` | string[] | `["http://localhost:48000"]` | 允许的前端跨域源 |
 | `timezone` | string | `"Asia/Shanghai"` | 默认时区 |
 
 ---
@@ -117,7 +117,7 @@ volumes:
 | 配置项 | 环境变量 |
 |--------|----------|
 | `debug` | `DEBUG=true` |
-| `cors_origins` | `CORS_ORIGINS=http://localhost:3000,http://localhost:8080` |
+| `cors_origins` | `CORS_ORIGINS=http://localhost:48000,http://localhost:8080` |
 | `max_file_size` | `MAX_FILE_SIZE=1073741824` |
 | `duckdb_memory_limit` | `DUCKDB_MEMORY_LIMIT=16GB` |
 
@@ -128,7 +128,7 @@ volumes:
 ```json
 {
   "debug": false,
-  "cors_origins": ["http://localhost:3000", "http://localhost:5173"],
+  "cors_origins": ["http://localhost:48000"],
   "max_file_size": 53687091200,
   "max_query_rows": 10000,
   "timezone": "Asia/Shanghai",

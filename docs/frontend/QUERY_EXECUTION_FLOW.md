@@ -4,8 +4,8 @@
 
 | 模式 | 前端 | 后端 | 说明 |
 |------|------|------|------|
-| Docker（推荐） | http://localhost:3000 | API 经 nginx `/api/` → `:8000` | 见项目 `README.md` |
-| 本地开发 | http://localhost:5173（Vite） | http://localhost:8000 | Vite 代理 `/api` |
+| Docker（推荐） | http://localhost:48000 | API 经 nginx `/api/` → `:8000` | 见项目 `README.md` |
+| 本地开发 | http://localhost:48000（Vite） | http://localhost:48001 | Vite 代理 `/api` |
 
 契约全表：[`docs/API_CONTRACT_FE_BE.md`](../API_CONTRACT_FE_BE.md)。
 

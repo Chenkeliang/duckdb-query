@@ -1,7 +1,7 @@
 # 前后端 API 契约（真相表）
 
 > **维护规则**：增删响应字段时先更新本表，再改 Pydantic / TypeScript 与调用方（与 [`AGENTS.md`](../AGENTS.md) §9.5 顺序一致）。  
-> **字段级实时真相**：所有端点均带 OpenAPI `tags`，运行中的 **Swagger `/docs`**（Docker: `:8001/docs`，本地: `:8000/docs`）和 `/openapi.json` 始终与代码同步；本表负责**高层导航 + 前端模块索引**，新增端点务必在此**登记一行**(否则就像 AI 端点那样漏掉)。  
+> **字段级实时真相**：所有端点均带 OpenAPI `tags`，运行中的 **Swagger `/docs`**（Docker: `:48001/docs`，本地: `:48001/docs`）和 `/openapi.json` 始终与代码同步；本表负责**高层导航 + 前端模块索引**，新增端点务必在此**登记一行**(否则就像 AI 端点那样漏掉)。  
 > **环境说明**：若网关或代理改写 JSON，以浏览器 Network 实际响应为准；本表以仓库内 FastAPI 路由与 `create_success_response` / `create_list_response` 为准。  
 > **调用图**：见 [`ARCHITECTURE_CALL_MAP.md`](ARCHITECTURE_CALL_MAP.md)、[`frontend/QUERY_EXECUTION_FLOW.md`](frontend/QUERY_EXECUTION_FLOW.md)。
 
@@ -9,8 +9,8 @@
 
 | 模式 | 前端访问 | 后端 API | 浏览器请求路径 |
 |------|----------|----------|----------------|
-| **Docker（推荐）** | http://localhost:3000 | 容器内 `:8000`；文档 http://localhost:8001/docs | 相对路径 `/api/...` → nginx → `backend:8000` |
-| **本地开发** | http://localhost:5173（Vite 默认） | `uvicorn` → http://localhost:8000 | Vite `proxy` 将 `/api` 转到 `:8000` |
+| **Docker（推荐）** | http://localhost:48000 | 容器内 `:8000`；文档 http://localhost:48001/docs | 相对路径 `/api/...` → nginx → `backend:8000` |
+| **本地开发** | http://localhost:48000（Vite） | `uvicorn` → http://localhost:48001 | Vite `proxy` 将 `/api` 转到 `:48001` |
 
 两种模式共用 `frontend/src/api/*`；**无**路径重写。用户查询主路径为 `POST /api/duckdb/execute` 与 `POST /api/duckdb/federated-query`，**不是** `POST /api/execute_sql`。
 
