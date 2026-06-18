@@ -28,6 +28,9 @@ async def run_sql(client: DuckQueryClient, cfg: Config, *, sql: str, preview: bo
 
 async def federated_query(client: DuckQueryClient, cfg: Config, *, sql: str, attach_databases: list) -> Any:
     """Run SQL across attached external DBs (MySQL/Postgres) + local tables."""
+    from duckquery_mcp.safety import is_write_sql
+    if cfg.mode == "read-only" and is_write_sql(sql):
+        return {"error": "read-only mode: only SELECT / WITH / EXPLAIN are allowed."}
     data = await client.call("POST", "/api/duckdb/federated-query",
                              json_body={"sql": sql, "attach_databases": attach_databases, "is_preview": True})
     return _truncate(data, cfg)

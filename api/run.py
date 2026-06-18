@@ -102,6 +102,7 @@ def main() -> None:
     start_parent_watchdog()
     sock, port = pick_free_loopback_port()
     print(port, flush=True)  # 第一行 = 端口,Tauri 读 stdout
+    os.environ["DUCKQUERY_PORT"] = str(port)
     from core.common.paths import write_runtime_file
     write_runtime_file(port)
     import uvicorn  # pylint: disable=import-error

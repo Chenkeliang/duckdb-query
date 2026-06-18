@@ -83,7 +83,6 @@ async def app_lifespan(app: FastAPI):
         logger.error(f"Failed to start file cleanup scheduler: {str(e)}")
 
     # Record the live port so local tools (the MCP server) can auto-discover us.
-    import os
     from core.common.paths import write_runtime_file
     _port = int(os.getenv("DUCKQUERY_PORT") or os.getenv("PORT") or 48001)
     write_runtime_file(_port)

@@ -43,6 +43,13 @@ async def test_run_sql_blocks_write_in_readonly(cfg):
     assert "read-only" in out["error"].lower()
 
 
+async def test_federated_query_blocks_write_in_readonly(cfg):
+    ro = cfg.__class__(**{**cfg.__dict__, "mode": "read-only"})
+    from duckquery_mcp.tools.query import federated_query
+    out = await federated_query(None, ro, sql="DROP TABLE t", attach_databases=[])
+    assert "read-only" in out["error"].lower()
+
+
 @respx.mock
 async def test_ask_generates_then_runs(cfg):
     base = "http://127.0.0.1:48001"

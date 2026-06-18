@@ -1,8 +1,8 @@
-from typing import Any, Optional
+from typing import Any
 
 
 async def export_results(client, cfg, *, sql: str, format: str = "parquet",
-                         attach_databases: Optional[list] = None) -> Any:
+                         attach_databases: list | None = None) -> Any:
     """Export a query result to a file; returns file_id, download_url, format, row_count_estimate.
     format: 'parquet' (default) or 'csv'. Only SELECT queries are allowed."""
     body: dict = {"sql": sql, "format": format}

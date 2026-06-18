@@ -52,3 +52,14 @@ async def test_call_raises_on_failure_envelope(cfg):
     client = DuckQueryClient(cfg)
     with pytest.raises(BackendError, match="syntax error"):
         await client.call("POST", "/api/duckdb/execute", json_body={"sql": "SELEC 1"})
+
+
+@respx.mock
+async def test_call_raises_on_http_4xx(cfg):
+    respx.get("http://127.0.0.1:48001/health").mock(
+        return_value=httpx.Response(200, json={"status": "healthy"}))
+    respx.post("http://127.0.0.1:48001/api/duckdb/execute").mock(
+        return_value=httpx.Response(404, json={"detail": "Not Found"}))
+    client = DuckQueryClient(cfg)
+    with pytest.raises(BackendError, match="Not Found"):
+        await client.call("POST", "/api/duckdb/execute", json_body={"sql": "x"})
