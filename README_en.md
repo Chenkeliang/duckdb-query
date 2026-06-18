@@ -54,7 +54,7 @@ Run the full stack (Python Backend + React Frontend) — local file access, pers
 git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && ./quick-start.sh
 ```
 
-Open **http://localhost:3000** and start querying.
+Open **http://localhost:48000** and start querying.
 
 ---
 
@@ -133,8 +133,8 @@ cd duckdb-query
 
 | Service | URL |
 |---------|-----|
-| Frontend | http://localhost:3000 |
-| API Docs | http://localhost:8001/docs |
+| Frontend | http://localhost:48000 |
+| API Docs | http://localhost:48001/docs |
 
 **Data**: Tables and connections live on the host in **`./data`** (bind mount). Re-running `./quick-start.sh` or `docker compose up -d --build` **does not** delete `./data`; log lines saying `Removed` refer to old containers, not your database files.
 
@@ -155,17 +155,17 @@ docker compose up -d --build frontend
 ### Local Development
 
 ```bash
-# Backend (default http://localhost:8000 , docs at /docs)
-cd api && pip install -r requirements.txt && uvicorn main:app --reload
+# Backend (http://localhost:48001 , docs at /docs)
+cd api && pip install -r requirements.txt && uvicorn main:app --reload --port 48001
 
-# Frontend (default http://localhost:5173 , /api proxied to backend)
+# Frontend (http://localhost:48000 , /api proxied to backend)
 cd frontend && npm install && npm run dev
 ```
 
 | Service | Default URL | API from browser |
 |---------|-------------|------------------|
-| Frontend (Vite) | http://localhost:5173 | `/api/*` proxied to backend |
-| Backend | http://localhost:8000 | Direct (e.g. `/docs`) |
+| Frontend (Vite) | http://localhost:48000 | `/api/*` proxied to backend |
+| Backend | http://localhost:48001 | Direct (e.g. `/docs`) |
 
 **Query APIs**: DuckDB local → `POST /api/duckdb/execute`; external / federated → `POST /api/duckdb/federated-query` with ATTACH. Do **not** use legacy `POST /api/execute_sql`. See [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md) and [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md).
 
@@ -218,25 +218,25 @@ Edit `docker-compose.yml`:
 ```yaml
 services:
   backend:
-    ports: ["9000:8000"]  # Backend on 9000
+    ports: ["48001:8000"]  # host port (default 48001)
   frontend:
-    ports: ["8080:80"]    # Frontend on 8080
+    ports: ["48000:80"]    # host port (default 48000)
 ```
 </details>
 
 <details>
 <summary><b>Local Dev: How to change default ports?</b></summary>
 
-**Backend port** (default 8000):
+**Backend port** (default 48001):
 ```bash
-cd api && uvicorn main:app --reload --port 9000
+cd api && uvicorn main:app --reload --port 48001
 ```
 
-**Frontend port** (default 5173):
-Add `port` to the `server` block in `frontend/vite.config.js`:
+**Frontend port** (default 48000):
+Change `server.port` in `frontend/vite.config.js`:
 ```javascript
 server: {
-  port: 3000,  // Add this line
+  port: 48000,  // change here
   proxy: {
     // ... existing config
   },
@@ -244,12 +244,12 @@ server: {
 ```
 Or specify at startup:
 ```bash
-cd frontend && npm run dev -- --port 3000
+cd frontend && npm run dev -- --port 48000
 ```
 
-**CORS Note**: Default allows `localhost:3000` and `localhost:5173`. For other ports, add to `config/app-config.json`:
+**CORS Note**: Default allows `localhost:48000`. For other ports, add to `config/app-config.json`:
 ```json
-"cors_origins": ["http://localhost:3000", "http://localhost:5173", "http://localhost:YOUR_PORT"]
+"cors_origins": ["http://localhost:48000", "http://localhost:YOUR_PORT"]
 ```
 </details>
 

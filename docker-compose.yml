@@ -1,4 +1,4 @@
-# Docker Compose 全栈（前端 3000 / API 8001）
+# Docker Compose 全栈（前端 48000 / API 48001）
 # 推荐: ./quick-start.sh ；镜像变量见 .env 或 .env.docker.cn.example
 
 services:
@@ -9,7 +9,7 @@ services:
       dockerfile: ./api/Dockerfile
     container_name: dataquery-backend
     ports:
-      - "8001:8000"
+      - "48001:8000"
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
@@ -63,7 +63,7 @@ services:
         NGINX_IMAGE: ${NGINX_IMAGE:-nginx:stable-alpine}
     container_name: dataquery-frontend
     ports:
-      - "3000:80"
+      - "48000:80"
     environment:
       - REACT_APP_API_URL=http://dataquery-backend:8000
       - REACT_APP_UI_MODE=modern

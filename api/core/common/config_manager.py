@@ -186,8 +186,7 @@ class AppConfig:
     def __post_init__(self):
         if self.cors_origins is None:
             self.cors_origins = [
-                "http://localhost:3000",
-                "http://localhost:5173",
+                "http://localhost:48000",   # 前端（docker 映射 / 手动 vite）
                 "tauri://localhost",        # macOS webview 源
                 "http://tauri.localhost",   # Windows webview 源
             ]

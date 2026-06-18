@@ -48,7 +48,7 @@ It also has an AI layer that's opt-in and local-first:
 - one-click chart suggestions for a result set
 
 Try it (one command, self-hosted — your data never leaves your machine):
-  git clone … && ./quick-start.sh   → http://localhost:3000
+  git clone … && ./quick-start.sh   → http://localhost:48000
 (README has GIFs if you'd rather watch first.)
 
 Stack: DuckDB + FastAPI + React. MIT. API keys for the AI are encrypted server-side

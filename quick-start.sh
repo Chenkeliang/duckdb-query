@@ -75,7 +75,7 @@ setup_config() {
       cat > config/app-config.json <<'EOF'
 {
   "debug": false,
-  "cors_origins": ["http://localhost:3000", "http://localhost:5173"],
+  "cors_origins": ["http://localhost:48000"],
   "max_file_size": 53687091200,
   "max_query_rows": 10000,
   "max_tables": 200,
@@ -142,8 +142,8 @@ start_services() {
   sleep 10
 
   print_success "DuckQuery 已就绪"
-  print_info "前端:     http://localhost:3000"
-  print_info "API 文档: http://localhost:8001/docs"
+  print_info "前端:     http://localhost:48000"
+  print_info "API 文档: http://localhost:48001/docs"
   print_info ""
   print_info "数据保存在宿主机 ./data（重建容器不会删除 DuckDB 表）"
   print_info "日志: ${DC[*]} logs -f"
