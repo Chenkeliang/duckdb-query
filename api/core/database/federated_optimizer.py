@@ -17,15 +17,6 @@ from core.database.federated_time_bound import detect_time_bound_candidates, def
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class RemoteTarget:
-    """一个可改写的顶层裸远端表引用。"""
-    node: exp.Table       # sqlglot 表节点（用于 replace）
-    leftmost: str         # attach 别名（catalog or db）
-    name: str             # 表名
-    alias: str            # SQL 中的表别名（无则用表名）
-
-
 def _leftmost(t: exp.Table) -> Optional[str]:
     return t.catalog or t.db or None
 
@@ -35,17 +26,6 @@ def _is_top_level_bare(t: exp.Table) -> bool:
     if t.find_ancestor(exp.Subquery) is not None:
         return False
     return isinstance(t.parent, (exp.From, exp.Join))
-
-
-def extract_remote_targets(sql: str, attach_aliases: set[str]) -> list[RemoteTarget]:
-    """从 SQL 中提取可改写的顶层裸远端表（其前缀 ∈ attach_aliases）。"""
-    tree = sqlglot.parse_one(sql, read="duckdb")
-    out: list[RemoteTarget] = []
-    for t in tree.find_all(exp.Table):
-        lm = _leftmost(t)
-        if lm in attach_aliases and _is_top_level_bare(t):
-            out.append(RemoteTarget(node=t, leftmost=lm, name=t.name, alias=t.alias or t.name))
-    return out
 
 
 @dataclass
@@ -211,7 +191,8 @@ def build_time_bound_suggestions(
         seen.add(ref)
         cands = detect_time_bound_candidates(schema_provider(ref))
         alias = (t.alias or t.name).lower()
-        cands = [c for c in cands if (alias, c.lower()) not in bounded]
+        cands = [c for c in cands
+                 if (alias, c.lower()) not in bounded and ("", c.lower()) not in bounded]
         if not cands:
             continue
         col = cands[0]
