@@ -41,6 +41,28 @@ def get_temp_dir() -> Path:
     return Path(env) if env else get_user_data_dir() / "temp_files"
 
 
+def get_runtime_file() -> Path:
+    """Path to the runtime descriptor the MCP server reads for auto-discovery."""
+    return get_user_data_dir() / "runtime.json"
+
+
+def write_runtime_file(port: int) -> None:
+    """Best-effort: record the live backend port for local tools (e.g. the MCP server)."""
+    import json
+    import os
+
+    try:
+        path = get_runtime_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "base": f"http://127.0.0.1:{port}",
+            "port": port,
+            "pid": os.getpid(),
+        }))
+    except Exception:
+        pass
+
+
 def compute_memory_limit() -> str:
     """按物理内存 75% 设 DuckDB 上限,封顶 8GB。无 psutil 时回退 4GB。"""
     try:
