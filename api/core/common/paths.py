@@ -14,7 +14,14 @@ _APP_DIR_NAME = "DuckQuery"
 
 
 def get_user_data_dir() -> Path:
-    """返回 per-user 可写根目录。"""
+    """返回可写根目录。显式 env(APP_ROOT,如 Docker 的 /app)优先,否则 per-user 系统目录。
+
+    与 config_manager._resolve_project_root 同源,确保所有路径解析(数据库/文件源/配置/临时)
+    在容器内一致落到 APP_ROOT 下,而非容器用户的空 home(/nonexistent)。
+    """
+    override = os.getenv("APP_ROOT")
+    if override:
+        return Path(override)
     home = Path(os.path.expanduser("~"))
     if sys.platform == "darwin":
         return home / "Library" / "Application Support" / _APP_DIR_NAME

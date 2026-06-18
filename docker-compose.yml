@@ -15,6 +15,9 @@ services:
       - PYTHONUNBUFFERED=1
       - ENV=development
       - CONFIG_DIR=/app/config
+      # 数据根目录:新版路径解析用 APP_ROOT 推导 /app/data/duckdb（system.db+main.db 所在）。
+      # 缺它会回退到容器用户 home(/nonexistent) 导致启动 mkdir 失败。
+      - APP_ROOT=/app
       # 企业代理（按需设置宿主机环境变量后透传）
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
