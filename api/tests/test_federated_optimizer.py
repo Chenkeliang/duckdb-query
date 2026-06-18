@@ -62,3 +62,44 @@ def test_both_remote_skipped_v1():
 def test_full_outer_skipped():
     sql = "SELECT * FROM local_t l FULL JOIN mysql_db.orders o ON l.oid = o.id"
     assert plan_semijoins(sql, {"mysql_db"}) == []
+
+
+from core.database.federated_optimizer import apply_semijoin_pushdown
+
+
+def test_apply_rewrites_remote_with_in_list():
+    sql = "SELECT * FROM mysql_db.orders o JOIN local_t l ON o.id = l.oid"
+
+    def keys(local_sql, col, limit):
+        assert "local_t" in local_sql and col == "oid"
+        return [1, 2, 3]
+
+    out_sql, reports = apply_semijoin_pushdown(sql, {"mysql_db"}, key_provider=keys, threshold=100)
+    assert "IN (1, 2, 3)" in out_sql
+    assert "FROM mysql_db.orders" in out_sql and " AS o" in out_sql
+    assert any(r["pushed"] for r in reports)
+
+
+def test_cardinality_guard_skips_when_too_many():
+    sql = "SELECT * FROM mysql_db.orders o JOIN local_t l ON o.id = l.oid"
+
+    def keys(local_sql, col, limit):
+        return None  # provider 表示超阈值
+
+    out_sql, reports = apply_semijoin_pushdown(sql, {"mysql_db"}, key_provider=keys, threshold=100)
+    assert "IN (" not in out_sql
+    assert all(not r["pushed"] for r in reports)
+
+
+def test_string_keys_quoted():
+    sql = "SELECT * FROM mysql_db.t x JOIN local_t l ON x.code = l.code"
+    out_sql, _ = apply_semijoin_pushdown(
+        sql, {"mysql_db"}, key_provider=lambda *a: ["A", "B"], threshold=100)
+    assert "IN ('A', 'B')" in out_sql
+
+
+def test_unparseable_sql_returns_original():
+    sql = "SELECT FROM WHERE )("  # 故意坏
+    out_sql, reports = apply_semijoin_pushdown(sql, {"mysql_db"}, key_provider=lambda *a: [1], threshold=100)
+    assert out_sql == sql
+    assert reports == [{"error": "parse_failed", "pushed": False}]

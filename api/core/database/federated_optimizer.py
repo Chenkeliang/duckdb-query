@@ -125,3 +125,42 @@ def plan_semijoins(sql: str, attach_aliases: set[str], *, _tree: Optional[exp.Ex
             ))
             break  # 该 JOIN 取一条即可
     return plans
+
+
+KeyProvider = Callable[[str, str, int], Optional[list]]
+
+
+def apply_semijoin_pushdown(
+    sql: str,
+    attach_aliases: set[str],
+    *,
+    key_provider: KeyProvider,
+    threshold: int,
+) -> tuple[str, list[dict]]:
+    """把合格半连接改写进 SQL；返回 (改写后 SQL, reports)。任何解析失败 → 原样返回。"""
+    try:
+        tree = sqlglot.parse_one(sql, read="duckdb")
+    except Exception as exc:  # noqa: BLE001
+        logger.info("federated optimize: parse failed, passthrough: %s", exc)
+        return sql, [{"error": "parse_failed", "pushed": False}]
+
+    try:
+        plans = plan_semijoins(sql, attach_aliases, _tree=tree)
+        reports: list[dict] = []
+        for p in plans:
+            keys = key_provider(p.local_table_sql, p.local_col, threshold)
+            if not keys:  # None 或空 → 不下推
+                reports.append({"table": p.remote_node.name, "pushed": False, "reason": "over_threshold_or_empty"})
+                continue
+            in_expr = exp.In(
+                this=exp.column(p.remote_col),
+                expressions=[exp.convert(v) for v in keys],
+            )
+            inner = exp.select("*").from_(p.remote_node.copy()).where(in_expr)
+            subq = exp.Subquery(this=inner, alias=exp.TableAlias(this=exp.to_identifier(p.remote_alias)))
+            p.remote_node.replace(subq)
+            reports.append({"table": subq.this.args["from_"].sql(), "pushed": True, "keys": len(keys)})
+        return tree.sql(dialect="duckdb"), reports
+    except Exception as exc:  # noqa: BLE001 —— 改写阶段任何异常都保底放行
+        logger.warning("federated optimize: rewrite failed, passthrough: %s", exc)
+        return sql, [{"error": "rewrite_failed", "pushed": False}]
