@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 from duckquery_mcp.client import BackendError, BackendNotFound, DuckQueryClient
 from duckquery_mcp.config import Config
 from duckquery_mcp.safety import tool_allowed
-from duckquery_mcp.tools import query
+from duckquery_mcp.tools import discover, query
 
 
 def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
@@ -31,6 +31,10 @@ def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
             return fn
         return deco
 
+    add("read")(discover.list_tables)
+    add("read")(discover.describe_table)
+    add("read")(discover.list_connections)
+    add("read")(discover.list_db_objects)
     add("read")(query.run_sql)
     add("read")(query.federated_query)
     add("read")(query.ask)
