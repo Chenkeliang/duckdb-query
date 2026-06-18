@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 from duckquery_mcp.client import BackendError, BackendNotFound, DuckQueryClient
 from duckquery_mcp.config import Config
 from duckquery_mcp.safety import tool_allowed
-from duckquery_mcp.tools import discover, query
+from duckquery_mcp.tools import discover, query, sources
 
 
 def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
@@ -42,3 +42,8 @@ def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
     add("read")(query.suggest_chart)
     add("read")(query.chat)
     add("read")(query.error_fix)
+    add("write")(sources.add_connection)
+    add("write")(sources.add_local_file_source)
+    add("write")(sources.import_excel)
+    add("write")(sources.paste_data)
+    add("write")(sources.read_url)
