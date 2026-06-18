@@ -12,6 +12,8 @@ litellm_datas = [
     if "proxy/_experimental/out" not in d.replace("\\", "/")
 ]
 starlette_hidden = collect_submodules('starlette')
+# sqlglot 的方言模块(parse_one(..., read="duckdb"))是运行时动态加载的,静态分析会漏 → 显式全收
+sqlglot_hidden = collect_submodules('sqlglot')
 
 a = Analysis(
     ['run.py'],
@@ -33,7 +35,7 @@ a = Analysis(
         'uvicorn.protocols.http.h11_impl', 'uvicorn.protocols.websockets',
         'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan', 'uvicorn.lifespan.on',
         'tiktoken_ext', 'tiktoken_ext.openai_public',
-        *starlette_hidden, *litellm_hidden,
+        *starlette_hidden, *litellm_hidden, *sqlglot_hidden,
         'pydantic.deprecated.class_validators', 'pydantic.deprecated.config', 'pydantic_core',
         'cryptography', 'cryptography.hazmat.primitives.ciphers.algorithms',
         'psycopg2', 'multipart', 'psutil',
