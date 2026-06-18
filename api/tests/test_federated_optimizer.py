@@ -29,3 +29,36 @@ def test_three_part_pg_table_target():
     sql = 'SELECT * FROM "pg"."public"."t" x JOIN local_t l ON x.id = l.id'
     targets = extract_remote_targets(sql, ALIASES)
     assert _names(targets) == [("pg", "t")]
+
+
+from core.database.federated_optimizer import plan_semijoins
+
+
+def test_inner_join_local_reduces_remote():
+    sql = "SELECT * FROM mysql_db.orders o JOIN local_t l ON o.id = l.oid"
+    plans = plan_semijoins(sql, {"mysql_db"})
+    assert len(plans) == 1
+    p = plans[0]
+    assert (p.remote_alias, p.remote_col) == ("o", "id")
+    assert (p.local_table_sql, p.local_col) == ("local_t AS l", "oid")
+
+
+def test_left_join_reduces_only_non_preserved_right():
+    sql = "SELECT * FROM local_t l LEFT JOIN mysql_db.orders o ON l.oid = o.id"
+    plans = plan_semijoins(sql, {"mysql_db"})
+    assert len(plans) == 1 and plans[0].remote_alias == "o"
+
+
+def test_left_join_preserved_remote_not_reduced():
+    sql = "SELECT * FROM mysql_db.orders o LEFT JOIN local_t l ON o.id = l.oid"
+    assert plan_semijoins(sql, {"mysql_db"}) == []
+
+
+def test_both_remote_skipped_v1():
+    sql = "SELECT * FROM mysql_db.a a JOIN pg.b b ON a.id = b.id"
+    assert plan_semijoins(sql, {"mysql_db", "pg"}) == []
+
+
+def test_full_outer_skipped():
+    sql = "SELECT * FROM local_t l FULL JOIN mysql_db.orders o ON l.oid = o.id"
+    assert plan_semijoins(sql, {"mysql_db"}) == []
