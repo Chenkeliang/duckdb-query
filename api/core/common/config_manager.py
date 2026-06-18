@@ -343,10 +343,11 @@ class ConfigManager:
         self.load_app_config()
 
     def _resolve_project_root(self) -> Path:
-        """确定项目运行根目录(env 优先,否则 per-user 可写目录)。"""
-        override = os.getenv("APP_ROOT")
-        if override:
-            return Path(override)
+        """项目运行根目录 = 统一的可写根目录(单一事实源)。
+
+        "APP_ROOT(显式 env)优先于 per-user" 的逻辑统一收敛到 get_user_data_dir(),
+        避免两处各写一遍而漂移 —— Plan A 当年只改了一处、漏了另一处,正是容器启动崩溃的根因。
+        """
         return get_user_data_dir()
 
     def _default_data_dir(self) -> Path:
