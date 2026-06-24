@@ -79,11 +79,18 @@ fn spawn_backend(app: &AppHandle) {
         }
     };
     eprintln!("[duckquery] spawning backend: {}", path.display());
-    let mut child = match Command::new(&path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+    let mut cmd = Command::new(&path);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    // Windows: the backend is a console-subsystem exe (PyInstaller console=True, so it
+    // can print the port to the piped stdout). Without CREATE_NO_WINDOW a black console
+    // window flashes on every launch. Piped stdout still works with the flag set.
+    #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[duckquery] failed to spawn backend: {e}");

@@ -58,10 +58,12 @@ def apply_desktop_env() -> None:
     os.environ.setdefault("LITELLM_TELEMETRY", "False")
 
 
-def pick_free_loopback_port() -> tuple[socket.socket, int]:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))  # 0 -> OS 分配空闲高位端口
-    return sock, sock.getsockname()[1]
+def pick_free_loopback_port() -> int:
+    # 绑 :0 让 OS 分配空闲高位端口,随即关闭释放;uvicorn 再以 host/port 重新绑定。
+    # 不复用 fd:uvicorn 的 fd= 路径内部走 socket.fromfd(AF_UNIX),Windows 上会崩。
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 def start_parent_watchdog() -> None:
@@ -100,7 +102,7 @@ def main() -> None:
     _wd.mkdir(parents=True, exist_ok=True)
     os.chdir(_wd)
     start_parent_watchdog()
-    sock, port = pick_free_loopback_port()
+    port = pick_free_loopback_port()
     print(port, flush=True)  # 第一行 = 端口,Tauri 读 stdout
     os.environ["DUCKQUERY_PORT"] = str(port)
     from core.common.paths import write_runtime_file
@@ -108,7 +110,8 @@ def main() -> None:
     import uvicorn  # pylint: disable=import-error
     from main import app
 
-    uvicorn.run(app, fd=sock.fileno(), log_level="info")
+    # host/port 跨平台可用;不用 fd=(uvicorn 的 fd 路径在 Windows 上崩,见 pick_free_loopback_port)
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
 
 
 if __name__ == "__main__":

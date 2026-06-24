@@ -2,15 +2,18 @@ import socket
 import importlib
 
 
-def test_pick_free_loopback_port_returns_bound_socket():
+def test_pick_free_loopback_port_returns_free_rebindable_port():
     import run
     importlib.reload(run)
-    sock, port = run.pick_free_loopback_port()
+    port = run.pick_free_loopback_port()
+    assert isinstance(port, int) and 1024 < port <= 65535
+    # 端口必须已释放:Windows 修复改用 uvicorn host/port 重新绑定(fd= 交接在 Windows 上崩),
+    # 所以发现端口后 socket 必须关闭,否则 uvicorn bind 会 "address already in use"。
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        assert isinstance(port, int) and 1024 < port <= 65535
-        assert sock.getsockname()[0] == "127.0.0.1"
+        s.bind(("127.0.0.1", port))  # 不应抛错
     finally:
-        sock.close()
+        s.close()
 
 
 def test_desktop_env_sets_memory_and_loopback(monkeypatch, tmp_path):
