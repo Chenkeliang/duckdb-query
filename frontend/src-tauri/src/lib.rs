@@ -44,15 +44,24 @@ fn open_external(url: String) {
 
 /// Resolve the backend onedir executable across bundle and dev layouts.
 fn resolve_backend(app: &AppHandle) -> Option<PathBuf> {
-    let rel = "binaries/duckquery-api/duckquery-api";
+    // PyInstaller appends `.exe` on Windows; the macOS/Linux builds have no
+    // extension. Without this the Windows bundle's `duckquery-api.exe` is never
+    // found -> backend never spawns -> "本地引擎启动失败".
+    let rel = if cfg!(target_os = "windows") {
+        "binaries/duckquery-api/duckquery-api.exe"
+    } else {
+        "binaries/duckquery-api/duckquery-api"
+    };
     let mut candidates: Vec<PathBuf> = Vec::new();
-    // Bundled .app: resources live under Contents/Resources/
+    // Bundled app: resources live under the platform resource dir
+    // (mac: Contents/Resources/, Windows: alongside/under the install dir).
     if let Ok(res) = app.path().resource_dir() {
         candidates.push(res.join(rel));
     }
     // Dev / fallback: relative to the running executable
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
+            candidates.push(dir.join(rel)); // Windows: resources next to the .exe
             candidates.push(dir.join("../Resources").join(rel)); // mac bundle alt
             candidates.push(dir.join("../..").join(rel)); // dev: target/debug -> src-tauri
             candidates.push(dir.join("../../..").join(rel));
