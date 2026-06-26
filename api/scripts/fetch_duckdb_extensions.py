@@ -15,10 +15,13 @@ from pathlib import Path
 
 DUCK_VER = "1.5.3"
 # json/parquet 为 1.5 内建自动加载,无需单独文件。
-# httpfs 不预置:仅 URL/远程访问需要,而那本就需联网,首次用到时由 DuckDB 按需 INSTALL。
+# httpfs 必须预置:它在默认开机加载列表(config_manager.duckdb_extensions)里。全新安装时
+# 扩展缓存为空,若不预置 → 启动 LOAD 失败 → 联网 INSTALL,受限网络下会卡到 /health 超时
+# ("本地引擎启动超时")。LOAD 离线可用即可;真正读 URL 才需联网,那是按需、不挡启动。
 # 映射: LOAD 名 -> CDN 文件名
 EXTS = {
     "excel": "excel",
+    "httpfs": "httpfs",
     "mysql": "mysql_scanner",
     "postgres": "postgres_scanner",
 }
