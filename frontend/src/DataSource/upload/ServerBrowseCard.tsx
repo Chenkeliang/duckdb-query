@@ -47,16 +47,14 @@ export interface ServerBrowseCardProps {
   onServerAliasChange: (alias: string) => void;
   onCsvOptionsChange: (opts: CsvOptions) => void;
   onImport: () => void;
-  /** Tauri desktop only: triggered when user clicks "选择文件…" */
-  onPickFiles?: () => void;
 }
 
 export type { CsvOptions };
 
-const isTauri = Boolean(
-  (window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__
-);
-
+/**
+ * Web/Docker 构建专用：挂载目录浏览 + 别名 + 导入按钮。
+ * 桌面端（Tauri）不渲染此分段，改用原生选择器 + 拖拽（见 UploadPanel 的 isTauri 分支）。
+ */
 export function ServerBrowseCard({
   serverMounts,
   serverMountLoading,
@@ -75,7 +73,6 @@ export function ServerBrowseCard({
   onServerAliasChange,
   onCsvOptionsChange,
   onImport,
-  onPickFiles,
 }: ServerBrowseCardProps) {
   const isCsvSelected =
     (serverSelectedFile?.extension || "").toLowerCase() === "csv";
@@ -85,18 +82,9 @@ export function ServerBrowseCard({
     <Card className="rounded-xl shadow-sm">
       <CardContent className="p-6 space-y-5">
         <p className="text-sm leading-relaxed text-muted-foreground">
-          {isTauri
-            ? t("page.datasource.desktopCardDesc")
-            : t("page.datasource.cardServerDesc")}
+          {t("page.datasource.cardServerDesc")}
         </p>
 
-        {/* 桌面版：原生选文件即导入;Web/Docker：挂载目录浏览 + 别名 + 导入按钮 */}
-        {isTauri ? (
-          <Button variant="default" onClick={onPickFiles}>
-            {t("page.datasource.desktopPickFileBtn")}
-          </Button>
-        ) : (
-          <>
         <div className="space-y-2">
           <Label className="flex items-center gap-2 text-xs">
             <HardDrive className="h-3.5 w-3.5" />
@@ -106,14 +94,8 @@ export function ServerBrowseCard({
             <div className="text-xs text-muted-foreground">{t("actions.loading")}</div>
           ) : serverMounts.length === 0 ? (
             <div className="space-y-2 text-xs text-muted-foreground">
-              {isTauri ? (
-                <div>{t("page.datasource.desktopHint")}</div>
-              ) : (
-                <>
-                  <div>{t("page.datasource.serverNoMount")}</div>
-                  <div>{t("page.datasource.serverMountAlert")}</div>
-                </>
-              )}
+              <div>{t("page.datasource.serverNoMount")}</div>
+              <div>{t("page.datasource.serverMountAlert")}</div>
             </div>
           ) : (
             <Select value={selectedMount} onValueChange={onMountChange}>
@@ -281,8 +263,6 @@ export function ServerBrowseCard({
               : t("page.datasource.btnImportServer")}
           </Button>
         </div>
-          </>
-        )}
       </CardContent>
     </Card>
   );

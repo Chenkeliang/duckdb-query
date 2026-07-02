@@ -747,7 +747,8 @@
       "donut": "环形",
       "kpi": "大数字",
       "day": "按天",
-      "month": "按月"
+      "month": "按月",
+      "drilldownView": "查看 \"{{value}}\" 的明细"
     }
   },
   "page": {
@@ -812,7 +813,7 @@
       "serverNoMount": "未检测到可用的挂载目录。请在配置文件 server_data_mounts 中添加条目并重启服务。",
       "desktopPickFileBtn": "选择文件…",
       "desktopCardDesc": "选择本地文件，直接读取 CSV / Excel / Parquet / JSON",
-      "desktopHint": "桌面版：点「选择文件…」选择本地 CSV / Excel / Parquet / JSON 文件直接导入。",
+      "desktopDragHint": "或将文件拖放到窗口任意位置即可导入",
       "serverSelectMount": "选择挂载目录",
       "serverNoFiles": "当前目录暂无可导入的文件",
       "serverTypeFolder": "文件夹",
@@ -843,6 +844,9 @@
         "sourceUpload": "上传文件",
         "tablePrefix": "表名前缀：",
         "tablePrefixHint": "（各 Sheet 目标表名已按此前缀生成，可逐 Sheet 修改）",
+        "conflictModeLabel": "重名表处理",
+        "conflictModeCreate": "自动改名（推荐，撞名自动加 _1/_2/_3）",
+        "conflictModeReplace": "覆盖同名表（会清空原表数据，请谨慎）",
         "loading": "加载工作表信息...",
         "selectAll": "全选",
         "selectNone": "全不选",

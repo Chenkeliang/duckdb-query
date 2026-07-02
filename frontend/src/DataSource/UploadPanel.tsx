@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 // @ts-ignore — only available in Tauri builds; falls back gracefully in web
 import { open as tauriOpen } from "@tauri-apps/plugin-dialog";
+// @ts-ignore — only available in Tauri builds; falls back gracefully in web
+import { getCurrentWebview, type DragDropEvent } from "@tauri-apps/api/webview";
 import { toast } from "sonner";
 import {
   showSuccessToast,
@@ -23,6 +25,7 @@ import { stemFromFilename, stemFromUrl } from "./upload/uploadPathUtils";
 import { LocalUploadCard } from "./upload/LocalUploadCard";
 import { RemoteUrlCard } from "./upload/RemoteUrlCard";
 import { ServerBrowseCard } from "./upload/ServerBrowseCard";
+import { DesktopLocalCard } from "./upload/DesktopLocalCard";
 import { ImportModeSelect } from "./upload/ImportModeSelect";
 import { cn } from "@/lib/utils";
 import { useAppConfig } from "@/hooks/useAppConfig";
@@ -44,7 +47,16 @@ interface PendingExcel {
 interface ServerExcelPending {
   path: string;
   filename: string;
+  /** 表名前缀，桌面路径导入按文件名 stem；Web 服务器浏览沿用用户填写的别名 */
+  alias: string;
 }
+
+const EXCEL_EXTENSIONS = new Set(["xlsx", "xls"]);
+
+const basenameFromPath = (p: string): string => p.split(/[/\\]/).pop() || "";
+
+const extensionOf = (filename: string): string =>
+  filename.includes(".") ? filename.split(".").pop()!.toLowerCase() : "";
 
 export interface DataSourceSavedPayload {
   id: string;
@@ -116,11 +128,11 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
 
   // Excel 工作表选择状态 (文件上传)
   const [pendingExcel, setPendingExcel] = useState<PendingExcel | null>(null);
-  // Excel 工作表选择状态 (服务器文件)
-  const [
-    serverExcelPending,
-    setServerExcelPending
-  ] = useState<ServerExcelPending | null>(null);
+  // Excel 工作表选择状态 (服务器文件 / 桌面路径导入)：队列，逐个弹 ExcelSheetSelector
+  const [excelQueue, setExcelQueue] = useState<ServerExcelPending[]>([]);
+  const serverExcelPending = excelQueue[0] ?? null;
+  // 桌面端：Tauri OS 拖拽悬停状态（HTML5 dataTransfer 在桌面端拿不到文件，见 onDragDropEvent）
+  const [desktopDragOver, setDesktopDragOver] = useState(false);
 
   // 服务器目录状态
   const [serverMounts, setServerMounts] = useState<ServerMount[]>([]);
@@ -392,10 +404,11 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
       if (!serverAlias.trim()) {
         setServerAlias(prefix);
       }
-      setServerExcelPending({
+      setExcelQueue([{
         path: serverSelectedFile.path,
-        filename: serverSelectedFile.name
-      });
+        filename: serverSelectedFile.name,
+        alias: prefix,
+      }]);
       return;
     }
 
@@ -460,7 +473,8 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
         return;
       }
 
-      setServerExcelPending(null);
+      // 弹下一个队列里的 Excel（若有）
+      setExcelQueue(prev => prev.slice(1));
       await invalidateAfterFileUpload(queryClient);
 
       // 通知成功
@@ -491,25 +505,31 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
   };
 
   const handleServerExcelClose = () => {
-    setServerExcelPending(null);
+    // 用户取消当前 Sheet 选择：跳过它，继续弹队列里的下一个
+    setExcelQueue(prev => prev.slice(1));
   };
 
   const isTauri = Boolean(
     (window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__
   );
 
-  const handlePickFiles = async () => {
-    if (!isTauri) return;
-    const files = await tauriOpen({
-      multiple: true,
-      filters: [{ name: "数据文件", extensions: ["csv", "tsv", "xlsx", "xls", "json", "jsonl", "parquet"] }],
-    });
-    if (!files) return;
-    const paths = Array.isArray(files) ? files : [files];
+  /**
+   * 桌面路径导入的统一入口（原生选择器 + 拖拽共用）：按扩展名分类，
+   * 非 Excel 逐个直接导入；Excel 进队列，逐个弹 ExcelSheetSelector。
+   * 别名一律取文件名 stem，不读 serverAlias（避免多选文件共用同一别名）。
+   */
+  const importDesktopPaths = async (paths: string[]) => {
+    const excelItems: ServerExcelPending[] = [];
     for (const p of paths) {
-      // split on both separators so Windows backslash paths yield a clean basename
-      const alias = serverAlias.trim() || stemFromFilename(p.split(/[/\\]/).pop() || "");
+      const filename = basenameFromPath(p);
+      const alias = stemFromFilename(filename);
       if (!alias) continue;
+
+      if (EXCEL_EXTENSIONS.has(extensionOf(filename))) {
+        excelItems.push({ path: p, filename, alias });
+        continue;
+      }
+
       setServerImporting(true);
       try {
         const result = await importServerFile({ path: p, table_alias: alias });
@@ -537,7 +557,26 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
         setServerImporting(false);
       }
     }
+
+    if (excelItems.length > 0) {
+      setExcelQueue(prev => [...prev, ...excelItems]);
+    }
   };
+
+  const handlePickFiles = async () => {
+    if (!isTauri) return;
+    const files = await tauriOpen({
+      multiple: true,
+      filters: [{ name: "数据文件", extensions: ["csv", "tsv", "xlsx", "xls", "json", "jsonl", "parquet"] }],
+    });
+    if (!files) return;
+    const paths = Array.isArray(files) ? files : [files];
+    await importDesktopPaths(paths);
+  };
+
+  // 最新版 importDesktopPaths 存进 ref，供下面挂载一次的拖拽监听调用，避免闭包过期
+  const importDesktopPathsRef = useRef(importDesktopPaths);
+  importDesktopPathsRef.current = importDesktopPaths;
 
   useEffect(() => {
     if (!serverMounts.length && !serverMountLoading) {
@@ -546,16 +585,57 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 桌面端：Tauri v2 默认拦截 OS 拖拽（dragDropEnabled），HTML5 onDrop 拿不到真实路径，
+  // 改用 webview 的 onDragDropEvent 监听，拿到路径后走与原生选择器相同的导入逻辑。
+  useEffect(() => {
+    if (!isTauri) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+
+    getCurrentWebview()
+      .onDragDropEvent((event: { payload: DragDropEvent }) => {
+        if (event.payload.type === "drop") {
+          setDesktopDragOver(false);
+          void importDesktopPathsRef.current(event.payload.paths);
+        } else if (event.payload.type === "over" || event.payload.type === "enter") {
+          setDesktopDragOver(true);
+        } else {
+          // "leave"
+          setDesktopDragOver(false);
+        }
+      })
+      .then((un) => {
+        if (cancelled) {
+          un();
+        } else {
+          unlisten = un;
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to attach Tauri drag-drop listener:", err);
+      });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTauri]);
+
   return (
     <>
-      {/* 顶部一行：左=上传方式分段（本地/URL/服务器），右=紧凑的数据类型设置 */}
+      {/* 顶部一行：左=上传方式分段（桌面端只有 本地/URL；Web/Docker 三段），右=紧凑的数据类型设置 */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-lg bg-muted p-1 text-muted-foreground">
-          {([
-            ["local", t("page.datasource.cardLocalTitle")],
-            ["url", t("page.datasource.cardRemoteTitle")],
-            ["server", t("page.datasource.cardServerTitle")],
-          ] as const).map(([m, label]) => (
+          {(
+            [
+              ["local", t("page.datasource.cardLocalTitle")] as const,
+              ["url", t("page.datasource.cardRemoteTitle")] as const,
+              ...(isTauri
+                ? []
+                : [["server", t("page.datasource.cardServerTitle")] as const]),
+            ] satisfies Array<readonly [typeof uploadMethod, string]>
+          ).map(([m, label]) => (
             <button
               key={m}
               type="button"
@@ -576,31 +656,39 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
       </div>
 
       {uploadMethod === "local" && (
-        <LocalUploadCard
-          maxFileSizeDisplay={maxFileSizeDisplay}
-          selectedFile={selectedFile}
-          uploadAlias={uploadAlias}
-          uploading={uploading}
-          uploadProgress={uploadProgress}
-          dragOver={dragOver}
-          csvOptions={localCsvOptions}
-          onFileSelect={file => {
-            setSelectedFile(file);
-            setLocalCsvOptions({});
-            if (!uploadAlias.trim()) {
-              setUploadAlias(stemFromFilename(file.name));
-            }
-          }}
-          onUploadAliasChange={setUploadAlias}
-          onDragOver={setDragOver}
-          onCsvOptionsChange={setLocalCsvOptions}
-          onUpload={handleUpload}
-          onClear={() => {
-            setSelectedFile(null);
-            setUploadAlias("");
-            setLocalCsvOptions({});
-          }}
-        />
+        isTauri ? (
+          <DesktopLocalCard
+            onPickFiles={handlePickFiles}
+            dragOver={desktopDragOver}
+            importing={serverImporting}
+          />
+        ) : (
+          <LocalUploadCard
+            maxFileSizeDisplay={maxFileSizeDisplay}
+            selectedFile={selectedFile}
+            uploadAlias={uploadAlias}
+            uploading={uploading}
+            uploadProgress={uploadProgress}
+            dragOver={dragOver}
+            csvOptions={localCsvOptions}
+            onFileSelect={file => {
+              setSelectedFile(file);
+              setLocalCsvOptions({});
+              if (!uploadAlias.trim()) {
+                setUploadAlias(stemFromFilename(file.name));
+              }
+            }}
+            onUploadAliasChange={setUploadAlias}
+            onDragOver={setDragOver}
+            onCsvOptionsChange={setLocalCsvOptions}
+            onUpload={handleUpload}
+            onClear={() => {
+              setSelectedFile(null);
+              setUploadAlias("");
+              setLocalCsvOptions({});
+            }}
+          />
+        )
       )}
 
       {uploadMethod === "url" && (
@@ -647,7 +735,6 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
           onServerAliasChange={setServerAlias}
           onCsvOptionsChange={setServerCsvOptions}
           onImport={handleServerImport}
-          onPickFiles={isTauri ? handlePickFiles : undefined}
         />
       )}
 
@@ -673,7 +760,7 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
           sourceType="server"
           serverPath={serverExcelPending.path}
           importMode={importMode}
-          tablePrefix={serverAlias}
+          tablePrefix={serverExcelPending.alias}
         />
       )}
     </>

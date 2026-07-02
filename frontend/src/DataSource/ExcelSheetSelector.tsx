@@ -16,6 +16,13 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -100,6 +107,8 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
   const [sheetConfigs, setSheetConfigs] = useState<SheetConfig[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [namePrefix, setNamePrefix] = useState("");
+  /** 撞名处理：create=自动加 _1/_2/_3 后缀（默认），replace=覆盖同名表 */
+  const [conflictMode, setConflictMode] = useState<"create" | "replace">("create");
 
   const fileId = pendingInfo?.file_id;
 
@@ -238,7 +247,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
         return {
           name: sheet.name,
           target_table: sheet.targetTable,
-          mode: "replace" as const,
+          mode: conflictMode,
           header_rows: headerRowsNumber,
           header_row_index: headerRowIndexNumber,
           fill_merged: Boolean(sheet.fillMerged),
@@ -304,6 +313,29 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
                 </span>
               </>
             ) : null}
+          </div>
+
+          {/* 撞名处理方式（全局，应用于本次选中的所有 Sheet） */}
+          <div className="flex items-center gap-2">
+            <Label className="text-xs whitespace-nowrap">
+              {t('page.datasource.excelSheet.conflictModeLabel')}
+            </Label>
+            <Select
+              value={conflictMode}
+              onValueChange={(v) => setConflictMode(v as "create" | "replace")}
+            >
+              <SelectTrigger className="h-8 w-[280px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="create">
+                  {t('page.datasource.excelSheet.conflictModeCreate')}
+                </SelectItem>
+                <SelectItem value="replace">
+                  {t('page.datasource.excelSheet.conflictModeReplace')}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* 加载状态 */}

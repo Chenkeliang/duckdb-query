@@ -747,7 +747,8 @@
       "donut": "Donut",
       "kpi": "Big number",
       "day": "By day",
-      "month": "By month"
+      "month": "By month",
+      "drilldownView": "View details for \"{{value}}\""
     }
   },
   "page": {
@@ -811,7 +812,7 @@
       "serverNoMount": "No mounts detected. Add entries to server_data_mounts and restart.",
       "desktopPickFileBtn": "Select file…",
       "desktopCardDesc": "Select local files to read CSV / Excel / Parquet / JSON directly",
-      "desktopHint": "Desktop: click \"Select file…\" to import local CSV / Excel / Parquet / JSON directly.",
+      "desktopDragHint": "Or drop files anywhere in the window to import",
       "serverSelectMount": "Select mount",
       "serverNoFiles": "No importable files in this directory",
       "serverTypeFolder": "Folder",
@@ -842,6 +843,9 @@
         "sourceUpload": "Uploaded file",
         "tablePrefix": "Table name prefix:",
         "tablePrefixHint": "(target names prefilled per sheet; edit per sheet if needed)",
+        "conflictModeLabel": "Duplicate table names",
+        "conflictModeCreate": "Auto rename (recommended; adds _1/_2/_3 on conflict)",
+        "conflictModeReplace": "Overwrite existing table (clears existing data, use with caution)",
         "loading": "Loading sheet info...",
         "selectAll": "Select All",
         "selectNone": "Select None",
