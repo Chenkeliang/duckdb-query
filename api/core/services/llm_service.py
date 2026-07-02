@@ -4,13 +4,49 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-try:
-    import litellm  # pylint: disable=import-error
-except ImportError:  # litellm 为可选依赖：未安装时 AI 功能不可用，但应用仍能正常启动
-    litellm = None
-
 from core.common import crypto
 from core.services import ai_config
+
+
+class _LiteLLMProxy:
+    """litellm 的惰性代理。
+
+    litellm 导入极重（连带 tiktoken/aiohttp 等），若在模块顶层导入会拖慢桌面端
+    冷启动（run.py 先打印端口再 import main，这段全部计入前端 pollHealth 超时窗口，
+    Windows 上叠加杀软首启扫描曾导致「本地引擎启动超时」）。故推迟到首次真正
+    使用 AI 功能时才导入。保留模块属性 `litellm`（测试直接 patch 其 .completion）。
+    """
+
+    _mod = None
+    _missing = False
+
+    def _load(self):
+        cls = type(self)
+        if cls._mod is None and not cls._missing:
+            try:
+                import litellm as _mod  # pylint: disable=import-error,import-outside-toplevel
+
+                cls._mod = _mod
+            except ImportError:  # litellm 为可选依赖：未安装时 AI 功能不可用，但应用仍能正常启动
+                cls._missing = True
+        return cls._mod
+
+    def __getattr__(self, name):
+        mod = self._load()
+        if mod is None:
+            raise AttributeError(name)
+        return getattr(mod, name)
+
+
+litellm = _LiteLLMProxy()
+
+
+def _litellm_available() -> bool:
+    if litellm is None:  # 测试通过 monkeypatch 置 None 模拟未安装
+        return False
+    if isinstance(litellm, _LiteLLMProxy):
+        return litellm._load() is not None  # pylint: disable=protected-access
+    return True  # 测试替换为 Mock 等其他对象
 
 
 class AIDisabledError(RuntimeError):
@@ -37,7 +73,7 @@ class LLMService:
     def complete(self, feature: str, messages: List[Dict[str, str]]) -> str:
         if not self._cfg.get("enabled"):
             raise AIDisabledError("AI features are disabled")
-        if litellm is None:
+        if not _litellm_available():
             raise AIConfigError(
                 "litellm is not installed; AI features are unavailable "
                 "(install it or rebuild the image with requirements.txt)"

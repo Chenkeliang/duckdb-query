@@ -24,9 +24,9 @@ def _base_dir() -> str:
 def _seed_extensions(bundled_dir: str, user_ext_dir) -> None:
     """把包内预置的 DuckDB 扩展播种到可写用户目录(仅当目标缺失时拷贝)。
 
-    使预置的扩展(mysql/postgres/excel)离线即用;未预置的(如 httpfs)由 DuckDB
-    在首次用到时按需 INSTALL 到这个可写目录并缓存。包内只读,故必须用可写用户目录,
-    否则签名后的 .app 里 DuckDB 无法写缓存/装扩展。
+    使预置的扩展(excel/httpfs/mysql/postgres,见 scripts/fetch_duckdb_extensions.py)
+    离线即用;未预置的由 DuckDB 在首次用到时按需 INSTALL 到这个可写目录并缓存。
+    包内只读,故必须用可写用户目录,否则签名后的 .app 里 DuckDB 无法写缓存/装扩展。
     """
     import shutil
     from pathlib import Path
@@ -92,6 +92,32 @@ def start_parent_watchdog() -> None:
     threading.Thread(target=_watch, daemon=True).start()
 
 
+def _make_stage_logger(log_path):
+    """启动阶段计时日志:stderr(Tauri 侧转发)+ 落盘 startup.log。
+
+    用户报「启动超时」时可回传该文件,直接看出卡在哪一步(扩展播种/import 链/
+    uvicorn 绑定;Windows 首启杀软扫描通常体现为 import main 一步异常耗时)。
+    """
+    import time
+
+    t0 = time.monotonic()
+    try:  # 每次启动重写,只保留本次记录,避免无限增长
+        open(log_path, "w", encoding="utf-8").close()
+    except OSError:
+        pass
+
+    def stage(name: str) -> None:
+        line = f"[startup +{time.monotonic() - t0:6.1f}s] {name}"
+        print(line, file=sys.stderr, flush=True)
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except OSError:
+            pass  # 日志写不进去不能影响启动
+
+    return stage
+
+
 def main() -> None:
     multiprocessing.freeze_support()  # Windows 必需
     apply_desktop_env()
@@ -101,15 +127,19 @@ def main() -> None:
     _wd = get_user_data_dir()
     _wd.mkdir(parents=True, exist_ok=True)
     os.chdir(_wd)
+    stage = _make_stage_logger(_wd / "startup.log")
+    stage("env ready (extensions seeded)")
     start_parent_watchdog()
     port = pick_free_loopback_port()
     print(port, flush=True)  # 第一行 = 端口,Tauri 读 stdout
     os.environ["DUCKQUERY_PORT"] = str(port)
     from core.common.paths import write_runtime_file
     write_runtime_file(port)
+    stage(f"port {port} printed; importing app...")
     import uvicorn  # pylint: disable=import-error
     from main import app
 
+    stage("app imported; starting uvicorn")
     # host/port 跨平台可用;不用 fd=(uvicorn 的 fd 路径在 Windows 上崩,见 pick_free_loopback_port)
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
 

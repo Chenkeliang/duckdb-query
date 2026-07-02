@@ -53,14 +53,23 @@ function renderSplash(message: string, showRetry = false) {
     `;
 }
 
-async function pollHealth(base: string, timeoutMs = 30000): Promise<boolean> {
+// 90s 而非 30s：拿到端口后，后端还要完成整条重量级 import 链才能响应 /health；
+// Windows 首启叠加杀软对 PyInstaller onedir 数千文件的逐个扫描，30s 常不够，
+// 曾被误判为「本地引擎启动超时」（重试即好，因为文件已被杀软放行）。
+async function pollHealth(base: string, timeoutMs = 90000): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
+    const started = Date.now();
+    let slowHintShown = false;
     while (Date.now() < deadline) {
         try {
             const res = await fetch(`${base}/health`);
             if (res.ok) return true;
         } catch {
             // backend not ready yet
+        }
+        if (!slowHintShown && Date.now() - started > 20000) {
+            slowHintShown = true;
+            renderSplash('仍在启动本地引擎，首次启动可能需要 1-2 分钟，请稍候…');
         }
         await new Promise<void>((r) => setTimeout(r, 500));
     }
