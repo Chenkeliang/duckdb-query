@@ -71,10 +71,15 @@ interface QueryTabsProps {
   onOpenAiSettings?: () => void;
 }
 
+/** 供外部(如图表下钻)把 SQL 回填进编辑器,复用与历史/收藏夹相同的加载通道。 */
+export interface QueryTabsHandle {
+  loadSql: (sql: string) => void;
+}
+
 // 注意：不再使用 wrapExecute，直接传递 onExecute 以保留 source 参数
 // 子组件需要支持 (sql: string, source?: TableSource) 签名
 
-export const QueryTabs: React.FC<QueryTabsProps> = ({
+export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
   activeTab,
   onTabChange,
   selectedTables,
@@ -88,7 +93,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
   restoreJoinWorkspace,
   onClearJoinRestoreRequest,
   onOpenAiSettings,
-}) => {
+}, ref) => {
   const joinPersistenceRef = React.useRef<JoinWorkspacePersistence | null>(null);
   const { t } = useTranslation('common');
 
@@ -139,6 +144,11 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
     setHistoryOpen(false);
     setBookmarksOpen(false);
   };
+
+  // 外部(如图表下钻)回填 SQL 的入口:与 SavedQueriesPanel/GlobalHistoryPanel 走同一通道
+  React.useImperativeHandle(ref, () => ({
+    loadSql: (sql: string) => handleLoadSQL(sql),
+  }));
 
   // 联邦数据源推断较慢，弹窗打开后再算，避免阻塞 Dialog 显示
   React.useEffect(() => {
@@ -354,7 +364,8 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
       </Tabs>
     </>
   );
-};
+});
+QueryTabs.displayName = 'QueryTabs';
 
 // =============================================================================
 // Helper Components

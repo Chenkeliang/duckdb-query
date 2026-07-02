@@ -13,6 +13,7 @@ import { useQueryRunner } from "@/hooks/useQueryRunner";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import { DataSourcePanel } from "./DataSourcePanel";
 import { QueryTabs } from "./QueryTabs";
+import type { QueryTabsHandle } from "./QueryTabs";
 import { ResultPanel } from "./ResultPanel";
 import { deleteDuckDBTable } from "@/api";
 import { invalidateAfterTableDelete } from "@/utils/cacheInvalidation";
@@ -162,6 +163,12 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
   // Panel refs
   const dataSourcePanelRef = React.useRef<ImperativePanelHandle>(null);
   const resultPanelRef = React.useRef<ImperativePanelHandle>(null);
+  const queryTabsRef = React.useRef<QueryTabsHandle>(null);
+
+  // 图表下钻:把明细 SQL 回填进 SQL 编辑器(不自动执行)
+  const handleDrilldown = React.useCallback((sql: string) => {
+    queryTabsRef.current?.loadSql(sql);
+  }, []);
 
   // 折叠状态
   const [isDataSourceCollapsed, setIsDataSourceCollapsed] = React.useState(false);
@@ -240,6 +247,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
             {/* 查询区域 */}
             <Panel defaultSize={60} minSize={20}>
               <QueryTabs
+                ref={queryTabsRef}
                 activeTab={currentTab}
                 onTabChange={handleTabChange}
                 selectedTables={selectedTables[currentTab] || []}
@@ -325,6 +333,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
                   singleResultSlotLabel={singleResultSlotLabel}
                   autoOpenImportDialog={autoOpenImportDialog}
                   onAutoOpenImportDialogConsumed={() => setAutoOpenImportDialog(false)}
+                  onDrilldown={handleDrilldown}
                 />
               )}
             </Panel>

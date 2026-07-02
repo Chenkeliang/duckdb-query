@@ -211,3 +211,61 @@ describe('hardening fixes (review)', () => {
     expect(rbar.data.length).toBe(40);
   });
 });
+
+import { buildDrilldownSql } from '../chartSpec';
+
+describe('buildDrilldownSql', () => {
+  const catSpec = { type: 'bar' as const, x: 'region', y: ['amount'], agg: 'sum' as const };
+
+  it('categorical value -> equality filter, wraps source and strips trailing LIMIT', () => {
+    const sql = buildDrilldownSql(catSpec, '华东', 'SELECT * FROM demo_sales LIMIT 10000');
+    expect(sql).toBe(`SELECT * FROM (SELECT * FROM demo_sales) AS _src WHERE "region" = '华东' LIMIT 500`);
+  });
+
+  it('escapes single quotes in the clicked value', () => {
+    const sql = buildDrilldownSql(catSpec, "O'Brien", 'SELECT * FROM t');
+    expect(sql).toContain(`"region" = 'O''Brien'`);
+  });
+
+  it('month bin: server date_trunc form (e.g. "2026-03-01 00:00:00")', () => {
+    const spec = { type: 'line' as const, x: 'order_date', y: ['amount'], agg: 'sum' as const, xBin: 'month' as const };
+    const sql = buildDrilldownSql(spec, '2026-03-01 00:00:00', 'SELECT * FROM t');
+    expect(sql).toContain(`"order_date" >= DATE '2026-03-01' AND "order_date" < DATE '2026-04-01'`);
+  });
+
+  it('month bin: client binDim truncated form (e.g. "2025-12"), handles year rollover', () => {
+    const spec = { type: 'line' as const, x: 'order_date', y: ['amount'], agg: 'sum' as const, xBin: 'month' as const };
+    const sql = buildDrilldownSql(spec, '2025-12', 'SELECT * FROM t');
+    expect(sql).toContain(`"order_date" >= DATE '2025-12-01' AND "order_date" < DATE '2026-01-01'`);
+  });
+
+  it('day bin: half-open range from a plain date string', () => {
+    const spec = { type: 'bar' as const, x: 'order_date', y: ['amount'], agg: 'sum' as const, xBin: 'day' as const };
+    const sql = buildDrilldownSql(spec, '2026-03-15', 'SELECT * FROM t');
+    expect(sql).toContain(`"order_date" >= DATE '2026-03-15' AND "order_date" < DATE '2026-03-16'`);
+  });
+
+  it("'∅' bucket -> IS NULL", () => {
+    const sql = buildDrilldownSql(catSpec, '∅', 'SELECT * FROM t');
+    expect(sql).toContain(`"region" IS NULL`);
+  });
+
+  it("'其它' and '全部' buckets are not drillable", () => {
+    expect(buildDrilldownSql(catSpec, '其它', 'SELECT * FROM t')).toBeNull();
+    expect(buildDrilldownSql(catSpec, '全部', 'SELECT * FROM t')).toBeNull();
+  });
+
+  it('kpi type is not drillable', () => {
+    const spec = { type: 'kpi' as const, x: null, y: ['amount'], agg: 'sum' as const };
+    expect(buildDrilldownSql(spec, 'anything', 'SELECT * FROM t')).toBeNull();
+  });
+
+  it('null sourceSql is not drillable', () => {
+    expect(buildDrilldownSql(catSpec, '华东', null)).toBeNull();
+  });
+
+  it('no x dimension is not drillable', () => {
+    const spec = { type: 'bar' as const, x: null, y: ['amount'], agg: 'sum' as const };
+    expect(buildDrilldownSql(spec, '全部', 'SELECT * FROM t')).toBeNull();
+  });
+});

@@ -120,6 +120,54 @@ export function buildChartSql(userSql: string, spec: ChartSpec): string {
   return `SELECT ${dimExpr} AS dim, ${metricSql} FROM (${inner}) AS _src GROUP BY 1 ORDER BY 1 LIMIT 200`;
 }
 
+function escapeSqlString(v: string): string {
+  return v.replace(/'/g, "''");
+}
+
+/** 把 dim 值(两种形态:服务端 date_trunc 结果 / 客户端 binDim 截断串)归一化为 {y,m,d}。 */
+function parseBinValue(v: string): { y: number; m: number; d: number } | null {
+  const m = v.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
+  if (!m) return null;
+  return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3] ?? 1) };
+}
+
+function fmtDate(dt: Date): string {
+  return dt.toISOString().slice(0, 10);
+}
+
+/** day|month bin 的 dim 值 → 半开区间 [start, end)(用 UTC Date 运算天然处理跨月/跨年)。 */
+function binRange(v: string, xBin: 'day' | 'month'): { start: string; end: string } | null {
+  const parsed = parseBinValue(v);
+  if (!parsed) return null;
+  const { y, m, d } = parsed;
+  if (xBin === 'month') {
+    return { start: fmtDate(new Date(Date.UTC(y, m - 1, 1))), end: fmtDate(new Date(Date.UTC(y, m, 1))) };
+  }
+  return { start: fmtDate(new Date(Date.UTC(y, m - 1, d))), end: fmtDate(new Date(Date.UTC(y, m - 1, d + 1))) };
+}
+
+/**
+ * 图表点击下钻:把被点的维度值转成明细 SQL(包裹子查询,复用 buildChartSql 的既有模式)。
+ * 不可下钻(KPI / 无维度 / 「其它」「全部」合并桶)时返回 null。
+ */
+export function buildDrilldownSql(spec: ChartSpec, clickedDim: string, sourceSql: string | null): string | null {
+  if (!sourceSql || !spec.x || spec.type === 'kpi') return null;
+  if (clickedDim === '其它' || clickedDim === '全部') return null;
+
+  let cond: string;
+  if (clickedDim === '∅') {
+    cond = `${q(spec.x)} IS NULL`;
+  } else if (spec.xBin === 'day' || spec.xBin === 'month') {
+    const range = binRange(clickedDim, spec.xBin);
+    if (!range) return null;
+    cond = `${q(spec.x)} >= DATE '${range.start}' AND ${q(spec.x)} < DATE '${range.end}'`;
+  } else {
+    cond = `${q(spec.x)} = '${escapeSqlString(clickedDim)}'`;
+  }
+
+  return `SELECT * FROM (${stripTrailingLimit(sourceSql)}) AS _src WHERE ${cond} LIMIT 500`;
+}
+
 export interface AggResult {
   data: Array<Record<string, string | number>>;
   metricKeys: string[];

@@ -69,6 +69,8 @@ export interface ResultPanelProps {
   singleResultSlotLabel?: string;
   /** 联邦导出时 ATTACH 配置 */
   attachDatabases?: { alias: string; connectionId: string }[];
+  /** 图表下钻:收到明细 SQL,由调用方负责填入编辑器(不自动执行) */
+  onDrilldown?: (sql: string) => void;
 }
 
 const emptyStats = {
@@ -107,6 +109,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   onTogglePinResultTab,
   singleResultSlotLabel,
   attachDatabases,
+  onDrilldown,
 }) => {
   const actualExecTime = executionTime ?? execTime;
   const { t, i18n } = useTranslation('common');
@@ -200,6 +203,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         source={chartSource}
         aiEnabled={aiEnabled}
         locale={aiLocale}
+        onDrilldown={onDrilldown}
       />
     </div>
   );
