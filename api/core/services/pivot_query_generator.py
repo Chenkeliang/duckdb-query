@@ -297,20 +297,20 @@ def _try_generate_native_pivot(
 
     col_dim = _quote_identifier(pivot_config.columns[0])
     
-    # Build IN clause only if explicit values provided
+    # Construct native PIVOT statement并保留基础 CTE 结构，方便注入 totals
     if has_explicit_values:
         in_values = ", ".join(_format_literal(x) for x in pivot_config.manual_column_values)
-        in_clause = f" IN ({in_values})"
+        pivot_select = (
+            f"SELECT * FROM base PIVOT({', '.join(agg_items)} FOR {col_dim} IN ({in_values}))"
+        )
         strategy = "native"
     else:
-        # Dynamic PIVOT: no IN clause, DuckDB auto-detects column values
-        in_clause = ""
+        # Dynamic PIVOT: 函数式 PIVOT(... FOR col) 语法必须带 IN 列表，省略 IN 是语法错误；
+        # 动态取全部去重值须用简写语法 PIVOT base ON col USING agg
+        pivot_select = (
+            f"SELECT * FROM (PIVOT base ON {col_dim} USING {', '.join(agg_items)})"
+        )
         strategy = "native:dynamic"
-
-    # Construct native PIVOT statement并保留基础 CTE 结构，方便注入 totals
-    pivot_select = (
-        f"SELECT * FROM base PIVOT({', '.join(agg_items)} FOR {col_dim}{in_clause})"
-    )
 
     base_cte = f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)"
     pivot_alias = "pivot_result"

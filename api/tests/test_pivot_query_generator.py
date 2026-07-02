@@ -270,6 +270,38 @@ class TestPivotQueryModeGeneration:
         assert "IN (" not in result.final_sql  # No explicit IN list
         assert "PIVOT" in result.final_sql
 
+    def test_dynamic_pivot_sql_actually_executes(self):
+        """回归: 动态透视曾生成 PIVOT(agg FOR col)（缺 IN 列表，DuckDB 语法错误）。
+        动态列必须用简写语法 PIVOT base ON col USING agg。字符串断言拦不住语法错，
+        故直接在真实 DuckDB 上执行生成的 SQL 验证。"""
+        import duckdb
+
+        config = PivotQueryConfig(table_name="sales", filters=[])
+        pivot_config = PivotConfig(
+            rows=["region"],
+            columns=["year"],
+            values=[
+                PivotValueConfig(column="revenue", aggregation=AggregationFunction.SUM)
+            ],
+        )
+
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+            )
+            result = generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+        assert result.metadata.get("strategy") == "native:dynamic"
+        conn = duckdb.connect()
+        conn.execute(
+            "CREATE TABLE sales(region VARCHAR, year VARCHAR, revenue INT);"
+            "INSERT INTO sales VALUES('北京','2025',100),('北京','2026',200),('上海','2025',300)"
+        )
+        rows = conn.execute(result.final_sql).fetchall()
+        # 北京: 2025=100, 2026=200; 上海: 2025=300, 2026=NULL
+        assert sorted(rows) == [("上海", 300, None), ("北京", 100, 200)]
+
 
 class TestValidation:
     """Test query configuration validation"""
