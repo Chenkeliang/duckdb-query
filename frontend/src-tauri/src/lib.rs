@@ -127,7 +127,23 @@ fn spawn_backend(app: &AppHandle) {
                 }
             }
         }
+        // stdout EOF ⇒ backend process exited. Tell the frontend so it can fail
+        // fast instead of waiting out its 30s/90s startup windows on a process
+        // that crashed in the first 100ms. (Also fires on normal app shutdown,
+        // when the webview is being torn down anyway — harmless.)
+        eprintln!("[duckquery] backend stdout closed (process exited)");
+        let _ = handle.emit("backend-exited", port_set);
     });
+}
+
+/// Kill any existing backend and spawn a fresh one. Lets the frontend's retry
+/// button actually recover from a failed/crashed spawn — a plain webview reload
+/// cannot, because spawn_backend otherwise only runs once in setup().
+#[tauri::command]
+fn restart_backend(app: AppHandle) {
+    kill_backend(&app);
+    *app.state::<ApiPort>().0.lock().unwrap() = 0;
+    spawn_backend(&app);
 }
 
 fn kill_backend(app: &AppHandle) {
@@ -155,7 +171,11 @@ pub fn run() {
     builder
         .manage(ApiPort::default())
         .manage(Backend(Mutex::new(None)))
-        .invoke_handler(tauri::generate_handler![get_api_base, open_external])
+        .invoke_handler(tauri::generate_handler![
+            get_api_base,
+            open_external,
+            restart_backend
+        ])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

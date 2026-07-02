@@ -42,8 +42,10 @@ function renderApp() {
 }
 
 function renderSplash(message: string, showRetry = false) {
+    // __dqRetry(bootstrap 内注入)会先让 Rust 侧杀掉并重新拉起后端再刷新页面;
+    // 仅 reload 无法救活 spawn 失败的后端(spawn_backend 只在 setup 时跑一次)。
     const retryHtml = showRetry
-        ? `<button onclick="window.location.reload()" style="margin-top:16px;padding:8px 24px;border:1px solid #555;border-radius:6px;background:#222;color:#eee;cursor:pointer;font-size:14px;">重试</button>`
+        ? `<button onclick="window.__dqRetry ? window.__dqRetry() : window.location.reload()" style="margin-top:16px;padding:8px 24px;border:1px solid #555;border-radius:6px;background:#222;color:#eee;cursor:pointer;font-size:14px;">重试</button>`
         : '';
     rootElement!.innerHTML = `
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#0f0f0f;color:#e0e0e0;font-family:sans-serif;">
@@ -56,11 +58,16 @@ function renderSplash(message: string, showRetry = false) {
 // 90s 而非 30s：拿到端口后，后端还要完成整条重量级 import 链才能响应 /health；
 // Windows 首启叠加杀软对 PyInstaller onedir 数千文件的逐个扫描，30s 常不够，
 // 曾被误判为「本地引擎启动超时」（重试即好，因为文件已被杀软放行）。
-async function pollHealth(base: string, timeoutMs = 90000): Promise<boolean> {
+async function pollHealth(
+    base: string,
+    timeoutMs = 90000,
+    shouldAbort?: () => boolean
+): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     const started = Date.now();
     let slowHintShown = false;
     while (Date.now() < deadline) {
+        if (shouldAbort?.()) return false; // 后端进程已退出,等下去没有意义
         try {
             const res = await fetch(`${base}/health`);
             if (res.ok) return true;
@@ -104,6 +111,22 @@ async function bootstrap() {
         const { invoke } = await import('@tauri-apps/api/core');
         const { listen } = await import('@tauri-apps/api/event');
 
+        // 重试 = 让 Rust 杀掉并重新 spawn 后端,再刷新 webview。
+        (window as any).__dqRetry = async () => {
+            try {
+                await invoke('restart_backend');
+            } catch {
+                // 命令失败也照样 reload,不比纯 reload 更差
+            }
+            window.location.reload();
+        };
+
+        // 后端进程退出(stdout EOF)⇒ 立即失败,不再傻等启动窗口跑满。
+        let backendExited = false;
+        listen<boolean>('backend-exited', () => {
+            backendExited = true;
+        });
+
         // Race: invoke (already-ready) vs event (not-yet-ready).
         const base = await new Promise<string>((resolve) => {
             let settled = false;
@@ -120,6 +143,8 @@ async function bootstrap() {
                     settle(event.payload);
                 }
             });
+
+            listen('backend-exited', () => settle(''));
 
             // Then check if the backend is already up.
             invoke<string>('get_api_base').then((url) => {
@@ -142,7 +167,7 @@ async function bootstrap() {
 
         setApiBaseUrl(base);
 
-        const healthy = await pollHealth(base);
+        const healthy = await pollHealth(base, 90000, () => backendExited);
         if (!healthy) {
             renderSplash('本地引擎启动超时，请重试。', true);
             return;

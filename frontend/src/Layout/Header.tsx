@@ -35,7 +35,13 @@ const Header = ({
     ) : null);
 
   return (
-    <div className="dq-layout-header-inner flex h-14 items-center justify-between px-4 bg-surface border-b border-border">
+    // data-tauri-drag-region: 桌面端(Overlay 标题栏)让 Header 的空白区域也可拖动窗口。
+    // Tauri 仅在 mousedown 目标恰为带该属性的元素时触发拖动,子级按钮/标题不受影响;
+    // Web 端该属性是惰性的,无副作用。
+    <div
+      data-tauri-drag-region
+      className="dq-layout-header-inner flex h-14 items-center justify-between px-4 bg-surface border-b border-border"
+    >
       <div className="flex items-center gap-6">{renderedTitle}</div>
       <div className="flex items-center gap-2">
         {children}
