@@ -98,6 +98,11 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # In-app updater: sign update artifacts and emit latest.json into the
+          # release (createUpdaterArtifacts in tauri.conf.json). The private key
+          # lives only in repo secrets; the matching pubkey is in tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # No Apple Developer ID signing — the macOS bundler uses ad-hoc signing
           # (signingIdentity "-" in tauri.conf.json). Do NOT pass APPLE_* env vars:
           # an undefined secret expands to an EMPTY string (not "unset"), and the

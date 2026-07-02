@@ -22,6 +22,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { QueryProvider } from './providers/QueryProvider';
 import { setApiBaseUrl } from './api/client';
 import { openExternal } from './desktop/openExternal';
+import { UpdateChecker } from './desktop/UpdateChecker';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -35,6 +36,7 @@ function renderApp() {
         <QueryProvider>
             <I18nextProvider i18n={i18n}>
                 <App />
+                <UpdateChecker />
                 <Toaster duration={2000} richColors closeButton />
             </I18nextProvider>
         </QueryProvider>
