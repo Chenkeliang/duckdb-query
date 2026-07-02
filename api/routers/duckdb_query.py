@@ -66,6 +66,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _log_query_metrics_in_conn(conn, sql: str, start_time: float, row_count: int) -> float:
+    """在**连接仍被本请求持有**时记录慢查询指标(可能执行 EXPLAIN)并返回耗时 ms。
+
+    必须在 with interruptible_connection/with_duckdb_connection 块内调用:
+    块退出后连接已归还池,可能立刻被并发请求取走,再在其上跑 EXPLAIN 会与
+    对方的查询争用同一 DuckDB 连接(结果串号甚至崩溃)。
+    """
+    from core.database.query_metrics import log_query_duration
+
+    execution_time = (time.time() - start_time) * 1000
+    explain_threshold = max(
+        config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
+    )
+    log_query_duration(
+        conn, sql, execution_time, row_count, explain_threshold_ms=explain_threshold
+    )
+    return execution_time
+
+
 def contains_keyword(sql_text: str, keyword: str) -> bool:
     """检测SQL文本中是否包含独立的关键字（忽略字符串字面量内的内容）"""
     pattern = rf"\b{keyword}\b"
@@ -381,13 +400,12 @@ async def execute_duckdb_query(
         logger.info(f"Executing DuckDB query: {sql_query}")
         logger.info(f"Available tables: {available_tables}")
 
-        metrics_conn = None
+        execution_time = 0.0
         query_column_types = []
         saved_table = None
         # 使用可中断连接执行查询（如果有 query_id）
         if query_id:
             with interruptible_connection(query_id, sql_query) as conn:
-                metrics_conn = conn
                 result_df = conn.execute(sql_query).fetchdf()
                 query_column_types = describe_query_column_types(
                     conn, sql_query, result_df
@@ -433,9 +451,11 @@ async def execute_duckdb_query(
                                 )
                         except Exception as save_error:
                             logger.warning(f"Failed to save query result as table: {str(save_error)}")
+                execution_time = _log_query_metrics_in_conn(
+                    conn, sql_query, start_time, len(result_df)
+                )
         else:
             with with_duckdb_connection() as con:
-                metrics_conn = con
                 result_df = con.execute(sql_query).fetchdf()
                 query_column_types = describe_query_column_types(
                     con, sql_query, result_df
@@ -481,23 +501,9 @@ async def execute_duckdb_query(
                             logger.warning(
                                 f"Failed to save query result as table: {str(save_error)}"
                             )
-
-        execution_time = (time.time() - start_time) * 1000
-
-        if metrics_conn is not None:
-            from core.common.config_manager import config_manager
-            from core.database.query_metrics import log_query_duration
-
-            explain_threshold = max(
-                config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
-            )
-            log_query_duration(
-                metrics_conn,
-                sql_query,
-                execution_time,
-                len(result_df),
-                explain_threshold_ms=explain_threshold,
-            )
+                execution_time = _log_query_metrics_in_conn(
+                    con, sql_query, start_time, len(result_df)
+                )
 
         # 构建响应
         response_payload = {
@@ -863,11 +869,9 @@ async def execute_federated_query(
         connection_registry.interrupt(query_id)
 
     result_df = None
-    metrics_conn = None
     query_column_types = []
     try:
         with interruptible_connection(query_id, sql_query) as conn:
-            metrics_conn = conn
             timer = threading.Timer(timeout_s, _on_timeout)
             timer.start()
             try:
@@ -877,21 +881,8 @@ async def execute_federated_query(
                 )
             finally:
                 timer.cancel()
-
-        execution_time = (time.time() - start_time) * 1000
-
-        if metrics_conn is not None:
-            from core.database.query_metrics import log_query_duration
-
-            explain_threshold = max(
-                config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
-            )
-            log_query_duration(
-                metrics_conn,
-                sql_query,
-                execution_time,
-                len(result_df),
-                explain_threshold_ms=explain_threshold,
+            execution_time = _log_query_metrics_in_conn(
+                conn, sql_query, start_time, len(result_df)
             )
 
         response_data = {

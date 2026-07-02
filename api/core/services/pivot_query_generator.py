@@ -197,14 +197,23 @@ def _generate_pivot_transformation_sql(
             native_candidate["metadata"].update({"uses_pivot_extension": False})
             # 当需要小计/总计时，构建额外result集
             if pivot_config.include_subtotals or pivot_config.include_grand_totals:
-                native_candidate = _inject_pivot_totals(
-                    native_candidate,
-                    row_dimensions,
-                    pivot_config.values,
-                    manual_values,
-                    include_subtotals=pivot_config.include_subtotals,
-                    include_grand_totals=pivot_config.include_grand_totals,
-                )
+                if not manual_values:
+                    # 动态透视的列名在执行期才确定，_derive_pivot_value_aliases 无法
+                    # 预知（会引用不存在的列 → Binder Error），故降级为不注入并告警。
+                    # 需要小计请提供 manual_column_values 或 column_value_limit。
+                    native_candidate["warnings"].append(
+                        "Subtotals/grand totals require explicit column values "
+                        "(manual_column_values or column_value_limit); skipped for dynamic pivot"
+                    )
+                else:
+                    native_candidate = _inject_pivot_totals(
+                        native_candidate,
+                        row_dimensions,
+                        pivot_config.values,
+                        manual_values,
+                        include_subtotals=pivot_config.include_subtotals,
+                        include_grand_totals=pivot_config.include_grand_totals,
+                    )
             return native_candidate
 
     # 动态 PIVOT failed（多column维度场景），仅当显式设置 column_value_limit 时采样

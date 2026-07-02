@@ -48,12 +48,24 @@ def _alias_to_table(tree: exp.Expression) -> dict[str, exp.Table]:
 
 
 def _eq_pairs(on: exp.Expression):
-    """ON 里的等值对：[(左表别名,左列,右表别名,右列), …]（仅纯列=列）。"""
+    """ON 顶层 AND 链上的等值对：[(左表别名,左列,右表别名,右列), …]（仅纯列=列）。
+
+    只收集经纯 AND 可达的 EQ：处于 OR/NOT 等其它布尔结构之下的等值不是
+    JOIN 匹配的必要条件，据其下推 IN 过滤会静默丢掉走另一分支匹配的行
+    （如 ON l.id=r.k OR l.alt=r.k，按 l.id 下推会滤掉仅由 l.alt 匹配的行）。
+    """
     pairs = []
-    for eq in on.find_all(exp.EQ):
-        l, r = eq.left, eq.right
-        if isinstance(l, exp.Column) and isinstance(r, exp.Column):
-            pairs.append((l.table.lower(), l.name, r.table.lower(), r.name))
+    stack = [on]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, exp.And):
+            stack.extend((node.left, node.right))
+        elif isinstance(node, exp.Paren):
+            stack.append(node.this)
+        elif isinstance(node, exp.EQ):
+            l, r = node.left, node.right
+            if isinstance(l, exp.Column) and isinstance(r, exp.Column):
+                pairs.append((l.table.lower(), l.name, r.table.lower(), r.name))
     return pairs
 
 

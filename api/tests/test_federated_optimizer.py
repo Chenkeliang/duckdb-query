@@ -115,3 +115,40 @@ def test_left_join_reduces_non_preserved_remote_reversed_on():
     sql = "SELECT * FROM local_t l LEFT JOIN mysql_db.orders o ON o.id = l.oid"
     plans = plan_semijoins(sql, {"mysql_db"})
     assert len(plans) == 1 and plans[0].remote_alias == "o"
+
+
+def test_or_in_on_clause_skips_pushdown():
+    """回归: ON 里的 OR 分支等值曾被当作必要条件下推,静默丢掉走另一分支匹配的行。"""
+    sql = (
+        "SELECT * FROM mysql_db.orders o JOIN local_t l "
+        "ON o.id = l.oid OR o.id = l.alt_oid"
+    )
+    assert plan_semijoins(sql, {"mysql_db"}) == []
+
+
+def test_not_wrapped_eq_skips_pushdown():
+    sql = (
+        "SELECT * FROM mysql_db.orders o JOIN local_t l "
+        "ON NOT (o.id = l.oid)"
+    )
+    assert plan_semijoins(sql, {"mysql_db"}) == []
+
+
+def test_and_chain_with_extra_predicate_still_pushes():
+    """顶层 AND 链上的等值仍应下推(AND 中每个条件都是必要条件)。"""
+    sql = (
+        "SELECT * FROM mysql_db.orders o JOIN local_t l "
+        "ON o.id = l.oid AND l.status = 'x'"
+    )
+    plans = plan_semijoins(sql, {"mysql_db"})
+    assert len(plans) == 1 and plans[0].remote_col == "id"
+
+
+def test_and_containing_or_branch_only_uses_and_level_eq():
+    """AND(eq1, OR(eq2,...)): eq1 是必要条件可推,OR 里的 eq2 不可作为下推键。"""
+    sql = (
+        "SELECT * FROM mysql_db.orders o JOIN local_t l "
+        "ON o.id = l.oid AND (o.uid = l.uid OR l.flag = 1)"
+    )
+    plans = plan_semijoins(sql, {"mysql_db"})
+    assert len(plans) == 1 and plans[0].remote_col == "id"

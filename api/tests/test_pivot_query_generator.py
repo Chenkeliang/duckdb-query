@@ -302,6 +302,39 @@ class TestPivotQueryModeGeneration:
         # 北京: 2025=100, 2026=200; 上海: 2025=300, 2026=NULL
         assert sorted(rows) == [("上海", 300, None), ("北京", 100, 200)]
 
+    def test_dynamic_pivot_with_grand_totals_degrades_with_warning(self):
+        """回归: 动态透视+总计曾用猜测别名(sum_amount)注入 totals,引用执行期才存在的列
+        → Binder Error。现应降级为不注入并给出 warning,生成的 SQL 必须可执行。"""
+        import duckdb
+
+        config = PivotQueryConfig(table_name="sales", filters=[])
+        pivot_config = PivotConfig(
+            rows=["region"],
+            columns=["year"],
+            values=[
+                PivotValueConfig(column="revenue", aggregation=AggregationFunction.SUM)
+            ],
+            include_grand_totals=True,
+        )
+
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+            )
+            result = generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+        assert result.metadata.get("strategy") == "native:dynamic"
+        assert any("Subtotals" in w or "totals" in w for w in result.warnings)
+        conn = duckdb.connect()
+        conn.execute(
+            "CREATE TABLE sales(region VARCHAR, year VARCHAR, revenue INT);"
+            "INSERT INTO sales VALUES('北京','2025',100),('上海','2025',300)"
+        )
+        rows = conn.execute(result.final_sql).fetchall()  # 不应抛 Binder Error
+        assert len(rows) == 2
+
+
 
 class TestValidation:
     """Test query configuration validation"""
