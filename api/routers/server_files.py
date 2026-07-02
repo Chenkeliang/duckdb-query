@@ -445,28 +445,32 @@ async def import_server_excel(payload: ServerExcelImportRequest):
         imported_tables = []
         current_time = get_storage_time()
 
-        # 1. 先构建表名映射，检查批次内部冲突
+        # 1. 构建表名映射：create 模式撞名（批内已占用 或 库内已存在）时自动加
+        #    _1/_2/_3 后缀，不再报错静默失败；replace/append 保持原有的批内冲突校验。
         sanitized_name_map = {}
         for sheet_cfg in payload.sheets:
             # 用户明确提供了目标表名，尊重用户输入（允许数字开头）
             sanitized = sanitize_identifier(
                 sheet_cfg.target_table, allow_leading_digit=True, prefix="table"
             )
-            if sanitized in sanitized_name_map.values():
+            if sheet_cfg.mode == "create":
+                candidate = sanitized
+                suffix = 0
+                while candidate in sanitized_name_map.values() or _table_exists(con, candidate):
+                    suffix += 1
+                    if suffix > 1000:
+                        raise APIValidationError(
+                            f"Cannot resolve a unique table name for '{sheet_cfg.target_table}'"
+                        )
+                    candidate = f"{sanitized}_{suffix}"
+                sanitized = candidate
+            elif sanitized in sanitized_name_map.values():
                 raise APIValidationError(
                     f"Worksheet '{sheet_cfg.name}' target table name '{sanitized}' conflicts with other worksheets"
                 )
             sanitized_name_map[sheet_cfg.name] = sanitized
 
-        # 2. 检查是否与现有表冲突
-        for sheet_cfg in payload.sheets:
-            target_table = sanitized_name_map[sheet_cfg.name]
-            if sheet_cfg.mode == "create" and _table_exists(con, target_table):
-                raise APIValidationError(
-                    f"Table '{target_table}' already exists, please modify target table name or select overwrite mode"
-                )
-
-        # 4. 执行导入
+        # 2. 执行导入
         for sheet_cfg in payload.sheets:
             target_table = sanitized_name_map[sheet_cfg.name]
             header_row_index = (

@@ -89,6 +89,7 @@ def resolve_unique_table_name(
         sanitized = f"{prefix}_{int(time.time())}"
 
     original = sanitized
+    suffix = 0
     while True:
         try:
             result = con.execute(
@@ -97,12 +98,15 @@ def resolve_unique_table_name(
             ).fetchone()
             if result is None:
                 break
-            timestamp = time.strftime("%Y%m%d%H%M", time.localtime())
-            sanitized = f"{original}_{timestamp}"
-            break
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.debug("Table name conflict check failed: %s", exc)
             break
+        suffix += 1
+        if suffix > 1000:
+            raise ValueError(
+                f"Cannot resolve a unique table name for '{original}' after 1000 attempts"
+            )
+        sanitized = f"{original}_{suffix}"
     return sanitized
 
 
@@ -202,6 +206,24 @@ def prepare_excel_pending(
     )
 
 
+def _dedupe_default_table_names(sheets: List[Dict[str, Any]]) -> None:
+    """批内去重：不同 sheet 归一化后可能撞出相同的 default_table_name（如
+    "Sheet 1" / "Sheet-1" / "Sheet_1"），重复的从第二个起追加 _1/_2/_3。"""
+    used: set = set()
+    for sheet in sheets:
+        name = sheet["default_table_name"]
+        if name not in used:
+            used.add(name)
+            continue
+        suffix = 1
+        candidate = f"{name}_{suffix}"
+        while candidate in used:
+            suffix += 1
+            candidate = f"{name}_{suffix}"
+        sheet["default_table_name"] = candidate
+        used.add(candidate)
+
+
 def inspect_pending_excel(file_id: str) -> Dict[str, Any]:
     pending = get_pending_excel(file_id)
     if not pending:
@@ -212,6 +234,7 @@ def inspect_pending_excel(file_id: str) -> Dict[str, Any]:
         sheet["default_table_name"] = derive_default_table_name(
             pending.default_table_prefix, sheet["name"]
         )
+    _dedupe_default_table_names(sheets_info)
     return {
         "file_id": pending.file_id,
         "original_filename": pending.original_filename,
@@ -236,6 +259,7 @@ def inspect_excel_at_path(
         sheet["default_table_name"] = derive_default_table_name(
             default_prefix, sheet["name"]
         )
+    _dedupe_default_table_names(sheets)
     return {
         "default_table_prefix": default_prefix,
         "sheets": sheets,
@@ -283,7 +307,15 @@ def import_pending_excel_sheets(
             )
             exists = _table_exists(con, target_table)
             mode = sheet_config.mode.lower()
-            if exists and mode == "fail":
+            if mode == "create" and exists:
+                # 撞名（库内已存在，或本批前面的 sheet 刚建的表）→ 自动加 _1/_2/_3 后缀，
+                # 不再静默覆盖也不报错。resolve_unique_table_name 复查 information_schema，
+                # 天然覆盖同批顺序创建的表。
+                target_table = resolve_unique_table_name(
+                    con, target_table, user_provided=True
+                )
+                exists = False
+            elif exists and mode == "fail":
                 processed.append({
                     "sheet_name": sheet_config.name,
                     "target_table": target_table,

@@ -55,7 +55,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-VALID_EXCEL_IMPORT_MODES = {"replace", "append", "fail"}
+VALID_EXCEL_IMPORT_MODES = {"create", "replace", "append", "fail"}
 VALID_CELL_IMPORT_MODES = {"auto", "literal"}
 
 
@@ -66,7 +66,10 @@ class ExcelInspectRequest(BaseModel):
 class ExcelImportSheet(BaseModel):
     name: str = Field(..., description="工作表名称")
     target_table: str = Field(..., description="目标DuckDB表名")
-    mode: str = Field(default="replace", description="导入模式 replace/append/fail")
+    mode: str = Field(
+        default="create",
+        description="导入模式 create/replace/append/fail，默认 create（撞名自动加 _1/_2/_3 后缀）",
+    )
     header_rows: int = Field(default=1, description="表头行数")
     header_row_index: Optional[int] = Field(
         default=1, description="表头起始行(1-based)"
