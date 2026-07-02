@@ -1,9 +1,23 @@
 [project]
 name = "duckquery-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server for a locally-running DuckQuery backend"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Chen" }]
+keywords = ["mcp", "duckdb", "sql", "data-analysis", "duckquery"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
 requires-python = ">=3.10"
 dependencies = ["mcp>=1.2.0", "httpx>=0.27"]
+
+[project.urls]
+Homepage = "https://github.com/Chenkeliang/duckdb-query"
+Repository = "https://github.com/Chenkeliang/duckdb-query"
+Issues = "https://github.com/Chenkeliang/duckdb-query/issues"
 
 [project.scripts]
 duckquery-mcp = "duckquery_mcp.__main__:main"
