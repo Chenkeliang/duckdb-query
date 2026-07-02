@@ -35,10 +35,28 @@ Cursor / Codex (`mcp.json`):
 }
 ```
 
+Claude Desktop — add the same `mcpServers` block to `claude_desktop_config.json`
+(macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`,
+Windows: `%APPDATA%\Claude\claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "duckquery": {
+      "command": "uvx",
+      "args": ["duckquery-mcp"]
+    }
+  }
+}
+```
+
 ## Tools
 
 High-level tools (query, ask, discover, add sources, configure LLM, transform,
 export) plus a generic `duckquery_request` passthrough. Safety mode gates which
-tools are exposed: `read-only` hides all mutating tools; `normal` exposes them
-but destructive raw SQL and non-GET passthrough require `confirm=true`; `full`
-removes the gate.
+tools are exposed:
+- `read-only` — hides all mutating tools; non-GET `duckquery_request` calls are
+  hard-blocked (`confirm` cannot override).
+- `normal` (default) — mutating tools are exposed and run without extra
+  confirmation (`run_sql` executes write SQL directly); only non-GET
+  `duckquery_request` passthrough requires `confirm=true`.
+- `full` — removes the passthrough confirm gate.

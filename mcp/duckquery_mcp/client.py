@@ -85,6 +85,20 @@ class DuckQueryClient:
             if isinstance(payload, dict):
                 # FastAPI uses "detail"; DuckQuery's envelope uses "message"/"messageCode"
                 msg = payload.get("detail") or payload.get("message") or payload.get("messageCode")
+                # 422 的字段级校验详情在 error.details.errors 里,不透传的话调用方只能
+                # 看到一句 "Request validation failed",完全无从定位是哪个字段错了
+                err = payload.get("error")
+                if isinstance(err, dict):
+                    details = err.get("details")
+                    field_errors = details.get("errors") if isinstance(details, dict) else None
+                    if field_errors:
+                        parts = []
+                        for fe in field_errors[:5]:
+                            if isinstance(fe, dict):
+                                parts.append(f"{fe.get('field', '?')}: {fe.get('message', '?')}")
+                            else:
+                                parts.append(str(fe))
+                        msg = f"{msg or 'validation failed'} ({'; '.join(parts)})"
             raise BackendError(str(msg) if msg else f"HTTP {r.status_code}")
         if isinstance(payload, dict):
             if payload.get("success") is False:

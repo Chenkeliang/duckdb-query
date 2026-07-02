@@ -5,10 +5,16 @@ async def add_connection(client, cfg, *, connection: dict, test: bool = True) ->
     """Save (and optionally test) an external DB connection.
 
     `connection` must follow the DatabaseConnection shape:
-      {name, type, params: {host, port, database, username, password, ...}}
-    where `type` is one of: mysql, postgresql, sqlite, etc.
+      {id, name, type, params: {host, port, database, username, password, ...}}
+    where `type` is one of: mysql, postgresql, sqlite, etc. `id` is a required
+    unique string; if omitted here, a uuid is generated automatically.
     `test=True` (default) verifies the connection before saving; set to False to save without testing.
     """
+    if not connection.get("id"):
+        # 后端 DatabaseConnection.id 为必填;缺失会在路由内被吞成语焉不详的 500
+        import uuid
+
+        connection = {**connection, "id": f"conn_{uuid.uuid4().hex[:12]}"}
     return await client.call(
         "POST",
         "/api/datasources/databases",

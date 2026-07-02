@@ -75,3 +75,20 @@ async def test_call_4xx_surfaces_envelope_message(cfg):
     client = DuckQueryClient(cfg)
     with pytest.raises(BackendError, match="not configured"):
         await client.call("POST", "/api/ai/explain-sql", json_body={"sql": "x"})
+
+
+@respx.mock
+async def test_call_422_surfaces_field_level_details(cfg):
+    """回归: 422 的 error.details.errors 曾被吞掉,只剩 'Request validation failed'。"""
+    respx.get("http://127.0.0.1:48001/health").mock(
+        return_value=httpx.Response(200, json={"status": "healthy"}))
+    respx.post("http://127.0.0.1:48001/api/pivot-query/preview").mock(
+        return_value=httpx.Response(422, json={
+            "success": False, "message": "Request validation failed",
+            "error": {"code": "VALIDATION_ERROR", "message": "Request validation failed",
+                      "details": {"errors": [
+                          {"field": "pivot_config.values.0.aggregation",
+                           "message": "value is not a valid enumeration member", "type": "enum"}]}}}))
+    client = DuckQueryClient(cfg)
+    with pytest.raises(BackendError, match="aggregation"):
+        await client.call("POST", "/api/pivot-query/preview", json_body={})
