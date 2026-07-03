@@ -37,7 +37,7 @@ const AGGS: AggFn[] = ['sum', 'count', 'avg', 'min', 'max'];
 
 export function ChartView({ columns, rows, truncated, source, aiEnabled, locale = 'zh', onDrilldown }: ChartViewProps) {
   const { t } = useTranslation('common');
-  const { metrics, dates } = React.useMemo(() => classifyColumns(columns), [columns]);
+  const { dates } = React.useMemo(() => classifyColumns(columns), [columns]);
   const [spec, setSpec] = React.useState<ChartSpec>(() => defaultSpec(columns));
   const [full, setFull] = React.useState(false);
   const [suggesting, setSuggesting] = React.useState(false);
@@ -63,7 +63,7 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
   React.useEffect(() => {
     if (!truncated || !source.sql) { setServerAgg(null); return; }
     let alive = true;
-    const chartSql = buildChartSql(source.sql, spec);
+    const chartSql = buildChartSql(source.sql, spec, columns);
     setLoadingAgg(true);
     const run = source.requiresFederated && source.attachDatabases?.length
       ? executeFederatedQuery({ sql: chartSql, attachDatabases: source.attachDatabases, isPreview: true })
@@ -147,10 +147,11 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
             <SelectContent>{xOptions.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
           </Select>
         )}
-        {metrics.length > 0 && (
+        {columns.length > 0 && (
           <Select value={spec.y[0] ?? ''} onValueChange={(v) => setSpec((s) => ({ ...s, y: v ? [v] : [] }))}>
             <SelectTrigger className="h-7 w-32"><SelectValue placeholder={t('query.chart.metric', '指标(Y)')} /></SelectTrigger>
-            <SelectContent>{metrics.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+            {/* 指标同样开放全部列:非数值列聚合时 TRY_CAST 成数值(见 buildChartSql),count 则任何类型都合法 */}
+            <SelectContent>{columns.map((c) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
           </Select>
         )}
         <Select value={spec.agg} onValueChange={(v) => setSpec((s) => ({ ...s, agg: v as AggFn }))}>

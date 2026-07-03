@@ -105,15 +105,24 @@ function xExpr(spec: ChartSpec): string {
   return q(spec.x as string);
 }
 
+/** 指标列表达式:非数值列 TRY_CAST 成 DOUBLE 再聚合(数值形字符串可算,转不动的为 NULL 被聚合忽略)。
+ *  count 例外:对任何类型都合法且需数每个非空值,转型反而会漏计转不动的行。 */
+function metricColExpr(col: string, agg: AggFn, columns?: ColumnInfo[]): string {
+  if (agg === 'count') return q(col);
+  const info = (columns || []).find((c) => c.name === col);
+  if (info && !isNumericType(info.type)) return `TRY_CAST(${q(col)} AS DOUBLE)`;
+  return q(col);
+}
+
 /** 把用户 SQL 包成子查询做全量聚合(截断时用)。返回值由调用方按本地/联邦端点执行。 */
-export function buildChartSql(userSql: string, spec: ChartSpec): string {
+export function buildChartSql(userSql: string, spec: ChartSpec, columns?: ColumnInfo[]): string {
   const inner = stripTrailingLimit(userSql);
   if (spec.type === 'kpi') {
-    const metric = spec.y[0] ? `${spec.agg}(${q(spec.y[0])})` : 'count(*)';
+    const metric = spec.y[0] ? `${spec.agg}(${metricColExpr(spec.y[0], spec.agg, columns)})` : 'count(*)';
     return `SELECT ${metric} AS metric FROM (${inner}) AS _src`;
   }
   const metricSql = spec.y.length
-    ? spec.y.map((col, i) => `${spec.agg}(${q(col)}) AS m_${i}`).join(', ')
+    ? spec.y.map((col, i) => `${spec.agg}(${metricColExpr(col, spec.agg, columns)}) AS m_${i}`).join(', ')
     : 'count(*) AS m_0';
   // 无维度(空列等退化场景)用常量单桶,避免生成 "null" 列
   const dimExpr = spec.x ? xExpr(spec) : `'全部'`;

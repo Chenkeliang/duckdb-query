@@ -121,6 +121,32 @@ describe('buildChartSql', () => {
     expect(sql).toContain('sum("amount") AS metric');
     expect(sql).not.toContain('GROUP BY');
   });
+
+  it('non-numeric y is TRY_CAST to DOUBLE for sum/avg/min/max', () => {
+    const columns = [{ name: 'status', type: 'VARCHAR' }, { name: 'price_str', type: 'VARCHAR' }];
+    const sql = buildChartSql('SELECT * FROM t', { type: 'bar', x: 'status', y: ['price_str'], agg: 'sum' }, columns);
+    expect(sql).toContain('sum(TRY_CAST("price_str" AS DOUBLE)) AS m_0');
+  });
+
+  it('count on non-numeric y counts the raw column (no cast)', () => {
+    const columns = [{ name: 'status', type: 'VARCHAR' }, { name: 'note', type: 'VARCHAR' }];
+    const sql = buildChartSql('SELECT * FROM t', { type: 'bar', x: 'status', y: ['note'], agg: 'count' }, columns);
+    expect(sql).toContain('count("note") AS m_0');
+    expect(sql).not.toContain('TRY_CAST');
+  });
+
+  it('numeric y stays uncast when columns provided', () => {
+    const columns = [{ name: 'status', type: 'VARCHAR' }, { name: 'amount', type: 'DOUBLE' }];
+    const sql = buildChartSql('SELECT * FROM t', { type: 'bar', x: 'status', y: ['amount'], agg: 'sum' }, columns);
+    expect(sql).toContain('sum("amount") AS m_0');
+    expect(sql).not.toContain('TRY_CAST');
+  });
+
+  it('kpi non-numeric y also casts', () => {
+    const columns = [{ name: 'price_str', type: 'VARCHAR' }];
+    const sql = buildChartSql('SELECT * FROM t', { type: 'kpi', x: null, y: ['price_str'], agg: 'avg' }, columns);
+    expect(sql).toContain('avg(TRY_CAST("price_str" AS DOUBLE)) AS metric');
+  });
 });
 
 import { aggregateRows } from '../chartSpec';
