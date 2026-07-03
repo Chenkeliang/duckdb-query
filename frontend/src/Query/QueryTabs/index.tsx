@@ -108,6 +108,8 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
 
   // SQL 预览状态
   const [loadedSqlPreview, setLoadedSqlPreview] = React.useState<string | undefined>(undefined);
+  // 同一串 SQL 重复加载（如重复下钻同一桶）时,字符串 prop 不变不会触发回填,用序号强制触发
+  const [previewSeq, setPreviewSeq] = React.useState(0);
   const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false);
   const [previewDialogSql, setPreviewDialogSql] = React.useState<string | null>(null);
   const [previewSource, setPreviewSource] = React.useState<TableSource | undefined>(undefined);
@@ -138,6 +140,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
 
     onTabChange('sql');
     setLoadedSqlPreview(sqlBody);
+    setPreviewSeq((s) => s + 1);
     setPreviewDialogSql(sqlBody);
     setPreviewSource(undefined);
     setPreviewDialogOpen(true);
@@ -326,6 +329,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
               editorMinHeight="150px"
               editorMaxHeight="300px"
               previewSQL={sqlPanelPreview}
+              previewNonce={previewSeq}
               onOpenAiSettings={onOpenAiSettings}
             />
           </KeepAliveTabContent>
