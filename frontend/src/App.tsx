@@ -25,6 +25,7 @@ import {
   Search,
   Clock,
   Sparkles,
+  Blocks,
   LucideIcon
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -52,7 +53,7 @@ import { openExternal } from "./desktop/openExternal";
 const WelcomePage = lazy(() => import("./WelcomePage"));
 
 // Types
-type TabId = "datasource" | "queryworkbench" | "ai" | "settings";
+type TabId = "datasource" | "queryworkbench" | "ai" | "extensions" | "settings";
 type DataSourceTabId = "upload" | "database" | "paste";
 type QueryTabId = "query" | "tasks";
 
@@ -136,11 +137,16 @@ const tabTitles: Record<TabId, string> = {
   datasource: "nav.datasource",
   queryworkbench: "nav.queryworkbench",
   ai: "nav.ai",
+  extensions: "nav.extensions",
   settings: "nav.settings"
 };
 
 const AISettingsPage = React.lazy(() =>
   import("./Settings/AISettings").then(m => ({ default: m.AISettings }))
+);
+
+const ExtensionsPage = React.lazy(() =>
+  import("./Extensions/ExtensionsPage").then(m => ({ default: m.ExtensionsPage }))
 );
 
 const SettingsPage = React.lazy(() =>
@@ -204,7 +210,7 @@ const AppInner: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const allowedTabs: TabId[] = ["datasource", "queryworkbench", "ai", "settings"];
+    const allowedTabs: TabId[] = ["datasource", "queryworkbench", "ai", "extensions", "settings"];
     if (!allowedTabs.includes(currentTab as TabId)) {
       setCurrentTab("queryworkbench");
     }
@@ -326,6 +332,10 @@ const AppInner: React.FC = () => {
       );
     }
     if (IS_DEMO && currentTab === "ai") {
+      return <DemoNotice variant="ai" />;
+    }
+    // Demo:扩展管理需要后端联网安装,浏览器内 Demo 无后端,复用 AI 的自托管引导文案
+    if (IS_DEMO && currentTab === "extensions") {
       return <DemoNotice variant="ai" />;
     }
 
@@ -471,6 +481,18 @@ const AppInner: React.FC = () => {
       );
     }
 
+    if (currentTab === "extensions") {
+      return (
+        <React.Suspense fallback={<LazyFallback />}>
+          <div className="flex-1 p-6 overflow-auto">
+            <div className="max-w-4xl mx-auto">
+              <ExtensionsPage />
+            </div>
+          </div>
+        </React.Suspense>
+      );
+    }
+
     if (currentTab === "settings") {
       return (
         <React.Suspense fallback={<LazyFallback />}>
@@ -547,6 +569,7 @@ const AppInner: React.FC = () => {
     { id: "datasource", label: t("nav.datasource"), icon: Database },
     { id: "queryworkbench", label: t("nav.queryworkbench"), icon: Code2 },
     { id: "ai", label: t("nav.ai"), icon: Sparkles },
+    { id: "extensions", label: t("nav.extensions"), icon: Blocks },
     { id: "settings", label: t("nav.settings"), icon: Settings }
   ];
 

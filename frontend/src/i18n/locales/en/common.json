@@ -54,7 +54,8 @@
     "asynctasks": "Async Tasks",
     "switchMain": "Main navigation",
     "settings": "Settings",
-    "ai": "AI / Models"
+    "ai": "AI / Models",
+    "extensions": "Extensions"
   },
   "sidebar": {
     "collapse": "Collapse",
@@ -1133,6 +1134,21 @@
       "clearSuccess": "All cache cleared",
       "clearFailed": "Failed to clear cache"
     }
+  },
+  "extensions": {
+    "title": "Extensions",
+    "subtitle": "Extensions come from the official DuckDB repository; once installed they work offline.",
+    "groupDatasource": "Data Sources",
+    "groupCapability": "Capabilities",
+    "bundled": "Bundled",
+    "installed": "Installed",
+    "install": "Install",
+    "retry": "Retry",
+    "statusDownloading": "Downloading",
+    "statusVerifying": "Verifying",
+    "installSuccess": "{{name}} installed successfully",
+    "installFailed": "Failed to install {{name}}",
+    "loadFailed": "Failed to load extensions"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",

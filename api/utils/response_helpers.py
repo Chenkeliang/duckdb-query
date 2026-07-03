@@ -141,6 +141,11 @@ class MessageCode(str, Enum):
     SERVER_FILE_IMPORTED = "SERVER_FILE_IMPORTED"
     SERVER_FILE_NOT_FOUND = "SERVER_FILE_NOT_FOUND"
 
+    # ==================== DuckDB 扩展相关 ====================
+    EXTENSIONS_RETRIEVED = "EXTENSIONS_RETRIEVED"
+    EXTENSION_INSTALL_STARTED = "EXTENSION_INSTALL_STARTED"
+    EXTENSION_INSTALL_STATUS_RETRIEVED = "EXTENSION_INSTALL_STATUS_RETRIEVED"
+
     # ==================== 连接池相关 ====================
     POOL_STATUS_RETRIEVED = "POOL_STATUS_RETRIEVED"
     POOL_RESET_SUCCESS = "POOL_RESET_SUCCESS"
@@ -295,6 +300,11 @@ DEFAULT_MESSAGES = {
     MessageCode.SERVER_DIRECTORY_BROWSED: "目录浏览成功",
     MessageCode.SERVER_FILE_IMPORTED: "服务器文件导入成功",
     MessageCode.SERVER_FILE_NOT_FOUND: "服务器文件不存在",
+
+    # ==================== DuckDB 扩展相关 ====================
+    MessageCode.EXTENSIONS_RETRIEVED: "获取扩展列表成功",
+    MessageCode.EXTENSION_INSTALL_STARTED: "扩展安装已开始",
+    MessageCode.EXTENSION_INSTALL_STATUS_RETRIEVED: "获取扩展安装状态成功",
 
     # ==================== 连接池相关 ====================
     MessageCode.POOL_STATUS_RETRIEVED: "获取连接池状态成功",

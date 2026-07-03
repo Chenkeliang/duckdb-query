@@ -31,6 +31,7 @@ from routers import (
     pivot_query,  # /api/pivot-query/*
     set_operations,  # /api/set-operations/*
     query_export,  # /api/query-results/export
+    duckdb_extensions,  # DuckDB 扩展管理：/api/duckdb/extensions/*
 )
 from routers import config_api
 from routers import ai as ai_router
@@ -156,6 +157,7 @@ app.include_router(config_api.router)
 app.include_router(ai_router.router)
 app.include_router(settings.router)
 app.include_router(query_cancel.router)
+app.include_router(duckdb_extensions.router)
 
 # 桌面端专用：本地优雅停机端点。Docker/Web 部署没有 DUCKQUERY_DESKTOP=1，不会暴露。
 if os.getenv("DUCKQUERY_DESKTOP") == "1":

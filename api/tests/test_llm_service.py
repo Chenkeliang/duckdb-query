@@ -62,8 +62,11 @@ def test_complete_raises_when_litellm_missing(monkeypatch):
 
 
 def test_complete_raises_when_feature_has_no_provider(monkeypatch):
+    # default 为空但仍有已启用供应商时会回落(见 resolve_feature),
+    # 因此这里把唯一供应商禁用,构造"真正无可用供应商"的场景
     cfg = _cfg(monkeypatch)
     cfg["default_provider"] = None
+    cfg["providers"][0]["enabled"] = False
     cfg["features"]["explain"] = {"enabled": True, "provider": None, "model": None}
     svc = llm_service.LLMService(cfg)
     try:

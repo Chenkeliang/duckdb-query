@@ -54,7 +54,8 @@
     "asynctasks": "异步任务",
     "switchMain": "主功能切换",
     "settings": "设置",
-    "ai": "AI 模型 (AI / Models)"
+    "ai": "AI 模型 (AI / Models)",
+    "extensions": "扩展"
   },
   "sidebar": {
     "collapse": "收起",
@@ -1133,6 +1134,21 @@
       "clearSuccess": "已清除所有缓存",
       "clearFailed": "清除缓存失败"
     }
+  },
+  "extensions": {
+    "title": "扩展",
+    "subtitle": "扩展来自 DuckDB 官方仓库，安装后离线可用。",
+    "groupDatasource": "数据源",
+    "groupCapability": "能力增强",
+    "bundled": "已预置",
+    "installed": "已安装",
+    "install": "安装",
+    "retry": "重试",
+    "statusDownloading": "下载中",
+    "statusVerifying": "校验中",
+    "installSuccess": "{{name}} 安装成功",
+    "installFailed": "{{name}} 安装失败",
+    "loadFailed": "获取扩展列表失败"
   },
   "shortcuts": {
     "title": "键盘快捷键",
