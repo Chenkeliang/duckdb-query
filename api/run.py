@@ -135,13 +135,21 @@ def main() -> None:
     os.environ["DUCKQUERY_PORT"] = str(port)
     from core.common.paths import write_runtime_file
     write_runtime_file(port)
+    os.environ["DUCKQUERY_DESKTOP"] = "1"  # 让 main.py 注册仅桌面端可用的 /api/system/shutdown
     stage(f"port {port} printed; importing app...")
     import uvicorn  # pylint: disable=import-error
     from main import app
 
     stage("app imported; starting uvicorn")
-    # host/port 跨平台可用;不用 fd=(uvicorn 的 fd 路径在 Windows 上崩,见 pick_free_loopback_port)
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    # host/port 跨平台可用;不用 fd=(uvicorn 的 fd 路径在 Windows 上崩,见 pick_free_loopback_port)。
+    # 手动构造 Server(而非 uvicorn.run())以便注册到 server_control,供 /api/system/shutdown
+    # 通过 should_exit 优雅停机——比 OS 信号更可靠(Windows 上 SIGTERM 不会走 uvicorn 的信号处理)。
+    from core.common.server_control import set_server
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info")
+    server = uvicorn.Server(config)
+    set_server(server)
+    server.run()
 
 
 if __name__ == "__main__":

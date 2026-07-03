@@ -2,10 +2,12 @@
 // process, reads the OS-assigned loopback port it prints on stdout, exposes that
 // to the webview, and kills the backend when the app exits.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 
@@ -146,11 +148,61 @@ fn restart_backend(app: AppHandle) {
     spawn_backend(&app);
 }
 
+/// Best-effort local HTTP POST to /api/system/shutdown over a raw TCP socket. Avoids pulling
+/// in reqwest for a single fire-and-forget call. Returns true if the request was written to
+/// the socket (not necessarily that a 200 came back) — either way the caller then polls the
+/// child for exit and falls back to a hard kill if it doesn't stop in time.
+fn post_shutdown_request(port: u16) -> bool {
+    let addr = format!("127.0.0.1:{port}");
+    let stream = match TcpStream::connect(&addr) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
+    let mut stream = stream;
+    let request = format!(
+        "POST /api/system/shutdown HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+    // Drain (part of) the response so the server doesn't see a reset on some platforms;
+    // we don't need to parse it — the try_wait poll below is the real signal.
+    let mut buf = [0u8; 512];
+    let _ = stream.read(&mut buf);
+    true
+}
+
+/// Kill the backend, preferring a graceful shutdown over SIGKILL: SIGKILL gives the DuckDB
+/// connection pool no chance to close its connections, which leaves the WAL dirty — replaying
+/// a dirty WAL can throw on next launch and trigger WAL quarantine, losing everything written
+/// since the last checkpoint. So: ask nicely via HTTP first, give it up to 5s to exit on its
+/// own, and only hard-kill if that fails (backend didn't start, request failed, or it hung).
 fn kill_backend(app: &AppHandle) {
+    let port = *app.state::<ApiPort>().0.lock().unwrap();
     if let Some(mut child) = app.state::<Backend>().0.lock().unwrap().take() {
-        let _ = child.kill();
+        let mut exited_gracefully = false;
+
+        if port != 0 && post_shutdown_request(port) {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while Instant::now() < deadline {
+                match child.try_wait() {
+                    Ok(Some(_)) => {
+                        exited_gracefully = true;
+                        break;
+                    }
+                    Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+                    Err(_) => break,
+                }
+            }
+        }
+
+        if !exited_gracefully {
+            let _ = child.kill();
+        }
         let _ = child.wait();
-        eprintln!("[duckquery] backend killed");
+        eprintln!("[duckquery] backend killed (graceful={exited_gracefully})");
     }
 }
 

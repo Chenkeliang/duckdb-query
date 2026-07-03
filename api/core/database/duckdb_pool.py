@@ -554,7 +554,7 @@ def get_system_connection_manager() -> SystemDBConnection:
 @contextmanager
 def with_system_connection():
     """系统数据库连接上下文管理器
-    
+
     用于所有系统表操作:
     - system_async_tasks
     - system_task_exports
@@ -565,3 +565,15 @@ def with_system_connection():
     manager = get_system_connection_manager()
     with manager.get_connection() as conn:
         yield conn
+
+
+def shutdown_all_duckdb_connections() -> None:
+    """进程退出前调用：关闭主库连接池 + 系统库连接，让 DuckDB 对 WAL 做一次干净 checkpoint。
+
+    只关闭已经初始化过的连接，不会为了关闭而现开一个新连接/新池。幂等，可安全重复调用
+    （例如 FastAPI lifespan 的 shutdown 钩子 + 桌面端 /api/system/shutdown 都可能触发）。
+    """
+    if _connection_pool is not None:
+        _connection_pool.close_all()
+
+    get_system_connection_manager().close()

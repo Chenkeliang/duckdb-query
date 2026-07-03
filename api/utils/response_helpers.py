@@ -158,6 +158,9 @@ class MessageCode(str, Enum):
     # ==================== 应用配置相关 ====================
     APP_FEATURES_RETRIEVED = "APP_FEATURES_RETRIEVED"
 
+    # ==================== 系统控制相关（桌面端） ====================
+    SYSTEM_SHUTDOWN_INITIATED = "SYSTEM_SHUTDOWN_INITIATED"
+
     # ==================== 批量操作相关 ====================
     BATCH_DELETE_SUCCESS = "BATCH_DELETE_SUCCESS"
     BATCH_TEST_SUCCESS = "BATCH_TEST_SUCCESS"
@@ -309,6 +312,9 @@ DEFAULT_MESSAGES = {
 
     # ==================== 应用配置相关 ====================
     MessageCode.APP_FEATURES_RETRIEVED: "获取应用功能配置成功",
+
+    # ==================== 系统控制相关（桌面端） ====================
+    MessageCode.SYSTEM_SHUTDOWN_INITIATED: "后端正在优雅退出",
 
     # ==================== 批量操作相关 ====================
     MessageCode.BATCH_DELETE_SUCCESS: "批量删除成功",
