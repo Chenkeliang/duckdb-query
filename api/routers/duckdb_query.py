@@ -55,6 +55,7 @@ from core.common.exceptions import (
 from fastapi import APIRouter, Body, File, Form, Header, UploadFile
 from models.query_models import FederatedQueryRequest, FederatedQueryResponse
 from pydantic import BaseModel
+from routers.query_sql_utils import statement_accepts_limit
 from utils.response_helpers import (
     MessageCode,
     create_list_response,
@@ -388,9 +389,9 @@ async def execute_duckdb_query(
                         f"{keyword} operation is not allowed. Only query operations are supported."
                     )
 
-        # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式）
+        # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式；INSTALL/LOAD/ATTACH 等语句不接 LIMIT）
         limit = None
-        if request.is_preview and "LIMIT" not in sql_upper_clean:
+        if request.is_preview and "LIMIT" not in sql_upper_clean and statement_accepts_limit(sql_query):
             from core.common.config_manager import config_manager
 
             limit = config_manager.get_app_config().max_query_rows
@@ -807,7 +808,7 @@ async def execute_federated_query(
     sql_upper = sql_query.upper()
 
     limit = None
-    if request.is_preview and "LIMIT" not in sql_upper:
+    if request.is_preview and "LIMIT" not in sql_upper and statement_accepts_limit(sql_query):
         limit = config_manager.get_app_config().max_query_rows
         sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
         logger.info(f"Preview mode, applied LIMIT {limit}")

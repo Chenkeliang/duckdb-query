@@ -45,38 +45,55 @@ def get_join_type_sql(join_type: str) -> str:
     return "INNER JOIN"
 
 
+_NO_LIMIT_PATTERNS = [
+    r"^DESCRIBE\b",
+    r"^DESC\b",
+    r"^SHOW\b",
+    r"^EXPLAIN\b",
+    r"^PRAGMA\b",
+    r"^SET\b",
+    r"^CREATE\b",
+    r"^ALTER\b",
+    r"^DROP\b",
+    r"^TRUNCATE\b",
+    r"^INSERT\b",
+    r"^UPDATE\b",
+    r"^DELETE\b",
+    r"^GRANT\b",
+    r"^REVOKE\b",
+    r"^CALL\b",
+    r"^EXECUTE\b",
+    r"^USE\b",
+    r"^BEGIN\b",
+    r"^COMMIT\b",
+    r"^ROLLBACK\b",
+    # 扩展与库管理语句同样不接 LIMIT(INSTALL inet LIMIT 100 是语法错误)
+    r"^INSTALL\b",
+    r"^FORCE\b",  # FORCE INSTALL
+    r"^LOAD\b",
+    r"^ATTACH\b",
+    r"^DETACH\b",
+    r"^COPY\b",
+    r"^EXPORT\b",
+    r"^IMPORT\b",
+    r"^CHECKPOINT\b",
+    r"^VACUUM\b",
+    r"^ANALYZE\b",
+]
+
+
+def statement_accepts_limit(query: str) -> bool:
+    """该语句能否在末尾追加 LIMIT(SELECT/WITH 等可以;DDL/扩展管理等不行)。"""
+    query_upper = query.strip().upper()
+    return not any(re.match(p, query_upper) for p in _NO_LIMIT_PATTERNS)
+
+
 def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
     """Append LIMIT when missing (skip DDL/DESCRIBE/SHOW etc.)."""
     query_stripped = query.strip()
-    query_upper = query_stripped.upper()
 
-    no_limit_patterns = [
-        r"^DESCRIBE\b",
-        r"^DESC\b",
-        r"^SHOW\b",
-        r"^EXPLAIN\b",
-        r"^PRAGMA\b",
-        r"^SET\b",
-        r"^CREATE\b",
-        r"^ALTER\b",
-        r"^DROP\b",
-        r"^TRUNCATE\b",
-        r"^INSERT\b",
-        r"^UPDATE\b",
-        r"^DELETE\b",
-        r"^GRANT\b",
-        r"^REVOKE\b",
-        r"^CALL\b",
-        r"^EXECUTE\b",
-        r"^USE\b",
-        r"^BEGIN\b",
-        r"^COMMIT\b",
-        r"^ROLLBACK\b",
-    ]
-
-    for pattern in no_limit_patterns:
-        if re.match(pattern, query_upper):
-            return query
+    if not statement_accepts_limit(query_stripped):
+        return query
 
     if not re.search(r"\sLIMIT\s+\d+\s*($|;)", query, re.IGNORECASE):
         if query_stripped.endswith(";"):
