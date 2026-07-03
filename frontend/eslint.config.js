@@ -133,7 +133,9 @@ export default [
     // @ts-ignore here predates a strict type-check pass; swapping to @ts-expect-error
     // currently fails `tsc --noEmit` because the underlying import already resolves
     // without error, so `@ts-expect-error` would be flagged as unused.
-    files: ["src/DataSource/UploadPanel.tsx"],
+    // (Moved from UploadPanel.tsx when the Tauri desktop-import logic was extracted
+    // into its own hook — the imports carrying these comments moved with it.)
+    files: ["src/DataSource/upload/useDesktopImport.ts"],
     rules: {
       "@typescript-eslint/ban-ts-comment": "off"
     }
