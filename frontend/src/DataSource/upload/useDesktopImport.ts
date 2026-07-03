@@ -7,7 +7,7 @@ import { open as tauriOpen } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview, type DragDropEvent } from "@tauri-apps/api/webview";
 import type { QueryClient } from "@tanstack/react-query";
 import { showSuccessToast, showErrorToast, showResponseToast } from "@/utils/toastHelpers";
-import { importServerFile } from "@/api";
+import { importServerFile, type FileImportMode } from "@/api";
 import { invalidateAfterFileUpload } from "@/utils/cacheInvalidation";
 import { stemFromFilename } from "./uploadPathUtils";
 import type { ServerExcelPending } from "./useServerBrowse";
@@ -25,6 +25,7 @@ export interface UseDesktopImportParams {
   t: TFunction;
   queryClient: QueryClient;
   onDataSourceSaved?: (payload: DataSourceSavedPayload) => void;
+  importMode: FileImportMode;
   /** 与 useServerBrowse 共用同一个「导入中」状态，避免重复状态 */
   setServerImporting: (value: boolean) => void;
   setServerSelectedFile: (entry: ServerFileEntry | null) => void;
@@ -35,6 +36,7 @@ export function useDesktopImport({
   t,
   queryClient,
   onDataSourceSaved,
+  importMode,
   setServerImporting,
   setServerSelectedFile,
   setServerAlias,
@@ -68,7 +70,7 @@ export function useDesktopImport({
 
       setServerImporting(true);
       try {
-        const result = await importServerFile({ path: p, table_alias: alias });
+        const result = await importServerFile({ path: p, table_alias: alias, import_mode: importMode });
         if (result?.success) {
           showSuccessToast(
             t,

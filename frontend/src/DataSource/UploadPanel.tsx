@@ -75,6 +75,7 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
     t,
     queryClient,
     onDataSourceSaved,
+    importMode,
     setServerImporting: server.setServerImporting,
     setServerSelectedFile: server.setServerSelectedFile,
     setServerAlias: server.setServerAlias,
