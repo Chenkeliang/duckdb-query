@@ -15,7 +15,7 @@
 | Excel 预览 JSON | 前端看到科学计数法 | `normalize_dataframe_output` 对已是 float 的值按 JSON number 输出 |
 | 查询结果 | 大整数变字符串 | `jsonable_encoder` 对超过 JS `MAX_SAFE_INTEGER` 的整数转 str（**有意为之**，与导入类型无关） |
 
-DuckDB 1.4 推荐做法（按场景）：
+DuckDB 1.5 推荐做法（按场景）：
 
 1. **先全文本再转型号**：`read_csv(..., all_varchar=true)`，再在 SQL 里 `TRY_CAST`。  
 2. **覆盖嗅探类型**：`sniff_csv` → 对 ID 列使用 `types={'order_id': 'VARCHAR', ...}`（注意：`columns` 在 DuckDB 中表示**只读这些列**，不是改类型）。  

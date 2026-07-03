@@ -4,10 +4,10 @@
 
 ## 配置文件
 
-主配置文件位于 `config/app-config.json`。首次运行请复制示例文件：
+主配置文件位于 `config/app-config.json`（或 `config/app-config.jsonc`，`.json` 优先）。首次运行请复制示例文件：
 
 ```bash
-cp config/app-config.example.json config/app-config.json
+cp config/app-config.example.jsonc config/app-config.jsonc
 ```
 
 ---

@@ -29,8 +29,9 @@
 | `pivotQueryApi.ts` | §7 | 透视 generate/preview、SQL 收藏、应用配置（`POST /api/pivot-query/*`） |
 | `settingsShortcutsApi.ts` | §8 | 快捷键 |
 | `setOperationsApi.ts` | §9 | 集合运算 generate / preview / validate / execute / export 等 |
-| `joinQueryApi.ts` | §9.1 | 结构化多表 JOIN：`performJoinQuery` |
-| `aiApi.ts` | §9.2 | AI 设置 / 供应商测试 / 报错医生 / 解释 / 问数 / 对话 / 图表推荐 |
+| `queryExportApi.ts` | §9.1 | 查询结果服务端导出 |
+| `joinQueryApi.ts` | §9.2 | 结构化多表 JOIN：`performJoinQuery` |
+| `aiApi.ts` | §9.3 | AI 设置 / 供应商测试 / 报错医生 / 解释 / 问数 / 对话 / 图表推荐 |
 
 ## 1. 标准成功体
 
@@ -199,14 +200,14 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 执行时前端在 generate 返回的 SQL 后追加 `LIMIT`（与 `maxQueryRows` 一致）；**preview** 端点 LIMIT 由后端 `max_query_rows` 控制，结果写入结果面板。
 
-## 9.1 多表 JOIN（`joinQueryApi.ts`）
+## 9.2 多表 JOIN（`joinQueryApi.ts`）
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
 | POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `column_types[]`, `sql`, `row_count` |
 | POST | `/api/save_query_to_duckdb` | 对象 | 见 §2 `saveQueryToDuckDB` |
 
-## 9.2 AI（`aiApi.ts`，后端 `routers/ai.py`，OpenAPI tag `AI`）
+## 9.3 AI（`aiApi.ts`，后端 `routers/ai.py`，OpenAPI tag `AI`）
 
 > AI **默认关闭**;供应商 `api_key` 服务端 **Fernet 加密**存储,读取接口返回掩码 `****`、从不回传明文。生成的 SQL 永远只填入编辑器、**绝不自动执行**。
 

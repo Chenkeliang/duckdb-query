@@ -204,7 +204,6 @@ const columns: ColumnDef[] = [
   - `ContextMenu.tsx` - 右键菜单
   - `SelectionOverlay.tsx` - 选区覆盖层
 - `utils/` - 工具函数
-  - `clipboard.ts` - 剪贴板操作
-  - `selection.ts` - 选区计算
-  - `columnTypes.ts` - 列类型检测
   - `formatters.ts` - 值格式化
+  - `jsonCell.ts` - JSON 单元格检测与格式化
+  - `urlCell.tsx` - URL 单元格渲染

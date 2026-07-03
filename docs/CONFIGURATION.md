@@ -4,10 +4,10 @@ This document provides a comprehensive reference for all configuration options i
 
 ## Configuration File
 
-The main configuration file is located at `config/app-config.json`. On first run, copy the example file:
+The main configuration file is located at `config/app-config.json` (or `config/app-config.jsonc`; `.json` takes precedence). On first run, copy the example file:
 
 ```bash
-cp config/app-config.example.json config/app-config.json
+cp config/app-config.example.jsonc config/app-config.jsonc
 ```
 
 ---
@@ -112,7 +112,7 @@ For accessing remote files from S3 or Aliyun OSS:
 
 ## AI / LLM
 
-AI 功能(问数 Text-to-SQL、报错医生、AI 图表推荐、数据对话)**默认关闭**,且**不在本配置文件里**——在应用内「**设置 → AI 模型**」配置,持久化到 `system.db`(见 API `docs/API_CONTRACT_FE_BE.md` §9.2)。
+AI 功能(问数 Text-to-SQL、报错医生、AI 图表推荐、数据对话)**默认关闭**,且**不在本配置文件里**——在应用内「**设置 → AI 模型**」配置,持久化到 `system.db`(见 API `docs/API_CONTRACT_FE_BE.md` §9.3)。
 
 - **隐私**:供应商 `api_key` 以 **Fernet 加密**存储,读取接口返回掩码 `****`、从不回传明文;生成的 SQL 永远只填入编辑器、**绝不自动执行**。
 - **供应商类型**:`openai` / `anthropic` / `ollama` / `openai_compatible`(自定义 `base_url`)。

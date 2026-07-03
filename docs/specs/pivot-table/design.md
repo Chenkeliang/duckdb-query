@@ -39,11 +39,9 @@ Models: `api/models/pivot_query_models.py`；SQL：`pivot_query_generator.py` + 
 ```text
 QueryWorkbenchPage
 └── QueryTabs (tab: pivot)
-    └── PivotPanel
-        ├── PivotSidebar          # 字段列表（useTableColumns）
+    └── PivotPanel                # 字段列表（useTableColumns）、运行 / 生成 SQL
         ├── PivotTableDesigner    # 行/列/值拖拽区
         ├── PivotFilters          # 可选 WHERE（PivotFilters）
-        ├── PivotConfigArea       # 运行 / 生成 SQL
         └── buildPivotQueryPayload → pivotQueryApi
 ```
 

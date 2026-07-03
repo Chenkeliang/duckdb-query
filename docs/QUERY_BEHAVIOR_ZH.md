@@ -8,8 +8,8 @@
 |----|------|
 | 适用操作 | 仅 `UNION`、`UNION ALL`；`INTERSECT` / `EXCEPT` 不支持 BY NAME |
 | 请求字段 | `use_by_name: true`（[`SetOperationConfig`](api/models/set_operation_models.py)） |
-| 生成 SQL | `UNION BY NAME` 或 `UNION ALL BY NAME`（[`set_operation_generator.py`](api/core/services/set_operation_generator.py) 约 51–55 行） |
-| 子查询列 | BY NAME 模式下每表子查询为 `SELECT *`（同文件约 94–96 行） |
+| 生成 SQL | `UNION BY NAME` 或 `UNION ALL BY NAME`（[`set_operation_generator.py`](api/core/services/set_operation_generator.py) `generate_sql`，约 74 行） |
+| 子查询列 | BY NAME 模式下每表子查询为 `SELECT *`（同文件约 118 行） |
 | 列对齐规则 | 按**列名**对齐，不按位置 |
 | `column_mappings` | 模型存在，**当前不参与 SQL 生成** |
 

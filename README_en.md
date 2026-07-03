@@ -202,7 +202,7 @@ claude mcp add duckquery -- uvx duckquery-mcp
 **Safety mode** `DUCKQUERY_MCP_MODE`:
 
 - `read-only` — reads only (query / schema / export); all mutating tools hidden;
-- `normal` (default) — mutations allowed, but destructive SQL and non-GET passthrough require `confirm=true`;
+- `normal` (default) — mutations allowed (write SQL runs directly); only non-GET generic passthrough requires `confirm=true`;
 - `full` — no gate.
 
 **Target a specific backend** (when several are running): `DUCKQUERY_API_BASE=http://127.0.0.1:8001`.

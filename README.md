@@ -197,7 +197,7 @@ claude mcp add duckquery -- uvx duckquery-mcp
 **安全档位** `DUCKQUERY_MCP_MODE`：
 
 - `read-only` — 只读（查询 / 看结构 / 导出），隐藏所有写工具；
-- `normal`（默认）— 可写，但破坏性 SQL 与非 GET 透传需 `confirm=true`；
+- `normal`（默认）— 可写（写 SQL 直接执行），仅通用透传的非 GET 请求需 `confirm=true`；
 - `full` — 完全放开。
 
 **指定后端**（多个后端同时在跑时，强制连某一个）：`DUCKQUERY_API_BASE=http://127.0.0.1:8001`。
