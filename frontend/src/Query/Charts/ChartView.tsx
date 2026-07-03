@@ -37,7 +37,7 @@ const AGGS: AggFn[] = ['sum', 'count', 'avg', 'min', 'max'];
 
 export function ChartView({ columns, rows, truncated, source, aiEnabled, locale = 'zh', onDrilldown }: ChartViewProps) {
   const { t } = useTranslation('common');
-  const { dims, metrics, dates } = React.useMemo(() => classifyColumns(columns), [columns]);
+  const { metrics, dates } = React.useMemo(() => classifyColumns(columns), [columns]);
   const [spec, setSpec] = React.useState<ChartSpec>(() => defaultSpec(columns));
   const [full, setFull] = React.useState(false);
   const [suggesting, setSuggesting] = React.useState(false);
@@ -120,7 +120,9 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
     return <div className="p-6 text-sm text-muted-foreground">{t('query.chart.empty', '无可视化数据')}</div>;
   }
 
-  const xOptions = spec.type === 'kpi' ? [] : dims;
+  // 维度(X)开放全部列:业务表里 TINYINT/INT 编码字段(类型/渠道等)是常用分组维度,
+  // 只是默认选中仍偏向日期/文本列(defaultSpec 用 dims)
+  const xOptions = spec.type === 'kpi' ? [] : columns.map((c) => c.name);
 
   const renderChart = () => (
     <ChartCanvas

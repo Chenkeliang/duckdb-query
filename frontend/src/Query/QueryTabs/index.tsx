@@ -173,7 +173,15 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
     [onExecute, previewSource]
   );
 
-  const sqlPanelPreview = externalPreviewSQL ?? loadedSqlPreview;
+  // 外部预填(数据源页"去查询")与内部加载(历史/收藏/下钻)合并为同一通道,后写者生效。
+  // 不能用 externalPreviewSQL ?? loadedSqlPreview:App 层 previewQuery 初始是 ''(非 nullish),
+  // 且一旦设置过就不清空,会永久遮住内部通道的回填。
+  React.useEffect(() => {
+    if (externalPreviewSQL) {
+      setLoadedSqlPreview(externalPreviewSQL);
+      setPreviewSeq((s) => s + 1);
+    }
+  }, [externalPreviewSQL]);
 
   // 创建包装后的执行函数，自动记录到全局历史
   const createWrappedExecute = React.useCallback(
@@ -328,7 +336,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
               onExecute={onExecute}
               editorMinHeight="150px"
               editorMaxHeight="300px"
-              previewSQL={sqlPanelPreview}
+              previewSQL={loadedSqlPreview}
               previewNonce={previewSeq}
               onOpenAiSettings={onOpenAiSettings}
             />
