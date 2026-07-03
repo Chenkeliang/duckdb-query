@@ -1,6 +1,6 @@
 """
 缓存管理系统
-提供queryresult缓存、file缓存、configuration缓存等功能
+提供查询结果缓存、文件缓存、配置缓存等功能
 """
 
 import json
@@ -47,7 +47,7 @@ class CacheManager:
         if isinstance(key_data, str):
             return hashlib.md5(key_data.encode()).hexdigest()
         else:
-            # 对字典进行排序后序column化，确保一致性
+            # 对字典进行排序后序列化，确保一致性
             sorted_data = json.dumps(key_data, sort_keys=True, ensure_ascii=False)
             return hashlib.md5(sorted_data.encode()).hexdigest()
 
@@ -59,7 +59,7 @@ class CacheManager:
         return get_current_time() > datetime.fromisoformat(cache_entry["expires_at"])
 
     def _get_file_path(self, cache_key: str) -> Path:
-        """getting缓存filepath"""
+        """获取缓存文件路径"""
         return self.cache_dir / f"{cache_key}.cache"
 
     def set(
@@ -76,7 +76,7 @@ class CacheManager:
 
             cache_entry = {
                 "value": value,
-                "created_at": get_current_time(),  # 使用统一的时区configuration
+                "created_at": get_current_time(),  # 使用统一的时区配置
                 "expires_at": expires_at.isoformat(),
                 "ttl": ttl,
             }
@@ -84,7 +84,7 @@ class CacheManager:
             # 内存缓存
             self._memory_cache[cache_key] = cache_entry
 
-            # file缓存（用于持久化）
+            # 文件缓存（用于持久化）
             try:
                 file_path = self._get_file_path(cache_key)
                 with open(file_path, "wb") as f:
@@ -100,7 +100,7 @@ class CacheManager:
             return False
 
     def get(self, key: Union[str, Dict[str, Any]]) -> Optional[Any]:
-        """getting缓存"""
+        """获取缓存"""
         try:
             cache_key = self._generate_cache_key(key)
 
@@ -111,10 +111,10 @@ class CacheManager:
                     self.stats["hits"] += 1
                     return cache_entry["value"]
                 else:
-                    # 过期，deleting内存缓存
+                    # 过期，删除内存缓存
                     del self._memory_cache[cache_key]
 
-            # 检查file缓存
+            # 检查文件缓存
             file_path = self._get_file_path(cache_key)
             if file_path.exists():
                 try:
@@ -127,11 +127,11 @@ class CacheManager:
                         self.stats["hits"] += 1
                         return cache_entry["value"]
                     else:
-                        # 过期，deletingfile
+                        # 过期，删除文件
                         file_path.unlink()
                 except Exception as e:
                     logger.warning(f"File cache read failed: {str(e)}")
-                    # deleting损坏的缓存file
+                    # 删除损坏的缓存文件
                     try:
                         file_path.unlink()
                     except:
@@ -146,15 +146,15 @@ class CacheManager:
             return None
 
     def delete(self, key: Union[str, Dict[str, Any]]) -> bool:
-        """deleting缓存"""
+        """删除缓存"""
         try:
             cache_key = self._generate_cache_key(key)
 
-            # deleting内存缓存
+            # 删除内存缓存
             if cache_key in self._memory_cache:
                 del self._memory_cache[cache_key]
 
-            # deletingfile缓存
+            # 删除文件缓存
             file_path = self._get_file_path(cache_key)
             if file_path.exists():
                 file_path.unlink()
@@ -172,7 +172,7 @@ class CacheManager:
             # 清空内存缓存
             self._memory_cache.clear()
 
-            # 清空file缓存
+            # 清空文件缓存
             for cache_file in self.cache_dir.glob("*.cache"):
                 cache_file.unlink()
 
@@ -198,7 +198,7 @@ class CacheManager:
                 del self._memory_cache[key]
                 cleaned_count += 1
 
-            # 清理file缓存
+            # 清理文件缓存
             for cache_file in self.cache_dir.glob("*.cache"):
                 try:
                     with open(cache_file, "rb") as f:
@@ -209,7 +209,7 @@ class CacheManager:
                         cleaned_count += 1
 
                 except Exception:
-                    # 损坏的file，直接deleting
+                    # 损坏的文件，直接删除
                     cache_file.unlink()
                     cleaned_count += 1
 
@@ -222,7 +222,7 @@ class CacheManager:
             return 0
 
     def get_stats(self) -> Dict[str, Any]:
-        """getting缓存统计info"""
+        """获取缓存统计信息"""
         total_requests = self.stats["hits"] + self.stats["misses"]
         hit_rate = (
             (self.stats["hits"] / total_requests * 100) if total_requests > 0 else 0
@@ -241,7 +241,7 @@ class CacheManager:
 
 
 class QueryCache:
-    """queryresult缓存"""
+    """查询结果缓存"""
 
     def __init__(self, cache_manager: CacheManager):
         self.cache_manager = cache_manager
@@ -249,14 +249,14 @@ class QueryCache:
     def get_query_cache_key(
         self, sql: str, connection_params: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """生成query缓存键"""
+        """生成查询缓存键"""
         key_data = {
             "type": "query",
             "sql": sql.strip().lower(),
         }
 
         if connection_params:
-            # 只包含影响queryresult的parameter，排除密码等敏感info
+            # 只包含影响查询结果的参数，排除密码等敏感信息
             safe_params = {
                 "host": connection_params.get("host"),
                 "port": connection_params.get("port"),
@@ -271,13 +271,13 @@ class QueryCache:
     def get_cached_query_result(
         self, sql: str, connection_params: Dict[str, Any] = None
     ) -> Optional[pd.DataFrame]:
-        """getting缓存的queryresult"""
+        """获取缓存的查询结果"""
         cache_key = self.get_query_cache_key(sql, connection_params)
         cached_data = self.cache_manager.get(cache_key)
 
         if cached_data is not None:
             try:
-                # 将缓存的data转换回DataFrame
+                # 将缓存的数据转换回DataFrame
                 if (
                     isinstance(cached_data, dict)
                     and "data" in cached_data
@@ -300,16 +300,16 @@ class QueryCache:
         connection_params: Dict[str, Any] = None,
         ttl: int = 3600,
     ) -> bool:
-        """缓存queryresult"""
+        """缓存查询结果"""
         try:
             cache_key = self.get_query_cache_key(sql, connection_params)
 
-            # 将DataFrame转换为可序column化的格式
+            # 将DataFrame转换为可序列化的格式
             cached_data = {
                 "data": normalize_dataframe_output(result_df),
                 "columns": result_df.columns.tolist(),
                 "row_count": len(result_df),
-                "cached_at": get_current_time(),  # 使用统一的时区configuration
+                "cached_at": get_current_time(),  # 使用统一的时区配置
             }
 
             return self.cache_manager.set(cache_key, cached_data, ttl)

@@ -198,7 +198,7 @@ def _attach_external_databases(
 
 def _detach_databases(con, aliases: List[str]) -> None:
     """
-    执行 DETACH failed继续处理其他
+    逐个执行 DETACH，某个失败时不中断，继续处理其余的
 
     Args:
         con: DuckDB 连接
@@ -1086,7 +1086,7 @@ def execute_async_federated_query(
                     logger.warning(f"Memory cleanup failed: {str(cleanup_error)}")
 
             finally:
-                # 2.4 DETACH failed都要执行）
+                # 2.4 DETACH（无论成功失败都要执行）
                 if attached_aliases:
                     logger.info(f"Starting DETACH cleanup: {attached_aliases}")
                     _detach_databases(con, attached_aliases)

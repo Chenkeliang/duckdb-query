@@ -157,7 +157,7 @@ def preview_set_operation(request: SetOperationRequest):
     """
     预览集合操作结果
 
-    执行集合操作查询并返回前几rows据
+    执行集合操作查询并返回前几行数据
     """
     try:
         config = request.config
@@ -344,7 +344,7 @@ def execute_set_operation(
                 table_name = request.save_as_table.strip()
                 logger.info(f"Starting to save set operation result to table: {table_name}")
 
-                # 检查表名是否already exists
+                # 检查表名是否已存在
                 existing_tables = con.execute("SHOW TABLES").fetchdf()
                 existing_table_names = (
                     existing_tables["name"].tolist() if not existing_tables.empty else []
@@ -496,7 +496,7 @@ def simple_union_operation(request: UnionOperationRequest):
         # 生成SQL查询
         sql = generate_set_operation_sql(config)
 
-        # 估算结果rows（简化 UNION 不支持 attach，无别名）
+        # 估算结果行数（简化 UNION 不支持 attach，无别名）
         with with_duckdb_connection() as con:
             estimated_rows = estimate_set_operation_rows(config, con)
 
@@ -556,7 +556,7 @@ def export_set_operation(request: SetOperationExportRequest):
         sql = generate_set_operation_sql(config)
         logger.info(f"Generated complete SQL: {sql}")
 
-        # 创建异步Export task
+        # 创建异步导出任务
         task_id = str(uuid.uuid4())
 
         # 生成文件名
@@ -606,7 +606,7 @@ def export_set_operation(request: SetOperationExportRequest):
         # 注册任务
         task_manager.add_task(task_id, task_info)
 
-        # 在后台线程中执行Export task
+        # 在后台线程中执行导出任务
         def export_task():
             try:
                 # 更新任务状态
@@ -681,7 +681,7 @@ def export_set_operation(request: SetOperationExportRequest):
                     },
                 )
 
-        # 在后台线程中执行Export task
+        # 在后台线程中执行导出任务
         executor = ThreadPoolExecutor(max_workers=1)
         executor.submit(export_task)
 

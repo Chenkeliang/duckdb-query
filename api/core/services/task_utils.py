@@ -46,8 +46,8 @@ class TaskUtils:
         获取任务对应的文件路径
         优先从result_file_path获取，如果为空则从result_info获取
         """
-        # 这里需要传入task对象，暂时返回None
-        # 实际使用时需要传入task对象
+        # 这里需要传入任务对象，暂时返回None
+        # 实际使用时需要传入任务对象
         return None
 
     def find_existing_files(self, task_id: str) -> list:

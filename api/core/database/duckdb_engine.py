@@ -1404,7 +1404,7 @@ def create_join_indexes(sources: List[DataSource], joins: List[Join], con=None) 
 
 def optimize_query_plan(query: str, con=None) -> str:
     """
-    优化Query plan
+    优化查询计划
     """
     try:
         with _use_connection(con) as connection:

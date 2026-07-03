@@ -1,6 +1,6 @@
 """
-file工具模块
-提供file类型检测和file读取功能
+文件工具模块
+提供文件类型检测和文件读取功能
 """
 
 import pandas as pd
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def detect_file_type(filename: str) -> str:
-    """检测file类型"""
+    """检测文件类型"""
     extension = filename.lower().split(".")[-1]
 
     type_mapping = {
@@ -37,7 +37,7 @@ def detect_file_type(filename: str) -> str:
 def read_file_by_type(
     file_path: str, file_type: str = None, nrows: int = None
 ) -> pd.DataFrame:
-    """根据file类型读取file"""
+    """根据文件类型读取文件"""
     if file_type is None:
         file_type = detect_file_type(file_path)
 
@@ -46,7 +46,7 @@ def read_file_by_type(
             # 智能检测编码，不再盲目尝试 latin-1
             import charset_normalizer
 
-            # 读取file头部的字节用于检测
+            # 读取文件头部的字节用于检测
             with open(file_path, "rb") as f:
                 raw_data = f.read(1024 * 1024)  # 读取前 1MB
                 
@@ -58,14 +58,14 @@ def read_file_by_type(
             for enc in preferred_encodings:
                 try:
                     raw_data.decode(enc)
-                    # 如果能successfully解码，但需要进一步确认不是伪造的 (latin-1 总是successfully)
-                    # 这里如果是 utf-8 或 gb18030 successfully解码，通常就是正确的
+                    # 如果能成功解码，但需要进一步确认不是伪造的 (latin-1 总是能成功解码)
+                    # 这里如果用 utf-8 或 gb18030 成功解码，通常就是正确的
                     detected_encoding = enc
                     break
                 except UnicodeDecodeError:
                     continue
             
-            # 2. 如果常见编码failed，使用 charset-normalizer 深度检测
+            # 2. 如果常见编码识别失败，使用 charset-normalizer 深度检测
             if not detected_encoding:
                 matches = charset_normalizer.from_bytes(raw_data).best()
                 if matches:
@@ -92,13 +92,13 @@ def read_file_by_type(
                 df = pd.read_excel(file_path)
         elif file_type == "json":
             if nrows is not None:
-                # JSONfile不支持nrowsparameter，需要手动处理
+                # JSON 文件不支持 nrows 参数，需要手动处理
                 df = pd.read_json(file_path)
                 df = df.head(nrows)
             else:
                 df = pd.read_json(file_path)
         elif file_type == "jsonl":
-            # JSONLfile每行一个JSON对象，使用lines=Trueparameter
+            # JSONL 文件每行一个 JSON 对象，使用 lines=True 参数
             if nrows is not None:
                 df = pd.read_json(file_path, lines=True)
                 df = df.head(nrows)
@@ -106,7 +106,7 @@ def read_file_by_type(
                 df = pd.read_json(file_path, lines=True)
         elif file_type == "parquet":
             if nrows is not None:
-                # Parquetfile不支持nrowsparameter，需要手动处理
+                # Parquet 文件不支持 nrows 参数，需要手动处理
                 df = pd.read_parquet(file_path)
                 df = df.head(nrows)
             else:
@@ -122,7 +122,7 @@ def read_file_by_type(
 
 
 def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
-    """gettingfile预览info"""
+    """获取文件预览信息"""
     try:
         file_type = detect_file_type(file_path)
         normalized_type = "parquet" if file_type == "pq" else file_type
@@ -397,17 +397,17 @@ def load_file_to_duckdb(
     drop_existing: bool = True,
     import_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """使用DuckDB原生read_*系columnloadingfile，必要时回退到pandas。
+    """使用 DuckDB 原生 read_* 系列函数加载文件，必要时回退到 pandas。
 
     Args:
-        connection: DuckDBconnection实例
-        table_name: 目标table名
-        file_path: 本地filepath
-        file_type: 可选file类型；缺省时自动根据扩展名推断
-        reader_options: 传递给read_*函数的额外parameter
-        drop_existing: 是否在creating前deleting旧table
+        connection: DuckDB 连接实例
+        table_name: 目标表名
+        file_path: 本地文件路径
+        file_type: 可选文件类型；缺省时自动根据扩展名推断
+        reader_options: 传递给 read_* 函数的额外参数
+        drop_existing: 是否在创建前删除旧表
     Returns:
-        包含是否触发pandas回退的result字典
+        包含是否触发 pandas 回退结果的字典
     """
 
     if connection is None:

@@ -941,7 +941,7 @@ def perform_query(
                     attach_aliases=attach_alias_set,
                 )
             else:
-                # Single table query - 使用build_single_table_query来处理表名
+                # 单表查询 - 使用 build_single_table_query 来处理表名
                 query = build_single_table_query(query_request)
 
                 # 验证表是否存在（从查询中提取实际表名）

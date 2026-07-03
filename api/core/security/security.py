@@ -1,6 +1,6 @@
 """
-安全configuration和工具模块
-提供file验证、SQL注入防护、敏感info保护等安全功能
+安全配置和工具模块
+提供文件验证、SQL 注入防护、敏感信息保护等安全功能
 """
 
 import os
@@ -21,7 +21,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# 允许的file类型和对应的MIME类型
+# 允许的文件类型和对应的 MIME 类型
 ALLOWED_FILE_TYPES = {
     "csv": ["text/csv", "text/plain", "application/csv"],
     "xlsx": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
@@ -33,9 +33,9 @@ ALLOWED_FILE_TYPES = {
 }
 
 
-# file大小限制（字节）- 从configurationfile读取
+# 文件大小限制（字节）- 从配置文件读取
 def get_max_file_size():
-    """从configurationfilegetting最大file大小限制"""
+    """从配置文件获取最大文件大小限制"""
     try:
         from core.common.config_manager import config_manager
 
@@ -47,12 +47,12 @@ def get_max_file_size():
 
 
 def get_max_chunk_file_size():
-    """getting分块上传的最大file大小限制"""
+    """获取分块上传的最大文件大小限制"""
     try:
         from core.common.config_manager import config_manager
 
         app_config = config_manager.get_app_config()
-        # 分块上传使用应用configuration的file大小限制
+        # 分块上传使用应用配置的文件大小限制
         return app_config.max_file_size
     except Exception as e:
         logger.warning(f"Unable to get configuration file, using default value: {str(e)}")
@@ -76,7 +76,7 @@ DANGEROUS_SQL_KEYWORDS = {
     "CURSOR",
 }
 
-# 敏感info正则table达式
+# 敏感信息正则表达式
 SENSITIVE_PATTERNS = [
     r'password\s*=\s*[\'"][^\'"]+[\'"]',  # password="xxx"
     r'pwd\s*=\s*[\'"][^\'"]+[\'"]',  # pwd="xxx"
@@ -103,15 +103,15 @@ class SecurityValidator:
         self, file_path: str, filename: str, file_size: int
     ) -> Dict[str, Any]:
         """
-        验证上传file的安全性
+        验证上传文件的安全性
 
         Args:
-            file_path: filepath
-            filename: file名
-            file_size: file大小
+            file_path: 文件路径
+            filename: 文件名
+            file_size: 文件大小
 
         Returns:
-            验证result字典
+            验证结果字典
         """
         result = {
             "valid": False,
@@ -122,7 +122,7 @@ class SecurityValidator:
         }
 
         try:
-            # 1. 检查file大小
+            # 1. 检查文件大小
             max_size = get_max_file_size()
             if file_size > max_size:
                 result["errors"].append(
@@ -130,7 +130,7 @@ class SecurityValidator:
                 )
                 return result
 
-            # 2. 检查file扩展名
+            # 2. 检查文件扩展名
             file_extension = Path(filename).suffix.lower().lstrip(".")
             if file_extension not in ALLOWED_FILE_TYPES:
                 result["errors"].append(f"不支持的file类型: {file_extension}")
@@ -153,7 +153,7 @@ class SecurityValidator:
             elif self.magic_mime is None:
                 result["warnings"].append("MIME类型检查不可用（missinglibmagic）")
 
-            # 4. 检查file名安全性
+            # 4. 检查文件名安全性
             if not self._is_safe_filename(filename):
                 result["errors"].append("file名包含不安全字符")
                 return result
@@ -168,8 +168,8 @@ class SecurityValidator:
         return result
 
     def _is_safe_filename(self, filename: str) -> bool:
-        """检查file名是否安全"""
-        # 检查path遍历攻击
+        """检查文件名是否安全"""
+        # 检查路径遍历攻击
         if ".." in filename or "/" in filename or "\\" in filename:
             return False
 
@@ -184,21 +184,21 @@ class SecurityValidator:
         self, sql: str, allow_write_operations: bool = False
     ) -> Dict[str, Any]:
         """
-        验证SQLquery的安全性
+        验证 SQL 查询的安全性
 
         Args:
-            sql: SQLquery语句
+            sql: SQL 查询语句
             allow_write_operations: 是否允许写操作
 
         Returns:
-            验证result字典
+            验证结果字典
         """
         result = {"valid": False, "errors": [], "warnings": [], "sanitized_sql": sql}
 
         try:
             sql_upper = sql.upper().strip()
 
-            # 1. 检查空query
+            # 1. 检查空查询
             if not sql.strip():
                 result["errors"].append("SQLquery不能is empty")
                 return result
@@ -208,7 +208,7 @@ class SecurityValidator:
                 for keyword in DANGEROUS_SQL_KEYWORDS:
                     if keyword in sql_upper:
                         if keyword == "CREATE" and "CREATE TABLE" in sql_upper:
-                            # 允许CREATE TABLE用于savingqueryresult
+                            # 允许 CREATE TABLE 用于保存查询结果
                             continue
                         result["errors"].append(f"不允许使用 {keyword} 操作")
                         return result
@@ -239,7 +239,7 @@ class SecurityValidator:
         return result
 
     def sanitize_log_message(self, message: str) -> str:
-        """清理日志消息中的敏感info"""
+        """清理日志消息中的敏感信息"""
         sanitized = message
 
         for pattern in SENSITIVE_PATTERNS:
@@ -258,7 +258,7 @@ security_validator = SecurityValidator()
 
 
 def get_file_hash(file_path: str) -> str:
-    """计算fileSHA256哈希值"""
+    """计算文件 SHA256 哈希值"""
     sha256_hash = hashlib.sha256()
     with open(file_path, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
@@ -267,7 +267,7 @@ def get_file_hash(file_path: str) -> str:
 
 
 def mask_sensitive_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    """遮蔽configuration中的敏感info"""
+    """遮蔽配置中的敏感信息"""
     masked_config = config.copy()
     sensitive_keys = ["password", "pwd", "secret", "token", "key"]
 
