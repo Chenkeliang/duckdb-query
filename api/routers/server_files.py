@@ -18,21 +18,14 @@ from core.database.duckdb_engine import with_duckdb_connection
 from core.data.excel_import_manager import (
     derive_default_table_name,
     inspect_excel_sheets,
-    load_excel_sheet_dataframe,
     sanitize_identifier,
 )
 from core.data.file_datasource_manager import (
     create_table_from_file_path_typed,
-    create_typed_table_from_dataframe,
     file_datasource_manager,
 )
 from core.data.file_utils import detect_file_type
-from core.data.import_mode import (
-    normalize_import_mode,
-    should_promote_column_types,
-    use_all_varchar_on_load,
-)
-from core.data.ingestion_precision import promote_table_column_types_from_varchar
+from core.data.import_mode import normalize_import_mode
 from core.common.timezone_utils import get_storage_time
 from utils.response_helpers import (
     create_success_response,
@@ -353,33 +346,6 @@ async def import_server_file(payload: ServerFileImportRequest):
 # ============ Excel 专用 API ============
 
 
-def _should_use_duckdb(file_ext: str, header_row_index: int, fill_merged: bool) -> bool:
-    """判断是否应该使用 DuckDB 导入 Excel
-
-    注意: header_row_index 是 1-based（第一行=1）
-    """
-    # .xls 只能用 pandas (xlrd 引擎)
-    if file_ext.lower() == "xls":
-        return False
-    # 非首行表头只能用 pandas (DuckDB 只支持 header=true/false)
-    # header_row_index=1 表示第一行是表头，这种情况 DuckDB 可以处理
-    if header_row_index is not None and header_row_index > 1:
-        return False
-    # 需要合并单元格填充只能用 pandas
-    if fill_merged:
-        return False
-    return True
-
-
-def _table_exists(con, table_name: str) -> bool:
-    """检查表是否已存在"""
-    try:
-        result = con.execute("SHOW TABLES").fetchdf()
-        return table_name in result["name"].tolist()
-    except Exception:  # pylint: disable=broad-exception-caught
-        return False
-
-
 @router.post("/api/server-files/excel/inspect")
 async def inspect_server_excel(payload: ServerExcelInspectRequest):
     """
@@ -426,7 +392,7 @@ async def import_server_excel(payload: ServerExcelImportRequest):
     """
     导入服务器上的 Excel 文件的指定工作表
 
-    策略：
+    策略（由共享的 import_excel_sheets 实现）：
     1. 如果条件允许（xlsx + 首行表头 + 无合并填充），优先使用 DuckDB
     2. 否则使用 pandas
     """
@@ -441,164 +407,97 @@ async def import_server_excel(payload: ServerExcelImportRequest):
     if file_ext not in {"xlsx", "xls", "excel"}:
         raise APIValidationError(f"Not an Excel file: {file_ext}")
 
-    with with_duckdb_connection() as con:
-        imported_tables = []
-        current_time = get_storage_time()
-
-        # 1. 构建表名映射：create 模式撞名（批内已占用 或 库内已存在）时自动加
-        #    _1/_2/_3 后缀，不再报错静默失败；replace/append 保持原有的批内冲突校验。
-        sanitized_name_map = {}
-        for sheet_cfg in payload.sheets:
-            # 用户明确提供了目标表名，尊重用户输入（允许数字开头）
-            sanitized = sanitize_identifier(
-                sheet_cfg.target_table, allow_leading_digit=True, prefix="table"
-            )
-            if sheet_cfg.mode == "create":
-                candidate = sanitized
-                suffix = 0
-                while candidate in sanitized_name_map.values() or _table_exists(con, candidate):
-                    suffix += 1
-                    if suffix > 1000:
-                        raise APIValidationError(
-                            f"Cannot resolve a unique table name for '{sheet_cfg.target_table}'"
-                        )
-                    candidate = f"{sanitized}_{suffix}"
-                sanitized = candidate
-            elif sanitized in sanitized_name_map.values():
-                raise APIValidationError(
-                    f"Worksheet '{sheet_cfg.name}' target table name '{sanitized}' conflicts with other worksheets"
-                )
-            sanitized_name_map[sheet_cfg.name] = sanitized
-
-        # 2. 执行导入
-        for sheet_cfg in payload.sheets:
-            target_table = sanitized_name_map[sheet_cfg.name]
-            header_row_index = (
-                sheet_cfg.header_row_index if sheet_cfg.header_row_index is not None else 1
-            )
-            use_duckdb = _should_use_duckdb(
-                file_ext, header_row_index, sheet_cfg.fill_merged
-            )
-            metadata = {}
-
-            try:
-                if use_duckdb:
-                    # 尝试 DuckDB 导入
-                    try:
-                        logger.info("Attempting to import worksheet using DuckDB: %s", sheet_cfg.name)
-                        con.execute("INSTALL excel")
-                        con.execute("LOAD excel")
-
-                        all_varchar_clause = (
-                            ", all_varchar = true"
-                            if use_all_varchar_on_load(payload.import_mode)
-                            else ""
-                        )
-                        sql = f"""
-                            CREATE OR REPLACE TABLE "{target_table}" AS
-                            SELECT * FROM read_xlsx('{real_path}', sheet='{sheet_cfg.name}', header=true{all_varchar_clause})
-                        """
-                        con.execute(sql)
-                        if should_promote_column_types(payload.import_mode):
-                            promote_table_column_types_from_varchar(con, target_table)
-
-                        # 获取元数据
-                        row_count = con.execute(
-                            f'SELECT COUNT(*) FROM "{target_table}"'
-                        ).fetchone()[0]
-                        columns_info = con.execute(f'DESCRIBE "{target_table}"').fetchall()
-                        columns = [col[0] for col in columns_info]
-
-                        metadata = {
-                            "row_count": row_count,
-                            "column_count": len(columns),
-                            "columns": columns,
-                        }
-                        logger.info("DuckDB import successful: %s, row count: %d", target_table, row_count)
-
-                    except Exception as duckdb_exc:
-                        logger.warning("DuckDB import failed, falling back to pandas: %s", duckdb_exc)
-                        use_duckdb = False  # 触发下面的 pandas fallback
-
-                if not use_duckdb:
-                    # pandas 导入
-                    # pandas 导入
-                    logger.info("Importing worksheet using pandas: %s", sheet_cfg.name)
-                    df = load_excel_sheet_dataframe(
-                        real_path,
-                        sheet_cfg.name,
-                        header_rows=sheet_cfg.header_rows,
-                        header_row_index=header_row_index,
-                        fill_merged=sheet_cfg.fill_merged,
-                        import_mode=payload.import_mode,
-                    )
-
-                    if df is None or df.empty:
-                        raise ValueError(f"Worksheet {sheet_cfg.name} contains no importable data")
-
-                    # 处理追加/替换模式
-                    if sheet_cfg.mode == "replace":
-                        con.execute(f'DROP TABLE IF EXISTS "{target_table}"')
-
-                    metadata = create_typed_table_from_dataframe(
-                        con, target_table, df, import_mode=payload.import_mode
-                    )
-
-                # 保存元数据
-                table_metadata = {
-                    "source_id": target_table,
-                    "filename": os.path.basename(real_path),
-                    "file_path": _to_display_path(real_path, mount),
-                    "file_type": "excel_sheet",
-                    "sheet_name": sheet_cfg.name,
-                    "row_count": metadata.get("row_count", 0),
-                    "column_count": metadata.get("column_count", 0),
-                    "columns": metadata.get("columns", []),
-                    "column_profiles": metadata.get("column_profiles", []),
-                    "upload_time": current_time,
-                    "created_at": current_time,
-                    "updated_at": current_time,
-                    "metadata": {
-                        "schema_version": 2,
-                        "mount_label": mount["label"],
-                        "source_type": "server_directory",
-                        "header_rows": sheet_cfg.header_rows,
-                        "header_row_index": header_row_index,
-                        "fill_merged": sheet_cfg.fill_merged,
-                        "import_engine": "duckdb" if use_duckdb else "pandas",
-                    },
-                }
-
-                try:
-                    file_datasource_manager.save_file_datasource(table_metadata)
-                except Exception as exc:  # pylint: disable=broad-exception-caught
-                    logger.warning("Failed to save metadata (ignored): %s", exc)
-
-                imported_tables.append(
-                    {
-                        "table_name": target_table,
-                        "sheet_name": sheet_cfg.name,
-                        "row_count": metadata.get("row_count", 0),
-                        "column_count": metadata.get("column_count", 0),
-                        "columns": metadata.get("columns", []),
-                        "import_engine": "duckdb" if use_duckdb else "pandas",
-                    }
-                )
-
-            except BaseAPIException:
-                raise
-            except Exception as exc:
-                logger.error("Failed to import worksheet %s: %s", sheet_cfg.name, exc, exc_info=True)
-                return error_json_response(
-                    500,
-                    MessageCode.OPERATION_FAILED,
-                    f"Failed to import worksheet {sheet_cfg.name}: {str(exc)}",
-                )
-
-        return create_success_response(
-            data={
-                "imported_tables": imported_tables,
-            },
-            message_code=MessageCode.EXCEL_SHEETS_IMPORTED,
-            message=f"Successfully imported {len(imported_tables)} worksheets",
+    # 批内冲突预检查：非 create 模式的 sheet 不允许写入同一目标表（create 模式的撞名去重
+    # 交给共享导入函数里的 resolve_unique_table_name 动态处理，见 import_excel_sheets）。
+    seen_non_create_names: set = set()
+    for sheet_cfg in payload.sheets:
+        if (sheet_cfg.mode or "create").lower() == "create":
+            continue
+        sanitized = sanitize_identifier(
+            sheet_cfg.target_table, allow_leading_digit=True, prefix="table"
         )
+        if sanitized in seen_non_create_names:
+            raise APIValidationError(
+                f"Worksheet '{sheet_cfg.name}' target table name '{sanitized}' conflicts with other worksheets"
+            )
+        seen_non_create_names.add(sanitized)
+
+    current_time = get_storage_time()
+
+    def _save_sheet_metadata(sheet_cfg, outcome: dict) -> None:
+        header_row_index = (
+            sheet_cfg.header_row_index if sheet_cfg.header_row_index is not None else 1
+        )
+        table_metadata = {
+            "source_id": outcome["target_table"],
+            "filename": os.path.basename(real_path),
+            "file_path": _to_display_path(real_path, mount),
+            "file_type": "excel_sheet",
+            "sheet_name": sheet_cfg.name,
+            "row_count": outcome["row_count"],
+            "column_count": outcome["column_count"],
+            "columns": outcome["columns"],
+            "column_profiles": [],
+            "upload_time": current_time,
+            "created_at": current_time,
+            "updated_at": current_time,
+            "metadata": {
+                "schema_version": 2,
+                "mount_label": mount["label"],
+                "source_type": "server_directory",
+                "header_rows": sheet_cfg.header_rows,
+                "header_row_index": header_row_index,
+                "fill_merged": sheet_cfg.fill_merged,
+                "import_engine": outcome["import_engine"],
+            },
+        }
+        try:
+            file_datasource_manager.save_file_datasource(table_metadata)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("Failed to save metadata (ignored): %s", exc)
+
+    from core.services.file_ingestion_service import (
+        ExcelSheetImportError,
+        import_excel_sheets,
+    )
+
+    try:
+        with with_duckdb_connection() as con:
+            outcomes = import_excel_sheets(
+                con,
+                real_path,
+                payload.sheets,
+                import_mode=payload.import_mode,
+                engine="duckdb_native",
+                stop_on_first_error=True,
+                on_sheet_imported=_save_sheet_metadata,
+            )
+    except ExcelSheetImportError as exc:
+        logger.error(
+            "Failed to import worksheet %s: %s", exc.sheet_name, exc.message, exc_info=True
+        )
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to import worksheet {exc.sheet_name}: {exc.message}",
+        )
+
+    imported_tables = [
+        {
+            "table_name": outcome["target_table"],
+            "sheet_name": outcome["sheet_name"],
+            "row_count": outcome["row_count"],
+            "column_count": outcome["column_count"],
+            "columns": outcome["columns"],
+            "import_engine": outcome["import_engine"],
+        }
+        for outcome in outcomes
+    ]
+
+    return create_success_response(
+        data={
+            "imported_tables": imported_tables,
+        },
+        message_code=MessageCode.EXCEL_SHEETS_IMPORTED,
+        message=f"Successfully imported {len(imported_tables)} worksheets",
+    )
