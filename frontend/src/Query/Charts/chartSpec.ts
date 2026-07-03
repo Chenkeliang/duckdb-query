@@ -165,7 +165,12 @@ export function buildDrilldownSql(spec: ChartSpec, clickedDim: string, sourceSql
     cond = `${q(spec.x)} = '${escapeSqlString(clickedDim)}'`;
   }
 
-  return `SELECT * FROM (${stripTrailingLimit(sourceSql)}) AS _src WHERE ${cond} LIMIT 500`;
+  const inner = stripTrailingLimit(sourceSql);
+  // 源 SQL 本身已是同条件的下钻结果(在明细图表上再次点击同一桶)时,不再嵌套包裹
+  if (inner.endsWith(`AS _src WHERE ${cond}`)) {
+    return `${inner} LIMIT 500`;
+  }
+  return `SELECT * FROM (${inner}) AS _src WHERE ${cond} LIMIT 500`;
 }
 
 export interface AggResult {

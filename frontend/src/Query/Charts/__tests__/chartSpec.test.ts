@@ -268,4 +268,14 @@ describe('buildDrilldownSql', () => {
     const spec = { type: 'bar' as const, x: null, y: ['amount'], agg: 'sum' as const };
     expect(buildDrilldownSql(spec, '全部', 'SELECT * FROM t')).toBeNull();
   });
+
+  it('re-drilling the same bucket on an already-drilled source does not nest again', () => {
+    const first = buildDrilldownSql(catSpec, '华东', 'SELECT * FROM t')!;
+    const second = buildDrilldownSql(catSpec, '华东', first);
+    expect(second).toBe(first);
+    // 不同条件仍然正常嵌套(继续缩小范围)
+    const third = buildDrilldownSql(catSpec, '华南', first)!;
+    expect(third).toContain(`WHERE "region" = '华南' LIMIT 500`);
+    expect(third).toContain(`"region" = '华东'`);
+  });
 });
