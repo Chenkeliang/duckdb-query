@@ -189,6 +189,12 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   // 图表数据源（多页用激活 tab,单槽用外层),供单/多页两条渲染路径共用
   const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
   const chartRows = (useMultiTabGrids ? activeTab?.result.data : data) ?? [];
+
+  // 新一次执行产生新结果时,视图切回默认的「表格」(如从图表下钻执行明细 SQL 后不该停在图表页)
+  const latestResultRows = useMultiTabGrids ? activeTab?.result.data : data;
+  React.useEffect(() => {
+    setResultView('table');
+  }, [latestResultRows]);
   const chartPreviewLimit = useMultiTabGrids
     ? activeTab?.result.previewLimitApplied
     : previewLimitApplied;
