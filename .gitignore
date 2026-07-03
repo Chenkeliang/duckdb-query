@@ -204,3 +204,6 @@ data-test/
 api/extensions/
 # Tauri sidecar(打包时由 CI 暂存的 PyInstaller onedir,勿入库)
 frontend/src-tauri/binaries/
+
+# 本地推广视频工程（大文件，不入库）
+videos/
