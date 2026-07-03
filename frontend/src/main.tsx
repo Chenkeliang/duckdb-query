@@ -174,7 +174,7 @@ async function bootstrap() {
             renderSplash('本地引擎启动超时，请重试。', true);
             return;
         }
-    } catch (err) {
+    } catch {
         renderSplash('本地引擎启动失败，请重试。', true);
         return;
     }

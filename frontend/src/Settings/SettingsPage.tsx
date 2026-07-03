@@ -11,9 +11,8 @@ import { CacheSettings } from './CacheSettings';
 import { QueryResultSettings } from './QueryResultSettings';
 import { DataGridSettings } from './DataGridSettings';
 
-export interface SettingsPageProps {
-  // 可以添加 props
-}
+// 目前无 props，保留占位类型以便后续扩展
+export type SettingsPageProps = Record<string, never>;
 
 /**
  * 设置页面组件

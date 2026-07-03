@@ -106,12 +106,7 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
       ? t('query.chart.basisRows', '基于前 {{n}} 行(可能不全)', { n: rows.length })
       : t('query.chart.basisFull', '全量(聚合)');
 
-  if (!columns.length || !rows.length) {
-    return <div className="p-6 text-sm text-muted-foreground">{t('query.chart.empty', '无可视化数据')}</div>;
-  }
-
-  const xOptions = spec.type === 'kpi' ? [] : dims;
-
+  // Hooks must run unconditionally, so this is declared before the early return below.
   const handleElementClick = React.useCallback(
     (dim: string, event: { clientX: number; clientY: number }) => {
       const sql = buildDrilldownSql(spec, dim, source.sql);
@@ -120,6 +115,12 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
     },
     [spec, source.sql],
   );
+
+  if (!columns.length || !rows.length) {
+    return <div className="p-6 text-sm text-muted-foreground">{t('query.chart.empty', '无可视化数据')}</div>;
+  }
+
+  const xOptions = spec.type === 'kpi' ? [] : dims;
 
   const renderChart = () => (
     <ChartCanvas

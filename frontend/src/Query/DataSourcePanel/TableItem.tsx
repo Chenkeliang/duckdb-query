@@ -150,7 +150,7 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
           )}
         </>
       );
-    } catch (error) {
+    } catch {
       // 如果正则构造仍然失败，返回原文本
       return text;
     }

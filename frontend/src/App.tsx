@@ -339,17 +339,14 @@ const AppInner: React.FC = () => {
           // Always use testDatabaseConnection which now supports ID-based password inheritance
           const { testDatabaseConnection } = await import("@/api");
 
-          let result:
-            | { success?: boolean; message?: string; messageCode?: string }
-            | undefined;
-
           // Unified test flow: pass ID + Params. Backend handles stored password merging.
-          result = await testDatabaseConnection({
-            id: params.id, // Now supported by type
-            type: params.type as "mysql" | "postgresql" | "sqlite" | "duckdb",
-            name: params.id || "test-connection",
-            params: params.params as Record<string, unknown>
-          });
+          const result: { success?: boolean; message?: string; messageCode?: string } | undefined =
+            await testDatabaseConnection({
+              id: params.id, // Now supported by type
+              type: params.type as "mysql" | "postgresql" | "sqlite" | "duckdb",
+              name: params.id || "test-connection",
+              params: params.params as Record<string, unknown>
+            });
 
           const testSuccess = result?.success === true;
           const testMessage = result?.message;

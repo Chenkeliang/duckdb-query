@@ -90,6 +90,6 @@ export const useSavedQueries = () => {
         isSaving: createMutation.isPending,
         deleteQuery: deleteMutation.mutateAsync,
         isDeleting: deleteMutation.isPending,
-        useQuery: useMutationReq.mutateAsync,
+        markQueryUsed: useMutationReq.mutateAsync,
     };
 };

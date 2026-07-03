@@ -24,13 +24,12 @@ export interface StandardSuccess<T = unknown> {
  *
  * 用于分页列表数据
  */
-export interface StandardList<T = unknown>
-  extends StandardSuccess<{
-    items: T[];
-    total: number;
-    page?: number;
-    pageSize?: number;
-  }> { }
+export type StandardList<T = unknown> = StandardSuccess<{
+  items: T[];
+  total: number;
+  page?: number;
+  pageSize?: number;
+}>;
 
 /**
  * 标准错误响应
