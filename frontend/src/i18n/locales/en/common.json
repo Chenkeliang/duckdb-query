@@ -1148,7 +1148,10 @@
     "statusVerifying": "Verifying",
     "installSuccess": "{{name}} installed successfully",
     "installFailed": "Failed to install {{name}}",
-    "loadFailed": "Failed to load extensions"
+    "loadFailed": "Failed to load extensions",
+    "usage": "Usage",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",

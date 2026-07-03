@@ -1,7 +1,8 @@
 /**
  * ExtensionsPage 组件测试
  *
- * 覆盖：分组渲染、预置标注、安装按钮、点击安装后的进度展示、安装完成后的已安装状态。
+ * 覆盖：分组渲染、预置标注、安装按钮、点击安装后的进度展示、安装完成后的已安装状态、
+ * 用法代码块渲染与复制、无 usage 时不渲染代码块。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, waitFor } from '@testing-library/react';
@@ -32,6 +33,16 @@ const baseItems: DuckDBExtensionItem[] = [
     category: 'datasource',
     description: 'Excel 读写',
     description_en: 'Excel read & write',
+    usage: "SELECT * FROM 'path/to/file.xlsx'",
+    installed: true,
+    bundled: true,
+  },
+  {
+    name: 'mysql',
+    category: 'datasource',
+    description: '连接 MySQL',
+    description_en: 'Connect to MySQL',
+    usage: null,
     installed: true,
     bundled: true,
   },
@@ -40,6 +51,7 @@ const baseItems: DuckDBExtensionItem[] = [
     category: 'datasource',
     description: '读写本地 SQLite 数据库文件',
     description_en: 'Read & write local SQLite database files',
+    usage: "ATTACH 'path/to/data.db' AS sq (TYPE sqlite); SELECT * FROM sq.some_table",
     installed: false,
     bundled: false,
   },
@@ -48,6 +60,7 @@ const baseItems: DuckDBExtensionItem[] = [
     category: 'capability',
     description: '向量相似度检索(HNSW 索引)',
     description_en: 'Vector similarity search (HNSW)',
+    usage: 'CREATE INDEX idx ON tbl USING HNSW (embedding)',
     installed: false,
     bundled: false,
   },
@@ -81,17 +94,17 @@ describe('ExtensionsPage', () => {
     renderPage();
     await screen.findByText('excel');
 
-    const excelRow = screen.getByTestId('extension-row-excel');
-    expect(within(excelRow).getByText('已预置')).toBeInTheDocument();
-    expect(within(excelRow).queryByRole('button', { name: '安装' })).not.toBeInTheDocument();
+    const excelCard = screen.getByTestId('extension-card-excel');
+    expect(within(excelCard).getByText('已预置')).toBeInTheDocument();
+    expect(within(excelCard).queryByRole('button', { name: '安装' })).not.toBeInTheDocument();
   });
 
   it('shows an install button for non-bundled, non-installed extensions', async () => {
     renderPage();
     await screen.findByText('sqlite_scanner');
 
-    const sqliteRow = screen.getByTestId('extension-row-sqlite_scanner');
-    expect(within(sqliteRow).getByRole('button', { name: '安装' })).toBeInTheDocument();
+    const sqliteCard = screen.getByTestId('extension-card-sqlite_scanner');
+    expect(within(sqliteCard).getByRole('button', { name: '安装' })).toBeInTheDocument();
   });
 
   it('clicking install shows progress, then flips to installed once done', async () => {
@@ -113,20 +126,20 @@ describe('ExtensionsPage', () => {
     renderPage();
     await screen.findByText('sqlite_scanner');
 
-    const sqliteRow = screen.getByTestId('extension-row-sqlite_scanner');
-    await user.click(within(sqliteRow).getByRole('button', { name: '安装' }));
+    const sqliteCard = screen.getByTestId('extension-card-sqlite_scanner');
+    await user.click(within(sqliteCard).getByRole('button', { name: '安装' }));
 
     expect(installDuckDBExtension).toHaveBeenCalledWith('sqlite_scanner');
 
     // 轮询到下载中：出现进度提示
     await waitFor(() => {
-      expect(within(sqliteRow).getByText(/下载中/)).toBeInTheDocument();
+      expect(within(sqliteCard).getByText(/下载中/)).toBeInTheDocument();
     });
 
-    // 轮询到 done：进度消失，行内变为「已安装」
+    // 轮询到 done：进度消失，卡片内变为「已安装」
     await waitFor(
       () => {
-        expect(within(sqliteRow).getByText('已安装')).toBeInTheDocument();
+        expect(within(sqliteCard).getByText('已安装')).toBeInTheDocument();
       },
       { timeout: 5000 }
     );
@@ -146,11 +159,54 @@ describe('ExtensionsPage', () => {
     renderPage();
     await screen.findByText('vss');
 
-    const vssRow = screen.getByTestId('extension-row-vss');
-    await user.click(within(vssRow).getByRole('button', { name: '安装' }));
+    const vssCard = screen.getByTestId('extension-card-vss');
+    await user.click(within(vssCard).getByRole('button', { name: '安装' }));
 
     await waitFor(() => {
-      expect(within(vssRow).getByRole('button', { name: '安装' })).toBeInTheDocument();
+      expect(within(vssCard).getByRole('button', { name: '安装' })).toBeInTheDocument();
     });
+  });
+
+  it('renders a usage code block with a copy button when usage is set', async () => {
+    renderPage();
+    await screen.findByText('sqlite_scanner');
+
+    const sqliteCard = screen.getByTestId('extension-card-sqlite_scanner');
+    expect(
+      within(sqliteCard).getByText(
+        "ATTACH 'path/to/data.db' AS sq (TYPE sqlite); SELECT * FROM sq.some_table"
+      )
+    ).toBeInTheDocument();
+    expect(within(sqliteCard).getByRole('button', { name: '复制' })).toBeInTheDocument();
+  });
+
+  it('does not render a usage code block for extensions without usage (e.g. mysql)', async () => {
+    renderPage();
+    await screen.findByText('mysql');
+
+    const mysqlCard = screen.getByTestId('extension-card-mysql');
+    expect(within(mysqlCard).queryByText('用法')).not.toBeInTheDocument();
+    expect(within(mysqlCard).queryByRole('button', { name: '复制' })).not.toBeInTheDocument();
+  });
+
+  it('copies the usage snippet to the clipboard when the copy button is clicked', async () => {
+    const user = userEvent.setup();
+    // userEvent.setup() 会接管 navigator.clipboard,mock 必须在其后定义才不会被覆盖；
+    // jsdom 的 navigator.clipboard 是只读 getter,用 defineProperty 整体覆盖
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: writeTextMock },
+      configurable: true,
+    });
+
+    renderPage();
+    await screen.findByText('vss');
+
+    const vssCard = screen.getByTestId('extension-card-vss');
+    await user.click(within(vssCard).getByRole('button', { name: '复制' }));
+
+    expect(writeTextMock).toHaveBeenCalledWith(
+      'CREATE INDEX idx ON tbl USING HNSW (embedding)'
+    );
   });
 });

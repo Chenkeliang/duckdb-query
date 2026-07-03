@@ -19,7 +19,7 @@ import {
   type ExtensionCategory,
   type ExtensionInstallStatus,
 } from '@/api/extensionsApi';
-import { ExtensionRow } from './ExtensionRow';
+import { ExtensionCard } from './ExtensionCard';
 
 const POLL_INTERVAL_MS = 500;
 
@@ -145,17 +145,19 @@ export function ExtensionsPage() {
             <CardTitle className="text-base">{title}</CardTitle>
           </div>
         </CardHeader>
-        <CardContent className="space-y-1">
-          {groupItems.map((item) => (
-            <ExtensionRow
-              key={item.name}
-              item={item}
-              progress={progressByName[item.name]}
-              isZh={isZh}
-              onInstall={() => handleInstall(item)}
-              t={t}
-            />
-          ))}
+        <CardContent>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {groupItems.map((item) => (
+              <ExtensionCard
+                key={item.name}
+                item={item}
+                progress={progressByName[item.name]}
+                isZh={isZh}
+                onInstall={() => handleInstall(item)}
+                t={t}
+              />
+            ))}
+          </div>
         </CardContent>
       </Card>
     );

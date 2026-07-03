@@ -13,6 +13,7 @@ export interface DuckDBExtensionItem {
   category: ExtensionCategory;
   description: string;
   description_en: string;
+  usage: string | null;
   installed: boolean;
   bundled: boolean;
 }

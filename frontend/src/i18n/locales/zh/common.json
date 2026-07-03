@@ -1148,7 +1148,10 @@
     "statusVerifying": "校验中",
     "installSuccess": "{{name}} 安装成功",
     "installFailed": "{{name}} 安装失败",
-    "loadFailed": "获取扩展列表失败"
+    "loadFailed": "获取扩展列表失败",
+    "usage": "用法",
+    "copy": "复制",
+    "copied": "已复制"
   },
   "shortcuts": {
     "title": "键盘快捷键",

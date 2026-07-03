@@ -472,8 +472,9 @@ const AppInner: React.FC = () => {
     if (currentTab === "ai") {
       return (
         <React.Suspense fallback={<LazyFallback />}>
-          <div className="flex-1 p-6 overflow-auto">
-            <div className="max-w-4xl mx-auto">
+          {/* h-full 同扩展页:main 非 flex 容器,flex-1 拿不到高度会被 overflow-hidden 裁掉 */}
+          <div className="h-full overflow-auto p-6">
+            <div className="max-w-7xl mx-auto">
               <AISettingsPage />
             </div>
           </div>
@@ -484,8 +485,11 @@ const AppInner: React.FC = () => {
     if (currentTab === "extensions") {
       return (
         <React.Suspense fallback={<LazyFallback />}>
-          <div className="flex-1 p-6 overflow-auto">
-            <div className="max-w-4xl mx-auto">
+          {/* h-full（非 flex-1）：<main> 不是 flex 容器，flex-1 在此不生效，
+              需要显式的 h-full 让本层拿到确定高度，overflow-auto 才能真正滚动，
+              而不是被 <main> 的 overflow-hidden 直接裁掉。参考 SettingsPage 的写法。 */}
+          <div className="h-full overflow-auto p-6">
+            <div className="max-w-7xl mx-auto">
               <ExtensionsPage />
             </div>
           </div>

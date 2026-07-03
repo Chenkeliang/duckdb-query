@@ -47,43 +47,96 @@ _CDN_NAME_OVERRIDES = {
     "postgres": "postgres_scanner",
 }
 
-# name -> (category, 中文说明, English description)
-CATALOG: Dict[str, Tuple[str, str, str]] = {
+# name -> (category, 中文说明, English description, usage SQL 示例或 None)
+CATALOG: Dict[str, Tuple[str, str, str, Optional[str]]] = {
     # ---- 数据源 ----
     "sqlite_scanner": (
         CATEGORY_DATASOURCE,
         "读写本地 SQLite 数据库文件",
         "Read & write local SQLite database files",
+        "ATTACH 'path/to/data.db' AS sq (TYPE sqlite); SELECT * FROM sq.some_table",
     ),
     "aws": (
         CATEGORY_DATASOURCE,
         "访问 S3 存储(凭证与签名,配合 httpfs)",
         "S3 credentials & signing (with httpfs)",
+        "CREATE SECRET (TYPE s3, PROVIDER credential_chain); SELECT * FROM 's3://bucket/x.parquet'",
     ),
-    "azure": (CATEGORY_DATASOURCE, "读取 Azure Blob 存储", "Read Azure Blob Storage"),
-    "iceberg": (CATEGORY_DATASOURCE, "读取 Apache Iceberg 表", "Read Apache Iceberg tables"),
-    "delta": (CATEGORY_DATASOURCE, "读取 Delta Lake 表", "Read Delta Lake tables"),
-    "ducklake": (CATEGORY_DATASOURCE, "DuckLake 湖仓格式", "DuckLake lakehouse format"),
-    "lance": (CATEGORY_DATASOURCE, "读取 Lance AI 数据集", "Read Lance datasets"),
-    "vortex": (CATEGORY_DATASOURCE, "读取 Vortex 列式格式", "Read Vortex columnar files"),
-    "excel": (CATEGORY_DATASOURCE, "Excel 读写", "Excel read & write"),
-    "httpfs": (CATEGORY_DATASOURCE, "HTTP(S) 远程文件读取", "Remote files over HTTP(S)"),
-    "mysql": (CATEGORY_DATASOURCE, "连接 MySQL", "Connect to MySQL"),
-    "postgres": (CATEGORY_DATASOURCE, "连接 PostgreSQL", "Connect to PostgreSQL"),
+    "azure": (
+        CATEGORY_DATASOURCE,
+        "读取 Azure Blob 存储",
+        "Read Azure Blob Storage",
+        "CREATE SECRET (TYPE azure, CONNECTION_STRING '...'); SELECT * FROM 'az://container/x.parquet'",
+    ),
+    "iceberg": (
+        CATEGORY_DATASOURCE,
+        "读取 Apache Iceberg 表",
+        "Read Apache Iceberg tables",
+        "SELECT * FROM iceberg_scan('path/to/iceberg_table')",
+    ),
+    "delta": (
+        CATEGORY_DATASOURCE,
+        "读取 Delta Lake 表",
+        "Read Delta Lake tables",
+        "SELECT * FROM delta_scan('path/to/delta_table')",
+    ),
+    "ducklake": (
+        CATEGORY_DATASOURCE,
+        "DuckLake 湖仓格式",
+        "DuckLake lakehouse format",
+        "ATTACH 'ducklake:meta.ducklake' AS lake",
+    ),
+    "vortex": (
+        CATEGORY_DATASOURCE,
+        "读取 Vortex 列式格式",
+        "Read Vortex columnar files",
+        "SELECT * FROM read_vortex('path/to/file.vortex')",
+    ),
+    "excel": (
+        CATEGORY_DATASOURCE,
+        "Excel 读写",
+        "Excel read & write",
+        "SELECT * FROM 'path/to/file.xlsx'",
+    ),
+    "httpfs": (
+        CATEGORY_DATASOURCE,
+        "HTTP(S) 远程文件读取",
+        "Remote files over HTTP(S)",
+        "SELECT * FROM 'https://host/data.parquet'",
+    ),
+    "mysql": (CATEGORY_DATASOURCE, "连接 MySQL", "Connect to MySQL", None),
+    "postgres": (CATEGORY_DATASOURCE, "连接 PostgreSQL", "Connect to PostgreSQL", None),
     # ---- 能力增强 ----
     "encodings": (
         CATEGORY_CAPABILITY,
         "读取 GBK 等非 UTF-8 编码文件",
         "Non-UTF-8 encodings (e.g. GBK)",
+        "SELECT * FROM read_csv('file.csv', encoding='gb18030')",
     ),
-    "fts": (CATEGORY_CAPABILITY, "全文检索索引(BM25)", "Full-text search (BM25)"),
-    "vss": (CATEGORY_CAPABILITY, "向量相似度检索(HNSW 索引)", "Vector similarity search (HNSW)"),
+    "fts": (
+        CATEGORY_CAPABILITY,
+        "全文检索索引(BM25)",
+        "Full-text search (BM25)",
+        "PRAGMA create_fts_index('docs', 'id', 'body')",
+    ),
+    "vss": (
+        CATEGORY_CAPABILITY,
+        "向量相似度检索(HNSW 索引)",
+        "Vector similarity search (HNSW)",
+        "CREATE INDEX idx ON tbl USING HNSW (embedding)",
+    ),
     "spatial": (
         CATEGORY_CAPABILITY,
         "地理空间类型与函数(体积较大)",
         "Geospatial types & functions (large)",
+        "SELECT ST_AsText(ST_Point(116.4, 39.9))",
     ),
-    "inet": (CATEGORY_CAPABILITY, "IP 地址类型与网段运算", "IP address types & functions"),
+    "inet": (
+        CATEGORY_CAPABILITY,
+        "IP 地址类型与网段运算",
+        "IP address types & functions",
+        "SELECT '10.0.0.1/8'::INET",
+    ),
 }
 
 _EXTENSIONS_CDN_BASE = "https://extensions.duckdb.org"
@@ -130,7 +183,7 @@ async def list_duckdb_extensions():
         installed_map = {str(row[0]).lower(): bool(row[1]) for row in rows}
 
         items = []
-        for name, (category, desc_zh, desc_en) in CATALOG.items():
+        for name, (category, desc_zh, desc_en, usage) in CATALOG.items():
             bundled = name in PRESEEDED
             query_name = _CDN_NAME_OVERRIDES.get(name, name)
             installed = bundled or installed_map.get(query_name.lower(), False)
@@ -140,6 +193,7 @@ async def list_duckdb_extensions():
                     "category": category,
                     "description": desc_zh,
                     "description_en": desc_en,
+                    "usage": usage,
                     "installed": installed,
                     "bundled": bundled,
                 }
