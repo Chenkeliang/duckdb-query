@@ -67,10 +67,12 @@ def pick_free_loopback_port() -> int:
 
 
 def start_parent_watchdog() -> None:
-    """父进程(Tauri 壳)消失后自杀,避免后端僵尸。
+    """父进程(Tauri 壳)消失后自行退出,避免后端僵尸。
 
-    Tauri 在崩溃/被 SIGKILL 时不会触发 Rust 侧的优雅 kill,故后端自己看护父进程:
-    任何方式导致父进程退出,这里都会让后端自行退出(跨平台,优先 psutil)。
+    Tauri 在崩溃/被 SIGKILL/macOS `terminate:`(AppleScript quit、Dock 退出)时不会触发
+    Rust 侧的优雅 kill,故后端自己看护父进程。发现父进程消失后必须走优雅停机而不是
+    os._exit:硬退不关 DuckDB 连接会留脏 WAL,下次启动重放失败即丢最后一次 checkpoint
+    之后的所有数据(见 duckdb_recovery 的隔离逻辑)。
     """
     import threading
     import time
@@ -87,7 +89,18 @@ def start_parent_watchdog() -> None:
             except Exception:
                 alive = os.getppid() == ppid  # Unix: 父死后 getppid() 变 1
             if not alive:
-                os._exit(0)
+                from core.common.server_control import request_graceful_shutdown
+
+                graceful = request_graceful_shutdown()
+                try:  # 父进程已死,stderr 管道多半已断(EPIPE),日志只为 dev 直跑可见
+                    print(f"[watchdog] parent gone, graceful={graceful}", file=sys.stderr, flush=True)
+                except OSError:
+                    pass
+                if graceful:
+                    # 优雅路径正常应在 1s 内退完(进程退出后本线程随之消失);
+                    # 走到 os._exit 只剩一种情况:停机被长任务卡死,兜底硬退。
+                    time.sleep(15)
+                os._exit(1)
 
     threading.Thread(target=_watch, daemon=True).start()
 
