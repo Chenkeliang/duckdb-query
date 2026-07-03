@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://chenkeliang.github.io/duckdb-query/"><img src="https://img.shields.io/badge/Live_Demo-Try_in_browser-F4B43C?logo=duckdb&logoColor=white" alt="Live Demo"></a>
-  <img src="https://img.shields.io/badge/Python-3.12+-3776AB.svg?logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black" alt="React">
   <img src="https://img.shields.io/badge/DuckDB-Powered-FFBF00.svg?logo=duckdb&logoColor=white" alt="DuckDB">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT">
@@ -55,6 +55,8 @@ git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && 
 ```
 
 Open **http://localhost:48000** and start querying.
+
+> Don't want Docker? The [Desktop App](#desktop-app) below ships native macOS / Windows installers with the backend built in.
 
 ---
 
@@ -151,6 +153,22 @@ docker compose up -d --build frontend
 ```
 
 **Stop services** (still keeps `./data`): `docker compose down` (avoid `down -v` unless you intend to wipe named volumes).
+
+### Desktop App
+
+Native installers for macOS (Apple Silicon / Intel) and Windows (x64) with the backend bundled in (PyInstaller sidecar) — **no Docker, no terminal required**.
+
+👉 **[Download from GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest)**
+
+| Platform | Installer |
+|----------|-----------|
+| macOS Apple Silicon | `.dmg` |
+| macOS Intel | `.dmg` |
+| Windows x64 | Installer (NSIS) |
+
+- **First launch**: the installers are ad-hoc signed, not signed with an official Apple/Microsoft certificate, so the OS will warn you — on macOS: *System Settings → Privacy & Security → Open Anyway*; on Windows: SmartScreen → *More info → Run anyway*.
+- **In-app auto-update**: on launch, the app checks GitHub Releases for a newer version, shows download progress, then installs and relaunches. Update artifacts are signed with a repo-private key and verified against a public key embedded in the app.
+- **Feature parity**: local file queries, MySQL/Postgres connections, and AI all work the same as the self-hosted version (AI still needs a model API key configured in Settings). No Linux build yet.
 
 ### Local Development
 

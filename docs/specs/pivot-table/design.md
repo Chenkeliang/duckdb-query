@@ -49,13 +49,16 @@ QueryWorkbenchPage
 
 ### State and data fetching
 
-| Hook / API | Role |
-|------------|------|
-| `useGeneratePivotSQL` | `generatePivotQuery` → 展示 `final_sql` |
-| `usePivotQuery` | `previewPivotQuery`；`queryKey: ['pivot-preview', config, pivotConfig, limit]` |
-| `buildPivotQueryPayload` | 组装 `PivotQueryConfig` + `PivotConfig` |
+> **No `useGeneratePivotSQL` / `usePivotQuery` hooks exist.** `PivotPanel` calls `useQuery` from `@tanstack/react-query` directly, inline in the component — there is no separate hook layer.
 
-TanStack Query：`staleTime` 5 分钟；表数据变更后由 `invalidateAfterTableCreate` 等统一失效。
+| Function | Role |
+|----------|------|
+| `useQuery({ queryKey: getPivotQueryKey(...), queryFn: () => generatePivotQuery(...) })` (inline in `PivotPanel.tsx`) | Calls `POST /api/pivot-query/generate` and renders the returned `final_sql` in the SQL-preview panel. `enabled` only when `canUseServerPivotPath(table, rows, values)` is true and `!shouldUseLocalPivotSql(columns)` (i.e. exactly one pivot column); otherwise `PivotPanel` falls back to a client-built `PIVOT` / `GROUP BY` string via `generateLocalSQL()`. |
+| `getPivotQueryKey` (`buildPivotQueryPayload.ts`) | Builds the TanStack Query cache key: `['pivot-sql', tableName, rows.join(','), columns.join(','), values, filterKey]`. |
+| `buildPivotQueryPayload` (`buildPivotQueryPayload.ts`) | Assembles `PivotQueryConfig` + `PivotConfig` from the selected table, rows/columns/values, `maxQueryRows`, and filters. |
+| `previewPivotQuery` (`api/pivotQueryApi.ts`, calls `POST /api/pivot-query/preview`) | **Exported and unit-tested** (`frontend/src/api/__tests__/pivotQueryApi.test.ts`) but **not called from any UI component**. Clicking "执行" in `PivotPanel` hands the already-generated `final_sql` string to the parent's `onExecute`, which runs it through the normal query-execution path shared with the SQL editor / JOIN workbench — not through `/preview`. |
+
+`staleTime: 30_000` (30s) on the `generate` query in `PivotPanel`. The `pivot-sql` query key is not wired into `invalidateAfterTableCreate` (`utils/cacheInvalidation.ts`) — that helper only invalidates the table list, data-source list, and column list, which refreshes `useTableColumns`' field picker; a stale `generate` response simply expires on its own after `staleTime`.
 
 ### Results grid (TanStack DataGrid)
 

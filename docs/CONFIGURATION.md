@@ -112,23 +112,23 @@ For accessing remote files from S3 or Aliyun OSS:
 
 ## AI / LLM
 
-AI 功能(问数 Text-to-SQL、报错医生、AI 图表推荐、数据对话)**默认关闭**,且**不在本配置文件里**——在应用内「**设置 → AI 模型**」配置,持久化到 `system.db`(见 API `docs/API_CONTRACT_FE_BE.md` §9.3)。
+AI features (Text-to-SQL chat, error doctor, AI chart suggestions, data chat) are **disabled by default** and are **not stored in this configuration file** — configure them in-app under **Settings → AI Model**, persisted to `system.db` (see API `docs/API_CONTRACT_FE_BE.md` §9.3).
 
-- **隐私**:供应商 `api_key` 以 **Fernet 加密**存储,读取接口返回掩码 `****`、从不回传明文;生成的 SQL 永远只填入编辑器、**绝不自动执行**。
-- **供应商类型**:`openai` / `anthropic` / `ollama` / `openai_compatible`(自定义 `base_url`)。
-- **按功能选模型**:`features.{explain | nl_to_sql | chat | suggest_chart | error_fix}` 可各指定 provider/model,缺省回落到 `default_provider`。
-- **超时 / 重试**:`timeout_seconds`(默认 30)、`num_retries`(默认 2);依赖后端 `tenacity`。
-- 调用失败返回错误码 `ai_not_configured` / `ai_disabled`,前端据此引导去设置。
+- **Privacy**: provider `api_key` values are stored **Fernet-encrypted**; the read endpoint returns a masked `****` and never echoes back the plaintext. Generated SQL is always placed into the editor — **never auto-executed**.
+- **Provider types**: `openai` / `anthropic` / `ollama` / `openai_compatible` (custom `base_url`).
+- **Per-feature model selection**: `features.{explain | nl_to_sql | chat | suggest_chart | error_fix}` can each specify a provider/model, falling back to `default_provider` when unset.
+- **Timeout / retries**: `timeout_seconds` (default 30), `num_retries` (default 2); backed by `tenacity` on the backend.
+- Failed calls return error codes `ai_not_configured` / `ai_disabled`, which the frontend uses to guide the user to Settings.
 
 ---
 
 ## Frontend Build Flags (Vite, build-time)
 
-| Env | 作用 |
-|-----|------|
-| `VITE_DEMO=true` | 浏览器内 Demo 构建:查询走 **DuckDB-Wasm**,连库 / AI 入口锁为升级引导。**仅 gh-pages 构建设此项;自托管 / Docker 不设。** |
-| `VITE_API_URL` | 前端 API 基址(留空 = 同源)。 |
-| `VITE_BASE_URL` | 部署子路径(gh-pages 用 `/duckdb-query/`)。 |
+| Env | What it does |
+|-----|---------------|
+| `VITE_DEMO=true` | Browser-only demo build: queries run on **DuckDB-Wasm**; database-connection and AI entry points are locked behind an upgrade prompt. **Only set for the gh-pages build; never set for self-hosted / Docker.** |
+| `VITE_API_URL` | Frontend API base URL (empty = same-origin). |
+| `VITE_BASE_URL` | Deployment subpath (gh-pages uses `/duckdb-query/`). |
 
 ---
 
@@ -166,3 +166,68 @@ Most settings can be overridden via environment variables:
   "federated_query_timeout": 300
 }
 ```
+
+---
+
+## Query Behavior Notes
+
+See [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIOR_ZH.md) (Chinese only) for JOIN / set-operation preview, LIMIT, and BY NAME semantics.
+
+---
+
+## Slow Query & Profiling
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `duckdb_enable_profiling` | string | `"query_tree"` | Per-connection `SET enable_profiling` |
+| `duckdb_profiling_output` | string \| null | `null` | Profiling output file (on Docker this must be on a mounted volume, e.g. `/app/data/duckdb/profiling.json`) |
+| `duckdb_auto_explain_threshold_ms` | integer | `0` | Log `EXPLAIN` output for queries slower than this many ms; `0` disables it; `5000` is a reasonable production value |
+
+Environment variable: `DUCKDB_AUTO_EXPLAIN_THRESHOLD_MS`.
+
+---
+
+## JSON / VARIANT Ingestion
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `json_import_column_type` | string | `"auto"` | `auto`: DuckDB infers column types; `variant`: every column becomes `VARIANT` (upload-time `import_mode=variant` takes precedence) |
+
+**DuckDB storage format**: the app opens `main.db` / `system.db` with `storage_compatibility_version=latest` (see `api/core/database/duckdb_storage.py`); new databases use v1.5.x storage, which can persist `VARIANT` columns.
+
+### Migrating an older main.db to latest (small table/data volumes)
+
+Older databases are typically on `v1.0.0+` / `v1.4.x` storage and **cannot** write `VARIANT` tables directly — a one-time migration is required:
+
+1. **Stop** the API (`uvicorn` / container) so the `.db` file isn't locked.
+2. Confirm the Python package is **`duckdb==1.5.3`** (`cd api && pip install -r requirements.txt`).
+3. Preview:
+   ```bash
+   cd api
+   python scripts/migrate_storage_to_latest.py --dry-run
+   ```
+4. Run it (backs up to `data/duckdb/backup_storage_migration_<timestamp>/` before replacing the database file):
+   ```bash
+   python scripts/migrate_storage_to_latest.py
+   ```
+   Or skip the interactive prompt: `python scripts/migrate_storage_to_latest.py --yes`
+5. **Restart** the service, then verify by uploading JSON in the UI or setting `json_import_column_type=variant`.
+
+Migrate only the main or system database: `--only main` / `--only system`.
+
+Migration logic: open the old database read-only → create a new file on `latest` storage → `CREATE TABLE AS SELECT` per table → back up the old file and swap it in.
+
+---
+
+## Enterprise Network & Extensions
+
+| Mechanism | Description |
+|-----------|--------------|
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | Passed through from the host by `docker-compose.yml`; `url_reader`'s **requests fallback download** honors the proxy |
+| `DUCKDB_EXTENSION_DIRECTORY` | Persistent extension directory, default `/app/data/duckdb/extensions` (matches the `./data` volume) |
+| `DUCKDB_REMOTE_SETTINGS` | JSON string merged into `duckdb_remote_settings` (S3/OSS credentials — do not bake into the image) |
+| `duckdb_extensions` | Defaults include `httpfs`; the Docker image pre-installs `mysql`, `postgres`, `httpfs`, `spatial`, etc. |
+
+**Note**: whether DuckDB's **httpfs** extension honors the system proxy depends on DuckDB 1.5.3's runtime behavior — test it against `s3://` or HTTPS URLs in the target environment. The application layer only guarantees proxy support on the Python `requests` fallback path.
+
+S3 data paths go over the network via `duckdb_remote_settings` and do **not** depend on `server_data_mounts` host directory mounts.

@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://chenkeliang.github.io/duckdb-query/"><img src="https://img.shields.io/badge/在线_Demo-浏览器内试用-F4B43C?logo=duckdb&logoColor=white" alt="Live Demo"></a>
-  <img src="https://img.shields.io/badge/Python-3.12+-3776AB.svg?logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black" alt="React">
   <img src="https://img.shields.io/badge/DuckDB-Powered-FFBF00.svg?logo=duckdb&logoColor=white" alt="DuckDB">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT">
@@ -55,6 +55,8 @@ git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && 
 ```
 
 打开 **http://localhost:48000** 即可开始查询。
+
+> 不想用 Docker？下面的[桌面版](#桌面版)提供 macOS / Windows 原生安装包，内置后端。
 
 ---
 
@@ -151,6 +153,22 @@ docker compose up -d --build frontend
 ```
 
 **完全停止服务**（仍保留 `./data`）：`docker compose down`（请勿随意使用 `down -v`）。
+
+### 桌面版
+
+macOS（Apple Silicon / Intel）与 Windows（x64）原生安装包，内置后端（PyInstaller 打包成随包 sidecar），**无需安装 Docker、无需命令行**。
+
+👉 **[前往 GitHub Releases 下载](https://github.com/Chenkeliang/duckdb-query/releases/latest)**
+
+| 平台 | 安装包 |
+|------|--------|
+| macOS Apple Silicon | `.dmg` |
+| macOS Intel | `.dmg` |
+| Windows x64 | 安装程序（NSIS） |
+
+- **首次启动**：安装包未做 Apple / Microsoft 官方证书签名（仅 ad-hoc 签名），系统会拦截——macOS 需「系统设置 → 隐私与安全性 → 仍要打开」，Windows 需 SmartScreen「更多信息 → 仍要运行」。
+- **应用内自动更新**：启动时检测 GitHub Releases 上的新版本，下载进度可见，一键安装并重启；更新包由仓库私钥签名、应用内置公钥校验。
+- **功能范围**：本地文件查询、MySQL/Postgres 连接、AI 问数等与自托管版一致（AI 仍需自行在「设置」里配置模型 API Key）；暂无 Linux 安装包。
 
 ### 本地开发
 

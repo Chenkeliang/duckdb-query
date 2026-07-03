@@ -9,7 +9,8 @@ Ready-to-paste copy for the cold-start. 9 months at ~2 stars means the product i
 ## 0. Pre-launch checklist (do FIRST)
 
 - [ ] **Set the social preview image** — repo → Settings → General → *Social preview* → upload `docs/assets/og-cover.png`. (This makes every shared link show a real card instead of bland text.)
-- [ ] Verify `./quick-start.sh` works from a clean clone (this is the only real entry point — there is **no hosted demo** that runs queries; the gh-pages page is a UI shell with no backend). Either wire a real backend to it or don't link it as a "demo".
+- [ ] Click through the live demo (`https://chenkeliang.github.io/duckdb-query/`) before linking it anywhere — it's a real DuckDB-Wasm build that runs SQL client-side against the sample tables or any CSV/Parquet/JSON you drop in (see `.github/workflows/deploy-pages.yml`, `VITE_DEMO=true`). It has no backend, so DB connections and AI are locked behind an upgrade prompt — confirm that prompt reads clearly rather than looking broken.
+- [ ] Verify `./quick-start.sh` works from a clean clone — it's the entry point for the two things the browser demo can't do: connecting a real MySQL/Postgres and using the AI features.
 - [ ] Add 2–3 **`good first issue`** labels so visitors have a way to contribute.
 - [ ] Pin one issue: "Roadmap / what to build next — vote here".
 - [ ] Make sure the first README screen shows the **AI** features (done) + a GIF (done).
@@ -47,14 +48,18 @@ It also has an AI layer that's opt-in and local-first:
   and suggests a fix when a query errors
 - one-click chart suggestions for a result set
 
-Try it (one command, self-hosted — your data never leaves your machine):
+Try it in the browser first, no install (DuckDB-Wasm, runs real SQL client-side
+against sample tables or your own CSV/Parquet/JSON): https://chenkeliang.github.io/duckdb-query/
+For MySQL/Postgres connections and AI, self-host (one command, your data never
+leaves your machine):
   git clone … && ./quick-start.sh   → http://localhost:48000
 (README has GIFs if you'd rather watch first.)
 
 Stack: DuckDB + FastAPI + React. MIT. API keys for the AI are encrypted server-side
 and the generated SQL is always shown for review, never run automatically.
 
-Honest limitations: it's self-hosted (no hosted SaaS yet); large result sets are
+Honest limitations: the browser demo can't connect a real database or run AI —
+both need the self-hosted backend (no hosted SaaS yet); large result sets are
 paginated; the AI features are off until you add your own model key.
 
 I'd love feedback on the cross-source JOIN flow and the text-to-SQL guardrails.
@@ -123,7 +128,7 @@ Open PRs / submissions to lists that send traffic for years:
 - **awesome-db-tools**, **mrkkrp/awesome-database-tools** style lists
 - "DBeaver alternatives" / "TablePlus alternatives" roundups (AlternativeTo.net listing)
 - DuckDB's community page / Discord #showcase
-- Submit to **Product Hunt** (separate launch day; use the og image + the demo video as the gallery — not the non-functional gh-pages link)
+- Submit to **Product Hunt** (separate launch day; gallery = og image + a demo video/GIF; link both the live gh-pages demo and the one-command self-host in the listing)
 
 ---
 
