@@ -61,13 +61,13 @@ CATALOG: Dict[str, Tuple[str, str, str, Optional[str]]] = {
         CATEGORY_DATASOURCE,
         "访问 S3 存储(凭证与签名,配合 httpfs)",
         "S3 credentials & signing (with httpfs)",
-        "CREATE SECRET (TYPE s3, PROVIDER credential_chain); SELECT * FROM 's3://bucket/x.parquet'",
+        "CREATE OR REPLACE SECRET my_s3 (TYPE s3, KEY_ID 'AK...', SECRET '...', REGION 'ap-east-1'); SELECT * FROM 's3://bucket/x.parquet'",
     ),
     "azure": (
         CATEGORY_DATASOURCE,
         "读取 Azure Blob 存储",
         "Read Azure Blob Storage",
-        "CREATE SECRET (TYPE azure, CONNECTION_STRING '...'); SELECT * FROM 'az://container/x.parquet'",
+        "CREATE OR REPLACE SECRET my_az (TYPE azure, CONNECTION_STRING '...'); SELECT * FROM 'az://container/x.parquet'",
     ),
     "iceberg": (
         CATEGORY_DATASOURCE,
@@ -124,7 +124,7 @@ CATALOG: Dict[str, Tuple[str, str, str, Optional[str]]] = {
         CATEGORY_CAPABILITY,
         "向量相似度检索(HNSW 索引)",
         "Vector similarity search (HNSW)",
-        "CREATE INDEX idx ON tbl USING HNSW (embedding)",
+        "SET hnsw_enable_experimental_persistence = true; CREATE INDEX idx ON tbl USING HNSW (embedding)",
     ),
     "spatial": (
         CATEGORY_CAPABILITY,
