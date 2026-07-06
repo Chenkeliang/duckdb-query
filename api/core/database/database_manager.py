@@ -135,7 +135,8 @@ class DatabaseManager:
                     # 创建连接引擎
                     try:
                         engine = self._create_engine(connection.type, connection.params)
-                        self.engines[connection.id] = engine
+                        if engine is not None:
+                            self.engines[connection.id] = engine
                         connection.status = ConnectionStatus.ACTIVE
                         logger.info(f"Successfully added database connection: {connection.id}")
                     except Exception as e:
@@ -460,8 +461,13 @@ class DatabaseManager:
                 f"@{params['host']}:{params.get('port', 5432)}/{params['database']}"
             )
         elif db_type == DataSourceType.SQLITE:
-            db_path = params.get("database", ":memory:")
+            # 连接保存的参数键是 path(见 datasources 创建流程),database 为兼容旧数据
+            db_path = params.get("path") or params.get("database", ":memory:")
             connection_string = f"sqlite:///{db_path}"
+        elif db_type == DataSourceType.DUCKDB:
+            # DuckDB 文件型连接不经 SQLAlchemy：查询走 ATTACH（见 duckdb_engine.build_attach_sql），
+            # 无需引擎，调用方应将 None 视为「无需注册引擎」而非失败
+            return None
         else:
             raise ValueError(f"Unsupported database type: {db_type}")
 
