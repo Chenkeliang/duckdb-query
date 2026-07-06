@@ -14,6 +14,7 @@ PRESEEDED 中的扩展在桌面端打包时已随安装包下发（见 api/scrip
 import gzip
 import logging
 import os
+import ssl
 import threading
 import urllib.request
 from typing import Dict, Optional, Tuple
@@ -272,10 +273,25 @@ def _resolve_target_path(name: str) -> Tuple[str, str, str]:
     return url, dest_dir, dest_path
 
 
+def _ssl_context() -> Optional[ssl.SSLContext]:
+    """显式用 certifi 的 CA 包建 SSL 上下文。
+
+    PyInstaller 冻结的 Python 没有系统 CA 证书路径,默认 urlopen 会报
+    CERTIFICATE_VERIFY_FAILED(桌面端实际踩过);certifi 随依赖打进包里,始终可用。
+    开发环境拿不到 certifi 时返回 None,走系统默认验证——绝不降级为跳过验证。
+    """
+    try:
+        import certifi  # pylint: disable=import-outside-toplevel
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return None
+
+
 def _download_extension_archive(url: str, gz_path: str, name: str) -> None:
     """流式下载扩展压缩包，按 Content-Length 更新 0-90 的下载进度"""
     request = urllib.request.Request(url, headers={"User-Agent": _DOWNLOAD_USER_AGENT})
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with urllib.request.urlopen(request, timeout=60, context=_ssl_context()) as response:
         total_size = int(response.headers.get("Content-Length") or 0)
         downloaded = 0
         chunk_size = 64 * 1024
