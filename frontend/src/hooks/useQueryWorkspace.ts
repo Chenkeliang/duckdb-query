@@ -54,6 +54,10 @@ export interface UseQueryWorkspaceReturn {
   /** 新查询执行中（多 Tab 模式下不清空当前表格，仅用于工具栏 loading） */
   isResultLoading: boolean;
   lastQuery: LastQuery | null;
+  /** 最近一次执行失败(两种结果模式都记录):供自愈横幅等"针对失败的操作"使用,成功后清空 */
+  lastFailure: { sql: string; source: TableSource; errorMessage: string } | null;
+  /** 用失败时的 SQL/source 原样重跑 */
+  retryLastFailure: () => Promise<void>;
   retainQueryResults: boolean;
   resultTabs: ResultTabEntry[];
   activeResultTabId: string | null;
@@ -135,6 +139,13 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   const [singleResult, setSingleResult] = useState<QueryResult | null>(null);
   const [singleLastQuery, setSingleLastQuery] = useState<LastQuery | null>(null);
+  // 最近一次失败:多 Tab 模式下失败的新查询不会生成结果 Tab(只有 toast),
+  // 必须在工作区级记录,自愈横幅才有渲染依据(单结果模式也统一走这里)
+  const [lastFailure, setLastFailure] = useState<{
+    sql: string;
+    source: TableSource;
+    errorMessage: string;
+  } | null>(null);
   const [singleResultSlotLabel, setSingleResultSlotLabel] = useState('');
 
   const [isResultLoading, setIsResultLoading] = useState(false);
@@ -384,6 +395,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         } else {
           commitSuccessfulResult(sql, querySource, response);
         }
+        setLastFailure(null);
       } catch (error) {
         if (currentRequestIdRef.current !== requestId) {
           return;
@@ -417,6 +429,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
           // 上一次成功查询（或 null），导致"重跑/AI 修复"等依赖 lastQuery 的功能取不到 SQL
           setSingleLastQuery({ sql, source: querySource });
         }
+        setLastFailure({ sql, source: querySource, errorMessage: (error as Error).message });
 
         showErrorToast(t, undefined, t('query.error', { message: (error as Error).message }));
       }
@@ -457,6 +470,11 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   const refreshActiveResult = useCallback(async () => {
     await refreshResultTab(activeResultTabId ?? undefined);
   }, [activeResultTabId, refreshResultTab]);
+
+  const retryLastFailure = useCallback(async () => {
+    if (!lastFailure) return;
+    await executeQuery(lastFailure.sql, lastFailure.source);
+  }, [lastFailure, executeQuery]);
 
   const selectResultTab = useCallback((id: string) => {
     setActiveResultTabId(id);
@@ -663,6 +681,8 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     handleQueryExecute,
     refreshActiveResult,
     refreshResultTab,
+    lastFailure,
+    retryLastFailure,
     selectResultTab,
     closeResultTabById,
     closeOtherResultTabsById,

@@ -49,6 +49,11 @@ export interface ResultPanelProps {
   onRefresh?: () => void;
   /** 仅刷新指定结果 Tab（多 Tab 模式） */
   onRefreshTab?: (tabId: string) => void;
+  /** 最近一次执行失败的报错文本(工作区级,两种结果模式都有):自愈横幅据此判断是否渲染。
+   *  多 Tab 模式下失败的新查询不产生结果 Tab,面板 error 恒为空,必须走这条独立通道 */
+  selfHealErrorMessage?: string | null;
+  /** 自愈横幅"重跑":用失败时的 SQL/source 原样重执行 */
+  onSelfHealRerun?: () => void;
   className?: string;
   emptyMessage?: string;
   showToolbar?: boolean;
@@ -92,6 +97,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   previewLimitApplied,
   onRefresh,
   onRefreshTab,
+  selfHealErrorMessage = null,
+  onSelfHealRerun,
   className = '',
   emptyMessage,
   showToolbar = true,
@@ -360,15 +367,25 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const renderHeaderBar = (toolbar: React.ReactNode) => {
     if (!headerLeft && !toolbar) return null;
     return (
-      <div className="flex items-stretch border-b border-border bg-muted/30 min-h-[40px]">
-        <div className="flex min-w-0 flex-1 items-center overflow-x-auto">{headerLeft}</div>
-        {toolbar && (
-          <div className="flex shrink-0 items-center pr-2">
-            <div className="mx-2 h-4 w-px bg-border" />
-            {toolbar}
-          </div>
+      <>
+        <div className="flex items-stretch border-b border-border bg-muted/30 min-h-[40px]">
+          <div className="flex min-w-0 flex-1 items-center overflow-x-auto">{headerLeft}</div>
+          {toolbar && (
+            <div className="flex shrink-0 items-center pr-2">
+              <div className="mx-2 h-4 w-px bg-border" />
+              {toolbar}
+            </div>
+          )}
+        </div>
+        {/* 自愈横幅挂在头部栏下方:与结果视图分支无关,多 Tab 模式失败(无错误视图)也可见 */}
+        {selfHealErrorMessage && onSelfHealRerun && (
+          <EngineCompatSelfHealBanner
+            errorMessage={selfHealErrorMessage}
+            onRerun={onSelfHealRerun}
+            className="mx-3 mt-2"
+          />
         )}
-      </div>
+      </>
     );
   };
 
@@ -482,13 +499,6 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
                   names: suggestion.candidates.map((c) => `"${c}"`).join(', '),
                 })}
               </span>
-            )}
-            {onRefresh && (
-              <EngineCompatSelfHealBanner
-                errorMessage={error.message}
-                onRerun={onRefresh}
-                className="w-full text-left"
-              />
             )}
             {aiEnabled && effectiveSQL && (
               <Button variant="outline" size="sm" disabled={aiFixing} onClick={runAiFix}>

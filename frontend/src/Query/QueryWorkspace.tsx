@@ -40,6 +40,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
     currentTab,
     queryResults,
     lastQuery,
+    lastFailure,
+    retryLastFailure,
     isResultLoading,
     retainQueryResults,
     resultTabs,
@@ -307,6 +309,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
                       : (queryResults?.loading ?? false) || isResultLoading
                   }
                   error={queryResults?.error ?? null}
+                  selfHealErrorMessage={lastFailure?.errorMessage ?? null}
+                  onSelfHealRerun={() => void retryLastFailure()}
                   execTime={queryResults?.execTime}
                   previewLimitApplied={queryResults?.previewLimitApplied}
                   source={lastQuery?.source}
