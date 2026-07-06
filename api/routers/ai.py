@@ -143,6 +143,146 @@ def _build_schema_text(
     return "\n".join(lines)
 
 
+# [完整目录] 预算与展开上限：见 _build_catalog_text 说明
+_CATALOG_CHAR_BUDGET = 9000
+_CATALOG_LOCAL_TABLE_LIMIT = 20
+_CATALOG_EXTERNAL_TABLE_LIMIT = 30
+_CATALOG_COLUMN_LIMIT = 30
+
+
+def _format_catalog_table(name: str, columns: list[tuple]) -> str:
+    """单表的目录行：`表名(col TYPE, ...)`，超过 30 列截断并标注剩余数量。"""
+    shown = columns[:_CATALOG_COLUMN_LIMIT]
+    col_str = ", ".join(f"{c[0]} {c[1]}" for c in shown)
+    extra = len(columns) - len(shown)
+    if extra > 0:
+        col_str += f", ... +{extra} more"
+    return f"{name}({col_str})"
+
+
+def _catalog_lines_for_tables(
+    con: Any,
+    database_name: str,
+    table_names: list[str],
+    selected: set,
+    detail_limit: int,
+    name_prefix: str = "",
+) -> list[str]:
+    """给一批表名生成目录行：前 detail_limit 张带列，其余仅列名。
+
+    已出现在 selected（详细段）里的表，这里跳过列只列名，避免重复。
+    """
+    lines: list[str] = []
+    detailed, rest = table_names[:detail_limit], table_names[detail_limit:]
+    for name in detailed:
+        qualified = f"{name_prefix}{name}" if name_prefix else name
+        if name in selected or qualified in selected:
+            lines.append(f"  {name}")
+            continue
+        try:
+            cols = con.execute(
+                """
+                SELECT column_name, data_type FROM duckdb_columns()
+                WHERE database_name = ? AND table_name = ?
+                ORDER BY column_index
+                """,
+                [database_name, name],
+            ).fetchall()
+            lines.append(f"  {_format_catalog_table(name, cols)}")
+        except Exception as exc:  # noqa: BLE001  单表枚举失败不影响其它表
+            logger.warning("catalog: describe %s.%s failed: %s", database_name, name, exc)
+            lines.append(f"  {name}")
+    if rest:
+        lines.append(f"  (仅名字: {', '.join(rest)})")
+    return lines
+
+
+def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None) -> str:
+    """构造聊天上下文里的"完整目录"，与 _build_schema_text 互补。
+
+    _build_schema_text 只详细展开前端选中的（<=10 张）表；用户在对话里提到未选中
+    但同一连接下存在的表（如 JOIN 页只勾了 alerts，问「把 rules 也加入」）时，AI 单看
+    详细段会误判"表不存在"。本函数额外枚举本地库 + 已挂载外部库的全部表名（前 N 张
+    带列），让 AI 能在目录里确认表是否存在、以及外部表该用哪个 alias.table 引用。
+
+    任何一个来源枚举失败都 try/except 跳过并 logger.warning，不让 chat 整体失败。
+    """
+    sections: list[str] = []
+    try:
+        attach_configs = resolve_attach_configs(attach_databases)
+    except Exception as exc:  # noqa: BLE001  连接已被删除等场景不应影响本地目录
+        logger.warning("catalog: resolve attach_databases failed: %s", exc)
+        attach_configs = []
+    with with_duckdb_connection() as con:
+        attached: list[str] = []
+        try:
+            # 本地 DuckDB 表：目录名用 current_database()，不假设固定叫 main
+            try:
+                local_db = con.execute("SELECT current_database()").fetchone()[0]
+                local_names = [
+                    r[0]
+                    for r in con.execute(
+                        """
+                        SELECT table_name FROM duckdb_tables()
+                        WHERE NOT internal AND database_name = ?
+                        ORDER BY table_name
+                        """,
+                        [local_db],
+                    ).fetchall()
+                ]
+                if local_names:
+                    lines = ["Local DuckDB tables:"]
+                    lines.extend(
+                        _catalog_lines_for_tables(
+                            con, local_db, local_names, selected, _CATALOG_LOCAL_TABLE_LIMIT
+                        )
+                    )
+                    sections.append("\n".join(lines))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("catalog: enumerate local tables failed: %s", exc)
+
+            # 外部（联邦）库：逐个 alias 枚举，单个失败不影响其它 alias / 本地段
+            if attach_configs:
+                try:
+                    attached = attach_databases_on_connection(con, attach_configs)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("catalog: attach external databases failed: %s", exc)
+                for alias in attached:
+                    try:
+                        ext_names = [
+                            r[0]
+                            for r in con.execute(
+                                "SELECT table_name FROM duckdb_tables() "
+                                "WHERE database_name = ? ORDER BY table_name",
+                                [alias],
+                            ).fetchall()
+                        ]
+                        if not ext_names:
+                            continue
+                        lines = [f"External database {alias} (reference as {alias}.table):"]
+                        lines.extend(
+                            _catalog_lines_for_tables(
+                                con,
+                                alias,
+                                ext_names,
+                                selected,
+                                _CATALOG_EXTERNAL_TABLE_LIMIT,
+                                name_prefix=f"{alias}.",
+                            )
+                        )
+                        sections.append("\n".join(lines))
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("catalog: enumerate external db %s failed: %s", alias, exc)
+        finally:
+            if attached:
+                detach_databases_on_connection(con, attached)
+
+    text = "\n\n".join(sections)
+    if len(text) > _CATALOG_CHAR_BUDGET:
+        text = text[:_CATALOG_CHAR_BUDGET] + "\n  (catalog truncated)"
+    return text
+
+
 @router.post("/api/ai/error-fix", tags=["AI"])
 def error_fix(payload: ErrorFixPayload):
     cfg = ai_config.load_ai_settings()
@@ -231,7 +371,15 @@ class ChatPayload(BaseModel):
 @router.post("/api/ai/chat", tags=["AI"])
 def chat_route(payload: ChatPayload):
     cfg = ai_config.load_ai_settings()
-    schema_text = _build_schema_text(payload.tables, payload.attach_databases)
+    detailed_text = _build_schema_text(payload.tables, payload.attach_databases)
+    try:
+        catalog_text = _build_catalog_text(set(payload.tables), payload.attach_databases)
+    except Exception as exc:  # noqa: BLE001  目录构建失败不应影响 chat 本身
+        logger.warning("catalog build failed, falling back to detailed schema only: %s", exc)
+        catalog_text = ""
+    schema_text = f"[Selected tables (detailed)]\n{detailed_text}"
+    if catalog_text:
+        schema_text += f"\n\n[Full catalog]\n{catalog_text}"
     try:
         result = ai_chat.chat(
             LLMService(cfg),

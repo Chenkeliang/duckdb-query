@@ -23,8 +23,11 @@ def chat(
         "(DuckDB with ATTACH to MySQL/PostgreSQL). Help the user understand their "
         "data and write queries. When you provide SQL, use DuckDB dialect, prefer "
         "read-only SELECT, and put it inside a ```sql fenced code block. Be concise "
-        f"and accurate. Respond in {lang}.\n\n"
-        f"Available tables (schema):\n{schema_text or '(none provided)'}"
+        "and accurate. External tables listed under the catalog's 'External database "
+        "<alias>' sections must be referenced as alias.table; if the user asks about "
+        "a table that does not appear anywhere below, say honestly that it cannot be "
+        f"found instead of guessing. Respond in {lang}.\n\n"
+        f"{schema_text or '(none provided)'}"
     )
     # 只保留合法的 user/assistant 非空消息，丢掉前端可能混入的其它字段
     history = [
