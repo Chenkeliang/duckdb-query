@@ -4,6 +4,7 @@ import importlib
 def test_excel_import_manager_has_no_module_level_mkdir(monkeypatch, tmp_path):
     """导入模块不应在 __file__ 旁创建目录(冻结后只读会崩)。"""
     import core.common.paths as paths
+    monkeypatch.delenv("TEMP_FILES_DIR", raising=False)  # conftest 全局隔离会设它,本测试验证默认解析
     monkeypatch.setattr(paths, "get_user_data_dir", lambda: tmp_path / "ud")
 
     import core.data.excel_import_manager as eim
