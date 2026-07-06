@@ -126,3 +126,39 @@ describe('buildJoinQueryPayload', () => {
         expect(payload?.joins[0].alias_left).not.toContain('.');
     });
 });
+
+describe('resolvedTypes 键一致性(外部表回归)', () => {
+    // 回归背景(2026-07): 冲突检测端用纯表名做键,payload 端曾用 source id
+    // (外部表形如 sqlite_alarm_sqlite.alerts) —— 键不一致导致用户在冲突
+    // 对话框选好的 TRY_CAST 在服务端路径被静默丢弃,执行时报 Conversion Error。
+    it('external table cast resolved by plain table-name key reaches conditions', () => {
+        const externalTables = [
+            {
+                name: 'alerts',
+                source: 'external' as const,
+                connection: { id: 'ALARM-SQLITE', name: 'ALARM-SQLITE', type: 'sqlite' as const },
+            },
+            { name: '粘贴数据_demo', source: 'duckdb' as const },
+        ];
+        const configs = [
+            {
+                joinType: 'LEFT JOIN' as const,
+                conditions: [
+                    { leftColumn: 'record_id', rightColumn: '列1名称', operator: '=' as const },
+                ],
+            },
+        ];
+        const payload = buildJoinQueryPayload({
+            activeTables: externalTables,
+            joinConfigs: configs,
+            filterTree: createEmptyGroup(),
+            // 检测端(useTypeConflict)保存的键:纯表名,小写
+            resolvedTypes: { 'alerts.record_id::粘贴数据_demo.列1名称': 'VARCHAR' },
+            maxQueryRows: 1000,
+        });
+        expect(payload).not.toBeNull();
+        const cond = payload?.joins[0].conditions[0];
+        expect(cond?.left_cast).toBe('VARCHAR');
+        expect(cond?.right_cast).toBe('VARCHAR');
+    });
+});

@@ -232,10 +232,13 @@ export function buildJoinQueryPayload(params: {
         const conditions: JoinQueryCondition[] = config.conditions
             .filter((c) => c.leftColumn?.trim() && c.rightColumn?.trim())
             .map((c) => {
+                // 冲突键必须与检测端(useTypeConflict,用纯表名)一致:外部表的 source id
+                // 带联邦前缀(如 sqlite_alarm_sqlite.alerts),用它查 resolvedTypes 必然落空,
+                // 用户在冲突对话框选好的转换会在服务端 payload 路径被静默丢弃
                 const conflictKey = generateConflictKey(
-                    leftName,
+                    leftTableName,
                     c.leftColumn,
-                    rightName,
+                    rightTableName,
                     c.rightColumn
                 );
                 const cast = resolvedTypes[conflictKey];
