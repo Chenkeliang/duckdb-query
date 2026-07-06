@@ -309,6 +309,9 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
         else:
             logger.info("No DuckDB extensions configured to load")
 
+        # 应用引擎兼容性配置（SET GLOBAL，逐项 try/except，见函数注释）
+        apply_engine_compat_settings(connection, app_config.engine_compat)
+
     except Exception as e:
         logger.error(f"Error applying DuckDB configuration: {str(e)}")
         # 使用默认配置作为后备
@@ -341,6 +344,34 @@ def _install_duckdb_extensions(connection, extensions: List[str]):
                 logger.warning(
                     f"Failed to install or load DuckDB extension {ext_name}: {str(install_error)}"
                 )
+
+
+# 引擎兼容性配置对应的 DuckDB SET GLOBAL 选项名，分别由 sqlite_scanner / mysql /
+# postgres / iceberg 扩展注册。字段名与 DuckDB 官方 option 名完全一致，无需映射表。
+ENGINE_COMPAT_OPTIONS = (
+    "sqlite_all_varchar",
+    "mysql_incomplete_dates_as_nulls",
+    "pg_array_as_varchar",
+    "unsafe_enable_version_guessing",
+)
+
+
+def apply_engine_compat_settings(connection, engine_compat: Optional[Dict[str, Any]]) -> None:
+    """应用引擎兼容性配置。
+
+    SET GLOBAL 是数据库实例级作用域：在池中任意一个连接上执行，所有池化连接立即生效。
+    这四个 option 分别由 sqlite_scanner/mysql/postgres/iceberg 扩展注册，扩展未加载
+    （且离线无法自动安装）时 SET GLOBAL 会报 "unrecognized configuration option"，因此
+    逐项 try/except 并降级为 debug 日志，绝不能因为某个开关对应的扩展没装就搞坏连接初始化。
+    """
+    if not engine_compat:
+        return
+    for option in ENGINE_COMPAT_OPTIONS:
+        value = bool(engine_compat.get(option, False))
+        try:
+            connection.execute(f"SET GLOBAL {option}={str(value).lower()}")
+        except Exception as exc:  # noqa: BLE001  扩展未加载时的预期失败，静默降级
+            logger.debug("engine_compat SET GLOBAL %s=%s skipped: %s", option, value, exc)
 
 
 def _apply_default_duckdb_config(connection, temp_dir: str):
@@ -388,6 +419,9 @@ def _apply_default_duckdb_config(connection, temp_dir: str):
         extensions_to_load = _resolve_duckdb_extensions(app_config)
         if extensions_to_load:
             _install_duckdb_extensions(connection, extensions_to_load)
+
+        # 应用引擎兼容性配置（SET GLOBAL，逐项 try/except，见函数注释）
+        apply_engine_compat_settings(connection, app_config.engine_compat)
 
         logger.info("Successfully applied default DuckDB configuration from config file")
 

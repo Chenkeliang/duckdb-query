@@ -413,6 +413,9 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
             loading: false,
             error: error as Error,
           });
+          // 失败时也记录本次查询（sql/source），否则首次查询即失败时 lastQuery 仍是
+          // 上一次成功查询（或 null），导致"重跑/AI 修复"等依赖 lastQuery 的功能取不到 SQL
+          setSingleLastQuery({ sql, source: querySource });
         }
 
         showErrorToast(t, undefined, t('query.error', { message: (error as Error).message }));
@@ -430,6 +433,13 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   const refreshResultTab = useCallback(
     async (tabId?: string) => {
+      // 单结果槽（不保留多 Tab）没有 activeResultTabId/resultTabs 记录，靠 singleLastQuery 重跑
+      if (!retainQueryResults) {
+        if (!singleLastQuery?.sql) return;
+        await executeQuery(singleLastQuery.sql, singleLastQuery.source, { refresh: true });
+        return;
+      }
+
       const targetId = tabId ?? activeResultTabId;
       if (!targetId) return;
 
@@ -441,7 +451,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         tabId: targetId,
       });
     },
-    [activeResultTabId, executeQuery, resultTabs]
+    [retainQueryResults, singleLastQuery, activeResultTabId, executeQuery, resultTabs]
   );
 
   const refreshActiveResult = useCallback(async () => {

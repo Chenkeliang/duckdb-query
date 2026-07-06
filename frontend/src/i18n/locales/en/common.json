@@ -282,6 +282,14 @@
       "didYouMean": "Did you mean: {{names}}?",
       "aiExplainFix": "AI explain & fix",
       "aiFixFailed": "AI fix failed",
+      "selfHeal": {
+        "saveFailed": "Failed to enable compatibility mode",
+        "sqliteTypeMismatch": {
+          "title": "SQLite type mismatch",
+          "description": "This database has rows whose declared column type doesn't match the actual stored value",
+          "action": "Enable SQLite compatibility mode & re-run"
+        }
+      },
       "rowCount": "{{count}} rows",
       "execTime": "Execution time: {{time}}ms",
       "rows": "rows",
@@ -1117,6 +1125,21 @@
       "autoFitHint": "Auto-size columns to content on new results; fixed default width when off.",
       "saveSuccess": "Result table settings saved",
       "saveFailed": "Failed to save result table settings"
+    },
+    "engineCompat": {
+      "title": "Engine compatibility",
+      "description": "Adjust read behavior for dirty data / non-standard sources as needed; saved changes take effect immediately.",
+      "sqliteAllVarcharLabel": "SQLite read-as-text",
+      "sqliteAllVarcharHint": "Read all SQLite columns as text to avoid errors from declared vs. actual storage type mismatches; CAST is needed to aggregate numeric columns.",
+      "mysqlIncompleteDatesLabel": "MySQL invalid dates as NULL",
+      "mysqlIncompleteDatesHint": "Zero dates such as 0000-00-00 no longer raise errors",
+      "pgArrayLabel": "Postgres arrays as text",
+      "pgArrayHint": "Compatible with mixed-dimension arrays",
+      "icebergVersionLabel": "Iceberg version guessing",
+      "icebergVersionHint": "Read local Iceberg directories without a catalog (unsafe)",
+      "saveSuccess": "Saved and applied",
+      "saveFailed": "Failed to save",
+      "loadFailed": "Failed to load engine compatibility settings"
     },
     "cache": {
       "title": "Cache Settings",

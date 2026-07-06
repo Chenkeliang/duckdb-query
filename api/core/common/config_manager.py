@@ -123,6 +123,12 @@ class AppConfig:
     duckdb_remote_settings: Dict[str, Any] = None
     """DuckDB 初始化时需要执行的 SET 语句，如 S3/OSS 参数"""
 
+    engine_compat: Dict[str, bool] = None
+    """引擎兼容性配置（四个布尔开关，默认全 false，与 DuckDB 原生默认一致）：
+    sqlite_all_varchar / mysql_incomplete_dates_as_nulls / pg_array_as_varchar /
+    unsafe_enable_version_guessing。字段名与 DuckDB SET GLOBAL 的 option 名完全一致，
+    实际生效逻辑见 core/database/duckdb_engine.py:apply_engine_compat_settings"""
+
     duckdb_debug_logging: bool = False
     """是否启用 DuckDB 调试日志（SHOW TABLES / EXPLAIN 等）"""
 
@@ -210,6 +216,16 @@ class AppConfig:
 
         if self.duckdb_remote_settings is None:
             self.duckdb_remote_settings = {}
+
+        if self.engine_compat is None:
+            self.engine_compat = {}
+        for _key in (
+            "sqlite_all_varchar",
+            "mysql_incomplete_dates_as_nulls",
+            "pg_array_as_varchar",
+            "unsafe_enable_version_guessing",
+        ):
+            self.engine_compat.setdefault(_key, False)
 
 
 class ConfigManager:

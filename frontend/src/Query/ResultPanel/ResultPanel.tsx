@@ -17,6 +17,7 @@ import { SQLHighlight } from '@/components/SQLHighlight';
 import { useAiEnabled } from '@/hooks/useAiEnabled';
 import { errorFix, type ErrorFixResult } from '@/api/aiApi';
 import { parseSQLTableReferences } from '@/utils/sqlUtils';
+import { EngineCompatSelfHealBanner } from '@/Query/components/EngineCompatSelfHealBanner';
 import { IS_DEMO } from '@/demo/isDemo';
 
 import { DataGridWrapper } from './DataGridWrapper';
@@ -481,6 +482,13 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
                   names: suggestion.candidates.map((c) => `"${c}"`).join(', '),
                 })}
               </span>
+            )}
+            {onRefresh && (
+              <EngineCompatSelfHealBanner
+                errorMessage={error.message}
+                onRerun={onRefresh}
+                className="w-full text-left"
+              />
             )}
             {aiEnabled && effectiveSQL && (
               <Button variant="outline" size="sm" disabled={aiFixing} onClick={runAiFix}>

@@ -282,6 +282,14 @@
       "didYouMean": "你是不是想找：{{names}}？",
       "aiExplainFix": "AI 解释并修复",
       "aiFixFailed": "AI 修复失败",
+      "selfHeal": {
+        "saveFailed": "开启兼容模式失败",
+        "sqliteTypeMismatch": {
+          "title": "SQLite 类型不一致",
+          "description": "该库存在声明类型与实际值不符的数据",
+          "action": "开启 SQLite 兼容模式并重跑"
+        }
+      },
       "rowCount": "共 {{count}} 行",
       "execTime": "执行时间: {{time}}ms",
       "rows": "行",
@@ -1117,6 +1125,21 @@
       "autoFitHint": "新结果加载时按内容自动调整列宽；关闭后用固定默认宽度。",
       "saveSuccess": "结果表设置已保存",
       "saveFailed": "保存结果表设置失败"
+    },
+    "engineCompat": {
+      "title": "引擎兼容性",
+      "description": "兼容脏数据/非标准数据源的读取行为，按需开启，保存后立即生效。",
+      "sqliteAllVarcharLabel": "SQLite 全文本读取",
+      "sqliteAllVarcharHint": "SQLite 列全部按文本读，规避声明类型与实际存储不符的报错；数字列聚合需 CAST",
+      "mysqlIncompleteDatesLabel": "MySQL 非法日期读为 NULL",
+      "mysqlIncompleteDatesHint": "0000-00-00 等零日期不再报错",
+      "pgArrayLabel": "Postgres 数组按文本读取",
+      "pgArrayHint": "兼容混合维度数组",
+      "icebergVersionLabel": "Iceberg 版本推断",
+      "icebergVersionHint": "读取无 catalog 的本地 Iceberg 目录（unsafe）",
+      "saveSuccess": "已保存并生效",
+      "saveFailed": "保存失败",
+      "loadFailed": "获取引擎兼容性配置失败"
     },
     "cache": {
       "title": "缓存设置",
