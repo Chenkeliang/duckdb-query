@@ -1973,7 +1973,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground cursor-help transition-colors px-2 py-0.5 rounded hover:bg-muted">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-help transition-colors px-2 py-0.5 rounded hover:bg-muted">
                     <Link2 className="w-3.5 h-3.5" />
                     <span>{t('query.join.attachedDatabases', '{{count}} 个外部数据库', { count: attachDatabases.length })}</span>
                     <Edit2 className="w-3 h-3 opacity-50" />
@@ -2024,19 +2024,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           </Alert>
         )}
 
-        {/* 联邦查询提示 */}
-        {sourceAnalysis.hasExternal && attachDatabases.length > 0 && (
-          <Alert className="mb-4 border-primary/50 bg-primary/10">
-            <Link2 className="h-4 w-4 text-primary" />
-            <AlertDescription className="text-primary">
-              {t(
-                'query.join.federatedQueryInfo',
-                '此查询将连接 {{count}} 个外部数据库进行联邦查询。',
-                { count: attachDatabases.length }
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
+        {/* 联邦查询状态由工具栏的「N 个外部数据库」指示器表达,不再重复横幅提示 */}
 
         {/* 表卡片区域 - 横向排列 */}
         <div className="flex items-start gap-4 min-h-72 pb-4 overflow-x-auto">
