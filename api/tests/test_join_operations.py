@@ -206,6 +206,28 @@ class TestJoinQueryGenerator:
                 assert "sqlite_ala" not in alias
                 assert not alias.endswith("_1")
 
+    def test_generate_improved_column_aliases_chinese_table_names(self):
+        """中文表名的冲突别名应保留中文（列名_表名），而不是被吞成下划线后再撞名加 _1。
+
+        回归背景(2026-07): 旧 simplify_table_name 用 [^a-zA-Z0-9_] 清洗，
+        「商品表」「订单表」全变下划线 → 结果列头出现 商品id______ / 商品id_______1。
+        """
+
+        class MockDataSource:
+            def __init__(self, id, columns):
+                self.id = id
+                self.columns = columns
+
+        source1 = MockDataSource("duckdb_demo.商品表", ["商品id", "商品名称"])
+        source2 = MockDataSource("duckdb_demo.订单表", ["商品id", "城市"])
+
+        aliases = generate_improved_column_aliases([source1, source2])
+
+        assert aliases["duckdb_demo.商品表"]["商品id"] == "商品id_商品表"
+        assert aliases["duckdb_demo.订单表"]["商品id"] == "商品id_订单表"
+        # 非冲突列保持原名
+        assert aliases["duckdb_demo.商品表"]["商品名称"] == "商品名称"
+
     def test_build_join_chain_simple(self):
         """测试构建简单JOIN链"""
         join = Join(

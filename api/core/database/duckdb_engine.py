@@ -1013,10 +1013,13 @@ def simplify_table_name(table_name: str, max_length: int = 10) -> str:
     if not table_name:
         return "table"
 
-    # 移除特殊字符并转换为小写
+    # 移除特殊字符并转换为小写。
+    # \w 按 Unicode 匹配,保留中文等非 ASCII 表名——冲突别名要求"列名_表名"可读,
+    # 旧的 [^a-zA-Z0-9_] 会把「商品表」「订单表」全吞成下划线,同连接两表再撞名加 _1。
+    # 别名在生成 SQL 时始终带双引号,含中文是合法标识符。
     import re
 
-    clean_name = re.sub(r"[^a-zA-Z0-9_]", "_", table_name).lower()
+    clean_name = re.sub(r"[^\w]", "_", table_name, flags=re.UNICODE).lower()
 
     # 如果名称太长，进行截断
     if len(clean_name) > max_length:
