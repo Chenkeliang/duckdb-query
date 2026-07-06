@@ -762,6 +762,24 @@ export function mergeAttachDatabases(
  * @param connections - 可用的数据库连接
  * @returns { attachDatabases, unrecognizedPrefixes }
  */
+// DuckDB 内置/本地目录名:以这些为前缀的表引用是本地查询,不是外部联邦前缀
+const LOCAL_CATALOG_NAMES = new Set(['main', 'temp', 'system', 'memory', 'main_db']);
+
+/**
+ * 提取 SQL 里 `ATTACH ... AS <别名>` 建立的本地目录别名(小写)。
+ * 用户手动 ATTACH 的 SQLite/DuckDB 文件属于本地目录,同一段 SQL 里再以
+ * `别名.表` 引用时,不能被联邦检测当成"未识别的数据库前缀"(实际误报过)。
+ */
+export function extractSqlAttachedAliases(sql: string): Set<string> {
+  const aliases = new Set<string>(LOCAL_CATALOG_NAMES);
+  const re = /\battach\b[^;]*?\bas\s+("([^"]+)"|[\w一-龥]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(sql)) !== null) {
+    aliases.add((m[2] ?? m[1]).toLowerCase());
+  }
+  return aliases;
+}
+
 export function buildAttachDatabasesFromParsedRefs(
   parsedRefs: ParsedTableReference[],
   connections: DatabaseConnection[]
