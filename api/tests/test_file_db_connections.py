@@ -239,3 +239,45 @@ class TestFederatedQueryWithFileDatabases:
             assert names == ["apple", "banana"]
         finally:
             _unregister_connection(connection_id)
+
+
+class TestDirtySQLiteDetailDegradation:
+    """脏 SQLite 库(声明类型与实际值不符)下 /tables/detail 的降级行为。
+
+    回归背景(2026-07): JOIN 面板取列信息走 /tables/detail,其 LIMIT 5 采样
+    在脏库上抛 Mismatch Type Error 导致整个接口 500,面板显示"无法获取列信息"。
+    列信息本身不读行数据,必须照常返回;采样失败只降级为空。
+    """
+
+    @pytest.fixture
+    def dirty_sqlite_file(self, tmp_path):
+        import sqlite3
+
+        path = str(tmp_path / "dirty.db")
+        con = sqlite3.connect(path)
+        con.execute("CREATE TABLE alerts (id INTEGER, updated_at INTEGER)")
+        con.execute("INSERT INTO alerts VALUES (1, 1700000000)")
+        con.execute("INSERT INTO alerts VALUES (2, '2025-11-21T04:07:54.227Z')")
+        con.commit()
+        con.close()
+        return path
+
+    def test_detail_returns_columns_even_when_sample_fails(self, dirty_sqlite_file):
+        connection_id = "test-dirty-sqlite-detail"
+        _register_connection(
+            connection_id, DataSourceType.SQLITE, {"path": dirty_sqlite_file}
+        )
+        try:
+            resp = client.get(
+                f"/api/datasources/databases/{connection_id}/tables/detail",
+                params={"table_name": "alerts"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            col_names = [c["name"] for c in data["columns"]]
+            assert "updated_at" in col_names
+            assert data["row_count"] == 2
+            # 兼容模式默认关闭:采样读整行会炸,应降级为空而非 500
+            assert data["sample_data"] == []
+        finally:
+            _unregister_connection(connection_id)

@@ -101,6 +101,14 @@ def _open_attached_file_database(connection_id: str, db_type: str, db_config: di
         )
 
     con = duckdb_lib.connect()
+    # 独立连接是全新的 DuckDB 实例,连接池上的 SET GLOBAL 引擎兼容配置对它不生效,
+    # 必须重新应用,否则脏 SQLite 库(如声明 integer 实际存字符串)在这里依然读不了
+    from core.common.config_manager import config_manager
+    from core.database.duckdb_engine import apply_engine_compat_settings
+
+    apply_engine_compat_settings(
+        con, config_manager.get_app_config().engine_compat
+    )
     attach_sql = build_attach_sql(
         _FILE_DB_PROBE_ALIAS, {**db_config, "type": db_type, "path": db_path}
     )
@@ -1156,10 +1164,19 @@ def get_table_details(connection_id: str, table_name: str, schema: str | None = 
                     f'SELECT count(*) FROM "{_FILE_DB_PROBE_ALIAS}"."{quoted_table}"'
                 ).fetchone()[0]
 
-                sample_rows = con.execute(
-                    f'SELECT * FROM "{_FILE_DB_PROBE_ALIAS}"."{quoted_table}" LIMIT 5'
-                ).fetchall()
-                sample_data = [_safe_decode_row(row) for row in sample_rows]
+                # 采样失败必须降级而不是整个接口报错:JOIN/集合面板要的是列信息,
+                # 样例数据只是锦上添花(脏 SQLite 库读整行可能因类型不符炸掉)
+                try:
+                    sample_rows = con.execute(
+                        f'SELECT * FROM "{_FILE_DB_PROBE_ALIAS}"."{quoted_table}" LIMIT 5'
+                    ).fetchall()
+                    sample_data = [_safe_decode_row(row) for row in sample_rows]
+                except Exception as sample_error:
+                    logger.warning(
+                        "Sample rows failed for %s.%s: %s",
+                        connection_id, table_name, sample_error,
+                    )
+                    sample_data = []
 
                 return create_success_response(
                     data={
