@@ -658,3 +658,13 @@ describe('extractSqlAttachedAliases (本地 ATTACH 别名不算联邦前缀)', (
     expect(result.attachDatabases).toEqual([]);
   });
 });
+
+describe('extractSqlAttachedAliases with IF NOT EXISTS', () => {
+  it('matches ATTACH IF NOT EXISTS ... AS alias', async () => {
+    const { extractSqlAttachedAliases } = await import('../sqlUtils');
+    const aliases = extractSqlAttachedAliases(
+      "ATTACH IF NOT EXISTS '/tmp/a.db' AS alarm (TYPE sqlite); SELECT * FROM alarm.alerts"
+    );
+    expect(aliases.has('alarm')).toBe(true);
+  });
+});

@@ -55,7 +55,7 @@ CATALOG: Dict[str, Tuple[str, str, str, Optional[str]]] = {
         CATEGORY_DATASOURCE,
         "读写本地 SQLite 数据库文件",
         "Read & write local SQLite database files",
-        "ATTACH 'path/to/data.db' AS sq (TYPE sqlite); SELECT * FROM sq.some_table",
+        "ATTACH IF NOT EXISTS 'path/to/data.db' AS sq (TYPE sqlite); SELECT * FROM sq.some_table",
     ),
     "aws": (
         CATEGORY_DATASOURCE,
@@ -85,7 +85,7 @@ CATALOG: Dict[str, Tuple[str, str, str, Optional[str]]] = {
         CATEGORY_DATASOURCE,
         "DuckLake 湖仓格式",
         "DuckLake lakehouse format",
-        "ATTACH 'ducklake:meta.ducklake' AS lake",
+        "ATTACH IF NOT EXISTS 'ducklake:meta.ducklake' AS lake",
     ),
     "vortex": (
         CATEGORY_DATASOURCE,
