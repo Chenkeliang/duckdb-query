@@ -137,6 +137,13 @@ def build_multi_table_join_query(
         source_id = sources[0].id.strip('"')
         return f'SELECT * FROM "{source_id}"'
 
+    # 所有表都显式传了空列表(用户在每张表都取消勾选全部列)时，与预览生成器
+    # buildJoinPreviewSql 的兜底语义保持一致：视为未做列裁剪，走全列，
+    # 而不是让最终 SELECT 只剩 join_result_ 标记列
+    all_explicit_empty = all(
+        getattr(source, "columns", None) == [] for source in sources
+    )
+
     if not federated_attach:
         available_tables = con.execute("SHOW TABLES").fetchdf()
         available_table_names = available_tables["name"].tolist()
@@ -149,7 +156,7 @@ def build_multi_table_join_query(
                 )
 
         for source in sources:
-            if not hasattr(source, "columns") or source.columns is None:
+            if not hasattr(source, "columns") or source.columns is None or all_explicit_empty:
                 try:
                     cols_df = con.execute(f"PRAGMA table_info('{source.id}')").fetchdf()
                     source.columns = cols_df["name"].tolist()
@@ -158,7 +165,11 @@ def build_multi_table_join_query(
                     source.columns = []
     else:
         for source in sources:
-            if not hasattr(source, "columns") or source.columns is None:
+            if all_explicit_empty and attach_alias_set:
+                source.columns = load_federated_table_columns(
+                    con, source.id, attach_alias_set
+                )
+            elif not hasattr(source, "columns") or source.columns is None:
                 source.columns = []
 
     # Use improved column alias generation logic
@@ -928,7 +939,9 @@ def perform_query(
 
             if federated_attach and attach_alias_set:
                 for source in query_request.sources:
-                    if not source.columns:
+                    # 仅在未管理过列选择(None)时才补全全部列；
+                    # 显式传空列表([])代表用户取消勾选了该表全部列，不能当作"全部"处理
+                    if source.columns is None:
                         source.columns = load_federated_table_columns(
                             con, source.id, attach_alias_set
                         )

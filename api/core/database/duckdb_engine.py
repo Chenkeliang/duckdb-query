@@ -980,6 +980,11 @@ def generate_table_identifiers(sources: List[DataSource]) -> Dict[str, str]:
     for source in sources:
         # 使用表名或ID作为基础
         base_name = getattr(source, "name", None) or source.id
+        # 联邦表 id 是限定名（如 "sqlite_alarm_sqlite.alerts"），需先取最后一段
+        # 表名，否则 simplify_table_name 会把截断长度用在连接前缀上，
+        # 导致同一连接下的不同表都被截断成相同前缀（如 sqlite_ala）而冲突
+        if isinstance(base_name, str) and "." in base_name:
+            base_name = base_name.rsplit(".", 1)[-1]
         table_names.append((source.id, base_name))
 
     # 生成唯一标识符

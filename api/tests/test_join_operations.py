@@ -181,6 +181,31 @@ class TestJoinQueryGenerator:
         # 应该为重复的列名生成不同的别名
         assert aliases["users"]["id"] != aliases["orders"]["id"]
 
+    def test_generate_improved_column_aliases_qualified_source_ids(self):
+        """外部表 source.id 是限定名（连接前缀.表名）时，冲突别名应取表名段而非连接前缀，
+        避免同连接下多表被截断成相同前缀（如 sqlite_ala）导致 _1 后缀。"""
+
+        class MockDataSource:
+            def __init__(self, id, columns):
+                self.id = id
+                self.columns = columns
+
+        source1 = MockDataSource(
+            "sqlite_alarm_sqlite.alerts", ["record_id", "message"]
+        )
+        source2 = MockDataSource(
+            "sqlite_alarm_sqlite.rules", ["record_id", "rule_name"]
+        )
+
+        aliases = generate_improved_column_aliases([source1, source2])
+
+        assert aliases["sqlite_alarm_sqlite.alerts"]["record_id"] == "record_id_alerts"
+        assert aliases["sqlite_alarm_sqlite.rules"]["record_id"] == "record_id_rules"
+        for source_aliases in aliases.values():
+            for alias in source_aliases.values():
+                assert "sqlite_ala" not in alias
+                assert not alias.endswith("_1")
+
     def test_build_join_chain_simple(self):
         """测试构建简单JOIN链"""
         join = Join(

@@ -161,7 +161,7 @@ export function AiChatDrawer({
     if (override == null) setInput('');
     setLoading(true);
     try {
-      const r = await chat(next, { tables: selectedTables, attachDatabases, locale });
+      const r = await chat(next, { tables: selectedTables, attachDatabases, locale, currentSql });
       setMessages([...next, { role: 'assistant', content: r.content }]);
     } catch (e) {
       showErrorToast(t, e as Error, t('query.ai.chatFailed', 'AI 对话失败'));

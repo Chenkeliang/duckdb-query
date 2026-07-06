@@ -141,7 +141,10 @@ function resolveSourceColumns(
     tableColumnsMap: Record<string, { name: string }[]>
 ): { name: string }[] | undefined {
     const picked = selectedColumns[tableName];
-    if (picked?.length) {
+    // 区分 undefined(该表未管理过列选择，如列信息尚未加载)与 []（用户显式取消全选）。
+    // 与预览生成器(buildJoinPreviewSql)一致：空数组代表该表不贡献任何列，
+    // 不能回退到全列，否则用户取消勾选的列会在服务端执行结果中原样出现。
+    if (picked !== undefined) {
         return picked.map((name) => ({ name }));
     }
     const all = tableColumnsMap[tableName];

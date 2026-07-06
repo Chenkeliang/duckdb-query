@@ -142,6 +142,8 @@ export async function chat(
     tables?: string[];
     attachDatabases?: { alias: string; connectionId: string }[];
     locale?: 'zh' | 'en';
+    /** 用户当前工作台里的 SQL（如 JOIN 预览），让助手能回答"在当前 SQL 里加上……"这类追问 */
+    currentSql?: string;
   }
 ): Promise<ChatResult> {
   try {
@@ -154,6 +156,7 @@ export async function chat(
         connection_id: d.connectionId,
       })),
       locale: opts?.locale ?? 'zh',
+      ...(opts?.currentSql ? { current_sql: opts.currentSql } : {}),
     });
     return normalizeResponse<ChatResult>(res).data;
   } catch (e) {

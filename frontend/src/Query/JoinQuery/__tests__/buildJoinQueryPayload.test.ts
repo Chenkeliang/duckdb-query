@@ -94,6 +94,46 @@ describe('buildJoinQueryPayload', () => {
         expect(payload?.sources[1].columns).toEqual([{ name: 'user_id' }]);
     });
 
+    it('用户显式取消全选(空数组)时该表传空列表，而不是回退到全列', () => {
+        const payload = buildJoinQueryPayload({
+            activeTables: tables,
+            joinConfigs,
+            filterTree: createEmptyGroup(),
+            resolvedTypes: {},
+            maxQueryRows: 1000,
+            // users 显式全部取消勾选；orders 仍选中 1 列
+            selectedColumns: { users: [], orders: ['user_id'] },
+            tableColumnsMap: {
+                users: [{ name: 'id' }, { name: 'name' }, { name: 'email' }],
+                orders: [{ name: 'id' }, { name: 'user_id' }],
+            },
+        });
+        expect(payload?.sources[0].columns).toEqual([]);
+        expect(payload?.sources[1].columns).toEqual([{ name: 'user_id' }]);
+    });
+
+    it('未管理过列选择的表(键不存在)回退为全列', () => {
+        const payload = buildJoinQueryPayload({
+            activeTables: tables,
+            joinConfigs,
+            filterTree: createEmptyGroup(),
+            resolvedTypes: {},
+            maxQueryRows: 1000,
+            // users 未出现在 selectedColumns 中(如列信息尚未加载完成)
+            selectedColumns: { orders: ['user_id'] },
+            tableColumnsMap: {
+                users: [{ name: 'id' }, { name: 'name' }, { name: 'email' }],
+                orders: [{ name: 'id' }, { name: 'user_id' }],
+            },
+        });
+        expect(payload?.sources[0].columns).toEqual([
+            { name: 'id' },
+            { name: 'name' },
+            { name: 'email' },
+        ]);
+        expect(payload?.sources[1].columns).toEqual([{ name: 'user_id' }]);
+    });
+
     it('allows federated attach path with qualified source ids', () => {
         const externalTables = [
             {

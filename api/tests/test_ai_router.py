@@ -208,6 +208,59 @@ def test_chat_route_returns_content(tmp_path, monkeypatch):
     assert resp.json()["data"]["content"]
 
 
+def test_chat_route_includes_current_sql_in_system_prompt(tmp_path, monkeypatch):
+    """JOIN 页问"在当前SQL里加上xxx"时,后端应把工作台当前 SQL 拼进 system,
+    否则助手看不到用户口中的"当前 SQL"。"""
+    monkeypatch.setenv("LLM_KEY_SECRET", "test-secret")
+    settings_path = tmp_path / "ai_settings.json"
+    monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)
+    client.put("/api/settings/ai", json={
+        "enabled": True, "default_provider": "p1",
+        "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
+                       "models": ["gpt-4o-mini"], "enabled": True}],
+        "features": {}})
+    fake = MagicMock()
+    fake.choices = [MagicMock(message=MagicMock(content="好的"))]
+    current_sql = 'SELECT * FROM "alerts" LEFT JOIN "rules" ON "alerts"."id" = "rules"."id"'
+    with patch(
+        "core.services.llm_service.litellm.completion", return_value=fake
+    ) as mock_completion:
+        resp = client.post("/api/ai/chat", json={
+            "messages": [{"role": "user", "content": "在当前SQL里加上rules的关联"}],
+            "tables": [], "locale": "zh", "current_sql": current_sql})
+    assert resp.status_code == 200
+    sent_messages = mock_completion.call_args.kwargs["messages"]
+    system_message = next(m["content"] for m in sent_messages if m["role"] == "system")
+    assert current_sql in system_message
+    assert "Current SQL in the user's workbench" in system_message
+
+
+def test_chat_route_truncates_overlong_current_sql(tmp_path, monkeypatch):
+    """current_sql 超过 4000 字符应被截断，避免把上下文撑爆。"""
+    monkeypatch.setenv("LLM_KEY_SECRET", "test-secret")
+    settings_path = tmp_path / "ai_settings.json"
+    monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)
+    client.put("/api/settings/ai", json={
+        "enabled": True, "default_provider": "p1",
+        "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
+                       "models": ["gpt-4o-mini"], "enabled": True}],
+        "features": {}})
+    fake = MagicMock()
+    fake.choices = [MagicMock(message=MagicMock(content="好的"))]
+    overlong_sql = "SELECT " + "a, " * 2000 + "1"
+    with patch(
+        "core.services.llm_service.litellm.completion", return_value=fake
+    ) as mock_completion:
+        resp = client.post("/api/ai/chat", json={
+            "messages": [{"role": "user", "content": "hi"}],
+            "tables": [], "locale": "zh", "current_sql": overlong_sql})
+    assert resp.status_code == 200
+    sent_messages = mock_completion.call_args.kwargs["messages"]
+    system_message = next(m["content"] for m in sent_messages if m["role"] == "system")
+    assert overlong_sql not in system_message
+    assert len(system_message) < len(overlong_sql)
+
+
 def test_chat_when_ai_disabled_has_stable_code(tmp_path, monkeypatch):
     settings_path = tmp_path / "ai_settings.json"
     monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)

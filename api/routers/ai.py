@@ -366,6 +366,7 @@ class ChatPayload(BaseModel):
     tables: list[str] = []
     attach_databases: list[AttachDatabase] = []
     locale: str = "zh"
+    current_sql: str = ""
 
 
 @router.post("/api/ai/chat", tags=["AI"])
@@ -380,6 +381,14 @@ def chat_route(payload: ChatPayload):
     schema_text = f"[Selected tables (detailed)]\n{detailed_text}"
     if catalog_text:
         schema_text += f"\n\n[Full catalog]\n{catalog_text}"
+    # 用户工作台当前 SQL(如 JOIN 预览):放在 schema 段之后，让助手能回答
+    # "在当前 SQL 里加上……" 这类追问；截断避免超长 SQL 占满上下文
+    current_sql = (payload.current_sql or "").strip()[:4000]
+    if current_sql:
+        schema_text += (
+            "\n\nCurrent SQL in the user's workbench:\n"
+            f"```sql\n{current_sql}\n```"
+        )
     try:
         result = ai_chat.chat(
             LLMService(cfg),
