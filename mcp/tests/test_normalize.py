@@ -88,3 +88,23 @@ async def test_federated_query_strips_connection_id_via_registration(cfg):
              attach_databases=[{"alias": "m", "connection_id": "db_SORDER"}])
     sent = json.loads(route.calls.last.request.content)
     assert sent["attach_databases"][0]["connection_id"] == "SORDER"
+
+
+@respx.mock
+async def test_save_as_table_strips_connection_id_via_registration(cfg):
+    """回归:save_as_table 是"write"层级工具,自身不再做归一化,同样必须由
+    注册闭包代劳——此前只验证过 read 层级工具(list_db_objects/federated_query),
+    这里补上 write 层级的等价证明。"""
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = respx.post(f"{base}/api/save_query_to_duckdb").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"table_alias": "t3"}}))
+
+    mcp = FastMCP("test")
+    register_all(mcp, DuckQueryClient(cfg), cfg)
+    fn = _get_registered_tool_fn(mcp, "save_as_table")
+
+    await fn(sql="SELECT * FROM m.t", table_name="t3",
+             attach_databases=[{"alias": "m", "connection_id": "db_SORDER"}])
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["attach_databases"][0]["connection_id"] == "SORDER"
