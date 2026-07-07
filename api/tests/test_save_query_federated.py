@@ -163,6 +163,28 @@ class TestSaveQueryToDuckDBAutoDerivedAttach:
             _unregister_connection(connection_id)
 
 
+class TestSaveQueryToDuckDBDeriveFailureContract:
+    """自动推导失败(连接已删除)时的错误契约:与执行分支一致的 QUERY_FAILED + details,
+    而不是落到外层通用 OPERATION_FAILED(修复回归)"""
+
+    def test_stale_connection_returns_query_failed_with_details(self):
+        resp = client.post(
+            "/api/save_query_to_duckdb",
+            json={
+                "sql": "SELECT * FROM ghost.t",
+                "table_alias": "imported_never_created",
+                "datasource": {"id": "connection-deleted-meanwhile", "type": "sqlite"},
+            },
+        )
+        assert resp.status_code == 500
+        body = resp.json()
+        assert body["success"] is False
+        assert body["messageCode"] == "QUERY_FAILED"
+        details = (body.get("error") or {}).get("details") or {}
+        assert details.get("datasource_id") == "connection-deleted-meanwhile"
+        assert "sql" in details
+
+
 class TestSaveQueryToDuckDBLocalRegression:
     """不带 attach_databases 的本地 DuckDB SQL 分支应保持不变（回归）"""
 

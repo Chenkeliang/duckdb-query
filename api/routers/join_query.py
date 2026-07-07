@@ -1084,7 +1084,18 @@ def save_query_to_duckdb(request: dict = Body(...)):
         ):
             from core.common.connection_alias import build_attach_list_from_datasource
 
-            attach_list = build_attach_list_from_datasource(datasource)
+            try:
+                attach_list = build_attach_list_from_datasource(datasource)
+            except ValueError as derive_error:
+                # 连接已删除/改名等推导失败:错误契约与下方各执行分支保持一致
+                # (QUERY_FAILED + details),不能落到外层通用 OPERATION_FAILED
+                logger.error(f"Deriving attach databases failed: {derive_error}")
+                return error_json_response(
+                    500,
+                    MessageCode.QUERY_FAILED,
+                    f"Federated query failed: {derive_error}",
+                    details={"sql": sql_query, "datasource_id": datasource_id},
+                )
 
         # 根据数据源类型处理
         result_df = None
