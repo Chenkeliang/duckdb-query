@@ -6,7 +6,6 @@ docs/superpowers/specs/2026-06-18-federated-pushdown-design.md。
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -136,18 +135,23 @@ def apply_semijoin_pushdown(
     *,
     key_provider: KeyProvider,
     threshold: int,
+    _tree: Optional[exp.Expression] = None,
 ) -> tuple[str, list[dict]]:
-    """把合格半连接改写进 SQL；返回 (改写后 SQL, reports)。任何解析失败 → 原样返回。"""
-    # 采样子句经 sqlglot 往返会被排到 LIMIT 之后（DuckDB 要求 USING SAMPLE 在 LIMIT 前，
-    # 重排后是语法错误），且对采样查询做半连接下推意义有限：静默放行不优化
-    if re.search(r"\bUSING\s+SAMPLE\b|\bTABLESAMPLE\b", sql, re.IGNORECASE):
-        return sql, []
+    """把合格半连接改写进 SQL；返回 (改写后 SQL, reports)。任何解析失败 → 原样返回。
 
+    注意:下推命中时会原地改写 _tree,调用方传入共享树后不得再复用它做只读分析。
+    """
     try:
-        tree = sqlglot.parse_one(sql, read="duckdb")
+        tree = _tree if _tree is not None else sqlglot.parse_one(sql, read="duckdb")
     except Exception as exc:  # noqa: BLE001
         logger.info("federated optimize: parse failed, passthrough: %s", exc)
         return sql, [{"error": "parse_failed", "pushed": False}]
+
+    # 采样子句经 sqlglot 往返会被排到 LIMIT 之后（DuckDB 要求 USING SAMPLE 在 LIMIT 前，
+    # 重排后是语法错误），且对采样查询做半连接下推意义有限：静默放行不优化。
+    # 用 AST 判定而非文本正则——字符串字面量/注释里出现关键字不应误伤可下推的查询
+    if tree.find(exp.TableSample) is not None:
+        return sql, []
 
     try:
         plans = plan_semijoins(sql, attach_aliases, _tree=tree)
@@ -196,10 +200,14 @@ def build_time_bound_suggestions(
     *,
     schema_provider: SchemaProvider,
     days: int = 30,
+    _tree: Optional[exp.Expression] = None,
 ) -> list[dict]:
-    """远端表有审计时间列且 SQL 未对它设时间谓词 → 产出建议（不改 SQL）。解析失败 → []。"""
+    """远端表有审计时间列且 SQL 未对它设时间谓词 → 产出建议（不改 SQL）。解析失败 → []。
+
+    只读遍历,不改树;共享 _tree 时必须在下推改写之前调用。
+    """
     try:
-        tree = sqlglot.parse_one(sql, read="duckdb")
+        tree = _tree if _tree is not None else sqlglot.parse_one(sql, read="duckdb")
     except Exception:  # noqa: BLE001
         return []
     bounded = _columns_with_time_predicate(tree)
@@ -256,20 +264,31 @@ def optimize_federated_sql(conn, sql: str, attach_aliases: set[str], cfg) -> tup
     """
     if not attach_aliases:
         return sql, [], []
+    # 单次 parse,两阶段共用;解析失败整体放行(保持原有 parse_failed 告警形状)
+    try:
+        tree = sqlglot.parse_one(sql, read="duckdb")
+    except Exception as exc:  # noqa: BLE001
+        logger.info("federated optimize: parse failed, passthrough: %s", exc)
+        return sql, [], [{"error": "parse_failed", "pushed": False}]
+    # 采样查询两阶段都跳过:下推有重排风险,建议阶段的 DESCRIBE 远端 I/O 对已采样的查询纯属浪费
+    if tree.find(exp.TableSample) is not None:
+        return sql, [], []
     threshold = int(getattr(cfg, "federated_semijoin_threshold", 10000))
+    # 建议先算:只读遍历;下推命中会原地改写树,顺序不能颠倒
+    suggestions: list[dict] = []
+    try:
+        suggestions = build_time_bound_suggestions(
+            sql, attach_aliases, schema_provider=_make_schema_provider(conn), _tree=tree)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("time-bound suggestion skipped: %s", exc)
     warnings: list[dict] = []
     out_sql = sql
     try:
         out_sql, reports = apply_semijoin_pushdown(
-            sql, attach_aliases, key_provider=_make_key_provider(conn), threshold=threshold)
+            sql, attach_aliases, key_provider=_make_key_provider(conn),
+            threshold=threshold, _tree=tree)
         warnings.extend(r for r in reports if r.get("error") or r.get("pushed") is False)
     except Exception as exc:  # noqa: BLE001
         logger.warning("federated optimize bailout: %s", exc)
         out_sql = sql
-    suggestions: list[dict] = []
-    try:
-        suggestions = build_time_bound_suggestions(
-            sql, attach_aliases, schema_provider=_make_schema_provider(conn))
-    except Exception as exc:  # noqa: BLE001
-        logger.info("time-bound suggestion skipped: %s", exc)
     return out_sql, suggestions, warnings
