@@ -123,6 +123,12 @@ def _resolve_duckdb_extensions(app_config, override_extensions: Optional[List[st
     return resolved
 
 
+def _quote_identifier(identifier: str) -> str:
+    """转义内嵌双引号并加引号包裹单个 SQL 标识符（保留非 ASCII，如中文别名）。"""
+    escaped = str(identifier).replace('"', '""')
+    return f'"{escaped}"'
+
+
 def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
     """
     根据数据库配置构建 ATTACH SQL 语句
@@ -144,13 +150,14 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         >>> config = {'type': 'mysql', 'host': 'localhost', 'user': 'root', 
         ...           'password': 'pwd', 'database': 'mydb', 'port': 3306}
         >>> build_attach_sql('mysql_db', config)
-        "ATTACH 'host=localhost user=root password=pwd database=mydb port=3306' AS mysql_db (TYPE mysql)"
+        'ATTACH \\'host=localhost user=root password=pwd database=mydb port=3306\\' AS "mysql_db" (TYPE mysql)'
     """
     db_type = db_config.get('type', '').lower()
-    
+    quoted_alias = _quote_identifier(alias)
+
     # 支持 user 和 username 两种参数名称
     username = db_config.get('user') or db_config.get('username')
-    
+
     if db_type == 'mysql':
         if not username:
             raise ValueError("MySQL connection missing username parameter (user or username)")
@@ -158,8 +165,8 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         conn_str = f"host={db_config['host']} user={username} password={db_config.get('password', '')} database={db_config['database']}"
         if db_config.get('port'):
             conn_str += f" port={db_config['port']}"
-        return f"ATTACH '{conn_str}' AS {alias} (TYPE mysql)"
-    
+        return f"ATTACH '{conn_str}' AS {quoted_alias} (TYPE mysql)"
+
     elif db_type in ('postgresql', 'postgres'):
         if not username:
             raise ValueError("PostgreSQL connection missing username parameter (user or username)")
@@ -167,21 +174,21 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         conn_str = f"host={db_config['host']} dbname={db_config['database']} user={username} password={db_config.get('password', '')}"
         if db_config.get('port'):
             conn_str += f" port={db_config['port']}"
-        return f"ATTACH '{conn_str}' AS {alias} (TYPE postgres)"
-    
+        return f"ATTACH '{conn_str}' AS {quoted_alias} (TYPE postgres)"
+
     elif db_type == 'sqlite':
         # SQLite 使用文件路径（兼容 path、database 两种参数键）
         path = db_config.get('path') or db_config.get('database')
         if not path:
             raise ValueError("SQLite connection missing file path (path or database)")
-        return f"ATTACH '{path}' AS {alias} (TYPE sqlite)"
+        return f"ATTACH '{path}' AS {quoted_alias} (TYPE sqlite)"
 
     elif db_type == 'duckdb':
         # DuckDB 文件：原生只读挂载，零拷贝、与本地表同速（无 scanner 开销）
         path = db_config.get('path') or db_config.get('database')
         if not path:
             raise ValueError("DuckDB connection missing file path (path or database)")
-        return f"ATTACH '{path}' AS {alias} (READ_ONLY)"
+        return f"ATTACH '{path}' AS {quoted_alias} (READ_ONLY)"
 
     else:
         raise ValueError(f"Unsupported database type: {db_type}")

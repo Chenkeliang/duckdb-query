@@ -49,6 +49,21 @@ class TestResolveAttachForAsync:
         assert is_fed is False
         assert resolved == []
 
+    def test_explicit_attach_strips_db_prefix_from_pydantic_object(self):
+        """回归:显式 attach_databases 分支之前只 strip() 不脱 db_ 前缀，
+        与 build_attach_list_from_datasource 的自动推导分支行为不一致，
+        会导致前端以外的调用方(如直接打 API)传 db_ 前缀 id 时连接找不到。"""
+        attach = [AttachDatabase(alias="pg_db", connection_id="db_c1")]
+        resolved, is_fed = resolve_attach_databases_for_async(attach, None)
+        assert is_fed is True
+        assert resolved == [{"alias": "pg_db", "connection_id": "c1"}]
+
+    def test_explicit_attach_strips_db_prefix_from_dict(self):
+        attach = [{"alias": "pg_db", "connection_id": "db_c1"}]
+        resolved, is_fed = resolve_attach_databases_for_async(attach, None)
+        assert is_fed is True
+        assert resolved == [{"alias": "pg_db", "connection_id": "c1"}]
+
 
 class TestBuildAttachFromDatasource:
     def test_builds_for_mysql(self):

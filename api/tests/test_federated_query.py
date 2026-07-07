@@ -264,7 +264,7 @@ class TestFederatedQueryEndpointLogic:
         
         # 验证生成的 SQL
         assert 'ATTACH' in sql
-        assert 'AS db1' in sql
+        assert 'AS "db1"' in sql
         assert 'TYPE mysql' in sql
 
 

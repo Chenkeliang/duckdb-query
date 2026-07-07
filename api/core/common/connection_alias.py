@@ -99,14 +99,14 @@ def resolve_attach_databases_for_async(
                 resolved.append(
                     {
                         "alias": db.alias.strip(),
-                        "connection_id": db.connection_id.strip(),
+                        "connection_id": normalize_connection_id(db.connection_id),
                     }
                 )
             elif isinstance(db, dict):
                 resolved.append(
                     {
                         "alias": str(db.get("alias", "")).strip(),
-                        "connection_id": str(db.get("connection_id", "")).strip(),
+                        "connection_id": normalize_connection_id(str(db.get("connection_id", ""))),
                     }
                 )
         if resolved:

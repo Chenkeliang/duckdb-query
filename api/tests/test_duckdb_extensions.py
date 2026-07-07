@@ -110,7 +110,7 @@ class TestBuildAttachSQL:
         assert 'user=root' in sql
         assert 'database=testdb' in sql
         assert 'port=3306' in sql
-        assert 'AS test_alias' in sql
+        assert 'AS "test_alias"' in sql
 
     def test_postgres_attach_sql_format(self):
         """
@@ -138,7 +138,7 @@ class TestBuildAttachSQL:
         assert 'user=postgres' in sql
         assert 'dbname=testdb' in sql
         assert 'port=5432' in sql
-        assert 'AS pg_alias' in sql
+        assert 'AS "pg_alias"' in sql
 
     def test_sqlite_attach_sql_format(self):
         """
@@ -159,7 +159,7 @@ class TestBuildAttachSQL:
         # 验证 SQL 格式
         assert 'TYPE sqlite' in sql
         assert '/path/to/database.db' in sql
-        assert 'AS sqlite_alias' in sql
+        assert 'AS "sqlite_alias"' in sql
 
     def test_mysql_without_port(self):
         """测试 MySQL 不带端口的情况"""
@@ -213,6 +213,26 @@ class TestBuildAttachSQL:
             build_attach_sql('oracle_db', config)
         
         assert 'Unsupported database type' in str(exc_info.value)
+
+    def test_alias_with_embedded_quote_is_escaped_not_injected(self):
+        """回归:alias 曾经是裸词拼接(`AS {alias}`,连引号都没有),
+        比 execute_sql_and_persist 的 table_name 问题更严重——不需要
+        闭合引号,直接就能在 ATTACH 语句里注入任意 SQL 子句。"""
+        from core.database.duckdb_engine import build_attach_sql
+
+        malicious_alias = 'x"; DROP TABLE users; --'
+        config = {
+            'type': 'mysql',
+            'host': 'localhost',
+            'username': 'root',
+            'password': 'password',
+            'database': 'testdb',
+        }
+
+        sql = build_attach_sql(malicious_alias, config)
+
+        # 恶意内容必须整体落在转义后的引号标识符里,语句结构(TYPE 子句)完整
+        assert sql.endswith('AS "x""; DROP TABLE users; --" (TYPE mysql)')
 
     def test_empty_password_handled(self):
         """测试空密码的处理"""

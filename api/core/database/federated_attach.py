@@ -23,6 +23,12 @@ def _is_database_already_attached_error(error: Exception) -> bool:
     return "already exists" in str(error).lower()
 
 
+def _quote_identifier(identifier: str) -> str:
+    """转义内嵌双引号并加引号包裹单个 SQL 标识符（保留非 ASCII，如中文表名）。"""
+    escaped = str(identifier).replace('"', '""')
+    return f'"{escaped}"'
+
+
 def resolve_attach_configs(
     attach_databases: Optional[List[Any]],
 ) -> List[Tuple[str, Dict[str, Any]]]:
@@ -67,7 +73,7 @@ def attach_databases_on_connection(
     for alias, db_config in attach_configs:
         # 连接池复用：先尝试卸掉同名库，避免「already exists」
         try:
-            conn.execute(f'DETACH "{alias}"')
+            conn.execute(f'DETACH {_quote_identifier(alias)}')
         except Exception as detach_error:
             logger.debug("Pre-ATTACH DETACH %s skipped: %s", alias, detach_error)
 
@@ -94,7 +100,7 @@ def attach_databases_on_connection(
 def detach_databases_on_connection(conn: Any, aliases: List[str]) -> None:
     for alias in aliases:
         try:
-            conn.execute(f'DETACH "{alias}"')
+            conn.execute(f'DETACH {_quote_identifier(alias)}')
         except Exception as detach_error:
             logger.warning("DETACH %s failed: %s", alias, detach_error)
 
@@ -166,9 +172,9 @@ def execute_sql_and_persist(
     cleaned_sql = sql.rstrip().rstrip(";")
     if attach_configs:
         cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(cleaned_sql)
-    quoted_table = f'"{table_name}"'
+    quoted_table = _quote_identifier(table_name)
     staging_name = f"__stage_{uuid.uuid4().hex}"
-    quoted_staging = f'"{staging_name}"'
+    quoted_staging = _quote_identifier(staging_name)
 
     def _run(conn: Any) -> Dict[str, Any]:
         attached: List[str] = []
@@ -184,8 +190,17 @@ def execute_sql_and_persist(
             if reject_empty and snapshot["row_count"] == 0:
                 conn.execute(f'DROP TABLE IF EXISTS {quoted_staging}')
             else:
-                conn.execute(f'DROP TABLE IF EXISTS {quoted_table}')
-                conn.execute(f'ALTER TABLE {quoted_staging} RENAME TO {quoted_table}')
+                # DROP+RENAME 包在真事务里：ALTER 失败(如取消/中断)时 ROLLBACK
+                # 撤销 DROP，target 不会凭空消失。与 file_datasource_manager.py
+                # 的 _create_table_atomically 用同一模式。
+                conn.execute("BEGIN TRANSACTION")
+                try:
+                    conn.execute(f'DROP TABLE IF EXISTS {quoted_table}')
+                    conn.execute(f'ALTER TABLE {quoted_staging} RENAME TO {quoted_table}')
+                    conn.execute("COMMIT")
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
             return snapshot
         finally:
             if attached:

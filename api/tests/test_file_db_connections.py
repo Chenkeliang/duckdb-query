@@ -80,11 +80,11 @@ class TestBuildAttachSqlSqlite:
 
     def test_path_key(self):
         sql = build_attach_sql("sq", {"type": "sqlite", "path": "/tmp/a.db"})
-        assert sql == "ATTACH '/tmp/a.db' AS sq (TYPE sqlite)"
+        assert sql == 'ATTACH \'/tmp/a.db\' AS "sq" (TYPE sqlite)'
 
     def test_database_key(self):
         sql = build_attach_sql("sq", {"type": "sqlite", "database": "/tmp/a.db"})
-        assert sql == "ATTACH '/tmp/a.db' AS sq (TYPE sqlite)"
+        assert sql == 'ATTACH \'/tmp/a.db\' AS "sq" (TYPE sqlite)'
 
     def test_missing_path_raises(self):
         with pytest.raises(ValueError):
