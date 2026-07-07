@@ -52,7 +52,7 @@ EXPORTS_DIR = str(config_manager.get_exports_dir())
 # 初始化任务工具类
 task_utils = TaskUtils(EXPORTS_DIR)
 
-SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite"}
+SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite", "duckdb"}
 
 
 def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) -> None:

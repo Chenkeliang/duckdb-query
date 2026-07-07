@@ -258,11 +258,6 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       return;
     }
 
-    if (effectiveSource.databaseType !== 'mysql') {
-      showErrorToast(t, 'INVALID_REQUEST', t('query.import.mysqlOnly', '目前仅支持从 MySQL 导入到 DuckDB'));
-      return;
-    }
-
     setImportDialogOpen(true);
   }, [effectiveSQL, effectiveSource, t]);
 

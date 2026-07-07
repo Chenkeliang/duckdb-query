@@ -202,7 +202,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
                     selectionMode={selectionMode}
                     onSelect={onTableSelect}
                     onPreview={onPreview}
-                    onImport={connection.type === 'mysql' ? onImport : undefined}
+                    onImport={onImport}
                     searchQuery={searchQuery}
                   />
                 );

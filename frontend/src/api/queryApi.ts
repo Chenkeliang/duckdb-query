@@ -262,7 +262,8 @@ export async function saveQueryToDuckDB(
     sql: string,
     datasource: DataSource,
     tableAlias: string,
-    queryData: Record<string, unknown>[] | null = null
+    queryData: Record<string, unknown>[] | null = null,
+    attachDatabases?: { alias: string; connection_id: string }[]
 ): Promise<{ success: boolean; table_name?: string; message?: string; messageCode?: string }> {
     try {
         const requestData: Record<string, unknown> = {
@@ -273,6 +274,10 @@ export async function saveQueryToDuckDB(
 
         if (queryData && queryData.length > 0) {
             requestData.query_data = queryData;
+        }
+
+        if (attachDatabases && attachDatabases.length > 0) {
+            requestData.attach_databases = attachDatabases;
         }
 
         const response = await apiClient.post('/api/save_query_to_duckdb', requestData);

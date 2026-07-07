@@ -60,6 +60,7 @@ export interface AsyncTask {
     custom_table_name?: string;
     display_name?: string;
   };
+  metadata?: { is_federated?: boolean };
 }
 
 export interface AsyncTaskPanelProps {
@@ -390,7 +391,7 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
             </thead>
             <tbody>
               {pagedTasks.map((task) => {
-                const fed = isFederatedSQL(task.sql);
+                const fed = task.metadata?.is_federated === true || isFederatedSQL(task.sql);
                 const rowCount = getTaskRowCount(task);
                 const displayName = getTaskDisplayName(task);
                 return (

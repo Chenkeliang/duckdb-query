@@ -1229,13 +1229,122 @@ class TestSecurityValidation:
     def test_password_not_logged(self):
         """
         测试密码不会被记录到日志
-        
+
         优化说明：
         - 密码解密日志从 logger.info 降级为 logger.debug
         - 日志消息不包含 "密码" 或 "password" 等敏感词
         """
         # 验证日志消息不包含敏感信息
         safe_log_message = "Connection conn-123 processed"
-        
+
         assert "decrypted" not in safe_log_message.lower()
         assert "password" not in safe_log_message.lower()
+
+
+class TestDuckDBTypeAsyncFederatedSupport:
+    """
+    DuckDB 类型连接不应被异步联邦查询拒绝（回归修复）。
+
+    修复前 SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite"} 缺 "duckdb"，
+    导致 duckdb 类型连接的异步任务报 "Unsupported data source type: duckdb"。
+
+    **Feature: async-federated-query, duckdb support**
+    """
+
+    @pytest.fixture
+    def duckdb_file(self, tmp_path):
+        """创建一个包含 1 张表的临时 DuckDB 文件"""
+        import duckdb as duckdb_module
+
+        db_path = tmp_path / "async-fed-source.duckdb"
+        conn = duckdb_module.connect(str(db_path))
+        try:
+            conn.execute("CREATE TABLE items (id INTEGER, name VARCHAR)")
+            conn.execute("INSERT INTO items VALUES (1, 'a'), (2, 'b')")
+        finally:
+            conn.close()
+        return str(db_path)
+
+    @pytest.fixture
+    def duckdb_connection_id(self, duckdb_file):
+        """注册一个 duckdb 类型的临时文件连接，测试结束后清理"""
+        from core.database.database_manager import db_manager
+        from models.query_models import DatabaseConnection, DataSourceType
+
+        connection_id = "async-duckdb-fed-test"
+        connection = DatabaseConnection(
+            id=connection_id,
+            name=connection_id,
+            type=DataSourceType.DUCKDB,
+            params={"path": duckdb_file},
+        )
+        db_manager.add_connection(
+            connection, test_connection=False, save_to_metadata=False
+        )
+        try:
+            yield connection_id
+        finally:
+            db_manager.connections.pop(connection_id, None)
+
+    def test_supported_external_types_includes_duckdb(self):
+        """SUPPORTED_EXTERNAL_TYPES 应包含 duckdb"""
+        from routers.async_tasks import SUPPORTED_EXTERNAL_TYPES
+
+        assert "duckdb" in SUPPORTED_EXTERNAL_TYPES
+
+    def test_build_attach_list_from_datasource_duckdb_alias(self, duckdb_connection_id):
+        """
+        **Feature: async-federated-query, duckdb support**
+
+        build_attach_list_from_datasource 对 type=duckdb 应返回 duckdb_xxx 形式别名
+        """
+        from core.common.connection_alias import build_attach_list_from_datasource
+
+        attach_list = build_attach_list_from_datasource(
+            {"id": duckdb_connection_id, "type": "duckdb"}
+        )
+        assert attach_list is not None
+        assert len(attach_list) == 1
+        assert attach_list[0]["connection_id"] == duckdb_connection_id
+        assert attach_list[0]["alias"].startswith("duckdb_")
+
+    def test_attach_external_databases_accepts_duckdb(self, duckdb_connection_id):
+        """
+        **Feature: async-federated-query, duckdb support**
+
+        _attach_external_databases 不应再对 duckdb 类型连接抛
+        "Unsupported data source type: duckdb"，且 ATTACH 后可查询到数据
+        """
+        import duckdb as duckdb_module
+        from routers.async_tasks import _attach_external_databases, _detach_databases
+
+        con = duckdb_module.connect(":memory:")
+        try:
+            attached = _attach_external_databases(
+                con, [{"alias": "duckdb_demo", "connection_id": duckdb_connection_id}]
+            )
+            assert attached == ["duckdb_demo"]
+
+            rows = con.execute("SELECT * FROM duckdb_demo.items ORDER BY id").fetchall()
+            assert rows == [(1, "a"), (2, "b")]
+        finally:
+            _detach_databases(con, ["duckdb_demo"])
+            con.close()
+
+    def test_resolve_attach_databases_for_async_duckdb_datasource(
+        self, duckdb_connection_id
+    ):
+        """
+        **Feature: async-federated-query, duckdb support**
+
+        resolve_attach_databases_for_async 应能从 datasource(type=duckdb) 自动推导出
+        attach 列表，并标记为联邦查询
+        """
+        from core.common.connection_alias import resolve_attach_databases_for_async
+
+        attach_list, is_federated = resolve_attach_databases_for_async(
+            None, {"id": duckdb_connection_id, "type": "duckdb"}
+        )
+        assert is_federated is True
+        assert len(attach_list) == 1
+        assert attach_list[0]["connection_id"] == duckdb_connection_id

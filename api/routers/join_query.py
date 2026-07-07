@@ -1072,6 +1072,20 @@ def save_query_to_duckdb(request: dict = Body(...)):
             f"Starting to save query result: datasource_id={datasource_id}, datasource_type={datasource_type}, table_alias={table_alias}"
         )
 
+        # 联邦查询支持：显式 attach_databases 优先；为空时按 sqlite/duckdb/postgresql 数据源自动推导
+        # （mysql 不推导，没有显式 attach 时保留旧的直连 MySQL 重跑分支，避免老客户端回归；
+        #  datasource_id == "duckdb_internal" 是"本地查询、无外部数据源"的哨兵值，必须排除，
+        #  否则会被当成真实连接 ID 传给 build_attach_list_from_datasource 而报连接不存在）
+        attach_list = request.get("attach_databases") or None
+        if (
+            not attach_list
+            and datasource_type in ("sqlite", "duckdb", "postgresql")
+            and datasource_id != "duckdb_internal"
+        ):
+            from core.common.connection_alias import build_attach_list_from_datasource
+
+            attach_list = build_attach_list_from_datasource(datasource)
+
         # 根据数据源类型处理
         result_df = None
 
@@ -1079,8 +1093,29 @@ def save_query_to_duckdb(request: dict = Body(...)):
         # 智能移除系统自动添加的LIMIT，保留用户原始的所有SQL逻辑
         logger.info("Re-executing SQL to get complete data, intelligently handling LIMIT")
 
+        if attach_list:
+            # 联邦查询：ATTACH 外部库后在同一 DuckDB 连接内执行
+            # （execute_sql_with_attach 内部已含 ATTACH→执行→DETACH 和 mysql 双引号规整）
+            from core.database.federated_attach import execute_sql_with_attach
+
+            try:
+                logger.info(
+                    f"Executing federated query via ATTACH, aliases={[a['alias'] for a in attach_list]}"
+                )
+                result_df = execute_sql_with_attach(
+                    remove_auto_added_limit(sql_query), attach_list
+                )
+                logger.info(f"Federated query execution completed, result shape: {result_df.shape}")
+            except Exception as attach_error:
+                logger.error(f"Federated query failed: {str(attach_error)}")
+                return error_json_response(
+                    500,
+                    MessageCode.QUERY_FAILED,
+                    f"Federated query failed: {str(attach_error)}",
+                    details={"sql": sql_query, "attach_databases": attach_list},
+                )
         # 判断数据源类型
-        if datasource_type in ["mysql"] and datasource_id != "duckdb_internal":
+        elif datasource_type in ["mysql"] and datasource_id != "duckdb_internal":
             # 处理MySQL等外部数据库
             try:
                 logger.info(f"Executing external database query: {datasource_id}")
