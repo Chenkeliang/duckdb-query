@@ -1111,8 +1111,12 @@ def save_query_to_duckdb(request: dict = Body(...)):
         logger.info("Re-executing SQL to get complete data, intelligently handling LIMIT")
 
         try:
+            # reject_empty=True: 空结果只清理内部临时表、绝不触碰 table_alias 下
+            # 已有的数据——同名重存(overwrite)时新查询意外返回 0 行,不能把旧的
+            # 有效数据换成空表再删掉,必须让旧数据原封不动地留在原地。
             metadata_snapshot = execute_sql_and_persist(
-                remove_auto_added_limit(sql_query), table_alias, attach_list
+                remove_auto_added_limit(sql_query), table_alias, attach_list,
+                reject_empty=True,
             )
         except Exception as exec_error:
             logger.error(f"Query execution/persist failed: {str(exec_error)}")
@@ -1129,8 +1133,8 @@ def save_query_to_duckdb(request: dict = Body(...)):
 
         row_count = metadata_snapshot["row_count"]
         if row_count == 0:
-            with with_duckdb_connection() as con:
-                con.execute(f'DROP TABLE IF EXISTS "{table_alias}"')
+            # execute_sql_and_persist 已保证 table_alias 未被触碰(见其 docstring),
+            # 这里只需要报错,不需要(也不能)再对 table_alias 做任何清理动作。
             raise APIValidationError("Query result is empty, cannot save")
 
         logger.info(f"Data has been persisted to DuckDB table: {table_alias}, rows: {row_count}")

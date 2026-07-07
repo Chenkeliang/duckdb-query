@@ -212,8 +212,9 @@ class TestSaveQueryToDuckDBAutoDerivedAttach:
 
 
 class TestSaveQueryToDuckDBEmptyResult:
-    """空结果拒绝保存:CTAS 后发现 0 行则 DROP 掉刚建的表、原样返回校验错误
-    (行为与旧实现一致,只是检查时机从"执行前"变成"执行后即删",调用方不可见)"""
+    """空结果拒绝保存:执行先落到内部临时表,确认非空才 DROP+RENAME 覆盖目标表;
+    结果为空时只清理临时表、绝不触碰目标表——不会在还没确认新结果有效前就把
+    目标表下的数据冲掉。"""
 
     def test_empty_result_rejected_and_table_not_left_behind(self):
         resp = client.post(
@@ -227,6 +228,31 @@ class TestSaveQueryToDuckDBEmptyResult:
         with with_duckdb_connection() as con:
             existing = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
         assert "imported_should_not_exist" not in existing
+
+    def test_empty_result_does_not_destroy_existing_table_of_same_name(self):
+        """回归:同名重存(overwrite)时,若新查询意外返回 0 行,旧数据必须原封
+        不动地保留——不能被空表覆盖后再删除。"""
+        table_name = "imported_reused_alias_regression"
+        with with_duckdb_connection() as con:
+            con.execute(
+                f'CREATE OR REPLACE TABLE "{table_name}" AS '
+                "SELECT * FROM (VALUES (1, 'x'), (2, 'y'), (3, 'z')) AS t(id, name)"
+            )
+        try:
+            resp = client.post(
+                "/api/save_query_to_duckdb",
+                json={
+                    "sql": "SELECT * FROM (VALUES (1, 'a')) AS t(id, name) WHERE id = 999",
+                    "table_alias": table_name,
+                },
+            )
+            assert resp.status_code == 400
+            with with_duckdb_connection() as con:
+                rows = con.execute(f'SELECT * FROM "{table_name}" ORDER BY id').fetchall()
+            assert rows == [(1, "x"), (2, "y"), (3, "z")]
+        finally:
+            with with_duckdb_connection() as con:
+                con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
 
 
 class TestSaveQueryToDuckDBDeriveFailureContract:

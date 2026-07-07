@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -136,14 +137,25 @@ def execute_sql_and_persist(
     table_name: str,
     attach_databases: Optional[List[Any]] = None,
     query_id: Optional[str] = None,
+    reject_empty: bool = False,
 ) -> Dict[str, Any]:
-    """在一个连接内 ATTACH(如有)→ CREATE OR REPLACE TABLE AS → 取行数/列信息 → DETACH。
+    """在一个连接内 ATTACH(如有)→ 执行到临时表 → 视 reject_empty 决定是否
+    DROP+RENAME 覆盖目标表 → 取行数/列信息 → DETACH。
 
     不经过 pandas DataFrame,避免大结果集的 DuckDB→pandas→DuckDB 双重序列化。
+
+    先写到临时表、确认结果后再原子替换目标表,而不是直接
+    CREATE OR REPLACE TABLE <target>:后者会在还没确认新结果有效前就冲掉
+    target 下任何已有数据——一旦执行失败、或(reject_empty=True 时)新结果
+    为空,target 早已被空表/半途状态覆盖,调用方即便随后拒绝这次保存,
+    target 下原有的数据也已经回不来了。reject_empty=True 且结果为空时,
+    本函数只清理临时表、绝不触碰 target,调用方可以放心地把"拒绝空结果"
+    当纯粹的校验判断,而不必担心这个判断前 target 已经被写坏。
+    reject_empty=False(默认)时任何行数都提交,匹配 async 任务那条已验证
+    过的 CTAS 路径的语义(0 行结果也是合法结果)。
+
     mysql 双引号规整只在存在 ATTACH 时应用(纯本地 DuckDB 原生 SQL 不会出现
     MySQL 客户端习惯写法,无条件应用只会对合法的双引号中文标识符引入误伤风险)。
-    "拒绝空结果"等业务策略由调用方在拿到返回的 metadata 后自行处理,本函数
-    保持中立以便复用。
     """
     from core.common.sql_mysql_quotes import (
         normalize_mysql_double_quoted_strings_for_duckdb,
@@ -155,14 +167,26 @@ def execute_sql_and_persist(
     if attach_configs:
         cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(cleaned_sql)
     quoted_table = f'"{table_name}"'
+    staging_name = f"__stage_{uuid.uuid4().hex}"
+    quoted_staging = f'"{staging_name}"'
 
     def _run(conn: Any) -> Dict[str, Any]:
         attached: List[str] = []
         try:
             if attach_configs:
                 attached = attach_databases_on_connection(conn, attach_configs)
-            conn.execute(f'CREATE OR REPLACE TABLE {quoted_table} AS ({cleaned_sql})')
-            return build_table_metadata_snapshot(conn, table_name)
+            conn.execute(f'CREATE OR REPLACE TABLE {quoted_staging} AS ({cleaned_sql})')
+            try:
+                snapshot = build_table_metadata_snapshot(conn, staging_name)
+            except Exception:
+                conn.execute(f'DROP TABLE IF EXISTS {quoted_staging}')
+                raise
+            if reject_empty and snapshot["row_count"] == 0:
+                conn.execute(f'DROP TABLE IF EXISTS {quoted_staging}')
+            else:
+                conn.execute(f'DROP TABLE IF EXISTS {quoted_table}')
+                conn.execute(f'ALTER TABLE {quoted_staging} RENAME TO {quoted_table}')
+            return snapshot
         finally:
             if attached:
                 detach_databases_on_connection(conn, attached)
