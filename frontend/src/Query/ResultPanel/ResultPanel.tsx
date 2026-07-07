@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { useAiEnabled } from '@/hooks/useAiEnabled';
 import { errorFix, type ErrorFixResult } from '@/api/aiApi';
+import { toAttachDatabasesPayload } from '@/api/queryApi';
 import { parseSQLTableReferences } from '@/utils/sqlUtils';
 import { EngineCompatSelfHealBanner } from '@/Query/components/EngineCompatSelfHealBanner';
 import { IS_DEMO } from '@/demo/isDemo';
@@ -284,10 +285,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       const result = await exportQueryResults({
         sql,
         format: 'parquet',
-        attach_databases: attachDatabases?.map((db) => ({
-          alias: db.alias,
-          connection_id: db.connectionId,
-        })),
+        attach_databases: toAttachDatabasesPayload(attachDatabases),
       });
       const url = getQueryExportDownloadUrl(result.download_url);
       openExternal(url);

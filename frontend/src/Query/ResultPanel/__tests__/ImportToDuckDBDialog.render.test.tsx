@@ -31,11 +31,15 @@ vi.mock('@/components/SQLHighlight', () => ({
   SQLHighlight: () => <div data-testid="sql-highlight-mock" />,
 }));
 
-// Mock saveQueryToDuckDB
+// Mock saveQueryToDuckDB；toAttachDatabasesPayload 是纯函数，直接复用真实实现
 const saveQueryToDuckDBMock = vi.fn();
-vi.mock('@/api', () => ({
-  saveQueryToDuckDB: (...args: unknown[]) => saveQueryToDuckDBMock(...args),
-}));
+vi.mock('@/api', async () => {
+  const actual = await vi.importActual<typeof import('@/api')>('@/api');
+  return {
+    ...actual,
+    saveQueryToDuckDB: (...args: unknown[]) => saveQueryToDuckDBMock(...args),
+  };
+});
 
 import { toast } from 'sonner';
 import { ImportToDuckDBDialog } from '../ImportToDuckDBDialog';

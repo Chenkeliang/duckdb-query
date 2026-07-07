@@ -23,7 +23,7 @@ import { useTableColumns } from "@/hooks/useTableColumns";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import type { SelectedTable } from "@/types/SelectedTable";
 import type { TableSource } from "@/hooks/useQueryWorkspace";
-import { generatePivotQuery } from "@/api";
+import { generatePivotQuery, toAttachDatabasesPayload } from "@/api";
 import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
 import {
     quoteIdent,
@@ -121,10 +121,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         queryKey: pivotQueryKey,
         queryFn: async () => {
             if (!pivotPayload) return null;
-            const attachDatabases = pivotPayload.attachDatabases.map((db) => ({
-                alias: db.alias,
-                connection_id: db.connectionId,
-            }));
+            const attachDatabases = toAttachDatabasesPayload(pivotPayload.attachDatabases) ?? [];
             return generatePivotQuery(
                 pivotPayload.config,
                 pivotPayload.pivotConfig,

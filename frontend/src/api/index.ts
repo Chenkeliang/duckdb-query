@@ -44,9 +44,11 @@ export {
     saveQueryToDuckDB,
     cancelSyncQuery,
     parseFederatedQueryError,
+    toAttachDatabasesPayload,
     type ExecuteQueryOptions,
     type FederatedQueryOptions,
     type FederatedQueryError,
+    type AttachDatabasePayload,
 } from './queryApi';
 
 // ==================== Join Query API ====================

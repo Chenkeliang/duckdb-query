@@ -12,6 +12,7 @@ import type { AttachDatabase } from '@/utils/sqlUtils';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { getTableName, isExternalTable } from '@/utils/tableUtils';
 import { generateExternalTableReference } from '@/utils/sqlUtils';
+import { toAttachDatabasesPayload } from '@/api';
 import { generateConflictKey } from '@/utils/duckdbTypes';
 import {
     cloneTreeWithoutOnConditions,
@@ -179,10 +180,7 @@ export function buildJoinQueryPayload(params: {
         tableColumnsMap = {},
     } = params;
 
-    const attachForPayload = attachDatabases.map((db) => ({
-        alias: db.alias,
-        connection_id: db.connectionId,
-    }));
+    const attachForPayload = toAttachDatabasesPayload(attachDatabases);
 
     if (!canUseServerJoinPath(activeTables, joinConfigs, filterTree, attachDatabases, tableAliasOverrides)) {
         return null;
@@ -281,6 +279,6 @@ export function buildJoinQueryPayload(params: {
         where_conditions: whereClause?.trim() || undefined,
         limit: maxQueryRows,
         is_preview: isPreview,
-        attach_databases: attachForPayload.length > 0 ? attachForPayload : undefined,
+        attach_databases: attachForPayload,
     };
 }

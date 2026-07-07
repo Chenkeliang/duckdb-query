@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { generateSetOperation, validateSetOperation } from '@/api';
+import { generateSetOperation, validateSetOperation, toAttachDatabasesPayload } from '@/api';
 import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState as UiEmptyState } from '@/components/EmptyState';
@@ -462,10 +462,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
 
   const buildSetOperationRequest = React.useCallback(() => {
     if (activeTables.length < 2) return null;
-    const attachForPayload = attachDatabases.map((db) => ({
-      alias: db.alias,
-      connection_id: db.connectionId,
-    }));
+    const attachForPayload = toAttachDatabasesPayload(attachDatabases);
     return {
       config: {
         operation_type: operationType,
@@ -480,8 +477,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
           };
         }),
       },
-      attach_databases:
-        attachForPayload.length > 0 ? attachForPayload : undefined,
+      attach_databases: attachForPayload,
       include_metadata: false,
     };
   }, [activeTables, operationType, isByNameMode, selectedColumns, attachDatabases]);

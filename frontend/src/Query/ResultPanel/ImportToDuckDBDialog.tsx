@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 import { invalidateAfterTableCreate } from '@/utils/cacheInvalidation';
-import { saveQueryToDuckDB } from '@/api';
+import { saveQueryToDuckDB, toAttachDatabasesPayload } from '@/api';
 import type { TableSource } from '@/hooks/useQueryWorkspace';
 
 export interface ImportToDuckDBDialogProps {
@@ -124,10 +124,7 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
         type: source.databaseType as 'mysql' | 'postgresql' | 'sqlite' | 'duckdb' | 'file',
       };
 
-      const attachDatabases = source.attachDatabases?.map((db) => ({
-        alias: db.alias,
-        connection_id: db.connectionId,
-      }));
+      const attachDatabases = toAttachDatabasesPayload(source.attachDatabases);
 
       const result = await saveQueryToDuckDB(
         sql,
