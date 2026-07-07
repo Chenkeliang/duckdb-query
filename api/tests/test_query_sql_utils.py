@@ -25,6 +25,9 @@ from routers.query_sql_utils import ensure_query_has_limit, statement_accepts_li
         "ANALYZE",
         "CREATE TABLE t AS SELECT 1",
         "DROP TABLE t",
+        # 回归(2026-07): AI 生成 SUMMARIZE 被补 LIMIT 后语法错误
+        "SUMMARIZE tbl",
+        "summarize duckdb_demo.orders",
     ],
 )
 def test_statement_rejects_limit(sql):
@@ -38,6 +41,8 @@ def test_statement_rejects_limit(sql):
         "SELECT * FROM t",
         "  select 1",
         "WITH x AS (SELECT 1) SELECT * FROM x",
+        # PIVOT/UNPIVOT 编译成 SELECT,可以接 LIMIT(真机验证过裸 PIVOT ... LIMIT 可执行)
+        "PIVOT orders ON product USING sum(amount) GROUP BY city",
     ],
 )
 def test_statement_accepts_limit(sql):

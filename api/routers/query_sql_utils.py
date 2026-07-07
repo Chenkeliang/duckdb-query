@@ -48,6 +48,8 @@ def get_join_type_sql(join_type: str) -> str:
 _NO_LIMIT_PATTERNS = [
     r"^DESCRIBE\b",
     r"^DESC\b",
+    # SUMMARIZE 不接受 LIMIT 后缀(PIVOT/UNPIVOT 会编译成 SELECT、可以接,它不行)
+    r"^SUMMARIZE\b",
     r"^SHOW\b",
     r"^EXPLAIN\b",
     r"^PRAGMA\b",
