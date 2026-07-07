@@ -74,7 +74,10 @@ def test_catalog_includes_external_db_and_rules_table(sqlite_alarm_db, local_tab
     try:
         attach = [AttachDatabase(alias="alarm", connection_id=connection_id)]
         text = ai_router._build_catalog_text(set(), attach)
-        assert "External database alarm (reference as alarm.table):" in text
+        assert (
+            "External database alarm (SQLite source, "
+            "reference as alarm.table, query with DuckDB syntax):" in text
+        )
         assert "rules(" in text
         assert "threshold" in text
         assert "alerts" in text

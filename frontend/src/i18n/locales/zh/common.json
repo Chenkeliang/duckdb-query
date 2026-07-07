@@ -48,13 +48,13 @@
     "clearColFilter": "清除 {{col}} 筛选"
   },
   "nav": {
-    "datasource": "数据源 (Data Sources)",
-    "queryworkbench": "查询工作台 (Query Workbench)",
+    "datasource": "数据源",
+    "queryworkbench": "查询工作台",
     "tablemanagement": "数据表管理",
     "asynctasks": "异步任务",
     "switchMain": "主功能切换",
     "settings": "设置",
-    "ai": "AI 模型 (AI / Models)",
+    "ai": "AI 模型",
     "extensions": "扩展"
   },
   "sidebar": {

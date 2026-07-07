@@ -213,6 +213,18 @@ def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None
     except Exception as exc:  # noqa: BLE001  连接已被删除等场景不应影响本地目录
         logger.warning("catalog: resolve attach_databases failed: %s", exc)
         attach_configs = []
+    # alias → 引擎类型标注:让模型知道表来自哪种库(可解释类型差异),
+    # 同时目录头明示"仍需 DuckDB 语法",抑制向源库方言漂移
+    _TYPE_LABELS = {
+        "mysql": "MySQL",
+        "postgresql": "PostgreSQL",
+        "sqlite": "SQLite",
+        "duckdb": "DuckDB",
+    }
+    alias_types = {
+        alias: _TYPE_LABELS.get(str(cfg.get("type") or "").lower(), "external")
+        for alias, cfg in attach_configs
+    }
     with with_duckdb_connection() as con:
         attached: list[str] = []
         try:
@@ -259,7 +271,11 @@ def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None
                         ]
                         if not ext_names:
                             continue
-                        lines = [f"External database {alias} (reference as {alias}.table):"]
+                        db_type = alias_types.get(alias, "external")
+                        lines = [
+                            f"External database {alias} ({db_type} source, "
+                            f"reference as {alias}.table, query with DuckDB syntax):"
+                        ]
                         lines.extend(
                             _catalog_lines_for_tables(
                                 con,

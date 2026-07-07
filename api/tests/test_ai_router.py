@@ -235,6 +235,33 @@ def test_chat_route_includes_current_sql_in_system_prompt(tmp_path, monkeypatch)
     assert "Current SQL in the user's workbench" in system_message
 
 
+def test_chat_system_prompt_enforces_duckdb_dialect(tmp_path, monkeypatch):
+    """选中 MySQL/SQLite 表时模型易漂移到源库方言(反引号等);
+    system 必须显式声明"一律 DuckDB 方言、双引号、禁源库特有函数"。"""
+    monkeypatch.setenv("LLM_KEY_SECRET", "test-secret")
+    settings_path = tmp_path / "ai_settings.json"
+    monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)
+    client.put("/api/settings/ai", json={
+        "enabled": True, "default_provider": "p1",
+        "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
+                       "models": ["gpt-4o-mini"], "enabled": True}],
+        "features": {}})
+    fake = MagicMock()
+    fake.choices = [MagicMock(message=MagicMock(content="好的"))]
+    with patch(
+        "core.services.llm_service.litellm.completion", return_value=fake
+    ) as mock_completion:
+        resp = client.post("/api/ai/chat", json={
+            "messages": [{"role": "user", "content": "帮我查询"}],
+            "tables": [], "locale": "zh"})
+    assert resp.status_code == 200
+    sent_messages = mock_completion.call_args.kwargs["messages"]
+    system_message = next(m["content"] for m in sent_messages if m["role"] == "system")
+    assert "executes on DuckDB" in system_message
+    assert "never backticks" in system_message
+    assert "DuckDB dialect" in system_message
+
+
 def test_chat_route_truncates_overlong_current_sql(tmp_path, monkeypatch):
     """current_sql 超过 4000 字符应被截断，避免把上下文撑爆。"""
     monkeypatch.setenv("LLM_KEY_SECRET", "test-secret")

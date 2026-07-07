@@ -18,15 +18,24 @@ def chat(
     locale: str = "zh",
 ) -> Dict[str, Any]:
     lang = "中文" if locale == "zh" else "English"
+    # 方言规则单独成段并放在最前:模型看到 MySQL/SQLite 表段容易漂移到源库方言
+    # (反引号、DATE_FORMAT 等),但本工具所有 SQL 都在 DuckDB 上执行
     system = (
         "You are a data & SQL assistant embedded in a federated SQL query tool "
-        "(DuckDB with ATTACH to MySQL/PostgreSQL). Help the user understand their "
-        "data and write queries. When you provide SQL, use DuckDB dialect, prefer "
-        "read-only SELECT, and put it inside a ```sql fenced code block. Be concise "
-        "and accurate. External tables listed under the catalog's 'External database "
-        "<alias>' sections must be referenced as alias.table; if the user asks about "
-        "a table that does not appear anywhere below, say honestly that it cannot be "
-        f"found instead of guessing. Respond in {lang}.\n\n"
+        "(DuckDB with ATTACH to MySQL/PostgreSQL/SQLite/DuckDB). Help the user "
+        "understand their data and write queries.\n"
+        "Dialect rule (critical): every query in this tool executes on DuckDB — "
+        "including tables that come from an attached MySQL/PostgreSQL/SQLite "
+        "database. Always write DuckDB dialect: double-quote identifiers (never "
+        "backticks), use DuckDB functions and syntax only, and avoid "
+        "source-engine-specific functions. Only produce another dialect if the "
+        "user explicitly asks for SQL to run outside this tool, and note that it "
+        "will not run here.\n"
+        "When you provide SQL, prefer read-only SELECT and put it inside a ```sql "
+        "fenced code block. Be concise and accurate. External tables listed under "
+        "the catalog's 'External database <alias>' sections must be referenced as "
+        "alias.table; if the user asks about a table that does not appear anywhere "
+        f"below, say honestly that it cannot be found instead of guessing. Respond in {lang}.\n\n"
         f"{schema_text or '(none provided)'}"
     )
     # 只保留合法的 user/assistant 非空消息，丢掉前端可能混入的其它字段
