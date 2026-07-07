@@ -6,6 +6,19 @@ from duckquery_mcp.client import BackendError, BackendNotFound, DuckQueryClient
 from duckquery_mcp.config import Config
 from duckquery_mcp.safety import tool_allowed
 from duckquery_mcp.tools import ai_settings, discover, export, passthrough, query, sources, transform
+from duckquery_mcp.util import normalize_attach_list, normalize_connection_id
+
+
+def _normalize_kwargs(kwargs: dict) -> dict:
+    """任何工具的裸 connection_id 标量、或 attach_databases 列表(每项含
+    connection_id),统一在工具注册的唯一关卡上剥掉 db_ 前缀——工具函数自身
+    不再需要各自记得调用 normalize_*,新增工具天然获得这个行为。"""
+    out = dict(kwargs)
+    if isinstance(out.get("connection_id"), str):
+        out["connection_id"] = normalize_connection_id(out["connection_id"])
+    if out.get("attach_databases"):
+        out["attach_databases"] = normalize_attach_list(out["attach_databases"])
+    return out
 
 
 def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
@@ -20,7 +33,7 @@ def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
 
             async def wrapped(**kwargs):
                 try:
-                    return await fn(client, cfg, **kwargs)
+                    return await fn(client, cfg, **_normalize_kwargs(kwargs))
                 except (BackendNotFound, BackendError) as exc:
                     return {"error": str(exc)}
 

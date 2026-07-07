@@ -15,8 +15,9 @@ async def test_get_ai_settings_masked(cfg):
 
 
 @respx.mock
-async def test_export_results_normalizes_attach_databases(cfg):
-    """回归(2026-07): export_results 是唯一没做 db_ 前缀归一化的 attach 透传点。"""
+async def test_export_results_passes_attach_databases(cfg):
+    """export_results 透传 attach_databases 原样给后端;db_ 前缀归一化发生在
+    注册闭包层(见 test_normalize.py),这里验证透传不改写。"""
     import json
 
     from duckquery_mcp.tools.export import export_results
@@ -27,7 +28,7 @@ async def test_export_results_normalizes_attach_databases(cfg):
         return_value=httpx.Response(200, json={"success": True, "data": {"file_id": "f1"}}))
     out = await export_results(
         DuckQueryClient(cfg), cfg, sql="SELECT * FROM m.t", format="csv",
-        attach_databases=[{"alias": "m", "connection_id": "db_SORDER"}])
+        attach_databases=[{"alias": "m", "connection_id": "SORDER"}])
     assert out["file_id"] == "f1"
     sent = json.loads(route.calls.last.request.content)
     assert sent["attach_databases"] == [{"alias": "m", "connection_id": "SORDER"}]

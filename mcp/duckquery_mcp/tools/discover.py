@@ -1,7 +1,5 @@
 from typing import Any
 
-from duckquery_mcp.util import normalize_connection_id
-
 
 async def list_tables(client, cfg) -> Any:
     """List DuckDB tables currently loaded in the local engine."""
@@ -26,8 +24,7 @@ async def list_db_objects(client, cfg, *, connection_id: str, kind: str = "table
     column_count) capped at 200 — a big schema's full column lists would be huge. To get
     one table's columns, run `federated_query("SELECT * FROM alias.<table> LIMIT 0", ...)`.
     """
-    cid = normalize_connection_id(connection_id)
-    data = await client.call("GET", f"/api/datasources/databases/{cid}/{kind}")
+    data = await client.call("GET", f"/api/datasources/databases/{connection_id}/{kind}")
     tables = data.get("tables") if isinstance(data, dict) else None
     if isinstance(tables, list):
         cap = 200

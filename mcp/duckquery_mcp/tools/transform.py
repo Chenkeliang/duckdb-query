@@ -8,11 +8,10 @@ async def save_as_table(client, cfg, *, sql: str, table_name: str,
     Pass attach_databases (same shape as federated_query) when the SQL references
     attached external tables (alias.table) — without it such SQL fails with
     'schema ... does not exist'."""
-    from duckquery_mcp.util import normalize_attach_list
     # Router reads "table_alias" (or "tableAlias"); public param kept as table_name for clarity.
     body: dict = {"sql": sql, "table_alias": table_name}
     if attach_databases:
-        body["attach_databases"] = normalize_attach_list(attach_databases)
+        body["attach_databases"] = attach_databases
     return await client.call("POST", "/api/save_query_to_duckdb", json_body=body)
 
 

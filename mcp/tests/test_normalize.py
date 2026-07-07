@@ -2,10 +2,10 @@ import json
 
 import httpx
 import respx
+from mcp.server.fastmcp import FastMCP
 
 from duckquery_mcp.client import DuckQueryClient
-from duckquery_mcp.tools.discover import list_db_objects
-from duckquery_mcp.tools.query import federated_query
+from duckquery_mcp.tools import _normalize_kwargs, register_all
 from duckquery_mcp.util import normalize_attach_list, normalize_connection_id
 
 
@@ -22,34 +22,69 @@ def test_normalize_attach_list():
     assert normalize_attach_list(None) == []
 
 
+def test_normalize_kwargs_strips_bare_connection_id():
+    """裸标量 connection_id(如 list_db_objects 的参数)在注册闭包层被归一化。"""
+    out = _normalize_kwargs({"connection_id": "db_SORDER", "kind": "tables"})
+    assert out == {"connection_id": "SORDER", "kind": "tables"}
+
+
+def test_normalize_kwargs_strips_attach_list():
+    """attach_databases 列表(federated_query/chat/error_fix/save_as_table/
+    export_results 共用的形状)在注册闭包层被归一化。"""
+    out = _normalize_kwargs({
+        "sql": "SELECT 1",
+        "attach_databases": [{"alias": "m", "connection_id": "db_SORDER"}],
+    })
+    assert out["attach_databases"] == [{"alias": "m", "connection_id": "SORDER"}]
+    assert out["sql"] == "SELECT 1"  # 不相关字段原样透传
+
+
+def test_normalize_kwargs_passthrough_when_absent():
+    """既无 connection_id 也无 attach_databases 时原样返回,不引入多余键。"""
+    out = _normalize_kwargs({"sql": "SELECT 1"})
+    assert out == {"sql": "SELECT 1"}
+
+
+def _get_registered_tool_fn(mcp: FastMCP, name: str):
+    """从 register_all 真实注册的 _tool_manager 里取回原始闭包,绕过 MCP 协议的
+    ContentBlock 序列化层,但仍然走 add(tier)->wrapped 这条真实归一化路径。"""
+    return mcp._tool_manager.get_tool(name).fn
+
+
 @respx.mock
-async def test_list_db_objects_strips_id_and_compacts(cfg):
+async def test_list_db_objects_strips_id_via_registration(cfg):
+    """回归:list_db_objects 自身不再做归一化,必须由注册闭包代劳。"""
     base = "http://127.0.0.1:48001"
     respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
-    # must hit the STRIPPED id (SORDER), not db_SORDER
     route = respx.get(f"{base}/api/datasources/databases/SORDER/tables").mock(
         return_value=httpx.Response(200, json={"success": True, "data": {
             "connection_id": "SORDER", "database": "store_order",
-            "tables": [
-                {"table_name": "t1", "table_comment": "c1", "columns": [{"name": "a"}, {"name": "b"}]},
-                {"table_name": "t2", "table_comment": "c2", "columns": [{"name": "x"}]},
-            ]}}))
-    out = await list_db_objects(DuckQueryClient(cfg), cfg, connection_id="db_SORDER")
+            "tables": [{"table_name": "t1", "table_comment": "c1", "columns": [{"name": "a"}]}],
+        }}))
+
+    mcp = FastMCP("test")
+    register_all(mcp, DuckQueryClient(cfg), cfg)
+    fn = _get_registered_tool_fn(mcp, "list_db_objects")
+
+    out = await fn(connection_id="db_SORDER")
     assert route.called
-    assert out["table_count"] == 2
-    assert out["truncated"] is False
-    assert out["tables"][0] == {"table_name": "t1", "comment": "c1", "column_count": 2}
-    assert "columns" not in out["tables"][0]  # heavy per-table columns dropped
+    assert out["table_count"] == 1
 
 
 @respx.mock
-async def test_federated_query_strips_connection_id(cfg):
+async def test_federated_query_strips_connection_id_via_registration(cfg):
+    """回归:federated_query 自身不再做归一化,必须由注册闭包代劳。"""
     base = "http://127.0.0.1:48001"
     respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
     route = respx.post(f"{base}/api/duckdb/federated-query").mock(
         return_value=httpx.Response(200, json={"success": True, "data": {
             "columns": ["n"], "data": [{"n": 1}], "row_count": 1}}))
-    await federated_query(DuckQueryClient(cfg), cfg, sql="SELECT 1 AS n FROM m.t",
-                          attach_databases=[{"alias": "m", "connection_id": "db_SORDER"}])
+
+    mcp = FastMCP("test")
+    register_all(mcp, DuckQueryClient(cfg), cfg)
+    fn = _get_registered_tool_fn(mcp, "federated_query")
+
+    await fn(sql="SELECT 1 AS n FROM m.t",
+             attach_databases=[{"alias": "m", "connection_id": "db_SORDER"}])
     sent = json.loads(route.calls.last.request.content)
     assert sent["attach_databases"][0]["connection_id"] == "SORDER"

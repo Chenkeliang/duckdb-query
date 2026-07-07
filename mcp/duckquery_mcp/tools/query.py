@@ -34,11 +34,10 @@ async def federated_query(client: DuckQueryClient, cfg: Config, *, sql: str, att
     Reference an attached table as alias.table, e.g. SELECT * FROM m.orders LIMIT 100.
     """
     from duckquery_mcp.safety import is_write_sql
-    from duckquery_mcp.util import normalize_attach_list
     if cfg.mode == "read-only" and is_write_sql(sql):
         return {"error": "read-only mode: only SELECT / WITH / EXPLAIN are allowed."}
     data = await client.call("POST", "/api/duckdb/federated-query",
-                             json_body={"sql": sql, "attach_databases": normalize_attach_list(attach_databases),
+                             json_body={"sql": sql, "attach_databases": attach_databases,
                                         "is_preview": True})
     return _truncate(data, cfg)
 
@@ -89,10 +88,9 @@ async def chat(
     Pass attach_databases (same shape as federated_query) whenever tables reference
     attached external DBs (alias.table) — the AI then sees their real schemas and
     engine types instead of bare names."""
-    from duckquery_mcp.util import normalize_attach_list
     body: dict = {"messages": messages, "tables": tables or [], "locale": locale}
     if attach_databases:
-        body["attach_databases"] = normalize_attach_list(attach_databases)
+        body["attach_databases"] = attach_databases
     return await client.call("POST", "/api/ai/chat", json_body=body)
 
 
@@ -110,10 +108,9 @@ async def error_fix(
 
     Pass the same tables / attach_databases the failing query used — the doctor
     then sees real schemas instead of guessing column names."""
-    from duckquery_mcp.util import normalize_attach_list
     body: dict = {"sql": sql, "error": error_message, "locale": locale}
     if tables:
         body["tables"] = tables
     if attach_databases:
-        body["attach_databases"] = normalize_attach_list(attach_databases)
+        body["attach_databases"] = attach_databases
     return await client.call("POST", "/api/ai/error-fix", json_body=body)
