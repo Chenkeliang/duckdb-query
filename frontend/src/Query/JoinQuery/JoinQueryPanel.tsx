@@ -58,8 +58,8 @@ import {
   isExternalTable,
   hasMixedSources,
   isSameConnection,
-  DATABASE_TYPE_ICONS,
 } from '@/utils/tableUtils';
+import { getDatabaseTypeIcon } from '@/utils/databaseTypeIcon';
 import {
   quoteIdent,
   extractAttachDatabases,
@@ -603,8 +603,8 @@ const TableCard: React.FC<TableCardProps> = ({
   const normalized = normalizeSelectedTable(table);
   const tableName = normalized.name;
   const isExternal = normalized.source === 'external';
-  const dbIcon = isExternal && normalized.connection
-    ? DATABASE_TYPE_ICONS[normalized.connection.type] || '📊'
+  const DbIcon = isExternal && normalized.connection
+    ? getDatabaseTypeIcon(normalized.connection.type)
     : null;
 
   // 全选/取消全选
@@ -646,8 +646,8 @@ const TableCard: React.FC<TableCardProps> = ({
         <div className="p-3 border-b border-border flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              {isExternal ? (
-                <span className="text-sm shrink-0">{dbIcon}</span>
+              {isExternal && DbIcon ? (
+                <DbIcon className={`w-4 h-4 shrink-0 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
               ) : (
                 <Table className={`w-4 h-4 shrink-0 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
               )}
@@ -698,9 +698,9 @@ const TableCard: React.FC<TableCardProps> = ({
         {/* 列列表 */}
         <div className="p-3">
           <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-            {isExternal ? (
+            {isExternal && DbIcon ? (
               <>
-                <span>{dbIcon}</span>
+                <DbIcon className="w-3 h-3" />
                 <span>{normalized.connection?.name || t('query.join.externalTable', '外部表')}</span>
               </>
             ) : (

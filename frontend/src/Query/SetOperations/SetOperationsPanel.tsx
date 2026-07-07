@@ -16,8 +16,8 @@ import {
   isExternalTable,
   hasMixedSources,
   isSameConnection,
-  DATABASE_TYPE_ICONS,
 } from '@/utils/tableUtils';
+import { getDatabaseTypeIcon } from '@/utils/databaseTypeIcon';
 import {
   extractAttachDatabases,
   generateExternalTableReference,
@@ -97,8 +97,8 @@ const TableCard: React.FC<TableCardProps> = ({
   const normalized = normalizeSelectedTable(table);
   const tableName = normalized.name;
   const isExternal = normalized.source === 'external';
-  const dbIcon = isExternal && normalized.connection
-    ? DATABASE_TYPE_ICONS[normalized.connection.type] || '📊'
+  const DbIcon = isExternal && normalized.connection
+    ? getDatabaseTypeIcon(normalized.connection.type)
     : null;
 
   const allSelected =
@@ -133,8 +133,8 @@ const TableCard: React.FC<TableCardProps> = ({
       {/* 头部 */}
       <div className="p-3 border-b border-border flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          {isExternal ? (
-            <span className="text-sm shrink-0">{dbIcon}</span>
+          {isExternal && DbIcon ? (
+            <DbIcon className="w-4 h-4 text-muted-foreground shrink-0" />
           ) : (
             <Table className="w-4 h-4 text-muted-foreground shrink-0" />
           )}
@@ -152,9 +152,9 @@ const TableCard: React.FC<TableCardProps> = ({
       {/* 列列表 */}
       <div className="p-3">
         <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-          {isExternal ? (
+          {isExternal && DbIcon ? (
             <>
-              <span>{dbIcon}</span>
+              <DbIcon className="w-3 h-3" />
               <span>{normalized.connection?.name || t('query.set.externalTable', '外部表')}</span>
             </>
           ) : (
@@ -559,6 +559,9 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   };
 
   const sql = sqlForExecute;
+  const CurrentSourceIcon = sourceAnalysis.currentSource
+    ? getDatabaseTypeIcon(sourceAnalysis.currentSource.type)
+    : null;
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface">
@@ -672,9 +675,9 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
           </div>
 
           {/* 外部数据库指示器 */}
-          {sourceAnalysis.hasExternal && sourceAnalysis.currentSource && (
+          {sourceAnalysis.hasExternal && sourceAnalysis.currentSource && CurrentSourceIcon && (
             <Badge variant="outline" className="text-warning border-warning/50 text-xs h-5 px-1.5 gap-1">
-              <span className="opacity-70">{DATABASE_TYPE_ICONS[sourceAnalysis.currentSource.type] || '📊'}</span>
+              <CurrentSourceIcon className="w-3 h-3 opacity-70" />
               {sourceAnalysis.currentSource.name}
             </Badge>
           )}
