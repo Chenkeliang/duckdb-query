@@ -28,6 +28,9 @@ from routers.query_sql_utils import ensure_query_has_limit, statement_accepts_li
         # 回归(2026-07): AI 生成 SUMMARIZE 被补 LIMIT 后语法错误
         "SUMMARIZE tbl",
         "summarize duckdb_demo.orders",
+        # 回归(2026-07): RESET 与 SET 同族,补 LIMIT 后语法错误
+        "RESET memory_limit",
+        "reset memory_limit",
     ],
 )
 def test_statement_rejects_limit(sql):

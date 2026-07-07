@@ -54,6 +54,7 @@ _NO_LIMIT_PATTERNS = [
     r"^EXPLAIN\b",
     r"^PRAGMA\b",
     r"^SET\b",
+    r"^RESET\b",
     r"^CREATE\b",
     r"^ALTER\b",
     r"^DROP\b",
