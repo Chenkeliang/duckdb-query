@@ -72,6 +72,27 @@ def test_unparseable_sql_returns_original():
     assert reports == [{"error": "parse_failed", "pushed": False}]
 
 
+def test_no_pushdown_returns_sql_verbatim():
+    """回归(2026-07): 无改写也走 tree.sql() 往返,把 USING SAMPLE 排到 LIMIT 后变语法错误。
+    没有实际下推时必须逐字返回原 SQL。"""
+    sql = "SELECT * FROM mysql_db.orders USING SAMPLE 50 ROWS LIMIT 10000"
+    out_sql, _ = apply_semijoin_pushdown(sql, {"mysql_db"}, key_provider=lambda *a: [1], threshold=100)
+    assert out_sql == sql
+    # 无 JOIN 的普通查询同样逐字放行
+    sql2 = "SELECT * FROM mysql_db.orders LIMIT 10"
+    out_sql2, _ = apply_semijoin_pushdown(sql2, {"mysql_db"}, key_provider=lambda *a: [1], threshold=100)
+    assert out_sql2 == sql2
+
+
+def test_sample_clause_skips_pushdown_even_with_join():
+    """含采样子句的查询直接放行:即便存在可下推 JOIN 也不做 sqlglot 往返。"""
+    sql = ("SELECT * FROM mysql_db.orders o JOIN local_t l ON o.id = l.oid "
+           "USING SAMPLE 10 ROWS")
+    out_sql, reports = apply_semijoin_pushdown(sql, {"mysql_db"}, key_provider=lambda *a: [1, 2], threshold=100)
+    assert out_sql == sql
+    assert reports == []
+
+
 from core.database.federated_optimizer import build_time_bound_suggestions
 
 

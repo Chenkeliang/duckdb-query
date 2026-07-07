@@ -6,6 +6,7 @@ docs/superpowers/specs/2026-06-18-federated-pushdown-design.md。
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -137,6 +138,11 @@ def apply_semijoin_pushdown(
     threshold: int,
 ) -> tuple[str, list[dict]]:
     """把合格半连接改写进 SQL；返回 (改写后 SQL, reports)。任何解析失败 → 原样返回。"""
+    # 采样子句经 sqlglot 往返会被排到 LIMIT 之后（DuckDB 要求 USING SAMPLE 在 LIMIT 前，
+    # 重排后是语法错误），且对采样查询做半连接下推意义有限：静默放行不优化
+    if re.search(r"\bUSING\s+SAMPLE\b|\bTABLESAMPLE\b", sql, re.IGNORECASE):
+        return sql, []
+
     try:
         tree = sqlglot.parse_one(sql, read="duckdb")
     except Exception as exc:  # noqa: BLE001
@@ -146,6 +152,7 @@ def apply_semijoin_pushdown(
     try:
         plans = plan_semijoins(sql, attach_aliases, _tree=tree)
         reports: list[dict] = []
+        pushed_any = False
         for p in plans:
             keys = key_provider(p.local_table_sql, p.local_col, threshold)
             if not keys:  # None 或空 → 不下推
@@ -158,7 +165,12 @@ def apply_semijoin_pushdown(
             inner = exp.select("*").from_(p.remote_node.copy()).where(in_expr)
             subq = exp.Subquery(this=inner, alias=exp.TableAlias(this=exp.to_identifier(p.remote_alias)))
             p.remote_node.replace(subq)
+            pushed_any = True
             reports.append({"table": subq.this.args["from_"].sql(), "pushed": True, "keys": len(keys)})
+        # 没有实际改写时必须返回原 SQL 字符串：sqlglot 重新生成(tree.sql)会改变
+        # DuckDB 特有从句的顺序/写法，无改写却往返一遍纯属引入风险
+        if not pushed_any:
+            return sql, reports
         return tree.sql(dialect="duckdb"), reports
     except Exception as exc:  # noqa: BLE001 —— 改写阶段任何异常都保底放行
         logger.warning("federated optimize: rewrite failed, passthrough: %s", exc)
