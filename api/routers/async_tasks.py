@@ -124,7 +124,10 @@ def _attach_external_databases(
 
     from core.database.database_manager import db_manager
     from core.database.duckdb_engine import build_attach_sql
-    from core.database.federated_attach import _is_database_already_attached_error
+    from core.database.federated_attach import (
+        _is_database_already_attached_error,
+        _quote_identifier,
+    )
     from core.security.encryption import password_encryptor
 
     attached = []
@@ -168,7 +171,7 @@ def _attach_external_databases(
                 logger.debug(f"Connection {connection_id} password processed")
 
             try:
-                con.execute(f'DETACH "{alias}"')
+                con.execute(f'DETACH {_quote_identifier(alias)}')
             except Exception:
                 pass
 
