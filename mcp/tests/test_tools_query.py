@@ -1,3 +1,5 @@
+import json
+
 import respx
 import httpx
 from duckquery_mcp.client import DuckQueryClient
@@ -48,6 +50,51 @@ async def test_federated_query_blocks_write_in_readonly(cfg):
     from duckquery_mcp.tools.query import federated_query
     out = await federated_query(None, ro, sql="DROP TABLE t", attach_databases=[])
     assert "read-only" in out["error"].lower()
+
+
+@respx.mock
+async def test_chat_passes_attach_databases(cfg):
+    """chat 透传 attach_databases(归一化 db_ 前缀),外部表的真实 schema 才能进 AI 上下文。"""
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = respx.post(f"{base}/api/ai/chat").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"content": "hi"}}))
+    from duckquery_mcp.tools.query import chat
+    await chat(DuckQueryClient(cfg), cfg,
+               messages=[{"role": "user", "content": "q"}], tables=["m.t"],
+               attach_databases=[{"alias": "m", "connection_id": "db_SORDER"}])
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["tables"] == ["m.t"]
+    assert sent["attach_databases"] == [{"alias": "m", "connection_id": "SORDER"}]
+
+
+@respx.mock
+async def test_chat_local_omits_attach(cfg):
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = respx.post(f"{base}/api/ai/chat").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"content": "hi"}}))
+    from duckquery_mcp.tools.query import chat
+    await chat(DuckQueryClient(cfg), cfg, messages=[{"role": "user", "content": "q"}])
+    assert "attach_databases" not in json.loads(route.calls.last.request.content)
+
+
+@respx.mock
+async def test_error_fix_passes_schema_context(cfg):
+    """error_fix 透传 tables/attach_databases/locale,报错医生按真实 schema 出方案。"""
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = respx.post(f"{base}/api/ai/error-fix").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"fixed_sql": "SELECT 1"}}))
+    from duckquery_mcp.tools.query import error_fix
+    await error_fix(DuckQueryClient(cfg), cfg, sql="SELECT x FROM m.t", error_message="boom",
+                    tables=["m.t"], attach_databases=[{"alias": "m", "connection_id": "db_SORDER"}])
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["sql"] == "SELECT x FROM m.t"
+    assert sent["error"] == "boom"
+    assert sent["tables"] == ["m.t"]
+    assert sent["attach_databases"] == [{"alias": "m", "connection_id": "SORDER"}]
+    assert sent["locale"] == "zh"
 
 
 @respx.mock

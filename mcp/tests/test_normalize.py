@@ -6,13 +6,20 @@ import respx
 from duckquery_mcp.client import DuckQueryClient
 from duckquery_mcp.tools.discover import list_db_objects
 from duckquery_mcp.tools.query import federated_query
-from duckquery_mcp.util import normalize_connection_id
+from duckquery_mcp.util import normalize_attach_list, normalize_connection_id
 
 
 def test_normalize_strips_db_prefix():
     assert normalize_connection_id("db_SORDER") == "SORDER"
     assert normalize_connection_id("SORDER") == "SORDER"
     assert normalize_connection_id("db_db_x") == "db_x"  # only one prefix stripped
+
+
+def test_normalize_attach_list():
+    out = normalize_attach_list([{"alias": "m", "connection_id": "db_SORDER"}, {"alias": "x"}])
+    assert out[0] == {"alias": "m", "connection_id": "SORDER"}
+    assert out[1] == {"alias": "x"}  # 缺 connection_id 原样透传,由后端校验
+    assert normalize_attach_list(None) == []
 
 
 @respx.mock
