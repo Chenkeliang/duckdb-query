@@ -15,6 +15,7 @@ save_query_to_duckdb 联邦查询支持测试
 import sqlite3
 import sys
 import os
+from unittest.mock import patch
 
 import duckdb
 import pytest
@@ -161,6 +162,71 @@ class TestSaveQueryToDuckDBAutoDerivedAttach:
             assert _table_row_count("imported_products_duckdb_auto") == 2
         finally:
             _unregister_connection(connection_id)
+
+
+    def test_mysql_datasource_without_explicit_attach_routes_through_attach(self):
+        """回归(2026-07): mysql 曾被排除在自动推导之外、走独立的
+        db_manager.execute_query 直连重跑分支。统一后 mysql 和其余三种类型
+        一样自动推导 attach_list、经 execute_sql_and_persist 走 ATTACH,
+        旧直连分支已删除,db_manager.execute_query 不应再被调用。
+
+        没有可用的真实 MySQL 服务器,mock 掉真正需要网络 I/O 的
+        execute_sql_and_persist 本身,只验证 join_query.py 传给它的
+        attach_list 是否正确包含了这条 mysql 连接(证明推导没有排除 mysql)。
+        """
+        connection_id = "save-query-mysql-auto-test"
+        _register_connection(
+            connection_id,
+            DataSourceType.MYSQL,
+            {"host": "127.0.0.1", "port": 3306, "database": "testdb",
+             "user": "root", "password": "x"},
+        )
+        try:
+            with patch("routers.join_query.execute_sql_and_persist") as mock_persist, \
+                 patch("core.database.database_manager.db_manager.execute_query") as mock_legacy:
+                mock_persist.return_value = {
+                    "row_count": 2, "columns": ["id"], "column_count": 1,
+                    "column_profiles": [], "schema_version": 2,
+                }
+                resp = client.post(
+                    "/api/save_query_to_duckdb",
+                    json={
+                        "sql": "SELECT id FROM orders",
+                        "table_alias": "imported_mysql_auto",
+                        "datasource": {"id": connection_id, "type": "mysql"},
+                    },
+                )
+                assert resp.status_code == 200
+                assert resp.json()["success"] is True
+
+                mock_legacy.assert_not_called()
+                assert mock_persist.call_count == 1
+                _, table_name, attach_list = mock_persist.call_args[0]
+                assert table_name == "imported_mysql_auto"
+                assert attach_list is not None and len(attach_list) == 1
+                assert attach_list[0]["connection_id"] == connection_id
+        finally:
+            _unregister_connection(connection_id)
+            with with_duckdb_connection() as con:
+                con.execute('DROP TABLE IF EXISTS "imported_mysql_auto"')
+
+
+class TestSaveQueryToDuckDBEmptyResult:
+    """空结果拒绝保存:CTAS 后发现 0 行则 DROP 掉刚建的表、原样返回校验错误
+    (行为与旧实现一致,只是检查时机从"执行前"变成"执行后即删",调用方不可见)"""
+
+    def test_empty_result_rejected_and_table_not_left_behind(self):
+        resp = client.post(
+            "/api/save_query_to_duckdb",
+            json={
+                "sql": "SELECT * FROM (VALUES (1, 'a')) AS t(id, name) WHERE id = 999",
+                "table_alias": "imported_should_not_exist",
+            },
+        )
+        assert resp.status_code == 400
+        with with_duckdb_connection() as con:
+            existing = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+        assert "imported_should_not_exist" not in existing
 
 
 class TestSaveQueryToDuckDBDeriveFailureContract:

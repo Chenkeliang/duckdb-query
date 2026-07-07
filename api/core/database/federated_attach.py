@@ -131,6 +131,50 @@ def execute_sql_with_attach(
         return _run(conn)
 
 
+def execute_sql_and_persist(
+    sql: str,
+    table_name: str,
+    attach_databases: Optional[List[Any]] = None,
+    query_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """在一个连接内 ATTACH(如有)→ CREATE OR REPLACE TABLE AS → 取行数/列信息 → DETACH。
+
+    不经过 pandas DataFrame,避免大结果集的 DuckDB→pandas→DuckDB 双重序列化。
+    mysql 双引号规整只在存在 ATTACH 时应用(纯本地 DuckDB 原生 SQL 不会出现
+    MySQL 客户端习惯写法,无条件应用只会对合法的双引号中文标识符引入误伤风险)。
+    "拒绝空结果"等业务策略由调用方在拿到返回的 metadata 后自行处理,本函数
+    保持中立以便复用。
+    """
+    from core.common.sql_mysql_quotes import (
+        normalize_mysql_double_quoted_strings_for_duckdb,
+    )
+    from core.data.file_datasource_manager import build_table_metadata_snapshot
+
+    attach_configs = resolve_attach_configs(attach_databases)
+    cleaned_sql = sql.rstrip().rstrip(";")
+    if attach_configs:
+        cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(cleaned_sql)
+    quoted_table = f'"{table_name}"'
+
+    def _run(conn: Any) -> Dict[str, Any]:
+        attached: List[str] = []
+        try:
+            if attach_configs:
+                attached = attach_databases_on_connection(conn, attach_configs)
+            conn.execute(f'CREATE OR REPLACE TABLE {quoted_table} AS ({cleaned_sql})')
+            return build_table_metadata_snapshot(conn, table_name)
+        finally:
+            if attached:
+                detach_databases_on_connection(conn, attached)
+
+    if query_id:
+        with interruptible_connection(query_id, cleaned_sql) as conn:
+            return _run(conn)
+
+    with with_duckdb_connection() as conn:
+        return _run(conn)
+
+
 def federated_source_sql_alias(table_ref: str, attach_aliases: set[str]) -> str:
     """
     ATTACH 后 DuckDB 可见的短表名（一般为物理表名，不含 attach 前缀）。

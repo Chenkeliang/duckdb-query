@@ -35,6 +35,7 @@ from core.database.duckdb_engine import (
 from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
+    execute_sql_and_persist,
     federated_source_sql_alias,
     format_qualified_table_reference,
     resolve_attach_configs,
@@ -1072,223 +1073,114 @@ def save_query_to_duckdb(request: dict = Body(...)):
             f"Starting to save query result: datasource_id={datasource_id}, datasource_type={datasource_type}, table_alias={table_alias}"
         )
 
-        # 联邦查询支持：显式 attach_databases 优先；为空时按 sqlite/duckdb/postgresql 数据源自动推导
-        # （mysql 不推导，没有显式 attach 时保留旧的直连 MySQL 重跑分支，避免老客户端回归；
-        #  datasource_id == "duckdb_internal" 是"本地查询、无外部数据源"的哨兵值，必须排除，
-        #  否则会被当成真实连接 ID 传给 build_attach_list_from_datasource 而报连接不存在）
-        attach_list = request.get("attach_databases") or None
-        if (
-            not attach_list
-            and datasource_type in ("sqlite", "duckdb", "postgresql")
-            and datasource_id != "duckdb_internal"
-        ):
-            from core.common.connection_alias import build_attach_list_from_datasource
+        # 联邦查询支持：显式 attach_databases 优先；为空时按 mysql/sqlite/duckdb/postgresql
+        # 四种类型统一自动推导（四种均可 ATTACH，async_tasks.py 的异步任务端点早已如此）。
+        # duckdb_internal 是"本地查询、无外部数据源"的哨兵值，传给推导 helper 前先排除，
+        # 否则会被当成真实连接 ID 而报连接不存在。
+        from core.common.connection_alias import resolve_attach_databases_for_async
 
-            try:
-                attach_list = build_attach_list_from_datasource(datasource)
-            except ValueError as derive_error:
-                # 连接已删除/改名等推导失败:错误契约与下方各执行分支保持一致
-                # (QUERY_FAILED + details),不能落到外层通用 OPERATION_FAILED
-                logger.error(f"Deriving attach databases failed: {derive_error}")
-                return error_json_response(
-                    500,
-                    MessageCode.QUERY_FAILED,
-                    f"Federated query failed: {derive_error}",
-                    details={"sql": sql_query, "datasource_id": datasource_id},
-                )
+        try:
+            attach_list, _ = resolve_attach_databases_for_async(
+                request.get("attach_databases"),
+                datasource if datasource_id != "duckdb_internal" else None,
+            )
+        except ValueError as derive_error:
+            # 连接已删除/改名等推导失败:错误契约与下方执行失败保持一致
+            # (QUERY_FAILED + details),不能落到外层通用 OPERATION_FAILED
+            logger.error(f"Deriving attach databases failed: {derive_error}")
+            return error_json_response(
+                500,
+                MessageCode.QUERY_FAILED,
+                f"Federated query failed: {derive_error}",
+                details={"sql": sql_query, "datasource_id": datasource_id},
+            )
 
-        # 根据数据源类型处理
-        result_df = None
+        if attach_list:
+            from models.query_models import AttachDatabase
+            from routers.async_tasks import validate_attach_databases
+
+            validate_attach_databases(
+                [
+                    AttachDatabase(alias=item["alias"], connection_id=item["connection_id"])
+                    for item in attach_list
+                ]
+            )
 
         # 对于保存功能，始终重新执行SQL以确保数据完整性
         # 智能移除系统自动添加的LIMIT，保留用户原始的所有SQL逻辑
         logger.info("Re-executing SQL to get complete data, intelligently handling LIMIT")
 
-        if attach_list:
-            # 联邦查询：ATTACH 外部库后在同一 DuckDB 连接内执行
-            # （execute_sql_with_attach 内部已含 ATTACH→执行→DETACH 和 mysql 双引号规整）
-            from core.database.federated_attach import execute_sql_with_attach
+        try:
+            metadata_snapshot = execute_sql_and_persist(
+                remove_auto_added_limit(sql_query), table_alias, attach_list
+            )
+        except Exception as exec_error:
+            logger.error(f"Query execution/persist failed: {str(exec_error)}")
+            return error_json_response(
+                500,
+                MessageCode.QUERY_FAILED,
+                (
+                    f"Federated query failed: {exec_error}"
+                    if attach_list
+                    else f"DuckDB query failed: {exec_error}"
+                ),
+                details={"sql": sql_query, "attach_databases": attach_list},
+            )
 
-            try:
-                logger.info(
-                    f"Executing federated query via ATTACH, aliases={[a['alias'] for a in attach_list]}"
-                )
-                result_df = execute_sql_with_attach(
-                    remove_auto_added_limit(sql_query), attach_list
-                )
-                logger.info(f"Federated query execution completed, result shape: {result_df.shape}")
-            except Exception as attach_error:
-                logger.error(f"Federated query failed: {str(attach_error)}")
-                return error_json_response(
-                    500,
-                    MessageCode.QUERY_FAILED,
-                    f"Federated query failed: {str(attach_error)}",
-                    details={"sql": sql_query, "attach_databases": attach_list},
-                )
-        # 判断数据源类型
-        elif datasource_type in ["mysql"] and datasource_id != "duckdb_internal":
-            # 处理MySQL等外部数据库
-            try:
-                logger.info(f"Executing external database query: {datasource_id}")
-
-                # 确保数据库连接存在
-                existing_conn = db_manager.get_connection(datasource_id)
-                if not existing_conn:
-                    logger.info(f"Connection {datasource_id} does not exist, attempting to create from config...")
-                    # 尝试从配置文件创建连接
-                    from models.query_models import (
-                        DatabaseConnection,
-                        DataSourceType,
-                    )
-
-                    try:
-                        raise Exception(f"Datasource configuration not found: {datasource_id}")
-                    except Exception as config_error:
-                        logger.error(f"Failed to create database connection: {str(config_error)}")
-                        raise Exception(f"Database connection failed: {str(config_error)}")
-
-                # 智能清理SQL，移除系统自动添加的LIMIT，保留所有用户条件
-                clean_sql = remove_auto_added_limit(sql_query)
-                if clean_sql != sql_query.strip():
-                    logger.info(
-                        f"MySQL query removed auto-added LIMIT: {sql_query} -> {clean_sql}"
-                    )
-
-                # 执行查询获取完整数据（保留所有WHERE条件和用户逻辑）
-                result_df = db_manager.execute_query(datasource_id, clean_sql)
-                logger.info(f"External database query execution completed, result shape: {result_df.shape}")
-
-            except Exception as db_error:
-                logger.error(f"External database query failed: {str(db_error)}")
-                return error_json_response(
-                    500,
-                    MessageCode.QUERY_FAILED,
-                    f"External database query failed: {str(db_error)}",
-                    details={"sql": sql_query, "datasource_id": datasource_id},
-                )
-        else:
-            # 处理DuckDB内部查询
-            try:
-                with with_duckdb_connection() as con:
-
-                    # 智能清理SQL：移除系统自动添加的LIMIT，保留所有用户条件和逻辑
-                    clean_sql = sql_query.strip()
-                    logger.info(f"Original SQL: {clean_sql}")
-
-                    # 智能检测并移除系统自动添加的LIMIT（保留用户原始LIMIT和所有WHERE/JOIN/ORDER BY等条件）
-                    clean_sql = remove_auto_added_limit(clean_sql)
-
-                    if clean_sql != sql_query.strip():
-                        logger.info(
-                            f"DuckDB query removed auto-added LIMIT, kept all user conditions: {clean_sql}"
-                        )
-                    else:
-                        logger.info(f"SQL needs no cleaning or contains user original LIMIT: {clean_sql}")
-
-                    logger.info(f"Executing complete query in DuckDB: {clean_sql}")
-                    result_df = execute_query(clean_sql, con)
-                    logger.info(f"DuckDB query execution completed, result shape: {result_df.shape}")
-
-            except Exception as duckdb_error:
-                logger.error(f"DuckDB query failed: {str(duckdb_error)}")
-                return error_json_response(
-                    500,
-                    MessageCode.QUERY_FAILED,
-                    f"DuckDB query failed: {str(duckdb_error)}",
-                    details={"sql": sql_query},
-                )
-
-        # 验证查询结果
-        if result_df is None or result_df.empty:
+        row_count = metadata_snapshot["row_count"]
+        if row_count == 0:
+            with with_duckdb_connection() as con:
+                con.execute(f'DROP TABLE IF EXISTS "{table_alias}"')
             raise APIValidationError("Query result is empty, cannot save")
 
-        with with_duckdb_connection() as con:
-            try:
-                existing_tables = con.execute("SHOW TABLES").fetchdf()
-                existing_table_names = (
-                    existing_tables["name"].tolist() if not existing_tables.empty else []
-                )
+        logger.info(f"Data has been persisted to DuckDB table: {table_alias}, rows: {row_count}")
 
-                if table_alias in existing_table_names:
-                    logger.warning(f"Table {table_alias} already exists, will be overwritten")
-                    con.execute(f'DROP TABLE IF EXISTS "{table_alias}"')
+        from core.common.timezone_utils import get_current_time_iso
 
-                success = create_varchar_table_from_dataframe(table_alias, result_df, con)
+        try:
+            file_info = {
+                "source_id": table_alias,
+                "filename": f"{table_alias}_query_result",
+                "file_path": f"query_result_{table_alias}",
+                "file_type": "duckdb_table",
+                "created_at": get_current_time_iso(),
+                "source_sql": sql_query,
+                "source_datasource": datasource_id,
+                **metadata_snapshot,
+            }
 
-                if not success:
-                    raise Exception("Failed to persist query result to DuckDB")
+            file_datasource_manager.save_file_datasource(file_info)
+            logger.info(
+                f"Created file datasource configuration for query result table: {table_alias}"
+            )
 
-                logger.info(f"Data has been persisted to DuckDB table: {table_alias}")
+        except Exception as config_error:
+            logger.warning(
+                f"Failed to create file datasource configuration: {str(config_error)}"
+            )
 
-                try:
-                    verification_result = con.execute(
-                        f'SELECT COUNT(*) as count FROM "{table_alias}"'
-                    ).fetchdf()
-                    actual_count = verification_result.iloc[0]["count"]
-                    logger.info(
-                        f"Table {table_alias} verification successful, rows: {actual_count}"
-                    )
-                except Exception as verify_error:
-                    logger.warning(f"Table verification failed: {str(verify_error)}")
-
-                try:
-                    from core.common.timezone_utils import get_current_time_iso
-                    from core.data.file_datasource_manager import file_datasource_manager
-
-                    file_info = {
-                        "source_id": table_alias,
-                        "filename": f"{table_alias}_query_result",
-                        "file_path": f"query_result_{table_alias}",
-                        "file_type": "duckdb_table",
-                        "created_at": get_current_time_iso(),
-                        "columns": result_df.columns.tolist(),
-                        "row_count": len(result_df),
-                        "column_count": len(result_df.columns),
-                        "source_sql": sql_query,
-                        "source_datasource": datasource_id,
-                    }
-
-                    file_datasource_manager.save_file_datasource(file_info)
-                    logger.info(
-                        f"Created file datasource configuration for query result table: {table_alias}"
-                    )
-
-                except Exception as config_error:
-                    logger.warning(
-                        f"Failed to create file datasource configuration: {str(config_error)}"
-                    )
-
-                return create_success_response(
-                    data={
-                        "table_alias": table_alias,
-                        "row_count": len(result_df),
-                        "columns": result_df.columns.tolist(),
-                        "source_sql": sql_query,
-                        "source_datasource": datasource_id,
-                        "created_at": get_current_time_iso(),
-                        "datasource": {
-                            "id": table_alias,
-                            "name": table_alias,
-                            "type": "duckdb",
-                            "table_name": table_alias,
-                            "row_count": len(result_df),
-                            "column_count": len(result_df.columns),
-                            "created_at": get_current_time_iso(),
-                            "updated_at": get_current_time_iso(),
-                        },
-                    },
-                    message_code=MessageCode.TABLE_CREATED,
-                    message=f"Query result has been saved as DuckDB table: {table_alias}",
-                )
-
-            except Exception as duckdb_error:
-                logger.error(f"DuckDB operation failed: {str(duckdb_error)}")
-                return error_json_response(
-                    500,
-                    MessageCode.OPERATION_FAILED,
-                    f"DuckDB operation failed: {str(duckdb_error)}",
-                    details={"table_alias": table_alias},
-                )
+        return create_success_response(
+            data={
+                "table_alias": table_alias,
+                "row_count": row_count,
+                "columns": metadata_snapshot["columns"],
+                "source_sql": sql_query,
+                "source_datasource": datasource_id,
+                "created_at": get_current_time_iso(),
+                "datasource": {
+                    "id": table_alias,
+                    "name": table_alias,
+                    "type": "duckdb",
+                    "table_name": table_alias,
+                    "row_count": row_count,
+                    "column_count": metadata_snapshot["column_count"],
+                    "created_at": get_current_time_iso(),
+                    "updated_at": get_current_time_iso(),
+                },
+            },
+            message_code=MessageCode.TABLE_CREATED,
+            message=f"Query result has been saved as DuckDB table: {table_alias}",
+        )
 
     except BaseAPIException:
         raise
