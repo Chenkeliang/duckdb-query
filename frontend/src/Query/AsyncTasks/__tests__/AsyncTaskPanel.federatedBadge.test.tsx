@@ -80,6 +80,29 @@ describe('AsyncTaskPanel - 联邦/本地徽标', () => {
     expect(screen.getByText('本地')).toBeInTheDocument();
   });
 
+  it('metadata 显式 false 时不被 SQL 注释嗅探覆盖(复用带注释 SQL 的本地任务)', async () => {
+    const tasks: AsyncTask[] = [
+      {
+        task_id: 'local-with-stale-marker',
+        status: 'completed',
+        // 用户复用了带「联邦查询」注释的 SQL,但后端判定为本地任务
+        sql: '-- 联邦查询: mysql_sorder\nSELECT * FROM local_table',
+        created_at: new Date().toISOString(),
+        metadata: { is_federated: false },
+      },
+    ];
+    listAsyncTasksMock.mockResolvedValue({ tasks });
+
+    render(
+      <TestWrapper>
+        <AsyncTaskPanel />
+      </TestWrapper>
+    );
+
+    expect(await screen.findByText('本地')).toBeInTheDocument();
+    expect(screen.queryByText('联邦')).not.toBeInTheDocument();
+  });
+
   it('无 metadata 的老任务仍靠 SQL 注释兜底判断为联邦', async () => {
     const tasks: AsyncTask[] = [
       {

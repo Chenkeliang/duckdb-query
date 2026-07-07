@@ -391,7 +391,8 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
             </thead>
             <tbody>
               {pagedTasks.map((task) => {
-                const fed = task.metadata?.is_federated === true || isFederatedSQL(task.sql);
+                // 后端 metadata 为准(显式 false 不可被嗅探覆盖);SQL 注释嗅探仅兜底无 metadata 的老任务
+                const fed = task.metadata?.is_federated ?? isFederatedSQL(task.sql);
                 const rowCount = getTaskRowCount(task);
                 const displayName = getTaskDisplayName(task);
                 return (
