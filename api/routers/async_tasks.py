@@ -713,6 +713,44 @@ async def generate_and_download_file(task_id: str, request: dict = Body(...)):
         )
 
 
+def _discard_persisted_result(task_id: str, table_name: Optional[str]) -> None:
+    """撤销"结果表已建、complete_task 却因任务被并发取消/失败而拒绝"这个窗口里
+    留下的副作用：删掉结果表 + 已注册的 file datasource 记录。
+
+    取消检查点 2（查询完成后、保存元数据前）之后到 complete_task 之间仍有一段
+    窗口——取消请求若恰好落在这里，complete_task 因状态已是 CANCELLING 而返回
+    False，但此时表已建好、datasource 记录（save_file_datasource）也已写入。不
+    清理的话，任务显示 cancelled，磁盘上却留着一张可查询的孤儿表和一条 datasource
+    记录，没人知道该不该信任它（回归 #8）。
+
+    只在 complete_task 被拒且任务非 success/completed 时调用——已提交为正式结果
+    的表绝不会被本函数删除。表名与 datasource 的 source_id 相同，故只需一个入参。
+    """
+    if not table_name:
+        return
+
+    from core.database.duckdb_pool import get_connection_pool
+
+    try:
+        with get_connection_pool().get_connection() as con:
+            con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+        logger.info("[%s] Dropped orphaned result table: %s", task_id, table_name)
+    except Exception as drop_error:  # pylint: disable=broad-exception-caught
+        logger.warning(
+            "[%s] Failed to drop orphaned table %s: %s", task_id, table_name, drop_error
+        )
+
+    try:
+        file_datasource_manager.delete_file_datasource(table_name)
+    except Exception as del_error:  # pylint: disable=broad-exception-caught
+        logger.warning(
+            "[%s] Failed to delete orphaned datasource record %s: %s",
+            task_id,
+            table_name,
+            del_error,
+        )
+
+
 def execute_async_query(
     task_id: str,
     sql: str,
@@ -910,15 +948,20 @@ def execute_async_query(
             current_status = current_task.status.value if current_task else "None"
 
             # 使用字符串值进行比较，避免Enum身份问题
-            if current_status in (
-                "cancelling",
-                "cancelled",
-                "failed",
-                "success",
-                "completed",
-            ):
+            if current_status in ("cancelling", "cancelled", "failed"):
+                # 任务被并发取消/失败，complete_task 因此被拒——本线程刚建好的表和
+                # datasource 记录都不是任务的正式结果，撤销它们（回归 #8：此前只记
+                # 日志，孤儿表和记录会残留）。与取消检查点 2 的清理动作保持一致。
                 logger.info(
-                    f"[{task_id}] Task final status is, no need to force mark as failed"
+                    f"[{task_id}] complete_task rejected (status={current_status}); "
+                    f"discarding orphaned result table and datasource"
+                )
+                _discard_persisted_result(task_id, table_name)
+                if current_status == "cancelling":
+                    task_manager.mark_cancelled(task_id, "User cancelled during result persistence")
+            elif current_status in ("success", "completed"):
+                logger.info(
+                    f"[{task_id}] Task already final ({current_status}); keeping result table"
                 )
             else:
                 logger.warning(
@@ -1154,15 +1197,18 @@ def execute_async_federated_query(
             current_status = current_task.status.value if current_task else "None"
 
             # 使用字符串值进行比较，避免Enum身份问题
-            if current_status in (
-                "cancelling",
-                "cancelled",
-                "failed",
-                "success",
-                "completed",
-            ):
+            if current_status in ("cancelling", "cancelled", "failed"):
+                # 与非联邦路径同理（回归 #8）：被并发取消/失败时撤销孤儿表+datasource
                 logger.info(
-                    f"[{task_id}] (Federated) task final status {current_status}, no need to force fail"
+                    f"[{task_id}] (Federated) complete_task rejected (status={current_status}); "
+                    f"discarding orphaned result table and datasource"
+                )
+                _discard_persisted_result(task_id, table_name)
+                if current_status == "cancelling":
+                    task_manager.mark_cancelled(task_id, "User cancelled during result persistence")
+            elif current_status in ("success", "completed"):
+                logger.info(
+                    f"[{task_id}] (Federated) task already final ({current_status}); keeping result table"
                 )
             else:
                 logger.warning(
