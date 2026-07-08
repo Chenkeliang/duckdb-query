@@ -62,20 +62,20 @@ def _initialize_global_encryptor() -> PasswordEncryptor:
     This function handles key loading/generation upon module import.
     """
     try:
-        from core.common.paths import get_secret_key_path, load_or_create_secret_key
+        from core.common.paths import atomic_write_secret_key, load_or_create_secret_key
 
         # 首次冷启动原子创建、之后直接读取——与 XOR 加密(utils.encryption_utils)
-        # 共用同一把密钥,统一走这个 O_EXCL 原子加载器,避免多 worker 冷启动各写
-        # 一把不同密钥导致的密文永久无法解密。
+        # 共用同一把密钥,统一走这个原子加载器,避免多 worker 冷启动各写一把不同
+        # 密钥导致的密文永久无法解密。
         secret_key = load_or_create_secret_key()
 
         if len(secret_key) < 32:
             # 极少见:磁盘上的 secret.key 被截断/损坏。损坏的密钥本就无法解密,
-            # 重新生成是唯一的恢复路径(会使既有密文失效)。
+            # 重新生成是唯一的恢复路径(会使既有密文失效)。原子覆盖写入,避免这次
+            # 恢复再被打断、留下又一个半截文件。
             logger.warning("Secret key file corrupt (len<32). Regenerating.")
             secret_key = Fernet.generate_key()
-            with open(get_secret_key_path(), "wb") as f:
-                f.write(secret_key)
+            atomic_write_secret_key(secret_key)
 
         return PasswordEncryptor(secret_key)
 

@@ -94,6 +94,15 @@ def test_sanitize_path_allows_file_inside_base(tmp_path):
     assert sanitize_path(str(inside), [str(allowed)]) == os.path.realpath(str(inside))
 
 
+def test_sanitize_path_root_base_allows_children(tmp_path):
+    """根目录白名单应放行其下真实文件:realpath(根) 自带尾分隔符,若不 rstrip
+    则 root+os.sep 变成 '//' 导致所有子路径被误拒。"""
+    inside = tmp_path / "data.csv"
+    inside.write_text("x")
+    root = os.path.abspath(os.sep)  # POSIX '/';Windows 为当前盘根
+    assert sanitize_path(str(inside), [root]) == os.path.realpath(str(inside))
+
+
 def test_async_tasks_invalid_limit_standard_envelope():
     """async_tasks 列表非法 limit 经 validate_pagination 返回标准信封。"""
     from fastapi.testclient import TestClient

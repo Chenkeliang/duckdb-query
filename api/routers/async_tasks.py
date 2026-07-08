@@ -1295,7 +1295,13 @@ def execute_async_federated_query(
                 "attached_databases": attached_aliases,
             }
 
-            if not task_manager.force_fail_task(
+            # 与非联邦分支一致的兜底:上面的取消检查之后、这里 force_fail 之前,若并发
+            # 取消才落地(RUNNING->CANCELLING),force_fail_task 无状态守卫会把它无条件
+            # 盖成 FAILED、丢掉这次取消(与非联邦分支"卡在 CANCELLING"相反的失效模式)。
+            # 先复查一次:确已进入取消流程就推进到终态 CANCELLED,否则才按失败落库。
+            if task_manager.is_cancellation_requested(task_id):
+                task_manager.mark_cancelled(task_id, "Cancelled by user")
+            elif not task_manager.force_fail_task(
                 task_id, error_message, metadata_update=error_metadata
             ):
                 logger.error(f"Unable to mark federated query task as failed: {task_id}")

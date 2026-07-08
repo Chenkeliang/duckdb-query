@@ -76,6 +76,32 @@ def load_or_create_secret_key() -> bytes:
     return key_path.read_bytes()
 
 
+def atomic_write_secret_key(data: bytes) -> None:
+    """原子覆盖写入 secret.key(临时文件 + os.replace)。
+
+    用于损坏密钥(len<32)的重新生成:直接 open().write() 若在写入中途被打断,会
+    再留下一个半截/损坏文件、把问题永久化;os.replace 保证读者要么看到旧内容、
+    要么看到完整新内容,不会看到半截。注意:多进程并发对同一损坏文件恢复时仍可能
+    各写不同密钥(那已是数据丢失的降级场景,需分布式锁才能收敛,不在此处理)——
+    本函数只保证单次写入的原子性。
+    """
+    key_path = get_secret_key_path()
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    import tempfile
+
+    fd, tmp = tempfile.mkstemp(dir=str(key_path.parent), prefix="secret.key.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(tmp, str(key_path))  # 原子覆盖
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def get_temp_dir() -> Path:
     """临时文件目录:TEMP_FILES_DIR env 优先,否则 <user-data>/temp_files。"""
     env = os.getenv("TEMP_FILES_DIR")

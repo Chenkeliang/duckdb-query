@@ -174,7 +174,10 @@ def sanitize_path(path: str, allowed_bases: List[str]) -> str:
     # 却不在其内)。等于根本身、或以「根 + 分隔符」开头才算真正落在白名单内。
     def _within(base: str) -> bool:
         root = os.path.realpath(base)
-        return real_path == root or real_path.startswith(root + os.sep)
+        # 用 rstrip 去掉根目录带的尾分隔符:realpath("/") 返回 "/"(已含尾分隔符),
+        # 直接 root + os.sep 会得到 "//",任何子路径都不以它开头 -> 连根目录白名单
+        # 都误拒。去掉后 "/" 这类根白名单能正确匹配其下所有路径。
+        return real_path == root or real_path.startswith(root.rstrip(os.sep) + os.sep)
 
     if not any(_within(base) for base in allowed_bases):
         _raise_validator_error(
