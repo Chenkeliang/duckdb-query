@@ -1012,7 +1012,16 @@ def execute_async_query(
             task_manager.mark_cancelled(task_id, "Cancelled by user")
         else:
             if not task_manager.fail_task(task_id, str(e)):
-                logger.error(f"Unable to mark task as failed: {task_id}")
+                # fail_task 仅在 status IN (QUEUED, RUNNING) 时生效。若在上面的
+                # is_cancellation_requested 检查(返回 False)之后、这次 UPDATE 之前,
+                # 并发取消把状态推到了 CANCELLING,fail_task 守卫落空、只记日志会让
+                # 任务卡在 CANCELLING 直到 60s 看门狗回收。重新判定一次:确已进入取消
+                # 流程就推进到终态 CANCELLED(mark_cancelled 覆盖 CANCELLING);否则
+                # (已是 COMPLETED/FAILED 等终态)保持只记日志,不覆盖既有终态。
+                if task_manager.is_cancellation_requested(task_id):
+                    task_manager.mark_cancelled(task_id, "Cancelled by user")
+                else:
+                    logger.error(f"Unable to mark task as failed: {task_id}")
 
 
 def execute_async_federated_query(

@@ -106,3 +106,37 @@ class TestCancelDuringPersistRace:
             assert task_manager.get_task(task_id).status == TaskStatus.SUCCESS
         finally:
             _cleanup(table)
+
+
+class TestFailTaskGuardMissFallsBackToCancelled:
+    """#8(review): 查询异常处理里,若 fail_task 因并发取消(RUNNING->CANCELLING)导致
+    status 守卫落空而返回 False,不能只记日志把任务留在 CANCELLING 等 60s 看门狗——
+    必须兜底推进到终态 CANCELLED。"""
+
+    def test_guard_miss_during_fail_marks_cancelled(self, monkeypatch):
+        table = "failguard_race_result_tbl"
+        try:
+            task_id = task_manager.create_task("SELECT 1 AS x", task_type="query")
+
+            # 让 fail_task 在自己的 UPDATE 之前把状态推到 CANCELLING,复现竞态:
+            # 外层 is_cancellation_requested 仍为 False(此刻还是 RUNNING)->进入 else,
+            # 随后 fail_task 守卫落空返回 False。
+            original_fail = task_manager.fail_task
+
+            def racing_fail(tid, msg):
+                task_manager.request_cancellation(tid, "raced in during fail")
+                return original_fail(tid, msg)  # status=CANCELLING -> 守卫落空 -> False
+
+            monkeypatch.setattr(task_manager, "fail_task", racing_fail)
+
+            # 不存在的表 -> CTAS 抛 catalog 错误 -> 进入 except Exception 处理块
+            execute_async_query(
+                task_id, "SELECT * FROM __no_such_table_failguard__", custom_table_name=table
+            )
+
+            final = task_manager.get_task(task_id)
+            assert final is not None and final.status == TaskStatus.CANCELLED, (
+                f"task stuck in {final.status if final else None}, expected CANCELLED fallback"
+            )
+        finally:
+            _cleanup(table)
