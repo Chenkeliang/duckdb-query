@@ -12,7 +12,7 @@ from functools import lru_cache
 
 from core.database.duckdb_pool import with_system_connection
 from core.common.timezone_utils import get_current_time
-from utils.encryption_utils import encrypt_json, decrypt_json
+from utils.encryption_utils import encrypt_json, decrypt_json, json_needs_key_migration
 
 logger = logging.getLogger(__name__)
 
@@ -275,6 +275,25 @@ class MetadataManager:
             logger.error(f"savingmetadatafailed: {table}/{id}, error: {e}", exc_info=True)
             return False
 
+    def _migrate_legacy_params_if_needed(
+        self, conn, id_field: str, record_id: str, raw_params: str, decrypted_params: dict
+    ) -> None:
+        """把仍用历史默认密钥加密的 params 用本机密钥重新加密写回。
+
+        逐条读取时顺带迁移，不做批量扫描/批量改写：出错只影响这一条，且
+        不影响本次读取已经拿到的正确明文（失败仅记日志，不抛出）。
+        """
+        if not json_needs_key_migration(raw_params):
+            return
+        try:
+            conn.execute(
+                f'UPDATE system_database_connections SET params = ? WHERE {id_field} = ?',
+                [encrypt_json(decrypted_params), record_id],
+            )
+            logger.info("Migrated connection %s params to new encryption key", record_id)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning("Failed to migrate params encryption for %s: %s", record_id, e)
+
     def get_metadata(self, table: str, id: str) -> Optional[dict]:
         """获取元数据（带缓存）"""
         cache_key = f"{table}:{id}"
@@ -314,8 +333,12 @@ class MetadataManager:
                 if table == "system_database_connections" and "params" in data:
                     if isinstance(data["params"], str):
                         # params 是加密的 JSON 字符串，需要解密
-                        data["params"] = decrypt_json(data["params"])
-                
+                        raw_params = data["params"]
+                        data["params"] = decrypt_json(raw_params)
+                        self._migrate_legacy_params_if_needed(
+                            conn, id_field, id, raw_params, data["params"]
+                        )
+
                 # 解析其他 JSON 字段
                 for key, value in data.items():
                     if key == "params" and table == "system_database_connections":
@@ -366,8 +389,12 @@ class MetadataManager:
                     if table == "system_database_connections" and "params" in data:
                         if isinstance(data["params"], str):
                             # params 是加密的 JSON 字符串，需要解密
-                            data["params"] = decrypt_json(data["params"])
-                    
+                            raw_params = data["params"]
+                            data["params"] = decrypt_json(raw_params)
+                            self._migrate_legacy_params_if_needed(
+                                conn, "id", data["id"], raw_params, data["params"]
+                            )
+
                     # 解析其他 JSON 字段
                     for key, value in data.items():
                         if key == "params" and table == "system_database_connections":
