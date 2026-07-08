@@ -1,4 +1,7 @@
 {
+  "download": {
+    "browserStarted": "Download started in your browser{{name}} — find it in your system Downloads folder when it finishes"
+  },
   "dataGrid": {
     "copy": "Copy",
     "copyAsTSV": "Copy as TSV",

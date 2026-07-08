@@ -21,7 +21,7 @@ import {
 import { cn } from '@/lib/utils';
 import { getAsyncDownloadUrl } from '@/api';
 import { openExternal } from '@/desktop/openExternal';
-import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
+import { showDownloadStartedToast, handleApiErrorToast } from '@/utils/toastHelpers';
 
 export type DownloadFormat = 'csv' | 'parquet';
 
@@ -86,7 +86,7 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
     try {
       const url = getAsyncDownloadUrl(taskId, { format });
       await openExternal(url);
-      showSuccessToast(t, 'TASK_DOWNLOAD_SUCCESS', t('async.download.started', '已开始下载'));
+      showDownloadStartedToast(t, `${tableName || taskId}.${format}`);
       onOpenChange(false);
       onSuccess?.();
     } catch (error) {
@@ -94,7 +94,7 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
     } finally {
       setIsDownloading(false);
     }
-  }, [taskId, format, onOpenChange, onSuccess, t]);
+  }, [taskId, format, tableName, onOpenChange, onSuccess, t]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

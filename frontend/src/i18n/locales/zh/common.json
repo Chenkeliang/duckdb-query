@@ -1,4 +1,7 @@
 {
+  "download": {
+    "browserStarted": "已在系统浏览器开始下载{{name}}，完成后可在系统「下载」文件夹中找到"
+  },
   "dataGrid": {
     "copy": "复制",
     "copyAsTSV": "复制为 TSV",

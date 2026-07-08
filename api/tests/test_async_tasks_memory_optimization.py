@@ -348,7 +348,9 @@ class TestAsyncQueryMemoryOptimization:
             assert response.status_code == 200
             assert "text/csv" in response.headers.get("content-type", "")
             content_disposition = response.headers.get("content-disposition", "")
-            assert "task-download.csv" in content_disposition
+            # 下载名现为友好名(任务无结果表 → 回退 task_id),而非磁盘临时文件名,
+            # 便于用户在浏览器下载里认出(此前是 task-<uuid>_<时间>.csv)。
+            assert "test_task_456.csv" in content_disposition
             assert response.text == file_content
         finally:
             if os.path.exists(temp_file):

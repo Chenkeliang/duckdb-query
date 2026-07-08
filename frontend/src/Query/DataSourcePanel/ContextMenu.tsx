@@ -38,7 +38,7 @@ import type { SelectedTableObject } from '@/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
 import { invalidateDataSources } from '@/hooks/useDataSources';
 import { invalidateAfterTableDelete } from '@/utils/cacheInvalidation';
-import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
+import { showSuccessToast, showErrorToast, showDownloadStartedToast } from '@/utils/toastHelpers';
 
 /**
  * TableContextMenu 组件
@@ -151,9 +151,11 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         sql: `SELECT * FROM "${table.name}"`,
         format,
       });
-      const url = getQueryExportDownloadUrl(result.download_url);
+      // 传表名做友好下载文件名(否则浏览器下到的是 query_export.csv)
+      const base = getQueryExportDownloadUrl(result.download_url);
+      const url = `${base}${base.includes('?') ? '&' : '?'}filename=${encodeURIComponent(table.name)}`;
       openExternal(url);
-      showSuccessToast(t, 'OPERATION_SUCCESS', t('dataSource.exportStarted', { tableName: table.name }));
+      showDownloadStartedToast(t, `${table.name}.${format}`);
     } catch (error) {
       showErrorToast(
         t,

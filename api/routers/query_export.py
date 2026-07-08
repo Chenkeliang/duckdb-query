@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 import uuid
 from typing import List, Literal, Optional
@@ -162,10 +163,16 @@ def export_query_results(
 
 
 @router.get("/api/query-results/export/{file_id}/download", tags=["Query Export"])
-def download_query_export(file_id: str):
-    """下载已导出的查询结果文件。"""
+def download_query_export(file_id: str, filename: Optional[str] = None):
+    """下载已导出的查询结果文件。
+
+    filename(可选):前端传入的友好下载名(通常是表名),用于 Content-Disposition,
+    让用户在浏览器下载里认出文件;清洗后使用,防路径穿越/头注入。缺省回退 query_export。
+    """
     if not file_id or ".." in file_id or "/" in file_id:
         raise APIValidationError("Invalid file id")
+
+    safe_name = re.sub(r"[^\w一-鿿.\- ]", "_", filename).strip(" .")[:100] if filename else ""
 
     exports_dir = str(config_manager.get_exports_dir())
     for ext in ("parquet", "csv"):
@@ -179,7 +186,7 @@ def download_query_export(file_id: str):
             return FileResponse(
                 path,
                 media_type=media,
-                filename=f"query_export.{ext}",
+                filename=f"{safe_name or 'query_export'}.{ext}",
             )
 
     return error_json_response(

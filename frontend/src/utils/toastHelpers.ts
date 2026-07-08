@@ -33,6 +33,23 @@ const DEFAULT_ERROR_TOAST_DURATION = 6000;
  * 通用兜底错误码：其翻译过于笼统（"操作失败"/"查询执行失败"），真正原因在后端
  * message 里。命中这些码时优先展示后端 message，避免用户只看到笼统提示。
  */
+/**
+ * 文件下载已开始的提示:桌面端/Web 都是走系统默认浏览器原生下载(openExternal),
+ * 文件落在浏览器的下载目录(通常是系统「下载」文件夹)。这里明确告诉用户去哪找,
+ * 并停留更久(下载是后台进行、容易错过),解决"导出成功后不知道文件在哪"的问题。
+ */
+export function showDownloadStartedToast(t: TFunction, fileName?: string): void {
+  const name = fileName ? `「${fileName}」` : '';
+  toast.success(
+    t(
+      'common:download.browserStarted',
+      '已在系统浏览器开始下载{{name}}，完成后可在系统「下载」文件夹中找到',
+      { name }
+    ),
+    { duration: 9000 }
+  );
+}
+
 const GENERIC_ERROR_CODES = new Set([
   'OPERATION_FAILED',
   'UNKNOWN_ERROR',

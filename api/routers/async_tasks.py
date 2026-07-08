@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 import traceback
 from datetime import datetime
@@ -666,6 +667,18 @@ def cleanup_stuck_tasks():
         )
 
 
+def _safe_download_basename(name: Optional[str]) -> str:
+    """把表名/任务名清洗成安全的下载文件名主干(去掉路径分隔符/引号/控制字符,限长)。
+
+    保留中英文/数字/下划线/连字符/点/空格;其余替换为下划线。用于 Content-Disposition
+    的 filename——防止路径穿越和头注入。空/清洗后为空则返回空串,由调用方回退。
+    """
+    if not name:
+        return ""
+    cleaned = re.sub(r"[^\w一-鿿.\- ]", "_", str(name)).strip(" .")
+    return cleaned[:100]
+
+
 def _serve_task_download(task_id: str, fmt: str):
     """生成(或复用已缓存的)结果文件并以 FileResponse 流式返回。POST/GET 共用。
 
@@ -684,10 +697,20 @@ def _serve_task_download(task_id: str, fmt: str):
         if not os.path.exists(file_path):
             raise ResourceNotFoundError("Generated file", task_id)
 
+        # 友好下载名:优先用任务结果表名(如 big_test_200m.csv),回退到 task_id,
+        # 而不是磁盘上的 task-<uuid>_<时间>.csv——让用户在浏览器下载里一眼认出。
+        table_name = None
+        try:
+            info = task_manager.get_task(task_id)
+            if info and info.result_info:
+                table_name = info.result_info.get("table_name")
+        except Exception:  # pylint: disable=broad-exception-caught
+            table_name = None
+        base = _safe_download_basename(table_name) or _safe_download_basename(task_id) or "result"
         return FileResponse(
             file_path,
             media_type=task_utils.get_media_type(file_path),
-            filename=os.path.basename(file_path),
+            filename=f"{base}.{fmt}",
         )
     except BaseAPIException:
         raise

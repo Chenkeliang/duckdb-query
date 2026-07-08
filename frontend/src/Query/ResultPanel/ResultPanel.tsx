@@ -9,7 +9,7 @@ import {
   exportQueryResults,
   getQueryExportDownloadUrl,
 } from '@/api/queryExportApi';
-import { showErrorToast, cleanErrorMessage } from '@/utils/toastHelpers';
+import { showErrorToast, cleanErrorMessage, showDownloadStartedToast } from '@/utils/toastHelpers';
 import { parseDuckDbErrorSuggestion } from '@/utils/sqlErrorHelper';
 import { openExternal } from '@/desktop/openExternal';
 import { Button } from '@/components/ui/button';
@@ -289,6 +289,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       });
       const url = getQueryExportDownloadUrl(result.download_url);
       openExternal(url);
+      showDownloadStartedToast(t);
     } catch (err) {
       showErrorToast(
         t,
