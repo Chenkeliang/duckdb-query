@@ -34,8 +34,15 @@ fn get_api_base(port: tauri::State<ApiPort>) -> String {
 /// 编码，出现裸空白/换行往往是想利用 explorer.exe(Windows) 的参数解析怪癖塞入
 /// 额外参数(#20)。URL 是作为单个 spawn 参数传入(非 shell)，本无 shell 注入；这
 /// 是对下游进程的额外防御。长度上限做基本 sanity。
+///
+/// 另外强制整串必须是 ASCII：RFC 3986 的 URI 语法本就只含 ASCII(非 ASCII 一律
+/// 百分号编码)，所以任何裸非 ASCII 字符都意味着这不是一个规范 URL。这一条同时
+/// 挡掉了 is_control()/is_whitespace() 都不认的 Unicode 格式字符(Cf 类，如
+/// U+202E 双向覆盖、U+200B 零宽空格、U+FEFF BOM)——它们既非控制符也非空白，可
+/// 被用来伪装/混淆将要打开的地址。
 fn is_safe_external_url(url: &str) -> bool {
-    (url.starts_with("http://") || url.starts_with("https://"))
+    url.is_ascii()
+        && (url.starts_with("http://") || url.starts_with("https://"))
         && url.len() <= 2048
         && !url.chars().any(|c| c.is_control() || c.is_whitespace())
 }
@@ -301,5 +308,15 @@ mod tests {
     fn rejects_overlong() {
         let long = format!("https://x.com/{}", "a".repeat(3000));
         assert!(!is_safe_external_url(&long));
+    }
+
+    #[test]
+    fn rejects_unicode_format_and_nonascii() {
+        // Cf 格式字符：既非 is_control 也非 is_whitespace,靠 is_ascii() 拦下
+        assert!(!is_safe_external_url("https://x.com/\u{202E}evil")); // 双向覆盖(RLO)
+        assert!(!is_safe_external_url("https://x.com/\u{200B}evil")); // 零宽空格(ZWSP)
+        assert!(!is_safe_external_url("https://x.com/\u{FEFF}evil")); // BOM
+        // 其它裸非 ASCII(IDN 同形/伪装域名应先 Punycode 编码)
+        assert!(!is_safe_external_url("https://exаmple.com")); // 'а' 为西里尔字母
     }
 }
