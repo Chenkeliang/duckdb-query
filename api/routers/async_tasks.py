@@ -124,9 +124,11 @@ def _attach_external_databases(
 
     from core.database.database_manager import db_manager
     from core.database.duckdb_engine import build_attach_sql
+    from core.common.exceptions import DatabaseConnectionError
     from core.database.federated_attach import (
         _is_database_already_attached_error,
         _quote_identifier,
+        redact_connection_secrets,
     )
     from core.security.encryption import password_encryptor
 
@@ -186,7 +188,12 @@ def _attach_external_databases(
                         alias,
                     )
                 else:
-                    raise
+                    # 在错误离开 ATTACH 现场之前脱敏并切断 __cause__ 链，避免连接串里的
+                    # 明文口令随原始异常流向日志/任务元数据/MCP 调用方（回归 #19）
+                    safe_error = redact_connection_secrets(attach_error)
+                    raise DatabaseConnectionError(
+                        f"Failed to connect to external database '{alias}': {safe_error}"
+                    ) from None
             attached.append(alias)
             logger.info(f"Successfully ATTACH database: {alias}")
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -16,6 +17,20 @@ from core.common.exceptions import DatabaseConnectionError, ResourceNotFoundErro
 from core.security.encryption import password_encryptor
 
 logger = logging.getLogger(__name__)
+
+# DuckDB 的 mysql/postgres 扩展在 ATTACH 失败时会把整条连接串原样回显进错误信息，
+# 其中 password=明文 是空格分隔的一段 token。password 值本身不含空格（build_attach_sql
+# 不对其加引号，含空格的口令本就会破坏连接串），故 \S+ 正好匹配这一段。
+_CONN_SECRET_RE = re.compile(r"(password=)\S+", re.IGNORECASE)
+
+
+def redact_connection_secrets(text: Any) -> str:
+    """把连接串里回显的明文口令替换成 password=***。
+
+    ATTACH 失败的原始错误会流向日志、异常消息、任务元数据乃至 MCP/LLM 调用方；
+    在错误离开 ATTACH 现场之前先脱敏，避免明文口令外泄（回归 #19）。
+    """
+    return _CONN_SECRET_RE.sub(r"\1***", str(text))
 
 
 def _is_database_already_attached_error(error: Exception) -> bool:
@@ -90,10 +105,13 @@ def attach_databases_on_connection(
                 )
                 attached.append(alias)
                 continue
-            logger.error("ATTACH database %s failed: %s", alias, attach_error)
+            safe_error = redact_connection_secrets(attach_error)
+            logger.error("ATTACH database %s failed: %s", alias, safe_error)
+            # from None：切断 __cause__ 链，否则未脱敏的原始异常仍会随
+            # traceback.format_exc() 一起被打印/存储
             raise DatabaseConnectionError(
-                f"Failed to connect to external database '{alias}': {attach_error}",
-            ) from attach_error
+                f"Failed to connect to external database '{alias}': {safe_error}",
+            ) from None
     return attached
 
 
