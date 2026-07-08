@@ -83,6 +83,16 @@ def safe_alias(table, col):
     return f'"{alias}"'
 
 
+def _escaped_col_name(col: Any) -> str:
+    """从列(字符串或 {'name':...} 字典)取列名并转义内嵌双引号，供安全拼进带引号
+    的标识符。join.conditions[].column 与 source.columns[] 都来自请求体、且
+    query_models 里无 schema 校验，必须转义——否则内嵌的 `"` 可跳出标识符注入
+    SQL（回归：JOIN 结果标记 CASE 表达式里的键列曾经裸拼，与 columns[].name
+    是同一注入面）。"""
+    name = col.get("name", str(col)) if isinstance(col, dict) else str(col)
+    return name.replace('"', '""')
+
+
 def load_federated_table_columns(
     con: Any,
     source_id: str,
@@ -241,7 +251,7 @@ def build_multi_table_join_query(
                 # LEFT JOIN: check if right table key field is NULL
                 if join.conditions and len(join.conditions) > 0:
                     right_key_col = (
-                        f'"{right_table}"."{join.conditions[0].right_column}"'
+                        f'"{right_table}"."{_escaped_col_name(join.conditions[0].right_column)}"'
                     )
                 else:
                     # If no conditions, use first column for check
@@ -255,7 +265,7 @@ def build_multi_table_join_query(
                         else []
                     )
                     right_key_col = (
-                        f'"{right_table}"."{right_cols[0]}"'
+                        f'"{right_table}"."{_escaped_col_name(right_cols[0])}"'
                         if right_cols
                         else f'"{right_table}".rowid'
                     )
@@ -263,7 +273,7 @@ def build_multi_table_join_query(
             elif join_type == "right":
                 # RIGHT JOIN: check if left table key field is NULL
                 if join.conditions and len(join.conditions) > 0:
-                    left_key_col = f'"{left_table}"."{join.conditions[0].left_column}"'
+                    left_key_col = f'"{left_table}"."{_escaped_col_name(join.conditions[0].left_column)}"'
                 else:
                     # If no conditions, use first column for check
                     left_cols = (
@@ -276,7 +286,7 @@ def build_multi_table_join_query(
                         else []
                     )
                     left_key_col = (
-                        f'"{left_table}"."{left_cols[0]}"'
+                        f'"{left_table}"."{_escaped_col_name(left_cols[0])}"'
                         if left_cols
                         else f'"{left_table}".rowid'
                     )
@@ -284,9 +294,9 @@ def build_multi_table_join_query(
             elif join_type in ["full", "full_outer", "outer"]:
                 # FULL OUTER JOIN: check if both sides key fields are NULL
                 if join.conditions and len(join.conditions) > 0:
-                    left_key_col = f'"{left_table}"."{join.conditions[0].left_column}"'
+                    left_key_col = f'"{left_table}"."{_escaped_col_name(join.conditions[0].left_column)}"'
                     right_key_col = (
-                        f'"{right_table}"."{join.conditions[0].right_column}"'
+                        f'"{right_table}"."{_escaped_col_name(join.conditions[0].right_column)}"'
                     )
                 else:
                     # If no conditions, use first column for check
@@ -309,12 +319,12 @@ def build_multi_table_join_query(
                         else []
                     )
                     left_key_col = (
-                        f'"{left_table}"."{left_cols[0]}"'
+                        f'"{left_table}"."{_escaped_col_name(left_cols[0])}"'
                         if left_cols
                         else f'"{left_table}".rowid'
                     )
                     right_key_col = (
-                        f'"{right_table}"."{right_cols[0]}"'
+                        f'"{right_table}"."{_escaped_col_name(right_cols[0])}"'
                         if right_cols
                         else f'"{right_table}".rowid'
                     )

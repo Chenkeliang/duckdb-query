@@ -493,6 +493,39 @@ class TestJoinQueryGenerator:
             ' (SELECT 1) AS ""y"'
         ) in query
 
+    @patch("routers.join_query.with_duckdb_connection")
+    def test_join_result_marker_escapes_malicious_condition_column(self, mock_get_db):
+        """回归：JOIN 结果标记 CASE 表达式里的键列 join.conditions[].right_column
+        （来自请求体、无 schema 校验）曾经裸拼进 CASE WHEN "t"."{col}" IS NULL，
+        与 columns[].name 是同一注入面。LEFT/RIGHT/FULL JOIN 都要覆盖。"""
+        malicious = 'id" IS NULL THEN 1 ELSE (SELECT password FROM system_database_connections LIMIT 1) END AS "leak'
+        for jt in (JoinType.LEFT, JoinType.RIGHT, JoinType.FULL_OUTER):
+            mock_con = Mock()
+            bind_mock_duckdb_pool(mock_get_db, mock_con)
+            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
+                {"name": ["users", "orders"]}
+            )
+            join = Join(
+                left_source_id="users",
+                right_source_id="orders",
+                join_type=jt,
+                conditions=[
+                    JoinCondition(left_column=malicious, right_column=malicious, operator="=")
+                ],
+            )
+            request = QueryRequest(sources=[self.source1, self.source2], joins=[join])
+            query = build_multi_table_join_query(request, mock_con)
+
+            # 未转义的注入形态（键列的 " 单写、提前闭合标识符）绝不能出现——那才是
+            # 可执行的注入；`id" IS NULL` 里的单个 " 若没被双写就说明漏了转义
+            assert 'id" IS NULL' not in query, f"unescaped breakout for join_type={jt}"
+            # 转义后的正确形态：键列里的每个 " 都被双写成 ""，整段恶意串落在一个
+            # 引号标识符内部（含 (SELECT ...) 只是字面文本，不可执行）
+            assert (
+                'id"" IS NULL THEN 1 ELSE '
+                '(SELECT password FROM system_database_connections LIMIT 1) END AS ""leak"'
+            ) in query, f"escaping missing for join_type={jt}"
+
 
 class TestJoinAPI:
     """测试JOIN API端点"""
