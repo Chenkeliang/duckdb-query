@@ -52,6 +52,53 @@ async def test_federated_query_blocks_write_in_readonly(cfg):
     assert "read-only" in out["error"].lower()
 
 
+async def test_run_sql_requires_confirm_for_write_in_normal_mode(cfg):
+    """回归：normal 模式(默认模式)下曾经完全没有任何 DDL/DML 确认门槛——
+    is_write_sql 只在 read-only 模式下才被调用。"""
+    assert cfg.mode == "normal"
+    out = await run_sql(None, cfg, sql="DROP TABLE t")  # 短路，未传 confirm
+    assert "confirm" in out["error"].lower()
+
+
+@respx.mock
+async def test_run_sql_write_proceeds_with_confirm_true(cfg):
+    respx.get("http://127.0.0.1:48001/health").mock(
+        return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = respx.post("http://127.0.0.1:48001/api/duckdb/execute").mock(
+        return_value=httpx.Response(200, json={
+            "success": True,
+            "data": {"columns": [], "data": [], "row_count": 0},
+            "messageCode": "QUERY_EXECUTED"}))
+    client = DuckQueryClient(cfg)
+    out = await run_sql(client, cfg, sql="DROP TABLE t", confirm=True)
+    assert "error" not in out
+    assert route.called
+
+
+async def test_federated_query_requires_confirm_for_write_in_normal_mode(cfg):
+    from duckquery_mcp.tools.query import federated_query
+    assert cfg.mode == "normal"
+    out = await federated_query(None, cfg, sql="DROP TABLE t", attach_databases=[])
+    assert "confirm" in out["error"].lower()
+
+
+async def test_run_sql_read_query_never_needs_confirm(cfg):
+    """只读查询在任何非 read-only 模式下都不应该被 confirm 门槛拦住——
+    confirm_required 的第一个参数(is_mutating)必须真的区分读写，不能变成
+    "所有 SQL 都要 confirm" 这种更粗暴但错误的修复。"""
+    with respx.mock:
+        respx.get("http://127.0.0.1:48001/health").mock(
+            return_value=httpx.Response(200, json={"status": "healthy"}))
+        respx.post("http://127.0.0.1:48001/api/duckdb/execute").mock(
+            return_value=httpx.Response(200, json={
+                "success": True,
+                "data": {"columns": ["n"], "data": [{"n": 1}], "row_count": 1},
+                "messageCode": "QUERY_EXECUTED"}))
+        client = DuckQueryClient(cfg)
+        out = await run_sql(client, cfg, sql="SELECT 1 AS n")
+        assert "error" not in out
+
+
 @respx.mock
 async def test_chat_passes_attach_databases(cfg):
     """chat 透传 attach_databases 原样给后端,外部表的真实 schema 才能进 AI 上下文。

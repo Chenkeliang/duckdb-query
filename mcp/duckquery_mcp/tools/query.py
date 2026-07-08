@@ -16,26 +16,40 @@ def _truncate(data: dict, cfg: Config) -> dict:
     }
 
 
-async def run_sql(client: DuckQueryClient, cfg: Config, *, sql: str, preview: bool = True) -> Any:
-    """Run DuckDB SQL against local tables. Returns columns + (capped) rows."""
-    from duckquery_mcp.safety import is_write_sql
-    if cfg.mode == "read-only" and is_write_sql(sql):
-        return {"error": "read-only mode: only SELECT / WITH / EXPLAIN are allowed."}
+async def run_sql(
+    client: DuckQueryClient, cfg: Config, *, sql: str, preview: bool = True, confirm: bool = False
+) -> Any:
+    """Run DuckDB SQL against local tables. Returns columns + (capped) rows.
+
+    DDL/DML (anything that isn't SELECT/WITH/EXPLAIN/PRAGMA/DESCRIBE/SHOW) needs
+    confirm=true outside read-only mode — this can drop/alter/delete real tables,
+    it gets the same confirmation gate as the generic passthrough tool, not a
+    lighter one just because it has a dedicated name.
+    """
+    from duckquery_mcp.safety import confirm_required, is_write_sql
+    blocked = confirm_required(cfg, is_write_sql(sql), confirm)
+    if blocked:
+        return blocked
     data = await client.call("POST", "/api/duckdb/execute",
                              json_body={"sql": sql, "is_preview": preview})
     return _truncate(data, cfg)
 
 
-async def federated_query(client: DuckQueryClient, cfg: Config, *, sql: str, attach_databases: list) -> Any:
+async def federated_query(
+    client: DuckQueryClient, cfg: Config, *, sql: str, attach_databases: list, confirm: bool = False
+) -> Any:
     """Run SQL across attached external DBs (MySQL/PostgreSQL/SQLite/DuckDB) + local tables.
 
     attach_databases: [{"alias": "m", "connection_id": "SORDER"}]. Connection ids from
     list_connections (e.g. "db_SORDER") are accepted — the "db_" prefix is normalized.
     Reference an attached table as alias.table, e.g. SELECT * FROM m.orders LIMIT 100.
+
+    DDL/DML needs confirm=true outside read-only mode — see run_sql.
     """
-    from duckquery_mcp.safety import is_write_sql
-    if cfg.mode == "read-only" and is_write_sql(sql):
-        return {"error": "read-only mode: only SELECT / WITH / EXPLAIN are allowed."}
+    from duckquery_mcp.safety import confirm_required, is_write_sql
+    blocked = confirm_required(cfg, is_write_sql(sql), confirm)
+    if blocked:
+        return blocked
     data = await client.call("POST", "/api/duckdb/federated-query",
                              json_body={"sql": sql, "attach_databases": attach_databases,
                                         "is_preview": True})

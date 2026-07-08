@@ -33,13 +33,23 @@ async def add_local_file_source(
     csv_delimiter: str | None = None,
     csv_has_header: bool | None = None,
     csv_encoding: str | None = None,
+    confirm: bool = False,
 ) -> Any:
     """Register a local CSV/Parquet/JSON/Excel file as a DuckDB table.
 
-    Desktop mode allows any local path (ALLOW_ARBITRARY_LOCAL_PATHS=1).
+    Desktop mode allows any local path (ALLOW_ARBITRARY_LOCAL_PATHS=1) — unlike
+    the desktop UI's own import flow, there's no native file dialog here forcing
+    a human to pick the exact file, so this needs confirm=true outside read-only
+    mode (which blocks it outright) the same as any other mutating tool: without
+    it, path could point anywhere the backend process can read (~/.ssh, browser
+    profile databases, etc.), not just files the user meant to import.
     `import_mode`: auto | smart | raw (controls type inference on load).
     CSV-specific options (`csv_delimiter`, `csv_has_header`, `csv_encoding`) are ignored for non-CSV files.
     """
+    from duckquery_mcp.safety import confirm_required
+    blocked = confirm_required(cfg, True, confirm)
+    if blocked:
+        return blocked
     body: dict = {"path": path, "import_mode": import_mode}
     if table_alias is not None:
         body["table_alias"] = table_alias
@@ -59,14 +69,22 @@ async def import_excel(
     path: str,
     sheets: list,
     import_mode: str = "auto",
+    confirm: bool = False,
 ) -> Any:
     """Import selected Excel sheets as DuckDB tables.
+
+    Same arbitrary-local-path exposure as add_local_file_source (no native file
+    dialog gates this path) — needs confirm=true outside read-only mode.
 
     Each item in `sheets` is a dict matching ExcelSheetImportConfig:
       {name: str, target_table: str, header_rows?: int, header_row_index?: int,
        fill_merged?: bool, mode?: "create"|"append"|"replace"}
     `import_mode`: auto | smart | raw.
     """
+    from duckquery_mcp.safety import confirm_required
+    blocked = confirm_required(cfg, True, confirm)
+    if blocked:
+        return blocked
     return await client.call(
         "POST",
         "/api/server-files/excel/import",
