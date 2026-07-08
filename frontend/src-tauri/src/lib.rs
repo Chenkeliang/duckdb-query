@@ -28,13 +28,25 @@ fn get_api_base(port: tauri::State<ApiPort>) -> String {
     }
 }
 
+/// 校验 open_external 收到的 URL 是否可安全交给下游进程打开。
+///
+/// 只放行 http(s)，并拒绝含控制字符/空白的 URL：合法 URL 里的空白都会被百分号
+/// 编码，出现裸空白/换行往往是想利用 explorer.exe(Windows) 的参数解析怪癖塞入
+/// 额外参数(#20)。URL 是作为单个 spawn 参数传入(非 shell)，本无 shell 注入；这
+/// 是对下游进程的额外防御。长度上限做基本 sanity。
+fn is_safe_external_url(url: &str) -> bool {
+    (url.starts_with("http://") || url.starts_with("https://"))
+        && url.len() <= 2048
+        && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+}
+
 /// Open a URL in the user's default browser. The Tauri webview blocks
 /// window.open() to external origins, so the frontend routes external links
 /// (and localhost download URLs) through this command instead.
 #[tauri::command]
 fn open_external(url: String) {
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return; // only http(s); ignore anything else
+    if !is_safe_external_url(&url) {
+        return;
     }
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg(&url).spawn();
@@ -254,4 +266,40 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_safe_external_url;
+
+    #[test]
+    fn accepts_plain_http_and_https() {
+        assert!(is_safe_external_url("https://example.com/a?b=1#c"));
+        assert!(is_safe_external_url("http://127.0.0.1:48001/download/x.csv"));
+    }
+
+    #[test]
+    fn rejects_non_http_schemes() {
+        assert!(!is_safe_external_url("file:///etc/passwd"));
+        assert!(!is_safe_external_url("javascript:alert(1)"));
+        assert!(!is_safe_external_url("ftp://x.com/a"));
+        assert!(!is_safe_external_url(""));
+    }
+
+    #[test]
+    fn rejects_whitespace_and_control_chars() {
+        // explorer.exe 参数注入面：空格/制表/换行/回车
+        assert!(!is_safe_external_url("https://x.com/a b"));
+        assert!(!is_safe_external_url("https://x.com/ --flag"));
+        assert!(!is_safe_external_url("https://x.com/a\tb"));
+        assert!(!is_safe_external_url("https://x.com/a\nb"));
+        assert!(!is_safe_external_url("https://x.com/a\r\nb"));
+        assert!(!is_safe_external_url("https://x.com/a\u{0000}b"));
+    }
+
+    #[test]
+    fn rejects_overlong() {
+        let long = format!("https://x.com/{}", "a".repeat(3000));
+        assert!(!is_safe_external_url(&long));
+    }
 }
