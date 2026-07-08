@@ -39,6 +39,46 @@ class TestClassifyException:
         assert status == 500 and code.name == "UNKNOWN_ERROR"
 
 
+class TestErrorResponseCodeIsCleanValue:
+    """回归：error_json_response 传入 ErrorCode 枚举时，响应里的 code/messageCode
+    必须是干净值 "TABLE_NOT_FOUND"，而不是 str(枚举) 的 "ErrorCode.TABLE_NOT_FOUND"
+    ——否则前端 i18n 按 messageCode 查不到词条，把原始串显示给用户。"""
+
+    def test_errorcode_serializes_to_clean_value(self):
+        from core.common.error_codes import classify_exception as _ce
+        from utils.response_helpers import create_error_response
+
+        code, _status = _ce(TABLE_NOT_FOUND_MSG)
+        resp = create_error_response(code=code, message="x")
+        assert resp["messageCode"] == "TABLE_NOT_FOUND"
+        assert resp["error"]["code"] == "TABLE_NOT_FOUND"
+        assert "ErrorCode." not in resp["messageCode"]
+
+    def test_set_operations_response_code_is_clean(self):
+        # 走真实端点，确认序列化后的 messageCode 干净
+        request_data = {
+            "config": {
+                "operation_type": "UNION",
+                "tables": [
+                    {"table_name": "nope", "selected_columns": ["id"], "alias": "a"},
+                    {"table_name": "nope2", "selected_columns": ["id"], "alias": "b"},
+                ],
+                "use_by_name": False,
+            },
+            "preview": True,
+            "include_metadata": False,
+        }
+        with patch("routers.set_operations.generate_set_operation_sql") as mock_gen, \
+             patch("routers.set_operations.with_duckdb_connection") as mock_db:
+            mock_gen.return_value = "SELECT id FROM nope UNION SELECT id FROM nope2 LIMIT 10"
+            mock_con = Mock()
+            bind_mock_duckdb_pool(mock_db, mock_con)
+            mock_con.execute.side_effect = Exception(TABLE_NOT_FOUND_MSG)
+            resp = client.post("/api/set-operations/preview", json=request_data)
+        assert resp.status_code == 404
+        assert resp.json().get("messageCode") == "TABLE_NOT_FOUND"
+
+
 class TestSetOperationsErrorCodes:
     def _preview_with_execute_error(self, error_message):
         request_data = {

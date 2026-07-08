@@ -417,8 +417,10 @@ def create_error_response(
             "timestamp": "2024-12-02T19:08:05.123456Z"
         }
     """
-    # 确保 code 是字符串（支持 MessageCode 枚举）
-    code_str = code.value if isinstance(code, MessageCode) else str(code)
+    # 确保 code 是干净的字符串值：任何枚举(MessageCode / ErrorCode / …)都取 .value，
+    # 而不是 str(enum)——后者会得到 "ErrorCode.TABLE_NOT_FOUND" 这种带类名的 repr，
+    # 让前端 i18n 按 messageCode 查不到词条、直接把这串原样显示给用户。
+    code_str = code.value if isinstance(code, Enum) else str(code)
 
     return {
         "success": False,
