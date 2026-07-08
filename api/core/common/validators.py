@@ -169,8 +169,14 @@ def sanitize_path(path: str, allowed_bases: List[str]) -> str:
 
     real_path = os.path.realpath(path)
 
-    # 检查路径是否在白名单内
-    if not any(real_path.startswith(os.path.realpath(base)) for base in allowed_bases):
+    # 检查路径是否在白名单内。必须按路径分隔符边界比较:裸 startswith 会让
+    # 兄弟目录 /data/allowed_evil 通过对 /data/allowed 的校验(前者以后者为前缀
+    # 却不在其内)。等于根本身、或以「根 + 分隔符」开头才算真正落在白名单内。
+    def _within(base: str) -> bool:
+        root = os.path.realpath(base)
+        return real_path == root or real_path.startswith(root + os.sep)
+
+    if not any(_within(base) for base in allowed_bases):
         _raise_validator_error(
             "不允许访问该路径",
             status_code=403,
