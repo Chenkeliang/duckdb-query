@@ -359,8 +359,8 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
         </TooltipProvider>
       </div>
 
-      {/* 任务列表 */}
-      <ScrollArea className="flex-1">
+      {/* 任务列表 —— orientation="both":宽表(带操作列)需要横向滚动才能够到右侧按钮 */}
+      <ScrollArea className="flex-1" orientation="both">
         {isLoading && tasks.length === 0 ? (
           <div className="space-y-2.5 p-3">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -377,7 +377,7 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
         ) : tasks.length === 0 ? (
           <EmptyState icon={Clock} title={t('async.empty', '暂无异步任务')} />
         ) : (
-          <table className="dq-grid-table">
+          <table className="dq-grid-table min-w-max">
             <thead>
               <tr>
                 <th className="w-16">{t('async.type', '类型')}</th>

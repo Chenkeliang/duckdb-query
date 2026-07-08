@@ -48,7 +48,8 @@
     "autoFitColumns": "Auto fit columns",
     "fitToWidth": "Fit to width",
     "filterLabel": "Filters",
-    "clearColFilter": "Clear {{col}} filter"
+    "clearColFilter": "Clear {{col}} filter",
+    "highCardinalitySelectAllBlocked": "This column has too many distinct values; only the most frequent are shown. Uncheck some, or use the filter above."
   },
   "nav": {
     "datasource": "Data Sources",
@@ -98,7 +99,8 @@
     "copied": "Copied",
     "clear": "Clear",
     "execute": "Execute",
-    "unknownError": "Unknown error"
+    "unknownError": "Unknown error",
+    "remove": "Remove"
   },
   "dataSource": {
     "previewTable": "Preview table: {{tableName}}",
@@ -217,7 +219,8 @@
       "download": "Download",
       "success": "Download successful",
       "failed": "Download failed: {{message}}"
-    }
+    },
+    "status.cancelling": "Cancelling"
   },
   "query": {
     "ai": {
@@ -325,7 +328,11 @@
         "searchColumn": "Search columns...",
         "availableColumns": "Available Columns",
         "noColumns": "No columns found"
-      }
+      },
+      "exportExcel": "Export Excel",
+      "exportNoSql": "No SQL to export",
+      "exportParquetFailed": "Parquet export failed",
+      "exportParquetServer": "Export Parquet (server-side)"
     },
     "filter": {
       "title": "Filter Conditions",
@@ -433,7 +440,9 @@
       "executeError": "Query execution failed: {{message}}",
       "mixedSourceWarning": "Cannot mix DuckDB tables and external database tables in the same query. Please import external tables to DuckDB first.",
       "federatedQuery": "Federated Query",
-      "targetDatabase": "Target Database"
+      "targetDatabase": "Target Database",
+      "cancel": "Cancel",
+      "cancelTooltip": "Cancel the current query"
     },
     "import": {
       "title": "Import to DuckDB",
@@ -446,7 +455,8 @@
       "importing": "Importing...",
       "import": "Import",
       "success": "Data successfully imported to table \"{{tableName}}\", {{rowCount}} rows",
-      "error": "Import failed: {{message}}"
+      "error": "Import failed: {{message}}",
+      "missingConnection": "Missing external database connection info"
     },
     "bookmark": {
       "title": "SQL Bookmarks",
@@ -470,7 +480,8 @@
         "sqlPreview": "SQL Preview",
         "saving": "Saving...",
         "saveBtn": "Save"
-      }
+      },
+      "saveTooltip": "Bookmark query"
     },
     "history": {
       "title": "Query History",
@@ -485,7 +496,8 @@
       "minutesAgo": "{{count}} min ago",
       "hoursAgo": "{{count}} hr ago",
       "searchPlaceholder": "Search SQL...",
-      "notFound": "No matching records found"
+      "notFound": "No matching records found",
+      "cleared": "History cleared"
     },
     "preview": {
       "title": "SQL Preview",
@@ -577,7 +589,10 @@
         "tooltip": "Add a last-30-days bound on {{column}} for this federated table (placed in ON, pushed down to reduce extraction and avoid timeouts)",
         "addAll": "Bound all to last 30 days",
         "pickColumn": "Pick time column"
-      }
+      },
+      "swapTables": "Swap table order",
+      "switchToColumn": "Switch to column mode",
+      "switchToExpression": "Switch to expression mode"
     },
     "typeConflict": {
       "detected": "{{count}} type conflict(s) detected",
@@ -617,7 +632,14 @@
       "columnMismatchDetail": "Table {{tableIndex}} has {{tableCount}} columns, but the first table has {{baseCount}} columns.",
       "byNameModeHint": "BY NAME mode: Matches columns by name, not position. Missing columns will be filled with NULL values.",
       "byNameTooltip": "Match columns by name (DuckDB feature), column count doesn't need to match",
-      "externalNotSupported": "Set operations are not supported for external tables. Please import the external table into DuckDB first."
+      "externalNotSupported": "Set operations are not supported for external tables. Please import the external table into DuckDB first.",
+      "columnLoadError": "Failed to load column info",
+      "externalTable": "External table",
+      "generatedSql": "Generated SQL",
+      "generatingSql": "Generating…",
+      "mixedSources": "Cannot mix DuckDB local tables with external database tables. Please select tables from the same source only.",
+      "noColumns": "No columns available",
+      "operationType": "Set operation type"
     },
     "pivot": {
       "title": "Pivot Table",
@@ -761,6 +783,13 @@
       "day": "By day",
       "month": "By month",
       "drilldownView": "View details for \"{{value}}\""
+    },
+    "cancel": "Cancel",
+    "favorites": {
+      "createFailed": "Failed to bookmark",
+      "createSuccess": "Bookmarked",
+      "deleteFailed": "Delete failed",
+      "deleteSuccess": "Bookmark removed"
     }
   },
   "page": {
@@ -1321,5 +1350,12 @@
     "footerDocs": "Docs",
     "footerCopyright": "© 2026 DuckQuery · MIT",
     "footerBuilt": "Built on DuckDB · data stays local"
-  }
+  },
+  "error": "Operation failed",
+  "filter": {
+    "placement": {
+      "helpText": "ON-clause conditions apply during the JOIN and keep unmatched rows (shown as NULL). WHERE-clause conditions apply after the JOIN and filter out unmatched rows. When querying external database tables, add a time-range condition to avoid slow full-table scans."
+    }
+  },
+  "success": "Operation succeeded"
 }

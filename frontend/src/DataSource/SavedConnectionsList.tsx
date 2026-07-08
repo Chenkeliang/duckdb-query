@@ -59,7 +59,12 @@ const TYPE_META: Record<
 function connMeta(c: DatabaseConnection): { primary: string; secondary: string } {
   const p = c.params || {};
   if (c.type === "sqlite" || c.type === "duckdb") {
-    return { primary: (p as { path?: string }).path || p.database || c.name, secondary: "" };
+    // 文件型连接给两行(文件名 + 完整路径),与数据库连接卡片(库·用户 + 主机)一样是
+    // 两行,否则少一行会让并排的卡片行不对齐。
+    const path = (p as { path?: string }).path || p.database || c.name;
+    const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    const fileName = slash >= 0 ? path.slice(slash + 1) : path;
+    return { primary: path, secondary: fileName };
   }
   const hostPort = [p.host, p.port].filter(Boolean).join(":");
   let dbUser = [p.database, p.username].filter(Boolean).join(" · ");

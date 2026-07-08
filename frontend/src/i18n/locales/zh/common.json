@@ -48,7 +48,8 @@
     "autoFitColumns": "自动列宽",
     "fitToWidth": "适应宽度",
     "filterLabel": "筛选",
-    "clearColFilter": "清除 {{col}} 筛选"
+    "clearColFilter": "清除 {{col}} 筛选",
+    "highCardinalitySelectAllBlocked": "该列取值过多，列表仅展示高频前若干条。请取消部分勾选，或改用上方条件筛选。"
   },
   "nav": {
     "datasource": "数据源",
@@ -98,7 +99,8 @@
     "copied": "已复制",
     "clear": "清空",
     "execute": "执行",
-    "unknownError": "未知错误"
+    "unknownError": "未知错误",
+    "remove": "移除"
   },
   "dataSource": {
     "previewTable": "预览表: {{tableName}}",
@@ -217,7 +219,8 @@
       "download": "下载",
       "success": "下载成功",
       "failed": "下载失败: {{message}}"
-    }
+    },
+    "status.cancelling": "取消中"
   },
   "query": {
     "ai": {
@@ -325,7 +328,11 @@
         "searchColumn": "搜索列...",
         "availableColumns": "可用列",
         "noColumns": "未找到列"
-      }
+      },
+      "exportExcel": "导出 Excel",
+      "exportNoSql": "无 SQL 可导出",
+      "exportParquetFailed": "Parquet 导出失败",
+      "exportParquetServer": "导出 Parquet（服务端）"
     },
     "filter": {
       "title": "筛选条件",
@@ -433,7 +440,9 @@
       "executeError": "查询执行失败: {{message}}",
       "mixedSourceWarning": "不能在同一查询中混合 DuckDB 表和外部数据库表。请先将外部表导入到 DuckDB。",
       "federatedQuery": "联邦查询",
-      "targetDatabase": "目标数据库"
+      "targetDatabase": "目标数据库",
+      "cancel": "取消",
+      "cancelTooltip": "取消当前查询"
     },
     "import": {
       "title": "导入到 DuckDB",
@@ -446,7 +455,8 @@
       "importing": "导入中...",
       "import": "导入",
       "success": "数据已成功导入到表 \"{{tableName}}\"，共 {{rowCount}} 行",
-      "error": "导入失败: {{message}}"
+      "error": "导入失败: {{message}}",
+      "missingConnection": "缺少外部数据库连接信息"
     },
     "bookmark": {
       "title": "SQL 收藏夹",
@@ -470,7 +480,8 @@
         "sqlPreview": "SQL 预览",
         "saving": "保存中...",
         "saveBtn": "保存"
-      }
+      },
+      "saveTooltip": "收藏查询"
     },
     "history": {
       "title": "查询历史",
@@ -485,7 +496,8 @@
       "minutesAgo": "{{count}} 分钟前",
       "hoursAgo": "{{count}} 小时前",
       "searchPlaceholder": "搜索 SQL...",
-      "notFound": "未找到相关记录"
+      "notFound": "未找到相关记录",
+      "cleared": "历史记录已清空"
     },
     "preview": {
       "title": "SQL 预览",
@@ -577,7 +589,10 @@
         "tooltip": "给该联邦大表的 {{column}} 加近30天范围（落 ON、下推到远端，减少抽取量、避免超时）",
         "addAll": "全部限定近30天",
         "pickColumn": "选择时间列"
-      }
+      },
+      "swapTables": "交换表顺序",
+      "switchToColumn": "切换到列模式",
+      "switchToExpression": "切换到表达式模式"
     },
     "typeConflict": {
       "detected": "检测到 {{count}} 个类型冲突",
@@ -617,7 +632,14 @@
       "columnMismatchDetail": "表 {{tableIndex}} 有 {{tableCount}} 列，但第一个表有 {{baseCount}} 列。",
       "byNameModeHint": "BY NAME 模式：按列名匹配合并，不要求列数量一致。缺失的列将填充 NULL 值。",
       "byNameTooltip": "按列名匹配合并（DuckDB 特性），不要求列数量一致",
-      "externalNotSupported": "外部数据库表暂不支持集合操作。请先将外部表导入到 DuckDB 后再进行 UNION / INTERSECT / EXCEPT。"
+      "externalNotSupported": "外部数据库表暂不支持集合操作。请先将外部表导入到 DuckDB 后再进行 UNION / INTERSECT / EXCEPT。",
+      "columnLoadError": "无法获取列信息",
+      "externalTable": "外部表",
+      "generatedSql": "生成的 SQL",
+      "generatingSql": "生成中…",
+      "mixedSources": "不能混用 DuckDB 本地表与外部库表。请只选择同一来源的表。",
+      "noColumns": "无可用列",
+      "operationType": "集合运算类型"
     },
     "pivot": {
       "title": "透视表",
@@ -761,6 +783,13 @@
       "day": "按天",
       "month": "按月",
       "drilldownView": "查看 \"{{value}}\" 的明细"
+    },
+    "cancel": "取消",
+    "favorites": {
+      "createFailed": "收藏失败",
+      "createSuccess": "收藏成功",
+      "deleteFailed": "删除失败",
+      "deleteSuccess": "已删除收藏"
     }
   },
   "page": {
@@ -1321,5 +1350,12 @@
     "footerDocs": "文档",
     "footerCopyright": "© 2026 DuckQuery · MIT",
     "footerBuilt": "Built on DuckDB · 数据不出本机"
-  }
+  },
+  "error": "操作失败",
+  "filter": {
+    "placement": {
+      "helpText": "ON 子句条件在 JOIN 时生效，保留无匹配的行（显示为 NULL）。WHERE 子句条件在 JOIN 后生效，会过滤掉不匹配的行。查询外部数据库表时，建议添加时间范围条件以避免全表扫描导致查询时间过长。"
+    }
+  },
+  "success": "操作成功"
 }
