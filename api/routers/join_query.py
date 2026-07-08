@@ -176,6 +176,19 @@ def build_multi_table_join_query(
     # Use improved column alias generation logic
     column_aliases = generate_improved_column_aliases(sources)
 
+    def _select_field(source, ref_id: str, col) -> str:
+        # Support two column formats: string or dict containing 'name' key.
+        # col_name/alias can come straight from the request body (query_models.py's
+        # DataSource.columns has no schema validation), so both must be escaped the
+        # same way _join_column_ref already escapes join-condition columns below —
+        # otherwise an embedded '"' breaks out of the quoted identifier and injects
+        # arbitrary SQL into the SELECT list.
+        col_name = col.get("name", str(col)) if isinstance(col, dict) else str(col)
+        alias = column_aliases[source.id].get(col_name, col_name)
+        safe_col = col_name.replace('"', '""')
+        safe_alias = alias.replace('"', '""')
+        return f'"{ref_id}"."{safe_col}" AS "{safe_alias}"'
+
     # Build SELECT clause - only generate columns for tables involved in JOIN
     select_fields = []
 
@@ -190,24 +203,14 @@ def build_multi_table_join_query(
             ref_id = table_ref_id(source.id)
             if ref_id in involved_tables and source.columns:
                 for col in source.columns:
-                    # Support two column formats: string or dict containing 'name' key
-                    col_name = (
-                        col.get("name", str(col)) if isinstance(col, dict) else str(col)
-                    )
-                    alias = column_aliases[source.id].get(col_name, col_name)
-                    select_fields.append(f'"{ref_id}"."{col_name}" AS "{alias}"')
+                    select_fields.append(_select_field(source, ref_id, col))
     else:
         # If no JOIN, include all columns from all tables
         for source in sources:
             ref_id = table_ref_id(source.id)
             if source.columns:
                 for col in source.columns:
-                    # Support two column formats: string or dict containing 'name' key
-                    col_name = (
-                        col.get("name", str(col)) if isinstance(col, dict) else str(col)
-                    )
-                    alias = column_aliases[source.id].get(col_name, col_name)
-                    select_fields.append(f'"{ref_id}"."{col_name}" AS "{alias}"')
+                    select_fields.append(_select_field(source, ref_id, col))
 
     # Add association result columns
     join_result_fields = []

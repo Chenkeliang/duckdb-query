@@ -419,6 +419,80 @@ class TestJoinQueryGenerator:
         assert '"users"' in query
         assert "JOIN" not in query
 
+    @patch("routers.join_query.with_duckdb_connection")
+    def test_build_multi_table_join_query_escapes_malicious_column_name(self, mock_get_db):
+        """回归：columns[].name 直接来自请求体（query_models.DataSource.columns 无
+        schema 校验），曾经裸拼进 SELECT 列表，嵌入的双引号能跳出标识符注入任意 SQL。
+        当前打包前端从不显式传 columns（总是走 PRAGMA table_info 自动推导），但直接
+        调 API 的调用方可以——转义必须在编译层兜住，不能依赖调用方守规矩。"""
+        mock_con = Mock()
+        bind_mock_duckdb_pool(mock_get_db, mock_con)
+        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
+            {"name": ["users", "orders"]}
+        )
+
+        malicious_source = DataSource(
+            id="users",
+            type=DataSourceType.DUCKDB,
+            params={"table_name": "users"},
+            columns=[
+                {"name": 'id" AS "x", (SELECT params FROM system_database_connections) AS "leak'},
+            ],
+        )
+
+        join = Join(
+            left_source_id="users",
+            right_source_id="orders",
+            join_type=JoinType.INNER,
+            conditions=[
+                JoinCondition(left_column="id", right_column="user_id", operator="=")
+            ],
+        )
+        request = QueryRequest(
+            sources=[malicious_source, self.source2],
+            joins=[join],
+        )
+
+        query = build_multi_table_join_query(request, mock_con)
+
+        # 恶意片段必须整体落在一个转义后的引号标识符里：内嵌的每个 " 都被双写成
+        # ""，所以从"打开的引号"到"关闭的引号"之间——包括 (SELECT ...) 子句——
+        # 全部是这一个标识符的字面内容，不是独立可执行的 SQL 子句。
+        assert (
+            '"users"."id"" AS ""x"", (SELECT params FROM system_database_connections)'
+            ' AS ""leak" AS "id"" AS ""x"", (SELECT params FROM system_database_connections)'
+            ' AS ""leak"'
+        ) in query
+
+    @patch("routers.join_query.with_duckdb_connection")
+    def test_build_multi_table_join_query_escapes_malicious_alias(self, mock_get_db):
+        """同上，但攻击面是列别名冲突消解产生的 alias（同样来自请求体，同样
+        未转义就拼进 AS "..."）。"""
+        mock_con = Mock()
+        bind_mock_duckdb_pool(mock_get_db, mock_con)
+        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
+            {"name": ["users", "orders"]}
+        )
+
+        # 两张表都选了同名列 "id"，生成的别名会带表前缀（users_id / orders_id），
+        # 所以直接给一个在别名生成结果里不存在的列名，落到 .get(col_name, col_name)
+        # 的原样透传兜底分支，验证 alias 本身也被转义。
+        malicious_source = DataSource(
+            id="users",
+            type=DataSourceType.DUCKDB,
+            params={"table_name": "users"},
+            columns=[{"name": 'name" AS "x", (SELECT 1) AS "y'}],
+        )
+
+        request = QueryRequest(sources=[malicious_source, self.source2], joins=[])
+
+        query = build_multi_table_join_query(request, mock_con)
+
+        assert (
+            '"users"."name"" AS ""x"", (SELECT 1) AS ""y" AS "name"" AS ""x"",'
+            ' (SELECT 1) AS ""y"'
+        ) in query
+
 
 class TestJoinAPI:
     """测试JOIN API端点"""

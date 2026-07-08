@@ -10,14 +10,8 @@ from contextlib import contextmanager
 
 from models.query_models import (
     QueryRequest,
-    Join,
-    JoinType,
-    JoinCondition,
-    MultiTableJoin,
     DataSource,
 )
-
-from core.common.utils import handle_non_serializable_data
 
 logger = logging.getLogger(__name__)
 
@@ -1092,24 +1086,6 @@ def generate_column_aliases(sources: List[DataSource]) -> Dict[str, Dict[str, st
     return aliases
 
 
-def build_join_query(query_request: QueryRequest) -> str:
-    """
-    构建复杂的多表JOIN查询
-    """
-    sources = query_request.sources
-    joins = query_request.joins
-
-    if not sources:
-        raise ValueError("At least one data source is required")
-
-    if len(sources) == 1:
-        # 单表查询
-        return build_single_table_query(query_request)
-
-    # 多表JOIN查询
-    return build_multi_table_join_query(query_request)
-
-
 def get_actual_table_name(source) -> str:
     """
     获取数据源的实际表名
@@ -1184,83 +1160,6 @@ def build_single_table_query(query_request: QueryRequest) -> str:
     return query
 
 
-def build_multi_table_join_query(query_request: QueryRequest) -> str:
-    """
-    构建多表JOIN查询 - 优化VARCHAR JOIN性能
-    """
-    sources = query_request.sources
-    joins = query_request.joins
-
-    # 为JOIN列创建索引以提升性能
-    if joins:
-        try:
-            create_join_indexes(sources, joins)
-        except Exception as e:
-            logger.warning(f"Failed to create JOIN indexes, but continuing with query: {str(e)}")
-
-    # 生成改进的列别名以处理冲突
-    column_aliases = generate_improved_column_aliases(sources)
-
-    # 构建SELECT子句
-    select_parts = []
-    if query_request.select_columns:
-        # 用户指定了要选择的列
-        for col in query_request.select_columns:
-            # 查找列属于哪个表
-            found = False
-            for source in sources:
-                if source.columns and col in source.columns:
-                    table_alias = source.id
-                    column_alias = column_aliases[source.id][col]
-                    select_parts.append(f'{table_alias}."{col}" AS "{column_alias}"')
-                    found = True
-                    break
-            if not found:
-                # 如果没找到，直接使用列名
-                select_parts.append(f'"{col}"')
-    else:
-        # 选择所有列，使用改进的别名避免冲突
-        for source in sources:
-            if source.columns:
-                for col in source.columns:
-                    table_alias = source.id
-                    column_alias = column_aliases[source.id][col]
-                    select_parts.append(f'{table_alias}."{col}" AS "{column_alias}"')
-
-    select_clause = ", ".join(select_parts) if select_parts else "*"
-
-    # 构建FROM子句和JOIN子句
-    if not joins:
-        # 没有JOIN条件，使用CROSS JOIN
-        from_clause = f'"{get_actual_table_name(sources[0])}"'
-        for source in sources[1:]:
-            from_clause += f' CROSS JOIN "{get_actual_table_name(source)}"'
-    else:
-        # 有JOIN条件，构建JOIN链
-        from_clause = build_join_chain(sources, joins)
-
-    # 构建优化的查询 - 添加HASH JOIN提示
-    if joins:
-        # 对于有JOIN的查询，添加优化提示
-        query = f"SELECT {select_clause} FROM {from_clause}"
-    else:
-        query = f"SELECT {select_clause} FROM {from_clause}"
-
-    # 添加WHERE条件
-    if query_request.where_conditions:
-        query += f" WHERE {query_request.where_conditions}"
-
-    # 添加ORDER BY
-    if query_request.order_by:
-        query += f" ORDER BY {query_request.order_by}"
-
-    # 添加LIMIT
-    if query_request.limit:
-        query += f" LIMIT {query_request.limit}"
-
-    return query
-
-
 def _build_column_expression(
     table_name: str, column_expr: str, available_columns: Optional[List[str]] = None
 ) -> str:
@@ -1300,158 +1199,6 @@ def _build_column_expression(
     # 例如: substr("单据编号", 6) => substr("table"."单据编号", 6)
     qualified_expr = re.sub(r'"([^"]+)"', _qualify_identifier, column_expr)
     return qualified_expr
-
-
-def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
-    """
-    构建JOIN链，支持多表连接和多字段关联
-    """
-    if not joins:
-        return f'"{get_actual_table_name(sources[0])}"'
-
-    # 创建表的映射
-    source_map = {source.id: source for source in sources}
-
-    # 从第一个JOIN开始构建
-    first_join = joins[0]
-    left_source = source_map[first_join.left_source_id]
-    right_source = source_map[first_join.right_source_id]
-    left_table = get_actual_table_name(left_source)
-    right_table = get_actual_table_name(right_source)
-
-    # 构建JOIN类型映射
-    join_type_map = {
-        JoinType.INNER: "INNER JOIN",
-        JoinType.LEFT: "LEFT JOIN",
-        JoinType.RIGHT: "RIGHT JOIN",
-        JoinType.FULL_OUTER: "FULL OUTER JOIN",
-        JoinType.CROSS: "CROSS JOIN",
-    }
-
-    # 开始构建查询
-    from_clause = f'"{left_table}"'
-
-    # 收集所有相同表对的JOIN条件
-    join_conditions_map = {}
-
-    for join in joins:
-        left_id = join.left_source_id
-        right_id = join.right_source_id
-
-        # 创建JOIN键，用于合并相同表对的JOIN条件
-        join_key = tuple(sorted([left_id, right_id]))
-
-        if join_key not in join_conditions_map:
-            join_conditions_map[join_key] = {
-                "left_table": left_id,
-                "right_table": right_id,
-                "join_type": join.join_type,
-                "conditions": [],
-            }
-
-        # 添加条件到对应的JOIN
-        if join.conditions:
-            join_conditions_map[join_key]["conditions"].extend(join.conditions)
-
-    # 处理所有JOIN（现在每个表对只处理一次）
-    for join_key, join_info in join_conditions_map.items():
-        left_id = join_info["left_table"]
-        right_id = join_info["right_table"]
-        join_type = join_info["join_type"]
-        all_conditions = join_info["conditions"]
-
-        join_type_sql = join_type_map.get(join_type, "INNER JOIN")
-        right_source = source_map[right_id]
-        right_table = get_actual_table_name(right_source)
-
-        from_clause += f' {join_type_sql} "{right_table}"'
-
-        # 添加所有JOIN条件（包括多字段关联）
-        if join_type != JoinType.CROSS and all_conditions:
-            conditions = []
-            for condition in all_conditions:
-                left_source = source_map[left_id]
-                right_source = source_map[right_id]
-                left_table_name = get_actual_table_name(left_source)
-                right_table_name = get_actual_table_name(right_source)
-                base_left_col = _build_column_expression(
-                    left_table_name, condition.left_column, getattr(left_source, "columns", None)
-                )
-                base_right_col = _build_column_expression(
-                    right_table_name, condition.right_column, getattr(right_source, "columns", None)
-                )
-                left_col = base_left_col
-                right_col = base_right_col
-
-                if condition.left_cast:
-                    left_col = f"TRY_CAST({left_col} AS {condition.left_cast})"
-                if condition.right_cast:
-                    right_col = f"TRY_CAST({right_col} AS {condition.right_cast})"
-                conditions.append(f"{left_col} {condition.operator} {right_col}")
-
-            if conditions:
-                from_clause += f" ON {' AND '.join(conditions)}"
-
-    return from_clause
-
-
-def create_varchar_index(table_name: str, column_name: str, con=None) -> bool:
-    """
-    为VARCHAR列创建索引以优化JOIN性能
-    """
-    try:
-        with _use_connection(con) as connection:
-            tables = connection.execute("SHOW TABLES").fetchall()
-            table_exists = any(table[0] == table_name for table in tables)
-
-            if not table_exists:
-                logger.warning(f"Table {table_name} does not exist, cannot create index")
-                return False
-
-            index_name = f"idx_{table_name}_{column_name}".replace("-", "_").replace(
-                " ", "_"
-            )
-
-            try:
-                connection.execute(
-                    f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}")'
-                )
-                logger.info(
-                    f"Created index for table {table_name} column {column_name}: {index_name}"
-                )
-                return True
-            except Exception as e:
-                if "already exists" in str(e).lower():
-                    logger.info(f"Index {index_name} already exists")
-                    return True
-                raise e
-
-    except Exception as e:
-        logger.error(f"Failed to create index {table_name}.{column_name}: {str(e)}")
-        return False
-
-
-def create_join_indexes(sources: List[DataSource], joins: List[Join], con=None) -> None:
-    """
-    为JOIN操作中涉及的列创建索引
-    """
-    try:
-        # 收集所有JOIN列
-        join_columns = set()
-
-        for join in joins:
-            for condition in join.conditions:
-                join_columns.add((join.left_source_id, condition.left_column))
-                join_columns.add((join.right_source_id, condition.right_column))
-
-        # 为每个JOIN列创建索引
-        for table_name, column_name in join_columns:
-            create_varchar_index(table_name, column_name, con)
-
-        logger.info(f"Created indexes for {len(join_columns)} JOIN columns")
-
-    except Exception as e:
-        logger.error(f"Failed to batch create JOIN indexes: {str(e)}")
 
 
 def optimize_query_plan(query: str, con=None) -> str:
