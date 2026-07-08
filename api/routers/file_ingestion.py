@@ -316,7 +316,7 @@ async def upload_file(
 
 
 @router.post("/api/data-sources/excel/inspect", tags=["Data Sources"])
-async def inspect_excel(request: ExcelInspectRequest):
+def inspect_excel(request: ExcelInspectRequest):
     """检查Excel文件的工作表信息"""
     try:
         data = inspect_pending_excel(request.file_id)
@@ -342,7 +342,7 @@ async def inspect_excel(request: ExcelInspectRequest):
 
 
 @router.post("/api/data-sources/excel/import", tags=["Data Sources"])
-async def import_excel(request: ExcelImportRequest):
+def import_excel(request: ExcelImportRequest):
     """导入Excel工作表到DuckDB"""
     try:
         with with_duckdb_connection() as duckdb_con:

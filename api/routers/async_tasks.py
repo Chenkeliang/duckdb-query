@@ -288,7 +288,7 @@ class RetryTaskRequest(BaseModel):
 
 
 @router.post("/api/async-tasks", tags=["Async Tasks"])
-async def submit_async_query(
+def submit_async_query(
     request: AsyncQueryRequest, background_tasks: BackgroundTasks
 ):
     """
@@ -372,7 +372,7 @@ async def submit_async_query(
 
 
 @router.get("/api/async-tasks", tags=["Async Tasks"])
-async def list_async_tasks(
+def list_async_tasks(
     limit: int = 20, offset: int = 0, order_by: str = "created_at"
 ):
     """
@@ -408,7 +408,7 @@ async def list_async_tasks(
     "/api/async-tasks/{task_id}",
     tags=["Async Tasks"],
 )
-async def get_async_task(task_id: str):
+def get_async_task(task_id: str):
     """
     获取单个异步任务详情
     """
@@ -449,7 +449,7 @@ async def get_async_task(task_id: str):
     "/api/async-tasks/{task_id}/cancel",
     tags=["Async Tasks"],
 )
-async def cancel_async_task(task_id: str, request: CancelTaskRequest):
+def cancel_async_task(task_id: str, request: CancelTaskRequest):
     """
     请求取消异步任务（使用取消信号模式，避免写-写冲突）
     """
@@ -543,7 +543,7 @@ def _extract_task_payload(task) -> Dict[str, Any]:
     "/api/async-tasks/{task_id}/retry",
     tags=["Async Tasks"],
 )
-async def retry_async_task(
+def retry_async_task(
     task_id: str,
     background_tasks: BackgroundTasks,
     request: RetryTaskRequest,
@@ -646,7 +646,7 @@ async def retry_async_task(
 
 
 @router.post("/api/async-tasks/cleanup-stuck", tags=["Async Tasks"])
-async def cleanup_stuck_tasks():
+def cleanup_stuck_tasks():
     """
     清理卡住的取消中任务
     将所有 cancelling 状态的任务标记为 failed
@@ -667,7 +667,7 @@ async def cleanup_stuck_tasks():
 
 
 @router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
-async def generate_and_download_file(task_id: str, request: dict = Body(...)):
+def generate_and_download_file(task_id: str, request: dict = Body(...)):
     """
     按需生成并直接下载文件
     一步完成文件生成和下载，避免时序问题

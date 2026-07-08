@@ -62,7 +62,7 @@ class QueryResultExportRequest(BaseModel):
 
 
 @router.post("/api/query-results/export", tags=["Query Export"])
-async def export_query_results(
+def export_query_results(
     request: QueryResultExportRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
@@ -162,7 +162,7 @@ async def export_query_results(
 
 
 @router.get("/api/query-results/export/{file_id}/download", tags=["Query Export"])
-async def download_query_export(file_id: str):
+def download_query_export(file_id: str):
     """下载已导出的查询结果文件。"""
     if not file_id or ".." in file_id or "/" in file_id:
         raise APIValidationError("Invalid file id")

@@ -67,7 +67,7 @@ def _raise_duplicate_name(name: str) -> None:
 
 
 @router.get("/api/sql-favorites", tags=["SQL Favorites"])
-async def get_sql_favorites():
+def get_sql_favorites():
     """获取所有SQL收藏"""
     try:
         favorites = metadata_manager.list_sql_favorites()
@@ -86,7 +86,7 @@ async def get_sql_favorites():
 
 
 @router.get("/api/sql-favorites/{favorite_id}", tags=["SQL Favorites"])
-async def get_sql_favorite(favorite_id: str):
+def get_sql_favorite(favorite_id: str):
     """获取单个 SQL 收藏"""
     try:
         favorite = metadata_manager.get_sql_favorite(favorite_id)
@@ -110,7 +110,7 @@ async def get_sql_favorite(favorite_id: str):
 
 
 @router.post("/api/sql-favorites", tags=["SQL Favorites"])
-async def create_sql_favorite(request: CreateSQLFavoriteRequest = Body(...)):
+def create_sql_favorite(request: CreateSQLFavoriteRequest = Body(...)):
     """创建新的SQL收藏"""
     try:
         existing_favorites = metadata_manager.list_sql_favorites()
@@ -156,7 +156,7 @@ async def create_sql_favorite(request: CreateSQLFavoriteRequest = Body(...)):
 
 
 @router.put("/api/sql-favorites/{favorite_id}", tags=["SQL Favorites"])
-async def update_sql_favorite(
+def update_sql_favorite(
     favorite_id: str, request: UpdateSQLFavoriteRequest = Body(...)
 ):
     """更新SQL收藏"""
@@ -213,7 +213,7 @@ async def update_sql_favorite(
 
 
 @router.delete("/api/sql-favorites/{favorite_id}", tags=["SQL Favorites"])
-async def delete_sql_favorite(favorite_id: str):
+def delete_sql_favorite(favorite_id: str):
     """删除SQL收藏"""
     try:
         existing = metadata_manager.get_sql_favorite(favorite_id)
@@ -246,7 +246,7 @@ async def delete_sql_favorite(favorite_id: str):
 
 
 @router.post("/api/sql-favorites/{favorite_id}/use", tags=["SQL Favorites"])
-async def increment_favorite_usage(favorite_id: str):
+def increment_favorite_usage(favorite_id: str):
     """增加SQL收藏的使用次数"""
     try:
         # 原子自增：单条 SQL 完成"存在性检查 + 自增 + 取回新值"，并发下不会丢计数

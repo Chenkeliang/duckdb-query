@@ -174,7 +174,7 @@ def _is_install_active(name: str) -> bool:
 
 
 @router.get("/api/duckdb/extensions", tags=["DuckDB Extensions"])
-async def list_duckdb_extensions():
+def list_duckdb_extensions():
     """列出精选扩展目录，标注每个扩展是否已预置/已安装"""
     try:
         with with_duckdb_connection() as con:
@@ -215,7 +215,7 @@ async def list_duckdb_extensions():
 
 
 @router.post("/api/duckdb/extensions/{name}/install", tags=["DuckDB Extensions"])
-async def install_duckdb_extension(name: str):
+def install_duckdb_extension(name: str):
     """触发指定扩展的后台联网安装；已在安装中则幂等返回当前进度"""
     if name not in CATALOG:
         raise APIValidationError(f"Unknown extension: {name}")
@@ -245,7 +245,7 @@ async def install_duckdb_extension(name: str):
 
 
 @router.get("/api/duckdb/extensions/install/{name}", tags=["DuckDB Extensions"])
-async def get_duckdb_extension_install_status(name: str):
+def get_duckdb_extension_install_status(name: str):
     """查询指定扩展的安装进度"""
     return create_success_response(
         data=_get_install_state(name),

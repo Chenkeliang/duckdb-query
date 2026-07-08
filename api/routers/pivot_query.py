@@ -56,7 +56,7 @@ def _build_preview_count_sql(sql: str) -> str:
     return f"SELECT COUNT(*) AS total_rows FROM ({cleaned}) AS preview_count"
 
 
-async def _generate_pivot_query(request: PivotQueryRequest):
+def _generate_pivot_query(request: PivotQueryRequest):
     """Generate pivot query SQL."""
     try:
         validation_result = validate_query_config(request.config)
@@ -108,7 +108,7 @@ async def _generate_pivot_query(request: PivotQueryRequest):
         )
 
 
-async def _preview_pivot_query(
+def _preview_pivot_query(
     request: PivotPreviewRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
@@ -229,13 +229,13 @@ async def _preview_pivot_query(
 
 
 @router.post("/api/pivot-query/generate", tags=PIVOT_TAGS)
-async def generate_pivot_query_route(request: PivotQueryRequest):
-    return await _generate_pivot_query(request)
+def generate_pivot_query_route(request: PivotQueryRequest):
+    return _generate_pivot_query(request)
 
 
 @router.post("/api/pivot-query/preview", tags=PIVOT_TAGS)
-async def preview_pivot_query_route(
+def preview_pivot_query_route(
     request: PivotPreviewRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
-    return await _preview_pivot_query(request, x_request_id)
+    return _preview_pivot_query(request, x_request_id)

@@ -176,7 +176,7 @@ def _build_breadcrumbs(real_path: str, mount: dict) -> List[dict]:
 
 
 @router.get("/api/server-files/mounted")
-async def list_server_mounts():
+def list_server_mounts():
     mounts = _get_mount_configs()
     return create_success_response(
         data={
@@ -190,7 +190,7 @@ async def list_server_mounts():
 
 
 @router.get("/api/server-files/browse")
-async def list_server_directory(path: str = Query(..., description="服务器目录路径")):
+def list_server_directory(path: str = Query(..., description="服务器目录路径")):
     real_path, mount = _resolve_path(path)
 
     if not os.path.exists(real_path):
@@ -251,7 +251,7 @@ async def list_server_directory(path: str = Query(..., description="服务器目
 
 
 @router.post("/api/server-files/import")
-async def import_server_file(payload: ServerFileImportRequest):
+def import_server_file(payload: ServerFileImportRequest):
     real_path, mount = _resolve_path(payload.path)
 
     if not os.path.exists(real_path):
@@ -351,7 +351,7 @@ async def import_server_file(payload: ServerFileImportRequest):
 
 
 @router.post("/api/server-files/excel/inspect")
-async def inspect_server_excel(payload: ServerExcelInspectRequest):
+def inspect_server_excel(payload: ServerExcelInspectRequest):
     """
     检查服务器上的 Excel 文件，返回工作表信息
     """
@@ -392,7 +392,7 @@ async def inspect_server_excel(payload: ServerExcelInspectRequest):
 
 
 @router.post("/api/server-files/excel/import")
-async def import_server_excel(payload: ServerExcelImportRequest):
+def import_server_excel(payload: ServerExcelImportRequest):
     """
     导入服务器上的 Excel 文件的指定工作表
 

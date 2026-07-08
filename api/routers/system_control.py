@@ -27,6 +27,15 @@ router = APIRouter(tags=["System"])
 def _stop_server() -> None:
     """在后台线程里执行，留出时间让 /api/system/shutdown 的 200 响应先写完。"""
     time.sleep(0.05)
+    # 先中断所有在飞查询：重查询若还占着工作线程，uvicorn 优雅停机会一直等它，
+    # 可能超过桌面壳的 5s 窗口而被 SIGKILL（脏 WAL → 重启降级）。中断后它们迅速
+    # 抛错退出，uvicorn 得以 drain → 跑 lifespan shutdown(连接池 checkpoint)干净退出。
+    try:
+        from core.database.connection_registry import connection_registry
+
+        connection_registry.interrupt_all()
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.warning("interrupt_all on shutdown failed (ignored): %s", exc)
     if request_graceful_shutdown():
         logger.info("Graceful shutdown requested via uvicorn Server.should_exit")
         return

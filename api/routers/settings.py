@@ -75,7 +75,7 @@ def ensure_shortcuts_table():
 # ============================================================================
 
 @router.get("/shortcuts")
-async def get_shortcuts():
+def get_shortcuts():
     """
     获取所有快捷键配置
     返回用户自定义的快捷键，与默认值合并
@@ -127,7 +127,7 @@ async def get_shortcuts():
 
 
 @router.put("/shortcuts/{action_id}")
-async def update_shortcut(action_id: str, data: ShortcutUpdate):
+def update_shortcut(action_id: str, data: ShortcutUpdate):
     """
     更新单个快捷键
     """
@@ -177,7 +177,7 @@ async def update_shortcut(action_id: str, data: ShortcutUpdate):
 
 
 @router.post("/shortcuts/reset")
-async def reset_shortcuts(data: ShortcutReset):
+def reset_shortcuts(data: ShortcutReset):
     """
     重置快捷键
     如果提供 action_id，只重置该快捷键

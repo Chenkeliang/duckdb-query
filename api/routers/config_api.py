@@ -46,7 +46,7 @@ def format_file_size(size_bytes: int) -> str:
 
 
 @router.get("/api/app-config/features", tags=["Config"])
-async def get_app_features():
+def get_app_features():
     """
     返回前端需要的功能开关与关键阈值。
     - enable_pivot_tables: 是否启用透视表
@@ -77,7 +77,7 @@ async def get_app_features():
 
 
 @router.get("/api/app-config/engine-compat", tags=["Config"])
-async def get_engine_compat():
+def get_engine_compat():
     """返回当前引擎兼容性配置（四个布尔开关，默认全 false）。"""
     app_config = config_manager.get_app_config()
     compat = app_config.engine_compat or {}
@@ -88,7 +88,7 @@ async def get_engine_compat():
 
 
 @router.put("/api/app-config/engine-compat", tags=["Config"])
-async def put_engine_compat(payload: EngineCompatSettings):
+def put_engine_compat(payload: EngineCompatSettings):
     """保存引擎兼容性配置，并立即在连接池上生效（SET GLOBAL，见 apply_engine_compat_settings）。"""
     new_values = payload.model_dump()
     config_manager.update_app_config(engine_compat=new_values)
