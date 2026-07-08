@@ -130,7 +130,11 @@ def _resolve_path(path: str) -> tuple[str, dict]:
     mounts = _get_mount_configs()
     for mount in mounts:
         root = mount["real_path"]
-        if real_path.startswith(root):
+        # 必须在路径分隔符边界上判断包含关系,不能用裸 startswith——否则挂载目录
+        # /data/allowed 会把同前缀的兄弟目录 /data/allowed_backup 也误判为在范围内。
+        # root 来自 realpath,已规整且无尾部分隔符,故只需匹配"等于 root"或"以
+        # root + 分隔符开头"两种情况。
+        if real_path == root or real_path.startswith(root + os.sep):
             if os.path.islink(path):
                 raise SecurityError(
                     "Symbolic links are not allowed",
