@@ -1731,9 +1731,13 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         abortControllerRef.current = null;
       }
     }
-    // 本次已被更新请求取代/已取消 → 丢弃结果，不把过期结果盖到更新的那次之上
+    // 本次已被更新请求取代/已取消 → 丢弃结果，不把过期结果盖到更新的那次之上。
+    // 返回 true（而非 false）：对 handleExecute 而言"服务端路径已接管"，绝不能
+    // 回落到本地 generateSQL()+onExecute()——那会把这条已被取代/已取消的查询又
+    // 在本地重跑一遍（双重执行）。false 只保留给"payload 构造失败、确实需要本地
+    // 兜底"这一种情况。
     if (superseded) {
-      return false;
+      return true;
     }
     const previewHandler = onDisplayPreview;
     if (previewHandler) {

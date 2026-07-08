@@ -157,4 +157,49 @@ describe('useQueryWorkspace multi-tab refresh race (#10)', () => {
     expect(after.result.loading).toBe(false);
     expect(after.result.data).toEqual([{ v: 'winner' }]);
   });
+
+  it('closing a result tab aborts its in-flight refresh and frees the slot (#4)', async () => {
+    const exec = vi.mocked(api.executeDuckDBSQL);
+    exec.mockResolvedValueOnce(okResult('seed') as never);
+
+    const { result } = renderHook(() => useQueryWorkspace());
+    await act(async () => {
+      await result.current.handleQueryExecute('SELECT 1 AS v');
+    });
+    await waitFor(() => expect(result.current.resultTabs.length).toBe(1));
+    const tab = result.current.resultTabs[0];
+
+    // 一次在飞的刷新：捕获传给 executeDuckDBSQL 的 AbortSignal，保持 pending
+    const dRefresh = deferred<ReturnType<typeof okResult>>();
+    let capturedSignal: AbortSignal | undefined;
+    exec.mockImplementationOnce(((_sql: string, opts?: { signal?: AbortSignal }) => {
+      capturedSignal = opts?.signal;
+      return dRefresh.promise;
+    }) as never);
+
+    let refresh!: Promise<void>;
+    act(() => {
+      refresh = result.current.refreshResultTab(tab.id);
+    });
+    await waitFor(() => {
+      const t = result.current.resultTabs.find((x) => x.id === tab.id)!;
+      expect(t.result.loading).toBe(true);
+    });
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal!.aborted).toBe(false);
+
+    // 在刷新在飞时关闭该 Tab：必须中止它的 fetch 并释放槽位
+    act(() => {
+      result.current.closeResultTabById(tab.id);
+    });
+    expect(capturedSignal!.aborted).toBe(true); // 修复前：不中止，永远是 false
+    expect(result.current.resultTabs.find((x) => x.id === tab.id)).toBeUndefined();
+
+    // 迟到的响应回来不能复活已关闭的 Tab（槽位记录已删除 → isStale 判真丢弃）
+    await act(async () => {
+      dRefresh.resolve(okResult('late'));
+      await refresh;
+    });
+    expect(result.current.resultTabs.find((x) => x.id === tab.id)).toBeUndefined();
+  });
 });

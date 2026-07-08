@@ -500,6 +500,15 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   }, []);
 
   const closeResultTabById = useCallback((id: string) => {
+    // 关闭结果 Tab 前先释放它的刷新槽位:中止可能在跑的 fetch,并清掉两个 Map 里
+    // 的 tab:${id} 记录。否则每次"刷新某 Tab 后又关闭它"都会永久残留一条
+    // AbortController + requestId(Map 泄漏),且已关闭 Tab 的请求仍在后台空跑。
+    // 删掉 latestRequest 记录后,该请求的结果回来时 isStale 判定为真、被丢弃。
+    const key = `tab:${id}`;
+    abortByKeyRef.current.get(key)?.abort();
+    abortByKeyRef.current.delete(key);
+    latestRequestByKeyRef.current.delete(key);
+
     setResultTabs((prev) => {
       const next = closeResultTab(prev, id);
       setActiveResultTabId((current) => {
