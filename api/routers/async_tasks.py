@@ -666,51 +666,37 @@ def cleanup_stuck_tasks():
         )
 
 
-@router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
-def generate_and_download_file(task_id: str, request: dict = Body(...)):
-    """
-    按需生成并直接下载文件
-    一步完成文件生成和下载，避免时序问题
+def _serve_task_download(task_id: str, fmt: str):
+    """生成(或复用已缓存的)结果文件并以 FileResponse 流式返回。POST/GET 共用。
+
+    FileResponse 是流式的:大文件(2 亿行 CSV 可达数 GB)也是边读边发、不占内存。
+    前端务必用原生下载(openExternal 走系统浏览器/window.open)去命中它,不要用
+    axios responseType:'blob' 把整个文件读进 webview 内存——那会把界面卡死。
     """
     try:
-        format = request.get("format", "csv")
-
-        # 验证格式参数
-        if format not in ["csv", "parquet"]:
+        if fmt not in ["csv", "parquet"]:
             raise APIValidationError(
                 "Unsupported format, only csv and parquet are allowed",
                 details={"field": "format", "allowed": ["csv", "parquet"]},
             )
 
-        # 生成下载文件
-        file_path = generate_download_file(task_id, format)
-
-        # 检查文件是否存在
+        file_path = generate_download_file(task_id, fmt)
         if not os.path.exists(file_path):
             raise ResourceNotFoundError("Generated file", task_id)
 
-        # 确定文件名和媒体类型
-        file_name = os.path.basename(file_path)
-        media_type = task_utils.get_media_type(file_path)
-
-        # 直接返回文件
         return FileResponse(
             file_path,
-            media_type=media_type,
-            filename=file_name,
+            media_type=task_utils.get_media_type(file_path),
+            filename=os.path.basename(file_path),
         )
-
     except BaseAPIException:
         raise
     except ValueError as e:
         logger.warning(f"Failed to generate download file: {task_id}, error: {str(e)}")
         return error_json_response(
-            400,
-            MessageCode.VALIDATION_ERROR,
-            str(e),
-            details={"task_id": task_id},
+            400, MessageCode.VALIDATION_ERROR, str(e), details={"task_id": task_id}
         )
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error(f"Failed to generate download file: {task_id}, error: {str(e)}")
         return error_json_response(
             500,
@@ -718,6 +704,21 @@ def generate_and_download_file(task_id: str, request: dict = Body(...)):
             f"Failed to generate download file: {str(e)}",
             details={"task_id": task_id},
         )
+
+
+@router.get("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
+def download_task_result(task_id: str, format: str = "csv"):
+    """GET 下载入口:供前端原生下载(openExternal/window.open)命中,流式落盘。
+
+    大文件下载必须走这里 + 原生下载,避免前端用 blob 把整个文件读进内存卡死界面。
+    """
+    return _serve_task_download(task_id, format)
+
+
+@router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
+def generate_and_download_file(task_id: str, request: dict = Body(...)):
+    """按需生成并直接下载文件(保留 POST 兼容旧调用方)。"""
+    return _serve_task_download(task_id, request.get("format", "csv"))
 
 
 def _discard_persisted_result(task_id: str, table_name: Optional[str]) -> None:

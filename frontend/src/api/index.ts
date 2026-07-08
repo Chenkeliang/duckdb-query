@@ -129,7 +129,7 @@ export {
     submitAsyncQuery,
     cancelAsyncTask,
     retryAsyncTask,
-    downloadAsyncResult,
+    getAsyncDownloadUrl,
     getConnectionPoolStatus,
     resetConnectionPool,
     getErrorStatistics,
