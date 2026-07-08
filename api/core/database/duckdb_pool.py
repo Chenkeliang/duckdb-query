@@ -398,12 +398,27 @@ class DuckDBConnectionPool:
 
 # 全局连接池实例
 _connection_pool = None
+_connection_pool_lock = threading.Lock()
 
 
 def get_connection_pool() -> DuckDBConnectionPool:
-    """获取连接池实例"""
+    """获取连接池实例（双重检查加锁的懒加载单例）。
+
+    异步任务经 FastAPI BackgroundTasks 跑在真实线程池里，和事件循环线程一样
+    会调用这个函数——两个几乎同时到达的首次调用如果不加锁，都会看到
+    _connection_pool 是 None，各自完整构造一个连接池（各自真实打开数据库
+    连接、各自起一条维护线程），后赋值的那个"获胜"，先创建的那个连接和线程
+    永久泄漏。与 core.foundation.crypto_utils.CryptoManager._get_fernet()
+    用同一个双重检查加锁模式。
+    """
     global _connection_pool
-    if _connection_pool is None:
+    if _connection_pool is not None:
+        return _connection_pool
+
+    with _connection_pool_lock:
+        if _connection_pool is not None:
+            return _connection_pool
+
         from core.common.config_manager import config_manager
 
         app_config = config_manager.get_app_config()
@@ -415,7 +430,7 @@ def get_connection_pool() -> DuckDBConnectionPool:
             idle_timeout=app_config.pool_idle_timeout,
             max_retries=app_config.pool_max_retries,
         )
-    return _connection_pool
+        return _connection_pool
 
 
 @contextmanager
