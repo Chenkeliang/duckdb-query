@@ -202,4 +202,64 @@ describe('useQueryWorkspace multi-tab refresh race (#10)', () => {
     });
     expect(result.current.resultTabs.find((x) => x.id === tab.id)).toBeUndefined();
   });
+
+  it('bulk close (close-others) aborts in-flight refreshes of every removed tab (#4 完整性)', async () => {
+    const exec = vi.mocked(api.executeDuckDBSQL);
+    exec.mockResolvedValueOnce(okResult('seedA') as never);
+    exec.mockResolvedValueOnce(okResult('seedB') as never);
+    exec.mockResolvedValueOnce(okResult('seedC') as never);
+
+    const { result } = renderHook(() => useQueryWorkspace());
+    for (const sql of ['SELECT 1 AS v', 'SELECT 2 AS v', 'SELECT 3 AS v']) {
+      await act(async () => {
+        await result.current.handleQueryExecute(sql);
+      });
+    }
+    await waitFor(() => expect(result.current.resultTabs.length).toBe(3));
+    const [tabA, tabB, tabC] = result.current.resultTabs;
+
+    // A 和 C 各起一个在飞刷新，捕获它们的 signal
+    const dA = deferred<ReturnType<typeof okResult>>();
+    const dC = deferred<ReturnType<typeof okResult>>();
+    let sigA: AbortSignal | undefined;
+    let sigC: AbortSignal | undefined;
+    exec.mockImplementationOnce(((_s: string, o?: { signal?: AbortSignal }) => {
+      sigA = o?.signal;
+      return dA.promise;
+    }) as never);
+    exec.mockImplementationOnce(((_s: string, o?: { signal?: AbortSignal }) => {
+      sigC = o?.signal;
+      return dC.promise;
+    }) as never);
+
+    let rA!: Promise<void>;
+    let rC!: Promise<void>;
+    act(() => {
+      rA = result.current.refreshResultTab(tabA.id);
+    });
+    act(() => {
+      rC = result.current.refreshResultTab(tabC.id);
+    });
+    await waitFor(() => {
+      expect(sigA).toBeDefined();
+      expect(sigC).toBeDefined();
+    });
+
+    // 保留 B、关闭其它（A、C 被批量移除）——两者的在飞刷新都必须被中止
+    act(() => {
+      result.current.closeOtherResultTabsById(tabB.id);
+    });
+    expect(sigA!.aborted).toBe(true); // 修复前:批量关闭不释放槽位 -> false
+    expect(sigC!.aborted).toBe(true);
+    expect(result.current.resultTabs.map((t) => t.id)).toEqual([tabB.id]);
+
+    // 迟到响应不复活已关闭的 Tab
+    await act(async () => {
+      dA.resolve(okResult('lateA'));
+      dC.resolve(okResult('lateC'));
+      await rA;
+      await rC;
+    });
+    expect(result.current.resultTabs.map((t) => t.id)).toEqual([tabB.id]);
+  });
 });

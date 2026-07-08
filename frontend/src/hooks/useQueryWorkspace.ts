@@ -499,40 +499,80 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     setActiveResultTabId(id);
   }, []);
 
-  const closeResultTabById = useCallback((id: string) => {
-    // 关闭结果 Tab 前先释放它的刷新槽位:中止可能在跑的 fetch,并清掉两个 Map 里
-    // 的 tab:${id} 记录。否则每次"刷新某 Tab 后又关闭它"都会永久残留一条
-    // AbortController + requestId(Map 泄漏),且已关闭 Tab 的请求仍在后台空跑。
-    // 删掉 latestRequest 记录后,该请求的结果回来时 isStale 判定为真、被丢弃。
+  // 释放某个结果 Tab 的刷新槽位:中止可能在跑的 fetch,并清掉两个 Map 里的
+  // tab:${id} 记录。否则被关闭的 Tab 会永久残留一条 AbortController + requestId
+  // (Map 泄漏),且它的请求仍在后台空跑。删掉 latestRequest 记录后,该请求的结果
+  // 回来时 isStale 判定为真、被丢弃,不会复活已关闭的 Tab。abort/delete 均幂等,
+  // 供批量关闭在 updater 里逐个调用也安全(StrictMode 重复执行无副作用)。
+  const freeResultTabSlot = useCallback((id: string) => {
     const key = `tab:${id}`;
     abortByKeyRef.current.get(key)?.abort();
     abortByKeyRef.current.delete(key);
     latestRequestByKeyRef.current.delete(key);
+  }, []);
 
-    setResultTabs((prev) => {
-      const next = closeResultTab(prev, id);
-      setActiveResultTabId((current) => {
-        if (current !== id) return current;
-        return pickAdjacentActiveTabId(prev, id);
+  // 批量关闭:被移除(prev\next 差集)的每个 Tab 都要释放其槽位——单个关闭之外的
+  // 三条路径此前遗漏,导致与 #4 同类的泄漏。
+  const freeRemovedTabSlots = useCallback(
+    (prev: ResultTabEntry[], next: ResultTabEntry[]) => {
+      const kept = new Set(next.map((t) => t.id));
+      for (const tab of prev) {
+        if (!kept.has(tab.id)) freeResultTabSlot(tab.id);
+      }
+    },
+    [freeResultTabSlot]
+  );
+
+  const closeResultTabById = useCallback(
+    (id: string) => {
+      freeResultTabSlot(id);
+      setResultTabs((prev) => {
+        const next = closeResultTab(prev, id);
+        setActiveResultTabId((current) => {
+          if (current !== id) return current;
+          return pickAdjacentActiveTabId(prev, id);
+        });
+        return next;
       });
-      return next;
-    });
-  }, []);
+    },
+    [freeResultTabSlot]
+  );
 
-  const closeOtherResultTabsById = useCallback((id: string) => {
-    setResultTabs((prev) => closeOtherResultTabs(prev, id));
-    setActiveResultTabId(id);
-  }, []);
+  const closeOtherResultTabsById = useCallback(
+    (id: string) => {
+      setResultTabs((prev) => {
+        const next = closeOtherResultTabs(prev, id);
+        freeRemovedTabSlots(prev, next);
+        return next;
+      });
+      setActiveResultTabId(id);
+    },
+    [freeRemovedTabSlots]
+  );
 
-  const closeResultTabsToLeftOf = useCallback((id: string) => {
-    setResultTabs((prev) => closeResultTabsToLeft(prev, id));
-    setActiveResultTabId(id);
-  }, []);
+  const closeResultTabsToLeftOf = useCallback(
+    (id: string) => {
+      setResultTabs((prev) => {
+        const next = closeResultTabsToLeft(prev, id);
+        freeRemovedTabSlots(prev, next);
+        return next;
+      });
+      setActiveResultTabId(id);
+    },
+    [freeRemovedTabSlots]
+  );
 
-  const closeResultTabsToRightOf = useCallback((id: string) => {
-    setResultTabs((prev) => closeResultTabsToRight(prev, id));
-    setActiveResultTabId(id);
-  }, []);
+  const closeResultTabsToRightOf = useCallback(
+    (id: string) => {
+      setResultTabs((prev) => {
+        const next = closeResultTabsToRight(prev, id);
+        freeRemovedTabSlots(prev, next);
+        return next;
+      });
+      setActiveResultTabId(id);
+    },
+    [freeRemovedTabSlots]
+  );
 
   const toggleResultTabPinById = useCallback((id: string) => {
     setResultTabs((prev) => toggleResultTabPin(prev, id));
