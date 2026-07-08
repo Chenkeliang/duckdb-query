@@ -82,11 +82,17 @@ export interface OptimizationReport {
 }
 
 /**
- * Attach database configuration
+ * Attach database configuration.
+ *
+ * 本模块的函数只读 `alias`（见 tablePrefixIsAttached 等），`type`/`connectionId`
+ * 都不参与优化逻辑，故都设为可选——这样本接口成为其它三处 AttachDatabase
+ * 声明（types/queryWorkspace、utils/sqlUtils、AsyncTaskDialog，均为 {alias,
+ * connectionId} 必填）的结构超集，可直接接收它们，消除 `type` 必填却从不使用
+ * 的漂移（NEW-E）。
  */
 export interface AttachDatabase {
     alias: string;
-    type: string;
+    type?: string;
     connectionId?: string;
 }
 
