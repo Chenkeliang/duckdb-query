@@ -1710,17 +1710,30 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `join-${Date.now()}`;
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     joinRequestIdRef.current = requestId;
     let result;
+    let superseded = false;
     try {
       result = await performJoinQuery(payload, {
         requestId,
-        signal: abortControllerRef.current.signal,
+        signal: controller.signal,
       });
     } finally {
-      joinRequestIdRef.current = null;
-      abortControllerRef.current = null;
+      // 只有仍是"最新请求"时才清理 ref：若已被后来居上的请求（或取消）覆盖，
+      // 不能把它的 ref 误清掉，否则会破坏后者的取消/时效判断（回归 #17）
+      superseded = joinRequestIdRef.current !== requestId;
+      if (!superseded) {
+        joinRequestIdRef.current = null;
+      }
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+    }
+    // 本次已被更新请求取代/已取消 → 丢弃结果，不把过期结果盖到更新的那次之上
+    if (superseded) {
+      return false;
     }
     const previewHandler = onDisplayPreview;
     if (previewHandler) {
