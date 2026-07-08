@@ -41,8 +41,6 @@ from core.data.file_datasource_manager import reload_all_file_datasources_to_duc
 from core.database.duckdb_engine import (
     with_duckdb_connection,
     create_persistent_table,
-    create_varchar_table_from_dataframe,
-    ensure_all_tables_varchar,
 )
 from core.services.cleanup_scheduler import start_cleanup_scheduler, stop_cleanup_scheduler
 

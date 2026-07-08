@@ -27,7 +27,6 @@ from core.data.file_utils import load_file_to_duckdb
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     build_single_table_query,
-    create_varchar_table_from_dataframe,
     execute_query,
     generate_improved_column_aliases,
     with_duckdb_connection,
