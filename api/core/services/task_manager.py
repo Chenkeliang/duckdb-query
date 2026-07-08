@@ -615,7 +615,7 @@ class TaskManager:
                         f"""
                         UPDATE {ASYNC_TASKS_TABLE}
                         SET status = ?, error_message = ?, completed_at = ?, execution_time = ?
-                        WHERE task_id = ?
+                        WHERE task_id = ? AND status IN (?, ?)
                         RETURNING task_id
                         """,
                         [
@@ -624,6 +624,8 @@ class TaskManager:
                             completed_at,
                             execution_time,
                             task_id,
+                            TaskStatus.QUEUED.value,
+                            TaskStatus.RUNNING.value,
                         ],
                     ).fetchall()
 
@@ -812,7 +814,7 @@ class TaskManager:
                         f"""
                         UPDATE {ASYNC_TASKS_TABLE}
                         SET status = ?, error_message = ?, completed_at = ?, execution_time = ?
-                        WHERE task_id = ?
+                        WHERE task_id = ? AND status IN (?, ?, ?)
                         RETURNING task_id
                         """,
                         [
@@ -821,6 +823,9 @@ class TaskManager:
                             completed_at,
                             execution_time,
                             task_id,
+                            TaskStatus.QUEUED.value,
+                            TaskStatus.RUNNING.value,
+                            TaskStatus.CANCELLING.value,
                         ],
                     ).fetchall()
 
