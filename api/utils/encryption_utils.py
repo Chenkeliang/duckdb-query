@@ -25,7 +25,7 @@ _LEGACY_DEFAULT_KEY = "duckquery_default_key_2024"
 def _load_persisted_key() -> str:
     """本机随机生成、持久化到磁盘的密钥。
 
-    复用 core.common.paths.get_secret_key_path() 指向的同一个 secret.key
+    复用 core.common.paths.load_or_create_secret_key() 管理的同一个 secret.key
     文件——这个文件已经是"随机生成 + 本机持久化"的正确实现（供
     core.security.encryption 的 Fernet 加密使用），XOR 密钥没有理由再造
     一套独立的密钥文件和生成逻辑。DUCKQUERY_ENCRYPTION_KEY 环境变量仍可
@@ -35,22 +35,20 @@ def _load_persisted_key() -> str:
     if override:
         return override
 
-    from core.common.paths import get_secret_key_path
+    from core.common.paths import load_or_create_secret_key
 
-    key_path = get_secret_key_path()
-    key_path.parent.mkdir(parents=True, exist_ok=True)
-    if not key_path.exists():
-        from cryptography.fernet import Fernet
-
-        key_path.write_bytes(Fernet.generate_key())
-    return key_path.read_bytes().decode("ascii")
+    return load_or_create_secret_key().decode("ascii")
 
 
 class EncryptionUtils:
     """加密/解密工具类"""
 
     _KEY = _load_persisted_key()
-    _LEGACY_KEY = _LEGACY_DEFAULT_KEY
+    # 历史(无 v2: 前缀)数据用「v2 迁移之前那把有效密钥」解密:env 覆盖优先,
+    # 否则源码写死的默认值——这正是旧版 decrypt_password 用过的 key。之前这里
+    # 只写死默认值、忽略了 DUCKQUERY_ENCRYPTION_KEY:任何曾设过该环境变量的部署,
+    # 其历史密文会被用错误的密钥 XOR 解成乱码并原样落库,造成不可逆的数据损坏。
+    _LEGACY_KEY = os.getenv("DUCKQUERY_ENCRYPTION_KEY") or _LEGACY_DEFAULT_KEY
 
     @classmethod
     def _xor_encrypt_decrypt(cls, data: bytes, key: str) -> bytes:
@@ -239,9 +237,13 @@ class EncryptionUtils:
         if not text:
             return False
 
+        # v2: 前缀是我们自己加的标记,不属于 Base64 载荷——必须先剥掉再解码,
+        # 否则本方法会把自己产出的 v2 密文误判为"未加密"。
+        payload = text[len(_V2_PREFIX):] if text.startswith(_V2_PREFIX) else text
+
         try:
             # 尝试 Base64 解码
-            base64.b64decode(text.encode("utf-8"))
+            base64.b64decode(payload.encode("utf-8"))
             # 如果能成功解码，可能是加密的
             return True
         except Exception:  # pylint: disable=broad-exception-caught

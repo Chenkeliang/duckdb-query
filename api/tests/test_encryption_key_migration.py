@@ -109,6 +109,86 @@ class TestLoadPersistedKey:
         assert _load_persisted_key() == "explicit_override_key"
 
 
+class TestLegacyKeyHonorsEnvOverride:
+    """历史密文按「v2 迁移之前那把有效密钥」解密——若某部署曾设过
+    DUCKQUERY_ENCRYPTION_KEY,其历史密文就是用该 env 值加密的,_LEGACY_KEY 必须
+    回落到它,不能写死成默认值(否则用错密钥解成乱码落库=不可逆数据损坏)。"""
+
+    @staticmethod
+    def _xor_b64(plaintext: str, key: str) -> str:
+        data = plaintext.encode("utf-8")
+        kb = key.encode("utf-8")
+        return base64.b64encode(
+            bytes([data[i] ^ kb[i % len(kb)] for i in range(len(data))])
+        ).decode("utf-8")
+
+    def test_legacy_key_falls_back_to_env_and_decrypts(self, tmp_path, monkeypatch):
+        import importlib
+
+        import utils.encryption_utils as enc_mod
+
+        monkeypatch.setenv("DUCKQUERY_ENCRYPTION_KEY", "shared-across-machines")
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path / "cfg"))
+        importlib.reload(enc_mod)
+        try:
+            assert enc_mod.EncryptionUtils._LEGACY_KEY == "shared-across-machines"
+            legacy = self._xor_b64("envpw", "shared-across-machines")
+            assert not legacy.startswith(enc_mod._V2_PREFIX)
+            assert enc_mod.EncryptionUtils.decrypt_password(legacy) == "envpw"
+        finally:
+            # 还原模块到 env 未设状态,避免污染其它测试
+            monkeypatch.undo()
+            importlib.reload(enc_mod)
+
+    def test_legacy_key_is_default_when_env_unset(self):
+        # 常态(env 未设):回退到源码默认值,覆盖全部历史部署
+        assert EncryptionUtils._LEGACY_KEY == _LEGACY_DEFAULT_KEY
+
+
+class TestIsEncrypted:
+    """is_encrypted 必须先剥掉 v2: 前缀再做 Base64 解码,否则会把自己产出的
+    v2 密文误判成「未加密」。"""
+
+    def test_recognizes_v2_ciphertext(self):
+        v2 = EncryptionUtils.encrypt_password("hunter2")
+        assert v2.startswith(_V2_PREFIX)
+        assert EncryptionUtils.is_encrypted(v2) is True
+
+    def test_recognizes_legacy_ciphertext(self):
+        assert EncryptionUtils.is_encrypted(_legacy_encrypt("x")) is True
+
+    def test_empty_is_not_encrypted(self):
+        assert EncryptionUtils.is_encrypted("") is False
+
+
+class TestAtomicSecretKeyLoad:
+    """load_or_create_secret_key 并发首启只应写入一把密钥;os.link 保证输家读到的
+    永远是赢家写满后的完整内容,不会出现空/半截密钥。"""
+
+    @staticmethod
+    def _worker(_):
+        from core.common.paths import load_or_create_secret_key
+
+        return load_or_create_secret_key()
+
+    def test_concurrent_creators_converge_to_single_key(self, tmp_path, monkeypatch):
+        import multiprocessing as mp
+        import os
+
+        monkeypatch.delenv("DUCKQUERY_ENCRYPTION_KEY", raising=False)
+        cfg = tmp_path / "cfg"
+        monkeypatch.setenv("CONFIG_DIR", str(cfg))
+
+        ctx = mp.get_context("fork")
+        with ctx.Pool(8) as pool:
+            keys = pool.map(TestAtomicSecretKeyLoad._worker, range(8))
+
+        assert len(set(keys)) == 1, f"race: {len(set(keys))} distinct keys written"
+        assert all(len(k) >= 32 for k in keys), "short/partial key read"
+        leftovers = [f for f in os.listdir(cfg) if f.endswith(".tmp")]
+        assert not leftovers, f"temp files leaked: {leftovers}"
+
+
 class TestMetadataManagerLazyMigration:
     """get_metadata/list_metadata 读到历史密文时，顺带用新密钥重新加密写回。"""
 
