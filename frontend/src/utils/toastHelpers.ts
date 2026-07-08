@@ -30,6 +30,18 @@ import type { ApiError } from '@/api';
 const DEFAULT_ERROR_TOAST_DURATION = 6000;
 
 /**
+ * 通用兜底错误码：其翻译过于笼统（"操作失败"/"查询执行失败"），真正原因在后端
+ * message 里。命中这些码时优先展示后端 message，避免用户只看到笼统提示。
+ */
+const GENERIC_ERROR_CODES = new Set([
+  'OPERATION_FAILED',
+  'UNKNOWN_ERROR',
+  'INTERNAL_ERROR',
+  'INTERNAL_SERVER_ERROR',
+  'QUERY_FAILED',
+]);
+
+/**
  * 显示成功 Toast
  * 
  * 优先使用 messageCode 进行 i18n 翻译，如果翻译不存在则使用 fallbackMessage
@@ -120,9 +132,13 @@ export function showErrorToast(
       ...params,
     });
 
-    // 如果翻译存在且不等于 code 本身（说明找到了翻译），使用翻译
-    // 否则优先使用 errorMessage 或 fallbackMessage
-    if (translated && translated !== code) {
+    // 通用兜底错误码（如 OPERATION_FAILED / QUERY_FAILED）的翻译过于笼统（"操作失败"），
+    // 真正的原因在后端返回的 message 里。这类码优先展示 message，避免用户只看到"操作失败"
+    // 却不知道到底哪里错了（异步任务提交失败等场景）。具体错误码仍用其友好翻译。
+    if (GENERIC_ERROR_CODES.has(code) && errorMessage) {
+      message = errorMessage;
+    } else if (translated && translated !== code) {
+      // 如果翻译存在且不等于 code 本身（说明找到了翻译），使用翻译
       message = translated;
     } else {
       // 翻译不存在，使用错误消息或后备消息
