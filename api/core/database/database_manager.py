@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
@@ -41,6 +42,11 @@ class DatabaseManager:
         self.connection_pools: Dict[str, Any] = {}
         self._config_loaded = False
         # 延迟加载配置，避免初始化顺序问题
+        # RLock（可重入）：add_connection 会在持锁期间被 _load_connections_from_config
+        # 循环调用，list_connections 也会在持锁期间触发同一个加载路径——同一线程需要
+        # 能重复拿到这把锁而不死锁。只保护 connections/engines/connection_pools 这几个
+        # 字典本身的读写/遍历，不覆盖 test_connection 这类慢速网络 I/O。
+        self._lock = threading.RLock()
 
     def _load_connections_from_config(self):
         """从 DuckDB 元数据表加载连接配置"""
@@ -105,26 +111,30 @@ class DatabaseManager:
         """
         try:
             # 检查更新：如果连接已存在，先清理旧资源，并合并参数（如密码）
-            if connection.id in self.connections:
-                old_conn = self.connections[connection.id]
-                logger.info(f"updatingdatabase connection: {connection.id}")
-                
-                # 清理旧引擎
-                if connection.id in self.engines:
-                    try:
-                        self.engines[connection.id].dispose()
-                        del self.engines[connection.id]
-                    except Exception as e:
-                        logger.warning(f"Failed to clean up old connection engine {connection.id}: {e}")
-                
-                # 假如新 params 缺少密码，且旧 params 有密码，则继承
-                # 注意：前端如果没改密码，params 里可能没 password 字段
-                if "password" not in connection.params and "password" in old_conn.params:
-                    connection.params["password"] = old_conn.params["password"]
+            # 字典读写本身加锁；test_connection 是真实网络 I/O（可能耗时数秒），
+            # 不放进锁里——否则一次慢速/不可达连接测试会把 list_connections/
+            # execute_query 等其他连接的正常读取整体卡住。
+            with self._lock:
+                if connection.id in self.connections:
+                    old_conn = self.connections[connection.id]
+                    logger.info(f"updatingdatabase connection: {connection.id}")
+
+                    # 清理旧引擎
+                    if connection.id in self.engines:
+                        try:
+                            self.engines[connection.id].dispose()
+                            del self.engines[connection.id]
+                        except Exception as e:
+                            logger.warning(f"Failed to clean up old connection engine {connection.id}: {e}")
+
+                    # 假如新 params 缺少密码，且旧 params 有密码，则继承
+                    # 注意：前端如果没改密码，params 里可能没 password 字段
+                    if "password" not in connection.params and "password" in old_conn.params:
+                        connection.params["password"] = old_conn.params["password"]
 
             test_result = None
             if test_connection:
-                # 测试连接
+                # 测试连接（网络 I/O，不持锁）
                 test_result = self.test_connection(
                     ConnectionTestRequest(
                         type=connection.type, params=connection.params
@@ -135,8 +145,9 @@ class DatabaseManager:
                     # 创建连接引擎
                     try:
                         engine = self._create_engine(connection.type, connection.params)
-                        if engine is not None:
-                            self.engines[connection.id] = engine
+                        with self._lock:
+                            if engine is not None:
+                                self.engines[connection.id] = engine
                         connection.status = ConnectionStatus.ACTIVE
                         logger.info(f"Successfully added database connection: {connection.id}")
                     except Exception as e:
@@ -154,7 +165,8 @@ class DatabaseManager:
                 logger.info(f"Added database connection configuration (not tested): {connection.id}")
 
             # 更新内存中的连接列表
-            self.connections[connection.id] = connection
+            with self._lock:
+                self.connections[connection.id] = connection
 
             # 保存到 DuckDB 元数据表
             if save_to_metadata:
@@ -186,15 +198,16 @@ class DatabaseManager:
     def remove_connection(self, connection_id: str) -> bool:
         """移除数据库连接"""
         try:
-            if connection_id in self.engines:
-                self.engines[connection_id].dispose()
-                del self.engines[connection_id]
+            with self._lock:
+                if connection_id in self.engines:
+                    self.engines[connection_id].dispose()
+                    del self.engines[connection_id]
 
-            if connection_id in self.connections:
-                del self.connections[connection_id]
+                if connection_id in self.connections:
+                    del self.connections[connection_id]
 
-            if connection_id in self.connection_pools:
-                del self.connection_pools[connection_id]
+                if connection_id in self.connection_pools:
+                    del self.connection_pools[connection_id]
 
             # 从 DuckDB 元数据表删除
             success = metadata_manager.delete_database_connection(connection_id)
@@ -215,10 +228,15 @@ class DatabaseManager:
 
     def list_connections(self) -> List[DatabaseConnection]:
         """列出所有数据库连接"""
-        # 确保配置已加载
-        if not self._config_loaded:
-            self._load_connections_from_config()
-        return list(self.connections.values())
+        with self._lock:
+            # 确保配置已加载（_load_connections_from_config 只在 test_connection=False
+            # 下调用 add_connection，不做网络 I/O，持锁期间不会长时间阻塞其他调用方；
+            # RLock 允许 add_connection 内部再次拿到同一把锁，不会死锁）
+            if not self._config_loaded:
+                self._load_connections_from_config()
+            # list(...) 必须在锁内完成：并发的 add_connection/remove_connection 修改
+            # 字典大小时遍历会抛 RuntimeError: dictionary changed size during iteration
+            return list(self.connections.values())
 
     def test_connection(self, request: ConnectionTestRequest) -> ConnectionTestResponse:
         """测试数据库连接"""
@@ -483,15 +501,19 @@ class DatabaseManager:
     def execute_query(self, connection_id: str, query: str) -> pd.DataFrame:
         """执行数据库查询"""
         # 如果连接配置存在但尚未创建引擎（例如仅从配置加载、未进行过测试/刷新），
-        # 这里按需创建引擎，避免外部查询/导入直接失败。
-        if connection_id not in self.engines:
-            connection = self.connections.get(connection_id)
-            if not connection:
-                raise ValueError(f"connectiondoes not exist: {connection_id}")
-            engine = self._create_engine(connection.type, connection.params)
-            self.engines[connection_id] = engine
-
-        engine = self.engines[connection_id]
+        # 这里按需创建引擎，避免外部查询/导入直接失败。check-then-create-then-assign
+        # 整体加锁：两个线程并发首次查询同一个 connection_id 时，不能都判断"没有
+        # 引擎"、各自建一个、后赋值的把先创建的那个覆盖掉导致泄漏（与 duckdb_pool.py
+        # get_connection_pool 曾经的懒加载单例竞态同一类问题）。真正执行查询的
+        # pd.read_sql 是慢速网络 I/O，不放在锁里。
+        with self._lock:
+            if connection_id not in self.engines:
+                connection = self.connections.get(connection_id)
+                if not connection:
+                    raise ValueError(f"connectiondoes not exist: {connection_id}")
+                engine = self._create_engine(connection.type, connection.params)
+                self.engines[connection_id] = engine
+            engine = self.engines[connection_id]
 
         try:
             return pd.read_sql(query, engine)
@@ -502,10 +524,10 @@ class DatabaseManager:
     @contextmanager
     def get_engine(self, connection_id: str):
         """获取数据库引擎的上下文管理器"""
-        if connection_id not in self.engines:
-            raise ValueError(f"connectiondoes not exist: {connection_id}")
-
-        engine = self.engines[connection_id]
+        with self._lock:
+            if connection_id not in self.engines:
+                raise ValueError(f"connectiondoes not exist: {connection_id}")
+            engine = self.engines[connection_id]
         try:
             yield engine
         finally:
