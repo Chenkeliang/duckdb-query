@@ -775,10 +775,9 @@ def perform_query(
             logger.error("Query failed: %s", error_message)
             logger.error("Stack trace: %s", traceback.format_exc())
 
-            from core.common.error_codes import analyze_error_type, get_http_status_code
+            from core.common.error_codes import classify_exception
 
-            error_code = analyze_error_type(error_message)
-            status_code = get_http_status_code(error_code)
+            error_code, status_code = classify_exception(error_message)
 
             return error_json_response(
                 status_code=status_code,

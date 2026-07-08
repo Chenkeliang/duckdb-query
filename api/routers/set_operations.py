@@ -36,6 +36,7 @@ from utils.response_helpers import (
     create_success_response,
     error_json_response,
 )
+from core.common.error_codes import classify_exception
 
 logger = logging.getLogger(__name__)
 
@@ -197,9 +198,11 @@ def preview_set_operation(request: SetOperationRequest):
         )
     except Exception as e:
         logger.error(f"Failed to preview set operation: {str(e)}")
+        # 与 join-query 一致地分类（表不存在→404、语法错→400…），不再一律 500（回归 #16）
+        code, status = classify_exception(str(e))
         return error_json_response(
-            500,
-            MessageCode.OPERATION_FAILED,
+            status,
+            code,
             f"Failed to preview: {str(e)}",
             details={"errors": [f"Failed to preview: {str(e)}"]},
         )
@@ -452,9 +455,10 @@ def execute_set_operation(
         )
     except Exception as e:
         logger.error(f"Failed to execute set operation: {str(e)}")
+        code, status = classify_exception(str(e))
         return error_json_response(
-            500,
-            MessageCode.OPERATION_FAILED,
+            status,
+            code,
             f"Failed to execute: {str(e)}",
             details={"errors": [f"Failed to execute: {str(e)}"]},
         )

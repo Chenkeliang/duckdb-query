@@ -102,6 +102,17 @@ def get_http_status_code(error_code: ErrorCode) -> int:
     return ERROR_MESSAGES.get(error_code, ("未知错误", 500))[1]
 
 
+def classify_exception(error_message: str) -> Tuple[ErrorCode, int]:
+    """把异常消息分类成 (ErrorCode, HTTP status)，供各 router 的通用异常处理统一调用。
+
+    避免"同一个错误（如'表不存在'）走 /api/join-query 返回 404、走
+    /api/set-operations 或 /api/pivot-query 却硬编码返回 500"这种不一致（回归 #16）。
+    识别不出的错误落到 UNKNOWN_ERROR -> 500，与各处原来的硬编码 500 行为一致。
+    """
+    code = analyze_error_type(error_message)
+    return code, get_http_status_code(code)
+
+
 def create_error_response(
     error_code: ErrorCode, original_error: str = None, sql: str = None
 ) -> dict:
