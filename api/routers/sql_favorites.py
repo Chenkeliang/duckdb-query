@@ -249,23 +249,10 @@ async def delete_sql_favorite(favorite_id: str):
 async def increment_favorite_usage(favorite_id: str):
     """增加SQL收藏的使用次数"""
     try:
-        existing = metadata_manager.get_sql_favorite(favorite_id)
-        if not existing:
+        # 原子自增：单条 SQL 完成"存在性检查 + 自增 + 取回新值"，并发下不会丢计数
+        new_count = metadata_manager.increment_sql_favorite_usage(favorite_id)
+        if new_count is None:
             _raise_favorite_not_found(favorite_id)
-
-        current_count = existing.get("usage_count", 0)
-        new_count = current_count + 1
-
-        success = metadata_manager.update_sql_favorite(
-            favorite_id, {"usage_count": new_count}
-        )
-        if not success:
-            return error_json_response(
-                500,
-                MessageCode.OPERATION_FAILED,
-                "Failed to update usage count",
-                details={"favorite_id": favorite_id},
-            )
 
         return create_success_response(
             data={"usage_count": new_count},

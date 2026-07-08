@@ -672,6 +672,32 @@ class MetadataManager:
         """更新 SQL 收藏"""
         return self.update_metadata("system_sql_favorites", fav_id, updates)
 
+    def increment_sql_favorite_usage(self, fav_id: str) -> Optional[int]:
+        """原子自增使用次数，返回自增后的值；收藏不存在返回 None。
+
+        单条 UPDATE ... usage_count = usage_count + 1 ... RETURNING 完成，
+        避免"先 get 再 +1 再 update"在并发下丢失自增（回归 #22）。只改
+        usage_count，与旧的 update_sql_favorite({"usage_count": ...}) 语义
+        一致（不触碰 updated_at——"使用"不算编辑）。
+        """
+        try:
+            with with_system_connection() as conn:
+                rows = conn.execute(
+                    "UPDATE system_sql_favorites "
+                    "SET usage_count = usage_count + 1 "
+                    "WHERE id = ? "
+                    "RETURNING usage_count",
+                    [fav_id],
+                ).fetchall()
+            if not rows:
+                return None
+            # 失效该行缓存，避免后续 get 命中旧计数
+            self._cache.pop(f"system_sql_favorites:{fav_id}", None)
+            return int(rows[0][0])
+        except Exception as e:
+            logger.error("Failed to increment sql favorite usage %s: %s", fav_id, e)
+            raise
+
     def delete_sql_favorite(self, fav_id: str) -> bool:
         """删除 SQL 收藏"""
         return self.delete_metadata("system_sql_favorites", fav_id)
