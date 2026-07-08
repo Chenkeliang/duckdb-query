@@ -712,6 +712,46 @@ class TestJoinAPI:
                 or "resource_not_found" in error_str
             )
 
+    def test_perform_query_legacy_source_type_reports_missing_table_not_silent_success(self):
+        """回归：source.type in {mysql,postgresql,sqlite}（连同 "file"）曾经各自
+        走一套独立的物化逻辑（数据库连接池连接/config/mysql-configs.json 明文凭据/
+        直连参数三选一），从未被现在唯一存在的前端调用方触发过
+        （buildJoinQueryPayload.ts 固定发 type:'duckdb'）。删除之后，这类 source
+        不再被特殊处理，直接落入"表未在 DuckDB 注册"的常规校验——这是期望的新
+        行为：明确报错，而不是用遗留分支悄悄物化数据、或用临时视图伪装成功。
+
+        用一个不存在的 connectionId 是关键：旧代码走到这里会走"模式1"，报
+        "Database connection not found/processing failed"这一句和本测试断言的
+        "table not found"类消息完全不同——如果这条遗留分支哪天被意外恢复，这个
+        测试会因为错误消息对不上而失败，不会被"反正也报错了"蒙混过关。"""
+        request_data = {
+            "sources": [
+                {
+                    "id": "legacy_mysql_source",
+                    "type": "mysql",
+                    "params": {"connectionId": "some-connection-id"},
+                }
+            ],
+            "joins": [],
+        }
+
+        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
+            mock_con = Mock()
+            bind_mock_duckdb_pool(mock_get_db, mock_con)
+            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({"name": []})
+
+            response = client.post("/api/query", json=request_data)
+
+            assert response.status_code in (404, 500)
+            error_str = str(response.json()).lower()
+            assert (
+                "not found" in error_str
+                or "does not exist" in error_str
+                or "不存在" in error_str
+                or "resource_not_found" in error_str
+            )
+            assert "database connection" not in error_str
+
 
 class TestJoinIntegration:
     """测试JOIN集成功能"""
