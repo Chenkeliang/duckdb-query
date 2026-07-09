@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { showSuccessToast } from '@/utils/toastHelpers';
-import type { DuckDBExtensionItem, ExtensionInstallStatus } from '@/api/extensionsApi';
+import type { DuckDBExtensionItem, ExtensionInstallStatus } from '@/api';
 
 export interface ExtensionCardProps {
   item: DuckDBExtensionItem;

@@ -8,7 +8,7 @@ import {
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { showErrorToast } from '@/utils/toastHelpers';
-import { suggestChart } from '@/api/aiApi';
+import { suggestChart } from '@/api';
 import { executeDuckDBSQL, executeFederatedQuery } from '@/api/queryApi';
 import {
   classifyColumns, defaultSpec, validateSpec, buildChartSql, buildDrilldownSql, aggregateRows, capCategories,

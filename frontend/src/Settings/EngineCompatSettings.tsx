@@ -19,7 +19,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
-import { getEngineCompat, saveEngineCompat, type EngineCompatFlags } from '@/api/engineCompatApi';
+import { getEngineCompat, saveEngineCompat, type EngineCompatFlags } from '@/api';
 import { cn } from '@/lib/utils';
 
 interface Row {

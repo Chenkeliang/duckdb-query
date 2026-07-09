@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getAiSettings, type AiSettings } from '@/api/aiApi';
+import { getAiSettings, type AiSettings } from '@/api';
 
 /**
  * 纯派生:某 feature 是否「已配置」。

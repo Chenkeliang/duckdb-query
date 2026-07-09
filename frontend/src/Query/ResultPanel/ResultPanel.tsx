@@ -8,14 +8,14 @@ import { Database, AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import {
   exportQueryResults,
   getQueryExportDownloadUrl,
-} from '@/api/queryExportApi';
+} from '@/api';
 import { showErrorToast, cleanErrorMessage, showDownloadStartedToast } from '@/utils/toastHelpers';
 import { parseDuckDbErrorSuggestion } from '@/utils/sqlErrorHelper';
 import { openExternal } from '@/desktop/openExternal';
 import { Button } from '@/components/ui/button';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { useAiEnabled } from '@/hooks/useAiEnabled';
-import { errorFix, type ErrorFixResult } from '@/api/aiApi';
+import { errorFix, type ErrorFixResult } from '@/api';
 import { toAttachDatabasesPayload } from '@/api/queryApi';
 import { parseSQLTableReferences } from '@/utils/sqlUtils';
 import { EngineCompatSelfHealBanner } from '@/Query/components/EngineCompatSelfHealBanner';

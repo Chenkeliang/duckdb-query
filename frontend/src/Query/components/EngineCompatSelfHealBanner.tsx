@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Wrench, Loader2, X } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { saveEngineCompat } from '@/api/engineCompatApi';
+import { saveEngineCompat } from '@/api';
 import { matchEngineCompatSelfHeal } from '@/utils/engineCompatSelfHeal';
 import { showErrorToast } from '@/utils/toastHelpers';
 

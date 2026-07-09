@@ -33,7 +33,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { executeDuckDBSQL, getExternalTableDetail } from '@/api';
 import { openExternal } from '@/desktop/openExternal';
-import { exportQueryResults, getQueryExportDownloadUrl } from '@/api/queryExportApi';
+import { exportQueryResults, getQueryExportDownloadUrl } from '@/api';
 import type { SelectedTableObject } from '@/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
 import { invalidateDataSources } from '@/hooks/useDataSources';

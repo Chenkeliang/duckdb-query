@@ -8,7 +8,7 @@
  * 以后要接入新场景（MySQL 非法日期 / Postgres 数组 / Iceberg 版本推断等），
  * 只需在 ENGINE_COMPAT_SELF_HEAL_SCENARIOS 里追加一项，无需改动匹配逻辑本身。
  */
-import type { EngineCompatFlags } from '@/api/engineCompatApi';
+import type { EngineCompatFlags } from '@/api';
 
 export interface EngineCompatSelfHealScenario {
   id: string;

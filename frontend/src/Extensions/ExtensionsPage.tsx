@@ -18,7 +18,7 @@ import {
   type DuckDBExtensionItem,
   type ExtensionCategory,
   type ExtensionInstallStatus,
-} from '@/api/extensionsApi';
+} from '@/api';
 import { ExtensionCard } from './ExtensionCard';
 
 const POLL_INTERVAL_MS = 500;
