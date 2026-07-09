@@ -8,7 +8,7 @@
 
 **Tech Stack:** React + TS + recharts ^3 + vitest(前端);FastAPI + LiteLLM + pytest(后端)。
 
-**Spec:** `docs/superpowers/specs/2026-06-01-query-result-charts-design.md`
+**Spec:** `docs/history/designs/2026-06-01-query-result-charts-design.md`
 **Branch:** `feat_result_charts`(已创建)
 
 ---

@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, React, vitest, i18next (all already in the project).
 
-**Why this is the first increment:** It's the lowest-risk, highest-frequency win from the AI-assistant spec (`docs/superpowers/specs/2026-05-30-ai-assistant-design.md` §5.2 Stage 0). It needs no provider configuration and proves the error-display integration point that the later LLM "Explain & Fix" (P1 Stage 1) will extend.
+**Why this is the first increment:** It's the lowest-risk, highest-frequency win from the AI-assistant spec (`docs/history/designs/2026-05-30-ai-assistant-design.md` §5.2 Stage 0). It needs no provider configuration and proves the error-display integration point that the later LLM "Explain & Fix" (P1 Stage 1) will extend.
 
 **Verified DuckDB 1.5.3 error formats** (captured from the actual engine):
 - Column: `Binder Error: Referenced column "order_idd" not found in FROM clause!\nCandidate bindings: "order_id"`

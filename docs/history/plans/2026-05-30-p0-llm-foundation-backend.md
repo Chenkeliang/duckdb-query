@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python, FastAPI project conventions, `litellm` (provider abstraction), `cryptography` (Fernet), pytest.
 
-**Spec ref:** `docs/superpowers/specs/2026-05-30-ai-assistant-design.md` §3, §4, §7. This plan delivers the P0 modules `crypto`, `ai_config`, `llm_service` (the settings tab + SSE routers are P0-b).
+**Spec ref:** `docs/history/designs/2026-05-30-ai-assistant-design.md` §3, §4, §7. This plan delivers the P0 modules `crypto`, `ai_config`, `llm_service` (the settings tab + SSE routers are P0-b).
 
 **Model tiering for execution:** Tasks 1–2 are small and well-specified → dispatch to **sonnet** subagents. Task 3 (LiteLLM integration, provider resolution edge cases) is more nuanced → **opus** if a sonnet attempt isn't confident.
 

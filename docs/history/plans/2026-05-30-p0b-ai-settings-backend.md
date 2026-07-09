@@ -8,7 +8,7 @@
 
 **Tech Stack:** FastAPI, pytest + TestClient. Builds on P0 modules `core/common/crypto.py`, `core/services/ai_config.py`, `core/services/llm_service.py`.
 
-**Spec ref:** `docs/superpowers/specs/2026-05-30-ai-assistant-design.md` §4 (provider management API). The settings-page UI is P0-c.
+**Spec ref:** `docs/history/designs/2026-05-30-ai-assistant-design.md` §4 (provider management API). The settings-page UI is P0-c.
 
 **Model tiering:** Task 1 (file persistence) is small/clear → **sonnet**. Task 2 (router + app wiring + TestClient tests + provider-test endpoint) → **opus**.
 

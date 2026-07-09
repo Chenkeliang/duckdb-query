@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.10+, official `mcp` SDK (`FastMCP`), `httpx` (async), `pytest` + `pytest-asyncio`. Distributed via `uv`/`uvx` and PyPI. Lives in repo subdir `mcp/`.
 
-**Design spec:** [docs/superpowers/specs/2026-06-18-duckquery-mcp-server-design.md](../specs/2026-06-18-duckquery-mcp-server-design.md)
+**Design spec:** [docs/history/designs/2026-06-18-duckquery-mcp-server-design.md](../designs/2026-06-18-duckquery-mcp-server-design.md)
 
 **Branch:** `feat_mcp_server` (already cut from `main`). Soft dep on `feat_service_ports` (port 48001) — the probe list includes legacy 8000/8001, so order of merge doesn't matter.
 

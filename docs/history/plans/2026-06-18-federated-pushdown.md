@@ -257,7 +257,7 @@ Create `api/core/database/federated_optimizer.py`:
 """联邦查询 SQL 智能下推 —— sqlglot AST 改写。
 
 只改"顶层裸远端表引用"、幂等、bailout 保底放行。详见
-docs/superpowers/specs/2026-06-18-federated-pushdown-design.md。
+docs/history/designs/2026-06-18-federated-pushdown-design.md。
 """
 from __future__ import annotations
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 18 + TypeScript + Vite + vitest；复用 `FilterBar` 的 `createCondition` / `FilterCondition` / `placement` 与子查询下推。
 
-**Spec:** `docs/superpowers/specs/2026-05-31-join-time-bound-recommendation-design.md`
+**Spec:** `docs/history/designs/2026-05-31-join-time-bound-recommendation-design.md`
 **Branch:** `feat_join_time_bound`（已创建）
 
 ---

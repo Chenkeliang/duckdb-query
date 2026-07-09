@@ -1,7 +1,7 @@
 """/api/server-files/excel/import 的 create 模式表名唯一性回归测试。
 
 覆盖 server_files.py 里独立于 file_ingestion_service.import_pending_excel_sheets
-的另一套 mode 处理逻辑（见 docs/proposals/drilldown-and-mcp-writeback.md
+的另一套 mode 处理逻辑（见 docs/specs/proposals/drilldown-and-mcp-writeback.md
 「附带发现：Excel 表名唯一性缺陷」）。
 """
 

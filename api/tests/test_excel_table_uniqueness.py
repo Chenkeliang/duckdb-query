@@ -1,6 +1,6 @@
 """Excel 表名唯一性回归测试：inspect 阶段批内去重 + import 阶段 create/replace 语义。
 
-背景：docs/proposals/drilldown-and-mcp-writeback.md 「七、桌面端上传入口重构」
+背景：docs/specs/proposals/drilldown-and-mcp-writeback.md 「七、桌面端上传入口重构」
 「附带发现：Excel 表名唯一性缺陷」小节。
 """
 
