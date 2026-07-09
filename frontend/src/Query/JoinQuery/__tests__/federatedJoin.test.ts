@@ -133,11 +133,13 @@ describe('JoinQueryPanel Federated Query Integration', () => {
           expect(ref.isExternal).toBe(false);
           expect(ref.alias).toBeUndefined();
 
-          // 验证格式化后的引用只包含表名
+          // 验证格式化后的引用只包含表名（按需加引号，无别名前缀）
+          // 注意：表名可能是 SQL 保留字（如 "or"），此时 quoteIdent 会正确加双引号定界
           const formatted = formatTableReference(ref, 'duckdb');
-          expect(formatted).toBe(table.name);
+          expect(formatted).toBe(quoteIdent(table.name, 'duckdb'));
         }),
-        { numRuns: 50 }
+        // 显式注入保留字示例，确保保留字定界路径在每次运行都被覆盖（此前仅随机命中，导致偶发失败）
+        { numRuns: 50, examples: [[{ name: 'or', source: 'duckdb' as const }]] }
       );
     });
 
