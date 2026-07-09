@@ -185,7 +185,7 @@ function MyComponent({ userId }: { userId: string }) {
 ## 参考资源
 
 - [TanStack Query 官方文档](https://tanstack.com/query/latest)
-- [`AGENTS.md`](../../../AGENTS.md) §4.4、§7 — TanStack Query 与 `@/api`
+- [`AGENTS.md`](../../../AGENTS.md) §4.4 — TanStack Query 与 `@/api`
 - [前端 Hooks 使用指南](../../../frontend/src/hooks/README.md)
 
 ## 版本
