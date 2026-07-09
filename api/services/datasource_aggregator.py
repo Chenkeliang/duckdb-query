@@ -4,6 +4,7 @@
 
 聚合不同类型的数据源（数据库连接、DuckDB 表）到统一的视图
 """
+import asyncio
 import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
@@ -167,7 +168,16 @@ class DataSourceAggregator:
     async def _get_file_sources(
         self, filters: Optional[DataSourceFilter] = None
     ) -> List[DataSourceResponse]:
-        """获取文件数据源（DuckDB 表）"""
+        """获取文件数据源（DuckDB 表）。
+
+        DuckDB 查询是同步阻塞调用，表多时逐表 COUNT(*) 会长时间占住事件循环，
+        拖垮 /health 与优雅停机窗口。这里把整段同步逻辑丢进线程池执行。
+        """
+        return await asyncio.to_thread(self._get_file_sources_sync, filters)
+
+    def _get_file_sources_sync(
+        self, filters: Optional[DataSourceFilter] = None
+    ) -> List[DataSourceResponse]:
         sources = []
 
         try:
@@ -189,10 +199,12 @@ class DataSourceAggregator:
                     size_bytes = row[1] if len(row) > 1 else None
                     column_count = row[2] if len(row) > 2 else None
 
-                    # 获取行数
+                    # 获取行数（表名必须双引号定界并转义内嵌引号，否则含空格/关键字
+                    # /特殊字符的表名会让 COUNT(*) 语法出错）
                     try:
+                        quoted = '"' + str(table_name).replace('"', '""') + '"'
                         count_result = conn.execute(
-                            f"SELECT COUNT(*) FROM {table_name}"
+                            f"SELECT COUNT(*) FROM {quoted}"
                         ).fetchone()
                         row_count = count_result[0] if count_result else None
                     except Exception:  # pylint: disable=broad-exception-caught

@@ -30,6 +30,7 @@ import {
     getDialectFromSource,
     getSourceFromSelectedTable,
 } from "@/utils/sqlUtils";
+import { sqlStringLiteral } from "@/utils/sqlLiteral";
 import {
     buildPivotQueryPayload,
     canUseServerPivotPath,
@@ -144,7 +145,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                         ? "NULL"
                         : typeof f.value === "number"
                           ? String(f.value)
-                          : `'${String(f.value).replace(/'/g, "''")}'`;
+                          : sqlStringLiteral(String(f.value));
                 return `${col} ${f.operator} ${val}`;
             });
             return clauses.length ? `WHERE ${clauses.join(" AND ")}` : null;

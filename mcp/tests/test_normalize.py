@@ -105,6 +105,7 @@ async def test_save_as_table_strips_connection_id_via_registration(cfg):
     fn = _get_registered_tool_fn(mcp, "save_as_table")
 
     await fn(sql="SELECT * FROM m.t", table_name="t3",
-             attach_databases=[{"alias": "m", "connection_id": "db_SORDER"}])
+             attach_databases=[{"alias": "m", "connection_id": "db_SORDER"}],
+             confirm=True)
     sent = json.loads(route.calls.last.request.content)
     assert sent["attach_databases"][0]["connection_id"] == "SORDER"

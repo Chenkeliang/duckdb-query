@@ -1,8 +1,12 @@
 from typing import Any
 
 
-async def add_connection(client, cfg, *, connection: dict, test: bool = True) -> Any:
+async def add_connection(client, cfg, *, connection: dict, test: bool = True,
+                         confirm: bool = False) -> Any:
     """Save (and optionally test) an external DB connection.
+
+    Persists a connection (with credentials), so it needs confirm=true outside
+    read-only mode, like every other write tool.
 
     `connection` must follow the DatabaseConnection shape:
       {id, name, type, params: {host, port, database, username, password, ...}}
@@ -10,6 +14,10 @@ async def add_connection(client, cfg, *, connection: dict, test: bool = True) ->
     unique string; if omitted here, a uuid is generated automatically.
     `test=True` (default) verifies the connection before saving; set to False to save without testing.
     """
+    from duckquery_mcp.safety import confirm_required
+    blocked = confirm_required(cfg, True, confirm)
+    if blocked:
+        return blocked
     if not connection.get("id"):
         # 后端 DatabaseConnection.id 为必填;缺失会在路由内被吞成语焉不详的 500
         import uuid
@@ -104,8 +112,12 @@ async def paste_data(
     data_rows: list,
     delimiter: str = ",",
     has_header: bool = False,
+    confirm: bool = False,
 ) -> Any:
     """Create a DuckDB table from pasted tabular data.
+
+    Creates a table, so it needs confirm=true outside read-only mode, like every
+    other write tool.
 
     `column_names`: list of column name strings, e.g. ["id", "name"].
     `column_types`: list of type strings matching column_names, e.g. ["INTEGER", "VARCHAR"].
@@ -116,6 +128,10 @@ async def paste_data(
     `has_header`: whether the first row of data_rows is a header (usually False since
       column_names is explicit).
     """
+    from duckquery_mcp.safety import confirm_required
+    blocked = confirm_required(cfg, True, confirm)
+    if blocked:
+        return blocked
     return await client.call(
         "POST",
         "/api/paste-data",
@@ -142,8 +158,12 @@ async def read_url(
     delimiter: str = ",",
     header: bool = True,
     prefer_native: bool = True,
+    confirm: bool = False,
 ) -> Any:
     """Download a remote file URL and load it into a DuckDB table.
+
+    Fetches a remote URL and creates a table, so it needs confirm=true outside
+    read-only mode, like every other write tool.
 
     `url`: public HTTP/HTTPS URL (GitHub blob URLs are auto-converted to raw).
     `table_alias`: desired table name (de-duplicated if it already exists).
@@ -152,6 +172,10 @@ async def read_url(
     `prefer_native`: try DuckDB/httpfs direct read first (faster), fall back to HTTP download.
     Internal/loopback addresses and S3 URLs are blocked by the backend.
     """
+    from duckquery_mcp.safety import confirm_required
+    blocked = confirm_required(cfg, True, confirm)
+    if blocked:
+        return blocked
     return await client.call(
         "POST",
         "/api/read_from_url",

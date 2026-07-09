@@ -11,6 +11,7 @@
  */
 
 import { nanoid } from 'nanoid';
+import { sqlStringLiteral } from '@/utils/sqlLiteral';
 import type {
     FilterNode,
     FilterCondition,
@@ -223,7 +224,7 @@ export function escapeSqlIdentifier(name: string): string {
  */
 export function escapeSqlString(str: string): string {
     if (str === null || str === undefined) return 'NULL';
-    return `'${String(str).replace(/'/g, "''")}'`;
+    return sqlStringLiteral(str);
 }
 
 // ============================================

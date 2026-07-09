@@ -1,7 +1,13 @@
 import respx
 import httpx
 from duckquery_mcp.client import DuckQueryClient
-from duckquery_mcp.tools.sources import add_local_file_source, import_excel
+from duckquery_mcp.tools.sources import (
+    add_connection,
+    add_local_file_source,
+    import_excel,
+    paste_data,
+    read_url,
+)
 
 
 @respx.mock
@@ -63,3 +69,53 @@ async def test_import_excel_requires_confirm_in_normal_mode(cfg):
     )
     assert "error" not in out_confirmed
     assert route.called
+
+
+@respx.mock
+async def test_add_connection_requires_confirm_in_normal_mode(cfg):
+    """回归(2026-07): add_connection 是 write tier，normal 模式必须显式 confirm=true。"""
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = respx.post(f"{base}/api/datasources/databases").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"id": "c1"}}))
+    out = await add_connection(
+        DuckQueryClient(cfg), cfg,
+        connection={"id": "c1", "name": "x", "type": "mysql", "params": {}},
+    )
+    assert "error" in out
+    assert not route.called
+
+    out_ok = await add_connection(
+        DuckQueryClient(cfg), cfg,
+        connection={"id": "c1", "name": "x", "type": "mysql", "params": {}},
+        confirm=True,
+    )
+    assert "error" not in out_ok
+    assert route.called
+
+
+@respx.mock
+async def test_paste_data_requires_confirm_in_normal_mode(cfg):
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = respx.post(f"{base}/api/paste-data").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {}}))
+    out = await paste_data(
+        DuckQueryClient(cfg), cfg, table_name="t",
+        column_names=["a"], column_types=["INTEGER"], data_rows=[["1"]],
+    )
+    assert "error" in out
+    assert not route.called
+
+
+@respx.mock
+async def test_read_url_requires_confirm_in_normal_mode(cfg):
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = respx.post(f"{base}/api/read_from_url").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {}}))
+    out = await read_url(
+        DuckQueryClient(cfg), cfg, url="https://example.com/a.csv", table_alias="a",
+    )
+    assert "error" in out
+    assert not route.called

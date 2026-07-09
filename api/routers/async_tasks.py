@@ -37,6 +37,7 @@ from utils.response_helpers import (
     create_success_response,
     error_json_response,
 )
+from utils.safe_filename import safe_filename_base
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -244,6 +245,8 @@ class AsyncQueryRequest(BaseModel):
     datasource: Optional[Dict[str, Any]] = None
     # 联邦查询支持：需要 ATTACH 的外部数据库列表
     attach_databases: Optional[List[AttachDatabase]] = None
+    # 自定义表名撞已有表时是否允许覆盖；默认 False，避免静默 CREATE OR REPLACE 毁数据
+    overwrite: bool = False
 
 
 class AsyncQueryResponse(BaseModel):
@@ -323,6 +326,7 @@ def submit_async_query(
             "datasource": request.datasource,
             "attach_databases": attach_list if attach_list else None,
             "is_federated": is_federated,
+            "overwrite": request.overwrite,
         }
 
         # 创建任务并保存元数据
@@ -344,6 +348,7 @@ def submit_async_query(
                 request.task_type,
                 request.datasource,
                 attach_list,
+                request.overwrite,
             )
         else:
             # 普通查询：使用原有执行函数
@@ -354,6 +359,7 @@ def submit_async_query(
                 request.custom_table_name,
                 request.task_type,
                 request.datasource,
+                request.overwrite,
             )
 
         return create_success_response(
@@ -605,6 +611,7 @@ def retry_async_task(
         )
 
         # 根据是否为联邦查询选择执行函数
+        # 重试是用户显式"重做"，允许覆盖上一次的同名结果表（overwrite=True）
         if is_federated:
             background_tasks.add_task(
                 execute_async_federated_query,
@@ -614,6 +621,7 @@ def retry_async_task(
                 task_type,
                 datasource,
                 attach_list,
+                overwrite=True,
             )
         else:
             background_tasks.add_task(
@@ -623,6 +631,7 @@ def retry_async_task(
                 custom_table_name,
                 task_type,
                 datasource,
+                overwrite=True,
             )
 
         # 注意：移除了 update_task 调用，避免写写冲突
@@ -667,18 +676,6 @@ def cleanup_stuck_tasks():
         )
 
 
-def _safe_download_basename(name: Optional[str]) -> str:
-    """把表名/任务名清洗成安全的下载文件名主干(去掉路径分隔符/引号/控制字符,限长)。
-
-    保留中英文/数字/下划线/连字符/点/空格;其余替换为下划线。用于 Content-Disposition
-    的 filename——防止路径穿越和头注入。空/清洗后为空则返回空串,由调用方回退。
-    """
-    if not name:
-        return ""
-    cleaned = re.sub(r"[^\w一-鿿.\- ]", "_", str(name)).strip(" .")
-    return cleaned[:100]
-
-
 def _serve_task_download(task_id: str, fmt: str):
     """生成(或复用已缓存的)结果文件并以 FileResponse 流式返回。POST/GET 共用。
 
@@ -706,7 +703,7 @@ def _serve_task_download(task_id: str, fmt: str):
                 table_name = info.result_info.get("table_name")
         except Exception:  # pylint: disable=broad-exception-caught
             table_name = None
-        base = _safe_download_basename(table_name) or _safe_download_basename(task_id) or "result"
+        base = safe_filename_base(table_name) or safe_filename_base(task_id) or "result"
         return FileResponse(
             file_path,
             media_type=task_utils.get_media_type(file_path),
@@ -782,12 +779,41 @@ def _discard_persisted_result(task_id: str, table_name: Optional[str]) -> None:
         )
 
 
+def _resolve_result_table_name(custom_table_name: Optional[str], task_id: str):
+    """把 custom_table_name 洗成裸标识符;洗完为空(如 "!!!")则回退到唯一的 task_id
+    表名——绝不建空名表。返回 (table_name, is_custom)。
+
+    async_tasks 的普通/联邦两个 worker 曾各写一份等价逻辑(且都无空名兜底),统一到此。
+    """
+    if custom_table_name:
+        safe = re.sub(
+            r"[^a-zA-Z0-9_]", "", custom_table_name.replace(" ", "_").replace("-", "_")
+        )
+        if safe:
+            return safe, True
+    return task_utils.task_id_to_table_name(task_id), False
+
+
+def _raise_if_table_exists(con, table_name: str) -> None:
+    """自定义结果表名撞上 main schema 已有表 → 抛错,阻止静默 CREATE OR REPLACE 覆盖。"""
+    exists = con.execute(
+        "SELECT 1 FROM duckdb_tables() WHERE table_name = ? AND schema_name = 'main' LIMIT 1",
+        [table_name],
+    ).fetchone()
+    if exists:
+        raise ValueError(
+            f'Table "{table_name}" already exists; choose a different name or pass '
+            "overwrite=true to replace it (refusing to overwrite data silently)"
+        )
+
+
 def execute_async_query(
     task_id: str,
     sql: str,
     custom_table_name: Optional[str] = None,
     task_type: str = "query",
     datasource: Optional[Dict[str, Any]] = None,
+    overwrite: bool = False,
 ):
     """
     执行异步查询（后台任务）- 内存优化版本
@@ -844,20 +870,16 @@ def execute_async_query(
         use_external_source = datasource_type in SUPPORTED_EXTERNAL_TYPES
         source_datasource_id = datasource_info.get("id") if datasource_info else None
 
-        # 确定表名
-        if custom_table_name:
-            safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
-            import re
-
-            safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
-            table_name = safe_table_name
-        else:
-            table_name = task_utils.task_id_to_table_name(task_id)
+        # 确定表名（洗空则回退 task_id 名，不建空名表）
+        table_name, is_custom = _resolve_result_table_name(custom_table_name, task_id)
         logger.info(f"[{task_id}] Creating persistent table to store query result: {table_name}")
         logger.debug(f"[{task_id}] Preparing to execute SQL: {clean_sql[:200]}...")
 
         # 第二步：执行查询（使用可中断连接）
         with interruptible_connection(task_id, clean_sql) as con:
+            # 自定义名撞已有表且未显式允许覆盖 → 报错，绝不静默 CREATE OR REPLACE 毁用户表
+            if is_custom and not overwrite:
+                _raise_if_table_exists(con, table_name)
             if use_external_source:
                 from core.common.connection_alias import build_attach_list_from_datasource
 
@@ -1055,6 +1077,7 @@ def execute_async_federated_query(
     task_type: str = "query",
     datasource: Optional[Dict[str, Any]] = None,
     attach_databases: Optional[List[Dict[str, str]]] = None,
+    overwrite: bool = False,
 ):
     """
     执行异步联邦查询（后台任务）
@@ -1117,20 +1140,17 @@ def execute_async_federated_query(
         else:
             logger.info(f"Federated query using original SQL: {clean_sql}")
 
-        # 确定表名
-        if custom_table_name:
-            safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
-            import re
-
-            safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
-            table_name = safe_table_name
-        else:
-            table_name = task_utils.task_id_to_table_name(task_id)
+        # 确定表名（洗空则回退 task_id 名，不建空名表）
+        table_name, is_custom = _resolve_result_table_name(custom_table_name, task_id)
         logger.info(f"Federated query result will be stored in table: {table_name}")
 
         # 第二步：在同一连接中执行 ATTACH、查询、DETACH
         with interruptible_connection(task_id, clean_sql) as con:
             try:
+                # 自定义名撞已有表且未显式允许覆盖 → 报错，绝不静默覆盖用户表
+                if is_custom and not overwrite:
+                    _raise_if_table_exists(con, table_name)
+
                 # 2.1 执行 ATTACH 操作
                 if attach_databases:
                     attached_aliases = _attach_external_databases(con, attach_databases)

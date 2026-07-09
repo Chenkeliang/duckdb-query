@@ -31,6 +31,7 @@ from models.set_operation_models import (
     SetOperationType,
     UnionOperationRequest,
 )
+from utils.safe_filename import safe_filename_base
 from utils.response_helpers import (
     MessageCode,
     create_success_response,
@@ -565,11 +566,14 @@ def export_set_operation(request: SetOperationExportRequest):
 
         # 生成文件名
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        if custom_filename:
-            base_filename = custom_filename
-        else:
-            operation_name = config.operation_type.replace(" ", "_").lower()
-            base_filename = f"set_operation_{operation_name}_{timestamp}"
+        operation_name = config.operation_type.replace(" ", "_").lower()
+        # custom_filename 必须先清洗：它会拼进磁盘路径和 COPY ... TO '...'，
+        # 未清洗可 ../ 穿越目录、单引号打断 COPY SQL（见 safe_filename_base）。
+        # 清洗后为空则回退到生成名。
+        base_filename = (
+            safe_filename_base(custom_filename)
+            or f"set_operation_{operation_name}_{timestamp}"
+        )
 
         # 根据格式确定文件扩展名和DuckDB COPY格式
         if export_format == "csv":

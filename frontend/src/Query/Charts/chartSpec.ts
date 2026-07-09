@@ -1,5 +1,7 @@
 /** 查询结果图表 —— 纯函数:列分类 / 默认 spec / 校验 / 生成聚合 SQL / 客户端聚合。 */
 
+import { sqlStringLiteral } from '@/utils/sqlLiteral';
+
 export type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'kpi';
 export type AggFn = 'sum' | 'count' | 'avg' | 'min' | 'max';
 
@@ -129,10 +131,6 @@ export function buildChartSql(userSql: string, spec: ChartSpec, columns?: Column
   return `SELECT ${dimExpr} AS dim, ${metricSql} FROM (${inner}) AS _src GROUP BY 1 ORDER BY 1 LIMIT 200`;
 }
 
-function escapeSqlString(v: string): string {
-  return v.replace(/'/g, "''");
-}
-
 /** 把 dim 值(两种形态:服务端 date_trunc 结果 / 客户端 binDim 截断串)归一化为 {y,m,d}。 */
 function parseBinValue(v: string): { y: number; m: number; d: number } | null {
   const m = v.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
@@ -171,7 +169,7 @@ export function buildDrilldownSql(spec: ChartSpec, clickedDim: string, sourceSql
     if (!range) return null;
     cond = `${q(spec.x)} >= DATE '${range.start}' AND ${q(spec.x)} < DATE '${range.end}'`;
   } else {
-    cond = `${q(spec.x)} = '${escapeSqlString(clickedDim)}'`;
+    cond = `${q(spec.x)} = ${sqlStringLiteral(clickedDim)}`;
   }
 
   const inner = stripTrailingLimit(sourceSql);
