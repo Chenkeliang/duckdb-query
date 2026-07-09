@@ -67,7 +67,7 @@ describe('SchemaNode - postgres 导入权限', () => {
 
     expect(screen.getByTestId('table-item')).toBeInTheDocument();
     expect(tableItemPropsSpy).toHaveBeenCalled();
-    const lastCallProps = tableItemPropsSpy.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    const lastCallProps = tableItemPropsSpy.mock.calls[tableItemPropsSpy.mock.calls.length - 1]?.[0] as Record<string, unknown>;
     expect(lastCallProps.onImport).toBe(onImport);
   });
 
@@ -87,7 +87,7 @@ describe('SchemaNode - postgres 导入权限', () => {
       </TestWrapper>
     );
 
-    const lastCallProps = tableItemPropsSpy.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    const lastCallProps = tableItemPropsSpy.mock.calls[tableItemPropsSpy.mock.calls.length - 1]?.[0] as Record<string, unknown>;
     expect(lastCallProps.onImport).toBeUndefined();
   });
 });
