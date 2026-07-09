@@ -20,9 +20,12 @@ async def list_db_objects(client, cfg, *, connection_id: str, kind: str = "table
     """List schemas or tables in an external connection. kind: 'schemas' | 'tables'.
 
     The connection_id from list_connections (e.g. 'db_SORDER') is accepted; its 'db_'
-    prefix is normalized. For 'tables', returns COMPACT entries (table name + comment +
-    column_count) capped at 200 — a big schema's full column lists would be huge. To get
-    one table's columns, run `federated_query("SELECT * FROM alias.<table> LIMIT 0", ...)`.
+    prefix is normalized. For 'schemas': PostgreSQL lists all user schemas; MySQL
+    returns the connected database (schema == database there); SQLite/DuckDB have no
+    schema concept and return empty. For 'tables', returns COMPACT entries (table
+    name + comment + column_count) capped at 200 — a big schema's full column lists
+    would be huge. To get one table's columns, run
+    `federated_query("SELECT * FROM alias.<table> LIMIT 0", ...)`.
     """
     data = await client.call("GET", f"/api/datasources/databases/{connection_id}/{kind}")
     tables = data.get("tables") if isinstance(data, dict) else None

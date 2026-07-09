@@ -43,7 +43,9 @@ async def add_local_file_source(
     mode (which blocks it outright) the same as any other mutating tool: without
     it, path could point anywhere the backend process can read (~/.ssh, browser
     profile databases, etc.), not just files the user meant to import.
-    `import_mode`: auto | smart | raw (controls type inference on load).
+    `import_mode`: auto | literal | variant. auto = safe type promotion (numeric-looking
+    ID columns stay VARCHAR); literal = every column VARCHAR; variant = JSON/JSONL
+    columns loaded as VARIANT.
     CSV-specific options (`csv_delimiter`, `csv_has_header`, `csv_encoding`) are ignored for non-CSV files.
     """
     from duckquery_mcp.safety import confirm_required
@@ -79,7 +81,7 @@ async def import_excel(
     Each item in `sheets` is a dict matching ExcelSheetImportConfig:
       {name: str, target_table: str, header_rows?: int, header_row_index?: int,
        fill_merged?: bool, mode?: "create"|"append"|"replace"}
-    `import_mode`: auto | smart | raw.
+    `import_mode`: auto | literal | variant (see add_local_file_source).
     """
     from duckquery_mcp.safety import confirm_required
     blocked = confirm_required(cfg, True, confirm)
@@ -146,7 +148,7 @@ async def read_url(
     `url`: public HTTP/HTTPS URL (GitHub blob URLs are auto-converted to raw).
     `table_alias`: desired table name (de-duplicated if it already exists).
     `file_type`: csv | json | parquet | excel (auto-detected from URL/Content-Type if omitted).
-    `import_mode`: auto | smart | raw.
+    `import_mode`: auto | literal | variant (see add_local_file_source).
     `prefer_native`: try DuckDB/httpfs direct read first (faster), fall back to HTTP download.
     Internal/loopback addresses and S3 URLs are blocked by the backend.
     """

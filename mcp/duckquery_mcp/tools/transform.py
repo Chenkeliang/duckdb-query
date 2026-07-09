@@ -15,7 +15,8 @@ async def save_as_table(client, cfg, *, sql: str, table_name: str,
     return await client.call("POST", "/api/save_query_to_duckdb", json_body=body)
 
 
-async def pivot(client, cfg, *, config: dict, pivot_config: dict, execute: bool = False) -> Any:
+async def pivot(client, cfg, *, config: dict, pivot_config: dict, execute: bool = False,
+                limit: int = 100) -> Any:
     """Pivot a table. execute=False previews; execute=True writes the pivoted result.
 
     config is the BASE-QUERY config (which table to read), NOT the pivot dimensions:
@@ -27,9 +28,14 @@ async def pivot(client, cfg, *, config: dict, pivot_config: dict, execute: bool 
     enum string: SUM | AVG | COUNT | MIN | MAX | COUNT_DISTINCT. Optional keys:
     manual_column_values (explicit column headers; required for subtotals/grand
     totals), include_subtotals, include_grand_totals, strategy ("auto" default).
+    Preview rows are capped by `limit` (default 100; raise explicitly for more) —
+    `row_count` in the response is still the full pivoted total.
     """
     path = "/api/pivot-query/generate" if execute else "/api/pivot-query/preview"
-    return await client.call("POST", path, json_body={"config": config, "pivot_config": pivot_config})
+    body: dict = {"config": config, "pivot_config": pivot_config}
+    if not execute:
+        body["limit"] = limit
+    return await client.call("POST", path, json_body=body)
 
 
 async def set_operations(client, cfg, *, config: dict, execute: bool = False) -> Any:

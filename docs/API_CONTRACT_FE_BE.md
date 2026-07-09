@@ -90,7 +90,7 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| GET | `/api/datasources/databases/{id}/schemas` | **列表** | `items[]`: `{ name, table_count? }` | `listConnectionSchemas`（**前端已用**） |
+| GET | `/api/datasources/databases/{id}/schemas` | **列表** | `items[]`: `{ name, table_count? }`；PostgreSQL=全部用户 schemas，MySQL=所连库（schema≡database，单条），SQLite/DuckDB=空 | `listConnectionSchemas`（**前端已用**，UI 仅对 PostgreSQL 展示） |
 | GET | `/api/datasources/databases/{id}/schemas/{schema}/tables` | **列表** | `listSchemaTablesForConnection` |
 | GET | `/api/datasources/databases/{id}/tables` | 对象 | `tables[]`（非 `items`） | `listConnectionTablesFlat`（**前端已用**） |
 | GET | `/api/datasources/databases/{id}/tables/detail` | 对象 | `table_name`, `columns`, `indexes?`, `table_comment?` | `getExternalTableDetail`；`ContextMenu` / `useTableColumns` |
@@ -157,7 +157,7 @@
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
 | POST | `/api/pivot-query/generate` | 对象 | `generatePivotQuery`（`pivot_config` 必填）；400 `PIVOT_QUERY_INVALID`；500 `OPERATION_FAILED` |
-| POST | `/api/pivot-query/preview` | 对象 | `previewPivotQuery`（`pivot_config` 必填；可选 `attach_databases`）；400 `PIVOT_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
+| POST | `/api/pivot-query/preview` | 对象 | `previewPivotQuery`（`pivot_config` 必填；可选 `attach_databases`；可选顶层 `limit`=预览行数上限，缺省回退 app `max_query_rows`，响应 `row_count`=透视后总行数、`returned_rows`=实际返回行数；MCP 工具 `pivot` 预览默认传 `limit=100`）；400 `PIVOT_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
 | GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（`data.favorite`）；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites` | 对象 | `createSqlFavorite`；400 `FAVORITE_NAME_EXISTS` |

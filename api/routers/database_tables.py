@@ -584,9 +584,10 @@ def get_database_tables(connection_id: str):
 
 @router.get("/api/datasources/databases/{connection_id}/schemas", tags=["Database Management"])
 def list_connection_schemas(connection_id: str):
-    """获取指定数据库连接下的所有 schemas（仅 PostgreSQL）
+    """获取指定数据库连接下的所有 schemas
 
-    对于 MySQL/SQLite/DuckDB，返回空列表（这些数据库没有 schema 概念）
+    PostgreSQL 列出全部用户 schemas；MySQL 的 schema 即 database，返回连接所配置的库
+    （含表数）；SQLite/DuckDB 无 schema 概念，返回空列表。
     """
     try:
         # 获取应用配置
@@ -602,13 +603,60 @@ def list_connection_schemas(connection_id: str):
             else str(connection.type)
         )
 
-        # MySQL/SQLite/DuckDB do not support schema, return empty list
-        if db_type in ["mysql", "sqlite", "duckdb"]:
+        # SQLite/DuckDB do not support schema, return empty list
+        if db_type in ["sqlite", "duckdb"]:
             return create_list_response(
                 items=[],
                 total=0,
                 message_code=MessageCode.SCHEMAS_RETRIEVED,
             )
+
+        # MySQL: schema 即 database，返回连接所配置的库及其表数
+        if db_type == "mysql":
+            import pymysql
+
+            db_config = connection.params
+            username = db_config.get("user") or db_config.get("username")
+            if not username:
+                raise APIValidationError(
+                    "Missing username parameter (user or username)"
+                )
+
+            password = db_config.get("password", "")
+            if password_encryptor.is_encrypted(password):
+                password = password_encryptor.decrypt_password(password)
+
+            conn = pymysql.connect(
+                host=db_config.get("host", "localhost"),
+                port=int(db_config.get("port", 3306)),
+                user=username,
+                password=password,
+                database=db_config["database"],
+                charset="utf8mb4",
+                connect_timeout=app_config.db_connect_timeout,
+                read_timeout=app_config.db_read_timeout,
+                write_timeout=app_config.db_write_timeout,
+            )
+
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT DATABASE(), COUNT(*) FROM information_schema.tables "
+                        "WHERE table_schema = DATABASE()"
+                    )
+                    row = cursor.fetchone()
+                    schemas = (
+                        [{"name": row[0], "table_count": int(row[1] or 0)}]
+                        if row and row[0]
+                        else []
+                    )
+                    return create_list_response(
+                        items=schemas,
+                        total=len(schemas),
+                        message_code=MessageCode.SCHEMAS_RETRIEVED,
+                    )
+            finally:
+                conn.close()
 
         # PostgreSQL: 查询所有 schemas
         if db_type == "postgresql":
