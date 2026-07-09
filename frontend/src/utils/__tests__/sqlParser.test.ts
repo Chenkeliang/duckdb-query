@@ -331,28 +331,28 @@ describe('parseSQLTableReferences', () => {
   });
 
   describe('Property-based tests', () => {
+    // SQL keywords that should be excluded from random identifiers
+    const sqlKeywords = new Set([
+      'select', 'from', 'where', 'join', 'inner', 'left', 'right', 'full', 'outer',
+      'cross', 'on', 'and', 'or', 'not', 'in', 'exists', 'between', 'like', 'is',
+      'null', 'true', 'false', 'as', 'order', 'by', 'group', 'having', 'limit',
+      'offset', 'union', 'intersect', 'except', 'all', 'distinct', 'with',
+      'recursive', 'insert', 'into', 'values', 'update', 'set', 'delete', 'create',
+      'table', 'view', 'index', 'drop', 'alter', 'add', 'column', 'primary', 'key',
+      'foreign', 'references', 'constraint', 'default', 'check', 'unique', 'case',
+      'when', 'then', 'else', 'end', 'cast', 'over', 'partition', 'rows', 'range',
+      'unbounded', 'preceding', 'following', 'current', 'row', 'natural', 'using',
+    ]);
+
+    const validIdentifier = fc.stringMatching(/^[a-z][a-z0-9_]{0,20}$/)
+      .filter(s => !sqlKeywords.has(s.toLowerCase()));
+
     /**
      * **Property 1: SQL Parser Extracts All Table References**
      * For any valid SQL with table references, the parser should extract all prefixes correctly.
      * Note: SQL keywords (like 'on', 'from', 'select') are excluded as they would be parsed as keywords.
      */
     it('should extract prefix from any valid prefix.table pattern', () => {
-      // SQL keywords that should be excluded from random identifiers
-      const sqlKeywords = new Set([
-        'select', 'from', 'where', 'join', 'inner', 'left', 'right', 'full', 'outer',
-        'cross', 'on', 'and', 'or', 'not', 'in', 'exists', 'between', 'like', 'is',
-        'null', 'true', 'false', 'as', 'order', 'by', 'group', 'having', 'limit',
-        'offset', 'union', 'intersect', 'except', 'all', 'distinct', 'with',
-        'recursive', 'insert', 'into', 'values', 'update', 'set', 'delete', 'create',
-        'table', 'view', 'index', 'drop', 'alter', 'add', 'column', 'primary', 'key',
-        'foreign', 'references', 'constraint', 'default', 'check', 'unique', 'case',
-        'when', 'then', 'else', 'end', 'cast', 'over', 'partition', 'rows', 'range',
-        'unbounded', 'preceding', 'following', 'current', 'row', 'natural', 'using',
-      ]);
-      
-      const validIdentifier = fc.stringMatching(/^[a-z][a-z0-9_]{0,20}$/)
-        .filter(s => !sqlKeywords.has(s.toLowerCase()));
-      
       fc.assert(
         fc.property(
           validIdentifier,
@@ -372,8 +372,6 @@ describe('parseSQLTableReferences', () => {
     });
 
     it('should handle tables without prefix', () => {
-      const validIdentifier = fc.stringMatching(/^[a-z][a-z0-9_]{0,20}$/);
-      
       fc.assert(
         fc.property(validIdentifier, (table) => {
           const sql = `SELECT * FROM ${table}`;
