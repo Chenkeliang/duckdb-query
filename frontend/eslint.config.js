@@ -2,6 +2,10 @@ import reactPlugin from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 import globals from "globals";
+// 项目自定义规则（lint-rules/eslint，CommonJS）。用相对路径导入：
+// 本地无需 npm link，CI 的 link 方式也兼容。只启用 rules/index.js 注册的规则；
+// 插件 configs.recommended 引用了未注册的规则名（no-console 等），不可直接展开。
+import duckquery from "../lint-rules/eslint/index.js";
 
 export default [
   {
@@ -32,7 +36,8 @@ export default [
     },
     plugins: {
       react: reactPlugin,
-      "react-hooks": reactHooks
+      "react-hooks": reactHooks,
+      duckquery
     },
     settings: {
       react: {
@@ -72,7 +77,23 @@ export default [
       "react-hooks/immutability": "off",
       "react-hooks/use-memo": "off",
       "react-hooks/incompatible-library": "off",
-      "react-hooks/preserve-manual-memoization": "off"
+      "react-hooks/preserve-manual-memoization": "off",
+      // ---- duckquery 自定义规则（AGENTS.md §4/§5 的自动化兜底，2026-07-09 接线）----
+      // 存量为零/已清零的规则，直接强制：
+      "duckquery/no-mui-in-new-layout": "error",
+      "duckquery/no-fetch-in-useeffect": "error",
+      "duckquery/require-tanstack-query": "error",
+      // 存量过大暂关（接线时实测计数，烧完一类开一类；与上方 no-explicit-any 同为
+      // 存量原因关闭，非逐条 violation 豁免）：
+      // - no-hardcoded-colors: 75 处存量
+      // - no-arbitrary-tailwind: 223 处存量
+      // - enforce-import-order: 641 处存量（--fix 可修 400+，但会重排含 CSS 副作用的
+      //   import 顺序，须专项批次处理，不随接线盲扫）
+      // - require-i18n: 648 处存量
+      "duckquery/no-hardcoded-colors": "off",
+      "duckquery/no-arbitrary-tailwind": "off",
+      "duckquery/enforce-import-order": "off",
+      "duckquery/require-i18n": "off"
     }
   }),
   {

@@ -6,10 +6,20 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
 import { NULL_STORAGE_VALUE } from '@/test/setup';
 import { useGithubStars } from '../useGithubStars';
 
 const CACHE_KEY = 'duck-query-github-stars';
+
+// Hook 已迁移到 TanStack Query，renderHook 需要 QueryClientProvider；
+// 每个用例独立 QueryClient，避免跨用例查询缓存串染。
+function createWrapper() {
+    const queryClient = new QueryClient();
+    return ({ children }: { children: React.ReactNode }) =>
+        React.createElement(QueryClientProvider, { client: queryClient }, children);
+}
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -56,7 +66,7 @@ describe('useGithubStars', () => {
             };
             localStorageMock.getItem.mockReturnValue(JSON.stringify(cache));
 
-            const { result } = renderHook(() => useGithubStars());
+            const { result } = renderHook(() => useGithubStars(), { wrapper: createWrapper() });
 
             expect(result.current.githubStars).toBe(123);
             expect(result.current.isLoading).toBe(false);
@@ -75,7 +85,7 @@ describe('useGithubStars', () => {
                 json: () => Promise.resolve({ stargazers_count: 150 }),
             });
 
-            const { result } = renderHook(() => useGithubStars());
+            const { result } = renderHook(() => useGithubStars(), { wrapper: createWrapper() });
 
             // 初始缓存为 null（过期）
             expect(result.current.githubStars).toBe(null);
@@ -97,7 +107,7 @@ describe('useGithubStars', () => {
                 json: () => Promise.resolve({ stargazers_count: 200 }),
             });
 
-            const { result } = renderHook(() => useGithubStars());
+            const { result } = renderHook(() => useGithubStars(), { wrapper: createWrapper() });
 
             expect(result.current.githubStars).toBe(null);
 
@@ -118,7 +128,7 @@ describe('useGithubStars', () => {
                 json: () => Promise.resolve({ stargazers_count: 500 }),
             });
 
-            const { result } = renderHook(() => useGithubStars());
+            const { result } = renderHook(() => useGithubStars(), { wrapper: createWrapper() });
 
             expect(result.current.isLoading).toBe(true);
 
@@ -140,7 +150,7 @@ describe('useGithubStars', () => {
                 status: 404,
             });
 
-            const { result } = renderHook(() => useGithubStars());
+            const { result } = renderHook(() => useGithubStars(), { wrapper: createWrapper() });
 
             await waitFor(() => {
                 expect(result.current.isLoading).toBe(false);
@@ -154,7 +164,7 @@ describe('useGithubStars', () => {
 
             mockFetch.mockRejectedValue(new Error('Network error'));
 
-            const { result } = renderHook(() => useGithubStars());
+            const { result } = renderHook(() => useGithubStars(), { wrapper: createWrapper() });
 
             await waitFor(() => {
                 expect(result.current.isLoading).toBe(false);
@@ -173,7 +183,7 @@ describe('useGithubStars', () => {
                 json: () => Promise.resolve({ stargazers_count: 300 }),
             });
 
-            const { result } = renderHook(() => useGithubStars());
+            const { result } = renderHook(() => useGithubStars(), { wrapper: createWrapper() });
 
             await waitFor(() => {
                 expect(result.current.isLoading).toBe(false);
@@ -196,7 +206,7 @@ describe('useGithubStars', () => {
                 json: () => Promise.resolve({ stargazers_count: 400 }),
             });
 
-            const { result } = renderHook(() => useGithubStars());
+            const { result } = renderHook(() => useGithubStars(), { wrapper: createWrapper() });
 
             await waitFor(() => {
                 expect(result.current.isLoading).toBe(false);
