@@ -341,20 +341,34 @@ def _derive_pivot_value_aliases(
     values: List[PivotValueConfig],
     manual_values: Optional[List[str]],
 ) -> List[str]:
-    """Derive the column aliases produced by the native PIVOT statement."""
-    aliases: List[str] = []
+    """Derive the exact column names DuckDB's native PIVOT emits, so the
+    totals/subtotal SELECTs reference columns that actually exist (otherwise
+    UNION ALL fails with a Binder Error).
+
+    Verified against the DuckDB build used here — for ``PIVOT(<aggs> FOR col
+    IN (<values>))`` with unaliased aggregates (which is what
+    ``_try_generate_native_pivot`` emits):
+      - single aggregate   -> bare pivot value, e.g. ``Q1``
+      - multiple aggregates -> ``{value}_{agg}({column})``, e.g.
+        ``Q1_sum(amount)`` / ``Q1_count(amount)`` — ordered value-outer,
+        aggregate-inner (matching PIVOT's output column order for UNION ALL).
+
+    Totals require explicit column values, so ``manual_values`` is
+    authoritative; without them the caller skips totals entirely.
+    """
     manual = manual_values or []
-    for value in values:
-        base_alias = (
-            value.alias
-            if getattr(value, "alias", None)
-            else f"{value.aggregation.value.lower()}_{value.column}"
-        )
-        if manual:
-            for manual_val in manual:
-                aliases.append(f"{base_alias}_{manual_val}")
-        else:
-            aliases.append(base_alias)
+    if not manual or not values:
+        return []
+    single = len(values) == 1
+    aliases: List[str] = []
+    for manual_val in manual:
+        for value in values:
+            if single:
+                aliases.append(str(manual_val))
+            else:
+                aliases.append(
+                    f"{manual_val}_{value.aggregation.value.lower()}({value.column})"
+                )
     return aliases
 
 

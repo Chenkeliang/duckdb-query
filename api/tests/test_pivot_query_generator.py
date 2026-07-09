@@ -334,6 +334,81 @@ class TestPivotQueryModeGeneration:
         rows = conn.execute(result.final_sql).fetchall()  # 不应抛 Binder Error
         assert len(rows) == 2
 
+    def test_native_pivot_single_agg_totals_executes(self):
+        """回归: 静态 pivot(manual_column_values)+ 总计 曾用错误别名
+        ({agg}_{col}_{value}=sum_revenue_2022) 注入 totals,而 DuckDB 单聚合列名
+        实为裸值 '2022' → Binder Error。字符串断言(现有 *_with_totals 用例)拦不住,
+        故直接在真实 DuckDB 执行并校验总计值。"""
+        import duckdb
+
+        config = PivotQueryConfig(table_name="sales", filters=[])
+        pivot_config = PivotConfig(
+            rows=["region"],
+            columns=["year"],
+            values=[
+                PivotValueConfig(column="revenue", aggregation=AggregationFunction.SUM)
+            ],
+            manual_column_values=["2022", "2023"],
+            include_grand_totals=True,
+            strategy="native",
+        )
+
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True, pivot_table_extension="pivot_table"
+            )
+            result = generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+        assert result.metadata.get("has_totals") is True
+        conn = duckdb.connect()
+        conn.execute(
+            "CREATE TABLE sales(region VARCHAR, year VARCHAR, revenue INT);"
+            "INSERT INTO sales VALUES('北京','2022',100),('北京','2023',200),"
+            "('上海','2022',300),('上海','2023',50),('北京','2022',25)"
+        )
+        rows = conn.execute(result.final_sql).fetchall()  # 不应抛 Binder Error
+        by_region = {r[0]: (r[1], r[2]) for r in rows}  # 列序: region, "2022", "2023"
+        assert by_region["北京"] == (125, 200)
+        assert by_region["上海"] == (300, 50)
+        assert by_region["总计"] == (425, 250)  # 2022=125+300, 2023=200+50
+
+    def test_native_pivot_multi_agg_totals_executes(self):
+        """回归: 多聚合静态 pivot + 总计。DuckDB 多聚合列名为 {值}_{agg}({列})
+        (如 2022_sum(revenue) / 2022_count(revenue)),别名推导必须精确匹配(含顺序:
+        值外层、聚合内层)否则 Binder Error / 列错位。"""
+        import duckdb
+
+        config = PivotQueryConfig(table_name="sales", filters=[])
+        pivot_config = PivotConfig(
+            rows=["region"],
+            columns=["year"],
+            values=[
+                PivotValueConfig(column="revenue", aggregation=AggregationFunction.SUM),
+                PivotValueConfig(column="revenue", aggregation=AggregationFunction.COUNT),
+            ],
+            manual_column_values=["2022", "2023"],
+            include_grand_totals=True,
+            strategy="native",
+        )
+
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True, pivot_table_extension="pivot_table"
+            )
+            result = generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+        conn = duckdb.connect()
+        conn.execute(
+            "CREATE TABLE sales(region VARCHAR, year VARCHAR, revenue INT);"
+            "INSERT INTO sales VALUES('北京','2022',100),('北京','2022',25),"
+            "('北京','2023',200),('上海','2022',300),('上海','2023',50)"
+        )
+        rows = conn.execute(result.final_sql).fetchall()  # 不应抛 Binder Error
+        # 列序: region, 2022_sum, 2022_count, 2023_sum, 2023_count
+        by_region = {r[0]: tuple(r[1:]) for r in rows}
+        assert by_region["北京"] == (125, 2, 200, 1)
+        assert by_region["上海"] == (300, 1, 50, 1)
+        assert by_region["总计"] == (425, 3, 250, 2)
 
 
 class TestValidation:
