@@ -15,17 +15,23 @@ jobs:
       matrix:
         include:
           # macOS Apple Silicon
+          # "app" must be listed explicitly: Tauri v2 only emits the macOS updater
+          # artifact (.app.tar.gz + .sig, and thus the darwin-* entries in
+          # latest.json) for bundles named in --bundles. dmg alone builds the .app
+          # internally but skips updater artifacts — which is why every release
+          # through v1.1.0 had auto-update working on Windows (nsis IS the updater
+          # artifact) but silently missing on macOS.
           - platform: macos-15
             rust_target: aarch64-apple-darwin
             py_arch: arm64
             duck_platform: osx_arm64
-            bundles: dmg
+            bundles: app,dmg
           # macOS Intel
           - platform: macos-15-intel
             rust_target: x86_64-apple-darwin
             py_arch: x64
             duck_platform: osx_amd64
-            bundles: dmg
+            bundles: app,dmg
           # Windows x64
           - platform: windows-latest
             rust_target: x86_64-pc-windows-msvc
