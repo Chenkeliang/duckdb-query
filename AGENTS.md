@@ -112,7 +112,7 @@ duckdb-query/
 |------|------|
 | `frontend/src/api/index.ts` | API barrel（`@/api`）；**新增模块必须在此导出** |
 | `frontend/src/api/client.ts` | `apiClient`、`normalizeResponse`、错误归一化 |
-| `frontend/src/api/aiApi.ts` / `extensionsApi.ts` / `queryExportApi.ts` / `engineCompatApi.ts` | 05-24 后新增模块（⚠️ 尚未纳入 barrel，见 §4.2） |
+| `frontend/src/api/aiApi.ts` / `extensionsApi.ts` / `queryExportApi.ts` / `engineCompatApi.ts` | AI / 扩展 / 结果导出 / 引擎兼容 API 模块（已入 barrel） |
 | `frontend/src/utils/cacheInvalidation.ts` | 缓存失效工具（§4.5） |
 | `frontend/src/utils/sqlLiteral.ts` | SQL 字符串字面量转义（`sqlStringLiteral`），**禁止再手写 replace** |
 | `frontend/src/Query/SQLQuery/sqlDialect.ts` | **唯一** DuckDB 方言入口（勿用 `StandardSQL.spec.keywords`） |
@@ -201,7 +201,7 @@ cd frontend && npx tauri build --bundles app --config '{"bundle":{"createUpdater
 - 新增固定端点：先在 `frontend/src/api/` 建封装、**在 `index.ts` 导出**，业务侧从 `@/api` 导入。
 - UI 组件从 `@/components/ui/*`；图标 `lucide-react`；TanStack Query `@tanstack/react-query`。
 
-> ⚠️ **已知落差（待收敛）**：`aiApi` / `engineCompatApi` / `extensionsApi` / `queryExportApi` 四个新模块未纳入 barrel，现有 13+ 业务文件深路径导入。**新代码不得扩大该违例**；收敛动作 = 把四模块导出补进 `index.ts` 后迁移调用方。
+> ✅ 落差已收敛（2026-07-09）：`aiApi` / `engineCompatApi` / `extensionsApi` / `queryExportApi` 已补进 barrel，13 处深路径导入已全部迁回 `@/api`。业务代码现为零深路径。
 
 ```tsx
 // ✅ import { executeDuckDBSQL, getDuckDBTables } from '@/api';
@@ -222,7 +222,7 @@ cd frontend && npx tauri build --bundles app --config '{"bundle":{"createUpdater
 
 ### 4.3 TypeScript 与表单
 - Props 必须定义接口/类型；禁止滥用 `any`。
-- 表单现状：**受控组件 + useState + 手写校验**（如 `DataSource/DatabaseForm.tsx`）。`react-hook-form` 与 `zod` 依赖已安装但**代码库中零使用**——若要引入，须整表单统一迁移并更新本节，不接受单点混用。（v3.3 声称"表单使用 RHF+zod"与现实不符，已订正。）
+- 表单现状：**受控组件 + useState + 手写校验**（如 `DataSource/DatabaseForm.tsx`）。`react-hook-form` / `zod` 曾作为零使用的"纸面依赖"存在，已于 2026-07-09 卸载——若将来要引入表单库，须整表单统一迁移并更新本节，不接受单点混用。
 
 ### 4.4 数据获取（TanStack Query 强制）
 - 所有服务端数据必须 TanStack Query；禁止 `useEffect + fetch + useState`。
@@ -256,7 +256,7 @@ cd frontend && npx tauri build --bundles app --config '{"bundle":{"createUpdater
 - ❌ 硬编码颜色（`#hex`、`rgb()`）、`!important`
 - 组件优先级：shadcn/ui（Button/Input/Card/Dialog/Tabs/DropdownMenu/Tooltip/Toast）→ Tailwind 布局与间距；图标统一 `lucide-react`，禁止 MUI。
 
-> ⚠️ **已知落差（待收敛）**：本节及 §4.4 的自动化兜底 `lint-rules/eslint`（eslint-plugin-duckquery，10 条规则含 no-hardcoded-colors / no-arbitrary-tailwind / require-tanstack-query / no-fetch-in-useeffect）**已实现、有单测，但 `frontend/eslint.config.js` 尚未加载该插件**——目前这些"禁止"仅靠人工 review。接线插件前，reviewer 对本节条款需格外留意。
+> 🔌 **自动化兜底现状（2026-07-09 已接线）**：`eslint-plugin-duckquery` 经相对路径接入 `frontend/eslint.config.js`。已按 error 强制：`no-mui-in-new-layout`、`no-fetch-in-useeffect`、`require-tanstack-query`（接线时存量已清零）。存量过大暂 off（计数见 eslint.config.js 注释，烧完一类开一类）：`no-hardcoded-colors`(75)、`no-arbitrary-tailwind`(223)、`enforce-import-order`(641)、`require-i18n`(648)——这四类目前仍靠人工 review，**新代码不得扩大存量**。
 
 ---
 
