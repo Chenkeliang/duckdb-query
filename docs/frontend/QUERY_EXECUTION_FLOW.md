@@ -146,80 +146,25 @@ POST /api/duckdb/federated-query {
 
 ---
 
-## 关键代码
+## 关键实现（结构描述 + 指针；不贴长代码，以源码为准）
 
-### 前端 - 预览表数据
+### 前端执行链（`frontend/src/hooks/useQueryWorkspace.ts`）
 
-```typescript
-// frontend/src/Query/QueryWorkspace.tsx
-const handlePreview = React.useCallback(
-  async (table: SelectedTable) => {
-    const { qualifiedName, attachDatabase } = generateExternalTableReference(table);
-    
-    const sql = `SELECT * FROM ${qualifiedName} LIMIT 10000`;
-    
-    let source: TableSource;
-    if (attachDatabase) {
-      // 外部表：使用联邦查询模式
-      source = {
-        type: 'federated',
-        attachDatabases: [attachDatabase],
-      };
-    } else {
-      // DuckDB 本地表
-      source = { type: 'duckdb' };
-    }
-    
-    await handleQueryExecute(sql, source);
-  },
-  [handleQueryExecute]
-);
-```
+- `TableSource.type` 联合类型仅 **`'duckdb' | 'federated'`**（`types/queryWorkspace.ts`）；早期的 `'external'` 分支已删除。
+- 调用链：`handleQueryExecute`（薄封装）→ `executeQuery` → `runSqlQuery`（真正按 `source.type` 分支调 `executeDuckDBSQL` / `executeFederatedQuery`）。
+- **槽位化并发控制**：每个结果槽（单结果槽 / 每个保留的结果 Tab）由 `beginQueryExecution` 独立分配 `requestId` + `AbortController`；响应回来先查 `isStale`，**过期响应直接丢弃**（多标签页竞态修复）。
+- 结果面板支持多 Tab（`resultTabs` / `retainQueryResults`）；失败记录在 `lastFailure`，`retryLastFailure` 一键重跑。
+- 表预览（`QueryWorkspace.tsx` `handlePreview`）：`SELECT * FROM {qualifiedName} LIMIT {maxQueryRows}`——LIMIT 来自 `useAppConfig().maxQueryRows`（**不是**硬编码 10000），带 try/catch + `showErrorToast`。
 
-### 前端 - 查询执行
+### 同步查询取消（前后端全链路）
 
-```typescript
-// frontend/src/hooks/useQueryWorkspace.ts
-const handleQueryExecute = useCallback(
-  async (sql: string, source?: TableSource) => {
-    const querySource = source || { type: 'duckdb' };
-    
-    if (querySource.type === 'federated' || querySource.type === 'external') {
-      // 联邦查询（包括单外部表查询）
-      await executeFederatedQuery({
-        sql,
-        attachDatabases: querySource.attachDatabases,
-        isPreview: false,
-      });
-    } else {
-      // DuckDB 本地查询
-      await executeDuckDBSQL(sql);
-    }
-  },
-  []
-);
-```
+- 前端每个同步请求带 `X-Request-ID` 头；取消时 `useQueryWorkspace.cancelQuery` 按槽位 `abort()` HTTP 请求，**并**调 `cancelSyncQuery(requestId)`（`queryApi.ts`）。
+- 后端 `POST /api/query/cancel/{request_id}`（`api/routers/query_cancel.py`）经 `connection_registry.interrupt(f"sync:{request_id}")` **真正中断**服务端正在执行的 DuckDB 连接——不只是断开 HTTP。
+- `/api/duckdb/execute` 与 `/api/duckdb/federated-query` 都以 `sync:{X-Request-ID}` 注册连接,取消对两者一致生效。
 
-### API 调用
+### 联邦执行的服务端增强（2026-06 起）
 
-```typescript
-// frontend/src/api/queryApi.ts
-export const executeFederatedQuery = async (options) => {
-  const { sql, attachDatabases, isPreview = true } = options;
-  
-  const requestBody = {
-    sql,
-    is_preview: isPreview,
-    attach_databases: attachDatabases.map(db => ({
-      alias: db.alias,
-      connection_id: db.connectionId,
-    })),
-  };
-  
-  const response = await apiClient.post('/api/duckdb/federated-query', requestBody);
-  return response.data;
-};
-```
+- `POST /api/duckdb/federated-query` 在 ATTACH → 执行 → DETACH 基础上接入:下推优化器(`core/database/federated_optimizer.py`,半连接键下推 + 审计列时间界建议)、**超时看门狗**、`connection_id` 归一化(`db_` 前缀容错)。对调用方透明。
 
 ---
 
@@ -255,7 +200,16 @@ export function generateDatabaseAlias(connection: DatabaseConnection): string {
 
 ## 异步查询
 
-外部库异步任务与同步一致：优先 `attach_databases`；仅传 `datasource` 时后端自动推导 ATTACH（`async_tasks.resolve_attach_databases_for_async`）。入口：`POST /api/async-tasks`（`asyncTaskApi.submitAsyncQuery`）。
+外部库异步任务与同步一致：优先 `attach_databases`；仅传 `datasource` 时后端自动推导 ATTACH（`resolve_attach_databases_for_async`，定义于 `api/core/common/connection_alias.py`，`async_tasks` / `join_query` 共用）。入口：`POST /api/async-tasks`（`asyncTaskApi.submitAsyncQuery`）。
+
+**结果表命名与覆盖守卫（2026-07-09 起，commit `62d3add`）**：
+
+| 情况 | 行为 |
+|------|------|
+| `custom_table_name` 清洗后为空（如 `"!!!"`） | 回退 task_id 派生表名，**绝不建空名表** |
+| 自定义名撞 `main` schema 已有表、未传 `overwrite` | **任务失败拒绝**，不再静默 `CREATE OR REPLACE` 覆盖用户表 |
+| 请求体显式 `overwrite: true` | 允许覆盖 |
+| 重试任务（retry） | 固定 `overwrite=True`（用户显式"重做"语义） |
 
 ## 透视查询（Pivot）
 
@@ -285,6 +239,7 @@ export function generateDatabaseAlias(connection: DatabaseConnection): string {
 
 ## 版本历史
 
+- **v2.4** (2026-07-09): 「关键代码」改为结构描述+指针（旧代码块含已删除的 `'external'` 分支与硬编码 LIMIT）；新增同步取消全链路、槽位化竞态控制、联邦优化器/看门狗、异步结果表命名与 overwrite 守卫
 - **v2.3** (2026-06-02): 补充 AI 端点(契约 §9.2)、AI/LLM 配置、Demo(DuckDB-Wasm)旁路
 - **v2.2** (2026-05-21): 移除可视化构建器描述；补充透视 `pivot-query` 路径
 - **v2.1** (2026-05-21): 文档对齐契约表；`execute_sql` / `duckdb_tables` 路由已删除；异步 ATTACH 单轨

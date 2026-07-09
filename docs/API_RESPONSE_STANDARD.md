@@ -1,9 +1,9 @@
 # API 响应格式标准
 
-> **版本**: 2.0  
-> **最后更新**: 2026-05-21  
-> **状态**: ✅ 已实施（422 校验、`error_json_response` 主路径已统一）  
-> **相关规范**: 完整约束见 [`AGENTS.md`](../AGENTS.md) §9。
+> **版本**: 2.1  
+> **最后更新**: 2026-07-09  
+> **状态**: ✅ 已实施（422 校验、`error_json_response` 主路径已统一；路由层已零处 `raise HTTPException`）  
+> **相关规范**: 完整约束见 [`AGENTS.md`](../AGENTS.md) §8。
 
 ## 概述
 
@@ -101,7 +101,7 @@ FastAPI / Pydantic 校验失败由 `request_validation_exception_handler` 统一
 from utils.response_helpers import (
     create_success_response,
     create_list_response,
-    create_error_response,
+    error_json_response,
     MessageCode,
 )
 
@@ -124,7 +124,8 @@ async def list_tables():
         message_code=MessageCode.TABLES_RETRIEVED,
     )
 
-# 错误响应
+# 错误响应：统一返回 error_json_response 的 JSONResponse。
+# 路由层不使用 raise HTTPException(detail=...) 旧模式（当前为零处）。
 @router.post("/api/tables")
 async def create_table(data: TableCreate):
     try:
@@ -134,13 +135,11 @@ async def create_table(data: TableCreate):
             message_code=MessageCode.TABLE_CREATED,
         )
     except ValidationError as e:
-        raise HTTPException(
+        return error_json_response(
             status_code=400,
-            detail=create_error_response(
-                code="VALIDATION_ERROR",
-                message=str(e),
-                details={"field": e.field}
-            )
+            code="VALIDATION_ERROR",
+            message=str(e),
+            details={"field": e.field},
         )
 ```
 
@@ -211,6 +210,8 @@ function useTable(name: string) {
 
 参见 `api/utils/response_helpers.py` 中的 `MessageCode` 枚举。
 
+> 前端专属扩展：`client.ts` 的 `handleApiError` 会为 502/503 合成 `BAD_GATEWAY` / `SERVICE_UNAVAILABLE` 两个 code（不在后端枚举中，`errors.json` 有对应词条）。
+
 ## 国际化支持
 
 ### 前端翻译文件
@@ -245,7 +246,7 @@ function MyComponent() {
 
 ## 相关文档
 
-- [`AGENTS.md`](../AGENTS.md) §9 — API 与响应规范（权威）
+- [`AGENTS.md`](../AGENTS.md) §8 — API 与响应规范（权威）
 - [`API_CONTRACT_FE_BE.md`](API_CONTRACT_FE_BE.md) — 端点与 `data` 字段
 
 ## 测试

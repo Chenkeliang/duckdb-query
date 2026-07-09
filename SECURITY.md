@@ -19,9 +19,15 @@ disclosure.
 DuckQuery is **self-hosted and local-first** — your data and database
 credentials stay on your own machine.
 
-- **Credentials**: database passwords and AI provider API keys are encrypted at
-  rest (Fernet) and are never returned to the frontend in plaintext (masked as
-  `****`).
+- **Credentials**: stored credentials are obfuscated at rest and never returned
+  to the frontend in plaintext (masked with a sentinel value). Specifics:
+  database connection passwords use an XOR stream cipher keyed by a per-machine
+  auto-generated `secret.key` (`api/utils/encryption_utils.py`, "v2" format);
+  AI provider API keys use Fernet (`api/core/foundation/crypto_utils.py`).
+  This is deliberate **local-app obfuscation, not cryptographic protection** —
+  the app itself must be able to decrypt these values, so anyone with full
+  access to your machine and the key file can too. Treat machine access as the
+  real security boundary.
 - **AI safety**: AI-generated SQL is always shown for review and is **never
   executed automatically**.
 - When self-hosting, do not expose the backend to untrusted networks without
