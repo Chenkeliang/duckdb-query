@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 import traceback
 from datetime import datetime
@@ -36,6 +37,7 @@ from utils.response_helpers import (
     create_success_response,
     error_json_response,
 )
+from utils.safe_filename import safe_filename_base
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -52,7 +54,7 @@ EXPORTS_DIR = str(config_manager.get_exports_dir())
 # 初始化任务工具类
 task_utils = TaskUtils(EXPORTS_DIR)
 
-SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite"}
+SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite", "duckdb"}
 
 
 def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) -> None:
@@ -124,7 +126,12 @@ def _attach_external_databases(
 
     from core.database.database_manager import db_manager
     from core.database.duckdb_engine import build_attach_sql
-    from core.database.federated_attach import _is_database_already_attached_error
+    from core.common.exceptions import DatabaseConnectionError
+    from core.database.federated_attach import (
+        _is_database_already_attached_error,
+        _quote_identifier,
+        redact_connection_secrets,
+    )
     from core.security.encryption import password_encryptor
 
     attached = []
@@ -168,7 +175,7 @@ def _attach_external_databases(
                 logger.debug(f"Connection {connection_id} password processed")
 
             try:
-                con.execute(f'DETACH "{alias}"')
+                con.execute(f'DETACH {_quote_identifier(alias)}')
             except Exception:
                 pass
 
@@ -183,7 +190,12 @@ def _attach_external_databases(
                         alias,
                     )
                 else:
-                    raise
+                    # 在错误离开 ATTACH 现场之前脱敏并切断 __cause__ 链，避免连接串里的
+                    # 明文口令随原始异常流向日志/任务元数据/MCP 调用方（回归 #19）
+                    safe_error = redact_connection_secrets(attach_error)
+                    raise DatabaseConnectionError(
+                        f"Failed to connect to external database '{alias}': {safe_error}"
+                    ) from None
             attached.append(alias)
             logger.info(f"Successfully ATTACH database: {alias}")
 
@@ -198,7 +210,7 @@ def _attach_external_databases(
 
 def _detach_databases(con, aliases: List[str]) -> None:
     """
-    执行 DETACH failed继续处理其他
+    逐个执行 DETACH，某个失败时不中断，继续处理其余的
 
     Args:
         con: DuckDB 连接
@@ -233,6 +245,8 @@ class AsyncQueryRequest(BaseModel):
     datasource: Optional[Dict[str, Any]] = None
     # 联邦查询支持：需要 ATTACH 的外部数据库列表
     attach_databases: Optional[List[AttachDatabase]] = None
+    # 自定义表名撞已有表时是否允许覆盖；默认 False，避免静默 CREATE OR REPLACE 毁数据
+    overwrite: bool = False
 
 
 class AsyncQueryResponse(BaseModel):
@@ -278,7 +292,7 @@ class RetryTaskRequest(BaseModel):
 
 
 @router.post("/api/async-tasks", tags=["Async Tasks"])
-async def submit_async_query(
+def submit_async_query(
     request: AsyncQueryRequest, background_tasks: BackgroundTasks
 ):
     """
@@ -312,6 +326,7 @@ async def submit_async_query(
             "datasource": request.datasource,
             "attach_databases": attach_list if attach_list else None,
             "is_federated": is_federated,
+            "overwrite": request.overwrite,
         }
 
         # 创建任务并保存元数据
@@ -333,6 +348,7 @@ async def submit_async_query(
                 request.task_type,
                 request.datasource,
                 attach_list,
+                request.overwrite,
             )
         else:
             # 普通查询：使用原有执行函数
@@ -343,6 +359,7 @@ async def submit_async_query(
                 request.custom_table_name,
                 request.task_type,
                 request.datasource,
+                request.overwrite,
             )
 
         return create_success_response(
@@ -362,7 +379,7 @@ async def submit_async_query(
 
 
 @router.get("/api/async-tasks", tags=["Async Tasks"])
-async def list_async_tasks(
+def list_async_tasks(
     limit: int = 20, offset: int = 0, order_by: str = "created_at"
 ):
     """
@@ -398,7 +415,7 @@ async def list_async_tasks(
     "/api/async-tasks/{task_id}",
     tags=["Async Tasks"],
 )
-async def get_async_task(task_id: str):
+def get_async_task(task_id: str):
     """
     获取单个异步任务详情
     """
@@ -439,7 +456,7 @@ async def get_async_task(task_id: str):
     "/api/async-tasks/{task_id}/cancel",
     tags=["Async Tasks"],
 )
-async def cancel_async_task(task_id: str, request: CancelTaskRequest):
+def cancel_async_task(task_id: str, request: CancelTaskRequest):
     """
     请求取消异步任务（使用取消信号模式，避免写-写冲突）
     """
@@ -533,7 +550,7 @@ def _extract_task_payload(task) -> Dict[str, Any]:
     "/api/async-tasks/{task_id}/retry",
     tags=["Async Tasks"],
 )
-async def retry_async_task(
+def retry_async_task(
     task_id: str,
     background_tasks: BackgroundTasks,
     request: RetryTaskRequest,
@@ -594,6 +611,7 @@ async def retry_async_task(
         )
 
         # 根据是否为联邦查询选择执行函数
+        # 重试是用户显式"重做"，允许覆盖上一次的同名结果表（overwrite=True）
         if is_federated:
             background_tasks.add_task(
                 execute_async_federated_query,
@@ -603,6 +621,7 @@ async def retry_async_task(
                 task_type,
                 datasource,
                 attach_list,
+                overwrite=True,
             )
         else:
             background_tasks.add_task(
@@ -612,6 +631,7 @@ async def retry_async_task(
                 custom_table_name,
                 task_type,
                 datasource,
+                overwrite=True,
             )
 
         # 注意：移除了 update_task 调用，避免写写冲突
@@ -636,7 +656,7 @@ async def retry_async_task(
 
 
 @router.post("/api/async-tasks/cleanup-stuck", tags=["Async Tasks"])
-async def cleanup_stuck_tasks():
+def cleanup_stuck_tasks():
     """
     清理卡住的取消中任务
     将所有 cancelling 状态的任务标记为 failed
@@ -656,51 +676,47 @@ async def cleanup_stuck_tasks():
         )
 
 
-@router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
-async def generate_and_download_file(task_id: str, request: dict = Body(...)):
-    """
-    按需生成并直接下载文件
-    一步完成文件生成和下载，避免时序问题
+def _serve_task_download(task_id: str, fmt: str):
+    """生成(或复用已缓存的)结果文件并以 FileResponse 流式返回。POST/GET 共用。
+
+    FileResponse 是流式的:大文件(2 亿行 CSV 可达数 GB)也是边读边发、不占内存。
+    前端务必用原生下载(openExternal 走系统浏览器/window.open)去命中它,不要用
+    axios responseType:'blob' 把整个文件读进 webview 内存——那会把界面卡死。
     """
     try:
-        format = request.get("format", "csv")
-
-        # 验证格式参数
-        if format not in ["csv", "parquet"]:
+        if fmt not in ["csv", "parquet"]:
             raise APIValidationError(
                 "Unsupported format, only csv and parquet are allowed",
                 details={"field": "format", "allowed": ["csv", "parquet"]},
             )
 
-        # 生成下载文件
-        file_path = generate_download_file(task_id, format)
-
-        # 检查文件是否存在
+        file_path = generate_download_file(task_id, fmt)
         if not os.path.exists(file_path):
             raise ResourceNotFoundError("Generated file", task_id)
 
-        # 确定文件名和媒体类型
-        file_name = os.path.basename(file_path)
-        media_type = task_utils.get_media_type(file_path)
-
-        # 直接返回文件
+        # 友好下载名:优先用任务结果表名(如 big_test_200m.csv),回退到 task_id,
+        # 而不是磁盘上的 task-<uuid>_<时间>.csv——让用户在浏览器下载里一眼认出。
+        table_name = None
+        try:
+            info = task_manager.get_task(task_id)
+            if info and info.result_info:
+                table_name = info.result_info.get("table_name")
+        except Exception:  # pylint: disable=broad-exception-caught
+            table_name = None
+        base = safe_filename_base(table_name) or safe_filename_base(task_id) or "result"
         return FileResponse(
             file_path,
-            media_type=media_type,
-            filename=file_name,
+            media_type=task_utils.get_media_type(file_path),
+            filename=f"{base}.{fmt}",
         )
-
     except BaseAPIException:
         raise
     except ValueError as e:
         logger.warning(f"Failed to generate download file: {task_id}, error: {str(e)}")
         return error_json_response(
-            400,
-            MessageCode.VALIDATION_ERROR,
-            str(e),
-            details={"task_id": task_id},
+            400, MessageCode.VALIDATION_ERROR, str(e), details={"task_id": task_id}
         )
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error(f"Failed to generate download file: {task_id}, error: {str(e)}")
         return error_json_response(
             500,
@@ -710,12 +726,94 @@ async def generate_and_download_file(task_id: str, request: dict = Body(...)):
         )
 
 
+@router.get("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
+def download_task_result(task_id: str, format: str = "csv"):
+    """GET 下载入口:供前端原生下载(openExternal/window.open)命中,流式落盘。
+
+    大文件下载必须走这里 + 原生下载,避免前端用 blob 把整个文件读进内存卡死界面。
+    """
+    return _serve_task_download(task_id, format)
+
+
+@router.post("/api/async-tasks/{task_id}/download", tags=["Async Tasks"])
+def generate_and_download_file(task_id: str, request: dict = Body(...)):
+    """按需生成并直接下载文件(保留 POST 兼容旧调用方)。"""
+    return _serve_task_download(task_id, request.get("format", "csv"))
+
+
+def _discard_persisted_result(task_id: str, table_name: Optional[str]) -> None:
+    """撤销"结果表已建、complete_task 却因任务被并发取消/失败而拒绝"这个窗口里
+    留下的副作用：删掉结果表 + 已注册的 file datasource 记录。
+
+    取消检查点 2（查询完成后、保存元数据前）之后到 complete_task 之间仍有一段
+    窗口——取消请求若恰好落在这里，complete_task 因状态已是 CANCELLING 而返回
+    False，但此时表已建好、datasource 记录（save_file_datasource）也已写入。不
+    清理的话，任务显示 cancelled，磁盘上却留着一张可查询的孤儿表和一条 datasource
+    记录，没人知道该不该信任它（回归 #8）。
+
+    只在 complete_task 被拒且任务非 success/completed 时调用——已提交为正式结果
+    的表绝不会被本函数删除。表名与 datasource 的 source_id 相同，故只需一个入参。
+    """
+    if not table_name:
+        return
+
+    from core.database.duckdb_pool import get_connection_pool
+
+    try:
+        with get_connection_pool().get_connection() as con:
+            con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+        logger.info("[%s] Dropped orphaned result table: %s", task_id, table_name)
+    except Exception as drop_error:  # pylint: disable=broad-exception-caught
+        logger.warning(
+            "[%s] Failed to drop orphaned table %s: %s", task_id, table_name, drop_error
+        )
+
+    try:
+        file_datasource_manager.delete_file_datasource(table_name)
+    except Exception as del_error:  # pylint: disable=broad-exception-caught
+        logger.warning(
+            "[%s] Failed to delete orphaned datasource record %s: %s",
+            task_id,
+            table_name,
+            del_error,
+        )
+
+
+def _resolve_result_table_name(custom_table_name: Optional[str], task_id: str):
+    """把 custom_table_name 洗成裸标识符;洗完为空(如 "!!!")则回退到唯一的 task_id
+    表名——绝不建空名表。返回 (table_name, is_custom)。
+
+    async_tasks 的普通/联邦两个 worker 曾各写一份等价逻辑(且都无空名兜底),统一到此。
+    """
+    if custom_table_name:
+        safe = re.sub(
+            r"[^a-zA-Z0-9_]", "", custom_table_name.replace(" ", "_").replace("-", "_")
+        )
+        if safe:
+            return safe, True
+    return task_utils.task_id_to_table_name(task_id), False
+
+
+def _raise_if_table_exists(con, table_name: str) -> None:
+    """自定义结果表名撞上 main schema 已有表 → 抛错,阻止静默 CREATE OR REPLACE 覆盖。"""
+    exists = con.execute(
+        "SELECT 1 FROM duckdb_tables() WHERE table_name = ? AND schema_name = 'main' LIMIT 1",
+        [table_name],
+    ).fetchone()
+    if exists:
+        raise ValueError(
+            f'Table "{table_name}" already exists; choose a different name or pass '
+            "overwrite=true to replace it (refusing to overwrite data silently)"
+        )
+
+
 def execute_async_query(
     task_id: str,
     sql: str,
     custom_table_name: Optional[str] = None,
     task_type: str = "query",
     datasource: Optional[Dict[str, Any]] = None,
+    overwrite: bool = False,
 ):
     """
     执行异步查询（后台任务）- 内存优化版本
@@ -772,20 +870,16 @@ def execute_async_query(
         use_external_source = datasource_type in SUPPORTED_EXTERNAL_TYPES
         source_datasource_id = datasource_info.get("id") if datasource_info else None
 
-        # 确定表名
-        if custom_table_name:
-            safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
-            import re
-
-            safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
-            table_name = safe_table_name
-        else:
-            table_name = task_utils.task_id_to_table_name(task_id)
+        # 确定表名（洗空则回退 task_id 名，不建空名表）
+        table_name, is_custom = _resolve_result_table_name(custom_table_name, task_id)
         logger.info(f"[{task_id}] Creating persistent table to store query result: {table_name}")
         logger.debug(f"[{task_id}] Preparing to execute SQL: {clean_sql[:200]}...")
 
         # 第二步：执行查询（使用可中断连接）
         with interruptible_connection(task_id, clean_sql) as con:
+            # 自定义名撞已有表且未显式允许覆盖 → 报错，绝不静默 CREATE OR REPLACE 毁用户表
+            if is_custom and not overwrite:
+                _raise_if_table_exists(con, table_name)
             if use_external_source:
                 from core.common.connection_alias import build_attach_list_from_datasource
 
@@ -907,15 +1001,20 @@ def execute_async_query(
             current_status = current_task.status.value if current_task else "None"
 
             # 使用字符串值进行比较，避免Enum身份问题
-            if current_status in (
-                "cancelling",
-                "cancelled",
-                "failed",
-                "success",
-                "completed",
-            ):
+            if current_status in ("cancelling", "cancelled", "failed"):
+                # 任务被并发取消/失败，complete_task 因此被拒——本线程刚建好的表和
+                # datasource 记录都不是任务的正式结果，撤销它们（回归 #8：此前只记
+                # 日志，孤儿表和记录会残留）。与取消检查点 2 的清理动作保持一致。
                 logger.info(
-                    f"[{task_id}] Task final status is, no need to force mark as failed"
+                    f"[{task_id}] complete_task rejected (status={current_status}); "
+                    f"discarding orphaned result table and datasource"
+                )
+                _discard_persisted_result(task_id, table_name)
+                if current_status == "cancelling":
+                    task_manager.mark_cancelled(task_id, "User cancelled during result persistence")
+            elif current_status in ("success", "completed"):
+                logger.info(
+                    f"[{task_id}] Task already final ({current_status}); keeping result table"
                 )
             else:
                 logger.warning(
@@ -959,7 +1058,16 @@ def execute_async_query(
             task_manager.mark_cancelled(task_id, "Cancelled by user")
         else:
             if not task_manager.fail_task(task_id, str(e)):
-                logger.error(f"Unable to mark task as failed: {task_id}")
+                # fail_task 仅在 status IN (QUEUED, RUNNING) 时生效。若在上面的
+                # is_cancellation_requested 检查(返回 False)之后、这次 UPDATE 之前,
+                # 并发取消把状态推到了 CANCELLING,fail_task 守卫落空、只记日志会让
+                # 任务卡在 CANCELLING 直到 60s 看门狗回收。重新判定一次:确已进入取消
+                # 流程就推进到终态 CANCELLED(mark_cancelled 覆盖 CANCELLING);否则
+                # (已是 COMPLETED/FAILED 等终态)保持只记日志,不覆盖既有终态。
+                if task_manager.is_cancellation_requested(task_id):
+                    task_manager.mark_cancelled(task_id, "Cancelled by user")
+                else:
+                    logger.error(f"Unable to mark task as failed: {task_id}")
 
 
 def execute_async_federated_query(
@@ -969,6 +1077,7 @@ def execute_async_federated_query(
     task_type: str = "query",
     datasource: Optional[Dict[str, Any]] = None,
     attach_databases: Optional[List[Dict[str, str]]] = None,
+    overwrite: bool = False,
 ):
     """
     执行异步联邦查询（后台任务）
@@ -1031,20 +1140,17 @@ def execute_async_federated_query(
         else:
             logger.info(f"Federated query using original SQL: {clean_sql}")
 
-        # 确定表名
-        if custom_table_name:
-            safe_table_name = custom_table_name.replace(" ", "_").replace("-", "_")
-            import re
-
-            safe_table_name = re.sub(r"[^a-zA-Z0-9_]", "", safe_table_name)
-            table_name = safe_table_name
-        else:
-            table_name = task_utils.task_id_to_table_name(task_id)
+        # 确定表名（洗空则回退 task_id 名，不建空名表）
+        table_name, is_custom = _resolve_result_table_name(custom_table_name, task_id)
         logger.info(f"Federated query result will be stored in table: {table_name}")
 
         # 第二步：在同一连接中执行 ATTACH、查询、DETACH
         with interruptible_connection(task_id, clean_sql) as con:
             try:
+                # 自定义名撞已有表且未显式允许覆盖 → 报错，绝不静默覆盖用户表
+                if is_custom and not overwrite:
+                    _raise_if_table_exists(con, table_name)
+
                 # 2.1 执行 ATTACH 操作
                 if attach_databases:
                     attached_aliases = _attach_external_databases(con, attach_databases)
@@ -1086,7 +1192,7 @@ def execute_async_federated_query(
                     logger.warning(f"Memory cleanup failed: {str(cleanup_error)}")
 
             finally:
-                # 2.4 DETACH failed都要执行）
+                # 2.4 DETACH（无论成功失败都要执行）
                 if attached_aliases:
                     logger.info(f"Starting DETACH cleanup: {attached_aliases}")
                     _detach_databases(con, attached_aliases)
@@ -1151,15 +1257,18 @@ def execute_async_federated_query(
             current_status = current_task.status.value if current_task else "None"
 
             # 使用字符串值进行比较，避免Enum身份问题
-            if current_status in (
-                "cancelling",
-                "cancelled",
-                "failed",
-                "success",
-                "completed",
-            ):
+            if current_status in ("cancelling", "cancelled", "failed"):
+                # 与非联邦路径同理（回归 #8）：被并发取消/失败时撤销孤儿表+datasource
                 logger.info(
-                    f"[{task_id}] (Federated) task final status {current_status}, no need to force fail"
+                    f"[{task_id}] (Federated) complete_task rejected (status={current_status}); "
+                    f"discarding orphaned result table and datasource"
+                )
+                _discard_persisted_result(task_id, table_name)
+                if current_status == "cancelling":
+                    task_manager.mark_cancelled(task_id, "User cancelled during result persistence")
+            elif current_status in ("success", "completed"):
+                logger.info(
+                    f"[{task_id}] (Federated) task already final ({current_status}); keeping result table"
                 )
             else:
                 logger.warning(
@@ -1230,7 +1339,13 @@ def execute_async_federated_query(
                 "attached_databases": attached_aliases,
             }
 
-            if not task_manager.force_fail_task(
+            # 与非联邦分支一致的兜底:上面的取消检查之后、这里 force_fail 之前,若并发
+            # 取消才落地(RUNNING->CANCELLING),force_fail_task 无状态守卫会把它无条件
+            # 盖成 FAILED、丢掉这次取消(与非联邦分支"卡在 CANCELLING"相反的失效模式)。
+            # 先复查一次:确已进入取消流程就推进到终态 CANCELLED,否则才按失败落库。
+            if task_manager.is_cancellation_requested(task_id):
+                task_manager.mark_cancelled(task_id, "Cancelled by user")
+            elif not task_manager.force_fail_task(
                 task_id, error_message, metadata_update=error_metadata
             ):
                 logger.error(f"Unable to mark federated query task as failed: {task_id}")

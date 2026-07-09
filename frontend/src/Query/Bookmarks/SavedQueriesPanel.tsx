@@ -34,7 +34,7 @@ function formatDate(dateStr: string): string {
             month: 'short',
             day: 'numeric',
         });
-    } catch (e) {
+    } catch {
         return dateStr;
     }
 }
@@ -65,7 +65,7 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
     onLoad,
 }) => {
     const { t } = useTranslation('common');
-    const { favorites, isLoading, deleteQuery, useQuery, refresh } = useSavedQueries();
+    const { favorites, isLoading, deleteQuery, markQueryUsed, refresh } = useSavedQueries();
     const [search, setSearch] = useState('');
 
     // 打开时刷新列表
@@ -100,7 +100,7 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
     };
 
     const handleLoad = (item: SavedQuery) => {
-        void useQuery(item.id);
+        void markQueryUsed(item.id);
         onLoad(item.sql, item.type);
         onOpenChange(false);
     };

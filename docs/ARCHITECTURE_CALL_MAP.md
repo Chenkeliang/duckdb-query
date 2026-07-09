@@ -175,7 +175,6 @@ sequenceDiagram
 |------|------|------|------|
 | Schema 列表 | `GET /api/datasources/databases/{id}/schemas` | `listConnectionSchemas` | canonical |
 | Schema 表 | `GET .../schemas/{schema}/tables` | `listSchemaTablesForConnection` | 推荐 |
-| 表详情 canonical | `GET /api/datasources/databases/{id}/tables/detail` | `getExternalTableDetail` | CatalogService 对齐 |
 | 表详情 | `GET /api/datasources/databases/{id}/tables/detail` | `getExternalTableDetail` | canonical |
 | 统一列表 | `GET /api/datasources` | `listAllDataSources` | `datasources.py` |
 

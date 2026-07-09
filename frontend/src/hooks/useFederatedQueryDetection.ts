@@ -25,6 +25,7 @@ import type { TableSource } from '@/hooks/useQueryWorkspace';
 import {
   parseSQLTableReferences,
   buildAttachDatabasesFromParsedRefs,
+  extractSqlAttachedAliases,
   extractAttachDatabases,
   mergeAttachDatabases,
   type AttachDatabase,
@@ -147,16 +148,22 @@ export function useFederatedQueryDetection(
     return parseSQLTableReferences(debouncedSql);
   }, [debouncedSql, enabled, parseVersion]);
 
-  // 从 SQL 解析结果构建 attachDatabases
+  // 从 SQL 解析结果构建 attachDatabases。
+  // 同一段 SQL 里手动 ATTACH 的本地目录别名(及内置目录名)是本地引用,
+  // 不参与联邦匹配,也不能报"未识别前缀"。
   const sqlAttachResult = useMemo(() => {
     if (!enabled || parsedTableReferences.length === 0) {
       return { attachDatabases: [], unrecognizedPrefixes: [] };
     }
+    const localAliases = extractSqlAttachedAliases(debouncedSql);
+    const externalRefs = parsedTableReferences.filter(
+      (ref) => !ref.prefix || !localAliases.has(ref.prefix.toLowerCase())
+    );
     return buildAttachDatabasesFromParsedRefs(
-      parsedTableReferences,
+      externalRefs,
       connections as DatabaseConnection[]
     );
-  }, [parsedTableReferences, connections, enabled]);
+  }, [parsedTableReferences, debouncedSql, connections, enabled]);
 
   // 从选中的表提取 attachDatabases
   const selectedTablesAttach = useMemo(() => {

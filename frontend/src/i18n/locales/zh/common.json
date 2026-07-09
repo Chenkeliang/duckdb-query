@@ -1,4 +1,7 @@
 {
+  "download": {
+    "browserStarted": "已在系统浏览器开始下载{{name}}，完成后可在系统「下载」文件夹中找到"
+  },
   "dataGrid": {
     "copy": "复制",
     "copyAsTSV": "复制为 TSV",
@@ -45,16 +48,18 @@
     "autoFitColumns": "自动列宽",
     "fitToWidth": "适应宽度",
     "filterLabel": "筛选",
-    "clearColFilter": "清除 {{col}} 筛选"
+    "clearColFilter": "清除 {{col}} 筛选",
+    "highCardinalitySelectAllBlocked": "该列取值过多，列表仅展示高频前若干条。请取消部分勾选，或改用上方条件筛选。"
   },
   "nav": {
-    "datasource": "数据源 (Data Sources)",
-    "queryworkbench": "查询工作台 (Query Workbench)",
+    "datasource": "数据源",
+    "queryworkbench": "查询工作台",
     "tablemanagement": "数据表管理",
     "asynctasks": "异步任务",
     "switchMain": "主功能切换",
     "settings": "设置",
-    "ai": "AI 模型 (AI / Models)"
+    "ai": "AI 模型",
+    "extensions": "扩展"
   },
   "sidebar": {
     "collapse": "收起",
@@ -94,7 +99,8 @@
     "copied": "已复制",
     "clear": "清空",
     "execute": "执行",
-    "unknownError": "未知错误"
+    "unknownError": "未知错误",
+    "remove": "移除"
   },
   "dataSource": {
     "previewTable": "预览表: {{tableName}}",
@@ -213,7 +219,8 @@
       "download": "下载",
       "success": "下载成功",
       "failed": "下载失败: {{message}}"
-    }
+    },
+    "status.cancelling": "取消中"
   },
   "query": {
     "ai": {
@@ -281,6 +288,14 @@
       "didYouMean": "你是不是想找：{{names}}？",
       "aiExplainFix": "AI 解释并修复",
       "aiFixFailed": "AI 修复失败",
+      "selfHeal": {
+        "saveFailed": "开启兼容模式失败",
+        "sqliteTypeMismatch": {
+          "title": "SQLite 类型不一致",
+          "description": "该库存在声明类型与实际值不符的数据",
+          "action": "开启 SQLite 兼容模式并重跑"
+        }
+      },
       "rowCount": "共 {{count}} 行",
       "execTime": "执行时间: {{time}}ms",
       "rows": "行",
@@ -313,7 +328,11 @@
         "searchColumn": "搜索列...",
         "availableColumns": "可用列",
         "noColumns": "未找到列"
-      }
+      },
+      "exportExcel": "导出 Excel",
+      "exportNoSql": "无 SQL 可导出",
+      "exportParquetFailed": "Parquet 导出失败",
+      "exportParquetServer": "导出 Parquet（服务端）"
     },
     "filter": {
       "title": "筛选条件",
@@ -421,7 +440,9 @@
       "executeError": "查询执行失败: {{message}}",
       "mixedSourceWarning": "不能在同一查询中混合 DuckDB 表和外部数据库表。请先将外部表导入到 DuckDB。",
       "federatedQuery": "联邦查询",
-      "targetDatabase": "目标数据库"
+      "targetDatabase": "目标数据库",
+      "cancel": "取消",
+      "cancelTooltip": "取消当前查询"
     },
     "import": {
       "title": "导入到 DuckDB",
@@ -434,7 +455,8 @@
       "importing": "导入中...",
       "import": "导入",
       "success": "数据已成功导入到表 \"{{tableName}}\"，共 {{rowCount}} 行",
-      "error": "导入失败: {{message}}"
+      "error": "导入失败: {{message}}",
+      "missingConnection": "缺少外部数据库连接信息"
     },
     "bookmark": {
       "title": "SQL 收藏夹",
@@ -458,7 +480,8 @@
         "sqlPreview": "SQL 预览",
         "saving": "保存中...",
         "saveBtn": "保存"
-      }
+      },
+      "saveTooltip": "收藏查询"
     },
     "history": {
       "title": "查询历史",
@@ -473,7 +496,8 @@
       "minutesAgo": "{{count}} 分钟前",
       "hoursAgo": "{{count}} 小时前",
       "searchPlaceholder": "搜索 SQL...",
-      "notFound": "未找到相关记录"
+      "notFound": "未找到相关记录",
+      "cleared": "历史记录已清空"
     },
     "preview": {
       "title": "SQL 预览",
@@ -565,7 +589,10 @@
         "tooltip": "给该联邦大表的 {{column}} 加近30天范围（落 ON、下推到远端，减少抽取量、避免超时）",
         "addAll": "全部限定近30天",
         "pickColumn": "选择时间列"
-      }
+      },
+      "swapTables": "交换表顺序",
+      "switchToColumn": "切换到列模式",
+      "switchToExpression": "切换到表达式模式"
     },
     "typeConflict": {
       "detected": "检测到 {{count}} 个类型冲突",
@@ -605,7 +632,14 @@
       "columnMismatchDetail": "表 {{tableIndex}} 有 {{tableCount}} 列，但第一个表有 {{baseCount}} 列。",
       "byNameModeHint": "BY NAME 模式：按列名匹配合并，不要求列数量一致。缺失的列将填充 NULL 值。",
       "byNameTooltip": "按列名匹配合并（DuckDB 特性），不要求列数量一致",
-      "externalNotSupported": "外部数据库表暂不支持集合操作。请先将外部表导入到 DuckDB 后再进行 UNION / INTERSECT / EXCEPT。"
+      "externalNotSupported": "外部数据库表暂不支持集合操作。请先将外部表导入到 DuckDB 后再进行 UNION / INTERSECT / EXCEPT。",
+      "columnLoadError": "无法获取列信息",
+      "externalTable": "外部表",
+      "generatedSql": "生成的 SQL",
+      "generatingSql": "生成中…",
+      "mixedSources": "不能混用 DuckDB 本地表与外部库表。请只选择同一来源的表。",
+      "noColumns": "无可用列",
+      "operationType": "集合运算类型"
     },
     "pivot": {
       "title": "透视表",
@@ -747,7 +781,15 @@
       "donut": "环形",
       "kpi": "大数字",
       "day": "按天",
-      "month": "按月"
+      "month": "按月",
+      "drilldownView": "查看 \"{{value}}\" 的明细"
+    },
+    "cancel": "取消",
+    "favorites": {
+      "createFailed": "收藏失败",
+      "createSuccess": "收藏成功",
+      "deleteFailed": "删除失败",
+      "deleteSuccess": "已删除收藏"
     }
   },
   "page": {
@@ -812,7 +854,7 @@
       "serverNoMount": "未检测到可用的挂载目录。请在配置文件 server_data_mounts 中添加条目并重启服务。",
       "desktopPickFileBtn": "选择文件…",
       "desktopCardDesc": "选择本地文件，直接读取 CSV / Excel / Parquet / JSON",
-      "desktopHint": "桌面版：点「选择文件…」选择本地 CSV / Excel / Parquet / JSON 文件直接导入。",
+      "desktopDragHint": "或将文件拖放到窗口任意位置即可导入",
       "serverSelectMount": "选择挂载目录",
       "serverNoFiles": "当前目录暂无可导入的文件",
       "serverTypeFolder": "文件夹",
@@ -843,6 +885,9 @@
         "sourceUpload": "上传文件",
         "tablePrefix": "表名前缀：",
         "tablePrefixHint": "（各 Sheet 目标表名已按此前缀生成，可逐 Sheet 修改）",
+        "conflictModeLabel": "重名表处理",
+        "conflictModeCreate": "自动改名（推荐，撞名自动加 _1/_2/_3）",
+        "conflictModeReplace": "覆盖同名表（会清空原表数据，请谨慎）",
         "loading": "加载工作表信息...",
         "selectAll": "全选",
         "selectNone": "全不选",
@@ -1113,6 +1158,21 @@
       "saveSuccess": "结果表设置已保存",
       "saveFailed": "保存结果表设置失败"
     },
+    "engineCompat": {
+      "title": "引擎兼容性",
+      "description": "兼容脏数据/非标准数据源的读取行为，按需开启，保存后立即生效。",
+      "sqliteAllVarcharLabel": "SQLite 全文本读取",
+      "sqliteAllVarcharHint": "SQLite 列全部按文本读，规避声明类型与实际存储不符的报错；数字列聚合需 CAST",
+      "mysqlIncompleteDatesLabel": "MySQL 非法日期读为 NULL",
+      "mysqlIncompleteDatesHint": "0000-00-00 等零日期不再报错",
+      "pgArrayLabel": "Postgres 数组按文本读取",
+      "pgArrayHint": "兼容混合维度数组",
+      "icebergVersionLabel": "Iceberg 版本推断",
+      "icebergVersionHint": "读取无 catalog 的本地 Iceberg 目录（unsafe）",
+      "saveSuccess": "已保存并生效",
+      "saveFailed": "保存失败",
+      "loadFailed": "获取引擎兼容性配置失败"
+    },
     "cache": {
       "title": "缓存设置",
       "description": "配置查询数据的缓存有效期",
@@ -1129,6 +1189,24 @@
       "clearSuccess": "已清除所有缓存",
       "clearFailed": "清除缓存失败"
     }
+  },
+  "extensions": {
+    "title": "扩展",
+    "subtitle": "扩展来自 DuckDB 官方仓库，安装后离线可用。",
+    "groupDatasource": "数据源",
+    "groupCapability": "能力增强",
+    "bundled": "已预置",
+    "installed": "已安装",
+    "install": "安装",
+    "retry": "重试",
+    "statusDownloading": "下载中",
+    "statusVerifying": "校验中",
+    "installSuccess": "{{name}} 安装成功",
+    "installFailed": "{{name}} 安装失败",
+    "loadFailed": "获取扩展列表失败",
+    "usage": "用法",
+    "copy": "复制",
+    "copied": "已复制"
   },
   "shortcuts": {
     "title": "键盘快捷键",
@@ -1272,5 +1350,12 @@
     "footerDocs": "文档",
     "footerCopyright": "© 2026 DuckQuery · MIT",
     "footerBuilt": "Built on DuckDB · 数据不出本机"
-  }
+  },
+  "error": "操作失败",
+  "filter": {
+    "placement": {
+      "helpText": "ON 子句条件在 JOIN 时生效，保留无匹配的行（显示为 NULL）。WHERE 子句条件在 JOIN 后生效，会过滤掉不匹配的行。查询外部数据库表时，建议添加时间范围条件以避免全表扫描导致查询时间过长。"
+    }
+  },
+  "success": "操作成功"
 }

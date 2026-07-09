@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getAiSettings } from '@/api/aiApi';
+import { getAiSettings } from '@/api';
 
 /**
  * AI 总开关是否开启（用于决定是否展示 AI 入口）。

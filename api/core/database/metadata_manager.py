@@ -1,7 +1,7 @@
 # pylint: disable=duplicate-code,too-many-public-methods,bad-indentation
 """
-Metadata manager
-负责管理databaseconnection和filedata源的metadata，统一存储在 DuckDB 中
+元数据管理器
+负责管理数据库连接和文件数据源的元数据，统一存储在 DuckDB 中
 """
 
 import json
@@ -12,13 +12,13 @@ from functools import lru_cache
 
 from core.database.duckdb_pool import with_system_connection
 from core.common.timezone_utils import get_current_time
-from utils.encryption_utils import encrypt_json, decrypt_json
+from utils.encryption_utils import encrypt_json, decrypt_json, json_needs_key_migration
 
 logger = logging.getLogger(__name__)
 
 
 class MetadataManager:
-    """统一的Metadata manager - 使用泛型接口简化管理"""
+    """统一的元数据管理器 - 使用泛型接口简化管理"""
 
     def __init__(self, duckdb_path: str = None):
         self.duckdb_path = duckdb_path
@@ -28,9 +28,9 @@ class MetadataManager:
         logger.info("Metadata manager initialization completed")
 
     def _init_metadata_tables(self):
-        """initializing所有metadatatable（自动creating，如果does not exist）"""
+        """初始化所有元数据表（如果不存在则自动创建）"""
         with with_system_connection() as conn:
-            # creatingdatabaseconnectionmetadatatable
+            # 创建数据库连接元数据表
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS system_database_connections (
                     id VARCHAR PRIMARY KEY,
@@ -45,7 +45,7 @@ class MetadataManager:
                 )
             """)
 
-            # creatingfiledata源metadatatable
+            # 创建文件数据源元数据表
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS system_file_datasources (
                     source_id VARCHAR PRIMARY KEY,
@@ -67,7 +67,7 @@ class MetadataManager:
                 )
             """)
 
-            # creating迁移状态table
+            # 创建迁移状态表
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS system_migration_status (
                     migration_name VARCHAR PRIMARY KEY,
@@ -80,7 +80,7 @@ class MetadataManager:
                 )
             """)
 
-            # creating索引
+            # 创建索引
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_db_conn_type ON system_database_connections(type)"
             )
@@ -94,7 +94,7 @@ class MetadataManager:
                 "CREATE INDEX IF NOT EXISTS idx_file_ds_upload ON system_file_datasources(upload_time)"
             )
 
-            # creating系统 SQL 收藏table
+            # 创建系统 SQL 收藏表
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS system_sql_favorites (
                     id VARCHAR PRIMARY KEY,
@@ -114,7 +114,7 @@ class MetadataManager:
                 "CREATE INDEX IF NOT EXISTS idx_fav_type ON system_sql_favorites(type)"
             )
 
-            # 迁移：添加缺失的字段（如果tablealready exists但missing字段）
+            # 迁移：添加缺失的字段（如果表已存在但缺少该字段）
             try:
                 # 检查 created_at 字段是否存在
                 result = conn.execute("""
@@ -127,7 +127,7 @@ class MetadataManager:
                 if result[0] == 0:
                     logger.info("Detected missing created_at / updated_at fields, starting migration of system_file_datasources table structure...")
                     # DuckDB 某些版本不支持在 ADD COLUMN 时同时声明 NOT NULL + DEFAULT
-                    # 这里先以可空column形式添加，再用 UPDATE 回填历史data，避免语法限制
+                    # 这里先以可空列的形式添加，再用 UPDATE 回填历史数据，避免语法限制
                     conn.execute("""
                         ALTER TABLE system_file_datasources 
                         ADD COLUMN created_at TIMESTAMP
@@ -136,7 +136,7 @@ class MetadataManager:
                         ALTER TABLE system_file_datasources 
                         ADD COLUMN updated_at TIMESTAMP
                     """)
-                    # 使用 upload_time 或当前时间回填，保证后续query有合理的时间值
+                    # 使用 upload_time 或当前时间回填，保证后续查询有合理的时间值
                     conn.execute("""
                         UPDATE system_file_datasources
                         SET created_at = COALESCE(upload_time, CURRENT_TIMESTAMP)
@@ -148,7 +148,7 @@ class MetadataManager:
                         WHERE updated_at IS NULL
                     """)
 
-                    # 尝试为新column设置默认值（允许failed，避免不同 DuckDB 版本差异导致崩溃）
+                    # 尝试为新列设置默认值（允许失败，避免不同 DuckDB 版本差异导致崩溃）
                     try:
                         conn.execute("""
                             ALTER TABLE system_file_datasources
@@ -165,7 +165,7 @@ class MetadataManager:
             except Exception as e:
                 logger.warning(f"Warning occurred when adding fields (may already exist): {e}")
 
-            # 迁移：添加 source_sql 字段（如果tablealready exists但missing该字段）
+            # 迁移：添加 source_sql 字段（如果表已存在但缺少该字段）
             try:
                 result = conn.execute("""
                     SELECT COUNT(*) 
@@ -189,18 +189,18 @@ class MetadataManager:
     # 统一的 CRUD 接口
     def save_metadata(self, table: str, id: str, data: dict) -> bool:
         """
-        savingmetadata（databaseconnection或filedata源）
-        
-        对于databaseconnection，智能处理密码字段：
+        保存元数据（数据库连接或文件数据源）
+
+        对于数据库连接，智能处理密码字段：
         - 如果密码是 ***ENCRYPTED***，保持原密码不变
-        - 如果密码是新值，加密并saving
-        - 如果密码is empty，清除密码
+        - 如果密码是新值，加密并保存
+        - 如果密码为空，清除密码
         """
         logger.debug(f"[METADATA_DEBUG] save_metadata starting: table={table}, id={id}")
         try:
             with with_system_connection() as conn:
                 logger.debug(f"[METADATA_DEBUG] save_metadata gettingconnectionsuccessfully: table={table}, id={id}")
-                # 对于databaseconnection，智能处理密码字段
+                # 对于数据库连接，智能处理密码字段
                 if table == "system_database_connections" and "params" in data:
                     data = data.copy()
                     params = data["params"].copy() if isinstance(data["params"], dict) else data["params"]
@@ -208,7 +208,7 @@ class MetadataManager:
                     # 检查密码字段是否是加密标记
                     if isinstance(params, dict) and params.get("password") == "***ENCRYPTED***":
                         # 密码是标记，需要保持原密码
-                        # getting原有connection的密码
+                        # 获取原有连接的密码
                         existing = self.get_metadata(table, id)
                         if existing and "params" in existing:
                             existing_params = existing["params"]
@@ -217,16 +217,16 @@ class MetadataManager:
                                 params["password"] = existing_params["password"]
                                 logger.debug(f"Keeping original password: {id}")
                             else:
-                                # 原connection没有密码，清除标记
+                                # 原连接没有密码，清除标记
                                 params.pop("password", None)
                         else:
-                            # 新connection但密码是标记，清除标记
+                            # 新连接但密码是标记，清除标记
                             params.pop("password", None)
-                    
-                    # 加密敏感parameter
+
+                    # 加密敏感参数
                     data["params"] = encrypt_json(params)
 
-                # gettingtable的实际column名，过滤掉does not exist的字段
+                # 获取表的实际列名，过滤掉不存在的字段
                 try:
                     table_columns_df = conn.execute(f"DESCRIBE {table}").fetchdf()
                     valid_columns = set(table_columns_df["column_name"].tolist())
@@ -234,7 +234,7 @@ class MetadataManager:
                     logger.warning(f"Unable to get table {table} column info: {e}")
                     valid_columns = None
                 
-                # 过滤data，只保留table中存在的column
+                # 过滤数据，只保留表中存在的列
                 if valid_columns:
                     filtered_data = {k: v for k, v in data.items() if k in valid_columns}
                     if len(filtered_data) < len(data):
@@ -275,8 +275,27 @@ class MetadataManager:
             logger.error(f"savingmetadatafailed: {table}/{id}, error: {e}", exc_info=True)
             return False
 
+    def _migrate_legacy_params_if_needed(
+        self, conn, id_field: str, record_id: str, raw_params: str, decrypted_params: dict
+    ) -> None:
+        """把仍用历史默认密钥加密的 params 用本机密钥重新加密写回。
+
+        逐条读取时顺带迁移，不做批量扫描/批量改写：出错只影响这一条，且
+        不影响本次读取已经拿到的正确明文（失败仅记日志，不抛出）。
+        """
+        if not json_needs_key_migration(raw_params):
+            return
+        try:
+            conn.execute(
+                f'UPDATE system_database_connections SET params = ? WHERE {id_field} = ?',
+                [encrypt_json(decrypted_params), record_id],
+            )
+            logger.info("Migrated connection %s params to new encryption key", record_id)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning("Failed to migrate params encryption for %s: %s", record_id, e)
+
     def get_metadata(self, table: str, id: str) -> Optional[dict]:
-        """gettingmetadata（带缓存）"""
+        """获取元数据（带缓存）"""
         cache_key = f"{table}:{id}"
 
         # 检查缓存
@@ -287,7 +306,7 @@ class MetadataManager:
 
         try:
             with with_system_connection() as conn:
-                # 根据table类型使用不同的主键字段
+                # 根据表类型使用不同的主键字段
                 if table == "system_database_connections":
                     id_field = "id"
                 elif table == "system_file_datasources":
@@ -310,16 +329,20 @@ class MetadataManager:
                 columns = [desc[0] for desc in conn.description]
                 data = dict(zip(columns, result))
 
-                # 对于databaseconnection，先解密 params 字段再解析其他 JSON
+                # 对于数据库连接，先解密 params 字段再解析其他 JSON
                 if table == "system_database_connections" and "params" in data:
                     if isinstance(data["params"], str):
                         # params 是加密的 JSON 字符串，需要解密
-                        data["params"] = decrypt_json(data["params"])
-                
+                        raw_params = data["params"]
+                        data["params"] = decrypt_json(raw_params)
+                        self._migrate_legacy_params_if_needed(
+                            conn, id_field, id, raw_params, data["params"]
+                        )
+
                 # 解析其他 JSON 字段
                 for key, value in data.items():
                     if key == "params" and table == "system_database_connections":
-                        # params 已经处理过了，skip
+                        # params 已经处理过了，跳过
                         continue
                     if isinstance(value, str) and value.startswith(("{", "[")):
                         try:
@@ -327,7 +350,7 @@ class MetadataManager:
                         except:
                             pass
 
-                # updating缓存
+                # 更新缓存
                 self._cache[cache_key] = (data, datetime.now())
 
                 return data
@@ -337,7 +360,7 @@ class MetadataManager:
             return None
 
     def list_metadata(self, table: str, filters: dict = None) -> List[dict]:
-        """column出metadata"""
+        """列出元数据"""
         try:
             with with_system_connection() as conn:
                 sql = f"SELECT * FROM {table}"
@@ -355,23 +378,27 @@ class MetadataManager:
 
                 results = conn.execute(sql, params).fetchall()
 
-                # 转换为字典columntable
+                # 转换为字典列表
                 columns = [desc[0] for desc in conn.description]
                 data_list = []
 
                 for row in results:
                     data = dict(zip(columns, row))
 
-                    # 对于databaseconnection，先解密 params 字段
+                    # 对于数据库连接，先解密 params 字段
                     if table == "system_database_connections" and "params" in data:
                         if isinstance(data["params"], str):
                             # params 是加密的 JSON 字符串，需要解密
-                            data["params"] = decrypt_json(data["params"])
-                    
+                            raw_params = data["params"]
+                            data["params"] = decrypt_json(raw_params)
+                            self._migrate_legacy_params_if_needed(
+                                conn, "id", data["id"], raw_params, data["params"]
+                            )
+
                     # 解析其他 JSON 字段
                     for key, value in data.items():
                         if key == "params" and table == "system_database_connections":
-                            # params 已经处理过了，skip
+                            # params 已经处理过了，跳过
                             continue
                         if isinstance(value, str) and value.startswith(("{", "[")):
                             try:
@@ -388,10 +415,10 @@ class MetadataManager:
             return []
 
     def update_metadata(self, table: str, id: str, updates: dict) -> bool:
-        """updatingmetadata"""
+        """更新元数据"""
         try:
             with with_system_connection() as conn:
-                # 根据table类型使用不同的主键字段
+                # 根据表类型使用不同的主键字段
                 if table == "system_database_connections":
                     id_field = "id"
                 elif table == "system_file_datasources":
@@ -403,7 +430,7 @@ class MetadataManager:
                 else:
                     id_field = "id"
                 
-                # 构建updating语句
+                # 构建更新语句
                 set_clauses = []
                 values = []
 
@@ -436,10 +463,10 @@ class MetadataManager:
             return False
 
     def delete_metadata(self, table: str, id: str) -> bool:
-        """deletingmetadata"""
+        """删除元数据"""
         try:
             with with_system_connection() as conn:
-                # 根据table类型使用不同的主键字段
+                # 根据表类型使用不同的主键字段
                 if table == "system_database_connections":
                     id_field = "id"
                 elif table == "system_file_datasources":
@@ -467,12 +494,12 @@ class MetadataManager:
 
     def import_legacy_sql_favorites(self) -> Dict[str, Any]:
         """
-        从 JSON file导入旧的 SQL 收藏data到 DuckDB table。
+        从 JSON 文件导入旧的 SQL 收藏数据到 DuckDB 表。
         这是一个手动触发的迁移操作。
         """
         from dateutil import parser
 
-        # 确定configurationfilepath（CONFIG_DIR env 优先，否则 per-user 目录；冻结安全）
+        # 确定配置文件路径（CONFIG_DIR env 优先，否则 per-user 目录；冻结安全）
         from core.common.paths import get_config_dir
 
         config_dir = get_config_dir()
@@ -506,10 +533,10 @@ class MetadataManager:
                             if item.get("updated_at"):
                                 updated_at = parser.parse(item["updated_at"])
                         except Exception:
-                            # ignore解析error，使用默认值（由database决定，或者是 None）
+                            # 忽略解析错误，使用默认值（由数据库决定，或者是 None）
                             pass
 
-                        # 准备data，注意处理 JSON 类型的 tags
+                        # 准备数据，注意处理 JSON 类型的 tags
                         item_data = {
                             "id": item.get("id"),
                             "name": item.get("name"),
@@ -528,7 +555,7 @@ class MetadataManager:
                             skipped_count += 1
                             continue
 
-                        # executing插入 (INSERT OR IGNORE)
+                        # 执行插入 (INSERT OR IGNORE)
                         # DuckDB 的 INSERT OR IGNORE 语法
                         columns = list(item_data.keys())
                         placeholders = ", ".join(["?" for _ in columns])
@@ -540,8 +567,8 @@ class MetadataManager:
                             values
                         )
                         
-                        # 检查是否插入successfully（如果 ID already exists则不会插入）
-                        # 简单的做法是认为每次executing都是 attempted import
+                        # 检查是否插入成功（如果 ID 已存在则不会插入）
+                        # 简单的做法是认为每次执行都是一次导入尝试
                         imported_count += 1
                     
                     conn.execute("COMMIT")
@@ -549,7 +576,7 @@ class MetadataManager:
                     conn.execute("ROLLBACK")
                     raise e
             
-            # 迁移successfully，重命名file
+            # 迁移成功，重命名文件
             try:
                 if migrated_file.exists():
                     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -584,71 +611,97 @@ class MetadataManager:
 
     # 便捷方法（内部调用统一接口）
     def save_database_connection(self, connection: dict) -> bool:
-        """savingdatabaseconnection"""
+        """保存数据库连接"""
         return self.save_metadata("system_database_connections", connection["id"], connection)
 
     def get_database_connection(self, conn_id: str) -> Optional[dict]:
-        """gettingdatabaseconnection"""
+        """获取数据库连接"""
         return self.get_metadata("system_database_connections", conn_id)
 
     def list_database_connections(self, filters: dict = None) -> List[dict]:
-        """column出databaseconnection"""
+        """列出数据库连接"""
         return self.list_metadata("system_database_connections", filters)
 
     def update_database_connection(self, conn_id: str, updates: dict) -> bool:
-        """updatingdatabaseconnection"""
+        """更新数据库连接"""
         return self.update_metadata("system_database_connections", conn_id, updates)
 
     def delete_database_connection(self, conn_id: str) -> bool:
-        """deletingdatabaseconnection"""
+        """删除数据库连接"""
         return self.delete_metadata("system_database_connections", conn_id)
 
     def save_file_datasource(self, datasource: dict) -> bool:
-        """savingfiledata源metadata"""
+        """保存文件数据源元数据"""
         return self.save_metadata("system_file_datasources", datasource["source_id"], datasource)
 
     def get_file_datasource(self, source_id: str) -> Optional[dict]:
-        """gettingfiledata源metadata"""
+        """获取文件数据源元数据"""
         return self.get_metadata("system_file_datasources", source_id)
 
     def list_file_datasources(self, filters: dict = None) -> List[dict]:
-        """column出filedata源"""
+        """列出文件数据源"""
         return self.list_metadata("system_file_datasources", filters)
 
     def update_file_datasource(self, source_id: str, updates: dict) -> bool:
-        """updatingfiledata源metadata"""
+        """更新文件数据源元数据"""
         return self.update_metadata("system_file_datasources", source_id, updates)
 
     def delete_file_datasource(self, source_id: str) -> bool:
-        """deletingfiledata源metadata"""
+        """删除文件数据源元数据"""
         return self.delete_metadata("system_file_datasources", source_id)
 
     def save_sql_favorite(self, favorite: dict) -> bool:
-        """saving SQL 收藏"""
-        # 确保 tags 是 JSON columntable
+        """保存 SQL 收藏"""
+        # 确保 tags 是 JSON 列表
         if "tags" in favorite and not isinstance(favorite["tags"], str):
-             # 只有当它是columntable/对象时才序column化，如果已经是字符串则不处理
+             # 只有当它是列表/对象时才序列化，如果已经是字符串则不处理
              # 但为了统一，这里最好确保它是 JSON 字符串或者 metadata manager 能处理
              # update/save_metadata 底层会处理 list/dict -> json.dumps
              pass
         return self.save_metadata("system_sql_favorites", favorite["id"], favorite)
 
     def get_sql_favorite(self, fav_id: str) -> Optional[dict]:
-        """getting SQL 收藏"""
+        """获取 SQL 收藏"""
         return self.get_metadata("system_sql_favorites", fav_id)
 
     def list_sql_favorites(self, filters: dict = None) -> List[dict]:
-        """column出 SQL 收藏"""
+        """列出 SQL 收藏"""
         return self.list_metadata("system_sql_favorites", filters)
 
     def update_sql_favorite(self, fav_id: str, updates: dict) -> bool:
-        """updating SQL 收藏"""
+        """更新 SQL 收藏"""
         return self.update_metadata("system_sql_favorites", fav_id, updates)
 
+    def increment_sql_favorite_usage(self, fav_id: str) -> Optional[int]:
+        """原子自增使用次数，返回自增后的值；收藏不存在返回 None。
+
+        单条 UPDATE ... usage_count = usage_count + 1 ... RETURNING 完成，
+        避免"先 get 再 +1 再 update"在并发下丢失自增（回归 #22）。只改
+        usage_count，与旧的 update_sql_favorite({"usage_count": ...}) 语义
+        一致（不触碰 updated_at——"使用"不算编辑）。
+        """
+        try:
+            with with_system_connection() as conn:
+                rows = conn.execute(
+                    "UPDATE system_sql_favorites "
+                    "SET usage_count = usage_count + 1 "
+                    "WHERE id = ? "
+                    "RETURNING usage_count",
+                    [fav_id],
+                ).fetchall()
+            if not rows:
+                return None
+            # 失效该行缓存，避免后续 get 命中旧计数
+            self._cache.pop(f"system_sql_favorites:{fav_id}", None)
+            return int(rows[0][0])
+        except Exception as e:
+            logger.error("Failed to increment sql favorite usage %s: %s", fav_id, e)
+            raise
+
     def delete_sql_favorite(self, fav_id: str) -> bool:
-        """deleting SQL 收藏"""
+        """删除 SQL 收藏"""
         return self.delete_metadata("system_sql_favorites", fav_id)
 
 
-# 全局Metadata manager实例
+# 全局元数据管理器实例
 metadata_manager = MetadataManager()

@@ -5,7 +5,11 @@ from __future__ import annotations
 import logging
 import re
 
+import sqlglot
+from sqlglot import exp
+
 logger = logging.getLogger(__name__)
+_sqlglot_logger = logging.getLogger("sqlglot")
 
 
 def remove_auto_added_limit(sql: str) -> str:
@@ -45,38 +49,45 @@ def get_join_type_sql(join_type: str) -> str:
     return "INNER JOIN"
 
 
+# 解析后顶层落在这些 AST 类型上,才认为"能在末尾追加 LIMIT"。
+# 白名单而非黑名单:sqlglot 认不出的 DuckDB 专有语句(RESET/LOAD/EXPLAIN/CALL/
+# VACUUM 等)会退化成 Command 节点或直接解析失败,天然落在"未列出"里——不必像
+# 过去那样每出现一种新语句就先在生产环境炸一次语法错误才能补上黑名单条目。
+_LIMIT_ACCEPTING_TYPES = (
+    exp.Select, exp.Union, exp.Except, exp.Intersect, exp.Values, exp.Pivot, exp.Subquery,
+)
+# sqlglot 不认识 DuckDB `TABLE t` 简写(会误解析成对字面量 "TABLE" 取别名的表达式),
+# 只能单独识别这一种写法,避免相对旧黑名单实现的行为回归
+_BARE_TABLE_RE = re.compile(r"^TABLE\s+\S+\s*;?\s*$", re.IGNORECASE)
+
+
+def statement_accepts_limit(query: str) -> bool:
+    """该语句能否在末尾追加 LIMIT(SELECT/WITH/VALUES/PIVOT/UNPIVOT/集合运算等可以;
+    DDL/扩展管理/PRAGMA 等不行)。
+
+    用 AST 分类判定,未识别的语句一律判定为"不接受"——宁可不补 LIMIT,也不对
+    看不懂的语句盲目追加可能引发语法错误的后缀。
+    """
+    stripped = query.strip()
+    if _BARE_TABLE_RE.match(stripped):
+        return True
+    prev_level = _sqlglot_logger.level
+    _sqlglot_logger.setLevel(logging.ERROR)  # 抑制"退化成 Command"告警刷屏,这里只取分类结果
+    try:
+        tree = sqlglot.parse_one(stripped, read="duckdb")
+    except Exception:
+        return False
+    finally:
+        _sqlglot_logger.setLevel(prev_level)
+    return isinstance(tree, _LIMIT_ACCEPTING_TYPES)
+
+
 def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
     """Append LIMIT when missing (skip DDL/DESCRIBE/SHOW etc.)."""
     query_stripped = query.strip()
-    query_upper = query_stripped.upper()
 
-    no_limit_patterns = [
-        r"^DESCRIBE\b",
-        r"^DESC\b",
-        r"^SHOW\b",
-        r"^EXPLAIN\b",
-        r"^PRAGMA\b",
-        r"^SET\b",
-        r"^CREATE\b",
-        r"^ALTER\b",
-        r"^DROP\b",
-        r"^TRUNCATE\b",
-        r"^INSERT\b",
-        r"^UPDATE\b",
-        r"^DELETE\b",
-        r"^GRANT\b",
-        r"^REVOKE\b",
-        r"^CALL\b",
-        r"^EXECUTE\b",
-        r"^USE\b",
-        r"^BEGIN\b",
-        r"^COMMIT\b",
-        r"^ROLLBACK\b",
-    ]
-
-    for pattern in no_limit_patterns:
-        if re.match(pattern, query_upper):
-            return query
+    if not statement_accepts_limit(query_stripped):
+        return query
 
     if not re.search(r"\sLIMIT\s+\d+\s*($|;)", query, re.IGNORECASE):
         if query_stripped.endswith(";"):

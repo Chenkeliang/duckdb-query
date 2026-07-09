@@ -66,12 +66,12 @@ setup_config() {
     chmod 777 data data/duckdb data/uploads temp_files exports logs 2>/dev/null || true
   fi
 
-  if [[ ! -f "config/app-config.json" ]]; then
-    if [[ -f "config/app-config.example.json" ]]; then
-      cp config/app-config.example.json config/app-config.json
-      print_success "已创建 config/app-config.json"
+  if [[ ! -f "config/app-config.json" && ! -f "config/app-config.jsonc" ]]; then
+    if [[ -f "config/app-config.example.jsonc" ]]; then
+      cp config/app-config.example.jsonc config/app-config.jsonc
+      print_success "已创建 config/app-config.jsonc"
     else
-      print_warning "未找到 config/app-config.example.json，将使用内置默认项"
+      print_warning "未找到 config/app-config.example.jsonc，将使用内置默认项"
       cat > config/app-config.json <<'EOF'
 {
   "debug": false,

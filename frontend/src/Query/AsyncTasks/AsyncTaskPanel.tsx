@@ -60,6 +60,7 @@ export interface AsyncTask {
     custom_table_name?: string;
     display_name?: string;
   };
+  metadata?: { is_federated?: boolean };
 }
 
 export interface AsyncTaskPanelProps {
@@ -358,8 +359,8 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
         </TooltipProvider>
       </div>
 
-      {/* 任务列表 */}
-      <ScrollArea className="flex-1">
+      {/* 任务列表 —— orientation="both":宽表(带操作列)需要横向滚动才能够到右侧按钮 */}
+      <ScrollArea className="flex-1" orientation="both">
         {isLoading && tasks.length === 0 ? (
           <div className="space-y-2.5 p-3">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -376,7 +377,7 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
         ) : tasks.length === 0 ? (
           <EmptyState icon={Clock} title={t('async.empty', '暂无异步任务')} />
         ) : (
-          <table className="dq-grid-table">
+          <table className="dq-grid-table min-w-max">
             <thead>
               <tr>
                 <th className="w-16">{t('async.type', '类型')}</th>
@@ -390,7 +391,8 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
             </thead>
             <tbody>
               {pagedTasks.map((task) => {
-                const fed = isFederatedSQL(task.sql);
+                // 后端 metadata 为准(显式 false 不可被嗅探覆盖);SQL 注释嗅探仅兜底无 metadata 的老任务
+                const fed = task.metadata?.is_federated ?? isFederatedSQL(task.sql);
                 const rowCount = getTaskRowCount(task);
                 const displayName = getTaskDisplayName(task);
                 return (

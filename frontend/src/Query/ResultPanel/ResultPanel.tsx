@@ -8,15 +8,17 @@ import { Database, AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import {
   exportQueryResults,
   getQueryExportDownloadUrl,
-} from '@/api/queryExportApi';
-import { showErrorToast, cleanErrorMessage } from '@/utils/toastHelpers';
+} from '@/api';
+import { showErrorToast, cleanErrorMessage, showDownloadStartedToast } from '@/utils/toastHelpers';
 import { parseDuckDbErrorSuggestion } from '@/utils/sqlErrorHelper';
 import { openExternal } from '@/desktop/openExternal';
 import { Button } from '@/components/ui/button';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { useAiEnabled } from '@/hooks/useAiEnabled';
-import { errorFix, type ErrorFixResult } from '@/api/aiApi';
+import { errorFix, type ErrorFixResult } from '@/api';
+import { toAttachDatabasesPayload } from '@/api/queryApi';
 import { parseSQLTableReferences } from '@/utils/sqlUtils';
+import { EngineCompatSelfHealBanner } from '@/Query/components/EngineCompatSelfHealBanner';
 import { IS_DEMO } from '@/demo/isDemo';
 
 import { DataGridWrapper } from './DataGridWrapper';
@@ -48,6 +50,11 @@ export interface ResultPanelProps {
   onRefresh?: () => void;
   /** 仅刷新指定结果 Tab（多 Tab 模式） */
   onRefreshTab?: (tabId: string) => void;
+  /** 最近一次执行失败的报错文本(工作区级,两种结果模式都有):自愈横幅据此判断是否渲染。
+   *  多 Tab 模式下失败的新查询不产生结果 Tab,面板 error 恒为空,必须走这条独立通道 */
+  selfHealErrorMessage?: string | null;
+  /** 自愈横幅"重跑":用失败时的 SQL/source 原样重执行 */
+  onSelfHealRerun?: () => void;
   className?: string;
   emptyMessage?: string;
   showToolbar?: boolean;
@@ -69,6 +76,8 @@ export interface ResultPanelProps {
   singleResultSlotLabel?: string;
   /** 联邦导出时 ATTACH 配置 */
   attachDatabases?: { alias: string; connectionId: string }[];
+  /** 图表下钻:收到明细 SQL,由调用方负责填入编辑器(不自动执行) */
+  onDrilldown?: (sql: string) => void;
 }
 
 const emptyStats = {
@@ -89,6 +98,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   previewLimitApplied,
   onRefresh,
   onRefreshTab,
+  selfHealErrorMessage = null,
+  onSelfHealRerun,
   className = '',
   emptyMessage,
   showToolbar = true,
@@ -107,6 +118,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   onTogglePinResultTab,
   singleResultSlotLabel,
   attachDatabases,
+  onDrilldown,
 }) => {
   const actualExecTime = executionTime ?? execTime;
   const { t, i18n } = useTranslation('common');
@@ -186,6 +198,12 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   // 图表数据源（多页用激活 tab,单槽用外层),供单/多页两条渲染路径共用
   const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
   const chartRows = (useMultiTabGrids ? activeTab?.result.data : data) ?? [];
+
+  // 新一次执行产生新结果时,视图切回默认的「表格」(如从图表下钻执行明细 SQL 后不该停在图表页)
+  const latestResultRows = useMultiTabGrids ? activeTab?.result.data : data;
+  React.useEffect(() => {
+    setResultView('table');
+  }, [latestResultRows]);
   const chartPreviewLimit = useMultiTabGrids
     ? activeTab?.result.previewLimitApplied
     : previewLimitApplied;
@@ -200,6 +218,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         source={chartSource}
         aiEnabled={aiEnabled}
         locale={aiLocale}
+        onDrilldown={onDrilldown}
       />
     </div>
   );
@@ -240,11 +259,6 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       return;
     }
 
-    if (effectiveSource.databaseType !== 'mysql') {
-      showErrorToast(t, 'INVALID_REQUEST', t('query.import.mysqlOnly', '目前仅支持从 MySQL 导入到 DuckDB'));
-      return;
-    }
-
     setImportDialogOpen(true);
   }, [effectiveSQL, effectiveSource, t]);
 
@@ -271,13 +285,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       const result = await exportQueryResults({
         sql,
         format: 'parquet',
-        attach_databases: attachDatabases?.map((db) => ({
-          alias: db.alias,
-          connection_id: db.connectionId,
-        })),
+        attach_databases: toAttachDatabasesPayload(attachDatabases),
       });
       const url = getQueryExportDownloadUrl(result.download_url);
       openExternal(url);
+      showDownloadStartedToast(t);
     } catch (err) {
       showErrorToast(
         t,
@@ -349,15 +361,25 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const renderHeaderBar = (toolbar: React.ReactNode) => {
     if (!headerLeft && !toolbar) return null;
     return (
-      <div className="flex items-stretch border-b border-border bg-muted/30 min-h-[40px]">
-        <div className="flex min-w-0 flex-1 items-center overflow-x-auto">{headerLeft}</div>
-        {toolbar && (
-          <div className="flex shrink-0 items-center pr-2">
-            <div className="mx-2 h-4 w-px bg-border" />
-            {toolbar}
-          </div>
+      <>
+        <div className="flex items-stretch border-b border-border bg-muted/30 min-h-[40px]">
+          <div className="flex min-w-0 flex-1 items-center overflow-x-auto">{headerLeft}</div>
+          {toolbar && (
+            <div className="flex shrink-0 items-center pr-2">
+              <div className="mx-2 h-4 w-px bg-border" />
+              {toolbar}
+            </div>
+          )}
+        </div>
+        {/* 自愈横幅挂在头部栏下方:与结果视图分支无关,多 Tab 模式失败(无错误视图)也可见 */}
+        {selfHealErrorMessage && onSelfHealRerun && (
+          <EngineCompatSelfHealBanner
+            errorMessage={selfHealErrorMessage}
+            onRerun={onSelfHealRerun}
+            className="mx-3 mt-2"
+          />
         )}
-      </div>
+      </>
     );
   };
 

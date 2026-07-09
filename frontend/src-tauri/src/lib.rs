@@ -2,10 +2,12 @@
 // process, reads the OS-assigned loopback port it prints on stdout, exposes that
 // to the webview, and kills the backend when the app exits.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 
@@ -26,13 +28,45 @@ fn get_api_base(port: tauri::State<ApiPort>) -> String {
     }
 }
 
+/// 不可见/双向控制类 Unicode 格式字符(Cf 及相关)：既不被 is_control() 也不被
+/// is_whitespace() 识别，却能让 URL 的显示形态与实际打开的地址不一致(伪装/混淆)。
+/// 单独列黑名单而不是"禁止一切非 ASCII"——本产品面向中文用户，AI 对话里回链
+/// `https://www.baidu.com/s?wd=你好` 这类带中文的合法 URL 会以未编码形态直接
+/// 走到 open_external(见 main.tsx 的锚点拦截)，一刀切禁非 ASCII 会把它们静默丢弃。
+fn is_dangerous_format_char(c: char) -> bool {
+    matches!(c,
+        '\u{200B}'..='\u{200F}'   // 零宽空格/连接符 + LRM/RLM
+        | '\u{202A}'..='\u{202E}' // 双向嵌入/覆盖
+        | '\u{2060}'..='\u{2064}' // word joiner + 不可见运算符
+        | '\u{2066}'..='\u{2069}' // 双向隔离
+        | '\u{FEFF}'              // BOM / 零宽不折行空格
+        | '\u{00AD}'              // 软连字符
+        | '\u{034F}'              // 组合用字位连接符
+    )
+}
+
+/// 校验 open_external 收到的 URL 是否可安全交给下游进程打开。
+///
+/// 只放行 http(s)，并拒绝含控制字符/空白的 URL：合法 URL 里的空白都会被百分号
+/// 编码，出现裸空白/换行往往是想利用 explorer.exe(Windows) 的参数解析怪癖塞入
+/// 额外参数(#20)。URL 是作为单个 spawn 参数传入(非 shell)，本无 shell 注入；这
+/// 是对下游进程的额外防御。长度上限做基本 sanity。此外拒绝不可见/双向格式字符
+/// (is_dangerous_format_char)——它们既非控制符也非空白，可被用来伪装打开的地址。
+fn is_safe_external_url(url: &str) -> bool {
+    (url.starts_with("http://") || url.starts_with("https://"))
+        && url.len() <= 2048
+        && !url
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || is_dangerous_format_char(c))
+}
+
 /// Open a URL in the user's default browser. The Tauri webview blocks
 /// window.open() to external origins, so the frontend routes external links
 /// (and localhost download URLs) through this command instead.
 #[tauri::command]
 fn open_external(url: String) {
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return; // only http(s); ignore anything else
+    if !is_safe_external_url(&url) {
+        return;
     }
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg(&url).spawn();
@@ -146,11 +180,61 @@ fn restart_backend(app: AppHandle) {
     spawn_backend(&app);
 }
 
+/// Best-effort local HTTP POST to /api/system/shutdown over a raw TCP socket. Avoids pulling
+/// in reqwest for a single fire-and-forget call. Returns true if the request was written to
+/// the socket (not necessarily that a 200 came back) — either way the caller then polls the
+/// child for exit and falls back to a hard kill if it doesn't stop in time.
+fn post_shutdown_request(port: u16) -> bool {
+    let addr = format!("127.0.0.1:{port}");
+    let stream = match TcpStream::connect(&addr) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
+    let mut stream = stream;
+    let request = format!(
+        "POST /api/system/shutdown HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+    // Drain (part of) the response so the server doesn't see a reset on some platforms;
+    // we don't need to parse it — the try_wait poll below is the real signal.
+    let mut buf = [0u8; 512];
+    let _ = stream.read(&mut buf);
+    true
+}
+
+/// Kill the backend, preferring a graceful shutdown over SIGKILL: SIGKILL gives the DuckDB
+/// connection pool no chance to close its connections, which leaves the WAL dirty — replaying
+/// a dirty WAL can throw on next launch and trigger WAL quarantine, losing everything written
+/// since the last checkpoint. So: ask nicely via HTTP first, give it up to 5s to exit on its
+/// own, and only hard-kill if that fails (backend didn't start, request failed, or it hung).
 fn kill_backend(app: &AppHandle) {
+    let port = *app.state::<ApiPort>().0.lock().unwrap();
     if let Some(mut child) = app.state::<Backend>().0.lock().unwrap().take() {
-        let _ = child.kill();
+        let mut exited_gracefully = false;
+
+        if port != 0 && post_shutdown_request(port) {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while Instant::now() < deadline {
+                match child.try_wait() {
+                    Ok(Some(_)) => {
+                        exited_gracefully = true;
+                        break;
+                    }
+                    Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+                    Err(_) => break,
+                }
+            }
+        }
+
+        if !exited_gracefully {
+            let _ = child.kill();
+        }
         let _ = child.wait();
-        eprintln!("[duckquery] backend killed");
+        eprintln!("[duckquery] backend killed (graceful={exited_gracefully})");
     }
 }
 
@@ -202,4 +286,57 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_safe_external_url;
+
+    #[test]
+    fn accepts_plain_http_and_https() {
+        assert!(is_safe_external_url("https://example.com/a?b=1#c"));
+        assert!(is_safe_external_url("http://127.0.0.1:48001/download/x.csv"));
+    }
+
+    #[test]
+    fn rejects_non_http_schemes() {
+        assert!(!is_safe_external_url("file:///etc/passwd"));
+        assert!(!is_safe_external_url("javascript:alert(1)"));
+        assert!(!is_safe_external_url("ftp://x.com/a"));
+        assert!(!is_safe_external_url(""));
+    }
+
+    #[test]
+    fn rejects_whitespace_and_control_chars() {
+        // explorer.exe 参数注入面：空格/制表/换行/回车
+        assert!(!is_safe_external_url("https://x.com/a b"));
+        assert!(!is_safe_external_url("https://x.com/ --flag"));
+        assert!(!is_safe_external_url("https://x.com/a\tb"));
+        assert!(!is_safe_external_url("https://x.com/a\nb"));
+        assert!(!is_safe_external_url("https://x.com/a\r\nb"));
+        assert!(!is_safe_external_url("https://x.com/a\u{0000}b"));
+    }
+
+    #[test]
+    fn rejects_overlong() {
+        let long = format!("https://x.com/{}", "a".repeat(3000));
+        assert!(!is_safe_external_url(&long));
+    }
+
+    #[test]
+    fn rejects_unicode_format_chars() {
+        // Cf 格式字符：既非 is_control 也非 is_whitespace,靠 is_dangerous_format_char 拦下
+        assert!(!is_safe_external_url("https://x.com/\u{202E}evil")); // 双向覆盖(RLO)
+        assert!(!is_safe_external_url("https://x.com/\u{200B}evil")); // 零宽空格(ZWSP)
+        assert!(!is_safe_external_url("https://x.com/\u{2069}evil")); // 双向隔离结束
+        assert!(!is_safe_external_url("https://x.com/\u{FEFF}evil")); // BOM
+        assert!(!is_safe_external_url("https://x.com/\u{00AD}evil")); // 软连字符
+    }
+
+    #[test]
+    fn allows_legitimate_non_ascii_urls() {
+        // 中文用户场景:AI 回链里未编码的中文 URL 必须放行(不能一刀切禁非 ASCII)
+        assert!(is_safe_external_url("https://www.baidu.com/s?wd=你好"));
+        assert!(is_safe_external_url("https://zh.wikipedia.org/wiki/中文"));
+    }
 }

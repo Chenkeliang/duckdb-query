@@ -55,6 +55,7 @@ from core.common.exceptions import (
 from fastapi import APIRouter, Body, File, Form, Header, UploadFile
 from models.query_models import FederatedQueryRequest, FederatedQueryResponse
 from pydantic import BaseModel
+from routers.query_sql_utils import statement_accepts_limit
 from utils.response_helpers import (
     MessageCode,
     create_list_response,
@@ -154,7 +155,7 @@ class DuckDBQueryResponse(BaseModel):
 
 
 @router.get("/api/duckdb/tables", tags=["DuckDB Query"])
-async def list_duckdb_tables_summary():
+def list_duckdb_tables_summary():
     """获取DuckDB中所有可用表的概要信息"""
     try:
         with with_duckdb_connection() as con:
@@ -254,7 +255,7 @@ def _ensure_table_exists(con, table_name: str) -> None:
 
 
 @router.get("/api/duckdb/tables/detail/{table_name}", tags=["DuckDB Query"])
-async def get_duckdb_table_detail(table_name: str):
+def get_duckdb_table_detail(table_name: str):
     """获取指定表的列级详细信息"""
     try:
         with with_duckdb_connection() as con:
@@ -281,13 +282,13 @@ async def get_duckdb_table_detail(table_name: str):
 
 
 @router.get("/api/duckdb/tables/{table_name}", tags=["DuckDB Query"])
-async def get_duckdb_table(table_name: str):
+def get_duckdb_table(table_name: str):
     """获取指定表的详细信息（别名端点）"""
-    return await get_duckdb_table_detail(table_name)
+    return get_duckdb_table_detail(table_name)
 
 
 @router.post("/api/duckdb/table/{table_name}/refresh", tags=["DuckDB Query"])
-async def refresh_duckdb_table_metadata(table_name: str):
+def refresh_duckdb_table_metadata(table_name: str):
     """刷新指定表的元数据缓存并返回最新详细信息"""
     try:
         with with_duckdb_connection() as con:
@@ -313,7 +314,7 @@ async def refresh_duckdb_table_metadata(table_name: str):
         )
 
 
-async def execute_duckdb_query(
+def execute_duckdb_query(
     request: DuckDBQueryRequest, request_id: Optional[str] = None
 ):
     """
@@ -388,9 +389,9 @@ async def execute_duckdb_query(
                         f"{keyword} operation is not allowed. Only query operations are supported."
                     )
 
-        # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式）
+        # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式；INSTALL/LOAD/ATTACH 等语句不接 LIMIT）
         limit = None
-        if request.is_preview and "LIMIT" not in sql_upper_clean:
+        if request.is_preview and "LIMIT" not in sql_upper_clean and statement_accepts_limit(sql_query):
             from core.common.config_manager import config_manager
 
             limit = config_manager.get_app_config().max_query_rows
@@ -547,7 +548,7 @@ async def execute_duckdb_query(
 
 
 @router.post("/api/duckdb/execute", tags=["DuckDB Query"])
-async def execute_duckdb_sql(
+def execute_duckdb_sql(
     request: DuckDBQueryRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
@@ -556,11 +557,11 @@ async def execute_duckdb_sql(
     这是 /api/duckdb/query 的别名端点，保持API兼容性
     支持通过 X-Request-ID 头实现查询取消
     """
-    return await execute_duckdb_query(request, x_request_id)
+    return execute_duckdb_query(request, x_request_id)
 
 
 @router.delete("/api/duckdb/tables/{table_name}", tags=["DuckDB Query"])
-async def delete_duckdb_table(table_name: str):
+def delete_duckdb_table(table_name: str):
     """删除指定的DuckDB表"""
     try:
         with with_duckdb_connection() as con:
@@ -604,7 +605,7 @@ async def delete_duckdb_table(table_name: str):
 
 # 新增连接池状态监控接口
 @router.get("/api/duckdb/pool/status", tags=["DuckDB Management"])
-async def get_connection_pool_status():
+def get_connection_pool_status():
     """获取连接池状态"""
     try:
         from core.database.duckdb_pool import get_connection_pool
@@ -622,7 +623,7 @@ async def get_connection_pool_status():
 
 
 @router.post("/api/duckdb/pool/reset", tags=["DuckDB Management"])
-async def reset_connection_pool():
+def reset_connection_pool():
     """重置连接池"""
     try:
         from core.database.duckdb_pool import get_connection_pool
@@ -648,7 +649,7 @@ async def reset_connection_pool():
 
 
 @router.post("/api/duckdb/migrate/created_at", tags=["DuckDB Management"])
-async def migrate_created_at_field():
+def migrate_created_at_field():
     """迁移 created_at 字段：为现有表填充创建时间"""
     try:
         from datetime import datetime
@@ -713,7 +714,7 @@ async def migrate_created_at_field():
 
 # 新增错误统计接口
 @router.get("/api/errors/statistics", tags=["System Management"])
-async def get_error_statistics():
+def get_error_statistics():
     """获取错误统计信息"""
     try:
         error_handler = get_error_handler()
@@ -733,7 +734,7 @@ async def get_error_statistics():
 
 
 @router.post("/api/errors/clear", tags=["System Management"])
-async def clear_old_errors(days: int = 30):
+def clear_old_errors(days: int = 30):
     """清理旧错误记录"""
     try:
         error_handler = get_error_handler()
@@ -754,7 +755,7 @@ async def clear_old_errors(days: int = 30):
 
 
 @router.post("/api/duckdb/federated-query", tags=["DuckDB Query"])
-async def execute_federated_query(
+def execute_federated_query(
     request: FederatedQueryRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
@@ -807,7 +808,7 @@ async def execute_federated_query(
     sql_upper = sql_query.upper()
 
     limit = None
-    if request.is_preview and "LIMIT" not in sql_upper:
+    if request.is_preview and "LIMIT" not in sql_upper and statement_accepts_limit(sql_query):
         limit = config_manager.get_app_config().max_query_rows
         sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
         logger.info(f"Preview mode, applied LIMIT {limit}")

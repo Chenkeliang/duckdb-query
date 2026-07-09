@@ -623,3 +623,48 @@ describe('buildAttachDatabasesFromParsedRefs', () => {
     expect(result.attachDatabases).toHaveLength(1);
   });
 });
+
+describe('extractSqlAttachedAliases (本地 ATTACH 别名不算联邦前缀)', () => {
+  it('extracts alias from ATTACH ... AS', async () => {
+    const { extractSqlAttachedAliases } = await import('../sqlUtils');
+    const sql = "ATTACH '/tmp/local-cache.db' AS alarm (TYPE sqlite);\nSELECT * FROM alarm.alerts LIMIT 100;";
+    const aliases = extractSqlAttachedAliases(sql);
+    expect(aliases.has('alarm')).toBe(true);
+  });
+
+  it('includes built-in local catalog names', async () => {
+    const { extractSqlAttachedAliases } = await import('../sqlUtils');
+    const aliases = extractSqlAttachedAliases('SELECT 1');
+    for (const n of ['main', 'temp', 'system', 'memory', 'main_db']) {
+      expect(aliases.has(n)).toBe(true);
+    }
+  });
+
+  it('handles quoted alias and case-insensitivity', async () => {
+    const { extractSqlAttachedAliases } = await import('../sqlUtils');
+    const aliases = extractSqlAttachedAliases(`attach 'x.db' As "MyDB" (TYPE sqlite)`);
+    expect(aliases.has('mydb')).toBe(true);
+  });
+
+  it('locally attached prefix does not become unrecognized', async () => {
+    const { parseSQLTableReferences, buildAttachDatabasesFromParsedRefs, extractSqlAttachedAliases } =
+      await import('../sqlUtils');
+    const sql = "ATTACH '/tmp/a.db' AS alarm (TYPE sqlite); SELECT * FROM alarm.alerts";
+    const refs = parseSQLTableReferences(sql);
+    const local = extractSqlAttachedAliases(sql);
+    const externalRefs = refs.filter((r) => !r.prefix || !local.has(r.prefix.toLowerCase()));
+    const result = buildAttachDatabasesFromParsedRefs(externalRefs, []);
+    expect(result.unrecognizedPrefixes).toEqual([]);
+    expect(result.attachDatabases).toEqual([]);
+  });
+});
+
+describe('extractSqlAttachedAliases with IF NOT EXISTS', () => {
+  it('matches ATTACH IF NOT EXISTS ... AS alias', async () => {
+    const { extractSqlAttachedAliases } = await import('../sqlUtils');
+    const aliases = extractSqlAttachedAliases(
+      "ATTACH IF NOT EXISTS '/tmp/a.db' AS alarm (TYPE sqlite); SELECT * FROM alarm.alerts"
+    );
+    expect(aliases.has('alarm')).toBe(true);
+  });
+});

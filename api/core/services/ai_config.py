@@ -61,10 +61,24 @@ def get_provider(cfg: Dict[str, Any], provider_id: Optional[str]) -> Optional[Di
 
 
 def resolve_feature(cfg: Dict[str, Any], feature: str) -> Dict[str, Any]:
-    """解析某功能实际用的 provider(对象) 与 model；功能未指定则回落默认。"""
+    """解析某功能实际用的 provider(对象) 与 model。
+
+    回落顺序:feature 指定 → default_provider → 第一个已启用且有模型的供应商
+    (用户只配了一个供应商但没点"设为默认"时,AI 功能应当直接可用)。
+    与前端 useAiStatus.isFeatureConfigured 保持镜像。
+    """
     feat = cfg.get("features", {}).get(feature, {}) or {}
     provider_id = feat.get("provider") or cfg.get("default_provider")
     provider = get_provider(cfg, provider_id)
+    if provider is None or not provider.get("enabled", True):  # 缺省视为启用(兼容旧配置)
+        provider = next(
+            (
+                p
+                for p in cfg.get("providers", [])
+                if p.get("enabled", True) and p.get("models")
+            ),
+            provider,  # 无可回落对象时保留原解析结果(可能为 None)
+        )
     model = feat.get("model")
     if not model and provider:
         models = provider.get("models") or []

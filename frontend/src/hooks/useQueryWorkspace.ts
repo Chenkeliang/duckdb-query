@@ -54,6 +54,10 @@ export interface UseQueryWorkspaceReturn {
   /** 新查询执行中（多 Tab 模式下不清空当前表格，仅用于工具栏 loading） */
   isResultLoading: boolean;
   lastQuery: LastQuery | null;
+  /** 最近一次执行失败(两种结果模式都记录):供自愈横幅等"针对失败的操作"使用,成功后清空 */
+  lastFailure: { sql: string; source: TableSource; errorMessage: string } | null;
+  /** 用失败时的 SQL/source 原样重跑 */
+  retryLastFailure: () => Promise<void>;
   retainQueryResults: boolean;
   resultTabs: ResultTabEntry[];
   activeResultTabId: string | null;
@@ -115,6 +119,15 @@ const emptyResult: QueryResult = {
   error: null,
 };
 
+// 结果"槽位"的稳定 key：多 Tab 保留模式下每个刷新的 Tab 是一个独立槽位
+// (`tab:${tabId}`)，其余（新查询 / 单结果模式）共用单结果槽 SINGLE_SLOT_KEY。
+// 请求的时效性必须按槽位判断，而不是全局最新——否则 Tab A 的慢查询在飞时刷新
+// Tab B，会把全局 requestId 覆盖成 B 的，A 的响应回来因对不上被丢弃、loading
+// 永不清除（回归 #10）。
+const SINGLE_SLOT_KEY = '__single__';
+const requestSlotKey = (options?: { refresh?: boolean; tabId?: string }): string =>
+  options?.refresh && options.tabId ? `tab:${options.tabId}` : SINGLE_SLOT_KEY;
+
 export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   const { t } = useTranslation('common');
   const retainQueryResults = loadQueryResultSettings().retainQueryResults;
@@ -135,14 +148,23 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   const [singleResult, setSingleResult] = useState<QueryResult | null>(null);
   const [singleLastQuery, setSingleLastQuery] = useState<LastQuery | null>(null);
+  // 最近一次失败:多 Tab 模式下失败的新查询不会生成结果 Tab(只有 toast),
+  // 必须在工作区级记录,自愈横幅才有渲染依据(单结果模式也统一走这里)
+  const [lastFailure, setLastFailure] = useState<{
+    sql: string;
+    source: TableSource;
+    errorMessage: string;
+  } | null>(null);
   const [singleResultSlotLabel, setSingleResultSlotLabel] = useState('');
 
   const [isResultLoading, setIsResultLoading] = useState(false);
 
   const [isCancelling, setIsCancelling] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
-  const currentRequestIdRef = useRef<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  // 每个结果槽位（Tab / 单结果槽）独立追踪"最新请求 id"与"中止控制器"，避免
+  // 多 Tab 并发刷新时相互覆盖（回归 #10，详见 requestSlotKey 上方注释）。
+  const latestRequestByKeyRef = useRef<Map<string, string>>(new Map());
+  const abortByKeyRef = useRef<Map<string, AbortController>>(new Map());
 
   const buildQueryResult = useCallback((
     response: {
@@ -193,7 +215,8 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     async (
       sql: string,
       source: TableSource,
-      requestId: string
+      requestId: string,
+      signal?: AbortSignal
     ): Promise<{
       data?: unknown[];
       columns?: string[] | ColumnInfo[];
@@ -221,7 +244,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
           attachDatabases,
           isPreview: false,
           requestId,
-          signal: abortControllerRef.current?.signal,
+          signal,
         });
         const execTime = Date.now() - startTime;
         return {
@@ -236,7 +259,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       const startTime = Date.now();
       const result = await executeDuckDBSQL(sql, {
         requestId,
-        signal: abortControllerRef.current?.signal,
+        signal,
       });
       const execTime = Date.now() - startTime;
       return { ...result, execTime };
@@ -331,8 +354,12 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   const beginQueryExecution = useCallback(
     (options?: { refresh?: boolean; tabId?: string }) => {
       const requestId = crypto.randomUUID();
-      currentRequestIdRef.current = requestId;
-      abortControllerRef.current = new AbortController();
+      const key = requestSlotKey(options);
+      // 同一槽位若已有在飞请求，先中止它——同一个 Tab 再次刷新取代上一次
+      abortByKeyRef.current.get(key)?.abort();
+      const controller = new AbortController();
+      abortByKeyRef.current.set(key, controller);
+      latestRequestByKeyRef.current.set(key, requestId);
       setIsCancelled(false);
 
       if (retainQueryResults && options?.refresh && options.tabId) {
@@ -358,7 +385,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         }
       }
 
-      return requestId;
+      return { requestId, key, signal: controller.signal };
     },
     [retainQueryResults]
   );
@@ -370,12 +397,15 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       options?: { refresh?: boolean; tabId?: string }
     ) => {
       const querySource: TableSource = source || { type: 'duckdb' };
-      const requestId = beginQueryExecution(options);
+      const { requestId, key, signal } = beginQueryExecution(options);
+      // 该请求所属槽位是否已被更新的请求取代（同一 Tab 又刷新了一次）——只按本
+      // 槽位判断，不看全局，这样其它 Tab 的并发请求不会误伤本请求（回归 #10）
+      const isStale = () => latestRequestByKeyRef.current.get(key) !== requestId;
 
       try {
-        const response = await runSqlQuery(sql, querySource, requestId);
+        const response = await runSqlQuery(sql, querySource, requestId, signal);
 
-        if (currentRequestIdRef.current !== requestId) {
+        if (isStale()) {
           return;
         }
 
@@ -384,8 +414,9 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         } else {
           commitSuccessfulResult(sql, querySource, response);
         }
+        setLastFailure(null);
       } catch (error) {
-        if (currentRequestIdRef.current !== requestId) {
+        if (isStale()) {
           return;
         }
 
@@ -413,7 +444,11 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
             loading: false,
             error: error as Error,
           });
+          // 失败时也记录本次查询（sql/source），否则首次查询即失败时 lastQuery 仍是
+          // 上一次成功查询（或 null），导致"重跑/AI 修复"等依赖 lastQuery 的功能取不到 SQL
+          setSingleLastQuery({ sql, source: querySource });
         }
+        setLastFailure({ sql, source: querySource, errorMessage: (error as Error).message });
 
         showErrorToast(t, undefined, t('query.error', { message: (error as Error).message }));
       }
@@ -430,6 +465,13 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   const refreshResultTab = useCallback(
     async (tabId?: string) => {
+      // 单结果槽（不保留多 Tab）没有 activeResultTabId/resultTabs 记录，靠 singleLastQuery 重跑
+      if (!retainQueryResults) {
+        if (!singleLastQuery?.sql) return;
+        await executeQuery(singleLastQuery.sql, singleLastQuery.source, { refresh: true });
+        return;
+      }
+
       const targetId = tabId ?? activeResultTabId;
       if (!targetId) return;
 
@@ -441,42 +483,96 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         tabId: targetId,
       });
     },
-    [activeResultTabId, executeQuery, resultTabs]
+    [retainQueryResults, singleLastQuery, activeResultTabId, executeQuery, resultTabs]
   );
 
   const refreshActiveResult = useCallback(async () => {
     await refreshResultTab(activeResultTabId ?? undefined);
   }, [activeResultTabId, refreshResultTab]);
 
+  const retryLastFailure = useCallback(async () => {
+    if (!lastFailure) return;
+    await executeQuery(lastFailure.sql, lastFailure.source);
+  }, [lastFailure, executeQuery]);
+
   const selectResultTab = useCallback((id: string) => {
     setActiveResultTabId(id);
   }, []);
 
-  const closeResultTabById = useCallback((id: string) => {
-    setResultTabs((prev) => {
-      const next = closeResultTab(prev, id);
-      setActiveResultTabId((current) => {
-        if (current !== id) return current;
-        return pickAdjacentActiveTabId(prev, id);
+  // 释放某个结果 Tab 的刷新槽位:中止可能在跑的 fetch,并清掉两个 Map 里的
+  // tab:${id} 记录。否则被关闭的 Tab 会永久残留一条 AbortController + requestId
+  // (Map 泄漏),且它的请求仍在后台空跑。删掉 latestRequest 记录后,该请求的结果
+  // 回来时 isStale 判定为真、被丢弃,不会复活已关闭的 Tab。abort/delete 均幂等,
+  // 供批量关闭在 updater 里逐个调用也安全(StrictMode 重复执行无副作用)。
+  const freeResultTabSlot = useCallback((id: string) => {
+    const key = `tab:${id}`;
+    abortByKeyRef.current.get(key)?.abort();
+    abortByKeyRef.current.delete(key);
+    latestRequestByKeyRef.current.delete(key);
+  }, []);
+
+  // 批量关闭:被移除(prev\next 差集)的每个 Tab 都要释放其槽位——单个关闭之外的
+  // 三条路径此前遗漏,导致与 #4 同类的泄漏。
+  const freeRemovedTabSlots = useCallback(
+    (prev: ResultTabEntry[], next: ResultTabEntry[]) => {
+      const kept = new Set(next.map((t) => t.id));
+      for (const tab of prev) {
+        if (!kept.has(tab.id)) freeResultTabSlot(tab.id);
+      }
+    },
+    [freeResultTabSlot]
+  );
+
+  const closeResultTabById = useCallback(
+    (id: string) => {
+      freeResultTabSlot(id);
+      setResultTabs((prev) => {
+        const next = closeResultTab(prev, id);
+        setActiveResultTabId((current) => {
+          if (current !== id) return current;
+          return pickAdjacentActiveTabId(prev, id);
+        });
+        return next;
       });
-      return next;
-    });
-  }, []);
+    },
+    [freeResultTabSlot]
+  );
 
-  const closeOtherResultTabsById = useCallback((id: string) => {
-    setResultTabs((prev) => closeOtherResultTabs(prev, id));
-    setActiveResultTabId(id);
-  }, []);
+  const closeOtherResultTabsById = useCallback(
+    (id: string) => {
+      setResultTabs((prev) => {
+        const next = closeOtherResultTabs(prev, id);
+        freeRemovedTabSlots(prev, next);
+        return next;
+      });
+      setActiveResultTabId(id);
+    },
+    [freeRemovedTabSlots]
+  );
 
-  const closeResultTabsToLeftOf = useCallback((id: string) => {
-    setResultTabs((prev) => closeResultTabsToLeft(prev, id));
-    setActiveResultTabId(id);
-  }, []);
+  const closeResultTabsToLeftOf = useCallback(
+    (id: string) => {
+      setResultTabs((prev) => {
+        const next = closeResultTabsToLeft(prev, id);
+        freeRemovedTabSlots(prev, next);
+        return next;
+      });
+      setActiveResultTabId(id);
+    },
+    [freeRemovedTabSlots]
+  );
 
-  const closeResultTabsToRightOf = useCallback((id: string) => {
-    setResultTabs((prev) => closeResultTabsToRight(prev, id));
-    setActiveResultTabId(id);
-  }, []);
+  const closeResultTabsToRightOf = useCallback(
+    (id: string) => {
+      setResultTabs((prev) => {
+        const next = closeResultTabsToRight(prev, id);
+        freeRemovedTabSlots(prev, next);
+        return next;
+      });
+      setActiveResultTabId(id);
+    },
+    [freeRemovedTabSlots]
+  );
 
   const toggleResultTabPinById = useCallback((id: string) => {
     setResultTabs((prev) => toggleResultTabPin(prev, id));
@@ -547,18 +643,27 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   const cancelQuery = useCallback(async () => {
     setIsCancelling(true);
 
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+    // 取消当前正在运行的查询：单结果槽，以及（保留模式下）当前激活 Tab 的槽位。
+    // 只中止这两个槽位、不动其它 Tab 的并发刷新——取消当前查询不应连累别的 Tab。
+    const keys = new Set<string>([SINGLE_SLOT_KEY]);
+    if (retainQueryResults && activeResultTabId) {
+      keys.add(`tab:${activeResultTabId}`);
     }
-
-    if (currentRequestIdRef.current) {
-      try {
-        await cancelSyncQuery(currentRequestIdRef.current);
-      } catch (e) {
-        console.warn('Cancel request failed:', e);
+    for (const key of keys) {
+      const controller = abortByKeyRef.current.get(key);
+      if (controller) {
+        controller.abort();
+        abortByKeyRef.current.delete(key);
       }
-      currentRequestIdRef.current = null;
+      const requestId = latestRequestByKeyRef.current.get(key);
+      if (requestId) {
+        try {
+          await cancelSyncQuery(requestId);
+        } catch (e) {
+          console.warn('Cancel request failed:', e);
+        }
+        latestRequestByKeyRef.current.delete(key);
+      }
     }
 
     setIsCancelled(true);
@@ -653,6 +758,8 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     handleQueryExecute,
     refreshActiveResult,
     refreshResultTab,
+    lastFailure,
+    retryLastFailure,
     selectResultTab,
     closeResultTabById,
     closeOtherResultTabsById,

@@ -7,7 +7,7 @@ vi.mock('../client', () => ({
 }));
 
 import { apiClient } from '../client';
-import { getAiSettings, saveAiSettings, testProvider, errorFix, explainSql, nlToSql } from '../aiApi';
+import { getAiSettings, saveAiSettings, testProvider, errorFix, explainSql, nlToSql, chat } from '../aiApi';
 
 describe('aiApi', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -66,5 +66,36 @@ describe('aiApi', () => {
     expect(out.sql).toBe('SELECT 1');
     expect(out.safe).toBe(true);
     expect(out.used_tables).toEqual(['orders']);
+  });
+
+  it('chat POSTs current_sql when currentSql is provided (数据助手需看到工作台当前SQL)', async () => {
+    (apiClient.post as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { data: { content: '好的' } },
+    });
+    const out = await chat(
+      [{ role: 'user', content: '在当前SQL里加上rules的关联' }],
+      { tables: ['alerts'], locale: 'zh', currentSql: 'SELECT * FROM alerts' },
+    );
+    expect(apiClient.post).toHaveBeenCalledWith('/api/ai/chat', {
+      messages: [{ role: 'user', content: '在当前SQL里加上rules的关联' }],
+      tables: ['alerts'],
+      attach_databases: [],
+      locale: 'zh',
+      current_sql: 'SELECT * FROM alerts',
+    });
+    expect(out.content).toBe('好的');
+  });
+
+  it('chat 不传 currentSql 时省略 current_sql 字段', async () => {
+    (apiClient.post as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { data: { content: '好的' } },
+    });
+    await chat([{ role: 'user', content: 'hi' }], { tables: [], locale: 'zh' });
+    expect(apiClient.post).toHaveBeenCalledWith('/api/ai/chat', {
+      messages: [{ role: 'user', content: 'hi' }],
+      tables: [],
+      attach_databases: [],
+      locale: 'zh',
+    });
   });
 });

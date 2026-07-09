@@ -103,8 +103,29 @@ class ConnectionRegistry:
                 logger.error(f"Failed to interrupt task {task_id}: {e}")
                 raise
     
+    def interrupt_all(self) -> int:
+        """中断所有在飞查询（用于优雅停机）。
+
+        逐个对已注册连接调用 interrupt()，让阻塞中的重查询尽快抛出中断，
+        使 uvicorn 能迅速 drain 在飞请求、跑完 lifespan shutdown(连接池
+        close_all + WAL checkpoint)、在桌面壳的 5s 窗口内干净退出——避免
+        重查询占着不放 → 超时 SIGKILL → 脏 WAL → 重启降级。单条 interrupt
+        失败不影响其余。返回成功中断的数量。
+        """
+        with self._lock:
+            interrupted = 0
+            for task_id, record in list(self._registry.items()):
+                try:
+                    record.connection.interrupt()
+                    interrupted += 1
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    logger.warning(f"Failed to interrupt task {task_id} on shutdown: {e}")
+            if interrupted:
+                logger.info(f"Interrupted {interrupted} in-flight query(ies) on shutdown")
+            return interrupted
+
     def cleanup_stale(
-        self, 
+        self,
         max_age_seconds: float = 1800,
         ignore_suffix: Optional[str] = None
     ) -> int:

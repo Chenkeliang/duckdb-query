@@ -1,49 +1,64 @@
-# DuckQuery 项目 AGENT 规则（v3.3）
+# DuckQuery 项目 AGENT 规则（v4.0）
 
-> **更新时间**：2026-05-18  
-> **适用范围**：全项目（前端、后端、测试、文档）  
+> **更新时间**：2026-07-09（v3.3 → v4.0：补齐桌面版 / MCP / AI / 图表四大块，消除重复，标注规范与现实的已知落差）  
+> **适用范围**：全项目（前端、后端、MCP、测试、文档）  
 > **权威性**：本文件为唯一 AGENT 约束来源。  
-> **契约真相表**：`frontend/src/api/*` 在用路径、部署入口与字段语义见 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)（与 §9 响应格式互补）。**改 API 时须先更新该表，再改后端与 `frontend/src/api/*`。**  
-> **调用链路**：入湖 / 查询 / 元数据 / 异步的全局调用图见 [`docs/ARCHITECTURE_CALL_MAP.md`](docs/ARCHITECTURE_CALL_MAP.md)；改相关逻辑前先对照该文档。
+> **契约真相表**：`frontend/src/api/*` 在用路径、部署入口与字段语义见 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)（与 §8 响应格式互补）。**改 API 时须先更新该表，再改后端与 `frontend/src/api/*`。**  
+> **调用链路**：入湖 / 查询 / 元数据 / 异步的全局调用图见 [`docs/ARCHITECTURE_CALL_MAP.md`](docs/ARCHITECTURE_CALL_MAP.md)；改相关逻辑前先对照该文档。  
+> **文档索引**：[`docs/README.md`](docs/README.md)（guide 用户手册 / specs 规格与提案 / history 过程存档）。
 
 ---
 
 ## 目录
-1. 项目架构与技术栈  
+1. 项目全貌（形态、技术栈、入口）  
 2. 目录结构与关键文件  
-2.1 前后端契约与 PR 模板  
-3. 运行与测试  
+3. 运行、测试与打包  
 4. 前端开发规范  
 5. UI / 样式规范（**禁止自定义**）  
-6. 查询结果表格（TanStack DataGrid）  
-7. 状态管理与数据获取  
-8. 后端开发规范  
-9. API 与响应规范  
+6. 查询结果区（DataGrid + 图表）  
+7. 后端开发规范  
+8. API 与响应规范  
+9. MCP Server 规范  
 10. 测试规范  
 11. 质量检查清单  
 12. 代理行为约束
 
 ---
 
-## 1. 项目架构与技术栈
+## 1. 项目全貌
+
+### 双形态
+
+| 形态 | 组成 | 入口 |
+|------|------|------|
+| **Docker / 服务器** | 前端(nginx) + 后端(uvicorn) 分离容器 | `api/main.py`；`./quick-start.sh` |
+| **桌面版（已发布 1.0.x）** | Tauri 2 壳 + PyInstaller 冻结后端 sidecar；带 GitHub Releases 自动更新 | `api/run.py`（sidecar：绑 127.0.0.1 随机端口，写 `runtime.json` 供壳与 MCP 发现）|
 
 ### 技术栈
-| 层级 | 技术 |
-|------|------|
-| 前端框架 | React 18 + Vite + TypeScript |
-| UI 组件 | shadcn/ui + Tailwind CSS |
-| 状态管理 | TanStack Query 5.x + React Hooks |
-| 表格 | TanStack Table + DataGrid（查询结果区） |
-| 后端框架 | FastAPI + Python 3.11+ |
-| 数据库 | DuckDB（本地）+ MySQL/PostgreSQL/SQLite（联邦查询） |
-| 国际化 | react-i18next |
+
+| 层级 | 技术 | 版本要点 |
+|------|------|----------|
+| 前端框架 | React 18 + Vite 7 + TypeScript 5.9 | |
+| UI 组件 | shadcn/ui + **Tailwind CSS v4** | v4 与 v3 语法有破坏性差异，写类名以 v4 为准 |
+| 状态/数据 | TanStack Query 5.x + React Hooks | |
+| 表格/图表 | TanStack Table 8（DataGrid）+ ChartView（结果区图表、点击下钻） | |
+| 桌面壳 | Tauri 2.x（`@tauri-apps/api` ^2） | `frontend/src-tauri/` |
+| 后端框架 | FastAPI + Python（CI 3.11，本地 3.13） | |
+| 数据库 | DuckDB 1.5.3（本地）+ MySQL/PostgreSQL/SQLite/DuckDB 文件（联邦 ATTACH） | |
+| AI | OpenAI 兼容 LLM 接入（问数 / 报错医生 / SQL 解释 / 图表建议 / 对话） | `api/routers/ai.py`，密钥 Fernet 加密 |
+| MCP | 独立子包 `mcp/duckquery_mcp`（Python ≥3.10） | 见 §9 |
+| 国际化 | react-i18next（zh / en 全量） | |
+| 质量 | 自定义 pylint 插件（W9020-9023）+ 自定义 eslint 插件（见 §5 落差标注） | `lint-rules/` |
 
 ### 入口文件
+
 | 入口 | 路径 | 说明 |
 |------|------|------|
 | 前端主入口 | `frontend/src/main.tsx` | React 应用入口 |
 | 查询工作台 | `frontend/src/QueryWorkbenchPage.tsx` | 查询主页面 |
-| 后端入口 | `api/main.py` | FastAPI 应用入口 |
+| 后端（开发/服务器） | `api/main.py` | FastAPI 应用入口 |
+| 后端（桌面 sidecar） | `api/run.py` | PyInstaller 冻结入口：env 注入可写目录、随机端口、首行打印端口 |
+| 桌面壳 | `frontend/src-tauri/` | `tauri.conf.json`、`Cargo.toml`、capabilities |
 
 ---
 
@@ -52,121 +67,85 @@
 ```
 duckdb-query/
 ├── api/                              # 后端 FastAPI
-│   ├── core/                         # 核心模块
-│   │   ├── common/                   # 通用工具（时区、配置、缓存）
-│   │   ├── data/                     # 数据处理（文件导入、Excel）
-│   │   ├── database/                 # 数据库引擎
-│   │   └── services/                 # 服务层（任务管理）
-│   ├── routers/                      # API 路由
+│   ├── main.py / run.py              # 双入口（服务器 / 桌面 sidecar）
+│   ├── duckquery.spec                # PyInstaller 打包 spec
+│   ├── core/
+│   │   ├── common/                   # 通用（时区、配置、连接别名、异常处理器）
+│   │   ├── data/                     # 文件导入、Excel
+│   │   ├── database/                 # DuckDB 引擎、联邦 ATTACH/优化器、元数据管理
+│   │   ├── foundation/               # 基础设施（crypto_utils: Fernet，供 AI 密钥）
+│   │   ├── security/                 # encryption.py（Fernet 兼容读取路径）
+│   │   └── services/                 # 透视/集合 SQL 生成、表元数据、AI 配置
+│   ├── middleware/                   # 中间件
+│   ├── prompts/                      # AI prompt 素材（duckdb_dialect.md 等）
+│   ├── routers/                      # 21 个路由（见下表）
 │   ├── models/                       # Pydantic 模型
-│   ├── utils/                        # 工具函数（响应格式）
-│   └── tests/                        # 后端测试
+│   ├── services/                     # 顶层服务（datasource_aggregator 等，≠ core/services）
+│   ├── utils/                        # response_helpers、safe_filename、encryption_utils
+│   └── tests/
 ├── frontend/
-│   └── src/
-│       ├── api/                      # TypeScript API 模块 ⭐
-│       │   ├── client.ts             # Axios 客户端配置
-│       │   ├── types.ts              # 共享类型定义
-│       │   ├── queryApi.ts           # 查询 API（含取消同步查询等）
-│       │   ├── tableApi.ts           # 表 API
-│       │   ├── dataSourceApi.ts      # 数据源 API
-│       │   ├── databaseSchemasApi.ts # 外部库 schemas / 表列表 / 表详情
-│       │   ├── settingsShortcutsApi.ts # 设置：快捷键 API
-│       │   ├── fileApi.ts            # 文件 API
-│       │   ├── asyncTaskApi.ts       # 异步任务 API
-│       │   ├── pivotQueryApi.ts      # 透视 generate/preview、SQL 收藏、应用配置 API
-│       │   ├── setOperationsApi.ts   # 集合运算 API
-│       │   ├── joinQueryApi.ts       # 多表 JOIN（POST /api/query）
-│       │   └── index.ts              # 统一导出（@/api）
-│       ├── hooks/                    # 共享 Hooks（TanStack Query）⭐
-│       │   ├── useDuckDBTables.ts    # DuckDB 表列表
-│       │   ├── useDataSources.ts     # 数据源列表
-│       │   ├── useDatabaseConnections.ts # 数据库连接
-│       │   ├── useTableColumns.ts    # 表列信息
-│       │   ├── useSchemas.ts         # Schema 列表（经 @/api → listConnectionSchemas）
-│       │   ├── useSchemaTables.ts    # Schema 下表列表（经 @/api）
-│       │   └── ...
-│       ├── utils/                    # 工具函数 ⭐
-│       │   ├── cacheInvalidation.ts  # 缓存失效工具
-│       │   ├── sqlUtils.ts           # SQL 工具
-│       │   └── ...
-│       ├── Query/                    # 查询相关组件
-│       │   ├── SQLQuery/             # SQL 查询编辑器
-│       │   ├── JoinQuery/            # 连接查询
-│       │   ├── PivotTable/           # 透视表
-│       │   ├── SetOperations/        # 集合操作
-│       │   ├── ResultPanel/          # 结果展示面板
-│       │   ├── DataGrid/             # TanStack DataGrid
-│       │   ├── DataSourcePanel/      # 数据源树形面板
-│       │   ├── AsyncTasks/           # 异步任务面板
-│       │   └── QueryTabs/            # 查询标签页
-│       ├── DataSource/               # 数据源管理
-│       ├── Layout/                   # 布局组件
-│       ├── Settings/                 # 设置页面
-│       ├── components/               # 通用组件
-│       │   └── ui/                   # shadcn/ui 组件库
-│       ├── providers/                # Context Providers
-│       ├── styles/                   # 样式文件
-│       │   └── tailwind.css          # Tailwind 主题变量
-│       └── i18n/                     # 国际化
-├── config/                           # 配置文件
-├── docs/                             # 文档（索引见 docs/README.md）
-│   ├── API_CONTRACT_FE_BE.md         # 前后端 API 契约
-│   ├── ARCHITECTURE_CALL_MAP.md      # 分域调用图
-│   └── frontend/QUERY_EXECUTION_FLOW.md
-├── .github/                          # CI / PR 模板
-│   └── pull_request_template.md      # PR：契约与验证勾选
-└── docker-compose.yml
+│   ├── src/
+│   │   ├── api/                      # TS API 模块 ⭐（barrel: index.ts，见 §4.2 落差）
+│   │   ├── hooks/                    # 共享 Hooks（TanStack Query）⭐
+│   │   ├── utils/                    # cacheInvalidation、sqlUtils、sqlLiteral ⭐
+│   │   ├── Query/                    # SQLQuery / JoinQuery / PivotTable / SetOperations /
+│   │   │                             # ResultPanel / DataGrid / Charts / DataSourcePanel /
+│   │   │                             # AsyncTasks / QueryTabs
+│   │   ├── DataSource/  Settings/  Extensions/  Layout/  components/ui/  i18n/
+│   │   └── styles/tailwind.css
+│   └── src-tauri/                    # Tauri 2 壳（binaries/ 放 PyInstaller sidecar）
+├── mcp/                              # MCP Server 独立子包（见 §9）
+│   └── duckquery_mcp/{server,client,config,safety}.py + tools/*
+├── lint-rules/                       # 自定义 eslint + pylint 插件（含测试）
+├── config/                           # app-config.example.jsonc
+├── scripts/                          # 辅助脚本（数据生成、检查）
+├── docs/                             # 索引见 docs/README.md（guide/specs/history 分区）
+├── .github/                          # CI、PULL_REQUEST_TEMPLATE.md（大写）
+└── docker-compose.yml / quick-start.sh
 ```
 
-**关键文件索引**
+**api/routers/ 全量（21）**：`ai`、`async_tasks`、`chunked_upload`、`config_api`、`database_tables`、`datasources`、`duckdb_extensions`、`duckdb_query`、`file_ingestion`、`join_query`、`paste_data`、`pivot_query`、`query_cancel`、`query_export`、`query_sql_utils`、`server_files`、`set_operations`、`settings`、`sql_favorites`、`system_control`、`url_reader`。
+
+**关键文件索引（精选）**
 
 | 文件 | 用途 |
 |------|------|
-| `frontend/src/api/index.ts` | API 模块统一导出（`@/api`） |
-| `frontend/src/api/types.ts` | 共享类型定义（StandardSuccess, StandardError 等） |
+| `frontend/src/api/index.ts` | API barrel（`@/api`）；**新增模块必须在此导出** |
 | `frontend/src/api/client.ts` | `apiClient`、`normalizeResponse`、错误归一化 |
-| `frontend/src/api/queryApi.ts` | DuckDB / 联邦执行、`cancelSyncQuery` 等 |
-| `frontend/src/api/pivotQueryApi.ts` | 透视 generate/preview、SQL 收藏、应用配置 |
-| `frontend/src/api/joinQueryApi.ts` | 结构化 JOIN：`performJoinQuery` |
-| `frontend/src/api/setOperationsApi.ts` | 集合运算 generate / validate / execute 等 |
-| `frontend/src/api/databaseSchemasApi.ts` | 外部库 schemas / 表 / 表详情 |
-| `frontend/src/api/settingsShortcutsApi.ts` | 快捷键配置 API |
-| `docs/API_CONTRACT_FE_BE.md` | 端点契约表（与后端路由、`normalizeResponse` 对齐） |
-| `docs/ARCHITECTURE_CALL_MAP.md` | 全局分域调用图（入湖 / 查询 / 元数据 / 异步 / 透视） |
-| `.github/pull_request_template.md` | PR 自检：契约 / lint / pytest |
-| `frontend/src/hooks/useDuckDBTables.ts` | DuckDB 表列表 Hook |
-| `frontend/src/hooks/useDataSources.ts` | 数据源列表 Hook |
-| `frontend/src/hooks/useDatabaseConnections.ts` | 数据库连接 Hook |
-| `frontend/src/utils/cacheInvalidation.ts` | 缓存失效工具 |
-| `frontend/src/Query/ResultPanel/DataGridWrapper.tsx` | 查询结果 DataGrid 封装 |
-| `frontend/src/Query/DataGrid/DataGrid.tsx` | TanStack DataGrid 组件 |
-| `frontend/src/Query/SQLQuery/sqlDialect.ts` | DuckDB SQL 方言（CodeMirror 词表，勿用 `StandardSQL.spec.keywords`） |
-| `frontend/src/Query/SQLQuery/sqlEditorTheme.ts` | SQL 编辑器浅色/深色主题整包 |
-| `frontend/src/Query/SQLQuery/sqlHighlightStyles.ts` | SQL 语法高亮（keyword / 标识符等） |
-| `frontend/src/components/SQLHighlight.tsx` | 只读 SQL 高亮（历史、JOIN 筛选、异步任务等） |
-| `api/utils/response_helpers.py` | 统一响应格式 |
-| `api/core/common/timezone_utils.py` | 时区工具 |
-| `api/routers/async_tasks.py` | 异步任务 API |
-| `api/routers/file_ingestion.py` | 文件入湖（上传、Excel） |
-| `api/routers/join_query.py` | 多表 JOIN、`/api/query`、结果入湖 |
-| `api/routers/duckdb_query.py` | DuckDB / 联邦 SQL 执行 |
+| `frontend/src/api/aiApi.ts` / `extensionsApi.ts` / `queryExportApi.ts` / `engineCompatApi.ts` | AI / 扩展 / 结果导出 / 引擎兼容 API 模块（已入 barrel） |
+| `frontend/src/utils/cacheInvalidation.ts` | 缓存失效工具（§4.5） |
+| `frontend/src/utils/sqlLiteral.ts` | SQL 字符串字面量转义（`sqlStringLiteral`），**禁止再手写 replace** |
+| `frontend/src/Query/SQLQuery/sqlDialect.ts` | **唯一** DuckDB 方言入口（勿用 `StandardSQL.spec.keywords`） |
+| `frontend/src/components/SQLHighlight.tsx` | 只读 SQL 高亮 |
+| `api/utils/response_helpers.py` | 统一响应 + `error_json_response`（错误主路径） |
+| `api/utils/safe_filename.py` | `safe_filename_base`：用户可控文件名统一清洗（防穿越/注入） |
+| `api/utils/encryption_utils.py` | 连接密码 XOR v2 加密（本机 `secret.key`，见 §7.6） |
+| `api/core/common/timezone_utils.py` | 时区工具（§7.3） |
+| `api/core/common/connection_alias.py` | `resolve_attach_databases_for_async` 等联邦别名解析 |
+| `api/core/database/federated_optimizer.py` | 联邦下推优化器（半连接键下推、时间界建议） |
+| `mcp/duckquery_mcp/safety.py` | `confirm_required` / `tool_allowed` / `is_write_sql`（§9） |
+| `.github/PULL_REQUEST_TEMPLATE.md` | PR 自检：契约 / lint / pytest（注意大写文件名） |
 
 ### 2.1 前后端契约与 PR 模板
 
 | 资源 | 用途 |
 |------|------|
-| [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md) | 端点、成功体、`data` 字段语义、前端消费入口；**与后端路由、§9.2 同源维护** |
-| [`.github/pull_request_template.md`](.github/pull_request_template.md) | PR 勾选：是否改 API、是否已更新契约表、验证命令 |
+| [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md) | 端点、成功体、`data` 字段语义、前端消费入口；**与后端路由、§8.2 同源维护** |
+| [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) | PR 勾选：是否改 API、是否已更新契约表、验证命令 |
 
 ---
 
-## 3. 运行与测试
+## 3. 运行、测试与打包
+
+统一使用**根 `.venv`**（本地 Python 3.13；CI 3.11）。
 
 ### 后端
 ```bash
 cd api
-python -m uvicorn main:app --reload
-python -m pytest tests -q
+../.venv/bin/python -m uvicorn main:app --reload
+../.venv/bin/python -m pytest tests -q
+# pre-commit 同款 pylint（注意：全项目扫描，不是只扫改动文件）
+../.venv/bin/python -m pylint --rcfile=.pylintrc routers/ core/ models/ utils/ services/
 ```
 
 ### 前端
@@ -174,10 +153,31 @@ python -m pytest tests -q
 cd frontend
 npm install
 npm run dev
-npm run lint
+npm run lint          # --max-warnings 0
 npx tsc --noEmit
+npm run test          # vitest run（test:watch / test:coverage 亦可用）
 npm run build
 ```
+
+### MCP
+```bash
+cd mcp && ../.venv/bin/python -m pytest tests -q
+```
+
+### 桌面版打包（macOS 本机验证过的配方）
+```bash
+cd api && ../.venv/bin/pyinstaller duckquery.spec --noconfirm --distpath dist --workpath build
+rm -rf frontend/src-tauri/binaries/duckquery-api \
+  && cp -R api/dist/duckquery-api frontend/src-tauri/binaries/duckquery-api
+find frontend/src-tauri/binaries/duckquery-api \( -name '*.so' -o -name '*.dylib' \) \
+  -exec codesign --force --timestamp=none --sign - {} +
+codesign --force --timestamp=none --sign - frontend/src-tauri/binaries/duckquery-api/duckquery-api
+cd frontend && npx tauri build --bundles app --config '{"bundle":{"createUpdaterArtifacts":false}}'
+# 产物: frontend/src-tauri/target/release/bundle/macos/DuckQuery.app
+```
+要点：sidecar 必须在 `tauri build` **之前** ad-hoc 签名（Tauri #11992：bundler 不签 externalBin，arm64 漏签直接 SIGKILL）；`createUpdaterArtifacts:false` 因 minisign 私钥仅在 CI。三平台正式发布走 `.github/workflows/release.yml`。
+
+**改码 ≠ 生效**：桌面 App 是冻结二进制，改 `api/` 后必须重新打包；MCP 是常驻进程，改 `mcp/` 后必须重启/重连。验证行为前先核对进程启动时间与提交时间。
 
 ---
 
@@ -189,438 +189,229 @@ npm run build
 | 组件 | PascalCase.tsx | `DataPasteCard.tsx` |
 | Hook | camelCase.ts（use 前缀） | `useDuckDBTables.ts` |
 | 工具 | camelCase.ts | `cacheInvalidation.ts` |
-| 测试 | *.test.tsx / *.test.ts | `useDuckDBTables.test.ts` |
+| 测试 | *.test.tsx / *.test.ts（同目录 `__tests__/`） | `useDuckDBTables.test.ts` |
 | 常量 | UPPER_SNAKE_CASE | `DUCKDB_TABLES_QUERY_KEY` |
 
-### 4.2 导入约束
-**正确示例**
+### 4.2 导入与 API 调用（原 §4.2 与 §7.2 合并）
+
+**规则**
+- 业务代码从 **`@/api`**（barrel `index.ts`）导入 API 函数；禁止 `@/api/xxxApi`、`@/api/client`、`@/api/types` 深路径。
+- `frontend/src/api/*.ts` 内部模块间用相对路径（`./client`），**禁止**在 api 子模块内 `from '@/api'`（barrel 循环依赖）。
+- **禁止**对本后端 `/api/...` 裸 `fetch` 或绕过 `apiClient` 的 axios（会绕开统一错误体、`normalizeResponse`、超时约定）。例外仅第三方 URL，且须注释「第三方」。
+- 新增固定端点：先在 `frontend/src/api/` 建封装、**在 `index.ts` 导出**，业务侧从 `@/api` 导入。
+- UI 组件从 `@/components/ui/*`；图标 `lucide-react`；TanStack Query `@tanstack/react-query`。
+
+> ✅ 落差已收敛（2026-07-09）：`aiApi` / `engineCompatApi` / `extensionsApi` / `queryExportApi` 已补进 barrel，13 处深路径导入已全部迁回 `@/api`。业务代码现为零深路径。
+
 ```tsx
-// UI 组件
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-
-// 图标
-import { Home } from 'lucide-react';
-
-// TanStack Query
-import { useQuery } from '@tanstack/react-query';
-
-// API 模块
-import { executeDuckDBSQL, getDuckDBTables } from '@/api';
-
-// Hooks
-import { useDuckDBTables } from '@/hooks/useDuckDBTables';
-
-// 工具函数
-import { invalidateAfterTableCreate } from '@/utils/cacheInvalidation';
+// ✅ import { executeDuckDBSQL, getDuckDBTables } from '@/api';
+// ❌ import { getTables } from '@/api/tableApi';   ❌ fetch('/api/duckdb/tables')
 ```
-
-**禁止示例**
-```tsx
-import { Button } from '@mui/material';     // ❌ 禁止 MUI
-import '@/styles/modern.css';               // ❌ 禁止旧样式
-fetch('/api/duckdb/tables');                // ❌ 禁止对本后端 /api 裸 fetch（须 @/api + apiClient）
-import { extractMessage } from '@/api/client'; // ❌ 禁止业务文件深路径（须 import { extractMessage } from '@/api'）
-```
-
-**允许的 `fetch`（须在代码中注释说明）**：仅访问**第三方** URL（如 GitHub）。本后端动态路径仍须 `apiClient`（见 `useQueryExecution`）。
 
 ### 4.2.1 SQL 编辑器（CodeMirror 6）
 
 | 组件 | 路径 | 说明 |
 |------|------|------|
-| 可编辑 | `frontend/src/Query/SQLQuery/SQLEditor.tsx` | 查询工作台主 SQL 输入 |
-| 只读预览 | `frontend/src/components/SQLHighlight.tsx` | 历史、JOIN/透视/集合 SQL 预览、Tooltip 等 |
-| 方言 | `frontend/src/Query/SQLQuery/sqlDialect.ts` | **唯一** DuckDB 方言定义入口 |
-| 主题 | `sqlEditorTheme.ts` + `sqlHighlightStyles.ts` | 浅/深两套独立整包，`Compartment` 切换 |
+| 可编辑 | `Query/SQLQuery/SQLEditor.tsx` | 工作台主 SQL 输入 |
+| 只读预览 | `components/SQLHighlight.tsx` | 历史、JOIN/透视/集合 SQL 预览 |
+| 方言 | `Query/SQLQuery/sqlDialect.ts` | **唯一** DuckDB 方言定义入口 |
+| 主题 | `sqlEditorTheme.ts` + `sqlHighlightStyles.ts` | 浅/深两套整包，`Compartment` 切换 |
 
-**方言与语法高亮（强制）**
-
-- `SQLEditor` 与 `SQLHighlight` 必须使用 `duckDBDialect`（`import { duckDBDialect } from '@/Query/SQLQuery/sqlDialect'` 或经 `SQLQuery` 模块导出）。
-- ❌ **禁止** `StandardSQL.spec.keywords` / `StandardSQL.spec.types` 拼接：`StandardSQL = SQLDialect.define({})` 的 `spec` 不含词表，会导致 `SELECT` 等被解析为 `Identifier`，关键字与表名同色。
-- ✅ 扩展 DuckDB 词表时基于 `PostgreSQL.spec.keywords`（见 `sqlDialect.ts`），或 `sql({ dialect: StandardSQL })` 且仅用于无自定义方言的场景。
-- 只读 SQL 展示优先 `SQLHighlight`，避免 `<pre className="font-mono">` 无高亮（JOIN `RawSqlFilterChip` 已统一）。
+- 必须用 `duckDBDialect`；❌ 禁止 `StandardSQL.spec.keywords` 拼接（`spec` 无词表，`SELECT` 会被当 Identifier）。扩展词表基于 `PostgreSQL.spec.keywords`。
+- 只读 SQL 展示优先 `SQLHighlight`，避免无高亮的 `<pre className="font-mono">`。
 
 ### 4.3 TypeScript 与表单
-- Props 必须定义接口/类型
-- 禁止滥用 `any`
-- 表单使用 `react-hook-form + zod`
-
-```tsx
-interface DatabaseFormProps {
-  onSaved?: () => void;
-}
-
-const schema = z.object({
-  host: z.string().min(1),
-  port: z.number().min(1).max(65535),
-});
-type FormData = z.infer<typeof schema>;
-```
+- Props 必须定义接口/类型；禁止滥用 `any`。
+- 表单现状：**受控组件 + useState + 手写校验**（如 `DataSource/DatabaseForm.tsx`）。`react-hook-form` / `zod` 曾作为零使用的"纸面依赖"存在，已于 2026-07-09 卸载——若将来要引入表单库，须整表单统一迁移并更新本节，不接受单点混用。
 
 ### 4.4 数据获取（TanStack Query 强制）
-- 所有服务端数据必须使用 TanStack Query
-- 禁止 `useEffect + fetch + useState` 管服务端数据
-- 共享数据抽成 `frontend/src/hooks/` 的共享 Hook
-
-**示例**
-```tsx
-import { useDuckDBTables } from '@/hooks/useDuckDBTables';
-
-function MyComponent() {
-  const { tables, isLoading, refresh } = useDuckDBTables();
-
-  if (isLoading) return <div>加载中...</div>;
-
-  return (
-    <ul>
-      {tables.map(table => (
-        <li key={table.name}>{table.name}</li>
-      ))}
-    </ul>
-  );
-}
-```
-
-**QueryKey 命名**
-- ✅ 推荐可辨.resource + kebab：`['duckdb-tables']`、`['datasources', id]`、`['async-tasks']`
-- 现有代码中仍有 `['schemas', connectionId]`、`['schema-tables', …]` 等历史 Key；**新功能**优先采用上表风格；若重命名 Key，须同步 `cacheInvalidation.ts` 等前缀失效逻辑。
-- ❌ 过于泛化：`['tables']`、`['getTables']`、`['duckdb_tables']`
+- 所有服务端数据必须 TanStack Query；禁止 `useEffect + fetch + useState`。
+- 共享数据抽成 `frontend/src/hooks/` 共享 Hook（`useDuckDBTables` / `useDataSources` / `useDatabaseConnections` / `useSchemas` / `useSchemaTables` / `useTableColumns` / 业务壳 `useAppShell`）。
+- QueryKey：kebab.resource 风格（`['duckdb-tables']`、`['datasources', id]`）；重命名 Key 须同步 `cacheInvalidation.ts` 前缀失效逻辑。
 
 ### 4.5 缓存刷新规则（强制）
 
-任何创建/删除表的操作**必须**调用缓存刷新：
+创建/删除表的操作**必须**调用 `frontend/src/utils/cacheInvalidation.ts`：
 
-```tsx
-import { 
-  invalidateAfterTableCreate, 
-  invalidateAfterTableDelete,
-  invalidateAfterFileUpload,
-  invalidateAllDataCaches,
-} from '@/utils/cacheInvalidation';
-
-// 创建表后
-await invalidateAfterTableCreate(queryClient);
-
-// 删除表后
-await invalidateAfterTableDelete(queryClient);
-
-// 文件上传后
-await invalidateAfterFileUpload(queryClient);
-
-// 异步任务完成后
-await invalidateAllDataCaches(queryClient);
-```
-
-**必须刷新的场景清单**：
 | 场景 | 刷新函数 |
 |------|----------|
-| SQL saveAsTable | `invalidateAllDataCaches()` |
-| 透视 saveAsTable | `invalidateAfterTableCreate()` |
-| 粘贴数据创建表 | `invalidateAfterTableCreate()` |
+| SQL saveAsTable / 异步任务完成 | `invalidateAllDataCaches()` |
+| 透视 saveAsTable / 粘贴数据建表 | `invalidateAfterTableCreate()` |
 | 文件上传/导入 | `invalidateAfterFileUpload()` |
 | 表删除 | `invalidateAfterTableDelete()` |
 | 数据库连接变更 | `invalidateAfterDatabaseChange()` |
+
+### 4.6 国际化
+- 用户可见文案一律 `react-i18next`（zh / en 词条成对维护于 `src/i18n/locales/`）；禁止硬编码中文/英文串进组件。
 
 ---
 
 ## 5. UI / 样式规范（**禁止自定义**）
 
-> **总原则**：只能使用 **shadcn/ui 组件 + Tailwind 类**。
+> **总原则**：只能使用 **shadcn/ui 组件 + Tailwind v4 标准类**。
 
-### 5.1 禁止自定义清单
-- ❌ 禁止新增/导入任何自定义 CSS 文件
-- ❌ 禁止新增 CSS 变量/主题/设计 token
-- ❌ 禁止 inline style（除非是动态尺寸/位置）
-- ❌ 禁止 Tailwind arbitrary values（如 `text-[11px]`）
-- ❌ 禁止硬编码颜色（`#hex`、`rgb()`）
-- ❌ 禁止 `!important`
+- ❌ 新增/导入自定义 CSS 文件、CSS 变量/design token
+- ❌ inline style（动态尺寸/位置除外）
+- ❌ Tailwind arbitrary values（`text-[11px]`）
+- ❌ 硬编码颜色（`#hex`、`rgb()`）、`!important`
+- 组件优先级：shadcn/ui（Button/Input/Card/Dialog/Tabs/DropdownMenu/Tooltip/Toast）→ Tailwind 布局与间距；图标统一 `lucide-react`，禁止 MUI。
 
-### 5.2 组件优先级
-1. **优先 shadcn/ui**：Button / Input / Card / Dialog / Tabs / DropdownMenu / Tooltip / Toast
-2. Tailwind 只做布局与间距
-3. 不重复造轮子
-
-### 5.3 图标
-- 统一使用 `lucide-react`
-- 禁止 MUI Icons
+> 🔌 **自动化兜底现状（2026-07-09 已接线）**：`eslint-plugin-duckquery` 经相对路径接入 `frontend/eslint.config.js`。已按 error 强制：`no-mui-in-new-layout`、`no-fetch-in-useeffect`、`require-tanstack-query`（接线时存量已清零）。存量过大暂 off（计数见 eslint.config.js 注释，烧完一类开一类）：`no-hardcoded-colors`(75)、`no-arbitrary-tailwind`(223)、`enforce-import-order`(641)、`require-i18n`(648)——这四类目前仍靠人工 review，**新代码不得扩大存量**。
 
 ---
 
-## 6. 查询结果表格（TanStack DataGrid）
+## 6. 查询结果区（DataGrid + 图表）
 
-- 结果区**仅**使用 `ResultPanel` → `DataGridWrapper` → `Query/DataGrid/DataGrid.tsx`（TanStack Table + 虚拟滚动）
-- 列定义经 `useDataGridColumns` 生成（类型检测、数值/日期/布尔格式化）
-- 禁止再引入 `ag-grid-community` / `ag-grid-react`
-- 列配置与 `columns` 引用须 `useMemo` 稳定化，避免无意义重渲染
+- 表格：**仅** `ResultPanel` → `DataGridWrapper` → `Query/DataGrid/DataGrid.tsx`（TanStack Table + 虚拟滚动）；列定义经 `useDataGridColumns`；禁止 ag-grid；`columns` 引用须 `useMemo` 稳定。
+- 图表：结果区 table|chart 切换由 `Query/Charts/ChartView` 承载（轴选择、AI 图表建议、全屏、**点击图元下钻**——生成带 WHERE 的明细 SQL 填入编辑器、不自动执行）。图表 SQL 拼接一律经 `sqlLiteral.ts`。
 
 ---
 
-## 7. 状态管理与数据获取
+## 7. 后端开发规范
 
-### 7.1 状态管理
-- 业务状态集中在 `useAppShell` (`frontend/src/hooks/useAppShell.ts`)
-- 状态机/全局状态在 `frontend/src/hooks/` 下的独立 Hook 中完成
+### 7.1 基本规范
+- PEP 8；公共 API docstring + 类型标注；路由命名 kebab-case。
+- **异常/日志/HTTP 错误消息一律英文**——自定义 pylint 规则强制：W9020（通用消息中文）、W9021（logger 中文）、W9022（HTTPException 中文）、W9023（raise 消息中文）。中文注释/文档不受限。
 
-### 7.2 API 调用
-- **必须使用** `frontend/src/api/` 下的封装函数；**业务代码**（`frontend/src` 下除 `frontend/src/api/` 自身实现文件外）应 **`import { … } from '@/api'`**（与 `index.ts` 导出一致），禁止 `import … from '@/api/xxxApi'`、`@/api/client`、`@/api/types` 等深路径。
-- **`frontend/src/api/*.ts` 内部**：模块之间仍用相对路径（如 `./client`、`./types`），**禁止**在 api 子模块内 `from '@/api'`（避免 barrel 循环依赖）。
-- **禁止**对本项目后端 `/api/...` 使用裸 **`fetch`** 或未走 `apiClient` 的 **`axios`**，以免绕过统一错误体、`normalizeResponse`、超时与请求头约定。
-- **例外**（须注释「第三方」或「动态端点待收敛」）：第三方 HTTP；本仓库内动态 endpoint（如 `useQueryExecution`）**仍须** `apiClient`，禁止裸 `fetch`。新增固定 `/api/...` 端点时**须**在 `frontend/src/api/` 增加封装并改为经 `apiClient`；**新增**的 client 工具函数须从 `client.ts` 再导出到 `index.ts`，业务侧仍只从 `@/api` 导入。
+### 7.2 DuckDB 连接
+- 使用 `with_duckdb_connection()`（`api/core/database/duckdb_engine.py`）上下文管理器；禁止模块级长连接/全局 `duckdb.connect()`。
+- 阻塞型工作（大 I/O、外部库内省）在 async 路由中须 `asyncio.to_thread` / 线程池，勿阻塞事件循环。
 
-```tsx
-// ✅ 正确
-import { executeDuckDBSQL, getDuckDBTables, listConnectionSchemas } from '@/api';
+### 7.3 时区处理
+按**目标字段类型**选函数（`api/core/common/timezone_utils.py`）：
 
-const result = await executeDuckDBSQL({ sql, isPreview: true });
-const tables = await getDuckDBTables();
-
-// ❌ 错误（本后端）
-const response = await fetch('/api/duckdb/tables');
-```
-
----
-
-## 8. 后端开发规范
-
-### 8.1 基本规范
-- 遵循 PEP 8
-- 公共 API 必须有 docstring + 类型标注
-- 路由命名 kebab-case
-
-### 8.2 DuckDB 连接
-- 使用 `with_duckdb_connection()` 上下文管理器
-- 禁止模块级长连接/全局 duckdb.connect()
-
-### 8.3 时区处理
-
-**核心原则**：根据目标字段的数据类型选择函数，而不是根据业务场景。
-
-```python
-from core.common.timezone_utils import get_current_time_iso, get_current_time
-
-# 需要字符串时（JSON 存储、API 响应）
-created_at = get_current_time_iso()  # "2026-01-19T16:00:00+08:00"
-
-# 需要 datetime 对象时（Pydantic 模型、数据库字段）
-created_at = get_current_time()  # datetime 对象
-```
-
-| 目标类型 | 函数 | 使用场景 |
-|----------|------|----------|
+| 目标类型 | 函数 | 场景 |
+|----------|------|------|
 | `str` | `get_current_time_iso()` | JSON 文件、API 响应 |
 | `datetime` | `get_current_time()` | Pydantic 模型、ORM |
-| `datetime(UTC)` | `get_storage_time()` | DuckDB 存储 |
+| `datetime(UTC naive)` | `get_storage_time()` | DuckDB 存储 |
 
-**注意**：两个函数返回的是**同一个时间点**，只是格式不同。
-- **存储时间**：使用 `get_storage_time()` 返回 UTC naive datetime
+### 7.4 标识符与用户可控输入（强制走共享原语）
+| 输入 | 原语 | 位置 |
+|------|------|------|
+| 表名/别名清洗 | `sanitize_identifier(value, allow_leading_digit=, prefix=)`（用户别名 `True`，文件名默认值 `False`） | `core/data/excel_import_manager.py` |
+| 导出/下载文件名 | `safe_filename_base()`（防 `..` 穿越、引号注入 COPY） | `api/utils/safe_filename.py` |
+| SQL 字符串字面量（前端拼 SQL） | `sqlStringLiteral()` | `frontend/src/utils/sqlLiteral.ts` |
+| SQL 标识符引用 | `'"' + name.replace('"','""') + '"'` 双引号转义 | 各生成器内已有惯例 |
 
-```python
-from core.common.timezone_utils import get_current_time_iso, get_current_time
+**禁止**在新代码里重新手写这些 replace/正则。
 
-# 保存文件数据源元数据
-file_info = {
-    "source_id": source_id,
-    "created_at": get_current_time_iso(),  # ✅ ISO 字符串
-}
+### 7.5 异步任务结果表（安全语义，2026-07-09 起）
+- `custom_table_name` 清洗后为空 → 回退 task_id 派生名，**绝不建空名表**。
+- 自定义名撞 `main` 已有表且未传 `overwrite=true` → **抛错拒绝**，不做静默 `CREATE OR REPLACE`；仅"重试任务"固定 `overwrite=True`。
 
-# 数据库连接
-connection.created_at = get_current_time()  # ✅ datetime 对象
-```
-
-### 8.4 表名处理
-- 用户提供的表别名：`allow_leading_digit=True`（尊重用户输入）
-- 文件名默认值：`allow_leading_digit=False`（避免数字开头）
-
-```python
-from core.data.excel_import_manager import sanitize_identifier
-
-# 用户提供了表别名
-source_id = sanitize_identifier(
-    table_alias, 
-    allow_leading_digit=True,  # ✅ 尊重用户输入
-    prefix="table"
-)
-
-# 使用文件名作为默认值
-source_id = sanitize_identifier(
-    filename, 
-    allow_leading_digit=False,  # ✅ 避免数字开头
-    prefix="table"
-)
-```
+### 7.6 凭据加密（定位声明，勿"升级"）
+- 数据库连接密码：`api/utils/encryption_utils.py` **XOR 流加密（v2 前缀）**，密钥为**本机自动生成**的 `secret.key`（旧硬编码默认键仅保留兼容解密）。这是**本地单机应用的混淆定位**——app 自身必须能解密，密码学强度对本威胁模型无意义，**不要提议换 Fernet/AES“加固”**。
+- AI 供应商 API Key：`core/foundation/crypto_utils.py`（Fernet）。
+- `core/security/encryption.py` 的 Fernet 写路径无调用方（读取兼容用），勿在新代码启用。
+- 任何密码不得明文回传前端（`***ENCRYPTED***` 哨兵回填）。
 
 ---
 
-## 9. API 与响应规范
+## 8. API 与响应规范
 
-### 9.1 端点命名
-- 统一 `/api/...`
-- 资源名 kebab-case
+### 8.1 端点命名
+- 统一 `/api/...`，资源名 kebab-case。
 
-### 9.2 统一响应格式
+### 8.2 统一响应格式
 
-**成功响应**：
+成功体 / 列表体 / 错误体字段与 `api/utils/response_helpers.py`、`frontend/src/api/types.ts` 保持一致：
+
 ```json
-{
-  "success": true,
-  "data": {},
-  "messageCode": "OPERATION_SUCCESS",
-  "message": "操作成功",
-  "timestamp": "2026-01-19T08:00:00.000Z"
-}
+// 成功                                   // 列表 data                 // 错误
+{"success": true, "data": {},            {"items": [], "total": 0}   {"success": false,
+ "messageCode": "OPERATION_SUCCESS",                                  "error": {"code": "...", "message": "...", "details": {}},
+ "message": "...", "timestamp": "..."}                                "messageCode": "...", "message": "...", "timestamp": "..."}
 ```
 
-**错误响应**：
-```json
-{
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "错误描述",
-    "details": {}
-  },
-  "messageCode": "ERROR_CODE",
-  "message": "错误描述",
-  "timestamp": "2026-01-19T08:00:00.000Z"
-}
-```
-
-**列表响应**：
-```json
-{
-  "success": true,
-  "data": {
-    "items": [],
-    "total": 0
-  },
-  "messageCode": "ITEMS_RETRIEVED",
-  "message": "获取列表成功",
-  "timestamp": "2026-01-19T08:00:00.000Z"
-}
-```
-
-### 9.3 后端使用
+### 8.3 后端使用
 ```python
-from utils.response_helpers import create_success_response, create_list_response, MessageCode
-
-# 成功响应
-return create_success_response(
-    data={"table": table_info},
-    message_code=MessageCode.TABLE_CREATED
+from utils.response_helpers import (
+    create_success_response, create_list_response, error_json_response, MessageCode,
 )
 
-# 列表响应
-return create_list_response(
-    items=tables,
-    total=len(tables),
-    message_code=MessageCode.TABLES_RETRIEVED
-)
+return create_success_response(data={"table": t}, message_code=MessageCode.TABLE_CREATED)
+return create_list_response(items=tables, total=len(tables), message_code=MessageCode.TABLES_RETRIEVED)
+# 错误主路径：不要 raise HTTPException(detail=...)，路由层统一
+return error_json_response(status_code=400, code="VALIDATION_ERROR", message="...", details={...})
 ```
 
-### 9.4 前端类型
-```typescript
-// frontend/src/api/types.ts
-interface StandardSuccess<T = unknown> {
-  success: true;
-  data: T;
-  messageCode: string;
-  message: string;
-  timestamp: string;
-}
+### 8.4 前端类型与解包
+- `StandardSuccess` / `StandardError` 定义于 `frontend/src/api/types.ts`；`normalizeResponse`（`client.ts`）统一解包，列表用 `items`/`total`。
 
-interface StandardError {
-  success: false;
-  error: {
-    code: string;
-    message: string;
-    details?: Record<string, unknown>;
-  };
-  messageCode: string;
-  message: string;
-  timestamp: string;
-}
-```
-
-### 9.5 前后端契约维护（与 `docs/API_CONTRACT_FE_BE.md` 一致）
-
+### 8.5 契约维护流程
 | 动作 | 顺序 |
 |------|------|
-| 修改某端点 JSON 形状或语义 | 1）更新 `docs/API_CONTRACT_FE_BE.md` 对应行；2）改 `api/routers/*` 与 Pydantic；3）改 `frontend/src/api/*` 类型与解包；4）改调用方 / 单测。 |
-| 新增 `/api/...` 端点 | 契约表新增一行后再实现；前端须经 `apiClient` + `normalizeResponse`（列表用 `items`/`total`）。 |
-| 列表 vs 对象成功体 | 后端列表用 `create_list_response`；前端 `normalizeResponse` 会填充 `items`（见 `client.ts`）。 |
+| 改端点 JSON 形状/语义 | 1) 更新契约表对应行 → 2) 改 `api/routers/*` 与 Pydantic → 3) 改 `frontend/src/api/*` → 4) 改调用方/单测 |
+| 新增 `/api/...` 端点 | 契约表新增一行后再实现；前端经 `apiClient` + `normalizeResponse` + barrel 导出 |
 
-**说明**：网关或代理若改写 JSON，以线上 Network 为准；契约表以仓库内 FastAPI 与 `response_helpers` 为准。
+---
+
+## 9. MCP Server 规范
+
+`mcp/duckquery_mcp`：独立 Python 包（≥3.10），经 HTTP 调用后端；工具集在 `tools/`（query / discover / sources / transform / export / ai_settings / passthrough）。
+
+### 9.1 模式与门控（安全核心）
+- 运行模式 `DUCKQUERY_MCP_MODE` = `read-only` | `normal`（默认）| `full`。
+- **所有可变更/可外泄操作**（建表、导入、导出、DDL/DML、保存连接、非 GET passthrough）必须过 `safety.confirm_required(cfg, is_mutating, confirm)`：read-only 直接拦 → normal 要求调用方显式 `confirm=true` → full 放行。新增写类工具**必须**接同一门控，不得自行实现。
+- SQL 读写判定用 `safety.is_write_sql`（注意 `EXPLAIN ANALYZE` 会真执行，按写处理）。
+- 后端 `/api/duckdb/execute` 另有独立 DROP 硬拦（与 confirm 是两层，confirm 绕不过它）；删表走 `DELETE /api/duckdb/tables/{name}`。
+
+### 9.2 后端发现
+- 顺序：env `DUCKQUERY_API_BASE` → `~/Library/Application Support/DuckQuery/runtime.json`（桌面 App 动态端口）→ 探测已知端口。
+
+### 9.3 文档一致性
+- 工具 docstring 是 LLM 的使用说明书，参数枚举（如 `import_mode: auto|literal|variant`）必须与后端校验**逐字一致**；后端改枚举时同步改 docstring 与 `mcp/tests`。
 
 ---
 
 ## 10. 测试规范
 
-### 前端
-- 组件/共享 Hook 必须有单测
-- 测试文件放在同目录 `__tests__/`
-
-```
-frontend/src/hooks/useDuckDBTables.ts
-frontend/src/hooks/__tests__/useDuckDBTables.test.ts
-```
-
-### 后端
-```bash
-cd api
-python -m pytest tests -q
-```
+- 前端：组件/共享 Hook 必须有单测，放同目录 `__tests__/`；`npm run test`（vitest）。
+- 后端：`cd api && ../.venv/bin/python -m pytest tests -q`。
+- MCP：`cd mcp && ../.venv/bin/python -m pytest tests -q`；写类工具的 confirm 门控必须有回归测试（无 confirm 被拦、confirm=true 放行）。
+- **SQL 生成器的测试必须在真实 DuckDB 上执行生成的 SQL 并断言结果值**——纯字符串断言拦不住 Binder Error / 列名漂移（2026-07 透视总计 bug 的直接教训，样例见 `api/tests/test_pivot_query_generator.py` 的 `*_executes` 用例）。
+- 回归测试须在 docstring 注明复现的历史 bug 与日期。
 
 ---
 
 ## 11. 质量检查清单（提交前）
 
-### UI
-- [ ] 仅使用 shadcn/ui + Tailwind 标准类
-- [ ] 图标统一 lucide-react
-- [ ] 无硬编码颜色 / CSS var / `!important`
+### UI / 前端
+- [ ] 仅 shadcn/ui + Tailwind v4 标准类；图标 lucide-react；无硬编码颜色 / arbitrary values / `!important`
+- [ ] 服务端数据经 TanStack Query；本后端请求经 `@/api`（新模块已入 barrel）
+- [ ] Mutation 后调用缓存刷新；用户文案走 i18n（zh/en 成对）
+- [ ] `npm run lint`、`npx tsc --noEmit`、`npm run test`、`npm run build` 全过
 
-### 数据获取
-- [ ] 使用 TanStack Query
-- [ ] 本后端请求经 `@/api`（`apiClient`），无未说明的裸 `fetch`
-- [ ] QueryKey 常量化；新代码优先 kebab.resource 风格
-- [ ] Mutation 后调用缓存刷新
+### 后端 / MCP
+- [ ] 统一响应格式；错误走 `error_json_response`
+- [ ] 异常/日志消息英文（W9020-9023）；用户可控输入走 §7.4 共享原语
+- [ ] pylint 全项目 10/10（pre-commit 同款命令）；pytest 过
+- [ ] MCP 写类工具接 `confirm_required` 且有门控测试
 
 ### API / 契约
-- [ ] 若改响应字段或端点：已同步 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)
-
-### 后端
-- [ ] 使用统一响应格式
-- [ ] 时区处理正确
-- [ ] 表名处理正确
-
-### 构建
-- [ ] `npm run build` 通过
-- [ ] `npm run lint` 无错误
-- [ ] `npx tsc --noEmit` 无错误
+- [ ] 改响应字段或端点：已同步 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)
 
 ---
 
 ## 12. 代理行为约束
-- 未经指示不修改代码；仅分析则不动代码
-- 不做全局安装，避免触碰非项目文件
-- 清理/删除前先 grep 查引用，确认无用再删
+
+- 未经指示不修改代码；仅分析则不动代码。
+- 不做全局安装；清理/删除前先 grep 查引用。
+- 桌面版/MCP 行为验证前先确认运行的是新代码（§3"改码 ≠ 生效"）。
 
 ### 12.1 透视表 Tab（**禁止误删**）
 
-查询工作台「透视表」为**在产功能**（`QueryTabs` → `PivotPanel`），清理时**不得**删除或整文件移除：
+查询工作台「透视表」为**在产功能**（`QueryTabs` → `PivotPanel`），清理时**不得**删除：
 
 | 层级 | 路径 |
 |------|------|
 | 前端 UI | `frontend/src/Query/PivotTable/`（`PivotPanel`、`PivotTableDesigner`、`buildPivotQueryPayload`） |
-| 前端 API | `frontend/src/api/pivotQueryApi.ts` 的 `generatePivotQuery` / `previewPivotQuery` |
-| 后端路由 | `api/routers/pivot_query.py`（`POST /api/pivot-query/generate`、`/preview`） |
-| SQL 生成 | `api/core/services/pivot_query_generator.py`、`pivot_query_sql_common.py` |
-| 透视模型 | `api/models/pivot_query_models.py` |
-| 表元数据 | `api/core/services/table_metadata_service.py` |
-| 集合运算 SQL | `api/core/services/set_operation_generator.py` |
+| 前端 API | `frontend/src/api/pivotQueryApi.ts`（`generatePivotQuery` / `previewPivotQuery`） |
+| 后端 | `api/routers/pivot_query.py`、`core/services/pivot_query_generator.py`、`pivot_query_sql_common.py`、`models/pivot_query_models.py` |
+| 关联 | `core/services/table_metadata_service.py`、`set_operation_generator.py` |
 
-已移除 **Visual 构建器**（`frontend/src/Query/VisualQuery/`、`mode=regular`、`/api/visual-query/*` 等）及 `regular_query_generator`。透视路径见 `PivotTable/*` 与 `POST /api/pivot-query/*`。
+历史注：Visual 构建器（`VisualQuery/`、`/api/visual-query/*`、`regular_query_generator`）已于 2026-05 移除，勿恢复。
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

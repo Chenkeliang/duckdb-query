@@ -9,6 +9,7 @@ def _reload():
 
 
 def test_user_data_dir_macos(monkeypatch):
+    monkeypatch.delenv("APP_ROOT", raising=False)  # conftest 全局隔离会设它,本测试验证非覆盖分支
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setattr("os.path.expanduser", lambda p: "/Users/tester")
     p = _reload().get_user_data_dir()
@@ -16,6 +17,7 @@ def test_user_data_dir_macos(monkeypatch):
 
 
 def test_user_data_dir_windows(monkeypatch):
+    monkeypatch.delenv("APP_ROOT", raising=False)
     monkeypatch.setattr("sys.platform", "win32")
     monkeypatch.setenv("APPDATA", r"C:\Users\tester\AppData\Roaming")
     p = _reload().get_user_data_dir()

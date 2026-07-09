@@ -72,6 +72,27 @@ def test_unparseable_sql_returns_original():
     assert reports == [{"error": "parse_failed", "pushed": False}]
 
 
+def test_no_pushdown_returns_sql_verbatim():
+    """回归(2026-07): 无改写也走 tree.sql() 往返,把 USING SAMPLE 排到 LIMIT 后变语法错误。
+    没有实际下推时必须逐字返回原 SQL。"""
+    sql = "SELECT * FROM mysql_db.orders USING SAMPLE 50 ROWS LIMIT 10000"
+    out_sql, _ = apply_semijoin_pushdown(sql, {"mysql_db"}, key_provider=lambda *a: [1], threshold=100)
+    assert out_sql == sql
+    # 无 JOIN 的普通查询同样逐字放行
+    sql2 = "SELECT * FROM mysql_db.orders LIMIT 10"
+    out_sql2, _ = apply_semijoin_pushdown(sql2, {"mysql_db"}, key_provider=lambda *a: [1], threshold=100)
+    assert out_sql2 == sql2
+
+
+def test_sample_clause_skips_pushdown_even_with_join():
+    """含采样子句的查询直接放行:即便存在可下推 JOIN 也不做 sqlglot 往返。"""
+    sql = ("SELECT * FROM mysql_db.orders o JOIN local_t l ON o.id = l.oid "
+           "USING SAMPLE 10 ROWS")
+    out_sql, reports = apply_semijoin_pushdown(sql, {"mysql_db"}, key_provider=lambda *a: [1, 2], threshold=100)
+    assert out_sql == sql
+    assert reports == []
+
+
 from core.database.federated_optimizer import build_time_bound_suggestions
 
 
@@ -152,3 +173,70 @@ def test_and_containing_or_branch_only_uses_and_level_eq():
     )
     plans = plan_semijoins(sql, {"mysql_db"})
     assert len(plans) == 1 and plans[0].remote_col == "id"
+
+
+def test_sample_keyword_in_string_literal_does_not_block_pushdown():
+    """回归(2026-07): 采样判定曾用原文正则,字面量里的 TABLESAMPLE 会误伤可下推查询。"""
+    sql = ("SELECT * FROM mysql_db.orders o JOIN local_t l ON o.id = l.oid "
+           "WHERE o.note = 'try TABLESAMPLE now'")
+    out_sql, reports = apply_semijoin_pushdown(
+        sql, {"mysql_db"}, key_provider=lambda *a: [1, 2], threshold=100)
+    assert "IN (1, 2)" in out_sql          # 下推正常发生,不再被字面量拦下
+    assert any(r["pushed"] for r in reports)
+
+
+from core.database.federated_optimizer import optimize_federated_sql
+
+
+class _CfgStub:
+    federated_semijoin_threshold = 100
+
+
+class _ConnStub:
+    """按 SQL 形状分流:DESCRIBE 给 schema,DISTINCT 键查询给键集。记录调用供断言。"""
+
+    def __init__(self):
+        self.queries = []
+
+    def execute(self, q):
+        self.queries.append(q)
+
+        class _R:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def fetchall(self):
+                return self._rows
+
+        if q.strip().upper().startswith("DESCRIBE"):
+            return _R([("id", "BIGINT", None, None, None, None),
+                       ("created_at", "TIMESTAMP", None, None, None, None)])
+        return _R([(1,), (2,)])
+
+
+def test_optimize_sample_query_skips_both_phases_without_touching_conn():
+    """采样查询在 optimize 层整体放行:不下推、不出建议、连接零调用(conn=None 也不炸)。"""
+    sql = "SELECT * FROM mysql_db.orders USING SAMPLE 50 ROWS"
+    out_sql, suggestions, warnings = optimize_federated_sql(None, sql, {"mysql_db"}, _CfgStub())
+    assert out_sql == sql
+    assert suggestions == [] and warnings == []
+
+
+def test_optimize_suggestions_computed_before_tree_mutation():
+    """单次 parse 共享树:建议必须先于下推改写计算,否则远端表已被换成子查询、建议丢失。"""
+    conn = _ConnStub()
+    sql = "SELECT * FROM mysql_db.orders o JOIN local_t l ON o.id = l.oid"
+    out_sql, suggestions, warnings = optimize_federated_sql(conn, sql, {"mysql_db"}, _CfgStub())
+    assert "IN (1, 2)" in out_sql                      # 下推发生了(树被改写)
+    assert len(suggestions) == 1                       # 建议仍基于改写前的裸远端表
+    assert suggestions[0]["table"] == "mysql_db.orders"
+    assert suggestions[0]["column"] == "created_at"
+
+
+def test_optimize_parse_failure_keeps_warning_shape():
+    """整体 parse 失败:原样放行且保留 parse_failed 告警(与旧行为一致)。"""
+    out_sql, suggestions, warnings = optimize_federated_sql(
+        None, "SELECT FROM WHERE )(", {"mysql_db"}, _CfgStub())
+    assert out_sql == "SELECT FROM WHERE )("
+    assert suggestions == []
+    assert warnings == [{"error": "parse_failed", "pushed": False}]

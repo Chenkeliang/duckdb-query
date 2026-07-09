@@ -38,7 +38,7 @@ import {
   type AiSettings,
   type AiProvider,
   type AiProviderType,
-} from '@/api/aiApi';
+} from '@/api';
 
 const PROVIDER_TYPES: { value: AiProviderType; label: string }[] = [
   { value: 'openai', label: 'OpenAI' },

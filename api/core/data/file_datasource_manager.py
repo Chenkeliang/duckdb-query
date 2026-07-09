@@ -1,7 +1,7 @@
 # pylint: disable=duplicate-code
 """
-filedata源管理器
-负责管理filedata源的configuration、loading和持久化
+文件数据源管理器
+负责管理文件数据源的配置、加载和持久化
 """
 
 import hashlib
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ColumnProfile:
-    """column级元data快照"""
+    """列级元数据快照"""
 
     name: str
     duckdb_type: str
@@ -117,7 +117,7 @@ def _format_value(value: Any) -> Optional[Any]:
             return value.decode("latin-1", errors="ignore")
 
     if isinstance(value, float):
-        # 检查 NaN 和 Infinity（不是valid的 JSON 值）
+        # 检查 NaN 和 Infinity（不是合法的 JSON 值）
         if math.isnan(value) or math.isinf(value):
             return None
         return value
@@ -244,10 +244,10 @@ def build_table_metadata_snapshot(
 
 
 class FileDatasourceManager:
-    """filedata源管理器类"""
+    """文件数据源管理器类"""
 
     def __init__(self):
-        """initializingfiledata源管理器"""
+        """初始化文件数据源管理器"""
         from core.database.metadata_manager import metadata_manager
         
         self.metadata_manager = metadata_manager
@@ -260,7 +260,7 @@ class FileDatasourceManager:
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_file_hash(self, file_path: str) -> str:
-        """计算file的MD5哈希值"""
+        """计算文件的 MD5 哈希值"""
         hash_md5 = hashlib.md5()
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
@@ -268,12 +268,12 @@ class FileDatasourceManager:
         return hash_md5.hexdigest()
 
     def save_file_datasource(self, file_info: Dict[str, Any]):
-        """savingfiledata源configuration到 DuckDB 元datatable"""
+        """将文件数据源配置保存到 DuckDB 元数据表"""
         try:
             logger.info(f"Preparing to save file datasource: {file_info['source_id']}")
             logger.debug(f"File datasource data: {file_info}")
             
-            # saving到 DuckDB 元datatable
+            # 保存到 DuckDB 元数据表
             success = self.metadata_manager.save_file_datasource(file_info)
 
             if success:
@@ -288,7 +288,7 @@ class FileDatasourceManager:
             raise
 
     def get_file_datasource(self, source_id: str) -> Optional[Dict[str, Any]]:
-        """从 DuckDB 元datatablegettingfiledata源configuration"""
+        """从 DuckDB 元数据表获取文件数据源配置"""
         try:
             return self.metadata_manager.get_file_datasource(source_id)
         except Exception as e:  # pylint: disable=broad-exception-caught
@@ -296,7 +296,7 @@ class FileDatasourceManager:
             return None
 
     def list_file_datasources(self) -> List[Dict[str, Any]]:
-        """从 DuckDB 元datatablecolumn出所有filedata源"""
+        """从 DuckDB 元数据表列出所有文件数据源"""
         try:
             return self.metadata_manager.list_file_datasources()
         except Exception as e:  # pylint: disable=broad-exception-caught
@@ -304,9 +304,9 @@ class FileDatasourceManager:
             return []
 
     def delete_file_datasource(self, source_id: str) -> bool:
-        """从 DuckDB 元datatabledeletingfiledata源"""
+        """从 DuckDB 元数据表删除文件数据源"""
         try:
-            # 从 DuckDB deleting
+            # 从 DuckDB 删除
             success = self.metadata_manager.delete_file_datasource(source_id)
 
             if success:
@@ -320,7 +320,7 @@ class FileDatasourceManager:
             return False
 
     def reload_all_file_datasources(self, con: Optional[duckdb.DuckDBPyConnection] = None):
-        """重新loading所有filedata源到DuckDB"""
+        """重新加载所有文件数据源到 DuckDB"""
         if con is None:
             with with_duckdb_connection() as connection:
                 return self._reload_all_file_datasources(connection)
@@ -387,7 +387,7 @@ def create_typed_table_from_dataframe(
     import_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    使用 DuckDB 原生能力将 DataFrame 落库且保留column类型。
+    使用 DuckDB 原生能力将 DataFrame 落库，并保留列类型。
     """
     if df is None or df.empty:
         raise ValueError("DataFrame is empty, cannot create table")
@@ -433,7 +433,7 @@ def create_table_from_file_path_typed(
     import_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    从filepathcreating带类型的 DuckDB 持久化table。
+    从文件路径创建带类型的 DuckDB 持久化表。
     """
     _configure_duckdb_for_ingestion(duckdb_con)
     normalized_type = (file_type or "").lower()
@@ -504,8 +504,8 @@ def create_table_from_dataframe(
     import_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    统一入口：支持直接传入filepath或 DataFrame。
-    返回值包含行数、column数量、column定义与column型元data。
+    统一入口：支持直接传入文件路径或 DataFrame。
+    返回值包含行数、列数量、列定义与列类型元数据。
     """
     if isinstance(file_path_or_df, str):
         metadata = create_table_from_file_path_typed(
@@ -524,76 +524,12 @@ def create_table_from_dataframe(
     return metadata
 
 
-# 兼容旧函数命名，统一走 typed 流程
-create_varchar_table_from_dataframe_file = create_typed_table_from_dataframe
-create_varchar_table_from_file_path = create_table_from_file_path_typed
-
-
-def convert_table_to_varchar(table_name: str, _table_alias: str, duckdb_con):
-    """
-    将table的所有column转换为VARCHAR类型
-    """
-    try:
-        # gettingtable的columninfo
-        columns_info = duckdb_con.execute(
-            f"PRAGMA table_info('{table_name}')"
-        ).fetchall()
-
-        # 检查是否所有column都是VARCHAR类型
-        all_varchar = True
-        for col_info in columns_info:
-            col_name, col_type = col_info[1], col_info[2]
-            if col_type.upper() != "VARCHAR":
-                all_varchar = False
-                break
-
-        if all_varchar:
-            logger.info(f"Table {table_name} all columns are VARCHAR type, no conversion needed")
-            return
-
-        # 如果不是所有column都是VARCHAR，则进行转换
-        logger.info("Table %s needs column type conversion to VARCHAR", table_name)
-
-        # 构建新的table名
-        new_table_name = f"{table_name}_new_{int(datetime.now().timestamp() * 1000)}"
-
-        # 构建column转换SQL
-        cast_columns = []
-        for col_info in columns_info:
-            col_name = col_info[1]
-            # 对column名进行转义
-            escaped_col_name = col_name.replace('"', '""')
-            cast_columns.append(
-                f'CAST("{escaped_col_name}" AS VARCHAR) AS "{escaped_col_name}"'
-            )
-
-        cast_sql = ", ".join(cast_columns)
-
-        # creating新的VARCHARtable
-        create_sql = (
-            f'CREATE TABLE "{new_table_name}" AS SELECT {cast_sql} FROM "{table_name}"'
-        )
-        duckdb_con.execute(create_sql)
-
-        # deleting旧table
-        duckdb_con.execute(f'DROP TABLE "{table_name}"')
-
-        # 重命名新table
-        duckdb_con.execute(f'ALTER TABLE "{new_table_name}" RENAME TO "{table_name}"')
-
-        logger.info("Successfully converted table %s to VARCHAR type", table_name)
-
-    except Exception as e:
-        logger.error("Failed to convert table %s column types: %s", table_name, str(e))
-        raise
-
-
 def reload_all_file_datasources_to_duckdb(
     duckdb_con: Optional[duckdb.DuckDBPyConnection] = None,
 ):
-    """重新loading所有filedata源到DuckDB"""
+    """重新加载所有文件数据源到 DuckDB"""
     return file_datasource_manager.reload_all_file_datasources(duckdb_con)
 
 
-# creating全局实例
+# 创建全局实例
 file_datasource_manager = FileDatasourceManager()

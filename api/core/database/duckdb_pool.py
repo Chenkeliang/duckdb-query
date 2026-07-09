@@ -1,5 +1,5 @@
 """
-DuckDBconnection池管理器
+DuckDB 连接池管理器
 解决并发和稳定性问题
 """
 
@@ -15,7 +15,7 @@ from enum import Enum
 
 logger = logging.getLogger(__name__)
 
-# getting应用configuration
+# 获取应用配置
 from core.common.config_manager import config_manager
 from core.database.duckdb_recovery import try_recover_database_after_wal_error
 from core.database.duckdb_storage import connect_duckdb_database
@@ -58,12 +58,12 @@ class DuckDBConnectionPool:
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
 
-        # connection池统计
+        # 连接池统计
         self._total_created = 0
         self._total_closed = 0
         self._total_errors = 0
 
-        # initializingconnection池
+        # 初始化连接池
         self._initialize_pool()
 
         # 启动维护线程
@@ -73,7 +73,7 @@ class DuckDBConnectionPool:
         self._maintenance_thread.start()
 
     def _initialize_pool(self):
-        """initializing最小connection数"""
+        """初始化最小连接数"""
         for _ in range(self.min_connections):
             self._create_connection()
 
@@ -92,22 +92,22 @@ class DuckDBConnectionPool:
             raise
 
     def _create_connection(self) -> Optional[int]:
-        """creating新connection"""
+        """创建新连接"""
         try:
-            # gettingdatabaseconfiguration
+            # 获取数据库配置
             app_config = config_manager.get_app_config()
             paths = config_manager.get_duckdb_paths()
 
             db_path = str(paths.database_path)
             temp_dir = str(paths.temp_dir)
 
-            # creatingconnection
+            # 创建连接
             connection = self._connect_duckdb(db_path)
 
             # 应用优化设置
             self._configure_connection(connection, app_config, temp_dir)
 
-            # 添加到connection池
+            # 添加到连接池
             with self._lock:
                 if len(self._connections) >= self.max_connections:
                     logger.warning("Connection pool is full, cannot create new connection")
@@ -140,17 +140,17 @@ class DuckDBConnectionPool:
     def _configure_connection(
         self, connection: duckdb.DuckDBPyConnection, app_config, temp_dir: str
     ):
-        """configurationconnectionparameter - 使用统一的DuckDBconfiguration系统"""
+        """配置连接参数 - 使用统一的 DuckDB 配置系统"""
         try:
-            # 导入统一的configuration应用函数
+            # 导入统一的配置应用函数
             from core.database.duckdb_engine import _apply_duckdb_configuration
 
-            # 使用统一的configuration系统
+            # 使用统一的配置系统
             _apply_duckdb_configuration(connection, temp_dir)
 
         except Exception as e:
             logger.warning(f"Failed to apply unified configuration, using basic configuration: {str(e)}")
-            # 基础configuration作为后备，使用configurationfile中的值
+            # 基础配置作为后备，使用配置文件中的值
             try:
                 connection.execute(f"SET threads={app_config.duckdb_threads}")
                 connection.execute(f"SET temp_directory='{temp_dir}'")
@@ -166,7 +166,7 @@ class DuckDBConnectionPool:
 
     @contextmanager
     def get_connection(self):
-        """gettingconnection的上下文管理器"""
+        """获取连接的上下文管理器"""
         conn_id = None
         try:
             conn_id = self._acquire_connection()
@@ -195,20 +195,20 @@ class DuckDBConnectionPool:
                     self._connections[conn_id].connection.execute("COMMIT")
                     logger.debug(f"[POOL_DEBUG] COMMIT completed: conn_id={conn_id}")
                 except Exception as commit_error:
-                    # 如果没有活动事务，COMMIT 会failed，这是正常的
+                    # 如果没有活动事务，COMMIT 会失败，这是正常的
                     logger.debug(f"[POOL_DEBUG] COMMIT failed (possibly no active transaction): conn_id={conn_id}, error={commit_error}")
                     pass
                 self._release_connection(conn_id)
                 logger.debug(f"[POOL_DEBUG] Connection released: conn_id={conn_id}")
 
     def _acquire_connection(self) -> Optional[int]:
-        """getting可用connection"""
+        """获取可用连接"""
         with self._condition:
-            # 等待可用connection
+            # 等待可用连接
             start_time = time.time()
             app_config = config_manager.get_app_config()
             while True:
-                # 查找空闲connection
+                # 查找空闲连接
                 for conn_id, conn_info in self._connections.items():
                     if conn_info.state == ConnectionState.IDLE:
                         conn_info.state = ConnectionState.BUSY
@@ -216,7 +216,7 @@ class DuckDBConnectionPool:
                         conn_info.use_count += 1
                         return conn_id
 
-                # 如果没有空闲connection且未达到最大connection数，creating新connection
+                # 如果没有空闲连接且未达到最大连接数，创建新连接
                 if len(self._connections) < self.max_connections:
                     conn_id = self._create_connection()
                     if conn_id:
@@ -225,7 +225,7 @@ class DuckDBConnectionPool:
                         self._connections[conn_id].use_count += 1
                         return conn_id
 
-                # 等待connection释放
+                # 等待连接释放
                 if time.time() - start_time > self.connection_timeout:
                     logger.error("Connection acquisition timeout")
                     return None
@@ -234,7 +234,7 @@ class DuckDBConnectionPool:
                 self._condition.wait(timeout=app_config.pool_wait_timeout)
 
     def _release_connection(self, conn_id: int):
-        """释放connection"""
+        """释放连接"""
         with self._lock:
             if conn_id in self._connections:
                 conn_info = self._connections[conn_id]
@@ -246,25 +246,25 @@ class DuckDBConnectionPool:
                     self._condition.notify()
 
     def _mark_connection_error(self, conn_id: int, error_msg: str):
-        """标记connectionerror"""
+        """标记连接错误"""
         with self._lock:
             if conn_id in self._connections:
                 conn_info = self._connections[conn_id]
                 conn_info.state = ConnectionState.ERROR
                 conn_info.error_count += 1
 
-                # 如果error次数过多，关闭connection
+                # 如果错误次数过多，关闭连接
                 if conn_info.error_count >= self.max_retries:
                     self._close_connection(conn_id)
                 else:
-                    # 尝试重置connection
+                    # 尝试重置连接
                     self._reset_connection(conn_id)
 
     def _reset_connection(self, conn_id: int):
-        """重置connection状态"""
+        """重置连接状态"""
         try:
             conn_info = self._connections[conn_id]
-            # executing简单query测试connection
+            # 执行简单查询测试连接
             conn_info.connection.execute("SELECT 1")
             conn_info.state = ConnectionState.IDLE
             logger.info(f"Connection reset successfully")
@@ -273,7 +273,7 @@ class DuckDBConnectionPool:
             self._close_connection(conn_id)
 
     def _close_connection(self, conn_id: int):
-        """关闭connection"""
+        """关闭连接"""
         with self._lock:
             if conn_id in self._connections:
                 conn_info = self._connections[conn_id]
@@ -297,7 +297,7 @@ class DuckDBConnectionPool:
                 logger.error(f"Maintenance thread error: {str(e)}")
 
     def _cleanup_idle_connections(self):
-        """清理空闲connection"""
+        """清理空闲连接"""
         current_time = time.time()
         with self._lock:
             to_close = []
@@ -320,7 +320,7 @@ class DuckDBConnectionPool:
                     self._reset_connection(conn_id)
 
     def get_stats(self) -> dict:
-        """gettingconnection池统计info"""
+        """获取连接池统计信息"""
         with self._lock:
             idle_count = sum(
                 1 for c in self._connections.values() if c.state == ConnectionState.IDLE
@@ -346,18 +346,18 @@ class DuckDBConnectionPool:
 
     def discard_connection(self, connection: duckdb.DuckDBPyConnection) -> bool:
         """
-        销毁connection（中断后使用，不归还池中）
+        销毁连接（中断后使用，不归还池中）
         
-        用于query被中断后，避免connection复用导致的状态问题
+        用于查询被中断后，避免连接复用导致的状态问题
         
         Args:
-            connection: 要销毁的connection对象
+            connection: 要销毁的连接对象
             
         Returns:
             True if connection was found and discarded, False otherwise
         """
         with self._lock:
-            # 通过对象身份查找connection ID
+            # 通过对象身份查找连接 ID
             conn_id_to_discard = None
             for conn_id, conn_info in self._connections.items():
                 if conn_info.connection is connection:
@@ -368,7 +368,7 @@ class DuckDBConnectionPool:
                 logger.warning("discard_connection: Connection to discard not found")
                 return False
             
-            # 关闭connection
+            # 关闭连接
             try:
                 connection.close()
             except Exception as e:
@@ -379,7 +379,7 @@ class DuckDBConnectionPool:
             self._total_closed += 1
             logger.info(f"Discarded connection {conn_id_to_discard}, current connections: {len(self._connections)}")
             
-            # 如果低于最小connection数，触发补充（在后台）
+            # 如果低于最小连接数，触发补充（在后台）
             if len(self._connections) < self.min_connections:
                 logger.info("Connection count below minimum, will create new connection on next request")
             
@@ -390,20 +390,35 @@ class DuckDBConnectionPool:
             return True
 
     def close_all(self):
-        """关闭所有connection"""
+        """关闭所有连接"""
         with self._lock:
             for conn_id in list(self._connections.keys()):
                 self._close_connection(conn_id)
 
 
-# 全局connection池实例
+# 全局连接池实例
 _connection_pool = None
+_connection_pool_lock = threading.Lock()
 
 
 def get_connection_pool() -> DuckDBConnectionPool:
-    """gettingconnection池实例"""
+    """获取连接池实例（双重检查加锁的懒加载单例）。
+
+    异步任务经 FastAPI BackgroundTasks 跑在真实线程池里，和事件循环线程一样
+    会调用这个函数——两个几乎同时到达的首次调用如果不加锁，都会看到
+    _connection_pool 是 None，各自完整构造一个连接池（各自真实打开数据库
+    连接、各自起一条维护线程），后赋值的那个"获胜"，先创建的那个连接和线程
+    永久泄漏。与 core.foundation.crypto_utils.CryptoManager._get_fernet()
+    用同一个双重检查加锁模式。
+    """
     global _connection_pool
-    if _connection_pool is None:
+    if _connection_pool is not None:
+        return _connection_pool
+
+    with _connection_pool_lock:
+        if _connection_pool is not None:
+            return _connection_pool
+
         from core.common.config_manager import config_manager
 
         app_config = config_manager.get_app_config()
@@ -415,13 +430,13 @@ def get_connection_pool() -> DuckDBConnectionPool:
             idle_timeout=app_config.pool_idle_timeout,
             max_retries=app_config.pool_max_retries,
         )
-    return _connection_pool
+        return _connection_pool
 
 
 @contextmanager
 def interruptible_connection(task_id: str, sql: str = ""):
     """
-    可中断的connection上下文管理器
+    可中断的连接上下文管理器
     
     复用现有 get_connection() 的事务/释放逻辑，同时支持中断
     
@@ -431,13 +446,13 @@ def interruptible_connection(task_id: str, sql: str = ""):
     
     Args:
         task_id: 任务 ID，用于注册和中断
-        sql: SQL 语句，用于debug日志
+        sql: SQL 语句，用于调试日志
         
     Yields:
-        DuckDB connection对象
+        DuckDB 连接对象
         
     Raises:
-        duckdb.InterruptException: query被中断时抛出
+        duckdb.InterruptException: 查询被中断时抛出
     """
     from core.database.connection_registry import connection_registry
     
@@ -445,34 +460,34 @@ def interruptible_connection(task_id: str, sql: str = ""):
     discarded = False
     
     with pool.get_connection() as conn:
-        # 注册到注册table
+        # 注册到注册表
         connection_registry.register(task_id, conn, sql[:200] if sql else "")
         
         try:
             yield conn
         except duckdb.InterruptException:
-            # 中断后销毁connection，避免被重新归还
+            # 中断后销毁连接，避免被重新归还
             pool.discard_connection(conn)
             discarded = True
             logger.info(f"Task {task_id} was interrupted, connection discarded")
             raise  # 重新抛出，让上层处理
         finally:
-            # 无论successfully/failed/cancel，都注销注册table
+            # 无论成功/失败/取消，都注销注册表
             connection_registry.unregister(task_id)
             if discarded:
                 logger.debug(f"Task {task_id} connection already discarded, skipping pool release")
 
 
 # ============================================
-# 系统databaseconnection管理器 (用于系统table，独立于用户data)
+# 系统数据库连接管理器 (用于系统表，独立于用户数据)
 # ============================================
 
 class SystemDBConnection:
-    """系统database单connection管理器（线程安全）
+    """系统数据库单连接管理器（线程安全）
     
-    为什么使用单connection而不是connection池？
-    1. 系统table操作频率低，不需要connection池
-    2. 单connection避免多connection竞争导致的写写冲突
+    为什么使用单连接而不是连接池？
+    1. 系统表操作频率低，不需要连接池
+    2. 单连接避免多连接竞争导致的写写冲突
     3. 使用 RLock 保证线程安全
     """
     
@@ -489,7 +504,7 @@ class SystemDBConnection:
         return cls._instance
     
     def _ensure_connection(self) -> duckdb.DuckDBPyConnection:
-        """确保connection可用，如果connection断开则重新creating"""
+        """确保连接可用，如果连接断开则重新创建"""
         with self._lock:
             if self._connection is None:
                 paths = config_manager.get_duckdb_paths()
@@ -508,7 +523,7 @@ class SystemDBConnection:
                         self._connection = connect_duckdb_database(db_path)
                     else:
                         raise
-                # 应用基本configuration
+                # 应用基本配置
                 app_config = config_manager.get_app_config()
                 if app_config.duckdb_memory_limit:
                     try:
@@ -519,7 +534,7 @@ class SystemDBConnection:
     
     @contextmanager
     def get_connection(self):
-        """getting系统databaseconnection（线程安全）"""
+        """获取系统数据库连接（线程安全）"""
         with self._lock:
             conn = self._ensure_connection()
             try:
@@ -534,7 +549,7 @@ class SystemDBConnection:
                 raise
     
     def close(self):
-        """关闭connection"""
+        """关闭连接"""
         with self._lock:
             if self._connection:
                 try:
@@ -547,15 +562,15 @@ class SystemDBConnection:
 
 
 def get_system_connection_manager() -> SystemDBConnection:
-    """getting系统databaseconnection管理器单例"""
+    """获取系统数据库连接管理器单例"""
     return SystemDBConnection.get_instance()
 
 
 @contextmanager
 def with_system_connection():
-    """系统databaseconnection上下文管理器
-    
-    用于所有系统table操作:
+    """系统数据库连接上下文管理器
+
+    用于所有系统表操作:
     - system_async_tasks
     - system_task_exports
     - system_database_connections
@@ -565,3 +580,15 @@ def with_system_connection():
     manager = get_system_connection_manager()
     with manager.get_connection() as conn:
         yield conn
+
+
+def shutdown_all_duckdb_connections() -> None:
+    """进程退出前调用：关闭主库连接池 + 系统库连接，让 DuckDB 对 WAL 做一次干净 checkpoint。
+
+    只关闭已经初始化过的连接，不会为了关闭而现开一个新连接/新池。幂等，可安全重复调用
+    （例如 FastAPI lifespan 的 shutdown 钩子 + 桌面端 /api/system/shutdown 都可能触发）。
+    """
+    if _connection_pool is not None:
+        _connection_pool.close_all()
+
+    get_system_connection_manager().close()

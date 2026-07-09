@@ -303,15 +303,13 @@ export async function testConnection(
     connectionData: { id?: string } & Partial<CreateConnectionRequest>
 ): Promise<ConnectionTestResult> {
     try {
-        let response;
-
         // Unified test logic: always use /test endpoint
         // If ID is provided, backend will handle password inheritance
         const payload = {
             ...connectionData,
             id: connectionData.id ? connectionData.id.replace(/^db_/, '') : undefined
         };
-        response = await apiClient.post('/api/datasources/databases/test', payload);
+        const response = await apiClient.post('/api/datasources/databases/test', payload);
 
         const normalized = normalizeResponse<{ connection_test?: ConnectionTestResult }>(response);
         const data = normalized.data;

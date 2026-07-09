@@ -10,14 +10,8 @@ from contextlib import contextmanager
 
 from models.query_models import (
     QueryRequest,
-    Join,
-    JoinType,
-    JoinCondition,
-    MultiTableJoin,
     DataSource,
 )
-
-from core.common.utils import handle_non_serializable_data
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +117,12 @@ def _resolve_duckdb_extensions(app_config, override_extensions: Optional[List[st
     return resolved
 
 
+def _quote_identifier(identifier: str) -> str:
+    """转义内嵌双引号并加引号包裹单个 SQL 标识符（保留非 ASCII，如中文别名）。"""
+    escaped = str(identifier).replace('"', '""')
+    return f'"{escaped}"'
+
+
 def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
     """
     根据数据库配置构建 ATTACH SQL 语句
@@ -144,13 +144,14 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         >>> config = {'type': 'mysql', 'host': 'localhost', 'user': 'root', 
         ...           'password': 'pwd', 'database': 'mydb', 'port': 3306}
         >>> build_attach_sql('mysql_db', config)
-        "ATTACH 'host=localhost user=root password=pwd database=mydb port=3306' AS mysql_db (TYPE mysql)"
+        'ATTACH \\'host=localhost user=root password=pwd database=mydb port=3306\\' AS "mysql_db" (TYPE mysql)'
     """
     db_type = db_config.get('type', '').lower()
-    
+    quoted_alias = _quote_identifier(alias)
+
     # 支持 user 和 username 两种参数名称
     username = db_config.get('user') or db_config.get('username')
-    
+
     if db_type == 'mysql':
         if not username:
             raise ValueError("MySQL connection missing username parameter (user or username)")
@@ -158,8 +159,8 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         conn_str = f"host={db_config['host']} user={username} password={db_config.get('password', '')} database={db_config['database']}"
         if db_config.get('port'):
             conn_str += f" port={db_config['port']}"
-        return f"ATTACH '{conn_str}' AS {alias} (TYPE mysql)"
-    
+        return f"ATTACH '{conn_str}' AS {quoted_alias} (TYPE mysql)"
+
     elif db_type in ('postgresql', 'postgres'):
         if not username:
             raise ValueError("PostgreSQL connection missing username parameter (user or username)")
@@ -167,18 +168,21 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         conn_str = f"host={db_config['host']} dbname={db_config['database']} user={username} password={db_config.get('password', '')}"
         if db_config.get('port'):
             conn_str += f" port={db_config['port']}"
-        return f"ATTACH '{conn_str}' AS {alias} (TYPE postgres)"
-    
+        return f"ATTACH '{conn_str}' AS {quoted_alias} (TYPE postgres)"
+
     elif db_type == 'sqlite':
-        # SQLite 使用文件路径
-        return f"ATTACH '{db_config['database']}' AS {alias} (TYPE sqlite)"
+        # SQLite 使用文件路径（兼容 path、database 两种参数键）
+        path = db_config.get('path') or db_config.get('database')
+        if not path:
+            raise ValueError("SQLite connection missing file path (path or database)")
+        return f"ATTACH '{path}' AS {quoted_alias} (TYPE sqlite)"
 
     elif db_type == 'duckdb':
         # DuckDB 文件：原生只读挂载，零拷贝、与本地表同速（无 scanner 开销）
         path = db_config.get('path') or db_config.get('database')
         if not path:
             raise ValueError("DuckDB connection missing file path (path or database)")
-        return f"ATTACH '{path}' AS {alias} (READ_ONLY)"
+        return f"ATTACH '{path}' AS {quoted_alias} (READ_ONLY)"
 
     else:
         raise ValueError(f"Unsupported database type: {db_type}")
@@ -309,6 +313,9 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
         else:
             logger.info("No DuckDB extensions configured to load")
 
+        # 应用引擎兼容性配置（SET GLOBAL，逐项 try/except，见函数注释）
+        apply_engine_compat_settings(connection, app_config.engine_compat)
+
     except Exception as e:
         logger.error(f"Error applying DuckDB configuration: {str(e)}")
         # 使用默认配置作为后备
@@ -341,6 +348,34 @@ def _install_duckdb_extensions(connection, extensions: List[str]):
                 logger.warning(
                     f"Failed to install or load DuckDB extension {ext_name}: {str(install_error)}"
                 )
+
+
+# 引擎兼容性配置对应的 DuckDB SET GLOBAL 选项名，分别由 sqlite_scanner / mysql /
+# postgres / iceberg 扩展注册。字段名与 DuckDB 官方 option 名完全一致，无需映射表。
+ENGINE_COMPAT_OPTIONS = (
+    "sqlite_all_varchar",
+    "mysql_incomplete_dates_as_nulls",
+    "pg_array_as_varchar",
+    "unsafe_enable_version_guessing",
+)
+
+
+def apply_engine_compat_settings(connection, engine_compat: Optional[Dict[str, Any]]) -> None:
+    """应用引擎兼容性配置。
+
+    SET GLOBAL 是数据库实例级作用域：在池中任意一个连接上执行，所有池化连接立即生效。
+    这四个 option 分别由 sqlite_scanner/mysql/postgres/iceberg 扩展注册，扩展未加载
+    （且离线无法自动安装）时 SET GLOBAL 会报 "unrecognized configuration option"，因此
+    逐项 try/except 并降级为 debug 日志，绝不能因为某个开关对应的扩展没装就搞坏连接初始化。
+    """
+    if not engine_compat:
+        return
+    for option in ENGINE_COMPAT_OPTIONS:
+        value = bool(engine_compat.get(option, False))
+        try:
+            connection.execute(f"SET GLOBAL {option}={str(value).lower()}")
+        except Exception as exc:  # noqa: BLE001  扩展未加载时的预期失败，静默降级
+            logger.debug("engine_compat SET GLOBAL %s=%s skipped: %s", option, value, exc)
 
 
 def _apply_default_duckdb_config(connection, temp_dir: str):
@@ -388,6 +423,9 @@ def _apply_default_duckdb_config(connection, temp_dir: str):
         extensions_to_load = _resolve_duckdb_extensions(app_config)
         if extensions_to_load:
             _install_duckdb_extensions(connection, extensions_to_load)
+
+        # 应用引擎兼容性配置（SET GLOBAL，逐项 try/except，见函数注释）
+        apply_engine_compat_settings(connection, app_config.engine_compat)
 
         logger.info("Successfully applied default DuckDB configuration from config file")
 
@@ -573,228 +611,6 @@ def safe_encode_string(value: str) -> str:
             return str(value).encode("ascii", errors="ignore").decode("ascii")
 
 
-def drop_table_if_exists(table_name: str, con=None) -> bool:
-    """
-    删除表（如果存在）
-    """
-    try:
-        with _use_connection(con) as connection:
-            connection.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-        logger.info(f"Deleted table: {table_name}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to delete table {table_name}: {str(e)}")
-        return False
-
-
-def backup_table(table_name: str, con=None) -> str:
-    """
-    备份表到临时表
-    返回备份表名
-    """
-    backup_name = f"{table_name}_backup_{int(time.time())}"
-
-    try:
-        with _use_connection(con) as connection:
-            tables = connection.execute("SHOW TABLES").fetchall()
-            table_exists = any(table[0] == table_name for table in tables)
-
-            if not table_exists:
-                logger.warning(f"Table {table_name} does not exist, no backup needed")
-                return ""
-
-            # 创建备份表
-            connection.execute(
-                f'CREATE TABLE "{backup_name}" AS SELECT * FROM "{table_name}"'
-            )
-        logger.info(f"Backed up table {table_name} to {backup_name}")
-        return backup_name
-
-    except Exception as e:
-        logger.error(f"Failed to backup table {table_name}: {str(e)}")
-        return ""
-
-
-def convert_table_to_varchar(
-    table_name: str, backup_table_name: str = "", con=None
-) -> bool:
-    """
-    将表的所有列转换为VARCHAR类型
-    使用DuckDB原生功能，避免pandas
-    """
-    # 无外部连接时自持一个连接贯穿 backup/describe/drop/create 全流程，
-    # 避免每步从池中各取一个连接（连接放大 + 跨连接可见性不一致）。
-    if con is None:
-        with with_duckdb_connection() as owned_con:
-            return convert_table_to_varchar(table_name, backup_table_name, owned_con)
-    try:
-        # 如果没有提供备份表名，先创建备份
-        if not backup_table_name:
-            backup_table_name = backup_table(table_name, con)
-            if not backup_table_name:
-                logger.error(f"Unable to backup table {table_name}")
-                return False
-
-        # 获取表结构
-        with _use_connection(con) as connection:
-            columns_info = connection.execute(
-                f'DESCRIBE "{backup_table_name}"'
-            ).fetchall()
-
-        # 构建SELECT语句，将所有列CAST为VARCHAR
-        cast_columns = []
-        for col_name, col_type, *_ in columns_info:
-            if col_type.upper().startswith("VARCHAR"):
-                # 已经是VARCHAR类型，直接使用
-                cast_columns.append(f'"{col_name}"')
-            else:
-                # 转换为VARCHAR类型
-                cast_columns.append(f'CAST("{col_name}" AS VARCHAR) AS "{col_name}"')
-
-        cast_sql = ", ".join(cast_columns)
-
-        # 删除原表
-        drop_table_if_exists(table_name, con)
-
-        # 重新创建表，所有列都是VARCHAR类型
-        create_sql = f'CREATE TABLE "{table_name}" AS SELECT {cast_sql} FROM "{backup_table_name}"'
-        with _use_connection(con) as connection:
-            connection.execute(create_sql)
-
-        # 删除备份表
-        drop_table_if_exists(backup_table_name, con)
-
-        logger.info(f"Successfully converted all columns of table {table_name} to VARCHAR type")
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to convert table type {table_name}: {str(e)}")
-        return False
-
-
-def check_and_convert_table_types(table_name: str, con=None) -> bool:
-    """
-    检查表的列类型，如果有非VARCHAR类型则转换
-    """
-    if con is None:
-        with with_duckdb_connection() as owned_con:
-            return check_and_convert_table_types(table_name, owned_con)
-    try:
-        # 检查表是否存在
-        with _use_connection(con) as connection:
-            tables = connection.execute("SHOW TABLES").fetchall()
-        table_exists = any(table[0] == table_name for table in tables)
-
-        if not table_exists:
-            logger.info(f"Table {table_name} does not exist, no check needed")
-            return True
-
-        # 获取表结构
-        with _use_connection(con) as connection:
-            columns_info = connection.execute(f'DESCRIBE "{table_name}"').fetchall()
-
-        # 检查是否有非VARCHAR类型的列
-        non_varchar_columns = []
-        for col_name, col_type, *_ in columns_info:
-            if not col_type.upper().startswith("VARCHAR"):
-                non_varchar_columns.append((col_name, col_type))
-
-        if non_varchar_columns:
-            logger.info(
-                f"Table {table_name} has {len(non_varchar_columns)} non-VARCHAR columns, conversion needed"
-            )
-            for col_name, col_type in non_varchar_columns:
-                logger.info(f"  - {col_name}: {col_type}")
-
-            # 执行转换
-            return convert_table_to_varchar(table_name, "", con)
-        else:
-            logger.info(f"Table {table_name} all columns are VARCHAR type, no conversion needed")
-            return True
-
-    except Exception as e:
-        logger.error(f"Failed to check table type {table_name}: {str(e)}")
-        return False
-
-
-def ensure_all_tables_varchar(con=None) -> bool:
-    """
-    确保所有表的列都是VARCHAR类型
-    """
-    if con is None:
-        with with_duckdb_connection() as owned_con:
-            return ensure_all_tables_varchar(owned_con)
-    try:
-        # 获取所有表
-        with _use_connection(con) as connection:
-            tables = connection.execute("SHOW TABLES").fetchall()
-
-        success_count = 0
-        total_count = len(tables)
-
-        for table_row in tables:
-            table_name = table_row[0]
-            if check_and_convert_table_types(table_name, con):
-                success_count += 1
-            else:
-                logger.error(f"Failed to convert table {table_name}")
-
-        logger.info(f"Table type check completed: {success_count}/{total_count} tables successful")
-        return success_count == total_count
-
-    except Exception as e:
-        logger.error(f"Failed to batch check table types: {str(e)}")
-        return False
-
-
-def create_varchar_table_from_dataframe(
-    table_name: str, df: pd.DataFrame, con=None
-) -> bool:
-    """
-    从DataFrame创建DuckDB表，所有列都转换为VARCHAR类型
-    优先使用DuckDB原生功能，避免pandas预处理
-    """
-    try:
-        if df is None or df.empty:
-            logger.warning(f"DataFrame is empty, cannot create table {table_name}")
-            return False
-
-        from core.data.file_datasource_manager import (
-            create_typed_table_from_dataframe,
-            file_datasource_manager,
-        )
-        from core.common.timezone_utils import get_current_time_iso
-
-        with _use_connection(con) as connection:
-            metadata = create_typed_table_from_dataframe(connection, table_name, df)
-
-        table_metadata = {
-            "source_id": table_name,
-            "filename": f"table_{table_name}",
-            "file_path": f"duckdb://{table_name}",
-            "file_type": "duckdb_table",
-            "row_count": metadata.get("row_count", 0),
-            "column_count": metadata.get("column_count", 0),
-            "columns": metadata.get("columns", []),
-            "column_profiles": metadata.get("column_profiles", []),
-            "schema_version": 2,
-            "created_at": get_current_time_iso(),
-        }
-
-        file_datasource_manager.save_file_datasource(table_metadata)
-        logger.info(
-            "Successfully created typed DuckDB table: %s (rows: %s, columns: %s)",
-            table_name,
-            table_metadata["row_count"],
-            table_metadata["column_count"],
-        )
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to create typed table {table_name}: {str(e)}")
-        return False
-
-
 def prepare_dataframe_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
     """
     预处理DataFrame以避免DuckDB类型转换错误
@@ -943,6 +759,11 @@ def generate_table_identifiers(sources: List[DataSource]) -> Dict[str, str]:
     for source in sources:
         # 使用表名或ID作为基础
         base_name = getattr(source, "name", None) or source.id
+        # 联邦表 id 是限定名（如 "sqlite_alarm_sqlite.alerts"），需先取最后一段
+        # 表名，否则 simplify_table_name 会把截断长度用在连接前缀上，
+        # 导致同一连接下的不同表都被截断成相同前缀（如 sqlite_ala）而冲突
+        if isinstance(base_name, str) and "." in base_name:
+            base_name = base_name.rsplit(".", 1)[-1]
         table_names.append((source.id, base_name))
 
     # 生成唯一标识符
@@ -971,10 +792,13 @@ def simplify_table_name(table_name: str, max_length: int = 10) -> str:
     if not table_name:
         return "table"
 
-    # 移除特殊字符并转换为小写
+    # 移除特殊字符并转换为小写。
+    # \w 按 Unicode 匹配,保留中文等非 ASCII 表名——冲突别名要求"列名_表名"可读,
+    # 旧的 [^a-zA-Z0-9_] 会把「商品表」「订单表」全吞成下划线,同连接两表再撞名加 _1。
+    # 别名在生成 SQL 时始终带双引号,含中文是合法标识符。
     import re
 
-    clean_name = re.sub(r"[^a-zA-Z0-9_]", "_", table_name).lower()
+    clean_name = re.sub(r"[^\w]", "_", table_name, flags=re.UNICODE).lower()
 
     # 如果名称太长，进行截断
     if len(clean_name) > max_length:
@@ -1038,24 +862,6 @@ def generate_column_aliases(sources: List[DataSource]) -> Dict[str, Dict[str, st
         aliases[source.id] = source_aliases
 
     return aliases
-
-
-def build_join_query(query_request: QueryRequest) -> str:
-    """
-    构建复杂的多表JOIN查询
-    """
-    sources = query_request.sources
-    joins = query_request.joins
-
-    if not sources:
-        raise ValueError("At least one data source is required")
-
-    if len(sources) == 1:
-        # 单表查询
-        return build_single_table_query(query_request)
-
-    # 多表JOIN查询
-    return build_multi_table_join_query(query_request)
 
 
 def get_actual_table_name(source) -> str:
@@ -1132,83 +938,6 @@ def build_single_table_query(query_request: QueryRequest) -> str:
     return query
 
 
-def build_multi_table_join_query(query_request: QueryRequest) -> str:
-    """
-    构建多表JOIN查询 - 优化VARCHAR JOIN性能
-    """
-    sources = query_request.sources
-    joins = query_request.joins
-
-    # 为JOIN列创建索引以提升性能
-    if joins:
-        try:
-            create_join_indexes(sources, joins)
-        except Exception as e:
-            logger.warning(f"Failed to create JOIN indexes, but continuing with query: {str(e)}")
-
-    # 生成改进的列别名以处理冲突
-    column_aliases = generate_improved_column_aliases(sources)
-
-    # 构建SELECT子句
-    select_parts = []
-    if query_request.select_columns:
-        # 用户指定了要选择的列
-        for col in query_request.select_columns:
-            # 查找列属于哪个表
-            found = False
-            for source in sources:
-                if source.columns and col in source.columns:
-                    table_alias = source.id
-                    column_alias = column_aliases[source.id][col]
-                    select_parts.append(f'{table_alias}."{col}" AS "{column_alias}"')
-                    found = True
-                    break
-            if not found:
-                # 如果没找到，直接使用列名
-                select_parts.append(f'"{col}"')
-    else:
-        # 选择所有列，使用改进的别名避免冲突
-        for source in sources:
-            if source.columns:
-                for col in source.columns:
-                    table_alias = source.id
-                    column_alias = column_aliases[source.id][col]
-                    select_parts.append(f'{table_alias}."{col}" AS "{column_alias}"')
-
-    select_clause = ", ".join(select_parts) if select_parts else "*"
-
-    # 构建FROM子句和JOIN子句
-    if not joins:
-        # 没有JOIN条件，使用CROSS JOIN
-        from_clause = f'"{get_actual_table_name(sources[0])}"'
-        for source in sources[1:]:
-            from_clause += f' CROSS JOIN "{get_actual_table_name(source)}"'
-    else:
-        # 有JOIN条件，构建JOIN链
-        from_clause = build_join_chain(sources, joins)
-
-    # 构建优化的查询 - 添加HASH JOIN提示
-    if joins:
-        # 对于有JOIN的查询，添加优化提示
-        query = f"SELECT {select_clause} FROM {from_clause}"
-    else:
-        query = f"SELECT {select_clause} FROM {from_clause}"
-
-    # 添加WHERE条件
-    if query_request.where_conditions:
-        query += f" WHERE {query_request.where_conditions}"
-
-    # 添加ORDER BY
-    if query_request.order_by:
-        query += f" ORDER BY {query_request.order_by}"
-
-    # 添加LIMIT
-    if query_request.limit:
-        query += f" LIMIT {query_request.limit}"
-
-    return query
-
-
 def _build_column_expression(
     table_name: str, column_expr: str, available_columns: Optional[List[str]] = None
 ) -> str:
@@ -1250,161 +979,9 @@ def _build_column_expression(
     return qualified_expr
 
 
-def build_join_chain(sources: List[DataSource], joins: List[Join]) -> str:
-    """
-    构建JOIN链，支持多表连接和多字段关联
-    """
-    if not joins:
-        return f'"{get_actual_table_name(sources[0])}"'
-
-    # 创建表的映射
-    source_map = {source.id: source for source in sources}
-
-    # 从第一个JOIN开始构建
-    first_join = joins[0]
-    left_source = source_map[first_join.left_source_id]
-    right_source = source_map[first_join.right_source_id]
-    left_table = get_actual_table_name(left_source)
-    right_table = get_actual_table_name(right_source)
-
-    # 构建JOIN类型映射
-    join_type_map = {
-        JoinType.INNER: "INNER JOIN",
-        JoinType.LEFT: "LEFT JOIN",
-        JoinType.RIGHT: "RIGHT JOIN",
-        JoinType.FULL_OUTER: "FULL OUTER JOIN",
-        JoinType.CROSS: "CROSS JOIN",
-    }
-
-    # 开始构建查询
-    from_clause = f'"{left_table}"'
-
-    # 收集所有相同表对的JOIN条件
-    join_conditions_map = {}
-
-    for join in joins:
-        left_id = join.left_source_id
-        right_id = join.right_source_id
-
-        # 创建JOIN键，用于合并相同表对的JOIN条件
-        join_key = tuple(sorted([left_id, right_id]))
-
-        if join_key not in join_conditions_map:
-            join_conditions_map[join_key] = {
-                "left_table": left_id,
-                "right_table": right_id,
-                "join_type": join.join_type,
-                "conditions": [],
-            }
-
-        # 添加条件到对应的JOIN
-        if join.conditions:
-            join_conditions_map[join_key]["conditions"].extend(join.conditions)
-
-    # 处理所有JOIN（现在每个表对只处理一次）
-    for join_key, join_info in join_conditions_map.items():
-        left_id = join_info["left_table"]
-        right_id = join_info["right_table"]
-        join_type = join_info["join_type"]
-        all_conditions = join_info["conditions"]
-
-        join_type_sql = join_type_map.get(join_type, "INNER JOIN")
-        right_source = source_map[right_id]
-        right_table = get_actual_table_name(right_source)
-
-        from_clause += f' {join_type_sql} "{right_table}"'
-
-        # 添加所有JOIN条件（包括多字段关联）
-        if join_type != JoinType.CROSS and all_conditions:
-            conditions = []
-            for condition in all_conditions:
-                left_source = source_map[left_id]
-                right_source = source_map[right_id]
-                left_table_name = get_actual_table_name(left_source)
-                right_table_name = get_actual_table_name(right_source)
-                base_left_col = _build_column_expression(
-                    left_table_name, condition.left_column, getattr(left_source, "columns", None)
-                )
-                base_right_col = _build_column_expression(
-                    right_table_name, condition.right_column, getattr(right_source, "columns", None)
-                )
-                left_col = base_left_col
-                right_col = base_right_col
-
-                if condition.left_cast:
-                    left_col = f"TRY_CAST({left_col} AS {condition.left_cast})"
-                if condition.right_cast:
-                    right_col = f"TRY_CAST({right_col} AS {condition.right_cast})"
-                conditions.append(f"{left_col} {condition.operator} {right_col}")
-
-            if conditions:
-                from_clause += f" ON {' AND '.join(conditions)}"
-
-    return from_clause
-
-
-def create_varchar_index(table_name: str, column_name: str, con=None) -> bool:
-    """
-    为VARCHAR列创建索引以优化JOIN性能
-    """
-    try:
-        with _use_connection(con) as connection:
-            tables = connection.execute("SHOW TABLES").fetchall()
-            table_exists = any(table[0] == table_name for table in tables)
-
-            if not table_exists:
-                logger.warning(f"Table {table_name} does not exist, cannot create index")
-                return False
-
-            index_name = f"idx_{table_name}_{column_name}".replace("-", "_").replace(
-                " ", "_"
-            )
-
-            try:
-                connection.execute(
-                    f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table_name}" ("{column_name}")'
-                )
-                logger.info(
-                    f"Created index for table {table_name} column {column_name}: {index_name}"
-                )
-                return True
-            except Exception as e:
-                if "already exists" in str(e).lower():
-                    logger.info(f"Index {index_name} already exists")
-                    return True
-                raise e
-
-    except Exception as e:
-        logger.error(f"Failed to create index {table_name}.{column_name}: {str(e)}")
-        return False
-
-
-def create_join_indexes(sources: List[DataSource], joins: List[Join], con=None) -> None:
-    """
-    为JOIN操作中涉及的列创建索引
-    """
-    try:
-        # 收集所有JOIN列
-        join_columns = set()
-
-        for join in joins:
-            for condition in join.conditions:
-                join_columns.add((join.left_source_id, condition.left_column))
-                join_columns.add((join.right_source_id, condition.right_column))
-
-        # 为每个JOIN列创建索引
-        for table_name, column_name in join_columns:
-            create_varchar_index(table_name, column_name, con)
-
-        logger.info(f"Created indexes for {len(join_columns)} JOIN columns")
-
-    except Exception as e:
-        logger.error(f"Failed to batch create JOIN indexes: {str(e)}")
-
-
 def optimize_query_plan(query: str, con=None) -> str:
     """
-    优化Query plan
+    优化查询计划
     """
     try:
         with _use_connection(con) as connection:

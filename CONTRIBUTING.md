@@ -8,7 +8,7 @@
 - [产品介绍（GitHub Pages）](https://chenkeliang.github.io/duckdb-query/)
 - [Issues 列表](https://github.com/Chenkeliang/duckdb-query/issues)
 - [Discussions](https://github.com/Chenkeliang/duckdb-query/discussions)
-- [DuckDB 快速上手指南](docs/duckdb-getting-started.md)
+- [文档索引](docs/README.md)
 
 ## 提交 Issue
 
@@ -30,7 +30,7 @@
 
 - Python 遵循 PEP 8，使用类型注解、Docstring；
 - JavaScript/React 使用 ES Module + Hooks，遵循现有组件命名；
-- CSS/样式尽量复用 `frontend/src/styles/modern.css` 定义的 token；
+- CSS/样式仅使用 shadcn/ui 组件 + Tailwind 标准类（见 `AGENTS.md` §5，禁止自定义 CSS）；
 - 提交前运行：
   - `python -m pytest api/tests`
   - `npm run lint`
@@ -45,7 +45,7 @@
 
 ## 发布与文档
 
-- 增加新功能后，请在 `docs/` 目录补充说明，或更新 `docs/index.html` 页面；
+- 增加新功能后，请在 `docs/` 目录补充说明（索引见 `docs/README.md`）；
 - 如涉及 DuckDB 版本/扩展调整，请在 Release Notes 中写清兼容性要求。
 
 ## 行为准则

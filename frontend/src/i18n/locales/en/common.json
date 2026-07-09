@@ -1,4 +1,7 @@
 {
+  "download": {
+    "browserStarted": "Download started in your browser{{name}} — find it in your system Downloads folder when it finishes"
+  },
   "dataGrid": {
     "copy": "Copy",
     "copyAsTSV": "Copy as TSV",
@@ -45,7 +48,8 @@
     "autoFitColumns": "Auto fit columns",
     "fitToWidth": "Fit to width",
     "filterLabel": "Filters",
-    "clearColFilter": "Clear {{col}} filter"
+    "clearColFilter": "Clear {{col}} filter",
+    "highCardinalitySelectAllBlocked": "This column has too many distinct values; only the most frequent are shown. Uncheck some, or use the filter above."
   },
   "nav": {
     "datasource": "Data Sources",
@@ -54,7 +58,8 @@
     "asynctasks": "Async Tasks",
     "switchMain": "Main navigation",
     "settings": "Settings",
-    "ai": "AI / Models"
+    "ai": "AI / Models",
+    "extensions": "Extensions"
   },
   "sidebar": {
     "collapse": "Collapse",
@@ -94,7 +99,8 @@
     "copied": "Copied",
     "clear": "Clear",
     "execute": "Execute",
-    "unknownError": "Unknown error"
+    "unknownError": "Unknown error",
+    "remove": "Remove"
   },
   "dataSource": {
     "previewTable": "Preview table: {{tableName}}",
@@ -213,7 +219,8 @@
       "download": "Download",
       "success": "Download successful",
       "failed": "Download failed: {{message}}"
-    }
+    },
+    "status.cancelling": "Cancelling"
   },
   "query": {
     "ai": {
@@ -281,6 +288,14 @@
       "didYouMean": "Did you mean: {{names}}?",
       "aiExplainFix": "AI explain & fix",
       "aiFixFailed": "AI fix failed",
+      "selfHeal": {
+        "saveFailed": "Failed to enable compatibility mode",
+        "sqliteTypeMismatch": {
+          "title": "SQLite type mismatch",
+          "description": "This database has rows whose declared column type doesn't match the actual stored value",
+          "action": "Enable SQLite compatibility mode & re-run"
+        }
+      },
       "rowCount": "{{count}} rows",
       "execTime": "Execution time: {{time}}ms",
       "rows": "rows",
@@ -313,7 +328,11 @@
         "searchColumn": "Search columns...",
         "availableColumns": "Available Columns",
         "noColumns": "No columns found"
-      }
+      },
+      "exportExcel": "Export Excel",
+      "exportNoSql": "No SQL to export",
+      "exportParquetFailed": "Parquet export failed",
+      "exportParquetServer": "Export Parquet (server-side)"
     },
     "filter": {
       "title": "Filter Conditions",
@@ -421,7 +440,9 @@
       "executeError": "Query execution failed: {{message}}",
       "mixedSourceWarning": "Cannot mix DuckDB tables and external database tables in the same query. Please import external tables to DuckDB first.",
       "federatedQuery": "Federated Query",
-      "targetDatabase": "Target Database"
+      "targetDatabase": "Target Database",
+      "cancel": "Cancel",
+      "cancelTooltip": "Cancel the current query"
     },
     "import": {
       "title": "Import to DuckDB",
@@ -434,7 +455,8 @@
       "importing": "Importing...",
       "import": "Import",
       "success": "Data successfully imported to table \"{{tableName}}\", {{rowCount}} rows",
-      "error": "Import failed: {{message}}"
+      "error": "Import failed: {{message}}",
+      "missingConnection": "Missing external database connection info"
     },
     "bookmark": {
       "title": "SQL Bookmarks",
@@ -458,7 +480,8 @@
         "sqlPreview": "SQL Preview",
         "saving": "Saving...",
         "saveBtn": "Save"
-      }
+      },
+      "saveTooltip": "Bookmark query"
     },
     "history": {
       "title": "Query History",
@@ -473,7 +496,8 @@
       "minutesAgo": "{{count}} min ago",
       "hoursAgo": "{{count}} hr ago",
       "searchPlaceholder": "Search SQL...",
-      "notFound": "No matching records found"
+      "notFound": "No matching records found",
+      "cleared": "History cleared"
     },
     "preview": {
       "title": "SQL Preview",
@@ -565,7 +589,10 @@
         "tooltip": "Add a last-30-days bound on {{column}} for this federated table (placed in ON, pushed down to reduce extraction and avoid timeouts)",
         "addAll": "Bound all to last 30 days",
         "pickColumn": "Pick time column"
-      }
+      },
+      "swapTables": "Swap table order",
+      "switchToColumn": "Switch to column mode",
+      "switchToExpression": "Switch to expression mode"
     },
     "typeConflict": {
       "detected": "{{count}} type conflict(s) detected",
@@ -605,7 +632,14 @@
       "columnMismatchDetail": "Table {{tableIndex}} has {{tableCount}} columns, but the first table has {{baseCount}} columns.",
       "byNameModeHint": "BY NAME mode: Matches columns by name, not position. Missing columns will be filled with NULL values.",
       "byNameTooltip": "Match columns by name (DuckDB feature), column count doesn't need to match",
-      "externalNotSupported": "Set operations are not supported for external tables. Please import the external table into DuckDB first."
+      "externalNotSupported": "Set operations are not supported for external tables. Please import the external table into DuckDB first.",
+      "columnLoadError": "Failed to load column info",
+      "externalTable": "External table",
+      "generatedSql": "Generated SQL",
+      "generatingSql": "Generating…",
+      "mixedSources": "Cannot mix DuckDB local tables with external database tables. Please select tables from the same source only.",
+      "noColumns": "No columns available",
+      "operationType": "Set operation type"
     },
     "pivot": {
       "title": "Pivot Table",
@@ -747,7 +781,15 @@
       "donut": "Donut",
       "kpi": "Big number",
       "day": "By day",
-      "month": "By month"
+      "month": "By month",
+      "drilldownView": "View details for \"{{value}}\""
+    },
+    "cancel": "Cancel",
+    "favorites": {
+      "createFailed": "Failed to bookmark",
+      "createSuccess": "Bookmarked",
+      "deleteFailed": "Delete failed",
+      "deleteSuccess": "Bookmark removed"
     }
   },
   "page": {
@@ -811,7 +853,7 @@
       "serverNoMount": "No mounts detected. Add entries to server_data_mounts and restart.",
       "desktopPickFileBtn": "Select file…",
       "desktopCardDesc": "Select local files to read CSV / Excel / Parquet / JSON directly",
-      "desktopHint": "Desktop: click \"Select file…\" to import local CSV / Excel / Parquet / JSON directly.",
+      "desktopDragHint": "Or drop files anywhere in the window to import",
       "serverSelectMount": "Select mount",
       "serverNoFiles": "No importable files in this directory",
       "serverTypeFolder": "Folder",
@@ -842,6 +884,9 @@
         "sourceUpload": "Uploaded file",
         "tablePrefix": "Table name prefix:",
         "tablePrefixHint": "(target names prefilled per sheet; edit per sheet if needed)",
+        "conflictModeLabel": "Duplicate table names",
+        "conflictModeCreate": "Auto rename (recommended; adds _1/_2/_3 on conflict)",
+        "conflictModeReplace": "Overwrite existing table (clears existing data, use with caution)",
         "loading": "Loading sheet info...",
         "selectAll": "Select All",
         "selectNone": "Select None",
@@ -1113,6 +1158,21 @@
       "saveSuccess": "Result table settings saved",
       "saveFailed": "Failed to save result table settings"
     },
+    "engineCompat": {
+      "title": "Engine compatibility",
+      "description": "Adjust read behavior for dirty data / non-standard sources as needed; saved changes take effect immediately.",
+      "sqliteAllVarcharLabel": "SQLite read-as-text",
+      "sqliteAllVarcharHint": "Read all SQLite columns as text to avoid errors from declared vs. actual storage type mismatches; CAST is needed to aggregate numeric columns.",
+      "mysqlIncompleteDatesLabel": "MySQL invalid dates as NULL",
+      "mysqlIncompleteDatesHint": "Zero dates such as 0000-00-00 no longer raise errors",
+      "pgArrayLabel": "Postgres arrays as text",
+      "pgArrayHint": "Compatible with mixed-dimension arrays",
+      "icebergVersionLabel": "Iceberg version guessing",
+      "icebergVersionHint": "Read local Iceberg directories without a catalog (unsafe)",
+      "saveSuccess": "Saved and applied",
+      "saveFailed": "Failed to save",
+      "loadFailed": "Failed to load engine compatibility settings"
+    },
     "cache": {
       "title": "Cache Settings",
       "description": "Configure cache duration for query data",
@@ -1129,6 +1189,24 @@
       "clearSuccess": "All cache cleared",
       "clearFailed": "Failed to clear cache"
     }
+  },
+  "extensions": {
+    "title": "Extensions",
+    "subtitle": "Extensions come from the official DuckDB repository; once installed they work offline.",
+    "groupDatasource": "Data Sources",
+    "groupCapability": "Capabilities",
+    "bundled": "Bundled",
+    "installed": "Installed",
+    "install": "Install",
+    "retry": "Retry",
+    "statusDownloading": "Downloading",
+    "statusVerifying": "Verifying",
+    "installSuccess": "{{name}} installed successfully",
+    "installFailed": "Failed to install {{name}}",
+    "loadFailed": "Failed to load extensions",
+    "usage": "Usage",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",
@@ -1272,5 +1350,12 @@
     "footerDocs": "Docs",
     "footerCopyright": "© 2026 DuckQuery · MIT",
     "footerBuilt": "Built on DuckDB · data stays local"
-  }
+  },
+  "error": "Operation failed",
+  "filter": {
+    "placement": {
+      "helpText": "ON-clause conditions apply during the JOIN and keep unmatched rows (shown as NULL). WHERE-clause conditions apply after the JOIN and filter out unmatched rows. When querying external database tables, add a time-range condition to avoid slow full-table scans."
+    }
+  },
+  "success": "Operation succeeded"
 }

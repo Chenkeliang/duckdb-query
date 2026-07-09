@@ -181,6 +181,53 @@ class TestJoinQueryGenerator:
         # 应该为重复的列名生成不同的别名
         assert aliases["users"]["id"] != aliases["orders"]["id"]
 
+    def test_generate_improved_column_aliases_qualified_source_ids(self):
+        """外部表 source.id 是限定名（连接前缀.表名）时，冲突别名应取表名段而非连接前缀，
+        避免同连接下多表被截断成相同前缀（如 sqlite_ala）导致 _1 后缀。"""
+
+        class MockDataSource:
+            def __init__(self, id, columns):
+                self.id = id
+                self.columns = columns
+
+        source1 = MockDataSource(
+            "sqlite_alarm_sqlite.alerts", ["record_id", "message"]
+        )
+        source2 = MockDataSource(
+            "sqlite_alarm_sqlite.rules", ["record_id", "rule_name"]
+        )
+
+        aliases = generate_improved_column_aliases([source1, source2])
+
+        assert aliases["sqlite_alarm_sqlite.alerts"]["record_id"] == "record_id_alerts"
+        assert aliases["sqlite_alarm_sqlite.rules"]["record_id"] == "record_id_rules"
+        for source_aliases in aliases.values():
+            for alias in source_aliases.values():
+                assert "sqlite_ala" not in alias
+                assert not alias.endswith("_1")
+
+    def test_generate_improved_column_aliases_chinese_table_names(self):
+        """中文表名的冲突别名应保留中文（列名_表名），而不是被吞成下划线后再撞名加 _1。
+
+        回归背景(2026-07): 旧 simplify_table_name 用 [^a-zA-Z0-9_] 清洗，
+        「商品表」「订单表」全变下划线 → 结果列头出现 商品id______ / 商品id_______1。
+        """
+
+        class MockDataSource:
+            def __init__(self, id, columns):
+                self.id = id
+                self.columns = columns
+
+        source1 = MockDataSource("duckdb_demo.商品表", ["商品id", "商品名称"])
+        source2 = MockDataSource("duckdb_demo.订单表", ["商品id", "城市"])
+
+        aliases = generate_improved_column_aliases([source1, source2])
+
+        assert aliases["duckdb_demo.商品表"]["商品id"] == "商品id_商品表"
+        assert aliases["duckdb_demo.订单表"]["商品id"] == "商品id_订单表"
+        # 非冲突列保持原名
+        assert aliases["duckdb_demo.商品表"]["商品名称"] == "商品名称"
+
     def test_build_join_chain_simple(self):
         """测试构建简单JOIN链"""
         join = Join(
@@ -371,6 +418,113 @@ class TestJoinQueryGenerator:
         assert "SELECT" in query
         assert '"users"' in query
         assert "JOIN" not in query
+
+    @patch("routers.join_query.with_duckdb_connection")
+    def test_build_multi_table_join_query_escapes_malicious_column_name(self, mock_get_db):
+        """回归：columns[].name 直接来自请求体（query_models.DataSource.columns 无
+        schema 校验），曾经裸拼进 SELECT 列表，嵌入的双引号能跳出标识符注入任意 SQL。
+        当前打包前端从不显式传 columns（总是走 PRAGMA table_info 自动推导），但直接
+        调 API 的调用方可以——转义必须在编译层兜住，不能依赖调用方守规矩。"""
+        mock_con = Mock()
+        bind_mock_duckdb_pool(mock_get_db, mock_con)
+        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
+            {"name": ["users", "orders"]}
+        )
+
+        malicious_source = DataSource(
+            id="users",
+            type=DataSourceType.DUCKDB,
+            params={"table_name": "users"},
+            columns=[
+                {"name": 'id" AS "x", (SELECT params FROM system_database_connections) AS "leak'},
+            ],
+        )
+
+        join = Join(
+            left_source_id="users",
+            right_source_id="orders",
+            join_type=JoinType.INNER,
+            conditions=[
+                JoinCondition(left_column="id", right_column="user_id", operator="=")
+            ],
+        )
+        request = QueryRequest(
+            sources=[malicious_source, self.source2],
+            joins=[join],
+        )
+
+        query = build_multi_table_join_query(request, mock_con)
+
+        # 恶意片段必须整体落在一个转义后的引号标识符里：内嵌的每个 " 都被双写成
+        # ""，所以从"打开的引号"到"关闭的引号"之间——包括 (SELECT ...) 子句——
+        # 全部是这一个标识符的字面内容，不是独立可执行的 SQL 子句。
+        assert (
+            '"users"."id"" AS ""x"", (SELECT params FROM system_database_connections)'
+            ' AS ""leak" AS "id"" AS ""x"", (SELECT params FROM system_database_connections)'
+            ' AS ""leak"'
+        ) in query
+
+    @patch("routers.join_query.with_duckdb_connection")
+    def test_build_multi_table_join_query_escapes_malicious_alias(self, mock_get_db):
+        """同上，但攻击面是列别名冲突消解产生的 alias（同样来自请求体，同样
+        未转义就拼进 AS "..."）。"""
+        mock_con = Mock()
+        bind_mock_duckdb_pool(mock_get_db, mock_con)
+        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
+            {"name": ["users", "orders"]}
+        )
+
+        # 两张表都选了同名列 "id"，生成的别名会带表前缀（users_id / orders_id），
+        # 所以直接给一个在别名生成结果里不存在的列名，落到 .get(col_name, col_name)
+        # 的原样透传兜底分支，验证 alias 本身也被转义。
+        malicious_source = DataSource(
+            id="users",
+            type=DataSourceType.DUCKDB,
+            params={"table_name": "users"},
+            columns=[{"name": 'name" AS "x", (SELECT 1) AS "y'}],
+        )
+
+        request = QueryRequest(sources=[malicious_source, self.source2], joins=[])
+
+        query = build_multi_table_join_query(request, mock_con)
+
+        assert (
+            '"users"."name"" AS ""x"", (SELECT 1) AS ""y" AS "name"" AS ""x"",'
+            ' (SELECT 1) AS ""y"'
+        ) in query
+
+    @patch("routers.join_query.with_duckdb_connection")
+    def test_join_result_marker_escapes_malicious_condition_column(self, mock_get_db):
+        """回归：JOIN 结果标记 CASE 表达式里的键列 join.conditions[].right_column
+        （来自请求体、无 schema 校验）曾经裸拼进 CASE WHEN "t"."{col}" IS NULL，
+        与 columns[].name 是同一注入面。LEFT/RIGHT/FULL JOIN 都要覆盖。"""
+        malicious = 'id" IS NULL THEN 1 ELSE (SELECT password FROM system_database_connections LIMIT 1) END AS "leak'
+        for jt in (JoinType.LEFT, JoinType.RIGHT, JoinType.FULL_OUTER):
+            mock_con = Mock()
+            bind_mock_duckdb_pool(mock_get_db, mock_con)
+            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
+                {"name": ["users", "orders"]}
+            )
+            join = Join(
+                left_source_id="users",
+                right_source_id="orders",
+                join_type=jt,
+                conditions=[
+                    JoinCondition(left_column=malicious, right_column=malicious, operator="=")
+                ],
+            )
+            request = QueryRequest(sources=[self.source1, self.source2], joins=[join])
+            query = build_multi_table_join_query(request, mock_con)
+
+            # 未转义的注入形态（键列的 " 单写、提前闭合标识符）绝不能出现——那才是
+            # 可执行的注入；`id" IS NULL` 里的单个 " 若没被双写就说明漏了转义
+            assert 'id" IS NULL' not in query, f"unescaped breakout for join_type={jt}"
+            # 转义后的正确形态：键列里的每个 " 都被双写成 ""，整段恶意串落在一个
+            # 引号标识符内部（含 (SELECT ...) 只是字面文本，不可执行）
+            assert (
+                'id"" IS NULL THEN 1 ELSE '
+                '(SELECT password FROM system_database_connections LIMIT 1) END AS ""leak"'
+            ) in query, f"escaping missing for join_type={jt}"
 
 
 class TestJoinAPI:
@@ -590,6 +744,46 @@ class TestJoinAPI:
                 or "不存在" in error_str
                 or "resource_not_found" in error_str
             )
+
+    def test_perform_query_legacy_source_type_reports_missing_table_not_silent_success(self):
+        """回归：source.type in {mysql,postgresql,sqlite}（连同 "file"）曾经各自
+        走一套独立的物化逻辑（数据库连接池连接/config/mysql-configs.json 明文凭据/
+        直连参数三选一），从未被现在唯一存在的前端调用方触发过
+        （buildJoinQueryPayload.ts 固定发 type:'duckdb'）。删除之后，这类 source
+        不再被特殊处理，直接落入"表未在 DuckDB 注册"的常规校验——这是期望的新
+        行为：明确报错，而不是用遗留分支悄悄物化数据、或用临时视图伪装成功。
+
+        用一个不存在的 connectionId 是关键：旧代码走到这里会走"模式1"，报
+        "Database connection not found/processing failed"这一句和本测试断言的
+        "table not found"类消息完全不同——如果这条遗留分支哪天被意外恢复，这个
+        测试会因为错误消息对不上而失败，不会被"反正也报错了"蒙混过关。"""
+        request_data = {
+            "sources": [
+                {
+                    "id": "legacy_mysql_source",
+                    "type": "mysql",
+                    "params": {"connectionId": "some-connection-id"},
+                }
+            ],
+            "joins": [],
+        }
+
+        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
+            mock_con = Mock()
+            bind_mock_duckdb_pool(mock_get_db, mock_con)
+            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({"name": []})
+
+            response = client.post("/api/query", json=request_data)
+
+            assert response.status_code in (404, 500)
+            error_str = str(response.json()).lower()
+            assert (
+                "not found" in error_str
+                or "does not exist" in error_str
+                or "不存在" in error_str
+                or "resource_not_found" in error_str
+            )
+            assert "database connection" not in error_str
 
 
 class TestJoinIntegration:

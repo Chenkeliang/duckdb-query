@@ -56,3 +56,19 @@ def test_prepare_for_read_survives_undecryptable_key():
     }
     public = ai_config.prepare_for_read(stored)  # 不得抛异常
     assert public["providers"][0]["api_key"] == "****"
+
+
+def test_resolve_feature_falls_back_to_first_enabled_provider_without_default():
+    # 只配了一个供应商但没设 default_provider(2026-07 实际用户场景):功能应直接可用
+    cfg = {
+        "enabled": True,
+        "default_provider": None,
+        "providers": [
+            {"id": "p0", "type": "openai", "enabled": False, "models": ["m0"]},
+            {"id": "p1", "type": "openai_compatible", "enabled": True, "models": ["glm-5.2"]},
+        ],
+        "features": {},
+    }
+    resolved = ai_config.resolve_feature(cfg, "chat")
+    assert resolved["provider"]["id"] == "p1"
+    assert resolved["model"] == "glm-5.2"

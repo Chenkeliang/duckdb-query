@@ -2,7 +2,6 @@ import * as React from 'react';
 import { forwardRef } from 'react';
 import { Database, Table2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
 import { TableContextMenu } from './ContextMenu';
 import type { SelectedTableObject } from '@/types/SelectedTable';
 import { getIndentClass } from './TreeNode';
@@ -25,33 +24,14 @@ import { getIndentClass } from './TreeNode';
 /**
  * 数据库类型配置
  */
-const DATABASE_TYPE_LABEL: Record<string, string> = {
-  mysql: 'MySQL',
-  postgresql: 'PostgreSQL',
-  sqlite: 'SQLite',
-  sqlserver: 'SQL Server',
-  duckdb: 'DuckDB',
-};
-
 /**
- * 获取表图标和标签
+ * 获取表图标(外部表用数据库图标;类型信息由父级连接节点表达,不再逐表加徽标)
  */
-const getTableIconAndBadge = (table: SelectedTableObject): { icon: React.ReactNode; badge?: React.ReactNode } => {
+const getTableIcon = (table: SelectedTableObject): React.ReactNode => {
   if (table.source === 'external' && table.connection?.type) {
-    const label = DATABASE_TYPE_LABEL[table.connection.type] || table.connection.type.toUpperCase();
-    return {
-      icon: <Database className="h-4 w-4 text-muted-foreground shrink-0" />,
-      badge: (
-        <Badge variant="outline" className="ml-1 h-4 px-1 py-0 text-xs font-medium">
-          {label}
-        </Badge>
-      ),
-    };
+    return <Database className="h-4 w-4 text-muted-foreground shrink-0" />;
   }
-  return {
-    icon: <Table2 className="h-4 w-4 text-muted-foreground shrink-0" />,
-    badge: undefined,
-  };
+  return <Table2 className="h-4 w-4 text-muted-foreground shrink-0" />;
 };
 
 interface TableItemProps {
@@ -126,7 +106,7 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
   batchChecked = false,
   onBatchToggle,
 }, _ref) => {
-  const iconAndBadge = React.useMemo(() => getTableIconAndBadge(table), [table]);
+  const tableIcon = React.useMemo(() => getTableIcon(table), [table]);
 
   // 高亮搜索匹配的文本
   const highlightText = (text: string, query: string) => {
@@ -150,7 +130,7 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
           )}
         </>
       );
-    } catch (error) {
+    } catch {
       // 如果正则构造仍然失败，返回原文本
       return text;
     }
@@ -243,13 +223,12 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
           )}
 
           {/* 表图标 - 根据数据源类型显示不同图标 */}
-          {iconAndBadge.icon}
+          {tableIcon}
 
           {/* 表信息 */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center font-medium text-foreground">
               <span className="truncate">{highlightText(table.name, searchQuery)}</span>
-              {iconAndBadge.badge}
             </div>
             {/* 外部表不显示行数（无法准确获取） */}
             {rowCount !== undefined && table.source !== 'external' && (

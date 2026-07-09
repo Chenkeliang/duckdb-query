@@ -1,5 +1,7 @@
 /** 查询结果图表 —— 纯函数:列分类 / 默认 spec / 校验 / 生成聚合 SQL / 客户端聚合。 */
 
+import { sqlStringLiteral } from '@/utils/sqlLiteral';
+
 export type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'kpi';
 export type AggFn = 'sum' | 'count' | 'avg' | 'min' | 'max';
 
@@ -105,19 +107,77 @@ function xExpr(spec: ChartSpec): string {
   return q(spec.x as string);
 }
 
+/** 指标列表达式:非数值列 TRY_CAST 成 DOUBLE 再聚合(数值形字符串可算,转不动的为 NULL 被聚合忽略)。
+ *  count 例外:对任何类型都合法且需数每个非空值,转型反而会漏计转不动的行。 */
+function metricColExpr(col: string, agg: AggFn, columns?: ColumnInfo[]): string {
+  if (agg === 'count') return q(col);
+  const info = (columns || []).find((c) => c.name === col);
+  if (info && !isNumericType(info.type)) return `TRY_CAST(${q(col)} AS DOUBLE)`;
+  return q(col);
+}
+
 /** 把用户 SQL 包成子查询做全量聚合(截断时用)。返回值由调用方按本地/联邦端点执行。 */
-export function buildChartSql(userSql: string, spec: ChartSpec): string {
+export function buildChartSql(userSql: string, spec: ChartSpec, columns?: ColumnInfo[]): string {
   const inner = stripTrailingLimit(userSql);
   if (spec.type === 'kpi') {
-    const metric = spec.y[0] ? `${spec.agg}(${q(spec.y[0])})` : 'count(*)';
+    const metric = spec.y[0] ? `${spec.agg}(${metricColExpr(spec.y[0], spec.agg, columns)})` : 'count(*)';
     return `SELECT ${metric} AS metric FROM (${inner}) AS _src`;
   }
   const metricSql = spec.y.length
-    ? spec.y.map((col, i) => `${spec.agg}(${q(col)}) AS m_${i}`).join(', ')
+    ? spec.y.map((col, i) => `${spec.agg}(${metricColExpr(col, spec.agg, columns)}) AS m_${i}`).join(', ')
     : 'count(*) AS m_0';
   // 无维度(空列等退化场景)用常量单桶,避免生成 "null" 列
   const dimExpr = spec.x ? xExpr(spec) : `'全部'`;
   return `SELECT ${dimExpr} AS dim, ${metricSql} FROM (${inner}) AS _src GROUP BY 1 ORDER BY 1 LIMIT 200`;
+}
+
+/** 把 dim 值(两种形态:服务端 date_trunc 结果 / 客户端 binDim 截断串)归一化为 {y,m,d}。 */
+function parseBinValue(v: string): { y: number; m: number; d: number } | null {
+  const m = v.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
+  if (!m) return null;
+  return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3] ?? 1) };
+}
+
+function fmtDate(dt: Date): string {
+  return dt.toISOString().slice(0, 10);
+}
+
+/** day|month bin 的 dim 值 → 半开区间 [start, end)(用 UTC Date 运算天然处理跨月/跨年)。 */
+function binRange(v: string, xBin: 'day' | 'month'): { start: string; end: string } | null {
+  const parsed = parseBinValue(v);
+  if (!parsed) return null;
+  const { y, m, d } = parsed;
+  if (xBin === 'month') {
+    return { start: fmtDate(new Date(Date.UTC(y, m - 1, 1))), end: fmtDate(new Date(Date.UTC(y, m, 1))) };
+  }
+  return { start: fmtDate(new Date(Date.UTC(y, m - 1, d))), end: fmtDate(new Date(Date.UTC(y, m - 1, d + 1))) };
+}
+
+/**
+ * 图表点击下钻:把被点的维度值转成明细 SQL(包裹子查询,复用 buildChartSql 的既有模式)。
+ * 不可下钻(KPI / 无维度 / 「其它」「全部」合并桶)时返回 null。
+ */
+export function buildDrilldownSql(spec: ChartSpec, clickedDim: string, sourceSql: string | null): string | null {
+  if (!sourceSql || !spec.x || spec.type === 'kpi') return null;
+  if (clickedDim === '其它' || clickedDim === '全部') return null;
+
+  let cond: string;
+  if (clickedDim === '∅') {
+    cond = `${q(spec.x)} IS NULL`;
+  } else if (spec.xBin === 'day' || spec.xBin === 'month') {
+    const range = binRange(clickedDim, spec.xBin);
+    if (!range) return null;
+    cond = `${q(spec.x)} >= DATE '${range.start}' AND ${q(spec.x)} < DATE '${range.end}'`;
+  } else {
+    cond = `${q(spec.x)} = ${sqlStringLiteral(clickedDim)}`;
+  }
+
+  const inner = stripTrailingLimit(sourceSql);
+  // 源 SQL 本身已是同条件的下钻结果(在明细图表上再次点击同一桶)时,不再嵌套包裹
+  if (inner.endsWith(`AS _src WHERE ${cond}`)) {
+    return `${inner} LIMIT 500`;
+  }
+  return `SELECT * FROM (${inner}) AS _src WHERE ${cond} LIMIT 500`;
 }
 
 export interface AggResult {

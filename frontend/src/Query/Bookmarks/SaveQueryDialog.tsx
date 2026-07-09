@@ -56,7 +56,7 @@ export const SaveQueryDialog: React.FC<SaveQueryDialogProps> = ({
                 tags: []
             });
             onOpenChange(false);
-        } catch (e) {
+        } catch {
             // Error handling is done in the hook via toast
         }
     };

@@ -136,7 +136,7 @@ def _persist_pasted_dataframe(
 
 
 @router.post("/api/paste-data", tags=["Data Sources"])
-async def save_paste_data(request: PasteDataRequest):
+def save_paste_data(request: PasteDataRequest):
     """
     Save pasted data to DuckDB
     """

@@ -42,9 +42,11 @@ a = Analysis(
     ],
     hookspath=[], hooksconfig={}, runtime_hooks=[],
     # 体积优化:pyarrow 代码未用到(pandas 仅可选依赖,parquet 走 DuckDB COPY);
-    # tokenizers/hf_xet 仅本地 HF 分词用,我们走 API,litellm 缺它会回退 tiktoken/近似计数。
+    # hf_xet 仅 HF 下载加速用,惰性导入,可安全排除。
+    # 注意:tokenizers 不能排除 —— litellm 1.86.2 在 import 期硬依赖它,
+    # 排除会让打包版 AI 功能整体不可用(报 "litellm is not installed")。
     excludes=['magic', 'tkinter', 'matplotlib', 'IPython', 'jupyter', 'notebook', 'PIL',
-              'pyarrow', 'tokenizers', 'hf_xet'],
+              'pyarrow', 'hf_xet'],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

@@ -24,7 +24,7 @@ import {
   Alert,
   AlertDescription,
 } from '@/components/ui/alert';
-import { submitAsyncQuery, type CreateTaskRequest, type DataSource } from '@/api';
+import { submitAsyncQuery, toAttachDatabasesPayload, type CreateTaskRequest, type DataSource } from '@/api';
 import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
 
 // 异步任务查询 key
@@ -155,11 +155,9 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
         };
       }
 
-      if (attachDatabases && attachDatabases.length > 0) {
-        payload.attach_databases = attachDatabases.map((db) => ({
-          alias: db.alias,
-          connection_id: db.connectionId,
-        }));
+      const attachPayload = toAttachDatabasesPayload(attachDatabases);
+      if (attachPayload) {
+        payload.attach_databases = attachPayload;
       }
 
       return submitAsyncQuery(payload);

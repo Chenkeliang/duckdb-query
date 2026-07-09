@@ -141,6 +141,11 @@ class MessageCode(str, Enum):
     SERVER_FILE_IMPORTED = "SERVER_FILE_IMPORTED"
     SERVER_FILE_NOT_FOUND = "SERVER_FILE_NOT_FOUND"
 
+    # ==================== DuckDB 扩展相关 ====================
+    EXTENSIONS_RETRIEVED = "EXTENSIONS_RETRIEVED"
+    EXTENSION_INSTALL_STARTED = "EXTENSION_INSTALL_STARTED"
+    EXTENSION_INSTALL_STATUS_RETRIEVED = "EXTENSION_INSTALL_STATUS_RETRIEVED"
+
     # ==================== 连接池相关 ====================
     POOL_STATUS_RETRIEVED = "POOL_STATUS_RETRIEVED"
     POOL_RESET_SUCCESS = "POOL_RESET_SUCCESS"
@@ -157,6 +162,9 @@ class MessageCode(str, Enum):
 
     # ==================== 应用配置相关 ====================
     APP_FEATURES_RETRIEVED = "APP_FEATURES_RETRIEVED"
+
+    # ==================== 系统控制相关（桌面端） ====================
+    SYSTEM_SHUTDOWN_INITIATED = "SYSTEM_SHUTDOWN_INITIATED"
 
     # ==================== 批量操作相关 ====================
     BATCH_DELETE_SUCCESS = "BATCH_DELETE_SUCCESS"
@@ -293,6 +301,11 @@ DEFAULT_MESSAGES = {
     MessageCode.SERVER_FILE_IMPORTED: "服务器文件导入成功",
     MessageCode.SERVER_FILE_NOT_FOUND: "服务器文件不存在",
 
+    # ==================== DuckDB 扩展相关 ====================
+    MessageCode.EXTENSIONS_RETRIEVED: "获取扩展列表成功",
+    MessageCode.EXTENSION_INSTALL_STARTED: "扩展安装已开始",
+    MessageCode.EXTENSION_INSTALL_STATUS_RETRIEVED: "获取扩展安装状态成功",
+
     # ==================== 连接池相关 ====================
     MessageCode.POOL_STATUS_RETRIEVED: "获取连接池状态成功",
     MessageCode.POOL_RESET_SUCCESS: "连接池重置成功",
@@ -309,6 +322,9 @@ DEFAULT_MESSAGES = {
 
     # ==================== 应用配置相关 ====================
     MessageCode.APP_FEATURES_RETRIEVED: "获取应用功能配置成功",
+
+    # ==================== 系统控制相关（桌面端） ====================
+    MessageCode.SYSTEM_SHUTDOWN_INITIATED: "后端正在优雅退出",
 
     # ==================== 批量操作相关 ====================
     MessageCode.BATCH_DELETE_SUCCESS: "批量删除成功",
@@ -401,8 +417,10 @@ def create_error_response(
             "timestamp": "2024-12-02T19:08:05.123456Z"
         }
     """
-    # 确保 code 是字符串（支持 MessageCode 枚举）
-    code_str = code.value if isinstance(code, MessageCode) else str(code)
+    # 确保 code 是干净的字符串值：任何枚举(MessageCode / ErrorCode / …)都取 .value，
+    # 而不是 str(enum)——后者会得到 "ErrorCode.TABLE_NOT_FOUND" 这种带类名的 repr，
+    # 让前端 i18n 按 messageCode 查不到词条、直接把这串原样显示给用户。
+    code_str = code.value if isinstance(code, Enum) else str(code)
 
     return {
         "success": False,

@@ -44,9 +44,11 @@ export {
     saveQueryToDuckDB,
     cancelSyncQuery,
     parseFederatedQueryError,
+    toAttachDatabasesPayload,
     type ExecuteQueryOptions,
     type FederatedQueryOptions,
     type FederatedQueryError,
+    type AttachDatabasePayload,
 } from './queryApi';
 
 // ==================== Join Query API ====================
@@ -127,7 +129,7 @@ export {
     submitAsyncQuery,
     cancelAsyncTask,
     retryAsyncTask,
-    downloadAsyncResult,
+    getAsyncDownloadUrl,
     getConnectionPoolStatus,
     resetConnectionPool,
     getErrorStatistics,
@@ -201,3 +203,51 @@ export {
     getAppConfig,
     type AppConfigResponse,
 } from './pivotQueryApi';
+
+// ==================== AI API ====================
+export {
+    getAiSettings,
+    saveAiSettings,
+    testProvider,
+    errorFix,
+    explainSql,
+    nlToSql,
+    chat,
+    suggestChart,
+    type AiProviderType,
+    type AiProvider,
+    type AiFeatureCfg,
+    type AiSettings,
+    type ErrorFixResult,
+    type ExplainSqlResult,
+    type NlToSqlResult,
+    type ChatMessage,
+    type ChatResult,
+    type SuggestChartResult,
+} from './aiApi';
+
+// ==================== Engine Compat API ====================
+export {
+    getEngineCompat,
+    saveEngineCompat,
+    type EngineCompatFlags,
+} from './engineCompatApi';
+
+// ==================== DuckDB Extensions API ====================
+export {
+    listDuckDBExtensions,
+    installDuckDBExtension,
+    getDuckDBExtensionInstallStatus,
+    type ExtensionCategory,
+    type DuckDBExtensionItem,
+    type ExtensionInstallPhase,
+    type ExtensionInstallStatus,
+} from './extensionsApi';
+
+// ==================== Query Result Export API ====================
+export {
+    exportQueryResults,
+    getQueryExportDownloadUrl,
+    type QueryResultExportPayload,
+    type QueryResultExportResult,
+} from './queryExportApi';

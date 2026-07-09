@@ -117,7 +117,7 @@ export const SchemaNode: React.FC<SchemaNodeProps> = ({
               selectionMode={selectionMode}
               onSelect={onTableSelect}
               onPreview={onPreview}
-              onImport={databaseType === 'mysql' ? onImport : undefined}
+              onImport={onImport}
               searchQuery={searchQuery}
               level={level + 1}
             />

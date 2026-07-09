@@ -28,10 +28,10 @@ def format_set_table_reference(
 
 
 class SetOperationQueryGenerator:
-    """集合操作query生成器"""
+    """集合操作查询生成器"""
 
     def __init__(self):
-        """initializing集合操作query生成器"""
+        """初始化集合操作查询生成器"""
         self.logger = logging.getLogger(__name__)
 
     def build_set_operation_query(
@@ -41,24 +41,24 @@ class SetOperationQueryGenerator:
         attach_aliases: Optional[Set[str]] = None,
     ) -> str:
         """
-        构建集合操作query
+        构建集合操作查询
 
         Args:
-            config: 集合操作configuration
-            preview_limit: 预览模式下每个table的行数限制
+            config: 集合操作配置
+            preview_limit: 预览模式下每个表的行数限制
 
         Returns:
-            str: 生成的SQLquery
+            str: 生成的 SQL 查询
         """
         try:
             operation_type = config.operation_type
             tables = config.tables
             use_by_name = config.use_by_name
 
-            # 验证configuration
+            # 验证配置
             self._validate_config(config)
 
-            # 生成各个子query
+            # 生成各个子查询
             subqueries = []
             for table in tables:
                 subquery = self._build_table_subquery(
@@ -66,7 +66,7 @@ class SetOperationQueryGenerator:
                 )
                 subqueries.append(f"({subquery})")
 
-            # 组合集合操作query
+            # 组合集合操作查询
             if use_by_name and operation_type in [
                 SetOperationType.UNION,
                 SetOperationType.UNION_ALL,
@@ -94,15 +94,15 @@ class SetOperationQueryGenerator:
         attach_aliases: Optional[Set[str]] = None,
     ) -> str:
         """
-        构建单table子query
+        构建单表子查询
 
         Args:
-            table: tableconfiguration
+            table: 表配置
             use_by_name: 是否使用BY NAME模式
             limit: 可选的行数限制
 
         Returns:
-            str: 子querySQL
+            str: 子查询 SQL
         """
         table_name = table.table_name
         selected_columns = table.selected_columns
@@ -115,14 +115,14 @@ class SetOperationQueryGenerator:
             table_ref += f' AS "{safe_alias}"'
 
         if use_by_name:
-            # BY NAME模式：DuckDB会自动按column名匹配，使用SELECT *即可
+            # BY NAME 模式：DuckDB 会自动按列名匹配，使用 SELECT * 即可
             columns_sql = "*"
         else:
-            # 位置模式：使用选择的column
+            # 位置模式：使用选择的列
             if not selected_columns:
                 columns_sql = "*"
             else:
-                # 转义column名
+                # 转义列名
                 escaped_columns = [f'"{col}"' for col in selected_columns]
                 columns_sql = ", ".join(escaped_columns)
 
@@ -136,19 +136,19 @@ class SetOperationQueryGenerator:
 
     def _validate_config(self, config: SetOperationConfig):
         """
-        验证集合操作configuration
+        验证集合操作配置
 
         Args:
-            config: 集合操作configuration
+            config: 集合操作配置
 
         Raises:
-            ValueError: configuration验证failed
+            ValueError: 配置验证失败
         """
         operation_type = config.operation_type
         tables = config.tables
         use_by_name = config.use_by_name
 
-        # 验证table数量
+        # 验证表数量
         if len(tables) < 2:
             raise ValueError("Set operation requires at least two tables")
 
@@ -163,19 +163,19 @@ class SetOperationQueryGenerator:
             ]:
                 raise ValueError("Only UNION and UNION ALL support BY NAME mode")
 
-        # 验证column兼容性（非BY NAME模式）
+        # 验证列兼容性（非 BY NAME 模式）
         if not use_by_name:
             self._validate_column_compatibility(tables)
 
     def _validate_column_compatibility(self, tables: List[TableConfig]):
         """
-        验证column兼容性（位置模式）
+        验证列兼容性（位置模式）
 
         Args:
-            tables: tableconfigurationcolumntable
+            tables: 表配置列表
 
         Raises:
-            ValueError: column兼容性验证failed
+            ValueError: 列兼容性验证失败
         """
         if not tables:
             return
@@ -199,25 +199,25 @@ class SetOperationQueryGenerator:
         attach_aliases: Optional[Set[str]] = None,
     ) -> int:
         """
-        估算集合操作result行数
+        估算集合操作结果行数
 
         Args:
-            config: 集合操作configuration
-            connection: DuckDBconnection（可选）
+            config: 集合操作配置
+            connection: DuckDB 连接（可选）
 
         Returns:
-            int: 预估result行数
+            int: 预估结果行数
         """
         try:
             if not connection:
-                # 如果没有提供connection，返回粗略估算
+                # 如果没有提供连接，返回粗略估算
                 return self._rough_estimate_rows(config)
 
             operation_type = config.operation_type
             tables = config.tables
 
             if operation_type == SetOperationType.UNION:
-                # UNION: 去重后的行数，通常小于所有table行数之和
+                # UNION：去重后的行数，通常小于所有表行数之和
                 total_rows = 0
                 for table in tables:
                     ref = format_set_table_reference(
@@ -230,7 +230,7 @@ class SetOperationQueryGenerator:
                 return int(total_rows * 0.8)
 
             elif operation_type == SetOperationType.UNION_ALL:
-                # UNION ALL: 所有table行数之和
+                # UNION ALL：所有表行数之和
                 total_rows = 0
                 for table in tables:
                     ref = format_set_table_reference(
@@ -242,7 +242,7 @@ class SetOperationQueryGenerator:
                 return total_rows
 
             elif operation_type == SetOperationType.EXCEPT:
-                # EXCEPT: 第一个table减去其他table，result行数通常较小
+                # EXCEPT：第一个表减去其他表，结果行数通常较小
                 if len(tables) >= 2:
                     first_ref = format_set_table_reference(
                         tables[0].table_name, attach_aliases
@@ -250,12 +250,12 @@ class SetOperationQueryGenerator:
                     first_table_rows = connection.execute(
                         f"SELECT COUNT(*) FROM {first_ref}"
                     ).fetchone()[0]
-                    # 粗略估算：假设差集为第一个table的10%
+                    # 粗略估算：假设差集为第一个表的 10%
                     return int(first_table_rows * 0.1)
                 return 0
 
             elif operation_type == SetOperationType.INTERSECT:
-                # INTERSECT: 交集，result行数通常最小
+                # INTERSECT：交集，结果行数通常最小
                 if len(tables) >= 2:
                     first_ref = format_set_table_reference(
                         tables[0].table_name, attach_aliases
@@ -263,7 +263,7 @@ class SetOperationQueryGenerator:
                     first_table_rows = connection.execute(
                         f"SELECT COUNT(*) FROM {first_ref}"
                     ).fetchone()[0]
-                    # 粗略估算：假设交集为第一个table的5%
+                    # 粗略估算：假设交集为第一个表的 5%
                     return int(first_table_rows * 0.05)
                 return 0
 
@@ -276,10 +276,10 @@ class SetOperationQueryGenerator:
 
     def _rough_estimate_rows(self, config: SetOperationConfig) -> int:
         """
-        粗略估算行数（无databaseconnection时）
+        粗略估算行数（无数据库连接时）
 
         Args:
-            config: 集合操作configuration
+            config: 集合操作配置
 
         Returns:
             int: 粗略估算的行数
@@ -287,11 +287,11 @@ class SetOperationQueryGenerator:
         operation_type = config.operation_type
         table_count = len(config.tables)
 
-        # 基于操作类型和table数量的粗略估算
+        # 基于操作类型和表数量的粗略估算
         if operation_type == SetOperationType.UNION:
-            return 1000 * table_count  # 假设每table1000行，去重后约800行/table
+            return 1000 * table_count  # 假设每表 1000 行，去重后约 800 行/表
         elif operation_type == SetOperationType.UNION_ALL:
-            return 1000 * table_count  # 假设每table1000行
+            return 1000 * table_count  # 假设每表 1000 行
         elif operation_type == SetOperationType.EXCEPT:
             return 100  # 差集通常较小
         elif operation_type == SetOperationType.INTERSECT:
@@ -300,7 +300,7 @@ class SetOperationQueryGenerator:
             return 1000
 
 
-# 全局集合操作query生成器实例
+# 全局集合操作查询生成器实例
 set_operation_generator = SetOperationQueryGenerator()
 
 
@@ -310,14 +310,14 @@ def generate_set_operation_sql(
     attach_aliases: Optional[Set[str]] = None,
 ) -> str:
     """
-    生成集合操作SQLquery
+    生成集合操作 SQL 查询
 
     Args:
-        config: 集合操作configuration
-        preview_limit: 预览模式下每个table的行数限制
+        config: 集合操作配置
+        preview_limit: 预览模式下每个表的行数限制
 
     Returns:
-        str: 生成的SQLquery
+        str: 生成的 SQL 查询
     """
     return set_operation_generator.build_set_operation_query(
         config, preview_limit, attach_aliases
@@ -330,14 +330,14 @@ def estimate_set_operation_rows(
     attach_aliases: Optional[Set[str]] = None,
 ) -> int:
     """
-    估算集合操作result行数
+    估算集合操作结果行数
 
     Args:
-        config: 集合操作configuration
-        connection: DuckDBconnection（可选）
+        config: 集合操作配置
+        connection: DuckDB 连接（可选）
 
     Returns:
-        int: 预估result行数
+        int: 预估结果行数
     """
     return set_operation_generator.estimate_result_rows(
         config, connection, attach_aliases

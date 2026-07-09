@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 import { invalidateAfterTableCreate } from '@/utils/cacheInvalidation';
-import { saveQueryToDuckDB } from '@/api';
+import { saveQueryToDuckDB, toAttachDatabasesPayload } from '@/api';
 import type { TableSource } from '@/hooks/useQueryWorkspace';
 
 export interface ImportToDuckDBDialogProps {
@@ -110,11 +110,6 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
       return;
     }
 
-    if (source.databaseType !== 'mysql') {
-      showErrorToast(t, 'INVALID_REQUEST', t('query.import.mysqlOnly', 'Currently only MySQL import to DuckDB is supported'));
-      return;
-    }
-
     const validation = validateTableName(tableName);
     if (!validation.valid) {
       setValidationError(validation.error || 'Invalid table name');
@@ -129,10 +124,14 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
         type: source.databaseType as 'mysql' | 'postgresql' | 'sqlite' | 'duckdb' | 'file',
       };
 
+      const attachDatabases = toAttachDatabasesPayload(source.attachDatabases);
+
       const result = await saveQueryToDuckDB(
         sql,
         datasource,
-        tableName.trim()
+        tableName.trim(),
+        null,
+        attachDatabases
       );
 
       if (!result.success) {
@@ -167,14 +166,16 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
     }
   }, [tableName, sql, source, queryClient, onOpenChange, t]);
 
-  // 重置状态当对话框打开时
+  // 仅在对话框打开瞬间重置：弹窗开着时 source/defaultTableName 引用变化
+  // （如后台任务轮询触发的父级重渲染）不应清掉用户已输入的表名
   React.useEffect(() => {
     if (open) {
       setTableName(defaultTableName || generateDefaultTableName(source));
       setValidationError(null);
       setIsImporting(false);
     }
-  }, [open, defaultTableName, source]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

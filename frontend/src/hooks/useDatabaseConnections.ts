@@ -26,6 +26,8 @@ export interface DatabaseConnection {
     database?: string;
     schema?: string;
     username?: string;
+    /** 文件型连接(DuckDB/SQLite)的数据库文件路径 */
+    path?: string;
   };
   /** 是否需要密码（已加密存储） */
   requiresPassword?: boolean;
@@ -75,6 +77,10 @@ const transformApiItem = (item: RawDatabaseDataSourceItem): DatabaseConnection =
       database: connectionInfo.database,
       username: username,
       schema: connectionInfo.schema || (metadata as Record<string, unknown>).schema as string,
+      // DuckDB/SQLite 是基于文件路径的连接，路径存在 connection_info.path。
+      // 之前漏映射 → params.path 为 undefined：卡片只显示名称而非路径，点击"连接"
+      // 时表单路径为空，看起来像"新建"而非加载已保存配置。
+      path: (connectionInfo as Record<string, unknown>).path as string | undefined,
       ...metadata,
     },
     createdAt: item.created_at,

@@ -5,8 +5,9 @@ import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import { deleteDatabaseConnection } from "@/api";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  Bird,
   Database,
-  FileText,
+  Feather,
   Trash2,
   Play,
   RefreshCw,
@@ -48,16 +49,22 @@ const TYPE_META: Record<
 > = {
   mysql: { label: "MySQL", icon: Database, color: "text-ds-mysql", bg: "bg-ds-mysql/12" },
   postgresql: { label: "PostgreSQL", icon: Database, color: "text-ds-pg", bg: "bg-ds-pg/12" },
-  sqlite: { label: "SQLite", icon: FileText, color: "text-ds-sqlite", bg: "bg-ds-sqlite/12" },
+  // SQLite 标志是羽毛,DuckDB 是鸭子(Lucide 无鸭子取 Bird)——与 utils/databaseTypeIcon 保持一致
+  sqlite: { label: "SQLite", icon: Feather, color: "text-ds-sqlite", bg: "bg-ds-sqlite/12" },
   sqlserver: { label: "SQL Server", icon: Database, color: "text-ds-pg", bg: "bg-ds-pg/12" },
-  duckdb: { label: "DuckDB", icon: FileText, color: "text-primary", bg: "bg-primary/12" },
+  duckdb: { label: "DuckDB", icon: Bird, color: "text-primary", bg: "bg-primary/12" },
 };
 
 /** Build the mono "host:port / database · user" (or path) meta string. */
 function connMeta(c: DatabaseConnection): { primary: string; secondary: string } {
   const p = c.params || {};
   if (c.type === "sqlite" || c.type === "duckdb") {
-    return { primary: (p as { path?: string }).path || p.database || c.name, secondary: "" };
+    // 文件型连接给两行(文件名 + 完整路径),与数据库连接卡片(库·用户 + 主机)一样是
+    // 两行,否则少一行会让并排的卡片行不对齐。
+    const path = (p as { path?: string }).path || p.database || c.name;
+    const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    const fileName = slash >= 0 ? path.slice(slash + 1) : path;
+    return { primary: path, secondary: fileName };
   }
   const hostPort = [p.host, p.port].filter(Boolean).join(":");
   let dbUser = [p.database, p.username].filter(Boolean).join(" · ");

@@ -27,6 +27,7 @@ from utils.response_helpers import (
     create_success_response,
     error_json_response,
 )
+from core.common.error_codes import classify_exception
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ def _build_preview_count_sql(sql: str) -> str:
     return f"SELECT COUNT(*) AS total_rows FROM ({cleaned}) AS preview_count"
 
 
-async def _generate_pivot_query(request: PivotQueryRequest):
+def _generate_pivot_query(request: PivotQueryRequest):
     """Generate pivot query SQL."""
     try:
         validation_result = validate_query_config(request.config)
@@ -99,14 +100,15 @@ async def _generate_pivot_query(request: PivotQueryRequest):
 
     except Exception as exc:
         logger.error("Failed to generate pivot query: %s", exc, exc_info=True)
+        code, status = classify_exception(str(exc))
         return error_json_response(
-            500,
-            MessageCode.OPERATION_FAILED,
+            status,
+            code,
             f"Failed to generate query: {str(exc)}",
         )
 
 
-async def _preview_pivot_query(
+def _preview_pivot_query(
     request: PivotPreviewRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
@@ -217,21 +219,23 @@ async def _preview_pivot_query(
         )
     except Exception as exc:
         logger.error("Failed to preview pivot query: %s", exc, exc_info=True)
+        # 与 join-query 一致地分类（表不存在→404、语法错→400…），不再一律 500（回归 #16）
+        code, status = classify_exception(str(exc))
         return error_json_response(
-            500,
-            MessageCode.OPERATION_FAILED,
+            status,
+            code,
             f"Failed to preview query: {str(exc)}",
         )
 
 
 @router.post("/api/pivot-query/generate", tags=PIVOT_TAGS)
-async def generate_pivot_query_route(request: PivotQueryRequest):
-    return await _generate_pivot_query(request)
+def generate_pivot_query_route(request: PivotQueryRequest):
+    return _generate_pivot_query(request)
 
 
 @router.post("/api/pivot-query/preview", tags=PIVOT_TAGS)
-async def preview_pivot_query_route(
+def preview_pivot_query_route(
     request: PivotPreviewRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
-    return await _preview_pivot_query(request, x_request_id)
+    return _preview_pivot_query(request, x_request_id)

@@ -23,13 +23,14 @@ import { useTableColumns } from "@/hooks/useTableColumns";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import type { SelectedTable } from "@/types/SelectedTable";
 import type { TableSource } from "@/hooks/useQueryWorkspace";
-import { generatePivotQuery } from "@/api";
+import { generatePivotQuery, toAttachDatabasesPayload } from "@/api";
 import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
 import {
     quoteIdent,
     getDialectFromSource,
     getSourceFromSelectedTable,
 } from "@/utils/sqlUtils";
+import { sqlStringLiteral } from "@/utils/sqlLiteral";
 import {
     buildPivotQueryPayload,
     canUseServerPivotPath,
@@ -121,10 +122,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         queryKey: pivotQueryKey,
         queryFn: async () => {
             if (!pivotPayload) return null;
-            const attachDatabases = pivotPayload.attachDatabases.map((db) => ({
-                alias: db.alias,
-                connection_id: db.connectionId,
-            }));
+            const attachDatabases = toAttachDatabasesPayload(pivotPayload.attachDatabases) ?? [];
             return generatePivotQuery(
                 pivotPayload.config,
                 pivotPayload.pivotConfig,
@@ -147,7 +145,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                         ? "NULL"
                         : typeof f.value === "number"
                           ? String(f.value)
-                          : `'${String(f.value).replace(/'/g, "''")}'`;
+                          : sqlStringLiteral(String(f.value));
                 return `${col} ${f.operator} ${val}`;
             });
             return clauses.length ? `WHERE ${clauses.join(" AND ")}` : null;

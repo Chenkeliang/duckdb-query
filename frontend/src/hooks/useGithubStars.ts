@@ -1,11 +1,11 @@
 /**
  * useGithubStars Hook
- * 
- * 异步获取 GitHub 仓库星数。
+ *
+ * 异步获取 GitHub 仓库星数（TanStack Query + localStorage 1 小时缓存种子）。
  * 独立为单独 Hook，避免与其他状态耦合。
  */
 
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 const GITHUB_REPO = 'chenkeliang/duckdb-query';
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}`;
@@ -27,20 +27,18 @@ interface CachedStars {
 }
 
 /**
- * 从缓存获取星数
+ * 读取未过期的缓存条目（过期/异常返回 null）
  */
-function getCachedStars(): number | null {
+function getCachedEntry(): CachedStars | null {
     if (typeof window === 'undefined') return null;
 
     try {
         const cached = localStorage.getItem(CACHE_KEY);
         if (!cached) return null;
 
-        const { count, timestamp }: CachedStars = JSON.parse(cached);
-
-        // 检查缓存是否过期
-        if (Date.now() - timestamp < CACHE_TTL) {
-            return count;
+        const entry: CachedStars = JSON.parse(cached);
+        if (Date.now() - entry.timestamp < CACHE_TTL) {
+            return entry;
         }
     } catch {
         // 忽略解析错误
@@ -67,50 +65,51 @@ function setCachedStars(count: number): void {
 }
 
 /**
+ * 拉取星数；失败静默返回 null（不影响应用）。
+ * fetch 目标为第三方 GitHub API —— AGENTS §4.2 允许的裸 fetch 例外（本后端必须走 apiClient）。
+ */
+async function fetchGithubStars(): Promise<number | null> {
+    try {
+        const response = await fetch(GITHUB_API_URL);
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        const count = data.stargazers_count;
+        if (typeof count === 'number') {
+            setCachedStars(count);
+            return count;
+        }
+    } catch {
+        // 静默失败，不影响应用
+    }
+    return null;
+}
+
+/**
  * GitHub 星数获取 Hook
- * 
+ *
  * @example
  * ```tsx
  * const { githubStars, isLoading } = useGithubStars();
- * 
+ *
  * {githubStars !== null && (
  *   <span>⭐ {githubStars}</span>
  * )}
  * ```
  */
 export function useGithubStars(): UseGithubStarsReturn {
-    const [githubStars, setGithubStars] = useState<number | null>(() => getCachedStars());
-    const [isLoading, setIsLoading] = useState(githubStars === null);
+    const { data, isLoading } = useQuery({
+        queryKey: ['github-stars'],
+        queryFn: fetchGithubStars,
+        // localStorage 种子：命中未过期缓存则不发请求（staleTime 按缓存写入时刻计算）
+        initialData: () => getCachedEntry()?.count,
+        initialDataUpdatedAt: () => getCachedEntry()?.timestamp,
+        staleTime: CACHE_TTL,
+        retry: false,
+        refetchOnWindowFocus: false,
+    });
 
-    useEffect(() => {
-        // 如果已有缓存，不需要再请求
-        if (githubStars !== null) {
-            setIsLoading(false);
-            return;
-        }
-
-        const fetchStars = async () => {
-            try {
-                const response = await fetch(GITHUB_API_URL);
-                if (response.ok) {
-                    const data = await response.json();
-                    const count = data.stargazers_count;
-                    if (typeof count === 'number') {
-                        setGithubStars(count);
-                        setCachedStars(count);
-                    }
-                }
-            } catch {
-                // 静默失败，不影响应用
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchStars();
-    }, [githubStars]);
-
-    return { githubStars, isLoading };
+    return { githubStars: data ?? null, isLoading };
 }
 
 export default useGithubStars;

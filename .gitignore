@@ -204,3 +204,21 @@ data-test/
 api/extensions/
 # Tauri sidecar(打包时由 CI 暂存的 PyInstaller onedir,勿入库)
 frontend/src-tauri/binaries/
+
+# 本地推广视频工程（大文件，不入库）
+videos/
+
+# ===== 数据工件兜底（2026-07 历史清理后加固）=====
+# 仓库内不应存在任何表格/数据导出文件；确需提交测试夹具时用 "!path" 显式豁免
+*.csv
+*.xlsx
+*.xls
+*.parquet
+# 密钥类兜底（secret.key 上面已有，这里拦住所有变体）
+*.key
+*.pem
+*.p12
+# 误提交过一次的 npm 本地缓存
+.npm-cache/
+# 本地 agent 工作目录
+.agents/

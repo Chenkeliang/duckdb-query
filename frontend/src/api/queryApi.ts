@@ -40,6 +40,23 @@ export interface FederatedQueryError extends Error {
     originalError?: Error;
 }
 
+export interface AttachDatabasePayload {
+    alias: string;
+    connection_id: string;
+}
+
+/**
+ * camelCase 内部状态 -> snake_case 请求体。接受最小结构类型，对仓库里
+ * 现存的几份 AttachDatabase 接口（sqlUtils.ts / queryWorkspace.ts /
+ * AsyncTaskDialog.tsx 本地版本）都是结构兼容的合法实参。
+ */
+export function toAttachDatabasesPayload(
+    attachDatabases?: Array<{ alias: string; connectionId: string }> | null
+): AttachDatabasePayload[] | undefined {
+    if (!attachDatabases || attachDatabases.length === 0) return undefined;
+    return attachDatabases.map((db) => ({ alias: db.alias, connection_id: db.connectionId }));
+}
+
 // ==================== DuckDB Query ====================
 
 /**
@@ -132,11 +149,9 @@ export async function executeFederatedQuery(options: FederatedQueryOptions): Pro
             is_preview: isPreview,
         };
 
-        if (attachDatabases && attachDatabases.length > 0) {
-            requestBody.attach_databases = attachDatabases.map(db => ({
-                alias: db.alias,
-                connection_id: db.connectionId,
-            }));
+        const attachPayload = toAttachDatabasesPayload(attachDatabases);
+        if (attachPayload) {
+            requestBody.attach_databases = attachPayload;
         }
 
         if (saveAsTable) {
@@ -262,7 +277,8 @@ export async function saveQueryToDuckDB(
     sql: string,
     datasource: DataSource,
     tableAlias: string,
-    queryData: Record<string, unknown>[] | null = null
+    queryData: Record<string, unknown>[] | null = null,
+    attachDatabases?: { alias: string; connection_id: string }[]
 ): Promise<{ success: boolean; table_name?: string; message?: string; messageCode?: string }> {
     try {
         const requestData: Record<string, unknown> = {
@@ -273,6 +289,10 @@ export async function saveQueryToDuckDB(
 
         if (queryData && queryData.length > 0) {
             requestData.query_data = queryData;
+        }
+
+        if (attachDatabases && attachDatabases.length > 0) {
+            requestData.attach_databases = attachDatabases;
         }
 
         const response = await apiClient.post('/api/save_query_to_duckdb', requestData);

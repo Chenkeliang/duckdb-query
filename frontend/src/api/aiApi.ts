@@ -1,4 +1,5 @@
 import { apiClient, normalizeResponse, handleApiError } from './client';
+import { toAttachDatabasesPayload } from './queryApi';
 
 export type AiProviderType = 'openai' | 'anthropic' | 'ollama' | 'openai_compatible';
 
@@ -73,10 +74,7 @@ export async function errorFix(
       error,
       tables: opts?.tables ?? [],
       // 联邦表结构需后端 ATTACH 远端库才能取到，传 alias+connection_id
-      attach_databases: (opts?.attachDatabases ?? []).map((d) => ({
-        alias: d.alias,
-        connection_id: d.connectionId,
-      })),
+      attach_databases: toAttachDatabasesPayload(opts?.attachDatabases) ?? [],
       locale: opts?.locale ?? 'zh',
     });
     return normalizeResponse<ErrorFixResult>(res).data;
@@ -142,6 +140,8 @@ export async function chat(
     tables?: string[];
     attachDatabases?: { alias: string; connectionId: string }[];
     locale?: 'zh' | 'en';
+    /** 用户当前工作台里的 SQL（如 JOIN 预览），让助手能回答"在当前 SQL 里加上……"这类追问 */
+    currentSql?: string;
   }
 ): Promise<ChatResult> {
   try {
@@ -149,11 +149,9 @@ export async function chat(
       messages,
       tables: opts?.tables ?? [],
       // 联邦表 schema 需后端 ATTACH 远端库才能 DESCRIBE，传 alias+connection_id
-      attach_databases: (opts?.attachDatabases ?? []).map((d) => ({
-        alias: d.alias,
-        connection_id: d.connectionId,
-      })),
+      attach_databases: toAttachDatabasesPayload(opts?.attachDatabases) ?? [],
       locale: opts?.locale ?? 'zh',
+      ...(opts?.currentSql ? { current_sql: opts.currentSql } : {}),
     });
     return normalizeResponse<ChatResult>(res).data;
   } catch (e) {

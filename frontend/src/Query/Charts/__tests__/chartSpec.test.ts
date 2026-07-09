@@ -121,6 +121,32 @@ describe('buildChartSql', () => {
     expect(sql).toContain('sum("amount") AS metric');
     expect(sql).not.toContain('GROUP BY');
   });
+
+  it('non-numeric y is TRY_CAST to DOUBLE for sum/avg/min/max', () => {
+    const columns = [{ name: 'status', type: 'VARCHAR' }, { name: 'price_str', type: 'VARCHAR' }];
+    const sql = buildChartSql('SELECT * FROM t', { type: 'bar', x: 'status', y: ['price_str'], agg: 'sum' }, columns);
+    expect(sql).toContain('sum(TRY_CAST("price_str" AS DOUBLE)) AS m_0');
+  });
+
+  it('count on non-numeric y counts the raw column (no cast)', () => {
+    const columns = [{ name: 'status', type: 'VARCHAR' }, { name: 'note', type: 'VARCHAR' }];
+    const sql = buildChartSql('SELECT * FROM t', { type: 'bar', x: 'status', y: ['note'], agg: 'count' }, columns);
+    expect(sql).toContain('count("note") AS m_0');
+    expect(sql).not.toContain('TRY_CAST');
+  });
+
+  it('numeric y stays uncast when columns provided', () => {
+    const columns = [{ name: 'status', type: 'VARCHAR' }, { name: 'amount', type: 'DOUBLE' }];
+    const sql = buildChartSql('SELECT * FROM t', { type: 'bar', x: 'status', y: ['amount'], agg: 'sum' }, columns);
+    expect(sql).toContain('sum("amount") AS m_0');
+    expect(sql).not.toContain('TRY_CAST');
+  });
+
+  it('kpi non-numeric y also casts', () => {
+    const columns = [{ name: 'price_str', type: 'VARCHAR' }];
+    const sql = buildChartSql('SELECT * FROM t', { type: 'kpi', x: null, y: ['price_str'], agg: 'avg' }, columns);
+    expect(sql).toContain('avg(TRY_CAST("price_str" AS DOUBLE)) AS metric');
+  });
 });
 
 import { aggregateRows } from '../chartSpec';
@@ -209,5 +235,73 @@ describe('hardening fixes (review)', () => {
     // 柱状仍用 200 上限(40 个不触顶)
     const rbar = aggregateRows(many, { type: 'bar', x: 'd', y: ['v'], agg: 'sum' });
     expect(rbar.data.length).toBe(40);
+  });
+});
+
+import { buildDrilldownSql } from '../chartSpec';
+
+describe('buildDrilldownSql', () => {
+  const catSpec = { type: 'bar' as const, x: 'region', y: ['amount'], agg: 'sum' as const };
+
+  it('categorical value -> equality filter, wraps source and strips trailing LIMIT', () => {
+    const sql = buildDrilldownSql(catSpec, '华东', 'SELECT * FROM demo_sales LIMIT 10000');
+    expect(sql).toBe(`SELECT * FROM (SELECT * FROM demo_sales) AS _src WHERE "region" = '华东' LIMIT 500`);
+  });
+
+  it('escapes single quotes in the clicked value', () => {
+    const sql = buildDrilldownSql(catSpec, "O'Brien", 'SELECT * FROM t');
+    expect(sql).toContain(`"region" = 'O''Brien'`);
+  });
+
+  it('month bin: server date_trunc form (e.g. "2026-03-01 00:00:00")', () => {
+    const spec = { type: 'line' as const, x: 'order_date', y: ['amount'], agg: 'sum' as const, xBin: 'month' as const };
+    const sql = buildDrilldownSql(spec, '2026-03-01 00:00:00', 'SELECT * FROM t');
+    expect(sql).toContain(`"order_date" >= DATE '2026-03-01' AND "order_date" < DATE '2026-04-01'`);
+  });
+
+  it('month bin: client binDim truncated form (e.g. "2025-12"), handles year rollover', () => {
+    const spec = { type: 'line' as const, x: 'order_date', y: ['amount'], agg: 'sum' as const, xBin: 'month' as const };
+    const sql = buildDrilldownSql(spec, '2025-12', 'SELECT * FROM t');
+    expect(sql).toContain(`"order_date" >= DATE '2025-12-01' AND "order_date" < DATE '2026-01-01'`);
+  });
+
+  it('day bin: half-open range from a plain date string', () => {
+    const spec = { type: 'bar' as const, x: 'order_date', y: ['amount'], agg: 'sum' as const, xBin: 'day' as const };
+    const sql = buildDrilldownSql(spec, '2026-03-15', 'SELECT * FROM t');
+    expect(sql).toContain(`"order_date" >= DATE '2026-03-15' AND "order_date" < DATE '2026-03-16'`);
+  });
+
+  it("'∅' bucket -> IS NULL", () => {
+    const sql = buildDrilldownSql(catSpec, '∅', 'SELECT * FROM t');
+    expect(sql).toContain(`"region" IS NULL`);
+  });
+
+  it("'其它' and '全部' buckets are not drillable", () => {
+    expect(buildDrilldownSql(catSpec, '其它', 'SELECT * FROM t')).toBeNull();
+    expect(buildDrilldownSql(catSpec, '全部', 'SELECT * FROM t')).toBeNull();
+  });
+
+  it('kpi type is not drillable', () => {
+    const spec = { type: 'kpi' as const, x: null, y: ['amount'], agg: 'sum' as const };
+    expect(buildDrilldownSql(spec, 'anything', 'SELECT * FROM t')).toBeNull();
+  });
+
+  it('null sourceSql is not drillable', () => {
+    expect(buildDrilldownSql(catSpec, '华东', null)).toBeNull();
+  });
+
+  it('no x dimension is not drillable', () => {
+    const spec = { type: 'bar' as const, x: null, y: ['amount'], agg: 'sum' as const };
+    expect(buildDrilldownSql(spec, '全部', 'SELECT * FROM t')).toBeNull();
+  });
+
+  it('re-drilling the same bucket on an already-drilled source does not nest again', () => {
+    const first = buildDrilldownSql(catSpec, '华东', 'SELECT * FROM t')!;
+    const second = buildDrilldownSql(catSpec, '华东', first);
+    expect(second).toBe(first);
+    // 不同条件仍然正常嵌套(继续缩小范围)
+    const third = buildDrilldownSql(catSpec, '华南', first)!;
+    expect(third).toContain(`WHERE "region" = '华南' LIMIT 500`);
+    expect(third).toContain(`"region" = '华东'`);
   });
 });

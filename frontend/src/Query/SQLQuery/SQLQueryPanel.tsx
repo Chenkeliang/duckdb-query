@@ -57,6 +57,8 @@ export interface SQLQueryPanelProps {
   editorMaxHeight?: string;
   /** 预览 SQL（来自异步任务等，仅预填不自动执行） */
   previewSQL?: string;
+  /** 预填序号：同一串 SQL 重复加载（如重复下钻同一桶）时靠它强制触发回填 */
+  previewNonce?: number;
   /** 打开设置·AI 标签页(未配置引导用) */
   onOpenAiSettings?: () => void;
 }
@@ -75,6 +77,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   editorMinHeight = '200px',
   editorMaxHeight = '400px',
   previewSQL,
+  previewNonce,
   onOpenAiSettings,
 }) => {
   const { t, i18n } = useTranslation('common');
@@ -253,12 +256,13 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     }
   }, [currentTableKey, lastSelectedTableKey, setSQL, maxQueryRows, selectedTables]);
 
-  // 处理预览 SQL（仅预填不自动执行）
+  // 处理预览 SQL（仅预填不自动执行）；previewNonce 保证同串重复加载也能回填
   useEffect(() => {
     if (previewSQL && previewSQL !== sql) {
       setSQL(previewSQL);
     }
-  }, [previewSQL, setSQL]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewSQL, previewNonce, setSQL]);
 
   // 智能 LIMIT 处理（参考老 UI 的 applyDisplayLimit 逻辑）
   // - 用户无 LIMIT：添加配置的 max_query_rows

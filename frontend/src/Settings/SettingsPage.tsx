@@ -10,10 +10,10 @@ import { ShortcutSettings } from './shortcuts';
 import { CacheSettings } from './CacheSettings';
 import { QueryResultSettings } from './QueryResultSettings';
 import { DataGridSettings } from './DataGridSettings';
+import { EngineCompatSettings } from './EngineCompatSettings';
 
-export interface SettingsPageProps {
-  // 可以添加 props
-}
+// 目前无 props，保留占位类型以便后续扩展
+export type SettingsPageProps = Record<string, never>;
 
 /**
  * 设置页面组件
@@ -34,6 +34,9 @@ export function SettingsPage({}: SettingsPageProps) {
 
           {/* 结果表显示 */}
           <DataGridSettings />
+
+          {/* 引擎兼容性 */}
+          <EngineCompatSettings />
 
           {/* 缓存设置 */}
           <CacheSettings />

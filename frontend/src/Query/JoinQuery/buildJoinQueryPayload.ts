@@ -12,6 +12,7 @@ import type { AttachDatabase } from '@/utils/sqlUtils';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { getTableName, isExternalTable } from '@/utils/tableUtils';
 import { generateExternalTableReference } from '@/utils/sqlUtils';
+import { toAttachDatabasesPayload } from '@/api';
 import { generateConflictKey } from '@/utils/duckdbTypes';
 import {
     cloneTreeWithoutOnConditions,
@@ -141,7 +142,10 @@ function resolveSourceColumns(
     tableColumnsMap: Record<string, { name: string }[]>
 ): { name: string }[] | undefined {
     const picked = selectedColumns[tableName];
-    if (picked?.length) {
+    // 区分 undefined(该表未管理过列选择，如列信息尚未加载)与 []（用户显式取消全选）。
+    // 与预览生成器(buildJoinPreviewSql)一致：空数组代表该表不贡献任何列，
+    // 不能回退到全列，否则用户取消勾选的列会在服务端执行结果中原样出现。
+    if (picked !== undefined) {
         return picked.map((name) => ({ name }));
     }
     const all = tableColumnsMap[tableName];
@@ -176,10 +180,7 @@ export function buildJoinQueryPayload(params: {
         tableColumnsMap = {},
     } = params;
 
-    const attachForPayload = attachDatabases.map((db) => ({
-        alias: db.alias,
-        connection_id: db.connectionId,
-    }));
+    const attachForPayload = toAttachDatabasesPayload(attachDatabases);
 
     if (!canUseServerJoinPath(activeTables, joinConfigs, filterTree, attachDatabases, tableAliasOverrides)) {
         return null;
@@ -232,10 +233,13 @@ export function buildJoinQueryPayload(params: {
         const conditions: JoinQueryCondition[] = config.conditions
             .filter((c) => c.leftColumn?.trim() && c.rightColumn?.trim())
             .map((c) => {
+                // 冲突键必须与检测端(useTypeConflict,用纯表名)一致:外部表的 source id
+                // 带联邦前缀(如 sqlite_alarm_sqlite.alerts),用它查 resolvedTypes 必然落空,
+                // 用户在冲突对话框选好的转换会在服务端 payload 路径被静默丢弃
                 const conflictKey = generateConflictKey(
-                    leftName,
+                    leftTableName,
                     c.leftColumn,
-                    rightName,
+                    rightTableName,
                     c.rightColumn
                 );
                 const cast = resolvedTypes[conflictKey];
@@ -275,6 +279,6 @@ export function buildJoinQueryPayload(params: {
         where_conditions: whereClause?.trim() || undefined,
         limit: maxQueryRows,
         is_preview: isPreview,
-        attach_databases: attachForPayload.length > 0 ? attachForPayload : undefined,
+        attach_databases: attachForPayload,
     };
 }

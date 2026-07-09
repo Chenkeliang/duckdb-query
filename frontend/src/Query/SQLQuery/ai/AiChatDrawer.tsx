@@ -15,7 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { showErrorToast } from '@/utils/toastHelpers';
-import { chat, type ChatMessage } from '@/api/aiApi';
+import { chat, type ChatMessage } from '@/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -161,7 +161,7 @@ export function AiChatDrawer({
     if (override == null) setInput('');
     setLoading(true);
     try {
-      const r = await chat(next, { tables: selectedTables, attachDatabases, locale });
+      const r = await chat(next, { tables: selectedTables, attachDatabases, locale, currentSql });
       setMessages([...next, { role: 'assistant', content: r.content }]);
     } catch (e) {
       showErrorToast(t, e as Error, t('query.ai.chatFailed', 'AI 对话失败'));

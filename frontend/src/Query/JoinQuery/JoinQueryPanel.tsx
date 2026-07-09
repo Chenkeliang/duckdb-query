@@ -58,8 +58,8 @@ import {
   isExternalTable,
   hasMixedSources,
   isSameConnection,
-  DATABASE_TYPE_ICONS,
 } from '@/utils/tableUtils';
+import { getDatabaseTypeIcon } from '@/utils/databaseTypeIcon';
 import {
   quoteIdent,
   extractAttachDatabases,
@@ -603,8 +603,8 @@ const TableCard: React.FC<TableCardProps> = ({
   const normalized = normalizeSelectedTable(table);
   const tableName = normalized.name;
   const isExternal = normalized.source === 'external';
-  const dbIcon = isExternal && normalized.connection
-    ? DATABASE_TYPE_ICONS[normalized.connection.type] || '📊'
+  const DbIcon = isExternal && normalized.connection
+    ? getDatabaseTypeIcon(normalized.connection.type)
     : null;
 
   // 全选/取消全选
@@ -646,8 +646,8 @@ const TableCard: React.FC<TableCardProps> = ({
         <div className="p-3 border-b border-border flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              {isExternal ? (
-                <span className="text-sm shrink-0">{dbIcon}</span>
+              {isExternal && DbIcon ? (
+                <DbIcon className={`w-4 h-4 shrink-0 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
               ) : (
                 <Table className={`w-4 h-4 shrink-0 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
               )}
@@ -698,9 +698,9 @@ const TableCard: React.FC<TableCardProps> = ({
         {/* 列列表 */}
         <div className="p-3">
           <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-            {isExternal ? (
+            {isExternal && DbIcon ? (
               <>
-                <span>{dbIcon}</span>
+                <DbIcon className="w-3 h-3" />
                 <span>{normalized.connection?.name || t('query.join.externalTable', '外部表')}</span>
               </>
             ) : (
@@ -1710,17 +1710,34 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `join-${Date.now()}`;
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     joinRequestIdRef.current = requestId;
     let result;
+    let superseded = false;
     try {
       result = await performJoinQuery(payload, {
         requestId,
-        signal: abortControllerRef.current.signal,
+        signal: controller.signal,
       });
     } finally {
-      joinRequestIdRef.current = null;
-      abortControllerRef.current = null;
+      // 只有仍是"最新请求"时才清理 ref：若已被后来居上的请求（或取消）覆盖，
+      // 不能把它的 ref 误清掉，否则会破坏后者的取消/时效判断（回归 #17）
+      superseded = joinRequestIdRef.current !== requestId;
+      if (!superseded) {
+        joinRequestIdRef.current = null;
+      }
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+    }
+    // 本次已被更新请求取代/已取消 → 丢弃结果，不把过期结果盖到更新的那次之上。
+    // 返回 true（而非 false）：对 handleExecute 而言"服务端路径已接管"，绝不能
+    // 回落到本地 generateSQL()+onExecute()——那会把这条已被取代/已取消的查询又
+    // 在本地重跑一遍（双重执行）。false 只保留给"payload 构造失败、确实需要本地
+    // 兜底"这一种情况。
+    if (superseded) {
+      return true;
     }
     const previewHandler = onDisplayPreview;
     if (previewHandler) {
@@ -1973,7 +1990,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground cursor-help transition-colors px-2 py-0.5 rounded hover:bg-muted">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-help transition-colors px-2 py-0.5 rounded hover:bg-muted">
                     <Link2 className="w-3.5 h-3.5" />
                     <span>{t('query.join.attachedDatabases', '{{count}} 个外部数据库', { count: attachDatabases.length })}</span>
                     <Edit2 className="w-3 h-3 opacity-50" />
@@ -2024,19 +2041,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           </Alert>
         )}
 
-        {/* 联邦查询提示 */}
-        {sourceAnalysis.hasExternal && attachDatabases.length > 0 && (
-          <Alert className="mb-4 border-primary/50 bg-primary/10">
-            <Link2 className="h-4 w-4 text-primary" />
-            <AlertDescription className="text-primary">
-              {t(
-                'query.join.federatedQueryInfo',
-                '此查询将连接 {{count}} 个外部数据库进行联邦查询。',
-                { count: attachDatabases.length }
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
+        {/* 联邦查询状态由工具栏的「N 个外部数据库」指示器表达,不再重复横幅提示 */}
 
         {/* 表卡片区域 - 横向排列 */}
         <div className="flex items-start gap-4 min-h-72 pb-4 overflow-x-auto">

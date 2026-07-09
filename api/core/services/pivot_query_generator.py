@@ -117,7 +117,7 @@ def _generate_pivot_base_sql(
     pivot_config: PivotConfig,
     casts_map: Optional[Dict[str, str]] = None,
 ) -> str:
-    # 构建必需column：行/column维度 + 指标引用column
+    # 构建必需列：行/列维度 + 指标引用列
     required_columns = (
         pivot_config.rows
         + pivot_config.columns
@@ -183,19 +183,19 @@ def _generate_pivot_transformation_sql(
         except Exception as _:
             return None
 
-    # 检查是否设置了column数量限制
-    # 如果设置了限制，我们不能使用动态 PIVOT（因为它会返回所有column），
-    # 而应该skip此步直接进入下面的采样逻辑。
-    # 除非已经有了 manual_column_values（即用户手动指定了column），那样 _try_generate_native_pivot 会优先使用它。
+    # 检查是否设置了列数量限制
+    # 如果设置了限制，我们不能使用动态 PIVOT（因为它会返回所有列），
+    # 而应该跳过此步直接进入下面的采样逻辑。
+    # 除非已经有了 manual_column_values（即用户手动指定了列），那样 _try_generate_native_pivot 会优先使用它。
     explicit_limit = getattr(pivot_config, "column_value_limit", None)
     should_use_dynamic = explicit_limit is None or explicit_limit <= 0 or bool(pivot_config.manual_column_values)
 
     if should_use_dynamic:
-        # 尝试使用原生PIVOT策略（支持动态column，不需要显式 IN columntable）
+        # 尝试使用原生 PIVOT 策略（支持动态列，不需要显式 IN 列表）
         native_candidate = _try_generate_native_pivot(base_sql, pivot_config, allow_dynamic=True)
         if native_candidate is not None:
             native_candidate["metadata"].update({"uses_pivot_extension": False})
-            # 当需要小计/总计时，构建额外result集
+            # 当需要小计/总计时，构建额外结果集
             if pivot_config.include_subtotals or pivot_config.include_grand_totals:
                 if not manual_values:
                     # 动态透视的列名在执行期才确定，_derive_pivot_value_aliases 无法
@@ -216,12 +216,12 @@ def _generate_pivot_transformation_sql(
                     )
             return native_candidate
 
-    # 动态 PIVOT failed（多column维度场景），仅当显式设置 column_value_limit 时采样
+    # 动态 PIVOT 失败（多列维度场景），仅当显式设置 column_value_limit 时采样
     sample_cap = getattr(pivot_config, "column_value_limit", None)
     if sample_cap and sample_cap > 0:
         sampled = _autosample_native_in_values(int(sample_cap))
         if sampled:
-            # 构造临时configuration，使用采样的column值
+            # 构造临时配置，使用采样的列值
             try:
                 temp_cfg = pivot_config.model_copy(
                     update={"manual_column_values": sampled}
@@ -249,13 +249,13 @@ def _generate_pivot_transformation_sql(
                         include_grand_totals=pivot_config.include_grand_totals,
                     )
                 return native_candidate
-        # 如果自动采样也failed，返回error
+        # 如果自动采样也失败，返回错误
         raise ValueError(
             "Native PIVOT conditions not met (requires single column dimension and column value set); "
             "please fill in 'column value order' or set 'column count limit' and retry"
         )
 
-    # 如果到达这里，说明原生PIVOT和自动采样都failed了
+    # 如果到达这里，说明原生 PIVOT 和自动采样都失败了
     raise ValueError(
         "Native PIVOT conditions not met (requires single column dimension and column value set); "
         "please fill in 'column value order' or set 'column count limit' and retry"
@@ -306,7 +306,7 @@ def _try_generate_native_pivot(
 
     col_dim = _quote_identifier(pivot_config.columns[0])
     
-    # Construct native PIVOT statement并保留基础 CTE 结构，方便注入 totals
+    # 构造原生 PIVOT 语句，并保留基础 CTE 结构，方便注入合计行
     if has_explicit_values:
         in_values = ", ".join(_format_literal(x) for x in pivot_config.manual_column_values)
         pivot_select = (
@@ -341,20 +341,34 @@ def _derive_pivot_value_aliases(
     values: List[PivotValueConfig],
     manual_values: Optional[List[str]],
 ) -> List[str]:
-    """Derive the column aliases produced by the native PIVOT statement."""
-    aliases: List[str] = []
+    """Derive the exact column names DuckDB's native PIVOT emits, so the
+    totals/subtotal SELECTs reference columns that actually exist (otherwise
+    UNION ALL fails with a Binder Error).
+
+    Verified against the DuckDB build used here — for ``PIVOT(<aggs> FOR col
+    IN (<values>))`` with unaliased aggregates (which is what
+    ``_try_generate_native_pivot`` emits):
+      - single aggregate   -> bare pivot value, e.g. ``Q1``
+      - multiple aggregates -> ``{value}_{agg}({column})``, e.g.
+        ``Q1_sum(amount)`` / ``Q1_count(amount)`` — ordered value-outer,
+        aggregate-inner (matching PIVOT's output column order for UNION ALL).
+
+    Totals require explicit column values, so ``manual_values`` is
+    authoritative; without them the caller skips totals entirely.
+    """
     manual = manual_values or []
-    for value in values:
-        base_alias = (
-            value.alias
-            if getattr(value, "alias", None)
-            else f"{value.aggregation.value.lower()}_{value.column}"
-        )
-        if manual:
-            for manual_val in manual:
-                aliases.append(f"{base_alias}_{manual_val}")
-        else:
-            aliases.append(base_alias)
+    if not manual or not values:
+        return []
+    single = len(values) == 1
+    aliases: List[str] = []
+    for manual_val in manual:
+        for value in values:
+            if single:
+                aliases.append(str(manual_val))
+            else:
+                aliases.append(
+                    f"{manual_val}_{value.aggregation.value.lower()}({value.column})"
+                )
     return aliases
 
 

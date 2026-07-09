@@ -70,15 +70,134 @@ def _safe_decode_value(value):
 def _safe_decode_row(row):
     """
     安全解码数据库行中的所有值
-    
+
     Args:
         row: 数据库查询返回的行（tuple 或 list）
-        
+
     Returns:
         解码后的行（list）
     """
     return [_safe_decode_value(value) for value in row]
 
+
+# ATTACH 探测用的固定别名：独立内存连接，探测结束即关闭连接，不会与其他查询冲突
+_FILE_DB_PROBE_ALIAS = "_meta_probe"
+
+
+def _open_attached_file_database(connection_id: str, db_type: str, db_config: dict):
+    """打开一个独立内存 DuckDB 连接并 ATTACH 上 SQLite/DuckDB 文件。
+
+    不复用连接池，避免 ATTACH 残留污染其他查询；调用方负责在 finally 中 con.close()。
+    返回 (con, db_path)。
+    """
+    import duckdb as duckdb_lib
+    from core.database.duckdb_engine import build_attach_sql
+
+    db_path = db_config.get("path") or db_config.get("database")
+    if not db_path:
+        raise APIValidationError(
+            f"Missing {db_type} file path (path or database)",
+            details={"connection_id": connection_id},
+        )
+
+    con = duckdb_lib.connect()
+    # 独立连接是全新的 DuckDB 实例,连接池上的 SET GLOBAL 引擎兼容配置对它不生效,
+    # 必须重新应用,否则脏 SQLite 库(如声明 integer 实际存字符串)在这里依然读不了
+    from core.common.config_manager import config_manager
+    from core.database.duckdb_engine import apply_engine_compat_settings
+
+    apply_engine_compat_settings(
+        con, config_manager.get_app_config().engine_compat
+    )
+    attach_sql = build_attach_sql(
+        _FILE_DB_PROBE_ALIAS, {**db_config, "type": db_type, "path": db_path}
+    )
+    con.execute(attach_sql)
+    return con, db_path
+
+
+def _list_file_database_tables(connection_id: str, connection, db_type: str, db_config: dict, app_config):
+    """获取 SQLite / DuckDB 文件型数据库连接的表信息（表名/列/行数）。
+
+    统一走 DuckDB 引擎：通过 build_attach_sql 生成的 ATTACH 语句挂载文件，
+    再通过 duckdb_tables()/duckdb_columns() 读取元数据。
+    """
+    con, db_path = _open_attached_file_database(connection_id, db_type, db_config)
+    try:
+        table_rows = con.execute(
+            "SELECT table_name FROM duckdb_tables() WHERE database_name = ? ORDER BY table_name",
+            [_FILE_DB_PROBE_ALIAS],
+        ).fetchall()
+        tables = [row[0] for row in table_rows]
+
+        max_tables = getattr(app_config, "max_tables", 200)
+        tables_to_process = tables[:max_tables]
+
+        table_info = []
+        for table_name in tables_to_process:
+            try:
+                col_rows = con.execute(
+                    """
+                    SELECT column_name, data_type
+                    FROM duckdb_columns()
+                    WHERE database_name = ? AND table_name = ?
+                    ORDER BY column_index
+                    """,
+                    [_FILE_DB_PROBE_ALIAS, table_name],
+                ).fetchall()
+                columns = [
+                    {
+                        "name": c[0],
+                        "type": c[1],
+                        "null": "",
+                        "key": "",
+                        "default": None,
+                        "extra": "",
+                        "comment": None,
+                    }
+                    for c in col_rows
+                ]
+
+                quoted_table = table_name.replace('"', '""')
+                row_count = con.execute(
+                    f'SELECT count(*) FROM "{_FILE_DB_PROBE_ALIAS}"."{quoted_table}"'
+                ).fetchone()[0]
+
+                table_info.append(
+                    {
+                        "table_name": table_name,
+                        "table_comment": None,
+                        "columns": columns,
+                        "column_count": len(columns),
+                        "row_count": row_count,
+                    }
+                )
+            except Exception as table_error:  # pylint: disable=broad-except
+                logger.warning(
+                    "Failed to get table %s info: %s", table_name, table_error
+                )
+                table_info.append(
+                    {
+                        "table_name": table_name,
+                        "columns": [],
+                        "column_count": 0,
+                        "row_count": 0,
+                        "error": str(table_error),
+                    }
+                )
+
+        return create_success_response(
+            data={
+                "connection_id": connection_id,
+                "connection_name": connection.name,
+                "database": db_path,
+                "tables": table_info,
+                "table_count": len(table_info),
+            },
+            message_code=MessageCode.TABLES_RETRIEVED,
+        )
+    finally:
+        con.close()
 
 
 @router.get("/api/datasources/databases/{connection_id}/tables", tags=["Database Management"])
@@ -438,92 +557,11 @@ def get_database_tables(connection_id: str):
             finally:
                 conn.close()
 
-        elif db_type == "duckdb":
-            # DuckDB 文件：原生只读打开，直接从 information_schema 列出表（无需驱动/scanner）
-            import duckdb
-
-            db_path = db_config.get("path") or db_config.get("database")
-            if not db_path:
-                raise APIValidationError(
-                    "Missing DuckDB file path (path or database)",
-                    details={"connection_id": connection_id},
-                )
-
-            conn = duckdb.connect(db_path, read_only=True)
-            try:
-                rows = conn.execute(
-                    """
-                    SELECT table_name
-                    FROM information_schema.tables
-                    WHERE table_type = 'BASE TABLE'
-                      AND table_schema NOT IN ('information_schema', 'pg_catalog')
-                    ORDER BY table_name
-                    """
-                ).fetchall()
-                tables = [row[0] for row in rows]
-
-                max_tables = getattr(app_config, "max_tables", 200)
-                tables_to_process = tables[:max_tables]
-
-                table_info = []
-                for table_name in tables_to_process:
-                    try:
-                        col_rows = conn.execute(
-                            """
-                            SELECT column_name, data_type, is_nullable
-                            FROM information_schema.columns
-                            WHERE table_name = ?
-                            ORDER BY ordinal_position
-                            """,
-                            [table_name],
-                        ).fetchall()
-                        columns = [
-                            {
-                                "name": c[0],
-                                "type": c[1],
-                                "null": c[2],
-                                "key": "",
-                                "default": None,
-                                "extra": "",
-                                "comment": None,
-                            }
-                            for c in col_rows
-                        ]
-                        table_info.append(
-                            {
-                                "table_name": table_name,
-                                "table_comment": None,
-                                "columns": columns,
-                                "column_count": len(columns),
-                                "row_count": 0,
-                            }
-                        )
-                    except Exception as table_error:
-                        logger.warning(
-                            f"Failed to get table {table_name} info: {str(table_error)}"
-                        )
-                        table_info.append(
-                            {
-                                "table_name": table_name,
-                                "columns": [],
-                                "column_count": 0,
-                                "row_count": 0,
-                                "error": str(table_error),
-                            }
-                        )
-
-                return create_success_response(
-                    data={
-                        "connection_id": connection_id,
-                        "connection_name": connection.name,
-                        "database": db_path,
-                        "tables": table_info,
-                        "table_count": len(table_info),
-                    },
-                    message_code=MessageCode.TABLES_RETRIEVED,
-                )
-            finally:
-                conn.close()
+        elif db_type in ("sqlite", "duckdb"):
+            # SQLite / DuckDB 文件型数据库：统一走 ATTACH 探测（见 _list_file_database_tables）
+            return _list_file_database_tables(
+                connection_id, connection, db_type, db_config, app_config
+            )
 
         else:
             raise APIValidationError(
@@ -546,9 +584,10 @@ def get_database_tables(connection_id: str):
 
 @router.get("/api/datasources/databases/{connection_id}/schemas", tags=["Database Management"])
 def list_connection_schemas(connection_id: str):
-    """获取指定数据库连接下的所有 schemas（仅 PostgreSQL）
-    
-    对于 MySQL/SQLite，返回空列表（这些数据库没有 schema 概念）
+    """获取指定数据库连接下的所有 schemas
+
+    PostgreSQL 列出全部用户 schemas；MySQL 的 schema 即 database，返回连接所配置的库
+    （含表数）；SQLite/DuckDB 无 schema 概念，返回空列表。
     """
     try:
         # 获取应用配置
@@ -564,13 +603,60 @@ def list_connection_schemas(connection_id: str):
             else str(connection.type)
         )
 
-        # MySQL and SQLite do not support schema, return empty list
-        if db_type in ["mysql", "sqlite"]:
+        # SQLite/DuckDB do not support schema, return empty list
+        if db_type in ["sqlite", "duckdb"]:
             return create_list_response(
                 items=[],
                 total=0,
                 message_code=MessageCode.SCHEMAS_RETRIEVED,
             )
+
+        # MySQL: schema 即 database，返回连接所配置的库及其表数
+        if db_type == "mysql":
+            import pymysql
+
+            db_config = connection.params
+            username = db_config.get("user") or db_config.get("username")
+            if not username:
+                raise APIValidationError(
+                    "Missing username parameter (user or username)"
+                )
+
+            password = db_config.get("password", "")
+            if password_encryptor.is_encrypted(password):
+                password = password_encryptor.decrypt_password(password)
+
+            conn = pymysql.connect(
+                host=db_config.get("host", "localhost"),
+                port=int(db_config.get("port", 3306)),
+                user=username,
+                password=password,
+                database=db_config["database"],
+                charset="utf8mb4",
+                connect_timeout=app_config.db_connect_timeout,
+                read_timeout=app_config.db_read_timeout,
+                write_timeout=app_config.db_write_timeout,
+            )
+
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT DATABASE(), COUNT(*) FROM information_schema.tables "
+                        "WHERE table_schema = DATABASE()"
+                    )
+                    row = cursor.fetchone()
+                    schemas = (
+                        [{"name": row[0], "table_count": int(row[1] or 0)}]
+                        if row and row[0]
+                        else []
+                    )
+                    return create_list_response(
+                        items=schemas,
+                        total=len(schemas),
+                        message_code=MessageCode.SCHEMAS_RETRIEVED,
+                    )
+            finally:
+                conn.close()
 
         # PostgreSQL: 查询所有 schemas
         if db_type == "postgresql":
@@ -1095,6 +1181,65 @@ def get_table_details(connection_id: str, table_name: str, schema: str | None = 
 
             finally:
                 conn.close()
+
+        elif db_type in ("sqlite", "duckdb"):
+            # SQLite / DuckDB 文件：与 tables 列表同一套 ATTACH 探测，附加取样数据
+            con, db_path = _open_attached_file_database(connection_id, db_type, db_config)
+            try:
+                col_rows = con.execute(
+                    """
+                    SELECT column_name, data_type
+                    FROM duckdb_columns()
+                    WHERE database_name = ? AND table_name = ?
+                    ORDER BY column_index
+                    """,
+                    [_FILE_DB_PROBE_ALIAS, table_name],
+                ).fetchall()
+                columns = [
+                    {
+                        "name": c[0],
+                        "type": c[1],
+                        "null": "",
+                        "key": "",
+                        "default": None,
+                        "extra": "",
+                    }
+                    for c in col_rows
+                ]
+
+                quoted_table = table_name.replace('"', '""')
+                row_count = con.execute(
+                    f'SELECT count(*) FROM "{_FILE_DB_PROBE_ALIAS}"."{quoted_table}"'
+                ).fetchone()[0]
+
+                # 采样失败必须降级而不是整个接口报错:JOIN/集合面板要的是列信息,
+                # 样例数据只是锦上添花(脏 SQLite 库读整行可能因类型不符炸掉)
+                try:
+                    sample_rows = con.execute(
+                        f'SELECT * FROM "{_FILE_DB_PROBE_ALIAS}"."{quoted_table}" LIMIT 5'
+                    ).fetchall()
+                    sample_data = [_safe_decode_row(row) for row in sample_rows]
+                except Exception as sample_error:
+                    logger.warning(
+                        "Sample rows failed for %s.%s: %s",
+                        connection_id, table_name, sample_error,
+                    )
+                    sample_data = []
+
+                return create_success_response(
+                    data={
+                        "table_name": table_name,
+                        "table_comment": None,
+                        "columns": columns,
+                        "indexes": [],  # SQLite/DuckDB 索引信息暂不提供
+                        "column_count": len(columns),
+                        "row_count": row_count,
+                        "sample_data": sample_data,
+                    },
+                    message_code=MessageCode.TABLE_RETRIEVED,
+                )
+            finally:
+                con.close()
 
         else:
             raise APIValidationError(f"Unsupported database type: {db_type}")

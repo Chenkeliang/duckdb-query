@@ -108,7 +108,7 @@ def normalize_remote_url(url: str) -> str:
 
 
 @router.post("/api/read_from_url")
-async def read_from_url(request: URLReadRequest):
+def read_from_url(request: URLReadRequest):
     """从URL读取文件并创建DuckDB表"""
     temp_file_path = None
     try:
@@ -285,7 +285,7 @@ async def read_from_url(request: URLReadRequest):
 
 
 @router.get("/api/url_info")
-async def get_url_info(url: str):
+def get_url_info(url: str):
     """获取URL文件信息（不下载完整文件）"""
     try:
         app_config = config_manager.get_app_config()

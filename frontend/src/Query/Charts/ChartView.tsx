@@ -1,16 +1,17 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, Maximize2, Loader2 } from 'lucide-react';
+import { Sparkles, Maximize2, Loader2, Table2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { showErrorToast } from '@/utils/toastHelpers';
-import { suggestChart } from '@/api/aiApi';
+import { suggestChart } from '@/api';
 import { executeDuckDBSQL, executeFederatedQuery } from '@/api/queryApi';
 import {
-  classifyColumns, defaultSpec, validateSpec, buildChartSql, aggregateRows, capCategories,
+  classifyColumns, defaultSpec, validateSpec, buildChartSql, buildDrilldownSql, aggregateRows, capCategories,
   type ChartSpec, type ChartType, type AggFn, type ColumnInfo,
 } from './chartSpec';
 import { ChartCanvas } from './ChartCanvas';
@@ -27,19 +28,22 @@ export interface ChartViewProps {
   source: ChartSource;
   aiEnabled: boolean;
   locale?: 'zh' | 'en';
+  /** 点击图表元素下钻:收到明细 SQL 后由调用方负责填入编辑器(不自动执行)。 */
+  onDrilldown?: (sql: string) => void;
 }
 
 const TYPES: ChartType[] = ['bar', 'line', 'area', 'pie', 'donut', 'kpi'];
 const AGGS: AggFn[] = ['sum', 'count', 'avg', 'min', 'max'];
 
-export function ChartView({ columns, rows, truncated, source, aiEnabled, locale = 'zh' }: ChartViewProps) {
+export function ChartView({ columns, rows, truncated, source, aiEnabled, locale = 'zh', onDrilldown }: ChartViewProps) {
   const { t } = useTranslation('common');
-  const { dims, metrics, dates } = React.useMemo(() => classifyColumns(columns), [columns]);
+  const { dates } = React.useMemo(() => classifyColumns(columns), [columns]);
   const [spec, setSpec] = React.useState<ChartSpec>(() => defaultSpec(columns));
   const [full, setFull] = React.useState(false);
   const [suggesting, setSuggesting] = React.useState(false);
   const [serverAgg, setServerAgg] = React.useState<{ data: any[]; metricKeys: string[]; kpi?: number } | null>(null);
   const [loadingAgg, setLoadingAgg] = React.useState(false);
+  const [drilldownClick, setDrilldownClick] = React.useState<{ dim: string; sql: string; x: number; y: number } | null>(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -59,7 +63,7 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
   React.useEffect(() => {
     if (!truncated || !source.sql) { setServerAgg(null); return; }
     let alive = true;
-    const chartSql = buildChartSql(source.sql, spec);
+    const chartSql = buildChartSql(source.sql, spec, columns);
     setLoadingAgg(true);
     const run = source.requiresFederated && source.attachDatabases?.length
       ? executeFederatedQuery({ sql: chartSql, attachDatabases: source.attachDatabases, isPreview: true })
@@ -102,12 +106,33 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
       ? t('query.chart.basisRows', '基于前 {{n}} 行(可能不全)', { n: rows.length })
       : t('query.chart.basisFull', '全量(聚合)');
 
+  // Hooks must run unconditionally, so this is declared before the early return below.
+  const handleElementClick = React.useCallback(
+    (dim: string, event: { clientX: number; clientY: number }) => {
+      const sql = buildDrilldownSql(spec, dim, source.sql);
+      if (!sql) return;
+      setDrilldownClick({ dim, sql, x: event.clientX, y: event.clientY });
+    },
+    [spec, source.sql],
+  );
+
   if (!columns.length || !rows.length) {
     return <div className="p-6 text-sm text-muted-foreground">{t('query.chart.empty', '无可视化数据')}</div>;
   }
 
-  const xOptions = spec.type === 'kpi' ? [] : dims;
-  const renderChart = () => <ChartCanvas spec={spec} data={agg.data} metricKeys={agg.metricKeys} kpi={agg.kpi} />;
+  // 维度(X)开放全部列:业务表里 TINYINT/INT 编码字段(类型/渠道等)是常用分组维度,
+  // 只是默认选中仍偏向日期/文本列(defaultSpec 用 dims)
+  const xOptions = spec.type === 'kpi' ? [] : columns.map((c) => c.name);
+
+  const renderChart = () => (
+    <ChartCanvas
+      spec={spec}
+      data={agg.data}
+      metricKeys={agg.metricKeys}
+      kpi={agg.kpi}
+      onElementClick={onDrilldown ? handleElementClick : undefined}
+    />
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -122,10 +147,11 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
             <SelectContent>{xOptions.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
           </Select>
         )}
-        {metrics.length > 0 && (
+        {columns.length > 0 && (
           <Select value={spec.y[0] ?? ''} onValueChange={(v) => setSpec((s) => ({ ...s, y: v ? [v] : [] }))}>
             <SelectTrigger className="h-7 w-32"><SelectValue placeholder={t('query.chart.metric', '指标(Y)')} /></SelectTrigger>
-            <SelectContent>{metrics.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+            {/* 指标同样开放全部列:非数值列聚合时 TRY_CAST 成数值(见 buildChartSql),count 则任何类型都合法 */}
+            <SelectContent>{columns.map((c) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
           </Select>
         )}
         <Select value={spec.agg} onValueChange={(v) => setSpec((s) => ({ ...s, agg: v as AggFn }))}>
@@ -166,6 +192,26 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
           <div className="h-full w-full">{renderChart()}</div>
         </DialogContent>
       </Dialog>
+      <Popover open={!!drilldownClick} onOpenChange={(open) => { if (!open) setDrilldownClick(null); }}>
+        <PopoverAnchor asChild>
+          <div style={{ position: 'fixed', left: drilldownClick?.x ?? 0, top: drilldownClick?.y ?? 0, width: 0, height: 0 }} />
+        </PopoverAnchor>
+        <PopoverContent className="w-auto p-1" side="top" align="center">
+          {drilldownClick && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onDrilldown?.(drilldownClick.sql);
+                setDrilldownClick(null);
+              }}
+            >
+              <Table2 className="h-4 w-4 mr-1" />
+              {t('query.chart.drilldownView', '查看 "{{value}}" 的明细', { value: drilldownClick.dim })}
+            </Button>
+          )}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 """
-file工具模块
-提供file类型检测和file读取功能
+文件工具模块
+提供文件类型检测和文件读取功能
 """
 
 import pandas as pd
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def detect_file_type(filename: str) -> str:
-    """检测file类型"""
+    """检测文件类型"""
     extension = filename.lower().split(".")[-1]
 
     type_mapping = {
@@ -37,7 +37,7 @@ def detect_file_type(filename: str) -> str:
 def read_file_by_type(
     file_path: str, file_type: str = None, nrows: int = None
 ) -> pd.DataFrame:
-    """根据file类型读取file"""
+    """根据文件类型读取文件"""
     if file_type is None:
         file_type = detect_file_type(file_path)
 
@@ -46,7 +46,7 @@ def read_file_by_type(
             # 智能检测编码，不再盲目尝试 latin-1
             import charset_normalizer
 
-            # 读取file头部的字节用于检测
+            # 读取文件头部的字节用于检测
             with open(file_path, "rb") as f:
                 raw_data = f.read(1024 * 1024)  # 读取前 1MB
                 
@@ -58,14 +58,14 @@ def read_file_by_type(
             for enc in preferred_encodings:
                 try:
                     raw_data.decode(enc)
-                    # 如果能successfully解码，但需要进一步确认不是伪造的 (latin-1 总是successfully)
-                    # 这里如果是 utf-8 或 gb18030 successfully解码，通常就是正确的
+                    # 如果能成功解码，但需要进一步确认不是伪造的 (latin-1 总是能成功解码)
+                    # 这里如果用 utf-8 或 gb18030 成功解码，通常就是正确的
                     detected_encoding = enc
                     break
                 except UnicodeDecodeError:
                     continue
             
-            # 2. 如果常见编码failed，使用 charset-normalizer 深度检测
+            # 2. 如果常见编码识别失败，使用 charset-normalizer 深度检测
             if not detected_encoding:
                 matches = charset_normalizer.from_bytes(raw_data).best()
                 if matches:
@@ -92,13 +92,13 @@ def read_file_by_type(
                 df = pd.read_excel(file_path)
         elif file_type == "json":
             if nrows is not None:
-                # JSONfile不支持nrowsparameter，需要手动处理
+                # JSON 文件不支持 nrows 参数，需要手动处理
                 df = pd.read_json(file_path)
                 df = df.head(nrows)
             else:
                 df = pd.read_json(file_path)
         elif file_type == "jsonl":
-            # JSONLfile每行一个JSON对象，使用lines=Trueparameter
+            # JSONL 文件每行一个 JSON 对象，使用 lines=True 参数
             if nrows is not None:
                 df = pd.read_json(file_path, lines=True)
                 df = df.head(nrows)
@@ -106,7 +106,7 @@ def read_file_by_type(
                 df = pd.read_json(file_path, lines=True)
         elif file_type == "parquet":
             if nrows is not None:
-                # Parquetfile不支持nrowsparameter，需要手动处理
+                # Parquet 文件不支持 nrows 参数，需要手动处理
                 df = pd.read_parquet(file_path)
                 df = df.head(nrows)
             else:
@@ -122,7 +122,7 @@ def read_file_by_type(
 
 
 def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
-    """gettingfile预览info"""
+    """获取文件预览信息"""
     try:
         file_type = detect_file_type(file_path)
         normalized_type = "parquet" if file_type == "pq" else file_type
@@ -254,6 +254,30 @@ def _quote_identifier(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+def _swap_staging_table(
+    connection, staging_name: str, table_name: str, drop_existing: bool = True
+) -> None:
+    """把已经建好、已验证可用的 staging 表原子换名成目标表。
+
+    DROP+RENAME 包在真事务里：RENAME 失败(如目标已存在且 drop_existing=False，
+    或执行被中断)时 ROLLBACK 撤销 DROP，目标表不会凭空消失——staging 表在这一步
+    之前已经完整建好，"建表"和"替换"是两个独立阶段，替换失败不影响已经有效的
+    旧数据。与 core.database.federated_attach.execute_sql_and_persist、
+    core.data.file_datasource_manager._create_table_atomically 用同一个模式。
+    """
+    quoted_staging = _quote_identifier(staging_name)
+    quoted_target = _quote_identifier(table_name)
+    connection.execute("BEGIN TRANSACTION")
+    try:
+        if drop_existing:
+            connection.execute(f"DROP TABLE IF EXISTS {quoted_target}")
+        connection.execute(f"ALTER TABLE {quoted_staging} RENAME TO {quoted_target}")
+        connection.execute("COMMIT")
+    except Exception:  # pylint: disable=broad-exception-caught
+        connection.execute("ROLLBACK")
+        raise
+
+
 def _format_reader_option_value(value: Any) -> str:
     if isinstance(value, bool):
         return "TRUE" if value else "FALSE"
@@ -354,36 +378,49 @@ def _load_json_file_as_variant(
     *,
     drop_existing: bool = True,
 ) -> Dict[str, Any]:
-    """JSON/JSONL 入湖：各列 CAST 为 DuckDB VARIANT。"""
-    quoted_table = _quote_identifier(table_name)
-    stage_table = f"__json_variant_stage_{uuid4().hex}"
-    quoted_stage = _quote_identifier(stage_table)
+    """JSON/JSONL 入湖：各列 CAST 为 DuckDB VARIANT。
+
+    目标表在整个构建过程中都不会被触碰：原始 JSON 先读进一张 TEMP 表用于探测
+    列名，CAST 后的结果先落到一张普通 staging 表，两步都成功之后才通过
+    _swap_staging_table 原子换名——任何一步失败，drop_existing=True 也不会
+    提前删掉旧表（回归：曾经是先无条件 DROP 目标表，再开始读文件，读文件或
+    CAST 失败时旧表已经没了）。
+    """
+    raw_stage = f"__json_variant_raw_{uuid4().hex}"
+    quoted_raw_stage = _quote_identifier(raw_stage)
+    variant_stage = f"__json_variant_stage_{uuid4().hex}"
+    quoted_variant_stage = _quote_identifier(variant_stage)
     format_value = "newline_delimited" if file_type == "jsonl" else "auto"
 
-    if drop_existing:
-        connection.execute(f"DROP TABLE IF EXISTS {quoted_table}")
+    try:
+        connection.execute(
+            f"""
+            CREATE TEMP TABLE {quoted_raw_stage} AS
+            SELECT * FROM read_json_auto(?, format='{format_value}', maximum_depth=10)
+            """,
+            [file_path],
+        )
+        columns_df = connection.execute(f"PRAGMA table_info({quoted_raw_stage})").fetchall()
+        column_names = [row[1] for row in columns_df]
+        if not column_names:
+            raise ValueError("JSON file produced no columns for VARIANT import")
 
-    connection.execute(
-        f"""
-        CREATE TEMP TABLE {quoted_stage} AS
-        SELECT * FROM read_json_auto(?, format='{format_value}', maximum_depth=10)
-        """,
-        [file_path],
-    )
-    columns_df = connection.execute(f"PRAGMA table_info({quoted_stage})").fetchall()
-    column_names = [row[1] for row in columns_df]
-    if not column_names:
-        raise ValueError("JSON file produced no columns for VARIANT import")
+        select_parts = []
+        for col in column_names:
+            safe = col.replace('"', '""')
+            select_parts.append(f'CAST("{safe}" AS VARIANT) AS "{safe}"')
+        select_sql = ", ".join(select_parts)
+        connection.execute(
+            f"CREATE TABLE {quoted_variant_stage} AS SELECT {select_sql} FROM {quoted_raw_stage}"
+        )
+        _swap_staging_table(connection, variant_stage, table_name, drop_existing)
+    finally:
+        for stage in (raw_stage, variant_stage):
+            try:
+                connection.execute(f"DROP TABLE IF EXISTS {_quote_identifier(stage)}")
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
 
-    select_parts = []
-    for col in column_names:
-        safe = col.replace('"', '""')
-        select_parts.append(f'CAST("{safe}" AS VARIANT) AS "{safe}"')
-    select_sql = ", ".join(select_parts)
-    connection.execute(
-        f"CREATE TABLE {quoted_table} AS SELECT {select_sql} FROM {quoted_stage}"
-    )
-    connection.execute(f"DROP TABLE IF EXISTS {quoted_stage}")
     logger.info("Loaded %s as VARIANT columns into %s", file_path, table_name)
     return {"fallback_used": False, "engine": "duckdb_variant"}
 
@@ -397,17 +434,17 @@ def load_file_to_duckdb(
     drop_existing: bool = True,
     import_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """使用DuckDB原生read_*系columnloadingfile，必要时回退到pandas。
+    """使用 DuckDB 原生 read_* 系列函数加载文件，必要时回退到 pandas。
 
     Args:
-        connection: DuckDBconnection实例
-        table_name: 目标table名
-        file_path: 本地filepath
-        file_type: 可选file类型；缺省时自动根据扩展名推断
-        reader_options: 传递给read_*函数的额外parameter
-        drop_existing: 是否在creating前deleting旧table
+        connection: DuckDB 连接实例
+        table_name: 目标表名
+        file_path: 本地文件路径
+        file_type: 可选文件类型；缺省时自动根据扩展名推断
+        reader_options: 传递给 read_* 函数的额外参数
+        drop_existing: 是否在创建前删除旧表
     Returns:
-        包含是否触发pandas回退的result字典
+        包含是否触发 pandas 回退结果的字典
     """
 
     if connection is None:
@@ -475,49 +512,57 @@ def load_file_to_duckdb(
             merged_options["all_varchar"] = True
             logger.info("CSV import_mode=%s: all_varchar=true for %s", import_mode, file_path)
 
-    quoted_table = _quote_identifier(table_name)
+    # 全程建到一张 staging 表，原生/pandas 两条路都成功之后再原子换名——目标表
+    # 在此之前不会被触碰（回归：曾经是先无条件 DROP 目标表，原生和 pandas 两条
+    # 路都失败时目标表永久消失，见 file_utils 顶部 issue #6 的说明）。
+    staging_name = f"__stage_{table_name}_{uuid4().hex[:8]}"
+    quoted_staging = _quote_identifier(staging_name)
     invocation = _build_reader_invocation(function_name, merged_options)
-    load_sql = f"CREATE TABLE {quoted_table} AS SELECT * FROM {invocation}"
+    load_sql = f"CREATE TABLE {quoted_staging} AS SELECT * FROM {invocation}"
 
-    if drop_existing:
-        connection.execute(f"DROP TABLE IF EXISTS {quoted_table}")
-
+    fallback_used = False
     try:
-        connection.execute(load_sql, [file_path])
-        logger.info("Loaded file %s using DuckDB %s", file_path, function_name)
+        try:
+            connection.execute(load_sql, [file_path])
+            logger.info("Loaded file %s using DuckDB %s", file_path, function_name)
+        except Exception as native_error:
+            logger.warning(
+                "DuckDB native read failed for %s, falling back to pandas: %s",
+                file_path,
+                native_error,
+            )
+            connection.execute(f"DROP TABLE IF EXISTS {quoted_staging}")
+
+            # pandas fallback，同样先建到 staging
+            df = read_file_by_type(file_path, normalized_type)
+            temp_view = f"tmp_{table_name}_{int(time.time())}"
+            try:
+                connection.register(temp_view, df)
+                source_ref = _quote_identifier(temp_view)
+                connection.execute(
+                    f"CREATE TABLE {quoted_staging} AS SELECT * FROM {source_ref}"
+                )
+                logger.info("Created table %s via pandas fallback", table_name)
+            finally:
+                try:
+                    connection.unregister(temp_view)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    pass
+            fallback_used = True
+
         if normalized_type == "csv":
             from core.data.import_mode import should_promote_column_types
             from core.data.ingestion_precision import promote_table_column_types_from_varchar
 
             if should_promote_column_types(import_mode):
-                promote_table_column_types_from_varchar(connection, table_name)
-        return {"fallback_used": False, "engine": "duckdb"}
-    except Exception as native_error:
-        logger.warning(
-            "DuckDB native read failed for %s, falling back to pandas: %s", file_path, native_error
-        )
+                promote_table_column_types_from_varchar(connection, staging_name)
 
-    # pandas fallback
-    df = read_file_by_type(file_path, normalized_type)
-    temp_view = f"tmp_{table_name}_{int(time.time())}"
-    try:
-        connection.register(temp_view, df)
-        if drop_existing:
-            connection.execute(f"DROP TABLE IF EXISTS {quoted_table}")
-        source_ref = _quote_identifier(temp_view)
-        connection.execute(
-            f"CREATE TABLE {quoted_table} AS SELECT * FROM {source_ref}"
-        )
-        logger.info("Created table %s via pandas fallback", table_name)
-        if normalized_type == "csv":
-            from core.data.import_mode import should_promote_column_types
-            from core.data.ingestion_precision import promote_table_column_types_from_varchar
-
-            if should_promote_column_types(import_mode):
-                promote_table_column_types_from_varchar(connection, table_name)
-        return {"fallback_used": True, "engine": "pandas"}
+        _swap_staging_table(connection, staging_name, table_name, drop_existing)
     finally:
         try:
-            connection.unregister(temp_view)
-        except Exception:
+            connection.execute(f"DROP TABLE IF EXISTS {quoted_staging}")
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
+
+    engine = "pandas" if fallback_used else "duckdb"
+    return {"fallback_used": fallback_used, "engine": engine}

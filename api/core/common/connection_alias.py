@@ -55,13 +55,13 @@ def build_attach_list_from_datasource(
 ) -> Optional[List[Dict[str, str]]]:
     """
     从请求中的 datasource 字典构建单库 attach 配置。
-    仅支持 mysql / postgresql / sqlite。
+    仅支持 mysql / postgresql / sqlite / duckdb。
     """
     if not isinstance(datasource, dict):
         return None
 
     datasource_type = (datasource.get("type") or "").lower()
-    supported = {"mysql", "postgresql", "sqlite"}
+    supported = {"mysql", "postgresql", "sqlite", "duckdb"}
     if datasource_type not in supported:
         return None
 
@@ -99,14 +99,14 @@ def resolve_attach_databases_for_async(
                 resolved.append(
                     {
                         "alias": db.alias.strip(),
-                        "connection_id": db.connection_id.strip(),
+                        "connection_id": normalize_connection_id(db.connection_id),
                     }
                 )
             elif isinstance(db, dict):
                 resolved.append(
                     {
                         "alias": str(db.get("alias", "")).strip(),
-                        "connection_id": str(db.get("connection_id", "")).strip(),
+                        "connection_id": normalize_connection_id(str(db.get("connection_id", ""))),
                     }
                 )
         if resolved:

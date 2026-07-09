@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Database, Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
+import { getDatabaseTypeIcon } from '@/utils/databaseTypeIcon';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { TreeNode } from './TreeNode';
@@ -134,13 +135,16 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
       connection.type === 'duckdb') &&
     tables.length > 0;
 
+  // 按类型取图标(SQLite→Feather,DuckDB→Bird),颜色沿用原映射
+  const TypeIcon = getDatabaseTypeIcon(connection.type);
+
   return (
     <ContextMenu>
       <ContextMenuTrigger>
         <TreeNode
           id={`db-${connection.id}`}
           label={connection.name}
-          icon={<Database className={`h-4 w-4 ${getDatabaseIconColor(connection.type)}`} />}
+          icon={<TypeIcon className={`h-4 w-4 ${getDatabaseIconColor(connection.type)}`} />}
           level={level}
           isExpandable={true}
           isExpanded={isExpanded}
@@ -198,7 +202,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
                     selectionMode={selectionMode}
                     onSelect={onTableSelect}
                     onPreview={onPreview}
-                    onImport={connection.type === 'mysql' ? onImport : undefined}
+                    onImport={onImport}
                     searchQuery={searchQuery}
                   />
                 );

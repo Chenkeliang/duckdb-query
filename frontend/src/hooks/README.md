@@ -1,6 +1,6 @@
 # TanStack Query Hooks 使用指南
 
-本目录包含基于 TanStack Query 的数据查询 hooks，遵循 [`AGENTS.md`](../../../AGENTS.md) §4.4、§7。
+本目录包含基于 TanStack Query 的数据查询 hooks，遵循 [`AGENTS.md`](../../../AGENTS.md) §4.4。
 
 ## 📋 可用 Hooks
 
@@ -324,7 +324,7 @@ const handleUpload = async (file) => {
 ## 📚 参考资源
 
 - [TanStack Query 官方文档](https://tanstack.com/query/latest)
-- [`AGENTS.md`](../../../AGENTS.md) §4.4、§7
+- [`AGENTS.md`](../../../AGENTS.md) §4.4
 - [缓存失效工具函数](../utils/cacheInvalidation.ts)
 
 ## 🎉 优势总结

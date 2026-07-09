@@ -615,7 +615,7 @@ class TaskManager:
                         f"""
                         UPDATE {ASYNC_TASKS_TABLE}
                         SET status = ?, error_message = ?, completed_at = ?, execution_time = ?
-                        WHERE task_id = ?
+                        WHERE task_id = ? AND status IN (?, ?)
                         RETURNING task_id
                         """,
                         [
@@ -624,6 +624,8 @@ class TaskManager:
                             completed_at,
                             execution_time,
                             task_id,
+                            TaskStatus.QUEUED.value,
+                            TaskStatus.RUNNING.value,
                         ],
                     ).fetchall()
 
@@ -695,7 +697,7 @@ class TaskManager:
             # 增加重试次数以应对高并发冲突
             success = retry_on_write_conflict(_do_force_fail, max_retries=5)
         except Exception as e:
-            # 最终确认：如果是写写冲突，检查是否Task其实已经被其他事务（如用户取消）更新了
+            # 最终确认：如果是写写冲突，检查该任务是否其实已经被其他事务（如用户取消）更新了
             error_str = str(e)
             logger.error("[TASK_DEBUG] force_fail_task exception: task_id=%s, error=%s", task_id, error_str)
             if "write-write conflict" in error_str or "TransactionContext Error" in error_str:
@@ -786,7 +788,7 @@ class TaskManager:
 
         Args:
             task_id: Task ID
-            reason: 取消reason
+            reason: 取消原因
 
         Returns:
             True if status was updated successfully
@@ -812,7 +814,7 @@ class TaskManager:
                         f"""
                         UPDATE {ASYNC_TASKS_TABLE}
                         SET status = ?, error_message = ?, completed_at = ?, execution_time = ?
-                        WHERE task_id = ?
+                        WHERE task_id = ? AND status IN (?, ?, ?)
                         RETURNING task_id
                         """,
                         [
@@ -821,6 +823,9 @@ class TaskManager:
                             completed_at,
                             execution_time,
                             task_id,
+                            TaskStatus.QUEUED.value,
+                            TaskStatus.RUNNING.value,
+                            TaskStatus.CANCELLING.value,
                         ],
                     ).fetchall()
 
@@ -838,7 +843,7 @@ class TaskManager:
             return False
 
     def is_cancellation_requested(self, task_id: str) -> bool:
-        """检查Task是否被请求取消"""
+        """检查任务是否被请求取消"""
         with with_system_connection() as connection:
             row = connection.execute(
                 f"SELECT status FROM {ASYNC_TASKS_TABLE} WHERE task_id = ?",
@@ -850,7 +855,7 @@ class TaskManager:
         )
 
     def get_task(self, task_id: str) -> Optional[AsyncTask]:
-        """获取Task信息"""
+        """获取任务信息"""
         with with_system_connection() as connection:
             row = connection.execute(
                 f"""
@@ -873,7 +878,7 @@ class TaskManager:
         order_by: str = "created_at"
     ) -> List[Dict[str, Any]]:
         """
-        列出Task（支持分页和排序）
+        列出任务（支持分页和排序）
 
         Args:
             limit: 返回数量限制
@@ -908,7 +913,7 @@ class TaskManager:
         return [self._row_to_async_task(row).to_dict() for row in rows], total
 
     def get_pending_tasks(self) -> List[str]:
-        """获取排队中的TaskID"""
+        """获取排队中的任务ID"""
         with with_system_connection() as connection:
             rows = connection.execute(
                 f"SELECT task_id FROM {ASYNC_TASKS_TABLE} WHERE status = ?",
@@ -1045,13 +1050,13 @@ class TaskManager:
     def cleanup_stuck_cancelling_tasks(self) -> int:
         """Cleaning up stuck cancelling tasks
 
-        将长时间处于 cancelling status的Task标记为 failed
-        通常用于迁移后或服务重启后清理历史遗留Task
+        将长时间处于 cancelling 状态的任务标记为 failed
+        通常用于迁移后或服务重启后清理历史遗留任务
         """
         with with_system_connection() as connection:
             completed_at = get_storage_time()
 
-            # 查找所有 cancelling status的Task
+            # 查找所有处于 cancelling 状态的任务
             rows = connection.execute(
                 f"SELECT task_id FROM {ASYNC_TASKS_TABLE} WHERE status = ?",
                 [TaskStatus.CANCELLING.value],
@@ -1077,5 +1082,5 @@ class TaskManager:
             return len(rows)
 
 
-# 全局Task管理器实例
+# 全局任务管理器实例
 task_manager = TaskManager()

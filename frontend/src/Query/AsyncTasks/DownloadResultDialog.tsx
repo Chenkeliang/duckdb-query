@@ -19,8 +19,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { downloadAsyncResult } from '@/api';
-import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
+import { getAsyncDownloadUrl } from '@/api';
+import { openExternal } from '@/desktop/openExternal';
+import { showDownloadStartedToast, handleApiErrorToast } from '@/utils/toastHelpers';
 
 export type DownloadFormat = 'csv' | 'parquet';
 
@@ -77,25 +78,15 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
     },
   ];
 
-  // 下载处理
+  // 下载处理:走原生下载(桌面=系统浏览器,Web=window.open)命中后端 GET 流式接口,
+  // 边生成边落盘、不占内存。绝不能用 axios blob 把整个文件读进 webview——2 亿行
+  // CSV 达数 GB,会把界面卡死(此前的 bug)。大文件建议用 Parquet(体积约 CSV 的 1/10)。
   const handleDownload = useCallback(async () => {
     setIsDownloading(true);
-
     try {
-      // API 返回的是原始 Blob，不是 { blob, filename } 对象
-      const blob = await downloadAsyncResult(taskId, { format });
-
-      // 创建下载链接
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${tableName || taskId}.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showSuccessToast(t, 'TASK_DOWNLOAD_SUCCESS', t('async.download.success', '下载成功'));
+      const url = getAsyncDownloadUrl(taskId, { format });
+      await openExternal(url);
+      showDownloadStartedToast(t, `${tableName || taskId}.${format}`);
       onOpenChange(false);
       onSuccess?.();
     } catch (error) {

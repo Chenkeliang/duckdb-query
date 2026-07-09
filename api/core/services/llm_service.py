@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List
 
 from core.common import crypto
@@ -27,7 +28,10 @@ class _LiteLLMProxy:
                 import litellm as _mod  # pylint: disable=import-error,import-outside-toplevel
 
                 cls._mod = _mod
-            except ImportError:  # litellm 为可选依赖：未安装时 AI 功能不可用，但应用仍能正常启动
+            except ImportError as e:  # litellm 为可选依赖：未安装时 AI 功能不可用，但应用仍能正常启动
+                # 真实原因必须落日志:桌面打包漏收依赖时,错误同样是 ImportError,
+                # 只报"未安装"会把打包问题伪装成环境问题(2026-07 实际发生过)
+                logging.getLogger(__name__).warning("litellm import failed: %s", e)
                 cls._missing = True
         return cls._mod
 

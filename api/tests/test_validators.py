@@ -71,6 +71,38 @@ def test_sanitize_path_not_allowed(tmp_path):
     assert exc_info.value.status_code == 403
 
 
+def test_sanitize_path_rejects_prefix_sibling_directory(tmp_path):
+    """兄弟目录 allowed_evil 以 allowed 为字符串前缀但不在其内,必须拒绝
+    (裸 startswith 会误放行)。"""
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    sibling = tmp_path / "allowed_evil"
+    sibling.mkdir()
+    target = sibling / "secret.txt"
+    target.write_text("x")
+    with pytest.raises(BaseAPIException) as exc_info:
+        sanitize_path(str(target), [str(allowed)])
+    assert exc_info.value.error_code == "PATH_NOT_ALLOWED"
+
+
+def test_sanitize_path_allows_file_inside_base(tmp_path):
+    """白名单目录内的真实文件应放行,返回 realpath。"""
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    inside = allowed / "data.csv"
+    inside.write_text("x")
+    assert sanitize_path(str(inside), [str(allowed)]) == os.path.realpath(str(inside))
+
+
+def test_sanitize_path_root_base_allows_children(tmp_path):
+    """根目录白名单应放行其下真实文件:realpath(根) 自带尾分隔符,若不 rstrip
+    则 root+os.sep 变成 '//' 导致所有子路径被误拒。"""
+    inside = tmp_path / "data.csv"
+    inside.write_text("x")
+    root = os.path.abspath(os.sep)  # POSIX '/';Windows 为当前盘根
+    assert sanitize_path(str(inside), [root]) == os.path.realpath(str(inside))
+
+
 def test_async_tasks_invalid_limit_standard_envelope():
     """async_tasks 列表非法 limit 经 validate_pagination 返回标准信封。"""
     from fastapi.testclient import TestClient

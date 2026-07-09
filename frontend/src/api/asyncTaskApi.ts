@@ -6,7 +6,7 @@
  * Updated to use normalizeResponse for standard API response handling.
  */
 
-import { apiClient, handleApiError, normalizeResponse, parseBlobError } from './client';
+import { apiClient, handleApiError, normalizeResponse } from './client';
 import type { AsyncTask, CreateTaskRequest, NormalizedResponse } from './types';
 
 // ==================== Types ====================
@@ -153,44 +153,18 @@ export async function retryAsyncTask(
 // ==================== Task Result ====================
 
 /**
- * Download async task result
+ * 构造异步任务结果的下载 URL(GET,供原生下载使用)。
  *
- * Handles blob response with JSON error parsing
+ * 用 openExternal 命中它(桌面走系统浏览器、Web 走 window.open)做原生流式下载,
+ * 大文件也不占内存。切勿再用 axios `responseType:'blob'` 把整个文件读进 webview
+ * 内存——2 亿行 CSV 可达数 GB,会把界面直接卡死。
  */
-export async function downloadAsyncResult(
+export function getAsyncDownloadUrl(
     taskId: string,
     options: DownloadOptions = { format: 'csv' }
-): Promise<Blob> {
-    const { format } = options;
-
-    try {
-        // Backend expects POST with format in request body
-        const response = await apiClient.post(
-            `/api/async-tasks/${taskId}/download`,
-            { format },
-            { responseType: 'blob' }
-        );
-
-        // Check if response is actually an error (JSON in blob)
-        const blob = response.data as Blob;
-        if (blob.type.includes('application/json')) {
-            const errorData = await parseBlobError(blob);
-            if (errorData) {
-                const error = new Error(errorData.message || '下载失败') as Error & { code?: string; messageCode?: string };
-                error.code = errorData.error.code;
-                error.messageCode = errorData.messageCode;
-                throw error;
-            }
-        }
-
-        return blob;
-    } catch (error) {
-        // Re-throw if already processed
-        if ((error as Error & { code?: string }).code) {
-            throw error;
-        }
-        throw handleApiError(error as never, '下载任务结果失败');
-    }
+): string {
+    const base = (apiClient.defaults.baseURL ?? '').replace(/\/$/, '');
+    return `${base}/api/async-tasks/${encodeURIComponent(taskId)}/download?format=${options.format}`;
 }
 
 // ==================== Connection Pool Management ====================

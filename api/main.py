@@ -31,6 +31,7 @@ from routers import (
     pivot_query,  # /api/pivot-query/*
     set_operations,  # /api/set-operations/*
     query_export,  # /api/query-results/export
+    duckdb_extensions,  # DuckDB 扩展管理：/api/duckdb/extensions/*
 )
 from routers import config_api
 from routers import ai as ai_router
@@ -40,8 +41,6 @@ from core.data.file_datasource_manager import reload_all_file_datasources_to_duc
 from core.database.duckdb_engine import (
     with_duckdb_connection,
     create_persistent_table,
-    create_varchar_table_from_dataframe,
-    ensure_all_tables_varchar,
 )
 from core.services.cleanup_scheduler import start_cleanup_scheduler, stop_cleanup_scheduler
 
@@ -97,6 +96,14 @@ async def app_lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to stop file cleanup scheduler: {str(e)}")
 
+        try:
+            from core.database.duckdb_pool import shutdown_all_duckdb_connections
+
+            shutdown_all_duckdb_connections()
+            logger.info("DuckDB connections closed (WAL checkpointed)")
+        except Exception as e:
+            logger.error(f"Failed to close DuckDB connections during shutdown: {str(e)}")
+
 
 app = FastAPI(
     title="DuckQuery · DuckDB Query API",
@@ -148,6 +155,13 @@ app.include_router(config_api.router)
 app.include_router(ai_router.router)
 app.include_router(settings.router)
 app.include_router(query_cancel.router)
+app.include_router(duckdb_extensions.router)
+
+# 桌面端专用：本地优雅停机端点。Docker/Web 部署没有 DUCKQUERY_DESKTOP=1，不会暴露。
+if os.getenv("DUCKQUERY_DESKTOP") == "1":
+    from routers import system_control
+
+    app.include_router(system_control.router)
 
 
 @app.get("/", tags=["Default"])
