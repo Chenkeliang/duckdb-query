@@ -448,6 +448,7 @@ class DatabaseManager:
 
     def _create_engine(self, db_type: DataSourceType, params: Dict[str, Any]):
         """创建 SQLAlchemy 引擎"""
+        connect_args: Dict[str, Any] = {}
         if db_type == DataSourceType.MYSQL:
             # 支持 user 和 username 两种参数名称
             username = params.get("user") or params.get("username")
@@ -482,6 +483,13 @@ class DatabaseManager:
             # 连接保存的参数键是 path(见 datasources 创建流程),database 为兼容旧数据
             db_path = params.get("path") or params.get("database", ":memory:")
             connection_string = f"sqlite:///{db_path}"
+            # sqlite3 连接默认绑定创建线程;QueuePool 会把池化连接交给任意工作线程
+            # (FastAPI 同步端点与 BackgroundTasks 各在不同线程),不关掉
+            # check_same_thread 就会随机抛 "SQLite objects created in a thread can
+            # only be used in that same thread"——CI 并发回归测试间歇复现的正是它。
+            # QueuePool 保证单个连接同一时刻只被一个线程检出,配合 CPython sqlite3
+            # 默认 SERIALIZED 线程模式,跨线程移交是 SQLAlchemy 文档认可的安全用法。
+            connect_args = {"check_same_thread": False}
         elif db_type == DataSourceType.DUCKDB:
             # DuckDB 文件型连接不经 SQLAlchemy：查询走 ATTACH（见 duckdb_engine.build_attach_sql），
             # 无需引擎，调用方应将 None 视为「无需注册引擎」而非失败
@@ -496,6 +504,7 @@ class DatabaseManager:
             max_overflow=10,
             pool_pre_ping=True,
             pool_recycle=3600,
+            connect_args=connect_args,
         )
 
     def execute_query(self, connection_id: str, query: str) -> pd.DataFrame:
