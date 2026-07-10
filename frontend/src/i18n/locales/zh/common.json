@@ -1190,6 +1190,15 @@
       "resetFailed": "重置失败",
       "clearSuccess": "已清除所有缓存",
       "clearFailed": "清除缓存失败"
+    },
+    "about": {
+      "title": "关于与更新",
+      "description": "查看当前版本，手动检查并安装新版本",
+      "currentVersion": "当前版本",
+      "checkUpdate": "检查更新",
+      "checking": "检查中…",
+      "upToDate": "当前已是最新版本 v{{version}}",
+      "checkFailed": "检查更新失败，请确认网络后重试"
     }
   },
   "extensions": {
