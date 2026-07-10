@@ -1190,6 +1190,15 @@
       "resetFailed": "Reset failed",
       "clearSuccess": "All cache cleared",
       "clearFailed": "Failed to clear cache"
+    },
+    "about": {
+      "title": "About & Updates",
+      "description": "View the current version and check for updates manually",
+      "currentVersion": "Current version",
+      "checkUpdate": "Check for updates",
+      "checking": "Checking…",
+      "upToDate": "You are on the latest version v{{version}}",
+      "checkFailed": "Update check failed — please check your network and retry"
     }
   },
   "extensions": {

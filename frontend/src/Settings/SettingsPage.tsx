@@ -11,6 +11,7 @@ import { CacheSettings } from './CacheSettings';
 import { QueryResultSettings } from './QueryResultSettings';
 import { DataGridSettings } from './DataGridSettings';
 import { EngineCompatSettings } from './EngineCompatSettings';
+import { AboutUpdateSettings } from './AboutUpdateSettings';
 
 // 目前无 props，保留占位类型以便后续扩展
 export type SettingsPageProps = Record<string, never>;
@@ -40,6 +41,9 @@ export function SettingsPage({}: SettingsPageProps) {
 
           {/* 缓存设置 */}
           <CacheSettings />
+
+          {/* 关于与更新(仅桌面渲染) */}
+          <AboutUpdateSettings />
 
           {/* 开发中提示 */}
           <Card className="border-dashed">
