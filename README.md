@@ -46,7 +46,7 @@
 
 ### 自托管（完整功能）
 
-启动全栈版本（Python 后端 + React 前端）—— 直接读写本地文件、连接持久化的 MySQL/Postgres、以及 AI。
+启动全栈版本（Python 后端 + React 前端）—— 直接读写本地文件、连接持久化的数据库（MySQL / PostgreSQL / SQLite / DuckDB）、以及 AI。
 
 **前置依赖：** 需要安装 Docker 和 Docker Compose
 
@@ -79,7 +79,7 @@ git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && 
 | 📈 **AI 图表推荐** | 一键把结果集变成合适的图表 —— 柱 / 折线 / 饼 / 大数字。 |
 | 📥 **从任意处粘贴CSV/TSV** | 复制单元格，直接粘贴创建新表。 |
 | 📂 **查询任意文件** | 拖拽 CSV/Excel/Parquet/JSON 到浏览器，即刻生成表。 |
-| 🗄️ **连接外部数据库** | 添加 MySQL/PostgreSQL 连接，与本地文件一起查询。 |
+| 🗄️ **连接外部数据库** | 添加 MySQL / PostgreSQL / SQLite / DuckDB 连接，与本地文件一起查询。 |
 | 🔗 **跨数据源 JOIN** | `SELECT * FROM 本地表 JOIN mysql_db.users ON ...` |
 | 📊 **透视 / JOIN / 集合** | SQL 编辑器 + JOIN 工作台 + 透视表 + 集合运算（无独立「可视化构建器」Tab）。 |
 | 🌐 **从 URL 导入** | 输入 CSV/Parquet/JSON 链接，自动导入 DuckDB。 |
@@ -168,7 +168,7 @@ macOS（Apple Silicon / Intel）与 Windows（x64）原生安装包，内置后�
 
 - **首次启动**：安装包未做 Apple / Microsoft 官方证书签名（仅 ad-hoc 签名），系统会拦截——macOS 需「系统设置 → 隐私与安全性 → 仍要打开」，Windows 需 SmartScreen「更多信息 → 仍要运行」。
 - **应用内自动更新**：启动时检测 GitHub Releases 上的新版本，下载进度可见，一键安装并重启；更新包由仓库私钥签名、应用内置公钥校验。
-- **功能范围**：本地文件查询、MySQL/Postgres 连接、AI 问数等与自托管版一致（AI 仍需自行在「设置」里配置模型 API Key）；暂无 Linux 安装包。
+- **功能范围**：本地文件查询、数据库连接（MySQL / PostgreSQL / SQLite / DuckDB）、AI 问数等与自托管版一致（AI 仍需自行在「设置」里配置模型 API Key）；暂无 Linux 安装包。
 
 ### 本地开发
 
