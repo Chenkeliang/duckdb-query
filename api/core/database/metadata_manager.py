@@ -114,6 +114,18 @@ class MetadataManager:
                 "CREATE INDEX IF NOT EXISTS idx_fav_type ON system_sql_favorites(type)"
             )
 
+            # 通用应用设置 KV(收拢原则:业务级设置一律进 system.db,新增设置用
+            # get/save_app_setting,不要再各自开散装 JSON 文件——引导层除外:
+            # app-config.json 决定 system.db 位置(先有鸡)、runtime.json 供壳与
+            # MCP 免 DB 发现端口、secret.key 是解密 DB 内容的钥匙,三者必须留文件)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS system_app_settings (
+                    key VARCHAR PRIMARY KEY,
+                    value JSON,
+                    updated_at TIMESTAMP
+                )
+            """)
+
             # 迁移：添加缺失的字段（如果表已存在但缺少该字段）
             try:
                 # 检查 created_at 字段是否存在
@@ -701,6 +713,37 @@ class MetadataManager:
     def delete_sql_favorite(self, fav_id: str) -> bool:
         """删除 SQL 收藏"""
         return self.delete_metadata("system_sql_favorites", fav_id)
+
+    # ==================== 通用应用设置 KV ====================
+
+    def get_app_setting(self, key: str) -> Optional[Dict[str, Any]]:
+        """读一条通用设置;不存在返回 None(区别于"存在但为空 dict")。"""
+        with with_system_connection() as conn:
+            row = conn.execute(
+                "SELECT value FROM system_app_settings WHERE key = ?", [key]
+            ).fetchone()
+        if not row or row[0] is None:
+            return None
+        value = row[0]
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                return None
+        return value if isinstance(value, dict) else None
+
+    def save_app_setting(self, key: str, value: Dict[str, Any]) -> None:
+        """写/覆盖一条通用设置(value 序列化为 JSON)。"""
+        with with_system_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO system_app_settings (key, value, updated_at)
+                VALUES (?, ?, now())
+                ON CONFLICT (key) DO UPDATE
+                SET value = excluded.value, updated_at = excluded.updated_at
+                """,
+                [key, json.dumps(value, ensure_ascii=False)],
+            )
 
 
 # 全局元数据管理器实例
