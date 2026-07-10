@@ -22,6 +22,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -243,6 +244,16 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
               <ChevronDown className="h-3 w-3 ml-1" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {/* 引导:客户端导出只含表格当前已加载的行(受查询行数上限截断),
+                  完整结果要走服务端导出或异步任务——用户常误以为拿到了全量 */}
+              <div className="px-2 py-1.5 text-xs text-muted-foreground max-w-[280px] leading-snug whitespace-normal">
+                {t('query.result.exportHint', {
+                  defaultValue:
+                    'CSV / Excel / JSON 导出表格当前已加载的 {{rows}} 行（受查询行数上限截断，可能不是完整结果）；完整结果请用「Parquet（服务端）」或异步任务下载',
+                  rows: stats.totalRows.toLocaleString(),
+                })}
+              </div>
+              <DropdownMenuSeparator />
               {onExportCsv && (
                 <DropdownMenuItem onClick={onExportCsv}>
                   {t('query.result.exportCSV', '导出 CSV')}

@@ -251,6 +251,8 @@ export {
 export {
     exportQueryResults,
     getQueryExportDownloadUrl,
+    saveQueryExportToPath,
     type QueryResultExportPayload,
     type QueryResultExportResult,
+    type QueryExportSaveToPathResult,
 } from './queryExportApi';

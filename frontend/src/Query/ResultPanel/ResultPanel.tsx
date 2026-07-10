@@ -5,18 +5,25 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Database, AlertCircle, Loader2, Sparkles } from 'lucide-react';
+import { save } from '@tauri-apps/plugin-dialog';
 import {
   exportQueryResults,
   getQueryExportDownloadUrl,
+  saveQueryExportToPath,
+  toAttachDatabasesPayload,
 } from '@/api';
-import { showErrorToast, cleanErrorMessage, showDownloadStartedToast } from '@/utils/toastHelpers';
+import {
+  showErrorToast,
+  showSuccessToast,
+  cleanErrorMessage,
+  showDownloadStartedToast,
+} from '@/utils/toastHelpers';
 import { parseDuckDbErrorSuggestion } from '@/utils/sqlErrorHelper';
-import { openExternal } from '@/desktop/openExternal';
+import { openExternal, isTauri } from '@/desktop/openExternal';
 import { Button } from '@/components/ui/button';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { useAiEnabled } from '@/hooks/useAiEnabled';
 import { errorFix, type ErrorFixResult } from '@/api';
-import { toAttachDatabasesPayload } from '@/api/queryApi';
 import { parseSQLTableReferences } from '@/utils/sqlUtils';
 import { EngineCompatSelfHealBanner } from '@/Query/components/EngineCompatSelfHealBanner';
 import { IS_DEMO } from '@/demo/isDemo';
@@ -287,11 +294,30 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       return;
     }
     try {
+      // 桌面:先让用户经原生存盘对话框选路径,再服务端导出并直写过去
+      // (免浏览器跳转、免二次落盘);Web 维持浏览器流式下载
+      let targetPath: string | null = null;
+      if (isTauri()) {
+        targetPath = await save({
+          defaultPath: 'query_result.parquet',
+          filters: [{ name: 'Parquet', extensions: ['parquet'] }],
+        });
+        if (!targetPath) return; // 用户取消
+      }
       const result = await exportQueryResults({
         sql,
         format: 'parquet',
         attach_databases: toAttachDatabasesPayload(attachDatabases),
       });
+      if (targetPath) {
+        await saveQueryExportToPath(result.file_id, { targetPath });
+        showSuccessToast(
+          t,
+          undefined,
+          t('query.export.savedTo', { defaultValue: '已保存到 {{path}}', path: targetPath })
+        );
+        return;
+      }
       const url = getQueryExportDownloadUrl(result.download_url);
       openExternal(url);
       showDownloadStartedToast(t);

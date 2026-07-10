@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-import re
+import shutil
 import time
 import uuid
 from typing import List, Literal, Optional
@@ -24,11 +25,13 @@ from fastapi import APIRouter, Header
 from fastapi.responses import FileResponse
 from models.query_models import AttachDatabase
 from pydantic import BaseModel, Field
+from utils.local_export import desktop_local_export_enabled, validate_local_target_path
 from utils.response_helpers import (
     MessageCode,
     create_success_response,
     error_json_response,
 )
+from utils.safe_filename import safe_filename_base
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +175,7 @@ def download_query_export(file_id: str, filename: Optional[str] = None):
     if not file_id or ".." in file_id or "/" in file_id:
         raise APIValidationError("Invalid file id")
 
-    safe_name = re.sub(r"[^\w一-鿿.\- ]", "_", filename).strip(" .")[:100] if filename else ""
+    safe_name = safe_filename_base(filename) if filename else ""
 
     exports_dir = str(config_manager.get_exports_dir())
     for ext in ("parquet", "csv"):
@@ -194,3 +197,66 @@ def download_query_export(file_id: str, filename: Optional[str] = None):
         MessageCode.RESOURCE_NOT_FOUND,
         "Export file not found",
     )
+
+
+class SaveExportToPathRequest(BaseModel):
+    """桌面直写:把已导出文件拷到原生存盘对话框选定的绝对路径。"""
+
+    target_path: str
+
+
+def _find_export_file(file_id: str) -> Optional[str]:
+    """按 file_id 定位 exports 目录里的导出文件(与下载端点同一查找规则)。"""
+    exports_dir = str(config_manager.get_exports_dir())
+    for ext in ("parquet", "csv"):
+        path = os.path.join(exports_dir, f"{file_id}.{ext}")
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+@router.post("/api/query-results/export/{file_id}/save-to-path", tags=["Query Export"])
+async def save_query_export_to_path(file_id: str, request: SaveExportToPathRequest):
+    """桌面模式专用:把已导出的查询结果文件拷贝到用户选定的本地路径。
+
+    门控与 async-tasks 的 export-to-path 一致(ALLOW_ARBITRARY_LOCAL_PATHS=1,
+    见 utils/local_export.py);Web/Docker 一律 403,浏览器场景继续用
+    GET /download 流式端点。拷贝跑线程池,不阻塞事件循环。
+    """
+    if not desktop_local_export_enabled():
+        return error_json_response(
+            403,
+            MessageCode.FORBIDDEN,
+            "Direct local export is only available in the desktop app; "
+            "use GET /api/query-results/export/{file_id}/download instead",
+            details={"file_id": file_id},
+        )
+    if not file_id or ".." in file_id or "/" in file_id:
+        raise APIValidationError("Invalid file id")
+    try:
+        target = validate_local_target_path(request.target_path)
+        source = _find_export_file(file_id)
+        if source is None:
+            return error_json_response(
+                404,
+                MessageCode.RESOURCE_NOT_FOUND,
+                "Export file not found",
+                details={"file_id": file_id},
+            )
+        await asyncio.to_thread(shutil.copyfile, source, target)
+        return create_success_response(
+            data={"path": target, "size_bytes": os.path.getsize(target)},
+            message_code=MessageCode.OPERATION_SUCCESS,
+        )
+    except ValueError as e:
+        return error_json_response(
+            400, MessageCode.VALIDATION_ERROR, str(e), details={"file_id": file_id}
+        )
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error("Failed to save export to local path: %s, error: %s", file_id, e)
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to save export to local path: {str(e)}",
+            details={"file_id": file_id},
+        )

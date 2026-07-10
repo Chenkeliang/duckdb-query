@@ -44,3 +44,30 @@ export function getQueryExportDownloadUrl(downloadPath: string): string {
     const base = apiClient.defaults.baseURL ?? '';
     return `${base.replace(/\/$/, '')}${downloadPath}`;
 }
+
+export interface QueryExportSaveToPathResult {
+    path: string;
+    size_bytes: number;
+}
+
+/**
+ * 桌面模式专用:把已导出的查询结果文件(file_id)直接拷到用户经原生存盘对话框
+ * 选定的绝对路径。Web/Docker 后端 403,浏览器场景继续用 getQueryExportDownloadUrl
+ * + openExternal。大文件拷贝可达数秒 → 禁用超时。
+ */
+export async function saveQueryExportToPath(
+    fileId: string,
+    options: { targetPath: string }
+): Promise<QueryExportSaveToPathResult> {
+    try {
+        const response = await apiClient.post(
+            `/api/query-results/export/${encodeURIComponent(fileId)}/save-to-path`,
+            { target_path: options.targetPath },
+            { timeout: 0 }
+        );
+        const normalized = normalizeResponse<QueryExportSaveToPathResult>(response);
+        return normalized.data;
+    } catch (error) {
+        throw handleApiError(error as never, 'Failed to save export to local path');
+    }
+}

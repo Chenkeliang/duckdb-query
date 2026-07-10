@@ -38,6 +38,7 @@ from utils.response_helpers import (
     create_success_response,
     error_json_response,
 )
+from utils.local_export import desktop_local_export_enabled, validate_local_target_path
 from utils.safe_filename import safe_filename_base
 
 # 配置日志
@@ -760,16 +761,7 @@ def _export_result_file_to_local_path(task_id: str, fmt: str, target_path: str) 
     """
     if fmt not in ("csv", "parquet"):
         raise ValueError("Unsupported format, only csv and parquet are allowed")
-    if not target_path or not os.path.isabs(target_path):
-        raise ValueError("target_path must be an absolute path")
-    target = os.path.normpath(target_path)
-    if os.path.isdir(target):
-        raise ValueError("target_path points to a directory, expected a file path")
-    parent = os.path.dirname(target)
-    if not os.path.isdir(parent):
-        raise ValueError("Parent directory of target_path does not exist")
-    if not os.access(parent, os.W_OK):
-        raise ValueError("Parent directory of target_path is not writable")
+    target = validate_local_target_path(target_path)
 
     source = generate_download_file(task_id, fmt, target_path=target)
     if os.path.normpath(str(source)) != target:
@@ -787,7 +779,7 @@ async def export_task_result_to_path(task_id: str, request: ExportToPathRequest)
     部署不设该开关 → 一律 403,浏览器场景继续用 GET /download 流式端点落盘。
     写盘跑在线程池,不阻塞事件循环;大结果 COPY+拷贝可达数十秒,前端应禁用超时。
     """
-    if os.getenv("ALLOW_ARBITRARY_LOCAL_PATHS") != "1":
+    if not desktop_local_export_enabled():
         return error_json_response(
             403,
             MessageCode.FORBIDDEN,

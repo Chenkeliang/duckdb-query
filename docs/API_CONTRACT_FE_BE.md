@@ -194,6 +194,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 |------|------|-------------|------|
 | POST | `/api/query-results/export` | `file_id`, `download_url`, `format`, `row_count_estimate?` | `exportQueryResults` |
 | GET | `/api/query-results/export/{file_id}/download` | 文件流 | `getQueryExportDownloadUrl` + 浏览器下载 |
+| POST | `/api/query-results/export/{file_id}/save-to-path` | `path`, `size_bytes` | `saveQueryExportToPath`（体：`target_path`）；**桌面模式专用**（同 async export-to-path 门控，非桌面 403）；400 路径非法；404 文件不存在 |
 
 请求：`{ sql, format: "parquet"|"csv", attach_databases? }`；支持 `X-Request-ID` 取消（499 `QUERY_CANCELLED`）。
 
