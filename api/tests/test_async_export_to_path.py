@@ -40,10 +40,12 @@ def test_rejects_missing_parent(tmp_path):
 
 
 def test_happy_path_copies_cached_export(monkeypatch, tmp_path):
+    # 命中缓存:generate 返回缓存文件路径 → helper 分块拷贝到目标
     src = tmp_path / "cache.csv"
     src.write_text("a,b\n1,2\n", encoding="utf-8")
     monkeypatch.setattr(
-        "routers.async_tasks.generate_download_file", lambda tid, fmt: str(src)
+        "routers.async_tasks.generate_download_file",
+        lambda tid, fmt, target_path=None: str(src),
     )
     target = tmp_path / "chosen"
     target.mkdir()
@@ -52,6 +54,24 @@ def test_happy_path_copies_cached_export(monkeypatch, tmp_path):
     size = _export_result_file_to_local_path("t1", "csv", str(out))
 
     assert out.read_text(encoding="utf-8") == "a,b\n1,2\n"
+    assert size == out.stat().st_size
+
+
+def test_direct_write_skips_copy_when_no_cache(monkeypatch, tmp_path):
+    # 未命中缓存:generate 收到 target_path 并直接写它(DuckDB COPY 直写,单遍磁盘写),
+    # helper 识别 source == target,不再二次拷贝
+    def fake_generate(tid, fmt, target_path=None):
+        assert target_path is not None
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.write("x,y\n")
+        return target_path
+
+    monkeypatch.setattr("routers.async_tasks.generate_download_file", fake_generate)
+    out = tmp_path / "direct.csv"
+
+    size = _export_result_file_to_local_path("t1", "csv", str(out))
+
+    assert out.read_text(encoding="utf-8") == "x,y\n"
     assert size == out.stat().st_size
 
 

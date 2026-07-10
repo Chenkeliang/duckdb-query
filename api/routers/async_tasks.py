@@ -752,11 +752,11 @@ class ExportToPathRequest(BaseModel):
 def _export_result_file_to_local_path(task_id: str, fmt: str, target_path: str) -> int:
     """把任务结果文件写到用户选定的本地绝对路径,返回写入字节数。
 
-    校验失败抛 ValueError(英文,端点映射为 400)。复用 generate_download_file 的
-    后端缓存(结果表 COPY 导出,重复下载秒回),再 copyfile 到目标——相比经系统
-    浏览器命中 GET 流式端点,免浏览器依赖(Windows explorer 曾对带 query 的 URL
-    静默失败)且不再"后端写一遍 + 浏览器再写一遍"。覆盖语义:原生存盘对话框已
-    向用户确认过覆盖,此处直接覆盖。
+    校验失败抛 ValueError(英文,端点映射为 400)。全程恒定内存:未命中缓存时
+    DuckDB 直接 COPY 到目标路径(单遍磁盘写);命中已有导出缓存时分块 copyfile
+    秒回。相比经系统浏览器命中 GET 流式端点:免浏览器依赖(Windows explorer 曾
+    对带 query 的 URL 静默失败)、数据不再过一遍 HTTP。覆盖语义:原生存盘对话框
+    已向用户确认过覆盖,此处直接覆盖。
     """
     if fmt not in ("csv", "parquet"):
         raise ValueError("Unsupported format, only csv and parquet are allowed")
@@ -771,8 +771,10 @@ def _export_result_file_to_local_path(task_id: str, fmt: str, target_path: str) 
     if not os.access(parent, os.W_OK):
         raise ValueError("Parent directory of target_path is not writable")
 
-    source = generate_download_file(task_id, fmt)
-    shutil.copyfile(source, target)
+    source = generate_download_file(task_id, fmt, target_path=target)
+    if os.path.normpath(str(source)) != target:
+        # 命中已有缓存导出 → 分块拷贝到目标;直写场景 source 即 target,无需拷贝
+        shutil.copyfile(source, target)
     return os.path.getsize(target)
 
 
@@ -1425,10 +1427,13 @@ def execute_async_federated_query(
                 logger.error(f"Unable to mark federated query task as failed: {task_id}")
 
 
-def generate_download_file(task_id: str, format: str = "csv"):
+def generate_download_file(task_id: str, format: str = "csv", target_path: Optional[str] = None):
     """
     按需生成下载文件 - 基于持久DuckDB表进行COPY导出
     避免重复加载数据到内存
+
+    target_path(桌面直写导出用):未命中缓存时让 DuckDB 直接 COPY 到该路径,
+    单遍磁盘写、不产生 exports 缓存副本;命中缓存时仍返回缓存文件(调用方拷贝)。
     """
     try:
         # 获取任务信息
@@ -1476,23 +1481,26 @@ def generate_download_file(task_id: str, format: str = "csv"):
             except Exception as e:
                 raise ValueError(f"Table does not exist or has been deleted: {str(e)}")
 
-            # 生成文件路径
-            result_file_path = task_utils.generate_file_path(task_id, format)
+            # 生成文件路径:默认写 exports 缓存;桌面直写导出传入 target_path 时
+            # 一步写到用户选定路径(单遍磁盘写,不产生缓存副本)
+            result_file_path = target_path or task_utils.generate_file_path(task_id, format)
 
-            # 使用COPY命令基于持久表生成文件（流式处理，避免内存加载）
+            # 使用COPY命令基于持久表生成文件（流式处理，避免内存加载）。
+            # 路径按 SQL 单引号字符串字面量嵌入('→'' 转义):用户可选路径可含
+            # 空格/中文/引号;旧写法用双引号包路径在 DuckDB 里是标识符语法,纯属侥幸。
+            escaped_path = str(result_file_path).replace("'", "''")
             if format == "csv":
-                copy_sql = f'COPY "{table_name}" TO "{result_file_path}" WITH (FORMAT CSV, HEADER true)'
+                copy_sql = f"COPY \"{table_name}\" TO '{escaped_path}' WITH (FORMAT CSV, HEADER true)"
             else:
-                copy_sql = (
-                    f'COPY "{table_name}" TO "{result_file_path}" WITH (FORMAT PARQUET)'
-                )
+                copy_sql = f"COPY \"{table_name}\" TO '{escaped_path}' WITH (FORMAT PARQUET)"
 
             logger.info(f"Starting download file generation: {result_file_path}")
             con.execute(copy_sql)
             logger.info(f"Download file generated successfully: {result_file_path}")
 
-            # 更新任务信息，标记文件已生成
-            task_utils.update_task_file_info(task_info, result_file_path, format)
+            # 仅写缓存位置时登记任务文件元数据;直写用户路径不算缓存
+            if target_path is None:
+                task_utils.update_task_file_info(task_info, result_file_path, format)
 
             return result_file_path
 
