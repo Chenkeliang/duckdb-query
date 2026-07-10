@@ -26,6 +26,9 @@ tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
 tauri-plugin-updater = "2.10.1"
 tauri-plugin-process = "2.3.1"
+# open_external 用:ShellExecuteW 级别的跨平台"用默认程序打开"。直接 spawn
+# explorer.exe 在 URL 带 query string 时会静默失败(Windows 下载无反应的根因)。
+open = "5"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"
