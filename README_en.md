@@ -46,7 +46,7 @@ Run real SQL on the sample tables — or drag in your own CSV / Parquet / JSON �
 
 ### Self-host (full features)
 
-Run the full stack (Python Backend + React Frontend) — local file access, persistent MySQL/Postgres connections, and AI.
+Run the full stack (Python Backend + React Frontend) — local file access, persistent database connections (MySQL / PostgreSQL / SQLite / DuckDB), and AI.
 
 **Prerequisites:** Docker & Docker Compose
 
@@ -79,7 +79,7 @@ Open **http://localhost:48000** and start querying.
 | 📈 **AI chart suggestions** | One click turns a result set into the right chart — bar / line / pie / KPI. |
 | 📥 **Paste CSV/TSV from anywhere** | Copy cells from any source, paste directly as a new table. |
 | 📂 **Query any file** | Drag CSV/Excel/Parquet/JSON into the browser. Instant table. |
-| 🗄️ **Connect databases** | Add MySQL/PostgreSQL. Query alongside local files. |
+| 🗄️ **Connect databases** | Add MySQL / PostgreSQL / SQLite / DuckDB. Query alongside local files. |
 | 🔗 **Cross-source JOIN** | `SELECT * FROM local_csv JOIN mysql_db.users ON ...` |
 | 📊 **Pivot / JOIN / Set ops** | SQL editor + JOIN workbench + pivot + set operations (no separate “visual builder” tab). |
 | 🌐 **Import from URL** | Enter a CSV/Parquet/JSON link, auto-import to DuckDB. |
@@ -168,7 +168,7 @@ Native installers for macOS (Apple Silicon / Intel) and Windows (x64) with the b
 
 - **First launch**: the installers are ad-hoc signed, not signed with an official Apple/Microsoft certificate, so the OS will warn you — on macOS: *System Settings → Privacy & Security → Open Anyway*; on Windows: SmartScreen → *More info → Run anyway*.
 - **In-app auto-update**: on launch, the app checks GitHub Releases for a newer version, shows download progress, then installs and relaunches. Update artifacts are signed with a repo-private key and verified against a public key embedded in the app.
-- **Feature parity**: local file queries, MySQL/Postgres connections, and AI all work the same as the self-hosted version (AI still needs a model API key configured in Settings). No Linux build yet.
+- **Feature parity**: local file queries, database connections (MySQL / PostgreSQL / SQLite / DuckDB), and AI all work the same as the self-hosted version (AI still needs a model API key configured in Settings). No Linux build yet.
 
 ### Local Development
 
