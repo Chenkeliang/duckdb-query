@@ -19,9 +19,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { getAsyncDownloadUrl } from '@/api';
-import { openExternal } from '@/desktop/openExternal';
-import { showDownloadStartedToast, handleApiErrorToast } from '@/utils/toastHelpers';
+import { getAsyncDownloadUrl, exportAsyncResultToPath } from '@/api';
+import { openExternal, isTauri } from '@/desktop/openExternal';
+import { pickSavePath } from '@/desktop/saveLocal';
+import {
+  showDownloadStartedToast,
+  showSavedToToast,
+  handleApiErrorToast,
+} from '@/utils/toastHelpers';
 
 export type DownloadFormat = 'csv' | 'parquet';
 
@@ -78,12 +83,31 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
     },
   ];
 
-  // 下载处理:走原生下载(桌面=系统浏览器,Web=window.open)命中后端 GET 流式接口,
-  // 边生成边落盘、不占内存。绝不能用 axios blob 把整个文件读进 webview——2 亿行
-  // CSV 达数 GB,会把界面卡死(此前的 bug)。大文件建议用 Parquet(体积约 CSV 的 1/10)。
+  // 下载处理,分两条链路:
+  // 桌面:App 内原生存盘对话框 → 后端(本地 Python)直接把结果写到所选路径
+  //   (缓存命中拷贝,否则 DuckDB COPY 导出)。不再跳系统浏览器——那条链路依赖默认
+  //   浏览器行为(Windows explorer 曾对带 query 的 URL 静默失败),且 GB 级文件要
+  //   "后端写一遍 + 浏览器再写一遍"。
+  // Web/Docker:浏览器是唯一落盘通道,维持 openExternal 命中后端 GET 流式接口。
+  //   两条链路都绝不能用 axios blob 把整个文件读进 webview——2 亿行 CSV 达数 GB,
+  //   会把界面卡死(此前的 bug)。大文件建议用 Parquet(体积约 CSV 的 1/10)。
   const handleDownload = useCallback(async () => {
     setIsDownloading(true);
     try {
+      if (isTauri()) {
+        const targetPath = await pickSavePath(`${tableName || taskId}.${format}`, {
+          title: t('async.download.title', '下载结果'),
+        });
+        if (!targetPath) {
+          return; // 用户取消了存盘对话框,保持弹窗打开
+        }
+        await exportAsyncResultToPath(taskId, { format, targetPath });
+        showSavedToToast(t, targetPath);
+        onOpenChange(false);
+        onSuccess?.();
+        return;
+      }
+
       const url = getAsyncDownloadUrl(taskId, { format });
       await openExternal(url);
       showDownloadStartedToast(t, `${tableName || taskId}.${format}`);
@@ -104,12 +128,14 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
             <Download className="h-5 w-5" />
             {t('async.download.title', '下载结果')}
           </DialogTitle>
-          <DialogDescription>
+          {/* 表名是下划线长 token(async_result_<uuid>),浏览器不在 _ 处折行,
+              不加 break-all 会横向撑出弹窗;行数徽标 nowrap 保持"(420 行)"完整 */}
+          <DialogDescription className="break-all">
             {tableName && (
               <span className="font-mono text-xs">{tableName}</span>
             )}
             {rowCount !== undefined && (
-              <span className="ml-2 text-muted-foreground">
+              <span className="ml-2 whitespace-nowrap text-muted-foreground">
                 ({rowCount.toLocaleString()} {t('query.result.rows', '行')})
               </span>
             )}

@@ -68,12 +68,12 @@ fn open_external(url: String) {
     if !is_safe_external_url(&url) {
         return;
     }
-    #[cfg(target_os = "macos")]
-    let _ = std::process::Command::new("open").arg(&url).spawn();
-    #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new("explorer").arg(&url).spawn();
-    #[cfg(target_os = "linux")]
-    let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+    // `open` crate:macOS 走 `open`、Linux 走 xdg-open 族,Windows 走 ShellExecuteW。
+    // 此前 Windows 分支直接 spawn `explorer.exe <url>`——explorer 按 shell 命名空间
+    // 解析参数,URL 一带 query string(如下载链接的 ?format=csv)就静默失败,且
+    // spawn 成功掩盖了错误,表现为"下载点了没反应"。ShellExecuteW 是打开 URL 的
+    // 正确 Windows API,query string 无碍;URL 校验(is_safe_external_url)保持不变。
+    let _ = open::that_detached(&url);
 }
 
 /// Resolve the backend onedir executable across bundle and dev layouts.
@@ -250,6 +250,9 @@ pub fn run() {
             }
         }));
         builder = builder.plugin(tauri_plugin_dialog::init());
+        // 网格导出直写本地文件:save 对话框选中的路径由 dialog 插件在运行时
+        // 动态加入 fs 插件的 scope,故 capability 只需授 write 操作、无需路径白名单
+        builder = builder.plugin(tauri_plugin_fs::init());
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
         builder = builder.plugin(tauri_plugin_process::init());
     }

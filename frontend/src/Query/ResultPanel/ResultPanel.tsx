@@ -8,15 +8,22 @@ import { Database, AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import {
   exportQueryResults,
   getQueryExportDownloadUrl,
+  saveQueryExportToPath,
+  toAttachDatabasesPayload,
 } from '@/api';
-import { showErrorToast, cleanErrorMessage, showDownloadStartedToast } from '@/utils/toastHelpers';
+import {
+  showErrorToast,
+  showSavedToToast,
+  cleanErrorMessage,
+  showDownloadStartedToast,
+} from '@/utils/toastHelpers';
 import { parseDuckDbErrorSuggestion } from '@/utils/sqlErrorHelper';
-import { openExternal } from '@/desktop/openExternal';
+import { openExternal, isTauri } from '@/desktop/openExternal';
+import { pickSavePath } from '@/desktop/saveLocal';
 import { Button } from '@/components/ui/button';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { useAiEnabled } from '@/hooks/useAiEnabled';
 import { errorFix, type ErrorFixResult } from '@/api';
-import { toAttachDatabasesPayload } from '@/api/queryApi';
 import { parseSQLTableReferences } from '@/utils/sqlUtils';
 import { EngineCompatSelfHealBanner } from '@/Query/components/EngineCompatSelfHealBanner';
 import { IS_DEMO } from '@/demo/isDemo';
@@ -151,8 +158,13 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   }, []);
 
   const getActiveGridApi = useCallback((): DataGridApi | undefined => {
-    if (!activeResultTabId) return undefined;
-    return gridApisRef.current.get(activeResultTabId) ?? dataGridRef.current ?? undefined;
+    // 单槽模式(retainQueryResults 默认 false)下没有 activeResultTabId,grid 挂在
+    // dataGridRef 上——必须回退到它,否则列操作(切换/显隐/自适应列宽)因拿不到 API 被
+    // ?. 静默吞掉,表现为"列面板能开、点了没反应"。多页模式仍优先按 tabId 取。
+    if (activeResultTabId) {
+      return gridApisRef.current.get(activeResultTabId) ?? dataGridRef.current ?? undefined;
+    }
+    return dataGridRef.current ?? undefined;
   }, [activeResultTabId]);
 
   const useMultiTabGrids = retainQueryResults && resultTabs.length > 0;
@@ -282,11 +294,23 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       return;
     }
     try {
+      // 桌面:先让用户经原生存盘对话框选路径,再服务端导出并直写过去
+      // (免浏览器跳转、免二次落盘);Web 维持浏览器流式下载
+      let targetPath: string | null = null;
+      if (isTauri()) {
+        targetPath = await pickSavePath('query_result.parquet');
+        if (!targetPath) return; // 用户取消
+      }
       const result = await exportQueryResults({
         sql,
         format: 'parquet',
         attach_databases: toAttachDatabasesPayload(attachDatabases),
       });
+      if (targetPath) {
+        await saveQueryExportToPath(result.file_id, { targetPath });
+        showSavedToToast(t, targetPath);
+        return;
+      }
       const url = getQueryExportDownloadUrl(result.download_url);
       openExternal(url);
       showDownloadStartedToast(t);

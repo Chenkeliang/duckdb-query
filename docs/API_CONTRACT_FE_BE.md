@@ -147,6 +147,7 @@
 | POST | `/api/async-tasks/{id}/cancel` | 对象 | `cancelAsyncTask`；404 任务不存在；400 `TASK_CANCEL_NOT_ALLOWED` |
 | POST | `/api/async-tasks/{id}/retry` | 对象 | `retryAsyncTask`；404 / 400 缺 SQL |
 | POST | `/api/async-tasks/{id}/download` | **blob** 或 JSON 错误体 | `downloadAsyncResult`（体：`format`）；400 格式；404 文件 |
+| POST | `/api/async-tasks/{id}/export-to-path` | `path`, `size_bytes` | `exportAsyncResultToPath`（体：`format`, `target_path`）；**桌面模式专用**——后端直写用户经原生存盘对话框选定的本地路径；非桌面（未设 `ALLOW_ARBITRARY_LOCAL_PATHS=1`）403，浏览器场景继续用 GET `/download` 流式；400 路径/格式非法 |
 | GET | `/api/errors/statistics` | 对象 | `getErrorStatistics` |
 | POST | `/api/errors/clear` | 对象 | `clearOldErrors`（query: `days`） |
 
@@ -193,6 +194,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 |------|------|-------------|------|
 | POST | `/api/query-results/export` | `file_id`, `download_url`, `format`, `row_count_estimate?` | `exportQueryResults` |
 | GET | `/api/query-results/export/{file_id}/download` | 文件流 | `getQueryExportDownloadUrl` + 浏览器下载 |
+| POST | `/api/query-results/export/{file_id}/save-to-path` | `path`, `size_bytes` | `saveQueryExportToPath`（体：`target_path`）；**桌面模式专用**（同 async export-to-path 门控，非桌面 403）；400 路径非法；404 文件不存在 |
 
 请求：`{ sql, format: "parquet"|"csv", attach_databases? }`；支持 `X-Request-ID` 取消（499 `QUERY_CANCELLED`）。
 

@@ -50,6 +50,17 @@ export function showDownloadStartedToast(t: TFunction, fileName?: string): void 
   );
 }
 
+/**
+ * 桌面直写保存成功的提示(统一文案入口):异步结果下载、网格导出、
+ * Parquet(服务端)导出共用,勿在调用点各自拼 savedTo 消息。
+ */
+export function showSavedToToast(t: TFunction, path: string): void {
+  toast.success(
+    t('common:query.export.savedTo', '已保存到 {{path}}', { path }),
+    { duration: 9000 }
+  );
+}
+
 const GENERIC_ERROR_CODES = new Set([
   'OPERATION_FAILED',
   'UNKNOWN_ERROR',

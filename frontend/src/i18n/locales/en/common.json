@@ -332,7 +332,8 @@
       "exportExcel": "Export Excel",
       "exportNoSql": "No SQL to export",
       "exportParquetFailed": "Parquet export failed",
-      "exportParquetServer": "Export Parquet (server-side)"
+      "exportParquetServer": "Export Parquet (server-side)",
+      "exportHint": "CSV / Excel / JSON export the {{rows}} rows currently loaded in the grid (truncated by the query row limit — may not be the full result). For the full result use \"Parquet (server)\" or an async task download"
     },
     "filter": {
       "title": "Filter Conditions",
@@ -515,7 +516,8 @@
       "success": "Exported {{rowCount}} rows",
       "failed": "Export failed, please try again",
       "noData": "No data to export",
-      "largeDataWarning": "Large dataset ({{rowCount}} rows), consider using async task for export"
+      "largeDataWarning": "Large dataset ({{rowCount}} rows), consider using async task for export",
+      "savedTo": "Saved to {{path}}"
     },
     "aggregate": {
       "selectTableFirst": "Please select a table first",

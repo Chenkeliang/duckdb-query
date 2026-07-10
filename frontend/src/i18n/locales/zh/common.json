@@ -332,7 +332,8 @@
       "exportExcel": "导出 Excel",
       "exportNoSql": "无 SQL 可导出",
       "exportParquetFailed": "Parquet 导出失败",
-      "exportParquetServer": "导出 Parquet（服务端）"
+      "exportParquetServer": "导出 Parquet（服务端）",
+      "exportHint": "CSV / Excel / JSON 导出表格当前已加载的 {{rows}} 行（受查询行数上限截断，可能不是完整结果）；完整结果请用「Parquet（服务端）」或异步任务下载"
     },
     "filter": {
       "title": "筛选条件",
@@ -515,7 +516,8 @@
       "success": "已导出 {{rowCount}} 行数据",
       "failed": "导出失败，请重试",
       "noData": "没有数据可导出",
-      "largeDataWarning": "数据量较大（{{rowCount}} 行），建议使用异步任务导出"
+      "largeDataWarning": "数据量较大（{{rowCount}} 行），建议使用异步任务导出",
+      "savedTo": "已保存到 {{path}}"
     },
     "aggregate": {
       "selectTableFirst": "请先选择一个表",

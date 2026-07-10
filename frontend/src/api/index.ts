@@ -130,6 +130,9 @@ export {
     cancelAsyncTask,
     retryAsyncTask,
     getAsyncDownloadUrl,
+    exportAsyncResultToPath,
+    type AsyncExportToPathOptions,
+    type AsyncExportToPathResult,
     getConnectionPoolStatus,
     resetConnectionPool,
     getErrorStatistics,
@@ -248,6 +251,8 @@ export {
 export {
     exportQueryResults,
     getQueryExportDownloadUrl,
+    saveQueryExportToPath,
     type QueryResultExportPayload,
     type QueryResultExportResult,
+    type QueryExportSaveToPathResult,
 } from './queryExportApi';
