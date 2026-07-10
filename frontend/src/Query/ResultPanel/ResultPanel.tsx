@@ -151,8 +151,13 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   }, []);
 
   const getActiveGridApi = useCallback((): DataGridApi | undefined => {
-    if (!activeResultTabId) return undefined;
-    return gridApisRef.current.get(activeResultTabId) ?? dataGridRef.current ?? undefined;
+    // 单槽模式(retainQueryResults 默认 false)下没有 activeResultTabId,grid 挂在
+    // dataGridRef 上——必须回退到它,否则列操作(切换/显隐/自适应列宽)因拿不到 API 被
+    // ?. 静默吞掉,表现为"列面板能开、点了没反应"。多页模式仍优先按 tabId 取。
+    if (activeResultTabId) {
+      return gridApisRef.current.get(activeResultTabId) ?? dataGridRef.current ?? undefined;
+    }
+    return dataGridRef.current ?? undefined;
   }, [activeResultTabId]);
 
   const useMultiTabGrids = retainQueryResults && resultTabs.length > 0;
