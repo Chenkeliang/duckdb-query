@@ -12,6 +12,7 @@ const { mocks } = vi.hoisted(() => ({
     writeTextFile: vi.fn(async (_path: string, _content: string) => undefined),
     writeFile: vi.fn(async (_path: string, _data: Uint8Array) => undefined),
     showSuccessToast: vi.fn(),
+    showSavedToToast: vi.fn(),
     showErrorToast: vi.fn(),
   },
 }));
@@ -24,6 +25,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 vi.mock('@/desktop/openExternal', () => ({ isTauri: () => true }));
 vi.mock('@/utils/toastHelpers', () => ({
   showSuccessToast: mocks.showSuccessToast,
+  showSavedToToast: mocks.showSavedToToast,
   showErrorToast: mocks.showErrorToast,
 }));
 vi.mock('react-i18next', () => ({
@@ -61,7 +63,7 @@ describe('useGridExport 桌面直写', () => {
     expect(path).toBe('/Users/me/导出 目录/out.csv');
     expect(content).toContain('id,name');
     expect(content).toContain('1,Alice');
-    expect(mocks.showSuccessToast).toHaveBeenCalled();
+    expect(mocks.showSavedToToast).toHaveBeenCalledWith(expect.anything(), '/Users/me/导出 目录/out.csv');
   });
 
   it('取消存盘对话框:不写文件、无成功 toast', async () => {
@@ -73,6 +75,7 @@ describe('useGridExport 桌面直写', () => {
     });
 
     expect(mocks.writeTextFile).not.toHaveBeenCalled();
+    expect(mocks.showSavedToToast).not.toHaveBeenCalled();
     expect(mocks.showSuccessToast).not.toHaveBeenCalled();
     expect(mocks.showErrorToast).not.toHaveBeenCalled();
   });

@@ -40,7 +40,7 @@ vi.mock('@/api', () => ({
 
 vi.mock('@/utils/toastHelpers', () => ({
   showDownloadStartedToast: vi.fn(),
-  showSuccessToast: vi.fn(),
+  showSavedToToast: vi.fn(),
   handleApiErrorToast: vi.fn(),
 }));
 

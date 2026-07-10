@@ -218,8 +218,7 @@
       "parquetDescription": "Efficient compressed format, suitable for big data analysis",
       "download": "Download",
       "success": "Download successful",
-      "failed": "Download failed: {{message}}",
-      "savedTo": "Saved to {{path}}"
+      "failed": "Download failed: {{message}}"
     },
     "status.cancelling": "Cancelling"
   },

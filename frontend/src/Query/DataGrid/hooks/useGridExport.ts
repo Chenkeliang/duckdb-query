@@ -12,10 +12,9 @@
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { save } from '@tauri-apps/plugin-dialog';
-import { writeFile, writeTextFile } from '@tauri-apps/plugin-fs';
-import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
+import { showSuccessToast, showErrorToast, showSavedToToast } from '@/utils/toastHelpers';
 import { isTauri } from '@/desktop/openExternal';
+import { pickSavePath, writeTextToPath, writeBytesToPath } from '@/desktop/saveLocal';
 
 /** 导出范围 */
 export type ExportScope = 'all' | 'filtered' | 'selected';
@@ -169,16 +168,9 @@ function downloadFile(content: string, filename: string, mimeType: string): void
   URL.revokeObjectURL(url);
 }
 
-/** 按扩展名给原生存盘对话框配过滤器 */
-function saveFilterFor(filename: string) {
-  const ext = filename.split('.').pop() ?? '';
-  const names: Record<string, string> = { csv: 'CSV', json: 'JSON', xlsx: 'Excel' };
-  return [{ name: names[ext] ?? ext.toUpperCase(), extensions: [ext] }];
-}
-
 /**
- * 交付文本导出:桌面走原生存盘对话框 + fs 直写(用户可选目录;dialog 选中的
- * 路径由 Tauri 在运行时授权给 fs 插件),Web 走 blob 下载(浏览器默认下载目录)。
+ * 交付文本导出:桌面走 saveLocal 原语(原生存盘对话框 + fs 直写,可选目录),
+ * Web 走 blob 下载(浏览器默认下载目录)。
  * 返回 null 表示用户取消(调用方不弹任何 toast);否则返回 { path? }——
  * path 仅桌面有值,用于"已保存到 …"提示。
  */
@@ -188,10 +180,9 @@ async function deliverTextFile(
   mimeType: string
 ): Promise<{ path?: string } | null> {
   if (isTauri()) {
-    const target = await save({ defaultPath: filename, filters: saveFilterFor(filename) });
+    const target = await pickSavePath(filename);
     if (!target) return null;
-    const BOM = '﻿'; // 与 Web 路径同款,Excel 兼容
-    await writeTextFile(target, BOM + content);
+    await writeTextToPath(target, content, { bom: true });
     return { path: target };
   }
   downloadFile(content, filename, mimeType);
@@ -305,13 +296,11 @@ export function useGridExport({
         const content = lines.join('\n');
         const delivered = await deliverTextFile(content, `${filename}.csv`, 'text/csv');
         if (!delivered) return; // 用户取消存盘对话框
-        showSuccessToast(
-          t,
-          'EXPORT_SUCCESS',
-          delivered.path
-            ? t('query.export.savedTo', { defaultValue: '已保存到 {{path}}', path: delivered.path })
-            : t('query.export.success', { rowCount: exportData.length.toLocaleString() })
-        );
+        if (delivered.path) {
+          showSavedToToast(t, delivered.path);
+        } else {
+          showSuccessToast(t, 'EXPORT_SUCCESS', t('query.export.success', { rowCount: exportData.length.toLocaleString() }));
+        }
       } catch (error) {
         console.error('CSV 导出失败:', error);
         showErrorToast(t, 'EXPORT_FAILED', t('query.export.failed'));
@@ -378,27 +367,16 @@ export function useGridExport({
           XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
 
           // 导出文件:桌面走原生存盘对话框 + fs 直写(可选目录),Web 走 XLSX 内置下载
-          let savedPath: string | undefined;
           if (isTauri()) {
-            const target = await save({
-              defaultPath: `${filename}.xlsx`,
-              filters: saveFilterFor(`${filename}.xlsx`),
-            });
+            const target = await pickSavePath(`${filename}.xlsx`);
             if (!target) return; // 用户取消存盘对话框
             const bytes = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
-            await writeFile(target, new Uint8Array(bytes));
-            savedPath = target;
+            await writeBytesToPath(target, new Uint8Array(bytes));
+            showSavedToToast(t, target);
           } else {
             XLSX.writeFile(wb, `${filename}.xlsx`);
+            showSuccessToast(t, 'EXPORT_SUCCESS', t('query.export.success', { rowCount: exportData.length.toLocaleString() }));
           }
-
-          showSuccessToast(
-            t,
-            'EXPORT_SUCCESS',
-            savedPath
-              ? t('query.export.savedTo', { defaultValue: '已保存到 {{path}}', path: savedPath })
-              : t('query.export.success', { rowCount: exportData.length.toLocaleString() })
-          );
         } catch (error) {
           console.error('Excel 导出失败:', error);
           showErrorToast(t, 'EXPORT_FAILED', t('query.export.failed'));
@@ -443,13 +421,11 @@ export function useGridExport({
         const content = JSON.stringify(filteredExportData, jsonReplacer, 2);
         const delivered = await deliverTextFile(content, `${filename}.json`, 'application/json');
         if (!delivered) return; // 用户取消存盘对话框
-        showSuccessToast(
-          t,
-          'EXPORT_SUCCESS',
-          delivered.path
-            ? t('query.export.savedTo', { defaultValue: '已保存到 {{path}}', path: delivered.path })
-            : t('query.export.success', { rowCount: exportData.length.toLocaleString() })
-        );
+        if (delivered.path) {
+          showSavedToToast(t, delivered.path);
+        } else {
+          showSuccessToast(t, 'EXPORT_SUCCESS', t('query.export.success', { rowCount: exportData.length.toLocaleString() }));
+        }
       } catch (error) {
         console.error('JSON 导出失败:', error);
         showErrorToast(t, 'EXPORT_FAILED', t('query.export.failed'));

@@ -7,7 +7,6 @@
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, FileSpreadsheet, FileArchive, Loader2, Check } from 'lucide-react';
-import { save } from '@tauri-apps/plugin-dialog';
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -22,9 +21,10 @@ import {
 import { cn } from '@/lib/utils';
 import { getAsyncDownloadUrl, exportAsyncResultToPath } from '@/api';
 import { openExternal, isTauri } from '@/desktop/openExternal';
+import { pickSavePath } from '@/desktop/saveLocal';
 import {
   showDownloadStartedToast,
-  showSuccessToast,
+  showSavedToToast,
   handleApiErrorToast,
 } from '@/utils/toastHelpers';
 
@@ -95,24 +95,14 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
     setIsDownloading(true);
     try {
       if (isTauri()) {
-        const targetPath = await save({
+        const targetPath = await pickSavePath(`${tableName || taskId}.${format}`, {
           title: t('async.download.title', '下载结果'),
-          defaultPath: `${tableName || taskId}.${format}`,
-          filters: [
-            format === 'csv'
-              ? { name: 'CSV', extensions: ['csv'] }
-              : { name: 'Parquet', extensions: ['parquet'] },
-          ],
         });
         if (!targetPath) {
           return; // 用户取消了存盘对话框,保持弹窗打开
         }
         await exportAsyncResultToPath(taskId, { format, targetPath });
-        showSuccessToast(
-          t,
-          undefined,
-          t('async.download.savedTo', { defaultValue: '已保存到 {{path}}', path: targetPath })
-        );
+        showSavedToToast(t, targetPath);
         onOpenChange(false);
         onSuccess?.();
         return;
