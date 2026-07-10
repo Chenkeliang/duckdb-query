@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import time
 import traceback
 from datetime import datetime
@@ -739,6 +740,79 @@ def download_task_result(task_id: str, format: str = "csv"):
 def generate_and_download_file(task_id: str, request: dict = Body(...)):
     """按需生成并直接下载文件(保留 POST 兼容旧调用方)。"""
     return _serve_task_download(task_id, request.get("format", "csv"))
+
+
+class ExportToPathRequest(BaseModel):
+    """桌面直写导出请求:format + 原生存盘对话框选定的绝对路径。"""
+
+    format: str = "csv"
+    target_path: str
+
+
+def _export_result_file_to_local_path(task_id: str, fmt: str, target_path: str) -> int:
+    """把任务结果文件写到用户选定的本地绝对路径,返回写入字节数。
+
+    校验失败抛 ValueError(英文,端点映射为 400)。复用 generate_download_file 的
+    后端缓存(结果表 COPY 导出,重复下载秒回),再 copyfile 到目标——相比经系统
+    浏览器命中 GET 流式端点,免浏览器依赖(Windows explorer 曾对带 query 的 URL
+    静默失败)且不再"后端写一遍 + 浏览器再写一遍"。覆盖语义:原生存盘对话框已
+    向用户确认过覆盖,此处直接覆盖。
+    """
+    if fmt not in ("csv", "parquet"):
+        raise ValueError("Unsupported format, only csv and parquet are allowed")
+    if not target_path or not os.path.isabs(target_path):
+        raise ValueError("target_path must be an absolute path")
+    target = os.path.normpath(target_path)
+    if os.path.isdir(target):
+        raise ValueError("target_path points to a directory, expected a file path")
+    parent = os.path.dirname(target)
+    if not os.path.isdir(parent):
+        raise ValueError("Parent directory of target_path does not exist")
+    if not os.access(parent, os.W_OK):
+        raise ValueError("Parent directory of target_path is not writable")
+
+    source = generate_download_file(task_id, fmt)
+    shutil.copyfile(source, target)
+    return os.path.getsize(target)
+
+
+@router.post("/api/async-tasks/{task_id}/export-to-path", tags=["Async Tasks"])
+async def export_task_result_to_path(task_id: str, request: ExportToPathRequest):
+    """桌面模式专用:后端直接把任务结果写到本机用户选定的路径。
+
+    门控与导入方向(server_files.py 读本地任意路径)同一开关:
+    ALLOW_ARBITRARY_LOCAL_PATHS=1(api/run.py 桌面 sidecar 设置)。Web/Docker
+    部署不设该开关 → 一律 403,浏览器场景继续用 GET /download 流式端点落盘。
+    写盘跑在线程池,不阻塞事件循环;大结果 COPY+拷贝可达数十秒,前端应禁用超时。
+    """
+    if os.getenv("ALLOW_ARBITRARY_LOCAL_PATHS") != "1":
+        return error_json_response(
+            403,
+            MessageCode.FORBIDDEN,
+            "Direct local export is only available in the desktop app; "
+            "use GET /api/async-tasks/{task_id}/download instead",
+            details={"task_id": task_id},
+        )
+    try:
+        size = await asyncio.to_thread(
+            _export_result_file_to_local_path, task_id, request.format, request.target_path
+        )
+        return create_success_response(
+            data={"path": request.target_path, "size_bytes": size},
+            message_code=MessageCode.OPERATION_SUCCESS,
+        )
+    except ValueError as e:
+        return error_json_response(
+            400, MessageCode.VALIDATION_ERROR, str(e), details={"task_id": task_id}
+        )
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error(f"Failed to export task result to local path: {task_id}, error: {str(e)}")
+        return error_json_response(
+            500,
+            MessageCode.OPERATION_FAILED,
+            f"Failed to export result to local path: {str(e)}",
+            details={"task_id": task_id},
+        )
 
 
 def _discard_persisted_result(task_id: str, table_name: Optional[str]) -> None:

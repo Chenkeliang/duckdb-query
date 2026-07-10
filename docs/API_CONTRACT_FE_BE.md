@@ -147,6 +147,7 @@
 | POST | `/api/async-tasks/{id}/cancel` | 对象 | `cancelAsyncTask`；404 任务不存在；400 `TASK_CANCEL_NOT_ALLOWED` |
 | POST | `/api/async-tasks/{id}/retry` | 对象 | `retryAsyncTask`；404 / 400 缺 SQL |
 | POST | `/api/async-tasks/{id}/download` | **blob** 或 JSON 错误体 | `downloadAsyncResult`（体：`format`）；400 格式；404 文件 |
+| POST | `/api/async-tasks/{id}/export-to-path` | `path`, `size_bytes` | `exportAsyncResultToPath`（体：`format`, `target_path`）；**桌面模式专用**——后端直写用户经原生存盘对话框选定的本地路径；非桌面（未设 `ALLOW_ARBITRARY_LOCAL_PATHS=1`）403，浏览器场景继续用 GET `/download` 流式；400 路径/格式非法 |
 | GET | `/api/errors/statistics` | 对象 | `getErrorStatistics` |
 | POST | `/api/errors/clear` | 对象 | `clearOldErrors`（query: `days`） |
 

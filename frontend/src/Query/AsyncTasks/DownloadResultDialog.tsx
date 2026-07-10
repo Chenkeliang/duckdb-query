@@ -7,6 +7,7 @@
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, FileSpreadsheet, FileArchive, Loader2, Check } from 'lucide-react';
+import { save } from '@tauri-apps/plugin-dialog';
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -19,9 +20,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { getAsyncDownloadUrl } from '@/api';
-import { openExternal } from '@/desktop/openExternal';
-import { showDownloadStartedToast, handleApiErrorToast } from '@/utils/toastHelpers';
+import { getAsyncDownloadUrl, exportAsyncResultToPath } from '@/api';
+import { openExternal, isTauri } from '@/desktop/openExternal';
+import {
+  showDownloadStartedToast,
+  showSuccessToast,
+  handleApiErrorToast,
+} from '@/utils/toastHelpers';
 
 export type DownloadFormat = 'csv' | 'parquet';
 
@@ -78,12 +83,41 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
     },
   ];
 
-  // 下载处理:走原生下载(桌面=系统浏览器,Web=window.open)命中后端 GET 流式接口,
-  // 边生成边落盘、不占内存。绝不能用 axios blob 把整个文件读进 webview——2 亿行
-  // CSV 达数 GB,会把界面卡死(此前的 bug)。大文件建议用 Parquet(体积约 CSV 的 1/10)。
+  // 下载处理,分两条链路:
+  // 桌面:App 内原生存盘对话框 → 后端(本地 Python)直接把结果写到所选路径
+  //   (缓存命中拷贝,否则 DuckDB COPY 导出)。不再跳系统浏览器——那条链路依赖默认
+  //   浏览器行为(Windows explorer 曾对带 query 的 URL 静默失败),且 GB 级文件要
+  //   "后端写一遍 + 浏览器再写一遍"。
+  // Web/Docker:浏览器是唯一落盘通道,维持 openExternal 命中后端 GET 流式接口。
+  //   两条链路都绝不能用 axios blob 把整个文件读进 webview——2 亿行 CSV 达数 GB,
+  //   会把界面卡死(此前的 bug)。大文件建议用 Parquet(体积约 CSV 的 1/10)。
   const handleDownload = useCallback(async () => {
     setIsDownloading(true);
     try {
+      if (isTauri()) {
+        const targetPath = await save({
+          title: t('async.download.title', '下载结果'),
+          defaultPath: `${tableName || taskId}.${format}`,
+          filters: [
+            format === 'csv'
+              ? { name: 'CSV', extensions: ['csv'] }
+              : { name: 'Parquet', extensions: ['parquet'] },
+          ],
+        });
+        if (!targetPath) {
+          return; // 用户取消了存盘对话框,保持弹窗打开
+        }
+        await exportAsyncResultToPath(taskId, { format, targetPath });
+        showSuccessToast(
+          t,
+          undefined,
+          t('async.download.savedTo', { defaultValue: '已保存到 {{path}}', path: targetPath })
+        );
+        onOpenChange(false);
+        onSuccess?.();
+        return;
+      }
+
       const url = getAsyncDownloadUrl(taskId, { format });
       await openExternal(url);
       showDownloadStartedToast(t, `${tableName || taskId}.${format}`);

@@ -167,6 +167,41 @@ export function getAsyncDownloadUrl(
     return `${base}/api/async-tasks/${encodeURIComponent(taskId)}/download?format=${options.format}`;
 }
 
+export interface AsyncExportToPathOptions {
+    format: 'csv' | 'parquet';
+    /** 原生存盘对话框选定的绝对路径 */
+    targetPath: string;
+}
+
+export interface AsyncExportToPathResult {
+    path: string;
+    size_bytes: number;
+}
+
+/**
+ * 桌面模式专用:让本地 Python 后端把任务结果直接写到用户经原生存盘对话框
+ * 选定的绝对路径——免浏览器依赖(Windows explorer 曾对带 query 的 URL 静默
+ * 失败)、免"后端 + 浏览器"二次落盘。Web/Docker 部署后端返回 403,浏览器场景
+ * 继续用 getAsyncDownloadUrl + openExternal 的流式下载。
+ * 大结果 COPY/拷贝可达数十秒 → 本请求禁用超时。
+ */
+export async function exportAsyncResultToPath(
+    taskId: string,
+    options: AsyncExportToPathOptions
+): Promise<AsyncExportToPathResult> {
+    try {
+        const response = await apiClient.post(
+            `/api/async-tasks/${encodeURIComponent(taskId)}/export-to-path`,
+            { format: options.format, target_path: options.targetPath },
+            { timeout: 0 }
+        );
+        const { data } = normalizeResponse<AsyncExportToPathResult>(response);
+        return data;
+    } catch (error) {
+        throw handleApiError(error as never, 'Failed to export result to local path');
+    }
+}
+
 // ==================== Connection Pool Management ====================
 
 /**
