@@ -104,12 +104,14 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
             <Download className="h-5 w-5" />
             {t('async.download.title', '下载结果')}
           </DialogTitle>
-          <DialogDescription>
+          {/* 表名是下划线长 token(async_result_<uuid>),浏览器不在 _ 处折行,
+              不加 break-all 会横向撑出弹窗;行数徽标 nowrap 保持"(420 行)"完整 */}
+          <DialogDescription className="break-all">
             {tableName && (
               <span className="font-mono text-xs">{tableName}</span>
             )}
             {rowCount !== undefined && (
-              <span className="ml-2 text-muted-foreground">
+              <span className="ml-2 whitespace-nowrap text-muted-foreground">
                 ({rowCount.toLocaleString()} {t('query.result.rows', '行')})
               </span>
             )}
