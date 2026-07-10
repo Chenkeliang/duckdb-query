@@ -86,13 +86,18 @@ def resolve_feature(cfg: Dict[str, Any], feature: str) -> Dict[str, Any]:
     return {"provider": provider, "model": model}
 
 
+# system.db 通用设置表(system_app_settings)里的键;AI 设置自 2026-07 起
+# 持久化在这里,与连接/收藏/快捷键同库——单文件备份 system.db 即可带走全部业务配置。
+_AI_SETTINGS_KEY = "ai_settings"
+
+
 def ai_settings_path() -> Path:
+    """旧 JSON 文件路径:仅供一次性迁移与显式 path 场景(测试)使用。"""
     return Path(config_manager._default_data_dir()) / "ai_settings.json"
 
 
-def load_ai_settings(path: Optional[Path] = None) -> Dict[str, Any]:
-    """读取持久化的 AI 设置（存储态，api_key 为密文）；文件不存在则返回默认。"""
-    target = path or ai_settings_path()
+def _load_from_file(target: Path) -> Dict[str, Any]:
+    """显式 path 场景的文件读取(测试接缝,保留旧语义)。"""
     if not target.exists():
         return default_ai_config()
     try:
@@ -104,14 +109,53 @@ def load_ai_settings(path: Optional[Path] = None) -> Dict[str, Any]:
     return merged
 
 
-def save_ai_settings(incoming: Dict[str, Any], path: Optional[Path] = None) -> None:
-    """保存 AI 设置：明文 api_key 加密后落盘。
+def _migrate_legacy_file_to_db() -> Optional[Dict[str, Any]]:
+    """一次性迁移:旧 ai_settings.json 存在则导入 system.db,并把文件改名
+    .migrated 留作备份(与 sql-favorites 迁移同一约定)。返回导入的配置。"""
+    legacy = ai_settings_path()
+    if not legacy.exists():
+        return None
+    try:
+        data = json.loads(legacy.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    merged = default_ai_config()
+    merged.update(data or {})
+    from core.database.metadata_manager import metadata_manager  # 惰性:保持本模块纯函数可独立导入
 
-    若某 provider 的 incoming api_key 为空（前端未改密钥，仅回传掩码占位），
-    保留已存的密文 key，避免把现有密钥覆盖丢失。
+    metadata_manager.save_app_setting(_AI_SETTINGS_KEY, merged)
+    try:
+        legacy.rename(legacy.with_name(legacy.name + ".migrated"))
+    except OSError:
+        pass  # 改名失败不阻塞——后续读取以 system.db 为准
+    return merged
+
+
+def load_ai_settings(path: Optional[Path] = None) -> Dict[str, Any]:
+    """读取持久化的 AI 设置(存储态,api_key 为密文)。
+
+    默认从 system.db(system_app_settings)读取;首次读取若发现旧
+    ai_settings.json 会自动导入并改名备份。显式传 path 时保持文件语义。
     """
-    target = path or ai_settings_path()
-    current = load_ai_settings(target)
+    if path is not None:
+        return _load_from_file(path)
+    from core.database.metadata_manager import metadata_manager
+
+    stored = metadata_manager.get_app_setting(_AI_SETTINGS_KEY)
+    if stored is None:
+        stored = _migrate_legacy_file_to_db()
+    merged = default_ai_config()
+    merged.update(stored or {})
+    return merged
+
+
+def save_ai_settings(incoming: Dict[str, Any], path: Optional[Path] = None) -> None:
+    """保存 AI 设置:明文 api_key 加密后持久化到 system.db。
+
+    若某 provider 的 incoming api_key 为空(前端未改密钥,仅回传掩码占位),
+    保留已存的密文 key,避免把现有密钥覆盖丢失。显式传 path 时写文件(测试)。
+    """
+    current = load_ai_settings(path)
     stored = prepare_for_storage(incoming)
     existing_keys = {
         p.get("id"): p.get("api_key") for p in current.get("providers", [])
@@ -119,5 +163,11 @@ def save_ai_settings(incoming: Dict[str, Any], path: Optional[Path] = None) -> N
     for provider in stored.get("providers", []):
         if not provider.get("api_key") and existing_keys.get(provider.get("id")):
             provider["api_key"] = existing_keys[provider.get("id")]
-    target.parent.mkdir(parents=True, exist_ok=True)
-    config_manager.atomic_write_json(target, stored)
+
+    if path is not None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        config_manager.atomic_write_json(path, stored)
+        return
+    from core.database.metadata_manager import metadata_manager
+
+    metadata_manager.save_app_setting(_AI_SETTINGS_KEY, stored)
