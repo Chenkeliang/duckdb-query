@@ -39,6 +39,62 @@ fn push_diag(app: &AppHandle, line: String) {
     buf.push_back(line);
 }
 
+/// 与 Python 侧 paths.py get_user_data_dir 同一套平台约定(不含其 APP_ROOT 覆盖,
+/// 桌面壳不设该 env),保证 engine-stderr.log 与后端自己写的 startup.log 同目录。
+fn user_data_dir() -> Option<PathBuf> {
+    if cfg!(target_os = "windows") {
+        std::env::var_os("APPDATA").map(|b| PathBuf::from(b).join("DuckQuery"))
+    } else if cfg!(target_os = "macos") {
+        std::env::var_os("HOME")
+            .map(|h| PathBuf::from(h).join("Library/Application Support/DuckQuery"))
+    } else {
+        std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share/DuckQuery"))
+    }
+}
+
+fn engine_log_path() -> Option<PathBuf> {
+    user_data_dir().map(|d| d.join("engine-stderr.log"))
+}
+
+const ENGINE_LOG_CAP_BYTES: u64 = 4 * 1024 * 1024;
+
+/// 后端 stderr 的落盘副本:启动失败/异常退出的完整 traceback(含 PyInstaller
+/// 引导期报错)都在这里,用户发一个文件即可定位,不依赖截图。每次 spawn 覆盖
+/// 重写(与 startup.log 同策略);写满上限后停写——启动期日志远小于上限,上限
+/// 只为防长会话的请求日志无限膨胀。任何写失败都静默降级,日志决不能反过来
+/// 影响后端运行。
+struct EngineLog {
+    file: Option<std::fs::File>,
+    written: u64,
+}
+
+impl EngineLog {
+    fn create_at(path: Option<PathBuf>) -> Self {
+        let file = path.and_then(|p| {
+            if let Some(dir) = p.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            std::fs::File::create(p).ok() // 覆盖重写,只保留本次启动
+        });
+        EngineLog { file, written: 0 }
+    }
+
+    fn create() -> Self {
+        Self::create_at(engine_log_path())
+    }
+
+    fn line(&mut self, s: &str) {
+        let Some(f) = self.file.as_mut() else { return };
+        if self.written >= ENGINE_LOG_CAP_BYTES {
+            let _ = writeln!(f, "[engine-stderr.log capped at 4MB; further output dropped]");
+            self.file = None;
+            return;
+        }
+        let _ = writeln!(f, "{s}");
+        self.written += s.len() as u64 + 1;
+    }
+}
+
 /// Snapshot of backend liveness for the frontend's startup state machine.
 /// `alive` comes from try_wait on the real child handle, so a stale/lost
 /// `backend-exited` event can never wedge the frontend: events are hints,
@@ -49,6 +105,8 @@ struct BackendState {
     alive: bool,
     port: u16,
     recent_stderr: Vec<String>,
+    /// engine-stderr.log 的绝对路径(失败页原样展示,让用户能直接找到文件)
+    log_path: String,
 }
 
 #[tauri::command]
@@ -70,6 +128,9 @@ fn backend_state(app: AppHandle) -> BackendState {
         alive,
         port,
         recent_stderr,
+        log_path: engine_log_path()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default(),
     }
 }
 
@@ -150,18 +211,21 @@ fn resolve_backend(app: &AppHandle) -> Option<PathBuf> {
 }
 
 fn spawn_backend(app: &AppHandle) {
-    // 每次 spawn 清空诊断缓冲,避免上一个后端的日志混入本次归因
+    // 每次 spawn 清空诊断缓冲/覆盖重写落盘日志,避免上一个后端的输出混入本次归因
     app.state::<BackendDiag>().0.lock().unwrap().clear();
+    let mut engine_log = EngineLog::create();
     let path = match resolve_backend(app) {
         Some(p) => p,
         None => {
             eprintln!("[duckquery] backend binary not found in any candidate path");
             push_diag(app, "[shell] backend binary not found in any candidate path".into());
+            engine_log.line("[shell] backend binary not found in any candidate path");
             return;
         }
     };
     eprintln!("[duckquery] spawning backend: {}", path.display());
     push_diag(app, format!("[shell] spawning backend: {}", path.display()));
+    engine_log.line(&format!("[shell] spawning backend: {}", path.display()));
     let mut cmd = Command::new(&path);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     // Windows: the backend is a console-subsystem exe (PyInstaller console=True, so it
@@ -178,6 +242,7 @@ fn spawn_backend(app: &AppHandle) {
         Err(e) => {
             eprintln!("[duckquery] failed to spawn backend: {e}");
             push_diag(app, format!("[shell] failed to spawn backend: {e}"));
+            engine_log.line(&format!("[shell] failed to spawn backend: {e}"));
             return;
         }
     };
@@ -187,13 +252,16 @@ fn spawn_backend(app: &AppHandle) {
     *app.state::<Backend>().0.lock().unwrap() = Some(child);
 
     // Drain the backend's stderr so its pipe buffer never fills (a full ~64KB pipe
-    // would block the backend on its next log write). Also surfaces backend errors
-    // and mirrors each line into the diag ring buffer for the frontend splash.
+    // would block the backend on its next log write). Also surfaces backend errors,
+    // mirrors each line into the diag ring buffer for the frontend splash, and
+    // appends it to engine-stderr.log(锁外落盘,不在 diag 锁内做 I/O)。
     let diag_handle = app.clone();
     std::thread::spawn(move || {
+        let mut engine_log = engine_log;
         let reader = BufReader::new(stderr);
         for line in reader.lines().map_while(Result::ok) {
             eprintln!("[backend] {line}");
+            engine_log.line(&line);
             push_diag(&diag_handle, line);
         }
     });
@@ -350,6 +418,44 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::is_safe_external_url;
+    use super::{EngineLog, ENGINE_LOG_CAP_BYTES};
+
+    #[test]
+    fn engine_log_truncates_per_create() {
+        let dir = std::env::temp_dir().join(format!("dq-engine-log-test-{}", std::process::id()));
+        let path = dir.join("engine-stderr.log");
+        let mut log = EngineLog::create_at(Some(path.clone()));
+        log.line("first run line");
+        drop(log);
+        // 第二次 create 模拟重启:必须覆盖重写,只保留本次输出
+        let mut log = EngineLog::create_at(Some(path.clone()));
+        log.line("second run line");
+        drop(log);
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("second run line"));
+        assert!(!content.contains("first run line"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn engine_log_stops_writing_at_cap() {
+        let dir = std::env::temp_dir().join(format!("dq-engine-cap-test-{}", std::process::id()));
+        let path = dir.join("engine-stderr.log");
+        let mut log = EngineLog::create_at(Some(path.clone()));
+        log.written = ENGINE_LOG_CAP_BYTES; // 模拟已写满
+        log.line("dropped line");
+        log.line("also dropped");
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("capped at 4MB"));
+        assert!(!content.contains("dropped line"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn engine_log_degrades_silently_without_path() {
+        let mut log = EngineLog::create_at(None);
+        log.line("goes nowhere"); // 不 panic 即可
+    }
 
     #[test]
     fn accepts_plain_http_and_https() {

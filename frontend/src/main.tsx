@@ -48,6 +48,8 @@ interface BackendState {
     alive: boolean;
     port: number;
     recentStderr: string[];
+    /** engine-stderr.log 的绝对路径,失败页原样展示 */
+    logPath: string;
 }
 
 // 端口在后端重量级 import 之前打印,正常几秒内就有;超过此值说明 exe 本体被
@@ -59,8 +61,10 @@ const HEALTH_WAIT_CAP_MS = 600_000;
 // 单次 /health fetch 必须有超时:被防火墙静默丢包/握手后无人应答的连接会挂住
 // fetch 数十秒,吃掉轮询预算还阻塞存活检测(fetch 默认无超时)。
 const HEALTH_FETCH_TIMEOUT_MS = 4000;
+// 兜底文案:backend_state 拿不到时才用;正常路径下失败页展示 Rust 侧返回的
+// engine-stderr.log 真实绝对路径(logPath)。
 const LOG_PATH_HINT =
-    '日志文件: Windows %APPDATA%\\DuckQuery\\startup.log · macOS ~/Library/Application Support/DuckQuery/startup.log';
+    '日志目录: Windows %APPDATA%\\DuckQuery · macOS ~/Library/Application Support/DuckQuery';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -69,7 +73,8 @@ function renderSplashShell() {
     rootElement!.innerHTML = `
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#0f0f0f;color:#e0e0e0;font-family:sans-serif;padding:0 24px;">
             <div id="dq-status" style="font-size:16px;margin-bottom:8px;text-align:center;">正在启动本地引擎…</div>
-            <div id="dq-hint" style="font-size:13px;color:#909090;margin-bottom:6px;text-align:center;max-width:560px;"></div>
+            <div id="dq-cause" style="display:none;font-size:12px;color:#d09090;margin-bottom:6px;max-width:640px;text-align:center;word-break:break-all;"></div>
+            <div id="dq-hint" style="font-size:13px;color:#909090;margin-bottom:6px;text-align:center;max-width:640px;word-break:break-all;"></div>
             <div id="dq-stage" style="font-size:12px;color:#6a6a6a;font-family:monospace;margin-bottom:8px;max-width:560px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
             <pre id="dq-diag" style="display:none;font-size:11px;color:#8a8a8a;background:#171717;border:1px solid #2a2a2a;border-radius:6px;padding:10px 12px;max-width:640px;max-height:180px;overflow:auto;text-align:left;white-space:pre-wrap;word-break:break-all;"></pre>
             <button id="dq-retry" style="display:none;margin-top:16px;padding:8px 24px;border:1px solid #555;border-radius:6px;background:#222;color:#eee;cursor:pointer;font-size:14px;">重试</button>
@@ -92,6 +97,7 @@ function renderSplashShell() {
 
 function updateSplash(fields: {
     status?: string;
+    cause?: string;
     hint?: string;
     stage?: string;
     diag?: string[];
@@ -99,6 +105,11 @@ function updateSplash(fields: {
 }) {
     if (!document.getElementById('dq-status')) renderSplashShell();
     if (fields.status !== undefined) document.getElementById('dq-status')!.textContent = fields.status;
+    if (fields.cause !== undefined) {
+        const el = document.getElementById('dq-cause')!;
+        el.textContent = fields.cause;
+        el.style.display = fields.cause ? 'block' : 'none';
+    }
     if (fields.hint !== undefined) document.getElementById('dq-hint')!.textContent = fields.hint;
     if (fields.stage !== undefined) document.getElementById('dq-stage')!.textContent = fields.stage;
     if (fields.diag !== undefined) {
@@ -123,9 +134,19 @@ function latestStage(state: BackendState | null): string {
 }
 
 function failSplash(message: string, state: BackendState | null) {
+    // 从后端最后的输出里提出"原因":崩溃时 traceback 的结尾行就是异常本身;
+    // 没有报错特征时退化为最后一行(通常是最后到达的启动阶段,即卡住的位置)。
+    const lines = (state?.recentStderr ?? []).map((l) => l.trim()).filter(Boolean);
+    const errLine = [...lines]
+        .reverse()
+        .find((l) => /error|exception|traceback|failed|panic/i.test(l));
+    const lastLine = lines.length > 0 ? lines[lines.length - 1] : '';
+    const cause = errLine ? `错误信息: ${errLine}` : lastLine ? `最后输出: ${lastLine}` : '';
+    const logHint = state?.logPath ? `完整日志已保存: ${state.logPath}` : LOG_PATH_HINT;
     updateSplash({
         status: message,
-        hint: `反馈问题时请截图下方诊断信息。${LOG_PATH_HINT}`,
+        cause,
+        hint: `${logHint}（反馈问题时请提供该文件，或截图本页）`,
         stage: '',
         diag: state?.recentStderr?.slice(-12) ?? [],
         retry: true,
