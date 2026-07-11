@@ -41,5 +41,7 @@ def test_desktop_env_sets_memory_and_loopback(monkeypatch, tmp_path):
     import os
     assert os.environ["DUCKDB_MEMORY_LIMIT"].endswith("GB")
     assert os.environ["LITELLM_TELEMETRY"] == "False"
+    # 离线确定性:litellm 不得在运行时去 GitHub 拉模型价格表(国内不可达)
+    assert os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] == "true"
     # 扩展目录指向可写用户目录(而非只读包内目录)
     assert os.environ["DUCKDB_EXTENSION_DIRECTORY"] == str(tmp_path / "duckdb_extensions")
