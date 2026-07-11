@@ -27,6 +27,11 @@ class _LiteLLMProxy:
             try:
                 import litellm as _mod  # pylint: disable=import-error,import-outside-toplevel
 
+                # 关闭 litellm 计费统计的 HF tokenizer 兜底下载(特定模型名会触发
+                # 去 huggingface.co 拉 tokenizer):国内被墙会白挂 10-20s,打包版
+                # 连 huggingface_hub 都未收入、必然失败。litellm 无 env 开关,
+                # 只能导入后置属性。关闭仅影响这类模型计费 token 估算的精度。
+                _mod.disable_hf_tokenizer_download = True
                 cls._mod = _mod
             except ImportError as e:  # litellm 为可选依赖：未安装时 AI 功能不可用，但应用仍能正常启动
                 # 真实原因必须落日志:桌面打包漏收依赖时,错误同样是 ImportError,
