@@ -2,6 +2,7 @@
 // process, reads the OS-assigned loopback port it prints on stdout, exposes that
 // to the webview, and kills the backend when the app exits.
 
+use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -9,7 +10,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 
 /// Backend base URL port (0 until the backend has printed it).
 #[derive(Default)]
@@ -18,13 +19,57 @@ struct ApiPort(Mutex<u16>);
 /// Handle to the backend child process so we can kill it on exit.
 struct Backend(Mutex<Option<Child>>);
 
+/// 后端最近的 stderr 输出(run.py 的 [startup ...] 阶段行 + Python 报错)。
+/// 供前端启动失败/超时时展示,用户截图即可远程定位卡在哪一步。
+/// 锁内只做 O(1) 队列操作,不做任何 I/O——这个缓冲由 stderr 泄压线程写入,
+/// 它一旦被阻塞,后端的 stderr 管道就会写满并反向卡死后端进程。
+struct BackendDiag(Mutex<VecDeque<String>>);
+const DIAG_CAP: usize = 100;
+
+/// 串行化 restart_backend:kill→清端口→respawn 三步各自持锁并不原子,
+/// 连点重试可能留下两个后端进程;整段包一把锁,后到的调用排队等前一次完成。
+struct RestartLock(Mutex<()>);
+
+fn push_diag(app: &AppHandle, line: String) {
+    let diag = app.state::<BackendDiag>();
+    let mut buf = diag.0.lock().unwrap();
+    if buf.len() >= DIAG_CAP {
+        buf.pop_front();
+    }
+    buf.push_back(line);
+}
+
+/// Snapshot of backend liveness for the frontend's startup state machine.
+/// `alive` comes from try_wait on the real child handle, so a stale/lost
+/// `backend-exited` event can never wedge the frontend: events are hints,
+/// this is the source of truth.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackendState {
+    alive: bool,
+    port: u16,
+    recent_stderr: Vec<String>,
+}
+
 #[tauri::command]
-fn get_api_base(port: tauri::State<ApiPort>) -> String {
-    let p = *port.0.lock().unwrap();
-    if p == 0 {
-        String::new()
-    } else {
-        format!("http://127.0.0.1:{}", p)
+fn backend_state(app: AppHandle) -> BackendState {
+    let port = *app.state::<ApiPort>().0.lock().unwrap();
+    let alive = match app.state::<Backend>().0.lock().unwrap().as_mut() {
+        Some(child) => matches!(child.try_wait(), Ok(None)),
+        None => false,
+    };
+    let recent_stderr = app
+        .state::<BackendDiag>()
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .cloned()
+        .collect();
+    BackendState {
+        alive,
+        port,
+        recent_stderr,
     }
 }
 
@@ -105,14 +150,18 @@ fn resolve_backend(app: &AppHandle) -> Option<PathBuf> {
 }
 
 fn spawn_backend(app: &AppHandle) {
+    // 每次 spawn 清空诊断缓冲,避免上一个后端的日志混入本次归因
+    app.state::<BackendDiag>().0.lock().unwrap().clear();
     let path = match resolve_backend(app) {
         Some(p) => p,
         None => {
             eprintln!("[duckquery] backend binary not found in any candidate path");
+            push_diag(app, "[shell] backend binary not found in any candidate path".into());
             return;
         }
     };
     eprintln!("[duckquery] spawning backend: {}", path.display());
+    push_diag(app, format!("[shell] spawning backend: {}", path.display()));
     let mut cmd = Command::new(&path);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     // Windows: the backend is a console-subsystem exe (PyInstaller console=True, so it
@@ -128,6 +177,7 @@ fn spawn_backend(app: &AppHandle) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[duckquery] failed to spawn backend: {e}");
+            push_diag(app, format!("[shell] failed to spawn backend: {e}"));
             return;
         }
     };
@@ -137,15 +187,20 @@ fn spawn_backend(app: &AppHandle) {
     *app.state::<Backend>().0.lock().unwrap() = Some(child);
 
     // Drain the backend's stderr so its pipe buffer never fills (a full ~64KB pipe
-    // would block the backend on its next log write). Also surfaces backend errors.
+    // would block the backend on its next log write). Also surfaces backend errors
+    // and mirrors each line into the diag ring buffer for the frontend splash.
+    let diag_handle = app.clone();
     std::thread::spawn(move || {
         let reader = BufReader::new(stderr);
         for line in reader.lines().map_while(Result::ok) {
             eprintln!("[backend] {line}");
+            push_diag(&diag_handle, line);
         }
     });
 
     // Read the backend's stdout; its first numeric line is the chosen port.
+    // 端口/存活状态由前端轮询 backend_state 获取(事件驱动曾有注册竞态与旧进程
+    // 迟到事件的误归因,已弃用),这里只负责解析端口写入 ApiPort。
     let handle = app.clone();
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
@@ -154,19 +209,12 @@ fn spawn_backend(app: &AppHandle) {
             if !port_set {
                 if let Ok(port) = line.trim().parse::<u16>() {
                     *handle.state::<ApiPort>().0.lock().unwrap() = port;
-                    let base = format!("http://127.0.0.1:{}", port);
-                    eprintln!("[duckquery] backend ready on {base}");
-                    let _ = handle.emit("api-ready", base);
+                    eprintln!("[duckquery] backend ready on http://127.0.0.1:{port}");
                     port_set = true;
                 }
             }
         }
-        // stdout EOF ⇒ backend process exited. Tell the frontend so it can fail
-        // fast instead of waiting out its 30s/90s startup windows on a process
-        // that crashed in the first 100ms. (Also fires on normal app shutdown,
-        // when the webview is being torn down anyway — harmless.)
         eprintln!("[duckquery] backend stdout closed (process exited)");
-        let _ = handle.emit("backend-exited", port_set);
     });
 }
 
@@ -175,6 +223,8 @@ fn spawn_backend(app: &AppHandle) {
 /// cannot, because spawn_backend otherwise only runs once in setup().
 #[tauri::command]
 fn restart_backend(app: AppHandle) {
+    let lock = app.state::<RestartLock>();
+    let _guard = lock.0.lock().unwrap();
     kill_backend(&app);
     *app.state::<ApiPort>().0.lock().unwrap() = 0;
     spawn_backend(&app);
@@ -213,7 +263,11 @@ fn post_shutdown_request(port: u16) -> bool {
 /// own, and only hard-kill if that fails (backend didn't start, request failed, or it hung).
 fn kill_backend(app: &AppHandle) {
     let port = *app.state::<ApiPort>().0.lock().unwrap();
-    if let Some(mut child) = app.state::<Backend>().0.lock().unwrap().take() {
+    // 先 take() 再进 if-let:scrutinee 里的 MutexGuard 临时量会活到整个 if 块结束,
+    // 那样 Backend 锁会被优雅停机的 5s 等待持满——backend_state 轮询查存活要拿
+    // 同一把锁,不能被卡住。
+    let taken = app.state::<Backend>().0.lock().unwrap().take();
+    if let Some(mut child) = taken {
         let mut exited_gracefully = false;
 
         if port != 0 && post_shutdown_request(port) {
@@ -260,10 +314,12 @@ pub fn run() {
     builder
         .manage(ApiPort::default())
         .manage(Backend(Mutex::new(None)))
+        .manage(BackendDiag(Mutex::new(VecDeque::new())))
+        .manage(RestartLock(Mutex::new(())))
         .invoke_handler(tauri::generate_handler![
-            get_api_base,
             open_external,
-            restart_backend
+            restart_backend,
+            backend_state
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

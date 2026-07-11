@@ -58,12 +58,24 @@ def apply_desktop_env() -> None:
     os.environ.setdefault("LITELLM_TELEMETRY", "False")
 
 
-def pick_free_loopback_port() -> int:
-    # 绑 :0 让 OS 分配空闲高位端口,随即关闭释放;uvicorn 再以 host/port 重新绑定。
-    # 不复用 fd:uvicorn 的 fd= 路径内部走 socket.fromfd(AF_UNIX),Windows 上会崩。
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+def bind_loopback_socket() -> socket.socket:
+    # 绑 :0 让 OS 分配空闲高位端口,socket 持有不关,最后经 server.run(sockets=[sock])
+    # 原样交给 uvicorn。此前"绑定后立即关闭、uvicorn 稍后按 host/port 重绑"存在
+    # TOCTOU 竞态:重绑要等整条重量级 import 链跑完,Windows 首启叠加杀软扫描时
+    # 这个窗口长达数分钟,端口一旦被其他进程/出站连接占走,uvicorn 绑定失败
+    # sys.exit(1),前端表现为「本地引擎启动超时」。
+    # 只 bind 不 listen:bind 已足以独占端口;过早 listen 会让前端健康轮询的
+    # TCP 握手进入内核 backlog 挂住等待(此时尚无事件循环 accept),listen 由
+    # asyncio 的 Server._start_serving 在 uvicorn 真正就绪时统一调用。
+    # 不用 fd= 交接:uvicorn 的 fd= 路径内部走 socket.fromfd(AF_UNIX),Windows 上
+    # 会崩;sockets=[...] 是独立分支,走跨平台的 loop.create_server(sock=...)。
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if sys.platform.startswith("win"):
+        # Windows 默认允许其他进程带 SO_REUSEADDR 抢绑已占用端口(POSIX 无此行为),
+        # SO_EXCLUSIVEADDRUSE 关死这个口子;该常量仅 Windows 版 Python 存在。
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    sock.bind(("127.0.0.1", 0))
+    return sock
 
 
 def start_parent_watchdog() -> None:
@@ -143,18 +155,27 @@ def main() -> None:
     stage = _make_stage_logger(_wd / "startup.log")
     stage("env ready (extensions seeded)")
     start_parent_watchdog()
-    port = pick_free_loopback_port()
+    sock = bind_loopback_socket()
+    port = sock.getsockname()[1]
     print(port, flush=True)  # 第一行 = 端口,Tauri 读 stdout
     os.environ["DUCKQUERY_PORT"] = str(port)
     from core.common.paths import write_runtime_file
     write_runtime_file(port)
     os.environ["DUCKQUERY_DESKTOP"] = "1"  # 让 main.py 注册仅桌面端可用的 /api/system/shutdown
-    stage(f"port {port} printed; importing app...")
+    # import 链按重量拆分打点:用户回传 startup.log 即可分辨卡在哪个包的
+    # 杀软逐文件扫描,还是卡在 system.db 打开(脏 WAL 重放无超时,任务管理器
+    # 强杀后常见)。这些模块本就在 main 的依赖里,提前导入不改变行为。
+    stage(f"port {port} printed (socket held); importing duckdb...")
+    import duckdb  # pylint: disable=import-error,unused-import
+    stage("duckdb imported; importing pandas...")
+    import pandas  # pylint: disable=import-error,unused-import
+    stage("pandas imported; opening metadata store (system.db, WAL replay if dirty)...")
+    import core.database.metadata_manager  # pylint: disable=unused-import  # 模块级单例同步打开 system.db
+    stage("metadata store ready; importing app...")
     import uvicorn  # pylint: disable=import-error
     from main import app
 
     stage("app imported; starting uvicorn")
-    # host/port 跨平台可用;不用 fd=(uvicorn 的 fd 路径在 Windows 上崩,见 pick_free_loopback_port)。
     # 手动构造 Server(而非 uvicorn.run())以便注册到 server_control,供 /api/system/shutdown
     # 通过 should_exit 优雅停机——比 OS 信号更可靠(Windows 上 SIGTERM 不会走 uvicorn 的信号处理)。
     from core.common.server_control import set_server
@@ -162,7 +183,11 @@ def main() -> None:
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info")
     server = uvicorn.Server(config)
     set_server(server)
-    server.run()
+    # sockets=[...] 路径下 uvicorn 不打印 "Uvicorn running on ..."(它以为多 worker
+    # 场景已由 bind_socket 打过),就绪日志由 lifespan 的 "Application startup complete."
+    # 与上面的 stage 行承担。
+    stage(f"handing socket to uvicorn (lifespan + serve on 127.0.0.1:{port})")
+    server.run(sockets=[sock])
 
 
 if __name__ == "__main__":
