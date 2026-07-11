@@ -322,6 +322,14 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
         _apply_default_duckdb_config(connection, temp_dir)
 
 
+# 进程级 INSTALL 失败缓存:连接池每建一个新连接都会跑一遍扩展兜底安装,而
+# INSTALL 走网络(extensions.duckdb.org),不可达时(国内网络/离线)DuckDB 内置
+# 下载客户端单次实测挂 ~120s——不记忆失败的话 N 个连接 × M 个扩展会串行挂
+# 十几分钟,表现为"首次查询卡死"。失败过的扩展本进程不再重试 INSTALL(重试
+# 也必然同样失败);LOAD 每次照常尝试,本地已有时零成本成功。
+_install_failed_extensions: set = set()
+
+
 def _install_duckdb_extensions(connection, extensions: List[str]):
     """
     安装和加载DuckDB扩展
@@ -339,12 +347,18 @@ def _install_duckdb_extensions(connection, extensions: List[str]):
             connection.execute(f"LOAD {ext_name};")
             logger.info(f"DuckDB extension {ext_name} loaded")
         except Exception as load_error:
+            if ext_name in _install_failed_extensions:
+                logger.warning(
+                    f"DuckDB extension {ext_name} unavailable (INSTALL already failed this session, not retrying)"
+                )
+                continue
             # 如果加载失败，尝试安装后再加载
             try:
                 connection.execute(f"INSTALL {ext_name};")
                 connection.execute(f"LOAD {ext_name};")
                 logger.info(f"DuckDB extension {ext_name} installed and loaded successfully")
             except Exception as install_error:
+                _install_failed_extensions.add(ext_name)
                 logger.warning(
                     f"Failed to install or load DuckDB extension {ext_name}: {str(install_error)}"
                 )

@@ -12,7 +12,9 @@ import { isTauri } from '@/desktop/openExternal';
 export async function checkForUpdate(): Promise<Update | null> {
   if (!isTauri()) return null;
   const { check } = await import('@tauri-apps/plugin-updater');
-  return check();
+  // timeout 必须显式给:插件 Rust 侧 reqwest 默认无请求超时,GitHub 在部分网络
+  // (国内)是 SYN 黑洞式不可达,不设超时手动"检查更新"按钮会转圈 20-130s。单位 ms。
+  return check({ timeout: 10_000 });
 }
 
 /**

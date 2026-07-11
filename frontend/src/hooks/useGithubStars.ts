@@ -7,6 +7,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 
+import { isTauri } from '@/desktop/openExternal';
+
 const GITHUB_REPO = 'chenkeliang/duckdb-query';
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}`;
 
@@ -101,6 +103,10 @@ export function useGithubStars(): UseGithubStarsReturn {
     const { data, isLoading } = useQuery({
         queryKey: ['github-stars'],
         queryFn: fetchGithubStars,
+        // 桌面版不发请求:webview CSP 的 connect-src 本就不含 api.github.com,
+        // 请求必被 CSP 秒拒(徽标从未显示过),白留一条 console 报错;
+        // 且桌面端离线优先,不应有开机自动外联。Web/Docker 版保留。
+        enabled: !isTauri(),
         // localStorage 种子：命中未过期缓存则不发请求（staleTime 按缓存写入时刻计算）
         initialData: () => getCachedEntry()?.count,
         initialDataUpdatedAt: () => getCachedEntry()?.timestamp,
