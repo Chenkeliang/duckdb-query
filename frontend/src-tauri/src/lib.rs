@@ -286,6 +286,17 @@ fn spawn_backend(app: &AppHandle) {
     });
 }
 
+/// 在系统文件管理器中打开日志目录(engine-stderr.log / startup.log 所在处),
+/// 供失败页"打开日志位置"按钮一键定位。不接受任何前端参数——路径完全由
+/// Rust 侧计算,不扩大 open_external 已收紧的注入面(#20)。
+#[tauri::command]
+fn open_log_dir() {
+    if let Some(dir) = user_data_dir() {
+        let _ = std::fs::create_dir_all(&dir); // 极早期失败时目录可能还不存在
+        let _ = open::that_detached(&dir);
+    }
+}
+
 /// Kill any existing backend and spawn a fresh one. Lets the frontend's retry
 /// button actually recover from a failed/crashed spawn — a plain webview reload
 /// cannot, because spawn_backend otherwise only runs once in setup().
@@ -386,6 +397,7 @@ pub fn run() {
         .manage(RestartLock(Mutex::new(())))
         .invoke_handler(tauri::generate_handler![
             open_external,
+            open_log_dir,
             restart_backend,
             backend_state
         ])

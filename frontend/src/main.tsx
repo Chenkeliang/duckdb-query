@@ -76,8 +76,12 @@ function renderSplashShell() {
             <div id="dq-cause" style="display:none;font-size:12px;color:#d09090;margin-bottom:6px;max-width:640px;text-align:center;word-break:break-all;"></div>
             <div id="dq-hint" style="font-size:13px;color:#909090;margin-bottom:6px;text-align:center;max-width:640px;word-break:break-all;"></div>
             <div id="dq-stage" style="font-size:12px;color:#6a6a6a;font-family:monospace;margin-bottom:8px;max-width:560px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+            <div id="dq-fix" style="display:none;font-size:12px;color:#a8a8a8;background:#141414;border:1px solid #262626;border-radius:6px;padding:10px 14px;margin-bottom:8px;max-width:640px;text-align:left;white-space:pre-line;line-height:1.7;"></div>
             <pre id="dq-diag" style="display:none;font-size:11px;color:#8a8a8a;background:#171717;border:1px solid #2a2a2a;border-radius:6px;padding:10px 12px;max-width:640px;max-height:180px;overflow:auto;text-align:left;white-space:pre-wrap;word-break:break-all;"></pre>
-            <button id="dq-retry" style="display:none;margin-top:16px;padding:8px 24px;border:1px solid #555;border-radius:6px;background:#222;color:#eee;cursor:pointer;font-size:14px;">重试</button>
+            <div style="margin-top:16px;display:flex;gap:12px;">
+                <button id="dq-retry" style="display:none;padding:8px 24px;border:1px solid #555;border-radius:6px;background:#222;color:#eee;cursor:pointer;font-size:14px;">重试</button>
+                <button id="dq-openlog" style="display:none;padding:8px 24px;border:1px solid #3a3a3a;border-radius:6px;background:transparent;color:#b0b0b0;cursor:pointer;font-size:14px;">打开日志位置</button>
+            </div>
         </div>
     `;
     const retry = document.getElementById('dq-retry') as HTMLButtonElement | null;
@@ -93,6 +97,11 @@ function renderSplashShell() {
             else window.location.reload();
         };
     }
+    const openLog = document.getElementById('dq-openlog') as HTMLButtonElement | null;
+    if (openLog) {
+        // __dqOpenLog 由 bootstrap 注入,让 Rust 在文件管理器中打开日志目录
+        openLog.onclick = () => (window as any).__dqOpenLog?.();
+    }
 }
 
 function updateSplash(fields: {
@@ -100,8 +109,10 @@ function updateSplash(fields: {
     cause?: string;
     hint?: string;
     stage?: string;
+    fixes?: string[];
     diag?: string[];
     retry?: boolean;
+    openLog?: boolean;
 }) {
     if (!document.getElementById('dq-status')) renderSplashShell();
     if (fields.status !== undefined) document.getElementById('dq-status')!.textContent = fields.status;
@@ -112,6 +123,13 @@ function updateSplash(fields: {
     }
     if (fields.hint !== undefined) document.getElementById('dq-hint')!.textContent = fields.hint;
     if (fields.stage !== undefined) document.getElementById('dq-stage')!.textContent = fields.stage;
+    if (fields.fixes !== undefined) {
+        const el = document.getElementById('dq-fix')!;
+        el.textContent = fields.fixes.length
+            ? `建议排查:\n${fields.fixes.map((f) => `· ${f}`).join('\n')}`
+            : '';
+        el.style.display = fields.fixes.length ? 'block' : 'none';
+    }
     if (fields.diag !== undefined) {
         const el = document.getElementById('dq-diag')!;
         el.textContent = fields.diag.join('\n'); // textContent,无 XSS 面
@@ -119,6 +137,11 @@ function updateSplash(fields: {
     }
     if (fields.retry !== undefined) {
         (document.getElementById('dq-retry') as HTMLButtonElement).style.display = fields.retry
+            ? 'inline-block'
+            : 'none';
+    }
+    if (fields.openLog !== undefined) {
+        (document.getElementById('dq-openlog') as HTMLButtonElement).style.display = fields.openLog
             ? 'inline-block'
             : 'none';
     }
@@ -133,7 +156,32 @@ function latestStage(state: BackendState | null): string {
     return '';
 }
 
-function failSplash(message: string, state: BackendState | null) {
+/** 按错误特征给出常见解决方案(可多条命中);无特征匹配时给通用排查顺序。 */
+function suggestFixes(state: BackendState | null, timedOut: boolean): string[] {
+    const text = (state?.recentStderr ?? []).join('\n');
+    const fixes: string[] = [];
+    if (/binary not found|failed to spawn/i.test(text)) {
+        fixes.push('引擎文件缺失或被安全软件隔离：打开杀软的隔离区/信任区恢复 duckquery-api，或重新安装 DuckQuery');
+    }
+    if (/DLL load failed|ModuleNotFoundError|ImportError|Failed to load Python/i.test(text)) {
+        fixes.push('程序组件加载失败：多为安全软件误删或隔离所致，检查杀软隔离区后重新安装');
+    }
+    if (/WAL|IO Error|database.*(corrupt|invalid)/i.test(text)) {
+        fixes.push('数据文件异常（上次可能未正常退出）：点击重试通常可自动恢复；反复出现请附日志反馈');
+    }
+    if (/denied|permission|拒绝访问/i.test(text)) {
+        fixes.push('目录无写入权限：检查数据目录是否可写（杀软的"文档保护"类功能也可能拦截）');
+    }
+    if (timedOut) {
+        fixes.push('首次启动时安全软件逐个扫描引擎组件可能长达数分钟：将 DuckQuery 安装目录加入杀软信任区/白名单后重试');
+    }
+    if (fixes.length === 0) {
+        fixes.push('依次尝试：点击重试 → 将安装目录加入杀软信任区 → 重新安装；仍失败请附日志文件反馈');
+    }
+    return fixes;
+}
+
+function failSplash(message: string, state: BackendState | null, timedOut = false) {
     // 从后端最后的输出里提出"原因":崩溃时 traceback 的结尾行就是异常本身;
     // 没有报错特征时退化为最后一行(通常是最后到达的启动阶段,即卡住的位置)。
     const lines = (state?.recentStderr ?? []).map((l) => l.trim()).filter(Boolean);
@@ -148,8 +196,10 @@ function failSplash(message: string, state: BackendState | null) {
         cause,
         hint: `${logHint}（反馈问题时请提供该文件，或截图本页）`,
         stage: '',
+        fixes: suggestFixes(state, timedOut),
         diag: state?.recentStderr?.slice(-12) ?? [],
         retry: true,
+        openLog: Boolean(state?.logPath),
     });
 }
 
@@ -198,6 +248,11 @@ async function bootstrap() {
             window.location.reload();
         };
 
+        // 失败页"打开日志位置":路径由 Rust 侧计算,前端不传参
+        (window as any).__dqOpenLog = () => {
+            invoke('open_log_dir').catch(() => {});
+        };
+
         const fetchState = async (): Promise<BackendState | null> => {
             try {
                 return await invoke<BackendState>('backend_state');
@@ -237,7 +292,7 @@ async function bootstrap() {
                 break;
             }
             if (Date.now() - started > PORT_WAIT_CAP_MS) {
-                failSplash('本地引擎启动超时，请重试。', state);
+                failSplash('本地引擎启动超时，请重试。', state, true);
                 return;
             }
             if (Date.now() - started > 15000) {
@@ -285,7 +340,7 @@ async function bootstrap() {
             }
             const elapsed = Date.now() - started;
             if (elapsed > HEALTH_WAIT_CAP_MS) {
-                failSplash('本地引擎启动超时，请重试。', state);
+                failSplash('本地引擎启动超时，请重试。', state, true);
                 return;
             }
             if (elapsed > 90000) {
