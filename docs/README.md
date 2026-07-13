@@ -62,4 +62,4 @@
 | 前端 | http://localhost:48000 |
 | API 文档 | http://localhost:48001/docs |
 
-数据目录为宿主机 `./data`（重建容器不会删除已导入表）。国内网络见根目录 [README](../README.md) 中 Docker 镜像说明。
+数据目录为宿主机 `./data`（重建容器不会删除已导入表）。国内镜像与网络说明见根目录 README 的 [Docker 镜像与数据](../README.md#docker-镜像与数据)。

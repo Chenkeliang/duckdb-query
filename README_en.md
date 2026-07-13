@@ -4,128 +4,84 @@
 
 <h1 align="center">DuckQuery</h1>
 
-  <b>The AI Visual SQL Workbench for Files and Databases.</b><br>
-  <b>Ask in plain English or write SQL across local files (Excel/CSV/JSON) and remote databases (MySQL/PG) — one‑stop, cross‑source, no ETL.</b>
+<p align="center">
+  <strong>The local-first AI visual SQL workbench</strong><br>
+  Query local files, MySQL / PostgreSQL, and SQLite / DuckDB database files together in one SQL statement.<br>
+  Write SQL directly, or let AI draft it for your review before execution.
 </p>
 
 <p align="center">
-  <sub>For data analysts & engineers who juggle local files and live databases — no warehouse, no pipeline.</sub>
+  <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><img src="https://img.shields.io/github/v/release/Chenkeliang/duckdb-query?label=Release&color=F97316" alt="Latest release"></a>
+  <a href="https://chenkeliang.github.io/duckdb-query/"><img src="https://img.shields.io/badge/Online_Demo-try_it-F97316" alt="Online Demo"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License"></a>
 </p>
 
 <p align="center">
-  <a href="https://chenkeliang.github.io/duckdb-query/">Live Demo</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#what-can-you-do">What Can You Do</a> •
-  <a href="#deployment">Deployment</a> •
-  <a href="README.md">中文</a>
+  <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><strong>Download Desktop</strong></a>
+  · <a href="https://chenkeliang.github.io/duckdb-query/">Online Demo</a>
+  · <a href="#get-started">Docker Self-hosting</a>
+  · <a href="README.md">中文</a>
 </p>
 
 <p align="center">
-  <a href="https://chenkeliang.github.io/duckdb-query/"><img src="https://img.shields.io/badge/Live_Demo-Try_in_browser-F4B43C?logo=duckdb&logoColor=white" alt="Live Demo"></a>
-  <img src="https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black" alt="React">
-  <img src="https://img.shields.io/badge/DuckDB-Powered-FFBF00.svg?logo=duckdb&logoColor=white" alt="DuckDB">
-  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT">
+  <sub>The online Demo runs DuckDB-Wasm in your browser only; it does not include AI, database connections, or Excel. AI features call the model endpoint you configure.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/assets/og-cover.png" alt="DuckQuery — query local files and remote databases together with one SQL" width="840">
+  <a href="#see-it-in-30-seconds">See It in 30 Seconds</a> ·
+  <a href="#core-capabilities">Core Capabilities</a> ·
+  <a href="#why-duckquery">Why DuckQuery</a> ·
+  <a href="#get-started">Get Started</a> ·
+  <a href="#architecture--data-boundaries">Architecture &amp; Data Boundaries</a> ·
+  <a href="#mcp-integration">MCP Integration</a>
 </p>
 
----
+<p align="center">
+  <img src="docs/assets/readme/hero-cross-source-en.gif" alt="DuckQuery workbench running a cross-source JOIN between a local DuckDB table and MySQL" width="900">
+</p>
 
-## Quick Start
+## See It in 30 Seconds
 
-### Try it in your browser (no install)
+1. **Connect data**: upload files as DuckDB tables, or save SQLite, MySQL, PostgreSQL, and DuckDB file connections.
 
-Run real SQL on the sample tables — or drag in your own CSV / Parquet / JSON — entirely in-browser via **DuckDB-Wasm**.
+   ![SQLite and MySQL data-source connections in DuckQuery](docs/assets/readme/sources-en.webp)
 
-👉 **[Open the live demo](https://chenkeliang.github.io/duckdb-query/)**
+2. **Let AI draft SQL**: AI uses the current schema to produce a draft that you can inspect, insert into the editor, and run manually.
 
-> Connecting MySQL / Postgres and the AI features run on the backend, so they need the self-hosted version below.
+   ![DuckQuery drafting SQL with AI before the user inserts it, runs it, and switches to a sales chart](docs/assets/readme/workflow-ai-chart-en.gif)
 
-### Self-host (full features)
+3. **Explore results**: switch a real query result between the DataGrid and charts, then drill down or export.
 
-Run the full stack (Python Backend + React Frontend) — local file access, persistent database connections (MySQL / PostgreSQL / SQLite / DuckDB), and AI.
+## Core Capabilities
 
-**Prerequisites:** Docker & Docker Compose
+- **Files and ingestion**: CSV, Excel, Parquet, JSON, and JSONL; paste tabular data, import URLs, browse server-mounted directories, and select multiple Excel sheets.
+- **Databases and federation**: connect MySQL, PostgreSQL, SQLite, and DuckDB files, then query them alongside local tables through DuckDB `ATTACH`.
+- **Complete query workflow**: CodeMirror SQL editor, JOIN workbench, set operations, pivot tables, async tasks, query cancellation, bookmarks, and history.
+- **Optional AI assistance**: data chat, error doctor, SQL explanation, and chart suggestions through the model provider and endpoint you configure. SQL drafted in the Web workbench is never auto-executed.
+- **Results and export**: virtualized DataGrid; bar, line, area, pie, donut, and KPI charts; click a chart element to generate detail SQL. The grid exports CSV / Excel / JSON, and query results can also be exported as Parquet.
+- **MCP automation**: 24 tools for querying, discovery, ingestion, transforms, AI settings, and export, with `read-only`, `normal`, and `full` modes.
 
-```bash
-git clone https://github.com/Chenkeliang/duckdb-query.git && cd duckdb-query && ./quick-start.sh
-```
+## Why DuckQuery
 
-Open **http://localhost:48000** and start querying.
+- **Database GUIs** (DBeaver, TablePlus, …) center on database connections; local CSV / Excel files usually need to be imported as tables first.
+- **BI platforms** (Metabase, Superset, …) excel at durable dashboards; ad-hoc analysis often means configuring sources or even building a warehouse with ETL first.
+- **DuckQuery** covers the middle ground: drop in a file to get a table, `ATTACH` a remote database, and JOIN both in one SQL statement — with AI drafting SQL that you review and run.
 
-> Don't want Docker? The [Desktop App](#desktop-app) below ships native macOS / Windows installers with the backend built in.
+## Get Started
 
----
+| Form | Best for | Notes |
+|---|---|---|
+| **Desktop** | Direct local use | macOS Apple Silicon / Intel and Windows x64; bundled backend and in-app updates |
+| **Online Demo** | Trying SQL without installation | DuckDB-Wasm only; no AI, database connections, or Excel |
+| **Docker** | Self-hosting frontend and backend | Requires Docker and Docker Compose; data persists on the host under `./data` |
 
-## Demo
+**Desktop**: download a `.dmg` or Windows installer from [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest). There is currently no Linux package. The installers are not signed with official Apple / Microsoft developer certificates, so the OS may warn on first launch.
 
-### Data Source Upload
-![Data Source Upload](docs/assets/en_source.gif)
+If first launch is blocked, choose **More info → Run anyway** on Windows. On macOS, move the app to **Applications**, then run `xattr -cr /Applications/DuckQuery.app` in Terminal. See the [desktop guide (Chinese)](docs/guide/桌面版使用手册.md#2-安装时弹出警告怎么办) for full steps.
 
-### Query Workbench
-![Query Workbench](docs/assets/en_query.gif)
+**Online Demo**: [open it in your browser](https://chenkeliang.github.io/duckdb-query/) to query sample data or import CSV / TSV / Parquet / JSON.
 
----
-
-## What Can You Do
-
-| Action | How |
-|--------|-----|
-| 🧠 **Ask in plain English (Text-to-SQL)** | Chat with your data; the AI drafts SQL you review before running — **never auto-executed**. |
-| 🩺 **AI error doctor** | When a query fails, get a plain-English diagnosis + a fixed SQL suggestion (knows your table schema, incl. federated). |
-| 📈 **AI chart suggestions** | One click turns a result set into the right chart — bar / line / pie / KPI. |
-| 📥 **Paste CSV/TSV from anywhere** | Copy cells from any source, paste directly as a new table. |
-| 📂 **Query any file** | Drag CSV/Excel/Parquet/JSON into the browser. Instant table. |
-| 🗄️ **Connect databases** | Add MySQL / PostgreSQL / SQLite / DuckDB. Query alongside local files. |
-| 🔗 **Cross-source JOIN** | `SELECT * FROM local_csv JOIN mysql_db.users ON ...` |
-| 📊 **Pivot / JOIN / Set ops** | SQL editor + JOIN workbench + pivot + set operations (no separate “visual builder” tab). |
-| 🌐 **Import from URL** | Enter a CSV/Parquet/JSON link, auto-import to DuckDB. |
-| 🌙 **Dark Mode & i18n** | Switch themes and languages (EN/中文) instantly. |
-
----
-
-## How It Works
-
-```
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│  Your Files     │      │  DuckQuery      │      │  Your Databases │
-│  CSV/Excel/...  │ ───► │  (DuckDB Core)  │ ◄─── │  MySQL/Postgres │
-└─────────────────┘      └────────┬────────┘      └─────────────────┘
-                                  │
-                                  ▼
-                         ┌─────────────────┐
-                         │   SQL + Visual  │
-                         │   Query Results │
-                         └─────────────────┘
-```
-
-Files are imported as **native DuckDB tables** for lightning-fast queries. External databases are connected via DuckDB's `ATTACH` mechanism.
-
----
-
-## Why DuckQuery?
-
-Most tools force a choice: a **database GUI** (DBeaver, TablePlus) that can't touch your local CSVs, or a **BI tool** (Metabase, Superset) that needs a warehouse and ETL first. DuckQuery is the missing middle — point it at files *and* databases, JOIN across them in one query, and let AI write the SQL.
-
-| | **DuckQuery** | DBeaver / TablePlus | Metabase / Superset |
-|---|:---:|:---:|:---:|
-| Query local CSV / Excel / Parquet | ✅ native | ⚠️ import first | ❌ |
-| JOIN files ↔ MySQL/Postgres in one query | ✅ | ❌ | ❌ |
-| Text-to-SQL (AI) | ✅ built-in | ❌ | ⚠️ paid/limited |
-| No ETL / no warehouse | ✅ | ✅ | ❌ |
-| Fully local / self-hosted | ✅ | ✅ | ⚠️ server |
-| Time to first query | seconds | minutes | hours |
-
-Built on **DuckDB**, an in-process analytical engine — so a 1 GB CSV joins a remote table in milliseconds, with no data pipeline to maintain.
-
----
-
-## Deployment
-
-### Docker (Recommended)
+**Docker**:
 
 ```bash
 git clone https://github.com/Chenkeliang/duckdb-query.git
@@ -133,206 +89,76 @@ cd duckdb-query
 ./quick-start.sh
 ```
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:48000 |
-| API Docs | http://localhost:48001/docs |
+After startup:
 
-**Data**: Tables and connections live on the host in **`./data`** (bind mount). Re-running `./quick-start.sh` or `docker compose up -d --build` **does not** delete `./data`; log lines saying `Removed` refer to old containers, not your database files.
+- Web UI: <http://localhost:48000>
+- API docs: <http://localhost:48001/docs>
+- Persistent data: host directory `./data` (a bind mount that survives container rebuilds)
 
-**Slow or failed pulls from docker.io** (e.g. `node:24-alpine`):
+See the [configuration reference](docs/CONFIGURATION.md) and [desktop guide (Chinese)](docs/guide/桌面版使用手册.md) for more.
 
-- The script defaults to DaoCloud mirror images; on first run it may copy `.env.docker.cn.example` → `.env`.
-- Or: `cp .env.docker.cn.example .env` then `docker compose up -d --build`.
-- If Docker Hub works reliably: `USE_DOCKER_HUB=1 ./quick-start.sh`.
+### Docker Images and Data
 
-**Rebuild frontend only** (keeps `./data`):
+`quick-start.sh` defaults only the frontend Node / Nginx base images to DaoCloud. If Docker Hub is reachable from your network, run `USE_DOCKER_HUB=1 ./quick-start.sh` to use the official images instead, or override `NODE_IMAGE` / `NGINX_IMAGE` in the root `.env`. The backend still pulls `python:3.12-bookworm` from Docker Hub and downloads DuckDB extensions during the build, so availability depends on your current network.
 
-```bash
-docker compose up -d --build frontend
+`./data` is a host directory and is not removed by rebuilding containers. Confirm and back up anything you need before deleting it manually.
+
+## Architecture & Data Boundaries
+
+```mermaid
+flowchart LR
+  F[CSV / Excel / Parquet / JSON] --> D[DuckDB]
+  R[MySQL / PostgreSQL / SQLite / DuckDB] -->|ATTACH| D
+  D --> Q[SQL / JOIN / Pivot]
+  D --> V[Table / Charts / Export]
+  L[User-configured model endpoint] -. SQL drafts and suggestions .-> Q
 ```
 
-**Stop services** (still keeps `./data`): `docker compose down` (avoid `down -v` unless you intend to wipe named volumes).
+Imported files become DuckDB tables in the current instance. External databases participate in queries through DuckDB `ATTACH`. Results flow into the DataGrid, charts, and export tools.
 
-### Desktop App
+- **Local storage**: tables and connection settings for a desktop or self-hosted instance are stored in that instance's data directory.
+- **External access**: federated queries contact configured databases, URL imports contact their target addresses, and desktop update checks contact GitHub Releases.
+- **AI data**: depending on the feature, schema, SQL, error context, or limited result samples may be sent to the model endpoint you configure.
+- **Execution boundary**: SQL generated in the Web UI is inserted as a draft and runs only after you confirm it.
 
-Native installers for macOS (Apple Silicon / Intel) and Windows (x64) with the backend bundled in (PyInstaller sidecar) — **no Docker, no terminal required**.
+## MCP Integration
 
-👉 **[Download from GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest)**
-
-| Platform | Installer |
-|----------|-----------|
-| macOS Apple Silicon | `.dmg` |
-| macOS Intel | `.dmg` |
-| Windows x64 | Installer (NSIS) |
-
-- **First launch**: the installers are ad-hoc signed, not signed with an official Apple/Microsoft certificate, so the OS will warn you — on macOS: *System Settings → Privacy & Security → Open Anyway*; on Windows: SmartScreen → *More info → Run anyway*.
-- **In-app auto-update**: on launch, the app checks GitHub Releases for a newer version, shows download progress, then installs and relaunches. Update artifacts are signed with a repo-private key and verified against a public key embedded in the app.
-- **Feature parity**: local file queries, database connections (MySQL / PostgreSQL / SQLite / DuckDB), and AI all work the same as the self-hosted version (AI still needs a model API key configured in Settings). No Linux build yet.
-
-### Local Development
-
-```bash
-# Backend (http://localhost:48001 , docs at /docs)
-cd api && pip install -r requirements.txt && uvicorn main:app --reload --port 48001
-
-# Frontend (http://localhost:48000 , /api proxied to backend)
-cd frontend && npm install && npm run dev
-```
-
-| Service | Default URL | API from browser |
-|---------|-------------|------------------|
-| Frontend (Vite) | http://localhost:48000 | `/api/*` proxied to backend |
-| Backend | http://localhost:48001 | Direct (e.g. `/docs`) |
-
-**Query APIs**: DuckDB local → `POST /api/duckdb/execute`; external / federated → `POST /api/duckdb/federated-query` with ATTACH. Do **not** use legacy `POST /api/execute_sql`. See [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md) and [`docs/frontend/QUERY_EXECUTION_FLOW.md`](docs/frontend/QUERY_EXECUTION_FLOW.md). Cross-source federated JOINs automatically apply **semi-join key pushdown** (the remote side only scans matching keys, no full-table scan), **time-bound suggestions** on audit columns, and a **query-timeout guard** — all transparent to callers.
-
----
-
-## MCP (drive DuckQuery from an AI CLI)
-
-DuckQuery ships a standalone **MCP server** (`duckquery-mcp`) so MCP-capable AI CLIs — **Claude Code / Cursor / Codex** — can drive it directly: ask questions in natural language, run SQL, add data sources, configure the LLM, export, and more, entirely through AI.
-
-**Prerequisite**: start any one DuckQuery backend first (desktop app / Docker / manual). The MCP server auto-discovers it (reads `runtime.json`, else probes `48001 / 8000 / 8001` and verifies `/health`).
-
-**Run (zero-install)**:
+Start the desktop or Docker backend, then run the standalone MCP server:
 
 ```bash
 uvx duckquery-mcp
 ```
 
-**Add to a CLI**:
+Claude Code:
 
 ```bash
-# Claude Code
 claude mcp add duckquery -- uvx duckquery-mcp
 ```
 
-```jsonc
-// Cursor / Codex mcp.json
-{ "mcpServers": { "duckquery": {
-    "command": "uvx", "args": ["duckquery-mcp"],
-    "env": { "DUCKQUERY_MCP_MODE": "normal" } } } }
-```
+For Cursor / Codex, add this to `mcp.json`:
 
-**Tools (~24)**: query / NL-to-SQL / explain SQL, list tables & schema, add connection / local file / Excel / URL sources, configure LLM, pivot / set-operations, export — plus a generic passthrough tool for everything else.
-
-**Safety mode** `DUCKQUERY_MCP_MODE`:
-
-- `read-only` — reads only (query / schema / export); all mutating tools hidden;
-- `normal` (default) — mutations allowed (write SQL runs directly); only non-GET generic passthrough requires `confirm=true`;
-- `full` — no gate.
-
-**Target a specific backend** (when several are running): `DUCKQUERY_API_BASE=http://127.0.0.1:8001`.
-
-See [`mcp/README.md`](mcp/README.md) for details.
-
----
-
-## Configuration
-
-DuckQuery works out-of-the-box. For advanced setups, edit `config/app-config.json`:
-
-| Setting | Default | What it does |
-|---------|---------|-------------|
-| `duckdb_memory_limit` | `8GB` | Max RAM for DuckDB |
-| `server_data_mounts` | `[]` | Mount host directories for direct file access |
-| `cors_origins` | `3000`, `5173` | Allowed frontend origins |
-
-👉 **[Full Configuration Reference →](docs/CONFIGURATION.md)**
-
----
-
-## FAQ
-
-<details>
-<summary><b>Docker: How to query files without uploading?</b></summary>
-
-Mount your data directory in `docker-compose.yml`:
-```yaml
-volumes:
-  - /your/data/path:/app/server_mounts
-```
-Then add to `config/app-config.json`:
 ```json
-"server_data_mounts": [{"label": "My Data", "path": "/app/server_mounts"}]
-```
-</details>
-
-<details>
-<summary><b>Local Dev: How to query files without uploading?</b></summary>
-
-Configure local folder in `config/app-config.json`:
-```json
-"server_data_mounts": [{"label": "My Data", "path": "/Users/yourname/data-folder"}]
-```
-Restart the backend, then browse and import files from the "Server Directory" tab in the data source page.
-</details>
-
-<details>
-<summary><b>Docker: How to change default ports?</b></summary>
-
-Edit `docker-compose.yml`:
-```yaml
-services:
-  backend:
-    ports: ["48001:8000"]  # host port (default 48001)
-  frontend:
-    ports: ["48000:80"]    # host port (default 48000)
-```
-</details>
-
-<details>
-<summary><b>Local Dev: How to change default ports?</b></summary>
-
-**Backend port** (default 48001):
-```bash
-cd api && uvicorn main:app --reload --port 48001
+{
+  "mcpServers": {
+    "duckquery": {
+      "command": "uvx",
+      "args": ["duckquery-mcp"],
+      "env": { "DUCKQUERY_MCP_MODE": "normal" }
+    }
+  }
+}
 ```
 
-**Frontend port** (default 48000):
-Change `server.port` in `frontend/vite.config.js`:
-```javascript
-server: {
-  port: 48000,  // change here
-  proxy: {
-    // ... existing config
-  },
-},
-```
-Or specify at startup:
-```bash
-cd frontend && npm run dev -- --port 48000
-```
+`DUCKQUERY_MCP_MODE`:
 
-**CORS Note**: Default allows `localhost:48000`. For other ports, add to `config/app-config.json`:
-```json
-"cors_origins": ["http://localhost:48000", "http://localhost:YOUR_PORT"]
-```
-</details>
+- `read-only`: registers read-tier tools only; mutating SQL and other mutation requests are blocked even with `confirm=true`.
+- `normal` (default): exposes write tools; changing tables, saving connections, importing data, mutating SQL statements, and non-GET passthrough requests require `confirm=true`.
+- `full`: bypasses the confirmation gates above for environments where the caller provides its own safety controls.
 
-<details>
-<summary><b>Will Docker redeploy delete my tables?</b></summary>
-
-No. DuckDB files are on the host under **`./data`**. `docker compose up -d --build` only recreates containers. `docker compose down` stops containers but **does not** remove `./data`. Avoid `docker compose down -v` unless you mean to wipe volumes. For WAL issues see `./scripts/repair-duckdb-wal.sh`.
-</details>
+Once connected, the MCP client reads the live schemas and parameter descriptions for all tools. The MCP server auto-discovers a running backend; when several are running, set `DUCKQUERY_API_BASE=http://127.0.0.1:48001` to pin one. See [mcp/README.md](mcp/README.md) for details.
 
 ---
 
-## Like it?
+If DuckQuery is useful to you, a ⭐ star helps more people discover it.
 
-If DuckQuery saved you a detour, a star helps other people find it.
-
-<p align="center">
-  <a href="https://github.com/Chenkeliang/duckdb-query">⭐ Star on GitHub</a> &nbsp;·&nbsp;
-  <a href="https://chenkeliang.github.io/duckdb-query/">🚀 Try the live demo</a> &nbsp;·&nbsp;
-  <a href="https://github.com/Chenkeliang/duckdb-query/issues">🛠 Open an issue / contribute</a>
-</p>
-
----
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-MIT © [Chenkeliang](https://github.com/Chenkeliang)
+[Documentation (Chinese)](docs/README.md) · [API contract](docs/API_CONTRACT_FE_BE.md) · [Issues](https://github.com/Chenkeliang/duckdb-query/issues) · [Contributing (Chinese)](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [MIT License](LICENSE)

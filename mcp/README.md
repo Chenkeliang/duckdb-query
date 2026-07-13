@@ -56,7 +56,12 @@ export) plus a generic `duckquery_request` passthrough. Safety mode gates which
 tools are exposed:
 - `read-only` — hides all mutating tools; non-GET `duckquery_request` calls are
   hard-blocked (`confirm` cannot override).
-- `normal` (default) — mutating tools are exposed and run without extra
-  confirmation (`run_sql` executes write SQL directly); only non-GET
-  `duckquery_request` passthrough requires `confirm=true`.
-- `full` — removes the passthrough confirm gate.
+- `normal` (default) — mutating tools are exposed, but changing tables,
+  saving connections, importing data, running mutating SQL, and non-GET
+  `duckquery_request` calls each require `confirm=true`.
+- `full` — bypasses the MCP confirmation gates above; backend safeguards still
+  apply.
+
+The AI-settings tools (`configure_llm`, `test_llm_provider`) are write-tier —
+hidden in `read-only` — but take no `confirm` parameter and apply directly in
+`normal` mode.
