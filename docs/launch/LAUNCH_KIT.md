@@ -13,8 +13,8 @@ Ready-to-paste copy for the cold-start. 9 months at ~2 stars means the product i
 - [ ] Verify `./quick-start.sh` works from a clean clone — it's the entry point for the two things the browser demo can't do: connecting a real MySQL/Postgres and using the AI features.
 - [ ] Add 2–3 **`good first issue`** labels so visitors have a way to contribute.
 - [ ] Pin one issue: "Roadmap / what to build next — vote here".
-- [ ] Make sure the first README screen shows the **AI** features (done) + a GIF (done).
-- [ ] Have a 20–40s **screen-recording GIF of the AI text-to-SQL + cross-source JOIN** ready (the current GIFs don't show AI — record one).
+- [x] Make sure the first README screen shows the **AI** features + a GIF.
+- [x] Have concise README GIFs for the **cross-source JOIN** and **AI-to-chart** workflows.
 
 ---
 
@@ -50,10 +50,12 @@ It also has an AI layer that's opt-in and local-first:
 
 Try it in the browser first, no install (DuckDB-Wasm, runs real SQL client-side
 against sample tables or your own CSV/Parquet/JSON): https://chenkeliang.github.io/duckdb-query/
-For MySQL/Postgres connections and AI, self-host (one command, your data never
-leaves your machine):
+For MySQL/Postgres connections and AI, self-host with one command:
   git clone … && ./quick-start.sh   → http://localhost:48000
 (README has GIFs if you'd rather watch first.)
+
+The instance stores tables and settings locally by default. Configured remote
+databases and model endpoints are contacted only when you use those features.
 
 Stack: DuckDB + FastAPI + React. MIT. API keys for the AI are encrypted server-side
 and the generated SQL is always shown for review, never run automatically.
@@ -84,7 +86,7 @@ DuckQuery: a visual workbench on DuckDB — ATTACH MySQL/Postgres + files, with 
 ```
 Body: lead with how it uses DuckDB (`ATTACH` to MySQL/PG, native file scan). This audience already gets the value — focus on the DuckDB-specific implementation.
 
-**Also consider:** r/SQL, r/Database, r/selfhosted (angle: "self-hosted, local-first, your data never leaves your machine").
+**Also consider:** r/SQL, r/Database, r/selfhosted (angle: "self-hosted and local-first, with remote DB and model endpoints under your control").
 
 ---
 
@@ -98,7 +100,7 @@ Body: lead with how it uses DuckDB (`ATTACH` to MySQL/PG, native file scan). Thi
 - 痛点：DBeaver 连不了本地文件、Metabase 要先建仓库跑 ETL，临时跨源分析很别扭
 - 方案：基于 DuckDB，拖个 CSV 即查、ATTACH 远程库、**一条 SQL 跨源 JOIN**、免 ETL
 - AI：问数（自然语言生成 SQL，确认后才执行）、报错医生、图表推荐；本地优先、Key 服务端加密
-- 自托管一行命令 `./quick-start.sh`（数据不出本机）+ README 里 40s 演示视频
+- 自托管一行命令 `./quick-start.sh`；表与设置默认保存在本机，联邦查询和 AI 仅按配置访问外部端点；README 提供双语演示 GIF
 - 求反馈：你们平时怎么做临时的跨源关联？
 
 **V2EX 注意**：发「分享创造」节点，标题别标题党，正文别催 star。
@@ -117,7 +119,7 @@ query, and let AI write the SQL. Open source, runs local. 🧵
 ```
 Tweet 2: the cross-source JOIN GIF + "built on @duckdb — drag a file, ATTACH a DB, query both".
 Tweet 3: the AI bit — text-to-SQL you review before running + error doctor + charts.
-Tweet 4: "One-command self-host, your data stays local. MIT. ⭐ if useful: <repo link>". Tag @duckdb.
+Tweet 4: "One-command self-host, local-first storage, and only the remote DB/model endpoints you configure. MIT. ⭐ if useful: <repo link>". Tag @duckdb.
 
 ---
 
