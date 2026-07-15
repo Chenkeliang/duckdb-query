@@ -202,3 +202,35 @@ def test_promote_skips_chinese_identifier_columns(ingestion_con):
         _create_varchar_table(ingestion_con, t, col, ["13800138000"])
         promote_table_column_types_from_varchar(ingestion_con, t)
         assert _column_type(ingestion_con, t, col) == "VARCHAR", col
+
+
+def test_promote_timestamp_text_not_truncated_to_date(ingestion_con):
+    """回归：TRY_CAST(时间戳文本 AS DATE) 会截断成功——必须以文本往返阻止时分秒静默丢失"""
+    from core.data.ingestion_precision import promote_table_column_types_from_varchar
+
+    t = _make_table_name("ts_text")
+    _create_varchar_table(ingestion_con, t, "val", ["2024-07-15 10:30:00", "2024-01-01 00:00:00"])
+    promote_table_column_types_from_varchar(ingestion_con, t)
+    assert _column_type(ingestion_con, t, "val") == "TIMESTAMP"
+    stored = ingestion_con.execute(
+        f'SELECT CAST(val AS VARCHAR) FROM "{t}" ORDER BY val DESC'
+    ).fetchone()[0]
+    assert stored == "2024-07-15 10:30:00"
+
+
+def test_promote_pure_dates_to_date(ingestion_con):
+    from core.data.ingestion_precision import promote_table_column_types_from_varchar
+
+    t = _make_table_name("date_text")
+    _create_varchar_table(ingestion_con, t, "val", ["2024-07-15", "2023-12-31"])
+    promote_table_column_types_from_varchar(ingestion_con, t)
+    assert _column_type(ingestion_con, t, "val") == "DATE"
+
+
+def test_promote_mixed_date_formats_stay_varchar(ingestion_con):
+    from core.data.ingestion_precision import promote_table_column_types_from_varchar
+
+    t = _make_table_name("date_mixed")
+    _create_varchar_table(ingestion_con, t, "val", ["2024-07-15", "2024-07-15 10:30:00"])
+    promote_table_column_types_from_varchar(ingestion_con, t)
+    assert _column_type(ingestion_con, t, "val") == "VARCHAR"

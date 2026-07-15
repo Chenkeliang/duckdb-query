@@ -234,6 +234,8 @@ def _infer_varchar_column_promotion(
             return None
         return f"DECIMAL(38,{scale})"
 
+    # 日期/时间戳同样要求文本往返一致：DuckDB 的 TRY_CAST('2024-07-15 10:30:00' AS DATE)
+    # 会"成功"并截断时间部分——只按可转判断会静默丢失时分秒
     date_stats = connection.execute(
         f"""
         WITH src AS (
@@ -243,8 +245,12 @@ def _infer_varchar_column_promotion(
         )
         SELECT
             count(*) AS n,
-            count(*) FILTER (WHERE TRY_CAST(v AS DATE) IS NULL) AS bad_date,
-            count(*) FILTER (WHERE TRY_CAST(v AS TIMESTAMP) IS NULL) AS bad_ts
+            count(*) FILTER (
+                WHERE CAST(TRY_CAST(v AS DATE) AS VARCHAR) IS DISTINCT FROM v
+            ) AS date_not_roundtrip,
+            count(*) FILTER (
+                WHERE CAST(TRY_CAST(v AS TIMESTAMP) AS VARCHAR) IS DISTINCT FROM v
+            ) AS ts_not_roundtrip
         FROM src
         """
     ).fetchone()
