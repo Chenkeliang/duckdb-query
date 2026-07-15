@@ -1,4 +1,5 @@
 # pylint: disable=duplicate-code
+import decimal
 import duckdb
 import logging
 import pandas as pd
@@ -457,13 +458,41 @@ def get_db_connection():
     return PooledConnectionProxy()
 
 
-def fetch_query_dataframe(connection, query):
-    """执行查询并取回 DataFrame；结果含 DECIMAL / HUGEINT 列时改走 Arrow。
+def _fetchall_dataframe(res, desc):
+    """fetchall 构造 DataFrame，各列形态对齐 Arrow 路径（两条路径产出必须一致）。"""
+    names = [col[0] for col in desc]
+    df = pd.DataFrame(res.fetchall(), columns=names)
+    for name, col in zip(names, desc):
+        type_str = str(col[1]).upper()
+        if "HUGEINT" in type_str:
+            # 对齐 Arrow：HUGEINT 以 Decimal 进 DataFrame。裸 Python 大整数会让
+            # normalize 的 convert_dtypes 抛 OverflowError，整帧退化 object，
+            # 连带日期列丢 datetime64 的空格分隔序列化格式。
+            df[name] = df[name].map(
+                lambda v: decimal.Decimal(v) if v is not None else None
+            )
+        elif type_str == "DATE" or type_str.startswith("TIMESTAMP"):
+            # 日期/时间戳列转回 datetime64，保持与 fetchdf/Arrow 路径一致的序列化
+            # 格式（object 列会走 isoformat 带 "T"）。用 astype[us] 而非 to_datetime：
+            # 财务哨兵日期 9999-12-31 超出 ns 上限。转不动时保持对象列（isoformat
+            # 序列化仍无损，只是格式差异），不让整条查询失败。
+            try:
+                if "WITH TIME ZONE" in type_str:
+                    df[name] = pd.to_datetime(df[name])
+                else:
+                    df[name] = df[name].astype("datetime64[us]")
+            except (ValueError, TypeError):
+                pass
+    return df
 
-    fetchdf 会把 DECIMAL 压成 float64（约 15-17 位有效数字，财务值可能失真），
-    Arrow 路径则以 decimal.Decimal 对象进入 DataFrame，配合 JSON 层的
-    Decimal→十进制字符串序列化实现全链路无损；date_as_object=False 保持
-    日期/时间戳 dtype 与 fetchdf 一致。其余结果仍走 fetchdf 原路径。
+
+def fetch_query_dataframe(connection, query):
+    """执行查询并取回 DataFrame；结果含 DECIMAL / HUGEINT 列时保留精确值。
+
+    fetchdf 会把 DECIMAL 压成 float64（约 15-17 位有效数字，财务值可能失真）。
+    含 DECIMAL/HUGEINT 时优先走 Arrow（向量化，decimal.Decimal 进 DataFrame）；
+    桌面冻结包没有 pyarrow（duckquery.spec excludes，省约 121MB），此时退到
+    fetchall 路径，精度语义与 Arrow 一致。其余结果仍走 fetchdf 原路径。
     """
     res = connection.execute(query)
     desc = res.description or []
@@ -471,6 +500,10 @@ def fetch_query_dataframe(connection, query):
         "DECIMAL" in str(col[1]).upper() or "HUGEINT" in str(col[1]).upper()
         for col in desc
     ):
+        try:
+            import pyarrow  # noqa: F401
+        except ImportError:
+            return _fetchall_dataframe(res, desc)
         return res.to_arrow_table().to_pandas(date_as_object=False)
     return res.fetchdf()
 
