@@ -360,7 +360,7 @@ def _detect_csv_encoding(file_path: str) -> Optional[str]:
             try:
                 raw_data.decode(enc)
                 logger.info(f"Fallback encoding detection for {file_path}: {enc}")
-                return "GBK"
+                return "GB18030"
             except UnicodeDecodeError:
                 continue
 

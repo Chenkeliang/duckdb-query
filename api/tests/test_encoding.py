@@ -50,7 +50,19 @@ class TestEncodingDetection:
         """Test Latin-1 fallback for binary-like or western text"""
         content = "col1,col2\nRésume,Café"
         path = self.create_csv("latin1.csv", content, "latin-1")
-        
+
         df = read_file_by_type(path, "csv")
         assert df.iloc[0, 0] == "Résume"
         assert df.iloc[0, 1] == "Café"
+
+    def test_detect_fallback_returns_duckdb_supported_encoding(self, monkeypatch):
+        """charset_normalizer 失败时的 gb 兜底必须返回 DuckDB 认识的 GB18030（不是 GBK）"""
+        import charset_normalizer
+        from core.data.file_utils import _detect_csv_encoding
+
+        path = os.path.join(self.test_dir, "fallback.csv")
+        with open(path, "wb") as f:
+            f.write("col1\n你好\n".encode("gb18030"))
+
+        monkeypatch.setattr(charset_normalizer, "from_bytes", lambda *_a, **_k: None)
+        assert _detect_csv_encoding(path) == "GB18030"
