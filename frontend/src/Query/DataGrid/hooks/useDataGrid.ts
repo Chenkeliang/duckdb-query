@@ -16,6 +16,7 @@ import {
   type FilterFn,
 } from '@tanstack/react-table';
 import type { ColumnDef, ValueFilter, ConditionFilter } from '../types';
+import { exactNumericSortingFn } from '../utils/numericSort';
 
 /**
  * 自定义筛选函数 - 支持 ValueFilter 和 ConditionFilter
@@ -156,6 +157,9 @@ function toTanStackColumns(columns: ColumnDef[]): TanStackColumnDef<Record<strin
     enableColumnFilter: col.filterable !== false,
     enableResizing: col.resizable !== false,
     filterFn: customFilterFn,
+    // 数值列用精确比较：DECIMAL/超安全整数的 BIGINT 以字符串到达，
+    // 默认排序会退化成字典序或在 Number() 处失真
+    ...(col.type === 'number' ? { sortingFn: exactNumericSortingFn } : {}),
   }));
 }
 

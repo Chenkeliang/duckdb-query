@@ -289,6 +289,7 @@ class TestSetOperationAPI:
             # 模拟数据库连接
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
+            mock_con.execute.return_value.description = []
 
             response = client.post("/api/set-operations/generate", json=request_data)
 
@@ -353,6 +354,7 @@ class TestSetOperationAPI:
             # 模拟数据库连接和查询结果
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
+            mock_con.execute.return_value.description = []
 
             # 模拟预览数据
             preview_data = pd.DataFrame(
@@ -404,6 +406,7 @@ class TestSetOperationAPI:
 
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
+            mock_con.execute.return_value.description = []
 
             preview_frame = pd.DataFrame({"id": [1], "name": ["Alice"]})
             mock_con.execute.return_value.fetchdf.return_value = preview_frame
@@ -442,6 +445,7 @@ class TestSetOperationAPI:
             # 模拟数据库连接
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
+            mock_con.execute.return_value.description = []
 
             # 模拟表存在检查
             mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
@@ -488,6 +492,7 @@ class TestSetOperationAPI:
             # 模拟数据库连接和查询结果
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
+            mock_con.execute.return_value.description = []
 
             # 模拟执行结果
             result_data = pd.DataFrame(
@@ -522,6 +527,7 @@ class TestSetOperationAPI:
             # 模拟数据库连接
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
+            mock_con.execute.return_value.description = []
 
             response = client.post(
                 "/api/set-operations/simple-union", json=request_data
@@ -573,6 +579,7 @@ class TestSetOperationIntegration:
             # 模拟数据库连接
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
+            mock_con.execute.return_value.description = []
 
             # 步骤1：生成查询
             response = client.post(

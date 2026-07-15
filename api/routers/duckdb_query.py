@@ -33,6 +33,7 @@ from core.data.file_datasource_manager import (
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     create_persistent_table,
+    fetch_query_dataframe,
     with_duckdb_connection,
 )
 from core.database.federated_attach import (
@@ -407,7 +408,7 @@ def execute_duckdb_query(
         # 使用可中断连接执行查询（如果有 query_id）
         if query_id:
             with interruptible_connection(query_id, sql_query) as conn:
-                result_df = conn.execute(sql_query).fetchdf()
+                result_df = fetch_query_dataframe(conn, sql_query)
                 query_column_types = describe_query_column_types(
                     conn, sql_query, result_df
                 )
@@ -457,7 +458,7 @@ def execute_duckdb_query(
                 )
         else:
             with with_duckdb_connection() as con:
-                result_df = con.execute(sql_query).fetchdf()
+                result_df = fetch_query_dataframe(con, sql_query)
                 query_column_types = describe_query_column_types(
                     con, sql_query, result_df
                 )
@@ -838,7 +839,7 @@ def execute_federated_query(
             warnings.extend(str(w) for w in opt_warnings)
 
         # 3. 执行用户 SQL（使用优化后的语句）
-        result_df = conn.execute(opt_sql).fetchdf()
+        result_df = fetch_query_dataframe(conn, opt_sql)
 
         # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
         if request.save_as_table:
