@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 _MAX_INTEGER_STRING_DIGITS = 18
 
 _IDENTIFIER_NAME_RE = re.compile(
-    r"(^id$|_id$|^id_|_id_|^code$|_code$|code_|sku|serial|barcode|account|phone|zip|postal|order_no|tracking)",
+    r"(^id$|_id$|^id_|_id_|^code$|_code$|code_|sku|serial|barcode|account|phone|zip|postal|order_no|tracking"
+    r"|单号|编号|编码|号码|手机|电话|身份证|证件|卡号|账号|账户|工号|邮编)",
     re.IGNORECASE,
 )
 
@@ -160,7 +161,16 @@ def build_csv_column_type_overrides(
 def _infer_varchar_column_promotion(
     connection: Any, quoted_table: str, column_name: str
 ) -> Optional[str]:
-    """根据列内实际文本推断可无损提升的目标类型；无法保证则返回 None（保持 VARCHAR）。"""
+    """根据列内实际文本推断可无损提升的目标类型；无法保证则返回 None（保持 VARCHAR）。
+
+    值无损不变量（财务准则）：
+    - 整数列：逐值文本往返一致（CAST(CAST(v AS BIGINT) AS VARCHAR) = v），
+      一条判据同时封死前导零、正号、超界等一切文本变形；
+    - 小数列：以列内最大小数位数为 DECIMAL 标度（数学上不可能发生舍入），
+      整数位 + 小数位超出 DECIMAL(38) 容量则保持 VARCHAR，绝不静默舍入；
+      混合标度（1.5 与 1.50 同列）按最大标度归一，数值严格相等；
+    - 任何值带前导零（007、007.50）视作编码语义，整列不提升。
+    """
     qcol = _quote_identifier(column_name)
     stats = connection.execute(
         f"""
@@ -173,7 +183,7 @@ def _infer_varchar_column_promotion(
             count(*) AS n,
             count(*) FILTER (WHERE regexp_full_match(v, '^[+-]?\\d+$')) AS int_like,
             count(*) FILTER (WHERE regexp_full_match(v, '^[+-]?\\d+\\.\\d+$')) AS dec_like,
-            max(length(v)) AS max_len
+            count(*) FILTER (WHERE regexp_full_match(v, '^[+-]?0\\d.*')) AS zero_padded
         FROM src
         """
     ).fetchone()
@@ -181,38 +191,51 @@ def _infer_varchar_column_promotion(
     if not stats or stats[0] == 0:
         return None
 
-    n, int_like, dec_like, _max_len = stats
+    n, int_like, dec_like, zero_padded = stats
+    if zero_padded:
+        return None
+
     if int_like == n:
-        digit_stats = connection.execute(
+        roundtrip = connection.execute(
             f"""
             WITH src AS (
                 SELECT trim(CAST({qcol} AS VARCHAR)) AS v
                 FROM {quoted_table}
                 WHERE {qcol} IS NOT NULL AND trim(CAST({qcol} AS VARCHAR)) <> ''
             )
-            SELECT max(length(replace(replace(v, '-', ''), '+', ''))) FROM src
+            SELECT count(*) FILTER (
+                WHERE CAST(TRY_CAST(v AS BIGINT) AS VARCHAR) IS DISTINCT FROM v
+            ) FROM src
             """
         ).fetchone()
-        max_digits = digit_stats[0] if digit_stats else 0
-        if max_digits and max_digits <= _MAX_INTEGER_STRING_DIGITS:
+        if roundtrip and roundtrip[0] == 0:
             return "BIGINT"
         return None
 
     if dec_like == n:
-        scale_row = connection.execute(
+        digits_row = connection.execute(
             f"""
             WITH src AS (
                 SELECT trim(CAST({qcol} AS VARCHAR)) AS v
                 FROM {quoted_table}
                 WHERE {qcol} IS NOT NULL AND trim(CAST({qcol} AS VARCHAR)) <> ''
             )
-            SELECT max(length(split_part(v, '.', 2))) FROM src
+            SELECT
+                max(length(split_part(v, '.', 2))) AS frac_digits,
+                max(length(replace(replace(split_part(v, '.', 1), '-', ''), '+', ''))) AS int_digits
+            FROM src
             """
         ).fetchone()
-        scale = int(scale_row[0] or 0) if scale_row else 0
-        scale = min(max(scale, 0), 18)
+        if not digits_row:
+            return None
+        scale = int(digits_row[0] or 0)
+        int_digits = int(digits_row[1] or 0)
+        if scale < 1 or scale > 38 or int_digits + scale > 38:
+            return None
         return f"DECIMAL(38,{scale})"
 
+    # 日期/时间戳同样要求文本往返一致：DuckDB 的 TRY_CAST('2024-07-15 10:30:00' AS DATE)
+    # 会"成功"并截断时间部分——只按可转判断会静默丢失时分秒
     date_stats = connection.execute(
         f"""
         WITH src AS (
@@ -222,8 +245,12 @@ def _infer_varchar_column_promotion(
         )
         SELECT
             count(*) AS n,
-            count(*) FILTER (WHERE TRY_CAST(v AS DATE) IS NULL) AS bad_date,
-            count(*) FILTER (WHERE TRY_CAST(v AS TIMESTAMP) IS NULL) AS bad_ts
+            count(*) FILTER (
+                WHERE CAST(TRY_CAST(v AS DATE) AS VARCHAR) IS DISTINCT FROM v
+            ) AS date_not_roundtrip,
+            count(*) FILTER (
+                WHERE CAST(TRY_CAST(v AS TIMESTAMP) AS VARCHAR) IS DISTINCT FROM v
+            ) AS ts_not_roundtrip
         FROM src
         """
     ).fetchone()

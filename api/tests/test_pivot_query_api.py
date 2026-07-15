@@ -212,6 +212,7 @@ class TestPivotQueryPreview:
 
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_pool, mock_con)
+            mock_con.execute.return_value.description = []
             mock_con.execute.return_value.fetchdf.side_effect = [
                 preview_data,
                 pd.DataFrame({'total_rows': [1000]}),
@@ -252,6 +253,7 @@ class TestTableMetadata:
             
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_db, mock_con)
+            mock_con.execute.return_value.description = []
             
             # Mock available tables
             import pandas as pd
@@ -307,6 +309,7 @@ class TestTableMetadata:
         with patch('routers.duckdb_query.with_duckdb_connection') as mock_db:
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_db, mock_con)
+            mock_con.execute.return_value.description = []
             
             # Mock empty tables list
             import pandas as pd
@@ -329,6 +332,7 @@ class TestTableMetadata:
 
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_db, mock_con)
+            mock_con.execute.return_value.description = []
 
             import pandas as pd
             mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({
@@ -361,6 +365,7 @@ class TestTableMetadata:
         with patch('routers.duckdb_query.with_duckdb_connection') as mock_db:
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_db, mock_con)
+            mock_con.execute.return_value.description = []
 
             import pandas as pd
             mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({

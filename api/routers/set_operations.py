@@ -11,7 +11,7 @@ import duckdb
 import pandas as pd
 from core.common.config_manager import config_manager
 from core.common.utils import normalize_dataframe_output
-from core.database.duckdb_engine import with_duckdb_connection
+from core.database.duckdb_engine import fetch_query_dataframe, with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
@@ -50,7 +50,7 @@ def _timed_execute_fetch(con: Any, sql: str) -> pd.DataFrame:
     from core.database.query_metrics import log_query_duration
 
     start = time.time()
-    result_df = con.execute(sql).fetchdf()
+    result_df = fetch_query_dataframe(con, sql)
     elapsed_ms = (time.time() - start) * 1000
     explain_threshold = max(
         config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0

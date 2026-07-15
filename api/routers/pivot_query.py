@@ -8,7 +8,11 @@ import duckdb
 from fastapi import APIRouter, Header
 
 from core.common.utils import normalize_dataframe_output
-from core.database.duckdb_engine import execute_query, with_duckdb_connection
+from core.database.duckdb_engine import (
+    execute_query,
+    fetch_query_dataframe,
+    with_duckdb_connection,
+)
 from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import execute_sql_with_attach
 from core.services.pivot_query_generator import (
@@ -165,7 +169,7 @@ def _preview_pivot_query(
                 logger.warning("Failed to calculate preview total rows: %s", count_exc)
         elif query_id:
             with interruptible_connection(query_id, preview_sql) as conn:
-                preview_df = conn.execute(preview_sql).fetchdf()
+                preview_df = fetch_query_dataframe(conn, preview_sql)
                 total_rows = len(preview_df)
                 try:
                     count_sql = _build_preview_count_sql(generation.final_sql)

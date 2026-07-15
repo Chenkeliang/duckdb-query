@@ -43,6 +43,12 @@ function formatNumberValue(value: unknown): string {
     return normalized;
   }
 
+  // DECIMAL 列以精确十进制字符串返回（如 '-0.30'、19 位小数）：原样展示，
+  // 不走 parseFloat（float64 只有 ~16 位有效数字，且会吞掉标度尾零）
+  if (typeof value === 'string' && /^-?\d+\.\d+$/.test(normalized)) {
+    return normalized;
+  }
+
   const num = typeof value === 'number' ? value : parseFloat(normalized);
   if (isNaN(num)) {
     return raw;
@@ -77,6 +83,11 @@ function formatDateValue(value: unknown): string {
 function isVariantDuckdbType(duckdbType: string): boolean {
   return duckdbType.toUpperCase().includes('VARIANT');
 }
+
+// DuckDB 数值类型：以服务端类型为准强制按数值列处理（右对齐格式化 + 精确数值排序）。
+// DECIMAL / 超安全整数的 BIGINT 在 JSON 里是字符串，仅靠值采样可能误判为字符串列。
+const DUCKDB_NUMERIC_TYPE_RE =
+  /^(DECIMAL|NUMERIC|BIGINT|HUGEINT|INTEGER|SMALLINT|TINYINT|UBIGINT|UHUGEINT|UINTEGER|USMALLINT|UTINYINT|DOUBLE|FLOAT|REAL)/i;
 
 
 function booleanCellRenderer(value: unknown): React.ReactNode {
@@ -163,7 +174,8 @@ export function useDataGridColumns({
       const typeInfo = columnTypesRaw[field];
       const duckdbType = duckdbTypeByField[field];
       const isVariantCol = duckdbType ? isVariantDuckdbType(duckdbType) : false;
-      const type: ColumnType = typeInfo?.type || 'string';
+      const duckdbNumeric = duckdbType ? DUCKDB_NUMERIC_TYPE_RE.test(duckdbType) : false;
+      const type: ColumnType = duckdbNumeric ? 'number' : typeInfo?.type || 'string';
       const override = columnOverrides[field] || {};
 
       const col: ColumnDef = {

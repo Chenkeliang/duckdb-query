@@ -457,6 +457,24 @@ def get_db_connection():
     return PooledConnectionProxy()
 
 
+def fetch_query_dataframe(connection, query):
+    """执行查询并取回 DataFrame；结果含 DECIMAL / HUGEINT 列时改走 Arrow。
+
+    fetchdf 会把 DECIMAL 压成 float64（约 15-17 位有效数字，财务值可能失真），
+    Arrow 路径则以 decimal.Decimal 对象进入 DataFrame，配合 JSON 层的
+    Decimal→十进制字符串序列化实现全链路无损；date_as_object=False 保持
+    日期/时间戳 dtype 与 fetchdf 一致。其余结果仍走 fetchdf 原路径。
+    """
+    res = connection.execute(query)
+    desc = res.description or []
+    if any(
+        "DECIMAL" in str(col[1]).upper() or "HUGEINT" in str(col[1]).upper()
+        for col in desc
+    ):
+        return res.to_arrow_table().to_pandas(date_as_object=False)
+    return res.fetchdf()
+
+
 def execute_query(query, con=None):
     """
     在DuckDB中执行查询 - 带性能监控
@@ -477,7 +495,7 @@ def execute_query(query, con=None):
                 logger.debug("SHOW TABLES failed in debug mode: %s", debug_error)
 
         try:
-            result = connection.execute(query).fetchdf()
+            result = fetch_query_dataframe(connection, query)
         except Exception as err:
             # 联邦查询连接失效自愈：mysql 扩展按 DSN 进程级缓存连接，空闲后被
             # 中间设备/wait_timeout 静默掐断，复用即「Server has gone away」，
@@ -492,7 +510,7 @@ def execute_query(query, con=None):
                 except Exception as clear_err:  # pylint: disable=broad-except
                     logger.warning("mysql_clear_cache failed: %s", clear_err)
                 try:
-                    result = connection.execute(query).fetchdf()
+                    result = fetch_query_dataframe(connection, query)
                 except Exception as retry_err:
                     execution_time = (time.time() - start_time) * 1000
                     logger.error(

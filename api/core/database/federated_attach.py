@@ -11,7 +11,11 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 import pandas as pd
 
 from core.database.database_manager import db_manager
-from core.database.duckdb_engine import build_attach_sql, with_duckdb_connection
+from core.database.duckdb_engine import (
+    build_attach_sql,
+    fetch_query_dataframe,
+    with_duckdb_connection,
+)
 from core.database.duckdb_pool import interruptible_connection
 from core.common.exceptions import DatabaseConnectionError, ResourceNotFoundError
 from core.security.encryption import password_encryptor
@@ -143,7 +147,7 @@ def execute_sql_with_attach(
         try:
             if attach_configs:
                 attached = attach_databases_on_connection(conn, attach_configs)
-            return conn.execute(cleaned_sql).fetchdf()
+            return fetch_query_dataframe(conn, cleaned_sql)
         finally:
             if attached:
                 detach_databases_on_connection(conn, attached)
