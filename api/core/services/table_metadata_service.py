@@ -7,6 +7,7 @@ import math
 from typing import List, Optional
 
 from models.pivot_query_models import ColumnStatistics, TableMetadata
+from core.database.duckdb_engine import fetch_query_dataframe
 from core.database.table_metadata_cache import table_metadata_cache
 
 logger = logging.getLogger(__name__)
@@ -79,23 +80,34 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         max_value = None
         avg_value = None
 
-        if data_type.upper() in [
-            "INTEGER",
-            "BIGINT",
-            "DOUBLE",
-            "FLOAT",
-            "DECIMAL",
-            "NUMERIC",
-        ]:
+        # 前缀匹配：DESCRIBE 返回的是 DECIMAL(38,2) 这类带参数的完整类型名
+        if str(data_type).upper().startswith(
+            (
+                "INTEGER",
+                "BIGINT",
+                "SMALLINT",
+                "TINYINT",
+                "HUGEINT",
+                "UBIGINT",
+                "UINTEGER",
+                "USMALLINT",
+                "UTINYINT",
+                "DOUBLE",
+                "FLOAT",
+                "REAL",
+                "DECIMAL",
+                "NUMERIC",
+            )
+        ):
             minmax_sql = f"""
-            SELECT 
+            SELECT
                 MIN("{column_name}") as min_val,
                 MAX("{column_name}") as max_val,
                 AVG(CAST("{column_name}" AS DOUBLE)) as avg_val
             FROM "{table_name}"
             WHERE "{column_name}" IS NOT NULL
             """
-            minmax_df = con.execute(minmax_sql).fetchdf()
+            minmax_df = fetch_query_dataframe(con, minmax_sql)
             if not minmax_df.empty:
                 minmax_row = minmax_df.iloc[0]
                 min_value = minmax_row["min_val"]
@@ -115,7 +127,7 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         WHERE "{column_name}" IS NOT NULL
         LIMIT 10
         """
-        sample_df = con.execute(sample_sql).fetchdf()
+        sample_df = fetch_query_dataframe(con, sample_sql)
         sample_values = []
         for val in sample_df["sample_value"].tolist():
             try:
@@ -132,6 +144,7 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
                 sample_values.append(str(val))
 
         # 处理 NaN 值
+        import decimal as _decimal
         import math
         def safe_float(val):
             if val is None:
@@ -144,13 +157,19 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
             except (ValueError, TypeError):
                 return None
 
+        def safe_number(val):
+            """DECIMAL 的 min/max 以精确十进制字符串返回，其余走 float。"""
+            if isinstance(val, _decimal.Decimal):
+                return str(val) if val.is_finite() else None
+            return safe_float(val)
+
         return ColumnStatistics(
             column_name=column_name,
             data_type=data_type,
             null_count=int(stats_row["null_count"]),
             distinct_count=int(stats_row["distinct_count"]),
-            min_value=safe_float(min_value),
-            max_value=safe_float(max_value),
+            min_value=safe_number(min_value),
+            max_value=safe_number(max_value),
             avg_value=safe_float(avg_value),
             sample_values=sample_values,
         )

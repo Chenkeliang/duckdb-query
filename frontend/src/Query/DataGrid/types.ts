@@ -152,8 +152,9 @@ export interface GridStats {
   totalRows: number;
   filteredRows: number;
   selectedCells: number;
-  sum?: number;
-  average?: number;
+  /** 精确十进制文本（BigInt 求和）或回退的 float */
+  sum?: number | string;
+  average?: number | string;
 }
 
 // ============ DataGrid 配置常量 ============

@@ -195,8 +195,14 @@ export const GridFooter: React.FC<GridFooterProps> = ({
   );
 };
 
-// 格式化数字显示
-function formatNumber(value: number): string {
+// 格式化数字显示；精确十进制字符串（BigInt 统计结果）只做千分组，不经 float
+function formatNumber(value: number | string): string {
+  if (typeof value === 'string') {
+    const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
+    if (!m) return value;
+    const grouped = m[2].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return `${m[1]}${grouped}${m[3] ? `.${m[3]}` : ''}`;
+  }
   if (Number.isInteger(value)) {
     return value.toLocaleString();
   }

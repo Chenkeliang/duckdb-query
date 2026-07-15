@@ -4,6 +4,11 @@
 
 import { useMemo } from 'react';
 import type { CellSelection, GridStats } from '../types';
+import {
+  averagePlainDecimals,
+  sumPlainDecimals,
+  toPlainDecimalText,
+} from '../utils/decimalMath';
 
 export interface UseGridStatsOptions {
   /** 总行数 */
@@ -33,8 +38,8 @@ export function useGridStats({
   const stats = useMemo<GridStats>(() => {
     // 计算选中单元格数量
     let selectedCells = 0;
-    let sum: number | undefined;
-    let average: number | undefined;
+    let sum: number | string | undefined;
+    let average: number | string | undefined;
 
     if (selection) {
       if (selection.all) {
@@ -49,26 +54,32 @@ export function useGridStats({
         // 如果选中单列且有数据，计算数值统计
         if (data && columns && minCol === maxCol) {
           const colName = columns[minCol];
-          const values: number[] = [];
+          // 纯十进制文本走 BigInt 精确算术（DECIMAL 字符串、>2^53 的 BIGINT 字符串）；
+          // 出现指数形态浮点则整组回退 float 口径
+          const texts: string[] = [];
+          const floats: number[] = [];
+          let exact = true;
 
           for (let row = minRow; row <= maxRow; row++) {
             const value = data[row]?.[colName];
-            if (typeof value === 'number' && !isNaN(value)) {
-              values.push(value);
-            } else if (typeof value === 'string') {
-              const t = value.replace(/,/g, '').trim();
-              if (/^-?\d+(\.\d+)?$/.test(t)) {
-                const n = Number(t);
-                if (!Number.isNaN(n)) {
-                  values.push(n);
-                }
-              }
+            if (value === null || value === undefined || value === '') continue;
+            const t = toPlainDecimalText(value);
+            if (t !== null) {
+              texts.push(t);
+              floats.push(Number(t));
+            } else if (typeof value === 'number' && Number.isFinite(value)) {
+              exact = false;
+              floats.push(value);
             }
           }
 
-          if (values.length > 0) {
-            sum = values.reduce((a, b) => a + b, 0);
-            average = sum / values.length;
+          if (exact && texts.length > 0) {
+            sum = sumPlainDecimals(texts);
+            average = averagePlainDecimals(texts);
+          } else if (floats.length > 0) {
+            const floatSum = floats.reduce((a, b) => a + b, 0);
+            sum = floatSum;
+            average = floatSum / floats.length;
           }
         }
       }

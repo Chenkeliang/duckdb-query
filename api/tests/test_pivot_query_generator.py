@@ -501,6 +501,7 @@ class TestColumnStatistics:
         """Test successful column statistics retrieval"""
         # Mock DuckDB connection
         mock_con = Mock()
+        mock_con.execute.return_value.description = []
 
         # Mock DESCRIBE table result
         describe_df = pd.DataFrame(
@@ -537,6 +538,7 @@ class TestColumnStatistics:
     def test_get_column_statistics_column_not_found(self):
         """Test column statistics when column doesn't exist"""
         mock_con = Mock()
+        mock_con.execute.return_value.description = []
 
         # Mock empty DESCRIBE result
         describe_df = pd.DataFrame({"column_name": [], "column_type": []})
@@ -553,6 +555,7 @@ class TestTableMetadata:
     def test_get_table_metadata_success(self, mock_get_column_stats):
         """Test successful table metadata retrieval"""
         mock_con = Mock()
+        mock_con.execute.return_value.description = []
 
         # Mock row count result
         mock_con.execute.return_value.fetchdf.side_effect = [
@@ -598,6 +601,7 @@ class TestTableMetadata:
         """Calling get_table_metadata twice should hit DuckDB once when cache enabled."""
         table_metadata_cache.invalidate()
         mock_con = Mock()
+        mock_con.execute.return_value.description = []
 
         mock_con.execute.return_value.fetchdf.side_effect = [
             pd.DataFrame({"row_count": [50]}),
