@@ -13,8 +13,6 @@ import logging
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import httpx
-
 logger = logging.getLogger(__name__)
 
 _ANTHROPIC_VERSION = "2023-06-01"
@@ -111,6 +109,10 @@ def complete(
     网络错误与可重试状态码（429/5xx 等）按 num_retries 指数退避重试；
     其余 4xx（鉴权/参数错误）立即抛出，避免对确定性失败反复计费重试。
     """
+    # 惰性导入：import httpx 冷启动实测 ~250ms，桌面端 run.py 的
+    # "importing app" 阶段在前端健康轮询超时窗口内，首次真正调用 AI 再付
+    import httpx  # pylint: disable=import-outside-toplevel
+
     url, headers, body, extract = _build_request(
         provider_type, model, messages, api_key, base_url
     )

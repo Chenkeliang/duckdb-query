@@ -33,18 +33,38 @@ def _default_binary() -> Path:
 
 
 def _wait_port(proc: subprocess.Popen) -> int:
-    """run.py 首行打印端口；限时读取。"""
-    deadline = time.time() + STARTUP_TIMEOUT
-    line = ""
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            raise SystemExit(f"FAIL: backend exited early with code {proc.returncode}")
-        line = proc.stdout.readline().strip()
-        if line:
-            break
+    """run.py 首行打印端口；限时读取。
+
+    readline 放到守护线程：若二进制在打印端口前就卡住（Windows 杀软扫描
+    刚落盘的可执行文件是典型场景），主线程的阻塞 readline 会让
+    STARTUP_TIMEOUT 形同虚设，卡到 CI 的 job 级超时（数小时）才失败。
+    """
+    import queue
+
+    q: "queue.Queue[str]" = queue.Queue()
+
+    def _reader() -> None:
+        while True:
+            line = proc.stdout.readline()
+            if not line:  # EOF：进程退出
+                q.put("")
+                return
+            if line.strip():
+                q.put(line.strip())
+                return
+
+    threading.Thread(target=_reader, daemon=True).start()
+    try:
+        line = q.get(timeout=STARTUP_TIMEOUT)
+    except queue.Empty:
+        raise SystemExit(
+            f"FAIL: no port line within {STARTUP_TIMEOUT}s (backend hung before printing port)"
+        ) from None
+    if not line:
+        raise SystemExit(f"FAIL: backend exited early with code {proc.poll()}")
     digits = "".join(ch for ch in line if ch.isdigit())
     if not digits:
-        raise SystemExit(f"FAIL: no port line printed (got {line!r})")
+        raise SystemExit(f"FAIL: no port in first line (got {line!r})")
     return int(digits)
 
 
@@ -59,6 +79,25 @@ def _wait_health(port: int) -> None:
             pass
         time.sleep(1)
     raise SystemExit("FAIL: /health never became ready")
+
+
+def _post_json(port: int, path: str, payload: dict) -> tuple:
+    """POST JSON，容忍 4xx/5xx（返回 (status, body_dict)）。"""
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="PUT" if path.startswith("/api/settings") else "POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            return exc.code, json.loads(body)
+        except ValueError:
+            return exc.code, {"raw": body[:400]}
 
 
 def _execute(port: int, sql: str) -> list:
@@ -141,6 +180,26 @@ def main() -> None:
         rows = _execute(port, "SELECT 42 AS a, 'x' AS s")
         _check("plain int", rows[0]["a"], 42)
         _check("plain varchar", rows[0]["s"], "x")
+
+        # AI 链路（llm_client + httpx）在冻结包内可用:配一个不可达端点的
+        # provider,期待干净的"请求失败"JSON——若打包漏了 httpx 传递依赖,
+        # 这里会是 ModuleNotFoundError(本分支同级别的第二个依赖面改动,
+        # 与 DECIMAL 电池同等需要产物级验证)
+        _post_json(port, "/api/settings/ai", {
+            "enabled": True, "default_provider": "p1",
+            "providers": [{"id": "p1", "type": "openai_compatible",
+                           "base_url": "http://127.0.0.1:9/v1",
+                           "api_key": "sk-smoke", "models": ["m1"],
+                           "enabled": True}],
+            "features": {},
+        })
+        _status, body = _post_json(port, "/api/ai/providers/p1/test", {})
+        body_text = json.dumps(body, ensure_ascii=False)
+        if "No module named" in body_text or "ModuleNotFoundError" in body_text:
+            raise SystemExit(f"FAIL: AI stack missing modules in bundle: {body_text[:300]}")
+        if "LLM request failed" not in body_text:
+            raise SystemExit(f"FAIL: unexpected AI probe response: {body_text[:300]}")
+        print("  ok AI client reaches httpx cleanly (connection refused as expected)")
 
         print("frozen bundle smoke: ALL PASS")
     except SystemExit:

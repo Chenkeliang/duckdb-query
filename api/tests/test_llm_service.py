@@ -7,8 +7,11 @@ from core.services import llm_service
 
 def _cfg(monkeypatch):
     monkeypatch.setenv("LLM_KEY_SECRET", "test-secret")
+    # 只 reload crypto（原地重执行，llm_service 持有的模块引用仍然有效）。
+    # 不要 reload llm_service：会造出新的异常类对象，routers/ai.py 持有的
+    # 旧类 isinstance 不再匹配——本文件先于 test_ai_router 运行时（如手动
+    # 指定文件顺序）稳定错误码测试会全挂。
     importlib.reload(crypto)
-    importlib.reload(llm_service)
     return {
         "enabled": True,
         "default_provider": "p1",

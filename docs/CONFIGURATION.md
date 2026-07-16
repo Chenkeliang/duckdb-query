@@ -117,7 +117,7 @@ AI features (Text-to-SQL chat, error doctor, AI chart suggestions, data chat) ar
 - **Privacy**: provider `api_key` values are stored **Fernet-encrypted**; the read endpoint returns a masked `****` and never echoes back the plaintext. Generated SQL is always placed into the editor — **never auto-executed**.
 - **Provider types**: `openai` / `anthropic` / `ollama` / `openai_compatible` (custom `base_url`).
 - **Per-feature model selection**: `features.{explain | nl_to_sql | chat | suggest_chart | error_fix}` can each specify a provider/model, falling back to `default_provider` when unset.
-- **Timeout / retries**: `timeout_seconds` (default 30), `num_retries` (default 2); backed by `tenacity` on the backend.
+- **Timeout / retries**: `timeout_seconds` (default 30), `num_retries` (default 2); exponential backoff on network errors and 429/5xx (deterministic auth/param errors are not retried).
 - Failed calls return error codes `ai_not_configured` / `ai_disabled`, which the frontend uses to guide the user to Settings.
 
 ---

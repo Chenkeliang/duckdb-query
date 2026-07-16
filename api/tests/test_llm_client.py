@@ -71,7 +71,7 @@ class TestBuildRequest:
 class TestComplete:
     def test_openai_shape_extracted(self):
         data = {"choices": [{"message": {"content": "hello"}}]}
-        with patch.object(llm_client.httpx, "post", return_value=_resp(200, data)):
+        with patch("httpx.post", return_value=_resp(200, data)):
             out = llm_client.complete(
                 provider_type="openai", model="m", messages=MESSAGES, api_key="k"
             )
@@ -79,7 +79,7 @@ class TestComplete:
 
     def test_anthropic_shape_extracted(self):
         data = {"content": [{"type": "text", "text": "hi "}, {"type": "text", "text": "there"}]}
-        with patch.object(llm_client.httpx, "post", return_value=_resp(200, data)):
+        with patch("httpx.post", return_value=_resp(200, data)):
             out = llm_client.complete(
                 provider_type="anthropic", model="m", messages=MESSAGES, api_key="k"
             )
@@ -88,9 +88,7 @@ class TestComplete:
     def test_retries_on_429_then_succeeds(self, monkeypatch):
         monkeypatch.setattr(llm_client.time, "sleep", lambda _s: None)
         ok = _resp(200, {"choices": [{"message": {"content": "ok"}}]})
-        with patch.object(
-            llm_client.httpx, "post", side_effect=[_resp(429, text="rate"), ok]
-        ) as m:
+        with patch("httpx.post", side_effect=[_resp(429, text="rate"), ok]) as m:
             out = llm_client.complete(
                 provider_type="openai", model="m", messages=MESSAGES,
                 api_key="k", num_retries=2,
@@ -99,9 +97,7 @@ class TestComplete:
         assert m.call_count == 2
 
     def test_auth_error_not_retried(self):
-        with patch.object(
-            llm_client.httpx, "post", return_value=_resp(401, text="bad key")
-        ) as m:
+        with patch("httpx.post", return_value=_resp(401, text="bad key")) as m:
             with pytest.raises(LLMClientError, match="401"):
                 llm_client.complete(
                     provider_type="openai", model="m", messages=MESSAGES,
@@ -111,10 +107,7 @@ class TestComplete:
 
     def test_network_error_exhausts_retries(self, monkeypatch):
         monkeypatch.setattr(llm_client.time, "sleep", lambda _s: None)
-        with patch.object(
-            llm_client.httpx, "post",
-            side_effect=httpx.ConnectError("refused"),
-        ) as m:
+        with patch("httpx.post", side_effect=httpx.ConnectError("refused")) as m:
             with pytest.raises(LLMClientError, match="request failed"):
                 llm_client.complete(
                     provider_type="openai", model="m", messages=MESSAGES,
