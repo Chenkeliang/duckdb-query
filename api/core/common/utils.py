@@ -187,10 +187,10 @@ def normalize_dataframe_output(df: pd.DataFrame) -> List[Dict[str, Any]]:
         normalized[col] = formatted_series.where(~series.isna(), None)
 
     normalized = normalized.where(pd.notnull(normalized), None)
-    if hasattr(normalized, "map"):
-        normalized = normalized.map(handle_non_serializable_data)
-    else:
-        normalized = normalized.applymap(handle_non_serializable_data)
+    # 注意不要在这里做 DataFrame.map(jsonable)：map 会按返回值重推断列 dtype，
+    # 含 NULL 的整数列（如 [42, None]）被推成 float64 → JSON 里 42 变 42.0。
+    # 逐值编码由下方 record 循环的 handle_non_serializable_data 完成（此前
+    # map + 循环是双重编码，map 属冗余）。
 
     records = normalized.to_dict(orient="records")
     safe_records: List[Dict[str, Any]] = []

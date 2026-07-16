@@ -76,7 +76,9 @@ def test_nullable_bigint_beyond_js_safe_int_not_corrupted(con):
     )
     records = normalize_dataframe_output(df)
     values = [r["b"] for r in records]
-    assert values[0] == 42
+    # isinstance 断言必不可少:42.0 == 42 为 True,等值断言抓不住
+    # "含 NULL 整数列被浮点化"(DataFrame.map 曾按返回值重推断 dtype)
+    assert values[0] == 42 and isinstance(values[0], int)
     assert values[1] == "9007199254740993"  # 精确，不是 ...992
     assert values[2] is None
 
