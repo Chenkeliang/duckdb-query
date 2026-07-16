@@ -581,8 +581,10 @@ def table_exists(table_name: str, con=None) -> bool:
     """
     try:
         with _use_connection(con) as connection:
-            tables_df = connection.execute("SHOW TABLES").fetchdf()
-        return table_name in tables_df["name"].tolist()
+            table_names = [
+                row[0] for row in connection.execute("SHOW TABLES").fetchall()
+            ]
+        return table_name in table_names
     except Exception as e:
         logger.error(f"Failed to check if table exists {table_name}: {str(e)}")
         return False
@@ -694,7 +696,7 @@ def get_table_info(table_name: str, con=None) -> Dict[str, Any]:
         with _use_connection(con) as connection:
             # 获取表结构
             schema_query = f"DESCRIBE {table_name}"
-            schema_df = connection.execute(schema_query).fetchdf()
+            schema_rows = connection.execute(schema_query).fetchall()
 
             # 获取行数
             count_query = f"SELECT COUNT(*) as row_count FROM {table_name}"
@@ -702,9 +704,9 @@ def get_table_info(table_name: str, con=None) -> Dict[str, Any]:
         row_count = count_result[0] if count_result else 0
 
         # 统一列数据格式：转换为前端期望的对象数组格式
-        columns = []
-        for _, row in schema_df.iterrows():
-            columns.append({"name": row["column_name"], "type": row["column_type"]})
+        columns = [
+            {"name": str(row[0]), "type": str(row[1])} for row in schema_rows
+        ]
 
         return {
             "table_name": table_name,
@@ -914,10 +916,11 @@ def build_single_table_query(query_request: QueryRequest) -> str:
         try:
             # 展开 SELECT *
             with _use_connection() as connection:
-                columns_df = connection.execute(
+                info_rows = connection.execute(
                     f"PRAGMA table_info({table_name_sql})"
-                ).fetchdf()
-            all_columns = columns_df["name"].tolist()
+                ).fetchall()
+            # PRAGMA table_info 第 2 列为列名
+            all_columns = [str(row[1]) for row in info_rows]
             select_clause = ", ".join([f'"{col}"' for col in all_columns])
             if not select_clause:  # 如果表没有列
                 select_clause = "*"
@@ -992,8 +995,9 @@ def optimize_query_plan(query: str, con=None) -> str:
     try:
         with _use_connection(con) as connection:
             explain_query = f"EXPLAIN {query}"
-            plan = connection.execute(explain_query).fetchdf()
-        logger.info(f"Query plan:\n{plan.to_string()}")
+            plan_rows = connection.execute(explain_query).fetchall()
+        plan_text = "\n".join(str(row[-1]) for row in plan_rows)
+        logger.info(f"Query plan:\n{plan_text}")
 
         # 这里可以添加查询优化逻辑
         # 例如：重新排序JOIN顺序、添加索引提示等

@@ -255,9 +255,9 @@ def test_build_multi_table_join_query_federated_column_prune_without_pushdown():
 
 def test_load_federated_table_columns_from_describe():
     mock_con = Mock()
-    mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-        {"column_name": ["order_id", "amount"]}
-    )
+    mock_con.execute.return_value.fetchall.return_value = [
+        ("order_id", "VARCHAR"), ("amount", "DECIMAL(18,2)"),
+    ]
     cols = load_federated_table_columns(
         mock_con, "mysql_sorder.iget_order_detail", {"mysql_sorder"}
     )

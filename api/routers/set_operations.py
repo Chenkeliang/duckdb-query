@@ -352,10 +352,9 @@ def execute_set_operation(
                 logger.info(f"Starting to save set operation result to table: {table_name}")
 
                 # 检查表名是否已存在
-                existing_tables = con.execute("SHOW TABLES").fetchdf()
-                existing_table_names = (
-                    existing_tables["name"].tolist() if not existing_tables.empty else []
-                )
+                existing_table_names = [
+                    row[0] for row in con.execute("SHOW TABLES").fetchall()
+                ]
 
                 if table_name in existing_table_names:
                     logger.warning(f"Table {table_name} already exists，will be replaced")

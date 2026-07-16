@@ -314,9 +314,7 @@ class TestJoinQueryGenerator:
         bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users", "orders"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
 
         join = Join(
             left_source_id="users",
@@ -348,9 +346,7 @@ class TestJoinQueryGenerator:
         bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users", "orders"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
 
         join = Join(
             left_source_id="users",
@@ -385,9 +381,7 @@ class TestJoinQueryGenerator:
         bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users", "orders"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
 
         request = QueryRequest(
             sources=[self.source1, self.source2], joins=[]  # 无JOIN条件
@@ -407,9 +401,7 @@ class TestJoinQueryGenerator:
         bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",)]
 
         request = QueryRequest(sources=[self.source1], joins=[])
 
@@ -427,9 +419,7 @@ class TestJoinQueryGenerator:
         调 API 的调用方可以——转义必须在编译层兜住，不能依赖调用方守规矩。"""
         mock_con = Mock()
         bind_mock_duckdb_pool(mock_get_db, mock_con)
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users", "orders"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
 
         malicious_source = DataSource(
             id="users",
@@ -470,9 +460,7 @@ class TestJoinQueryGenerator:
         未转义就拼进 AS "..."）。"""
         mock_con = Mock()
         bind_mock_duckdb_pool(mock_get_db, mock_con)
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users", "orders"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
 
         # 两张表都选了同名列 "id"，生成的别名会带表前缀（users_id / orders_id），
         # 所以直接给一个在别名生成结果里不存在的列名，落到 .get(col_name, col_name)
@@ -502,9 +490,7 @@ class TestJoinQueryGenerator:
         for jt in (JoinType.LEFT, JoinType.RIGHT, JoinType.FULL_OUTER):
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-                {"name": ["users", "orders"]}
-            )
+            mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
             join = Join(
                 left_source_id="users",
                 right_source_id="orders",
@@ -729,9 +715,7 @@ class TestJoinAPI:
             bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # 模拟表不存在
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-                {"name": []}  # 空表列表
-            )
+            mock_con.execute.return_value.fetchall.return_value = []  # 空表列表
 
             response = client.post("/api/query", json=request_data)
 
@@ -771,7 +755,7 @@ class TestJoinAPI:
         with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({"name": []})
+            mock_con.execute.return_value.fetchall.return_value = []
 
             response = client.post("/api/query", json=request_data)
 

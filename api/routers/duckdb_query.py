@@ -162,16 +162,16 @@ def list_duckdb_tables_summary():
         with with_duckdb_connection() as con:
             # 一次性从 DuckDB 元数据目录取行数估计与列数，
             # 避免逐表 DESCRIBE + COUNT(*)（N+1，且 COUNT 是全表扫描）
-            tables_df = con.execute(
+            table_rows = con.execute(
                 """
                 SELECT table_name AS name, estimated_size, column_count
                 FROM duckdb_tables()
                 WHERE NOT internal AND database_name = current_database()
                 ORDER BY table_name
                 """
-            ).fetchdf()
+            ).fetchall()
 
-            if tables_df.empty:
+            if not table_rows:
                 return create_list_response(
                     items=[],
                     total=0,
@@ -181,16 +181,12 @@ def list_duckdb_tables_summary():
 
             # 获取每个表的概要信息
             table_info = []
-            for _, row in tables_df.iterrows():
-                table_name = row["name"]
+            for table_name, est, col_count in table_rows:
                 if table_name.lower().startswith("system_"):
                     continue
                 # 行数估计 + 列数直接来自 duckdb_tables()（无逐表扫描）
-                est = row["estimated_size"]
                 row_count = int(est) if est is not None else 0
-                column_count = (
-                    int(row["column_count"]) if row["column_count"] is not None else 0
-                )
+                column_count = int(col_count) if col_count is not None else 0
 
                 metadata = file_datasource_manager.get_file_datasource(table_name)
                 raw_created_at = metadata.get("created_at") if metadata else None
@@ -249,8 +245,7 @@ def list_duckdb_tables_summary():
 
 
 def _ensure_table_exists(con, table_name: str) -> None:
-    tables_df = con.execute("SHOW TABLES").fetchdf()
-    available_tables = tables_df["name"].tolist() if not tables_df.empty else []
+    available_tables = [row[0] for row in con.execute("SHOW TABLES").fetchall()]
     if table_name not in available_tables:
         raise ResourceNotFoundError("Table", table_name)
 
@@ -340,10 +335,9 @@ def execute_duckdb_query(
             raise APIValidationError("SQL query cannot be empty")
 
         with with_duckdb_connection() as con:
-            available_tables_df = con.execute("SHOW TABLES").fetchdf()
-            available_tables = (
-                available_tables_df["name"].tolist() if len(available_tables_df) > 0 else []
-            )
+            available_tables = [
+                row[0] for row in con.execute("SHOW TABLES").fetchall()
+            ]
 
         # 检查是否是简单的SELECT查询（不需要表）
         sql_upper = sql_query.upper().strip()
@@ -562,8 +556,9 @@ def delete_duckdb_table(table_name: str):
     """删除指定的DuckDB表"""
     try:
         with with_duckdb_connection() as con:
-            tables_df = con.execute("SHOW TABLES").fetchdf()
-            available_tables = tables_df["name"].tolist() if not tables_df.empty else []
+            available_tables = [
+                row[0] for row in con.execute("SHOW TABLES").fetchall()
+            ]
 
             if table_name not in available_tables:
                 raise ResourceNotFoundError("Table", table_name)

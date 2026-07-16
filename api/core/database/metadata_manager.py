@@ -240,8 +240,8 @@ class MetadataManager:
 
                 # 获取表的实际列名，过滤掉不存在的字段
                 try:
-                    table_columns_df = conn.execute(f"DESCRIBE {table}").fetchdf()
-                    valid_columns = set(table_columns_df["column_name"].tolist())
+                    describe_rows = conn.execute(f"DESCRIBE {table}").fetchall()
+                    valid_columns = {str(row[0]) for row in describe_rows}
                 except Exception as e:
                     logger.warning(f"Unable to get table {table} column info: {e}")
                     valid_columns = None

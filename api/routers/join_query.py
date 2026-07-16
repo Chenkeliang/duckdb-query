@@ -100,15 +100,9 @@ def load_federated_table_columns(
     """ATTACH 后通过 DESCRIBE 拉取列名，供未传 columns 的联邦 JOIN 构建 SELECT。"""
     qualified = format_qualified_table_reference(source_id.strip('"'))
     try:
-        cols_df = con.execute(f"DESCRIBE {qualified}").fetchdf()
-        if cols_df is None or cols_df.empty:
-            return []
-        name_col = (
-            "column_name"
-            if "column_name" in cols_df.columns
-            else cols_df.columns[0]
-        )
-        return [{"name": str(name)} for name in cols_df[name_col].tolist()]
+        rows = con.execute(f"DESCRIBE {qualified}").fetchall()
+        # DESCRIBE 首列即 column_name
+        return [{"name": str(row[0])} for row in rows]
     except Exception as exc:
         logger.warning("DESCRIBE %s failed: %s", qualified, exc)
         return []
@@ -154,8 +148,9 @@ def build_multi_table_join_query(
     )
 
     if not federated_attach:
-        available_tables = con.execute("SHOW TABLES").fetchdf()
-        available_table_names = available_tables["name"].tolist()
+        available_table_names = [
+            row[0] for row in con.execute("SHOW TABLES").fetchall()
+        ]
 
         for source in sources:
             table_id = source.id.strip('"')
@@ -167,8 +162,11 @@ def build_multi_table_join_query(
         for source in sources:
             if not hasattr(source, "columns") or source.columns is None or all_explicit_empty:
                 try:
-                    cols_df = con.execute(f"PRAGMA table_info('{source.id}')").fetchdf()
-                    source.columns = cols_df["name"].tolist()
+                    info_rows = con.execute(
+                        f"PRAGMA table_info('{source.id}')"
+                    ).fetchall()
+                    # PRAGMA table_info 第 2 列为列名
+                    source.columns = [str(row[1]) for row in info_rows]
                 except Exception as e:
                     logger.error(f"Failed to get column information for table {source.id}: {e}")
                     source.columns = []
@@ -667,15 +665,11 @@ def perform_query(
 
             available_table_names: List[str] = []
             if not federated_attach:
-                available_tables = con.execute("SHOW TABLES").fetchdf()
-                available_table_names = (
-                    available_tables["name"].tolist()
-                    if not available_tables.empty
-                    else []
-                )
+                available_table_names = [
+                    row[0] for row in con.execute("SHOW TABLES").fetchall()
+                ]
                 logger.info(
-                    "Current tables in DuckDB: %s",
-                    available_tables.to_string(),
+                    "Current tables in DuckDB: %s", available_table_names
                 )
             else:
                 for source in query_request.sources:

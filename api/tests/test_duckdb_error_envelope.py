@@ -18,9 +18,7 @@ client = TestClient(app, raise_server_exceptions=False)
 
 def test_duckdb_table_detail_not_found_envelope():
     mock_con = Mock()
-    mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-        {"name": ["other_table"]}
-    )
+    mock_con.execute.return_value.fetchall.return_value = [("other_table",)]
     with patch("routers.duckdb_query.with_duckdb_connection") as mock_pool:
         bind_mock_duckdb_pool(mock_pool, mock_con)
         response = client.get("/api/duckdb/tables/detail/__missing_table__")
