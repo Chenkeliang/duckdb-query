@@ -484,138 +484,35 @@ def get_db_connection():
     return PooledConnectionProxy()
 
 
-def _fetchall_dataframe(res, desc):
-    """fetchall 构造 DataFrame，逐值原样承载 DuckDB 原生 Python 对象。
+def fetch_query_records(connection, query):
+    """执行查询 → (columns, records)：JSON 安全，纯 Python，无 DataFrame 中间层。
 
-    dtype=object 阻断构造器类型推断：可空整型列否则被推成 float64
-    （>2^53 的值在构造时即静默失真），timedelta 否则被推成 timedelta64
-    （序列化形态漂移为 pd.Timedelta）。
+    v1.2.1 传输主路径。列类型无关地保真（Decimal/任意精度 int 由 DuckDB
+    原生给出，编码契约见 utils.records_from_cursor），也不再有
+    fetchdf/fetchall 双路径分岔。
+
+    内置联邦连接自愈：mysql 扩展按 DSN 进程级缓存连接，空闲后被中间设备/
+    wait_timeout 静默掐断，复用即「Server has gone away」，DETACH 清不掉。
+    只读查询遇此错误时清空扩展连接缓存并重试一次（原先只有 join 路径的
+    execute_query 有此保护，现在所有取数路径统一受益）。
     """
-    names = [col[0] for col in desc]
-    df = pd.DataFrame(res.fetchall(), columns=names, dtype=object)
-    for name, col in zip(names, desc):
-        type_str = str(col[1]).upper()
-        if type_str == "TIMESTAMP_NS":
-            # fetchall 把 TIMESTAMP_NS 转成 stdlib datetime（微秒上限），
-            # 纳秒分量在取数阶段即截断，后续无法挽救——显式告警而非静默。
-            # 单独查询 TIMESTAMP_NS（不与 DECIMAL/HUGEINT 同帧）走 fetchdf
-            # 保留纳秒。
-            logger.warning(
-                "TIMESTAMP_NS column %s truncated to microseconds on the exact "
-                "fetch path (queried alongside DECIMAL/HUGEINT); query it "
-                "without high-precision numeric columns to keep nanoseconds",
-                name,
-            )
-        if type_str == "DATE" or type_str.startswith("TIMESTAMP"):
-            # 日期/时间戳列转回 datetime64，保持与 fetchdf 路径一致的序列化
-            # 格式（object 列会走 isoformat 带 "T"）。用 astype[us] 而非 to_datetime：
-            # 财务哨兵日期 9999-12-31 超出 ns 上限。转不动时保持对象列（isoformat
-            # 序列化仍无损，只是格式差异），不让整条查询失败。
-            try:
-                if "WITH TIME ZONE" in type_str:
-                    df[name] = pd.to_datetime(df[name])
-                else:
-                    df[name] = df[name].astype("datetime64[us]")
-            except (ValueError, TypeError):
-                pass
-    return df
+    from core.common.utils import records_from_cursor  # pylint: disable=import-outside-toplevel
 
-
-def _needs_exact_fetch(type_str):
-    """该列类型经 fetchdf 会失真，需走 fetchall 保真路径。
-
-    DECIMAL：fetchdf 压成 float64（约 15-17 位有效数字）。
-    HUGEINT：fetchdf 压成 float64（实测 1.7e38 直接变浮点）。
-    注意 (U)BIGINT 不在此列：fetchdf 对可空整型返回 pandas Int64/UInt64
-    可空 dtype，>2^53 逐位精确（实测 duckdb 1.5.3）——历史上观测到的
-    "可空 BIGINT 坏值 9007199254740992.0" 发生在 normalize 的整帧
-    convert_dtypes/map 降型（已在 utils 逐列化+去 map 修复），不在 fetch
-    阶段。BIGINT 触发会把 COUNT(*)/主键等几乎所有查询帧推上逐行慢路径
-    （实测 2M 行 ~3 倍耗时），得不偿失。
-    """
-    return "DECIMAL" in type_str or "HUGEINT" in type_str
-
-
-def fetch_query_dataframe(connection, query):
-    """执行查询并取回 DataFrame；结果含需保真列时走 fetchall。
-
-    fetchall 由 DuckDB 原生返回 decimal.Decimal / 任意精度 int，配合 JSON 层
-    的十进制字符串序列化实现全链路无损。不走 Arrow：pyarrow 被桌面版
-    PyInstaller excludes 排除（约 121MB），且 DuckDB→Arrow 转换本身有缺陷
-    （VARIANT 列抛 NotImplemented、可空整型仍压 float64、STRUCT 整数字段变
-    float、MAP 变键值对数组）。其余结果仍走 fetchdf 原路径。
-    """
-    res = connection.execute(query)
-    desc = res.description or []
-    if any(_needs_exact_fetch(str(col[1]).upper()) for col in desc):
-        return _fetchall_dataframe(res, desc)
-    return res.fetchdf()
-
-
-def execute_query(query, con=None):
-    """
-    在DuckDB中执行查询 - 带性能监控
-    """
-    from core.common.config_manager import config_manager
-
-    app_config = config_manager.get_app_config()
-    debug_logging = bool(app_config.debug or app_config.duckdb_debug_logging)
-    explain_threshold = max(app_config.duckdb_auto_explain_threshold_ms or 0, 0)
-
-    start_time = time.time()
-    with _use_connection(con) as connection:
-        if debug_logging:
-            try:
-                tables = connection.execute("SHOW TABLES").fetchdf()
-                logger.debug("Current tables in DuckDB:\n%s", tables.to_string())
-            except Exception as debug_error:
-                logger.debug("SHOW TABLES failed in debug mode: %s", debug_error)
-
-        try:
-            result = fetch_query_dataframe(connection, query)
-        except Exception as err:
-            # 联邦查询连接失效自愈：mysql 扩展按 DSN 进程级缓存连接，空闲后被
-            # 中间设备/wait_timeout 静默掐断，复用即「Server has gone away」，
-            # DETACH 清不掉。清空扩展连接缓存后重试一次（会重建新连接）。
-            if _is_federated_connection_lost(err) and _is_read_only_query(query):
-                logger.warning(
-                    "Federated MySQL connection lost (%s); clearing cache and retrying once",
-                    err,
-                )
-                try:
-                    connection.execute("CALL mysql_clear_cache()")
-                except Exception as clear_err:  # pylint: disable=broad-except
-                    logger.warning("mysql_clear_cache failed: %s", clear_err)
-                try:
-                    result = fetch_query_dataframe(connection, query)
-                except Exception as retry_err:
-                    execution_time = (time.time() - start_time) * 1000
-                    logger.error(
-                        "DuckDB query retry after cache clear failed (elapsed %.2fms): %s",
-                        execution_time, retry_err, exc_info=True,
-                    )
-                    raise
-            else:
-                execution_time = (time.time() - start_time) * 1000
-                logger.error(
-                    "DuckDB query execution failed (elapsed %.2fms): %s", execution_time, err, exc_info=True
-                )
-                raise
-
-        execution_time = (time.time() - start_time) * 1000
-        row_count = len(result)
-
-        from core.database.query_metrics import log_query_duration
-
-        log_query_duration(
-            connection,
-            query,
-            execution_time,
-            row_count,
-            explain_threshold_ms=explain_threshold,
+    try:
+        res = connection.execute(query)
+    except Exception as err:
+        if not (_is_federated_connection_lost(err) and _is_read_only_query(query)):
+            raise
+        logger.warning(
+            "Federated MySQL connection lost (%s); clearing cache and retrying once",
+            err,
         )
-
-        return result
+        try:
+            connection.execute("CALL mysql_clear_cache()")
+        except Exception as clear_err:  # pylint: disable=broad-except
+            logger.warning("mysql_clear_cache failed: %s", clear_err)
+        res = connection.execute(query)
+    return records_from_cursor(res, res.description or [])
 
 
 def register_dataframe(table_name: str, df: pd.DataFrame, con=None) -> bool:

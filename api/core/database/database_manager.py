@@ -13,7 +13,6 @@ import time
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
-import pandas as pd
 import psycopg2
 import pymysql
 from models.query_models import (
@@ -506,29 +505,6 @@ class DatabaseManager:
             pool_recycle=3600,
             connect_args=connect_args,
         )
-
-    def execute_query(self, connection_id: str, query: str) -> pd.DataFrame:
-        """执行数据库查询"""
-        # 如果连接配置存在但尚未创建引擎（例如仅从配置加载、未进行过测试/刷新），
-        # 这里按需创建引擎，避免外部查询/导入直接失败。check-then-create-then-assign
-        # 整体加锁：两个线程并发首次查询同一个 connection_id 时，不能都判断"没有
-        # 引擎"、各自建一个、后赋值的把先创建的那个覆盖掉导致泄漏（与 duckdb_pool.py
-        # get_connection_pool 曾经的懒加载单例竞态同一类问题）。真正执行查询的
-        # pd.read_sql 是慢速网络 I/O，不放在锁里。
-        with self._lock:
-            if connection_id not in self.engines:
-                connection = self.connections.get(connection_id)
-                if not connection:
-                    raise ValueError(f"connectiondoes not exist: {connection_id}")
-                engine = self._create_engine(connection.type, connection.params)
-                self.engines[connection_id] = engine
-            engine = self.engines[connection_id]
-
-        try:
-            return pd.read_sql(query, engine)
-        except Exception as e:
-            logger.error(f"queryexecutingfailed: {str(e)}")
-            raise
 
     @contextmanager
     def get_engine(self, connection_id: str):

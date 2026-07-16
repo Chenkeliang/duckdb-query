@@ -7,7 +7,6 @@ import math
 from typing import List, Optional
 
 from models.pivot_query_models import ColumnStatistics, TableMetadata
-from core.database.duckdb_engine import fetch_query_dataframe
 from core.database.table_metadata_cache import table_metadata_cache
 
 logger = logging.getLogger(__name__)
@@ -54,13 +53,14 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
     try:
         # Get basic column info
         column_info_sql = f'DESCRIBE "{table_name}"'
-        columns_df = con.execute(column_info_sql).fetchdf()
+        describe_rows = con.execute(column_info_sql).fetchall()
 
-        column_row = columns_df[columns_df["column_name"] == column_name]
-        if column_row.empty:
+        # DESCRIBE 行首两列固定为 column_name / column_type
+        data_type = next(
+            (row[1] for row in describe_rows if str(row[0]) == column_name), None
+        )
+        if data_type is None:
             raise ValueError(f"Column '{column_name}' does not exist in table '{table_name}'")
-
-        data_type = column_row.iloc[0]["column_type"]
 
         # Get statistics
         stats_sql = f"""
@@ -72,8 +72,8 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         FROM "{table_name}"
         """
 
-        stats_df = con.execute(stats_sql).fetchdf()
-        stats_row = stats_df.iloc[0]
+        stats_row_values = con.execute(stats_sql).fetchone()
+        total_count, non_null_count, null_count, distinct_count = stats_row_values
 
         # Get min/max for numeric columns
         min_value = None
@@ -107,12 +107,9 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
             FROM "{table_name}"
             WHERE "{column_name}" IS NOT NULL
             """
-            minmax_df = fetch_query_dataframe(con, minmax_sql)
-            if not minmax_df.empty:
-                minmax_row = minmax_df.iloc[0]
-                min_value = minmax_row["min_val"]
-                max_value = minmax_row["max_val"]
-                avg_value = minmax_row["avg_val"]
+            minmax_row = con.execute(minmax_sql).fetchone()
+            if minmax_row is not None:
+                min_value, max_value, avg_value = minmax_row
 
         # Get sample values
         column_ref = f'"{column_name}"'
@@ -127,9 +124,9 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         WHERE "{column_name}" IS NOT NULL
         LIMIT 10
         """
-        sample_df = fetch_query_dataframe(con, sample_sql)
+        sample_rows = con.execute(sample_sql).fetchall()
         sample_values = []
-        for val in sample_df["sample_value"].tolist():
+        for (val,) in sample_rows:
             try:
                 if isinstance(val, str):
                     normalized = _normalize_json_like_string(val)
@@ -166,8 +163,8 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         return ColumnStatistics(
             column_name=column_name,
             data_type=data_type,
-            null_count=int(stats_row["null_count"]),
-            distinct_count=int(stats_row["distinct_count"]),
+            null_count=int(null_count),
+            distinct_count=int(distinct_count),
             min_value=safe_number(min_value),
             max_value=safe_number(max_value),
             avg_value=safe_float(avg_value),
@@ -194,15 +191,15 @@ def get_table_metadata(table_name: str, con, use_cache: bool = True) -> TableMet
     def _load_metadata() -> TableMetadata:
         # Get table row count
         count_sql = f'SELECT COUNT(*) as row_count FROM "{table_name}"'
-        row_count = con.execute(count_sql).fetchdf().iloc[0]["row_count"]
+        row_count = con.execute(count_sql).fetchone()[0]
 
-        # Get column information
+        # Get column information（DESCRIBE 行首两列固定为 column_name / column_type）
         columns_sql = f'DESCRIBE "{table_name}"'
-        columns_df = con.execute(columns_sql).fetchdf()
+        describe_rows = con.execute(columns_sql).fetchall()
 
         column_stats = []
-        for _, column_row in columns_df.iterrows():
-            column_name = column_row["column_name"]
+        for column_row in describe_rows:
+            column_name = str(column_row[0])
             try:
                 stats = get_column_statistics(table_name, column_name, con)
                 column_stats.append(stats)
@@ -214,7 +211,7 @@ def get_table_metadata(table_name: str, con, use_cache: bool = True) -> TableMet
                 column_stats.append(
                     ColumnStatistics(
                         column_name=column_name,
-                        data_type=column_row["column_type"],
+                        data_type=str(column_row[1]),
                         null_count=0,
                         distinct_count=0,
                         sample_values=[],

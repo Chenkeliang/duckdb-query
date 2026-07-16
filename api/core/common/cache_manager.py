@@ -15,10 +15,8 @@ from threading import Lock
 from typing import Any, Dict, Optional, Union
 
 import duckdb
-import pandas as pd
 
 from core.common.timezone_utils import get_current_time  # 导入时区工具
-from core.common.utils import normalize_dataframe_output
 
 
 logger = logging.getLogger(__name__)
@@ -270,45 +268,41 @@ class QueryCache:
 
     def get_cached_query_result(
         self, sql: str, connection_params: Dict[str, Any] = None
-    ) -> Optional[pd.DataFrame]:
-        """获取缓存的查询结果"""
+    ) -> Optional[Dict[str, Any]]:
+        """获取缓存的查询结果（{"columns": [...], "data": records} 形态）"""
         cache_key = self.get_query_cache_key(sql, connection_params)
         cached_data = self.cache_manager.get(cache_key)
 
         if cached_data is not None:
-            try:
-                # 将缓存的数据转换回DataFrame
-                if (
-                    isinstance(cached_data, dict)
-                    and "data" in cached_data
-                    and "columns" in cached_data
-                ):
-                    df = pd.DataFrame(
-                        cached_data["data"], columns=cached_data["columns"]
-                    )
-                    logger.info(f"Using cached query result, {len(df)} rows")
-                    return df
-            except Exception as e:
-                logger.warning(f"Cache data format error: {str(e)}")
+            if (
+                isinstance(cached_data, dict)
+                and "data" in cached_data
+                and "columns" in cached_data
+            ):
+                logger.info(
+                    f"Using cached query result, {len(cached_data['data'])} rows"
+                )
+                return cached_data
+            logger.warning("Cache data format error: unexpected shape")
 
         return None
 
     def cache_query_result(
         self,
         sql: str,
-        result_df: pd.DataFrame,
+        columns: list,
+        records: list,
         connection_params: Dict[str, Any] = None,
         ttl: int = 3600,
     ) -> bool:
-        """缓存查询结果"""
+        """缓存查询结果（records 已是 JSON 安全形态，直接落缓存）"""
         try:
             cache_key = self.get_query_cache_key(sql, connection_params)
 
-            # 将DataFrame转换为可序列化的格式
             cached_data = {
-                "data": normalize_dataframe_output(result_df),
-                "columns": result_df.columns.tolist(),
-                "row_count": len(result_df),
+                "data": records,
+                "columns": list(columns),
+                "row_count": len(records),
                 "cached_at": get_current_time(),  # 使用统一的时区配置
             }
 

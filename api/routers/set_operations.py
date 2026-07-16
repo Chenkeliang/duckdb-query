@@ -8,10 +8,9 @@ from datetime import datetime
 from typing import Any, Iterator, Optional, Set
 
 import duckdb
-import pandas as pd
 from core.common.config_manager import config_manager
-from core.common.utils import normalize_dataframe_output
-from core.database.duckdb_engine import fetch_query_dataframe, with_duckdb_connection
+from core.common.utils import describe_query_column_types
+from core.database.duckdb_engine import fetch_query_records, with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
@@ -42,15 +41,15 @@ from core.common.error_codes import classify_exception
 logger = logging.getLogger(__name__)
 
 
-def _timed_execute_fetch(con: Any, sql: str) -> pd.DataFrame:
-    """执行 SQL 并记录慢查询 / 自动 EXPLAIN。"""
+def _timed_execute_fetch(con: Any, sql: str) -> tuple:
+    """执行 SQL 并记录慢查询 / 自动 EXPLAIN，返回 (columns, records)。"""
     import time
 
     from core.common.config_manager import config_manager
     from core.database.query_metrics import log_query_duration
 
     start = time.time()
-    result_df = fetch_query_dataframe(con, sql)
+    columns, records = fetch_query_records(con, sql)
     elapsed_ms = (time.time() - start) * 1000
     explain_threshold = max(
         config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
@@ -59,10 +58,10 @@ def _timed_execute_fetch(con: Any, sql: str) -> pd.DataFrame:
         con,
         sql,
         elapsed_ms,
-        len(result_df),
+        len(records),
         explain_threshold_ms=explain_threshold,
     )
-    return result_df
+    return columns, records
 
 router = APIRouter()
 
@@ -171,8 +170,7 @@ def preview_set_operation(request: SetOperationRequest):
         with _set_operation_connection(request) as (con, alias_set):
             sql = generate_set_operation_sql(config, attach_aliases=alias_set)
             preview_sql = f"{sql} LIMIT {preview_limit}"
-            result_df = _timed_execute_fetch(con, preview_sql)
-            preview_data = normalize_dataframe_output(result_df)
+            _, preview_data = _timed_execute_fetch(con, preview_sql)
             estimated_rows = estimate_set_operation_rows(
                 config, con, alias_set
             )
@@ -314,12 +312,17 @@ def execute_set_operation(
 
                 limit = config_manager.get_app_config().max_query_rows
                 preview_sql = f"{sql} LIMIT {limit}"
-                result_df = _timed_execute_fetch(con, preview_sql)
+                col_names, data = _timed_execute_fetch(con, preview_sql)
+                # 列类型用 DESCRIBE 的真实 DuckDB 类型（此前的 pandas dtype
+                # 字符串在保真帧下会大面积显示 "object"，信息是错的）
+                described = {
+                    c["name"]: c["duckdb_type"]
+                    for c in describe_query_column_types(con, preview_sql)
+                }
                 columns = [
-                    {"name": col, "type": str(result_df[col].dtype)}
-                    for col in result_df.columns
+                    {"name": name, "type": described.get(name, "")}
+                    for name in col_names
                 ]
-                data = normalize_dataframe_output(result_df)
 
                 return create_success_response(
                     data={
@@ -408,12 +411,17 @@ def execute_set_operation(
 
                 limit = config_manager.get_app_config().max_query_rows
                 preview_sql = f"{sql} LIMIT {limit}"
-                result_df = _timed_execute_fetch(con, preview_sql)
+                col_names, data = _timed_execute_fetch(con, preview_sql)
+                # 列类型用 DESCRIBE 的真实 DuckDB 类型（此前的 pandas dtype
+                # 字符串在保真帧下会大面积显示 "object"，信息是错的）
+                described = {
+                    c["name"]: c["duckdb_type"]
+                    for c in describe_query_column_types(con, preview_sql)
+                }
                 columns = [
-                    {"name": col, "type": str(result_df[col].dtype)}
-                    for col in result_df.columns
+                    {"name": name, "type": described.get(name, "")}
+                    for name in col_names
                 ]
-                data = normalize_dataframe_output(result_df)
 
                 return create_success_response(
                     data={
@@ -633,21 +641,18 @@ def export_set_operation(request: SetOperationExportRequest):
                     )
 
                     if export_format == "excel":
-                        csv_path = file_path.replace(".xlsx", ".csv")
+                        # excel 扩展原生写 xlsx（桌面预置/Docker 预装）。
+                        # 此前经 CSV 中转 + pandas 重读会丢类型语义且双倍 I/O
+                        try:
+                            con.execute("LOAD excel")
+                        except Exception:  # 已加载时无害；真缺失由 COPY 报错
+                            pass
                         copy_sql = (
-                            f"COPY ({sql}) TO '{csv_path}' (FORMAT {copy_format}, {copy_options})"
+                            f"COPY ({sql}) TO '{file_path}' (FORMAT xlsx, HEADER true)"
                         )
 
-                        logger.info(f"Executing CSV export: {copy_sql}")
+                        logger.info(f"Executing Excel export: {copy_sql}")
                         con.execute(copy_sql)
-
-                        task_manager.update_task(
-                            task_id, {"progress": 70, "message": "正在转换为Excel格式..."}
-                        )
-
-                        df = pd.read_csv(csv_path)
-                        df.to_excel(file_path, index=False)
-                        os.remove(csv_path)
 
                     else:
                         copy_sql = (

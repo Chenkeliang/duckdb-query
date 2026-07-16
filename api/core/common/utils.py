@@ -7,7 +7,7 @@ import json
 import decimal
 import numpy as np
 import pandas as pd
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -141,6 +141,53 @@ def describe_query_column_types(
     if fallback_df is not None:
         return duckdb_column_types_from_dataframe(con, fallback_df)
     return []
+
+
+def _encode_cell(value: Any, is_datetime_col: bool) -> Any:
+    """单个结果单元格 → JSON 安全标量（records_from_cursor 专用）。"""
+    if value is None:
+        return None
+    if is_datetime_col:
+        if not isinstance(value, datetime):
+            # DATE 列：date → 当日零点，对齐 fetchdf/datetime64 的展示口径
+            value = datetime(value.year, value.month, value.day)
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value.strftime(DATETIME_OUTPUT_FORMAT).rstrip("0").rstrip(".")
+    encoded = jsonable_encoder(value)
+    if isinstance(encoded, (dict, list, tuple, set)):
+        # STRUCT/MAP/LIST/JSON：以 JSON 字符串下发（前端 TSV/CSV 复制按
+        # String(value) 处理，裸对象会静默变 "[object Object]"）
+        if isinstance(encoded, (tuple, set)):
+            encoded = list(encoded)
+        return json.dumps(encoded, ensure_ascii=False)
+    return encoded
+
+
+def records_from_cursor(res: Any, desc: Optional[List[Any]] = None) -> tuple:
+    """DuckDB 游标 → (列名列表, JSON 安全记录列表)，纯 Python 直构。
+
+    v1.2.x 在 pandas 各推断层（fetchdf 压 HUGEINT、DataFrame 构造器推断
+    可空整型、convert_dtypes 整帧降型、map 按返回值重推断）累计修过 5 个
+    改值 bug——records 直构把这一类发源地整体绕开。输出契约与
+    normalize_dataframe_output 逐字节一致（22 列全类型电池对拍）：
+    - DATE/TIMESTAMP*：空格分隔 '%Y-%m-%d %H:%M:%S.%f' 去尾零，TZ 先归 UTC
+    - DECIMAL / 超 2^53 整数 → 十进制字符串；NULL/NaN/Inf → null
+    - STRUCT/MAP/LIST/JSON → json.dumps 字符串；INTERVAL → str(timedelta)
+    """
+    if desc is None:
+        desc = res.description or []
+    names = [str(col[0]) for col in desc]
+    is_dt = [
+        (t == "DATE" or t.startswith("TIMESTAMP"))
+        for t in (str(col[1]).upper() for col in desc)
+    ]
+    records: List[Dict[str, Any]] = []
+    for row in res.fetchall():
+        records.append(
+            {name: _encode_cell(value, dt) for name, dt, value in zip(names, is_dt, row)}
+        )
+    return names, records
 
 
 def normalize_dataframe_output(df: pd.DataFrame) -> List[Dict[str, Any]]:

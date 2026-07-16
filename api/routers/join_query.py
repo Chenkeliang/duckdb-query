@@ -14,10 +14,9 @@ from datetime import datetime, time
 from typing import Any, Dict, List, Optional, Tuple
 
 import duckdb
-import pandas as pd
 from core.common.timezone_utils import get_current_time
 from core.common.exceptions import ValidationError as APIValidationError
-from core.common.utils import describe_query_column_types, normalize_dataframe_output
+from core.common.utils import describe_query_column_types
 from core.common.validators import validate_table_name
 from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
@@ -27,7 +26,7 @@ from core.data.file_utils import load_file_to_duckdb
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     build_single_table_query,
-    execute_query,
+    fetch_query_records,
     generate_improved_column_aliases,
     with_duckdb_connection,
 )
@@ -752,19 +751,18 @@ def perform_query(
             logger.info(f"Executing query: {query}")
 
             # 执行查询
-            result_df = execute_query(query, con)
-            logger.info(f"Query completed, result shape: {result_df.shape}")
-
-            data_records = normalize_dataframe_output(result_df)
-            columns_list = [str(col) for col in result_df.columns.tolist()]
-            column_types = describe_query_column_types(con, query, result_df)
+            columns_list, data_records = fetch_query_records(con, query)
+            logger.info(
+                f"Query completed, {len(data_records)} rows x {len(columns_list)} cols"
+            )
+            column_types = describe_query_column_types(con, query)
 
             return create_success_response(
                 data={
                     "data": data_records,
                     "columns": columns_list,
                     "column_types": column_types,
-                    "index": result_df.index.tolist(),
+                    "index": list(range(len(data_records))),
                     "sql": query,
                     "row_count": len(data_records),
                 },

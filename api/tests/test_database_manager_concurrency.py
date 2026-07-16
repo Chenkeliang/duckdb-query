@@ -33,51 +33,6 @@ def _register(mgr: DatabaseManager, connection_id: str) -> DatabaseConnection:
     return connection
 
 
-class TestExecuteQueryEngineRace:
-    def test_concurrent_first_calls_create_exactly_one_engine(self, monkeypatch):
-        mgr = DatabaseManager()
-        _register(mgr, "race_conn")
-
-        construction_count = []
-        original_create_engine = DatabaseManager._create_engine
-
-        def counting_create_engine(self, db_type, params):
-            construction_count.append(1)
-            return original_create_engine(self, db_type, params)
-
-        monkeypatch.setattr(DatabaseManager, "_create_engine", counting_create_engine)
-
-        n_threads = 8
-        barrier = threading.Barrier(n_threads)
-        results = []
-        results_lock = threading.Lock()
-        errors = []
-
-        def worker():
-            barrier.wait()
-            try:
-                df = mgr.execute_query("race_conn", "SELECT 1 AS n")
-                with results_lock:
-                    results.append(df)
-            except Exception as exc:  # pragma: no cover - failure path surfaced via errors
-                with results_lock:
-                    errors.append(exc)
-
-        threads = [threading.Thread(target=worker) for _ in range(n_threads)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert not errors, f"execute_query raised under concurrency: {errors}"
-        assert len(results) == n_threads
-        assert len(construction_count) == 1, (
-            f"expected exactly 1 engine construction for the same connection_id, "
-            f"got {len(construction_count)} — concurrent first calls raced past the check"
-        )
-        assert len(mgr.engines) == 1
-
-
 class TestListConnectionsDuringMutation:
     def test_list_connections_survives_concurrent_add_remove(self):
         """list_connections() 遍历期间，另一个线程持续 add/remove 连接，不应该

@@ -8,12 +8,11 @@ import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-import pandas as pd
 
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     build_attach_sql,
-    fetch_query_dataframe,
+    fetch_query_records,
     with_duckdb_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
@@ -131,8 +130,8 @@ def execute_sql_with_attach(
     sql: str,
     attach_databases: Optional[List[Any]] = None,
     query_id: Optional[str] = None,
-) -> pd.DataFrame:
-    """在 DuckDB 连接上 ATTACH → 执行 SQL → DETACH。"""
+) -> tuple:
+    """在 DuckDB 连接上 ATTACH → 执行 SQL → DETACH，返回 (columns, records)。"""
     from core.common.sql_mysql_quotes import (
         normalize_mysql_double_quoted_strings_for_duckdb,
     )
@@ -142,12 +141,12 @@ def execute_sql_with_attach(
         sql.rstrip().rstrip(";")
     )
 
-    def _run(conn: Any) -> pd.DataFrame:
+    def _run(conn: Any) -> tuple:
         attached: List[str] = []
         try:
             if attach_configs:
                 attached = attach_databases_on_connection(conn, attach_configs)
-            return fetch_query_dataframe(conn, cleaned_sql)
+            return fetch_query_records(conn, cleaned_sql)
         finally:
             if attached:
                 detach_databases_on_connection(conn, attached)

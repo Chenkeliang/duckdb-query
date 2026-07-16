@@ -22,6 +22,16 @@ import json
 from pydantic import ValidationError
 
 from main import app
+
+
+def bind_query_records(mock_con, df):
+    """新传输路径 mock:fetch_query_records 读 description + fetchall。"""
+    mock_con.execute.return_value.description = [(c, "VARCHAR") for c in df.columns]
+    mock_con.execute.return_value.fetchall.return_value = [
+        tuple(r) for r in df.itertuples(index=False)
+    ]
+
+
 from models.set_operation_models import (
     SetOperationType,
     SetOperationConfig,
@@ -360,7 +370,7 @@ class TestSetOperationAPI:
             preview_data = pd.DataFrame(
                 {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
             )
-            mock_con.execute.return_value.fetchdf.return_value = preview_data
+            bind_query_records(mock_con, preview_data)
 
             response = client.post("/api/set-operations/preview", json=request_data)
 
@@ -409,7 +419,7 @@ class TestSetOperationAPI:
             mock_con.execute.return_value.description = []
 
             preview_frame = pd.DataFrame({"id": [1], "name": ["Alice"]})
-            mock_con.execute.return_value.fetchdf.return_value = preview_frame
+            bind_query_records(mock_con, preview_frame)
 
             response = client.post("/api/set-operations/preview", json=request_data)
 
@@ -501,7 +511,7 @@ class TestSetOperationAPI:
                     "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
                 }
             )
-            mock_con.execute.return_value.fetchdf.return_value = result_data
+            bind_query_records(mock_con, result_data)
 
             response = client.post("/api/set-operations/execute", json=request_data)
 
@@ -596,7 +606,7 @@ class TestSetOperationIntegration:
             preview_data = pd.DataFrame(
                 {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
             )
-            mock_con.execute.return_value.fetchdf.return_value = preview_data
+            bind_query_records(mock_con, preview_data)
 
             response = client.post("/api/set-operations/preview", json=preview_request)
             assert response.status_code == 200
@@ -613,7 +623,7 @@ class TestSetOperationIntegration:
                     "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
                 }
             )
-            mock_con.execute.return_value.fetchdf.return_value = result_data
+            bind_query_records(mock_con, result_data)
 
             response = client.post("/api/set-operations/execute", json=execute_request)
             assert response.status_code == 200

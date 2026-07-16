@@ -203,20 +203,16 @@ class TestPivotQueryPreview:
 
             mock_generate.return_value = generation_result
 
-            import pandas as pd
-
-            preview_data = pd.DataFrame({
-                'name': ['Alice', 'Bob', 'Charlie'],
-                'age': [25, 30, 35],
-            })
-
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_pool, mock_con)
-            mock_con.execute.return_value.description = []
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                preview_data,
-                pd.DataFrame({'total_rows': [1000]}),
+            # 新传输路径:预览走 description+fetchall,计数走 fetchone
+            mock_con.execute.return_value.description = [
+                ("name", "VARCHAR"), ("age", "INTEGER"),
             ]
+            mock_con.execute.return_value.fetchall.return_value = [
+                ("Alice", 25), ("Bob", 30), ("Charlie", 35),
+            ]
+            mock_con.execute.return_value.fetchone.return_value = (1000,)
 
             response = client.post("/api/pivot-query/preview", json=config_data)
 

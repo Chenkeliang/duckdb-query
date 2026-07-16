@@ -22,7 +22,7 @@ from core.common.timezone_utils import (
     format_storage_time_for_response,
     get_current_time_iso,
 )
-from core.common.utils import describe_query_column_types, normalize_dataframe_output
+from core.common.utils import describe_query_column_types
 from core.common.sql_mysql_quotes import (
     normalize_mysql_double_quoted_strings_for_duckdb,
 )
@@ -33,7 +33,7 @@ from core.data.file_datasource_manager import (
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     create_persistent_table,
-    fetch_query_dataframe,
+    fetch_query_records,
     with_duckdb_connection,
 )
 from core.database.federated_attach import (
@@ -408,10 +408,8 @@ def execute_duckdb_query(
         # 使用可中断连接执行查询（如果有 query_id）
         if query_id:
             with interruptible_connection(query_id, sql_query) as conn:
-                result_df = fetch_query_dataframe(conn, sql_query)
-                query_column_types = describe_query_column_types(
-                    conn, sql_query, result_df
-                )
+                result_columns, result_records = fetch_query_records(conn, sql_query)
+                query_column_types = describe_query_column_types(conn, sql_query)
 
                 # 可选：保存查询结果为新表（在同一连接上下文内）
                 if request.save_as_table:
@@ -454,14 +452,12 @@ def execute_duckdb_query(
                         except Exception as save_error:
                             logger.warning(f"Failed to save query result as table: {str(save_error)}")
                 execution_time = _log_query_metrics_in_conn(
-                    conn, sql_query, start_time, len(result_df)
+                    conn, sql_query, start_time, len(result_records)
                 )
         else:
             with with_duckdb_connection() as con:
-                result_df = fetch_query_dataframe(con, sql_query)
-                query_column_types = describe_query_column_types(
-                    con, sql_query, result_df
-                )
+                result_columns, result_records = fetch_query_records(con, sql_query)
+                query_column_types = describe_query_column_types(con, sql_query)
 
                 if request.save_as_table:
                     table_name = request.save_as_table.strip()
@@ -504,15 +500,15 @@ def execute_duckdb_query(
                                 f"Failed to save query result as table: {str(save_error)}"
                             )
                 execution_time = _log_query_metrics_in_conn(
-                    con, sql_query, start_time, len(result_df)
+                    con, sql_query, start_time, len(result_records)
                 )
 
         # 构建响应
         response_payload = {
-            "columns": result_df.columns.tolist(),
+            "columns": result_columns,
             "column_types": query_column_types,
-            "data": normalize_dataframe_output(result_df),
-            "row_count": len(result_df),
+            "data": result_records,
+            "row_count": len(result_records),
             "execution_time_ms": execution_time,
             "sql_executed": sql_query,
             "available_tables": available_tables,
@@ -524,7 +520,7 @@ def execute_duckdb_query(
         return create_success_response(
             data=response_payload,
             message_code=MessageCode.QUERY_EXECUTED,
-            message=f"Query successful, returned {len(result_df)} rows",
+            message=f"Query successful, returned {len(result_records)} rows",
         )
 
     except duckdb.InterruptException as e:
@@ -839,7 +835,7 @@ def execute_federated_query(
             warnings.extend(str(w) for w in opt_warnings)
 
         # 3. 执行用户 SQL（使用优化后的语句）
-        result_df = fetch_query_dataframe(conn, opt_sql)
+        result_pair = fetch_query_records(conn, opt_sql)
 
         # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
         if request.save_as_table:
@@ -860,7 +856,7 @@ def execute_federated_query(
         if attached_aliases:
             detach_databases_on_connection(conn, attached_aliases)
 
-        return result_df
+        return result_pair
 
     timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
     query_id = query_id or f"fed:{uuid4().hex}"
@@ -870,28 +866,27 @@ def execute_federated_query(
         timed_out["v"] = True
         connection_registry.interrupt(query_id)
 
-    result_df = None
+    result_columns: list = []
+    result_records: list = []
     query_column_types = []
     try:
         with interruptible_connection(query_id, sql_query) as conn:
             timer = threading.Timer(timeout_s, _on_timeout)
             timer.start()
             try:
-                result_df = execute_in_connection(conn)
-                query_column_types = describe_query_column_types(
-                    conn, _opt["sql"], result_df
-                )
+                result_columns, result_records = execute_in_connection(conn)
+                query_column_types = describe_query_column_types(conn, _opt["sql"])
             finally:
                 timer.cancel()
             execution_time = _log_query_metrics_in_conn(
-                conn, sql_query, start_time, len(result_df)
+                conn, sql_query, start_time, len(result_records)
             )
 
         response_data = {
-            "columns": result_df.columns.tolist(),
+            "columns": result_columns,
             "column_types": query_column_types,
-            "data": normalize_dataframe_output(result_df),
-            "row_count": len(result_df),
+            "data": result_records,
+            "row_count": len(result_records),
             "execution_time_ms": execution_time,
             "attached_databases": attached_aliases,
             "sql_query": sql_query,
@@ -904,7 +899,7 @@ def execute_federated_query(
         return create_success_response(
             data=response_data,
             message_code=MessageCode.QUERY_EXECUTED,
-            message=f"Federated query successful, returned {len(result_df)} rows",
+            message=f"Federated query successful, returned {len(result_records)} rows",
         )
 
     except duckdb.InterruptException:

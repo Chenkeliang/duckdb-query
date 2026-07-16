@@ -173,12 +173,9 @@ def _generate_pivot_transformation_sql(
                 f"LIMIT {int(max_values)}"
             )
             with with_duckdb_connection() as con:
-                df = con.execute(introspect_sql).fetchdf()
-            values: List[str] = []
-            if df is not None and not df.empty:
-                for raw in df["v"].tolist():
-                    # Preserve original values as string form; _format_literal will escape
-                    values.append(str(raw))
+                rows = con.execute(introspect_sql).fetchall()
+            # Preserve original values as string form; _format_literal will escape
+            values: List[str] = [str(raw) for (raw,) in rows]
             return values or None
         except Exception as _:
             return None

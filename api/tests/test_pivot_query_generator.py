@@ -175,7 +175,7 @@ class TestPivotQueryModeGeneration:
         )
 
         mock_execute = Mock()
-        mock_execute.fetchdf.return_value = pd.DataFrame({"v": ["2022", "2023"]})
+        mock_execute.fetchall.return_value = [("2022",), ("2023",)]
 
         @contextmanager
         def fake_duckdb_connection():
@@ -504,23 +504,14 @@ class TestColumnStatistics:
         mock_con.execute.return_value.description = []
 
         # Mock DESCRIBE table result
-        describe_df = pd.DataFrame(
-            {"column_name": ["test_column"], "column_type": ["INTEGER"]}
-        )
-        mock_con.execute.return_value.fetchdf.side_effect = [
-            describe_df,  # DESCRIBE result
-            pd.DataFrame(
-                {  # Statistics result
-                    "total_count": [1000],
-                    "non_null_count": [950],
-                    "null_count": [50],
-                    "distinct_count": [100],
-                }
-            ),
-            pd.DataFrame(
-                {"min_val": [1], "max_val": [100], "avg_val": [50.5]}  # Min/Max result
-            ),
-            pd.DataFrame({"sample_value": [1, 2, 3, 4, 5]}),  # Sample values - use 'sample_value' column name
+        # 新取数形态：DESCRIBE/样本走 fetchall，统计/极值走 fetchone
+        mock_con.execute.return_value.fetchall.side_effect = [
+            [("test_column", "INTEGER")],  # DESCRIBE result
+            [(1,), (2,), (3,), (4,), (5,)],  # Sample values
+        ]
+        mock_con.execute.return_value.fetchone.side_effect = [
+            (1000, 950, 50, 100),  # Statistics result
+            (1, 100, 50.5),  # Min/Max result
         ]
 
         result = get_column_statistics("test_table", "test_column", mock_con)
@@ -541,8 +532,7 @@ class TestColumnStatistics:
         mock_con.execute.return_value.description = []
 
         # Mock empty DESCRIBE result
-        describe_df = pd.DataFrame({"column_name": [], "column_type": []})
-        mock_con.execute.return_value.fetchdf.return_value = describe_df
+        mock_con.execute.return_value.fetchall.return_value = []
 
         with pytest.raises(ValueError, match="does not exist in table"):
             get_column_statistics("test_table", "nonexistent", mock_con)
@@ -557,15 +547,11 @@ class TestTableMetadata:
         mock_con = Mock()
         mock_con.execute.return_value.description = []
 
-        # Mock row count result
-        mock_con.execute.return_value.fetchdf.side_effect = [
-            pd.DataFrame({"row_count": [1000]}),  # Row count
-            pd.DataFrame(
-                {  # Column info
-                    "column_name": ["col1", "col2"],
-                    "column_type": ["INTEGER", "VARCHAR"],
-                }
-            ),
+        # Mock row count (fetchone) 与列信息 (fetchall)
+        mock_con.execute.return_value.fetchone.return_value = (1000,)
+        mock_con.execute.return_value.fetchall.return_value = [
+            ("col1", "INTEGER"),
+            ("col2", "VARCHAR"),
         ]
 
         # Mock column statistics
@@ -603,15 +589,8 @@ class TestTableMetadata:
         mock_con = Mock()
         mock_con.execute.return_value.description = []
 
-        mock_con.execute.return_value.fetchdf.side_effect = [
-            pd.DataFrame({"row_count": [50]}),
-            pd.DataFrame(
-                {
-                    "column_name": ["col1"],
-                    "column_type": ["INTEGER"],
-                }
-            ),
-        ]
+        mock_con.execute.return_value.fetchone.return_value = (50,)
+        mock_con.execute.return_value.fetchall.return_value = [("col1", "INTEGER")]
 
         mock_get_column_stats.return_value = ColumnStatistics(
             column_name="col1",

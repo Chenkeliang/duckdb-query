@@ -182,8 +182,9 @@ class TestSaveQueryToDuckDBAutoDerivedAttach:
              "user": "root", "password": "x"},
         )
         try:
-            with patch("routers.join_query.execute_sql_and_persist") as mock_persist, \
-                 patch("core.database.database_manager.db_manager.execute_query") as mock_legacy:
+            # 旧 db_manager.execute_query 直连分支已在 v1.2.1 物理删除，
+            # 无需再用 mock 哨兵断言"不被调用"
+            with patch("routers.join_query.execute_sql_and_persist") as mock_persist:
                 mock_persist.return_value = {
                     "row_count": 2, "columns": ["id"], "column_count": 1,
                     "column_profiles": [], "schema_version": 2,
@@ -199,7 +200,6 @@ class TestSaveQueryToDuckDBAutoDerivedAttach:
                 assert resp.status_code == 200
                 assert resp.json()["success"] is True
 
-                mock_legacy.assert_not_called()
                 assert mock_persist.call_count == 1
                 _, table_name, attach_list = mock_persist.call_args[0]
                 assert table_name == "imported_mysql_auto"
