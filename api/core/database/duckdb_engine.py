@@ -323,30 +323,43 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
 
 
 def _install_duckdb_extensions(connection, extensions: List[str]):
-    """启动阶段加载扩展：只 LOAD 不 INSTALL。
+    """启动阶段加载扩展：只加载本地已有的，绝不联网。
 
     INSTALL 走网络(extensions.duckdb.org),受限网络下 DuckDB 内置下载客户端
     单次实测挂 ~120s,发生在连接池初始化即表现为"本地引擎启动超时"(v1.1.4
     曾为此把扩展全量预置进包)。v1.2.0 桌面包只预置 excel,启动改为:本地有
-    (预置/已装)则秒加载,没有则秒失败跳过,绝不在启动路径联网。未安装扩展
-    的获取入口:扩展页手动下载(routers/duckdb_extensions),或联邦查询等
-    用到时 DuckDB autoinstall(该动作本就需要网络)。
+    (预置/已装)则秒加载,没有则秒失败跳过。注意"只 LOAD"并不天然禁网——
+    实测别名扩展(mysql/postgres → *_scanner)的 LOAD 会触发 autoinstall
+    联网下载(httpfs 等直名则本地快速失败),因此 LOAD 期间必须临时关闭
+    autoinstall。未安装扩展的获取入口:扩展页手动下载(routers/
+    duckdb_extensions),或联邦查询等用到时 DuckDB autoinstall(该动作
+    本就需要网络)。
     """
     if not extensions:
         return
 
-    for ext_name in extensions:
+    try:
+        connection.execute("SET autoinstall_known_extensions=false")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("disable autoinstall before startup LOAD failed: %s", exc)
+    try:
+        for ext_name in extensions:
+            try:
+                connection.execute(f"LOAD {ext_name};")
+                logger.info(f"DuckDB extension {ext_name} loaded")
+            except Exception as load_error:
+                # 常态:未预置/未安装的扩展在全新环境必然走到这里,按 debug 降噪
+                logger.debug(
+                    "DuckDB extension %s not available locally, skipped at startup "
+                    "(install via extensions page, or auto-installed on first use): %s",
+                    ext_name,
+                    load_error,
+                )
+    finally:
         try:
-            connection.execute(f"LOAD {ext_name};")
-            logger.info(f"DuckDB extension {ext_name} loaded")
-        except Exception as load_error:
-            # 常态:未预置/未安装的扩展在全新环境必然走到这里,按 debug 降噪
-            logger.debug(
-                "DuckDB extension %s not available locally, skipped at startup "
-                "(install via extensions page, or auto-installed on first use): %s",
-                ext_name,
-                load_error,
-            )
+            connection.execute("SET autoinstall_known_extensions=true")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("restore autoinstall after startup LOAD failed: %s", exc)
 
 
 # 引擎兼容性配置对应的 DuckDB SET GLOBAL 选项名，分别由 sqlite_scanner / mysql /
@@ -363,18 +376,35 @@ def apply_engine_compat_settings(connection, engine_compat: Optional[Dict[str, A
     """应用引擎兼容性配置。
 
     SET GLOBAL 是数据库实例级作用域：在池中任意一个连接上执行，所有池化连接立即生效。
-    这四个 option 分别由 sqlite_scanner/mysql/postgres/iceberg 扩展注册，扩展未加载
-    （且离线无法自动安装）时 SET GLOBAL 会报 "unrecognized configuration option"，因此
-    逐项 try/except 并降级为 debug 日志，绝不能因为某个开关对应的扩展没装就搞坏连接初始化。
+    这四个 option 分别由 sqlite_scanner/mysql/postgres/iceberg 扩展注册。
+
+    只 SET 值为 True 的开关：False 与 DuckDB 原生默认一致，SET 是纯空转——
+    且对未加载扩展的 option 执行 SET 会触发 DuckDB autoinstall 联网下载
+    （受限网络单次挂 ~120s，发生在连接池初始化 = "本地引擎启动超时"；
+    扩展全量预置时代被掩盖，v1.2.0 按需预置后必须掐掉）。SET 期间临时关闭
+    autoinstall：本地已装的扩展 autoload 即时生效；未装的快速失败降级为
+    debug 日志（用户装好扩展后新连接自然生效），初始化路径绝不联网。
     """
     if not engine_compat:
         return
-    for option in ENGINE_COMPAT_OPTIONS:
-        value = bool(engine_compat.get(option, False))
+    enabled = [opt for opt in ENGINE_COMPAT_OPTIONS if bool(engine_compat.get(opt, False))]
+    if not enabled:
+        return
+    try:
+        connection.execute("SET autoinstall_known_extensions=false")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("disable autoinstall before engine_compat failed: %s", exc)
+    try:
+        for option in enabled:
+            try:
+                connection.execute(f"SET GLOBAL {option}=true")
+            except Exception as exc:  # noqa: BLE001  扩展未装时的预期失败，静默降级
+                logger.debug("engine_compat SET GLOBAL %s=true skipped: %s", option, exc)
+    finally:
         try:
-            connection.execute(f"SET GLOBAL {option}={str(value).lower()}")
-        except Exception as exc:  # noqa: BLE001  扩展未加载时的预期失败，静默降级
-            logger.debug("engine_compat SET GLOBAL %s=%s skipped: %s", option, value, exc)
+            connection.execute("SET autoinstall_known_extensions=true")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("restore autoinstall after engine_compat failed: %s", exc)
 
 
 def _apply_default_duckdb_config(connection, temp_dir: str):
