@@ -297,6 +297,8 @@ def _detect_csv_encoding(file_path: str) -> Optional[str]:
         "gbk": "GB18030",
         "big5": "BIG5",
         "shift_jis": "SHIFT_JIS",
+        "cp932": "SHIFT_JIS",   # charset_normalizer 对日文 CSV 的常见探测结果
+        "ms932": "SHIFT_JIS",
         "euc_jp": "EUC_JP",
         "euc_kr": "EUC_KR",
         "euc_jis_2004": "GB18030",  # 中文文件偶被误判为日文编码

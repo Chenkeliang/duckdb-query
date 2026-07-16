@@ -241,3 +241,67 @@ def test_promote_mixed_date_formats_stay_varchar(ingestion_con):
     _create_varchar_table(ingestion_con, t, "val", ["2024-07-15", "2024-07-15 10:30:00"])
     promote_table_column_types_from_varchar(ingestion_con, t)
     assert _column_type(ingestion_con, t, "val") == "VARCHAR"
+
+
+def test_rows_ingest_tab_in_cell_does_not_nuke_table():
+    """复审实锤回归：未 pin delim 时，单元格里的 tab/| 会让 CSV 嗅探器错判
+    分隔符，整表静默清空。"""
+    from core.data.rows_ingest import load_rows_as_varchar_table
+
+    con = duckdb.connect()
+    try:
+        temp, cleanup = load_rows_as_varchar_table(
+            con,
+            ["customer_name"],
+            [["Alice Green"], ["Bob Smith"], ["Carol\tWhite"]],
+        )
+        try:
+            rows = con.execute(f'SELECT * FROM "{temp}" ORDER BY 1').fetchall()
+        finally:
+            cleanup()
+        assert [r[0] for r in rows] == ["Alice Green", "Bob Smith", "Carol\tWhite"]
+    finally:
+        con.close()
+
+
+def test_rows_ingest_scientific_notation_float_promotes():
+    """复审实锤回归：str(0.000023)='2.3e-05' 令促升引擎失效整列滞留 VARCHAR；
+    浮点须展开为纯十进制文本。"""
+    from core.data.ingestion_precision import promote_table_column_types_from_varchar
+    from core.data.rows_ingest import load_rows_as_varchar_table
+
+    con = duckdb.connect()
+    try:
+        temp, cleanup = load_rows_as_varchar_table(
+            con, ["rate"], [[0.000023], [0.5], [1.25]]
+        )
+        try:
+            con.execute(f'CREATE TABLE t_sci AS SELECT * FROM "{temp}"')
+        finally:
+            cleanup()
+        promote_table_column_types_from_varchar(con, "t_sci")
+        dtype = con.execute("DESCRIBE t_sci").fetchall()[0][1]
+        assert str(dtype).upper().startswith("DECIMAL"), dtype
+        values = [str(r[0]) for r in con.execute("SELECT rate FROM t_sci ORDER BY rate").fetchall()]
+        assert values[0] == "0.000023"
+    finally:
+        con.close()
+
+
+def test_rows_ingest_whitespace_cell_becomes_null():
+    """复审实锤回归：'   ' 空白单元格在 append 裸 INSERT 下会让整批失败；
+    对齐旧 cell_to_literal 语义清成 NULL。"""
+    from core.data.rows_ingest import load_rows_as_varchar_table
+
+    con = duckdb.connect()
+    try:
+        con.execute("CREATE TABLE tgt (qty INTEGER)")
+        temp, cleanup = load_rows_as_varchar_table(con, ["qty"], [["1"], ["   "], ["3"]])
+        try:
+            con.execute(f'INSERT INTO tgt SELECT * FROM "{temp}"')
+        finally:
+            cleanup()
+        rows = con.execute("SELECT qty FROM tgt ORDER BY qty NULLS LAST").fetchall()
+        assert [r[0] for r in rows] == [1, 3, None]
+    finally:
+        con.close()

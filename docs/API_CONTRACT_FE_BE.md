@@ -75,7 +75,7 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`）, `data`, `row_count`, `preview_limit_applied?`；499 / 500 |
+| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`；来自 `DESCRIBE (<sql>)`，对 PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 的查询为 `[]`，前端回退值采样推断）, `data`, `row_count`, `preview_limit_applied?`；499 / 500 |
 | POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
 | POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；404 `QUERY_NOT_FOUND`（无活跃同步查询） |
 | POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求） | `saveQueryToDuckDB` |

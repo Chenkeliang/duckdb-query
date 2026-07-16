@@ -119,6 +119,24 @@ def records_from_cursor(res: Any, desc: Optional[List[Any]] = None) -> tuple:
     if desc is None:
         desc = res.description or []
     names = [str(col[0]) for col in desc]
+    if len(set(names)) != len(names):
+        # 重复列名（SELECT 1 AS id, 2 AS id / 未加别名的 JOIN）：dict 记录会
+        # 静默丢前值，按旧 pandas 语义去重为 id, id_1, id_2…（值全保留）
+        seen: Dict[str, int] = {}
+        deduped: List[str] = []
+        for name in names:
+            if name not in seen:
+                seen[name] = 0
+                deduped.append(name)
+            else:
+                seen[name] += 1
+                candidate = f"{name}_{seen[name]}"
+                while candidate in seen:
+                    seen[name] += 1
+                    candidate = f"{name}_{seen[name]}"
+                seen[candidate] = 0
+                deduped.append(candidate)
+        names = deduped
     is_dt = [
         (t == "DATE" or t.startswith("TIMESTAMP"))
         for t in (str(col[1]).upper() for col in desc)

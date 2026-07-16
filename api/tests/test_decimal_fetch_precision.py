@@ -180,3 +180,11 @@ def test_decimal_value_object_available_upstream(con):
     """DuckDB 原生游标给出 decimal.Decimal——保真不是字符串魔法，是源头无损。"""
     row = con.execute("SELECT -0.30::DECIMAL(38,2) AS amt").fetchone()
     assert row[0] == Decimal("-0.30")
+
+
+def test_duplicate_column_names_keep_all_values(con):
+    """复审实锤回归：SELECT 1 AS id, 2 AS id 曾经 dict 覆盖静默丢前值。
+    契约对齐旧 pandas 语义：去重为 id, id_1，两个值都保留。"""
+    columns, records = fetch_query_records(con, "SELECT 1 AS id, 2 AS id, 3 AS id")
+    assert columns == ["id", "id_1", "id_2"]
+    assert records[0] == {"id": 1, "id_1": 2, "id_2": 3}

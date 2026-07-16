@@ -512,6 +512,39 @@ class TestJoinQueryGenerator:
             ) in query, f"escaping missing for join_type={jt}"
 
 
+def bind_join_query_flow(mock_con, tables, table_columns, result_columns, result_rows,
+                         query_error=None):
+    """按 SQL 语义分发的连接 mock:SHOW TABLES / PRAGMA table_info / DESCRIBE /
+    主查询(description+fetchall)。query_error 给定时主查询抛出该异常。"""
+    import re as _re
+
+    def _execute(sql, *args, **kwargs):
+        res = Mock()
+        text = str(sql).strip()
+        upper = text.upper()
+        if upper.startswith("SHOW TABLES"):
+            res.fetchall.return_value = [(t,) for t in tables]
+            return res
+        if "PRAGMA TABLE_INFO" in upper:
+            m = _re.search(r"table_info\('([^']+)'\)", text, _re.I)
+            cols = table_columns.get(m.group(1), []) if m else []
+            # PRAGMA table_info 行:(cid, name, type, notnull, dflt, pk)
+            res.fetchall.return_value = [
+                (i, c, "VARCHAR", 0, None, 0) for i, c in enumerate(cols)
+            ]
+            return res
+        if upper.startswith("DESCRIBE"):
+            res.fetchall.return_value = [(c, "VARCHAR") for c in result_columns]
+            return res
+        if query_error is not None:
+            raise query_error
+        res.description = [(c, "VARCHAR") for c in result_columns]
+        res.fetchall.return_value = [tuple(r) for r in result_rows]
+        return res
+
+    mock_con.execute.side_effect = _execute
+
+
 class TestJoinAPI:
     """测试JOIN API端点"""
 
@@ -545,17 +578,23 @@ class TestJoinAPI:
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
 
-            # Mock 需要返回正确的调用序列:
-            # 1. SHOW TABLES (build_multi_table_join_query 中)
-            # 2. PRAGMA table_info('users')
-            # 3. PRAGMA table_info('orders')  
-            # 4. 最终查询结果
-            # (旧 fetchdf 帧挂载已随 records 传输移除——该路径深层已被 patch)
+            bind_join_query_flow(
+                mock_con,
+                tables=["users", "orders"],
+                table_columns={
+                    "users": ["id", "name", "email"],
+                    "orders": ["id", "user_id", "order_id"],
+                },
+                result_columns=["id", "name", "order_id"],
+                result_rows=[(1, "Alice", 101), (2, "Bob", 102)],
+            )
 
             response = client.post("/api/query", json=request_data)
 
-            # 由于 mock 配置复杂度，接受 200 或 500
-            assert response.status_code in [200, 500]
+            assert response.status_code == 200
+            payload = response.json()["data"]
+            assert payload["row_count"] == 2
+            assert payload["data"][0]["name"] == "Alice"
 
     def test_perform_query_multiple_joins(self):
         """测试执行多表JOIN查询"""
@@ -603,18 +642,22 @@ class TestJoinAPI:
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
 
-            # Mock 需要返回正确的调用序列:
-            # 1. SHOW TABLES
-            # 2. PRAGMA table_info('users')
-            # 3. PRAGMA table_info('orders')
-            # 4. PRAGMA table_info('products')
-            # 5. 最终查询结果
-            # (旧 fetchdf 帧挂载已随 records 传输移除——该路径深层已被 patch)
+            bind_join_query_flow(
+                mock_con,
+                tables=["users", "orders", "products"],
+                table_columns={
+                    "users": ["id", "name", "email"],
+                    "orders": ["id", "user_id", "product"],
+                    "products": ["id", "name", "price"],
+                },
+                result_columns=["id", "name"],
+                result_rows=[(1, "Alice")],
+            )
 
             response = client.post("/api/query", json=request_data)
 
-            # 由于 mock 配置复杂度，接受 200 或 500
-            assert response.status_code in [200, 500]
+            assert response.status_code == 200
+            assert response.json()["data"]["row_count"] == 1
 
     def test_perform_query_cross_join(self):
         """测试执行CROSS JOIN查询"""
@@ -639,17 +682,21 @@ class TestJoinAPI:
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
 
-            # Mock 需要返回正确的调用序列:
-            # 1. SHOW TABLES
-            # 2. PRAGMA table_info('users')
-            # 3. PRAGMA table_info('orders')  
-            # 4. 最终查询结果
-            # (旧 fetchdf 帧挂载已随 records 传输移除——该路径深层已被 patch)
+            bind_join_query_flow(
+                mock_con,
+                tables=["users", "orders"],
+                table_columns={
+                    "users": ["id", "name", "email"],
+                    "orders": ["id", "user_id", "amount"],
+                },
+                result_columns=["id", "name", "amount"],
+                result_rows=[(1, "Alice", 10), (1, "Alice", 20)],
+            )
 
             response = client.post("/api/query", json=request_data)
 
-            # 由于 mock 配置复杂度，接受 200 或 500
-            assert response.status_code in [200, 500]
+            assert response.status_code == 200
+            assert response.json()["data"]["row_count"] == 2
 
     def test_perform_query_validation_error(self):
         """测试查询验证错误"""
@@ -772,17 +819,21 @@ class TestJoinIntegration:
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
 
-            # Mock 需要返回正确的调用序列:
-            # 1. SHOW TABLES
-            # 2. PRAGMA table_info('users')
-            # 3. PRAGMA table_info('orders')  
-            # 4. 最终查询结果
-            # (旧 fetchdf 帧挂载已随 records 传输移除——该路径深层已被 patch)
+            bind_join_query_flow(
+                mock_con,
+                tables=["users", "orders"],
+                table_columns={
+                    "users": ["id", "name", "email"],
+                    "orders": ["id", "user_id", "order_id"],
+                },
+                result_columns=["id", "name", "order_id"],
+                result_rows=[(1, "Alice", 101)],
+            )
 
             response = client.post("/api/query", json=request_data)
 
-            # 由于 mock 配置复杂度，接受 200 或 500
-            assert response.status_code in [200, 500]
+            assert response.status_code == 200
+            assert response.json()["data"]["data"][0]["order_id"] == 101
 
 
 class TestJoinErrorHandling:
@@ -887,14 +938,21 @@ class TestJoinErrorHandling:
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
 
-            # Mock 需要返回正确的调用序列:
-            # 1. SHOW TABLES
-            # 2. PRAGMA table_info('users')
-            # 3. PRAGMA table_info('orders')  
-            # 4. 查询执行抛出异常
-            # (旧 fetchdf 帧挂载已随 records 传输移除——该路径深层已被 patch)
+            bind_join_query_flow(
+                mock_con,
+                tables=["users", "orders"],
+                table_columns={
+                    "users": ["id", "name", "email"],
+                    "orders": ["id", "user_id", "order_id"],
+                },
+                result_columns=[],
+                result_rows=[],
+                query_error=Exception(
+                    'Binder Error: Referenced column "nonexistent_column" not found'
+                ),
+            )
 
             response = client.post("/api/query", json=request_data)
 
-            # API 应该返回错误状态码
-            assert response.status_code in [500, 503]  # Accept both error codes
+            assert response.status_code in [400, 500]
+            assert "nonexistent_column" in str(response.json())

@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import csv
 import logging
+import math
 import os
 import tempfile
+from decimal import Decimal
 from typing import Any, Callable, Iterable, List, Sequence, Tuple
 from uuid import uuid4
 
@@ -21,14 +23,26 @@ logger = logging.getLogger(__name__)
 
 
 def _cell_text(value: Any) -> str:
-    """单元格 → 文本。None → 空字段（QUOTE_MINIMAL 下不加引号 → 读回 NULL）。
+    """单元格 → 文本。None/纯空白 → 空字段（不加引号 → 读回 NULL）。
 
     str() 即"忠实文本"：bool → 'True'/'False'、Decimal/日期保持原样字面量，
-    与摄取铁律的 all_varchar 读入口径一致。
+    与摄取铁律的 all_varchar 读入口径一致。两个例外：
+    - float 的 str() 对极小/极大值给科学计数法（2.3e-05），促升引擎认不出
+      会整列滞留 VARCHAR——展开成纯十进制文本（Decimal 精确展开，不引入
+      新的舍入）;
+    - 纯空白单元格清成 NULL（对齐旧 cell_to_literal 语义）：append 到已
+      建类型表的裸 INSERT 无 TRY_CAST 兜底，'   ' 会让整批失败。
     """
     if value is None:
         return ""
-    return str(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return ""
+        return format(Decimal(str(value)), "f")
+    text = str(value)
+    if not text.strip():
+        return ""
+    return text
 
 
 def load_rows_as_varchar_table(
@@ -56,6 +70,7 @@ def load_rows_as_varchar_table(
         connection.execute(
             f'CREATE TEMP TABLE "{table_name}" AS '
             "SELECT * FROM read_csv(?, all_varchar=true, header=true, "
+            "delim=',', quote='\"', escape='\"', "
             "sample_size=-1, strict_mode=false)",
             [tmp_path],
         )

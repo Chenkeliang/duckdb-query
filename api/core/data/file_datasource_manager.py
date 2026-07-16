@@ -458,8 +458,8 @@ def create_table_from_dataframe(
     import_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    统一入口：支持直接传入文件路径或 DataFrame。
-    返回值包含行数、列数量、列定义与列类型元数据。
+    统一入口：按文件路径建表（v1.2.1 起 DataFrame 直入已退役，参数名保留
+    以兼容既有调用方签名）。返回值包含行数、列数量、列定义与列类型元数据。
     """
     metadata = create_table_from_file_path_typed(
         duckdb_con,
