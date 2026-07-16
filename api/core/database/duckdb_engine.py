@@ -1,5 +1,4 @@
 # pylint: disable=duplicate-code
-import decimal
 import duckdb
 import logging
 import pandas as pd
@@ -459,20 +458,18 @@ def get_db_connection():
 
 
 def _fetchall_dataframe(res, desc):
-    """fetchall 构造 DataFrame，各列形态对齐 Arrow 路径（两条路径产出必须一致）。"""
+    """fetchall 构造 DataFrame，逐值原样承载 DuckDB 原生 Python 对象。
+
+    dtype=object 阻断构造器类型推断：可空整型列否则被推成 float64
+    （>2^53 的值在构造时即静默失真），timedelta 否则被推成 timedelta64
+    （序列化形态漂移为 pd.Timedelta）。
+    """
     names = [col[0] for col in desc]
-    df = pd.DataFrame(res.fetchall(), columns=names)
+    df = pd.DataFrame(res.fetchall(), columns=names, dtype=object)
     for name, col in zip(names, desc):
         type_str = str(col[1]).upper()
-        if "HUGEINT" in type_str:
-            # 对齐 Arrow：HUGEINT 以 Decimal 进 DataFrame。裸 Python 大整数会让
-            # normalize 的 convert_dtypes 抛 OverflowError，整帧退化 object，
-            # 连带日期列丢 datetime64 的空格分隔序列化格式。
-            df[name] = df[name].map(
-                lambda v: decimal.Decimal(v) if v is not None else None
-            )
-        elif type_str == "DATE" or type_str.startswith("TIMESTAMP"):
-            # 日期/时间戳列转回 datetime64，保持与 fetchdf/Arrow 路径一致的序列化
+        if type_str == "DATE" or type_str.startswith("TIMESTAMP"):
+            # 日期/时间戳列转回 datetime64，保持与 fetchdf 路径一致的序列化
             # 格式（object 列会走 isoformat 带 "T"）。用 astype[us] 而非 to_datetime：
             # 财务哨兵日期 9999-12-31 超出 ns 上限。转不动时保持对象列（isoformat
             # 序列化仍无损，只是格式差异），不让整条查询失败。
@@ -486,25 +483,30 @@ def _fetchall_dataframe(res, desc):
     return df
 
 
-def fetch_query_dataframe(connection, query):
-    """执行查询并取回 DataFrame；结果含 DECIMAL / HUGEINT 列时保留精确值。
+def _needs_exact_fetch(type_str):
+    """该列类型经 fetchdf 会失真，需走 fetchall 保真路径。
 
-    fetchdf 会把 DECIMAL 压成 float64（约 15-17 位有效数字，财务值可能失真）。
-    含 DECIMAL/HUGEINT 时优先走 Arrow（向量化，decimal.Decimal 进 DataFrame）；
-    桌面冻结包没有 pyarrow（duckquery.spec excludes，省约 121MB），此时退到
-    fetchall 路径，精度语义与 Arrow 一致。其余结果仍走 fetchdf 原路径。
+    DECIMAL：fetchdf 压成 float64（约 15-17 位有效数字）。
+    HUGEINT：fetchdf 压成 float64。
+    BIGINT 子串（含 UBIGINT、BIGINT[] 等）：列含 NULL 时 fetchdf 整列变
+    float64，>2^53 的值静默失真（fetch 阶段即坏，JSON 层的字符串守护救不回）。
+    """
+    return "DECIMAL" in type_str or "HUGEINT" in type_str or "BIGINT" in type_str
+
+
+def fetch_query_dataframe(connection, query):
+    """执行查询并取回 DataFrame；结果含需保真列时走 fetchall。
+
+    fetchall 由 DuckDB 原生返回 decimal.Decimal / 任意精度 int，配合 JSON 层
+    的十进制字符串序列化实现全链路无损。不走 Arrow：pyarrow 被桌面版
+    PyInstaller excludes 排除（约 121MB），且 DuckDB→Arrow 转换本身有缺陷
+    （VARIANT 列抛 NotImplemented、可空整型仍压 float64、STRUCT 整数字段变
+    float、MAP 变键值对数组）。其余结果仍走 fetchdf 原路径。
     """
     res = connection.execute(query)
     desc = res.description or []
-    if any(
-        "DECIMAL" in str(col[1]).upper() or "HUGEINT" in str(col[1]).upper()
-        for col in desc
-    ):
-        try:
-            import pyarrow  # noqa: F401
-        except ImportError:
-            return _fetchall_dataframe(res, desc)
-        return res.to_arrow_table().to_pandas(date_as_object=False)
+    if any(_needs_exact_fetch(str(col[1]).upper()) for col in desc):
+        return _fetchall_dataframe(res, desc)
     return res.fetchdf()
 
 

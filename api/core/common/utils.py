@@ -7,7 +7,7 @@ import json
 import decimal
 import numpy as np
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -31,6 +31,10 @@ def jsonable_encoder(obj: Any) -> Any:
     """
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
+    elif isinstance(obj, timedelta):
+        # INTERVAL 列：此前 Arrow 路径泄漏 DateOffset 对象（垃圾输出），
+        # 契约钉为 str(timedelta)，如 '3 days, 0:00:00'（pd.Timedelta 同分支）
+        return str(obj)
     elif isinstance(obj, decimal.Decimal):
         # 使用十进制字符串，避免 float 精度损失；前端按字符串展示/筛选
         try:
@@ -154,7 +158,14 @@ def normalize_dataframe_output(df: pd.DataFrame) -> List[Dict[str, Any]]:
     try:
         normalized = normalized.convert_dtypes()
     except Exception:
-        normalized = normalized.astype(object)
+        # 逐列降级：整帧 astype(object) 会把 datetime64 列一并拖成对象列，
+        # 序列化形态从空格分隔漂移成 isoformat（超 int64 的大整数列等
+        # 单列异常不该殃及其他列）
+        for col in normalized.columns:
+            try:
+                normalized[col] = normalized[col].convert_dtypes()
+            except Exception:
+                pass
 
     # 恢复 object 列的原始值（避免日期字符串被转换后重新格式化）
     for col in object_cols_backup:
