@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from models.pivot_query_models import (
+    AggregationFunction,
     PivotQueryConfig,
     FilterOperator,
     PivotQueryMode,
@@ -299,7 +300,7 @@ def _try_generate_native_pivot(
         ):
             column_expr = f"TRY_CAST({column_expr} AS {v.typeConversion.upper()})"
 
-        agg_items.append(f"{v.aggregation.value}({column_expr})")
+        agg_items.append(_aggregation_sql_expr(v.aggregation, column_expr))
 
     col_dim = _quote_identifier(pivot_config.columns[0])
     
@@ -334,6 +335,26 @@ def _try_generate_native_pivot(
     }
 
 
+def _aggregation_sql_expr(aggregation: AggregationFunction, column_expr: str) -> str:
+    """聚合枚举 → DuckDB 聚合表达式。
+
+    COUNT_DISTINCT 是 UI 枚举名而非 DuckDB 函数——直接拼 ``COUNT_DISTINCT(col)``
+    会报 "Aggregate Function with name count_distinct does not exist"，
+    必须展开为 ``count(DISTINCT col)``。
+    """
+    if aggregation == AggregationFunction.COUNT_DISTINCT:
+        return f"count(DISTINCT {column_expr})"
+    return f"{aggregation.value}({column_expr})"
+
+
+def _aggregation_alias_suffix(aggregation: AggregationFunction, column: str) -> str:
+    """多聚合原生 PIVOT 输出列名里的聚合段（与 DuckDB 实测命名一致：
+    ``{值}_sum(col)`` / ``{值}_count(DISTINCT col)``，列名不带引号）。"""
+    if aggregation == AggregationFunction.COUNT_DISTINCT:
+        return f"count(DISTINCT {column})"
+    return f"{aggregation.value.lower()}({column})"
+
+
 def _derive_pivot_value_aliases(
     values: List[PivotValueConfig],
     manual_values: Optional[List[str]],
@@ -364,7 +385,8 @@ def _derive_pivot_value_aliases(
                 aliases.append(str(manual_val))
             else:
                 aliases.append(
-                    f"{manual_val}_{value.aggregation.value.lower()}({value.column})"
+                    f"{manual_val}_"
+                    f"{_aggregation_alias_suffix(value.aggregation, value.column)}"
                 )
     return aliases
 

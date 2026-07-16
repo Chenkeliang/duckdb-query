@@ -609,3 +609,84 @@ class TestTableMetadata:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+class TestCountDistinctAggregation:
+    """回归：COUNT_DISTINCT 是 UI 枚举名而非 DuckDB 函数。曾直接拼成
+    COUNT_DISTINCT(col) 下发，DuckDB 报 "Aggregate Function with name
+    count_distinct does not exist"——必须展开为 count(DISTINCT col)。"""
+
+    @staticmethod
+    def _generate(pivot_config):
+        config = PivotQueryConfig(table_name="sales", filters=[])
+        with patch(
+            "core.services.pivot_query_generator.config_manager"
+        ) as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+            )
+            return generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+    def test_count_distinct_renders_sql_distinct_form(self):
+        result = self._generate(PivotConfig(
+            rows=["region"],
+            columns=["month"],
+            values=[PivotValueConfig(
+                column="product_id",
+                aggregation=AggregationFunction.COUNT_DISTINCT,
+            )],
+            manual_column_values=["1月", "2月"],
+        ))
+        assert 'count(DISTINCT "product_id")' in result.final_sql
+        assert "COUNT_DISTINCT(" not in result.final_sql
+
+    def test_count_distinct_generated_sql_executes_on_duckdb(self):
+        import duckdb
+
+        result = self._generate(PivotConfig(
+            rows=["region"],
+            columns=["month"],
+            values=[PivotValueConfig(
+                column="product_id",
+                aggregation=AggregationFunction.COUNT_DISTINCT,
+            )],
+            manual_column_values=["1月", "2月"],
+            include_grand_totals=True,
+        ))
+        con = duckdb.connect()
+        con.execute(
+            "CREATE TABLE sales AS SELECT * FROM (VALUES "
+            "('华北','1月',1),('华北','1月',2),('华北','2月',1),('华东','1月',2)"
+            ") t(region, month, product_id)"
+        )
+        rows = con.execute(result.final_sql.rstrip(";")).fetchall()
+        by_region = {r[0]: r for r in rows}
+        assert by_region["华北"][1] == 2      # 1月两个不同商品
+        # 总计行 = 各行单元格之和(与 COUNT 合计口径一致),非全局去重
+        assert by_region["总计"][1] == 3
+
+    def test_count_distinct_multi_agg_alias_matches_duckdb_naming(self):
+        import duckdb
+
+        result = self._generate(PivotConfig(
+            rows=["region"],
+            columns=["month"],
+            values=[
+                PivotValueConfig(column="product_id",
+                                 aggregation=AggregationFunction.SUM),
+                PivotValueConfig(column="product_id",
+                                 aggregation=AggregationFunction.COUNT_DISTINCT),
+            ],
+            manual_column_values=["1月"],
+            include_grand_totals=True,
+        ))
+        # 多聚合输出列名形如 {值}_count(DISTINCT col)（DuckDB 实测命名），
+        # 合计 SELECT 必须引用同名列，否则 UNION ALL 直接 Binder Error。
+        con = duckdb.connect()
+        con.execute(
+            "CREATE TABLE sales AS SELECT * FROM (VALUES "
+            "('华北','1月',1),('华北','1月',2)) t(region, month, product_id)"
+        )
+        rows = con.execute(result.final_sql.rstrip(";")).fetchall()
+        assert any(r[0] == "总计" for r in rows)
