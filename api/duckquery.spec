@@ -37,7 +37,7 @@ a = Analysis(
     # 兜底,fetch 精确路径为此固定走 fetchall(见 duckdb_engine,配套测试
     # 在屏蔽 pyarrow 环境下全程回归)。hf_xet 仅 HF 下载加速用,可安全排除。
     excludes=['magic', 'tkinter', 'matplotlib', 'IPython', 'jupyter', 'notebook', 'PIL',
-              'pyarrow', 'hf_xet'],
+              'pyarrow', 'hf_xet', 'numpy', 'pandas'],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
