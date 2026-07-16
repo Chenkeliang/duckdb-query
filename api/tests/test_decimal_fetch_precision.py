@@ -26,13 +26,25 @@ def con():
 
 @pytest.fixture(autouse=True)
 def no_pyarrow(monkeypatch):
-    """模拟桌面冻结包：pyarrow 不可导入。精确路径必须在此环境下完整工作。"""
+    """回归绊线：本项目代码（core/routers）不得 import pyarrow。
+
+    只拦截"我们自己模块"发起的导入（v1.1.5 事故 = duckdb_engine 调
+    to_arrow_table）。不能全局拦：pandas 3.x 在装有 pyarrow 的环境里会
+    按需 import 它做 Arrow-backed string 等内部优化，半路拦截会把 pandas
+    自己搞炸——而真实冻结包里 pandas 自导入起就检测不到 pyarrow、走
+    object 回退，行为不同。冻结环境的全栈保真由 release CI 的
+    frozen_smoke（真实打包产物）负责。
+    """
     monkeypatch.delitem(sys.modules, "pyarrow", raising=False)
     real_import = builtins.__import__
 
     def blocked(name, *args, **kwargs):
         if name == "pyarrow" or name.startswith("pyarrow."):
-            raise ModuleNotFoundError("No module named 'pyarrow'")
+            importer = ""
+            if args and isinstance(args[0], dict):
+                importer = args[0].get("__name__") or ""
+            if importer.startswith(("core.", "routers.", "models.", "utils.")):
+                raise ModuleNotFoundError("No module named 'pyarrow'")
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", blocked)
