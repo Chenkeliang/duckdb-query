@@ -2,7 +2,8 @@
  * DuckDB 扩展管理页
  *
  * 展示精选扩展目录（数据源 / 能力增强两组），支持一键联网安装并轮询进度。
- * 桌面端预置的扩展（excel/httpfs/mysql/postgres）标注「已预置」，不可重复安装。
+ * 桌面端预置的扩展（v1.2.0 起仅 excel）标注「已预置」，不可重复安装；
+ * 徽标与安装按钮完全由后端返回的 bundled/installed 字段驱动。
  */
 
 import * as React from 'react';

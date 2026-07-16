@@ -2,6 +2,7 @@
 import duckdb
 import logging
 import pandas as pd
+import threading
 import time
 from typing import List, Dict, Any, Optional, Tuple
 import re
@@ -322,46 +323,53 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
         _apply_default_duckdb_config(connection, temp_dir)
 
 
-# 进程级 INSTALL 失败缓存:连接池每建一个新连接都会跑一遍扩展兜底安装,而
-# INSTALL 走网络(extensions.duckdb.org),不可达时(国内网络/离线)DuckDB 内置
-# 下载客户端单次实测挂 ~120s——不记忆失败的话 N 个连接 × M 个扩展会串行挂
-# 十几分钟,表现为"首次查询卡死"。失败过的扩展本进程不再重试 INSTALL(重试
-# 也必然同样失败);LOAD 每次照常尝试,本地已有时零成本成功。
-_install_failed_extensions: set = set()
+# autoinstall_known_extensions 是数据库实例级 GLOBAL 开关（duckdb_settings()
+# 实测 scope=GLOBAL），连接池扩容与 engine_compat 保存两条路径都会做
+# "关→操作→恢复"。并发交错会把别人的禁网窗口提前恢复成 true（可复现），
+# 让启动路径意外联网；进程内互斥即可（窗口毫秒级：LOAD 本地文件 + 若干 SET）。
+_autoinstall_toggle_lock = threading.Lock()
 
 
 def _install_duckdb_extensions(connection, extensions: List[str]):
-    """
-    安装和加载DuckDB扩展
+    """启动阶段加载扩展：只加载本地已有的，绝不联网。
 
-    Args:
-        connection: DuckDB连接实例
-        extensions: 扩展名称列表
+    INSTALL 走网络(extensions.duckdb.org),受限网络下 DuckDB 内置下载客户端
+    单次实测挂 ~120s,发生在连接池初始化即表现为"本地引擎启动超时"(v1.1.4
+    曾为此把扩展全量预置进包)。v1.2.0 桌面包只预置 excel,启动改为:本地有
+    (预置/已装)则秒加载,没有则秒失败跳过。注意"只 LOAD"并不天然禁网——
+    实测别名扩展(mysql/postgres → *_scanner)的 LOAD 会触发 autoinstall
+    联网下载(httpfs 等直名则本地快速失败),因此 LOAD 期间必须临时关闭
+    autoinstall。未安装扩展的获取入口:扩展页手动下载(routers/
+    duckdb_extensions),或联邦查询等用到时 DuckDB autoinstall(该动作
+    本就需要网络)。
     """
     if not extensions:
         return
 
-    for ext_name in extensions:
+    with _autoinstall_toggle_lock:
         try:
-            # 先尝试加载扩展（如果已安装）
-            connection.execute(f"LOAD {ext_name};")
-            logger.info(f"DuckDB extension {ext_name} loaded")
-        except Exception as load_error:
-            if ext_name in _install_failed_extensions:
-                logger.warning(
-                    f"DuckDB extension {ext_name} unavailable (INSTALL already failed this session, not retrying)"
-                )
-                continue
-            # 如果加载失败，尝试安装后再加载
+            connection.execute("SET autoinstall_known_extensions=false")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("disable autoinstall before startup LOAD failed: %s", exc)
+        try:
+            for ext_name in extensions:
+                try:
+                    connection.execute(f"LOAD {ext_name};")
+                    logger.info(f"DuckDB extension {ext_name} loaded")
+                except Exception as load_error:
+                    # 常态:未预置/未安装的扩展在全新环境必然走到这里,按 debug 降噪
+                    logger.debug(
+                        "DuckDB extension %s not available locally, skipped at startup "
+                        "(install via extensions page, or auto-installed on first use): %s",
+                        ext_name,
+                        load_error,
+                    )
+        finally:
             try:
-                connection.execute(f"INSTALL {ext_name};")
-                connection.execute(f"LOAD {ext_name};")
-                logger.info(f"DuckDB extension {ext_name} installed and loaded successfully")
-            except Exception as install_error:
-                _install_failed_extensions.add(ext_name)
-                logger.warning(
-                    f"Failed to install or load DuckDB extension {ext_name}: {str(install_error)}"
-                )
+                connection.execute("SET autoinstall_known_extensions=true")
+            except Exception as exc:  # noqa: BLE001
+                # 恢复失败 = 全进程联邦扩展 autoinstall 失效直至重启，必须可见
+                logger.warning("restore autoinstall after startup LOAD failed: %s", exc)
 
 
 # 引擎兼容性配置对应的 DuckDB SET GLOBAL 选项名，分别由 sqlite_scanner / mysql /
@@ -378,18 +386,37 @@ def apply_engine_compat_settings(connection, engine_compat: Optional[Dict[str, A
     """应用引擎兼容性配置。
 
     SET GLOBAL 是数据库实例级作用域：在池中任意一个连接上执行，所有池化连接立即生效。
-    这四个 option 分别由 sqlite_scanner/mysql/postgres/iceberg 扩展注册，扩展未加载
-    （且离线无法自动安装）时 SET GLOBAL 会报 "unrecognized configuration option"，因此
-    逐项 try/except 并降级为 debug 日志，绝不能因为某个开关对应的扩展没装就搞坏连接初始化。
+    这四个 option 分别由 sqlite_scanner/mysql/postgres/iceberg 扩展注册。
+
+    只 SET 值为 True 的开关：False 与 DuckDB 原生默认一致，SET 是纯空转——
+    且对未加载扩展的 option 执行 SET 会触发 DuckDB autoinstall 联网下载
+    （受限网络单次挂 ~120s，发生在连接池初始化 = "本地引擎启动超时"；
+    扩展全量预置时代被掩盖，v1.2.0 按需预置后必须掐掉）。SET 期间临时关闭
+    autoinstall：本地已装的扩展 autoload 即时生效；未装的快速失败降级为
+    debug 日志（用户装好扩展后新连接自然生效），初始化路径绝不联网。
     """
     if not engine_compat:
         return
-    for option in ENGINE_COMPAT_OPTIONS:
-        value = bool(engine_compat.get(option, False))
+    enabled = [opt for opt in ENGINE_COMPAT_OPTIONS if bool(engine_compat.get(opt, False))]
+    if not enabled:
+        return
+    with _autoinstall_toggle_lock:
         try:
-            connection.execute(f"SET GLOBAL {option}={str(value).lower()}")
-        except Exception as exc:  # noqa: BLE001  扩展未加载时的预期失败，静默降级
-            logger.debug("engine_compat SET GLOBAL %s=%s skipped: %s", option, value, exc)
+            connection.execute("SET autoinstall_known_extensions=false")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("disable autoinstall before engine_compat failed: %s", exc)
+        try:
+            for option in enabled:
+                try:
+                    connection.execute(f"SET GLOBAL {option}=true")
+                except Exception as exc:  # noqa: BLE001  扩展未装时的预期失败，静默降级
+                    logger.debug("engine_compat SET GLOBAL %s=true skipped: %s", option, exc)
+        finally:
+            try:
+                connection.execute("SET autoinstall_known_extensions=true")
+            except Exception as exc:  # noqa: BLE001
+                # 恢复失败 = 全进程联邦扩展 autoinstall 失效直至重启，必须可见
+                logger.warning("restore autoinstall after engine_compat failed: %s", exc)
 
 
 def _apply_default_duckdb_config(connection, temp_dir: str):
@@ -457,21 +484,71 @@ def get_db_connection():
     return PooledConnectionProxy()
 
 
-def fetch_query_dataframe(connection, query):
-    """执行查询并取回 DataFrame；结果含 DECIMAL / HUGEINT 列时改走 Arrow。
+def _fetchall_dataframe(res, desc):
+    """fetchall 构造 DataFrame，逐值原样承载 DuckDB 原生 Python 对象。
 
-    fetchdf 会把 DECIMAL 压成 float64（约 15-17 位有效数字，财务值可能失真），
-    Arrow 路径则以 decimal.Decimal 对象进入 DataFrame，配合 JSON 层的
-    Decimal→十进制字符串序列化实现全链路无损；date_as_object=False 保持
-    日期/时间戳 dtype 与 fetchdf 一致。其余结果仍走 fetchdf 原路径。
+    dtype=object 阻断构造器类型推断：可空整型列否则被推成 float64
+    （>2^53 的值在构造时即静默失真），timedelta 否则被推成 timedelta64
+    （序列化形态漂移为 pd.Timedelta）。
+    """
+    names = [col[0] for col in desc]
+    df = pd.DataFrame(res.fetchall(), columns=names, dtype=object)
+    for name, col in zip(names, desc):
+        type_str = str(col[1]).upper()
+        if type_str == "TIMESTAMP_NS":
+            # fetchall 把 TIMESTAMP_NS 转成 stdlib datetime（微秒上限），
+            # 纳秒分量在取数阶段即截断，后续无法挽救——显式告警而非静默。
+            # 单独查询 TIMESTAMP_NS（不与 DECIMAL/HUGEINT 同帧）走 fetchdf
+            # 保留纳秒。
+            logger.warning(
+                "TIMESTAMP_NS column %s truncated to microseconds on the exact "
+                "fetch path (queried alongside DECIMAL/HUGEINT); query it "
+                "without high-precision numeric columns to keep nanoseconds",
+                name,
+            )
+        if type_str == "DATE" or type_str.startswith("TIMESTAMP"):
+            # 日期/时间戳列转回 datetime64，保持与 fetchdf 路径一致的序列化
+            # 格式（object 列会走 isoformat 带 "T"）。用 astype[us] 而非 to_datetime：
+            # 财务哨兵日期 9999-12-31 超出 ns 上限。转不动时保持对象列（isoformat
+            # 序列化仍无损，只是格式差异），不让整条查询失败。
+            try:
+                if "WITH TIME ZONE" in type_str:
+                    df[name] = pd.to_datetime(df[name])
+                else:
+                    df[name] = df[name].astype("datetime64[us]")
+            except (ValueError, TypeError):
+                pass
+    return df
+
+
+def _needs_exact_fetch(type_str):
+    """该列类型经 fetchdf 会失真，需走 fetchall 保真路径。
+
+    DECIMAL：fetchdf 压成 float64（约 15-17 位有效数字）。
+    HUGEINT：fetchdf 压成 float64（实测 1.7e38 直接变浮点）。
+    注意 (U)BIGINT 不在此列：fetchdf 对可空整型返回 pandas Int64/UInt64
+    可空 dtype，>2^53 逐位精确（实测 duckdb 1.5.3）——历史上观测到的
+    "可空 BIGINT 坏值 9007199254740992.0" 发生在 normalize 的整帧
+    convert_dtypes/map 降型（已在 utils 逐列化+去 map 修复），不在 fetch
+    阶段。BIGINT 触发会把 COUNT(*)/主键等几乎所有查询帧推上逐行慢路径
+    （实测 2M 行 ~3 倍耗时），得不偿失。
+    """
+    return "DECIMAL" in type_str or "HUGEINT" in type_str
+
+
+def fetch_query_dataframe(connection, query):
+    """执行查询并取回 DataFrame；结果含需保真列时走 fetchall。
+
+    fetchall 由 DuckDB 原生返回 decimal.Decimal / 任意精度 int，配合 JSON 层
+    的十进制字符串序列化实现全链路无损。不走 Arrow：pyarrow 被桌面版
+    PyInstaller excludes 排除（约 121MB），且 DuckDB→Arrow 转换本身有缺陷
+    （VARIANT 列抛 NotImplemented、可空整型仍压 float64、STRUCT 整数字段变
+    float、MAP 变键值对数组）。其余结果仍走 fetchdf 原路径。
     """
     res = connection.execute(query)
     desc = res.description or []
-    if any(
-        "DECIMAL" in str(col[1]).upper() or "HUGEINT" in str(col[1]).upper()
-        for col in desc
-    ):
-        return res.to_arrow_table().to_pandas(date_as_object=False)
+    if any(_needs_exact_fetch(str(col[1]).upper()) for col in desc):
+        return _fetchall_dataframe(res, desc)
     return res.fetchdf()
 
 

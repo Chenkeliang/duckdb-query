@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -68,9 +68,7 @@ def test_provider_test_endpoint_pings_model(tmp_path, monkeypatch):
         "features": {},
     })
 
-    fake = MagicMock()
-    fake.choices = [MagicMock(message=MagicMock(content="pong"))]
-    with patch("core.services.llm_service.litellm.completion", return_value=fake):
+    with patch("core.services.llm_service.llm_client.complete", return_value="pong"):
         resp = client.post("/api/ai/providers/p1/test")
     assert resp.status_code == 200
     assert resp.json()["data"]["ok"] is True
@@ -93,10 +91,8 @@ def test_error_fix_returns_explanation_and_safe_fix(tmp_path, monkeypatch):
                        "models": ["gpt-4o-mini"], "enabled": True}],
         "features": {},
     })
-    fake = MagicMock()
-    fake.choices = [MagicMock(message=MagicMock(
-        content='{"explanation":"列写错了","fixed_sql":"SELECT order_id FROM orders"}'))]
-    with patch("core.services.llm_service.litellm.completion", return_value=fake):
+    fake = '{"explanation":"列写错了","fixed_sql":"SELECT order_id FROM orders"}'
+    with patch("core.services.llm_service.llm_client.complete", return_value=fake):
         resp = client.post("/api/ai/error-fix", json={
             "sql": "SELECT order_idd FROM orders", "error": "Binder Error: ...",
             "tables": [], "locale": "zh",
@@ -170,9 +166,10 @@ def test_explain_sql_route_returns_explanation(tmp_path, monkeypatch):
         "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
                        "models": ["gpt-4o-mini"], "enabled": True}],
         "features": {}})
-    fake = MagicMock()
-    fake.choices = [MagicMock(message=MagicMock(content="这条 SQL 取所有订单。"))]
-    with patch("core.services.llm_service.litellm.completion", return_value=fake):
+    with patch(
+        "core.services.llm_service.llm_client.complete",
+        return_value="这条 SQL 取所有订单。",
+    ):
         resp = client.post("/api/ai/explain-sql", json={"sql": "SELECT * FROM orders", "locale": "zh"})
     assert resp.status_code == 200
     assert resp.json()["data"]["explanation"]
@@ -187,10 +184,8 @@ def test_nl_to_sql_route_returns_safe_select(tmp_path, monkeypatch):
         "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
                        "models": ["gpt-4o-mini"], "enabled": True}],
         "features": {}})
-    fake = MagicMock()
-    fake.choices = [MagicMock(message=MagicMock(
-        content='{"sql":"SELECT count(*) FROM orders","used_tables":["orders"]}'))]
-    with patch("core.services.llm_service.litellm.completion", return_value=fake):
+    fake = '{"sql":"SELECT count(*) FROM orders","used_tables":["orders"]}'
+    with patch("core.services.llm_service.llm_client.complete", return_value=fake):
         resp = client.post("/api/ai/nl-to-sql", json={
             "question": "多少订单", "tables": ["orders"], "locale": "zh"})
     assert resp.status_code == 200
@@ -218,9 +213,10 @@ def test_chat_route_returns_content(tmp_path, monkeypatch):
         "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
                        "models": ["gpt-4o-mini"], "enabled": True}],
         "features": {}})
-    fake = MagicMock()
-    fake.choices = [MagicMock(message=MagicMock(content="orders 表存放订单。"))]
-    with patch("core.services.llm_service.litellm.completion", return_value=fake):
+    with patch(
+        "core.services.llm_service.llm_client.complete",
+        return_value="orders 表存放订单。",
+    ):
         resp = client.post("/api/ai/chat", json={
             "messages": [{"role": "user", "content": "orders 表是干嘛的"}],
             "tables": [], "locale": "zh"})
@@ -239,11 +235,9 @@ def test_chat_route_includes_current_sql_in_system_prompt(tmp_path, monkeypatch)
         "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
                        "models": ["gpt-4o-mini"], "enabled": True}],
         "features": {}})
-    fake = MagicMock()
-    fake.choices = [MagicMock(message=MagicMock(content="好的"))]
     current_sql = 'SELECT * FROM "alerts" LEFT JOIN "rules" ON "alerts"."id" = "rules"."id"'
     with patch(
-        "core.services.llm_service.litellm.completion", return_value=fake
+        "core.services.llm_service.llm_client.complete", return_value="好的"
     ) as mock_completion:
         resp = client.post("/api/ai/chat", json={
             "messages": [{"role": "user", "content": "在当前SQL里加上rules的关联"}],
@@ -266,10 +260,8 @@ def test_chat_system_prompt_enforces_duckdb_dialect(tmp_path, monkeypatch):
         "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
                        "models": ["gpt-4o-mini"], "enabled": True}],
         "features": {}})
-    fake = MagicMock()
-    fake.choices = [MagicMock(message=MagicMock(content="好的"))]
     with patch(
-        "core.services.llm_service.litellm.completion", return_value=fake
+        "core.services.llm_service.llm_client.complete", return_value="好的"
     ) as mock_completion:
         resp = client.post("/api/ai/chat", json={
             "messages": [{"role": "user", "content": "帮我查询"}],
@@ -292,11 +284,9 @@ def test_chat_route_truncates_overlong_current_sql(tmp_path, monkeypatch):
         "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
                        "models": ["gpt-4o-mini"], "enabled": True}],
         "features": {}})
-    fake = MagicMock()
-    fake.choices = [MagicMock(message=MagicMock(content="好的"))]
     overlong_sql = "SELECT " + "a, " * 2000 + "1"
     with patch(
-        "core.services.llm_service.litellm.completion", return_value=fake
+        "core.services.llm_service.llm_client.complete", return_value="好的"
     ) as mock_completion:
         resp = client.post("/api/ai/chat", json={
             "messages": [{"role": "user", "content": "hi"}],
@@ -326,10 +316,8 @@ def test_suggest_chart_returns_spec(tmp_path, monkeypatch):
         "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
                        "models": ["gpt-4o-mini"], "enabled": True}],
         "features": {}})
-    fake = MagicMock()
-    fake.choices = [MagicMock(message=MagicMock(
-        content='{"type":"bar","x":"status","y":["amount"],"agg":"sum","reason":"按状态汇总金额"}'))]
-    with patch("core.services.llm_service.litellm.completion", return_value=fake):
+    fake = '{"type":"bar","x":"status","y":["amount"],"agg":"sum","reason":"按状态汇总金额"}'
+    with patch("core.services.llm_service.llm_client.complete", return_value=fake):
         resp = client.post("/api/ai/suggest-chart", json={
             "columns": [{"name": "status", "type": "varchar(20)"},
                         {"name": "amount", "type": "decimal(11,2)"}],

@@ -60,6 +60,13 @@ jobs:
         working-directory: api
         run: pyinstaller duckquery.spec --noconfirm --distpath dist --workpath build
 
+      # 冻结包冒烟:启动真实产物跑保真查询电池。测试环境全绿 ≠ 冻结包可用
+      # (v1.1.5 曾因 spec excludes 与代码不匹配发出坏包),失败即中止发布。
+      - name: Frozen bundle smoke test
+        working-directory: api
+        timeout-minutes: 15
+        run: python scripts/frozen_smoke.py
+
       # ---- Stage the onedir as a Tauri bundle resource ----
       - name: Stage sidecar (macOS)
         if: runner.os == 'macOS'

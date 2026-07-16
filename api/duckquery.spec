@@ -2,15 +2,8 @@
 import os
 import glob
 import shutil
-from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-litellm_datas, litellm_binaries, litellm_hidden = collect_all('litellm')
-# 体积优化:litellm 自带一整套 Next.js proxy 管理后台静态网页(~21MB),我们只把
-# litellm 当库调用 completion(),从不跑它的 proxy 服务 —— 过滤掉这些永不加载的 web 资源。
-litellm_datas = [
-    (s, d) for (s, d) in litellm_datas
-    if "proxy/_experimental/out" not in d.replace("\\", "/")
-]
 starlette_hidden = collect_submodules('starlette')
 # sqlglot 的方言模块(parse_one(..., read="duckdb"))是运行时动态加载的,静态分析会漏 → 显式全收
 sqlglot_hidden = collect_submodules('sqlglot')
@@ -18,9 +11,8 @@ sqlglot_hidden = collect_submodules('sqlglot')
 a = Analysis(
     ['run.py'],
     pathex=['.'],
-    binaries=litellm_binaries,
+    binaries=[],
     datas=[
-        *litellm_datas,
         # NOTE: no ('config', 'config') — runtime config is resolved from
         # get_config_dir() (CONFIG_DIR env / per-user dir), never the bundle.
         # api/config is a runtime-generated dir, absent in a clean CI checkout.
@@ -34,17 +26,16 @@ a = Analysis(
         'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto',
         'uvicorn.protocols.http.h11_impl', 'uvicorn.protocols.websockets',
         'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan', 'uvicorn.lifespan.on',
-        'tiktoken_ext', 'tiktoken_ext.openai_public',
-        *starlette_hidden, *litellm_hidden, *sqlglot_hidden,
+        *starlette_hidden, *sqlglot_hidden,
         'pydantic.deprecated.class_validators', 'pydantic.deprecated.config', 'pydantic_core',
         'cryptography', 'cryptography.hazmat.primitives.ciphers.algorithms',
         'psycopg2', 'multipart', 'psutil',
     ],
     hookspath=[], hooksconfig={}, runtime_hooks=[],
-    # 体积优化:pyarrow 代码未用到(pandas 仅可选依赖,parquet 走 DuckDB COPY);
-    # hf_xet 仅 HF 下载加速用,惰性导入,可安全排除。
-    # 注意:tokenizers 不能排除 —— litellm 1.86.2 在 import 期硬依赖它,
-    # 排除会让打包版 AI 功能整体不可用(报 "litellm is not installed")。
+    # 体积优化:pyarrow 只被 pandas 的 parquet 兜底用到(桌面端 parquet 走
+    # DuckDB 原生读),排除省约 121MB —— 但排除意味着运行时 import 必须有
+    # 兜底,fetch 精确路径为此固定走 fetchall(见 duckdb_engine,配套测试
+    # 在屏蔽 pyarrow 环境下全程回归)。hf_xet 仅 HF 下载加速用,可安全排除。
     excludes=['magic', 'tkinter', 'matplotlib', 'IPython', 'jupyter', 'notebook', 'PIL',
               'pyarrow', 'hf_xet'],
     noarchive=False,

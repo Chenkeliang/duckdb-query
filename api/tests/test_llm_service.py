@@ -1,5 +1,5 @@
 import importlib
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from core.common import crypto
 from core.services import llm_service
@@ -7,8 +7,11 @@ from core.services import llm_service
 
 def _cfg(monkeypatch):
     monkeypatch.setenv("LLM_KEY_SECRET", "test-secret")
+    # 只 reload crypto（原地重执行，llm_service 持有的模块引用仍然有效）。
+    # 不要 reload llm_service：会造出新的异常类对象，routers/ai.py 持有的
+    # 旧类 isinstance 不再匹配——本文件先于 test_ai_router 运行时（如手动
+    # 指定文件顺序）稳定错误码测试会全挂。
     importlib.reload(crypto)
-    importlib.reload(llm_service)
     return {
         "enabled": True,
         "default_provider": "p1",
@@ -26,16 +29,19 @@ def test_complete_resolves_model_and_decrypts_key(monkeypatch):
     cfg = _cfg(monkeypatch)
     svc = llm_service.LLMService(cfg)
 
-    fake = MagicMock()
-    fake.choices = [MagicMock(message=MagicMock(content="hello"))]
-    with patch("core.services.llm_service.litellm.completion", return_value=fake) as m:
+    with patch(
+        "core.services.llm_service.llm_client.complete", return_value="hello"
+    ) as m:
         out = svc.complete("explain", [{"role": "user", "content": "hi"}])
 
     assert out == "hello"
     kwargs = m.call_args.kwargs
-    assert kwargs["model"] == "openai/gpt-4o-mini"      # type/model 组合
+    assert kwargs["provider_type"] == "openai"
+    assert kwargs["model"] == "gpt-4o-mini"
     assert kwargs["api_key"] == "sk-real-123456"        # 已解密
     assert kwargs["messages"][0]["content"] == "hi"
+    assert kwargs["timeout"] == 30
+    assert kwargs["num_retries"] == 2
 
 
 def test_complete_raises_when_ai_disabled(monkeypatch):
@@ -46,18 +52,6 @@ def test_complete_raises_when_ai_disabled(monkeypatch):
         svc.complete("explain", [{"role": "user", "content": "hi"}])
         assert False, "should have raised"
     except llm_service.AIDisabledError:
-        pass
-
-
-def test_complete_raises_when_litellm_missing(monkeypatch):
-    # litellm 未安装（None）时，应用可启动，调用时给出清晰错误而非崩溃
-    cfg = _cfg(monkeypatch)
-    monkeypatch.setattr(llm_service, "litellm", None)
-    svc = llm_service.LLMService(cfg)
-    try:
-        svc.complete("explain", [{"role": "user", "content": "hi"}])
-        assert False, "should have raised"
-    except llm_service.AIConfigError:
         pass
 
 

@@ -121,3 +121,29 @@ def test_engine_compat_router_get_put_round_trip():
         assert got_data["pg_array_as_varchar"] is False
     finally:
         config_manager.update_app_config(engine_compat=original)
+
+
+class _RecordingConnection:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql):
+        self.calls.append(sql)
+
+
+def test_apply_engine_compat_all_false_executes_nothing():
+    """默认全 False 配置绝不执行任何 SET：对未加载扩展的 option 执行 SET 会
+    触发 DuckDB autoinstall 联网下载（受限网络单次挂 ~120s，发生在连接池
+    初始化即"本地引擎启动超时"）。False 与 DuckDB 原生默认一致，无需 SET。"""
+    con = _RecordingConnection()
+    apply_engine_compat_settings(con, _ALL_FALSE)
+    assert con.calls == []
+
+
+def test_apply_engine_compat_true_disables_autoinstall_around_set():
+    """True 开关 SET 期间必须临时关闭 autoinstall（初始化路径禁网），完成后恢复。"""
+    con = _RecordingConnection()
+    apply_engine_compat_settings(con, {"sqlite_all_varchar": True})
+    assert con.calls[0] == "SET autoinstall_known_extensions=false"
+    assert con.calls[-1] == "SET autoinstall_known_extensions=true"
+    assert "SET GLOBAL sqlite_all_varchar=true" in con.calls

@@ -7,7 +7,7 @@ import json
 import decimal
 import numpy as np
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -31,6 +31,14 @@ def jsonable_encoder(obj: Any) -> Any:
     """
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
+    elif isinstance(obj, timedelta):
+        # INTERVAL 列：此前 Arrow 路径泄漏 DateOffset 对象（垃圾输出），
+        # 契约钉为 str(stdlib timedelta)，如 '3 days, 0:00:00'。
+        # pd.Timedelta 的 str 文案不同（'3 days 00:00:00'，负值差异更大），
+        # 先归一到 stdlib，保证走 fetchdf 与走精确路径的输出一致
+        if hasattr(obj, "to_pytimedelta"):
+            obj = obj.to_pytimedelta()
+        return str(obj)
     elif isinstance(obj, decimal.Decimal):
         # 使用十进制字符串，避免 float 精度损失；前端按字符串展示/筛选
         try:
@@ -154,7 +162,14 @@ def normalize_dataframe_output(df: pd.DataFrame) -> List[Dict[str, Any]]:
     try:
         normalized = normalized.convert_dtypes()
     except Exception:
-        normalized = normalized.astype(object)
+        # 逐列降级：整帧 astype(object) 会把 datetime64 列一并拖成对象列，
+        # 序列化形态从空格分隔漂移成 isoformat（超 int64 的大整数列等
+        # 单列异常不该殃及其他列）
+        for col in normalized.columns:
+            try:
+                normalized[col] = normalized[col].convert_dtypes()
+            except Exception:
+                pass
 
     # 恢复 object 列的原始值（避免日期字符串被转换后重新格式化）
     for col in object_cols_backup:
@@ -176,10 +191,10 @@ def normalize_dataframe_output(df: pd.DataFrame) -> List[Dict[str, Any]]:
         normalized[col] = formatted_series.where(~series.isna(), None)
 
     normalized = normalized.where(pd.notnull(normalized), None)
-    if hasattr(normalized, "map"):
-        normalized = normalized.map(handle_non_serializable_data)
-    else:
-        normalized = normalized.applymap(handle_non_serializable_data)
+    # 注意不要在这里做 DataFrame.map(jsonable)：map 会按返回值重推断列 dtype，
+    # 含 NULL 的整数列（如 [42, None]）被推成 float64 → JSON 里 42 变 42.0。
+    # 逐值编码由下方 record 循环的 handle_non_serializable_data 完成（此前
+    # map + 循环是双重编码，map 属冗余）。
 
     records = normalized.to_dict(orient="records")
     safe_records: List[Dict[str, Any]] = []

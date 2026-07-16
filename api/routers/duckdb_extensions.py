@@ -37,8 +37,11 @@ router = APIRouter()
 CATEGORY_DATASOURCE = "datasource"
 CATEGORY_CAPABILITY = "capability"
 
-# 桌面端预置扩展：打包时已下载进安装包，视为始终已安装，不可再次触发联网安装
-PRESEEDED = {"excel", "httpfs", "mysql", "postgres"}
+# 桌面端预置扩展：打包时已下载进安装包，视为始终已安装，不可再次触发联网安装。
+# v1.2.0 起只预置 excel（约 8MB，本地导入/导出属离线场景）；mysql/postgres/httpfs
+# 合计约 76MB 改为本页按需下载（其使用前提本就是有网络），Docker 镜像仍全预置
+# （见 api/Dockerfile），已安装状态由下方 duckdb_extensions() 查询如实上报。
+PRESEEDED = {"excel"}
 
 # LOAD 名 -> CDN 文件名 / duckdb_extensions() 中的 extension_name。
 # DuckDB 1.1+ 将 mysql/postgres 扩展重命名为 mysql_scanner/postgres_scanner，
