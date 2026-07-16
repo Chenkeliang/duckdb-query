@@ -302,16 +302,16 @@ class _SheetSkip(Exception):
 def _should_use_duckdb_native(
     file_ext: str, header_row_index: Optional[int], fill_merged: bool
 ) -> bool:
-    """判断某 sheet 是否适合走 DuckDB `read_xlsx` 原生导入（比 pandas 更快）。
+    """判断某 sheet 是否适合走 DuckDB `read_xlsx` 原生导入（比行式引擎更快）。
 
     注意: header_row_index 是 1-based（第一行=1）
     """
-    if file_ext.lower() == "xls":  # .xls 只能用 pandas (xlrd 引擎)
+    if file_ext.lower() == "xls":  # .xls 只能走行式引擎 (calamine)
         return False
     if header_row_index is not None and header_row_index > 1:
-        # 非首行表头只能用 pandas (DuckDB 只支持 header=true/false)
+        # 非首行表头只能走行式引擎 (DuckDB 只支持 header=true/false)
         return False
-    if fill_merged:  # 需要合并单元格填充只能用 pandas
+    if fill_merged:  # 需要合并单元格填充只能走行式引擎
         return False
     return True
 
@@ -376,7 +376,7 @@ def import_excel_sheets(
     sheet_configs: List[Any],
     import_mode: str = "auto",
     *,
-    engine: str = "pandas",
+    engine: str = "rows",
     stop_on_first_error: bool = False,
     on_sheet_imported: Optional[Callable[[Any, Dict[str, Any]], None]] = None,
 ) -> List[Dict[str, Any]]:
@@ -387,9 +387,10 @@ def import_excel_sheets(
     只在这里实现一次。
 
     engine:
-        "pandas"       — 始终用 pandas 读取 sheet（import_pending_excel_sheets 的历史行为）。
+        "rows"         — 始终用原生行式引擎（openpyxl/calamine）读取 sheet
+                          （import_pending_excel_sheets 的历史行为，v1.2.1 前为 pandas）。
         "duckdb_native" — 满足条件（xlsx + 首行表头 + 无合并单元格 + 非 append-into-existing）
-                          时优先尝试 DuckDB `read_xlsx`，失败或不满足条件回退 pandas
+                          时优先尝试 DuckDB `read_xlsx`，失败或不满足条件回退行式引擎
                           （import_server_excel 的历史行为）。
     stop_on_first_error:
         False — 单个 sheet 失败记为 success=False 并继续处理下一个（pending 路径历史行为）。
@@ -431,7 +432,7 @@ def import_excel_sheets(
                 else sheet_config.header_row_index
             )
 
-            import_engine_used = "pandas"
+            import_engine_used = "rows"
             row_count = 0
             columns: List[str] = []
 
@@ -469,7 +470,7 @@ def import_excel_sheets(
                     )
                 except Exception as native_exc:  # pylint: disable=broad-exception-caught
                     logger.warning(
-                        "DuckDB import failed, falling back to pandas: %s", native_exc
+                        "DuckDB import failed, falling back to native rows: %s", native_exc
                     )
                     use_native = False
 
@@ -555,7 +556,7 @@ def import_pending_excel_sheets(
         pending.stored_path,
         sheet_configs,
         import_mode=import_mode,
-        engine="pandas",
+        engine="rows",
         stop_on_first_error=False,
         on_sheet_imported=_save_metadata,
     )

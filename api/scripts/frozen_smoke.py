@@ -201,6 +201,44 @@ def main() -> None:
             raise SystemExit(f"FAIL: unexpected AI probe response: {body_text[:300]}")
         print("  ok AI client reaches httpx cleanly (connection refused as expected)")
 
+        # Excel/.xls 读取栈（python_calamine）在冻结包内可导入:上传一个假
+        # .xls 触发 inspect——calamine 对垃圾字节报"解析失败"是预期,报
+        # "No module named"则是打包缺依赖(v1.2.1 本机构建曾因 venv 未同步
+        # requirements 漏装 calamine,.xls 全挂而 .xlsx 冒烟全绿)
+        boundary = "----smokeboundary42"
+        fake_xls = b"not-a-real-xls-file"
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="probe.xls"\r\n'
+            f"Content-Type: application/vnd.ms-excel\r\n\r\n"
+        ).encode() + fake_xls + f"\r\n--{boundary}--\r\n".encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/upload",
+            data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                upload_body = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            upload_body = exc.read().decode("utf-8", errors="replace")
+        probe_text = upload_body
+        file_id = None
+        try:
+            file_id = json.loads(upload_body)["data"]["pending_excel"]["file_id"]
+        except Exception:  # 上传阶段即失败:直接用其响应体判定
+            pass
+        if file_id:
+            _status, inspect_body = _post_json(
+                port, "/api/data-sources/excel/inspect", {"file_id": file_id}
+            )
+            probe_text = json.dumps(inspect_body, ensure_ascii=False)
+        if "No module named" in probe_text or "ModuleNotFoundError" in probe_text:
+            raise SystemExit(
+                f"FAIL: excel stack missing modules in bundle: {probe_text[:300]}"
+            )
+        print("  ok excel/.xls stack importable (calamine reachable)")
+
         print("frozen bundle smoke: ALL PASS")
     except SystemExit:
         if stderr_path.exists():

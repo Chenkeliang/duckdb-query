@@ -166,6 +166,7 @@ cd mcp && ../.venv/bin/python -m pytest tests -q
 
 ### 桌面版打包（macOS 本机验证过的配方）
 ```bash
+../.venv/bin/pip install -r api/requirements.txt   # 打包前必须同步 venv(漂移曾致 calamine 漏装、.xls 全挂而冒烟全绿)
 cd api && ../.venv/bin/pyinstaller duckquery.spec --noconfirm --distpath dist --workpath build
 rm -rf frontend/src-tauri/binaries/duckquery-api \
   && cp -R api/dist/duckquery-api frontend/src-tauri/binaries/duckquery-api

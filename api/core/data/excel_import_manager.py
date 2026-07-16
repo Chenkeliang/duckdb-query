@@ -158,7 +158,7 @@ def inspect_excel_sheets(
     file_ext = os.path.splitext(file_path)[1].lower()
 
     if file_ext == ".xls":
-        # .xls 文件使用 pandas + xlrd
+        # .xls 文件使用 calamine 原生读取
         return _inspect_xls_sheets(file_path, preview_rows)
     else:
         # .xlsx 文件使用 openpyxl
