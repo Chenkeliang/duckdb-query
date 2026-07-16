@@ -7,7 +7,6 @@ Tests SQL generation, validation, and performance estimation functionality.
 import pytest
 from contextlib import contextmanager
 from unittest.mock import Mock, patch
-import pandas as pd
 
 from core.services.pivot_query_generator import (
     generate_pivot_query_sql,

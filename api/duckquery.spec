@@ -29,7 +29,7 @@ a = Analysis(
         *starlette_hidden, *sqlglot_hidden,
         'pydantic.deprecated.class_validators', 'pydantic.deprecated.config', 'pydantic_core',
         'cryptography', 'cryptography.hazmat.primitives.ciphers.algorithms',
-        'psycopg2', 'multipart', 'psutil',
+        'psycopg2', 'multipart', 'psutil', 'python_calamine',
     ],
     hookspath=[], hooksconfig={}, runtime_hooks=[],
     # 体积优化:pyarrow 只被 pandas 的 parquet 兜底用到(桌面端 parquet 走

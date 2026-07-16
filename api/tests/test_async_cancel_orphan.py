@@ -19,7 +19,7 @@ from routers.async_tasks import _discard_persisted_result, execute_async_query
 
 def _table_exists(name: str) -> bool:
     with get_connection_pool().get_connection() as con:
-        tables = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+        tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
     return name in tables
 
 

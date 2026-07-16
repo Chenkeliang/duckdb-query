@@ -4,7 +4,6 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import duckdb
-import pandas as pd
 import pytest
 
 from core.data.file_datasource_manager import (
@@ -61,16 +60,11 @@ def test_csv_ingestion_preserves_types(tmp_path, ingestion_con):
     con = ingestion_con
     table_name = _make_table_name("csv_typed")
 
-    df = pd.DataFrame(
-        {
-            "price": ["12.50", "3.95", "100.00"],
-            "qty": ["1", "2", "5"],
-            "label": ["foo", "bar", "baz"],
-        }
-    )
-
     csv_path = Path(tmp_path) / "typed_dataset.csv"
-    df.to_csv(csv_path, index=False)
+    csv_path.write_text(
+        "price,qty,label\n12.50,1,foo\n3.95,2,bar\n100.00,5,baz\n",
+        encoding="utf-8",
+    )
 
     with patch("core.data.file_datasource_manager.file_datasource_manager.save_file_datasource"):
         metadata = create_table_from_file_path_typed(con, table_name, str(csv_path), "csv")

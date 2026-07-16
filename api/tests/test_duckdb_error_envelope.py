@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, Mock, patch
 
 from tests.pool_mock import bind_mock_duckdb_pool
 
-import pandas as pd
 from fastapi.testclient import TestClient
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))

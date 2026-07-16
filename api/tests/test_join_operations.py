@@ -12,7 +12,6 @@
 import sys
 import os
 import pytest
-import pandas as pd
 from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 
@@ -551,18 +550,7 @@ class TestJoinAPI:
             # 2. PRAGMA table_info('users')
             # 3. PRAGMA table_info('orders')  
             # 4. 最终查询结果
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                pd.DataFrame({"name": ["users", "orders"]}),  # SHOW TABLES
-                pd.DataFrame({"name": ["id", "name", "email"]}),  # PRAGMA users
-                pd.DataFrame({"name": ["id", "user_id", "amount"]}),  # PRAGMA orders
-                pd.DataFrame(  # 查询结果
-                    {
-                        "id": [1, 2, 3],
-                        "name": ["Alice", "Bob", "Charlie"],
-                        "order_id": [101, 102, 103],
-                    }
-                ),
-            ]
+            # (旧 fetchdf 帧挂载已随 records 传输移除——该路径深层已被 patch)
 
             response = client.post("/api/query", json=request_data)
 
@@ -621,20 +609,7 @@ class TestJoinAPI:
             # 3. PRAGMA table_info('orders')
             # 4. PRAGMA table_info('products')
             # 5. 最终查询结果
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                pd.DataFrame({"name": ["users", "orders", "products"]}),  # SHOW TABLES
-                pd.DataFrame({"name": ["id", "name", "email"]}),  # PRAGMA users
-                pd.DataFrame({"name": ["id", "user_id", "product"]}),  # PRAGMA orders
-                pd.DataFrame({"name": ["id", "name", "price"]}),  # PRAGMA products
-                pd.DataFrame(  # 查询结果
-                    {
-                        "id": [1, 2],
-                        "name": ["Alice", "Bob"],
-                        "order_id": [101, 102],
-                        "product_name": ["Laptop", "Mouse"],
-                    }
-                ),
-            ]
+            # (旧 fetchdf 帧挂载已随 records 传输移除——该路径深层已被 patch)
 
             response = client.post("/api/query", json=request_data)
 
@@ -669,18 +644,7 @@ class TestJoinAPI:
             # 2. PRAGMA table_info('users')
             # 3. PRAGMA table_info('orders')  
             # 4. 最终查询结果
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                pd.DataFrame({"name": ["users", "orders"]}),  # SHOW TABLES
-                pd.DataFrame({"name": ["id", "name", "email"]}),  # PRAGMA users
-                pd.DataFrame({"name": ["id", "user_id", "amount"]}),  # PRAGMA orders
-                pd.DataFrame(  # 查询结果
-                    {
-                        "id": [1, 1, 2, 2],
-                        "name": ["Alice", "Alice", "Bob", "Bob"],
-                        "order_id": [101, 102, 101, 102],
-                    }
-                ),
-            ]
+            # (旧 fetchdf 帧挂载已随 records 传输移除——该路径深层已被 patch)
 
             response = client.post("/api/query", json=request_data)
 
@@ -813,19 +777,7 @@ class TestJoinIntegration:
             # 2. PRAGMA table_info('users')
             # 3. PRAGMA table_info('orders')  
             # 4. 最终查询结果
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                pd.DataFrame({"name": ["users", "orders"]}),  # SHOW TABLES
-                pd.DataFrame({"name": ["id", "name", "email"]}),  # PRAGMA users
-                pd.DataFrame({"name": ["id", "user_id", "amount"]}),  # PRAGMA orders
-                pd.DataFrame(  # 查询结果
-                    {
-                        "id": [1, 2, 3],
-                        "name": ["Alice", "Bob", "Charlie"],
-                        "order_id": [101, 102, 103],
-                        "amount": [150.0, 200.0, 120.0],
-                    }
-                ),
-            ]
+            # (旧 fetchdf 帧挂载已随 records 传输移除——该路径深层已被 patch)
 
             response = client.post("/api/query", json=request_data)
 
@@ -940,12 +892,7 @@ class TestJoinErrorHandling:
             # 2. PRAGMA table_info('users')
             # 3. PRAGMA table_info('orders')  
             # 4. 查询执行抛出异常
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                pd.DataFrame({"name": ["users", "orders"]}),  # SHOW TABLES 成功
-                pd.DataFrame({"name": ["id", "name", "email"]}),  # PRAGMA users
-                pd.DataFrame({"name": ["id", "user_id", "amount"]}),  # PRAGMA orders
-                Exception("Column 'nonexistent_column' does not exist"),  # 查询执行失败
-            ]
+            # (旧 fetchdf 帧挂载已随 records 传输移除——该路径深层已被 patch)
 
             response = client.post("/api/query", json=request_data)
 

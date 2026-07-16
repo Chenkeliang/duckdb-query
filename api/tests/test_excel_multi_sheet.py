@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import duckdb
-import pandas as pd
+from openpyxl import Workbook
 import pytest
 from core.data.excel_import_manager import cleanup_pending_excel
 from fastapi.testclient import TestClient
@@ -14,23 +14,18 @@ client = TestClient(app)
 
 @pytest.mark.parametrize("header_rows", [1])
 def test_excel_upload_inspect_import(tmp_path, header_rows):
-    df_orders = pd.DataFrame(
-        {
-            "order_id": [101, 102, 103],
-            "amount": [12.5, 20.0, 8.75],
-        }
-    )
-    df_summary = pd.DataFrame(
-        {
-            "category": ["A", "B"],
-            "total": [32.5, 18.1],
-        }
-    )
-
     excel_path = Path(tmp_path) / "multi_sheet.xlsx"
-    with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
-        df_orders.to_excel(writer, sheet_name="Orders", index=False)
-        df_summary.to_excel(writer, sheet_name="Summary", index=False)
+    wb = Workbook()
+    ws_orders = wb.active
+    ws_orders.title = "Orders"
+    ws_orders.append(["order_id", "amount"])
+    for row in [(101, 12.5), (102, 20.0), (103, 8.75)]:
+        ws_orders.append(row)
+    ws_summary = wb.create_sheet("Summary")
+    ws_summary.append(["category", "total"])
+    for row in [("A", 32.5), ("B", 18.1)]:
+        ws_summary.append(row)
+    wb.save(excel_path)
 
     with (
         patch("routers.file_ingestion.schedule_cleanup"),

@@ -4,7 +4,6 @@ from pathlib import Path
 from uuid import uuid4
 
 import duckdb
-import pandas as pd
 import pytest
 
 from core.services.file_ingestion_service import (

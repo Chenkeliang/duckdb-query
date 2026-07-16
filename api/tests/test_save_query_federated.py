@@ -226,7 +226,7 @@ class TestSaveQueryToDuckDBEmptyResult:
         )
         assert resp.status_code == 400
         with with_duckdb_connection() as con:
-            existing = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+            existing = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
         assert "imported_should_not_exist" not in existing
 
     def test_empty_result_does_not_destroy_existing_table_of_same_name(self):

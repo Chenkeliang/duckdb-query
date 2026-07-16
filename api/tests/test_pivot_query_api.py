@@ -252,7 +252,6 @@ class TestTableMetadata:
             mock_con.execute.return_value.description = []
             
             # Mock available tables
-            import pandas as pd
             mock_con.execute.return_value.fetchall.return_value = [('test_table',)]
             
             # Mock table metadata
@@ -306,7 +305,6 @@ class TestTableMetadata:
             mock_con.execute.return_value.description = []
             
             # Mock empty tables list
-            import pandas as pd
             mock_con.execute.return_value.fetchall.return_value = []
             
             response = client.get("/api/duckdb/tables/detail/nonexistent_table")
@@ -326,7 +324,6 @@ class TestTableMetadata:
             bind_mock_duckdb_pool(mock_db, mock_con)
             mock_con.execute.return_value.description = []
 
-            import pandas as pd
             mock_con.execute.return_value.fetchall.return_value = [('test_table',)]
 
             from models.pivot_query_models import TableMetadata, ColumnStatistics
@@ -357,7 +354,6 @@ class TestTableMetadata:
             bind_mock_duckdb_pool(mock_db, mock_con)
             mock_con.execute.return_value.description = []
 
-            import pandas as pd
             mock_con.execute.return_value.fetchall.return_value = []
 
             response = client.post("/api/duckdb/table/missing_table/refresh")

@@ -129,7 +129,7 @@ class TestExecuteSqlAndPersist:
             )
             assert snapshot["row_count"] == 0
             with with_duckdb_connection() as con:
-                existing = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+                existing = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             assert table_name not in existing  # 从未创建过目标表
         finally:
             self._drop(table_name)
@@ -165,7 +165,7 @@ class TestExecuteSqlAndPersist:
             )
             assert snapshot["row_count"] == 0
             with with_duckdb_connection() as con:
-                existing = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+                existing = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             assert table_name in existing  # 空表确实被创建了
         finally:
             self._drop(table_name)
@@ -177,7 +177,7 @@ class TestExecuteSqlAndPersist:
                 "SELECT * FROM (VALUES (1, 'a')) AS t(id, name)", table_name
             )
             with with_duckdb_connection() as con:
-                existing = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+                existing = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             assert not any(name.startswith("__stage_") for name in existing)
         finally:
             self._drop(table_name)
@@ -195,7 +195,7 @@ class TestExecuteSqlAndPersist:
             )
             assert snapshot["row_count"] == 1
             with with_duckdb_connection() as con:
-                existing = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+                existing = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             assert sentinel_table in existing  # 未被注入语句误删
             assert malicious_name in existing  # 表名本身按字面量正确创建
         finally:

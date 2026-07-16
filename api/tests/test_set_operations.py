@@ -16,7 +16,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch, MagicMock
-import pandas as pd
 from tests.pool_mock import bind_mock_duckdb_pool
 import json
 from pydantic import ValidationError
@@ -24,12 +23,10 @@ from pydantic import ValidationError
 from main import app
 
 
-def bind_query_records(mock_con, df):
+def bind_query_records(mock_con, columns, rows):
     """新传输路径 mock:fetch_query_records 读 description + fetchall。"""
-    mock_con.execute.return_value.description = [(c, "VARCHAR") for c in df.columns]
-    mock_con.execute.return_value.fetchall.return_value = [
-        tuple(r) for r in df.itertuples(index=False)
-    ]
+    mock_con.execute.return_value.description = [(c, "VARCHAR") for c in columns]
+    mock_con.execute.return_value.fetchall.return_value = [tuple(r) for r in rows]
 
 
 from models.set_operation_models import (
@@ -367,10 +364,11 @@ class TestSetOperationAPI:
             mock_con.execute.return_value.description = []
 
             # 模拟预览数据
-            preview_data = pd.DataFrame(
-                {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
+            bind_query_records(
+                mock_con,
+                ["id", "name"],
+                [(1, "Alice"), (2, "Bob"), (3, "Charlie")],
             )
-            bind_query_records(mock_con, preview_data)
 
             response = client.post("/api/set-operations/preview", json=request_data)
 
@@ -418,8 +416,7 @@ class TestSetOperationAPI:
             bind_mock_duckdb_pool(mock_get_db, mock_con)
             mock_con.execute.return_value.description = []
 
-            preview_frame = pd.DataFrame({"id": [1], "name": ["Alice"]})
-            bind_query_records(mock_con, preview_frame)
+            bind_query_records(mock_con, ["id", "name"], [(1, "Alice")])
 
             response = client.post("/api/set-operations/preview", json=request_data)
 
@@ -458,9 +455,9 @@ class TestSetOperationAPI:
             mock_con.execute.return_value.description = []
 
             # 模拟表存在检查
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-                {"name": ["users", "customers"]}
-            )
+            mock_con.execute.return_value.fetchall.return_value = [
+                ("users",), ("customers",),
+            ]
 
             response = client.post("/api/set-operations/validate", json=request_data)
 
@@ -505,13 +502,11 @@ class TestSetOperationAPI:
             mock_con.execute.return_value.description = []
 
             # 模拟执行结果
-            result_data = pd.DataFrame(
-                {
-                    "id": [1, 2, 3, 4, 5],
-                    "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
-                }
+            bind_query_records(
+                mock_con,
+                ["id", "name"],
+                [(1, "Alice"), (2, "Bob"), (3, "Charlie"), (4, "David"), (5, "Eve")],
             )
-            bind_query_records(mock_con, result_data)
 
             response = client.post("/api/set-operations/execute", json=request_data)
 
@@ -603,10 +598,11 @@ class TestSetOperationIntegration:
             preview_request = {"config": generate_request["config"], "limit": 5}
 
             # 模拟预览数据
-            preview_data = pd.DataFrame(
-                {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
+            bind_query_records(
+                mock_con,
+                ["id", "name"],
+                [(1, "Alice"), (2, "Bob"), (3, "Charlie")],
             )
-            bind_query_records(mock_con, preview_data)
 
             response = client.post("/api/set-operations/preview", json=preview_request)
             assert response.status_code == 200
@@ -617,13 +613,11 @@ class TestSetOperationIntegration:
             execute_request = {"config": generate_request["config"]}
 
             # 模拟执行结果
-            result_data = pd.DataFrame(
-                {
-                    "id": [1, 2, 3, 4, 5],
-                    "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
-                }
+            bind_query_records(
+                mock_con,
+                ["id", "name"],
+                [(1, "Alice"), (2, "Bob"), (3, "Charlie"), (4, "David"), (5, "Eve")],
             )
-            bind_query_records(mock_con, result_data)
 
             response = client.post("/api/set-operations/execute", json=execute_request)
             assert response.status_code == 200

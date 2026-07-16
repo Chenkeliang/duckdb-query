@@ -3,7 +3,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
-import pandas as pd
+from openpyxl import Workbook
 import pytest
 from fastapi.testclient import TestClient
 from main import app
@@ -14,9 +14,13 @@ client = TestClient(app)
 @pytest.mark.parametrize("header_rows", [1])
 def test_excel_inspect_default_names_use_upload_alias(tmp_path, header_rows):
     excel_path = Path(tmp_path) / "book.xlsx"
-    with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
-        pd.DataFrame({"a": [1]}).to_excel(writer, sheet_name="Sheet1", index=False)
-        pd.DataFrame({"b": [2]}).to_excel(writer, sheet_name="Data", index=False)
+    wb = Workbook()
+    ws1 = wb.active
+    ws1.title = "Sheet1"
+    ws1.append(["a"]); ws1.append([1])
+    ws2 = wb.create_sheet("Data")
+    ws2.append(["b"]); ws2.append([2])
+    wb.save(excel_path)
 
     alias = "my_book"
     with patch("routers.file_ingestion.schedule_cleanup"):

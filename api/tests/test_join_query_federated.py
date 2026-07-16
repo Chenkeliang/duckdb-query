@@ -2,7 +2,6 @@
 
 from unittest.mock import Mock
 
-import pandas as pd
 import pytest
 
 from core.common.exceptions import ValidationError as APIValidationError
