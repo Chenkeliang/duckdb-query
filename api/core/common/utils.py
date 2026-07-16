@@ -5,8 +5,6 @@
 
 import json
 import decimal
-import numpy as np
-import pandas as pd
 from datetime import datetime, date, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -32,12 +30,7 @@ def jsonable_encoder(obj: Any) -> Any:
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
     elif isinstance(obj, timedelta):
-        # INTERVAL 列：此前 Arrow 路径泄漏 DateOffset 对象（垃圾输出），
-        # 契约钉为 str(stdlib timedelta)，如 '3 days, 0:00:00'。
-        # pd.Timedelta 的 str 文案不同（'3 days 00:00:00'，负值差异更大），
-        # 先归一到 stdlib，保证走 fetchdf 与走精确路径的输出一致
-        if hasattr(obj, "to_pytimedelta"):
-            obj = obj.to_pytimedelta()
+        # INTERVAL 列契约：str(stdlib timedelta)，如 '3 days, 0:00:00'
         return str(obj)
     elif isinstance(obj, decimal.Decimal):
         # 使用十进制字符串，避免 float 精度损失；前端按字符串展示/筛选
@@ -47,22 +40,10 @@ def jsonable_encoder(obj: Any) -> Any:
         except (decimal.InvalidOperation, ValueError, AttributeError):
             return None
         return str(obj)
-    elif isinstance(obj, np.integer):
-        val = int(obj)
-        if abs(val) > _JS_MAX_SAFE_INT:
-            return str(val)
-        return val
     elif isinstance(obj, int) and not isinstance(obj, bool):
         if abs(obj) > _JS_MAX_SAFE_INT:
             return str(obj)
         return obj
-    elif isinstance(obj, np.floating):
-        # 检查 NaN 和 Inf
-        if np.isnan(obj) or np.isinf(obj):
-            return None
-        return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
     elif isinstance(obj, (bytes, bytearray, memoryview)):
         return bytes(obj).decode("utf-8", errors="replace")
     elif isinstance(obj, dict):
@@ -77,13 +58,6 @@ def jsonable_encoder(obj: Any) -> Any:
         if math.isnan(obj) or math.isinf(obj):
             return None
         return obj
-    elif pd.api.types.is_scalar(obj):
-        try:
-            if pd.isna(obj):
-                return None
-        except TypeError:
-            pass
-        return obj
     else:
         return obj
 
@@ -96,39 +70,8 @@ def handle_non_serializable_data(obj: Any) -> Any:
     return jsonable_encoder(obj)
 
 
-def duckdb_column_types_from_dataframe(
-    con: Any,
-    df: pd.DataFrame,
-) -> List[Dict[str, str]]:
-    """将结果 DataFrame 注册为临时视图后 DESCRIBE，得到 DuckDB 列类型。"""
-    if df is None or len(df.columns) == 0:
-        return []
-
-    from uuid import uuid4
-
-    temp = f"__coltypes_{uuid4().hex}"
-    try:
-        con.register(temp, df)
-        rows = con.execute(f'DESCRIBE "{temp}"').fetchall()
-        return [{"name": str(row[0]), "duckdb_type": str(row[1])} for row in rows]
-    except Exception:
-        return [
-            {"name": str(col), "duckdb_type": str(df[col].dtype)}
-            for col in df.columns
-        ]
-    finally:
-        try:
-            con.unregister(temp)
-        except Exception:
-            pass
-
-
-def describe_query_column_types(
-    con: Any,
-    sql: str,
-    fallback_df: Optional[pd.DataFrame] = None,
-) -> List[Dict[str, str]]:
-    """对查询 SQL 执行 DESCRIBE，失败时回退到 DataFrame 注册描述。"""
+def describe_query_column_types(con: Any, sql: str) -> List[Dict[str, str]]:
+    """对查询 SQL 执行 DESCRIBE 得到列类型；失败（多语句/PRAGMA 等）返回空。"""
     cleaned = (sql or "").strip().rstrip(";")
     if not cleaned:
         return []
@@ -138,8 +81,6 @@ def describe_query_column_types(
             return [{"name": str(row[0]), "duckdb_type": str(row[1])} for row in rows]
     except Exception:
         pass
-    if fallback_df is not None:
-        return duckdb_column_types_from_dataframe(con, fallback_df)
     return []
 
 
@@ -188,73 +129,3 @@ def records_from_cursor(res: Any, desc: Optional[List[Any]] = None) -> tuple:
             {name: _encode_cell(value, dt) for name, dt, value in zip(names, is_dt, row)}
         )
     return names, records
-
-
-def normalize_dataframe_output(df: pd.DataFrame) -> List[Dict[str, Any]]:
-    """
-    将DataFrame转换为JSON安全的记录列表，统一处理中间类型
-    """
-    if df is None or df.empty:
-        return []
-
-    normalized = df.copy()
-
-    numeric_cols = normalized.select_dtypes(include=["number"])
-    if not numeric_cols.empty:
-        normalized[numeric_cols.columns] = numeric_cols.replace([np.inf, -np.inf], np.nan)
-
-    object_cols = normalized.select_dtypes(include=["object", "string"]).columns.tolist()
-    object_cols_backup = {col: normalized[col].copy() for col in object_cols}
-
-    try:
-        normalized = normalized.convert_dtypes()
-    except Exception:
-        # 逐列降级：整帧 astype(object) 会把 datetime64 列一并拖成对象列，
-        # 序列化形态从空格分隔漂移成 isoformat（超 int64 的大整数列等
-        # 单列异常不该殃及其他列）
-        for col in normalized.columns:
-            try:
-                normalized[col] = normalized[col].convert_dtypes()
-            except Exception:
-                pass
-
-    # 恢复 object 列的原始值（避免日期字符串被转换后重新格式化）
-    for col in object_cols_backup:
-        if col in normalized.columns:
-            normalized[col] = object_cols_backup[col]
-
-
-    datetime_cols = [
-        col for col in normalized.columns if pd.api.types.is_datetime64_any_dtype(normalized[col])
-    ]
-
-    for col in datetime_cols:
-        series = normalized[col]
-        if isinstance(series.dtype, pd.DatetimeTZDtype):
-            series = series.dt.tz_convert("UTC").dt.tz_localize(None)
-
-        formatted_series = series.dt.strftime(DATETIME_OUTPUT_FORMAT)
-        formatted_series = formatted_series.str.rstrip("0").str.rstrip(".")
-        normalized[col] = formatted_series.where(~series.isna(), None)
-
-    normalized = normalized.where(pd.notnull(normalized), None)
-    # 注意不要在这里做 DataFrame.map(jsonable)：map 会按返回值重推断列 dtype，
-    # 含 NULL 的整数列（如 [42, None]）被推成 float64 → JSON 里 42 变 42.0。
-    # 逐值编码由下方 record 循环的 handle_non_serializable_data 完成（此前
-    # map + 循环是双重编码，map 属冗余）。
-
-    records = normalized.to_dict(orient="records")
-    safe_records: List[Dict[str, Any]] = []
-    for record in records:
-        safe_record: Dict[str, Any] = {}
-        for key, value in record.items():
-            processed_value = handle_non_serializable_data(value)
-            if isinstance(processed_value, dict):
-                safe_record[key] = json.dumps(processed_value, ensure_ascii=False)
-            elif isinstance(processed_value, (list, tuple, set)):
-                serialized_list = [jsonable_encoder(item) for item in processed_value]
-                safe_record[key] = json.dumps(serialized_list, ensure_ascii=False)
-            else:
-                safe_record[key] = processed_value
-        safe_records.append(safe_record)
-    return safe_records

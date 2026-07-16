@@ -1,7 +1,6 @@
 # pylint: disable=duplicate-code
 import duckdb
 import logging
-import pandas as pd
 import threading
 import time
 from typing import List, Dict, Any, Optional, Tuple
@@ -515,66 +514,6 @@ def fetch_query_records(connection, query):
     return records_from_cursor(res, res.description or [])
 
 
-def register_dataframe(table_name: str, df: pd.DataFrame, con=None) -> bool:
-    """
-    将DataFrame注册到DuckDB (临时表，重启后会丢失)
-    建议使用 create_persistent_table() 进行持久化
-    """
-    try:
-        # 预处理DataFrame以避免类型转换错误
-        processed_df = prepare_dataframe_for_duckdb(df)
-        with _use_connection(con) as connection:
-            connection.register(table_name, processed_df)
-        logger.info(
-            f"Successfully registered temporary table: {table_name}, rows: {len(processed_df)}, columns: {len(processed_df.columns)}"
-        )
-        return True
-    except Exception as e:
-        logger.error(f"Failed to register table {table_name}: {str(e)}")
-        return False
-
-
-def create_persistent_table(table_name: str, df: pd.DataFrame, con=None) -> bool:
-    """
-    创建持久化表到DuckDB，数据会写入磁盘文件
-    """
-    try:
-        from core.data.file_datasource_manager import (
-            create_typed_table_from_dataframe,
-            file_datasource_manager,
-        )
-        from core.common.timezone_utils import get_current_time_iso
-
-        with _use_connection(con) as connection:
-            metadata = create_typed_table_from_dataframe(connection, table_name, df)
-
-        table_metadata = {
-            "source_id": table_name,
-            "filename": f"table_{table_name}",
-            "file_path": f"duckdb://{table_name}",
-            "file_type": "duckdb_table",
-            "row_count": metadata.get("row_count", 0),
-            "column_count": metadata.get("column_count", 0),
-            "columns": metadata.get("columns", []),
-            "column_profiles": metadata.get("column_profiles", []),
-            "schema_version": 2,
-            "created_at": get_current_time_iso(),
-        }
-
-        file_datasource_manager.save_file_datasource(table_metadata)
-        logger.info(
-            "Successfully created typed persistent table: %s (rows: %s, columns: %s)",
-            table_name,
-            table_metadata["row_count"],
-            table_metadata["column_count"],
-        )
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to create persistent table {table_name}: {str(e)}")
-        return False
-
-
 def table_exists(table_name: str, con=None) -> bool:
     """
     检查表是否存在
@@ -617,75 +556,6 @@ def safe_encode_string(value: str) -> str:
         except Exception:
             # 最后的保险措施
             return str(value).encode("ascii", errors="ignore").decode("ascii")
-
-
-def prepare_dataframe_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    预处理DataFrame以避免DuckDB类型转换错误
-    将所有数据统一转换为字符串类型，确保JOIN操作的兼容性
-    """
-    if df.empty:
-        return df
-
-    # 创建DataFrame的深拷贝
-    processed_df = df.copy()
-
-    logger.info(
-        f"Starting DataFrame preprocessing: {len(processed_df)} rows, {len(processed_df.columns)} columns"
-    )
-
-    # 处理所有列，统一转换为字符串类型
-    for col in processed_df.columns:
-        try:
-            # 处理不同的数据类型
-            if processed_df[col].dtype == "datetime64[ns]":
-                # 日期时间转换为字符串
-                processed_df[col] = processed_df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
-            elif processed_df[col].dtype == "bool":
-                # 布尔值转换为字符串
-                processed_df[col] = processed_df[col].astype(str)
-            elif processed_df[col].dtype in ["float64", "float32"]:
-                # 浮点数转换为字符串，处理NaN
-                processed_df[col] = processed_df[col].fillna("").astype(str)
-            elif processed_df[col].dtype in ["int64", "int32", "int16", "int8"]:
-                # 整数转换为字符串
-                processed_df[col] = processed_df[col].astype(str)
-            else:
-                # 对象类型（包括字符串）
-                processed_df[col] = processed_df[col].fillna("").astype(str)
-
-            # 简化字符串处理，避免性能问题
-            # 直接转换为字符串，处理空值
-            processed_df[col] = processed_df[col].astype(str).replace("nan", "")
-
-        except Exception as e:
-            logger.warning(f"Error processing column {col}: {e}, using default string conversion")
-            # 使用最简单的转换方法
-            try:
-                processed_df[col] = processed_df[col].astype(str).fillna("")
-            except:
-                # 如果还是失败，创建一个空字符串列
-                processed_df[col] = [""] * len(processed_df)
-
-    # 清理列名，确保是有效的SQL标识符
-    clean_columns = []
-    for i, col in enumerate(processed_df.columns):
-        try:
-            clean_col = str(col).encode("utf-8", errors="replace").decode("utf-8")
-            # 移除或替换特殊字符
-            clean_col = "".join(
-                c if c.isalnum() or c in ["_", "-"] else "_" for c in clean_col
-            )
-            if not clean_col or clean_col[0].isdigit():
-                clean_col = f"col_{i}"
-            clean_columns.append(clean_col)
-        except:
-            clean_columns.append(f"col_{i}")
-
-    processed_df.columns = clean_columns
-
-    logger.info(f"DataFrame preprocessing completed: all columns converted to string type")
-    return processed_df
 
 
 def get_table_info(table_name: str, con=None) -> Dict[str, Any]:

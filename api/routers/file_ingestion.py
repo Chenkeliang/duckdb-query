@@ -235,7 +235,11 @@ async def upload_file(
                 message="Excel file uploaded, please select the worksheets to import.",
             )
 
-        preview_info = get_file_preview(save_path, rows=10)
+        preview_info = get_file_preview(
+            save_path,
+            rows=10,
+            csv_encoding=csv_encoding if file_type == "csv" else None,
+        )
 
         # Build reader_options for CSV files only
         reader_options: Optional[Dict[str, Any]] = None

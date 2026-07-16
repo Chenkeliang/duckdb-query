@@ -32,7 +32,6 @@ from core.data.file_datasource_manager import (
 )
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
-    create_persistent_table,
     fetch_query_records,
     with_duckdb_connection,
 )

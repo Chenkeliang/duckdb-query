@@ -38,10 +38,7 @@ from routers import ai as ai_router
 from core.database.database_manager import db_manager
 from models.query_models import DatabaseConnection, DataSourceType
 from core.data.file_datasource_manager import reload_all_file_datasources_to_duckdb
-from core.database.duckdb_engine import (
-    with_duckdb_connection,
-    create_persistent_table,
-)
+from core.database.duckdb_engine import with_duckdb_connection
 from core.services.cleanup_scheduler import start_cleanup_scheduler, stop_cleanup_scheduler
 
 logger = logging.getLogger(__name__)

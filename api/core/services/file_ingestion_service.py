@@ -16,13 +16,14 @@ from uuid import uuid4
 import duckdb
 
 from core.common.timezone_utils import get_current_time_iso
+from core.data.rows_ingest import load_rows_as_varchar_table
 from core.data.excel_import_manager import (
     PendingExcelFile,
     cleanup_pending_excel,
     derive_default_table_name,
     get_pending_excel,
     inspect_excel_sheets,
-    load_excel_sheet_dataframe,
+    load_excel_sheet_rows,
     register_excel_upload,
     sanitize_identifier,
 )
@@ -30,7 +31,6 @@ from core.data.file_datasource_manager import (
     _quote_identifier,
     create_table_from_dataframe,
     create_table_from_file_path_typed,
-    create_typed_table_from_dataframe,
     file_datasource_manager,
 )
 from core.data.file_utils import detect_file_type
@@ -316,6 +316,60 @@ def _should_use_duckdb_native(
     return True
 
 
+def _import_sheet_via_rows(
+    con,
+    file_path: str,
+    sheet_config,
+    target_table: str,
+    effective_header_row,
+    *,
+    append_into_existing: bool,
+    import_mode,
+):
+    """行式 sheet 导入：忠实文本入临时表 → 建表促升 / 交集列追加。
+
+    与 CSV 摄取铁律同一路径（all_varchar + 可证无损促升）。返回 (行数, 列名)。
+    """
+    header, data_rows = load_excel_sheet_rows(
+        file_path,
+        sheet_config.name,
+        header_rows=sheet_config.header_rows,
+        header_row_index=effective_header_row,
+        fill_merged=sheet_config.fill_merged,
+    )
+    if not data_rows:
+        raise _SheetSkip(f"Sheet '{sheet_config.name}' contains no data")
+
+    quoted = _quote_identifier(target_table)
+    temp_table, cleanup_rows = load_rows_as_varchar_table(con, header, data_rows)
+    try:
+        quoted_temp = _quote_identifier(temp_table)
+        if append_into_existing:
+            existing_cols = _fetch_existing_columns(con, target_table)
+            insert_cols = [c for c in header if c in existing_cols]
+            if not insert_cols:
+                raise _SheetSkip(
+                    "No overlapping columns between sheet and existing table"
+                )
+            cols_list = ", ".join(_quote_identifier(c) for c in insert_cols)
+            con.execute(
+                f"INSERT INTO {quoted} ({cols_list}) "
+                f"SELECT {cols_list} FROM {quoted_temp}"
+            )
+            return len(data_rows), insert_cols
+
+        con.execute(
+            f"CREATE OR REPLACE TABLE {quoted} AS SELECT * FROM {quoted_temp}"
+        )
+        if should_promote_column_types(import_mode):
+            promote_table_column_types_from_varchar(con, target_table)
+        row_count = con.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
+        columns = [row[0] for row in con.execute(f"DESCRIBE {quoted}").fetchall()]
+        return row_count, columns
+    finally:
+        cleanup_rows()
+
+
 def import_excel_sheets(
     con: duckdb.DuckDBPyConnection,
     file_path: str,
@@ -420,45 +474,16 @@ def import_excel_sheets(
                     use_native = False
 
             if not use_native:
-                df = load_excel_sheet_dataframe(
+                row_count, columns = _import_sheet_via_rows(
+                    con,
                     file_path,
-                    sheet_config.name,
-                    header_rows=sheet_config.header_rows,
-                    header_row_index=effective_header_row,
-                    fill_merged=sheet_config.fill_merged,
+                    sheet_config,
+                    target_table,
+                    effective_header_row,
+                    append_into_existing=(exists and mode == "append"),
                     import_mode=import_mode,
                 )
-
-                if df is None or df.empty:
-                    raise _SheetSkip(f"Sheet '{sheet_config.name}' contains no data")
-
-                quoted = _quote_identifier(target_table)
-                if exists and mode == "append":
-                    existing_cols = _fetch_existing_columns(con, target_table)
-                    insert_cols = [c for c in df.columns if c in existing_cols]
-                    if not insert_cols:
-                        raise _SheetSkip(
-                            "No overlapping columns between sheet and existing table"
-                        )
-                    df_insert = df[insert_cols]
-                    temp_view = f"__excel_tmp_{uuid4().hex}"
-                    con.register(temp_view, df_insert)
-                    cols_list = ", ".join(_quote_identifier(c) for c in insert_cols)
-                    insert_sql = (
-                        f"INSERT INTO {quoted} ({cols_list}) "
-                        f"SELECT {cols_list} FROM {temp_view}"
-                    )
-                    con.execute(insert_sql)
-                    con.unregister(temp_view)
-                    row_count = len(df_insert)
-                    columns = insert_cols
-                else:
-                    meta = create_typed_table_from_dataframe(
-                        con, target_table, df, import_mode=import_mode
-                    )
-                    row_count = meta.get("row_count", 0)
-                    columns = meta.get("columns", list(df.columns))
-                import_engine_used = "pandas"
+                import_engine_used = "rows"
 
             column_count = len(columns)
             outcome = {

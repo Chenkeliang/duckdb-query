@@ -18,7 +18,6 @@ from typing import Dict, Any, List, Optional, Sequence, Tuple
 from uuid import uuid4
 
 import duckdb
-import pandas as pd
 
 from core.database.duckdb_engine import with_duckdb_connection
 from core.common.config_manager import config_manager
@@ -88,27 +87,11 @@ def _format_value(value: Any) -> Optional[Any]:
     if isinstance(value, Decimal):
         return format(value, "f")
 
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-
     if isinstance(value, datetime):
         return value.isoformat()
 
-    # pandas / numpy scalar 转换
-    if hasattr(value, "item"):
-        try:
-            value = value.item()
-        except Exception:
-            value = str(value)
-
-    if value is None:
+    if isinstance(value, float) and math.isnan(value):
         return None
-
-    try:
-        if pd.isna(value):
-            return None
-    except Exception:  # pylint: disable=broad-exception-caught
-        pass
 
     if isinstance(value, bytes):
         try:
@@ -380,50 +363,6 @@ class FileDatasourceManager:
             logger.error("Failed to reload file datasources: %s", str(exc))
 
 
-def create_typed_table_from_dataframe(
-    duckdb_con: duckdb.DuckDBPyConnection,
-    table_name: str,
-    df: pd.DataFrame,
-    import_mode: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    使用 DuckDB 原生能力将 DataFrame 落库，并保留列类型。
-    """
-    if df is None or df.empty:
-        raise ValueError("DataFrame is empty, cannot create table")
-
-    _configure_duckdb_for_ingestion(duckdb_con)
-
-    temp_view = f"temp_df_{uuid4().hex[:8]}"
-    quoted_temp = _quote_identifier(temp_view)
-
-    try:
-        duckdb_con.register(temp_view, df)
-        select_sql = f"SELECT * FROM {quoted_temp}"
-        _create_table_atomically(duckdb_con, table_name, select_sql)
-    finally:
-        try:
-            duckdb_con.unregister(temp_view)
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-
-    from core.data.import_mode import normalize_import_mode, should_promote_column_types
-    from core.data.ingestion_precision import promote_table_column_types_from_varchar
-
-    normalize_import_mode(import_mode)
-    if should_promote_column_types(import_mode):
-        promote_table_column_types_from_varchar(duckdb_con, table_name)
-
-    metadata = build_table_metadata_snapshot(duckdb_con, table_name)
-    logger.info(
-        "Successfully created typed table: %s (rows: %s, columns: %s)",
-        table_name,
-        metadata["row_count"],
-        metadata["column_count"],
-    )
-    return metadata
-
-
 def create_table_from_file_path_typed(
     duckdb_con: duckdb.DuckDBPyConnection,
     table_name: str,
@@ -448,7 +387,6 @@ def create_table_from_file_path_typed(
                 use_all_varchar_on_load,
             )
             from core.data.ingestion_precision import (
-                dataframe_to_literal_fidelity,
                 promote_table_column_types_from_varchar,
             )
 
@@ -466,12 +404,28 @@ def create_table_from_file_path_typed(
                 if should_promote_column_types(import_mode):
                     promote_table_column_types_from_varchar(duckdb_con, table_name)
             except Exception as excel_exc:  # pylint: disable=broad-exception-caught
-                logger.warning("DuckDB Excel extension failed, falling back to pandas: %s", excel_exc)
-                df = pd.read_excel(file_path, dtype=object)
-                df = dataframe_to_literal_fidelity(df)
-                return create_typed_table_from_dataframe(
-                    duckdb_con, table_name, df, import_mode=import_mode
+                logger.warning(
+                    "DuckDB Excel extension failed, falling back to native rows: %s",
+                    excel_exc,
                 )
+                from core.data.excel_import_manager import load_excel_sheet_rows
+                from core.data.rows_ingest import load_rows_as_varchar_table
+
+                header, data_rows = load_excel_sheet_rows(file_path)
+                temp_table, cleanup_rows = load_rows_as_varchar_table(
+                    duckdb_con, header, data_rows
+                )
+                try:
+                    _create_table_atomically(
+                        duckdb_con,
+                        table_name,
+                        f'SELECT * FROM "{temp_table}"',
+                        [],
+                    )
+                finally:
+                    cleanup_rows()
+                if should_promote_column_types(import_mode):
+                    promote_table_column_types_from_varchar(duckdb_con, table_name)
         else:
             load_file_to_duckdb(
                 duckdb_con,
@@ -507,19 +461,14 @@ def create_table_from_dataframe(
     统一入口：支持直接传入文件路径或 DataFrame。
     返回值包含行数、列数量、列定义与列类型元数据。
     """
-    if isinstance(file_path_or_df, str):
-        metadata = create_table_from_file_path_typed(
-            duckdb_con,
-            table_name,
-            file_path_or_df,
-            file_type or "",
-            reader_options=reader_options,
-            import_mode=import_mode,
-        )
-    else:
-        metadata = create_typed_table_from_dataframe(
-            duckdb_con, table_name, file_path_or_df, import_mode=import_mode
-        )
+    metadata = create_table_from_file_path_typed(
+        duckdb_con,
+        table_name,
+        file_path_or_df,
+        file_type or "",
+        reader_options=reader_options,
+        import_mode=import_mode,
+    )
 
     return metadata
 

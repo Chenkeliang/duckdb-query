@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-import pandas as pd
+from datetime import date, datetime, time as dt_time
+
 from openpyxl import load_workbook
 
 from core.common.timezone_utils import get_current_time_iso
-from core.common.utils import normalize_dataframe_output
-from core.data.ingestion_precision import coerce_dataframe_numeric_columns_safe
+from core.common.utils import handle_non_serializable_data
 
 logger = logging.getLogger(__name__)
 
@@ -133,20 +133,21 @@ def derive_default_table_name(default_prefix: str, sheet_name: str) -> str:
     return sanitize_identifier(sheet_part, prefix="sheet")
 
 
-def _map_pandas_dtype_to_duckdb(dtype: Any) -> str:
-    dtype_str = str(dtype).lower()
-    if "int" in dtype_str:
-        return "BIGINT"
-    if "float" in dtype_str or "double" in dtype_str:
-        return "DOUBLE"
-    if "bool" in dtype_str:
-        return "BOOLEAN"
-    if "datetime" in dtype_str or "date" in dtype_str:
-        return "TIMESTAMP"
-    if "timedelta" in dtype_str:
-        return "INTERVAL"
-    if "category" in dtype_str:
+def _duckdb_type_of_cells(values: List[Any]) -> str:
+    """按样本单元格的 Python 类型给出预览用 DuckDB 类型（仅信息展示）。"""
+    seen = {type(v) for v in values if v is not None}
+    if not seen:
         return "VARCHAR"
+    if seen <= {bool}:
+        return "BOOLEAN"
+    if seen <= {int, bool}:
+        return "BIGINT"
+    if seen <= {int, float, bool}:
+        return "DOUBLE"
+    if seen <= {datetime, date}:
+        return "TIMESTAMP"
+    if seen <= {dt_time}:
+        return "TIME"
     return "VARCHAR"
 
 
@@ -215,21 +216,11 @@ def _inspect_xlsx_sheets(
             preview_records: List[Dict[str, Any]] = []
             columns: List[Dict[str, Any]] = []
             try:
-                preview_df = pd.read_excel(
-                    file_path,
-                    sheet_name=sheet_name,
-                    nrows=preview_rows,
-                    engine="openpyxl",
-                    dtype=object,
+                rows_iter = sheet.iter_rows(
+                    min_row=1, max_row=preview_rows + 1, values_only=True
                 )
-                columns = [
-                    {
-                        "name": str(col),
-                        "duckdb_type": _map_pandas_dtype_to_duckdb(dtype),
-                    }
-                    for col, dtype in preview_df.dtypes.items()
-                ]
-                preview_records = normalize_dataframe_output(preview_df)
+                head = [list(r) for r in rows_iter]
+                columns, preview_records = _build_preview_from_rows(head)
             except Exception:
                 columns = []
                 preview_records = []
@@ -251,58 +242,106 @@ def _inspect_xlsx_sheets(
         workbook.close()
 
 
+def _build_preview_from_rows(head_rows: List[List[Any]]) -> tuple:
+    """(表头行+数据行) → (columns 元数据, 预览 records)。首行视作列名。"""
+    if not head_rows:
+        return [], []
+    header = [
+        str(v) if v is not None else f"column_{idx + 1}"
+        for idx, v in enumerate(head_rows[0])
+    ]
+    data_rows = head_rows[1:]
+    columns = [
+        {
+            "name": name,
+            "duckdb_type": _duckdb_type_of_cells(
+                [row[idx] if idx < len(row) else None for row in data_rows]
+            ),
+        }
+        for idx, name in enumerate(header)
+    ]
+    preview_records = [
+        {
+            name: handle_non_serializable_data(
+                row[idx] if idx < len(row) else None
+            )
+            for idx, name in enumerate(header)
+        }
+        for row in data_rows
+    ]
+    return columns, preview_records
+
+
+def _load_sheet_rows_calamine(file_path: str, sheet_name: Optional[str]) -> List[List[Any]]:
+    """python-calamine 原生读 sheet 全部行（.xls 主引擎 / .xlsx 兜底引擎）。"""
+    from python_calamine import CalamineWorkbook  # pylint: disable=import-error
+
+    workbook = CalamineWorkbook.from_path(file_path)
+    target = sheet_name or workbook.sheet_names[0]
+    return [list(row) for row in workbook.get_sheet_by_name(target).to_python()]
+
+
 def _inspect_xls_sheets(file_path: str, preview_rows: int = 20) -> List[Dict[str, Any]]:
-    """使用 pandas + xlrd 检查 .xls 文件"""
-    import xlrd  # pylint: disable=import-error
+    """calamine 原生检查 .xls 文件（v1.2.1 起 xlrd/pandas 退役）。"""
+    from python_calamine import CalamineWorkbook  # pylint: disable=import-error
 
     sheets_info: List[Dict[str, Any]] = []
-    xl = pd.ExcelFile(file_path, engine="xlrd")
-
-    try:
-        for sheet_name in xl.sheet_names:
-            # 获取基本信息
-            try:
-                preview_df = pd.read_excel(
-                    file_path,
-                    sheet_name=sheet_name,
-                    nrows=preview_rows,
-                    engine="xlrd",
-                    dtype=object,
-                )
-                max_col = len(preview_df.columns)
-                # 读取全部行数
-                full_df = pd.read_excel(file_path, sheet_name=sheet_name, engine="xlrd")
-                max_row = len(full_df) + 1  # +1 for header
-
-                columns = [
-                    {
-                        "name": str(col),
-                        "duckdb_type": _map_pandas_dtype_to_duckdb(dtype),
-                    }
-                    for col, dtype in preview_df.dtypes.items()
-                ]
-                preview_records = normalize_dataframe_output(preview_df)
-            except Exception:
-                max_row = 0
-                max_col = 0
-                columns = []
-                preview_records = []
-
-            sheets_info.append(
-                {
-                    "name": sheet_name,
-                    "rows": int(max_row),
-                    "columns_count": int(max_col),
-                    "has_merged_cells": False,  # xlrd 检测合并单元格较复杂，暂不支持
-                    "suggested_header_rows": 1,
-                    "suggested_header_row_index": 1,
-                    "columns": columns,
-                    "preview": preview_records,
-                }
+    workbook = CalamineWorkbook.from_path(file_path)
+    for sheet_name in workbook.sheet_names:
+        try:
+            all_rows = [
+                list(row)
+                for row in workbook.get_sheet_by_name(sheet_name).to_python()
+            ]
+            max_row = len(all_rows)
+            max_col = max((len(r) for r in all_rows), default=0)
+            columns, preview_records = _build_preview_from_rows(
+                all_rows[: preview_rows + 1]
             )
-        return sheets_info
-    finally:
-        xl.close()
+        except Exception:
+            max_row = 0
+            max_col = 0
+            columns = []
+            preview_records = []
+
+        sheets_info.append(
+            {
+                "name": sheet_name,
+                "rows": int(max_row),
+                "columns_count": int(max_col),
+                "has_merged_cells": False,  # calamine 不暴露合并区信息，维持原行为
+                "suggested_header_rows": 1,
+                "suggested_header_row_index": 1,
+                "columns": columns,
+                "preview": preview_records,
+            }
+        )
+    return sheets_info
+
+
+def get_excel_native_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
+    """file_utils.get_file_preview 的 Excel 分支：首个 sheet 的原生预览。"""
+    sheets = inspect_excel_sheets(file_path, preview_rows=rows)
+    first = sheets[0] if sheets else {}
+    columns = [col["name"] for col in first.get("columns", [])]
+    return {
+        "file_type": "excel",
+        "file_size": os.path.getsize(file_path),
+        "total_rows": max(int(first.get("rows", 0)) - 1, 0),
+        "columns": columns,
+        "column_types": {
+            col["name"]: col["duckdb_type"] for col in first.get("columns", [])
+        },
+        "preview_data": first.get("preview", [])[:rows],
+        "sample_values": {
+            name: [
+                record[name]
+                for record in first.get("preview", [])[:3]
+                if record.get(name) is not None
+            ]
+            for name in columns
+        },
+    }
 
 
 def _repair_excel_coordinates(file_path: str) -> Optional[str]:
@@ -366,105 +405,104 @@ def ensure_unique_columns(names: List[str]) -> List[str]:
     return result
 
 
-def load_excel_sheet_dataframe(
+def _load_sheet_rows_openpyxl(file_path: str, sheet_name: Optional[str]) -> List[List[Any]]:
+    workbook = load_workbook(filename=file_path, read_only=True, data_only=True)
+    try:
+        sheet = workbook[sheet_name] if sheet_name else workbook.worksheets[0]
+        return [list(row) for row in sheet.iter_rows(values_only=True)]
+    finally:
+        workbook.close()
+
+
+def load_excel_sheet_rows(
     file_path: str,
-    sheet_name: str,
+    sheet_name: Optional[str] = None,
     header_rows: int = 1,
     header_row_index: Optional[int] = 1,
     fill_merged: bool = False,
-    import_mode: Optional[str] = None,
-) -> pd.DataFrame:
-    # 根据文件扩展名选择引擎
+) -> tuple:
+    """读取 sheet → (列名, 数据行)。纯行式，无 DataFrame。
+
+    读取引擎：.xls 走 calamine；.xlsx 走 openpyxl，坏文件依次退 calamine、
+    实验性 XML 修复（与既有行为一致）。单元格保持 Python 原生类型，由下游
+    rows_ingest 以忠实文本入库 + 促升引擎定型（与 CSV 同一铁律语义）。
+    """
     file_ext = os.path.splitext(file_path)[1].lower()
-    if file_ext in {".xls"}:
-        engine = "xlrd"
+
+    if file_ext == ".xls":
+        rows = _load_sheet_rows_calamine(file_path, sheet_name)
     else:
-        engine = "openpyxl"
-
-    # 尝试读取 Excel，某些损坏的文件可能需要特殊处理
-    try:
-        df = pd.read_excel(
-            file_path,
-            sheet_name=sheet_name,
-            header=None,
-            engine=engine,
-            dtype=object,
-        )
-
-    except ValueError as e:
-        if "is not a valid column name" in str(e):
-            logger.warning(f"Openpyxl failed to read {file_path}, trying calamine fallback. Error: {e}")
-            # 尝试使用 calamine 引擎（更宽容的解析器）
-            fallback_engine = "calamine"
+        try:
+            rows = _load_sheet_rows_openpyxl(file_path, sheet_name)
+        except ValueError as e:
+            if "is not a valid column name" not in str(e):
+                raise
+            logger.warning(
+                "Openpyxl failed to read %s, trying calamine fallback. Error: %s",
+                file_path, e,
+            )
             try:
-                df = pd.read_excel(
-                    file_path,
-                    sheet_name=sheet_name,
-                    header=None,
-                    engine=fallback_engine,
-                    dtype=object,
-                )
+                rows = _load_sheet_rows_calamine(file_path, sheet_name)
             except Exception as calamine_error:
-                logger.error(f"Calamine engine failed: {calamine_error}")
-                
+                logger.error("Calamine engine failed: %s", calamine_error)
                 logger.info("Trying experimental XML repair...")
                 repair_path = _repair_excel_coordinates(file_path)
-                if repair_path:
-                    try:
-                        df = pd.read_excel(
-                            repair_path,
-                            sheet_name=sheet_name,
-                            header=None,
-                            engine="openpyxl",
-                            dtype=object,
-                        )
-                    except Exception as repair_error:
-                        logger.error(f"Repaired file read failed: {repair_error}")
-                        shutil.rmtree(os.path.dirname(repair_path), ignore_errors=True)
-                        raise ValueError(
-                            f"Excel file is severely corrupted. Calamine engine error: {str(calamine_error)}. Repair attempt error: {str(repair_error)}"
-                        )
-                    else:
-                        shutil.rmtree(os.path.dirname(repair_path), ignore_errors=True)
-                else:
+                if not repair_path:
                     raise ValueError(
-                        f"Excel file contains invalid data and cannot be auto-repaired. Please re-save in Excel/WPS. Calamine error: {str(calamine_error)}"
-                    )
-        else:
-            raise
+                        "Excel file contains invalid data and cannot be auto-repaired. "
+                        f"Please re-save in Excel/WPS. Calamine error: {calamine_error}"
+                    ) from calamine_error
+                try:
+                    rows = _load_sheet_rows_openpyxl(repair_path, sheet_name)
+                except Exception as repair_error:
+                    raise ValueError(
+                        "Excel file is severely corrupted. "
+                        f"Calamine engine error: {calamine_error}. "
+                        f"Repair attempt error: {repair_error}"
+                    ) from repair_error
+                finally:
+                    shutil.rmtree(os.path.dirname(repair_path), ignore_errors=True)
 
     if fill_merged:
-        df = df.ffill(axis=0)
+        # 纵向前向填充（等价原 df.ffill(axis=0)）：合并单元格只有左上格有值
+        width = max((len(r) for r in rows), default=0)
+        last: List[Any] = [None] * width
+        filled: List[List[Any]] = []
+        for row in rows:
+            padded = list(row) + [None] * (width - len(row))
+            for idx in range(width):
+                if padded[idx] is None:
+                    padded[idx] = last[idx]
+                else:
+                    last[idx] = padded[idx]
+            filled.append(padded)
+        rows = filled
 
     if header_rows < 0:
         header_rows = 0
 
+    width = max((len(r) for r in rows), default=0)
+
+    def _cell(row: List[Any], idx: int) -> Any:
+        return row[idx] if idx < len(row) else None
+
     if header_rows == 0:
-        headers = [f"column_{idx + 1}" for idx in range(df.shape[1])]
-        data_df = df
+        headers = [f"column_{idx + 1}" for idx in range(width)]
+        data_rows = rows
     else:
         start_index = max((header_row_index or 1) - 1, 0)
-        end_index = min(start_index + header_rows, df.shape[0])
-
-        if start_index >= df.shape[0]:
+        end_index = min(start_index + header_rows, len(rows))
+        if start_index >= len(rows):
             start_index = 0
-            end_index = min(header_rows, df.shape[0])
+            end_index = min(header_rows, len(rows))
 
-        header_slice = df.iloc[start_index:end_index]
-        drop_range = range(0, end_index)
-        data_df = df.drop(index=drop_range, errors="ignore").reset_index(drop=True)
+        header_slice = rows[start_index:end_index]
+        data_rows = rows[end_index:]
         headers = [
             _ensure_unique_name(
-                [
-                    header_slice.iloc[row_idx, col_idx]
-                    for row_idx in range(header_slice.shape[0])
-                    if col_idx < header_slice.shape[1]
-                ],
-                col_idx,
+                [_cell(hrow, col_idx) for hrow in header_slice], col_idx
             )
-            for col_idx in range(
-                header_slice.shape[1] if header_slice.shape[1] else df.shape[1]
-            )
+            for col_idx in range(width)
         ]
 
     headers = [
@@ -472,13 +510,11 @@ def load_excel_sheet_dataframe(
         for name in headers
     ]
     headers = ensure_unique_columns(headers)
-    if len(headers) < data_df.shape[1]:
-        headers.extend(
-            [f"col_{idx + 1}" for idx in range(len(headers), data_df.shape[1])]
-        )
-    elif len(headers) > data_df.shape[1]:
-        headers = headers[: data_df.shape[1]]
-    data_df.columns = headers
-    data_df = data_df.dropna(how="all").reset_index(drop=True)
 
-    return coerce_dataframe_numeric_columns_safe(data_df, import_mode=import_mode)
+    # 丢弃全空行（等价原 dropna(how="all")），并按表头宽度补齐/截断
+    cleaned_rows = [
+        [_cell(row, idx) for idx in range(len(headers))]
+        for row in data_rows
+        if any(_cell(row, idx) is not None for idx in range(len(headers)))
+    ]
+    return headers, cleaned_rows

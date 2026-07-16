@@ -15,7 +15,6 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -38,62 +37,6 @@ def _quote_identifier(name: str) -> str:
     return '"' + str(name).replace('"', '""') + '"'
 
 
-def _float_to_plain_decimal_str(value: float) -> str:
-    if not math.isfinite(value):
-        return ""
-    if value == 0.0:
-        return "0"
-    try:
-        text = format(Decimal(str(value)), "f")
-    except Exception:  # pylint: disable=broad-exception-caught
-        text = repr(value)
-    if "." in text:
-        text = text.rstrip("0").rstrip(".")
-    return text
-
-
-def cell_to_literal(value: Any) -> Any:
-    """将单元格转为可无损落库的字面量（日期时间除外）。"""
-    if value is None:
-        return None
-    try:
-        if pd.isna(value):
-            return None
-    except (TypeError, ValueError):
-        pass
-
-    if isinstance(value, (datetime, date)):
-        return value
-    if isinstance(value, bool):
-        return str(value).lower()
-    if isinstance(value, int) and not isinstance(value, bool):
-        return str(value)
-    if isinstance(value, float):
-        if math.isfinite(value) and value == math.floor(value):
-            return str(int(value))
-        return _float_to_plain_decimal_str(value)
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        return bytes(value).decode("utf-8", errors="replace")
-
-    text = str(value).strip()
-    if text.lower() in {"", "nan", "none", "<na>", "nat"}:
-        return None
-    return text
-
-
-def dataframe_to_literal_fidelity(df: pd.DataFrame) -> pd.DataFrame:
-    """多 Sheet Excel 等路径：先统一为字面量，再由 DuckDB 做安全类型提升。"""
-    if df is None or df.empty:
-        return df
-
-    result = df.copy()
-    for col in result.columns:
-        if pd.api.types.is_datetime64_any_dtype(result[col]):
-            continue
-        result[col] = result[col].map(cell_to_literal)
-    return result
-
-
 def _parse_sniff_columns(columns_value: Any) -> List[Tuple[str, str]]:
     if columns_value is None:
         return []
@@ -111,14 +54,13 @@ def _parse_sniff_columns(columns_value: Any) -> List[Tuple[str, str]]:
     return pairs
 
 
-def _column_values_are_long_integer_codes(series: pd.Series) -> bool:
-    non_null = series.dropna()
-    if non_null.empty:
+def _column_values_are_long_integer_codes(values: List[Any]) -> bool:
+    texts = [str(v).strip() for v in values if v is not None]
+    if not texts:
         return False
-    as_str = non_null.astype(str).str.strip()
-    if not as_str.str.match(r"^\d+$").all():
+    if not all(t.isdigit() for t in texts):
         return False
-    return int(as_str.str.len().max()) >= _MAX_INTEGER_STRING_DIGITS
+    return max(len(t) for t in texts) >= _MAX_INTEGER_STRING_DIGITS
 
 
 def build_csv_column_type_overrides(
@@ -143,11 +85,14 @@ def build_csv_column_type_overrides(
             if upper in {"DOUBLE", "FLOAT", "REAL"}:
                 try:
                     quoted = _quote_identifier(name)
-                    sample_df = connection.execute(
-                        f"SELECT {quoted} AS col FROM read_csv(?, all_varchar = true) LIMIT 500",
-                        [file_path],
-                    ).fetchdf()
-                    if _column_values_are_long_integer_codes(sample_df["col"]):
+                    sample_values = [
+                        row[0]
+                        for row in connection.execute(
+                            f"SELECT {quoted} AS col FROM read_csv(?, all_varchar = true) LIMIT 500",
+                            [file_path],
+                        ).fetchall()
+                    ]
+                    if _column_values_are_long_integer_codes(sample_values):
                         overrides[name] = "VARCHAR"
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     logger.debug(
@@ -313,15 +258,3 @@ def promote_table_column_types_from_varchar(
             )
 
     return promoted
-
-
-def coerce_dataframe_numeric_columns_safe(
-    df: pd.DataFrame, import_mode: Optional[str] = None
-) -> pd.DataFrame:
-    """将 Sheet 数据转为字面量；import_mode 由落库后的 promote 体现（auto）或保持 VARCHAR（literal）。"""
-    from core.data.import_mode import normalize_import_mode
-
-    if df is None or df.empty:
-        return df
-    normalize_import_mode(import_mode)
-    return dataframe_to_literal_fidelity(df)

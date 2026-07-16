@@ -3,15 +3,12 @@
 提供文件类型检测和文件读取功能
 """
 
-import pandas as pd
-import numpy as np
 import logging
 import os
-import time
 from uuid import uuid4
 from typing import Dict, Any, Optional
 
-from core.common.utils import normalize_dataframe_output, handle_non_serializable_data
+from core.common.utils import handle_non_serializable_data
 from core.database.duckdb_engine import with_duckdb_connection
 
 logger = logging.getLogger(__name__)
@@ -35,7 +32,7 @@ def detect_file_type(filename: str) -> str:
 
 
 class _UnreliableNativeEncoding(Exception):
-    """标记编码在 DuckDB 原生 CSV reader 上不可靠，需改走 pandas 路径。"""
+    """标记编码在 DuckDB 原生 CSV reader 上不可靠，需改走 UTF-8 转码兜底。"""
 
 
 # DuckDB 原生 CSV reader「不报错但解码错乱」的编码（按版本实测维护）
@@ -48,130 +45,125 @@ _PYTHON_ENCODING_ALIASES = {
 }
 
 
-def read_file_by_type(
-    file_path: str, file_type: str = None, nrows: int = None, encoding: str = None
-) -> pd.DataFrame:
-    """根据文件类型读取文件；encoding 显式给定时跳过自动探测（CSV 有效）。"""
-    if file_type is None:
-        file_type = detect_file_type(file_path)
+def detect_text_encoding(file_path: str, explicit: str = None) -> str:
+    """探测文本文件编码，返回 Python codec 名。
 
+    显式给定（探测结果或用户高级选项）优先；其后 UTF-8/GB18030 快路径；
+    再 charset_normalizer 深度探测；最后 latin-1 兜底（任何字节序列都可
+    解码，保证"读得出来"而非报错——与既有行为一致）。
+    """
+    if explicit:
+        candidate = _PYTHON_ENCODING_ALIASES.get(str(explicit).upper(), str(explicit))
+        try:
+            import codecs
+
+            codecs.lookup(candidate)
+            return candidate
+        except LookupError:
+            logger.warning(
+                "Unknown encoding %r for %s; falling back to detection", explicit, file_path
+            )
+
+    import charset_normalizer
+
+    with open(file_path, "rb") as f:
+        raw_data = f.read(1024 * 1024)  # 前 1MB
+
+    # utf-8 自校验，可做快路径；gb18030 几乎能解码任意字节序列，绝不能当先验
+    # （会把 BIG5 等文件静默错认），只配做 normalizer 之后的兜底
     try:
-        if file_type == "csv":
-            # 智能检测编码，不再盲目尝试 latin-1
-            import charset_normalizer
+        raw_data.decode("utf-8")
+        return "utf-8"
+    except UnicodeDecodeError:
+        pass
 
-            # 0. 显式指定的编码（探测结果或用户在高级选项手选）优先，避免二次探测误判
-            detected_encoding = None
-            if encoding:
-                candidate = _PYTHON_ENCODING_ALIASES.get(str(encoding).upper(), str(encoding))
-                try:
-                    import codecs
+    result = charset_normalizer.from_bytes(raw_data)
+    matches = result.best() if result else None
+    if matches:
+        return matches.encoding
 
-                    codecs.lookup(candidate)
-                    detected_encoding = candidate
-                except LookupError:
-                    logger.warning(
-                        "Unknown encoding %r for %s; falling back to detection", encoding, file_path
-                    )
+    for enc in ("gb18030",):
+        try:
+            raw_data.decode(enc)
+            return enc
+        except UnicodeDecodeError:
+            continue
 
-            # 读取文件头部的字节用于检测
-            with open(file_path, "rb") as f:
-                raw_data = f.read(1024 * 1024)  # 读取前 1MB
+    logger.warning("Unable to detect encoding for %s, falling back to latin-1", file_path)
+    return "latin-1"
 
-            # 1. 尝试常见编码 (GB18030 覆盖了 GBK 和 GB2312)
-            # 优先尝试 UTF-8 和 GB18030，因为它们最常见且区分度高
-            preferred_encodings = ["utf-8", "gb18030"]
-            if not detected_encoding:
-                for enc in preferred_encodings:
-                    try:
-                        raw_data.decode(enc)
-                        # 如果能成功解码，但需要进一步确认不是伪造的 (latin-1 总是能成功解码)
-                        # 这里如果用 utf-8 或 gb18030 成功解码，通常就是正确的
-                        detected_encoding = enc
+
+def transcode_to_utf8(file_path: str, encoding: str = None) -> str:
+    """把文本文件按给定/探测编码流式转码成 UTF-8 临时文件，返回临时路径。
+
+    v1.2.1 起这是 CSV 的统一兜底：DuckDB 原生 reader 不认/不可靠的编码
+    （BIG5 静默乱码、小语种拼写差异）一律先转码再交回原生 reader，覆盖
+    Python 支持的全部编码，且后续路径（all_varchar/促升/严格模式）与主
+    路径完全一致。调用方负责删除临时文件。
+    """
+    import tempfile
+
+    codec = detect_text_encoding(file_path, explicit=encoding)
+    logger.info("Transcoding %s from %s to UTF-8", file_path, codec)
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", newline="", suffix=".csv", delete=False
+        ) as tmp:
+            tmp_path = tmp.name
+            with open(file_path, "r", encoding=codec, newline="") as source:
+                while True:
+                    chunk = source.read(1 << 20)
+                    if not chunk:
                         break
-                    except UnicodeDecodeError:
-                        continue
-
-            # 2. 如果常见编码识别失败，使用 charset-normalizer 深度检测
-            if not detected_encoding:
-                matches = charset_normalizer.from_bytes(raw_data).best()
-                if matches:
-                    detected_encoding = matches.encoding
-
-            # 3. 最后的兜底
-            if not detected_encoding:
-                detected_encoding = "latin-1"  # 即使是乱码也先读出来，保证不报错
-                logger.warning(f"Unable to detect encoding for file {file_path}, falling back to latin-1")
-
-            logger.info(f"Detected encoding for {file_path}: {detected_encoding}")
-            
-            read_kwargs = {"encoding": detected_encoding, "dtype": str, "keep_default_na": False}
-            if nrows is not None:
-                df = pd.read_csv(file_path, nrows=nrows, **read_kwargs)
-            else:
-                df = pd.read_csv(file_path, **read_kwargs)
-            df = df.replace("", pd.NA)
-            
-        elif file_type == "excel":
-            if nrows is not None:
-                df = pd.read_excel(file_path, nrows=nrows)
-            else:
-                df = pd.read_excel(file_path)
-        elif file_type == "json":
-            if nrows is not None:
-                # JSON 文件不支持 nrows 参数，需要手动处理
-                df = pd.read_json(file_path)
-                df = df.head(nrows)
-            else:
-                df = pd.read_json(file_path)
-        elif file_type == "jsonl":
-            # JSONL 文件每行一个 JSON 对象，使用 lines=True 参数
-            if nrows is not None:
-                df = pd.read_json(file_path, lines=True)
-                df = df.head(nrows)
-            else:
-                df = pd.read_json(file_path, lines=True)
-        elif file_type == "parquet":
-            if nrows is not None:
-                # Parquet 文件不支持 nrows 参数，需要手动处理
-                df = pd.read_parquet(file_path)
-                df = df.head(nrows)
-            else:
-                df = pd.read_parquet(file_path)
-        else:
-            raise ValueError(f"Unsupported file type: {file_type}")
-
-        return df
-
-    except Exception as e:
-        logger.error(f"Failed to read file {file_path}: {str(e)}")
+                    tmp.write(chunk)
+    except Exception:
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
         raise
+    return tmp_path
 
 
-def get_file_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
-    """获取文件预览信息"""
+def get_file_preview(
+    file_path: str, rows: int = 10, csv_encoding: Optional[str] = None
+) -> Dict[str, Any]:
+    """获取文件预览信息。
+
+    csv/json/jsonl/parquet 走 DuckDB 预览（其内部 load_file_to_duckdb 已带
+    CSV 转码兜底）；excel 走 openpyxl/calamine 原生预览。v1.2.1 起不再有
+    pandas 预览兜底——原 parquet/json 的 pandas 兜底在桌面冻结包（无
+    pyarrow）本就是死路，失败改为如实报错。
+    """
     try:
         file_type = detect_file_type(file_path)
         normalized_type = "parquet" if file_type == "pq" else file_type
-        duckdb_preview_types = {"csv", "json", "jsonl", "parquet"}
-        if normalized_type in duckdb_preview_types:
-            try:
-                return _get_duckdb_file_preview(
-                    file_path, normalized_type, rows
-                )
-            except Exception as preview_error:
-                logger.warning(
-                    "DuckDB preview failed, falling back to pandas: %s", preview_error
-                )
+        if normalized_type == "excel":
+            from core.data.excel_import_manager import get_excel_native_preview
 
-        return _get_pandas_file_preview(file_path, file_type, rows)
+            return get_excel_native_preview(file_path, rows)
+        reader_options = (
+            {"encoding": csv_encoding}
+            if csv_encoding and normalized_type == "csv"
+            else None
+        )
+        return _get_duckdb_file_preview(
+            file_path, normalized_type, rows, reader_options=reader_options
+        )
 
     except Exception as e:
         logger.error(f"Failed to get file preview {file_path}: {str(e)}")
         raise
 
 
-def _get_duckdb_file_preview(file_path: str, file_type: str, rows: int) -> Dict[str, Any]:
+def _get_duckdb_file_preview(
+    file_path: str,
+    file_type: str,
+    rows: int,
+    reader_options: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     temp_table = f"__preview_{uuid4().hex}"
     quoted_table = _quote_identifier(temp_table)
     with with_duckdb_connection() as con:
@@ -181,6 +173,7 @@ def _get_duckdb_file_preview(file_path: str, file_type: str, rows: int) -> Dict[
                 temp_table,
                 file_path,
                 file_type,
+                reader_options=reader_options,
                 drop_existing=True,
             )
 
@@ -229,51 +222,6 @@ def _get_duckdb_file_preview(file_path: str, file_type: str, rows: int) -> Dict[
         "column_types": column_types,
         "preview_data": preview_data,
         "sample_values": sample_values,
-    }
-
-
-def _get_pandas_file_preview(file_path: str, file_type: str, rows: int) -> Dict[str, Any]:
-    df = read_file_by_type(file_path, file_type, nrows=rows)
-
-    file_size = os.path.getsize(file_path)
-
-    try:
-        if file_type == "jsonl":
-            with open(file_path, "r", encoding="utf-8") as f:
-                total_rows = sum(1 for line in f if line.strip())
-        else:
-            full_df = read_file_by_type(file_path, file_type)
-            total_rows = len(full_df)
-    except Exception:
-        total_rows = len(df)
-
-    processed_df = df.copy()
-    for col in processed_df.columns:
-        if processed_df[col].dtype == "object":
-            processed_df[col] = processed_df[col].apply(
-                lambda x: (
-                    str(x)
-                    if not (
-                        isinstance(x, (str, int, float, bool, type(None), list, dict))
-                        or x is None
-                    )
-                    else x
-                )
-            )
-        else:
-            processed_df[col] = processed_df[col].replace({pd.isna: None})
-
-    return {
-        "file_type": file_type,
-        "file_size": file_size,
-        "total_rows": total_rows,
-        "columns": processed_df.columns.tolist(),
-        "column_types": processed_df.dtypes.astype(str).to_dict(),
-        "preview_data": normalize_dataframe_output(processed_df.head(rows)),
-        "sample_values": {
-            col: processed_df[col].dropna().head(3).tolist()
-            for col in processed_df.columns
-        },
     }
 
 
@@ -334,30 +282,27 @@ def _build_reader_invocation(function_name: str, options: Optional[Dict[str, Any
 
 
 def _detect_csv_encoding(file_path: str) -> Optional[str]:
-    """检测 CSV 文件编码，返回 DuckDB 可识别的编码名称。
+    """检测 CSV 编码，返回 DuckDB 认识的编码拼写；UTF-8 返回 None（默认值）。
 
-    Args:
-        file_path: CSV 文件路径
-
-    Returns:
-        检测到的编码名称，如果是 UTF-8 则返回 None（让 DuckDB 使用默认值）
+    探测统一走 detect_text_encoding（utf-8 → gb18030 快速先验 →
+    charset_normalizer 深度探测）：此前这里直接用 charset_normalizer，
+    小样本 GBK 文件会被误判成 BIG5，原生路径按错误编码读出静默乱码。
     """
-    import charset_normalizer
-
-    # DuckDB 支持的编码名称映射
-    # 注意：DuckDB 支持 GB18030 但不支持 GBK，需要将 GBK 映射到 GB18030
+    # Python codec 名 → DuckDB 编码拼写
+    # 注意：DuckDB 支持 GB18030 但不支持 GBK；1.5 实测只认 latin-1 / CP1252
+    # 这两种拼写（LATIN1、WINDOWS-1252 会被拒绝）
     encoding_map = {
         "gb18030": "GB18030",
-        "gb2312": "GB18030",  # GB2312 是 GB18030 的子集
-        "gbk": "GB18030",     # GBK 是 GB18030 的子集
+        "gb2312": "GB18030",
+        "gbk": "GB18030",
         "big5": "BIG5",
         "shift_jis": "SHIFT_JIS",
         "euc_jp": "EUC_JP",
         "euc_kr": "EUC_KR",
-        "euc_jis_2004": "GB18030",  # 有时中文文件会被误检测为日文编码
-        # DuckDB 1.5 实测只认 latin-1 / CP1252 这两种拼写（LATIN1、WINDOWS-1252 会被拒绝）
+        "euc_jis_2004": "GB18030",  # 中文文件偶被误判为日文编码
         "iso-8859-1": "latin-1",
         "latin1": "latin-1",
+        "latin-1": "latin-1",
         "cp1252": "CP1252",
         "utf-16": "UTF-16",
         "utf-16-le": "UTF-16LE",
@@ -365,37 +310,17 @@ def _detect_csv_encoding(file_path: str) -> Optional[str]:
     }
 
     try:
-        with open(file_path, "rb") as f:
-            # 读取前 100KB 用于编码检测（避免在多字节字符中间截断）
-            raw_data = f.read(100 * 1024)
-
-        # 优先尝试 UTF-8
-        try:
-            raw_data.decode("utf-8")
-            return None  # UTF-8 是 DuckDB 默认编码，无需指定
-        except UnicodeDecodeError:
-            pass
-
-        # 使用 charset_normalizer 检测编码
-        result = charset_normalizer.from_bytes(raw_data)
-        if result and result.best():
-            detected = result.best().encoding
-            logger.info(f"Detected CSV encoding for {file_path}: {detected}")
-            return encoding_map.get(detected.lower(), detected.upper())
-
-        # charset_normalizer 失败时，尝试常见中文编码
-        for enc in ["gb18030", "gbk"]:
-            try:
-                raw_data.decode(enc)
-                logger.info(f"Fallback encoding detection for {file_path}: {enc}")
-                return "GB18030"
-            except UnicodeDecodeError:
-                continue
-
-    except Exception as e:
+        codec = detect_text_encoding(file_path)
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.warning(f"Failed to detect encoding for {file_path}: {e}")
-
-    return None
+        return None
+    normalized = str(codec).lower().replace("_", "-")
+    if normalized in ("utf-8", "ascii", "utf-8-sig"):
+        return None  # DuckDB 默认 UTF-8
+    mapped = encoding_map.get(normalized) or encoding_map.get(str(codec).lower())
+    result = mapped or str(codec).upper()
+    logger.info(f"Detected CSV encoding for {file_path}: {result}")
+    return result
 
 
 def _load_json_file_as_variant(
@@ -516,14 +441,14 @@ def load_file_to_duckdb(
         merged_options.update(reader_options)
 
     # DuckDB 对个别编码会「不报错但解码错乱」（实测 1.5.3 的 BIG5：换行被映射成
-    # 图形字符、分隔符失效）——静默产出坏数据比失败更危险，直接强制 pandas 路径
-    force_pandas_encoding: Optional[str] = None
+    # 图形字符、分隔符失效）——静默产出坏数据比失败更危险，直接强制转码兜底
+    force_transcode_encoding: Optional[str] = None
     if normalized_type == "csv":
         effective_encoding = str(merged_options.get("encoding") or "").upper()
         if effective_encoding in _DUCKDB_UNRELIABLE_CSV_ENCODINGS:
-            force_pandas_encoding = effective_encoding
+            force_transcode_encoding = effective_encoding
             logger.info(
-                "Encoding %s is unreliable in DuckDB native reader; using pandas for %s",
+                "Encoding %s is unreliable in DuckDB native reader; transcoding %s to UTF-8",
                 effective_encoding,
                 file_path,
             )
@@ -564,8 +489,8 @@ def load_file_to_duckdb(
     fallback_used = False
     try:
         try:
-            if force_pandas_encoding is not None:
-                raise _UnreliableNativeEncoding(force_pandas_encoding)
+            if force_transcode_encoding is not None:
+                raise _UnreliableNativeEncoding(force_transcode_encoding)
             connection.execute(load_sql, [file_path])
             logger.info("Loaded file %s using DuckDB %s", file_path, function_name)
         except Exception as native_error:
@@ -577,25 +502,35 @@ def load_file_to_duckdb(
                 )
             connection.execute(f"DROP TABLE IF EXISTS {quoted_staging}")
 
-            # pandas fallback，同样先建到 staging；已知编码（探测或用户指定）
-            # 直接传给 pandas，避免二次探测再误判
-            df = read_file_by_type(
-                file_path,
-                normalized_type,
-                encoding=merged_options.get("encoding") if normalized_type == "csv" else None,
+            if normalized_type != "csv":
+                # v1.2.1 起 json/jsonl/parquet 无 pandas 兜底（parquet 兜底在
+                # 桌面冻结包缺 pyarrow 本就是死路），原生失败如实上抛
+                raise
+
+            # CSV 统一兜底：按探测/指定编码流式转码 UTF-8，再交回原生 reader。
+            # 覆盖 DuckDB 不认的编码拼写与 BIG5 类静默乱码场景，且 all_varchar/
+            # 严格模式/促升与主路径完全一致
+            transcoded_path = transcode_to_utf8(
+                file_path, encoding=merged_options.get("encoding")
             )
-            temp_view = f"tmp_{table_name}_{int(time.time())}"
             try:
-                connection.register(temp_view, df)
-                source_ref = _quote_identifier(temp_view)
-                connection.execute(
-                    f"CREATE TABLE {quoted_staging} AS SELECT * FROM {source_ref}"
+                retry_options = {
+                    k: v for k, v in merged_options.items() if k != "encoding"
+                }
+                retry_invocation = _build_reader_invocation(
+                    function_name, retry_options
                 )
-                logger.info("Created table %s via pandas fallback", table_name)
+                connection.execute(
+                    f"CREATE TABLE {quoted_staging} AS SELECT * FROM {retry_invocation}",
+                    [transcoded_path],
+                )
+                logger.info(
+                    "Created table %s via UTF-8 transcode fallback", table_name
+                )
             finally:
                 try:
-                    connection.unregister(temp_view)
-                except Exception:  # pylint: disable=broad-exception-caught
+                    os.remove(transcoded_path)
+                except OSError:  # pylint: disable=broad-exception-caught
                     pass
             fallback_used = True
 
@@ -613,5 +548,5 @@ def load_file_to_duckdb(
         except Exception:  # pylint: disable=broad-exception-caught
             pass
 
-    engine = "pandas" if fallback_used else "duckdb"
+    engine = "transcode" if fallback_used else "duckdb"
     return {"fallback_used": fallback_used, "engine": engine}

@@ -2,23 +2,14 @@ from pathlib import Path
 from uuid import uuid4
 
 import duckdb
-import pandas as pd
 import pytest
-from core.data.ingestion_precision import (
-    coerce_dataframe_numeric_columns_safe,
-    is_identifier_column_name,
-)
+from core.data.ingestion_precision import is_identifier_column_name
 from core.data.file_datasource_manager import create_table_from_file_path_typed
-from core.data.excel_import_manager import load_excel_sheet_dataframe
+from core.data.excel_import_manager import load_excel_sheet_rows
 
 
 def _make_table_name(prefix: str) -> str:
     return f"test_{prefix}_{uuid4().hex[:8]}"
-
-
-def _assert_preserved_text_dtype(series: pd.Series) -> None:
-    """Pandas 2 常用 object；Pandas 3 可能为 StringDtype，语义均为文本列。"""
-    assert pd.api.types.is_string_dtype(series) or series.dtype == object
 
 
 def test_is_identifier_column_name():
@@ -27,19 +18,35 @@ def test_is_identifier_column_name():
     assert not is_identifier_column_name("amount")
 
 
-def test_coerce_preserves_long_integer_codes():
-    df = pd.DataFrame(
-        {
-            "order_id": ["1234567890123456789", "9876543210987654321"],
-            "qty": ["1", "2"],
-            "price": ["12.50", "3.00"],
-        }
-    )
-    out = coerce_dataframe_numeric_columns_safe(df)
-    _assert_preserved_text_dtype(out["order_id"])
-    assert out["order_id"].iloc[0] == "1234567890123456789"
-    assert out["qty"].iloc[0] in ("1", 1)
-    assert str(out["price"].iloc[0]) in ("12.50", "12.5")
+def test_rows_ingest_preserves_long_integer_codes():
+    """行式入库 + 促升：长整型编码列保持 VARCHAR 文本，值逐位保留。"""
+    from core.data.ingestion_precision import promote_table_column_types_from_varchar
+    from core.data.rows_ingest import load_rows_as_varchar_table
+
+    con = duckdb.connect()
+    try:
+        temp, cleanup = load_rows_as_varchar_table(
+            con,
+            ["order_id", "qty", "price"],
+            [
+                ["1234567890123456789", "1", "12.50"],
+                ["9876543210987654321", "2", "3.00"],
+            ],
+        )
+        try:
+            con.execute(f'CREATE TABLE t_rows AS SELECT * FROM "{temp}"')
+        finally:
+            cleanup()
+        promote_table_column_types_from_varchar(con, "t_rows")
+        types = {r[0]: r[1] for r in con.execute("DESCRIBE t_rows").fetchall()}
+        assert types["order_id"] == "VARCHAR"  # 标识符名 + 长整型编码
+        row = con.execute(
+            "SELECT order_id, price FROM t_rows ORDER BY qty"
+        ).fetchone()
+        assert row[0] == "1234567890123456789"
+        assert str(row[1]) == "12.50"
+    finally:
+        con.close()
 
 
 @pytest.fixture
@@ -98,9 +105,9 @@ def test_excel_load_preserves_long_id_in_object_column(tmp_path):
     ws.append(["2", 2])
     wb.save(xlsx_path)
 
-    df = load_excel_sheet_dataframe(str(xlsx_path), ws.title, header_rows=1)
-    _assert_preserved_text_dtype(df["order_id"])
-    assert str(df["order_id"].iloc[0]) == "1234567890123456789"
+    header, rows = load_excel_sheet_rows(str(xlsx_path), ws.title, header_rows=1)
+    assert header[0] == "order_id"
+    assert str(rows[0][0]) == "1234567890123456789"
 
 
 # ---------- 值无损提升守卫（财务准则：任何存疑保持 VARCHAR） ----------

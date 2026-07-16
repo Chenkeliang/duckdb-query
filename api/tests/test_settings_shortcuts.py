@@ -79,7 +79,7 @@ class TestPersistenceRoundTrip:
     """
     
     @given(shortcut=shortcut_string())
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)  # DB I/O 冷启动首例可超 200ms
     def test_update_then_load_returns_same_value(self, shortcut: str):
         """
         **Feature: custom-keyboard-shortcuts, Property 4: Persistence Round-Trip**
@@ -115,7 +115,7 @@ class TestPersistenceRoundTrip:
         client.post("/api/settings/shortcuts/reset", json={"action_id": action_id})
     
     @given(action_id=st.sampled_from(list(DEFAULT_SHORTCUTS.keys())))
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)  # DB I/O 冷启动首例可超 200ms
     def test_reset_restores_default(self, action_id: str):
         """
         **Feature: custom-keyboard-shortcuts, Property 5: Reset Restores Defaults**

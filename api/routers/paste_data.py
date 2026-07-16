@@ -3,11 +3,11 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-import pandas as pd
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from core.common.exceptions import BaseAPIException, ValidationError as APIValidationError
+from core.data.rows_ingest import load_rows_as_varchar_table
 from core.database.duckdb_engine import with_duckdb_connection
 from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
@@ -96,17 +96,17 @@ def _build_column_expression(source_alias: str, column_name: str, column_type: s
     return f"COALESCE(TRIM({source_text}), '') AS {safe_alias}"
 
 
-def _persist_pasted_dataframe(
+def _persist_pasted_rows(
     connection,
     table_name: str,
-    dataframe: pd.DataFrame,
+    header: List[str],
+    rows: List[List[Any]],
     column_definitions: List[Tuple[str, str]],
 ) -> Dict[str, Any]:
-    temp_view = f"paste_input_{uuid4().hex[:8]}"
     source_alias = "src"
-    connection.register(temp_view, dataframe)
+    temp_table, cleanup = load_rows_as_varchar_table(connection, header, rows)
 
-    quoted_temp_view = _quote_identifier(temp_view)
+    quoted_temp = _quote_identifier(temp_table)
     select_list = [
         _build_column_expression(source_alias, name, col_type)
         for name, col_type in column_definitions
@@ -115,7 +115,7 @@ def _persist_pasted_dataframe(
     quoted_table = _quote_identifier(table_name)
     create_sql = (
         f"CREATE TABLE {quoted_table} AS "
-        f"SELECT {select_sql} FROM {quoted_temp_view} AS {source_alias}"
+        f"SELECT {select_sql} FROM {quoted_temp} AS {source_alias}"
     )
 
     connection.execute("BEGIN TRANSACTION")
@@ -127,10 +127,7 @@ def _persist_pasted_dataframe(
         connection.execute("ROLLBACK")
         raise
     finally:
-        try:
-            connection.unregister(temp_view)
-        except Exception as exc:
-            logger.debug("Failed to release paste data temporary view: %s (%s)", temp_view, exc)
+        cleanup()
 
     return build_table_metadata_snapshot(connection, table_name)
 
@@ -167,7 +164,6 @@ def save_paste_data(request: PasteDataRequest):
             [_clean_cell_value(value) for value in row]
             for row in request.data_rows
         ]
-        df = pd.DataFrame(cleaned_rows, columns=request.column_names)
 
         clean_table_name = _sanitize_table_name(request.table_name)
         column_definitions: List[Tuple[str, str]] = list(
@@ -178,11 +174,15 @@ def save_paste_data(request: PasteDataRequest):
             raise APIValidationError("Column definitions cannot be empty")
 
         with with_duckdb_connection() as connection:
-            metadata = _persist_pasted_dataframe(
-                connection, clean_table_name, df, column_definitions
+            metadata = _persist_pasted_rows(
+                connection,
+                clean_table_name,
+                list(request.column_names),
+                cleaned_rows,
+                column_definitions,
             )
 
-        saved_rows = metadata.get("row_count", len(df))
+        saved_rows = metadata.get("row_count", len(cleaned_rows))
         logger.info(
             "Successfully saved pasted data to table: %s, rows: %s, columns: %s",
             clean_table_name,
