@@ -55,11 +55,6 @@ def apply_desktop_env() -> None:
     os.environ.setdefault("DUCKDB_MEMORY_LIMIT", compute_memory_limit())
     # 桌面安全/隐私
     os.environ.setdefault("ALLOW_ARBITRARY_LOCAL_PATHS", "1")
-    os.environ.setdefault("LITELLM_TELEMETRY", "False")
-    # litellm import 时默认去 raw.githubusercontent.com 拉模型价格表(5s 超时,
-    # 失败回退内置副本)——国内访问不了 GitHub,首次用 AI 功能会白等超时;
-    # 桌面端直接强制用内置本地副本,离线确定性优先。
-    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
 
 
 def bind_loopback_socket() -> socket.socket:

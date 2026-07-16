@@ -15,8 +15,6 @@ h11==0.16.0
 httpx==0.28.1
 idna==3.16
 iniconfig==2.3.0
-litellm==1.86.2
-tenacity==9.1.4  # litellm 重试用，1.86.2 未声明为硬依赖，需显式安装
 numpy==2.4.6
 openpyxl==3.1.5
 packaging==26.2
