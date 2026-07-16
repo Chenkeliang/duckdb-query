@@ -24,8 +24,9 @@ def _base_dir() -> str:
 def _seed_extensions(bundled_dir: str, user_ext_dir) -> None:
     """把包内预置的 DuckDB 扩展播种到可写用户目录(仅当目标缺失时拷贝)。
 
-    使预置的扩展(excel/httpfs/mysql/postgres,见 scripts/fetch_duckdb_extensions.py)
-    离线即用;未预置的由 DuckDB 在首次用到时按需 INSTALL 到这个可写目录并缓存。
+    使预置的扩展(v1.2.0 起仅 excel,见 scripts/fetch_duckdb_extensions.py)
+    离线即用;未预置的经扩展页下载或由 DuckDB 在首次用到时按需 INSTALL
+    到这个可写目录并缓存。
     包内只读,故必须用可写用户目录,否则签名后的 .app 里 DuckDB 无法写缓存/装扩展。
     """
     import shutil

@@ -322,46 +322,31 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
         _apply_default_duckdb_config(connection, temp_dir)
 
 
-# 进程级 INSTALL 失败缓存:连接池每建一个新连接都会跑一遍扩展兜底安装,而
-# INSTALL 走网络(extensions.duckdb.org),不可达时(国内网络/离线)DuckDB 内置
-# 下载客户端单次实测挂 ~120s——不记忆失败的话 N 个连接 × M 个扩展会串行挂
-# 十几分钟,表现为"首次查询卡死"。失败过的扩展本进程不再重试 INSTALL(重试
-# 也必然同样失败);LOAD 每次照常尝试,本地已有时零成本成功。
-_install_failed_extensions: set = set()
-
-
 def _install_duckdb_extensions(connection, extensions: List[str]):
-    """
-    安装和加载DuckDB扩展
+    """启动阶段加载扩展：只 LOAD 不 INSTALL。
 
-    Args:
-        connection: DuckDB连接实例
-        extensions: 扩展名称列表
+    INSTALL 走网络(extensions.duckdb.org),受限网络下 DuckDB 内置下载客户端
+    单次实测挂 ~120s,发生在连接池初始化即表现为"本地引擎启动超时"(v1.1.4
+    曾为此把扩展全量预置进包)。v1.2.0 桌面包只预置 excel,启动改为:本地有
+    (预置/已装)则秒加载,没有则秒失败跳过,绝不在启动路径联网。未安装扩展
+    的获取入口:扩展页手动下载(routers/duckdb_extensions),或联邦查询等
+    用到时 DuckDB autoinstall(该动作本就需要网络)。
     """
     if not extensions:
         return
 
     for ext_name in extensions:
         try:
-            # 先尝试加载扩展（如果已安装）
             connection.execute(f"LOAD {ext_name};")
             logger.info(f"DuckDB extension {ext_name} loaded")
         except Exception as load_error:
-            if ext_name in _install_failed_extensions:
-                logger.warning(
-                    f"DuckDB extension {ext_name} unavailable (INSTALL already failed this session, not retrying)"
-                )
-                continue
-            # 如果加载失败，尝试安装后再加载
-            try:
-                connection.execute(f"INSTALL {ext_name};")
-                connection.execute(f"LOAD {ext_name};")
-                logger.info(f"DuckDB extension {ext_name} installed and loaded successfully")
-            except Exception as install_error:
-                _install_failed_extensions.add(ext_name)
-                logger.warning(
-                    f"Failed to install or load DuckDB extension {ext_name}: {str(install_error)}"
-                )
+            # 常态:未预置/未安装的扩展在全新环境必然走到这里,按 debug 降噪
+            logger.debug(
+                "DuckDB extension %s not available locally, skipped at startup "
+                "(install via extensions page, or auto-installed on first use): %s",
+                ext_name,
+                load_error,
+            )
 
 
 # 引擎兼容性配置对应的 DuckDB SET GLOBAL 选项名，分别由 sqlite_scanner / mysql /

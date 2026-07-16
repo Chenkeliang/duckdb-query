@@ -2,9 +2,6 @@
 用法: python scripts/fetch_duckdb_extensions.py <platform>
 platform ∈ {osx_arm64, osx_amd64, windows_amd64}
 输出: api/extensions/v<ver>/<platform>/<ext>.duckdb_extension
-
-注: DuckDB 1.1+ 将 mysql/postgres 扩展重命名为 mysql_scanner/postgres_scanner,
-    但 LOAD 指令仍使用 mysql/postgres 别名,本地文件需以 LOAD 名存储。
 """
 
 import gzip
@@ -15,15 +12,15 @@ from pathlib import Path
 
 DUCK_VER = "1.5.3"
 # json/parquet 为 1.5 内建自动加载,无需单独文件。
-# httpfs 必须预置:它在默认开机加载列表(config_manager.duckdb_extensions)里。全新安装时
-# 扩展缓存为空,若不预置 → 启动 LOAD 失败 → 联网 INSTALL,受限网络下会卡到 /health 超时
-# ("本地引擎启动超时")。LOAD 离线可用即可;真正读 URL 才需联网,那是按需、不挡启动。
-# 映射: LOAD 名 -> CDN 文件名
+# v1.2.0 起桌面包只预置 excel(本地导入/导出属离线场景):mysql/postgres/httpfs
+# 合计约 76MB,其使用前提本就是有网络(连远程库/读远程文件),改为扩展页按需
+# 下载或查询时 DuckDB autoinstall。启动阶段只 LOAD 不 INSTALL(见
+# duckdb_engine._install_duckdb_extensions),未预置扩展不会造成受限网络下的
+# 启动联网卡顿("本地引擎启动超时")。
+# 映射: LOAD 名 -> CDN 文件名(DuckDB 1.1+ 把 mysql/postgres 重命名为
+# *_scanner,LOAD 仍用旧名,本地文件需以 LOAD 名存储)
 EXTS = {
     "excel": "excel",
-    "httpfs": "httpfs",
-    "mysql": "mysql_scanner",
-    "postgres": "postgres_scanner",
 }
 
 # Cloudflare 屏蔽 Python 默认 UA,需设置浏览器 UA
